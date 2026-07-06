@@ -9,6 +9,8 @@ import Home from "@/pages/index";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
+import SubjectDetail from "@/pages/subject-detail";
+import KnowledgeTree from "@/pages/knowledge-tree";
 
 const queryClient = new QueryClient();
 
@@ -19,6 +21,8 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/subjects/:id" component={SubjectDetail} />
+      <Route path="/knowledge-tree/:id" component={KnowledgeTree} />
       <Route component={NotFound} />
     </Switch>
   );

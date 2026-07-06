@@ -14,13 +14,16 @@ tags:
     description: Authentication operations
   - name: dashboard
     description: Student dashboard operations
+  - name: subjects
+    description: Subject detail operations
+  - name: knowledge
+    description: Knowledge tree operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -167,6 +170,128 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /subjects:
+    get:
+      operationId: getSubjects
+      tags: [subjects]
+      summary: Get all subjects list
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of subjects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubjectListItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subjects/{subjectId}:
+    get:
+      operationId: getSubjectDetail
+      tags: [subjects]
+      summary: Get subject detail with lessons
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Subject detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subjects/{subjectId}/start-lesson:
+    post:
+      operationId: startLesson
+      tags: [subjects]
+      summary: Start or update a lesson for the current student
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartLessonInput"
+      responses:
+        "200":
+          description: Lesson started or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonActivity"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /knowledge-tree/{subjectId}:
+    get:
+      operationId: getKnowledgeTree
+      tags: [knowledge]
+      summary: Get knowledge tree topics for a subject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Knowledge tree data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeTreeData"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -180,16 +305,14 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-      required:
-        - error
+      required: [error]
 
     RegisterInput:
       type: object
@@ -299,3 +422,113 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LessonActivity"
+
+    SubjectListItem:
+      type: object
+      required: [id, name, grade, description]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        grade:
+          type: string
+        description:
+          type: string
+
+    LessonItem:
+      type: object
+      required: [id, lesson, score, status, createdAt]
+      properties:
+        id:
+          type: integer
+        lesson:
+          type: string
+        score:
+          type: integer
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SubjectDetail:
+      type: object
+      required: [id, name, grade, description, progressPercent, completedLessons, totalLessons, averageScore, lessons]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        grade:
+          type: string
+        description:
+          type: string
+        progressPercent:
+          type: number
+        completedLessons:
+          type: integer
+        totalLessons:
+          type: integer
+        averageScore:
+          type: number
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/LessonItem"
+
+    StartLessonInput:
+      type: object
+      required: [lesson]
+      properties:
+        lesson:
+          type: string
+        score:
+          type: integer
+        status:
+          type: string
+
+    KnowledgeTopic:
+      type: object
+      required: [id, topicName, score, status, masteryLevel]
+      properties:
+        id:
+          type: integer
+        topicName:
+          type: string
+        score:
+          type: integer
+        status:
+          type: string
+        masteryLevel:
+          type: string
+          enum: [mastered, weak, not_started]
+
+    AIRecommendation:
+      type: object
+      required: [type, message, topicName]
+      properties:
+        type:
+          type: string
+          enum: [start, review, repeat]
+        message:
+          type: string
+        topicName:
+          type: string
+
+    KnowledgeTreeData:
+      type: object
+      required: [subjectId, subjectName, topics, recommendations]
+      properties:
+        subjectId:
+          type: integer
+        subjectName:
+          type: string
+        topics:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeTopic"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIRecommendation"

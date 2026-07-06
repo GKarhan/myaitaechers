@@ -6,13 +6,22 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './aIRecommendation';
+export * from './aIRecommendationType';
 export * from './authResponse';
 export * from './dashboardData';
 export * from './dashboardStats';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './knowledgeTopic';
+export * from './knowledgeTopicMasteryLevel';
+export * from './knowledgeTreeData';
 export * from './lessonActivity';
+export * from './lessonItem';
 export * from './loginInput';
 export * from './registerInput';
+export * from './startLessonInput';
+export * from './subjectDetail';
+export * from './subjectListItem';
 export * from './subjectProgress';
 export * from './userProfile';

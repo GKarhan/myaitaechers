@@ -70,3 +70,75 @@ export interface DashboardData {
   recentActivity: LessonActivity[];
 }
 
+export interface SubjectListItem {
+  id: number;
+  name: string;
+  grade: string;
+  description: string;
+}
+
+export interface LessonItem {
+  id: number;
+  lesson: string;
+  score: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface SubjectDetail {
+  id: number;
+  name: string;
+  grade: string;
+  description: string;
+  progressPercent: number;
+  completedLessons: number;
+  totalLessons: number;
+  averageScore: number;
+  lessons: LessonItem[];
+}
+
+export interface StartLessonInput {
+  lesson: string;
+  score?: number;
+  status?: string;
+}
+
+export type KnowledgeTopicMasteryLevel = typeof KnowledgeTopicMasteryLevel[keyof typeof KnowledgeTopicMasteryLevel];
+
+
+export const KnowledgeTopicMasteryLevel = {
+  mastered: 'mastered',
+  weak: 'weak',
+  not_started: 'not_started',
+} as const;
+
+export interface KnowledgeTopic {
+  id: number;
+  topicName: string;
+  score: number;
+  status: string;
+  masteryLevel: KnowledgeTopicMasteryLevel;
+}
+
+export type AIRecommendationType = typeof AIRecommendationType[keyof typeof AIRecommendationType];
+
+
+export const AIRecommendationType = {
+  start: 'start',
+  review: 'review',
+  repeat: 'repeat',
+} as const;
+
+export interface AIRecommendation {
+  type: AIRecommendationType;
+  message: string;
+  topicName: string;
+}
+
+export interface KnowledgeTreeData {
+  subjectId: number;
+  subjectName: string;
+  topics: KnowledgeTopic[];
+  recommendations: AIRecommendation[];
+}
+

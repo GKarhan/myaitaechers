@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useGetDashboard, getGetDashboardQueryKey } from "@workspace/api-client-react";
 
@@ -86,22 +86,24 @@ export default function Dashboard() {
             <h2 className="text-xl font-bold mb-6">Առարկաներ</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dashboard.subjects.map(subject => (
-                <div key={subject.id} className="p-5 rounded-2xl bg-card border border-card-border">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-lg">{subject.subject}</h3>
-                    <span className="text-sm font-medium text-secondary">{subject.averageScore} միավոր</span>
+                <Link key={subject.id} href={`/subjects/${subject.id}`} className="block">
+                  <div className="p-5 rounded-2xl bg-card border border-card-border hover:border-primary/50 transition-colors cursor-pointer h-full">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-semibold text-lg">{subject.subject}</h3>
+                      <span className="text-sm font-medium text-secondary">{subject.averageScore} միավոր</span>
+                    </div>
+                    <div className="mb-2 flex justify-between text-xs text-muted-foreground">
+                      <span>{subject.completedLessons} / {subject.totalLessons} դաս</span>
+                      <span>{subject.progressPercent}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-primary rounded-full"
+                        style={{ width: `${subject.progressPercent}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="mb-2 flex justify-between text-xs text-muted-foreground">
-                    <span>{subject.completedLessons} / {subject.totalLessons} դաս</span>
-                    <span>{subject.progressPercent}%</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary rounded-full"
-                      style={{ width: `${subject.progressPercent}%` }}
-                    />
-                  </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

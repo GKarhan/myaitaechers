@@ -9,7 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -129,5 +128,91 @@ export const GetRecentActivityResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetRecentActivityResponse = zod.array(GetRecentActivityResponseItem)
+
+
+/**
+ * @summary Get all subjects list
+ */
+export const GetSubjectsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "description": zod.string()
+})
+export const GetSubjectsResponse = zod.array(GetSubjectsResponseItem)
+
+
+/**
+ * @summary Get subject detail with lessons
+ */
+export const GetSubjectDetailParams = zod.object({
+  "subjectId": zod.coerce.number()
+})
+
+export const GetSubjectDetailResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "description": zod.string(),
+  "progressPercent": zod.number(),
+  "completedLessons": zod.number(),
+  "totalLessons": zod.number(),
+  "averageScore": zod.number(),
+  "lessons": zod.array(zod.object({
+  "id": zod.number(),
+  "lesson": zod.string(),
+  "score": zod.number(),
+  "status": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Start or update a lesson for the current student
+ */
+export const StartLessonParams = zod.object({
+  "subjectId": zod.coerce.number()
+})
+
+export const StartLessonBody = zod.object({
+  "lesson": zod.string(),
+  "score": zod.number().optional(),
+  "status": zod.string().optional()
+})
+
+export const StartLessonResponse = zod.object({
+  "id": zod.number(),
+  "subject": zod.string(),
+  "lesson": zod.string(),
+  "score": zod.number(),
+  "status": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get knowledge tree topics for a subject
+ */
+export const GetKnowledgeTreeParams = zod.object({
+  "subjectId": zod.coerce.number()
+})
+
+export const GetKnowledgeTreeResponse = zod.object({
+  "subjectId": zod.number(),
+  "subjectName": zod.string(),
+  "topics": zod.array(zod.object({
+  "id": zod.number(),
+  "topicName": zod.string(),
+  "score": zod.number(),
+  "status": zod.string(),
+  "masteryLevel": zod.enum(['mastered', 'weak', 'not_started'])
+})),
+  "recommendations": zod.array(zod.object({
+  "type": zod.enum(['start', 'review', 'repeat']),
+  "message": zod.string(),
+  "topicName": zod.string()
+}))
+})
 
 

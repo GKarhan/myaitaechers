@@ -24,9 +24,13 @@ import type {
   DashboardData,
   ErrorResponse,
   HealthStatus,
+  KnowledgeTreeData,
   LessonActivity,
   LoginInput,
   RegisterInput,
+  StartLessonInput,
+  SubjectDetail,
+  SubjectListItem,
   SubjectProgress,
   UserProfile
 } from './api.schemas';
@@ -67,7 +71,6 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
@@ -572,6 +575,308 @@ export function useGetRecentActivity<TData = Awaited<ReturnType<typeof getRecent
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRecentActivityQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSubjectsUrl = () => {
+
+
+
+
+  return `/api/subjects`
+}
+
+/**
+ * @summary Get all subjects list
+ */
+export const getSubjects = async ( options?: RequestInit): Promise<SubjectListItem[]> => {
+
+  return customFetch<SubjectListItem[]>(getGetSubjectsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSubjectsQueryKey = () => {
+    return [
+    `/api/subjects`
+    ] as const;
+    }
+
+
+export const getGetSubjectsQueryOptions = <TData = Awaited<ReturnType<typeof getSubjects>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSubjectsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSubjects>>> = ({ signal }) => getSubjects({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSubjects>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSubjectsQueryResult = NonNullable<Awaited<ReturnType<typeof getSubjects>>>
+export type GetSubjectsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get all subjects list
+ */
+
+export function useGetSubjects<TData = Awaited<ReturnType<typeof getSubjects>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSubjectsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSubjectDetailUrl = (subjectId: number,) => {
+
+
+
+
+  return `/api/subjects/${subjectId}`
+}
+
+/**
+ * @summary Get subject detail with lessons
+ */
+export const getSubjectDetail = async (subjectId: number, options?: RequestInit): Promise<SubjectDetail> => {
+
+  return customFetch<SubjectDetail>(getGetSubjectDetailUrl(subjectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSubjectDetailQueryKey = (subjectId: number,) => {
+    return [
+    `/api/subjects/${subjectId}`
+    ] as const;
+    }
+
+
+export const getGetSubjectDetailQueryOptions = <TData = Awaited<ReturnType<typeof getSubjectDetail>>, TError = ErrorType<ErrorResponse>>(subjectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubjectDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSubjectDetailQueryKey(subjectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSubjectDetail>>> = ({ signal }) => getSubjectDetail(subjectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: subjectId !== null && subjectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSubjectDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSubjectDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getSubjectDetail>>>
+export type GetSubjectDetailQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get subject detail with lessons
+ */
+
+export function useGetSubjectDetail<TData = Awaited<ReturnType<typeof getSubjectDetail>>, TError = ErrorType<ErrorResponse>>(
+ subjectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubjectDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSubjectDetailQueryOptions(subjectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStartLessonUrl = (subjectId: number,) => {
+
+
+
+
+  return `/api/subjects/${subjectId}/start-lesson`
+}
+
+/**
+ * @summary Start or update a lesson for the current student
+ */
+export const startLesson = async (subjectId: number,
+    startLessonInput: StartLessonInput, options?: RequestInit): Promise<LessonActivity> => {
+
+  return customFetch<LessonActivity>(getStartLessonUrl(subjectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(startLessonInput)
+  }
+);}
+
+
+
+
+export const getStartLessonMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startLesson>>, TError,{subjectId: number;data: BodyType<StartLessonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startLesson>>, TError,{subjectId: number;data: BodyType<StartLessonInput>}, TContext> => {
+
+const mutationKey = ['startLesson'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startLesson>>, {subjectId: number;data: BodyType<StartLessonInput>}> = (props) => {
+          const {subjectId,data} = props ?? {};
+
+          return  startLesson(subjectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartLessonMutationResult = NonNullable<Awaited<ReturnType<typeof startLesson>>>
+    export type StartLessonMutationBody = BodyType<StartLessonInput>
+    export type StartLessonMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start or update a lesson for the current student
+ */
+export const useStartLesson = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startLesson>>, TError,{subjectId: number;data: BodyType<StartLessonInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startLesson>>,
+        TError,
+        {subjectId: number;data: BodyType<StartLessonInput>},
+        TContext
+      > => {
+      return useMutation(getStartLessonMutationOptions(options));
+    }
+
+export const getGetKnowledgeTreeUrl = (subjectId: number,) => {
+
+
+
+
+  return `/api/knowledge-tree/${subjectId}`
+}
+
+/**
+ * @summary Get knowledge tree topics for a subject
+ */
+export const getKnowledgeTree = async (subjectId: number, options?: RequestInit): Promise<KnowledgeTreeData> => {
+
+  return customFetch<KnowledgeTreeData>(getGetKnowledgeTreeUrl(subjectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKnowledgeTreeQueryKey = (subjectId: number,) => {
+    return [
+    `/api/knowledge-tree/${subjectId}`
+    ] as const;
+    }
+
+
+export const getGetKnowledgeTreeQueryOptions = <TData = Awaited<ReturnType<typeof getKnowledgeTree>>, TError = ErrorType<ErrorResponse>>(subjectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKnowledgeTree>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKnowledgeTreeQueryKey(subjectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKnowledgeTree>>> = ({ signal }) => getKnowledgeTree(subjectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: subjectId !== null && subjectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKnowledgeTree>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKnowledgeTreeQueryResult = NonNullable<Awaited<ReturnType<typeof getKnowledgeTree>>>
+export type GetKnowledgeTreeQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get knowledge tree topics for a subject
+ */
+
+export function useGetKnowledgeTree<TData = Awaited<ReturnType<typeof getKnowledgeTree>>, TError = ErrorType<ErrorResponse>>(
+ subjectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKnowledgeTree>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKnowledgeTreeQueryOptions(subjectId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
