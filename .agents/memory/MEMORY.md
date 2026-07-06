@@ -1,0 +1,1 @@
+- [bcryptjs seed hash generation](bcryptjs-seed-hash.md) — use bash `node -e require(bcryptjs)` to generate hashes; code_execution sandbox cannot import workspace pnpm packages.
