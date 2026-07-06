@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "myaiteacher — Քո անձնական AI ուսուցիչը"
+version = "1.0.0"
+id = "artifacts/myaiteacher"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18291
+
+[services.development]
+run = "pnpm --filter @workspace/myaiteacher run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/myaiteacher", "run", "build" ]
+publicDir = "artifacts/myaiteacher/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18291"
+BASE_PATH = "/"

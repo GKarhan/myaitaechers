@@ -1,0 +1,107 @@
+Ստեղծիր ամբողջական վեբ հավելված Replit-ում՝ «myaiteacher — Քո անձնական AI ուսուցիչը» անվամբ:
+
+─────────────────────────────────────────────
+1. 🏗️ BACKEND (Node.js + Express կամ Python + Flask)
+─────────────────────────────────────────────
+
+Ընտրիր այն, ինչ ավելի հարմար է Replit-ի համար:
+
+- SQLite տվյալների բազա
+- 2 աղյուսակ.
+  1. users (id, username, password_hash, full_name, created_at)
+  2. student_progress (id, user_id, subject, lesson, score, status)
+
+- Register (POST /api/register) — username, password, full_name
+- Login (POST /api/login) — username, password → JWT token
+- Profile (GET /api/profile) — JWT-ով ստուգում
+- Dashboard data (GET /api/dashboard) — վիճակագրություն, առարկաներ, առաջընթաց
+
+─────────────────────────────────────────────
+2. 🎨 FRONTEND (HTML + CSS + JavaScript կամ React)
+─────────────────────────────────────────────
+
+2.1 Landing Page (index.html)
+   - Լոգո: "Karhanyan School | myaiteacher"
+   - Վերնագիր: "myaiteacher — Քո անձնական AI ուսուցիչը"
+   - Ենթավերնագիր: "AI-ն սովորեցնում է յուրաքանչյուր աշակերտի ըստ իր կարողությունների"
+   - 4 քայլ՝ Դասեր → AI Tutor → Գիտելիքի ծառ → Առաջընթաց
+   - [Մուտք] [Գրանցում] կոճակներ
+
+2.2 Register Page (register.html)
+   - Անուն, Ազգանուն
+   - Օգտանուն
+   - Գաղտնաբառ
+   - [Գրանցվել] կոճակ
+
+2.3 Login Page (login.html)
+   - Օգտանուն
+   - Գաղտնաբառ
+   - [Մուտք] կոճակ
+
+2.4 Student Dashboard (dashboard.html)
+   - Վերնագիր: "Բարի գալուստ, [Անուն]"
+   - Վիճակագրություն.
+     • Ավարտված դասեր
+     • Միջին գնահատական
+     • Անավարտ տնայիններ
+   - Ընդհանուր առաջընթաց (Progress Bar)
+   - Իմ առարկաները (ցանկ + %)
+   - Վերջին ակտիվությունը (3 դաս)
+
+─────────────────────────────────────────────
+3. 🎯 UI/UX ԴԻԶԱՅՆ
+─────────────────────────────────────────────
+
+- Գույներ.
+  - Ֆոն: #0F172A (մուգ կապույտ)
+  - Գլխավոր: #6366F1 (indigo)
+  - Երկրորդական: #14B8A6 (teal)
+  - Accent: #F59E0B (ոսկեգույն)
+  - Տեքստ: #FFFFFF (սպիտակ)
+
+- Font: Inter (Google Fonts)
+
+- UI տարրեր.
+  - Cards (border-radius: 16px, backdrop-filter: blur)
+  - Gradient buttons (indigo → teal)
+  - Progress bars
+  - Shadows, hover effects
+
+─────────────────────────────────────────────
+4. 📁 ՖԱՅԼԱՅԻՆ ԿԱՌՈՒՑՎԱԾՔ
+─────────────────────────────────────────────
+
+/
+├── server.js (կամ server.py)
+├── database.js (կամ database.py)
+├── requirements.txt (կամ package.json)
+├── .env (DEEPSEEK_API_KEY)
+├── templates/
+│   ├── index.html (Landing)
+│   ├── login.html
+│   ├── register.html
+│   └── dashboard.html
+├── static/
+│   ├── style.css
+│   └── script.js
+└── README.md
+
+─────────────────────────────────────────────
+5. 📌 ՊԱՀԱՆՋՆԵՐ
+─────────────────────────────────────────────
+
+- Բոլոր էջերը հայերեն են
+- Աշակերտը մուտք գործելուց հետո տեսնում է իր անունը
+- Տվյալների բազայում ավելացված է 1 օգտատեր (student1 / student123)
+- Տվյալների բազան ավտոմատ ստեղծվի առաջին գործարկման ժամանակ
+- Հավելվածը աշխատի Replit-ում առանց սխալների
+
+─────────────────────────────────────────────
+6. 🚀 ՏՐԱՄԱԴՐԻՐ ԱՄԲՈՂՋԱԿԱՆ ԿՈԴԸ
+─────────────────────────────────────────────
+
+Տրամադրիր բոլոր ֆայլերի ամբողջական կոդը:
+- Backend (server, database, routes)
+- Frontend (բոլոր HTML/CSS/JS ֆայլերը)
+- Տվյալների բազայի սխեմա
+- Seed տվյալներ (student1)

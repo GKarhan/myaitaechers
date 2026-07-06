@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: myaiteacher API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: dashboard
+    description: Student dashboard operations
 paths:
   /healthz:
     get:
@@ -24,7 +28,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid input or username taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/profile:
+    get:
+      operationId: getProfile
+      tags: [auth]
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get student dashboard data
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardData"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dashboard/progress:
+    get:
+      operationId: getProgress
+      tags: [dashboard]
+      summary: Get all subject progress for the current student
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of subject progress
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubjectProgress"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent lesson activity for the current student
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recent activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LessonActivity"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +183,119 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    RegisterInput:
+      type: object
+      required: [username, password, fullName]
+      properties:
+        username:
+          type: string
+          minLength: 3
+        password:
+          type: string
+          minLength: 6
+        fullName:
+          type: string
+          minLength: 1
+
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+
+    UserProfile:
+      type: object
+      required: [id, username, fullName, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        fullName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SubjectProgress:
+      type: object
+      required: [id, subject, completedLessons, totalLessons, averageScore, progressPercent]
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        completedLessons:
+          type: integer
+        totalLessons:
+          type: integer
+        averageScore:
+          type: number
+        progressPercent:
+          type: number
+
+    LessonActivity:
+      type: object
+      required: [id, subject, lesson, score, status, createdAt]
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        lesson:
+          type: string
+        score:
+          type: integer
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    DashboardStats:
+      type: object
+      required: [completedLessons, averageScore, pendingHomework, overallProgress]
+      properties:
+        completedLessons:
+          type: integer
+        averageScore:
+          type: number
+        pendingHomework:
+          type: integer
+        overallProgress:
+          type: number
+
+    DashboardData:
+      type: object
+      required: [stats, subjects, recentActivity]
+      properties:
+        stats:
+          $ref: "#/components/schemas/DashboardStats"
+        subjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubjectProgress"
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/LessonActivity"
