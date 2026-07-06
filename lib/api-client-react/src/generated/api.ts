@@ -21,6 +21,8 @@ import type {
 
 import type {
   AuthResponse,
+  BookGenerationResult,
+  BookItem,
   ChatInput,
   ChatMessageItem,
   ChatResponse,
@@ -1266,4 +1268,228 @@ export function useGetChatHistory<TData = Awaited<ReturnType<typeof getChatHisto
 
 
 
+
+export const getGetBooksUrl = () => {
+
+
+
+
+  return `/api/books`
+}
+
+/**
+ * @summary List all books uploaded by the current user
+ */
+export const getBooks = async ( options?: RequestInit): Promise<BookItem[]> => {
+
+  return customFetch<BookItem[]>(getGetBooksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBooksQueryKey = () => {
+    return [
+    `/api/books`
+    ] as const;
+    }
+
+
+export const getGetBooksQueryOptions = <TData = Awaited<ReturnType<typeof getBooks>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBooksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBooks>>> = ({ signal }) => getBooks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBooks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBooksQueryResult = NonNullable<Awaited<ReturnType<typeof getBooks>>>
+export type GetBooksQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List all books uploaded by the current user
+ */
+
+export function useGetBooks<TData = Awaited<ReturnType<typeof getBooks>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBooksQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetBookUrl = (bookId: number,) => {
+
+
+
+
+  return `/api/books/${bookId}`
+}
+
+/**
+ * @summary Get a single book
+ */
+export const getBook = async (bookId: number, options?: RequestInit): Promise<BookItem> => {
+
+  return customFetch<BookItem>(getGetBookUrl(bookId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBookQueryKey = (bookId: number,) => {
+    return [
+    `/api/books/${bookId}`
+    ] as const;
+    }
+
+
+export const getGetBookQueryOptions = <TData = Awaited<ReturnType<typeof getBook>>, TError = ErrorType<ErrorResponse>>(bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBookQueryKey(bookId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBook>>> = ({ signal }) => getBook(bookId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: bookId !== null && bookId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBookQueryResult = NonNullable<Awaited<ReturnType<typeof getBook>>>
+export type GetBookQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a single book
+ */
+
+export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>, TError = ErrorType<ErrorResponse>>(
+ bookId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBook>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBookQueryOptions(bookId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateLessonsUrl = (bookId: number,) => {
+
+
+
+
+  return `/api/books/${bookId}/generate-lessons`
+}
+
+/**
+ * @summary Generate lessons from an uploaded book using AI
+ */
+export const generateLessons = async (bookId: number, options?: RequestInit): Promise<BookGenerationResult> => {
+
+  return customFetch<BookGenerationResult>(getGenerateLessonsUrl(bookId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGenerateLessonsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateLessons>>, TError,{bookId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateLessons>>, TError,{bookId: number}, TContext> => {
+
+const mutationKey = ['generateLessons'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateLessons>>, {bookId: number}> = (props) => {
+          const {bookId} = props ?? {};
+
+          return  generateLessons(bookId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateLessonsMutationResult = NonNullable<Awaited<ReturnType<typeof generateLessons>>>
+
+    export type GenerateLessonsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate lessons from an uploaded book using AI
+ */
+export const useGenerateLessons = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateLessons>>, TError,{bookId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateLessons>>,
+        TError,
+        {bookId: number},
+        TContext
+      > => {
+      return useMutation(getGenerateLessonsMutationOptions(options));
+    }
 

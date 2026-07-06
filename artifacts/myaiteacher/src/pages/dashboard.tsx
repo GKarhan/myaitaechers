@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { useGetDashboard, getGetDashboardQueryKey } from "@workspace/api-client-react";
+import { useGetDashboard, getGetDashboardQueryKey, useGetBooks, getGetBooksQueryKey } from "@workspace/api-client-react";
 
 export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
@@ -16,6 +16,13 @@ export default function Dashboard() {
   const { data: dashboard, isLoading: dashboardLoading } = useGetDashboard({
     query: {
       queryKey: getGetDashboardQueryKey(),
+      enabled: !!token,
+    }
+  });
+
+  const { data: booksData } = useGetBooks({
+    query: {
+      queryKey: getGetBooksQueryKey(),
       enabled: !!token,
     }
   });
@@ -113,23 +120,43 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Recent Activity */}
-          <div>
-            <h2 className="text-xl font-bold mb-6">Վերջին ակտիվություն</h2>
-            <div className="space-y-4">
-              {dashboard.recentActivity.map(activity => (
-                <div key={activity.id} className="p-4 rounded-xl bg-card/50 border border-card-border flex items-start gap-4">
-                  <div className={`w-2 h-2 mt-2 rounded-full ${activity.status === 'completed' ? 'bg-secondary' : 'bg-accent'}`} />
-                  <div>
-                    <div className="text-xs text-primary mb-1">{activity.subject}</div>
-                    <div className="font-medium text-sm text-white mb-1">{activity.lesson}</div>
-                    <div className="text-xs text-muted-foreground flex justify-between items-center">
-                      <span>{activity.status === 'completed' ? 'Ավարտված' : 'Ընթացքի մեջ'}</span>
-                      {activity.score > 0 && <span className="text-secondary font-medium">{activity.score} միավոր</span>}
-                    </div>
+          {/* Sidebar Area */}
+          <div className="space-y-8">
+            {/* Books card */}
+            <div>
+              <h2 className="text-xl font-bold mb-6">Իմ գրքերը</h2>
+              <div className="p-6 rounded-2xl bg-card border border-card-border flex flex-col justify-between h-[calc(100%-3rem)] min-h-[160px]">
+                <div>
+                  <div className="text-4xl mb-4">📚</div>
+                  <div className="text-lg font-semibold mb-1">Գրքեր և նյութեր</div>
+                  <div className="text-muted-foreground text-sm">
+                    {booksData?.length ? `${booksData.length} գիրք` : "Գրքեր չկան"}
                   </div>
                 </div>
-              ))}
+                <Link href="/books" className="mt-4 text-primary text-sm font-medium flex items-center hover:underline">
+                  Կառավարել →
+                </Link>
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div>
+              <h2 className="text-xl font-bold mb-6">Վերջին ակտիվություն</h2>
+              <div className="space-y-4">
+                {dashboard.recentActivity.map(activity => (
+                  <div key={activity.id} className="p-4 rounded-xl bg-card/50 border border-card-border flex items-start gap-4">
+                    <div className={`w-2 h-2 mt-2 rounded-full ${activity.status === 'completed' ? 'bg-secondary' : 'bg-accent'}`} />
+                    <div>
+                      <div className="text-xs text-primary mb-1">{activity.subject}</div>
+                      <div className="font-medium text-sm text-white mb-1">{activity.lesson}</div>
+                      <div className="text-xs text-muted-foreground flex justify-between items-center">
+                        <span>{activity.status === 'completed' ? 'Ավարտված' : 'Ընթացքի մեջ'}</span>
+                        {activity.score > 0 && <span className="text-secondary font-medium">{activity.score} միավոր</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

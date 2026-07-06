@@ -82,6 +82,8 @@ async function buildAll() {
       "mysql2",
       "newrelic",
       "odbc",
+      "pdf-parse",
+      "mammoth",
       "piscina",
       "realm",
       "ref-napi",

@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { useGetSubjectDetail, getGetSubjectDetailQueryKey, useStartLesson } from "@workspace/api-client-react";
+import { useGetSubjectDetail, getGetSubjectDetailQueryKey, useStartLesson, useGetBooks, getGetBooksQueryKey, useGenerateLessons } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function SubjectDetail() {
@@ -24,7 +24,50 @@ export default function SubjectDetail() {
     }
   });
 
+  const { data: booksData } = useGetBooks({
+    query: {
+      queryKey: getGetBooksQueryKey(),
+      enabled: !!token && !isNaN(subjectId),
+    }
+  });
+
   const startLessonMutation = useStartLesson();
+  
+  const subjectBook = booksData?.find((b: any) => b.subjectId === subjectId);
+  const [genStatus, setGenStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [genCount, setGenCount] = useState(0);
+  const [genError, setGenError] = useState("");
+  const generateLessonsMutation = useGenerateLessons();
+
+  const handleGenerateLessons = () => {
+    if (!subjectBook) return;
+    setGenStatus("loading");
+    generateLessonsMutation.mutate({ bookId: subjectBook.id }, {
+      onSuccess: (res: any) => {
+        setGenStatus("success");
+        setGenCount(res?.lessonsGenerated || res?.count || 0);
+        queryClient.invalidateQueries({ queryKey: getGetSubjectDetailQueryKey(subjectId) });
+      },
+      onError: (err: any) => {
+        setGenStatus("error");
+        setGenError(err.message || "Սխալ գեներացիայի ընթացքում");
+      }
+    });
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (!mimeType) return "📄";
+    if (mimeType.includes("pdf")) return "📄";
+    if (mimeType.includes("word") || mimeType.includes("doc")) return "📝";
+    return "📃";
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return "0 B";
+    if (bytes < 1024) return bytes + " B";
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    else return (bytes / 1048576).toFixed(1) + " MB";
+  };
 
   if (authLoading || subjectLoading) {
     return (
@@ -158,6 +201,79 @@ export default function SubjectDetail() {
               </button>
             </div>
           ))}
+        </div>
+
+        <div className="mt-12 pt-10 border-t border-card-border">
+          <h2 className="text-2xl font-bold mb-6">📚 Կցված գիրք</h2>
+          
+          {subjectBook ? (
+            <div className="p-6 rounded-2xl bg-card border border-card-border shadow-lg max-w-2xl">
+              <div className="flex items-start gap-4 mb-6">
+                <div className="text-3xl bg-background p-3 rounded-xl border border-card-border">
+                  {getFileIcon(subjectBook.mimeType)}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">{subjectBook.name}</h3>
+                  <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                    <span>{formatFileSize(subjectBook.fileSize)}</span>
+                    <span>•</span>
+                    <span>{new Date(subjectBook.uploadedAt).toLocaleDateString("hy-AM")}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4">
+                {genStatus === "idle" && (
+                  <button
+                    onClick={handleGenerateLessons}
+                    className="px-5 py-2 bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 rounded-xl transition-colors font-medium flex items-center gap-2"
+                  >
+                    ✨ Գեներացնել դասեր
+                  </button>
+                )}
+                
+                {genStatus === "loading" && (
+                  <div className="px-5 py-2 bg-card rounded-xl border border-card-border flex items-center gap-2 text-muted-foreground font-medium">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    Գեներացվում է...
+                  </div>
+                )}
+
+                {genStatus === "success" && (
+                  <div className="px-5 py-2 bg-accent/10 rounded-xl border border-accent/20 flex items-center gap-2 text-accent font-medium">
+                    <span>✓</span> {genCount > 0 ? `${genCount} դաս ստեղծվեց` : "Դասեր ստեղծվեցին"}
+                  </div>
+                )}
+
+                {genStatus === "error" && (
+                  <div className="px-5 py-2 bg-red-500/10 rounded-xl border border-red-500/20 flex items-center gap-2 text-red-400 font-medium text-sm">
+                    Սխալ առաջացավ. {genError}
+                  </div>
+                )}
+
+                <Link 
+                  href="/books"
+                  className="px-5 py-2 bg-background border border-card-border hover:bg-card/50 rounded-xl transition-colors text-white font-medium"
+                >
+                  Փոխել գիրքը
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="p-8 rounded-2xl bg-card border border-card-border shadow-lg max-w-2xl text-center border-dashed">
+              <div className="text-4xl mb-4 text-muted-foreground">📂</div>
+              <h3 className="font-semibold text-lg mb-2">Այս առարկայի համար գիրք չկա</h3>
+              <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
+                Վերբեռնեք գիրք այս առարկայի համար՝ դասեր և առաջադրանքներ ավտոմատ գեներացնելու համար։
+              </p>
+              <Link 
+                href="/books"
+                className="inline-flex px-6 py-2.5 bg-primary text-white hover:opacity-90 rounded-xl transition-opacity font-medium"
+              >
+                Կցել գիրք
+              </Link>
+            </div>
+          )}
         </div>
       </main>
     </div>

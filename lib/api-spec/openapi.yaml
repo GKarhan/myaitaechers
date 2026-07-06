@@ -439,6 +439,95 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+
+  /books:
+    get:
+      operationId: getBooks
+      tags: [books]
+      summary: List all books uploaded by the current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BookItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /books/{bookId}:
+    get:
+      operationId: getBook
+      tags: [books]
+      summary: Get a single book
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Book detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /books/{bookId}/generate-lessons:
+    post:
+      operationId: generateLessons
+      tags: [books]
+      summary: Generate lessons from an uploaded book using AI
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Generated lessons
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookGenerationResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Book not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     bearerAuth:
@@ -796,3 +885,47 @@ components:
         createdAt:
           type: string
           format: date-time
+
+
+    BookItem:
+      type: object
+      required: [id, name, fileSize, mimeType, uploadedAt]
+      properties:
+        id:
+          type: integer
+        subjectId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        fileSize:
+          type: integer
+        mimeType:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+
+    GeneratedLesson:
+      type: object
+      required: [id, title, description, bloomLevel]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+
+    BookGenerationResult:
+      type: object
+      required: [lessons, count]
+      properties:
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedLesson"
+        count:
+          type: integer

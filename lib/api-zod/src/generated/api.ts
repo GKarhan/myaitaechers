@@ -318,3 +318,52 @@ export const GetChatHistoryResponseItem = zod.object({
 export const GetChatHistoryResponse = zod.array(GetChatHistoryResponseItem)
 
 
+/**
+ * @summary List all books uploaded by the current user
+ */
+export const GetBooksResponseItem = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number().nullish(),
+  "name": zod.string(),
+  "fileSize": zod.number(),
+  "mimeType": zod.string(),
+  "uploadedAt": zod.coerce.date()
+})
+export const GetBooksResponse = zod.array(GetBooksResponseItem)
+
+
+/**
+ * @summary Get a single book
+ */
+export const GetBookParams = zod.object({
+  "bookId": zod.coerce.number()
+})
+
+export const GetBookResponse = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number().nullish(),
+  "name": zod.string(),
+  "fileSize": zod.number(),
+  "mimeType": zod.string(),
+  "uploadedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Generate lessons from an uploaded book using AI
+ */
+export const GenerateLessonsParams = zod.object({
+  "bookId": zod.coerce.number()
+})
+
+export const GenerateLessonsResponse = zod.object({
+  "lessons": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "bloomLevel": zod.number()
+})),
+  "count": zod.number()
+})
+
+

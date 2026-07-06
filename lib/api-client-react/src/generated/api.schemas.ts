@@ -199,6 +199,27 @@ export interface ChatMessageItem {
   createdAt: string;
 }
 
+export interface BookItem {
+  id: number;
+  subjectId?: number | null;
+  name: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: string;
+}
+
+export interface GeneratedLesson {
+  id: number;
+  title: string;
+  description: string;
+  bloomLevel: number;
+}
+
+export interface BookGenerationResult {
+  lessons: GeneratedLesson[];
+  count: number;
+}
+
 export type GetChatHistoryParams = {
 lessonId?: number;
 };
