@@ -14,6 +14,7 @@ import KnowledgeTree from "@/pages/knowledge-tree";
 import LessonDetail from "@/pages/lesson-detail";
 import Chat from "@/pages/chat";
 import Books from "@/pages/books";
+import Homework from "@/pages/homework";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/lesson/:id" component={LessonDetail} />
       <Route path="/chat/:id" component={Chat} />
       <Route path="/books" component={Books} />
+      <Route path="/homework" component={Homework} />
       <Route component={NotFound} />
     </Switch>
   );

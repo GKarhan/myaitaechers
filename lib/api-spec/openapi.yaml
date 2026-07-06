@@ -22,6 +22,8 @@ tags:
     description: Lesson operations
   - name: chat
     description: AI tutor chat operations
+  - name: homework
+    description: Homework management operations
 paths:
   /healthz:
     get:
@@ -528,6 +530,191 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /homework:
+    get:
+      operationId: getHomework
+      tags: [homework]
+      summary: List all homework for the current student
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of homework assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HomeworkItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /homework/{homeworkId}:
+    get:
+      operationId: getHomeworkById
+      tags: [homework]
+      summary: Get a single homework assignment with details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: homeworkId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Homework detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeworkDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /homework/{homeworkId}/submit:
+    post:
+      operationId: submitHomework
+      tags: [homework]
+      summary: Submit answer for a homework assignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: homeworkId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HomeworkSubmitInput"
+      responses:
+        "200":
+          description: Homework submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeworkDetail"
+        "400":
+          description: Invalid input or already submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /homework/{homeworkId}/grade:
+    post:
+      operationId: gradeHomework
+      tags: [homework]
+      summary: Grade a submitted homework (teacher or AI-assisted)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: homeworkId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HomeworkGradeInput"
+      responses:
+        "200":
+          description: Homework graded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeworkDetail"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /homework/{homeworkId}/ai-grade-suggest:
+    post:
+      operationId: aiGradeSuggest
+      tags: [homework]
+      summary: Ask AI for a grading suggestion for a submitted homework
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: homeworkId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: AI grading suggestion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiGradeSuggestion"
+        "400":
+          description: Homework not submitted yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -929,3 +1116,110 @@ components:
             $ref: "#/components/schemas/GeneratedLesson"
         count:
           type: integer
+
+    HomeworkItem:
+      type: object
+      required: [id, lessonId, lessonTitle, subjectName, title, task, level, status, createdAt]
+      properties:
+        id:
+          type: integer
+        lessonId:
+          type: integer
+        lessonTitle:
+          type: string
+        subjectName:
+          type: string
+        title:
+          type: string
+        task:
+          type: string
+        level:
+          type: string
+        status:
+          type: string
+        score:
+          type: integer
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        gradedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    HomeworkDetail:
+      type: object
+      required: [id, lessonId, lessonTitle, subjectName, title, task, level, status, createdAt]
+      properties:
+        id:
+          type: integer
+        lessonId:
+          type: integer
+        lessonTitle:
+          type: string
+        subjectName:
+          type: string
+        title:
+          type: string
+        task:
+          type: string
+        level:
+          type: string
+        answer:
+          type: string
+          nullable: true
+        fileUrl:
+          type: string
+          nullable: true
+        score:
+          type: integer
+          nullable: true
+        feedback:
+          type: string
+          nullable: true
+        status:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        gradedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    HomeworkSubmitInput:
+      type: object
+      required: [answer]
+      properties:
+        answer:
+          type: string
+          minLength: 1
+
+    HomeworkGradeInput:
+      type: object
+      required: [score]
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        feedback:
+          type: string
+
+    AiGradeSuggestion:
+      type: object
+      required: [score, feedback]
+      properties:
+        score:
+          type: integer
+        feedback:
+          type: string

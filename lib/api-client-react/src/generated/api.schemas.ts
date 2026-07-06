@@ -220,6 +220,58 @@ export interface BookGenerationResult {
   count: number;
 }
 
+export interface HomeworkItem {
+  id: number;
+  lessonId: number;
+  lessonTitle: string;
+  subjectName: string;
+  title: string;
+  task: string;
+  level: string;
+  status: string;
+  score?: number | null;
+  submittedAt?: string | null;
+  gradedAt?: string | null;
+  createdAt: string;
+}
+
+export interface HomeworkDetail {
+  id: number;
+  lessonId: number;
+  lessonTitle: string;
+  subjectName: string;
+  title: string;
+  task: string;
+  level: string;
+  answer?: string | null;
+  fileUrl?: string | null;
+  score?: number | null;
+  feedback?: string | null;
+  status: string;
+  submittedAt?: string | null;
+  gradedAt?: string | null;
+  createdAt: string;
+}
+
+export interface HomeworkSubmitInput {
+  /** @minLength 1 */
+  answer: string;
+}
+
+export interface HomeworkGradeInput {
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  feedback?: string;
+}
+
+export interface AiGradeSuggestion {
+  score: number;
+  feedback: string;
+}
+
 export type GetChatHistoryParams = {
 lessonId?: number;
 };

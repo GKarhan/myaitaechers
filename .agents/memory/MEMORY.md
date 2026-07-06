@@ -1,1 +1,1 @@
-- [bcryptjs seed hash generation](bcryptjs-seed-hash.md) — use bash `node -e require(bcryptjs)` to generate hashes; code_execution sandbox cannot import workspace pnpm packages.
+- [React Query queryKey requirement](rq-querykey-required.md) — useGetXxxById hooks require queryKey in query options, not just enabled; omitting it causes TS2741.

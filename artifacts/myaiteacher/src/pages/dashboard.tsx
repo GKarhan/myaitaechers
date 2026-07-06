@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { useGetDashboard, getGetDashboardQueryKey, useGetBooks, getGetBooksQueryKey } from "@workspace/api-client-react";
+import { useGetDashboard, getGetDashboardQueryKey, useGetBooks, getGetBooksQueryKey, useGetHomework, getGetHomeworkQueryKey } from "@workspace/api-client-react";
 
 export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
@@ -26,6 +26,17 @@ export default function Dashboard() {
       enabled: !!token,
     }
   });
+
+  const { data: homeworkData } = useGetHomework({
+    query: {
+      queryKey: getGetHomeworkQueryKey(),
+      enabled: !!token,
+    }
+  });
+
+  const pendingHomework = homeworkData?.filter(h => h.status === 'pending').length || 0;
+  const gradedHomework = homeworkData?.filter(h => h.status === 'graded').length || 0;
+  const notSubmittedHomework = homeworkData?.filter(h => h.status === 'not_submitted').length || 0;
 
   if (authLoading || dashboardLoading) {
     return (
@@ -122,6 +133,32 @@ export default function Dashboard() {
 
           {/* Sidebar Area */}
           <div className="space-y-8">
+            {/* Homework card */}
+            <div>
+              <h2 className="text-xl font-bold mb-6">Տնային աշխատանք</h2>
+              <div className="p-6 rounded-2xl bg-card border border-card-border shadow-lg shadow-black/50">
+                <div className="text-4xl mb-4">📝</div>
+                <div className="text-lg font-semibold mb-3">Իմ առաջադրանքները</div>
+                <div className="flex flex-col gap-2 text-sm font-medium mb-4">
+                  <div className="flex items-center justify-between text-accent">
+                    <span>Չներկայացված</span>
+                    <span>{notSubmittedHomework}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-amber-500">
+                    <span>Սպասում է</span>
+                    <span>{pendingHomework}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-secondary">
+                    <span>Գնահատված</span>
+                    <span>{gradedHomework}</span>
+                  </div>
+                </div>
+                <Link href="/homework" className="text-primary text-sm font-medium flex items-center hover:underline">
+                  Բոլոր տնայինները →
+                </Link>
+              </div>
+            </div>
+
             {/* Books card */}
             <div>
               <h2 className="text-xl font-bold mb-6">Իմ գրքերը</h2>

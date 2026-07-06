@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './aiGradeSuggestion';
 export * from './aIRecommendation';
 export * from './aIRecommendationType';
 export * from './authResponse';
@@ -21,6 +22,10 @@ export * from './errorResponse';
 export * from './generatedLesson';
 export * from './getChatHistoryParams';
 export * from './healthStatus';
+export * from './homeworkDetail';
+export * from './homeworkGradeInput';
+export * from './homeworkItem';
+export * from './homeworkSubmitInput';
 export * from './knowledgeTopic';
 export * from './knowledgeTopicMasteryLevel';
 export * from './knowledgeTreeData';

@@ -6,3 +6,4 @@ export * from "./lessons";
 export * from "./chat-messages";
 export * from "./lesson-sessions";
 export * from "./books";
+export * from "./homework";

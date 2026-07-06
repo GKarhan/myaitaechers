@@ -7,6 +7,7 @@ import knowledgeTreeRouter from "./knowledge-tree";
 import lessonsRouter from "./lessons";
 import chatRouter from "./chat";
 import booksRouter from "./books";
+import homeworkRouter from "./homework";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(knowledgeTreeRouter);
 router.use(lessonsRouter);
 router.use(chatRouter);
 router.use(booksRouter);
+router.use(homeworkRouter);
 
 export default router;

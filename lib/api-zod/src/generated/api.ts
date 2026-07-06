@@ -367,3 +367,131 @@ export const GenerateLessonsResponse = zod.object({
 })
 
 
+/**
+ * @summary List all homework for the current student
+ */
+export const GetHomeworkResponseItem = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string(),
+  "subjectName": zod.string(),
+  "title": zod.string(),
+  "task": zod.string(),
+  "level": zod.string(),
+  "status": zod.string(),
+  "score": zod.number().nullish(),
+  "submittedAt": zod.coerce.date().nullish(),
+  "gradedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetHomeworkResponse = zod.array(GetHomeworkResponseItem)
+
+
+/**
+ * @summary Get a single homework assignment with details
+ */
+export const GetHomeworkByIdParams = zod.object({
+  "homeworkId": zod.coerce.number()
+})
+
+export const GetHomeworkByIdResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string(),
+  "subjectName": zod.string(),
+  "title": zod.string(),
+  "task": zod.string(),
+  "level": zod.string(),
+  "answer": zod.string().nullish(),
+  "fileUrl": zod.string().nullish(),
+  "score": zod.number().nullish(),
+  "feedback": zod.string().nullish(),
+  "status": zod.string(),
+  "submittedAt": zod.coerce.date().nullish(),
+  "gradedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Submit answer for a homework assignment
+ */
+export const SubmitHomeworkParams = zod.object({
+  "homeworkId": zod.coerce.number()
+})
+
+
+
+
+export const SubmitHomeworkBody = zod.object({
+  "answer": zod.string().min(1)
+})
+
+export const SubmitHomeworkResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string(),
+  "subjectName": zod.string(),
+  "title": zod.string(),
+  "task": zod.string(),
+  "level": zod.string(),
+  "answer": zod.string().nullish(),
+  "fileUrl": zod.string().nullish(),
+  "score": zod.number().nullish(),
+  "feedback": zod.string().nullish(),
+  "status": zod.string(),
+  "submittedAt": zod.coerce.date().nullish(),
+  "gradedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Grade a submitted homework (teacher or AI-assisted)
+ */
+export const GradeHomeworkParams = zod.object({
+  "homeworkId": zod.coerce.number()
+})
+
+export const gradeHomeworkBodyScoreMin = 0;
+export const gradeHomeworkBodyScoreMax = 100;
+
+
+
+export const GradeHomeworkBody = zod.object({
+  "score": zod.number().min(gradeHomeworkBodyScoreMin).max(gradeHomeworkBodyScoreMax),
+  "feedback": zod.string().optional()
+})
+
+export const GradeHomeworkResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string(),
+  "subjectName": zod.string(),
+  "title": zod.string(),
+  "task": zod.string(),
+  "level": zod.string(),
+  "answer": zod.string().nullish(),
+  "fileUrl": zod.string().nullish(),
+  "score": zod.number().nullish(),
+  "feedback": zod.string().nullish(),
+  "status": zod.string(),
+  "submittedAt": zod.coerce.date().nullish(),
+  "gradedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Ask AI for a grading suggestion for a submitted homework
+ */
+export const AiGradeSuggestParams = zod.object({
+  "homeworkId": zod.coerce.number()
+})
+
+export const AiGradeSuggestResponse = zod.object({
+  "score": zod.number(),
+  "feedback": zod.string()
+})
+
+
