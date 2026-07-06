@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, chatMessagesTable, lessonsTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-import { callDeepSeek, type ChatMessage } from "../services/ai";
+import { callAI, type ChatMessage } from "../services/ai";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -61,7 +61,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   chatHistory.push({ role: "user", content: message });
 
   try {
-    const aiResponse = await callDeepSeek(chatHistory, lessonContext);
+    const aiResponse = await callAI(chatHistory, lessonContext);
 
     const [assistantMsg] = await db
       .insert(chatMessagesTable)
