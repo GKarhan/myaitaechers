@@ -103,17 +103,27 @@ export const GetDashboardResponse = zod.object({
 
 
 /**
- * @summary Get all subject progress for the current student
+ * @summary Get overall progress for the current student
  */
-export const GetProgressResponseItem = zod.object({
+export const GetProgressResponse = zod.object({
+  "overallPercent": zod.number(),
+  "averageScore": zod.number(),
+  "masteryPercent": zod.number(),
+  "completedLessons": zod.number(),
+  "activeLessons": zod.number(),
+  "totalLessons": zod.number(),
+  "lastActivity": zod.coerce.date().nullish(),
+  "subjects": zod.array(zod.object({
   "id": zod.number(),
-  "subject": zod.string(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "progressPercent": zod.number(),
   "completedLessons": zod.number(),
   "totalLessons": zod.number(),
   "averageScore": zod.number(),
-  "progressPercent": zod.number()
+  "masteryLevel": zod.string()
+}))
 })
-export const GetProgressResponse = zod.array(GetProgressResponseItem)
 
 
 /**
@@ -364,6 +374,58 @@ export const GenerateLessonsResponse = zod.object({
   "bloomLevel": zod.number()
 })),
   "count": zod.number()
+})
+
+
+/**
+ * @summary Get detailed lesson-level progress for a subject
+ */
+export const GetSubjectProgressParams = zod.object({
+  "subjectId": zod.coerce.number()
+})
+
+export const GetSubjectProgressResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "description": zod.string(),
+  "progressPercent": zod.number(),
+  "completedLessons": zod.number(),
+  "totalLessons": zod.number(),
+  "averageScore": zod.number(),
+  "masteryLevel": zod.string(),
+  "lessons": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "bloomLevel": zod.number(),
+  "status": zod.string(),
+  "currentPhase": zod.number(),
+  "score": zod.number().nullish(),
+  "hasHomework": zod.boolean(),
+  "homeworkStatus": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish()
+})),
+  "topics": zod.array(zod.object({
+  "id": zod.number(),
+  "topicName": zod.string(),
+  "score": zod.number(),
+  "status": zod.string(),
+  "masteryLevel": zod.string()
+}))
+})
+
+
+/**
+ * @summary Get AI-powered learning recommendations
+ */
+export const GetProgressRecommendationsResponse = zod.object({
+  "recommendations": zod.array(zod.object({
+  "type": zod.string(),
+  "subjectName": zod.string(),
+  "message": zod.string()
+}))
 })
 
 

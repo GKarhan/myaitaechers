@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { useGetDashboard, getGetDashboardQueryKey, useGetBooks, getGetBooksQueryKey, useGetHomework, getGetHomeworkQueryKey } from "@workspace/api-client-react";
+import { useGetDashboard, getGetDashboardQueryKey, useGetBooks, getGetBooksQueryKey, useGetHomework, getGetHomeworkQueryKey, useGetProgress, getGetProgressQueryKey } from "@workspace/api-client-react";
 
 export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
@@ -16,6 +16,13 @@ export default function Dashboard() {
   const { data: dashboard, isLoading: dashboardLoading } = useGetDashboard({
     query: {
       queryKey: getGetDashboardQueryKey(),
+      enabled: !!token,
+    }
+  });
+
+  const { data: progressData } = useGetProgress({
+    query: {
+      queryKey: getGetProgressQueryKey(),
       enabled: !!token,
     }
   });
@@ -133,6 +140,40 @@ export default function Dashboard() {
 
           {/* Sidebar Area */}
           <div className="space-y-8">
+            {/* Progress Summary Card */}
+            <div>
+              <h2 className="text-xl font-bold mb-6">Առաջընթաց</h2>
+              <div className="p-6 rounded-2xl bg-card border border-card-border shadow-lg shadow-black/50">
+                <div className="text-4xl mb-4">📈</div>
+                <div className="text-lg font-semibold mb-3">Գիտելիքի Քարտեզ</div>
+                <div className="space-y-4 mb-4">
+                  {progressData?.subjects?.slice(0, 3).map(sub => (
+                    <div key={sub.id} className="space-y-1">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-slate-300 truncate pr-2">{sub.name}</span>
+                        <span className="text-secondary">{sub.progressPercent}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${
+                            sub.masteryLevel === 'mastered' ? 'bg-teal-500' :
+                            sub.masteryLevel === 'review' ? 'bg-amber-400' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${sub.progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {(!progressData?.subjects || progressData.subjects.length === 0) && (
+                    <div className="text-sm text-muted-foreground">Տվյալներ չկան</div>
+                  )}
+                </div>
+                <Link href="/progress" className="text-primary text-sm font-medium flex items-center hover:underline">
+                  Ամբողջական քարտեզ →
+                </Link>
+              </div>
+            </div>
+
             {/* Homework card */}
             <div>
               <h2 className="text-xl font-bold mb-6">Տնային աշխատանք</h2>

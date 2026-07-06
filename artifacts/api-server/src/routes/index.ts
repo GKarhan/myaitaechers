@@ -8,6 +8,7 @@ import lessonsRouter from "./lessons";
 import chatRouter from "./chat";
 import booksRouter from "./books";
 import homeworkRouter from "./homework";
+import progressRouter from "./progress";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(lessonsRouter);
 router.use(chatRouter);
 router.use(booksRouter);
 router.use(homeworkRouter);
+router.use(progressRouter);
 
 export default router;

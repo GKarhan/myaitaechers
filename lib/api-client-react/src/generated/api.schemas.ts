@@ -272,6 +272,74 @@ export interface AiGradeSuggestion {
   feedback: string;
 }
 
+export interface SubjectProgressItem {
+  id: number;
+  name: string;
+  grade: string;
+  progressPercent: number;
+  completedLessons: number;
+  totalLessons: number;
+  averageScore: number;
+  masteryLevel: string;
+}
+
+export interface OverallProgress {
+  overallPercent: number;
+  averageScore: number;
+  masteryPercent: number;
+  completedLessons: number;
+  activeLessons: number;
+  totalLessons: number;
+  lastActivity?: string | null;
+  subjects: SubjectProgressItem[];
+}
+
+export interface LessonProgressItem {
+  id: number;
+  title: string;
+  description: string;
+  bloomLevel: number;
+  status: string;
+  currentPhase: number;
+  score?: number | null;
+  hasHomework: boolean;
+  homeworkStatus?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface TopicProgressItem {
+  id: number;
+  topicName: string;
+  score: number;
+  status: string;
+  masteryLevel: string;
+}
+
+export interface SubjectProgressDetail {
+  id: number;
+  name: string;
+  grade: string;
+  description: string;
+  progressPercent: number;
+  completedLessons: number;
+  totalLessons: number;
+  averageScore: number;
+  masteryLevel: string;
+  lessons: LessonProgressItem[];
+  topics: TopicProgressItem[];
+}
+
+export interface RecommendationItem {
+  type: string;
+  subjectName: string;
+  message: string;
+}
+
+export interface ProgressRecommendations {
+  recommendations: RecommendationItem[];
+}
+
 export type GetChatHistoryParams = {
 lessonId?: number;
 };

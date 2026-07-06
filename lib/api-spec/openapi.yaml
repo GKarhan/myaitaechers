@@ -22,6 +22,8 @@ tags:
     description: Lesson operations
   - name: chat
     description: AI tutor chat operations
+  - name: progress
+    description: Student progress and knowledge map operations
   - name: homework
     description: Homework management operations
 paths:
@@ -530,6 +532,81 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /progress:
+    get:
+      operationId: getProgress
+      tags: [progress]
+      summary: Get overall progress for the current student
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Overall progress summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverallProgress"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /progress/subject/{subjectId}:
+    get:
+      operationId: getSubjectProgress
+      tags: [progress]
+      summary: Get detailed lesson-level progress for a subject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Subject progress detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectProgressDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /progress/recommendations:
+    get:
+      operationId: getProgressRecommendations
+      tags: [progress]
+      summary: Get AI-powered learning recommendations
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: AI recommendations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgressRecommendations"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /homework:
     get:
       operationId: getHomework
@@ -1223,3 +1300,148 @@ components:
           type: integer
         feedback:
           type: string
+
+    SubjectProgressItem:
+      type: object
+      required: [id, name, grade, progressPercent, completedLessons, totalLessons, averageScore, masteryLevel]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        grade:
+          type: string
+        progressPercent:
+          type: integer
+        completedLessons:
+          type: integer
+        totalLessons:
+          type: integer
+        averageScore:
+          type: integer
+        masteryLevel:
+          type: string
+
+    OverallProgress:
+      type: object
+      required: [overallPercent, averageScore, masteryPercent, completedLessons, activeLessons, totalLessons, subjects]
+      properties:
+        overallPercent:
+          type: integer
+        averageScore:
+          type: integer
+        masteryPercent:
+          type: integer
+        completedLessons:
+          type: integer
+        activeLessons:
+          type: integer
+        totalLessons:
+          type: integer
+        lastActivity:
+          type: string
+          format: date-time
+          nullable: true
+        subjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubjectProgressItem"
+
+    LessonProgressItem:
+      type: object
+      required: [id, title, description, bloomLevel, status, currentPhase, hasHomework]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+        status:
+          type: string
+        currentPhase:
+          type: integer
+        score:
+          type: integer
+          nullable: true
+        hasHomework:
+          type: boolean
+        homeworkStatus:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TopicProgressItem:
+      type: object
+      required: [id, topicName, score, status, masteryLevel]
+      properties:
+        id:
+          type: integer
+        topicName:
+          type: string
+        score:
+          type: integer
+        status:
+          type: string
+        masteryLevel:
+          type: string
+
+    SubjectProgressDetail:
+      type: object
+      required: [id, name, grade, description, progressPercent, completedLessons, totalLessons, averageScore, masteryLevel, lessons, topics]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        grade:
+          type: string
+        description:
+          type: string
+        progressPercent:
+          type: integer
+        completedLessons:
+          type: integer
+        totalLessons:
+          type: integer
+        averageScore:
+          type: integer
+        masteryLevel:
+          type: string
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/LessonProgressItem"
+        topics:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicProgressItem"
+
+    RecommendationItem:
+      type: object
+      required: [type, subjectName, message]
+      properties:
+        type:
+          type: string
+        subjectName:
+          type: string
+        message:
+          type: string
+
+    ProgressRecommendations:
+      type: object
+      required: [recommendations]
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendationItem"

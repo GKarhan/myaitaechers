@@ -15,6 +15,8 @@ import LessonDetail from "@/pages/lesson-detail";
 import Chat from "@/pages/chat";
 import Books from "@/pages/books";
 import Homework from "@/pages/homework";
+import Progress from "@/pages/progress";
+import SubjectProgress from "@/pages/subject-progress";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +33,8 @@ function Router() {
       <Route path="/chat/:id" component={Chat} />
       <Route path="/books" component={Books} />
       <Route path="/homework" component={Homework} />
+      <Route path="/progress" component={Progress} />
+      <Route path="/progress/subject/:id" component={SubjectProgress} />
       <Route component={NotFound} />
     </Switch>
   );

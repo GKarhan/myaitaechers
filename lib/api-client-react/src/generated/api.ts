@@ -40,12 +40,14 @@ import type {
   LessonDetail,
   LessonSession,
   LoginInput,
+  OverallProgress,
+  ProgressRecommendations,
   RegisterInput,
   StartLessonInput,
   StartLessonSessionInput,
   SubjectDetail,
   SubjectListItem,
-  SubjectProgress,
+  SubjectProgressDetail,
   UserProfile
 } from './api.schemas';
 
@@ -452,15 +454,15 @@ export const getGetProgressUrl = () => {
 
 
 
-  return `/api/dashboard/progress`
+  return `/api/progress`
 }
 
 /**
- * @summary Get all subject progress for the current student
+ * @summary Get overall progress for the current student
  */
-export const getProgress = async ( options?: RequestInit): Promise<SubjectProgress[]> => {
+export const getProgress = async ( options?: RequestInit): Promise<OverallProgress> => {
 
-  return customFetch<SubjectProgress[]>(getGetProgressUrl(),
+  return customFetch<OverallProgress>(getGetProgressUrl(),
   {
     ...options,
     method: 'GET'
@@ -475,7 +477,7 @@ export const getProgress = async ( options?: RequestInit): Promise<SubjectProgre
 
 export const getGetProgressQueryKey = () => {
     return [
-    `/api/dashboard/progress`
+    `/api/progress`
     ] as const;
     }
 
@@ -503,7 +505,7 @@ export type GetProgressQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get all subject progress for the current student
+ * @summary Get overall progress for the current student
  */
 
 export function useGetProgress<TData = Awaited<ReturnType<typeof getProgress>>, TError = ErrorType<ErrorResponse>>(
@@ -1497,6 +1499,160 @@ export const useGenerateLessons = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getGenerateLessonsMutationOptions(options));
     }
+
+export const getGetSubjectProgressUrl = (subjectId: number,) => {
+
+
+
+
+  return `/api/progress/subject/${subjectId}`
+}
+
+/**
+ * @summary Get detailed lesson-level progress for a subject
+ */
+export const getSubjectProgress = async (subjectId: number, options?: RequestInit): Promise<SubjectProgressDetail> => {
+
+  return customFetch<SubjectProgressDetail>(getGetSubjectProgressUrl(subjectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSubjectProgressQueryKey = (subjectId: number,) => {
+    return [
+    `/api/progress/subject/${subjectId}`
+    ] as const;
+    }
+
+
+export const getGetSubjectProgressQueryOptions = <TData = Awaited<ReturnType<typeof getSubjectProgress>>, TError = ErrorType<ErrorResponse>>(subjectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubjectProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSubjectProgressQueryKey(subjectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSubjectProgress>>> = ({ signal }) => getSubjectProgress(subjectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: subjectId !== null && subjectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSubjectProgress>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSubjectProgressQueryResult = NonNullable<Awaited<ReturnType<typeof getSubjectProgress>>>
+export type GetSubjectProgressQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get detailed lesson-level progress for a subject
+ */
+
+export function useGetSubjectProgress<TData = Awaited<ReturnType<typeof getSubjectProgress>>, TError = ErrorType<ErrorResponse>>(
+ subjectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubjectProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSubjectProgressQueryOptions(subjectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetProgressRecommendationsUrl = () => {
+
+
+
+
+  return `/api/progress/recommendations`
+}
+
+/**
+ * @summary Get AI-powered learning recommendations
+ */
+export const getProgressRecommendations = async ( options?: RequestInit): Promise<ProgressRecommendations> => {
+
+  return customFetch<ProgressRecommendations>(getGetProgressRecommendationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProgressRecommendationsQueryKey = () => {
+    return [
+    `/api/progress/recommendations`
+    ] as const;
+    }
+
+
+export const getGetProgressRecommendationsQueryOptions = <TData = Awaited<ReturnType<typeof getProgressRecommendations>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProgressRecommendations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProgressRecommendationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProgressRecommendations>>> = ({ signal }) => getProgressRecommendations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProgressRecommendations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProgressRecommendationsQueryResult = NonNullable<Awaited<ReturnType<typeof getProgressRecommendations>>>
+export type GetProgressRecommendationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get AI-powered learning recommendations
+ */
+
+export function useGetProgressRecommendations<TData = Awaited<ReturnType<typeof getProgressRecommendations>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProgressRecommendations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProgressRecommendationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetHomeworkUrl = () => {
 
