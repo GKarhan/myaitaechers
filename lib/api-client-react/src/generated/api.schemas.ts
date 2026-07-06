@@ -272,6 +272,31 @@ export interface AiGradeSuggestion {
   feedback: string;
 }
 
+export interface SuccessMessage {
+  message: string;
+}
+
+export interface NewLesson {
+  id: number;
+  subjectId: number;
+  title: string;
+  description: string;
+  bloomLevel: number;
+  createdAt: string;
+}
+
+export interface CreateLessonInput {
+  subjectId: number;
+  /** @minLength 1 */
+  title: string;
+  description?: string;
+  /**
+     * @minimum 1
+     * @maximum 6
+     */
+  bloomLevel?: number;
+}
+
 export interface SubjectProgressItem {
   id: number;
   name: string;

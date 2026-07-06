@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { useGetSubjectDetail, getGetSubjectDetailQueryKey, useStartLesson, useGetBooks, getGetBooksQueryKey, useGenerateLessons } from "@workspace/api-client-react";
+import { useGetSubjectDetail, getGetSubjectDetailQueryKey, useStartLesson, useGetBooks, getGetBooksQueryKey, useGenerateLessons, useCreateLesson, useDeleteLesson } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function SubjectDetail() {
@@ -69,6 +69,52 @@ export default function SubjectDetail() {
     else return (bytes / 1048576).toFixed(1) + " MB";
   };
 
+  // Add Lesson State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ title: "", description: "", bloomLevel: 1 });
+  const [addError, setAddError] = useState("");
+  const createLessonMutation = useCreateLesson();
+
+  const handleAddLesson = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addForm.title.trim()) {
+      setAddError("Վերնագիրը պարտադիր է");
+      return;
+    }
+    setAddError("");
+    createLessonMutation.mutate({
+      data: {
+        subjectId,
+        title: addForm.title,
+        description: addForm.description,
+        bloomLevel: addForm.bloomLevel
+      }
+    }, {
+      onSuccess: () => {
+        setIsAddModalOpen(false);
+        setAddForm({ title: "", description: "", bloomLevel: 1 });
+        queryClient.invalidateQueries({ queryKey: getGetSubjectDetailQueryKey(subjectId) });
+      },
+      onError: (err: any) => {
+        setAddError(err.message || "Սխալ դաս ավելացնելիս");
+      }
+    });
+  };
+
+  // Delete Lesson State
+  const [deleteConfirmLesson, setDeleteConfirmLesson] = useState<{ id: number, title: string } | null>(null);
+  const deleteLessonMutation = useDeleteLesson();
+
+  const handleDeleteLesson = () => {
+    if (!deleteConfirmLesson) return;
+    deleteLessonMutation.mutate({ id: deleteConfirmLesson.id, lessonId: deleteConfirmLesson.id } as any, {
+      onSuccess: () => {
+        setDeleteConfirmLesson(null);
+        queryClient.invalidateQueries({ queryKey: getGetSubjectDetailQueryKey(subjectId) });
+      }
+    });
+  };
+
   if (authLoading || subjectLoading) {
     return (
       <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background">
@@ -91,8 +137,110 @@ export default function SubjectDetail() {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-background text-white pb-20">
-      <header className="border-b border-card-border bg-card/50 backdrop-blur-lg sticky top-0 z-50">
+    <div className="min-h-[100dvh] w-full bg-background text-white pb-20 relative">
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-card-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <h2 className="text-xl font-bold mb-4">Ավելացնել նոր դաս</h2>
+              <form onSubmit={handleAddLesson} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Վերնագիր</label>
+                  <input
+                    type="text"
+                    value={addForm.title}
+                    onChange={(e) => setAddForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Դասի վերնագիրը"
+                    className="w-full bg-background border border-card-border rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Նկարագրություն</label>
+                  <textarea
+                    value={addForm.description}
+                    onChange={(e) => setAddForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Կարճ նկարագրություն (ըստ ցանկության)"
+                    className="w-full bg-background border border-card-border rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors resize-none h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Բլումի մակարդակ</label>
+                  <select
+                    value={addForm.bloomLevel}
+                    onChange={(e) => setAddForm(prev => ({ ...prev, bloomLevel: Number(e.target.value) }))}
+                    className="w-full bg-background border border-card-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors"
+                  >
+                    <option value={1}>1 - Հիշել</option>
+                    <option value={2}>2 - Հասկանալ</option>
+                    <option value={3}>3 - Կիրառել</option>
+                    <option value={4}>4 - Վերլուծել</option>
+                    <option value={5}>5 - Գնահատել</option>
+                    <option value={6}>6 - Ստեղծել</option>
+                  </select>
+                </div>
+                {addError && <p className="text-red-400 text-sm">{addError}</p>}
+                
+                <div className="flex gap-3 mt-6 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="flex-1 px-4 py-2.5 bg-background border border-card-border rounded-xl font-medium hover:bg-card-border transition-colors"
+                  >
+                    Չեղարկել
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={createLessonMutation.isPending}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-indigo-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                  >
+                    {createLessonMutation.isPending && (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    )}
+                    Ավելացնել
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmLesson && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-card-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6 text-center">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500 text-2xl">
+              🗑
+            </div>
+            <h2 className="text-xl font-bold mb-2">Ջնջե՞լ դասը</h2>
+            <p className="text-muted-foreground mb-6">
+              Ջնջե՞լ «{deleteConfirmLesson.title}» դասը: Այս գործողությունը հետ կանգ չի ունենա:
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmLesson(null)}
+                className="flex-1 px-4 py-2.5 bg-background border border-card-border rounded-xl font-medium hover:bg-card-border transition-colors"
+              >
+                Չեղարկել
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteLesson}
+                disabled={deleteLessonMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+              >
+                {deleteLessonMutation.isPending && (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                )}
+                Ջնջել
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="border-b border-card-border bg-card/50 backdrop-blur-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-muted-foreground hover:text-white transition-colors">
@@ -109,14 +257,16 @@ export default function SubjectDetail() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 pt-10">
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">{subject.name}</h1>
-            <span className="px-3 py-1 bg-card border border-card-border rounded-full text-sm text-secondary">
-              {subject.grade}
-            </span>
+        <div className="mb-10 flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl font-bold">{subject.name}</h1>
+              <span className="px-3 py-1 bg-card border border-card-border rounded-full text-sm text-secondary">
+                {subject.grade}
+              </span>
+            </div>
+            <p className="text-muted-foreground">{subject.description}</p>
           </div>
-          <p className="text-muted-foreground">{subject.description}</p>
         </div>
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 p-6 rounded-2xl bg-card border border-card-border shadow-lg shadow-black/50">
@@ -144,19 +294,27 @@ export default function SubjectDetail() {
           </div>
         </div>
 
-        <div className="flex justify-between items-end mb-6 border-b border-card-border pb-4">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-6 border-b border-card-border pb-4 gap-4">
           <h2 className="text-2xl font-bold">Դասերի ցուցակ</h2>
-          <Link 
-            href={`/knowledge-tree/${subjectId}`}
-            className="px-5 py-2.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 rounded-xl transition-colors font-medium flex items-center gap-2"
-          >
-            Գիտելիքի ծառ →
-          </Link>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-indigo-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg"
+            >
+              + Ավելացնել դաս
+            </button>
+            <Link 
+              href={`/knowledge-tree/${subjectId}`}
+              className="px-5 py-2.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 rounded-xl transition-colors font-medium flex items-center gap-2"
+            >
+              Գիտելիքի ծառ →
+            </Link>
+          </div>
         </div>
 
         <div className="space-y-4">
           {subject.lessons?.map((lesson, idx) => (
-            <div key={idx} className="p-5 rounded-2xl bg-card border border-card-border flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div key={idx} className="group p-5 rounded-2xl bg-card border border-card-border flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 shrink-0 rounded-full bg-background flex items-center justify-center text-muted-foreground font-medium border border-card-border">
                   {idx + 1}
@@ -192,15 +350,30 @@ export default function SubjectDetail() {
                 </div>
               </div>
               
-              <button
-                onClick={() => handleStartLesson(lesson.lesson)}
-                disabled={startLessonMutation.isPending}
-                className="px-5 py-2.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-xl transition-colors font-medium"
-              >
-                Սկսել դասը
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleStartLesson(lesson.lesson)}
+                  disabled={startLessonMutation.isPending}
+                  className="px-5 py-2.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-xl transition-colors font-medium"
+                >
+                  Սկսել դասը
+                </button>
+                <button
+                  onClick={() => setDeleteConfirmLesson({ id: lesson.id, title: lesson.lesson })}
+                  className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  aria-label="Ջնջել դասը"
+                  title="Ջնջել դասը"
+                >
+                  🗑
+                </button>
+              </div>
             </div>
           ))}
+          {(!subject.lessons || subject.lessons.length === 0) && (
+            <div className="text-center py-10 text-muted-foreground">
+              Դեռևս դասեր չկան։ Ավելացրեք նոր դաս վերևի կոճակով։
+            </div>
+          )}
         </div>
 
         <div className="mt-12 pt-10 border-t border-card-border">

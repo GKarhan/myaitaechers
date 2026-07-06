@@ -227,6 +227,31 @@ export const GetKnowledgeTreeResponse = zod.object({
 
 
 /**
+ * @summary Create a new lesson for a subject
+ */
+
+export const createLessonBodyBloomLevelMax = 6;
+
+
+
+export const CreateLessonBody = zod.object({
+  "subjectId": zod.number(),
+  "title": zod.string().min(1),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number().min(1).max(createLessonBodyBloomLevelMax).optional()
+})
+
+export const CreateLessonResponse = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "bloomLevel": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get lesson detail with 8 phases and Bloom levels
  */
 export const GetLessonDetailParams = zod.object({
@@ -278,6 +303,18 @@ export const StartLessonSessionResponse = zod.object({
   "status": zod.string(),
   "startedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Delete a lesson (and all its sessions and homework)
+ */
+export const DeleteLessonParams = zod.object({
+  "lessonId": zod.coerce.number()
+})
+
+export const DeleteLessonResponse = zod.object({
+  "message": zod.string()
 })
 
 
