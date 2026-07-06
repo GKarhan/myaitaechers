@@ -59,6 +59,9 @@ export default function SubjectDetail() {
               myaiteacher
             </div>
           </div>
+          <Link href="/chat/0" className="px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white rounded-lg text-sm font-medium shadow-lg hover:opacity-90 transition-opacity">
+            AI Ուսուցիչ
+          </Link>
         </div>
       </header>
 

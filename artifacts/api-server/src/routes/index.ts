@@ -4,6 +4,8 @@ import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
 import subjectsRouter from "./subjects";
 import knowledgeTreeRouter from "./knowledge-tree";
+import lessonsRouter from "./lessons";
+import chatRouter from "./chat";
 
 const router: IRouter = Router();
 
@@ -12,5 +14,7 @@ router.use(authRouter);
 router.use(dashboardRouter);
 router.use(subjectsRouter);
 router.use(knowledgeTreeRouter);
+router.use(lessonsRouter);
+router.use(chatRouter);
 
 export default router;

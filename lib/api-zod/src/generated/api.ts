@@ -216,3 +216,105 @@ export const GetKnowledgeTreeResponse = zod.object({
 })
 
 
+/**
+ * @summary Get lesson detail with 8 phases and Bloom levels
+ */
+export const GetLessonDetailParams = zod.object({
+  "lessonId": zod.coerce.number()
+})
+
+export const GetLessonDetailResponse = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number(),
+  "subjectName": zod.string(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "bloomLevel": zod.number(),
+  "bloomLevels": zod.array(zod.object({
+  "level": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "description": zod.string()
+})),
+  "phases": zod.array(zod.object({
+  "phase": zod.number(),
+  "title": zod.string(),
+  "duration": zod.string(),
+  "description": zod.string(),
+  "activities": zod.array(zod.string())
+})),
+  "currentSession": zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "currentPhase": zod.number(),
+  "status": zod.string(),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+}).nullable()
+})
+
+
+/**
+ * @summary Start a lesson session (8 phases)
+ */
+export const StartLessonSessionBody = zod.object({
+  "lessonId": zod.number()
+})
+
+export const StartLessonSessionResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "currentPhase": zod.number(),
+  "status": zod.string(),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Advance to the next phase in a lesson session
+ */
+export const AdvanceLessonPhaseParams = zod.object({
+  "lessonId": zod.coerce.number()
+})
+
+export const AdvanceLessonPhaseResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "currentPhase": zod.number(),
+  "status": zod.string(),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Send a message to the AI tutor
+ */
+export const SendChatMessageBody = zod.object({
+  "message": zod.string(),
+  "lessonId": zod.number().optional()
+})
+
+export const SendChatMessageResponse = zod.object({
+  "response": zod.string(),
+  "messageId": zod.number()
+})
+
+
+/**
+ * @summary Get chat history for a lesson
+ */
+export const GetChatHistoryQueryParams = zod.object({
+  "lessonId": zod.coerce.number().optional()
+})
+
+export const GetChatHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "role": zod.string(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetChatHistoryResponse = zod.array(GetChatHistoryResponseItem)
+
+

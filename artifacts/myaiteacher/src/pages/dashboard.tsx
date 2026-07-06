@@ -37,12 +37,17 @@ export default function Dashboard() {
           <div className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
             myaiteacher
           </div>
-          <button 
-            onClick={logout}
-            className="text-sm text-muted-foreground hover:text-white transition-colors"
-          >
-            Ելք
-          </button>
+          <div className="flex items-center gap-6">
+            <Link href="/chat/0" className="px-4 py-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg text-sm font-medium transition-colors">
+              AI Ուսուցիչ
+            </Link>
+            <button 
+              onClick={logout}
+              className="text-sm text-muted-foreground hover:text-white transition-colors"
+            >
+              Ելք
+            </button>
+          </div>
         </div>
       </header>
 

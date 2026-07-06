@@ -18,6 +18,10 @@ tags:
     description: Subject detail operations
   - name: knowledge
     description: Knowledge tree operations
+  - name: lessons
+    description: Lesson operations
+  - name: chat
+    description: AI tutor chat operations
 paths:
   /healthz:
     get:
@@ -292,6 +296,149 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /lessons/{lessonId}:
+    get:
+      operationId: getLessonDetail
+      tags: [lessons]
+      summary: Get lesson detail with 8 phases and Bloom levels
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lesson detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /lessons/start:
+    post:
+      operationId: startLessonSession
+      tags: [lessons]
+      summary: Start a lesson session (8 phases)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartLessonSessionInput"
+      responses:
+        "201":
+          description: Lesson session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonSession"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /lessons/{lessonId}/advance-phase:
+    post:
+      operationId: advanceLessonPhase
+      tags: [lessons]
+      summary: Advance to the next phase in a lesson session
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Phase advanced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonSession"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chat:
+    post:
+      operationId: sendChatMessage
+      tags: [chat]
+      summary: Send a message to the AI tutor
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatInput"
+      responses:
+        "200":
+          description: AI tutor response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chat/history:
+    get:
+      operationId: getChatHistory
+      tags: [chat]
+      summary: Get chat history for a lesson
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Chat history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessageItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -532,3 +679,120 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AIRecommendation"
+
+    LessonPhase:
+      type: object
+      required: [phase, title, duration, description, activities]
+      properties:
+        phase:
+          type: integer
+        title:
+          type: string
+        duration:
+          type: string
+        description:
+          type: string
+        activities:
+          type: array
+          items:
+            type: string
+
+    BloomLevel:
+      type: object
+      required: [level, name, color, description]
+      properties:
+        level:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+        description:
+          type: string
+
+    LessonDetail:
+      type: object
+      required: [id, subjectId, subjectName, title, description, bloomLevel, bloomLevels, phases, currentSession]
+      properties:
+        id:
+          type: integer
+        subjectId:
+          type: integer
+        subjectName:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+        bloomLevels:
+          type: array
+          items:
+            $ref: "#/components/schemas/BloomLevel"
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/LessonPhase"
+        currentSession:
+          $ref: "#/components/schemas/LessonSession"
+          nullable: true
+
+    StartLessonSessionInput:
+      type: object
+      required: [lessonId]
+      properties:
+        lessonId:
+          type: integer
+
+    LessonSession:
+      type: object
+      required: [id, lessonId, currentPhase, status, startedAt]
+      properties:
+        id:
+          type: integer
+        lessonId:
+          type: integer
+        currentPhase:
+          type: integer
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ChatInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        lessonId:
+          type: integer
+
+    ChatResponse:
+      type: object
+      required: [response, messageId]
+      properties:
+        response:
+          type: string
+        messageId:
+          type: integer
+
+    ChatMessageItem:
+      type: object
+      required: [id, role, content, createdAt]
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time

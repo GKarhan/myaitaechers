@@ -11,6 +11,8 @@ import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import SubjectDetail from "@/pages/subject-detail";
 import KnowledgeTree from "@/pages/knowledge-tree";
+import LessonDetail from "@/pages/lesson-detail";
+import Chat from "@/pages/chat";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +25,8 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/subjects/:id" component={SubjectDetail} />
       <Route path="/knowledge-tree/:id" component={KnowledgeTree} />
+      <Route path="/lesson/:id" component={LessonDetail} />
+      <Route path="/chat/:id" component={Chat} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -142,3 +142,64 @@ export interface KnowledgeTreeData {
   recommendations: AIRecommendation[];
 }
 
+export interface LessonPhase {
+  phase: number;
+  title: string;
+  duration: string;
+  description: string;
+  activities: string[];
+}
+
+export interface BloomLevel {
+  level: number;
+  name: string;
+  color: string;
+  description: string;
+}
+
+export interface LessonSession {
+  id: number;
+  lessonId: number;
+  currentPhase: number;
+  status: string;
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+export interface LessonDetail {
+  id: number;
+  subjectId: number;
+  subjectName: string;
+  title: string;
+  description: string;
+  bloomLevel: number;
+  bloomLevels: BloomLevel[];
+  phases: LessonPhase[];
+  currentSession: LessonSession | null;
+}
+
+export interface StartLessonSessionInput {
+  lessonId: number;
+}
+
+export interface ChatInput {
+  message: string;
+  lessonId?: number;
+}
+
+export interface ChatResponse {
+  response: string;
+  messageId: number;
+}
+
+export interface ChatMessageItem {
+  id: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export type GetChatHistoryParams = {
+lessonId?: number;
+};
+
