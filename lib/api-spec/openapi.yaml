@@ -1583,6 +1583,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /student/schedule:
+    get:
+      operationId: getStudentSchedule
+      tags: [student]
+      summary: Get student's weekly schedule via enrolled classes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Schedule list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentScheduleItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /student/teachers:
+    get:
+      operationId: getStudentTeachers
+      tags: [student]
+      summary: Get student's teachers via enrolled classes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Teachers list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentTeacherItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /student/homework-summary:
+    get:
+      operationId: getStudentHomeworkSummary
+      tags: [student]
+      summary: Get student's homework summary with items
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Homework summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentHomeworkSummary"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/schedule:
     get:
       operationId: getTeacherSchedule
@@ -2821,6 +2885,62 @@ components:
           format: date-time
         studentCount:
           type: integer
+
+    StudentScheduleItem:
+      type: object
+      required: [id, classId, className, day, time, subject, teacherName]
+      properties:
+        id:
+          type: integer
+        classId:
+          type: integer
+        className:
+          type: string
+        grade:
+          type: string
+        day:
+          type: string
+        time:
+          type: string
+        subject:
+          type: string
+        teacherName:
+          type: string
+
+    StudentTeacherItem:
+      type: object
+      required: [teacherId, teacherName, subject, classId, className]
+      properties:
+        teacherId:
+          type: integer
+        teacherName:
+          type: string
+        subject:
+          type: string
+        school:
+          type: string
+        classId:
+          type: integer
+        className:
+          type: string
+
+    StudentHomeworkSummary:
+      type: object
+      required: [notSubmitted, pending, graded, items]
+      properties:
+        notSubmitted:
+          type: integer
+        pending:
+          type: integer
+        graded:
+          type: integer
+        avgScore:
+          type: integer
+          nullable: true
+        items:
+          type: array
+          items:
+            type: object
 
     TeacherHomeworkItem:
       type: object

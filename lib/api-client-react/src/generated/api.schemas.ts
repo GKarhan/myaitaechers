@@ -535,6 +535,36 @@ export interface TeacherClassItem {
   studentCount: number;
 }
 
+export interface StudentScheduleItem {
+  id: number;
+  classId: number;
+  className: string;
+  grade?: string;
+  day: string;
+  time: string;
+  subject: string;
+  teacherName: string;
+}
+
+export interface StudentTeacherItem {
+  teacherId: number;
+  teacherName: string;
+  subject: string;
+  school?: string;
+  classId: number;
+  className: string;
+}
+
+export type StudentHomeworkSummaryItemsItem = { [key: string]: unknown };
+
+export interface StudentHomeworkSummary {
+  notSubmitted: number;
+  pending: number;
+  graded: number;
+  avgScore?: number | null;
+  items: StudentHomeworkSummaryItemsItem[];
+}
+
 export interface TeacherHomeworkItem {
   id: number;
   lessonId: number;

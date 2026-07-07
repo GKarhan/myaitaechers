@@ -1022,6 +1022,50 @@ export const CreateHomeworkResponse = zod.object({
 
 
 /**
+ * @summary Get student's weekly schedule via enrolled classes
+ */
+export const GetStudentScheduleResponseItem = zod.object({
+  "id": zod.number(),
+  "classId": zod.number(),
+  "className": zod.string(),
+  "grade": zod.string().optional(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string(),
+  "teacherName": zod.string()
+})
+export const GetStudentScheduleResponse = zod.array(GetStudentScheduleResponseItem)
+
+
+/**
+ * @summary Get student's teachers via enrolled classes
+ */
+export const GetStudentTeachersResponseItem = zod.object({
+  "teacherId": zod.number(),
+  "teacherName": zod.string(),
+  "subject": zod.string(),
+  "school": zod.string().optional(),
+  "classId": zod.number(),
+  "className": zod.string()
+})
+export const GetStudentTeachersResponse = zod.array(GetStudentTeachersResponseItem)
+
+
+/**
+ * @summary Get student's homework summary with items
+ */
+export const GetStudentHomeworkSummaryResponse = zod.object({
+  "notSubmitted": zod.number(),
+  "pending": zod.number(),
+  "graded": zod.number(),
+  "avgScore": zod.number().nullish(),
+  "items": zod.array(zod.object({
+
+}).passthrough())
+})
+
+
+/**
  * @summary Get teacher's schedule
  */
 export const GetTeacherScheduleResponseItem = zod.object({

@@ -64,7 +64,10 @@ import type {
   StartLessonInput,
   StartLessonSessionInput,
   StudentDetail,
+  StudentHomeworkSummary,
   StudentItem,
+  StudentScheduleItem,
+  StudentTeacherItem,
   SubjectDetail,
   SubjectListItem,
   SubjectProgressDetail,
@@ -4091,6 +4094,237 @@ export const useCreateHomework = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateHomeworkMutationOptions(options));
     }
+
+export const getGetStudentScheduleUrl = () => {
+
+
+
+
+  return `/api/student/schedule`
+}
+
+/**
+ * @summary Get student's weekly schedule via enrolled classes
+ */
+export const getStudentSchedule = async ( options?: RequestInit): Promise<StudentScheduleItem[]> => {
+
+  return customFetch<StudentScheduleItem[]>(getGetStudentScheduleUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStudentScheduleQueryKey = () => {
+    return [
+    `/api/student/schedule`
+    ] as const;
+    }
+
+
+export const getGetStudentScheduleQueryOptions = <TData = Awaited<ReturnType<typeof getStudentSchedule>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentSchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStudentScheduleQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStudentSchedule>>> = ({ signal }) => getStudentSchedule({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStudentSchedule>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStudentScheduleQueryResult = NonNullable<Awaited<ReturnType<typeof getStudentSchedule>>>
+export type GetStudentScheduleQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get student's weekly schedule via enrolled classes
+ */
+
+export function useGetStudentSchedule<TData = Awaited<ReturnType<typeof getStudentSchedule>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentSchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStudentScheduleQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStudentTeachersUrl = () => {
+
+
+
+
+  return `/api/student/teachers`
+}
+
+/**
+ * @summary Get student's teachers via enrolled classes
+ */
+export const getStudentTeachers = async ( options?: RequestInit): Promise<StudentTeacherItem[]> => {
+
+  return customFetch<StudentTeacherItem[]>(getGetStudentTeachersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStudentTeachersQueryKey = () => {
+    return [
+    `/api/student/teachers`
+    ] as const;
+    }
+
+
+export const getGetStudentTeachersQueryOptions = <TData = Awaited<ReturnType<typeof getStudentTeachers>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentTeachers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStudentTeachersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStudentTeachers>>> = ({ signal }) => getStudentTeachers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStudentTeachers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStudentTeachersQueryResult = NonNullable<Awaited<ReturnType<typeof getStudentTeachers>>>
+export type GetStudentTeachersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get student's teachers via enrolled classes
+ */
+
+export function useGetStudentTeachers<TData = Awaited<ReturnType<typeof getStudentTeachers>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentTeachers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStudentTeachersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStudentHomeworkSummaryUrl = () => {
+
+
+
+
+  return `/api/student/homework-summary`
+}
+
+/**
+ * @summary Get student's homework summary with items
+ */
+export const getStudentHomeworkSummary = async ( options?: RequestInit): Promise<StudentHomeworkSummary> => {
+
+  return customFetch<StudentHomeworkSummary>(getGetStudentHomeworkSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStudentHomeworkSummaryQueryKey = () => {
+    return [
+    `/api/student/homework-summary`
+    ] as const;
+    }
+
+
+export const getGetStudentHomeworkSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getStudentHomeworkSummary>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentHomeworkSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStudentHomeworkSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStudentHomeworkSummary>>> = ({ signal }) => getStudentHomeworkSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStudentHomeworkSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStudentHomeworkSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getStudentHomeworkSummary>>>
+export type GetStudentHomeworkSummaryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get student's homework summary with items
+ */
+
+export function useGetStudentHomeworkSummary<TData = Awaited<ReturnType<typeof getStudentHomeworkSummary>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentHomeworkSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStudentHomeworkSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetTeacherScheduleUrl = () => {
 
