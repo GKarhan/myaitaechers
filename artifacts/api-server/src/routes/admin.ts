@@ -27,7 +27,7 @@ router.get("/admin/teachers", requireAdmin, async (_req, res) => {
       id: teachersTable.id,
       userId: teachersTable.userId,
       subject: teachersTable.subject,
-      school: teachersTable.school,
+      email: teachersTable.email,
       fullName: usersTable.fullName,
       username: usersTable.username,
       createdAt: teachersTable.createdAt,
@@ -38,35 +38,40 @@ router.get("/admin/teachers", requireAdmin, async (_req, res) => {
 });
 
 router.post("/admin/teachers", requireAdmin, async (req, res) => {
-  const { username, password, fullName, subject, school } = req.body as {
-    username: string; password: string; fullName: string; subject?: string; school?: string;
+  const { fullName, email, subject } = req.body as {
+    fullName: string; email?: string; subject?: string;
   };
-  if (!username || !password || !fullName) {
-    res.status(400).json({ error: "username, password, fullName պարտադիր են" }); return;
+  if (!fullName) {
+    res.status(400).json({ error: "Անուն Ազգանունը պարտադիր է" }); return;
   }
-  const existing = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
-  if (existing.length > 0) {
-    res.status(400).json({ error: "Այս օգտանունն արդեն գոյություն ունի" }); return;
+  const baseUsername = fullName.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "") || "teacher";
+  let username = baseUsername;
+  let suffix = 1;
+  while (true) {
+    const existing = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
+    if (existing.length === 0) break;
+    username = `${baseUsername}${suffix++}`;
   }
-  const passwordHash = await bcrypt.hash(password, 10);
+  const tempPassword = Math.random().toString(36).slice(2, 10);
+  const passwordHash = await bcrypt.hash(tempPassword, 10);
   const [user] = await db.insert(usersTable).values({ username, passwordHash, fullName, role: "teacher" }).returning();
-  const [teacher] = await db.insert(teachersTable).values({ userId: user.id, subject: subject ?? "", school: school ?? "" }).returning();
-  res.status(201).json({ id: teacher.id, userId: user.id, username: user.username, fullName: user.fullName, subject: teacher.subject, school: teacher.school, createdAt: teacher.createdAt });
+  const [teacher] = await db.insert(teachersTable).values({ userId: user.id, subject: subject ?? "", school: "", email: email ?? null }).returning();
+  res.status(201).json({ id: teacher.id, userId: user.id, username: user.username, fullName: user.fullName, subject: teacher.subject, email: teacher.email, createdAt: teacher.createdAt });
 });
 
 router.put("/admin/teachers/:id", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { subject, school, fullName } = req.body as { subject?: string; school?: string; fullName?: string };
+  const { subject, email, fullName } = req.body as { subject?: string; email?: string; fullName?: string };
   const [teacher] = await db.select().from(teachersTable).where(eq(teachersTable.id, id)).limit(1);
   if (!teacher) { res.status(404).json({ error: "Ուսուցիչը չի գտնվել" }); return; }
-  if (subject !== undefined || school !== undefined) {
-    await db.update(teachersTable).set({ ...(subject !== undefined && { subject }), ...(school !== undefined && { school }) }).where(eq(teachersTable.id, id));
+  if (subject !== undefined || email !== undefined) {
+    await db.update(teachersTable).set({ ...(subject !== undefined && { subject }), ...(email !== undefined && { email }) }).where(eq(teachersTable.id, id));
   }
   if (fullName) {
     await db.update(usersTable).set({ fullName }).where(eq(usersTable.id, teacher.userId));
   }
-  res.json({ message: "Ուսուցիչը թարմացվեց" });
+  res.json({ message: "Ուusucichy tarmacvec" });
 });
 
 router.post("/admin/teachers/:id/delete", requireAdmin, async (req, res) => {

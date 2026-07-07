@@ -7,9 +7,7 @@
  */
 
 export interface CreateTeacherInput {
-  username: string;
-  password: string;
   fullName: string;
+  email?: string;
   subject?: string;
-  school?: string;
 }

@@ -9,5 +9,5 @@
 export interface UpdateTeacherInput {
   fullName?: string;
   subject?: string;
-  school?: string;
+  email?: string;
 }

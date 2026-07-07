@@ -606,9 +606,9 @@ export const GetAdminTeachersResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "subject": zod.string(),
-  "school": zod.string(),
   "fullName": zod.string(),
   "username": zod.string(),
+  "email": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 export const GetAdminTeachersResponse = zod.array(GetAdminTeachersResponseItem)
@@ -618,20 +618,18 @@ export const GetAdminTeachersResponse = zod.array(GetAdminTeachersResponseItem)
  * @summary Create a new teacher account
  */
 export const CreateTeacherBody = zod.object({
-  "username": zod.string(),
-  "password": zod.string(),
   "fullName": zod.string(),
-  "subject": zod.string().optional(),
-  "school": zod.string().optional()
+  "email": zod.string().optional(),
+  "subject": zod.string().optional()
 })
 
 export const CreateTeacherResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "subject": zod.string(),
-  "school": zod.string(),
   "fullName": zod.string(),
   "username": zod.string(),
+  "email": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 
@@ -658,7 +656,7 @@ export const UpdateTeacherParams = zod.object({
 export const UpdateTeacherBody = zod.object({
   "fullName": zod.string().optional(),
   "subject": zod.string().optional(),
-  "school": zod.string().optional()
+  "email": zod.string().optional()
 })
 
 export const UpdateTeacherResponse = zod.object({

@@ -23,9 +23,9 @@ export interface TeacherItem {
   id: number;
   userId: number;
   subject: string;
-  school: string;
   fullName: string;
   username: string;
+  email?: string;
   createdAt: string;
 }
 
@@ -46,17 +46,15 @@ export interface StudentItem {
 }
 
 export interface CreateTeacherInput {
-  username: string;
-  password: string;
   fullName: string;
+  email?: string;
   subject?: string;
-  school?: string;
 }
 
 export interface UpdateTeacherInput {
   fullName?: string;
   subject?: string;
-  school?: string;
+  email?: string;
 }
 
 export interface CreateClassInput {

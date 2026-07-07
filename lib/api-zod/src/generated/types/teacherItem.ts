@@ -10,8 +10,8 @@ export interface TeacherItem {
   id: number;
   userId: number;
   subject: string;
-  school: string;
   fullName: string;
   username: string;
+  email?: string;
   createdAt: Date;
 }

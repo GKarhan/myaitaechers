@@ -1902,7 +1902,7 @@ components:
 
     TeacherItem:
       type: object
-      required: [id, userId, subject, school, fullName, username, createdAt]
+      required: [id, userId, subject, fullName, username, createdAt]
       properties:
         id:
           type: integer
@@ -1910,11 +1910,11 @@ components:
           type: integer
         subject:
           type: string
-        school:
-          type: string
         fullName:
           type: string
         username:
+          type: string
+        email:
           type: string
         createdAt:
           type: string
@@ -1954,17 +1954,13 @@ components:
 
     CreateTeacherInput:
       type: object
-      required: [username, password, fullName]
+      required: [fullName]
       properties:
-        username:
-          type: string
-        password:
-          type: string
         fullName:
           type: string
-        subject:
+        email:
           type: string
-        school:
+        subject:
           type: string
 
     UpdateTeacherInput:
@@ -1974,7 +1970,7 @@ components:
           type: string
         subject:
           type: string
-        school:
+        email:
           type: string
 
     CreateClassInput:
