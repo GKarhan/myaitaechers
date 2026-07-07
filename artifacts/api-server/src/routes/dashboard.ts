@@ -1,6 +1,12 @@
 import { Router } from "express";
-import { db, studentProgressTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  studentProgressTable,
+  subjectsTable,
+  lessonsTable,
+  lessonSessionsTable,
+} from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
@@ -8,54 +14,66 @@ const router = Router();
 router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.userId!;
 
-  const rows = await db
+  const progressRows = await db
     .select()
     .from(studentProgressTable)
     .where(eq(studentProgressTable.userId, userId))
     .orderBy(studentProgressTable.createdAt);
 
-  const completed = rows.filter((r) => r.status === "completed");
-  const pending = rows.filter((r) => r.status === "pending");
+  const completed = progressRows.filter((r) => r.status === "completed");
+  const pending = progressRows.filter((r) => r.status === "pending");
 
   const averageScore =
     completed.length > 0
       ? completed.reduce((sum, r) => sum + r.score, 0) / completed.length
       : 0;
 
+  const subjectRows = await db
+    .select({
+      id: subjectsTable.id,
+      name: subjectsTable.name,
+      totalLessons: sql<number>`count(distinct ${lessonsTable.id})`,
+      completedLessons: sql<number>`count(distinct case when ${lessonSessionsTable.status} = 'completed' then ${lessonsTable.id} end)`,
+    })
+    .from(subjectsTable)
+    .leftJoin(lessonsTable, eq(lessonsTable.subjectId, subjectsTable.id))
+    .leftJoin(
+      lessonSessionsTable,
+      and(
+        eq(lessonSessionsTable.lessonId, lessonsTable.id),
+        eq(lessonSessionsTable.userId, userId)
+      )
+    )
+    .groupBy(subjectsTable.id, subjectsTable.name)
+    .orderBy(subjectsTable.id);
+
+  const subjects = subjectRows.map((row, idx) => {
+    const total = Number(row.totalLessons);
+    const done = Number(row.completedLessons);
+    return {
+      id: row.id,
+      subject: row.name,
+      completedLessons: done,
+      totalLessons: total,
+      averageScore: 0,
+      progressPercent: total > 0 ? Math.round((done / total) * 1000) / 10 : 0,
+    };
+  });
+
+  const completedFromSessions = subjects.reduce(
+    (sum, s) => sum + s.completedLessons,
+    0
+  );
+  const totalFromSessions = subjects.reduce(
+    (sum, s) => sum + s.totalLessons,
+    0
+  );
   const overallProgress =
-    rows.length > 0 ? (completed.length / rows.length) * 100 : 0;
+    totalFromSessions > 0
+      ? Math.round((completedFromSessions / totalFromSessions) * 1000) / 10
+      : 0;
 
-  const subjectMap = new Map<
-    string,
-    { completed: number; total: number; scores: number[] }
-  >();
-
-  for (const row of rows) {
-    if (!subjectMap.has(row.subject)) {
-      subjectMap.set(row.subject, { completed: 0, total: 0, scores: [] });
-    }
-    const entry = subjectMap.get(row.subject)!;
-    entry.total++;
-    if (row.status === "completed") {
-      entry.completed++;
-      entry.scores.push(row.score);
-    }
-  }
-
-  let subjectId = 1;
-  const subjects = Array.from(subjectMap.entries()).map(([subject, data]) => ({
-    id: subjectId++,
-    subject,
-    completedLessons: data.completed,
-    totalLessons: data.total,
-    averageScore:
-      data.scores.length > 0
-        ? data.scores.reduce((a, b) => a + b, 0) / data.scores.length
-        : 0,
-    progressPercent: data.total > 0 ? (data.completed / data.total) * 100 : 0,
-  }));
-
-  const recentActivity = rows
+  const recentActivity = progressRows
     .slice(-3)
     .reverse()
     .map((r) => ({
@@ -69,10 +87,10 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
 
   res.json({
     stats: {
-      completedLessons: completed.length,
+      completedLessons: completedFromSessions,
       averageScore: Math.round(averageScore * 10) / 10,
       pendingHomework: pending.length,
-      overallProgress: Math.round(overallProgress * 10) / 10,
+      overallProgress,
     },
     subjects,
     recentActivity,
