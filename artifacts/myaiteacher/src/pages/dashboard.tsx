@@ -46,6 +46,13 @@ export default function Dashboard() {
     query: { queryKey: getGetStudentTeachersQueryKey(), enabled: !!token },
   });
 
+  // Redirect non-students to their own dashboards
+  useEffect(() => {
+    if (!user) return;
+    if (user.role === "admin") setLocation("/admin");
+    else if (user.role === "teacher") setLocation("/teacher");
+  }, [user, setLocation]);
+
   if (authLoading || dashLoading) {
     return (
       <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background">
@@ -53,7 +60,7 @@ export default function Dashboard() {
       </div>
     );
   }
-  if (!user) return null;
+  if (!user || user.role !== "student") return null;
 
   const todayArm = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
   const todayItems = schedule.filter(
