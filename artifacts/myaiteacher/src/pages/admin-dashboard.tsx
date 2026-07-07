@@ -105,10 +105,10 @@ export default function AdminDashboard() {
 
   const handleCreateClass = (e: React.FormEvent) => {
     e.preventDefault(); setCError("");
-    if (!cForm.teacherId) { setCError("Ընtreq usnucich"); return; }
+    if (!cForm.teacherId) { setCError("Ընտրեք ուսուցիչ"); return; }
     createClass.mutate({ data: { name: cForm.name, grade: cForm.grade, teacherId: parseInt(cForm.teacherId) } }, {
       onSuccess: () => { setShowCForm(false); setCForm(emptyClass); inv("classes", "stats"); },
-      onError: () => setCError("Սखal. Р'ordzek krkni"),
+      onError: () => setCError("Սխալ"),
     });
   };
 
@@ -128,10 +128,10 @@ export default function AdminDashboard() {
 
   const handleCreateSched = (e: React.FormEvent) => {
     e.preventDefault(); setSError("");
-    if (!sForm.classId) { setSError("Yntreq dasaran"); return; }
+    if (!sForm.classId) { setSError("Ընտրեք դասարան"); return; }
     createSchedule.mutate({ data: { classId: parseInt(sForm.classId), day: sForm.day, time: sForm.time, subject: sForm.subject } }, {
       onSuccess: () => { setShowSForm(false); setSForm(emptySched); inv("schedule"); },
-      onError: () => setSError("Skhal"),
+      onError: () => setSError("Սխալ"),
     });
   };
 
@@ -152,7 +152,7 @@ export default function AdminDashboard() {
     e.preventDefault(); setStError("");
     createStudent.mutate({ data: { ...stForm, classId: selectedClassId || undefined } }, {
       onSuccess: () => { setShowStForm(false); setStForm(emptySt); inv("students", "stats"); },
-      onError: () => setStError("Skhal"),
+      onError: () => setStError("Սխալ"),
     });
   };
 
@@ -160,11 +160,11 @@ export default function AdminDashboard() {
   if (user?.role !== "admin") { setLocation("/login"); return null; }
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "stats", label: "📊 Վիճakagrutyan" },
-    { key: "teachers", label: "👨‍🏫 Usnucichner" },
-    { key: "classes", label: "📚 Dasarannel" },
-    { key: "schedule", label: "📅 Dasacucak" },
-    { key: "students", label: "👨‍🎓 Ashakertner" },
+    { key: "stats", label: "📊 Վիճակագրություն" },
+    { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
+    { key: "classes", label: "📚 Դասարաններ" },
+    { key: "schedule", label: "📅 Դասացուցակ" },
+    { key: "students", label: "👨‍🎓 Աշակերտներ" },
   ];
 
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted-foreground">{user.fullName}</span>
-          <button onClick={logout} className="text-sm text-destructive hover:text-white transition-colors">Ełq</button>
+          <button onClick={logout} className="text-sm text-destructive hover:text-white transition-colors">Ելք</button>
         </div>
       </header>
 
@@ -201,9 +201,9 @@ export default function AdminDashboard() {
         {tab === "stats" && (
           <div className="grid grid-cols-3 gap-6">
             {[
-              { icon: "👨‍🏫", label: "Ուս. uchner", value: stats?.teachers ?? 0, color: "text-amber-400" },
-              { icon: "📚", label: "Dasarannel", value: stats?.classes ?? 0, color: "text-teal-400" },
-              { icon: "👨‍🎓", label: "Ashakertner", value: stats?.students ?? 0, color: "text-indigo-400" },
+              { icon: "👨‍🏫", label: "Ուսուցիչներ", value: stats?.teachers ?? 0, color: "text-amber-400" },
+              { icon: "📚", label: "Դասարաններ", value: stats?.classes ?? 0, color: "text-teal-400" },
+              { icon: "👨‍🎓", label: "Աշակերտներ", value: stats?.students ?? 0, color: "text-indigo-400" },
             ].map((s) => (
               <div key={s.label} className="bg-card/60 border border-white/10 rounded-2xl p-8 text-center">
                 <div className="text-5xl mb-4">{s.icon}</div>
@@ -218,24 +218,24 @@ export default function AdminDashboard() {
         {tab === "teachers" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Ուsuc ichner</h2>
-              <button onClick={() => setShowTForm(!showTForm)} className={btnPrimary}>+ Hravitel usnucich</button>
+              <h2 className="font-semibold text-lg">Ուսուցիչներ</h2>
+              <button onClick={() => setShowTForm(!showTForm)} className={btnPrimary}>+ Ավելացնել ուսուցիչ</button>
             </div>
 
             {showTForm && (
               <form onSubmit={handleCreateTeacher} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium mb-1">Nor usnucich</h3>
+                <h3 className="font-medium mb-1">Նոր ուսուցիչ</h3>
                 {tError && <p className="text-destructive text-xs">{tError}</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun Azganun *</label><input value={tForm.fullName} onChange={e => setTForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Ogtanun *</label><input value={tForm.username} onChange={e => setTForm(f => ({ ...f, username: e.target.value }))} required className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Gajtnabar *</label><input type="password" value={tForm.password} onChange={e => setTForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Aratka</label><input value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls} /></div>
-                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Dprock</label><input value={tForm.school} onChange={e => setTForm(f => ({ ...f, school: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն Ազգանուն *</label><input value={tForm.fullName} onChange={e => setTForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Օգտանուն *</label><input value={tForm.username} onChange={e => setTForm(f => ({ ...f, username: e.target.value }))} required className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Գաղտնաբառ *</label><input type="password" value={tForm.password} onChange={e => setTForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Առարկա</label><input value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls} /></div>
+                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Դպրոց</label><input value={tForm.school} onChange={e => setTForm(f => ({ ...f, school: e.target.value }))} className={inputCls} /></div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createTeacher.isPending} className={btnPrimary}>{createTeacher.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowTForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button>
+                  <button type="submit" disabled={createTeacher.isPending} className={btnPrimary}>{createTeacher.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowTForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
@@ -243,18 +243,18 @@ export default function AdminDashboard() {
             {/* Edit teacher modal */}
             {editTeacher && (
               <form onSubmit={handleUpdateTeacher} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Khmbagrelu usnucich</h3>
+                <h3 className="font-medium">Խմբագրել ուսուցչին</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun Azganun</label><input value={editTeacher.fullName} onChange={e => setEditTeacher(t => t && ({ ...t, fullName: e.target.value }))} className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Aratka</label><input value={editTeacher.subject} onChange={e => setEditTeacher(t => t && ({ ...t, subject: e.target.value }))} className={inputCls} /></div>
-                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Dprock</label><input value={editTeacher.school} onChange={e => setEditTeacher(t => t && ({ ...t, school: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն Ազգանուն</label><input value={editTeacher.fullName} onChange={e => setEditTeacher(t => t && ({ ...t, fullName: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Առարկա</label><input value={editTeacher.subject} onChange={e => setEditTeacher(t => t && ({ ...t, subject: e.target.value }))} className={inputCls} /></div>
+                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Դպրոց</label><input value={editTeacher.school} onChange={e => setEditTeacher(t => t && ({ ...t, school: e.target.value }))} className={inputCls} /></div>
                 </div>
-                <div className="flex gap-2"><button type="submit" className={btnPrimary}>Pahpanel</button><button type="button" onClick={() => setEditTeacher(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button></div>
+                <div className="flex gap-2"><button type="submit" className={btnPrimary}>Պահպանել</button><button type="button" onClick={() => setEditTeacher(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button></div>
               </form>
             )}
 
             <div className="space-y-2">
-              {teachers.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Usnucich chka</p>}
+              {teachers.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ուսուցիչ չկա</p>}
               {teachers.map((t) => (
                 <div key={t.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
@@ -262,8 +262,8 @@ export default function AdminDashboard() {
                     <div className="text-xs text-muted-foreground">{t.username} {t.subject && `· ${t.subject}`} {t.school && `· ${t.school}`}</div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => setEditTeacher({ id: t.id, fullName: t.fullName, subject: t.subject, school: t.school })} className={btnGhost}>✏️ Khmbagrelu</button>
-                    <button onClick={() => { if (confirm("Djnjel usnucich?")) deleteTeacher.mutate({ id: t.id }, { onSuccess: () => inv("teachers", "stats") }); }} className={btnDanger}>🗑 Djnjelu</button>
+                    <button onClick={() => setEditTeacher({ id: t.id, fullName: t.fullName, subject: t.subject, school: t.school })} className={btnGhost}>✏️ Խմբագրել</button>
+                    <button onClick={() => { if (confirm("Ջնջե՞լ ուսուցչին?")) deleteTeacher.mutate({ id: t.id }, { onSuccess: () => inv("teachers", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>
                   </div>
                 </div>
               ))}
@@ -275,46 +275,46 @@ export default function AdminDashboard() {
         {tab === "classes" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Dasarannel</h2>
-              <button onClick={() => setShowCForm(!showCForm)} className={btnPrimary}>+ Stexcel dasaran</button>
+              <h2 className="font-semibold text-lg">Դասարաններ</h2>
+              <button onClick={() => setShowCForm(!showCForm)} className={btnPrimary}>+ Ստեղծել դասարան</button>
             </div>
 
             {showCForm && (
               <form onSubmit={handleCreateClass} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Nor dasaran</h3>
+                <h3 className="font-medium">Նոր դասարան</h3>
                 {cError && <p className="text-destructive text-xs">{cError}</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun * (orin 7-1)</label><input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} required className={inputCls} placeholder="7-1" /></div>
-                  <div><label className="text-xs text-muted-foreground">Dasaran (orin 7-rd)</label><input value={cForm.grade} onChange={e => setCForm(f => ({ ...f, grade: e.target.value }))} className={inputCls} placeholder="7" /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն * (օր. 7-1)</label><input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} required className={inputCls} placeholder="7-1" /></div>
+                  <div><label className="text-xs text-muted-foreground">Կարգ (օր. 7-րդ)</label><input value={cForm.grade} onChange={e => setCForm(f => ({ ...f, grade: e.target.value }))} className={inputCls} placeholder="7" /></div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Usnucich *</label>
+                    <label className="text-xs text-muted-foreground">Ուսուցիչ *</label>
                     <select value={cForm.teacherId} onChange={e => setCForm(f => ({ ...f, teacherId: e.target.value }))} className={inputCls}>
-                      <option value="">Yntreq usnucich</option>
+                      <option value="">Ընտրեք ուսուցիչ</option>
                       {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName} {t.subject && `(${t.subject})`}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createClass.isPending} className={btnPrimary}>{createClass.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowCForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button>
+                  <button type="submit" disabled={createClass.isPending} className={btnPrimary}>{createClass.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowCForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             {editClass && (
               <form onSubmit={handleUpdateClass} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Khmbagrelu dasaran</h3>
+                <h3 className="font-medium">Խմբագրել դասարան</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun</label><input value={editClass.name} onChange={e => setEditClass(c => c && ({ ...c, name: e.target.value }))} className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Dasaran</label><input value={editClass.grade} onChange={e => setEditClass(c => c && ({ ...c, grade: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն</label><input value={editClass.name} onChange={e => setEditClass(c => c && ({ ...c, name: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Կարգ</label><input value={editClass.grade} onChange={e => setEditClass(c => c && ({ ...c, grade: e.target.value }))} className={inputCls} /></div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Usnucich</label>
+                    <label className="text-xs text-muted-foreground">Ուսուցիչ</label>
                     <select value={editClass.teacherId} onChange={e => setEditClass(c => c && ({ ...c, teacherId: parseInt(e.target.value) }))} className={inputCls}>
                       {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="flex gap-2"><button type="submit" className={btnPrimary}>Pahpanel</button><button type="button" onClick={() => setEditClass(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button></div>
+                <div className="flex gap-2"><button type="submit" className={btnPrimary}>Պահպանել</button><button type="button" onClick={() => setEditClass(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button></div>
               </form>
             )}
 
@@ -322,15 +322,15 @@ export default function AdminDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
-                    <th className="pb-3 pr-4">Anun</th>
-                    <th className="pb-3 pr-4">Dasaran</th>
-                    <th className="pb-3 pr-4">Usnucich</th>
-                    <th className="pb-3 pr-4">Ashakertner</th>
+                    <th className="pb-3 pr-4">Անուն</th>
+                    <th className="pb-3 pr-4">Կարգ</th>
+                    <th className="pb-3 pr-4">Ուսուցիչ</th>
+                    <th className="pb-3 pr-4">Աշակերտներ</th>
                     <th className="pb-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {classes.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Dasaran chka</td></tr>}
+                  {classes.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասարան չկա</td></tr>}
                   {classes.map((c) => (
                     <tr key={c.id} className="hover:bg-white/2 transition-colors">
                       <td className="py-3 pr-4 font-medium">{c.name}</td>
@@ -340,7 +340,7 @@ export default function AdminDashboard() {
                       <td className="py-3">
                         <div className="flex gap-1">
                           <button onClick={() => setEditClass({ id: c.id, name: c.name, grade: c.grade, teacherId: c.teacherId })} className={btnGhost}>✏️</button>
-                          <button onClick={() => { if (confirm("Djnjel dasaran?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
+                          <button onClick={() => { if (confirm("Ջնջե՞լ դասարանը?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
                         </div>
                       </td>
                     </tr>
@@ -355,56 +355,56 @@ export default function AdminDashboard() {
         {tab === "schedule" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Dasacucak</h2>
-              <button onClick={() => setShowSForm(!showSForm)} className={btnPrimary}>+ Avelacnel das</button>
+              <h2 className="font-semibold text-lg">Դասացուցակ</h2>
+              <button onClick={() => setShowSForm(!showSForm)} className={btnPrimary}>+ Ավելացնել դաս</button>
             </div>
 
             {showSForm && (
               <form onSubmit={handleCreateSched} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Nor das</h3>
+                <h3 className="font-medium">Նոր դաս</h3>
                 {sError && <p className="text-destructive text-xs">{sError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Or *</label>
+                    <label className="text-xs text-muted-foreground">Օր *</label>
                     <select value={sForm.day} onChange={e => setSForm(f => ({ ...f, day: e.target.value }))} className={inputCls}>
                       {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Zham *</label>
+                    <label className="text-xs text-muted-foreground">Ժամ *</label>
                     <select value={sForm.time} onChange={e => setSForm(f => ({ ...f, time: e.target.value }))} className={inputCls}>
                       {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Aratka *</label>
+                    <label className="text-xs text-muted-foreground">Առարկա *</label>
                     <input value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Dasaran *</label>
+                    <label className="text-xs text-muted-foreground">Դասարան *</label>
                     <select value={sForm.classId} onChange={e => setSForm(f => ({ ...f, classId: e.target.value }))} className={inputCls}>
-                      <option value="">Yntreq dasaran</option>
+                      <option value="">Ընտրեք դասարան</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createSchedule.isPending} className={btnPrimary}>{createSchedule.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowSForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button>
+                  <button type="submit" disabled={createSchedule.isPending} className={btnPrimary}>{createSchedule.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowSForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             {editSched && (
               <form onSubmit={handleUpdateSched} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Khmbagrelu das</h3>
+                <h3 className="font-medium">Խմբագրել դաս</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Or</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Zham</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Aratka</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Dasaran</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Օր</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Ժամ</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Առարկա</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Դասարան</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 </div>
-                <div className="flex gap-2"><button type="submit" className={btnPrimary}>Pahpanel</button><button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button></div>
+                <div className="flex gap-2"><button type="submit" className={btnPrimary}>Պահպանել</button><button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button></div>
               </form>
             )}
 
@@ -412,15 +412,15 @@ export default function AdminDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
-                    <th className="pb-3 pr-4">Or</th>
-                    <th className="pb-3 pr-4">Zham</th>
-                    <th className="pb-3 pr-4">Aratka</th>
-                    <th className="pb-3 pr-4">Dasaran</th>
+                    <th className="pb-3 pr-4">Օր</th>
+                    <th className="pb-3 pr-4">Ժամ</th>
+                    <th className="pb-3 pr-4">Առարկա</th>
+                    <th className="pb-3 pr-4">Դասարան</th>
                     <th className="pb-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Dasacucak petq</td></tr>}
+                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասացուցակ դատարկ է</td></tr>}
                   {schedule.map((s) => (
                     <tr key={s.id} className="hover:bg-white/2">
                       <td className="py-3 pr-4 font-medium">{s.day}</td>
@@ -430,7 +430,7 @@ export default function AdminDashboard() {
                       <td className="py-3">
                         <div className="flex gap-1">
                           <button onClick={() => setEditSched({ id: s.id, classId: s.classId, day: s.day, time: s.time, subject: s.subject })} className={btnGhost}>✏️</button>
-                          <button onClick={() => { if (confirm("Djnjel?")) deleteSchedule.mutate({ id: s.id }, { onSuccess: () => inv("schedule") }); }} className={btnDanger}>🗑</button>
+                          <button onClick={() => { if (confirm("Ջնջե՞լ?")) deleteSchedule.mutate({ id: s.id }, { onSuccess: () => inv("schedule") }); }} className={btnDanger}>🗑</button>
                         </div>
                       </td>
                     </tr>
@@ -445,33 +445,33 @@ export default function AdminDashboard() {
         {tab === "students" && (
           <div>
             <div className="flex flex-wrap items-center gap-4 mb-5">
-              <h2 className="font-semibold text-lg">Ashakertner</h2>
+              <h2 className="font-semibold text-lg">Աշակերտներ</h2>
               <select value={selectedClassId} onChange={e => setSelectedClassId(e.target.value ? parseInt(e.target.value) : "")}
                 className="bg-background/50 border border-input rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50">
-                <option value="">Bolor ashakertner</option>
+                <option value="">Բոլոր աշակերտները</option>
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <button onClick={() => setShowStForm(!showStForm)} className={btnPrimary}>+ Avelacnel ashakert</button>
+              <button onClick={() => setShowStForm(!showStForm)} className={btnPrimary}>+ Ավելացնել աշակերտ</button>
             </div>
 
             {showStForm && (
               <form onSubmit={handleCreateStudent} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Nor ashakert {selectedClassId ? `(${classes.find(c => c.id === selectedClassId)?.name})` : ""}</h3>
+                <h3 className="font-medium">Նոր աշակերտ {selectedClassId ? `(${classes.find(c => c.id === selectedClassId)?.name})` : ""}</h3>
                 {stError && <p className="text-destructive text-xs">{stError}</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun Azganun *</label><input value={stForm.fullName} onChange={e => setStForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Ogtanun *</label><input value={stForm.username} onChange={e => setStForm(f => ({ ...f, username: e.target.value }))} required className={inputCls} /></div>
-                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Gajtnabar *</label><input type="password" value={stForm.password} onChange={e => setStForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն Ազգանուն *</label><input value={stForm.fullName} onChange={e => setStForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Օգտանուն *</label><input value={stForm.username} onChange={e => setStForm(f => ({ ...f, username: e.target.value }))} required className={inputCls} /></div>
+                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Գաղտնաբառ *</label><input type="password" value={stForm.password} onChange={e => setStForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button>
+                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             <div className="space-y-2">
-              {students.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ashakert chka</p>}
+              {students.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Աշակերտ չկա</p>}
               {students.map((s) => (
                 <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
@@ -481,10 +481,10 @@ export default function AdminDashboard() {
                   <div className="flex gap-1">
                     {selectedClassId && (
                       <button onClick={() => removeFromClass.mutate({ id: s.id, data: { classId: selectedClassId as number } }, { onSuccess: () => inv("students") })} className={btnGhost}>
-                        Heracnel dasaranits
+                        Հեռացնել դասարանից
                       </button>
                     )}
-                    <button onClick={() => { if (confirm(`Djnjel ${s.fullName}?`)) deleteStudent.mutate({ id: s.id }, { onSuccess: () => inv("students", "stats") }); }} className={btnDanger}>🗑 Djnjelu</button>
+                    <button onClick={() => { if (confirm(`Ջնջե՞լ ${s.fullName}?`)) deleteStudent.mutate({ id: s.id }, { onSuccess: () => inv("students", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>
                   </div>
                 </div>
               ))}

@@ -79,11 +79,11 @@ export default function Dashboard() {
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: "🏠 Gyavakan" },
-    { key: "schedule", label: "📅 Dasacucak" },
-    { key: "subjects", label: "📚 Aratkanerr" },
-    { key: "homework", label: `📝 Tnain${notSubmitted > 0 ? ` (${notSubmitted})` : ""}` },
-    { key: "teachers", label: "👨‍🏫 Usnucichner" },
+    { key: "overview", label: "🏠 Ընդհանուր" },
+    { key: "schedule", label: "📅 Դասացուցակ" },
+    { key: "subjects", label: "📚 Առարկաներ" },
+    { key: "homework", label: `📝 Տնային${notSubmitted > 0 ? ` (${notSubmitted})` : ""}` },
+    { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
   ];
 
   return (
@@ -93,9 +93,9 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">myaiteacher</div>
           <div className="flex items-center gap-4">
-            <Link href="/chat/0" className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg text-sm font-medium transition-colors">🤖 AI Usnucich</Link>
+            <Link href="/chat/0" className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg text-sm font-medium transition-colors">🤖 AI Ուսուցիչ</Link>
             <span className="text-sm text-muted-foreground hidden sm:block">{user.fullName}</span>
-            <button onClick={logout} className="text-sm text-muted-foreground hover:text-white transition-colors">Ełq</button>
+            <button onClick={logout} className="text-sm text-muted-foreground hover:text-white transition-colors">Ելք</button>
           </div>
         </div>
       </header>
@@ -103,17 +103,17 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto px-6 py-6">
         {/* Greeting */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Bari galust, {user.fullName} 👋</h1>
-          <p className="text-muted-foreground text-sm mt-1">Aha qo usum nakin arajntac'y</p>
+          <h1 className="text-2xl font-bold">Բարի գալուստ, {user.fullName} 👋</h1>
+          <p className="text-muted-foreground text-sm mt-1">Ահա քո ուսման ընթացիկ առաջընթացը</p>
         </div>
 
         {/* Quick stats always visible */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
-            { icon: "✅", label: "Avartvac dasner", value: dashboard?.stats.completedLessons ?? 0, color: "text-teal-400" },
-            { icon: "⭐", label: "Miyin gnahataкan", value: dashboard?.stats.averageScore ?? 0, color: "text-amber-400" },
-            { icon: "📝", label: "Chnerkayacvac", value: notSubmitted, color: "text-red-400" },
-            { icon: "📈", label: "Arajntac'", value: `${dashboard?.stats.overallProgress ?? 0}%`, color: "text-primary" },
+            { icon: "✅", label: "Ավարտված դասեր", value: dashboard?.stats.completedLessons ?? 0, color: "text-teal-400" },
+            { icon: "⭐", label: "Միջին գնահատական", value: dashboard?.stats.averageScore ?? 0, color: "text-amber-400" },
+            { icon: "📝", label: "Չներկայացված", value: notSubmitted, color: "text-red-400" },
+            { icon: "📈", label: "Առաջընթաց", value: `${dashboard?.stats.overallProgress ?? 0}%`, color: "text-primary" },
           ].map((s) => (
             <div key={s.label} className="bg-card/60 border border-white/10 rounded-2xl p-4">
               <div className="text-2xl mb-1">{s.icon}</div>
@@ -126,7 +126,7 @@ export default function Dashboard() {
         {/* Today's schedule highlight */}
         {todayItems.length > 0 && (
           <div className="mb-6 bg-primary/10 border border-primary/20 rounded-2xl p-4">
-            <h3 className="text-sm font-medium text-primary mb-3">📅 Aysor im dasere</h3>
+            <h3 className="text-sm font-medium text-primary mb-3">📅 Այսօր իմ դասերը</h3>
             <div className="flex flex-wrap gap-2">
               {todayItems.sort((a, b) => a.time.localeCompare(b.time)).map((s) => (
                 <div key={s.id} className="flex items-center gap-2 bg-background/50 border border-white/10 rounded-xl px-3 py-2">
@@ -156,8 +156,8 @@ export default function Dashboard() {
               {/* Subjects progress */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold">Arajtkanerr</h2>
-                  <button onClick={() => setTab("subjects")} className="text-xs text-primary hover:underline">Bolor →</button>
+                  <h2 className="font-semibold">Առարկաներ</h2>
+                  <button onClick={() => setTab("subjects")} className="text-xs text-primary hover:underline">Բոլոր →</button>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {(dashboard?.subjects ?? []).slice(0, 4).map((sub) => (
@@ -165,10 +165,10 @@ export default function Dashboard() {
                       className="bg-card/60 border border-white/10 rounded-xl p-4 hover:border-primary/40 transition-colors block">
                       <div className="flex justify-between items-center mb-2">
                         <span className="font-medium text-sm">{sub.subject}</span>
-                        <span className="text-xs text-secondary">{Math.round(sub.averageScore)} pts</span>
+                        <span className="text-xs text-secondary">{Math.round(sub.averageScore)} մ.</span>
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                        <span>{sub.completedLessons}/{sub.totalLessons} das</span>
+                        <span>{sub.completedLessons}/{sub.totalLessons} դաս</span>
                         <span>{Math.round(sub.progressPercent)}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
@@ -177,7 +177,7 @@ export default function Dashboard() {
                     </Link>
                   ))}
                   {(dashboard?.subjects ?? []).length === 0 && (
-                    <p className="text-muted-foreground text-sm col-span-2">Arajtkanerr chkan</p>
+                    <p className="text-muted-foreground text-sm col-span-2">Առարկաներ չկան</p>
                   )}
                 </div>
               </div>
@@ -185,7 +185,7 @@ export default function Dashboard() {
               {/* Recent activity */}
               {(dashboard?.recentActivity ?? []).length > 0 && (
                 <div>
-                  <h2 className="font-semibold mb-4">Verjin aktivutyun</h2>
+                  <h2 className="font-semibold mb-4">Վերջին ակտիվություն</h2>
                   <div className="space-y-2">
                     {dashboard?.recentActivity.map((a) => (
                       <div key={a.id} className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3">
@@ -206,7 +206,7 @@ export default function Dashboard() {
             <div className="space-y-4">
               {/* Knowledge map mini */}
               <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-                <h3 className="font-semibold mb-4">🗺️ Giteliki Karta</h3>
+                <h3 className="font-semibold mb-4">🗺️ Գիտելիքի Քարտեզ</h3>
                 <div className="space-y-3">
                   {(progressData?.subjects ?? []).slice(0, 4).map((sub) => (
                     <div key={sub.id}>
@@ -223,27 +223,27 @@ export default function Dashboard() {
                     </div>
                   ))}
                   {(!progressData?.subjects || progressData.subjects.length === 0) && (
-                    <p className="text-muted-foreground text-xs">Tvyalnern chkan</p>
+                    <p className="text-muted-foreground text-xs">Տվյալներ չկան</p>
                   )}
                 </div>
-                <Link href="/progress" className="mt-4 text-primary text-xs font-medium hover:underline block">Amboloakan karta →</Link>
+                <Link href="/progress" className="mt-4 text-primary text-xs font-medium hover:underline block">Ամբողջական քարտեզ →</Link>
               </div>
 
               {/* Homework mini */}
               <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-                <h3 className="font-semibold mb-4">📝 Tnain ashkhatank</h3>
+                <h3 className="font-semibold mb-4">📝 Տնային աշխատանք</h3>
                 <div className="space-y-2 text-sm mb-4">
-                  <div className="flex justify-between"><span className="text-red-400">Chnerkayacvac</span><span className="font-bold">{notSubmitted}</span></div>
-                  <div className="flex justify-between"><span className="text-amber-400">Spasuma</span><span className="font-bold">{pendingHw}</span></div>
-                  <div className="flex justify-between"><span className="text-teal-400">Gnahatval</span><span className="font-bold">{gradedHw}</span></div>
+                  <div className="flex justify-between"><span className="text-red-400">Չներկայացված</span><span className="font-bold">{notSubmitted}</span></div>
+                  <div className="flex justify-between"><span className="text-amber-400">Սպասում է</span><span className="font-bold">{pendingHw}</span></div>
+                  <div className="flex justify-between"><span className="text-teal-400">Գնահատված</span><span className="font-bold">{gradedHw}</span></div>
                 </div>
-                <button onClick={() => setTab("homework")} className="text-primary text-xs font-medium hover:underline">Bolor tnainnerr →</button>
+                <button onClick={() => setTab("homework")} className="text-primary text-xs font-medium hover:underline">Բոլոր տնայինները →</button>
               </div>
 
               {/* Teachers mini */}
               {teachers.length > 0 && (
                 <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-                  <h3 className="font-semibold mb-3">👨‍🏫 Im usnucichnery</h3>
+                  <h3 className="font-semibold mb-3">👨‍🏫 Իմ ուսուցիչները</h3>
                   <div className="space-y-2">
                     {teachers.slice(0, 3).map((t) => (
                       <div key={t.teacherId} className="flex items-center gap-2">
@@ -255,7 +255,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
-                  {teachers.length > 3 && <button onClick={() => setTab("teachers")} className="mt-3 text-primary text-xs font-medium hover:underline">Bolor ({teachers.length}) →</button>}
+                  {teachers.length > 3 && <button onClick={() => setTab("teachers")} className="mt-3 text-primary text-xs font-medium hover:underline">Բոլոր ({teachers.length}) →</button>}
                 </div>
               )}
             </div>
@@ -268,7 +268,7 @@ export default function Dashboard() {
             {schedule.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <div className="text-5xl mb-4">📅</div>
-                <p>Dasacucak chka · Admin-e kam usnucich-e petk e kargin avelacel</p>
+                <p>Դասացուցակ չկա · Ադմինը կամ ուսուցիչը պետք է ավելացնի</p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -324,7 +324,7 @@ export default function Dashboard() {
             {(dashboard?.subjects ?? []).length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <div className="text-5xl mb-4">📚</div>
-                <p>Arajtkanerr chkan</p>
+                <p>Առարկաներ չկան</p>
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -337,19 +337,19 @@ export default function Dashboard() {
                       <div className="flex items-start justify-between mb-4">
                         <h3 className="font-semibold text-lg">{sub.subject}</h3>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${level === "mastered" ? "bg-teal-400/20 text-teal-400" : level === "weak" ? "bg-amber-400/20 text-amber-400" : "bg-red-500/20 text-red-400"}`}>
-                          {level === "mastered" ? "🟢 Yuracvac" : level === "weak" ? "🟡 Tuyl" : "🔴 Chsksac"}
+                          {level === "mastered" ? "🟢 Յուրացված" : level === "weak" ? "🟡 Թույլ" : "🔴 Չսկսած"}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                        <span>{sub.completedLessons}/{sub.totalLessons} das</span>
+                        <span>{sub.completedLessons}/{sub.totalLessons} դաս</span>
                         <span className="font-medium text-white">{pct}%</span>
                       </div>
                       <div className="h-2 w-full bg-background rounded-full overflow-hidden mb-3">
                         <div className={`h-full rounded-full ${level === "mastered" ? "bg-teal-400" : level === "weak" ? "bg-amber-400" : "bg-red-500"}`}
                           style={{ width: `${pct}%` }} />
                       </div>
-                      <div className="text-xs text-secondary font-medium">Miyin: {Math.round(sub.averageScore)} pts</div>
-                      <div className="mt-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Ditel →</div>
+                      <div className="text-xs text-secondary font-medium">Միջ․ {Math.round(sub.averageScore)} մ.</div>
+                      <div className="mt-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Դիտել →</div>
                     </Link>
                   );
                 })}
@@ -365,15 +365,15 @@ export default function Dashboard() {
             {submitHwId !== null && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <form onSubmit={handleSubmit} className="bg-card border border-white/10 rounded-2xl p-6 w-full max-w-md space-y-4">
-                  <h3 className="font-semibold">Nerkayacel pataskhan</h3>
+                  <h3 className="font-semibold">Ներկայացնել պատասխան</h3>
                   <textarea value={answerText} onChange={e => setAnswerText(e.target.value)} required rows={5}
-                    placeholder="Qo pataskhany..." className={`${inputCls} resize-none`} />
+                    placeholder="Ձեր պատասխանը..." className={`${inputCls} resize-none`} />
                   <div className="flex gap-2">
                     <button type="submit" disabled={submitMutation.isPending} className="px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium disabled:opacity-50">
-                      {submitMutation.isPending ? "..." : "Urakel"}
+                      {submitMutation.isPending ? "..." : "Ուղարկել"}
                     </button>
                     <button type="button" onClick={() => { setSubmitHwId(null); setAnswerText(""); }}
-                      className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegarkel</button>
+                      className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                   </div>
                 </form>
               </div>
@@ -390,7 +390,7 @@ export default function Dashboard() {
               if (all.length === 0) return (
                 <div className="text-center py-20 text-muted-foreground">
                   <div className="text-5xl mb-4">📝</div>
-                  <p>Tnain chka</p>
+                  <p>Տնային չկա</p>
                 </div>
               );
               const groups = { not_submitted: [] as typeof all, pending: [] as typeof all, graded: [] as typeof all };
@@ -403,7 +403,7 @@ export default function Dashboard() {
                 <div className="space-y-6">
                   {groups.not_submitted.length > 0 && (
                     <div>
-                      <h2 className="text-sm font-medium text-red-400 uppercase tracking-wide mb-3">🔴 Chnerkayacvac ({groups.not_submitted.length})</h2>
+                      <h2 className="text-sm font-medium text-red-400 uppercase tracking-wide mb-3">🔴 Չներկայացված ({groups.not_submitted.length})</h2>
                       <div className="space-y-2">
                         {groups.not_submitted.map(h => (
                           <div key={h.id} className="bg-card/60 border border-red-500/20 rounded-xl px-4 py-3 flex items-start justify-between gap-4">
@@ -414,7 +414,7 @@ export default function Dashboard() {
                             </div>
                             <button onClick={() => setSubmitHwId(h.id)}
                               className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium shrink-0 hover:bg-primary/80 transition-colors">
-                              Nerkayacel
+                              Ներկայացնել
                             </button>
                           </div>
                         ))}
@@ -423,7 +423,7 @@ export default function Dashboard() {
                   )}
                   {groups.pending.length > 0 && (
                     <div>
-                      <h2 className="text-sm font-medium text-amber-400 uppercase tracking-wide mb-3">🟡 Spasuma gnahatman ({groups.pending.length})</h2>
+                      <h2 className="text-sm font-medium text-amber-400 uppercase tracking-wide mb-3">🟡 Սպասում է գնահատման ({groups.pending.length})</h2>
                       <div className="space-y-2">
                         {groups.pending.map(h => (
                           <div key={h.id} className="bg-card/60 border border-amber-500/20 rounded-xl px-4 py-3">
@@ -464,7 +464,7 @@ export default function Dashboard() {
             {teachers.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <div className="text-5xl mb-4">👨‍🏫</div>
-                <p>Usnucich chka · Admin-e petk e kargin nshanakel</p>
+                <p>Ուսուցիչ չկա · Ադմինը պետք է նշանակի</p>
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -486,9 +486,9 @@ export default function Dashboard() {
 
         {/* Bottom nav links */}
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-3 justify-center text-sm">
-          <Link href="/progress" className="text-muted-foreground hover:text-primary transition-colors">📊 Arajntac'</Link>
-          <Link href="/homework" className="text-muted-foreground hover:text-primary transition-colors">📝 Bolor Tnain</Link>
-          <Link href="/books" className="text-muted-foreground hover:text-primary transition-colors">📚 Grkerr</Link>
+          <Link href="/progress" className="text-muted-foreground hover:text-primary transition-colors">📊 Առաջընթաց</Link>
+          <Link href="/homework" className="text-muted-foreground hover:text-primary transition-colors">📝 Բոլոր Տնայինը</Link>
+          <Link href="/books" className="text-muted-foreground hover:text-primary transition-colors">📚 Գրքեր</Link>
           <Link href="/chat/0" className="text-muted-foreground hover:text-primary transition-colors">🤖 AI Chat</Link>
         </div>
       </div>
