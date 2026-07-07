@@ -140,11 +140,9 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* ── OVERVIEW ── */}
+        {/* ── OVERVIEW — only today's schedule ── */}
         {tab === "overview" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-
-            {/* Today's schedule */}
+          <div className="max-w-lg">
             <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold">📅 Այսօրվա իմ դասերը</h2>
@@ -159,90 +157,24 @@ export default function Dashboard() {
                   {todayItems.slice().sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
                     const sub = findSubject(s.subject);
                     return (
-                      <div key={s.id} className="bg-background/40 border border-white/10 rounded-xl p-3 flex flex-col gap-2">
+                      <div key={s.id} className="bg-background/40 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-teal-400 font-mono text-xs font-bold">{s.time}</span>
+                          <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
                           <span className="text-xs text-muted-foreground">{s.className}</span>
                         </div>
-                        <div className="font-medium text-sm">{s.subject}</div>
+                        <div className="font-semibold text-base">{s.subject}</div>
+                        <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName}</div>
                         {sub ? (
                           <Link href={`/subjects/${sub.id}`}
-                            className="flex items-center justify-center gap-1 px-3 py-1.5 bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
-                            📖 Սովորել
+                            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity">
+                            📖 Սovoreq
                           </Link>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Կապ չկա</span>
+                          <span className="text-xs text-muted-foreground">Կap chka</span>
                         )}
                       </div>
                     );
                   })}
-                </div>
-              )}
-            </div>
-
-            {/* Subjects */}
-            <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">📚 Առարկաներ</h2>
-                <button onClick={() => setTab("subjects")} className="text-xs text-primary hover:underline">
-                  Բոլորը →
-                </button>
-              </div>
-              {subjects.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Առարկաներ չկան</p>
-              ) : (
-                <div className="space-y-3">
-                  {subjects.slice(0, 5).map((sub) => {
-                    const pct = Math.round(sub.progressPercent);
-                    return (
-                      <div key={sub.id} className="flex items-center gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium truncate">{sub.subject}</span>
-                            <span className="text-xs text-muted-foreground ml-2 shrink-0">{pct}%</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${pctColor(pct)}`} style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                        <Link href={`/subjects/${sub.id}`}
-                          className="shrink-0 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 text-xs font-semibold rounded-lg transition-colors">
-                          Դիտել
-                        </Link>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Teachers */}
-            <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">👨‍🏫 Ուսուցիչներ</h2>
-                {teachers.length > 4 && (
-                  <button onClick={() => setTab("teachers")} className="text-xs text-primary hover:underline">
-                    Բոլորը →
-                  </button>
-                )}
-              </div>
-              {teachers.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Ուսուցիչ չկան</p>
-              ) : (
-                <div className="space-y-3">
-                  {teachers.slice(0, 5).map((t) => (
-                    <div key={t.teacherId} className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-sm font-bold text-primary shrink-0">
-                        {t.teacherName.slice(0, 1)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{t.teacherName}</div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {t.subject && `📚 ${t.subject}`}{t.className && ` · ${t.className}`}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
