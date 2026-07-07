@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, homeworkTable, lessonsTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, homeworkTable, lessonsTable, subjectsTable } from "@workspace/db";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
@@ -93,6 +93,84 @@ router.get("/student/teachers", requireAuth, async (req: AuthRequest, res) => {
     .where(inArray(classesTable.id, classIds));
 
   res.json(rows);
+});
+
+// GET /api/student/today-lessons — today's schedule enriched with lesson content
+router.get("/student/today-lessons", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  const todayArm = now.toLocaleDateString("hy-AM", { weekday: "long" });
+  const normalize = (s: string) => s.toLowerCase().replace(/\./g, "");
+
+  const enrollments = await db
+    .select({ classId: classStudentsTable.classId })
+    .from(classStudentsTable)
+    .where(eq(classStudentsTable.studentId, userId));
+
+  if (enrollments.length === 0) { res.json([]); return; }
+
+  const classIds = enrollments.map((e) => e.classId);
+
+  const allSchedule = await db
+    .select({
+      id: scheduleTable.id,
+      classId: scheduleTable.classId,
+      className: classesTable.name,
+      day: scheduleTable.day,
+      time: scheduleTable.time,
+      subject: scheduleTable.subject,
+      teacherName: usersTable.fullName,
+    })
+    .from(scheduleTable)
+    .innerJoin(classesTable, eq(scheduleTable.classId, classesTable.id))
+    .innerJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
+    .innerJoin(usersTable, eq(teachersTable.userId, usersTable.id))
+    .where(inArray(scheduleTable.classId, classIds));
+
+  const todayEntries = allSchedule.filter(
+    (e) => normalize(e.day) === normalize(todayArm)
+  );
+
+  if (todayEntries.length === 0) { res.json([]); return; }
+
+  const result = await Promise.all(
+    todayEntries.map(async (entry) => {
+      const [subject] = await db
+        .select()
+        .from(subjectsTable)
+        .where(sql`lower(${subjectsTable.name}) = lower(${entry.subject})`)
+        .limit(1);
+
+      if (!subject) {
+        return {
+          scheduleId: entry.id, time: entry.time, day: entry.day,
+          subject: entry.subject, teacherName: entry.teacherName, className: entry.className,
+        };
+      }
+
+      const [lesson] = await db
+        .select()
+        .from(lessonsTable)
+        .where(and(
+          eq(lessonsTable.subjectId, subject.id),
+          eq(lessonsTable.month, currentMonth),
+          eq(lessonsTable.day, currentDay),
+        ))
+        .limit(1);
+
+      return {
+        scheduleId: entry.id, time: entry.time, day: entry.day,
+        subject: entry.subject, teacherName: entry.teacherName, className: entry.className,
+        lessonId: lesson?.id,
+        lessonTitle: lesson?.title,
+        lessonNumber: lesson?.lessonNumber,
+      };
+    })
+  );
+
+  res.json(result.sort((a, b) => a.time.localeCompare(b.time)));
 });
 
 // GET /api/student/homework-summary — pending/graded counts from homework table

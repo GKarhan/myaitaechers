@@ -618,6 +618,18 @@ export interface StudentScheduleItem {
   teacherName: string;
 }
 
+export interface StudentTodayLessonItem {
+  scheduleId: number;
+  time: string;
+  day: string;
+  subject: string;
+  teacherName: string;
+  className: string;
+  lessonId?: number;
+  lessonTitle?: string;
+  lessonNumber?: number;
+}
+
 export interface StudentTeacherItem {
   teacherId: number;
   teacherName: string;

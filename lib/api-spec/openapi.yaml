@@ -1653,6 +1653,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /student/today-lessons:
+    get:
+      operationId: getStudentTodayLessons
+      tags: [student]
+      summary: Get today's scheduled lessons with linked lesson content
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Today's lessons enriched with lesson metadata
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentTodayLessonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /student/homework-summary:
     get:
       operationId: getStudentHomeworkSummary
@@ -3347,6 +3369,29 @@ components:
           type: string
         teacherName:
           type: string
+
+    StudentTodayLessonItem:
+      type: object
+      required: [scheduleId, time, day, subject, teacherName, className]
+      properties:
+        scheduleId:
+          type: integer
+        time:
+          type: string
+        day:
+          type: string
+        subject:
+          type: string
+        teacherName:
+          type: string
+        className:
+          type: string
+        lessonId:
+          type: integer
+        lessonTitle:
+          type: string
+        lessonNumber:
+          type: integer
 
     StudentTeacherItem:
       type: object

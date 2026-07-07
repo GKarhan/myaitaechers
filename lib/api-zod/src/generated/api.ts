@@ -1109,6 +1109,23 @@ export const GetStudentTeachersResponse = zod.array(GetStudentTeachersResponseIt
 
 
 /**
+ * @summary Get today's scheduled lessons with linked lesson content
+ */
+export const GetStudentTodayLessonsResponseItem = zod.object({
+  "scheduleId": zod.number(),
+  "time": zod.string(),
+  "day": zod.string(),
+  "subject": zod.string(),
+  "teacherName": zod.string(),
+  "className": zod.string(),
+  "lessonId": zod.number().optional(),
+  "lessonTitle": zod.string().optional(),
+  "lessonNumber": zod.number().optional()
+})
+export const GetStudentTodayLessonsResponse = zod.array(GetStudentTodayLessonsResponseItem)
+
+
+/**
  * @summary Get student's homework summary with items
  */
 export const GetStudentHomeworkSummaryResponse = zod.object({

@@ -75,6 +75,7 @@ import type {
   StudentItem,
   StudentScheduleItem,
   StudentTeacherItem,
+  StudentTodayLessonItem,
   SubjectDetail,
   SubjectListItem,
   SubjectProgressDetail,
@@ -4315,6 +4316,83 @@ export function useGetStudentTeachers<TData = Awaited<ReturnType<typeof getStude
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetStudentTeachersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStudentTodayLessonsUrl = () => {
+
+
+
+
+  return `/api/student/today-lessons`
+}
+
+/**
+ * @summary Get today's scheduled lessons with linked lesson content
+ */
+export const getStudentTodayLessons = async ( options?: RequestInit): Promise<StudentTodayLessonItem[]> => {
+
+  return customFetch<StudentTodayLessonItem[]>(getGetStudentTodayLessonsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStudentTodayLessonsQueryKey = () => {
+    return [
+    `/api/student/today-lessons`
+    ] as const;
+    }
+
+
+export const getGetStudentTodayLessonsQueryOptions = <TData = Awaited<ReturnType<typeof getStudentTodayLessons>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentTodayLessons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStudentTodayLessonsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStudentTodayLessons>>> = ({ signal }) => getStudentTodayLessons({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStudentTodayLessons>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStudentTodayLessonsQueryResult = NonNullable<Awaited<ReturnType<typeof getStudentTodayLessons>>>
+export type GetStudentTodayLessonsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get today's scheduled lessons with linked lesson content
+ */
+
+export function useGetStudentTodayLessons<TData = Awaited<ReturnType<typeof getStudentTodayLessons>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentTodayLessons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStudentTodayLessonsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
