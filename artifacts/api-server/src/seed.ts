@@ -8,8 +8,15 @@ export async function seed() {
   try {
     await client.query(`
       INSERT INTO users (username, password_hash, full_name, role)
-      VALUES ('admin', '${A_HASH}', 'Ադմինիստրատոր', 'admin')
+      VALUES ('admin', '${A_HASH}', 'Ադministrator', 'admin')
       ON CONFLICT (username) DO NOTHING
+    `);
+    // Keep student1 name in sync with ekarhanyan (the real student account)
+    await client.query(`
+      UPDATE users
+      SET full_name = (SELECT full_name FROM users WHERE username = 'ekarhanyan')
+      WHERE username = 'student1'
+        AND EXISTS (SELECT 1 FROM users WHERE username = 'ekarhanyan')
     `);
     logger.info("Seed completed");
   } catch (err) {
