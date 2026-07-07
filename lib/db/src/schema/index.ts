@@ -5,6 +5,7 @@ export * from "./knowledge-topics";
 export * from "./teachers";
 export * from "./classes";
 export * from "./class-students";
+export * from "./schedule";
 export * from "./lessons";
 export * from "./chat-messages";
 export * from "./lesson-sessions";

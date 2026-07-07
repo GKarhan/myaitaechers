@@ -71,6 +71,40 @@ export interface CreateStudentInput {
   fullName: string;
 }
 
+export interface RemoveFromClassInput {
+  classId: number;
+}
+
+export interface CreateAdminStudentInput {
+  username: string;
+  password: string;
+  fullName: string;
+  classId?: number;
+}
+
+export interface UpdateClassInput {
+  name?: string;
+  grade?: string;
+  teacherId?: number;
+}
+
+export interface ScheduleItem {
+  id: number;
+  classId: number;
+  className?: string;
+  day: string;
+  time: string;
+  subject: string;
+  createdAt: string;
+}
+
+export interface CreateScheduleInput {
+  classId: number;
+  day: string;
+  time: string;
+  subject: string;
+}
+
 export interface TeacherLessonItem {
   id: number;
   subjectId: number;
@@ -447,6 +481,10 @@ export interface ProgressRecommendations {
 
 export type GetChatHistoryParams = {
 lessonId?: number;
+};
+
+export type GetAdminStudentsParams = {
+classId?: number;
 };
 
 export type GetTeacherHomework200Item = { [key: string]: unknown };

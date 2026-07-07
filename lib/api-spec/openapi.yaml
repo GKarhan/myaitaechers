@@ -1086,8 +1086,14 @@ paths:
     get:
       operationId: getAdminStudents
       tags: [admin]
-      summary: List all students
+      summary: List students (optionally by classId)
       security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: query
+          required: false
+          schema:
+            type: integer
       responses:
         "200":
           description: Students list
@@ -1097,6 +1103,236 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/StudentItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAdminStudent
+      tags: [admin]
+      summary: Create a student and optionally add to class
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdminStudentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/students/{id}/delete:
+    post:
+      operationId: deleteAdminStudent
+      tags: [admin]
+      summary: Delete a student
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/students/{id}/remove-class:
+    post:
+      operationId: removeStudentFromClassAdmin
+      tags: [admin]
+      summary: Remove student from a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoveFromClassInput"
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/classes/{id}:
+    put:
+      operationId: updateClass
+      tags: [admin]
+      summary: Update a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClassInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/schedule:
+    get:
+      operationId: getAdminSchedule
+      tags: [admin]
+      summary: List all schedule entries
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Schedule list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduleItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createScheduleEntry
+      tags: [admin]
+      summary: Create a schedule entry
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScheduleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/schedule/{id}:
+    put:
+      operationId: updateScheduleEntry
+      tags: [admin]
+      summary: Update a schedule entry
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScheduleInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/schedule/{id}/delete:
+    post:
+      operationId: deleteScheduleEntry
+      tags: [admin]
+      summary: Delete a schedule entry
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
         "401":
           description: Unauthorized
           content:
@@ -1453,6 +1689,69 @@ components:
         password:
           type: string
         fullName:
+          type: string
+
+    RemoveFromClassInput:
+      type: object
+      required: [classId]
+      properties:
+        classId:
+          type: integer
+
+    CreateAdminStudentInput:
+      type: object
+      required: [username, password, fullName]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        fullName:
+          type: string
+        classId:
+          type: integer
+
+    UpdateClassInput:
+      type: object
+      properties:
+        name:
+          type: string
+        grade:
+          type: string
+        teacherId:
+          type: integer
+
+    ScheduleItem:
+      type: object
+      required: [id, classId, day, time, subject, createdAt]
+      properties:
+        id:
+          type: integer
+        classId:
+          type: integer
+        className:
+          type: string
+        day:
+          type: string
+        time:
+          type: string
+        subject:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateScheduleInput:
+      type: object
+      required: [classId, day, time, subject]
+      properties:
+        classId:
+          type: integer
+        day:
+          type: string
+        time:
+          type: string
+        subject:
           type: string
 
     TeacherLessonItem:

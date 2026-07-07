@@ -720,8 +720,12 @@ export const DeleteClassResponse = zod.object({
 
 
 /**
- * @summary List all students
+ * @summary List students (optionally by classId)
  */
+export const GetAdminStudentsQueryParams = zod.object({
+  "classId": zod.coerce.number().optional()
+})
+
 export const GetAdminStudentsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
@@ -729,6 +733,143 @@ export const GetAdminStudentsResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetAdminStudentsResponse = zod.array(GetAdminStudentsResponseItem)
+
+
+/**
+ * @summary Create a student and optionally add to class
+ */
+export const CreateAdminStudentBody = zod.object({
+  "username": zod.string(),
+  "password": zod.string(),
+  "fullName": zod.string(),
+  "classId": zod.number().optional()
+})
+
+export const CreateAdminStudentResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a student
+ */
+export const DeleteAdminStudentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAdminStudentResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Remove student from a class
+ */
+export const RemoveStudentFromClassAdminParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RemoveStudentFromClassAdminBody = zod.object({
+  "classId": zod.number()
+})
+
+export const RemoveStudentFromClassAdminResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Update a class
+ */
+export const UpdateClassParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateClassBody = zod.object({
+  "name": zod.string().optional(),
+  "grade": zod.string().optional(),
+  "teacherId": zod.number().optional()
+})
+
+export const UpdateClassResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List all schedule entries
+ */
+export const GetAdminScheduleResponseItem = zod.object({
+  "id": zod.number(),
+  "classId": zod.number(),
+  "className": zod.string().optional(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetAdminScheduleResponse = zod.array(GetAdminScheduleResponseItem)
+
+
+/**
+ * @summary Create a schedule entry
+ */
+export const CreateScheduleEntryBody = zod.object({
+  "classId": zod.number(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string()
+})
+
+export const CreateScheduleEntryResponse = zod.object({
+  "id": zod.number(),
+  "classId": zod.number(),
+  "className": zod.string().optional(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a schedule entry
+ */
+export const UpdateScheduleEntryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateScheduleEntryBody = zod.object({
+  "classId": zod.number(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string()
+})
+
+export const UpdateScheduleEntryResponse = zod.object({
+  "id": zod.number(),
+  "classId": zod.number(),
+  "className": zod.string().optional(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a schedule entry
+ */
+export const DeleteScheduleEntryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteScheduleEntryResponse = zod.object({
+  "message": zod.string()
+})
 
 
 /**
