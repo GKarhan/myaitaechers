@@ -7,10 +7,13 @@
  */
 
 export interface CreateTeacherLessonInput {
-  subjectId: number;
+  subjectId?: number;
   classId?: number;
   title: string;
   description?: string;
   bloomLevel?: number;
   content?: string;
+  lessonNumber?: number;
+  pagesFrom?: number;
+  pagesTo?: number;
 }

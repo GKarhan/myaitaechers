@@ -121,16 +121,35 @@ export interface TeacherLessonItem {
   content?: string;
   classId?: number;
   teacherId?: number;
+  lessonNumber?: number | null;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
   createdAt: string;
 }
 
 export interface CreateTeacherLessonInput {
-  subjectId: number;
+  subjectId?: number;
   classId?: number;
   title: string;
   description?: string;
   bloomLevel?: number;
   content?: string;
+  lessonNumber?: number;
+  pagesFrom?: number;
+  pagesTo?: number;
+}
+
+export interface ClassDocumentItem {
+  id: number;
+  classId: number;
+  teacherId?: number | null;
+  type: string;
+  title: string;
+  description?: string;
+  fileName?: string | null;
+  fileUrl?: string | null;
+  fileSize?: number | null;
+  createdAt: string;
 }
 
 export interface RegisterInput {
@@ -497,6 +516,9 @@ export interface TeacherClassLesson {
   content?: string;
   classId?: number | null;
   teacherId?: number | null;
+  lessonNumber?: number | null;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
   createdAt: string;
 }
 
@@ -512,6 +534,9 @@ export interface UpdateLessonInput {
   description?: string;
   bloomLevel?: number;
   content?: string;
+  lessonNumber?: number;
+  pagesFrom?: number;
+  pagesTo?: number;
 }
 
 export interface GenerateLessonsInput {
@@ -600,6 +625,8 @@ classId?: number;
 };
 
 export type CreateHomework201 = { [key: string]: unknown };
+
+export type DeleteClassDocument200 = { [key: string]: unknown };
 
 export type GenerateLessonsAI201 = { [key: string]: unknown };
 

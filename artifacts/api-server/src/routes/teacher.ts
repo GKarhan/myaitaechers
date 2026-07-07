@@ -1,8 +1,23 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable } from "@workspace/db";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable } from "@workspace/db";
 import { eq, and, inArray, avg, count } from "drizzle-orm";
 import { requireTeacher, type AuthRequest } from "../middlewares/auth";
+
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${path.extname(file.originalname)}`);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -115,23 +130,47 @@ router.get("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => 
 });
 
 router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => {
-  const { subjectId, classId, title, description, bloomLevel, content } = req.body as {
-    subjectId: number; classId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
+  const { subjectId, classId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo } = req.body as {
+    subjectId?: number; classId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
+    lessonNumber?: number; pagesFrom?: number; pagesTo?: number;
   };
-  if (!subjectId || !title) { res.status(400).json({ error: "subjectId, title парtаdir en" }); return; }
-  const [lesson] = await db.insert(lessonsTable).values({ subjectId, title, description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "", teacherId: req.userId!, classId: classId ?? null }).returning();
+  if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
+  let resolvedSubjectId = subjectId;
+  if (!resolvedSubjectId && classId) {
+    const { subjectsTable } = await import("@workspace/db");
+    const [s] = await db.select().from(subjectsTable).limit(1);
+    resolvedSubjectId = s?.id ?? 1;
+  }
+  if (!resolvedSubjectId) resolvedSubjectId = 1;
+  const [lesson] = await db.insert(lessonsTable).values({
+    subjectId: resolvedSubjectId, title,
+    description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
+    teacherId: req.userId!, classId: classId ?? null,
+    lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,
+  }).returning();
   res.status(201).json(lesson);
 });
 
 router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { title, description, bloomLevel, content } = req.body as { title?: string; description?: string; bloomLevel?: number; content?: string };
+  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo } = req.body as {
+    title?: string; description?: string; bloomLevel?: number; content?: string;
+    lessonNumber?: number; pagesFrom?: number; pagesTo?: number;
+  };
   const updated = await db.update(lessonsTable)
-    .set({ ...(title && { title }), ...(description !== undefined && { description }), ...(bloomLevel && { bloomLevel }), ...(content !== undefined && { content }) })
+    .set({
+      ...(title && { title }),
+      ...(description !== undefined && { description }),
+      ...(bloomLevel && { bloomLevel }),
+      ...(content !== undefined && { content }),
+      ...(lessonNumber !== undefined && { lessonNumber }),
+      ...(pagesFrom !== undefined && { pagesFrom }),
+      ...(pagesTo !== undefined && { pagesTo }),
+    })
     .where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!)))
     .returning();
-  if (updated.length === 0) { res.status(404).json({ error: "Das chi gtнvel" }); return; }
+  if (updated.length === 0) { res.status(404).json({ error: "Das chi gtnvel" }); return; }
   res.json(updated[0]);
 });
 
@@ -321,6 +360,51 @@ router.get("/teacher/classes/:classId/progress", requireTeacher, async (req: Aut
     const avg = graded.length > 0 ? Math.round(graded.reduce((sum, h) => sum + (h.score ?? 0), 0) / graded.length) : null;
     return { ...s, homeworkCount: hw.length, avgScore: avg };
   }));
+});
+
+// ─── CLASS DOCUMENTS ──────────────────────────────────────────────────────────
+
+router.get("/teacher/classes/:classId/documents", requireTeacher, async (req: AuthRequest, res) => {
+  const classId = parseInt(String(req.params.classId));
+  if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
+  const docs = await db.select().from(classDocumentsTable).where(eq(classDocumentsTable.classId, classId));
+  res.json(docs);
+});
+
+router.post("/teacher/classes/:classId/documents", requireTeacher, upload.single("file"), async (req: AuthRequest, res) => {
+  const classId = parseInt(String(req.params.classId));
+  if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
+  const { type, title, description } = req.body as { type: string; title: string; description?: string };
+  if (!type || !title) { res.status(400).json({ error: "type, title partadir en" }); return; }
+  const file = req.file;
+  const [doc] = await db.insert(classDocumentsTable).values({
+    classId, teacherId: req.userId!, type, title,
+    description: description ?? "",
+    fileName: file?.originalname ?? null,
+    fileUrl: file ? `/api/teacher/documents/files/${file.filename}` : null,
+    fileSize: file?.size ?? null,
+  }).returning();
+  res.status(201).json(doc);
+});
+
+router.post("/teacher/classes/:classId/documents/:docId/delete", requireTeacher, async (req: AuthRequest, res) => {
+  const classId = parseInt(String(req.params.classId));
+  const docId = parseInt(String(req.params.docId));
+  if (isNaN(classId) || isNaN(docId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [doc] = await db.select().from(classDocumentsTable).where(eq(classDocumentsTable.id, docId)).limit(1);
+  if (doc?.fileUrl) {
+    const fname = doc.fileUrl.split("/").pop();
+    if (fname) { try { fs.unlinkSync(path.join(uploadsDir, fname)); } catch { /* ignore */ } }
+  }
+  await db.delete(classDocumentsTable).where(and(eq(classDocumentsTable.id, docId), eq(classDocumentsTable.classId, classId)));
+  res.json({ message: "Njujy djnjvec" });
+});
+
+router.get("/teacher/documents/files/:filename", requireTeacher, async (req: AuthRequest, res) => {
+  const filename = String(req.params.filename).replace(/\.\./g, "");
+  const filePath = path.join(uploadsDir, filename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
+  res.sendFile(filePath);
 });
 
 export default router;

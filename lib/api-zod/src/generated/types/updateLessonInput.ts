@@ -11,4 +11,7 @@ export interface UpdateLessonInput {
   description?: string;
   bloomLevel?: number;
   content?: string;
+  lessonNumber?: number;
+  pagesFrom?: number;
+  pagesTo?: number;
 }

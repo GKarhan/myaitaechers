@@ -1723,6 +1723,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /teacher/classes/{classId}/documents:
+    get:
+      operationId: getClassDocuments
+      tags: [teacher]
+      summary: Get documents for a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Documents list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClassDocumentItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes/{classId}/documents/{docId}/delete:
+    post:
+      operationId: deleteClassDocument
+      tags: [teacher]
+      summary: Delete a class document
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: docId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/classes/{classId}/homework:
     get:
       operationId: getClassHomework
@@ -2120,13 +2179,22 @@ components:
           type: integer
         teacherId:
           type: integer
+        lessonNumber:
+          type: integer
+          nullable: true
+        pagesFrom:
+          type: integer
+          nullable: true
+        pagesTo:
+          type: integer
+          nullable: true
         createdAt:
           type: string
           format: date-time
 
     CreateTeacherLessonInput:
       type: object
-      required: [subjectId, title]
+      required: [title]
       properties:
         subjectId:
           type: integer
@@ -2140,6 +2208,42 @@ components:
           type: integer
         content:
           type: string
+        lessonNumber:
+          type: integer
+        pagesFrom:
+          type: integer
+        pagesTo:
+          type: integer
+
+    ClassDocumentItem:
+      type: object
+      required: [id, classId, type, title, createdAt]
+      properties:
+        id:
+          type: integer
+        classId:
+          type: integer
+        teacherId:
+          type: integer
+          nullable: true
+        type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        fileName:
+          type: string
+          nullable: true
+        fileUrl:
+          type: string
+          nullable: true
+        fileSize:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
 
     RegisterInput:
       type: object
@@ -2842,6 +2946,15 @@ components:
         teacherId:
           type: integer
           nullable: true
+        lessonNumber:
+          type: integer
+          nullable: true
+        pagesFrom:
+          type: integer
+          nullable: true
+        pagesTo:
+          type: integer
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -2870,6 +2983,12 @@ components:
           type: integer
         content:
           type: string
+        lessonNumber:
+          type: integer
+        pagesFrom:
+          type: integer
+        pagesTo:
+          type: integer
 
     GenerateLessonsInput:
       type: object

@@ -19,6 +19,9 @@ export const lessonsTable = pgTable("lessons", {
   classId: integer("class_id")
     .references(() => classesTable.id, { onDelete: "set null" }),
   content: text("content").notNull().default(""),
+  lessonNumber: integer("lesson_number"),
+  pagesFrom: integer("pages_from"),
+  pagesTo: integer("pages_to"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

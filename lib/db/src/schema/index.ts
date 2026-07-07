@@ -11,3 +11,4 @@ export * from "./chat-messages";
 export * from "./lesson-sessions";
 export * from "./books";
 export * from "./homework";
+export * from "./class-documents";

@@ -28,6 +28,7 @@ import type {
   ChatInput,
   ChatMessageItem,
   ChatResponse,
+  ClassDocumentItem,
   ClassItem,
   CreateAdminStudentInput,
   CreateClassInput,
@@ -39,6 +40,7 @@ import type {
   CreateTeacherInput,
   CreateTeacherLessonInput,
   DashboardData,
+  DeleteClassDocument200,
   ErrorResponse,
   GenerateLessonsAI201,
   GenerateLessonsInput,
@@ -4550,6 +4552,155 @@ export function useGetClassLessons<TData = Awaited<ReturnType<typeof getClassLes
 
 
 
+
+export const getGetClassDocumentsUrl = (classId: number,) => {
+
+
+
+
+  return `/api/teacher/classes/${classId}/documents`
+}
+
+/**
+ * @summary Get documents for a class
+ */
+export const getClassDocuments = async (classId: number, options?: RequestInit): Promise<ClassDocumentItem[]> => {
+
+  return customFetch<ClassDocumentItem[]>(getGetClassDocumentsUrl(classId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClassDocumentsQueryKey = (classId: number,) => {
+    return [
+    `/api/teacher/classes/${classId}/documents`
+    ] as const;
+    }
+
+
+export const getGetClassDocumentsQueryOptions = <TData = Awaited<ReturnType<typeof getClassDocuments>>, TError = ErrorType<ErrorResponse>>(classId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClassDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClassDocumentsQueryKey(classId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClassDocuments>>> = ({ signal }) => getClassDocuments(classId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: classId !== null && classId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClassDocuments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetClassDocumentsQueryResult = NonNullable<Awaited<ReturnType<typeof getClassDocuments>>>
+export type GetClassDocumentsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get documents for a class
+ */
+
+export function useGetClassDocuments<TData = Awaited<ReturnType<typeof getClassDocuments>>, TError = ErrorType<ErrorResponse>>(
+ classId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClassDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetClassDocumentsQueryOptions(classId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteClassDocumentUrl = (classId: number,
+    docId: number,) => {
+
+
+
+
+  return `/api/teacher/classes/${classId}/documents/${docId}/delete`
+}
+
+/**
+ * @summary Delete a class document
+ */
+export const deleteClassDocument = async (classId: number,
+    docId: number, options?: RequestInit): Promise<DeleteClassDocument200> => {
+
+  return customFetch<DeleteClassDocument200>(getDeleteClassDocumentUrl(classId,docId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteClassDocumentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteClassDocument>>, TError,{classId: number;docId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteClassDocument>>, TError,{classId: number;docId: number}, TContext> => {
+
+const mutationKey = ['deleteClassDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteClassDocument>>, {classId: number;docId: number}> = (props) => {
+          const {classId,docId} = props ?? {};
+
+          return  deleteClassDocument(classId,docId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteClassDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteClassDocument>>>
+
+    export type DeleteClassDocumentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a class document
+ */
+export const useDeleteClassDocument = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteClassDocument>>, TError,{classId: number;docId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteClassDocument>>,
+        TError,
+        {classId: number;docId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteClassDocumentMutationOptions(options));
+    }
 
 export const getGetClassHomeworkUrl = (classId: number,) => {
 

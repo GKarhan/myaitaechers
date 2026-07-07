@@ -15,5 +15,8 @@ export interface TeacherLessonItem {
   content?: string;
   classId?: number;
   teacherId?: number;
+  lessonNumber?: number | null;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
   createdAt: Date;
 }
