@@ -15,7 +15,7 @@ export default function QuickSwitch() {
   };
 
   return (
-    <div className="fixed top-3 right-3 z-50 flex gap-1.5 p-2 rounded-2xl bg-black/40 border border-white/10 backdrop-blur-md shadow-xl">
+    <div className="fixed top-3 right-3 z-[9999] flex gap-1.5 p-2 rounded-2xl bg-black/40 border border-white/10 backdrop-blur-md shadow-xl">
       <span className="self-center text-[10px] text-white/40 mr-1">⚡</span>
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("admin", "admin123", "/admin")}
