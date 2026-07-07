@@ -13,6 +13,85 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface AdminStats {
+  teachers: number;
+  classes: number;
+  students: number;
+}
+
+export interface TeacherItem {
+  id: number;
+  userId: number;
+  subject: string;
+  school: string;
+  fullName: string;
+  username: string;
+  createdAt: string;
+}
+
+export interface ClassItem {
+  id: number;
+  name: string;
+  grade: string;
+  teacherId: number;
+  teacherName?: string;
+  createdAt: string;
+}
+
+export interface StudentItem {
+  id: number;
+  username: string;
+  fullName: string;
+  createdAt: string;
+}
+
+export interface CreateTeacherInput {
+  username: string;
+  password: string;
+  fullName: string;
+  subject?: string;
+  school?: string;
+}
+
+export interface UpdateTeacherInput {
+  fullName?: string;
+  subject?: string;
+  school?: string;
+}
+
+export interface CreateClassInput {
+  name: string;
+  grade?: string;
+  teacherId: number;
+}
+
+export interface CreateStudentInput {
+  username: string;
+  password: string;
+  fullName: string;
+}
+
+export interface TeacherLessonItem {
+  id: number;
+  subjectId: number;
+  title: string;
+  description?: string;
+  bloomLevel?: number;
+  content?: string;
+  classId?: number;
+  teacherId?: number;
+  createdAt: string;
+}
+
+export interface CreateTeacherLessonInput {
+  subjectId: number;
+  classId?: number;
+  title: string;
+  description?: string;
+  bloomLevel?: number;
+  content?: string;
+}
+
 export interface RegisterInput {
   /** @minLength 3 */
   username: string;
@@ -31,6 +110,7 @@ export interface UserProfile {
   id: number;
   username: string;
   fullName: string;
+  role: string;
   createdAt: string;
 }
 
@@ -368,4 +448,6 @@ export interface ProgressRecommendations {
 export type GetChatHistoryParams = {
 lessonId?: number;
 };
+
+export type GetTeacherHomework200Item = { [key: string]: unknown };
 

@@ -6,10 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface UserProfile {
-  id: number;
-  username: string;
-  fullName: string;
-  role: string;
-  createdAt: Date;
+export interface UpdateTeacherInput {
+  fullName?: string;
+  subject?: string;
+  school?: string;
 }

@@ -38,6 +38,7 @@ export const RegisterResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "role": zod.string(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -57,6 +58,7 @@ export const LoginResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "role": zod.string(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -69,6 +71,7 @@ export const GetProfileResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "role": zod.string(),
   "createdAt": zod.coerce.date()
 })
 
@@ -592,5 +595,270 @@ export const AiGradeSuggestResponse = zod.object({
   "score": zod.number(),
   "feedback": zod.string()
 })
+
+
+/**
+ * @summary Get overall statistics
+ */
+export const GetAdminStatsResponse = zod.object({
+  "teachers": zod.number(),
+  "classes": zod.number(),
+  "students": zod.number()
+})
+
+
+/**
+ * @summary List all teachers
+ */
+export const GetAdminTeachersResponseItem = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "subject": zod.string(),
+  "school": zod.string(),
+  "fullName": zod.string(),
+  "username": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetAdminTeachersResponse = zod.array(GetAdminTeachersResponseItem)
+
+
+/**
+ * @summary Create a new teacher account
+ */
+export const CreateTeacherBody = zod.object({
+  "username": zod.string(),
+  "password": zod.string(),
+  "fullName": zod.string(),
+  "subject": zod.string().optional(),
+  "school": zod.string().optional()
+})
+
+export const CreateTeacherResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "subject": zod.string(),
+  "school": zod.string(),
+  "fullName": zod.string(),
+  "username": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a teacher
+ */
+export const DeleteTeacherParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTeacherResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Update teacher info
+ */
+export const UpdateTeacherParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTeacherBody = zod.object({
+  "fullName": zod.string().optional(),
+  "subject": zod.string().optional(),
+  "school": zod.string().optional()
+})
+
+export const UpdateTeacherResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List all classes
+ */
+export const GetAdminClassesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "teacherId": zod.number(),
+  "teacherName": zod.string().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetAdminClassesResponse = zod.array(GetAdminClassesResponseItem)
+
+
+/**
+ * @summary Create a new class
+ */
+export const CreateClassBody = zod.object({
+  "name": zod.string(),
+  "grade": zod.string().optional(),
+  "teacherId": zod.number()
+})
+
+export const CreateClassResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "teacherId": zod.number(),
+  "teacherName": zod.string().optional(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a class
+ */
+export const DeleteClassParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteClassResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List all students
+ */
+export const GetAdminStudentsResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetAdminStudentsResponse = zod.array(GetAdminStudentsResponseItem)
+
+
+/**
+ * @summary Get my classes
+ */
+export const GetTeacherClassesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "teacherId": zod.number(),
+  "teacherName": zod.string().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetTeacherClassesResponse = zod.array(GetTeacherClassesResponseItem)
+
+
+/**
+ * @summary List students in a class
+ */
+export const GetClassStudentsParams = zod.object({
+  "classId": zod.coerce.number()
+})
+
+export const GetClassStudentsResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetClassStudentsResponse = zod.array(GetClassStudentsResponseItem)
+
+
+/**
+ * @summary Add a student to class
+ */
+export const AddStudentToClassParams = zod.object({
+  "classId": zod.coerce.number()
+})
+
+export const AddStudentToClassBody = zod.object({
+  "username": zod.string(),
+  "password": zod.string(),
+  "fullName": zod.string()
+})
+
+export const AddStudentToClassResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Remove student from class
+ */
+export const RemoveStudentFromClassParams = zod.object({
+  "classId": zod.coerce.number(),
+  "studentId": zod.coerce.number()
+})
+
+export const RemoveStudentFromClassResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Get my lessons
+ */
+export const GetTeacherLessonsResponseItem = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number().optional(),
+  "content": zod.string().optional(),
+  "classId": zod.number().optional(),
+  "teacherId": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetTeacherLessonsResponse = zod.array(GetTeacherLessonsResponseItem)
+
+
+/**
+ * @summary Create a lesson
+ */
+export const CreateTeacherLessonBody = zod.object({
+  "subjectId": zod.number(),
+  "classId": zod.number().optional(),
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number().optional(),
+  "content": zod.string().optional()
+})
+
+export const CreateTeacherLessonResponse = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number().optional(),
+  "content": zod.string().optional(),
+  "classId": zod.number().optional(),
+  "teacherId": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get student list for class progress view
+ */
+export const GetClassProgressParams = zod.object({
+  "classId": zod.coerce.number()
+})
+
+export const GetClassProgressResponseItem = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetClassProgressResponse = zod.array(GetClassProgressResponseItem)
+
+
+/**
+ * @summary Get homework for my lessons
+ */
+export const GetTeacherHomeworkResponseItem = zod.object({
+
+}).passthrough()
+export const GetTeacherHomeworkResponse = zod.array(GetTeacherHomeworkResponseItem)
 
 

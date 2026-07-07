@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface UserProfile {
-  id: number;
+export interface CreateTeacherInput {
   username: string;
+  password: string;
   fullName: string;
-  role: string;
-  createdAt: Date;
+  subject?: string;
+  school?: string;
 }

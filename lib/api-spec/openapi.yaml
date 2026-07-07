@@ -26,6 +26,10 @@ tags:
     description: Student progress and knowledge map operations
   - name: homework
     description: Homework management operations
+  - name: admin
+    description: Admin management operations
+  - name: teacher
+    description: Teacher dashboard operations
 paths:
   /healthz:
     get:
@@ -858,6 +862,467 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get overall statistics
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/teachers:
+    get:
+      operationId: getAdminTeachers
+      tags: [admin]
+      summary: List all teachers
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Teachers list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeacherItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createTeacher
+      tags: [admin]
+      summary: Create a new teacher account
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeacherInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/teachers/{id}/delete:
+    post:
+      operationId: deleteTeacher
+      tags: [admin]
+      summary: Delete a teacher
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/teachers/{id}:
+    put:
+      operationId: updateTeacher
+      tags: [admin]
+      summary: Update teacher info
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeacherInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/classes:
+    get:
+      operationId: getAdminClasses
+      tags: [admin]
+      summary: List all classes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Classes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClassItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createClass
+      tags: [admin]
+      summary: Create a new class
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClassInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/classes/{id}/delete:
+    post:
+      operationId: deleteClass
+      tags: [admin]
+      summary: Delete a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/students:
+    get:
+      operationId: getAdminStudents
+      tags: [admin]
+      summary: List all students
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Students list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes:
+    get:
+      operationId: getTeacherClasses
+      tags: [teacher]
+      summary: Get my classes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Classes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClassItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes/{classId}/students:
+    get:
+      operationId: getClassStudents
+      tags: [teacher]
+      summary: List students in a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Students list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: addStudentToClass
+      tags: [teacher]
+      summary: Add a student to class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStudentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes/{classId}/students/{studentId}/delete:
+    post:
+      operationId: removeStudentFromClass
+      tags: [teacher]
+      summary: Remove student from class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/lessons:
+    get:
+      operationId: getTeacherLessons
+      tags: [teacher]
+      summary: Get my lessons
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Lessons list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeacherLessonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createTeacherLesson
+      tags: [teacher]
+      summary: Create a lesson
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeacherLessonInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherLessonItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes/{classId}/progress:
+    get:
+      operationId: getClassProgress
+      tags: [teacher]
+      summary: Get student list for class progress view
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Students
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/homework:
+    get:
+      operationId: getTeacherHomework
+      tags: [teacher]
+      summary: Get homework for my lessons
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Homework list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -879,6 +1344,157 @@ components:
         error:
           type: string
       required: [error]
+
+    AdminStats:
+      type: object
+      required: [teachers, classes, students]
+      properties:
+        teachers:
+          type: integer
+        classes:
+          type: integer
+        students:
+          type: integer
+
+    TeacherItem:
+      type: object
+      required: [id, userId, subject, school, fullName, username, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        subject:
+          type: string
+        school:
+          type: string
+        fullName:
+          type: string
+        username:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ClassItem:
+      type: object
+      required: [id, name, grade, teacherId, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        grade:
+          type: string
+        teacherId:
+          type: integer
+        teacherName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    StudentItem:
+      type: object
+      required: [id, username, fullName, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        fullName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateTeacherInput:
+      type: object
+      required: [username, password, fullName]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        fullName:
+          type: string
+        subject:
+          type: string
+        school:
+          type: string
+
+    UpdateTeacherInput:
+      type: object
+      properties:
+        fullName:
+          type: string
+        subject:
+          type: string
+        school:
+          type: string
+
+    CreateClassInput:
+      type: object
+      required: [name, teacherId]
+      properties:
+        name:
+          type: string
+        grade:
+          type: string
+        teacherId:
+          type: integer
+
+    CreateStudentInput:
+      type: object
+      required: [username, password, fullName]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        fullName:
+          type: string
+
+    TeacherLessonItem:
+      type: object
+      required: [id, subjectId, title, createdAt]
+      properties:
+        id:
+          type: integer
+        subjectId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+        content:
+          type: string
+        classId:
+          type: integer
+        teacherId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateTeacherLessonInput:
+      type: object
+      required: [subjectId, title]
+      properties:
+        subjectId:
+          type: integer
+        classId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+        content:
+          type: string
 
     RegisterInput:
       type: object
@@ -914,13 +1530,15 @@ components:
 
     UserProfile:
       type: object
-      required: [id, username, fullName, createdAt]
+      required: [id, username, fullName, role, createdAt]
       properties:
         id:
           type: integer
         username:
           type: string
         fullName:
+          type: string
+        role:
           type: string
         createdAt:
           type: string

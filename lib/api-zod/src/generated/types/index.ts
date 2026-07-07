@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './adminStats';
 export * from './aiGradeSuggestion';
 export * from './aIRecommendation';
 export * from './aIRecommendationType';
@@ -16,12 +17,18 @@ export * from './bookItem';
 export * from './chatInput';
 export * from './chatMessageItem';
 export * from './chatResponse';
+export * from './classItem';
+export * from './createClassInput';
 export * from './createLessonInput';
+export * from './createStudentInput';
+export * from './createTeacherInput';
+export * from './createTeacherLessonInput';
 export * from './dashboardData';
 export * from './dashboardStats';
 export * from './errorResponse';
 export * from './generatedLesson';
 export * from './getChatHistoryParams';
+export * from './getTeacherHomework200Item';
 export * from './healthStatus';
 export * from './homeworkDetail';
 export * from './homeworkGradeInput';
@@ -44,11 +51,15 @@ export * from './recommendationItem';
 export * from './registerInput';
 export * from './startLessonInput';
 export * from './startLessonSessionInput';
+export * from './studentItem';
 export * from './subjectDetail';
 export * from './subjectListItem';
 export * from './subjectProgress';
 export * from './subjectProgressDetail';
 export * from './subjectProgressItem';
 export * from './successMessage';
+export * from './teacherItem';
+export * from './teacherLessonItem';
 export * from './topicProgressItem';
+export * from './updateTeacherInput';
 export * from './userProfile';

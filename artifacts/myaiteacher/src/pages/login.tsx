@@ -26,7 +26,10 @@ export default function Login() {
       {
         onSuccess: (data) => {
           setAuthToken(data.token);
-          setLocation("/dashboard");
+          const role = data.user?.role;
+          if (role === "admin") setLocation("/admin");
+          else if (role === "teacher") setLocation("/teacher");
+          else setLocation("/dashboard");
         },
         onError: () => {
           setError("Սխալ օգտանուն կամ գաղտնաբառ");

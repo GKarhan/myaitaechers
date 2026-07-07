@@ -9,6 +9,8 @@ import chatRouter from "./chat";
 import booksRouter from "./books";
 import homeworkRouter from "./homework";
 import progressRouter from "./progress";
+import adminRouter from "./admin";
+import teacherRouter from "./teacher";
 
 const router: IRouter = Router();
 
@@ -22,5 +24,7 @@ router.use(chatRouter);
 router.use(booksRouter);
 router.use(homeworkRouter);
 router.use(progressRouter);
+router.use(adminRouter);
+router.use(teacherRouter);
 
 export default router;

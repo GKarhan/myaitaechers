@@ -37,7 +37,7 @@ router.post("/auth/register", async (req, res) => {
     .values({ username, passwordHash, fullName })
     .returning();
 
-  const token = signToken(user.id);
+  const token = signToken(user.id, user.role);
 
   res.status(201).json({
     token,
@@ -76,7 +76,7 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
 
-  const token = signToken(user.id);
+  const token = signToken(user.id, user.role);
 
   res.json({
     token,
@@ -84,6 +84,7 @@ router.post("/auth/login", async (req, res) => {
       id: user.id,
       username: user.username,
       fullName: user.fullName,
+      role: user.role,
       createdAt: user.createdAt.toISOString(),
     },
   });
@@ -105,6 +106,7 @@ router.get("/auth/profile", requireAuth, async (req: AuthRequest, res) => {
     id: user.id,
     username: user.username,
     fullName: user.fullName,
+    role: user.role,
     createdAt: user.createdAt.toISOString(),
   });
 });

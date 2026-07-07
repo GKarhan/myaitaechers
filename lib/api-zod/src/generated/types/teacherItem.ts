@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface UserProfile {
+export interface TeacherItem {
   id: number;
-  username: string;
+  userId: number;
+  subject: string;
+  school: string;
   fullName: string;
-  role: string;
+  username: string;
   createdAt: Date;
 }

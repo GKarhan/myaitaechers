@@ -2,6 +2,8 @@ import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { subjectsTable } from "./subjects";
+import { usersTable } from "./users";
+import { classesTable } from "./classes";
 
 export const lessonsTable = pgTable("lessons", {
   id: serial("id").primaryKey(),
@@ -12,6 +14,11 @@ export const lessonsTable = pgTable("lessons", {
   description: text("description").notNull().default(""),
   bloomLevel: integer("bloom_level").notNull().default(1),
   phases: jsonb("phases").notNull().default([]),
+  teacherId: integer("teacher_id")
+    .references(() => usersTable.id, { onDelete: "set null" }),
+  classId: integer("class_id")
+    .references(() => classesTable.id, { onDelete: "set null" }),
+  content: text("content").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
