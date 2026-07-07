@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { setAuthTokenGetter, getGetProfileQueryKey } from "@workspace/api-client-react";
 import { useGetProfile, UserProfile } from "@workspace/api-client-react";
 
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem("myaiteacher_token");
   });
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setAuthTokenGetter(() => localStorage.getItem("myaiteacher_token"));
@@ -33,6 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (newToken: string) => {
     localStorage.setItem("myaiteacher_token", newToken);
+    // Clear cached profile so the new user's data is fetched fresh
+    queryClient.removeQueries({ queryKey: getGetProfileQueryKey() });
     setToken(newToken);
   };
 

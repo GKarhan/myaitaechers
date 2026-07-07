@@ -46,12 +46,12 @@ export default function Dashboard() {
     query: { queryKey: getGetStudentTeachersQueryKey(), enabled: !!token },
   });
 
-  // Redirect non-students to their own dashboards
+  // Redirect non-students — wait until profile is fully loaded to avoid stale-cache race
   useEffect(() => {
-    if (!user) return;
+    if (authLoading || !user) return;
     if (user.role === "admin") setLocation("/admin");
     else if (user.role === "teacher") setLocation("/teacher");
-  }, [user, setLocation]);
+  }, [user, authLoading, setLocation]);
 
   if (authLoading || dashLoading) {
     return (
