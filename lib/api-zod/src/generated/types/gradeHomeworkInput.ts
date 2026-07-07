@@ -6,4 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetTeacherHomework200Item = { [key: string]: unknown };
+export interface GradeHomeworkInput {
+  score: number;
+  feedback?: string;
+}

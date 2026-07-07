@@ -1551,7 +1551,251 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: "#/components/schemas/HomeworkItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createHomework
+      tags: [teacher]
+      summary: Assign homework to all students in a class
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHomeworkInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/schedule:
+    get:
+      operationId: getTeacherSchedule
+      tags: [teacher]
+      summary: Get teacher's schedule
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Schedule
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduleItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes/{classId}/lessons:
+    get:
+      operationId: getClassLessons
+      tags: [teacher]
+      summary: Get lessons for a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeacherClassLesson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/classes/{classId}/homework:
+    get:
+      operationId: getClassHomework
+      tags: [teacher]
+      summary: Get homework for a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Homework
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeacherHomeworkItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/lessons/{id}:
+    put:
+      operationId: updateTeacherLesson
+      tags: [teacher]
+      summary: Update a lesson
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLessonInput"
+      responses:
+        "200":
+          description: Updated lesson
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/lessons/{id}/delete:
+    post:
+      operationId: deleteTeacherLesson
+      tags: [teacher]
+      summary: Delete a lesson
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/lessons/generate:
+    post:
+      operationId: generateLessonsAI
+      tags: [teacher]
+      summary: AI-generate lessons for a class
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateLessonsInput"
+      responses:
+        "201":
+          description: Generated lessons
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/homework/{id}/grade:
+    post:
+      operationId: gradeHomework
+      tags: [teacher]
+      summary: Grade a homework submission
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GradeHomeworkInput"
+      responses:
+        "200":
+          description: Graded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeworkItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/students/{studentId}:
+    get:
+      operationId: getStudentDetail
+      tags: [teacher]
+      summary: Get student detail with homework history
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Student detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentDetail"
         "401":
           description: Unauthorized
           content:
@@ -2469,3 +2713,148 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RecommendationItem"
+
+    TeacherClassLesson:
+      type: object
+      required: [id, title, bloomLevel, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+        content:
+          type: string
+        classId:
+          type: integer
+          nullable: true
+        teacherId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateHomeworkInput:
+      type: object
+      required: [lessonId, classId, title, task]
+      properties:
+        lessonId:
+          type: integer
+        classId:
+          type: integer
+        title:
+          type: string
+        task:
+          type: string
+
+    UpdateLessonInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        bloomLevel:
+          type: integer
+        content:
+          type: string
+
+    GenerateLessonsInput:
+      type: object
+      required: [classId, subject]
+      properties:
+        classId:
+          type: integer
+        subject:
+          type: string
+        totalLessons:
+          type: integer
+
+    GradeHomeworkInput:
+      type: object
+      required: [score]
+      properties:
+        score:
+          type: integer
+        feedback:
+          type: string
+
+    StudentDetail:
+      type: object
+      required: [id, username, fullName, createdAt, homework]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        fullName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        avgScore:
+          type: integer
+          nullable: true
+        homework:
+          type: array
+          items:
+            type: object
+
+    TeacherClassItem:
+      type: object
+      required: [id, name, grade, teacherId, createdAt, studentCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        grade:
+          type: string
+        teacherId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        studentCount:
+          type: integer
+
+    TeacherHomeworkItem:
+      type: object
+      required: [id, lessonId, studentId, title, task, status, createdAt]
+      properties:
+        id:
+          type: integer
+        lessonId:
+          type: integer
+        lessonTitle:
+          type: string
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        title:
+          type: string
+        task:
+          type: string
+        status:
+          type: string
+        score:
+          type: integer
+          nullable: true
+        feedback:
+          type: string
+          nullable: true
+        answer:
+          type: string
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time

@@ -138,7 +138,7 @@ export default function HomeworkPage() {
   const onGrade = () => {
     if (!selectedHomeworkId || gradeScore === "") return;
     gradeMutation.mutate(
-      { homeworkId: selectedHomeworkId, data: { score: Number(gradeScore), feedback: gradeFeedback } },
+      { id: selectedHomeworkId, data: { score: Number(gradeScore), feedback: gradeFeedback } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetHomeworkQueryKey() });

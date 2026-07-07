@@ -549,19 +549,14 @@ export const SubmitHomeworkResponse = zod.object({
 
 
 /**
- * @summary Grade a submitted homework (teacher or AI-assisted)
+ * @summary Grade a homework submission
  */
 export const GradeHomeworkParams = zod.object({
-  "homeworkId": zod.coerce.number()
+  "id": zod.coerce.number()
 })
 
-export const gradeHomeworkBodyScoreMin = 0;
-export const gradeHomeworkBodyScoreMax = 100;
-
-
-
 export const GradeHomeworkBody = zod.object({
-  "score": zod.number().min(gradeHomeworkBodyScoreMin).max(gradeHomeworkBodyScoreMax),
+  "score": zod.number(),
   "feedback": zod.string().optional()
 })
 
@@ -573,11 +568,8 @@ export const GradeHomeworkResponse = zod.object({
   "title": zod.string(),
   "task": zod.string(),
   "level": zod.string(),
-  "answer": zod.string().nullish(),
-  "fileUrl": zod.string().nullish(),
-  "score": zod.number().nullish(),
-  "feedback": zod.string().nullish(),
   "status": zod.string(),
+  "score": zod.number().nullish(),
   "submittedAt": zod.coerce.date().nullish(),
   "gradedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
@@ -998,8 +990,162 @@ export const GetClassProgressResponse = zod.array(GetClassProgressResponseItem)
  * @summary Get homework for my lessons
  */
 export const GetTeacherHomeworkResponseItem = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string(),
+  "subjectName": zod.string(),
+  "title": zod.string(),
+  "task": zod.string(),
+  "level": zod.string(),
+  "status": zod.string(),
+  "score": zod.number().nullish(),
+  "submittedAt": zod.coerce.date().nullish(),
+  "gradedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetTeacherHomeworkResponse = zod.array(GetTeacherHomeworkResponseItem)
+
+
+/**
+ * @summary Assign homework to all students in a class
+ */
+export const CreateHomeworkBody = zod.object({
+  "lessonId": zod.number(),
+  "classId": zod.number(),
+  "title": zod.string(),
+  "task": zod.string()
+})
+
+export const CreateHomeworkResponse = zod.object({
 
 }).passthrough()
-export const GetTeacherHomeworkResponse = zod.array(GetTeacherHomeworkResponseItem)
+
+
+/**
+ * @summary Get teacher's schedule
+ */
+export const GetTeacherScheduleResponseItem = zod.object({
+  "id": zod.number(),
+  "classId": zod.number(),
+  "className": zod.string().optional(),
+  "day": zod.string(),
+  "time": zod.string(),
+  "subject": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const GetTeacherScheduleResponse = zod.array(GetTeacherScheduleResponseItem)
+
+
+/**
+ * @summary Get lessons for a class
+ */
+export const GetClassLessonsParams = zod.object({
+  "classId": zod.coerce.number()
+})
+
+export const GetClassLessonsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number(),
+  "content": zod.string().optional(),
+  "classId": zod.number().nullish(),
+  "teacherId": zod.number().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetClassLessonsResponse = zod.array(GetClassLessonsResponseItem)
+
+
+/**
+ * @summary Get homework for a class
+ */
+export const GetClassHomeworkParams = zod.object({
+  "classId": zod.coerce.number()
+})
+
+export const GetClassHomeworkResponseItem = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string().optional(),
+  "studentId": zod.number(),
+  "studentName": zod.string().optional(),
+  "title": zod.string(),
+  "task": zod.string(),
+  "status": zod.string(),
+  "score": zod.number().nullish(),
+  "feedback": zod.string().nullish(),
+  "answer": zod.string().nullish(),
+  "submittedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetClassHomeworkResponse = zod.array(GetClassHomeworkResponseItem)
+
+
+/**
+ * @summary Update a lesson
+ */
+export const UpdateTeacherLessonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTeacherLessonBody = zod.object({
+  "title": zod.string().optional(),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number().optional(),
+  "content": zod.string().optional()
+})
+
+export const UpdateTeacherLessonResponse = zod.object({
+  "id": zod.number(),
+  "lesson": zod.string(),
+  "score": zod.number(),
+  "status": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a lesson
+ */
+export const DeleteTeacherLessonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTeacherLessonResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary AI-generate lessons for a class
+ */
+export const GenerateLessonsAIBody = zod.object({
+  "classId": zod.number(),
+  "subject": zod.string(),
+  "totalLessons": zod.number().optional()
+})
+
+export const GenerateLessonsAIResponse = zod.object({
+
+}).passthrough()
+
+
+/**
+ * @summary Get student detail with homework history
+ */
+export const GetStudentDetailParams = zod.object({
+  "studentId": zod.coerce.number()
+})
+
+export const GetStudentDetailResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "avgScore": zod.number().nullish(),
+  "homework": zod.array(zod.object({
+
+}).passthrough())
+})
 
 

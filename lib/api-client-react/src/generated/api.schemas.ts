@@ -479,6 +479,78 @@ export interface ProgressRecommendations {
   recommendations: RecommendationItem[];
 }
 
+export interface TeacherClassLesson {
+  id: number;
+  title: string;
+  description?: string;
+  bloomLevel: number;
+  content?: string;
+  classId?: number | null;
+  teacherId?: number | null;
+  createdAt: string;
+}
+
+export interface CreateHomeworkInput {
+  lessonId: number;
+  classId: number;
+  title: string;
+  task: string;
+}
+
+export interface UpdateLessonInput {
+  title?: string;
+  description?: string;
+  bloomLevel?: number;
+  content?: string;
+}
+
+export interface GenerateLessonsInput {
+  classId: number;
+  subject: string;
+  totalLessons?: number;
+}
+
+export interface GradeHomeworkInput {
+  score: number;
+  feedback?: string;
+}
+
+export type StudentDetailHomeworkItem = { [key: string]: unknown };
+
+export interface StudentDetail {
+  id: number;
+  username: string;
+  fullName: string;
+  createdAt: string;
+  avgScore?: number | null;
+  homework: StudentDetailHomeworkItem[];
+}
+
+export interface TeacherClassItem {
+  id: number;
+  name: string;
+  grade: string;
+  teacherId: number;
+  createdAt: string;
+  studentCount: number;
+}
+
+export interface TeacherHomeworkItem {
+  id: number;
+  lessonId: number;
+  lessonTitle?: string;
+  studentId: number;
+  studentName?: string;
+  title: string;
+  task: string;
+  status: string;
+  score?: number | null;
+  feedback?: string | null;
+  answer?: string | null;
+  submittedAt?: string | null;
+  createdAt: string;
+}
+
 export type GetChatHistoryParams = {
 lessonId?: number;
 };
@@ -487,5 +559,7 @@ export type GetAdminStudentsParams = {
 classId?: number;
 };
 
-export type GetTeacherHomework200Item = { [key: string]: unknown };
+export type CreateHomework201 = { [key: string]: unknown };
+
+export type GenerateLessonsAI201 = { [key: string]: unknown };
 
