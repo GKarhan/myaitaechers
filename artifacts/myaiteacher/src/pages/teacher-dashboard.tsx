@@ -77,14 +77,18 @@ export default function TeacherDashboard() {
   const gradeHomework = useGradeHomework();
 
   // ── student form ──────────────────────────────────────────────────────────
-  const [studentForm, setStudentForm] = useState({ username: "", password: "", fullName: "" });
+  const [studentForm, setStudentForm] = useState({ fullName: "", email: "", age: "" });
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [studentError, setStudentError] = useState("");
 
   const handleAddStudent = (e: React.FormEvent) => {
     e.preventDefault(); if (!selectedClass) return; setStudentError("");
-    addStudent.mutate({ classId: selectedClass.id, data: { username: studentForm.username, password: studentForm.password, fullName: studentForm.fullName } }, {
-      onSuccess: () => { setShowStudentForm(false); setStudentForm({ username: "", password: "", fullName: "" }); qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }); },
+    addStudent.mutate({ classId: selectedClass.id, data: {
+      fullName: studentForm.fullName,
+      email: (studentForm as any).email || undefined,
+      age: (studentForm as any).age ? parseInt((studentForm as any).age) : undefined,
+    } as any }, {
+      onSuccess: () => { setShowStudentForm(false); setStudentForm({ fullName: "", email: "", age: "" } as any); qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }); },
       onError: () => setStudentError("Սխալ"),
     });
   };
@@ -154,7 +158,6 @@ export default function TeacherDashboard() {
   const btnGhost = "px-3 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors";
   const btnDanger = "px-3 py-1 rounded-lg text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors";
 
-  const DAYS_ORDER = ["Երկuшabti", "Yerekшabti", "Chorekшabti", "Hingшabti", "Urbat", "Шabat"];
 
   // ── STUDENT DETAIL VIEW ───────────────────────────────────────────────────
   if (mainView === "student" && selectedStudentId) {
@@ -227,23 +230,24 @@ export default function TeacherDashboard() {
                 <form onSubmit={handleAddStudent} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
                   {studentError && <p className="text-destructive text-xs">{studentError}</p>}
                   <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs text-muted-foreground">Անուն Ազգանուն *</label><input value={studentForm.fullName} onChange={e => setStudentForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} /></div>
-                    <div><label className="text-xs text-muted-foreground">Օգտանուն *</label><input value={studentForm.username} onChange={e => setStudentForm(f => ({ ...f, username: e.target.value }))} required className={inputCls} /></div>
-                    <div className="col-span-2"><label className="text-xs text-muted-foreground">Գաղտնաբառ *</label><input type="password" value={studentForm.password} onChange={e => setStudentForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
+                    <div className="col-span-2"><label className="text-xs text-muted-foreground">Аnun Аzganun *</label><input value={studentForm.fullName} onChange={e => setStudentForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="example" /></div>
+                    <div><label className="text-xs text-muted-foreground">Email</label><input type="email" value={(studentForm as any).email} onChange={e => setStudentForm(f => ({ ...f, email: e.target.value } as any))} className={inputCls} placeholder="example@mail.com" /></div>
+                    <div><label className="text-xs text-muted-foreground">Տariq (amixin)</label><input type="number" min="5" max="25" value={(studentForm as any).age} onChange={e => setStudentForm(f => ({ ...f, age: e.target.value } as any))} className={inputCls} placeholder="14" /></div>
                   </div>
+                  <p className="text-xs text-muted-foreground/70">Гаjtnabarы klini "student123" · Оgтanunы avtоmat kerp klini</p>
                   <div className="flex gap-2">
-                    <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>{addStudent.isPending ? "..." : "Ավելացնել"}</button>
-                    <button type="button" onClick={() => setShowStudentForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
+                    <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>{addStudent.isPending ? "..." : "Avelacel"}</button>
+                    <button type="button" onClick={() => setShowStudentForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Chegharkel</button>
                   </div>
                 </form>
               )}
               <div className="space-y-2">
-                {students.length === 0 && <p className="text-muted-foreground text-sm py-6 text-center">Ashakert chka</p>}
+                {students.length === 0 && <p className="text-muted-foreground text-sm py-6 text-center">Аshakert չkа</p>}
                 {students.map((s) => (
                   <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                     <div>
                       <div className="font-medium">{s.fullName}</div>
-                      <div className="text-xs text-muted-foreground">{s.username}</div>
+                      <div className="text-xs text-muted-foreground">{(s as any).email || s.username}{(s as any).age ? ` · ${(s as any).age} t.` : ""}</div>
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>🔍 Մանրամասն</button>

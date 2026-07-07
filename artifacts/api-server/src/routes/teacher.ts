@@ -54,7 +54,7 @@ router.get("/teacher/classes/:classId/students", requireTeacher, async (req: Aut
   if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
 
   const members = await db
-    .select({ id: usersTable.id, username: usersTable.username, fullName: usersTable.fullName, createdAt: usersTable.createdAt })
+    .select({ id: usersTable.id, username: usersTable.username, fullName: usersTable.fullName, email: usersTable.email, age: usersTable.age, createdAt: usersTable.createdAt })
     .from(classStudentsTable)
     .innerJoin(usersTable, eq(classStudentsTable.studentId, usersTable.id))
     .where(eq(classStudentsTable.classId, classId));
@@ -65,14 +65,20 @@ router.get("/teacher/classes/:classId/students", requireTeacher, async (req: Aut
 router.post("/teacher/classes/:classId/students", requireTeacher, async (req: AuthRequest, res) => {
   const classId = parseInt(String(req.params.classId));
   if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
-  const { username, password, fullName } = req.body as { username: string; password: string; fullName: string };
-  if (!username || !password || !fullName) { res.status(400).json({ error: "username, password, fullName պարtаdir en" }); return; }
-  const existing = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
-  if (existing.length > 0) { res.status(400).json({ error: "Ayс ogtanunn ardenа goytun uni" }); return; }
-  const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db.insert(usersTable).values({ username, passwordHash, fullName, role: "student" }).returning();
+  const { fullName, email, age } = req.body as { fullName: string; email?: string; age?: number };
+  if (!fullName) { res.status(400).json({ error: "fullName պարтадіr e" }); return; }
+  const base = email
+    ? email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, ".")
+    : fullName.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "");
+  let username = base || "student";
+  let counter = 1;
+  while ((await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, username)).limit(1)).length > 0) {
+    username = `${base}${counter++}`;
+  }
+  const passwordHash = await bcrypt.hash("student123", 10);
+  const [user] = await db.insert(usersTable).values({ username, passwordHash, fullName, role: "student", email: email ?? null, age: age ?? null }).returning();
   await db.insert(classStudentsTable).values({ classId, studentId: user.id });
-  res.status(201).json({ id: user.id, username: user.username, fullName: user.fullName, createdAt: user.createdAt });
+  res.status(201).json({ id: user.id, username: user.username, fullName: user.fullName, email: user.email, age: user.age, createdAt: user.createdAt });
 });
 
 router.post("/teacher/classes/:classId/students/:studentId/delete", requireTeacher, async (req: AuthRequest, res) => {
