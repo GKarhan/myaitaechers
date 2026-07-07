@@ -261,14 +261,14 @@ export default function AdminDashboard() {
                       <tr className="border-b border-white/10 text-muted-foreground text-left">
                         <th className="pb-3 pr-4 pl-4 pt-3">Օր</th>
                         <th className="pb-3 pr-4 pt-3">Ժամ</th>
-                        <th className="pb-3 pr-4 pt-3">Առաջծա</th>
+                        <th className="pb-3 pr-4 pt-3">Առարկա</th>
                         <th className="pb-3 pr-4 pt-3">Դասարան</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {schedule.length === 0 && (
                         <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">
-                          Դասացուցակ դատարկ ե ·{" "}
+                          Դասացուցակ չկա ·{" "}
                           <button onClick={() => setTab("schedule")} className="text-primary hover:underline">Ավելացել դաս</button>
                         </td></tr>
                       )}
@@ -310,10 +310,10 @@ export default function AdminDashboard() {
                     <input type="email" value={tForm.email} onChange={e => setTForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="teacher@school.am" />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Առաջծա դասավանդումից</label>
+                    <label className="text-xs text-muted-foreground">Առարկա դասավանդումից</label>
                     {scheduleSubjects.length > 0 ? (
                       <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls}>
-                        <option value="">Ընտրեկ Առաջծան</option>
+                        <option value="">Ընտրեկ Առարկան</option>
                         {scheduleSubjects.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     ) : (
@@ -323,7 +323,7 @@ export default function AdminDashboard() {
                           value={tForm.subject}
                           onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))}
                           className={inputCls}
-                          placeholder="Առաջծա Անկալ Դասացուցակից"
+                          placeholder="Առարկա Անկալ Դասացուցակից"
                         />
                         <datalist id="subjects-list">
                           {scheduleSubjects.map(s => <option key={s} value={s} />)}
@@ -353,10 +353,10 @@ export default function AdminDashboard() {
                     <input type="email" value={editTeacher.email} onChange={e => setEditTeacher(t => t && ({ ...t, email: e.target.value }))} className={inputCls} />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Առաջծա</label>
+                    <label className="text-xs text-muted-foreground">Առարկա</label>
                     {scheduleSubjects.length > 0 ? (
                       <select value={editTeacher.subject} onChange={e => setEditTeacher(t => t && ({ ...t, subject: e.target.value }))} className={inputCls}>
-                        <option value="">Ընտրեկ Առաջծան</option>
+                        <option value="">Ընտրեկ Առարկան</option>
                         {scheduleSubjects.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     ) : (
@@ -509,7 +509,7 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Առաջծա *</label>
+                    <label className="text-xs text-muted-foreground">Առարկա *</label>
                     <input value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} />
                   </div>
                   <div>
@@ -533,7 +533,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="text-xs text-muted-foreground">Օր</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
                   <div><label className="text-xs text-muted-foreground">Ժամ</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Առաջծա</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Առարկա</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
                   <div><label className="text-xs text-muted-foreground">Դասարան</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 </div>
                 <div className="flex gap-2">
@@ -549,13 +549,13 @@ export default function AdminDashboard() {
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
                     <th className="pb-3 pr-4">Օր</th>
                     <th className="pb-3 pr-4">Ժամ</th>
-                    <th className="pb-3 pr-4">Առաջծա</th>
+                    <th className="pb-3 pr-4">Առարկա</th>
                     <th className="pb-3 pr-4">Դասարան</th>
                     <th className="pb-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասացուցակ դատարկ ե</td></tr>}
+                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասացուցակ չկա</td></tr>}
                   {schedule.map((s) => (
                     <tr key={s.id} className="hover:bg-white/2">
                       <td className="py-3 pr-4 font-medium">{s.day}</td>
