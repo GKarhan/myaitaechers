@@ -130,23 +130,24 @@ router.get("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => 
 });
 
 router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => {
-  const { subjectId, classId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo } = req.body as {
-    subjectId?: number; classId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
-    lessonNumber?: number; pagesFrom?: number; pagesTo?: number;
+  const { subjectId, classId, courseId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day } = req.body as {
+    subjectId?: number; classId?: number; courseId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
+    lessonNumber?: number; pagesFrom?: number; pagesTo?: number; month?: number; day?: number;
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
   let resolvedSubjectId = subjectId;
-  if (!resolvedSubjectId && classId) {
+  if (!resolvedSubjectId) {
     const { subjectsTable } = await import("@workspace/db");
     const [s] = await db.select().from(subjectsTable).limit(1);
-    resolvedSubjectId = s?.id ?? 1;
+    resolvedSubjectId = s?.id;
   }
-  if (!resolvedSubjectId) resolvedSubjectId = 1;
   const [lesson] = await db.insert(lessonsTable).values({
     subjectId: resolvedSubjectId, title,
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, classId: classId ?? null,
+    courseId: courseId ?? null,
     lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,
+    month: month ?? null, day: day ?? null,
   }).returning();
   res.status(201).json(lesson);
 });
@@ -154,9 +155,9 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
 router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo } = req.body as {
+  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day } = req.body as {
     title?: string; description?: string; bloomLevel?: number; content?: string;
-    lessonNumber?: number; pagesFrom?: number; pagesTo?: number;
+    lessonNumber?: number; pagesFrom?: number; pagesTo?: number; month?: number; day?: number;
   };
   const updated = await db.update(lessonsTable)
     .set({
@@ -167,6 +168,8 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
       ...(lessonNumber !== undefined && { lessonNumber }),
       ...(pagesFrom !== undefined && { pagesFrom }),
       ...(pagesTo !== undefined && { pagesTo }),
+      ...(month !== undefined && { month }),
+      ...(day !== undefined && { day }),
     })
     .where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!)))
     .returning();
