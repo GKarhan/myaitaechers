@@ -9,6 +9,7 @@
 export interface CreateTeacherLessonInput {
   subjectId?: number;
   classId?: number;
+  courseId?: number;
   title: string;
   description?: string;
   bloomLevel?: number;
@@ -16,4 +17,6 @@ export interface CreateTeacherLessonInput {
   lessonNumber?: number;
   pagesFrom?: number;
   pagesTo?: number;
+  month?: number;
+  day?: number;
 }

@@ -14,4 +14,7 @@ export interface UpdateLessonInput {
   lessonNumber?: number;
   pagesFrom?: number;
   pagesTo?: number;
+  month?: number;
+  day?: number;
+  courseId?: number;
 }

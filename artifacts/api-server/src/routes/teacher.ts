@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable } from "@workspace/db";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable } from "@workspace/db";
 import { eq, and, inArray, avg, count } from "drizzle-orm";
 import { requireTeacher, type AuthRequest } from "../middlewares/auth";
 
@@ -360,6 +360,90 @@ router.get("/teacher/classes/:classId/progress", requireTeacher, async (req: Aut
     const avg = graded.length > 0 ? Math.round(graded.reduce((sum, h) => sum + (h.score ?? 0), 0) / graded.length) : null;
     return { ...s, homeworkCount: hw.length, avgScore: avg };
   }));
+});
+
+// ─── COURSES ──────────────────────────────────────────────────────────────────
+
+router.get("/teacher/classes/:classId/courses", requireTeacher, async (req: AuthRequest, res) => {
+  const classId = parseInt(String(req.params.classId));
+  if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
+  const courses = await db.select().from(coursesTable).where(eq(coursesTable.classId, classId));
+  const withCounts = await Promise.all(courses.map(async (c) => {
+    const [{ value }] = await db.select({ value: count() }).from(lessonsTable).where(eq(lessonsTable.courseId, c.id));
+    return { ...c, lessonCount: Number(value) };
+  }));
+  res.json(withCounts);
+});
+
+router.post("/teacher/classes/:classId/courses", requireTeacher, async (req: AuthRequest, res) => {
+  const classId = parseInt(String(req.params.classId));
+  if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
+  const { name, description } = req.body as { name: string; description?: string };
+  if (!name) { res.status(400).json({ error: "name partadir e" }); return; }
+  const [course] = await db.insert(coursesTable).values({ classId, teacherId: req.userId!, name, description: description ?? "" }).returning();
+  res.status(201).json({ ...course, lessonCount: 0 });
+});
+
+router.get("/teacher/courses/:courseId", requireTeacher, async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
+  const [course] = await db.select().from(coursesTable).where(eq(coursesTable.id, courseId)).limit(1);
+  if (!course) { res.status(404).json({ error: "Chi gtnvel" }); return; }
+  res.json(course);
+});
+
+router.post("/teacher/courses/:courseId/delete", requireTeacher, async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
+  await db.delete(coursesTable).where(eq(coursesTable.id, courseId));
+  res.json({ message: "Njujy djnjvec" });
+});
+
+// ─── RESOURCES ────────────────────────────────────────────────────────────────
+
+router.get("/teacher/courses/:courseId/resources", requireTeacher, async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
+  const resources = await db.select().from(resourcesTable).where(eq(resourcesTable.courseId, courseId));
+  res.json(resources);
+});
+
+router.post("/teacher/courses/:courseId/resources", requireTeacher, upload.single("file"), async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
+  const { type, title, description } = req.body as { type: string; title: string; description?: string };
+  if (!type || !title) { res.status(400).json({ error: "type, title partadir en" }); return; }
+  const file = req.file;
+  const [resource] = await db.insert(resourcesTable).values({
+    courseId, teacherId: req.userId!, type, title,
+    description: description ?? "",
+    fileName: file?.originalname ?? null,
+    fileUrl: file ? `/api/teacher/documents/files/${file.filename}` : null,
+    fileSize: file?.size ?? null,
+  }).returning();
+  res.status(201).json(resource);
+});
+
+router.post("/teacher/courses/:courseId/resources/:resourceId/delete", requireTeacher, async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  const resourceId = parseInt(String(req.params.resourceId));
+  if (isNaN(courseId) || isNaN(resourceId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [resource] = await db.select().from(resourcesTable).where(eq(resourcesTable.id, resourceId)).limit(1);
+  if (resource?.fileUrl) {
+    const fname = resource.fileUrl.split("/").pop();
+    if (fname) { try { fs.unlinkSync(path.join(uploadsDir, fname)); } catch { /* ignore */ } }
+  }
+  await db.delete(resourcesTable).where(and(eq(resourcesTable.id, resourceId), eq(resourcesTable.courseId, courseId)));
+  res.json({ message: "Njujy djnjvec" });
+});
+
+// ─── COURSE LESSONS ───────────────────────────────────────────────────────────
+
+router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
+  const lessons = await db.select().from(lessonsTable).where(eq(lessonsTable.courseId, courseId));
+  res.json(lessons);
 });
 
 // ─── CLASS DOCUMENTS ──────────────────────────────────────────────────────────

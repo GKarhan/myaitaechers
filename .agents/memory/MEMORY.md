@@ -1,1 +1,1 @@
-- [React Query queryKey requirement](rq-querykey-required.md) — useGetXxxById hooks require queryKey in query options, not just enabled; omitting it causes TS2741.
+- [Armenian text encoding](armenian-encoding.md) — correct Armenian must be extracted from admin-dashboard.tsx or spec file via Python; never type transliterated Latin/Cyrillic by hand

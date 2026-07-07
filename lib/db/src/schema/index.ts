@@ -12,3 +12,5 @@ export * from "./lesson-sessions";
 export * from "./books";
 export * from "./homework";
 export * from "./class-documents";
+export * from "./courses";
+export * from "./resources";

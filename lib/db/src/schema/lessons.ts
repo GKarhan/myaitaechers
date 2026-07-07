@@ -22,6 +22,9 @@ export const lessonsTable = pgTable("lessons", {
   lessonNumber: integer("lesson_number"),
   pagesFrom: integer("pages_from"),
   pagesTo: integer("pages_to"),
+  month: integer("month"),
+  day: integer("day"),
+  courseId: integer("course_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

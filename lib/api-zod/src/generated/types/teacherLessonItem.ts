@@ -14,9 +14,12 @@ export interface TeacherLessonItem {
   bloomLevel?: number;
   content?: string;
   classId?: number;
+  courseId?: number | null;
   teacherId?: number;
   lessonNumber?: number | null;
   pagesFrom?: number | null;
   pagesTo?: number | null;
+  month?: number | null;
+  day?: number | null;
   createdAt: Date;
 }

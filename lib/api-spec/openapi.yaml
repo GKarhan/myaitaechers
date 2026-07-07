@@ -1782,6 +1782,203 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /teacher/classes/{classId}/courses:
+    get:
+      operationId: getClassCourses
+      tags: [teacher]
+      summary: Get courses for a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Courses list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourseItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCourse
+      tags: [teacher]
+      summary: Create a course for a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: classId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCourseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/courses/{courseId}:
+    get:
+      operationId: getCourse
+      tags: [teacher]
+      summary: Get a single course
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Course
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/courses/{courseId}/delete:
+    post:
+      operationId: deleteCourse
+      tags: [teacher]
+      summary: Delete a course
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/courses/{courseId}/resources:
+    get:
+      operationId: getCourseResources
+      tags: [teacher]
+      summary: Get resources for a course
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resources list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/courses/{courseId}/resources/{resourceId}/delete:
+    post:
+      operationId: deleteCourseResource
+      tags: [teacher]
+      summary: Delete a course resource
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: resourceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teacher/courses/{courseId}/lessons:
+    get:
+      operationId: getCourseLessons
+      tags: [teacher]
+      summary: Get lessons for a course
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lessons list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeacherLessonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/classes/{classId}/homework:
     get:
       operationId: getClassHomework
@@ -2159,6 +2356,66 @@ components:
         subject:
           type: string
 
+    CourseItem:
+      type: object
+      required: [id, classId, name, createdAt]
+      properties:
+        id:
+          type: integer
+        classId:
+          type: integer
+        teacherId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+        lessonCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCourseInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    ResourceItem:
+      type: object
+      required: [id, courseId, type, title, createdAt]
+      properties:
+        id:
+          type: integer
+        courseId:
+          type: integer
+        teacherId:
+          type: integer
+          nullable: true
+        type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        fileName:
+          type: string
+          nullable: true
+        fileUrl:
+          type: string
+          nullable: true
+        fileSize:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
     TeacherLessonItem:
       type: object
       required: [id, subjectId, title, createdAt]
@@ -2177,6 +2434,9 @@ components:
           type: string
         classId:
           type: integer
+        courseId:
+          type: integer
+          nullable: true
         teacherId:
           type: integer
         lessonNumber:
@@ -2186,6 +2446,12 @@ components:
           type: integer
           nullable: true
         pagesTo:
+          type: integer
+          nullable: true
+        month:
+          type: integer
+          nullable: true
+        day:
           type: integer
           nullable: true
         createdAt:
@@ -2200,6 +2466,8 @@ components:
           type: integer
         classId:
           type: integer
+        courseId:
+          type: integer
         title:
           type: string
         description:
@@ -2213,6 +2481,10 @@ components:
         pagesFrom:
           type: integer
         pagesTo:
+          type: integer
+        month:
+          type: integer
+        day:
           type: integer
 
     ClassDocumentItem:
@@ -2988,6 +3260,12 @@ components:
         pagesFrom:
           type: integer
         pagesTo:
+          type: integer
+        month:
+          type: integer
+        day:
+          type: integer
+        courseId:
           type: integer
 
     GenerateLessonsInput:
