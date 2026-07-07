@@ -428,7 +428,7 @@ export default function TeacherDashboard() {
             {(["courses", "students"] as const).map(t => (
               <button key={t} onClick={() => setClassTab(t)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${classTab === t ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"}`}>
-                {t === "courses" ? "📖 Դասընթացներ" : "👨‍🎓 Աշակerter"}
+                {t === "courses" ? "📖 Դասընթացներ" : "👨‍🎓 Աշակերտներ"}
               </button>
             ))}
           </div>
@@ -437,8 +437,8 @@ export default function TeacherDashboard() {
           {classTab === "courses" && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">Դasyntatsner ({classCourses.length})</h2>
-                <button onClick={() => setShowCourseForm(f => !f)} className={btnPrimary}>+ Avaelacnel</button>
+                <h2 className="font-semibold">Դասընթացներ ({classCourses.length})</h2>
+                <button onClick={() => setShowCourseForm(f => !f)} className={btnPrimary}>+ Ավելացնել</button>
               </div>
 
               {showCourseForm && (
@@ -486,9 +486,9 @@ export default function TeacherDashboard() {
               </div>
               {showStudentForm && (
                 <form onSubmit={handleAddStudent} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                  <h3 className="font-medium text-sm">Nor аshаkert</h3>
+                  <h3 className="font-medium text-sm">Նոյ Աշակերտ</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2"><label className="text-xs text-muted-foreground">Аnun Аzgаnun *</label><input value={studentForm.fullName} onChange={e => setStudentForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Аshakerti аnuny" /></div>
+                    <div className="col-span-2"><label className="text-xs text-muted-foreground">Անուն Ազգանուն</label><input value={studentForm.fullName} onChange={e => setStudentForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Աշակերտի անունը" /></div>
                     <div><label className="text-xs text-muted-foreground">Email</label><input type="email" value={(studentForm as any).email} onChange={e => setStudentForm(f => ({ ...f, email: e.target.value } as any))} className={inputCls} placeholder="example@mail.com" /></div>
                     <div><label className="text-xs text-muted-foreground">Таriq</label><input type="number" min="5" max="25" value={(studentForm as any).age} onChange={e => setStudentForm(f => ({ ...f, age: e.target.value } as any))} className={inputCls} placeholder="14" /></div>
                   </div>
@@ -500,7 +500,7 @@ export default function TeacherDashboard() {
                 </form>
               )}
               <div className="space-y-2">
-                {students.length === 0 && <p className="text-muted-foreground text-sm py-6 text-center">Аshаkert chkа</p>}
+                {students.length === 0 && <p className="text-muted-foreground text-sm py-6 text-center">Աշակերտ չկա</p>}
                 {students.map(s => (
                   <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                     <div>
