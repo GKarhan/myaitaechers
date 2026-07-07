@@ -5,36 +5,26 @@ import QuickSwitch from "@/components/QuickSwitch";
 import {
   useGetDashboard,
   useGetProgress,
-  useGetHomework,
   useGetStudentSchedule,
   useGetStudentTeachers,
-  useGetStudentHomeworkSummary,
-  useSubmitHomework,
   useUpdateStudentProfile,
   getGetDashboardQueryKey,
   getGetProgressQueryKey,
-  getGetHomeworkQueryKey,
   getGetStudentScheduleQueryKey,
   getGetStudentTeachersQueryKey,
-  getGetStudentHomeworkSummaryQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
 
-type Tab = "overview" | "schedule" | "subjects" | "homework" | "teachers" | "profile";
+type Tab = "overview" | "schedule" | "subjects" | "teachers" | "profile";
 
-const DAYS = ["Երկուշաբթի", "Երեքշաբթի", "Չորեքշաբթի", "Հինգշաբթի", "Ուրբաթ", "Շաբաթ"];
+const DAYS = ["Երկuшаbti", "Erекshаbti", "Chorекshаbti", "Hingshаbti", "Оurбаt", "Shаbаt"];
 
 export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
-  const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("overview");
   const [profileForm, setProfileForm] = useState({ fullName: "", email: "", age: "", bio: "" });
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileError, setProfileError] = useState("");
-  const [submitHwId, setSubmitHwId] = useState<number | null>(null);
-  const [answerText, setAnswerText] = useState("");
-  const submitMutation = useSubmitHomework();
   const updateProfile = useUpdateStudentProfile();
 
   useEffect(() => {
@@ -45,8 +35,6 @@ export default function Dashboard() {
   const { data: progressData } = useGetProgress({ query: { queryKey: getGetProgressQueryKey(), enabled: !!token } });
   const { data: schedule = [] } = useGetStudentSchedule({ query: { queryKey: getGetStudentScheduleQueryKey(), enabled: !!token } });
   const { data: teachers = [] } = useGetStudentTeachers({ query: { queryKey: getGetStudentTeachersQueryKey(), enabled: !!token } });
-  const { data: hwSummary } = useGetStudentHomeworkSummary({ query: { queryKey: getGetStudentHomeworkSummaryQueryKey(), enabled: !!token } });
-  const { data: homeworkList = [] } = useGetHomework({ query: { queryKey: getGetHomeworkQueryKey(), enabled: !!token && tab === "homework" } });
 
   if (authLoading || dashLoading) {
     return (
@@ -57,45 +45,33 @@ export default function Dashboard() {
   }
   if (!user) return null;
 
-  // today's schedule — hy-AM locale weekday → Armenian day name
   const todayArm = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
-  // Normalise: drop trailing dot if any, lowercase compare
   const todayItems = schedule.filter((s) =>
     s.day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "")
   );
 
-  // homework counts (prefer hwSummary if available, fallback to homeworkList)
-  const notSubmitted = hwSummary?.notSubmitted ?? homeworkList.filter(h => h.status === "not_submitted").length;
-  const pendingHw = hwSummary?.pending ?? homeworkList.filter(h => h.status === "pending").length;
-  const gradedHw = hwSummary?.graded ?? homeworkList.filter(h => h.status === "graded").length;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!submitHwId) return;
-    submitMutation.mutate({ homeworkId: submitHwId, data: { answer: answerText } }, {
-      onSuccess: () => {
-        setSubmitHwId(null);
-        setAnswerText("");
-        qc.invalidateQueries({ queryKey: getGetStudentHomeworkSummaryQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetHomeworkQueryKey() });
-      },
-    });
-  };
-
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: "🏠 Ընդհանուր" },
-    { key: "schedule", label: "📅 Դասացուցակ" },
-    { key: "subjects", label: "📚 Առարկաներ" },
-    { key: "homework", label: `📝 Տնային${notSubmitted > 0 ? ` (${notSubmitted})` : ""}` },
-    { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
+    { key: "overview",  label: "🏠 Ընդհանուր" },
+    { key: "schedule",  label: "📅 Դասացուցակ" },
+    { key: "subjects",  label: "📚 Առարկաներ" },
+    { key: "teachers",  label: "👨‍🏫 Ուսուցիչներ" },
+    { key: "profile",   label: "📋 Անձնական տվյալներ" },
+  ];
 
-    { key: "profile", label: "📋 Անձnakan" },  ];
+  // Match a schedule item's subject name to a subject id from dashboard data
+  const findSubjectId = (subjectName: string): number | null => {
+    const match = (dashboard?.subjects ?? []).find(
+      (s) => s.subject.toLowerCase() === subjectName.toLowerCase()
+    );
+    return match?.id ?? null;
+  };
 
   return (
     <div className="min-h-[100dvh] bg-background text-white">
       <QuickSwitch />
+
       {/* Header */}
       <header className="border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -109,40 +85,34 @@ export default function Dashboard() {
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-6">
+
         {/* Greeting */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Բարի գալուստ, {user.fullName} 👋</h1>
-          <p className="text-muted-foreground text-sm mt-1">Ահա քո ուսման ընթացիկ առաջընթացը</p>
-        </div>
-
-        {/* Quick stats always visible */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          {[
-            { icon: "✅", label: "Ավարտված դասեր", value: dashboard?.stats.completedLessons ?? 0, color: "text-teal-400" },
-            { icon: "⭐", label: "Միջին գնահատական", value: dashboard?.stats.averageScore ?? 0, color: "text-amber-400" },
-            { icon: "📝", label: "Չներկայացված", value: notSubmitted, color: "text-red-400" },
-            { icon: "📈", label: "Առաջընթաց", value: `${dashboard?.stats.overallProgress ?? 0}%`, color: "text-primary" },
-          ].map((s) => (
-            <div key={s.label} className="bg-card/60 border border-white/10 rounded-2xl p-4">
-              <div className="text-2xl mb-1">{s.icon}</div>
-              <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-              <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
-            </div>
-          ))}
+          <p className="text-muted-foreground text-sm mt-1">Aha qo ousmann Արաջնթհաց</p>
         </div>
 
         {/* Today's schedule highlight */}
         {todayItems.length > 0 && (
           <div className="mb-6 bg-primary/10 border border-primary/20 rounded-2xl p-4">
-            <h3 className="text-sm font-medium text-primary mb-3">📅 Այսօր իմ դասերը</h3>
+            <h3 className="text-sm font-medium text-primary mb-3">📅 Այսորor իմ դասերը</h3>
             <div className="flex flex-wrap gap-2">
-              {todayItems.sort((a, b) => a.time.localeCompare(b.time)).map((s) => (
-                <div key={s.id} className="flex items-center gap-2 bg-background/50 border border-white/10 rounded-xl px-3 py-2">
-                  <span className="text-teal-400 font-mono text-xs font-bold">{s.time}</span>
-                  <span className="text-sm font-medium">{s.subject}</span>
-                  <span className="text-xs text-muted-foreground">· {s.className}</span>
-                </div>
-              ))}
+              {todayItems.sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
+                const sid = findSubjectId(s.subject);
+                return (
+                  <div key={s.id} className="flex items-center gap-2 bg-background/50 border border-white/10 rounded-xl px-3 py-2">
+                    <span className="text-teal-400 font-mono text-xs font-bold">{s.time}</span>
+                    <span className="text-sm font-medium">{s.subject}</span>
+                    <span className="text-xs text-muted-foreground">· {s.className}</span>
+                    {sid && (
+                      <Link href={`/subjects/${sid}`}
+                        className="px-2 py-0.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/80 transition-colors">
+                        Սovoreq
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -161,11 +131,12 @@ export default function Dashboard() {
         {tab === "overview" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+
               {/* Subjects progress */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold">Առարկաներ</h2>
-                  <button onClick={() => setTab("subjects")} className="text-xs text-primary hover:underline">Բոլոր →</button>
+                  <h2 className="font-semibold">Առarkaners</h2>
+                  <button onClick={() => setTab("subjects")} className="text-xs text-primary hover:underline">Բոլորը →</button>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {(dashboard?.subjects ?? []).slice(0, 4).map((sub) => (
@@ -176,7 +147,7 @@ export default function Dashboard() {
                         <span className="text-xs text-secondary">{Math.round(sub.averageScore)} մ.</span>
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                        <span>{sub.completedLessons}/{sub.totalLessons} դաս</span>
+                        <span>{sub.completedLessons}/{sub.totalLessons} դաs</span>
                         <span>{Math.round(sub.progressPercent)}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
@@ -185,7 +156,7 @@ export default function Dashboard() {
                     </Link>
                   ))}
                   {(dashboard?.subjects ?? []).length === 0 && (
-                    <p className="text-muted-foreground text-sm col-span-2">Առարկաներ չկան</p>
+                    <p className="text-muted-foreground text-sm col-span-2">Առarkaners chkan</p>
                   )}
                 </div>
               </div>
@@ -193,7 +164,7 @@ export default function Dashboard() {
               {/* Recent activity */}
               {(dashboard?.recentActivity ?? []).length > 0 && (
                 <div>
-                  <h2 className="font-semibold mb-4">Վերջին ակտիվություն</h2>
+                  <h2 className="font-semibold mb-4">Verji aktiveness</h2>
                   <div className="space-y-2">
                     {dashboard?.recentActivity.map((a) => (
                       <div key={a.id} className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3">
@@ -212,9 +183,10 @@ export default function Dashboard() {
 
             {/* Sidebar */}
             <div className="space-y-4">
+
               {/* Knowledge map mini */}
               <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-                <h3 className="font-semibold mb-4">🗺️ Գիտելիքի Քարտեզ</h3>
+                <h3 className="font-semibold mb-4">🗺️ Գiteligy Qartez</h3>
                 <div className="space-y-3">
                   {(progressData?.subjects ?? []).slice(0, 4).map((sub) => (
                     <div key={sub.id}>
@@ -231,27 +203,16 @@ export default function Dashboard() {
                     </div>
                   ))}
                   {(!progressData?.subjects || progressData.subjects.length === 0) && (
-                    <p className="text-muted-foreground text-xs">Տվյալներ չկան</p>
+                    <p className="text-muted-foreground text-xs">Tvyalner chkan</p>
                   )}
                 </div>
-                <Link href="/progress" className="mt-4 text-primary text-xs font-medium hover:underline block">Ամբողջական քարտեզ →</Link>
-              </div>
-
-              {/* Homework mini */}
-              <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-                <h3 className="font-semibold mb-4">📝 Տնային աշխատանք</h3>
-                <div className="space-y-2 text-sm mb-4">
-                  <div className="flex justify-between"><span className="text-red-400">Չներկայացված</span><span className="font-bold">{notSubmitted}</span></div>
-                  <div className="flex justify-between"><span className="text-amber-400">Սպասում է</span><span className="font-bold">{pendingHw}</span></div>
-                  <div className="flex justify-between"><span className="text-teal-400">Գնահատված</span><span className="font-bold">{gradedHw}</span></div>
-                </div>
-                <button onClick={() => setTab("homework")} className="text-primary text-xs font-medium hover:underline">Բոլոր տնայինները →</button>
+                <Link href="/progress" className="mt-4 text-primary text-xs font-medium hover:underline block">Amboghakan qartez →</Link>
               </div>
 
               {/* Teachers mini */}
               {teachers.length > 0 && (
                 <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-                  <h3 className="font-semibold mb-3">👨‍🏫 Իմ ուսուցիչները</h3>
+                  <h3 className="font-semibold mb-3">👨‍🏫 իմ Ուսուցիչnerе</h3>
                   <div className="space-y-2">
                     {teachers.slice(0, 3).map((t) => (
                       <div key={t.teacherId} className="flex items-center gap-2">
@@ -263,7 +224,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
-                  {teachers.length > 3 && <button onClick={() => setTab("teachers")} className="mt-3 text-primary text-xs font-medium hover:underline">Բոլոր ({teachers.length}) →</button>}
+                  {teachers.length > 3 && <button onClick={() => setTab("teachers")} className="mt-3 text-primary text-xs font-medium hover:underline">Բոլորը ({teachers.length}) →</button>}
                 </div>
               )}
             </div>
@@ -276,7 +237,7 @@ export default function Dashboard() {
             {schedule.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <div className="text-5xl mb-4">📅</div>
-                <p>Դասացուցակ չկա · Ադմինը կամ ուսուցիչը պետք է ավելացնի</p>
+                <p>Դասացուցակ չկան · Ադմինy կամ Ուսուցիչը Պետք e Ավելացնել</p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -288,37 +249,59 @@ export default function Dashboard() {
                       <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
                         {day}
                         {day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "") && (
-                          <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">Այսօր</span>
+                          <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">Այsоr</span>
                         )}
                       </h3>
                       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {items.sort((a, b) => a.time.localeCompare(b.time)).map((s) => (
-                          <div key={s.id} className="bg-card/60 border border-white/10 rounded-xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
-                              <span className="text-xs text-muted-foreground">{s.className}</span>
+                        {items.sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
+                          const sid = findSubjectId(s.subject);
+                          return (
+                            <div key={s.id} className="bg-card/60 border border-white/10 rounded-xl p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
+                                <span className="text-xs text-muted-foreground">{s.className}</span>
+                              </div>
+                              <div className="font-medium mb-1">{s.subject}</div>
+                              <div className="text-xs text-muted-foreground mb-3">👨‍🏫 {s.teacherName}</div>
+                              {sid ? (
+                                <Link href={`/subjects/${sid}`}
+                                  className="inline-block px-4 py-1.5 bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
+                                  📖 Սովորել
+                                </Link>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Դաս չկան</span>
+                              )}
                             </div>
-                            <div className="font-medium mb-1">{s.subject}</div>
-                            <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
                 })}
-                {/* Fallback: show all if none match day names */}
-                {!DAYS.some(day => schedule.some(s => s.day === day || s.day.startsWith(day.slice(0,5)))) && (
+                {/* Fallback */}
+                {!DAYS.some(day => schedule.some(s => s.day === day)) && (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {schedule.map((s) => (
-                      <div key={s.id} className="bg-card/60 border border-white/10 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
-                          <span className="text-xs text-muted-foreground">{s.day}</span>
+                    {schedule.map((s) => {
+                      const sid = findSubjectId(s.subject);
+                      return (
+                        <div key={s.id} className="bg-card/60 border border-white/10 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
+                            <span className="text-xs text-muted-foreground">{s.day}</span>
+                          </div>
+                          <div className="font-medium mb-1">{s.subject}</div>
+                          <div className="text-xs text-muted-foreground mb-3">👨‍🏫 {s.teacherName} · {s.className}</div>
+                          {sid ? (
+                            <Link href={`/subjects/${sid}`}
+                              className="inline-block px-4 py-1.5 bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
+                              📖 Սովորել
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Դաս չկան</span>
+                          )}
                         </div>
-                        <div className="font-medium mb-1">{s.subject}</div>
-                        <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName} · {s.className}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -332,7 +315,7 @@ export default function Dashboard() {
             {(dashboard?.subjects ?? []).length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <div className="text-5xl mb-4">📚</div>
-                <p>Առարկաներ չկան</p>
+                <p>Առarkaners chkan</p>
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -345,19 +328,19 @@ export default function Dashboard() {
                       <div className="flex items-start justify-between mb-4">
                         <h3 className="font-semibold text-lg">{sub.subject}</h3>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${level === "mastered" ? "bg-teal-400/20 text-teal-400" : level === "weak" ? "bg-amber-400/20 text-amber-400" : "bg-red-500/20 text-red-400"}`}>
-                          {level === "mastered" ? "🟢 Յուրացված" : level === "weak" ? "🟡 Թույլ" : "🔴 Չսկսած"}
+                          {level === "mastered" ? "🟢 Յuracvac" : level === "weak" ? "🟡 Thuyel" : "🔴 Chsksac"}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                        <span>{sub.completedLessons}/{sub.totalLessons} դաս</span>
+                        <span>{sub.completedLessons}/{sub.totalLessons} das</span>
                         <span className="font-medium text-white">{pct}%</span>
                       </div>
                       <div className="h-2 w-full bg-background rounded-full overflow-hidden mb-3">
                         <div className={`h-full rounded-full ${level === "mastered" ? "bg-teal-400" : level === "weak" ? "bg-amber-400" : "bg-red-500"}`}
                           style={{ width: `${pct}%` }} />
                       </div>
-                      <div className="text-xs text-secondary font-medium">Միջ․ {Math.round(sub.averageScore)} մ.</div>
-                      <div className="mt-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Դիտել →</div>
+                      <div className="text-xs text-secondary font-medium">Midj. {Math.round(sub.averageScore)} m.</div>
+                      <div className="mt-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Ditel →</div>
                     </Link>
                   );
                 })}
@@ -366,105 +349,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── HOMEWORK ── */}
-        {tab === "homework" && (
-          <div>
-            {/* Submit modal */}
-            {submitHwId !== null && (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <form onSubmit={handleSubmit} className="bg-card border border-white/10 rounded-2xl p-6 w-full max-w-md space-y-4">
-                  <h3 className="font-semibold">Ներկայացնել պատասխան</h3>
-                  <textarea value={answerText} onChange={e => setAnswerText(e.target.value)} required rows={5}
-                    placeholder="Ձեր պատասխանը..." className={`${inputCls} resize-none`} />
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={submitMutation.isPending} className="px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium disabled:opacity-50">
-                      {submitMutation.isPending ? "..." : "Ուղարկել"}
-                    </button>
-                    <button type="button" onClick={() => { setSubmitHwId(null); setAnswerText(""); }}
-                      className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* HW from hwSummary items */}
-            {(() => {
-              type HwRow = { id: number; title: string; task: string; status: string; score: number | null; feedback: string | null; lessonTitle: string; createdAt: string };
-              const items = (hwSummary?.items ?? []) as HwRow[];
-              const all: HwRow[] = items.length > 0 ? items : homeworkList.map(h => ({
-                id: h.id, title: h.title, task: h.task, status: h.status,
-                score: h.score ?? null, feedback: null, lessonTitle: h.lessonTitle ?? "", createdAt: h.createdAt,
-              }));
-              if (all.length === 0) return (
-                <div className="text-center py-20 text-muted-foreground">
-                  <div className="text-5xl mb-4">📝</div>
-                  <p>Տնային չկա</p>
-                </div>
-              );
-              const groups = { not_submitted: [] as typeof all, pending: [] as typeof all, graded: [] as typeof all };
-              all.forEach(h => {
-                if (h.status === "graded") groups.graded.push(h);
-                else if (h.status === "submitted" || h.status === "pending") groups.pending.push(h);
-                else groups.not_submitted.push(h);
-              });
-              return (
-                <div className="space-y-6">
-                  {groups.not_submitted.length > 0 && (
-                    <div>
-                      <h2 className="text-sm font-medium text-red-400 uppercase tracking-wide mb-3">🔴 Չներկայացված ({groups.not_submitted.length})</h2>
-                      <div className="space-y-2">
-                        {groups.not_submitted.map(h => (
-                          <div key={h.id} className="bg-card/60 border border-red-500/20 rounded-xl px-4 py-3 flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm">{h.title}</div>
-                              <div className="text-xs text-muted-foreground truncate">{h.task}</div>
-                              {h.lessonTitle && <div className="text-xs text-primary mt-1">📖 {h.lessonTitle}</div>}
-                            </div>
-                            <button onClick={() => setSubmitHwId(h.id)}
-                              className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium shrink-0 hover:bg-primary/80 transition-colors">
-                              Ներկայացնել
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {groups.pending.length > 0 && (
-                    <div>
-                      <h2 className="text-sm font-medium text-amber-400 uppercase tracking-wide mb-3">🟡 Սպասում է գնահատման ({groups.pending.length})</h2>
-                      <div className="space-y-2">
-                        {groups.pending.map(h => (
-                          <div key={h.id} className="bg-card/60 border border-amber-500/20 rounded-xl px-4 py-3">
-                            <div className="font-medium text-sm">{h.title}</div>
-                            <div className="text-xs text-muted-foreground mt-1 truncate">{h.task}</div>
-                            {h.lessonTitle && <div className="text-xs text-primary mt-1">📖 {h.lessonTitle}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {groups.graded.length > 0 && (
-                    <div>
-                      <h2 className="text-sm font-medium text-teal-400 uppercase tracking-wide mb-3">🟢 Gnahatval ({groups.graded.length})</h2>
-                      <div className="space-y-2">
-                        {groups.graded.map(h => (
-                          <div key={h.id} className="bg-card/60 border border-teal-500/20 rounded-xl px-4 py-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="font-medium text-sm">{h.title}</div>
-                              {h.score !== null && <span className="text-teal-400 font-bold text-sm">{h.score}/100</span>}
-                            </div>
-                            {h.lessonTitle && <div className="text-xs text-primary">📖 {h.lessonTitle}</div>}
-                            {h.feedback && <div className="text-xs text-muted-foreground mt-2 border-t border-white/10 pt-2">💬 {h.feedback}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        )}
+        {/* ── KNOWLEDGE MAP ── */}
+        {tab === ("knowledge" as Tab) && null}
 
         {/* ── TEACHERS ── */}
         {tab === "teachers" && (
@@ -472,7 +358,7 @@ export default function Dashboard() {
             {teachers.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
                 <div className="text-5xl mb-4">👨‍🏫</div>
-                <p>Ուսուցիչ չկա · Ադմինը պետք է նշանակի</p>
+                <p>Ուսուցիչ չկան · Ադմինy Պետք e nshanaki</p>
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -492,11 +378,10 @@ export default function Dashboard() {
           </div>
         )}
 
-
         {/* ── PROFILE ── */}
         {tab === "profile" && (
           <div className="max-w-xl">
-            <h2 className="font-semibold text-lg mb-5">📋 Անձnakaн Тvyalner</h2>
+            <h2 className="font-semibold text-lg mb-5">📋 Անձնական տվյalner</h2>
             <form
               onSubmit={e => {
                 e.preventDefault();
@@ -509,82 +394,62 @@ export default function Dashboard() {
                   bio: profileForm.bio || undefined,
                 } }, {
                   onSuccess: () => setProfileSaved(true),
-                  onError: () => setProfileError("Сkhаl · Pordzek krkin"),
+                  onError: () => setProfileError("Սkhаl · Pordzek krkin"),
                 });
               }}
               className="bg-card/60 border border-white/10 rounded-2xl p-6 space-y-4"
             >
-              {profileSaved && <p className="text-teal-400 text-sm">Pahpanvec ✓</p>}
+              {profileSaved && <p className="text-teal-400 text-sm">Պahpanvec ✓</p>}
               {profileError && <p className="text-destructive text-sm">{profileError}</p>}
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">Аnun Azganun</label>
-                <input
-                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  value={profileForm.fullName}
+                <label className="text-xs text-muted-foreground block mb-1">Անunn Аzganunn</label>
+                <input className={inputCls} value={profileForm.fullName}
                   onChange={e => setProfileForm(f => ({ ...f, fullName: e.target.value }))}
-                  placeholder={user.fullName}
-                />
+                  placeholder={user.fullName} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Email</label>
-                <input
-                  type="email"
-                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  value={profileForm.email}
+                <input type="email" className={inputCls} value={profileForm.email}
                   onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder={(user as any).email || "example@mail.com"}
-                />
+                  placeholder={(user as any).email || "example@mail.com"} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">Tarik (amix)</label>
-                <input
-                  type="number"
-                  min="5"
-                  max="25"
-                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  value={profileForm.age}
+                <label className="text-xs text-muted-foreground block mb-1">Тariq (amiq)</label>
+                <input type="number" min="5" max="25" className={inputCls} value={profileForm.age}
                   onChange={e => setProfileForm(f => ({ ...f, age: e.target.value }))}
-                  placeholder={(user as any).age ? String((user as any).age) : "14"}
-                />
+                  placeholder={(user as any).age ? String((user as any).age) : "14"} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">Linеl inqdez (kamayin)</label>
-                <textarea
-                  rows={3}
-                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-                  value={profileForm.bio}
+                <label className="text-xs text-muted-foreground block mb-1">Nkaragrutyun (kamaygin)</label>
+                <textarea rows={3} className={`${inputCls} resize-none`} value={profileForm.bio}
                   onChange={e => setProfileForm(f => ({ ...f, bio: e.target.value }))}
-                  placeholder="Linel inqdez ..."
-                />
+                  placeholder="Linel inchqez ..." />
               </div>
-              <button
-                type="submit"
-                disabled={updateProfile.isPending}
-                className="px-6 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium disabled:opacity-50 transition-all"
-              >
-                {updateProfile.isPending ? "..." : "Pahpanel"}
+              <button type="submit" disabled={updateProfile.isPending}
+                className="px-6 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium disabled:opacity-50 transition-all">
+                {updateProfile.isPending ? "..." : "Պահպանել"}
               </button>
             </form>
 
             <div className="mt-4 bg-card/30 border border-white/10 rounded-2xl p-4">
-              <h3 className="text-sm font-medium mb-2 text-muted-foreground">Alkin Tvyalner</h3>
+              <h3 className="text-sm font-medium mb-2 text-muted-foreground">Linr tvyalner</h3>
               <div className="text-sm space-y-1">
-                <div><span className="text-muted-foreground">Ogtanun:</span> <span className="ml-2">{user.username}</span></div>
+                <div><span className="text-muted-foreground">Оgtanunum:</span> <span className="ml-2">{user.username}</span></div>
                 {(user as any).email && <div><span className="text-muted-foreground">Email:</span> <span className="ml-2">{(user as any).email}</span></div>}
-                {(user as any).age && <div><span className="text-muted-foreground">Tarik:</span> <span className="ml-2">{(user as any).age}</span></div>}
-                {(user as any).bio && <div><span className="text-muted-foreground">Linel:</span> <span className="ml-2 text-muted-foreground">{(user as any).bio}</span></div>}
+                {(user as any).age && <div><span className="text-muted-foreground">Тariq:</span> <span className="ml-2">{(user as any).age}</span></div>}
+                {(user as any).bio && <div><span className="text-muted-foreground">Nkar:</span> <span className="ml-2 text-muted-foreground">{(user as any).bio}</span></div>}
               </div>
             </div>
           </div>
         )}
 
-        {/* Bottom nav links */}
+        {/* Bottom nav */}
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-3 justify-center text-sm">
-          <Link href="/progress" className="text-muted-foreground hover:text-primary transition-colors">📊 Առաջընթաց</Link>
-          <Link href="/homework" className="text-muted-foreground hover:text-primary transition-colors">📝 Բոլոր Տնայինը</Link>
-          <Link href="/books" className="text-muted-foreground hover:text-primary transition-colors">📚 Գրքեր</Link>
+          <Link href="/progress" className="text-muted-foreground hover:text-primary transition-colors">📊 Արաջնթհաց</Link>
+          <Link href="/books" className="text-muted-foreground hover:text-primary transition-colors">📚 գրքեր</Link>
           <Link href="/chat/0" className="text-muted-foreground hover:text-primary transition-colors">🤖 AI Chat</Link>
         </div>
+
       </div>
     </div>
   );
