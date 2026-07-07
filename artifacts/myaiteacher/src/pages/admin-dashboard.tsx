@@ -147,15 +147,22 @@ export default function AdminDashboard() {
   };
 
   // ── student form ──────────────────────────────────────────────────────────
-  const emptySt = { username: "", password: "", fullName: "" };
+  const emptySt = { fullName: "", email: "", age: "" };
   const [stForm, setStForm] = useState(emptySt);
+  const [stClassId, setStClassId] = useState<string>("");
   const [stError, setStError] = useState("");
   const [showStForm, setShowStForm] = useState(false);
 
   const handleCreateStudent = (e: React.FormEvent) => {
     e.preventDefault(); setStError("");
-    createStudent.mutate({ data: { ...stForm, classId: selectedClassId || undefined } }, {
-      onSuccess: () => { setShowStForm(false); setStForm(emptySt); inv("students", "stats"); },
+    const classId = stClassId ? parseInt(stClassId) : (selectedClassId || undefined);
+    createStudent.mutate({ data: {
+      fullName: stForm.fullName,
+      email: stForm.email || undefined,
+      age: stForm.age ? parseInt(stForm.age) : undefined,
+      classId,
+    } }, {
+      onSuccess: () => { setShowStForm(false); setStForm(emptySt); setStClassId(""); inv("students", "stats"); },
       onError: () => setStError("Սխալ"),
     });
   };
@@ -584,16 +591,33 @@ export default function AdminDashboard() {
 
             {showStForm && (
               <form onSubmit={handleCreateStudent} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Nor ashakert {selectedClassId ? `(${classes.find(c => c.id === selectedClassId)?.name})` : ""}</h3>
+                <h3 className="font-medium">Նոր Աշակerт {selectedClassId ? `(դաս. ${classes.find(c => c.id === selectedClassId)?.name})` : ""}</h3>
                 {stError && <p className="text-destructive text-xs">{stError}</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Անuն Azganun *</label><input value={stForm.fullName} onChange={e => setStForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Ogtanun *</label><input value={stForm.username} onChange={e => setStForm(f => ({ ...f, username: e.target.value }))} required className={inputCls} /></div>
-                  <div className="col-span-2"><label className="text-xs text-muted-foreground">Gajtnabar *</label><input type="password" value={stForm.password} onChange={e => setStForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground">Անուն Ազганun *</label>
+                    <input value={stForm.fullName} onChange={e => setStForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Աshakertи Անուն" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Email</label>
+                    <input type="email" value={stForm.email} onChange={e => setStForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="example@mail.com" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Տariq (amix)</label>
+                    <input type="number" min="5" max="25" value={stForm.age} onChange={e => setStForm(f => ({ ...f, age: e.target.value }))} className={inputCls} placeholder="14" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground">Դasaran</label>
+                    <select value={stClassId} onChange={e => setStClassId(e.target.value)} className={inputCls}>
+                      <option value="">Ընtrek Դasaran (kamayin)</option>
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground/70">Аlginabarn klini "student123", ogтanunы kvik avtоmat kerpi</p>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Պահպանել"}</button>
-                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
+                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Պahpanel"}</button>
+                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չeghаrkel</button>
                 </div>
               </form>
             )}
@@ -604,12 +628,12 @@ export default function AdminDashboard() {
                 <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
                     <div className="font-medium">{s.fullName}</div>
-                    <div className="text-xs text-muted-foreground">{s.username}</div>
+                    <div className="text-xs text-muted-foreground">{(s as any).email || s.username}{(s as any).age ? ` · ${(s as any).age} t.` : ""}</div>
                   </div>
                   <div className="flex gap-1">
                     {selectedClassId && (
                       <button onClick={() => removeFromClass.mutate({ id: s.id, data: { classId: selectedClassId as number } }, { onSuccess: () => inv("students") })} className={btnGhost}>
-                        Heracnel dasaranic
+                        Հeracnel Dasaranits
                       </button>
                     )}
                     <button onClick={() => { if (confirm(`Ջնջել ${s.fullName}?`)) deleteStudent.mutate({ id: s.id }, { onSuccess: () => inv("students", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>

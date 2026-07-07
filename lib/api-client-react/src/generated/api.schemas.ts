@@ -42,6 +42,8 @@ export interface StudentItem {
   id: number;
   username: string;
   fullName: string;
+  email?: string;
+  age?: number;
   createdAt: string;
 }
 
@@ -74,10 +76,17 @@ export interface RemoveFromClassInput {
 }
 
 export interface CreateAdminStudentInput {
-  username: string;
-  password: string;
   fullName: string;
+  email?: string;
+  age?: number;
   classId?: number;
+}
+
+export interface UpdateStudentProfileInput {
+  fullName?: string;
+  email?: string;
+  age?: number;
+  bio?: string;
 }
 
 export interface UpdateClassInput {
@@ -143,6 +152,9 @@ export interface UserProfile {
   username: string;
   fullName: string;
   role: string;
+  email?: string;
+  age?: number;
+  bio?: string;
   createdAt: string;
 }
 

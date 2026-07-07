@@ -1583,6 +1583,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /student/profile:
+    put:
+      operationId: updateStudentProfile
+      tags: [student]
+      summary: Update student's own profile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStudentProfileInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /student/schedule:
     get:
       operationId: getStudentSchedule
@@ -1948,6 +1974,10 @@ components:
           type: string
         fullName:
           type: string
+        email:
+          type: string
+        age:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -2004,16 +2034,28 @@ components:
 
     CreateAdminStudentInput:
       type: object
-      required: [username, password, fullName]
+      required: [fullName]
       properties:
-        username:
-          type: string
-        password:
-          type: string
         fullName:
           type: string
+        email:
+          type: string
+        age:
+          type: integer
         classId:
           type: integer
+
+    UpdateStudentProfileInput:
+      type: object
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+        age:
+          type: integer
+        bio:
+          type: string
 
     UpdateClassInput:
       type: object
@@ -2142,6 +2184,12 @@ components:
         fullName:
           type: string
         role:
+          type: string
+        email:
+          type: string
+        age:
+          type: integer
+        bio:
           type: string
         createdAt:
           type: string

@@ -81,5 +81,6 @@ export * from './teacherLessonItem';
 export * from './topicProgressItem';
 export * from './updateClassInput';
 export * from './updateLessonInput';
+export * from './updateStudentProfileInput';
 export * from './updateTeacherInput';
 export * from './userProfile';

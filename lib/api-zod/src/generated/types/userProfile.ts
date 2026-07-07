@@ -11,5 +11,8 @@ export interface UserProfile {
   username: string;
   fullName: string;
   role: string;
+  email?: string;
+  age?: number;
+  bio?: string;
   createdAt: Date;
 }

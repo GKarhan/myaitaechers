@@ -10,5 +10,7 @@ export interface StudentItem {
   id: number;
   username: string;
   fullName: string;
+  email?: string;
+  age?: number;
   createdAt: Date;
 }

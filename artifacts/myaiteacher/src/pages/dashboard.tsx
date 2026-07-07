@@ -10,6 +10,7 @@ import {
   useGetStudentTeachers,
   useGetStudentHomeworkSummary,
   useSubmitHomework,
+  useUpdateStudentProfile,
   getGetDashboardQueryKey,
   getGetProgressQueryKey,
   getGetHomeworkQueryKey,
@@ -19,7 +20,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
-type Tab = "overview" | "schedule" | "subjects" | "homework" | "teachers";
+type Tab = "overview" | "schedule" | "subjects" | "homework" | "teachers" | "profile";
 
 const DAYS = ["Երկուշաբթի", "Երեքշաբթի", "Չորեքշաբթի", "Հինգշաբթի", "Ուրբաթ", "Շաբաթ"];
 
@@ -28,9 +29,13 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("overview");
+  const [profileForm, setProfileForm] = useState({ fullName: "", email: "", age: "", bio: "" });
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [submitHwId, setSubmitHwId] = useState<number | null>(null);
   const [answerText, setAnswerText] = useState("");
   const submitMutation = useSubmitHomework();
+  const updateProfile = useUpdateStudentProfile();
 
   useEffect(() => {
     if (!authLoading && !token) setLocation("/login");
@@ -85,7 +90,8 @@ export default function Dashboard() {
     { key: "subjects", label: "📚 Առարկաներ" },
     { key: "homework", label: `📝 Տնային${notSubmitted > 0 ? ` (${notSubmitted})` : ""}` },
     { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
-  ];
+
+    { key: "profile", label: "📋 Անձnakan" },  ];
 
   return (
     <div className="min-h-[100dvh] bg-background text-white">
@@ -483,6 +489,92 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+
+        {/* ── PROFILE ── */}
+        {tab === "profile" && (
+          <div className="max-w-xl">
+            <h2 className="font-semibold text-lg mb-5">📋 Անձnakaн Тvyalner</h2>
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                setProfileError("");
+                setProfileSaved(false);
+                updateProfile.mutate({ data: {
+                  fullName: profileForm.fullName || undefined,
+                  email: profileForm.email || undefined,
+                  age: profileForm.age ? parseInt(profileForm.age) : undefined,
+                  bio: profileForm.bio || undefined,
+                } }, {
+                  onSuccess: () => setProfileSaved(true),
+                  onError: () => setProfileError("Сkhаl · Pordzek krkin"),
+                });
+              }}
+              className="bg-card/60 border border-white/10 rounded-2xl p-6 space-y-4"
+            >
+              {profileSaved && <p className="text-teal-400 text-sm">Pahpanvec ✓</p>}
+              {profileError && <p className="text-destructive text-sm">{profileError}</p>}
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Аnun Azganun</label>
+                <input
+                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  value={profileForm.fullName}
+                  onChange={e => setProfileForm(f => ({ ...f, fullName: e.target.value }))}
+                  placeholder={user.fullName}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Email</label>
+                <input
+                  type="email"
+                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  value={profileForm.email}
+                  onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder={(user as any).email || "example@mail.com"}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Tarik (amix)</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="25"
+                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  value={profileForm.age}
+                  onChange={e => setProfileForm(f => ({ ...f, age: e.target.value }))}
+                  placeholder={(user as any).age ? String((user as any).age) : "14"}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Linеl inqdez (kamayin)</label>
+                <textarea
+                  rows={3}
+                  className="w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                  value={profileForm.bio}
+                  onChange={e => setProfileForm(f => ({ ...f, bio: e.target.value }))}
+                  placeholder="Linel inqdez ..."
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={updateProfile.isPending}
+                className="px-6 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium disabled:opacity-50 transition-all"
+              >
+                {updateProfile.isPending ? "..." : "Pahpanel"}
+              </button>
+            </form>
+
+            <div className="mt-4 bg-card/30 border border-white/10 rounded-2xl p-4">
+              <h3 className="text-sm font-medium mb-2 text-muted-foreground">Alkin Tvyalner</h3>
+              <div className="text-sm space-y-1">
+                <div><span className="text-muted-foreground">Ogtanun:</span> <span className="ml-2">{user.username}</span></div>
+                {(user as any).email && <div><span className="text-muted-foreground">Email:</span> <span className="ml-2">{(user as any).email}</span></div>}
+                {(user as any).age && <div><span className="text-muted-foreground">Tarik:</span> <span className="ml-2">{(user as any).age}</span></div>}
+                {(user as any).bio && <div><span className="text-muted-foreground">Linel:</span> <span className="ml-2 text-muted-foreground">{(user as any).bio}</span></div>}
+              </div>
+            </div>
           </div>
         )}
 

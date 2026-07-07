@@ -39,6 +39,9 @@ export const RegisterResponse = zod.object({
   "username": zod.string(),
   "fullName": zod.string(),
   "role": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
+  "bio": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -59,6 +62,9 @@ export const LoginResponse = zod.object({
   "username": zod.string(),
   "fullName": zod.string(),
   "role": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
+  "bio": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -72,6 +78,9 @@ export const GetProfileResponse = zod.object({
   "username": zod.string(),
   "fullName": zod.string(),
   "role": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
+  "bio": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 
@@ -720,6 +729,8 @@ export const GetAdminStudentsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
   "createdAt": zod.coerce.date()
 })
 export const GetAdminStudentsResponse = zod.array(GetAdminStudentsResponseItem)
@@ -729,9 +740,9 @@ export const GetAdminStudentsResponse = zod.array(GetAdminStudentsResponseItem)
  * @summary Create a student and optionally add to class
  */
 export const CreateAdminStudentBody = zod.object({
-  "username": zod.string(),
-  "password": zod.string(),
   "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
   "classId": zod.number().optional()
 })
 
@@ -739,6 +750,8 @@ export const CreateAdminStudentResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
   "createdAt": zod.coerce.date()
 })
 
@@ -887,6 +900,8 @@ export const GetClassStudentsResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
   "createdAt": zod.coerce.date()
 })
 export const GetClassStudentsResponse = zod.array(GetClassStudentsResponseItem)
@@ -909,6 +924,8 @@ export const AddStudentToClassResponse = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
   "createdAt": zod.coerce.date()
 })
 
@@ -979,6 +996,8 @@ export const GetClassProgressResponseItem = zod.object({
   "id": zod.number(),
   "username": zod.string(),
   "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
   "createdAt": zod.coerce.date()
 })
 export const GetClassProgressResponse = zod.array(GetClassProgressResponseItem)
@@ -1017,6 +1036,28 @@ export const CreateHomeworkBody = zod.object({
 export const CreateHomeworkResponse = zod.object({
 
 }).passthrough()
+
+
+/**
+ * @summary Update student's own profile
+ */
+export const UpdateStudentProfileBody = zod.object({
+  "fullName": zod.string().optional(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
+  "bio": zod.string().optional()
+})
+
+export const UpdateStudentProfileResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "role": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
+  "bio": zod.string().optional(),
+  "createdAt": zod.coerce.date()
+})
 
 
 /**

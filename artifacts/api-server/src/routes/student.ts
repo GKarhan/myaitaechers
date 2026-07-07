@@ -5,6 +5,33 @@ import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
 
+// PUT /api/student/profile — update own profile
+router.put("/student/profile", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const { fullName, email, age, bio } = req.body as {
+    fullName?: string; email?: string; age?: number; bio?: string;
+  };
+  const patch: Record<string, unknown> = {};
+  if (fullName !== undefined) patch.fullName = fullName;
+  if (email !== undefined) patch.email = email || null;
+  if (age !== undefined) patch.age = age || null;
+  if (bio !== undefined) patch.bio = bio || null;
+
+  const [user] = await db.update(usersTable).set(patch).where(eq(usersTable.id, userId)).returning();
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  res.json({
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    email: user.email ?? undefined,
+    age: user.age ?? undefined,
+    bio: user.bio ?? undefined,
+    createdAt: user.createdAt.toISOString(),
+  });
+});
+
 // GET /api/student/schedule — student's weekly schedule via enrolled classes
 router.get("/student/schedule", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.userId!;

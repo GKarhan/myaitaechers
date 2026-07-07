@@ -6,9 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface CreateAdminStudentInput {
-  fullName: string;
+export interface UpdateStudentProfileInput {
+  fullName?: string;
   email?: string;
   age?: number;
-  classId?: number;
+  bio?: string;
 }

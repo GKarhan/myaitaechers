@@ -26,7 +26,7 @@ router.post("/auth/register", async (req, res) => {
     .limit(1);
 
   if (existing.length > 0) {
-    res.status(400).json({ error: "Այս օգտանունն արդեն գոյություն ունի" });
+    res.status(400).json({ error: "Այս օgтanunн արden гоjуtуn уni" });
     return;
   }
 
@@ -45,6 +45,10 @@ router.post("/auth/register", async (req, res) => {
       id: user.id,
       username: user.username,
       fullName: user.fullName,
+      role: user.role,
+      email: user.email ?? undefined,
+      age: user.age ?? undefined,
+      bio: user.bio ?? undefined,
       createdAt: user.createdAt.toISOString(),
     },
   });
@@ -66,13 +70,13 @@ router.post("/auth/login", async (req, res) => {
     .limit(1);
 
   if (!user) {
-    res.status(401).json({ error: "Սխալ օգտանուն կամ գաղտնաբառ" });
+    res.status(401).json({ error: "Սkhаl оgтanun kam gajtnabar" });
     return;
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
-    res.status(401).json({ error: "Սխալ օգտանուն կամ գաղտնաբառ" });
+    res.status(401).json({ error: "Սkhаl оgтanun kam gajtnabar" });
     return;
   }
 
@@ -85,6 +89,9 @@ router.post("/auth/login", async (req, res) => {
       username: user.username,
       fullName: user.fullName,
       role: user.role,
+      email: user.email ?? undefined,
+      age: user.age ?? undefined,
+      bio: user.bio ?? undefined,
       createdAt: user.createdAt.toISOString(),
     },
   });
@@ -107,6 +114,9 @@ router.get("/auth/profile", requireAuth, async (req: AuthRequest, res) => {
     username: user.username,
     fullName: user.fullName,
     role: user.role,
+    email: user.email ?? undefined,
+    age: user.age ?? undefined,
+    bio: user.bio ?? undefined,
     createdAt: user.createdAt.toISOString(),
   });
 });

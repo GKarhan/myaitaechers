@@ -195,6 +195,8 @@ router.get("/admin/students", requireAdmin, async (req, res) => {
         id: usersTable.id,
         username: usersTable.username,
         fullName: usersTable.fullName,
+        email: usersTable.email,
+        age: usersTable.age,
         createdAt: usersTable.createdAt,
       })
       .from(classStudentsTable)
@@ -203,7 +205,7 @@ router.get("/admin/students", requireAdmin, async (req, res) => {
     res.json(members);
   } else {
     const students = await db
-      .select({ id: usersTable.id, username: usersTable.username, fullName: usersTable.fullName, createdAt: usersTable.createdAt })
+      .select({ id: usersTable.id, username: usersTable.username, fullName: usersTable.fullName, email: usersTable.email, age: usersTable.age, createdAt: usersTable.createdAt })
       .from(usersTable)
       .where(eq(usersTable.role, "student"));
     res.json(students);
@@ -211,20 +213,30 @@ router.get("/admin/students", requireAdmin, async (req, res) => {
 });
 
 router.post("/admin/students", requireAdmin, async (req, res) => {
-  const { username, password, fullName, classId } = req.body as {
-    username: string; password: string; fullName: string; classId?: number;
+  const { fullName, email, age, classId } = req.body as {
+    fullName: string; email?: string; age?: number; classId?: number;
   };
-  if (!username || !password || !fullName) {
-    res.status(400).json({ error: "username, password, fullName պارтаdіr єn" }); return;
+  if (!fullName) {
+    res.status(400).json({ error: "fullName պարտա噍իր ե" }); return;
   }
-  const existing = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
-  if (existing.length > 0) { res.status(400).json({ error: "Այس оgтанунн арden гоjуtуn уni" }); return; }
-  const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db.insert(usersTable).values({ username, passwordHash, fullName, role: "student" }).returning();
+  const base = email
+    ? email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, ".")
+    : fullName.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "");
+  let username = base || "student";
+  let counter = 1;
+  while ((await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, username)).limit(1)).length > 0) {
+    username = `${base}${counter++}`;
+  }
+  const passwordHash = await bcrypt.hash("student123", 10);
+  const [user] = await db.insert(usersTable).values({
+    username, passwordHash, fullName, role: "student",
+    email: email ?? null,
+    age: age ?? null,
+  }).returning();
   if (classId) {
     await db.insert(classStudentsTable).values({ classId, studentId: user.id });
   }
-  res.status(201).json({ id: user.id, username: user.username, fullName: user.fullName, createdAt: user.createdAt });
+  res.status(201).json({ id: user.id, username: user.username, fullName: user.fullName, email: user.email, age: user.age, createdAt: user.createdAt });
 });
 
 router.post("/admin/students/:id/delete", requireAdmin, async (req, res) => {
