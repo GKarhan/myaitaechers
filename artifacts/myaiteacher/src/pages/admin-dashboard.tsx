@@ -112,7 +112,7 @@ export default function AdminDashboard() {
     if (!cForm.teacherId) { setCError("Ընտրեք ուusuцich"); return; }
     createClass.mutate({ data: { name: cForm.name, grade: cForm.grade, teacherId: parseInt(cForm.teacherId) } }, {
       onSuccess: () => { setShowCForm(false); setCForm(emptyClass); inv("classes", "stats"); },
-      onError: () => setCError("Սkhаl"),
+      onError: () => setCError("Սխալ"),
     });
   };
 
@@ -135,7 +135,7 @@ export default function AdminDashboard() {
     if (!sForm.classId) { setSError("Yntrек dasaran"); return; }
     createSchedule.mutate({ data: { classId: parseInt(sForm.classId), day: sForm.day, time: sForm.time, subject: sForm.subject } }, {
       onSuccess: () => { setShowSForm(false); setSForm(emptySched); inv("schedule"); },
-      onError: () => setSError("Սkhаl"),
+      onError: () => setSError("Սխալ"),
     });
   };
 
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
     e.preventDefault(); setStError("");
     createStudent.mutate({ data: { ...stForm, classId: selectedClassId || undefined } }, {
       onSuccess: () => { setShowStForm(false); setStForm(emptySt); inv("students", "stats"); },
-      onError: () => setStError("Սkhаl"),
+      onError: () => setStError("Սխալ"),
     });
   };
 
@@ -165,10 +165,10 @@ export default function AdminDashboard() {
   if (user?.role !== "admin") { setLocation("/login"); return null; }
 
   const subTabs: { key: Tab; label: string }[] = [
-    { key: "teachers", label: "👨‍🏫 Ուusuцichner" },
-    { key: "classes", label: "📚 Dasaranner" },
-    { key: "schedule", label: "📅 Dasacucak" },
-    { key: "students", label: "👨‍🎓 Ashakertner" },
+    { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
+    { key: "classes", label: "📚 Դասարաններ" },
+    { key: "schedule", label: "📅 Դասացուցակ" },
+    { key: "students", label: "👨‍🎓 Աշակերտներ" },
   ];
 
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -187,7 +187,7 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted-foreground">{user.fullName}</span>
-          <button onClick={logout} className="text-sm text-destructive hover:text-white transition-colors">Yelk</button>
+          <button onClick={logout} className="text-sm text-destructive hover:text-white transition-colors">Ելք</button>
         </div>
       </header>
 
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
           {/* Stats tab at end */}
           <button onClick={() => setTab("home")}
             className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${tab === "home" ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"}`}>
-            📊 Vichakagrutyun
+            📊 Վիճակագրություն
           </button>
         </div>
 
@@ -225,9 +225,9 @@ export default function AdminDashboard() {
             {/* Stats cards */}
             <div className="grid grid-cols-3 gap-6">
               {[
-                { icon: "👨‍🏫", label: "Ուusuцichner", value: stats?.teachers ?? 0, color: "text-amber-400", tabKey: "teachers" as Tab },
-                { icon: "📚", label: "Dasaranner", value: stats?.classes ?? 0, color: "text-teal-400", tabKey: "classes" as Tab },
-                { icon: "👨‍🎓", label: "Ashakertner", value: stats?.students ?? 0, color: "text-indigo-400", tabKey: "students" as Tab },
+                { icon: "👨‍🏫", label: "Ուսուցիչներ", value: stats?.teachers ?? 0, color: "text-amber-400", tabKey: "teachers" as Tab },
+                { icon: "📚", label: "Դասարաններ", value: stats?.classes ?? 0, color: "text-teal-400", tabKey: "classes" as Tab },
+                { icon: "👨‍🎓", label: "Աշակերտներ", value: stats?.students ?? 0, color: "text-indigo-400", tabKey: "students" as Tab },
               ].map((s) => (
                 <button
                   key={s.label}
@@ -244,25 +244,25 @@ export default function AdminDashboard() {
             {/* Schedule preview */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-lg">📅 Dasacucak</h2>
-                <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:text-primary/80 transition-colors">Xmbagrel →</button>
+                <h2 className="font-semibold text-lg">📅 Դասացուցակ</h2>
+                <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:text-primary/80 transition-colors">Խմբագրել →</button>
               </div>
               <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-white/10 text-muted-foreground text-left">
-                        <th className="pb-3 pr-4 pl-4 pt-3">Or</th>
-                        <th className="pb-3 pr-4 pt-3">Jam</th>
-                        <th className="pb-3 pr-4 pt-3">Arrajca</th>
-                        <th className="pb-3 pr-4 pt-3">Dasaran</th>
+                        <th className="pb-3 pr-4 pl-4 pt-3">Օր</th>
+                        <th className="pb-3 pr-4 pt-3">Ժամ</th>
+                        <th className="pb-3 pr-4 pt-3">Առաջծա</th>
+                        <th className="pb-3 pr-4 pt-3">Դասարան</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {schedule.length === 0 && (
                         <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">
-                          Dasacucak datark e ·{" "}
-                          <button onClick={() => setTab("schedule")} className="text-primary hover:underline">Avelacel das</button>
+                          Դասացուցակ դատարկ ե ·{" "}
+                          <button onClick={() => setTab("schedule")} className="text-primary hover:underline">Ավելացել դաս</button>
                         </td></tr>
                       )}
                       {schedule.map((s) => (
@@ -285,13 +285,13 @@ export default function AdminDashboard() {
         {tab === "teachers" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Ուusuцichner</h2>
-              <button onClick={() => setShowTForm(!showTForm)} className={btnPrimary}>+ Avelacel ususucich</button>
+              <h2 className="font-semibold text-lg">Ուսուցիչներ</h2>
+              <button onClick={() => setShowTForm(!showTForm)} className={btnPrimary}>+ Ավելացել Ուսուցիչ</button>
             </div>
 
             {showTForm && (
               <form onSubmit={handleCreateTeacher} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium mb-1">Nor ususucich</h3>
+                <h3 className="font-medium mb-1">Նոր Ուսուցիչ</h3>
                 {tError && <p className="text-destructive text-xs">{tError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -303,10 +303,10 @@ export default function AdminDashboard() {
                     <input type="email" value={tForm.email} onChange={e => setTForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="teacher@school.am" />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Arrajca dasavandum</label>
+                    <label className="text-xs text-muted-foreground">Առաջծա դասավանդումից</label>
                     {scheduleSubjects.length > 0 ? (
                       <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls}>
-                        <option value="">Yntrek arrajcan</option>
+                        <option value="">Ընտրեկ Առաջծան</option>
                         {scheduleSubjects.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     ) : (
@@ -316,7 +316,7 @@ export default function AdminDashboard() {
                           value={tForm.subject}
                           onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))}
                           className={inputCls}
-                          placeholder="Arrajca angrel Dasacucak-ic"
+                          placeholder="Առաջծա Անկալ Դասացուցակից"
                         />
                         <datalist id="subjects-list">
                           {scheduleSubjects.map(s => <option key={s} value={s} />)}
@@ -326,8 +326,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createTeacher.isPending} className={btnPrimary}>{createTeacher.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowTForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" disabled={createTeacher.isPending} className={btnPrimary}>{createTeacher.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowTForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
@@ -335,7 +335,7 @@ export default function AdminDashboard() {
             {/* Edit teacher */}
             {editTeacher && (
               <form onSubmit={handleUpdateTeacher} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Xmbagrel ususucichin</h3>
+                <h3 className="font-medium">Խմբագրել Ուսուցիչին</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground">Անuն Azganun</label>
@@ -346,10 +346,10 @@ export default function AdminDashboard() {
                     <input type="email" value={editTeacher.email} onChange={e => setEditTeacher(t => t && ({ ...t, email: e.target.value }))} className={inputCls} />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Arrajca</label>
+                    <label className="text-xs text-muted-foreground">Առաջծա</label>
                     {scheduleSubjects.length > 0 ? (
                       <select value={editTeacher.subject} onChange={e => setEditTeacher(t => t && ({ ...t, subject: e.target.value }))} className={inputCls}>
-                        <option value="">Yntrek arrajcan</option>
+                        <option value="">Ընտրեկ Առաջծան</option>
                         {scheduleSubjects.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     ) : (
@@ -366,14 +366,14 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnPrimary}>Pahpanel</button>
-                  <button type="button" onClick={() => setEditTeacher(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" className={btnPrimary}>Պահպանել</button>
+                  <button type="button" onClick={() => setEditTeacher(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             <div className="space-y-2">
-              {teachers.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ususucich chka</p>}
+              {teachers.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ուսուցիչ չկա</p>}
               {teachers.map((t) => (
                 <div key={t.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
@@ -384,8 +384,8 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => setEditTeacher({ id: t.id, fullName: t.fullName, subject: t.subject, email: t.email ?? "" })} className={btnGhost}>✏️ Xmbagrel</button>
-                    <button onClick={() => { if (confirm("Jnjel ususucichin?")) deleteTeacher.mutate({ id: t.id }, { onSuccess: () => inv("teachers", "stats") }); }} className={btnDanger}>🗑 Jnjel</button>
+                    <button onClick={() => setEditTeacher({ id: t.id, fullName: t.fullName, subject: t.subject, email: t.email ?? "" })} className={btnGhost}>✏️ Խմբագրել</button>
+                    <button onClick={() => { if (confirm("Ջնջել Ուսուցիչին?")) deleteTeacher.mutate({ id: t.id }, { onSuccess: () => inv("teachers", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>
                   </div>
                 </div>
               ))}
@@ -397,48 +397,48 @@ export default function AdminDashboard() {
         {tab === "classes" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Dasaranner</h2>
-              <button onClick={() => setShowCForm(!showCForm)} className={btnPrimary}>+ Steghcel dasaran</button>
+              <h2 className="font-semibold text-lg">Դասարաններ</h2>
+              <button onClick={() => setShowCForm(!showCForm)} className={btnPrimary}>+ Ստեղծել Դասարան</button>
             </div>
 
             {showCForm && (
               <form onSubmit={handleCreateClass} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Nor dasaran</h3>
+                <h3 className="font-medium">Նոր Դասարան</h3>
                 {cError && <p className="text-destructive text-xs">{cError}</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun * (or. 7-1)</label><input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} required className={inputCls} placeholder="7-1" /></div>
-                  <div><label className="text-xs text-muted-foreground">Karg (or. 7-rd)</label><input value={cForm.grade} onChange={e => setCForm(f => ({ ...f, grade: e.target.value }))} className={inputCls} placeholder="7" /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն * (օր. 7-1)</label><input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} required className={inputCls} placeholder="7-1" /></div>
+                  <div><label className="text-xs text-muted-foreground">Կարգ (օր. 7-րդ)</label><input value={cForm.grade} onChange={e => setCForm(f => ({ ...f, grade: e.target.value }))} className={inputCls} placeholder="7" /></div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Ususucich *</label>
+                    <label className="text-xs text-muted-foreground">Ուսուցիչ *</label>
                     <select value={cForm.teacherId} onChange={e => setCForm(f => ({ ...f, teacherId: e.target.value }))} className={inputCls}>
-                      <option value="">Yntrek ususucich</option>
+                      <option value="">Ընտրեկ Ուսուցիչ</option>
                       {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName} {t.subject && `(${t.subject})`}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createClass.isPending} className={btnPrimary}>{createClass.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowCForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" disabled={createClass.isPending} className={btnPrimary}>{createClass.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowCForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             {editClass && (
               <form onSubmit={handleUpdateClass} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Xmbagrel dasaran</h3>
+                <h3 className="font-medium">Խմբագրել Դասարան</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Anun</label><input value={editClass.name} onChange={e => setEditClass(c => c && ({ ...c, name: e.target.value }))} className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Karg</label><input value={editClass.grade} onChange={e => setEditClass(c => c && ({ ...c, grade: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Անուն</label><input value={editClass.name} onChange={e => setEditClass(c => c && ({ ...c, name: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Կարգ</label><input value={editClass.grade} onChange={e => setEditClass(c => c && ({ ...c, grade: e.target.value }))} className={inputCls} /></div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Ususucich</label>
+                    <label className="text-xs text-muted-foreground">Ուսուցիչ</label>
                     <select value={editClass.teacherId} onChange={e => setEditClass(c => c && ({ ...c, teacherId: parseInt(e.target.value) }))} className={inputCls}>
                       {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnPrimary}>Pahpanel</button>
-                  <button type="button" onClick={() => setEditClass(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" className={btnPrimary}>Պահպանել</button>
+                  <button type="button" onClick={() => setEditClass(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
@@ -447,15 +447,15 @@ export default function AdminDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
-                    <th className="pb-3 pr-4">Anun</th>
-                    <th className="pb-3 pr-4">Karg</th>
-                    <th className="pb-3 pr-4">Ususucich</th>
-                    <th className="pb-3 pr-4">Ashakertner</th>
+                    <th className="pb-3 pr-4">Անուն</th>
+                    <th className="pb-3 pr-4">Կարգ</th>
+                    <th className="pb-3 pr-4">Ուսուցիչ</th>
+                    <th className="pb-3 pr-4">Աշակերտներ</th>
                     <th className="pb-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {classes.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Dasaran chka</td></tr>}
+                  {classes.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասարան չկա</td></tr>}
                   {classes.map((c) => (
                     <tr key={c.id} className="hover:bg-white/2 transition-colors">
                       <td className="py-3 pr-4 font-medium">{c.name}</td>
@@ -465,7 +465,7 @@ export default function AdminDashboard() {
                       <td className="py-3">
                         <div className="flex gap-1">
                           <button onClick={() => setEditClass({ id: c.id, name: c.name, grade: c.grade, teacherId: c.teacherId })} className={btnGhost}>✏️</button>
-                          <button onClick={() => { if (confirm("Jnjel dasarany?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
+                          <button onClick={() => { if (confirm("Ջնջել դասարանին?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
                         </div>
                       </td>
                     </tr>
@@ -480,8 +480,8 @@ export default function AdminDashboard() {
         {tab === "schedule" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Dasacucak</h2>
-              <button onClick={() => setShowSForm(!showSForm)} className={btnPrimary}>+ Avelacel das</button>
+              <h2 className="font-semibold text-lg">Դասացուցակ</h2>
+              <button onClick={() => setShowSForm(!showSForm)} className={btnPrimary}>+ Ավելացել դաս</button>
             </div>
 
             {showSForm && (
@@ -502,36 +502,36 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Arrajca *</label>
+                    <label className="text-xs text-muted-foreground">Առաջծա *</label>
                     <input value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Dasaran *</label>
+                    <label className="text-xs text-muted-foreground">Դասարան *</label>
                     <select value={sForm.classId} onChange={e => setSForm(f => ({ ...f, classId: e.target.value }))} className={inputCls}>
-                      <option value="">Yntrek dasaran</option>
+                      <option value="">Ընտրեկ դասարան</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createSchedule.isPending} className={btnPrimary}>{createSchedule.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowSForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" disabled={createSchedule.isPending} className={btnPrimary}>{createSchedule.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowSForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             {editSched && (
               <form onSubmit={handleUpdateSched} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Xmbagrel das</h3>
+                <h3 className="font-medium">Խմբագրել դաս</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Or</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Jam</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Arrajca</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Dasaran</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Օր</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Ժամ</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Առաջծա</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Դասարան</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnPrimary}>Pahpanel</button>
-                  <button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" className={btnPrimary}>Պահպանել</button>
+                  <button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
@@ -540,15 +540,15 @@ export default function AdminDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
-                    <th className="pb-3 pr-4">Or</th>
-                    <th className="pb-3 pr-4">Jam</th>
-                    <th className="pb-3 pr-4">Arrajca</th>
-                    <th className="pb-3 pr-4">Dasaran</th>
+                    <th className="pb-3 pr-4">Օր</th>
+                    <th className="pb-3 pr-4">Ժամ</th>
+                    <th className="pb-3 pr-4">Առաջծա</th>
+                    <th className="pb-3 pr-4">Դասարան</th>
                     <th className="pb-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Dasacucak datark e</td></tr>}
+                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասացուցակ դատարկ ե</td></tr>}
                   {schedule.map((s) => (
                     <tr key={s.id} className="hover:bg-white/2">
                       <td className="py-3 pr-4 font-medium">{s.day}</td>
@@ -558,7 +558,7 @@ export default function AdminDashboard() {
                       <td className="py-3">
                         <div className="flex gap-1">
                           <button onClick={() => setEditSched({ id: s.id, classId: s.classId, day: s.day, time: s.time, subject: s.subject })} className={btnGhost}>✏️</button>
-                          <button onClick={() => { if (confirm("Jnjel?")) deleteSchedule.mutate({ id: s.id }, { onSuccess: () => inv("schedule") }); }} className={btnDanger}>🗑</button>
+                          <button onClick={() => { if (confirm("Ջնջել?")) deleteSchedule.mutate({ id: s.id }, { onSuccess: () => inv("schedule") }); }} className={btnDanger}>🗑</button>
                         </div>
                       </td>
                     </tr>
@@ -573,13 +573,13 @@ export default function AdminDashboard() {
         {tab === "students" && (
           <div>
             <div className="flex flex-wrap items-center gap-4 mb-5">
-              <h2 className="font-semibold text-lg">Ashakertner</h2>
+              <h2 className="font-semibold text-lg">Աշակերտներ</h2>
               <select value={selectedClassId} onChange={e => setSelectedClassId(e.target.value ? parseInt(e.target.value) : "")}
                 className="bg-background/50 border border-input rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50">
-                <option value="">Bolor ashakertner</option>
+                <option value="">Բոլոր Աշակերտներ</option>
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <button onClick={() => setShowStForm(!showStForm)} className={btnPrimary}>+ Avelacel ashakert</button>
+              <button onClick={() => setShowStForm(!showStForm)} className={btnPrimary}>+ Ավելացել Աշակերտ</button>
             </div>
 
             {showStForm && (
@@ -592,14 +592,14 @@ export default function AdminDashboard() {
                   <div className="col-span-2"><label className="text-xs text-muted-foreground">Gajtnabar *</label><input type="password" value={stForm.password} onChange={e => setStForm(f => ({ ...f, password: e.target.value }))} required className={inputCls} /></div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Pahpanel"}</button>
-                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Cheghарkel</button>
+                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
             )}
 
             <div className="space-y-2">
-              {students.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ashakert chka</p>}
+              {students.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ashakert չկա</p>}
               {students.map((s) => (
                 <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
@@ -612,7 +612,7 @@ export default function AdminDashboard() {
                         Heracnel dasaranic
                       </button>
                     )}
-                    <button onClick={() => { if (confirm(`Jnjel ${s.fullName}?`)) deleteStudent.mutate({ id: s.id }, { onSuccess: () => inv("students", "stats") }); }} className={btnDanger}>🗑 Jnjel</button>
+                    <button onClick={() => { if (confirm(`Ջնջել ${s.fullName}?`)) deleteStudent.mutate({ id: s.id }, { onSuccess: () => inv("students", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>
                   </div>
                 </div>
               ))}
