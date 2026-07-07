@@ -102,6 +102,20 @@ export default function Dashboard() {
   const findSubject = (subjectName: string) =>
     subjects.find((x) => x.subject.toLowerCase() === subjectName.toLowerCase());
 
+  // Next upcoming lesson: sorted by DAY_ORDER then time; wrap to start of week if nothing later today
+  const todayOrder = DAY_ORDER[Object.keys(DAY_ORDER).find(
+    (k) => k.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "")
+  ) ?? ""] ?? -1;
+  const sortedSchedule = [...schedule].sort((a, b) => {
+    const da = DAY_ORDER[a.day] ?? 99;
+    const db = DAY_ORDER[b.day] ?? 99;
+    return da !== db ? da - db : a.time.localeCompare(b.time);
+  });
+  const nextLesson =
+    sortedSchedule.find((s) => (DAY_ORDER[s.day] ?? 99) > todayOrder) ??
+    sortedSchedule[0] ??
+    null;
+
   return (
     <div className="min-h-[100dvh] bg-background text-white">
       <QuickSwitch />
@@ -140,19 +154,21 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* ── OVERVIEW — only today's schedule ── */}
+        {/* ── OVERVIEW — today's lessons or next upcoming ── */}
         {tab === "overview" && (
           <div className="max-w-lg">
             <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">📅 Այսօրվա իմ դասերը</h2>
+                <h2 className="font-semibold">
+                  {todayItems.length > 0 ? "📅 Այsôrva im dasera" : "📅 Հаджорд das"}
+                </h2>
                 <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:underline">
-                  Բոլորը →
+                  Բolory →
                 </button>
               </div>
-              {todayItems.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Այսօր դասեր չկան</p>
-              ) : (
+
+              {/* Today's lessons */}
+              {todayItems.length > 0 && (
                 <div className="space-y-3">
                   {todayItems.slice().sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
                     const sub = findSubject(s.subject);
@@ -176,6 +192,37 @@ export default function Dashboard() {
                     );
                   })}
                 </div>
+              )}
+
+              {/* No lessons today → show next upcoming */}
+              {todayItems.length === 0 && nextLesson && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Аysоr das chka · Наджорд das՝{" "}
+                    <span className="text-primary font-medium">{nextLesson.day}</span>
+                  </p>
+                  <div className="bg-background/40 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-teal-400 font-mono text-sm font-bold">{nextLesson.time}</span>
+                      <span className="text-xs text-muted-foreground">{nextLesson.className}</span>
+                    </div>
+                    <div className="font-semibold text-base">{nextLesson.subject}</div>
+                    <div className="text-xs text-muted-foreground">👨‍🏫 {nextLesson.teacherName}</div>
+                    {findSubject(nextLesson.subject) ? (
+                      <Link href={`/subjects/${findSubject(nextLesson.subject)!.id}`}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity">
+                        📖 Սovoreq
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Կap chka</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* No schedule at all */}
+              {todayItems.length === 0 && !nextLesson && (
+                <p className="text-muted-foreground text-sm">Dasacucak chka</p>
               )}
             </div>
           </div>
