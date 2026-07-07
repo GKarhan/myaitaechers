@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import QuickSwitch from "@/components/QuickSwitch";
 import {
   useGetDashboard,
   useGetProgress,
@@ -88,6 +89,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-[100dvh] bg-background text-white">
+      <QuickSwitch />
       {/* Header */}
       <header className="border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">

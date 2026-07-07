@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import QuickSwitch from "@/components/QuickSwitch";
 import {
   useGetAdminStats,
   useGetAdminTeachers,
@@ -33,7 +34,7 @@ const DAYS = ["Երկուշաբթի", "Երեքշաբթի", "Չորեքշաբթ�
 const TIMES = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"];
 
 export default function AdminDashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("stats");
@@ -157,6 +158,7 @@ export default function AdminDashboard() {
   };
 
   // ── guard ─────────────────────────────────────────────────────────────────
+  if (authLoading) return <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (user?.role !== "admin") { setLocation("/login"); return null; }
 
   const tabs: { key: Tab; label: string }[] = [
@@ -174,6 +176,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-[100dvh] bg-background text-white">
+      <QuickSwitch />
       {/* Header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>

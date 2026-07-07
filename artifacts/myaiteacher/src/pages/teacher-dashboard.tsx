@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import QuickSwitch from "@/components/QuickSwitch";
 import {
   useGetTeacherClasses,
   useGetClassStudents,
@@ -33,7 +34,7 @@ type ClassTab = "students" | "lessons" | "homework";
 const BLOOM = ["", "Հիշել", "Հասկանալ", "Կիրառել", "Վերլուծել", "Գնահատել", "Ստեղծել"];
 
 export default function TeacherDashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
 
@@ -145,6 +146,7 @@ export default function TeacherDashboard() {
   };
 
   // ── guard ─────────────────────────────────────────────────────────────────
+  if (authLoading) return <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   if (user?.role !== "teacher" && user?.role !== "admin") { setLocation("/login"); return null; }
 
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -432,6 +434,7 @@ export default function TeacherDashboard() {
   // ── MAIN DASHBOARD ────────────────────────────────────────────────────────
   return (
     <div className="min-h-[100dvh] bg-background text-white">
+      <QuickSwitch />
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">👨‍🏫 Ուսուցչի Վահանակ</h1>
