@@ -88,7 +88,7 @@ export default function LessonPage() {
   useEffect(() => {
     if (hasSession && !autoStarted && !chatLoading && (messages as unknown[]).length === 0 && !sendMessage.isPending) {
       setAutoStarted(true);
-      triggerAI("Սկսել");
+      triggerAI("Դасĭ սksel — ողjunir ĵerm ĵeri arajaatanutyunov, heto sksir Fazh 1 krknutyun");
     }
   }, [hasSession, autoStarted, chatLoading, messages, sendMessage.isPending, triggerAI]);
 

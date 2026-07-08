@@ -7,6 +7,138 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
+const PHASE_NAMES = [
+  "Կրկնություն",
+  "Հիմնական գաղափарнер",
+  "Երкrordakan gaĝaparner",
+  "Gorcnakan kirɑrutyun",
+  "Steghtsagorcakan ashkhatanq",
+  "Mikro nakhagits",
+  "Amfophum",
+  "Tnayin ashkhatanq",
+];
+
+function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: string): string {
+  switch (phase) {
+    case 1:
+      return `ԸՆTHАЦИК ՓՈՒЛЬ 1 — ԿРKNUTYUN (5 minute)
+Npatak: Aktivatsel nakhord giteliknerĕ nakhkin «${lessonTitle}» temayin antsnelitsh.
+
+INЧ ANEL:
+1. Jerm jeri arajaatanutyun (1 naxadasutyun).
+   Orin.: «Bari or! Urakh em vor aysor kash ashkhatinh «${lessonTitle}» temayi vra.»
+2. Tur 2-3 harc NAKHORD TEMANERITSA (${subjectName}):
+   — 60% nakhord dasi nyutits
+   — 30% aveli hin temaneritsa
+   — 10% nor «${lessonTitle}» temayi masin (NUNISKU — inch arden karo en gitel)
+3. Yet nakhord das chi eghel — hartsrir undhanur ${subjectName}-i himnakan haskatsutunnericha.
+4. MI bacatrir — MIAIN hartsrir.
+5. Chisht pataskhani depkum — karts gnabanutyun, heto hajiord harc.
+
+LEVATSAP: Jerm arajaatanutyun + 1 harc → [Ashak.] → 1 harc → [Ashak.] → amposhog harc.`;
+
+    case 2:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 2 — HIMNAKAN GAGHAFANNER (8-10 minute)
+Npatak: Usutanel «${lessonTitle}» temayi HIMNAKAN gaghapare (Bloom 1-2).
+
+USUCCHI MODELE — NAKHARDJ MEKH MEKH + HARTSRI + AMRATSRI.
+
+KTOR 1: Bacatrir AMENAKARTSR himnakan haskatsutune (2-3 nax.) → 1-2 harc.
+KTOR 2: Aveli mancramasht bacatrutyun + orinakner (2-3 nax.) → 1-2 harc.
+KTOR 3: Kap anel nore steghtsvatse himnakani het → 1 amratsinom harc.
+
+KANONN:
+• NAKHE BACATRIR, HET HARTSRIR — erbeky mi talis patrastihe ampokhy pasukhy.
+• Ashakerty INKHUSHYN haskanal tu, chi stanum.
+• Bloom 1-2: hisel, tsanal, bacatrel.
+• Ampokhy 3-5 harc.`;
+
+    case 3:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 3 — ERKRORDAKAN GAGHAFANNER (7-8 minute)
+Npatak: «${lessonTitle}»-i AVELI KHOR mase (Bloom 3 — kiraril).
+
+INЧ ANEL:
+• Kap hastatir Fazh 2-i himnakani het.
+• Nerkayatrir ERKRORDAKAN GAGHAPARE — aveli khor, aveli barkatsvatsh.
+• NAKHE BACATRIR mek katvore → het HARTSRIR.
+• Tur 3-5 harc aveli khor makardaki:
+  «Inch klinari yete...?» / «Vonts karogh enkh kiraril...?» / «Inch nmani...?»
+• Tur iravachakan kyankhi orinakner.`;
+
+    case 4:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 4 — GORTSAKAN KIRARUTYUN (8-10 minute)
+Npatak: GORTSAKAN XNDIRNERI luzum (Bloom 3-4).
+
+INЧ ANEL:
+• Tur 3-5 gortsakan XNDIR kam VARDSHUTYUN — mek-mek, heravor:
+  Xndir 1 — hesthe (Bloom 3)
+  Xndir 2-3 — midjin (Bloom 3-4)
+  Xndir 4-5 — darin (Bloom 4)
+• ERBEKY mi taris patrastihe pasukhy — Sokratyan hartsnerov ughordir.
+• Yet ashakerty kkhekhi — tur MAYATSUGH:
+  «Ayle mti: inch gitem aysteghitsh? Inch kanonn karogh em ogtagorerel?»
+• Yet XNDIRE CHEN LUZUM — varets maka: 1 orinake katar, nman xndire tur iren.`;
+
+    case 5:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 5 — STEGHTSAGORCAKAN ASHKHATANQ (8-10 minute)
+Bloom 4-6 — verlucel, gnahatel, steghtsitsel.
+
+• Tur BATS HARCER — mek den uni minakayin pataskhane:
+  «Inch karogh liner yete...?» / «Vonts karogh entriri...?» / «Inch nmani qo kyankhyum...?»
+• Kap anel KYANKHI HET — orinakner iravachakan dpkerumic.
+• Thogh ashakerty INKHUSHYN STEGHTSITS — mi chsekel nra mtqe.
+• Karogh tur PATKERACI INKHUSHHANA KAN ASHKHATANQ (MINI patka, diagram).`;
+
+    case 6:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 6 — MIKRO NAKHAGITS (10-12 minute)
+Tur mek POKR NAKHAGITS «${lessonTitle}» temayi vra.
+Orinakner:
+• «Namak» kerpov nerkayatrie [tema]e
+• «Steghtsir mek xndir aylisi hamar»
+• «Nerkayatsrir [haskatsutyne] 6-amya erkuyti hamar»
+• «Kazmesh diagram / sqema»
+
+ENDHAMENENE ughordir — MI KATARIR nra hamar.
+Hetokrkum TESIR ev gnahatir EKUSHTI (meke gnahataranvorpes, den pataskhane).`;
+
+    case 7:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 7 — AMFOPHUM (5 minute)
+Tur 5-7 harc BOLOR MAKARDAKNERITSA (Bloom 1-6):
+• 2 harc Bloom 1-2 (hisel, haskanal)
+• 2 harc Bloom 3-4 (kiraril, verlucel)
+• 1-2 harc Bloom 5-6 (gnahatel, steghtsitsel)
+
+Hamshen ashakerty INKHUSHYN GNAHATIR yur yuracume:
+«Aysor dasits inch yuraces? Inch djvar enkav? Inch harceri unesh?»
+
+HASHAWIRIR YURACMAN TAKANSAGANAKE:
+«Mot. [X]% yuratsel enkh aysor. Jerm shnorhakalutyun:
+  — DJYU yuratsel es [themanere]
+  — Aveli karogh es anel [bane]
+  — Apaga dasi nakhe krknenkhh [ayse]»`;
+
+    case 8:
+      return `ԸՆTHАЦИК ՓOUЛЬЛ 8 — TNAYIN ASHKHATANQ
+Nerkayatsrir 3 MAKARDAKI TNAYIN — ashakerty KE ENTRI:
+
+⭐ HIMNAKANE (Bloom 1-2):
+  [2-3 hesthe xndir / vardshutyun terkhanyits]
+
+⭐⭐ ENDLAYNVATSE (Bloom 3-4):
+  [2-3 midjin makardaki xndir]
+
+⭐⭐⭐ STEGHTSAGORCAKANE (Bloom 5-6):
+  [mek bats nakhagits kam steghtsagorcakan xndir]
+
+Asum es: «Ashakert, entrum ek meke, kam barbe — jyum ek entrum ek amene.»
+Hetokrkum hamshen aysor dasi HISHATAKARAN E (3 baner inch siretsin).
+Herajshtir patrastel hajiord dasits.`;
+
+    default:
+      return "Nerkayatsrir dasi tematikaye ev ughordir ashakertyn.";
+  }
+}
+
 router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   const { message, lessonId } = req.body as {
     message: string;
@@ -18,22 +150,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  const PHASE_NAMES = [
-    "Կրկնություն", "Հիմնական գաղափարներ", "Երկրորդական գաղափարներ",
-    "Գործնական կիրառություն", "Ստեղծագործական աշխատանք",
-    "Միկրո նախագիծ", "Ամփոփում", "Տնային աշխատանք",
-  ];
-  const PHASE_INSTRUCTIONS: Record<number, string> = {
-    1: "Ակտիվացրու նախկին գիտելիքները: Տուր հարցեր նախորդ դասի, ավելի հին դասերի ու նոր թեմայի մասին (60/30/10%): Մի՛ բացատրիր, հարցրու:",
-    2: "Ներկայացրու դասի ՀԻՄՆԱԿԱՆ գաղափարը Բլում 1-2 մակարդակով: Բացատրիր, տուր 3-5 հարց:",
-    3: "Ուսուցանիր ավելի խոր մասը՝ Բլум 3 մակարդակ: Կապ հաստատիր հիմնականի հետ, տուր 3-5 հարց:",
-    4: "Տուր 3-5 գործնական վարժություն կամ խնդիր (Բլում 3-4): Ուղղորդիր լուծման ընթացքը՝ Սոկրատյան հարցերով:",
-    5: "Բաց հարցեր, կյանքի հետ կապ, ստեղծագործական մտածողություն (Բլում 4-6): Թող աշակերտն ինքն ստեղծի:",
-    6: "Տուր մի փոքր նախագիծ (օր. «Նամակ», «Ստեղծիր խնդիր», «Ներկայացրու»): Ուղղորդիր, մի՛ կատարիր:",
-    7: "Ամփոփիր ամբողջ դասը: Տուր 5-7 հարց բոլոր մակարդակներից: Հաշվիր յուրացման մոտ տոկոսը:",
-    8: "Տուր 3 մակարդակի տնային (Հիմնական / Ընդլայնված / Ստեղծագործական): Թող աշակերտն ընտրի:",
-  };
-
   let lessonContext: string | undefined;
   if (lessonId) {
     const [lesson] = await db
@@ -41,6 +157,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       .from(lessonsTable)
       .where(eq(lessonsTable.id, lessonId))
       .limit(1);
+
     if (lesson) {
       const [session] = await db
         .select()
@@ -49,20 +166,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .limit(1);
 
       const phase = session?.currentPhase ?? 1;
-      const phaseName = PHASE_NAMES[phase - 1] ?? "Անհայտ";
-      const phaseInstr = PHASE_INSTRUCTIONS[phase] ?? "";
+      const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Areknak";
+      const phaseInstr = buildPhaseInstruction(phase, lesson.title, subjectName);
 
       lessonContext = [
-        `ԴԱՍԻ ԹԵՄԱՆ: ${lesson.title}`,
-        lesson.description ? `ԲՈՎԱՆԴԱԿՈՒԹՅՈՒՆ: ${lesson.description}` : "",
-        lesson.content ? `ԴԱՍԻ ՆՅՈՒԹ: ${lesson.content}` : "",
-        `ԸՆTHԱՑԻԿ ՓՈՒԼ: ${phase} — ${phaseName}`,
-        `ՓՈՒԼԻ ՀՐԱՀԱՆԳ: ${phaseInstr}`,
+        `DASSI THEMA: «${lesson.title}»`,
+        `AREAKLAG (AREK): ${subjectName}`,
+        lesson.description ? `BOVANANDAKUTYUN: ${lesson.description}` : "",
+        lesson.content ? `DASAGIRKI NYUT:\n${lesson.content}` : "",
+        ``,
+        phaseInstr,
       ].filter(Boolean).join("\n");
     }
   }
 
-  // Load last 10 messages for context
   const history = await db
     .select()
     .from(chatMessagesTable)
@@ -75,18 +192,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         : eq(chatMessagesTable.userId, req.userId!)
     )
     .orderBy(asc(chatMessagesTable.createdAt))
-    .limit(10);
+    .limit(20);
 
-  // Save user message
-  const [userMsg] = await db
+  await db
     .insert(chatMessagesTable)
     .values({
       userId: req.userId!,
       lessonId: lessonId ?? null,
       role: "user",
       content: message,
-    })
-    .returning();
+    });
 
   const chatHistory: ChatMessage[] = history.map((m) => ({
     role: m.role as "user" | "assistant",
