@@ -15,33 +15,33 @@ const PHASES = [
   {
     phase: 1,
     icon: "🔄",
-    shortName: "Կrknoutyun",
-    fullName: "Կrknoutyun",
-    desc: "Нaxord dassi krknutyoun · 3–5 harc · Ardyounk %",
+    shortName: "Կrknoutyoun",
+    fullName: "Կrknoutyoun",
+    desc: "Նախορд даси 3–5 հarц · Արдyounq %",
     color: "#14B8A6",
   },
   {
     phase: 2,
     icon: "📖",
-    shortName: "Himnakan",
-    fullName: "Nor das — Himnakan maser",
-    desc: "Тeoria → Нarcer → 1–3 Varzhoutyoun",
+    shortName: "Հimnakan",
+    fullName: "Nor das — Հimnakan",
+    desc: "Teoria → Հarcer → Varzhoutyounner",
     color: "#6366F1",
   },
   {
     phase: 3,
     icon: "🔍",
-    shortName: "Khor",
-    fullName: "Khor ousumnasirum",
-    desc: "Тeoria → Varzhoutyounner → Ambogh stugum %",
+    shortName: "Խor ous.",
+    fullName: "Խor ousumnasirum",
+    desc: "Teoria → Varzhoutyounner → Ambogh stugum %",
     color: "#8B5CF6",
   },
   {
     phase: 4,
     icon: "📚",
     shortName: "Tnayin",
-    fullName: "Тnayin + Avart",
-    desc: "3 makardaki tnayin → Avart",
+    fullName: "Tnayin + Avart",
+    desc: "3 makardaki tnayin handranashkhatanq → Avart",
     color: "#F59E0B",
   },
 ];
@@ -90,13 +90,13 @@ interface PhaseScore { correct: number; total: number; wrong: string[] }
 function phaseStartMessage(phase: number, lessonTitle: string): string {
   switch (phase) {
     case 1:
-      return "Fazh 1 — sksir. Hayerĕn ĵerm greetingov, heto ՀАРЦ 1-ĕ 1) 2) 3) dzevachaphov. MEK HARC MIAYĬN.";
+      return "Etap 1 — sksir. Hayerĕn ĵerm ողĵuyunov, heto ՀАРЦ 1-ĕ 1) 2) 3) dzevachaphov. MEK HARC MIAYĬN.";
     case 2:
-      return `Fazh 2 — nor das. Hayerĕn sksir «${lessonTitle}»-i himnakan masery nerkaycnel. Teoria → harcer → varzhoutyounner.`;
+      return `Etap 2 — nor das. Hayerĕn sksir «${lessonTitle}»-i himnakan masery nerkaycnel. Teoria → harcer → varzhoutyounner.`;
     case 3:
-      return `Fazh 3 — khor ousumnasirum «${lessonTitle}». Nerkaycir aveŕ khor aspektnerĕ, heto varzhoutyounner ev ambogh stugum tokoosov.`;
+      return `Etap 3 — khor ousumnasirum «${lessonTitle}». Nerkaycir aveŕ khor aspektnerĕ, heto varzhoutyounner ev ambogh stugum tokoosov.`;
     case 4:
-      return "Fazh 4 — tnayin handnaŕoutyounnerĕ tuĵr 3 makardakov (⭐ ⭐⭐ ⭐⭐⭐) ev ĵerm avartabaner.";
+      return "Etap 4 — tnayin handnaŕoutyounnerĕ tuĵr 3 makardakov (⭐ ⭐⭐ ⭐⭐⭐) ev ĵerm avartabaner.";
     default:
       return "Sksir hayerĕn.";
   }
@@ -256,7 +256,7 @@ export default function LessonPage() {
         <header className="shrink-0 border-b border-white/10 bg-card/60 backdrop-blur-lg">
           <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
             <Link href={`/subjects/${lesson.subjectId}`} className="text-muted-foreground hover:text-white transition-colors text-sm">
-              ← Нет
+              ← Нet
             </Link>
             <span className="text-xs text-muted-foreground">{todayArmenian()}</span>
           </div>
@@ -269,7 +269,7 @@ export default function LessonPage() {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-2xl shrink-0 shadow-lg shadow-primary/30">👋</div>
               <div>
-                <p className="text-muted-foreground text-sm">Barĭ or,</p>
+                <p className="text-muted-foreground text-sm">Barev or,</p>
                 <h2 className="text-xl font-bold">{firstName}!</h2>
               </div>
             </div>
@@ -277,7 +277,7 @@ export default function LessonPage() {
             {/* Lesson card */}
             <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 bg-white/5">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Aysorva dassi theman e</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Aysorva dasi themaan</p>
               </div>
               <div className="px-6 py-6 flex items-start gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0 text-2xl">📖</div>
@@ -298,7 +298,7 @@ export default function LessonPage() {
             {/* 4 phases overview */}
             <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 bg-white/5">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">📋 Dasi kantoghootyoun — 4 fazh</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">📋 Dasi kantoghootyoun — 4 etap</p>
               </div>
               <div className="px-6 py-5 flex flex-col gap-4">
                 {PHASES.map((p) => (
@@ -330,12 +330,12 @@ export default function LessonPage() {
                 {startSession.isPending ? (
                   <span className="flex items-center justify-center gap-3">
                     <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Patarastoum e...
+                    Patrastoum e...
                   </span>
                 ) : "▶ Sksenk dasĕ"}
               </button>
               <p className="text-center text-xs text-muted-foreground mt-3">
-                AI ucucich · 4 fazh · Bazhmaki ĕntrutyun · Hayeren
+                AI ucucich · 4 etap · Bazhmaki ĕntrutyun · Hayeren
               </p>
             </div>
           </div>
@@ -375,7 +375,7 @@ export default function LessonPage() {
                 />
               </div>
               <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                Fazh {currentPhase}/4 · {progressPct}%
+                Etap {currentPhase}/4 · {progressPct}%
               </span>
             </div>
           </div>
@@ -397,7 +397,7 @@ export default function LessonPage() {
               disabled={advancePhase.isPending}
               className="shrink-0 px-3 py-1.5 rounded-xl bg-secondary/20 text-secondary border border-secondary/30 text-xs font-semibold hover:bg-secondary/30 transition-colors disabled:opacity-50"
             >
-              {advancePhase.isPending ? "..." : "Haĵord fazh →"}
+              {advancePhase.isPending ? "..." : "Հаĵord etap →"}
             </button>
           )}
           {currentPhase === 4 && !isCompleted && (
@@ -406,13 +406,16 @@ export default function LessonPage() {
               disabled={advancePhase.isPending}
               className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50"
             >
-              {advancePhase.isPending ? "..." : "✓ Avartel dasĕ"}
+              {advancePhase.isPending ? "..." : "✓ Avart dasĕ"}
             </button>
           )}
           {isCompleted && (
-            <span className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
-              ✓ Avartvats
-            </span>
+            <Link
+              href={`/subjects/${lesson.subjectId}`}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold hover:bg-green-500/30 transition-colors"
+            >
+              ✓ Avaрtvats
+            </Link>
           )}
         </div>
 
@@ -453,7 +456,7 @@ export default function LessonPage() {
               <span className="text-xl">{phaseInfo.icon}</span>
               <div className="flex-1 min-w-0">
                 <span className="font-semibold text-sm" style={{ color: phaseInfo.color }}>
-                  Fazh {currentPhase} — {phaseInfo.fullName}
+                  Etap {currentPhase} — {phaseInfo.fullName}
                 </span>
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{phaseInfo.desc}</p>
               </div>
@@ -478,7 +481,7 @@ export default function LessonPage() {
           {messages.length === 0 && !sendMessage.isPending && (
             <div className="self-start rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10">
               <div className="text-xs font-medium text-secondary mb-1">AI Ucucich</div>
-              <div className="text-sm text-muted-foreground animate-pulse">Patarastoum e...</div>
+              <div className="text-sm text-muted-foreground animate-pulse">Patrastoum e...</div>
             </div>
           )}
 
@@ -510,8 +513,8 @@ export default function LessonPage() {
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-xs font-semibold text-secondary">AI Ucucich</span>
-                    {correctness === true  && <span className="text-xs text-green-400 font-medium">✓ Ĉisht</span>}
-                    {correctness === false && <span className="text-xs text-red-400 font-medium">✗ Skhal</span>}
+                    {correctness === true  && <span className="text-xs text-green-400 font-medium">✓ Ĉisht e</span>}
+                    {correctness === false && <span className="text-xs text-red-400 font-medium">✗ Skhal e</span>}
                   </div>
                   <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">{formatted}</div>
                 </div>
@@ -534,7 +537,7 @@ export default function LessonPage() {
                   </div>
                 )}
                 {mc && alreadyAnswered && (
-                  <p className="pl-2 text-xs text-muted-foreground italic">Pataskhane chakatagrvel e...</p>
+                  <p className="pl-2 text-xs text-muted-foreground italic">Pataskhane ĕntrvats e ✓</p>
                 )}
               </div>
             );
@@ -560,7 +563,7 @@ export default function LessonPage() {
       {currentPhase === 1 && phaseScore.wrong.length > 0 && (
         <div className="shrink-0 px-4 pb-2">
           <div className="max-w-3xl mx-auto px-4 py-2 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
-            <span className="font-semibold">📌 Petq e krknel: </span>
+            <span className="font-semibold">📌 Petq e krknel noren: </span>
             {phaseScore.wrong.slice(-3).join(" · ")}
           </div>
         </div>
@@ -570,7 +573,7 @@ export default function LessonPage() {
       <footer className="shrink-0 p-4 border-t border-white/10 bg-card/50 backdrop-blur-lg">
         <div className="max-w-3xl mx-auto">
           {sendMessage.isError && (
-            <p className="text-red-400 text-xs mb-2">Skhal tĕghi unetsav. Kaŕkĕ noren pŏrtsel.</p>
+            <p className="text-red-400 text-xs mb-2">Skhal tĕghi unetsav. Kaŕkĕ krknel.</p>
           )}
           <div className="flex items-end gap-2 bg-background border border-white/10 rounded-2xl p-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
             <textarea
@@ -579,8 +582,8 @@ export default function LessonPage() {
               onChange={adjustHeight}
               onKeyDown={handleKeyDown}
               placeholder={
-                currentPhase === 1 ? "Gris pataskhane kam ĕntrir verevic variantĕ..."
-                : currentPhase === 4 ? "Harceri dĕpqoum gris aystegh..."
+                currentPhase === 1 ? "Gris pataskhane kam ĕntrir variantĕ..."
+                : currentPhase === 4 ? "Gris pataskhane aystegh..."
                 : "Gris pataskhane kam harc..."
               }
               rows={1}
