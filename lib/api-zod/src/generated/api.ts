@@ -186,7 +186,8 @@ export const GetSubjectDetailResponse = zod.object({
   "lesson": zod.string(),
   "lessonNumber": zod.number().nullish(),
   "score": zod.number(),
-  "status": zod.string()
+  "status": zod.string(),
+  "masteryScore": zod.number().nullish()
 })),
   "book": zod.union([zod.object({
   "id": zod.number(),
@@ -301,6 +302,7 @@ export const GetLessonDetailResponse = zod.object({
   "lessonId": zod.number(),
   "currentPhase": zod.number(),
   "status": zod.string(),
+  "masteryScore": zod.number().nullish(),
   "startedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
 }).nullable()
@@ -319,6 +321,7 @@ export const StartLessonSessionResponse = zod.object({
   "lessonId": zod.number(),
   "currentPhase": zod.number(),
   "status": zod.string(),
+  "masteryScore": zod.number().nullish(),
   "startedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
 })
@@ -343,11 +346,16 @@ export const AdvanceLessonPhaseParams = zod.object({
   "lessonId": zod.coerce.number()
 })
 
+export const AdvanceLessonPhaseBody = zod.object({
+  "masteryScore": zod.number().nullish()
+})
+
 export const AdvanceLessonPhaseResponse = zod.object({
   "id": zod.number(),
   "lessonId": zod.number(),
   "currentPhase": zod.number(),
   "status": zod.string(),
+  "masteryScore": zod.number().nullish(),
   "startedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
 })
@@ -1402,7 +1410,8 @@ export const UpdateTeacherLessonResponse = zod.object({
   "lesson": zod.string(),
   "lessonNumber": zod.number().nullish(),
   "score": zod.number(),
-  "status": zod.string()
+  "status": zod.string(),
+  "masteryScore": zod.number().nullish()
 })
 
 

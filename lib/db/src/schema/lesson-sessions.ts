@@ -14,6 +14,7 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
     .references(() => lessonsTable.id, { onDelete: "cascade" }),
   currentPhase: integer("current_phase").notNull().default(1),
   status: text("status").notNull().default("active"),
+  masteryScore: integer("mastery_score"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

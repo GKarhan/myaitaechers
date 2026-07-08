@@ -70,6 +70,7 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
       lessonNumber: l.lessonNumber ?? null,
       status,
       score: 0,
+      masteryScore: session?.masteryScore ?? null,
     };
   });
 
@@ -84,8 +85,7 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
     .where(eq(booksTable.subjectId, subjectId))
     .limit(1);
 
-  // If no book in books table, fall back to textbook resources uploaded by teachers
-  // for any course whose name matches this subject's name
+  // Fall back to textbook resources uploaded by teachers
   let resourceBook: { id: number; title: string; fileSize: number | null; fileName: string | null; fileUrl: string | null; createdAt: Date } | null = null;
   if (!book) {
     const matchingCourses = await db
@@ -101,40 +101,38 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
         .where(
           and(
             inArray(resourcesTable.courseId, courseIds),
-            eq(resourcesTable.type, "textbook"),
             isNotNull(resourcesTable.fileUrl)
           )
         )
-        .orderBy(desc(resourcesTable.id))
+        .orderBy(desc(resourcesTable.createdAt))
         .limit(1);
       if (res2) resourceBook = res2;
     }
   }
 
-  const mimeFromFileName = (fileName: string | null) => {
-    if (!fileName) return "application/octet-stream";
-    if (fileName.endsWith(".pdf")) return "application/pdf";
-    if (fileName.endsWith(".doc")) return "application/msword";
-    if (fileName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    return "application/octet-stream";
-  };
+  const averageScore =
+    sessions.length > 0
+      ? Math.round(
+          sessions.reduce((acc, s) => acc + (s.masteryScore ?? 0), 0) / sessions.length
+        )
+      : 0;
 
-  const bookPayload = book
+  const bookData = book
     ? {
         id: book.id,
         name: book.name,
+        fileUrl: book.filePath,
         fileSize: book.fileSize,
         mimeType: book.mimeType,
-        fileUrl: null,
         uploadedAt: book.uploadedAt.toISOString(),
       }
     : resourceBook
     ? {
         id: resourceBook.id,
         name: resourceBook.title,
-        fileSize: resourceBook.fileSize ?? 0,
-        mimeType: mimeFromFileName(resourceBook.fileName),
-        fileUrl: resourceBook.fileUrl ?? null,
+        fileUrl: resourceBook.fileUrl,
+        fileSize: resourceBook.fileSize,
+        mimeType: "application/pdf",
         uploadedAt: resourceBook.createdAt.toISOString(),
       }
     : null;
@@ -147,62 +145,10 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
     progressPercent,
     completedLessons: completed,
     totalLessons: total,
-    averageScore: 0,
+    averageScore,
     lessons: lessonList,
-    book: bookPayload,
+    book: bookData,
   });
 });
-
-router.post(
-  "/subjects/:subjectId/start-lesson",
-  requireAuth,
-  async (req: AuthRequest, res) => {
-    const subjectId = parseInt(String(req.params.subjectId), 10);
-    if (isNaN(subjectId)) {
-      res.status(400).json({ error: "Invalid subject id" });
-      return;
-    }
-
-    const [subject] = await db
-      .select()
-      .from(subjectsTable)
-      .where(eq(subjectsTable.id, subjectId))
-      .limit(1);
-
-    if (!subject) {
-      res.status(404).json({ error: "Subject not found" });
-      return;
-    }
-
-    const { lessonId } = req.body as { lessonId?: number };
-    if (!lessonId) {
-      res.status(400).json({ error: "lessonId is required" });
-      return;
-    }
-
-    const [existing] = await db
-      .select()
-      .from(lessonSessionsTable)
-      .where(
-        and(
-          eq(lessonSessionsTable.userId, req.userId!),
-          eq(lessonSessionsTable.lessonId, lessonId)
-        )
-      )
-      .limit(1);
-
-    if (existing) {
-      res.json({ id: existing.id, lessonId: existing.lessonId, status: existing.status });
-      return;
-    }
-
-    const [created] = await db
-      .insert(lessonSessionsTable)
-      .values({ userId: req.userId!, lessonId, currentPhase: 1, status: "active" })
-      .returning();
-
-    res.json({ id: created.id, lessonId: created.lessonId, status: created.status });
-  }
-);
 
 export default router;

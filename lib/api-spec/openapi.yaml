@@ -443,6 +443,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvancePhaseInput"
       responses:
         "200":
           description: Phase advanced
@@ -2686,6 +2692,9 @@ components:
           type: integer
         status:
           type: string
+        masteryScore:
+          type: integer
+          nullable: true
 
     SubjectDetailBook:
       type: object
@@ -2732,6 +2741,13 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SubjectDetailBook"
             - type: "null"
+
+    AdvancePhaseInput:
+      type: object
+      properties:
+        masteryScore:
+          type: integer
+          nullable: true
 
     StartLessonInput:
       type: object
@@ -2862,6 +2878,9 @@ components:
           type: integer
         status:
           type: string
+        masteryScore:
+          type: integer
+          nullable: true
         startedAt:
           type: string
           format: date-time

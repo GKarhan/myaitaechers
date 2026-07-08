@@ -6,11 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface LessonItem {
-  id: number;
-  lesson: string;
-  lessonNumber?: number | null;
-  score: number;
-  status: string;
+export interface AdvancePhaseInput {
   masteryScore?: number | null;
 }

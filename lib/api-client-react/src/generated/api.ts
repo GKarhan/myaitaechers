@@ -21,6 +21,7 @@ import type {
 
 import type {
   AdminStats,
+  AdvancePhaseInput,
   AiGradeSuggestion,
   AuthResponse,
   BookGenerationResult,
@@ -1243,14 +1244,15 @@ export const getAdvanceLessonPhaseUrl = (lessonId: number,) => {
 /**
  * @summary Advance to the next phase in a lesson session
  */
-export const advanceLessonPhase = async (lessonId: number, options?: RequestInit): Promise<LessonSession> => {
+export const advanceLessonPhase = async (lessonId: number,
+    advancePhaseInput?: AdvancePhaseInput, options?: RequestInit): Promise<LessonSession> => {
 
   return customFetch<LessonSession>(getAdvanceLessonPhaseUrl(lessonId),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(advancePhaseInput)
   }
 );}
 
@@ -1258,8 +1260,8 @@ export const advanceLessonPhase = async (lessonId: number, options?: RequestInit
 
 
 export const getAdvanceLessonPhaseMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof advanceLessonPhase>>, TError,{lessonId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof advanceLessonPhase>>, TError,{lessonId: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof advanceLessonPhase>>, TError,{lessonId: number;data?: BodyType<AdvancePhaseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof advanceLessonPhase>>, TError,{lessonId: number;data?: BodyType<AdvancePhaseInput>}, TContext> => {
 
 const mutationKey = ['advanceLessonPhase'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -1271,10 +1273,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof advanceLessonPhase>>, {lessonId: number}> = (props) => {
-          const {lessonId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof advanceLessonPhase>>, {lessonId: number;data?: BodyType<AdvancePhaseInput>}> = (props) => {
+          const {lessonId,data} = props ?? {};
 
-          return  advanceLessonPhase(lessonId,requestOptions)
+          return  advanceLessonPhase(lessonId,data,requestOptions)
         }
 
 
@@ -1285,18 +1287,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type AdvanceLessonPhaseMutationResult = NonNullable<Awaited<ReturnType<typeof advanceLessonPhase>>>
-
+    export type AdvanceLessonPhaseMutationBody = BodyType<AdvancePhaseInput> | undefined
     export type AdvanceLessonPhaseMutationError = ErrorType<ErrorResponse>
 
     /**
  * @summary Advance to the next phase in a lesson session
  */
 export const useAdvanceLessonPhase = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof advanceLessonPhase>>, TError,{lessonId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof advanceLessonPhase>>, TError,{lessonId: number;data?: BodyType<AdvancePhaseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof advanceLessonPhase>>,
         TError,
-        {lessonId: number},
+        {lessonId: number;data?: BodyType<AdvancePhaseInput>},
         TContext
       > => {
       return useMutation(getAdvanceLessonPhaseMutationOptions(options));

@@ -261,6 +261,7 @@ export interface LessonItem {
   lessonNumber?: number | null;
   score: number;
   status: string;
+  masteryScore?: number | null;
 }
 
 export interface SubjectDetailBook {
@@ -282,6 +283,10 @@ export interface SubjectDetail {
   averageScore: number;
   lessons: LessonItem[];
   book?: SubjectDetailBook | null;
+}
+
+export interface AdvancePhaseInput {
+  masteryScore?: number | null;
 }
 
 export interface StartLessonInput {
@@ -347,6 +352,7 @@ export interface LessonSession {
   lessonId: number;
   currentPhase: number;
   status: string;
+  masteryScore?: number | null;
   startedAt: string;
   completedAt?: string | null;
 }

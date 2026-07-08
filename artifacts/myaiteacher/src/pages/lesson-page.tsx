@@ -10,14 +10,14 @@ import {
   useSendChatMessage,
 } from "@workspace/api-client-react";
 
-// ─── 4 phases ─────────────────────────────────────────────────────────────────
+// ─── 4 phases ──────────────────────────────────────────────────────────────
 const PHASES = [
   {
     phase: 1,
     icon: "🔄",
     shortName: "Կrknoutyun",
     fullName: "Կrknoutyun",
-    desc: "Нaxord dassi krknutyoun · 3–5 harc · Арdyounk %",
+    desc: "Нaxord dassi krknutyoun · 3–5 harc · Ardyounk %",
     color: "#14B8A6",
   },
   {
@@ -25,7 +25,7 @@ const PHASES = [
     icon: "📖",
     shortName: "Himnakan",
     fullName: "Nor das — Himnakan maser",
-    desc: "Тeoria → MC harcer → 1–3 varzhoutyoun",
+    desc: "Тeoria → Нarcer → 1–3 Varzhoutyoun",
     color: "#6366F1",
   },
   {
@@ -40,19 +40,10 @@ const PHASES = [
     phase: 4,
     icon: "📚",
     shortName: "Tnayin",
-    fullName: "Тnayin handnaŕ. + Avart",
+    fullName: "Тnayin + Avart",
     desc: "3 makardaki tnayin → Avart",
     color: "#F59E0B",
   },
-];
-
-const BLOOM = [
-  { level: 1, name: "Hisel", color: "#14B8A6" },
-  { level: 2, name: "Haskanal", color: "#6366F1" },
-  { level: 3, name: "Kiraril", color: "#8B5CF6" },
-  { level: 4, name: "Verlucel", color: "#F59E0B" },
-  { level: 5, name: "Gnahatel", color: "#EF4444" },
-  { level: 6, name: "Steghcel", color: "#EC4899" },
 ];
 
 const ARMENIAN_MONTHS = [
@@ -65,7 +56,7 @@ function todayArmenian() {
   return `${d.getDate()} ${ARMENIAN_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-/** Strip LaTeX math wrappers; keep plain content */
+/** Strip LaTeX math wrappers and keep plain content */
 function formatMath(text: string): string {
   return text
     .replace(/\\\((.*?)\\\)/gs, "$1")
@@ -75,7 +66,7 @@ function formatMath(text: string): string {
     .trim();
 }
 
-interface MCQuestion { options: string[]; answered: boolean }
+interface MCQuestion { options: string[] }
 
 function parseMultipleChoice(content: string): MCQuestion | null {
   const lines = content.split("\n").map((l) => l.trim());
@@ -84,35 +75,34 @@ function parseMultipleChoice(content: string): MCQuestion | null {
     const m = line.match(/^(?:[1-3][).]\s+|[աբգ][).]\s*)(.+)/);
     if (m) options.push(m[1].trim());
   }
-  if (options.length >= 2 && options.length <= 4) return { options, answered: false };
+  if (options.length >= 2 && options.length <= 4) return { options };
   return null;
 }
 
 function isCorrectResponse(content: string): boolean | null {
-  if (/✓|✅|Ĉisht e|Ĉarĭ|Hianali|Ĉishte|Ĵisht|Ĉisht է|Ճишт/.test(content)) return true;
-  if (/✗|❌|Oche ĉisht|Vocĥ ĉisht|Skhal|Skhale|Ĝisht che/.test(content)) return false;
+  if (/✓|✅|Ĉisht e|Ĉarĭ|Hianali|Ĉisht է|Ĵisht|Ճишт/.test(content)) return true;
+  if (/✗|❌|Oche ĉisht|Vocĥ ĉisht|Skhal|Skhale/.test(content)) return false;
   return null;
 }
 
 interface PhaseScore { correct: number; total: number; wrong: string[] }
 
-// ─── Phase start triggers ─────────────────────────────────────────────────────
 function phaseStartMessage(phase: number, lessonTitle: string): string {
   switch (phase) {
     case 1:
-      return "Fazh 1 — sksir. Ĵerm greetinov hayerĕn, heto anmijayapes ՀАРЦ 1-ĕ tuĵr 1) 2) 3) dzevachaphov. MEK HARC MIAYĬN.";
+      return "Fazh 1 — sksir. Hayerĕn ĵerm greetingov, heto ՀАРЦ 1-ĕ 1) 2) 3) dzevachaphov. MEK HARC MIAYĬN.";
     case 2:
-      return `Fazh 2 — nor das. Hayerĕn sksir "${lessonTitle}"-i himnakan masery nerkaycnel. Teoria → harcer → varzhoutyounner.`;
+      return `Fazh 2 — nor das. Hayerĕn sksir «${lessonTitle}»-i himnakan masery nerkaycnel. Teoria → harcer → varzhoutyounner.`;
     case 3:
-      return `Fazh 3 — khor ousumnasirum "${lessonTitle}". Nerkaycir aveŕ khor aspektnerĕ, heto varzhoutyounner ev ambogh stugum.`;
+      return `Fazh 3 — khor ousumnasirum «${lessonTitle}». Nerkaycir aveŕ khor aspektnerĕ, heto varzhoutyounner ev ambogh stugum tokoosov.`;
     case 4:
-      return "Fazh 4 — tnayin handnaŕoutyounnerĕ tuĵr 3 makardakov (⭐ ⭐⭐ ⭐⭐⭐) ev ĵerm avartabaner das.";
+      return "Fazh 4 — tnayin handnaŕoutyounnerĕ tuĵr 3 makardakov (⭐ ⭐⭐ ⭐⭐⭐) ev ĵerm avartabaner.";
     default:
       return "Sksir hayerĕn.";
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────
 
 export default function LessonPage() {
   const { user, token, isLoading: authLoading } = useAuth();
@@ -165,7 +155,6 @@ export default function LessonPage() {
     );
   }, [sendMessage, lessonId, queryClient, chatKey]);
 
-  // Auto-start Phase 1
   useEffect(() => {
     if (hasSession && !autoStarted && !chatLoading && messages.length === 0 && !sendMessage.isPending) {
       setAutoStarted(true);
@@ -181,15 +170,23 @@ export default function LessonPage() {
   };
 
   const handleAdvancePhase = () => {
+    // Send current phase score as masteryScore when available
+    const masteryScore = phaseScore.total > 0
+      ? Math.round((phaseScore.correct / phaseScore.total) * 100)
+      : undefined;
+
     advancePhase.mutate(
-      { lessonId },
+      { lessonId, data: masteryScore !== undefined ? { masteryScore } : undefined },
       {
         onSuccess: (data) => {
           queryClient.invalidateQueries({ queryKey: lessonKey });
           const nextPhase = (data as { currentPhase: number }).currentPhase;
+          const nextStatus = (data as { status: string }).status;
           setPhaseScore({ correct: 0, total: 0, wrong: [] });
           setMcAnsweredIds(new Set());
-          triggerAI(phaseStartMessage(nextPhase, lesson?.title ?? ""));
+          if (nextStatus !== "completed") {
+            triggerAI(phaseStartMessage(nextPhase, lesson?.title ?? ""));
+          }
         },
       }
     );
@@ -248,20 +245,18 @@ export default function LessonPage() {
   if (!user || !lesson) return null;
 
   const progressPct = hasSession ? Math.round(((currentPhase - 1) / 4) * 100) : 0;
-  const firstName = (user as { fullName?: string }).fullName?.split(" ")[0] ?? "Աŝakert";
+  const firstName = (user as { fullName?: string }).fullName?.split(" ")[0] ?? "Ашakert";
   const scorePct = phaseScore.total > 0 ? Math.round((phaseScore.correct / phaseScore.total) * 100) : null;
   const phaseInfo = PHASES[currentPhase - 1];
 
-  /* ═══════════════════════════════════════════════════════
-     INTRO SCREEN
-  ═══════════════════════════════════════════════════════ */
+  /* ═══ INTRO SCREEN ════════════════════════════════════════════════════════ */
   if (!hasSession) {
     return (
       <div className="min-h-[100dvh] bg-background text-white flex flex-col">
         <header className="shrink-0 border-b border-white/10 bg-card/60 backdrop-blur-lg">
           <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
             <Link href={`/subjects/${lesson.subjectId}`} className="text-muted-foreground hover:text-white transition-colors text-sm">
-              ← Нet
+              ← Нет
             </Link>
             <span className="text-xs text-muted-foreground">{todayArmenian()}</span>
           </div>
@@ -294,7 +289,9 @@ export default function LessonPage() {
                 </div>
               </div>
               {lesson.description && (
-                <p className="px-6 pb-5 text-sm text-muted-foreground leading-relaxed border-t border-white/10 pt-4">{lesson.description}</p>
+                <p className="px-6 pb-5 text-sm text-muted-foreground leading-relaxed border-t border-white/10 pt-4">
+                  {lesson.description}
+                </p>
               )}
             </div>
 
@@ -306,8 +303,10 @@ export default function LessonPage() {
               <div className="px-6 py-5 flex flex-col gap-4">
                 {PHASES.map((p) => (
                   <div key={p.phase} className="flex items-start gap-4">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-lg border"
-                      style={{ backgroundColor: `${p.color}20`, borderColor: `${p.color}40` }}>
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-lg border"
+                      style={{ backgroundColor: `${p.color}20`, borderColor: `${p.color}40` }}
+                    >
                       {p.icon}
                     </div>
                     <div>
@@ -321,30 +320,6 @@ export default function LessonPage() {
               </div>
             </div>
 
-            {/* Bloom preview */}
-            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm px-6 py-5">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-4">🧠 Bloom makardakner — aysor</p>
-              <div className="flex items-center justify-between gap-2">
-                {BLOOM.map((b, i) => (
-                  <div key={b.level} className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all"
-                      style={{
-                        backgroundColor: i < 4 ? b.color : "transparent",
-                        borderColor: b.color,
-                        color: i < 4 ? "white" : b.color,
-                        opacity: i < 4 ? 1 : 0.35,
-                      }}>
-                      {b.level}
-                    </div>
-                    <span className="text-[10px] text-muted-foreground text-center hidden sm:block">{b.name}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-3 text-center">
-                Aysor das — <span className="text-white font-semibold">1–4</span> makardak
-              </p>
-            </div>
-
             {/* CTA */}
             <div className="pb-6">
               <button
@@ -355,7 +330,7 @@ export default function LessonPage() {
                 {startSession.isPending ? (
                   <span className="flex items-center justify-center gap-3">
                     <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Bernvum e...
+                    Patarastoum e...
                   </span>
                 ) : "▶ Sksenk dasĕ"}
               </button>
@@ -369,9 +344,7 @@ export default function LessonPage() {
     );
   }
 
-  /* ═══════════════════════════════════════════════════════
-     LEARNING SCREEN
-  ═══════════════════════════════════════════════════════ */
+  /* ═══ LEARNING SCREEN ═════════════════════════════════════════════════════ */
   const lastAiIdx = messages.map((m, i) => ({ m, i })).filter(x => x.m.role === "assistant").at(-1)?.i ?? -1;
 
   return (
@@ -380,7 +353,10 @@ export default function LessonPage() {
       {/* Header */}
       <header className="shrink-0 border-b border-white/10 bg-card/80 backdrop-blur-lg">
         <div className="flex items-center gap-3 px-4 py-3">
-          <Link href={`/subjects/${lesson.subjectId}`} className="p-2 -ml-2 text-muted-foreground hover:text-white rounded-full hover:bg-white/5 transition-colors shrink-0">
+          <Link
+            href={`/subjects/${lesson.subjectId}`}
+            className="p-2 -ml-2 text-muted-foreground hover:text-white rounded-full hover:bg-white/5 transition-colors shrink-0"
+          >
             ←
           </Link>
 
@@ -392,7 +368,9 @@ export default function LessonPage() {
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${progressPct}%`,
-                    background: phaseInfo ? `linear-gradient(to right, ${phaseInfo.color}99, ${phaseInfo.color})` : undefined,
+                    background: phaseInfo
+                      ? `linear-gradient(to right, ${phaseInfo.color}99, ${phaseInfo.color})`
+                      : undefined,
                   }}
                 />
               </div>
@@ -402,11 +380,12 @@ export default function LessonPage() {
             </div>
           </div>
 
-          {/* Score badge — always visible when there's score */}
+          {/* Score badge */}
           {phaseScore.total > 0 && scorePct !== null && (
             <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
-              scorePct >= 70 ? "bg-green-500/20 text-green-400 border-green-500/30"
-              : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+              scorePct >= 70
+                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                : "bg-amber-500/20 text-amber-400 border-amber-500/30"
             }`}>
               {phaseScore.correct}/{phaseScore.total} · {scorePct}%
             </div>
@@ -421,7 +400,16 @@ export default function LessonPage() {
               {advancePhase.isPending ? "..." : "Haĵord fazh →"}
             </button>
           )}
-          {(isCompleted || currentPhase >= 4) && (
+          {currentPhase === 4 && !isCompleted && (
+            <button
+              onClick={handleAdvancePhase}
+              disabled={advancePhase.isPending}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50"
+            >
+              {advancePhase.isPending ? "..." : "✓ Avartel dasĕ"}
+            </button>
+          )}
+          {isCompleted && (
             <span className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
               ✓ Avartvats
             </span>
@@ -486,11 +474,11 @@ export default function LessonPage() {
             </div>
           )}
 
-          {/* Empty / loading */}
+          {/* Empty state */}
           {messages.length === 0 && !sendMessage.isPending && (
             <div className="self-start rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10">
               <div className="text-xs font-medium text-secondary mb-1">AI Ucucich</div>
-              <div className="text-sm text-muted-foreground animate-pulse">Patarastvoum em...</div>
+              <div className="text-sm text-muted-foreground animate-pulse">Patarastoum e...</div>
             </div>
           )}
 
@@ -513,11 +501,13 @@ export default function LessonPage() {
 
             return (
               <div key={idx} className="self-start max-w-[92%] sm:max-w-[82%] flex flex-col gap-3">
-                <div className={`rounded-2xl rounded-bl-sm p-4 shadow-md border-y border-r border-white/10 ${
-                  correctness === true  ? "bg-green-500/10 border-l-4 border-l-green-400"
-                  : correctness === false ? "bg-red-500/10 border-l-4 border-l-red-400"
-                  : "bg-card border-l-4 border-l-secondary"
-                }`}>
+                <div
+                  className={`rounded-2xl rounded-bl-sm p-4 shadow-md border-y border-r border-white/10 ${
+                    correctness === true  ? "bg-green-500/10 border-l-4 border-l-green-400"
+                    : correctness === false ? "bg-red-500/10 border-l-4 border-l-red-400"
+                    : "bg-card border-l-4 border-l-secondary"
+                  }`}
+                >
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-xs font-semibold text-secondary">AI Ucucich</span>
                     {correctness === true  && <span className="text-xs text-green-400 font-medium">✓ Ĉisht</span>}
@@ -526,7 +516,7 @@ export default function LessonPage() {
                   <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">{formatted}</div>
                 </div>
 
-                {/* MC buttons */}
+                {/* MC option buttons */}
                 {mc && !alreadyAnswered && !sendMessage.isPending && (
                   <div className="flex flex-col gap-2 pl-2">
                     {mc.options.map((opt, optIdx) => (
@@ -544,13 +534,13 @@ export default function LessonPage() {
                   </div>
                 )}
                 {mc && alreadyAnswered && (
-                  <p className="pl-2 text-xs text-muted-foreground italic">Pataskhane chakatvets...</p>
+                  <p className="pl-2 text-xs text-muted-foreground italic">Pataskhane chakatagrvel e...</p>
                 )}
               </div>
             );
           })}
 
-          {/* Typing indicator */}
+          {/* AI typing indicator */}
           {sendMessage.isPending && (
             <div className="self-start rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10 rounded-bl-sm flex items-center gap-3">
               <span className="text-xs font-semibold text-secondary">AI Ucucich</span>
@@ -566,21 +556,21 @@ export default function LessonPage() {
         </div>
       </main>
 
-      {/* Wrong answers recap — Phase 1 only */}
+      {/* Wrong answers recap — Phase 1 */}
       {currentPhase === 1 && phaseScore.wrong.length > 0 && (
         <div className="shrink-0 px-4 pb-2">
           <div className="max-w-3xl mx-auto px-4 py-2 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
-            <span className="font-semibold">📌 Krknel: </span>
+            <span className="font-semibold">📌 Petq e krknel: </span>
             {phaseScore.wrong.slice(-3).join(" · ")}
           </div>
         </div>
       )}
 
-      {/* Input */}
+      {/* Input bar */}
       <footer className="shrink-0 p-4 border-t border-white/10 bg-card/50 backdrop-blur-lg">
         <div className="max-w-3xl mx-auto">
           {sendMessage.isError && (
-            <p className="text-red-400 text-xs mb-2">Skhal tĕghi unetsav. Pŏrtsek krknal.</p>
+            <p className="text-red-400 text-xs mb-2">Skhal tĕghi unetsav. Kaŕkĕ noren pŏrtsel.</p>
           )}
           <div className="flex items-end gap-2 bg-background border border-white/10 rounded-2xl p-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
             <textarea
@@ -589,9 +579,9 @@ export default function LessonPage() {
               onChange={adjustHeight}
               onKeyDown={handleKeyDown}
               placeholder={
-                currentPhase === 1 ? "Gris pataskhane (kam ĕntrir verevits)..."
+                currentPhase === 1 ? "Gris pataskhane kam ĕntrir verevic variantĕ..."
                 : currentPhase === 4 ? "Harceri dĕpqoum gris aystegh..."
-                : "Gris pataskhane kham harc..."
+                : "Gris pataskhane kam harc..."
               }
               rows={1}
               className="flex-1 bg-transparent border-0 focus:ring-0 resize-none max-h-[120px] min-h-[40px] py-2 px-3 text-sm outline-none"

@@ -3,26 +3,6 @@ import { db, lessonsTable, lessonSessionsTable, subjectsTable } from "@workspace
 import { eq, and } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
-const BLOOM_LEVELS = [
-  { level: 1, name: "Հիշել", color: "#14B8A6", description: "Փաստերի և հիմնական հասկացությունների վերհիշում" },
-  { level: 2, name: "Հասկանալ", color: "#6366F1", description: "Գաղափարների և հասկացությունների բացատրություն" },
-  { level: 3, name: "Կիրառել", color: "#6366F1", description: "Գիտելիքների կիրառում նոր իրավիճակներում" },
-  { level: 4, name: "Վերլուծել", color: "#F59E0B", description: "Կապերի ու ձևերի հայտնաբերում" },
-  { level: 5, name: "Գնահատել", color: "#EF4444", description: "Արդարացում և պաշտպանություն" },
-  { level: 6, name: "Ստեղծել", color: "#EF4444", description: "Նոր ստեղծագործական արտադրանք" },
-];
-
-const LESSON_PHASES = [
-  { phase: 1, title: "Կրկնություն", duration: "5 րոպե", description: "Նախկին գիտելիքների ակտիվացում", activities: ["Հարցուպատասխան", "Ուղղորդված հիշողություն"] },
-  { phase: 2, title: "Հիմնական գաղափարներ", duration: "8–10 րոպե", description: "Դասի հիմնական թեմաների ներկայացում", activities: ["Բացատրություն", "Դիագրամ", "Օրինակներ"] },
-  { phase: 3, title: "Երկրորդական գաղափարներ", duration: "7–8 րոպե", description: "Ավելի խոր կապեր ու մանրամասներ", activities: ["Համեմատություն", "Կապ նախկինի հետ"] },
-  { phase: 4, title: "Գործնական կիրառություն", duration: "8–10 րոպե", description: "Գիտելիքի կիրառում իրական խնդիրների", activities: ["Վարժություններ", "Խնդիրների լուծում"] },
-  { phase: 5, title: "Ստեղծագործական աշխատանք", duration: "8–10 րոպե", description: "Ստեղծագործական մտածողության զարգացում", activities: ["Ստեղծել", "Ձևավորել", "Գծել"] },
-  { phase: 6, title: "Միկրո նախագիծ", duration: "10–12 րոպե", description: "Փոքր ծրագրի իրականացում", activities: ["Նախագիծ", "Ներկայացում"] },
-  { phase: 7, title: "Ամփոփում", duration: "5 րոպե", description: "Ամփոփում եւ ամրապնդում", activities: ["Ամփոփ հարցեր", "Կարևոր կետեր"] },
-  { phase: 8, title: "Տնային աշխատանք", duration: "3 մակարդակ", description: "Հոմ ուսուցում 3 մակարդակով", activities: ["Հիմնական", "Ընդլայնված", "Ստեղծագործական"] },
-];
-
 const router = Router();
 
 router.post("/lessons", requireAuth, async (req: AuthRequest, res) => {
@@ -88,7 +68,6 @@ router.post("/lessons/:lessonId/delete", requireAuth, async (req: AuthRequest, r
   }
 
   await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId));
-
   res.json({ message: "Lesson deleted" });
 });
 
@@ -134,14 +113,14 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
     title: lesson.title,
     description: lesson.description,
     bloomLevel: lesson.bloomLevel,
-    bloomLevels: BLOOM_LEVELS,
-    phases: LESSON_PHASES,
+    content: lesson.content ?? null,
     currentSession: session
       ? {
           id: session.id,
           lessonId: session.lessonId,
           currentPhase: session.currentPhase,
           status: session.status,
+          masteryScore: session.masteryScore ?? null,
           startedAt: session.startedAt.toISOString(),
           completedAt: session.completedAt?.toISOString() ?? null,
         }
@@ -149,6 +128,7 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
   });
 });
 
+// Start or resume a lesson session
 router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
   const { lessonId } = req.body as { lessonId: number };
   if (!lessonId) {
@@ -185,6 +165,7 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
       lessonId: s.lessonId,
       currentPhase: s.currentPhase,
       status: s.status,
+      masteryScore: s.masteryScore ?? null,
       startedAt: s.startedAt.toISOString(),
       completedAt: s.completedAt?.toISOString() ?? null,
     });
@@ -201,13 +182,16 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     lessonId: session.lessonId,
     currentPhase: session.currentPhase,
     status: session.status,
+    masteryScore: null,
     startedAt: session.startedAt.toISOString(),
     completedAt: null,
   });
 });
 
+// Advance phase (max 4) — optional masteryScore saved on completion
 router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
+  const { masteryScore } = req.body as { masteryScore?: number };
 
   const [session] = await db
     .select()
@@ -225,14 +209,19 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     return;
   }
 
-  const nextPhase = session.currentPhase >= 8 ? 8 : session.currentPhase + 1;
-  const isComplete = nextPhase === 8 && session.currentPhase === 8;
+  // 4 phases total; phase 4 → completed
+  const isComplete = session.currentPhase >= 4;
+  const nextPhase = isComplete ? 4 : session.currentPhase + 1;
 
   const [updated] = await db
     .update(lessonSessionsTable)
     .set({
       currentPhase: nextPhase,
       status: isComplete ? "completed" : "active",
+      masteryScore:
+        masteryScore !== undefined && masteryScore !== null
+          ? masteryScore
+          : session.masteryScore ?? null,
       completedAt: isComplete ? new Date() : null,
     })
     .where(eq(lessonSessionsTable.id, session.id))
@@ -243,6 +232,7 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     lessonId: updated.lessonId,
     currentPhase: updated.currentPhase,
     status: updated.status,
+    masteryScore: updated.masteryScore ?? null,
     startedAt: updated.startedAt.toISOString(),
     completedAt: updated.completedAt?.toISOString() ?? null,
   });

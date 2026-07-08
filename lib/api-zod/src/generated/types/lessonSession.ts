@@ -11,6 +11,7 @@ export interface LessonSession {
   lessonId: number;
   currentPhase: number;
   status: string;
+  masteryScore?: number | null;
   startedAt: Date;
   completedAt?: Date | null;
 }
