@@ -1361,6 +1361,38 @@ export const GetCourseLessonsResponse = zod.array(GetCourseLessonsResponseItem)
 
 
 /**
+ * @summary Get per-student progress for every lesson in a course
+ */
+export const GetCourseLessonsProgressParams = zod.object({
+  "courseId": zod.coerce.number()
+})
+
+export const GetCourseLessonsProgressResponse = zod.object({
+  "students": zod.array(zod.object({
+  "id": zod.number(),
+  "fullName": zod.string(),
+  "username": zod.string()
+})),
+  "lessons": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "lessonNumber": zod.number().nullish(),
+  "month": zod.number().nullish(),
+  "day": zod.number().nullish(),
+  "pagesFrom": zod.number().nullish(),
+  "pagesTo": zod.number().nullish(),
+  "results": zod.array(zod.object({
+  "studentId": zod.number(),
+  "status": zod.string(),
+  "masteryScore": zod.number().nullish(),
+  "currentPhase": zod.number(),
+  "completedAt": zod.coerce.date().nullish()
+}))
+}))
+})
+
+
+/**
  * @summary Get homework for a class
  */
 export const GetClassHomeworkParams = zod.object({

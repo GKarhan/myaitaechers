@@ -13,6 +13,7 @@ import {
   useGetCourseResources,
   useDeleteCourseResource,
   useGetCourseLessons,
+  useGetCourseLessonsProgress,
   useCreateTeacherLesson,
   useUpdateTeacherLesson,
   useDeleteTeacherLesson,
@@ -23,6 +24,7 @@ import {
   getGetClassCoursesQueryKey,
   getGetCourseResourcesQueryKey,
   getGetCourseLessonsQueryKey,
+  getGetCourseLessonsProgressQueryKey,
   getGetTeacherScheduleQueryKey,
   getGetStudentDetailQueryKey,
 } from "@workspace/api-client-react";
@@ -88,6 +90,10 @@ export default function TeacherDashboard() {
     selectedCourse?.id ?? 0,
     { query: { enabled: !!selectedCourse, queryKey: getGetCourseLessonsQueryKey(selectedCourse?.id ?? 0) } }
   );
+  const { data: lessonsProgress } = useGetCourseLessonsProgress(
+    selectedCourse?.id ?? 0,
+    { query: { enabled: !!selectedCourse && mainView === "course", queryKey: getGetCourseLessonsProgressQueryKey(selectedCourse?.id ?? 0) } }
+  );
   const { data: studentDetail } = useGetStudentDetail(
     selectedStudentId ?? 0,
     { query: { enabled: !!selectedStudentId, queryKey: getGetStudentDetailQueryKey(selectedStudentId ?? 0) } }
@@ -147,6 +153,7 @@ export default function TeacherDashboard() {
   const [lessonForm, setLessonForm] = useState(emptyLesson);
   const [showLessonForm, setShowLessonForm] = useState(false);
   const [editLesson, setEditLesson] = useState<{ id: number } & typeof emptyLesson | null>(null);
+  const [expandedLessonId, setExpandedLessonId] = useState<number | null>(null);
 
   const handleCreateLesson = (e: React.FormEvent) => {
     e.preventDefault(); if (!selectedCourse) return;
@@ -381,24 +388,85 @@ export default function TeacherDashboard() {
                   const month = (l as any).month as number | null;
                   const day = (l as any).day as number | null;
                   const dateStr = month && day ? `${day} ${MONTHS_HY[month - 1]}` : month ? MONTHS_HY[month - 1] : null;
+                  const isExpanded = expandedLessonId === l.id;
+
+                  // Find progress data for this lesson
+                  const progressLesson = lessonsProgress?.lessons?.find((pl) => pl.id === l.id);
+                  const students = lessonsProgress?.students ?? [];
+
+                  const completedCount = progressLesson?.results?.filter((r) => r.status === "completed").length ?? 0;
+                  const totalStudents = students.length;
+
                   return (
-                    <div key={l.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
-                      <span className="text-xs font-mono text-primary/70 w-8 shrink-0 text-center">
-                        {(l as any).lessonNumber ? `${(l as any).lessonNumber}` : "—"}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{l.title}</div>
-                        <div className="flex gap-3 mt-0.5">
-                          {((l as any).pagesFrom || (l as any).pagesTo) && (
-                            <span className="text-xs text-muted-foreground">📄 {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"} էջ</span>
+                    <div key={l.id} className="bg-card/50 border border-white/10 rounded-xl overflow-hidden">
+                      {/* ── Lesson header row ── */}
+                      <div className="px-4 py-3 flex items-center gap-3">
+                        <span className="text-xs font-mono text-primary/70 w-8 shrink-0 text-center">
+                          {(l as any).lessonNumber ? `${(l as any).lessonNumber}` : "—"}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{l.title}</div>
+                          <div className="flex gap-3 mt-0.5 flex-wrap">
+                            {((l as any).pagesFrom || (l as any).pagesTo) && (
+                              <span className="text-xs text-muted-foreground">📄 {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"} էջ</span>
+                            )}
+                            {dateStr && <span className="text-xs text-teal-400/80">📅 {dateStr}</span>}
+                            {totalStudents > 0 && (
+                              <span className="text-xs text-primary/70">
+                                ✓ {completedCount}/{totalStudents} ավարտած
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 shrink-0 items-center">
+                          {totalStudents > 0 && (
+                            <button
+                              onClick={() => setExpandedLessonId(isExpanded ? null : l.id)}
+                              className={`px-2 py-1 rounded-lg text-xs transition-colors ${isExpanded ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-white border border-transparent hover:border-white/10"}`}
+                              title="Արդյունքներ"
+                            >
+                              {isExpanded ? "▲ Փակլել" : "▼ Արդյունքներ"}
+                            </button>
                           )}
-                          {dateStr && <span className="text-xs text-teal-400/80">📅 {dateStr}</span>}
+                          <button onClick={() => { setEditLesson({ id: l.id, title: l.title, lessonNumber: String((l as any).lessonNumber ?? ""), pagesFrom: String((l as any).pagesFrom ?? ""), pagesTo: String((l as any).pagesTo ?? ""), month: String((l as any).month ?? ""), day: String((l as any).day ?? "") }); setShowLessonForm(false); }} className={btnGhost}>✏️</button>
+                          <button onClick={() => { if (!selectedCourse || !confirm("Ջнджел " + l.title + "?")) return; deleteLesson.mutate({ id: l.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(selectedCourse.id) }) }); }} className={btnDanger}>🗑</button>
                         </div>
                       </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => { setEditLesson({ id: l.id, title: l.title, lessonNumber: String((l as any).lessonNumber ?? ""), pagesFrom: String((l as any).pagesFrom ?? ""), pagesTo: String((l as any).pagesTo ?? ""), month: String((l as any).month ?? ""), day: String((l as any).day ?? "") }); setShowLessonForm(false); }} className={btnGhost}>✏️</button>
-                        <button onClick={() => { if (!selectedCourse || !confirm("Ջнջе՞l?")) return; deleteLesson.mutate({ id: l.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(selectedCourse.id) }) }); }} className={btnDanger}>🗑</button>
-                      </div>
+
+                      {/* ── Expanded student results ── */}
+                      {isExpanded && progressLesson && students.length > 0 && (
+                        <div className="border-t border-white/10 bg-background/30 px-4 py-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Աշակերտնևրի արդյունքներ</div>
+                          <div className="space-y-1.5">
+                            {students.map((s) => {
+                              const r = progressLesson.results?.find((res) => res.studentId === s.id);
+                              const status = r?.status ?? "not_started";
+                              const score = r?.masteryScore ?? null;
+                              const phase = r?.currentPhase ?? 0;
+
+                              const statusInfo =
+                                status === "completed"
+                                  ? { label: "Ավարտած", color: "text-teal-400", bg: "bg-teal-400/10", dot: "bg-teal-400" }
+                                  : status === "active"
+                                  ? { label: `Կապ ${phase}/4`, color: "text-amber-400", bg: "bg-amber-400/10", dot: "bg-amber-400" }
+                                  : { label: "չի սկսվել", color: "text-muted-foreground", bg: "bg-white/5", dot: "bg-white/20" };
+
+                              return (
+                                <div key={s.id} className={`flex items-center gap-3 rounded-lg px-3 py-2 ${statusInfo.bg}`}>
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusInfo.dot}`} />
+                                  <span className="flex-1 text-sm truncate">{s.fullName}</span>
+                                  <span className={`text-xs ${statusInfo.color}`}>{statusInfo.label}</span>
+                                  {score !== null && (
+                                    <span className="text-xs font-mono font-semibold text-white/80 bg-white/10 px-2 py-0.5 rounded-full">
+                                      {score}/100
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -140,6 +140,36 @@ export interface ResourceItem {
   createdAt: string;
 }
 
+export interface StudentProgressResult {
+  studentId: number;
+  status: string;
+  masteryScore?: number | null;
+  currentPhase: number;
+  completedAt?: string | null;
+}
+
+export interface CourseLessonWithProgress {
+  id: number;
+  title: string;
+  lessonNumber?: number | null;
+  month?: number | null;
+  day?: number | null;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
+  results: StudentProgressResult[];
+}
+
+export type CourseLessonsProgressStudentsItem = {
+  id: number;
+  fullName: string;
+  username: string;
+};
+
+export interface CourseLessonsProgress {
+  students: CourseLessonsProgressStudentsItem[];
+  lessons: CourseLessonWithProgress[];
+}
+
 export interface TeacherLessonItem {
   id: number;
   subjectId: number;

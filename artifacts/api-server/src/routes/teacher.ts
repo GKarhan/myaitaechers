@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable } from "@workspace/db";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable } from "@workspace/db";
 import { eq, and, inArray, avg, count } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 
@@ -447,6 +447,68 @@ router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Aut
   if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
   const lessons = await db.select().from(lessonsTable).where(eq(lessonsTable.courseId, courseId));
   res.json(lessons);
+});
+
+router.get("/teacher/courses/:courseId/lessons-progress", requireTeacher, async (req: AuthRequest, res) => {
+  const courseId = parseInt(String(req.params.courseId));
+  if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
+
+  const [course] = await db.select().from(coursesTable).where(eq(coursesTable.id, courseId)).limit(1);
+  if (!course) { res.status(404).json({ error: "Course not found" }); return; }
+
+  const lessons = await db
+    .select()
+    .from(lessonsTable)
+    .where(eq(lessonsTable.courseId, courseId));
+
+  if (lessons.length === 0) { res.json({ students: [], lessons: [] }); return; }
+
+  const members = await db
+    .select({ id: usersTable.id, fullName: usersTable.fullName, username: usersTable.username })
+    .from(classStudentsTable)
+    .innerJoin(usersTable, eq(classStudentsTable.studentId, usersTable.id))
+    .where(eq(classStudentsTable.classId, course.classId));
+
+  if (members.length === 0) {
+    res.json({ students: [], lessons: lessons.map((l) => ({ id: l.id, title: l.title, lessonNumber: l.lessonNumber, month: l.month, day: l.day, pagesFrom: l.pagesFrom, pagesTo: l.pagesTo, results: [] })) });
+    return;
+  }
+
+  const lessonIds = lessons.map((l) => l.id);
+  const studentIds = members.map((m) => m.id);
+
+  const sessions = await db
+    .select()
+    .from(lessonSessionsTable)
+    .where(and(inArray(lessonSessionsTable.lessonId, lessonIds), inArray(lessonSessionsTable.userId, studentIds)));
+
+  const sessionMap = new Map<string, typeof sessions[0]>();
+  sessions.forEach((s) => sessionMap.set(`${s.lessonId}:${s.userId}`, s));
+
+  res.json({
+    students: members,
+    lessons: lessons
+      .sort((a, b) => ((a.lessonNumber ?? 9999) - (b.lessonNumber ?? 9999)))
+      .map((l) => ({
+        id: l.id,
+        title: l.title,
+        lessonNumber: l.lessonNumber,
+        month: l.month,
+        day: l.day,
+        pagesFrom: l.pagesFrom,
+        pagesTo: l.pagesTo,
+        results: members.map((s) => {
+          const sess = sessionMap.get(`${l.id}:${s.id}`);
+          return {
+            studentId: s.id,
+            status: sess ? sess.status : "not_started",
+            masteryScore: sess?.masteryScore ?? null,
+            currentPhase: sess?.currentPhase ?? 0,
+            completedAt: sess?.completedAt ?? null,
+          };
+        }),
+      })),
+  });
 });
 
 // ─── CLASS DOCUMENTS ──────────────────────────────────────────────────────────

@@ -32,6 +32,7 @@ import type {
   ClassDocumentItem,
   ClassItem,
   CourseItem,
+  CourseLessonsProgress,
   CreateAdminStudentInput,
   CreateClassInput,
   CreateCourseInput,
@@ -5296,6 +5297,83 @@ export function useGetCourseLessons<TData = Awaited<ReturnType<typeof getCourseL
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCourseLessonsQueryOptions(courseId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCourseLessonsProgressUrl = (courseId: number,) => {
+
+
+
+
+  return `/api/teacher/courses/${courseId}/lessons-progress`
+}
+
+/**
+ * @summary Get per-student progress for every lesson in a course
+ */
+export const getCourseLessonsProgress = async (courseId: number, options?: RequestInit): Promise<CourseLessonsProgress> => {
+
+  return customFetch<CourseLessonsProgress>(getGetCourseLessonsProgressUrl(courseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCourseLessonsProgressQueryKey = (courseId: number,) => {
+    return [
+    `/api/teacher/courses/${courseId}/lessons-progress`
+    ] as const;
+    }
+
+
+export const getGetCourseLessonsProgressQueryOptions = <TData = Awaited<ReturnType<typeof getCourseLessonsProgress>>, TError = ErrorType<ErrorResponse>>(courseId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCourseLessonsProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCourseLessonsProgressQueryKey(courseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCourseLessonsProgress>>> = ({ signal }) => getCourseLessonsProgress(courseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCourseLessonsProgress>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCourseLessonsProgressQueryResult = NonNullable<Awaited<ReturnType<typeof getCourseLessonsProgress>>>
+export type GetCourseLessonsProgressQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get per-student progress for every lesson in a course
+ */
+
+export function useGetCourseLessonsProgress<TData = Awaited<ReturnType<typeof getCourseLessonsProgress>>, TError = ErrorType<ErrorResponse>>(
+ courseId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCourseLessonsProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCourseLessonsProgressQueryOptions(courseId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

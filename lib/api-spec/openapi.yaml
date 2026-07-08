@@ -2007,6 +2007,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /teacher/courses/{courseId}/lessons-progress:
+    get:
+      operationId: getCourseLessonsProgress
+      tags: [teacher]
+      summary: Get per-student progress for every lesson in a course
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lessons with student results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseLessonsProgress"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/classes/{classId}/homework:
     get:
       operationId: getClassHomework
@@ -2443,6 +2469,73 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    StudentProgressResult:
+      type: object
+      required: [studentId, status, currentPhase]
+      properties:
+        studentId:
+          type: integer
+        status:
+          type: string
+        masteryScore:
+          type: integer
+          nullable: true
+        currentPhase:
+          type: integer
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CourseLessonWithProgress:
+      type: object
+      required: [id, title, results]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        lessonNumber:
+          type: integer
+          nullable: true
+        month:
+          type: integer
+          nullable: true
+        day:
+          type: integer
+          nullable: true
+        pagesFrom:
+          type: integer
+          nullable: true
+        pagesTo:
+          type: integer
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentProgressResult"
+
+    CourseLessonsProgress:
+      type: object
+      required: [students, lessons]
+      properties:
+        students:
+          type: array
+          items:
+            type: object
+            required: [id, fullName, username]
+            properties:
+              id:
+                type: integer
+              fullName:
+                type: string
+              username:
+                type: string
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/CourseLessonWithProgress"
 
     TeacherLessonItem:
       type: object
