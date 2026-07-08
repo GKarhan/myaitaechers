@@ -47,18 +47,20 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
     .groupBy(subjectsTable.id, subjectsTable.name)
     .orderBy(subjectsTable.id);
 
-  const subjects = subjectRows.map((row, idx) => {
-    const total = Number(row.totalLessons);
-    const done = Number(row.completedLessons);
-    return {
-      id: row.id,
-      subject: row.name,
-      completedLessons: done,
-      totalLessons: total,
-      averageScore: 0,
-      progressPercent: total > 0 ? Math.round((done / total) * 1000) / 10 : 0,
-    };
-  });
+  const subjects = subjectRows
+    .filter((row) => Number(row.totalLessons) > 0)
+    .map((row) => {
+      const total = Number(row.totalLessons);
+      const done = Number(row.completedLessons);
+      return {
+        id: row.id,
+        subject: row.name,
+        completedLessons: done,
+        totalLessons: total,
+        averageScore: 0,
+        progressPercent: total > 0 ? Math.round((done / total) * 1000) / 10 : 0,
+      };
+    });
 
   const completedFromSessions = subjects.reduce(
     (sum, s) => sum + s.completedLessons,
