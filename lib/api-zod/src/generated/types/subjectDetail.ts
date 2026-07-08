@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { LessonItem } from './lessonItem';
+import type { SubjectDetailBook } from './subjectDetailBook';
 
 export interface SubjectDetail {
   id: number;
@@ -17,4 +18,5 @@ export interface SubjectDetail {
   totalLessons: number;
   averageScore: number;
   lessons: LessonItem[];
+  book?: SubjectDetailBook | null;
 }

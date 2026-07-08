@@ -184,10 +184,17 @@ export const GetSubjectDetailResponse = zod.object({
   "lessons": zod.array(zod.object({
   "id": zod.number(),
   "lesson": zod.string(),
+  "lessonNumber": zod.number().nullish(),
   "score": zod.number(),
-  "status": zod.string(),
-  "createdAt": zod.coerce.date()
-}))
+  "status": zod.string()
+})),
+  "book": zod.union([zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "fileSize": zod.number(),
+  "mimeType": zod.string(),
+  "uploadedAt": zod.coerce.date()
+}),zod.null()]).nullish()
 })
 
 
@@ -199,9 +206,7 @@ export const StartLessonParams = zod.object({
 })
 
 export const StartLessonBody = zod.object({
-  "lesson": zod.string(),
-  "score": zod.number().optional(),
-  "status": zod.string().optional()
+  "lessonId": zod.number()
 })
 
 export const StartLessonResponse = zod.object({
@@ -1395,9 +1400,9 @@ export const UpdateTeacherLessonBody = zod.object({
 export const UpdateTeacherLessonResponse = zod.object({
   "id": zod.number(),
   "lesson": zod.string(),
+  "lessonNumber": zod.number().nullish(),
   "score": zod.number(),
-  "status": zod.string(),
-  "createdAt": zod.coerce.date()
+  "status": zod.string()
 })
 
 

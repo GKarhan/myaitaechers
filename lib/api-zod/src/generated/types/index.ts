@@ -76,6 +76,7 @@ export * from './studentScheduleItem';
 export * from './studentTeacherItem';
 export * from './studentTodayLessonItem';
 export * from './subjectDetail';
+export * from './subjectDetailBook';
 export * from './subjectListItem';
 export * from './subjectProgress';
 export * from './subjectProgressDetail';

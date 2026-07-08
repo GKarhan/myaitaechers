@@ -9,7 +9,7 @@
 export interface LessonItem {
   id: number;
   lesson: string;
+  lessonNumber?: number | null;
   score: number;
   status: string;
-  createdAt: Date;
 }

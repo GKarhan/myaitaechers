@@ -2673,17 +2673,33 @@ components:
 
     LessonItem:
       type: object
-      required: [id, lesson, score, status, createdAt]
+      required: [id, lesson, score, status]
       properties:
         id:
           type: integer
         lesson:
           type: string
+        lessonNumber:
+          type: integer
+          nullable: true
         score:
           type: integer
         status:
           type: string
-        createdAt:
+
+    SubjectDetailBook:
+      type: object
+      required: [id, name, fileSize, mimeType, uploadedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        fileSize:
+          type: integer
+        mimeType:
+          type: string
+        uploadedAt:
           type: string
           format: date-time
 
@@ -2711,17 +2727,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LessonItem"
+        book:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/SubjectDetailBook"
+            - type: "null"
 
     StartLessonInput:
       type: object
-      required: [lesson]
+      required: [lessonId]
       properties:
-        lesson:
-          type: string
-        score:
+        lessonId:
           type: integer
-        status:
-          type: string
 
     KnowledgeTopic:
       type: object

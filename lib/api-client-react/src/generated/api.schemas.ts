@@ -258,9 +258,17 @@ export interface SubjectListItem {
 export interface LessonItem {
   id: number;
   lesson: string;
+  lessonNumber?: number | null;
   score: number;
   status: string;
-  createdAt: string;
+}
+
+export interface SubjectDetailBook {
+  id: number;
+  name: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: string;
 }
 
 export interface SubjectDetail {
@@ -273,12 +281,11 @@ export interface SubjectDetail {
   totalLessons: number;
   averageScore: number;
   lessons: LessonItem[];
+  book?: SubjectDetailBook | null;
 }
 
 export interface StartLessonInput {
-  lesson: string;
-  score?: number;
-  status?: string;
+  lessonId: number;
 }
 
 export type KnowledgeTopicMasteryLevel = typeof KnowledgeTopicMasteryLevel[keyof typeof KnowledgeTopicMasteryLevel];

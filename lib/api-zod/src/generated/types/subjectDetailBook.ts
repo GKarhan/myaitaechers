@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface StartLessonInput {
-  lessonId: number;
+export interface SubjectDetailBook {
+  id: number;
+  name: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: Date;
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, subjectsTable, studentProgressTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, subjectsTable, lessonsTable, lessonSessionsTable, booksTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
@@ -35,28 +35,54 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
     return;
   }
 
-  const rows = await db
+  const lessons = await db
     .select()
-    .from(studentProgressTable)
-    .where(
-      and(
-        eq(studentProgressTable.userId, req.userId!),
-        eq(studentProgressTable.subject, subject.name)
-      )
-    )
-    .orderBy(studentProgressTable.createdAt);
+    .from(lessonsTable)
+    .where(eq(lessonsTable.subjectId, subjectId))
+    .orderBy(lessonsTable.lessonNumber);
 
-  const completed = rows.filter((r) => r.status === "completed");
-  const averageScore =
-    completed.length > 0
-      ? Math.round(
-          (completed.reduce((s, r) => s + r.score, 0) / completed.length) * 10
-        ) / 10
-      : 0;
+  const lessonIds = lessons.map((l) => l.id);
+  const sessions =
+    lessonIds.length > 0
+      ? await db
+          .select()
+          .from(lessonSessionsTable)
+          .where(
+            and(
+              eq(lessonSessionsTable.userId, req.userId!),
+              inArray(lessonSessionsTable.lessonId, lessonIds)
+            )
+          )
+      : [];
+
+  const sessionMap = new Map(sessions.map((s) => [s.lessonId, s]));
+
+  const lessonList = lessons.map((l) => {
+    const session = sessionMap.get(l.id);
+    const status = session
+      ? session.status === "completed"
+        ? "completed"
+        : "pending"
+      : "not_started";
+    return {
+      id: l.id,
+      lesson: l.title,
+      lessonNumber: l.lessonNumber ?? null,
+      status,
+      score: 0,
+    };
+  });
+
+  const completed = lessonList.filter((l) => l.status === "completed").length;
+  const total = lessonList.length;
   const progressPercent =
-    rows.length > 0
-      ? Math.round((completed.length / rows.length) * 1000) / 10
-      : 0;
+    total > 0 ? Math.round((completed / total) * 1000) / 10 : 0;
+
+  const [book] = await db
+    .select()
+    .from(booksTable)
+    .where(eq(booksTable.subjectId, subjectId))
+    .limit(1);
 
   res.json({
     id: subject.id,
@@ -64,16 +90,19 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
     grade: subject.grade,
     description: subject.description,
     progressPercent,
-    completedLessons: completed.length,
-    totalLessons: rows.length,
-    averageScore,
-    lessons: rows.map((r) => ({
-      id: r.id,
-      lesson: r.lesson,
-      score: r.score,
-      status: r.status,
-      createdAt: r.createdAt.toISOString(),
-    })),
+    completedLessons: completed,
+    totalLessons: total,
+    averageScore: 0,
+    lessons: lessonList,
+    book: book
+      ? {
+          id: book.id,
+          name: book.name,
+          fileSize: book.fileSize,
+          mimeType: book.mimeType,
+          uploadedAt: book.uploadedAt.toISOString(),
+        }
+      : null,
   });
 });
 
@@ -98,63 +127,34 @@ router.post(
       return;
     }
 
-    const { lesson, score = 0, status = "pending" } = req.body as {
-      lesson: string;
-      score?: number;
-      status?: string;
-    };
-
-    if (!lesson) {
-      res.status(400).json({ error: "lesson is required" });
+    const { lessonId } = req.body as { lessonId?: number };
+    if (!lessonId) {
+      res.status(400).json({ error: "lessonId is required" });
       return;
     }
 
-    const existing = await db
+    const [existing] = await db
       .select()
-      .from(studentProgressTable)
+      .from(lessonSessionsTable)
       .where(
         and(
-          eq(studentProgressTable.userId, req.userId!),
-          eq(studentProgressTable.subject, subject.name),
-          eq(studentProgressTable.lesson, lesson)
+          eq(lessonSessionsTable.userId, req.userId!),
+          eq(lessonSessionsTable.lessonId, lessonId)
         )
       )
       .limit(1);
 
-    if (existing.length > 0) {
-      const [updated] = await db
-        .update(studentProgressTable)
-        .set({ score, status })
-        .where(eq(studentProgressTable.id, existing[0].id))
-        .returning();
-      res.json({
-        id: updated.id,
-        subject: updated.subject,
-        lesson: updated.lesson,
-        score: updated.score,
-        status: updated.status,
-        createdAt: updated.createdAt.toISOString(),
-      });
-    } else {
-      const [created] = await db
-        .insert(studentProgressTable)
-        .values({
-          userId: req.userId!,
-          subject: subject.name,
-          lesson,
-          score,
-          status,
-        })
-        .returning();
-      res.json({
-        id: created.id,
-        subject: created.subject,
-        lesson: created.lesson,
-        score: created.score,
-        status: created.status,
-        createdAt: created.createdAt.toISOString(),
-      });
+    if (existing) {
+      res.json({ id: existing.id, lessonId: existing.lessonId, status: existing.status });
+      return;
     }
+
+    const [created] = await db
+      .insert(lessonSessionsTable)
+      .values({ userId: req.userId!, lessonId, currentPhase: 1, status: "active" })
+      .returning();
+
+    res.json({ id: created.id, lessonId: created.lessonId, status: created.status });
   }
 );
 
