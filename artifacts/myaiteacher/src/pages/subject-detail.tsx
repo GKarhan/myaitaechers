@@ -49,9 +49,9 @@ export default function SubjectDetail() {
   const pct = subject.progressPercent ?? 0;
 
   const statusLabel = (status: string) => {
-    if (status === "completed") return { text: "Ավarтvац", cls: "text-teal-400" };
-    if (status === "pending") return { text: "Чntacqum", cls: "text-amber-400" };
-    return { text: "Сksvac che", cls: "text-muted-foreground" };
+    if (status === "completed") return { text: "Ավարտված", cls: "text-teal-400" };
+    if (status === "pending") return { text: "Ընթացքում", cls: "text-amber-400" };
+    return { text: "Չսկսած", cls: "text-muted-foreground" };
   };
 
   return (
@@ -88,17 +88,17 @@ export default function SubjectDetail() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 p-6 rounded-2xl bg-card/60 border border-white/10 shadow-lg">
           <div className="flex gap-8">
             <div>
-              <div className="text-muted-foreground text-sm mb-1">Аварт. / Yndhanuр</div>
+              <div className="text-muted-foreground text-sm mb-1">Ավարտված / Ընդհանուր</div>
               <div className="text-2xl font-bold text-white">{completed} / {total}</div>
             </div>
             <div>
-              <div className="text-muted-foreground text-sm mb-1">Midghin gnаhаtakаn</div>
+              <div className="text-muted-foreground text-sm mb-1">Միջին գնահատական</div>
               <div className="text-2xl font-bold text-secondary">{subject.averageScore}</div>
             </div>
           </div>
           <div className="flex-1 md:max-w-md">
             <div className="text-muted-foreground text-sm mb-2 flex justify-between">
-              <span>Yndhanuр аjajntrac</span>
+              <span>Ընդհանուր առաջընթաց</span>
               <span>{pct}%</span>
             </div>
             <div className="h-2 w-full bg-background rounded-full overflow-hidden">
@@ -112,12 +112,12 @@ export default function SubjectDetail() {
 
         {/* Lessons list */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Дасери цуцак</h2>
+          <h2 className="text-2xl font-bold">Դասերի ցուցակ</h2>
           <Link
             href={`/knowledge-tree/${subjectId}`}
             className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-secondary hover:bg-white/10 transition-colors"
           >
-            Gitelighy tzar →
+            Գիտելիքի Քարտեզ →
           </Link>
         </div>
 
@@ -146,7 +146,7 @@ export default function SubjectDetail() {
                     href={`/lessons/${lesson.id}`}
                     className="shrink-0 flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
                   >
-                    📖 Sovoreq
+                    📖 Սովորել
                   </Link>
                 </div>
               );
@@ -154,14 +154,14 @@ export default function SubjectDetail() {
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <div className="text-4xl mb-3">📚</div>
-              <p>Дасер chkan · Ushucichn kchaveli</p>
+              <p>դասեր չկան · ուսուցիչնը կավելի</p>
             </div>
           )}
         </div>
 
         {/* Book section — read only */}
         <div className="pt-8 border-t border-white/10">
-          <h2 className="text-xl font-bold mb-5">📚 Кцvac girk</h2>
+          <h2 className="text-xl font-bold mb-5">📚 գիրքը</h2>
           {(subject as any).book ? (
             <div className="p-5 rounded-2xl bg-card/60 border border-white/10 max-w-xl flex items-start gap-4">
               <div className="text-3xl bg-background/60 p-3 rounded-xl border border-white/10">
@@ -179,7 +179,7 @@ export default function SubjectDetail() {
           ) : (
             <div className="p-6 rounded-2xl bg-card/30 border border-white/10 max-w-xl text-center">
               <div className="text-3xl mb-3 text-muted-foreground">📂</div>
-              <p className="text-muted-foreground text-sm">Аis ararkajy hamаr girk chka</p>
+              <p className="text-muted-foreground text-sm">Այս Առարկայի համար գիրք չկա</p>
             </div>
           )}
         </div>
