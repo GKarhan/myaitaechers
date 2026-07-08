@@ -164,16 +164,26 @@ export default function SubjectDetail() {
           <h2 className="text-xl font-bold mb-5">📚 գիրքը</h2>
           {(subject as any).book ? (
             <div className="p-5 rounded-2xl bg-card/60 border border-white/10 max-w-xl flex items-start gap-4">
-              <div className="text-3xl bg-background/60 p-3 rounded-xl border border-white/10">
+              <div className="text-3xl bg-background/60 p-3 rounded-xl border border-white/10 shrink-0">
                 {getFileIcon((subject as any).book.mimeType)}
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-base">{(subject as any).book.name}</h3>
                 <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                   <span>{formatFileSize((subject as any).book.fileSize)}</span>
                   <span>·</span>
                   <span>{new Date((subject as any).book.uploadedAt).toLocaleDateString("hy-AM")}</span>
                 </div>
+                {(subject as any).book.fileUrl && (
+                  <a
+                    href={(subject as any).book.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                  >
+                    📥 Բեռնել գիրքը
+                  </a>
+                )}
               </div>
             </div>
           ) : (

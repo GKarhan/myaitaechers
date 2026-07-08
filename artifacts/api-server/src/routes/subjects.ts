@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, subjectsTable, lessonsTable, lessonSessionsTable, booksTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { db, subjectsTable, lessonsTable, lessonSessionsTable, booksTable, resourcesTable, coursesTable } from "@workspace/db";
+import { eq, and, inArray, desc, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
@@ -84,6 +84,61 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
     .where(eq(booksTable.subjectId, subjectId))
     .limit(1);
 
+  // If no book in books table, fall back to textbook resources uploaded by teachers
+  // for any course whose name matches this subject's name
+  let resourceBook: { id: number; title: string; fileSize: number | null; fileName: string | null; fileUrl: string | null; createdAt: Date } | null = null;
+  if (!book) {
+    const matchingCourses = await db
+      .select({ id: coursesTable.id })
+      .from(coursesTable)
+      .where(eq(coursesTable.name, subject.name));
+
+    if (matchingCourses.length > 0) {
+      const courseIds = matchingCourses.map((c) => c.id);
+      const [res2] = await db
+        .select()
+        .from(resourcesTable)
+        .where(
+          and(
+            inArray(resourcesTable.courseId, courseIds),
+            eq(resourcesTable.type, "textbook"),
+            isNotNull(resourcesTable.fileUrl)
+          )
+        )
+        .orderBy(desc(resourcesTable.id))
+        .limit(1);
+      if (res2) resourceBook = res2;
+    }
+  }
+
+  const mimeFromFileName = (fileName: string | null) => {
+    if (!fileName) return "application/octet-stream";
+    if (fileName.endsWith(".pdf")) return "application/pdf";
+    if (fileName.endsWith(".doc")) return "application/msword";
+    if (fileName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    return "application/octet-stream";
+  };
+
+  const bookPayload = book
+    ? {
+        id: book.id,
+        name: book.name,
+        fileSize: book.fileSize,
+        mimeType: book.mimeType,
+        fileUrl: null,
+        uploadedAt: book.uploadedAt.toISOString(),
+      }
+    : resourceBook
+    ? {
+        id: resourceBook.id,
+        name: resourceBook.title,
+        fileSize: resourceBook.fileSize ?? 0,
+        mimeType: mimeFromFileName(resourceBook.fileName),
+        fileUrl: resourceBook.fileUrl ?? null,
+        uploadedAt: resourceBook.createdAt.toISOString(),
+      }
+    : null;
+
   res.json({
     id: subject.id,
     name: subject.name,
@@ -94,15 +149,7 @@ router.get("/subjects/:subjectId", requireAuth, async (req: AuthRequest, res) =>
     totalLessons: total,
     averageScore: 0,
     lessons: lessonList,
-    book: book
-      ? {
-          id: book.id,
-          name: book.name,
-          fileSize: book.fileSize,
-          mimeType: book.mimeType,
-          uploadedAt: book.uploadedAt.toISOString(),
-        }
-      : null,
+    book: bookPayload,
   });
 });
 
