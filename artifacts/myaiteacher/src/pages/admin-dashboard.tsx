@@ -8,6 +8,7 @@ import {
   useGetAdminClasses,
   useGetAdminStudents,
   useGetAdminSchedule,
+  useGetSubjects,
   useCreateTeacher,
   useDeleteTeacher,
   useUpdateTeacher,
@@ -25,6 +26,7 @@ import {
   getGetAdminClassesQueryKey,
   getGetAdminStudentsQueryKey,
   getGetAdminScheduleQueryKey,
+  getGetSubjectsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -44,6 +46,7 @@ export default function AdminDashboard() {
   const { data: teachers = [] } = useGetAdminTeachers({ query: { queryKey: getGetAdminTeachersQueryKey() } });
   const { data: classes = [] } = useGetAdminClasses({ query: { queryKey: getGetAdminClassesQueryKey() } });
   const { data: schedule = [] } = useGetAdminSchedule({ query: { queryKey: getGetAdminScheduleQueryKey() } });
+  const { data: subjectsList = [] } = useGetSubjects({ query: { queryKey: getGetSubjectsQueryKey() } });
 
   // students — filtered by selected class
   const [selectedClassId, setSelectedClassId] = useState<number | "">("");
@@ -310,26 +313,11 @@ export default function AdminDashboard() {
                     <input type="email" value={tForm.email} onChange={e => setTForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="teacher@school.am" />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Առարկա դասավանդումից</label>
-                    {scheduleSubjects.length > 0 ? (
-                      <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls}>
-                        <option value="">Ընտրեկ Առարկան</option>
-                        {scheduleSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    ) : (
-                      <>
-                        <input
-                          list="subjects-list"
-                          value={tForm.subject}
-                          onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))}
-                          className={inputCls}
-                          placeholder="Առարկա Անկալ Դասացուցակից"
-                        />
-                        <datalist id="subjects-list">
-                          {scheduleSubjects.map(s => <option key={s} value={s} />)}
-                        </datalist>
-                      </>
-                    )}
+                    <label className="text-xs text-muted-foreground">Առարկա</label>
+                    <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls}>
+                      <option value="">Ընտրեկ Առարկան</option>
+                      {subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
