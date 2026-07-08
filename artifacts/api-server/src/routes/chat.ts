@@ -7,187 +7,118 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-const PHASE_NAMES = [
-  "Կrknoutyun",
-  "Himnakan gaghafanner",
-  "Erkrordakan gaghafanner",
-  "Gortsakan kirarutyun",
-  "Steghtsagorcakan",
-  "Mikro nakhagits",
-  "Amfophum",
-  "Tnayin ashkhatanq",
-];
-
 function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: string): string {
   switch (phase) {
     case 1:
-      return `=== PHASE 1: REVIEW (ԿRKNOUTYUN) — 5 minutes ===
+      return `=== ՓՈՒLL 1: ԿРКNУTYUN (REVIEW) — 5 minute ===
 
-CRITICAL: Ask ONE question at a time. NEVER show all questions together.
+CRITICAL RULES — follow exactly:
+1. ONE question at a time. Ask question → wait for answer → give feedback → ask next question.
+2. NEVER show multiple questions together.
+3. Total questions: 5 to 8 (you decide based on student performance).
+4. Always use this format for questions:
 
-YOUR FIRST RESPONSE MUST BE:
-1. One warm greeting sentence in Armenian
-2. Then IMMEDIATELY ask QUESTION 1 in this EXACT format — no deviations:
+ՀАРС [N]։ [Question in Armenian ending with ?]
+1) [Option in Armenian]
+2) [Option in Armenian]
+3) [Option in Armenian]
 
-ՀАРС 1: [Question text ending with ?]
-1) [First option]
-2) [Second option]
-3) [Third option]
+QUESTION TOPICS:
+- ~60%: topics from ${subjectName} that the student studied before (NOT «${lessonTitle}»)
+- ~30%: older foundational ${subjectName} topics
+- ~10%: a gentle hint toward «${lessonTitle}» (what they might already intuitively know)
 
-Wait for the student to reply before asking question 2.
+FIRST RESPONSE — must include:
+• One warm personal greeting in Armenian (1 sentence)
+• Then immediately ask ՀАРС 1 in the format above
 
-AFTER STUDENT ANSWERS:
-- Correct: Start your reply with «✓ Ճիշտ է։» then brief explanation, then ask next question in the same 1)/2)/3) format
-- Wrong: Start with «✗ Սխալ է։ Ճիշտ պատասխանը՝ [N]) [option] էր։» then brief explanation, then next question
+AFTER EACH STUDENT ANSWER:
+• If CORRECT → respond with a specific encouraging phrase like «✓ Ճիշտ է։ Հiانalĭ!» + 1-sentence explanation + then ask next question
+• If WRONG → respond with «✗ Ոcht ĉisht, bats mi anbaymanun:» + kind encouragement + correct answer with brief explanation + then ask next question
+• After 3 consecutive wrong answers: suggest a short 2-minute break kindly
 
-QUESTION TOPICS (ask 5 total, one at a time):
-- Q1-Q3: review ${subjectName} topics the student already studied (NOT «${lessonTitle}»)
-- Q4-Q5: older, more foundational ${subjectName} topics
+AFTER ALL QUESTIONS (5-8 total) — Summary:
+«Ĉisht patakhaneciket [X]-its [TOTAL]-in ([PERCENT]%):
+[If ≥70%]: Հianalĭ! Antsnenk nor dasĭn: ▶
+[If <70%]: Arajarkoum em krknel. Sharakhanarekĕ?»
 
-AFTER ALL 5 QUESTIONS — show this summary:
-«Դուք ճիշտ պատասխանեցիք [X]-ից 5-ին ([Z]%):»
-- If Z ≥ 70%: «Հիանալի՛։ Անցնենք նոր դասին։»
-- If Z < 70%: «Առաջարկում եմ կրկնել։ Շարունակե՞նք։»
-
-RULES: Armenian only. One question at a time. Format 1) 2) 3) always.`;
+MATH FORMAT: Use Unicode — 2³, 5², × (not LaTeX \\( \\) or *).
+LANGUAGE: Armenian ONLY.`;
 
     case 2:
-      return `=== PHASE 2: NEW LESSON INTRODUCTION / NOR DASSI NERKAAYATSUM (8-10 min) ===
+      return `=== ՓOUЛL 2: НОR DASSI NERKAAYATSUM — Core Ideas (8-10 min) ===
 
-YOU ARE NOW A TEACHER presenting new material. Use textbook-based, step-by-step teaching.
+YOU ARE A TEACHER presenting new material step-by-step.
 
-STEP 1 — Opening (say this ONCE at the beginning of Phase 2):
-«Бarĕv, sireliĭ aŝakert! 👋
+OPENING (say ONCE at start of Phase 2):
+«Ƃarĕv, sireliĭ aŝakert! 👋
 Aysor menq sovorelu enq՝ «${lessonTitle}»:
-Npatak՝ [what they will learn — 1 sentence]:
-Inchu e sa karevor՝ [real-life connection — 1 sentence]:
+Npatak՝ [what they will learn]:
+Inchu e sa karevor՝ [real-life connection]:
 Patrasto՞st ĕntĭ ksel: 🚀»
 
-STEP 2 — Teach the main concept PIECE BY PIECE (based on textbook content if available):
-- Present ONE small concept chunk (2-3 sentences)
-- Then ask 1-2 questions to check understanding
-- Wait for student response
-- If ≥70% correct → present next chunk
-- If <70% → explain the same concept differently with a new example
+TEACHING METHOD — piece by piece:
+1. Present ONE small concept chunk (2-3 sentences from textbook)
+2. Ask 1-2 comprehension questions using this format:
+   ՀАРС [N]։ [Question in Armenian?]
+   1) [Option]
+   2) [Option]
+   3) [Option]
+3. Wait for answer:
+   - Correct (≥70%) → praise + move to next chunk
+   - Wrong (<70%) → explain same concept differently with new example, then re-ask
 
-For EACH comprehension check, use this EXACT format:
-ՀАРС [number]: [Question in Armenian ?]
-1) [Option A]
-2) [Option B]
-3) [Option C]
-Ĕntrir 1, 2 kam 3:
-
-RULES:
-- Bloom Level 1-2 only (memorize, understand — NO application yet)
-- 3-5 total questions in this phase
-- NEVER give away the full lesson at once — small chunks only
-- Respond in Armenian only`;
+Bloom Level: 1-2 only (recall, understand — no application yet).
+Total questions: 3-5.
+MATH FORMAT: Use Unicode — 2³, 5², × (not LaTeX).
+LANGUAGE: Armenian ONLY.`;
 
     case 3:
-      return `=== PHASE 3: SECONDARY IDEAS / ERKRORDAKAN GAGHAFANNER (7-8 min) ===
-
-Build on Phase 2 concepts. Teach DEEPER understanding (Bloom Level 3).
-
-- Start: «Himĕ vor himnakan gaghapare haskacrinkhĕ, anenkh aveli xor...»
-- Teach deeper aspects ONE CHUNK AT A TIME
-- Use real-life examples
-- For each check: use multiple-choice format:
-  ՀАРС [N]: [question?]
-  1) [option]
-  2) [option]
-  3) [option]
-  Ĕntrir 1, 2 kam 3:
-- 3-5 questions total
-- Respond in Armenian only`;
+      return `=== PHASE 3: SECONDARY IDEAS — Deeper Understanding (7-8 min) ===
+Bloom Level 3 (apply).
+Build on Phase 2. Teach DEEPER aspects one chunk at a time.
+Use same format: explain → ask (1)/2)/3) format) → wait → feedback.
+3-5 questions total.
+MATH FORMAT: Unicode only (²³⁴×÷√). LANGUAGE: Armenian ONLY.`;
 
     case 4:
-      return `=== PHASE 4: PRACTICAL APPLICATION / GORTSAKAN KIRARUTYUN (8-10 min) ===
-
-Students practice solving problems. Bloom Level 3-4.
-
-- Give 3-5 PROBLEMS of increasing difficulty:
-  Problem 1: Easy (Bloom 3)
-  Problems 2-3: Medium (Bloom 3-4)
-  Problems 4-5: Hard (Bloom 4)
-- NEVER give away the answer — guide with Socratic questions
-- If stuck: «Ayle mti: inch gitem aysteghitsh? Inch kanonn karogh em ogtagorerel?»
-- If completely stuck after 3 attempts: work through ONE example together, then give a similar problem
-- Respond in Armenian only`;
+      return `=== PHASE 4: PRACTICAL APPLICATION (8-10 min) ===
+Bloom Level 3-4. Give 3-5 problems of increasing difficulty.
+Guide with Socratic questions — NEVER give the answer directly.
+If completely stuck after 3 tries: solve ONE example together, then give a similar problem.
+MATH FORMAT: Unicode only (²³⁴×÷√). LANGUAGE: Armenian ONLY.`;
 
     case 5:
-      return `=== PHASE 5: CREATIVE WORK / STEGHTSAGORCAKAN (8-10 min) ===
-
-Open-ended questions. Bloom Level 4-6.
-
-- Ask 2-3 open questions with NO single correct answer:
-  «Inch karogh liner yete...?»
-  «Vonts karogh entriri...?»  
-  «Inch nmani qo kyankhyum...?»
-- Connect to real life
-- Let the student CREATE — don't correct their creative ideas
-- Respond in Armenian only`;
+      return `=== PHASE 5: CREATIVE WORK (8-10 min) ===
+Bloom Level 4-6. Open-ended questions, real-life connections.
+No single correct answer — encourage creative thinking.
+LANGUAGE: Armenian ONLY.`;
 
     case 6:
-      return `=== PHASE 6: MICRO PROJECT / MIKRO NAKHAGITS (10-12 min) ===
-
-Give ONE small project on topic «${lessonTitle}»:
-Examples:
-- Write a "letter" from the perspective of [concept]
-- Create a problem for a classmate to solve
-- Explain [concept] as if to a 6-year-old
-- Draw/describe a diagram or schema
-
-GUIDE the student, do NOT complete it for them.
-At the end, evaluate TOGETHER (ask the student to self-assess first).
-Respond in Armenian only.`;
+      return `=== PHASE 6: MICRO PROJECT (10-12 min) ===
+Give ONE small project on «${lessonTitle}».
+Guide, don't solve. Student self-assesses at the end.
+LANGUAGE: Armenian ONLY.`;
 
     case 7:
-      return `=== PHASE 7: SUMMARY / AMFOPHUM (5 min) ===
-
-Ask 5-7 summary questions across ALL Bloom levels:
-- 2 questions: Bloom 1-2 (recall, understand)
-- 2 questions: Bloom 3-4 (apply, analyze)
-- 1-2 questions: Bloom 5-6 (evaluate, create)
-
-Use multiple-choice format where appropriate:
-ՀАРС [N]: [question?]
-1) [option]
-2) [option]
-3) [option]
-
-Ask student to self-reflect: «Aysor dasits inch yuraces? Inch djvar enkav?»
-Calculate and show final mastery score.
-Respond in Armenian only.`;
+      return `=== PHASE 7: SUMMARY (5 min) ===
+Ask 5-7 questions across all Bloom levels using 1)/2)/3) format.
+Student self-reflects. Show final mastery score.
+LANGUAGE: Armenian ONLY.`;
 
     case 8:
-      return `=== PHASE 8: HOMEWORK / TNAYIN ASHKHATANQ ===
-
-Present 3-LEVEL HOMEWORK — student CHOOSES ONE (or all):
-
-⭐ LEVEL 1 — BASIC (Bloom 1-2):
-[2-3 straightforward questions/exercises from the lesson]
-
-⭐⭐ LEVEL 2 — EXTENDED (Bloom 3-4):
-[2-3 medium-difficulty problems]
-
-⭐⭐⭐ LEVEL 3 — CREATIVE (Bloom 5-6):
-[1 open-ended project or creative challenge]
-
-Say: «Ashakert, ĕntrir meke kam barbĕ — jyum ĕntrum ĕk amenĕ:»
-End with: list 3 things from today's lesson the student liked.
-Wish them well until next class.
-Respond in Armenian only.`;
+      return `=== PHASE 8: HOMEWORK ===
+Present 3-level homework (student chooses):
+⭐ Basic (Bloom 1-2) ⭐⭐ Extended (Bloom 3-4) ⭐⭐⭐ Creative (Bloom 5-6).
+End warmly. LANGUAGE: Armenian ONLY.`;
 
     default:
-      return "Introduce the lesson topic and guide the student. Respond in Armenian only.";
+      return "Guide the student on the lesson topic. Armenian only.";
   }
 }
 
 router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
-  const { message, lessonId } = req.body as {
-    message: string;
-    lessonId?: number;
-  };
+  const { message, lessonId } = req.body as { message: string; lessonId?: number };
 
   if (!message?.trim()) {
     res.status(400).json({ error: "message is required" });
@@ -196,12 +127,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
   let lessonContext: string | undefined;
   if (lessonId) {
-    const [lesson] = await db
-      .select()
-      .from(lessonsTable)
-      .where(eq(lessonsTable.id, lessonId))
-      .limit(1);
-
+    const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
     if (lesson) {
       const [session] = await db
         .select()
@@ -211,15 +137,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const phase = session?.currentPhase ?? 1;
       const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
-      const phaseInstr = buildPhaseInstruction(phase, lesson.title, subjectName);
 
       lessonContext = [
-        `LESSON TOPIC: «${lesson.title}»`,
+        `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
-        lesson.description ? `LESSON DESCRIPTION: ${lesson.description}` : "",
-        lesson.content ? `TEXTBOOK CONTENT:\n${lesson.content}` : "",
+        lesson.description ? `DESCRIPTION: ${lesson.description}` : "",
+        lesson.content ? `TEXTBOOK:\n${lesson.content}` : "",
         ``,
-        phaseInstr,
+        buildPhaseInstruction(phase, lesson.title, subjectName),
       ].filter(Boolean).join("\n");
     }
   }
@@ -229,10 +154,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .from(chatMessagesTable)
     .where(
       lessonId
-        ? and(
-            eq(chatMessagesTable.userId, req.userId!),
-            eq(chatMessagesTable.lessonId, lessonId)
-          )
+        ? and(eq(chatMessagesTable.userId, req.userId!), eq(chatMessagesTable.lessonId, lessonId))
         : eq(chatMessagesTable.userId, req.userId!)
     )
     .orderBy(asc(chatMessagesTable.createdAt))
@@ -245,61 +167,40 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     content: message,
   });
 
-  const chatHistory: ChatMessage[] = history.map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: m.content,
-  }));
-  chatHistory.push({ role: "user", content: message });
+  const chatHistory: ChatMessage[] = [
+    ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+    { role: "user", content: message },
+  ];
 
   try {
     const aiResponse = await callAI(chatHistory, lessonContext);
-
     const [assistantMsg] = await db
       .insert(chatMessagesTable)
-      .values({
-        userId: req.userId!,
-        lessonId: lessonId ?? null,
-        role: "assistant",
-        content: aiResponse,
-      })
+      .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: aiResponse })
       .returning();
 
     res.json({ response: aiResponse, messageId: assistantMsg.id });
   } catch (err) {
     logger.error({ err }, "AI chat error");
-    const errorMessage =
-      err instanceof Error ? err.message : "AI service unavailable";
-    res.status(503).json({ error: errorMessage });
+    res.status(503).json({ error: err instanceof Error ? err.message : "AI service unavailable" });
   }
 });
 
 router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {
-  const lessonId = req.query.lessonId
-    ? parseInt(String(req.query.lessonId), 10)
-    : undefined;
+  const lessonId = req.query.lessonId ? parseInt(String(req.query.lessonId), 10) : undefined;
 
   const messages = await db
     .select()
     .from(chatMessagesTable)
     .where(
       lessonId && !isNaN(lessonId)
-        ? and(
-            eq(chatMessagesTable.userId, req.userId!),
-            eq(chatMessagesTable.lessonId, lessonId)
-          )
+        ? and(eq(chatMessagesTable.userId, req.userId!), eq(chatMessagesTable.lessonId, lessonId))
         : eq(chatMessagesTable.userId, req.userId!)
     )
     .orderBy(asc(chatMessagesTable.createdAt))
     .limit(50);
 
-  res.json(
-    messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      createdAt: m.createdAt.toISOString(),
-    }))
-  );
+  res.json(messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt.toISOString() })));
 });
 
 export default router;
