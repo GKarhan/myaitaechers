@@ -67,6 +67,8 @@ export default function Dashboard() {
   }
   if (!user || user.role !== "student") return null;
 
+  const todayLessonMap = new Map(todayLessons.map((l) => [l.scheduleId, l]));
+
   const todayArm = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
   const todayItems = schedule.filter(
     (s) => s.day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "")
@@ -159,76 +161,65 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* ── OVERVIEW — today's lessons (API-driven, linked to lesson content) ── */}
+        {/* ── OVERVIEW — full schedule with lesson links ── */}
         {tab === "overview" && (
-          <div className="max-w-lg">
-            <div className="bg-card/60 border border-white/10 rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">
-                  {todayLessons.length > 0 ? "📅 Այsörva im dasery" : "📅 Հаджорд das"}
-                </h2>
-                <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:underline">
-                  Բolory →
-                </button>
+          <div>
+            {schedule.length === 0 ? (
+              <div className="text-center py-20 text-muted-foreground">
+                <div className="text-5xl mb-4">📅</div>
+                <p>Դասացուցակ չկա · Ադմինը կամ ուսուցիչը պետք է ավելացնի</p>
               </div>
-
-              {/* Today's lessons with lesson number + direct link */}
-              {todayLessons.length > 0 && (
-                <div className="space-y-3">
-                  {todayLessons.map((s) => (
-                    <div key={s.scheduleId} className="bg-background/40 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
-                        <span className="text-xs text-muted-foreground">{s.className}</span>
-                      </div>
-                      <div className="font-semibold text-base">
-                        {s.subject}
-                        {s.lessonNumber != null && (
-                          <span className="ml-2 text-sm font-normal text-muted-foreground">
-                            — Դաs {s.lessonNumber}
+            ) : (
+              <div className="space-y-8">
+                {sortedDays.map((day) => {
+                  const items = grouped[day];
+                  const isToday = day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "");
+                  return (
+                    <div key={day}>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
+                        {day}
+                        {isToday && (
+                          <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full normal-case tracking-normal">
+                            Այսօր
                           </span>
                         )}
+                      </h3>
+                      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {items.slice().sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
+                          const todayItem = todayLessonMap.get(s.id);
+                          const sub = findSubject(s.subject);
+                          const lessonHref = todayItem?.lessonId
+                            ? `/lessons/${todayItem.lessonId}`
+                            : sub
+                            ? `/subjects/${sub.id}`
+                            : null;
+                          return (
+                            <div key={s.id} className="bg-card/60 border border-white/10 rounded-2xl p-5 flex flex-col gap-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-teal-400 font-mono text-base font-bold">{s.time}</span>
+                                <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full">{s.className}</span>
+                              </div>
+                              <div className="font-semibold text-lg">{s.subject}</div>
+                              <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName}</div>
+                              {lessonHref ? (
+                                <Link
+                                  href={lessonHref}
+                                  className="mt-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+                                >
+                                  📖 Սովորել
+                                </Link>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Առարկայի կապ չկա</span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      {s.lessonTitle && (
-                        <div className="text-xs text-white/70 italic">{s.lessonTitle}</div>
-                      )}
-                      <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName}</div>
-                      {s.lessonId != null ? (
-                        <Link href={`/lessons/${s.lessonId}`}
-                          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity">
-                          📖 Սovoreq
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">Ուusucichë das chë stexcel</span>
-                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* No lessons today → show next upcoming from schedule */}
-              {todayLessons.length === 0 && nextLesson && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Айsör das chka · Наджорд das՝{" "}
-                    <span className="text-primary font-medium">{nextLesson.day}</span>
-                  </p>
-                  <div className="bg-background/40 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-teal-400 font-mono text-sm font-bold">{nextLesson.time}</span>
-                      <span className="text-xs text-muted-foreground">{nextLesson.className}</span>
-                    </div>
-                    <div className="font-semibold text-base">{nextLesson.subject}</div>
-                    <div className="text-xs text-muted-foreground">👨‍🏫 {nextLesson.teacherName}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* No schedule at all */}
-              {todayLessons.length === 0 && !nextLesson && (
-                <p className="text-muted-foreground text-sm">Аysör das chka</p>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
