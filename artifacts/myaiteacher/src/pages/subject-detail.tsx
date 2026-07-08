@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useGetSubjectDetail, getGetSubjectDetailQueryKey } from "@workspace/api-client-react";
@@ -19,6 +19,32 @@ export default function SubjectDetail() {
       enabled: !!token && !isNaN(subjectId),
     },
   });
+
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadBook = useCallback(async (fileUrl: string, fileName: string) => {
+    if (!token) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(fileUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Ֆayli bujernamay hnaravorutyun chka");
+    } finally {
+      setDownloading(false);
+    }
+  }, [token]);
 
   const getFileIcon = (mimeType: string) => {
     if (!mimeType) return "📄";
@@ -175,14 +201,16 @@ export default function SubjectDetail() {
                   <span>{new Date((subject as any).book.uploadedAt).toLocaleDateString("hy-AM")}</span>
                 </div>
                 {(subject as any).book.fileUrl && (
-                  <a
-                    href={(subject as any).book.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                  <button
+                    onClick={() => handleDownloadBook(
+                      (subject as any).book.fileUrl,
+                      (subject as any).book.name + ".pdf"
+                    )}
+                    disabled={downloading}
+                    className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    📥 Բեռնել գիրքը
-                  </a>
+                    {downloading ? "⏳ Բեռնվում է..." : "📥 Բեռնել գիրքը"}
+                  </button>
                 )}
               </div>
             </div>
