@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable } from "@workspace/db";
 import { eq, and, inArray, avg, count } from "drizzle-orm";
-import { requireTeacher, type AuthRequest } from "../middlewares/auth";
+import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -487,7 +487,7 @@ router.post("/teacher/classes/:classId/documents/:docId/delete", requireTeacher,
   res.json({ message: "Njujy djnjvec" });
 });
 
-router.get("/teacher/documents/files/:filename", requireTeacher, async (req: AuthRequest, res) => {
+router.get("/teacher/documents/files/:filename", requireAuth, async (req: AuthRequest, res) => {
   const filename = String(req.params.filename).replace(/\.\./g, "");
   const filePath = path.join(uploadsDir, filename);
   if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
