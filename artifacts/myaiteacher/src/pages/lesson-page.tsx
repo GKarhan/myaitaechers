@@ -30,6 +30,13 @@ const BLOOM = [
   { level: 6, name: "Ստեղծել", color: "#EC4899" },
 ];
 
+function todayArmenian() {
+  const d = new Date();
+  const months = ["հունվար", "փետրվար", "մարտ", "ապրիլ", "մայիս", "հունիս",
+    "հուլիս", "օգոստոս", "սեպտեմբեր", "հոկտեմբեր", "նոյեմբեր", "դեկտեմբեր"];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 export default function LessonPage() {
   const { user, token, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -64,7 +71,6 @@ export default function LessonPage() {
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
-
   useEffect(() => { scrollToBottom(); }, [messages, sendMessage.isPending]);
 
   const session = lesson?.currentSession;
@@ -80,20 +86,16 @@ export default function LessonPage() {
   }, [sendMessage, lessonId, queryClient, chatKey]);
 
   useEffect(() => {
-    if (hasSession && !autoStarted && !chatLoading && messages.length === 0 && !sendMessage.isPending) {
+    if (hasSession && !autoStarted && !chatLoading && (messages as unknown[]).length === 0 && !sendMessage.isPending) {
       setAutoStarted(true);
       triggerAI("Սկսել");
     }
-  }, [hasSession, autoStarted, chatLoading, messages.length, sendMessage.isPending, triggerAI]);
+  }, [hasSession, autoStarted, chatLoading, messages, sendMessage.isPending, triggerAI]);
 
   const handleStartLesson = () => {
     startSession.mutate(
       { data: { lessonId } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: lessonKey });
-        },
-      }
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: lessonKey }) }
     );
   };
 
@@ -123,10 +125,7 @@ export default function LessonPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const adjustHeight = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -146,59 +145,172 @@ export default function LessonPage() {
   if (!user || !lesson) return null;
 
   const progressPct = hasSession ? Math.round(((currentPhase - 1) / 8) * 100) : 0;
+  const firstName = (user as { fullName?: string }).fullName?.split(" ")[0] ?? "Աշակերտ";
 
-  /* ── WELCOME SCREEN ─────────────────────────────────── */
+  /* ── INTRO SCREEN (no active session) ──────────────────── */
   if (!hasSession) {
+    const goals = [
+      `Հիշել և ճանաչել «${lesson.title}»-ի հիմնական հասկացությունները`,
+      `Հասկանալ օրինաչափությունները և դրանց կիրառման սկզբունքները`,
+      `Կիրառել նոր գիտելիքները գործնական խնդիրների լուծման ժամանակ`,
+    ];
+    const outcomes = [
+      `✓ Կկարողանաս բացատրել «${lesson.title}»-ի հիմնական կանոնները`,
+      `✓ Կկատարես համապատասխան վարժություններ ինքնուրույն`,
+      `✓ Կկապես ուսումնասիրած նյութը կյանքի իրական իրավիճակների հետ`,
+    ];
+
     return (
-      <div className="min-h-[100dvh] w-full bg-background text-white flex flex-col items-center justify-center px-4">
-        <div className="w-full max-w-lg">
-          <Link href={`/subjects/${lesson.subjectId}`} className="inline-flex items-center gap-2 text-muted-foreground hover:text-white mb-8 transition-colors text-sm">
-            ← Հետ
-          </Link>
+      <div className="min-h-[100dvh] bg-background text-white flex flex-col">
+        {/* Top bar */}
+        <header className="shrink-0 border-b border-white/10 bg-card/60 backdrop-blur-lg">
+          <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
+            <Link
+              href={`/subjects/${lesson.subjectId}`}
+              className="flex items-center gap-2 text-muted-foreground hover:text-white transition-colors text-sm"
+            >
+              ← Հետ
+            </Link>
+            <span className="text-xs text-muted-foreground">{todayArmenian()}</span>
+          </div>
+        </header>
 
-          <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-xl p-8 shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-semibold border border-primary/30">
-                {lesson.subjectName}
-              </span>
-              <span className="text-muted-foreground text-xs">Դաս #{lessonId}</span>
-            </div>
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-5 py-10 flex flex-col gap-8">
 
-            <h1 className="text-2xl font-bold mb-3 leading-snug">{lesson.title}</h1>
-            {lesson.description && (
-              <p className="text-muted-foreground text-sm mb-8 leading-relaxed">{lesson.description}</p>
-            )}
-
-            <div className="mb-8">
-              <p className="text-center text-sm text-muted-foreground mb-4">Դասն ունի <span className="text-white font-semibold">8 փուլ</span></p>
-              <div className="grid grid-cols-4 gap-2">
-                {PHASES.map((p) => (
-                  <div key={p.phase} className="flex flex-col items-center gap-1 p-2 rounded-xl bg-background/50 border border-white/5">
-                    <span className="text-lg">{p.icon}</span>
-                    <span className="text-[10px] text-muted-foreground text-center leading-tight">{p.name}</span>
-                  </div>
-                ))}
+            {/* Greeting */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-2xl shrink-0 shadow-lg shadow-primary/30">
+                👋
+              </div>
+              <div>
+                <p className="text-muted-foreground text-sm">Բարի օր,</p>
+                <h2 className="text-xl font-bold">{firstName}!</h2>
               </div>
             </div>
 
-            <div className="text-center">
-              <p className="text-lg font-semibold mb-2">Պատրա՞ստ ես սովորել</p>
-              <p className="text-sm text-muted-foreground mb-6">AI ուսուցիչը կառաջնորդի քեզ Սոկրատյան մեթոդով</p>
+            {/* Today's lesson topic */}
+            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-white/10 bg-white/5">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  Այսօրվա դասի թեման
+                </p>
+              </div>
+              <div className="px-6 py-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                    <span className="text-2xl">📖</span>
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold leading-snug">{lesson.title}</h1>
+                    <span className="inline-block mt-2 px-3 py-1 rounded-full bg-secondary/20 text-secondary text-xs font-medium border border-secondary/30">
+                      {lesson.subjectName}
+                    </span>
+                  </div>
+                </div>
+                {lesson.description && (
+                  <p className="mt-4 text-sm text-muted-foreground leading-relaxed border-t border-white/10 pt-4">
+                    {lesson.description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Lesson goals */}
+            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-white/10 bg-white/5">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  📌 Դասի նպատակները
+                </p>
+              </div>
+              <ul className="px-6 py-5 flex flex-col gap-3">
+                {goals.map((g, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="mt-0.5 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center shrink-0 border border-primary/30">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm text-muted-foreground leading-relaxed">{g}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Expected outcomes */}
+            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-white/10 bg-white/5">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  🎯 Դասի վերջնարդյունքները
+                </p>
+              </div>
+              <ul className="px-6 py-5 flex flex-col gap-3">
+                {outcomes.map((o, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="text-secondary mt-0.5">✦</span>
+                    <span className="text-sm leading-relaxed">{o}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Bloom levels preview */}
+            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm px-6 py-5">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-4">
+                🧠 Գիտելիքի մակարդակները (Բլում)
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                {BLOOM.map((b, i) => (
+                  <div key={b.level} className="flex flex-col items-center gap-2 flex-1">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white border-2 transition-all"
+                      style={{
+                        backgroundColor: i < 3 ? b.color : "transparent",
+                        borderColor: b.color,
+                        color: i < 3 ? "white" : b.color,
+                        opacity: i < 3 ? 1 : 0.4,
+                      }}
+                    >
+                      {b.level}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground text-center leading-tight hidden sm:block">
+                      {b.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-3 text-center">
+                Այս դասում կհասնենք <span className="text-white font-semibold">1–3</span> մակարդակի
+              </p>
+            </div>
+
+            {/* Start button */}
+            <div className="pb-6">
               <button
                 onClick={handleStartLesson}
                 disabled={startSession.isPending}
-                className="w-full py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-lg shadow-lg shadow-primary/30 hover:opacity-90 transition-opacity disabled:opacity-60"
+                className="w-full py-5 rounded-3xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xl shadow-2xl shadow-primary/30 hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-60"
               >
-                {startSession.isPending ? "Բեռնվում է..." : "🚀 Սկսել սովորել"}
+                {startSession.isPending ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Բեռնվում է...
+                  </span>
+                ) : (
+                  "▶ Սկսենք դասը"
+                )}
               </button>
+              <p className="text-center text-xs text-muted-foreground mt-3">
+                AI ուսուցիչը կառաջնորդի քեզ 8 փուլով · Սոկրատյան մեթոդ · Հայերեն
+              </p>
             </div>
+
           </div>
-        </div>
+        </main>
       </div>
     );
   }
 
-  /* ── LEARNING SCREEN ────────────────────────────────── */
+  /* ── LEARNING SCREEN (session active) ──────────────────── */
   return (
     <div className="flex flex-col h-[100dvh] bg-background text-white overflow-hidden">
 
@@ -211,7 +323,7 @@ export default function LessonPage() {
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm truncate">{lesson.title}</div>
             <div className="flex items-center gap-2 mt-0.5">
-              <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden max-w-[200px]">
+              <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden max-w-[180px]">
                 <div
                   className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500"
                   style={{ width: `${progressPct}%` }}
@@ -262,11 +374,11 @@ export default function LessonPage() {
         </div>
       </header>
 
-      {/* Chat Messages */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages */}
+      <main className="flex-1 overflow-y-auto p-4">
         <div className="max-w-3xl mx-auto flex flex-col gap-4">
 
-          {/* Phase intro banner */}
+          {/* Phase banner */}
           {currentPhase > 0 && (
             <div className="flex items-center gap-3 py-2 px-4 rounded-2xl bg-primary/10 border border-primary/20 text-sm">
               <span className="text-lg">{PHASES[currentPhase - 1]?.icon}</span>
@@ -279,23 +391,18 @@ export default function LessonPage() {
                   <div
                     key={b.level}
                     title={b.name}
-                    className="w-2.5 h-2.5 rounded-full transition-opacity"
-                    style={{
-                      backgroundColor: b.color,
-                      opacity: b.level <= Math.ceil(currentPhase * 0.75) ? 1 : 0.2,
-                    }}
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: b.color, opacity: b.level <= Math.ceil(currentPhase * 0.75) ? 1 : 0.2 }}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {(messages as Array<{ role: string; content: string }>).length === 0 && !sendMessage.isPending && (
+          {(messages as unknown[]).length === 0 && !sendMessage.isPending && (
             <div className="self-start max-w-[85%] rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10 shadow-lg">
               <div className="text-xs font-medium text-secondary mb-1">AI Ուսուցիչ</div>
-              <div className="text-sm leading-relaxed text-muted-foreground animate-pulse">
-                Պատրաստվում եմ...
-              </div>
+              <div className="text-sm text-muted-foreground animate-pulse">Պատրաստվում եմ...</div>
             </div>
           )}
 
@@ -310,12 +417,8 @@ export default function LessonPage() {
                     : "self-start bg-card border-l-4 border-secondary border-y border-r border-white/10 rounded-bl-sm"
                 }`}
               >
-                {!isUser && (
-                  <div className="text-xs font-semibold text-secondary mb-1">AI Ուսուցիչ</div>
-                )}
-                <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">
-                  {msg.content}
-                </div>
+                {!isUser && <div className="text-xs font-semibold text-secondary mb-1">AI Ուսուցիչ</div>}
+                <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">{msg.content}</div>
               </div>
             );
           })}
