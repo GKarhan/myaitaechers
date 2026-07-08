@@ -98,6 +98,7 @@ export const GetDashboardResponse = zod.object({
   "subjects": zod.array(zod.object({
   "id": zod.number(),
   "subject": zod.string(),
+  "grade": zod.string(),
   "completedLessons": zod.number(),
   "totalLessons": zod.number(),
   "averageScore": zod.number(),

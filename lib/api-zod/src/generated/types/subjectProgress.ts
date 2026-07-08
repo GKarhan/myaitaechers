@@ -9,6 +9,7 @@
 export interface SubjectProgress {
   id: number;
   subject: string;
+  grade: string;
   completedLessons: number;
   totalLessons: number;
   averageScore: number;

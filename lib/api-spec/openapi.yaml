@@ -2595,11 +2595,13 @@ components:
 
     SubjectProgress:
       type: object
-      required: [id, subject, completedLessons, totalLessons, averageScore, progressPercent]
+      required: [id, subject, grade, completedLessons, totalLessons, averageScore, progressPercent]
       properties:
         id:
           type: integer
         subject:
+          type: string
+        grade:
           type: string
         completedLessons:
           type: integer

@@ -32,6 +32,7 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
     .select({
       id: subjectsTable.id,
       name: subjectsTable.name,
+      grade: subjectsTable.grade,
       totalLessons: sql<number>`count(distinct ${lessonsTable.id})`,
       completedLessons: sql<number>`count(distinct case when ${lessonSessionsTable.status} = 'completed' then ${lessonsTable.id} end)`,
     })
@@ -44,7 +45,7 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
         eq(lessonSessionsTable.userId, userId)
       )
     )
-    .groupBy(subjectsTable.id, subjectsTable.name)
+    .groupBy(subjectsTable.id, subjectsTable.name, subjectsTable.grade)
     .orderBy(subjectsTable.id);
 
   const subjects = subjectRows
@@ -55,6 +56,7 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
       return {
         id: row.id,
         subject: row.name,
+        grade: row.grade,
         completedLessons: done,
         totalLessons: total,
         averageScore: 0,

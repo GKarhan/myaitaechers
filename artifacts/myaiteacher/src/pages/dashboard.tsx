@@ -293,7 +293,12 @@ export default function Dashboard() {
                   return (
                     <div key={sub.id} className="bg-card/60 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold text-lg">{sub.subject}</h3>
+                        <div>
+                          <h3 className="font-semibold text-lg">{sub.subject}</h3>
+                          {sub.grade && (
+                            <p className="text-xs text-muted-foreground mt-0.5">🎓 {sub.grade}</p>
+                          )}
+                        </div>
                         <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${cls}`}>{text}</span>
                       </div>
                       <div className="flex justify-between text-sm text-muted-foreground">
