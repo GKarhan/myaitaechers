@@ -136,10 +136,17 @@ export default function SubjectDetail() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-base">{lesson.lesson}</h3>
-                      <span className={`text-xs mt-0.5 flex items-center gap-1.5 ${statusCls}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        {statusText}
-                      </span>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className={`text-xs flex items-center gap-1.5 ${statusCls}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {statusText}
+                        </span>
+                        {lesson.status === "completed" && (lesson as { score?: number }).score !== undefined && (
+                          <span className="text-xs text-white/60 border-l border-white/10 pl-3">
+                            {(lesson as { score?: number }).score} միավոր
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <Link
