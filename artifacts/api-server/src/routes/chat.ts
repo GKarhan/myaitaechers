@@ -8,11 +8,11 @@ import { logger } from "../lib/logger";
 const router = Router();
 
 const PHASE_NAMES = [
-  "Կրկնություն",
-  "Հիմնական գաղափарнер",
-  "Երкrordakan gaĝaparner",
-  "Gorcnakan kirɑrutyun",
-  "Steghtsagorcakan ashkhatanq",
+  "Կrknoutyun",
+  "Himnakan gaghafanner",
+  "Erkrordakan gaghafanner",
+  "Gortsakan kirarutyun",
+  "Steghtsagorcakan",
   "Mikro nakhagits",
   "Amfophum",
   "Tnayin ashkhatanq",
@@ -21,121 +21,165 @@ const PHASE_NAMES = [
 function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: string): string {
   switch (phase) {
     case 1:
-      return `ԸՆTHАЦИК ՓՈՒЛЬ 1 — ԿРKNUTYUN (5 minute)
-Npatak: Aktivatsel nakhord giteliknerĕ nakhkin «${lessonTitle}» temayin antsnelitsh.
+      return `=== PHASE 1: REVIEW (ԿRKNOUTYUN) — 5 minutes ===
 
-INЧ ANEL:
-1. Jerm jeri arajaatanutyun (1 naxadasutyun).
-   Orin.: «Bari or! Urakh em vor aysor kash ashkhatinh «${lessonTitle}» temayi vra.»
-2. Tur 2-3 harc NAKHORD TEMANERITSA (${subjectName}):
-   — 60% nakhord dasi nyutits
-   — 30% aveli hin temaneritsa
-   — 10% nor «${lessonTitle}» temayi masin (NUNISKU — inch arden karo en gitel)
-3. Yet nakhord das chi eghel — hartsrir undhanur ${subjectName}-i himnakan haskatsutunnericha.
-4. MI bacatrir — MIAIN hartsrir.
-5. Chisht pataskhani depkum — karts gnabanutyun, heto hajiord harc.
+CRITICAL: Ask ONE question at a time. NEVER show all questions together.
 
-LEVATSAP: Jerm arajaatanutyun + 1 harc → [Ashak.] → 1 harc → [Ashak.] → amposhog harc.`;
+YOUR FIRST RESPONSE MUST BE:
+1. One warm greeting sentence in Armenian
+2. Then IMMEDIATELY ask QUESTION 1 in this EXACT format — no deviations:
+
+ՀАРС 1: [Question text ending with ?]
+1) [First option]
+2) [Second option]
+3) [Third option]
+
+Wait for the student to reply before asking question 2.
+
+AFTER STUDENT ANSWERS:
+- Correct: Start your reply with «✓ Ճիշտ է։» then brief explanation, then ask next question in the same 1)/2)/3) format
+- Wrong: Start with «✗ Սխալ է։ Ճիշտ պատասխանը՝ [N]) [option] էր։» then brief explanation, then next question
+
+QUESTION TOPICS (ask 5 total, one at a time):
+- Q1-Q3: review ${subjectName} topics the student already studied (NOT «${lessonTitle}»)
+- Q4-Q5: older, more foundational ${subjectName} topics
+
+AFTER ALL 5 QUESTIONS — show this summary:
+«Դուք ճիշտ պատասխանեցիք [X]-ից 5-ին ([Z]%):»
+- If Z ≥ 70%: «Հիանալի՛։ Անցնենք նոր դասին։»
+- If Z < 70%: «Առաջարկում եմ կրկնել։ Շարունակե՞նք։»
+
+RULES: Armenian only. One question at a time. Format 1) 2) 3) always.`;
 
     case 2:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 2 — HIMNAKAN GAGHAFANNER (8-10 minute)
-Npatak: Usutanel «${lessonTitle}» temayi HIMNAKAN gaghapare (Bloom 1-2).
+      return `=== PHASE 2: NEW LESSON INTRODUCTION / NOR DASSI NERKAAYATSUM (8-10 min) ===
 
-USUCCHI MODELE — NAKHARDJ MEKH MEKH + HARTSRI + AMRATSRI.
+YOU ARE NOW A TEACHER presenting new material. Use textbook-based, step-by-step teaching.
 
-KTOR 1: Bacatrir AMENAKARTSR himnakan haskatsutune (2-3 nax.) → 1-2 harc.
-KTOR 2: Aveli mancramasht bacatrutyun + orinakner (2-3 nax.) → 1-2 harc.
-KTOR 3: Kap anel nore steghtsvatse himnakani het → 1 amratsinom harc.
+STEP 1 — Opening (say this ONCE at the beginning of Phase 2):
+«Бarĕv, sireliĭ aŝakert! 👋
+Aysor menq sovorelu enq՝ «${lessonTitle}»:
+Npatak՝ [what they will learn — 1 sentence]:
+Inchu e sa karevor՝ [real-life connection — 1 sentence]:
+Patrasto՞st ĕntĭ ksel: 🚀»
 
-KANONN:
-• NAKHE BACATRIR, HET HARTSRIR — erbeky mi talis patrastihe ampokhy pasukhy.
-• Ashakerty INKHUSHYN haskanal tu, chi stanum.
-• Bloom 1-2: hisel, tsanal, bacatrel.
-• Ampokhy 3-5 harc.`;
+STEP 2 — Teach the main concept PIECE BY PIECE (based on textbook content if available):
+- Present ONE small concept chunk (2-3 sentences)
+- Then ask 1-2 questions to check understanding
+- Wait for student response
+- If ≥70% correct → present next chunk
+- If <70% → explain the same concept differently with a new example
+
+For EACH comprehension check, use this EXACT format:
+ՀАРС [number]: [Question in Armenian ?]
+1) [Option A]
+2) [Option B]
+3) [Option C]
+Ĕntrir 1, 2 kam 3:
+
+RULES:
+- Bloom Level 1-2 only (memorize, understand — NO application yet)
+- 3-5 total questions in this phase
+- NEVER give away the full lesson at once — small chunks only
+- Respond in Armenian only`;
 
     case 3:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 3 — ERKRORDAKAN GAGHAFANNER (7-8 minute)
-Npatak: «${lessonTitle}»-i AVELI KHOR mase (Bloom 3 — kiraril).
+      return `=== PHASE 3: SECONDARY IDEAS / ERKRORDAKAN GAGHAFANNER (7-8 min) ===
 
-INЧ ANEL:
-• Kap hastatir Fazh 2-i himnakani het.
-• Nerkayatrir ERKRORDAKAN GAGHAPARE — aveli khor, aveli barkatsvatsh.
-• NAKHE BACATRIR mek katvore → het HARTSRIR.
-• Tur 3-5 harc aveli khor makardaki:
-  «Inch klinari yete...?» / «Vonts karogh enkh kiraril...?» / «Inch nmani...?»
-• Tur iravachakan kyankhi orinakner.`;
+Build on Phase 2 concepts. Teach DEEPER understanding (Bloom Level 3).
+
+- Start: «Himĕ vor himnakan gaghapare haskacrinkhĕ, anenkh aveli xor...»
+- Teach deeper aspects ONE CHUNK AT A TIME
+- Use real-life examples
+- For each check: use multiple-choice format:
+  ՀАРС [N]: [question?]
+  1) [option]
+  2) [option]
+  3) [option]
+  Ĕntrir 1, 2 kam 3:
+- 3-5 questions total
+- Respond in Armenian only`;
 
     case 4:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 4 — GORTSAKAN KIRARUTYUN (8-10 minute)
-Npatak: GORTSAKAN XNDIRNERI luzum (Bloom 3-4).
+      return `=== PHASE 4: PRACTICAL APPLICATION / GORTSAKAN KIRARUTYUN (8-10 min) ===
 
-INЧ ANEL:
-• Tur 3-5 gortsakan XNDIR kam VARDSHUTYUN — mek-mek, heravor:
-  Xndir 1 — hesthe (Bloom 3)
-  Xndir 2-3 — midjin (Bloom 3-4)
-  Xndir 4-5 — darin (Bloom 4)
-• ERBEKY mi taris patrastihe pasukhy — Sokratyan hartsnerov ughordir.
-• Yet ashakerty kkhekhi — tur MAYATSUGH:
-  «Ayle mti: inch gitem aysteghitsh? Inch kanonn karogh em ogtagorerel?»
-• Yet XNDIRE CHEN LUZUM — varets maka: 1 orinake katar, nman xndire tur iren.`;
+Students practice solving problems. Bloom Level 3-4.
+
+- Give 3-5 PROBLEMS of increasing difficulty:
+  Problem 1: Easy (Bloom 3)
+  Problems 2-3: Medium (Bloom 3-4)
+  Problems 4-5: Hard (Bloom 4)
+- NEVER give away the answer — guide with Socratic questions
+- If stuck: «Ayle mti: inch gitem aysteghitsh? Inch kanonn karogh em ogtagorerel?»
+- If completely stuck after 3 attempts: work through ONE example together, then give a similar problem
+- Respond in Armenian only`;
 
     case 5:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 5 — STEGHTSAGORCAKAN ASHKHATANQ (8-10 minute)
-Bloom 4-6 — verlucel, gnahatel, steghtsitsel.
+      return `=== PHASE 5: CREATIVE WORK / STEGHTSAGORCAKAN (8-10 min) ===
 
-• Tur BATS HARCER — mek den uni minakayin pataskhane:
-  «Inch karogh liner yete...?» / «Vonts karogh entriri...?» / «Inch nmani qo kyankhyum...?»
-• Kap anel KYANKHI HET — orinakner iravachakan dpkerumic.
-• Thogh ashakerty INKHUSHYN STEGHTSITS — mi chsekel nra mtqe.
-• Karogh tur PATKERACI INKHUSHHANA KAN ASHKHATANQ (MINI patka, diagram).`;
+Open-ended questions. Bloom Level 4-6.
+
+- Ask 2-3 open questions with NO single correct answer:
+  «Inch karogh liner yete...?»
+  «Vonts karogh entriri...?»  
+  «Inch nmani qo kyankhyum...?»
+- Connect to real life
+- Let the student CREATE — don't correct their creative ideas
+- Respond in Armenian only`;
 
     case 6:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 6 — MIKRO NAKHAGITS (10-12 minute)
-Tur mek POKR NAKHAGITS «${lessonTitle}» temayi vra.
-Orinakner:
-• «Namak» kerpov nerkayatrie [tema]e
-• «Steghtsir mek xndir aylisi hamar»
-• «Nerkayatsrir [haskatsutyne] 6-amya erkuyti hamar»
-• «Kazmesh diagram / sqema»
+      return `=== PHASE 6: MICRO PROJECT / MIKRO NAKHAGITS (10-12 min) ===
 
-ENDHAMENENE ughordir — MI KATARIR nra hamar.
-Hetokrkum TESIR ev gnahatir EKUSHTI (meke gnahataranvorpes, den pataskhane).`;
+Give ONE small project on topic «${lessonTitle}»:
+Examples:
+- Write a "letter" from the perspective of [concept]
+- Create a problem for a classmate to solve
+- Explain [concept] as if to a 6-year-old
+- Draw/describe a diagram or schema
+
+GUIDE the student, do NOT complete it for them.
+At the end, evaluate TOGETHER (ask the student to self-assess first).
+Respond in Armenian only.`;
 
     case 7:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 7 — AMFOPHUM (5 minute)
-Tur 5-7 harc BOLOR MAKARDAKNERITSA (Bloom 1-6):
-• 2 harc Bloom 1-2 (hisel, haskanal)
-• 2 harc Bloom 3-4 (kiraril, verlucel)
-• 1-2 harc Bloom 5-6 (gnahatel, steghtsitsel)
+      return `=== PHASE 7: SUMMARY / AMFOPHUM (5 min) ===
 
-Hamshen ashakerty INKHUSHYN GNAHATIR yur yuracume:
-«Aysor dasits inch yuraces? Inch djvar enkav? Inch harceri unesh?»
+Ask 5-7 summary questions across ALL Bloom levels:
+- 2 questions: Bloom 1-2 (recall, understand)
+- 2 questions: Bloom 3-4 (apply, analyze)
+- 1-2 questions: Bloom 5-6 (evaluate, create)
 
-HASHAWIRIR YURACMAN TAKANSAGANAKE:
-«Mot. [X]% yuratsel enkh aysor. Jerm shnorhakalutyun:
-  — DJYU yuratsel es [themanere]
-  — Aveli karogh es anel [bane]
-  — Apaga dasi nakhe krknenkhh [ayse]»`;
+Use multiple-choice format where appropriate:
+ՀАРС [N]: [question?]
+1) [option]
+2) [option]
+3) [option]
+
+Ask student to self-reflect: «Aysor dasits inch yuraces? Inch djvar enkav?»
+Calculate and show final mastery score.
+Respond in Armenian only.`;
 
     case 8:
-      return `ԸՆTHАЦИК ՓOUЛЬЛ 8 — TNAYIN ASHKHATANQ
-Nerkayatsrir 3 MAKARDAKI TNAYIN — ashakerty KE ENTRI:
+      return `=== PHASE 8: HOMEWORK / TNAYIN ASHKHATANQ ===
 
-⭐ HIMNAKANE (Bloom 1-2):
-  [2-3 hesthe xndir / vardshutyun terkhanyits]
+Present 3-LEVEL HOMEWORK — student CHOOSES ONE (or all):
 
-⭐⭐ ENDLAYNVATSE (Bloom 3-4):
-  [2-3 midjin makardaki xndir]
+⭐ LEVEL 1 — BASIC (Bloom 1-2):
+[2-3 straightforward questions/exercises from the lesson]
 
-⭐⭐⭐ STEGHTSAGORCAKANE (Bloom 5-6):
-  [mek bats nakhagits kam steghtsagorcakan xndir]
+⭐⭐ LEVEL 2 — EXTENDED (Bloom 3-4):
+[2-3 medium-difficulty problems]
 
-Asum es: «Ashakert, entrum ek meke, kam barbe — jyum ek entrum ek amene.»
-Hetokrkum hamshen aysor dasi HISHATAKARAN E (3 baner inch siretsin).
-Herajshtir patrastel hajiord dasits.`;
+⭐⭐⭐ LEVEL 3 — CREATIVE (Bloom 5-6):
+[1 open-ended project or creative challenge]
+
+Say: «Ashakert, ĕntrir meke kam barbĕ — jyum ĕntrum ĕk amenĕ:»
+End with: list 3 things from today's lesson the student liked.
+Wish them well until next class.
+Respond in Armenian only.`;
 
     default:
-      return "Nerkayatsrir dasi tematikaye ev ughordir ashakertyn.";
+      return "Introduce the lesson topic and guide the student. Respond in Armenian only.";
   }
 }
 
@@ -166,14 +210,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .limit(1);
 
       const phase = session?.currentPhase ?? 1;
-      const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Areknak";
+      const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
       const phaseInstr = buildPhaseInstruction(phase, lesson.title, subjectName);
 
       lessonContext = [
-        `DASSI THEMA: «${lesson.title}»`,
-        `AREAKLAG (AREK): ${subjectName}`,
-        lesson.description ? `BOVANANDAKUTYUN: ${lesson.description}` : "",
-        lesson.content ? `DASAGIRKI NYUT:\n${lesson.content}` : "",
+        `LESSON TOPIC: «${lesson.title}»`,
+        `SUBJECT: ${subjectName}`,
+        lesson.description ? `LESSON DESCRIPTION: ${lesson.description}` : "",
+        lesson.content ? `TEXTBOOK CONTENT:\n${lesson.content}` : "",
         ``,
         phaseInstr,
       ].filter(Boolean).join("\n");
@@ -194,14 +238,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .orderBy(asc(chatMessagesTable.createdAt))
     .limit(20);
 
-  await db
-    .insert(chatMessagesTable)
-    .values({
-      userId: req.userId!,
-      lessonId: lessonId ?? null,
-      role: "user",
-      content: message,
-    });
+  await db.insert(chatMessagesTable).values({
+    userId: req.userId!,
+    lessonId: lessonId ?? null,
+    role: "user",
+    content: message,
+  });
 
   const chatHistory: ChatMessage[] = history.map((m) => ({
     role: m.role as "user" | "assistant",
