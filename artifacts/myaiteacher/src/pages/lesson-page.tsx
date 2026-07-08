@@ -15,33 +15,33 @@ const PHASES = [
   {
     phase: 1,
     icon: "🔄",
-    shortName: "Կrknoutyoun",
-    fullName: "Կrknoutyoun",
+    shortName: "Կռկնուտիուն",
+    fullName: "Կռկնուտիուն",
     desc: "Նախορд даси 3–5 հarц · Արдyounq %",
     color: "#14B8A6",
   },
   {
     phase: 2,
     icon: "📖",
-    shortName: "Հimnakan",
-    fullName: "Nor das — Հimnakan",
+    shortName: "Հիմնական",
+    fullName: "Նոր դաս — Հիմնական",
     desc: "Teoria → Հarcer → Varzhoutyounner",
     color: "#6366F1",
   },
   {
     phase: 3,
     icon: "🔍",
-    shortName: "Խor ous.",
-    fullName: "Խor ousumnasirum",
+    shortName: "Խոր ուս.",
+    fullName: "Խոր ուսումնասիրում",
     desc: "Teoria → Varzhoutyounner → Ambogh stugum %",
     color: "#8B5CF6",
   },
   {
     phase: 4,
     icon: "📚",
-    shortName: "Tnayin",
-    fullName: "Tnayin + Avart",
-    desc: "3 makardaki tnayin handranashkhatanq → Avart",
+    shortName: "Տնային",
+    fullName: "Տնային + Ավարտ",
+    desc: "3 մակարդակի Տնային → Ավարտ",
     color: "#F59E0B",
   },
 ];
@@ -406,7 +406,7 @@ export default function LessonPage() {
               disabled={advancePhase.isPending}
               className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50"
             >
-              {advancePhase.isPending ? "..." : "✓ Avart dasĕ"}
+              {advancePhase.isPending ? "..." : "✓ Ավարտ դասը"}
             </button>
           )}
           {isCompleted && (

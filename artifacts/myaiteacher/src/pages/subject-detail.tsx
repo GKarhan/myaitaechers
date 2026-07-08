@@ -75,9 +75,9 @@ export default function SubjectDetail() {
   const pct = subject.progressPercent ?? 0;
 
   const statusInfo = (status: string) => {
-    if (status === "completed") return { text: "Ավartvats", dot: "bg-teal-400", cls: "text-teal-400" };
-    if (status === "pending")   return { text: "Ĕnthatskum", dot: "bg-amber-400", cls: "text-amber-400" };
-    return { text: "Chsksats",  dot: "bg-white/20",  cls: "text-muted-foreground" };
+    if (status === "completed") return { text: "Ավարտված", dot: "bg-teal-400", cls: "text-teal-400" };
+    if (status === "pending")   return { text: "Շարունակ", dot: "bg-amber-400", cls: "text-amber-400" };
+    return { text: "Չը սկսած",  dot: "bg-white/20",  cls: "text-muted-foreground" };
   };
 
   const masteryColor = (score: number) => {
@@ -92,7 +92,7 @@ export default function SubjectDetail() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-muted-foreground hover:text-white transition-colors">
-              ← Нет
+              ← Նհորս
             </Link>
             <div className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
               myaiteacher
@@ -120,11 +120,11 @@ export default function SubjectDetail() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 p-6 rounded-2xl bg-card/60 border border-white/10 shadow-lg">
           <div className="flex gap-8">
             <div>
-              <div className="text-muted-foreground text-sm mb-1">Ավartvats / Ĕndhanur</div>
+              <div className="text-muted-foreground text-sm mb-1">Ավարտված / Ենդհանուր</div>
               <div className="text-2xl font-bold text-white">{completed} / {total}</div>
             </div>
             <div>
-              <div className="text-muted-foreground text-sm mb-1">Miĵin yuratsum</div>
+              <div className="text-muted-foreground text-sm mb-1">Միջին Յուրածում</div>
               <div className="text-2xl font-bold text-secondary">
                 {subject.averageScore ? `${subject.averageScore}%` : "—"}
               </div>
@@ -132,7 +132,7 @@ export default function SubjectDetail() {
           </div>
           <div className="flex-1 md:max-w-md">
             <div className="text-muted-foreground text-sm mb-2 flex justify-between">
-              <span>Ĕndhanur araĵĕntrats</span>
+              <span>Ենդհանուր արաջընտրած</span>
               <span>{pct}%</span>
             </div>
             <div className="h-2 w-full bg-background rounded-full overflow-hidden">
@@ -146,12 +146,12 @@ export default function SubjectDetail() {
 
         {/* Lessons list */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Դасери tsutsakĕ</h2>
+          <h2 className="text-2xl font-bold">Դասերի ծուծակը</h2>
           <Link
             href={`/knowledge-tree/${subjectId}`}
             className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-secondary hover:bg-white/10 transition-colors"
           >
-            Giteliqĭ kartez →
+            Գիտելիքի կարտեզ →
           </Link>
         </div>
 
@@ -191,7 +191,7 @@ export default function SubjectDetail() {
                         {/* Mastery score badge */}
                         {mc !== null && ms !== null && ms !== undefined && (
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${mc.bg} ${mc.text} ${mc.border}`}>
-                            🎯 {ms}% yuratsum
+                            🎯 {ms}% Յուրածում
                           </span>
                         )}
                       </div>
@@ -202,7 +202,7 @@ export default function SubjectDetail() {
                     href={`/lessons/${lesson.id}`}
                     className="shrink-0 flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
                   >
-                    {lesson.status === "completed" ? "🔄 Krknel" : "📖 Sovorel"}
+                    {lesson.status === "completed" ? "🔄 Կռկնել" : "📖 Սովորել"}
                   </Link>
                 </div>
               );
@@ -217,7 +217,7 @@ export default function SubjectDetail() {
 
         {/* Book section */}
         <div className="pt-8 border-t border-white/10">
-          <h2 className="text-xl font-bold mb-5">📚 Dasagirkĕ</h2>
+          <h2 className="text-xl font-bold mb-5">📚 Դասագիրկը</h2>
           {(subject as any).book ? (
             <div className="p-5 rounded-2xl bg-card/60 border border-white/10 max-w-xl flex items-start gap-4">
               <div className="text-3xl bg-background/60 p-3 rounded-xl border border-white/10 shrink-0">
@@ -239,7 +239,7 @@ export default function SubjectDetail() {
                     disabled={downloading}
                     className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {downloading ? "⏳ Bĕrnvum e..." : "📥 Bĕrnel dasagirkĕ"}
+                    {downloading ? "⏳ Բըրնվում ե..." : "📥 Բըրնել Դասագիրկը"}
                   </button>
                 )}
               </div>
