@@ -10,19 +10,44 @@ import {
   useSendChatMessage,
 } from "@workspace/api-client-react";
 
+// ─── 4 phases ─────────────────────────────────────────────────────────────────
 const PHASES = [
-  { phase: 1, name: "Կrknutyun", label: "Կrknoutyun", icon: "🔄", duration: "5 ր" },
-  { phase: 2, name: "Himnakan", label: "Himnakan gaghapanner", icon: "💡", duration: "10 ր" },
-  { phase: 3, name: "Erkrordakan", label: "Erkrordakan gaghapanner", icon: "🔍", duration: "8 ր" },
-  { phase: 4, name: "Gortsakan", label: "Gortsakan kirarutyun", icon: "⚙️", duration: "10 ր" },
-  { phase: 5, name: "Steghts.", label: "Steghtsagorcakan", icon: "✨", duration: "10 ր" },
-  { phase: 6, name: "Nakhagits", label: "Mikro nakhagits", icon: "🚀", duration: "12 ր" },
-  { phase: 7, name: "Ampofhum", label: "Ampofhum", icon: "📋", duration: "5 ր" },
-  { phase: 8, name: "Tnayin", label: "Tnayin ashkhatanq", icon: "📚", duration: "—" },
+  {
+    phase: 1,
+    icon: "🔄",
+    shortName: "Կrknoutyun",
+    fullName: "Կrknoutyun",
+    desc: "Нaxord dassi krknutyoun · 3–5 harc · Арdyounk %",
+    color: "#14B8A6",
+  },
+  {
+    phase: 2,
+    icon: "📖",
+    shortName: "Himnakan",
+    fullName: "Nor das — Himnakan maser",
+    desc: "Тeoria → MC harcer → 1–3 varzhoutyoun",
+    color: "#6366F1",
+  },
+  {
+    phase: 3,
+    icon: "🔍",
+    shortName: "Khor",
+    fullName: "Khor ousumnasirum",
+    desc: "Тeoria → Varzhoutyounner → Ambogh stugum %",
+    color: "#8B5CF6",
+  },
+  {
+    phase: 4,
+    icon: "📚",
+    shortName: "Tnayin",
+    fullName: "Тnayin handnaŕ. + Avart",
+    desc: "3 makardaki tnayin → Avart",
+    color: "#F59E0B",
+  },
 ];
 
 const BLOOM = [
-  { level: 1, name: "Հisel", color: "#14B8A6" },
+  { level: 1, name: "Hisel", color: "#14B8A6" },
   { level: 2, name: "Haskanal", color: "#6366F1" },
   { level: 3, name: "Kiraril", color: "#8B5CF6" },
   { level: 4, name: "Verlucel", color: "#F59E0B" },
@@ -40,13 +65,13 @@ function todayArmenian() {
   return `${d.getDate()} ${ARMENIAN_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-/** Strip LaTeX wrappers and normalise math notation */
+/** Strip LaTeX math wrappers; keep plain content */
 function formatMath(text: string): string {
   return text
-    .replace(/\\\((.*?)\\\)/gs, "$1")   // \( ... \)  →  content
-    .replace(/\\\[(.*?)\\\]/gs, "$1")   // \[ ... \]  →  content
-    .replace(/\$\$(.*?)\$\$/gs, "$1")   // $$ ... $$  →  content
-    .replace(/\$(.*?)\$/g, "$1")        // $ ... $    →  content
+    .replace(/\\\((.*?)\\\)/gs, "$1")
+    .replace(/\\\[(.*?)\\\]/gs, "$1")
+    .replace(/\$\$(.*?)\$\$/gs, "$1")
+    .replace(/\$(.*?)\$/g, "$1")
     .trim();
 }
 
@@ -56,7 +81,6 @@ function parseMultipleChoice(content: string): MCQuestion | null {
   const lines = content.split("\n").map((l) => l.trim());
   const options: string[] = [];
   for (const line of lines) {
-    // 1)  2)  3)  ա)  բ)  գ)  1.  2.  3.
     const m = line.match(/^(?:[1-3][).]\s+|[աբգ][).]\s*)(.+)/);
     if (m) options.push(m[1].trim());
   }
@@ -65,12 +89,30 @@ function parseMultipleChoice(content: string): MCQuestion | null {
 }
 
 function isCorrectResponse(content: string): boolean | null {
-  if (/✓|Ĉisht e|Ճишт|Jechn е|Ĵisht|ճiшт|jechn|Jisht|✅/.test(content)) return true;
-  if (/✗|Ոcht|Vocĥ ĉisht|Skhale|Skhal e|❌|Ոĉ ĉisht/.test(content)) return false;
+  if (/✓|✅|Ĉisht e|Ĉarĭ|Hianali|Ĉishte|Ĵisht|Ĉisht է|Ճишт/.test(content)) return true;
+  if (/✗|❌|Oche ĉisht|Vocĥ ĉisht|Skhal|Skhale|Ĝisht che/.test(content)) return false;
   return null;
 }
 
 interface PhaseScore { correct: number; total: number; wrong: string[] }
+
+// ─── Phase start triggers ─────────────────────────────────────────────────────
+function phaseStartMessage(phase: number, lessonTitle: string): string {
+  switch (phase) {
+    case 1:
+      return "Fazh 1 — sksir. Ĵerm greetinov hayerĕn, heto anmijayapes ՀАРЦ 1-ĕ tuĵr 1) 2) 3) dzevachaphov. MEK HARC MIAYĬN.";
+    case 2:
+      return `Fazh 2 — nor das. Hayerĕn sksir "${lessonTitle}"-i himnakan masery nerkaycnel. Teoria → harcer → varzhoutyounner.`;
+    case 3:
+      return `Fazh 3 — khor ousumnasirum "${lessonTitle}". Nerkaycir aveŕ khor aspektnerĕ, heto varzhoutyounner ev ambogh stugum.`;
+    case 4:
+      return "Fazh 4 — tnayin handnaŕoutyounnerĕ tuĵr 3 makardakov (⭐ ⭐⭐ ⭐⭐⭐) ev ĵerm avartabaner das.";
+    default:
+      return "Sksir hayerĕn.";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function LessonPage() {
   const { user, token, isLoading: authLoading } = useAuth();
@@ -116,19 +158,20 @@ export default function LessonPage() {
   const isCompleted = (session as { status?: string } | undefined)?.status === "completed";
   const hasSession = !!session;
 
-  const triggerAI = useCallback((triggerMsg: string) => {
+  const triggerAI = useCallback((msg: string) => {
     sendMessage.mutate(
-      { data: { message: triggerMsg, lessonId } },
+      { data: { message: msg, lessonId } },
       { onSuccess: () => queryClient.invalidateQueries({ queryKey: chatKey }) }
     );
   }, [sendMessage, lessonId, queryClient, chatKey]);
 
+  // Auto-start Phase 1
   useEffect(() => {
     if (hasSession && !autoStarted && !chatLoading && messages.length === 0 && !sendMessage.isPending) {
       setAutoStarted(true);
-      triggerAI("Sksir — Phase 1 review. Greet in Armenian, then ask ՀАРЦ 1 with 1) 2) 3) options. ONE question only.");
+      triggerAI(phaseStartMessage(1, lesson?.title ?? ""));
     }
-  }, [hasSession, autoStarted, chatLoading, messages.length, sendMessage.isPending, triggerAI]);
+  }, [hasSession, autoStarted, chatLoading, messages.length, sendMessage.isPending, triggerAI, lesson?.title]);
 
   const handleStartLesson = () => {
     startSession.mutate(
@@ -144,15 +187,9 @@ export default function LessonPage() {
         onSuccess: (data) => {
           queryClient.invalidateQueries({ queryKey: lessonKey });
           const nextPhase = (data as { currentPhase: number }).currentPhase;
-          if (nextPhase === 1) {
-            setPhaseScore({ correct: 0, total: 0, wrong: [] });
-            setMcAnsweredIds(new Set());
-          }
-          if (nextPhase === 2) {
-            triggerAI("Phase 2 start — give the warm greeting opening in Armenian, then begin teaching «" + lesson?.title + "».");
-          } else {
-            triggerAI(`Phase ${nextPhase} — ${PHASES[nextPhase - 1]?.label ?? ""} — start in Armenian.`);
-          }
+          setPhaseScore({ correct: 0, total: 0, wrong: [] });
+          setMcAnsweredIds(new Set());
+          triggerAI(phaseStartMessage(nextPhase, lesson?.title ?? ""));
         },
       }
     );
@@ -210,9 +247,10 @@ export default function LessonPage() {
 
   if (!user || !lesson) return null;
 
-  const progressPct = hasSession ? Math.round(((currentPhase - 1) / 8) * 100) : 0;
-  const firstName = (user as { fullName?: string }).fullName?.split(" ")[0] ?? "Aŝakert";
+  const progressPct = hasSession ? Math.round(((currentPhase - 1) / 4) * 100) : 0;
+  const firstName = (user as { fullName?: string }).fullName?.split(" ")[0] ?? "Աŝakert";
   const scorePct = phaseScore.total > 0 ? Math.round((phaseScore.correct / phaseScore.total) * 100) : null;
+  const phaseInfo = PHASES[currentPhase - 1];
 
   /* ═══════════════════════════════════════════════════════
      INTRO SCREEN
@@ -220,11 +258,10 @@ export default function LessonPage() {
   if (!hasSession) {
     return (
       <div className="min-h-[100dvh] bg-background text-white flex flex-col">
-        {/* Top bar */}
         <header className="shrink-0 border-b border-white/10 bg-card/60 backdrop-blur-lg">
           <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
-            <Link href={`/subjects/${lesson.subjectId}`} className="flex items-center gap-2 text-muted-foreground hover:text-white transition-colors text-sm">
-              ← Հet
+            <Link href={`/subjects/${lesson.subjectId}`} className="text-muted-foreground hover:text-white transition-colors text-sm">
+              ← Нet
             </Link>
             <span className="text-xs text-muted-foreground">{todayArmenian()}</span>
           </div>
@@ -242,7 +279,7 @@ export default function LessonPage() {
               </div>
             </div>
 
-            {/* Lesson topic card */}
+            {/* Lesson card */}
             <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 bg-white/5">
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Aysorva dassi theman e</p>
@@ -261,52 +298,42 @@ export default function LessonPage() {
               )}
             </div>
 
-            {/* Goals */}
+            {/* 4 phases overview */}
             <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 bg-white/5">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">📌 Dasi npataknerĕ</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">📋 Dasi kantoghootyoun — 4 fazh</p>
               </div>
-              <ul className="px-6 py-5 flex flex-col gap-3">
-                {[
-                  `Hisel ev chanachel «${lesson.title}»-i himnakan haskatsutiunnerĕ`,
-                  `Haskanal orinachaparyounnerĕ ev drants kiraŕman skzbunqnerĕ`,
-                  `Kiraŕel nor giteliqnerĕ gortsnaKAN xndirneri luzman jamanak`,
-                ].map((g, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <span className="mt-0.5 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center shrink-0 border border-primary/30">{i + 1}</span>
-                    <span className="text-sm text-muted-foreground leading-relaxed">{g}</span>
-                  </li>
+              <div className="px-6 py-5 flex flex-col gap-4">
+                {PHASES.map((p) => (
+                  <div key={p.phase} className="flex items-start gap-4">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-lg border"
+                      style={{ backgroundColor: `${p.color}20`, borderColor: `${p.color}40` }}>
+                      {p.icon}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold" style={{ color: p.color }}>
+                        {p.phase}. {p.fullName}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{p.desc}</div>
+                    </div>
+                  </div>
                 ))}
-              </ul>
-            </div>
-
-            {/* Outcomes */}
-            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10 bg-white/5">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">🎯 Dasi verjna ardyunknerĕ</p>
               </div>
-              <ul className="px-6 py-5 flex flex-col gap-3">
-                {[
-                  `✓ Kkароghanas bacatrel «${lesson.title}»-i himnakan kanonnere`,
-                  `✓ Kkataŕes varzhutyunner inkushuŝyn`,
-                  `✓ Kkapes usumnasiratsĕ kyankhi iraKAN iravichaknutyunneri het`,
-                ].map((o, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <span className="text-secondary mt-0.5">✦</span>
-                    <span className="text-sm leading-relaxed">{o}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
 
             {/* Bloom preview */}
             <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm px-6 py-5">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-4">🧠 Bloom makardakner</p>
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-4">🧠 Bloom makardakner — aysor</p>
               <div className="flex items-center justify-between gap-2">
                 {BLOOM.map((b, i) => (
                   <div key={b.level} className="flex flex-col items-center gap-2 flex-1">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all"
-                      style={{ backgroundColor: i < 3 ? b.color : "transparent", borderColor: b.color, color: i < 3 ? "white" : b.color, opacity: i < 3 ? 1 : 0.4 }}>
+                      style={{
+                        backgroundColor: i < 4 ? b.color : "transparent",
+                        borderColor: b.color,
+                        color: i < 4 ? "white" : b.color,
+                        opacity: i < 4 ? 1 : 0.35,
+                      }}>
                       {b.level}
                     </div>
                     <span className="text-[10px] text-muted-foreground text-center hidden sm:block">{b.name}</span>
@@ -314,25 +341,11 @@ export default function LessonPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-3 text-center">
-                Aysor das — <span className="text-white font-semibold">1–3</span> makardak
+                Aysor das — <span className="text-white font-semibold">1–4</span> makardak
               </p>
             </div>
 
-            {/* 8 phases overview */}
-            <div className="rounded-3xl border border-white/10 bg-card/60 backdrop-blur-sm px-6 py-5">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-4">📋 8 fazher</p>
-              <div className="grid grid-cols-2 gap-2">
-                {PHASES.map((p) => (
-                  <div key={p.phase} className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{p.icon}</span>
-                    <span>{p.phase}. {p.label}</span>
-                    <span className="ml-auto text-white/30 shrink-0">{p.duration}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* CTA button */}
+            {/* CTA */}
             <div className="pb-6">
               <button
                 onClick={handleStartLesson}
@@ -347,7 +360,7 @@ export default function LessonPage() {
                 ) : "▶ Sksenk dasĕ"}
               </button>
               <p className="text-center text-xs text-muted-foreground mt-3">
-                AI ucucich · 8 fazh · Bazhmaki ĕntrutyun · Hayeren
+                AI ucucich · 4 fazh · Bazhmaki ĕntrutyun · Hayeren
               </p>
             </div>
           </div>
@@ -367,56 +380,72 @@ export default function LessonPage() {
       {/* Header */}
       <header className="shrink-0 border-b border-white/10 bg-card/80 backdrop-blur-lg">
         <div className="flex items-center gap-3 px-4 py-3">
-          <Link href={`/subjects/${lesson.subjectId}`} className="p-2 -ml-2 text-muted-foreground hover:text-white rounded-full hover:bg-white/5 transition-colors shrink-0">←</Link>
+          <Link href={`/subjects/${lesson.subjectId}`} className="p-2 -ml-2 text-muted-foreground hover:text-white rounded-full hover:bg-white/5 transition-colors shrink-0">
+            ←
+          </Link>
 
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm truncate">{lesson.title}</div>
             <div className="flex items-center gap-2 mt-0.5">
-              <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden max-w-[140px]">
-                <div className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
+              <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden max-w-[160px]">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${progressPct}%`,
+                    background: phaseInfo ? `linear-gradient(to right, ${phaseInfo.color}99, ${phaseInfo.color})` : undefined,
+                  }}
+                />
               </div>
-              <span className="text-[11px] text-muted-foreground">{progressPct}%</span>
+              <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                Fazh {currentPhase}/4 · {progressPct}%
+              </span>
             </div>
           </div>
 
-          {/* Phase 1 score */}
-          {currentPhase === 1 && phaseScore.total > 0 && scorePct !== null && (
+          {/* Score badge — always visible when there's score */}
+          {phaseScore.total > 0 && scorePct !== null && (
             <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
-              scorePct >= 70 ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+              scorePct >= 70 ? "bg-green-500/20 text-green-400 border-green-500/30"
+              : "bg-amber-500/20 text-amber-400 border-amber-500/30"
             }`}>
               {phaseScore.correct}/{phaseScore.total} · {scorePct}%
             </div>
           )}
 
-          {!isCompleted && currentPhase < 8 && (
+          {!isCompleted && currentPhase < 4 && (
             <button
               onClick={handleAdvancePhase}
               disabled={advancePhase.isPending}
               className="shrink-0 px-3 py-1.5 rounded-xl bg-secondary/20 text-secondary border border-secondary/30 text-xs font-semibold hover:bg-secondary/30 transition-colors disabled:opacity-50"
             >
-              Haĵord fazh →
+              {advancePhase.isPending ? "..." : "Haĵord fazh →"}
             </button>
           )}
-          {isCompleted && (
-            <span className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">✓ Avartvats</span>
+          {(isCompleted || currentPhase >= 4) && (
+            <span className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
+              ✓ Avartvats
+            </span>
           )}
         </div>
 
         {/* Phase strip */}
-        <div className="flex gap-1 px-4 pb-3 overflow-x-auto scrollbar-none">
+        <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-none">
           {PHASES.map((p) => {
             const isDone = p.phase < currentPhase;
             const isCurrent = p.phase === currentPhase;
             return (
-              <div key={p.phase} className={`shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                isCurrent ? "bg-primary text-white shadow-lg shadow-primary/30"
-                : isDone ? "bg-secondary/20 text-secondary"
-                : "bg-white/5 text-muted-foreground"
-              }`}>
+              <div
+                key={p.phase}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-colors border"
+                style={{
+                  backgroundColor: isCurrent ? `${p.color}25` : isDone ? `${p.color}10` : "transparent",
+                  borderColor: isCurrent ? `${p.color}60` : isDone ? `${p.color}30` : "rgba(255,255,255,0.1)",
+                  color: isCurrent ? p.color : isDone ? `${p.color}bb` : "rgba(255,255,255,0.35)",
+                }}
+              >
                 <span>{p.icon}</span>
-                <span className="hidden sm:inline">{p.name}</span>
-                <span className="sm:hidden">{p.phase}</span>
-                {isDone && <span>✓</span>}
+                <span>{p.shortName}</span>
+                {isDone && <span style={{ color: p.color }}>✓</span>}
               </div>
             );
           })}
@@ -428,18 +457,28 @@ export default function LessonPage() {
         <div className="max-w-3xl mx-auto flex flex-col gap-4">
 
           {/* Phase banner */}
-          {currentPhase > 0 && (
-            <div className="flex items-center gap-3 py-2 px-4 rounded-2xl bg-primary/10 border border-primary/20">
-              <span className="text-lg">{PHASES[currentPhase - 1]?.icon}</span>
-              <div className="flex-1">
-                <span className="font-semibold text-primary text-sm">Fazh {currentPhase}</span>
-                <span className="text-muted-foreground text-sm ml-2">— {PHASES[currentPhase - 1]?.label}</span>
-                {currentPhase === 1 && <span className="text-xs text-muted-foreground ml-2">· Ĕntrir 1, 2 kam 3</span>}
+          {phaseInfo && (
+            <div
+              className="flex items-center gap-3 py-2.5 px-4 rounded-2xl border"
+              style={{ backgroundColor: `${phaseInfo.color}12`, borderColor: `${phaseInfo.color}30` }}
+            >
+              <span className="text-xl">{phaseInfo.icon}</span>
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold text-sm" style={{ color: phaseInfo.color }}>
+                  Fazh {currentPhase} — {phaseInfo.fullName}
+                </span>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">{phaseInfo.desc}</p>
               </div>
               {currentPhase === 1 && phaseScore.total > 0 && scorePct !== null && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="h-2 w-16 bg-white/10 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${scorePct >= 70 ? "bg-green-400" : "bg-amber-400"}`} style={{ width: `${scorePct}%` }} />
+                  <div className="h-2 w-20 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${scorePct}%`,
+                        backgroundColor: scorePct >= 70 ? "#22c55e" : "#f59e0b",
+                      }}
+                    />
                   </div>
                   <span className="text-xs font-bold">{scorePct}%</span>
                 </div>
@@ -447,7 +486,7 @@ export default function LessonPage() {
             </div>
           )}
 
-          {/* Loading state */}
+          {/* Empty / loading */}
           {messages.length === 0 && !sendMessage.isPending && (
             <div className="self-start rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10">
               <div className="text-xs font-medium text-secondary mb-1">AI Ucucich</div>
@@ -455,19 +494,19 @@ export default function LessonPage() {
             </div>
           )}
 
-          {/* Message list */}
+          {/* Messages */}
           {messages.map((msg, idx) => {
             const isUser = msg.role === "user";
             const isLastAi = !isUser && idx === lastAiIdx;
-            const formattedContent = formatMath(msg.content);
-            const mc = isLastAi ? parseMultipleChoice(formattedContent) : null;
+            const formatted = formatMath(msg.content);
+            const mc = isLastAi ? parseMultipleChoice(formatted) : null;
             const alreadyAnswered = mcAnsweredIds.has(idx);
-            const correctness = !isUser ? isCorrectResponse(formattedContent) : null;
+            const correctness = !isUser ? isCorrectResponse(formatted) : null;
 
             if (isUser) {
               return (
                 <div key={idx} className="max-w-[80%] self-end rounded-2xl rounded-br-sm p-4 bg-primary text-white shadow-md">
-                  <div className="text-sm leading-relaxed whitespace-pre-wrap">{formattedContent}</div>
+                  <div className="text-sm leading-relaxed whitespace-pre-wrap">{formatted}</div>
                 </div>
               );
             }
@@ -475,19 +514,19 @@ export default function LessonPage() {
             return (
               <div key={idx} className="self-start max-w-[92%] sm:max-w-[82%] flex flex-col gap-3">
                 <div className={`rounded-2xl rounded-bl-sm p-4 shadow-md border-y border-r border-white/10 ${
-                  correctness === true ? "bg-green-500/10 border-l-4 border-l-green-400"
+                  correctness === true  ? "bg-green-500/10 border-l-4 border-l-green-400"
                   : correctness === false ? "bg-red-500/10 border-l-4 border-l-red-400"
                   : "bg-card border-l-4 border-l-secondary"
                 }`}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-xs font-semibold text-secondary">AI Ucucich</span>
-                    {correctness === true && <span className="text-xs text-green-400 font-medium">✓ Ĉisht</span>}
+                    {correctness === true  && <span className="text-xs text-green-400 font-medium">✓ Ĉisht</span>}
                     {correctness === false && <span className="text-xs text-red-400 font-medium">✗ Skhal</span>}
                   </div>
-                  <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">{formattedContent}</div>
+                  <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap">{formatted}</div>
                 </div>
 
-                {/* MC buttons — only on last AI message, not yet answered */}
+                {/* MC buttons */}
                 {mc && !alreadyAnswered && !sendMessage.isPending && (
                   <div className="flex flex-col gap-2 pl-2">
                     {mc.options.map((opt, optIdx) => (
@@ -511,7 +550,7 @@ export default function LessonPage() {
             );
           })}
 
-          {/* AI typing indicator */}
+          {/* Typing indicator */}
           {sendMessage.isPending && (
             <div className="self-start rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10 rounded-bl-sm flex items-center gap-3">
               <span className="text-xs font-semibold text-secondary">AI Ucucich</span>
@@ -527,17 +566,17 @@ export default function LessonPage() {
         </div>
       </main>
 
-      {/* Wrong answers strip */}
+      {/* Wrong answers recap — Phase 1 only */}
       {currentPhase === 1 && phaseScore.wrong.length > 0 && (
         <div className="shrink-0 px-4 pb-2">
           <div className="max-w-3xl mx-auto px-4 py-2 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
-            <span className="font-semibold">📌 Petq e krknel: </span>
+            <span className="font-semibold">📌 Krknel: </span>
             {phaseScore.wrong.slice(-3).join(" · ")}
           </div>
         </div>
       )}
 
-      {/* Input bar */}
+      {/* Input */}
       <footer className="shrink-0 p-4 border-t border-white/10 bg-card/50 backdrop-blur-lg">
         <div className="max-w-3xl mx-auto">
           {sendMessage.isError && (
@@ -549,7 +588,11 @@ export default function LessonPage() {
               value={message}
               onChange={adjustHeight}
               onKeyDown={handleKeyDown}
-              placeholder={currentPhase === 1 ? "Gris pataskhane (kam ĕntrir verevits)..." : "Gris pataskhane..."}
+              placeholder={
+                currentPhase === 1 ? "Gris pataskhane (kam ĕntrir verevits)..."
+                : currentPhase === 4 ? "Harceri dĕpqoum gris aystegh..."
+                : "Gris pataskhane kham harc..."
+              }
               rows={1}
               className="flex-1 bg-transparent border-0 focus:ring-0 resize-none max-h-[120px] min-h-[40px] py-2 px-3 text-sm outline-none"
             />

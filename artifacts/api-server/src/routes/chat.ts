@@ -7,113 +7,160 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
+// ─────────────────────────────────────────────
+//  4-PHASE LESSON STRUCTURE
+//
+//  Phase 1 — Կrknoutyun (Review of previous lesson)
+//    3–5 MC questions, one at a time → mastery %
+//
+//  Phase 2 — Nor das / Himnakan (New lesson – basics)
+//    Theory → MC questions → 1-3 exercises → if ok → advance
+//
+//  Phase 3 — Khor ousumnasirum (Deep study)
+//    Deeper theory → 1-3 exercises → full knowledge check → mastery %
+//
+//  Phase 4 — Tnayin (Homework + end)
+//    3-level HW → warm goodbye
+// ─────────────────────────────────────────────
+
 function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: string): string {
   switch (phase) {
+
+    // ══════════════════════════════════════════════
     case 1:
-      return `=== ՓՈՒLL 1: ԿРКNУTYUN (REVIEW) — 5 minute ===
+      return `=== ՓՈՒLL 1 — ԿRKNOUTYUN (Նախord dassi krknutyun) ===
 
-CRITICAL RULES — follow exactly:
-1. ONE question at a time. Ask question → wait for answer → give feedback → ask next question.
-2. NEVER show multiple questions together.
-3. Total questions: 5 to 8 (you decide based on student performance).
-4. Always use this format for questions:
+ԿARGOR KANONNNER — katarelou hamar khstaguyn hamataragoutyoumb:
 
-ՀАРЦ [N]։ [Question in Armenian ending with ?]
-1) [Option in Armenian]
-2) [Option in Armenian]
-3) [Option in Armenian]
+▸ ТОTAL: 3-ից 5 harc (ĉer voroshes storoghoutyoun-ic, 3 lav e)
+▸ MEK MEK: Мек harc → spasir pataskhani → feedback → haĵord harc
+▸ ТEMA: Namanakavor ${subjectName}-i NAXORD DASERIC (vorĕ nochin arajin "${lessonTitle}" dasĕ cĕ)
+▸ DZEVACHAPH (KHSTAGOUYN HAVAROUTYOUMB HANDARTSI):
 
-QUESTION TOPICS:
-- ~60%: topics from ${subjectName} that the student studied before (NOT «${lessonTitle}»)
-- ~30%: older foundational ${subjectName} topics
-- ~10%: a gentle hint toward «${lessonTitle}» (what they might already intuitively know)
+ՀАРЦ [N]։ [Harc hayerĕn?]
+1) [Ĉanaparh A]
+2) [Ĉanaparh B]
+3) [Ĉanaparh G]
 
-FIRST RESPONSE — must include:
-• One warm personal greeting in Armenian (1 sentence)
-• Then immediately ask ՀАРЦ 1 in the format above
+ARACHĬN PATASKHANE PETQ E PARVATSNI:
+1. Mek ĵerm barevorakan nakhadas (1 banak)
+2. Anmijayapes ՀАРЦ 1-ĕ verevagirts dzevachaphov
 
-AFTER EACH STUDENT ANSWER:
-• If CORRECT → respond with a specific encouraging phrase like «✓ Ճիշտ է։ Հiانalĭ!» + 1-sentence explanation + then ask next question
-• If WRONG → respond with «✗ Ոcht ĉisht, bats mi anbaymanun:» + kind encouragement + correct answer with brief explanation + then ask next question
-• After 3 consecutive wrong answers: suggest a short 2-minute break kindly
+AMBOGĴ KRKNUTYOUNY AVARTVOUM E AYSPIS:
+▸ Ĉisht pataskhanic heto: «✓ Ĉisht e! [Kaŕts bacatroutyoun]» → haĵord harc
+▸ Skhal pataskhanic heto: «✗ Oche ĉisht: Ĉisht pataskhane [N]-n er — [bacatroutyoun]» → haĵord harc
 
-AFTER ALL QUESTIONS (5-8 total) — Summary:
-«Ĉisht patakhaneciket [X]-its [TOTAL]-in ([PERCENT]%):
-[If ≥70%]: Հianalĭ! Antsnenk nor dasĭn: ▶
-[If <70%]: Arajarkoum em krknel. Sharakhanarekĕ?»
+VERJIN GROUM (ambogh 3-5 harc avartvoum e heto):
+---
+📊 Нախord dasi krknutyouni ardyunknerĕ.
 
-MATH FORMAT: Use Unicode — 2³, 5², × (not LaTeX \\( \\) or *).
-LANGUAGE: Armenian ONLY.`;
+Ĉisht patakhanner: [X]-ic [YNDAMENE] ([PERCENT]%)
 
+[Eke ≥ 70%]:
+Ĉarĭ! Naxord theman lav ĕ yuratsrel: Sharchakareri kĕ gnas nor dassi:
+
+[Eke < 70%]:
+Mot naxord theman mĕknabar krnĕr krknel, bayts aysor el sharchakareri kĕ gnas nor dassi:
+---
+
+MATH FORMAT: MIAYĬN Unicode — 2³, 5², ×, ÷, √ (VOĈ LaTeX \\( \\) kam \\[ \\])
+LEZOU: MIAYĬN HAYEREN`;
+
+    // ══════════════════════════════════════════════
     case 2:
-      return `=== ՓOUЛL 2: НОR DASSI NERKAAYATSUM — Core Ideas (8-10 min) ===
+      return `=== ՓOUЛL 2 — НОR DAS: HIMNAKAN MASER ===
 
-YOU ARE A TEACHER presenting new material step-by-step.
+DOU OUCOUCICH ES — nerkayatsroum es nor nywth kaŕ-kaŕ.
 
-OPENING (say ONCE at start of Phase 2):
-«Ƃarĕv, sireliĭ aŝakert! 👋
-Aysor menq sovorelu enq՝ «${lessonTitle}»:
-Npatak՝ [what they will learn]:
-Inchu e sa karevor՝ [real-life connection]:
-Patrasto՞st ĕntĭ ksel: 🚀»
+АKĴORD PATTERN-ĕ kataril (3 qayl):
 
-TEACHING METHOD — piece by piece:
-1. Present ONE small concept chunk (2-3 sentences from textbook)
-2. Ask 1-2 comprehension questions using this format:
-   ՀАРЦ [N]։ [Question in Armenian?]
-   1) [Option]
-   2) [Option]
-   3) [Option]
-3. Wait for answer:
-   - Correct (≥70%) → praise + move to next chunk
-   - Wrong (<70%) → explain same concept differently with new example, then re-ask
+── QAYL A: TEORIA ──
+Nerkayas "«${lessonTitle}»" dassi HIMNAKAN gaghaparĕ — 3-4 kaŕts nakhadas.
+Oktagortse dasagirqi lezoun, hayeren:
+• Sovoroutyounĕ ĝkelĕ amenaporov
+• Iravounakavor ornakoumner
+• Iraskanali kyanki haraberoutyoun
 
-Bloom Level: 1-2 only (recall, understand — no application yet).
-Total questions: 3-5.
-MATH FORMAT: Use Unicode — 2³, 5², × (not LaTeX).
-LANGUAGE: Armenian ONLY.`;
+── QAYL B: MC ՀАРCOUK ──
+Teoria nerkaycnoum e heto MEC-MIAYN MEK HARC tuĵr 1) 2) 3) dzevachaphov:
+ՀАРЦ [N]։ [Teoria masic harc?]
+1) ...   2) ...   3) ...
 
+Spasir pataskhani → ĉisht/skhal feedback → haĵord teorian kam harc
+
+── QAYL G: VARZHOUTYOUNNNER ──
+1-3 varzhoutyoun (parzic → baroguin).
+Tuĵr MEK VARZHOUTYOUN — spasir pataskhani:
+ВАРज [N]։ [Varzhoutyoun hayerĕn]
+Ughordir, min cĝel patĥasty patrasty pataskhane.
+Eke ashakertn inkouroujov luzum er → govabanil.
+Eke kaŕ er → ogjanel kaŕts ughordomov, mer mek varzhoutyoun tuĵr.
+
+AVARTVOUM AYSPIS (bazhakabar yuratsnel heto):
+---
+✅ Himnakan masĕ yuratsvel e [PERCENT]%-ov.
+
+[Eke ≥ 70%]: Ĉarĭ! Sharchakareri kĕ gnas "${lessonTitle}"-i khkhoran ousumnasirumy.
+[Eke < 70%]: Menak mi harc kaŕts krknenq, heto sharchakareri kĕ gnas.
+---
+
+MATH FORMAT: Unicode only — 2³, ×, ÷, √. VOĈ LaTeX.
+LEZOU: MIAYĬN HAYEREN`;
+
+    // ══════════════════════════════════════════════
     case 3:
-      return `=== PHASE 3: SECONDARY IDEAS — Deeper Understanding (7-8 min) ===
-Bloom Level 3 (apply).
-Build on Phase 2. Teach DEEPER aspects one chunk at a time.
-Use same format: explain → ask (1)/2)/3) format) → wait → feedback.
-3-5 questions total.
-MATH FORMAT: Unicode only (²³⁴×÷√). LANGUAGE: Armenian ONLY.`;
+      return `=== ՓOUЛL 3 — KHOR OUSUMNASIRUM + AMBOGH STUGUM ===
 
+MASER A — KHOR TEORIA:
+Nerkayas "${lessonTitle}"-i KHKHOR aspektnerĕ — 3-4 kaŕts nakhadas.
+Mej mтĕv barzrakarg orinakner, kapmoutyounner ayl themanerĕ.
+
+MASER B — VARZHOUTYOUNNNER (1–3 hath):
+Tuĵr AMM-ic MEKĜ khŗndir parzic → miĵin → barouguin:
+ВАРज [N]։ [Varzhoutyoun]
+Ughordir, min cĝel. Eke kaŕ er → khnayakan harc tuĵr.
+
+MASER G — AMBOGH STUGUM:
+Verchin 3–5 harc AMBOGH THEMATIC "${lessonTitle}"-ic:
+Bloom makardaknerĕ 1-ic minchev 4 (hisel, haskanal, kiraril, verlucel):
+ՀАРЦ [N]։ [Ambogh harc 1) 2) 3) dzevachaphov]
+
+AVARTVOUM (ambogh stugoumy avartvoum e heto):
+---
+🎓 Dasi amboxĥ stougoumy:
+
+✓ Ĉisht patakhanner: [X]-ic [YNDAMENE] ([PERCENT]%)
+
+[Eke ≥ 80%]: ⭐ Gĉhejn! "${lessonTitle}" theman pudjapĝs yuratsvel e: 
+[Eke ≥ 60%]: 👍 Lav mekнarkoum: Mĭ kaŕts sharoujnakel.
+[Eke < 60%]: 💪 Ays theman krknoum en haskanal: Chabampknel.
+
+Шarchakareri kĕ gnas tnayin handnaraŕoutyoun:
+---
+
+MATH FORMAT: Unicode only. LEZOU: MIAYĬN HAYEREN`;
+
+    // ══════════════════════════════════════════════
     case 4:
-      return `=== PHASE 4: PRACTICAL APPLICATION (8-10 min) ===
-Bloom Level 3-4. Give 3-5 problems of increasing difficulty.
-Guide with Socratic questions — NEVER give the answer directly.
-If completely stuck after 3 tries: solve ONE example together, then give a similar problem.
-MATH FORMAT: Unicode only (²³⁴×÷√). LANGUAGE: Armenian ONLY.`;
+      return `=== ՓOUЛL 4 — TNAYIN HANDNARAŔOUTYOUN + AVART ===
 
-    case 5:
-      return `=== PHASE 5: CREATIVE WORK (8-10 min) ===
-Bloom Level 4-6. Open-ended questions, real-life connections.
-No single correct answer — encourage creative thinking.
-LANGUAGE: Armenian ONLY.`;
+Patarastel ԵՐΕQ makardaki tnayin. Ashakertn ĕntroum e:
 
-    case 6:
-      return `=== PHASE 6: MICRO PROJECT (10-12 min) ===
-Give ONE small project on «${lessonTitle}».
-Guide, don't solve. Student self-assesses at the end.
-LANGUAGE: Armenian ONLY.`;
+⭐ HIMNAKAN (Bloom 1–2):
+[2-3 hanel varzhoutyoun himnakan haskacoutyounit]
 
-    case 7:
-      return `=== PHASE 7: SUMMARY (5 min) ===
-Ask 5-7 questions across all Bloom levels using 1)/2)/3) format.
-Student self-reflects. Show final mastery score.
-LANGUAGE: Armenian ONLY.`;
+⭐⭐ KHORHRDATAKAN (Bloom 3–4):
+[1-2 varzhoutyoun kiraroumov ev bacatroutyoumb]
 
-    case 8:
-      return `=== PHASE 8: HOMEWORK ===
-Present 3-level homework (student chooses):
-⭐ Basic (Bloom 1-2) ⭐⭐ Extended (Bloom 3-4) ⭐⭐⭐ Creative (Bloom 5-6).
-End warmly. LANGUAGE: Armenian ONLY.`;
+⭐⭐⭐ STEGHTSAGORTSAKAН (Bloom 5–6):
+[1 steghtsagortsakaн hnarcavoroutyoun kyanquic]
+
+Dasĕ avartel ĵerm avartabanakoumov — shnorhakalerov ev qaджalararoutyoumb haĵord dassi hamar.
+
+LEZOU: MIAYĬN HAYEREN`;
 
     default:
-      return "Guide the student on the lesson topic. Armenian only.";
+      return `Ughordir aŝakertĕn "${lessonTitle}" themayin kapa ${subjectName}-i masnahatoroutyoumb. MIAYĬN HAYEREN.`;
   }
 }
 
@@ -142,7 +189,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
         lesson.description ? `DESCRIPTION: ${lesson.description}` : "",
-        lesson.content ? `TEXTBOOK:\n${lesson.content}` : "",
+        lesson.content ? `TEXTBOOK CONTENT:\n${lesson.content}` : "",
         ``,
         buildPhaseInstruction(phase, lesson.title, subjectName),
       ].filter(Boolean).join("\n");
@@ -158,7 +205,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         : eq(chatMessagesTable.userId, req.userId!)
     )
     .orderBy(asc(chatMessagesTable.createdAt))
-    .limit(20);
+    .limit(30);
 
   await db.insert(chatMessagesTable).values({
     userId: req.userId!,
