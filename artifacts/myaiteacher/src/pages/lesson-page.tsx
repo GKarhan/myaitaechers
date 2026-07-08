@@ -126,7 +126,7 @@ export default function LessonPage() {
   useEffect(() => {
     if (hasSession && !autoStarted && !chatLoading && messages.length === 0 && !sendMessage.isPending) {
       setAutoStarted(true);
-      triggerAI("Սksel — Phase 1 review. Greet in Armenian, then ask ՀАРС 1 with 1) 2) 3) options. ONE question only.");
+      triggerAI("Sksir — Phase 1 review. Greet in Armenian, then ask ՀАРЦ 1 with 1) 2) 3) options. ONE question only.");
     }
   }, [hasSession, autoStarted, chatLoading, messages.length, sendMessage.isPending, triggerAI]);
 

@@ -18,7 +18,7 @@ CRITICAL RULES — follow exactly:
 3. Total questions: 5 to 8 (you decide based on student performance).
 4. Always use this format for questions:
 
-ՀАРС [N]։ [Question in Armenian ending with ?]
+ՀАРЦ [N]։ [Question in Armenian ending with ?]
 1) [Option in Armenian]
 2) [Option in Armenian]
 3) [Option in Armenian]
@@ -30,7 +30,7 @@ QUESTION TOPICS:
 
 FIRST RESPONSE — must include:
 • One warm personal greeting in Armenian (1 sentence)
-• Then immediately ask ՀАРС 1 in the format above
+• Then immediately ask ՀАРЦ 1 in the format above
 
 AFTER EACH STUDENT ANSWER:
 • If CORRECT → respond with a specific encouraging phrase like «✓ Ճիշտ է։ Հiانalĭ!» + 1-sentence explanation + then ask next question
@@ -60,7 +60,7 @@ Patrasto՞st ĕntĭ ksel: 🚀»
 TEACHING METHOD — piece by piece:
 1. Present ONE small concept chunk (2-3 sentences from textbook)
 2. Ask 1-2 comprehension questions using this format:
-   ՀАРС [N]։ [Question in Armenian?]
+   ՀАРЦ [N]։ [Question in Armenian?]
    1) [Option]
    2) [Option]
    3) [Option]
