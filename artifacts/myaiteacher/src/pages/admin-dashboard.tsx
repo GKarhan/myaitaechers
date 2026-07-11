@@ -143,18 +143,18 @@ export default function AdminDashboard() {
   };
 
   // ── class form ────────────────────────────────────────────────────────────
-  const emptyClass = { name: "", grade: "", teacherId: "" };
+  const emptyClass = { classNum: "7", classLetter: "Ա", teacherId: "" };
   const [cForm, setCForm] = useState(emptyClass);
   const [cError, setCError] = useState("");
   const [showCForm, setShowCForm] = useState(false);
-  const [editClass, setEditClass] = useState<{ id: number; name: string; grade: string; teacherId: number } | null>(null);
+  const [editClass, setEditClass] = useState<{ id: number; name: string; classNum: string; classLetter: string; grade: string; teacherId: number } | null>(null);
   const [assignClassId, setAssignClassId] = useState<number | null>(null);
   const [assignStudentId, setAssignStudentId] = useState<string>("");
 
   const handleCreateClass = (e: React.FormEvent) => {
     e.preventDefault(); setCError("");
-    if (!cForm.teacherId) { setCError("Ընտրեք ուusuцich"); return; }
-    createClass.mutate({ data: { name: cForm.name, grade: cForm.grade, teacherId: parseInt(cForm.teacherId) } }, {
+    if (!cForm.teacherId) { setCError("Ենթրեկ Ուսուցիչ"); return; }
+    createClass.mutate({ data: { name: `${cForm.classNum}${cForm.classLetter ? " " + cForm.classLetter : ""}`, grade: cForm.classNum, teacherId: parseInt(cForm.teacherId) } }, {
       onSuccess: () => { setShowCForm(false); setCForm(emptyClass); inv("classes", "stats"); },
       onError: () => setCError("Սխալ"),
     });
@@ -162,7 +162,7 @@ export default function AdminDashboard() {
 
   const handleUpdateClass = (e: React.FormEvent) => {
     e.preventDefault(); if (!editClass) return;
-    updateClass.mutate({ id: editClass.id, data: { name: editClass.name, grade: editClass.grade, teacherId: editClass.teacherId } }, {
+    updateClass.mutate({ id: editClass.id, data: { name: `${editClass.classNum}${editClass.classLetter ? " " + editClass.classLetter : ""}`, grade: editClass.classNum, teacherId: editClass.teacherId } }, {
       onSuccess: () => { setEditClass(null); inv("classes"); },
     });
   };
@@ -464,7 +464,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnPrimary}>Պահպանել</button>
+                  <button type="submit" className={btnPrimary}>ՊԱՀՊԱՆԵԼ</button>
                   <button type="button" onClick={() => setEditTeacher(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
@@ -521,19 +521,34 @@ export default function AdminDashboard() {
                 <h3 className="font-medium">Նոր Դասարան</h3>
                 {cError && <p className="text-destructive text-xs">{cError}</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Անուն * (օր. 7-1)</label><input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} required className={inputCls} placeholder="7-1" /></div>
-                  <div><label className="text-xs text-muted-foreground">Կարգ (օր. 7-րդ)</label><input value={cForm.grade} onChange={e => setCForm(f => ({ ...f, grade: e.target.value }))} className={inputCls} placeholder="7" /></div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Դասարանի համար</label>
+                    <select value={cForm.classNum} onChange={e => setCForm(f => ({ ...f, classNum: e.target.value }))} className={inputCls}>
+                      {["1","2","3","4","5","6","7","8","9","10","11","12"].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Կարգ</label>
+                    <select value={cForm.classLetter} onChange={e => setCForm(f => ({ ...f, classLetter: e.target.value }))} className={inputCls}>
+                      <option value="">—</option>
+                      {["Ա","Բ","Գ","Դ"].map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Ուսուցիչ *</label>
+                    <label className="text-xs text-muted-foreground">Ուսուցիչ</label>
                     <select value={cForm.teacherId} onChange={e => setCForm(f => ({ ...f, teacherId: e.target.value }))} className={inputCls}>
-                      <option value="">Ընտրեկ Ուսուցիչ</option>
-                      {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName}{t.subjects && t.subjects.length > 0 ? ` (${t.subjects.join(", ")})` : ""}</option>)}
+                      <option value="">Ընտրեք ուսուցիչ</option>
+                      {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName}{t.subjects && t.subjects.length > 0 ? ` — ${t.subjects.join(", ")}` : ""}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createClass.isPending} className={btnPrimary}>{createClass.isPending ? "..." : "Պահպանել"}</button>
-                  <button type="button" onClick={() => setShowCForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
+                  <button type="submit" disabled={createClass.isPending} className={btnPrimary}>{createClass.isPending ? "..." : "ՍՏЕՂԾЕЛ"}</button>
+                  <button type="button" onClick={() => setShowCForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">ՉԵՂԱՐԿԵԼ</button>
                 </div>
               </form>
             )}
@@ -542,8 +557,23 @@ export default function AdminDashboard() {
               <form onSubmit={handleUpdateClass} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
                 <h3 className="font-medium">Խմբագրել Դասարան</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Անուն</label><input value={editClass.name} onChange={e => setEditClass(c => c && ({ ...c, name: e.target.value }))} className={inputCls} /></div>
-                  <div><label className="text-xs text-muted-foreground">Կարգ</label><input value={editClass.grade} onChange={e => setEditClass(c => c && ({ ...c, grade: e.target.value }))} className={inputCls} /></div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Դասարանի համար</label>
+                    <select value={editClass.classNum} onChange={e => setEditClass(c => c && ({ ...c, classNum: e.target.value }))} className={inputCls}>
+                      {["1","2","3","4","5","6","7","8","9","10","11","12"].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Կարգ</label>
+                    <select value={editClass.classLetter} onChange={e => setEditClass(c => c && ({ ...c, classLetter: e.target.value }))} className={inputCls}>
+                      <option value="">—</option>
+                      {["Ա","Բ","Գ","Դ"].map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="col-span-2">
                     <label className="text-xs text-muted-foreground">Ուսուցիչ</label>
                     <select value={editClass.teacherId} onChange={e => setEditClass(c => c && ({ ...c, teacherId: parseInt(e.target.value) }))} className={inputCls}>
@@ -552,8 +582,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnPrimary}>Պահպանել</button>
-                  <button type="button" onClick={() => setEditClass(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
+                  <button type="submit" className={btnPrimary}>ՊԱՀՊԱՆԵԼ</button>
+                  <button type="button" onClick={() => setEditClass(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">ՉԵՂԱՐԿԵԼ</button>
                 </div>
               </form>
             )}
@@ -582,7 +612,7 @@ export default function AdminDashboard() {
                             + ԱՎԵԼԱՑՆԵԼ ԱՇԱԿԵՐՏ
                           </button>
                           <button onClick={() => setLocation(`/admin/classes/${c.id}`)} className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white/80 hover:text-white hover:bg-white/10 transition-colors">Դիտել</button>
-                          <button onClick={() => { setEditClass({ id: c.id, name: c.name, grade: c.grade, teacherId: c.teacherId }); setAssignClassId(null); }} className={btnGhost}>✏️</button>
+                          <button onClick={() => { const parts = c.name.split(/\s+/); const cn = parts[0] || ""; const cl = parts[1] || ""; setEditClass({ id: c.id, name: c.name, classNum: cn, classLetter: cl, grade: c.grade, teacherId: c.teacherId }); setAssignClassId(null); }} className={btnGhost}>✏️</button>
                           <button onClick={() => { if (confirm("Ջնջե՞լ դասարանը?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
                         </div>
                       </div>
@@ -672,7 +702,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnPrimary}>Պահպանել</button>
+                  <button type="submit" className={btnPrimary}>ՊԱՀՊԱՆԵԼ</button>
                   <button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
                 </div>
               </form>
