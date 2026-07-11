@@ -317,7 +317,7 @@ export default function AdminDashboard() {
             {/* Schedule preview – compact read-only grid */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-lg">📅 Վիճակագրություն — Դասացուցակ</h2>
+                <h2 className="font-semibold text-lg tracking-widest">ԴԱՍԱՑՈՒՑԱԿ</h2>
                 <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:text-primary/80 transition-colors">Դիտել ամբողջը →</button>
               </div>
               {schedule.length === 0 ? (
@@ -666,11 +666,7 @@ export default function AdminDashboard() {
         {tab === "schedule" && (
           <div>
             <div className="mb-5">
-              <h2 className="font-semibold text-lg">📅 Դասացուցակ — Մատրիցա</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Ենթրեկ «+»՝ դաս ավելացնելու համար.
-                Առարկան ընթրելիս հետո Ուսուցիչին ավտոմատ բացվում ե.
-              </p>
+              <h2 className="font-semibold text-lg tracking-widest">ԴԱՍԱՑՈՒՑԱԿ</h2>
             </div>
 
             {editSched && (
