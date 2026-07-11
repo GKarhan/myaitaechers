@@ -526,6 +526,7 @@ export default function AdminDashboard() {
                           >
                             + ԱՎԵԼԱՑՆԵԼ ԱՇԱԿԵՐՏ
                           </button>
+                          <button onClick={() => setLocation(`/admin/classes/${c.id}`)} className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white/80 hover:text-white hover:bg-white/10 transition-colors">Դիտել</button>
                           <button onClick={() => { setEditClass({ id: c.id, name: c.name, grade: c.grade, teacherId: c.teacherId }); setAssignClassId(null); }} className={btnGhost}>✏️</button>
                           <button onClick={() => { if (confirm("Ջնջե՞լ դասարանը?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
                         </div>

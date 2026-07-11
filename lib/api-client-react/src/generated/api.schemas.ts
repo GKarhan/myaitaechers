@@ -38,6 +38,13 @@ export interface ClassItem {
   createdAt: string;
 }
 
+export interface ClassTeacherInfo {
+  id: number;
+  fullName: string;
+  email?: string;
+  subjects: string[];
+}
+
 export interface StudentItem {
   id: number;
   username: string;
@@ -45,6 +52,14 @@ export interface StudentItem {
   email?: string;
   age?: number;
   createdAt: string;
+}
+
+export interface ClassDetailItem {
+  id: number;
+  name: string;
+  grade: string;
+  teacher: ClassTeacherInfo;
+  students: StudentItem[];
 }
 
 export interface CreateTeacherInput {

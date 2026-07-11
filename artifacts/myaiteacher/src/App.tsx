@@ -19,6 +19,7 @@ import Homework from "@/pages/homework";
 import Progress from "@/pages/progress";
 import SubjectProgress from "@/pages/subject-progress";
 import AdminDashboard from "@/pages/admin-dashboard";
+import ClassDetail from "@/pages/class-detail";
 import TeacherDashboard from "@/pages/teacher-dashboard";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/classes/:id" component={ClassDetail} />
       <Route path="/teacher" component={TeacherDashboard} />
       <Route path="/subjects/:id" component={SubjectDetail} />
       <Route path="/knowledge-tree/:id" component={KnowledgeTree} />

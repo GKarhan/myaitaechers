@@ -129,6 +129,56 @@ router.put("/admin/classes/:id", requireAdmin, async (req, res) => {
   res.json({ message: "Դасараны ти tarmaцvец" });
 });
 
+router.get("/admin/classes/:id/detail", requireAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [cls] = await db
+    .select({
+      id: classesTable.id,
+      name: classesTable.name,
+      grade: classesTable.grade,
+      teacherId: classesTable.teacherId,
+      teacherUserId: teachersTable.userId,
+      teacherFullName: usersTable.fullName,
+      teacherEmail: usersTable.email,
+      teacherSubjects: teachersTable.subjects,
+    })
+    .from(classesTable)
+    .innerJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
+    .innerJoin(usersTable, eq(teachersTable.userId, usersTable.id))
+    .where(eq(classesTable.id, id))
+    .limit(1);
+
+  if (!cls) { res.status(404).json({ error: "Դасarany чi гтnvel" }); return; }
+
+  const studentRows = await db
+    .select({
+      id: usersTable.id,
+      username: usersTable.username,
+      fullName: usersTable.fullName,
+      email: usersTable.email,
+      age: usersTable.age,
+      createdAt: usersTable.createdAt,
+    })
+    .from(classStudentsTable)
+    .innerJoin(usersTable, eq(classStudentsTable.studentId, usersTable.id))
+    .where(eq(classStudentsTable.classId, id));
+
+  res.json({
+    id: cls.id,
+    name: cls.name,
+    grade: cls.grade,
+    teacher: {
+      id: cls.teacherId,
+      fullName: cls.teacherFullName,
+      email: cls.teacherEmail,
+      subjects: cls.teacherSubjects,
+    },
+    students: studentRows,
+  });
+});
+
 router.post("/admin/classes/:id/delete", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }

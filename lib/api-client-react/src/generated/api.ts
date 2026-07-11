@@ -30,6 +30,7 @@ import type {
   ChatInput,
   ChatMessageItem,
   ChatResponse,
+  ClassDetailItem,
   ClassDocumentItem,
   ClassItem,
   CourseItem,
@@ -2716,6 +2717,83 @@ export const useCreateClass = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateClassMutationOptions(options));
     }
+
+export const getGetAdminClassDetailUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/classes/${id}/detail`
+}
+
+/**
+ * @summary Get class detail with teacher and students
+ */
+export const getAdminClassDetail = async (id: number, options?: RequestInit): Promise<ClassDetailItem> => {
+
+  return customFetch<ClassDetailItem>(getGetAdminClassDetailUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminClassDetailQueryKey = (id: number,) => {
+    return [
+    `/api/admin/classes/${id}/detail`
+    ] as const;
+    }
+
+
+export const getGetAdminClassDetailQueryOptions = <TData = Awaited<ReturnType<typeof getAdminClassDetail>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminClassDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminClassDetailQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminClassDetail>>> = ({ signal }) => getAdminClassDetail(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminClassDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminClassDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminClassDetail>>>
+export type GetAdminClassDetailQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get class detail with teacher and students
+ */
+
+export function useGetAdminClassDetail<TData = Awaited<ReturnType<typeof getAdminClassDetail>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminClassDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminClassDetailQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDeleteClassUrl = (id: number,) => {
 

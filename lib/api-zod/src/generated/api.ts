@@ -721,6 +721,34 @@ export const CreateClassResponse = zod.object({
 
 
 /**
+ * @summary Get class detail with teacher and students
+ */
+export const GetAdminClassDetailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAdminClassDetailResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "teacher": zod.object({
+  "id": zod.number(),
+  "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "subjects": zod.array(zod.string())
+}),
+  "students": zod.array(zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "fullName": zod.string(),
+  "email": zod.string().optional(),
+  "age": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary Delete a class
  */
 export const DeleteClassParams = zod.object({
