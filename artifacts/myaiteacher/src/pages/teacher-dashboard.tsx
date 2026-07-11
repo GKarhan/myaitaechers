@@ -482,9 +482,13 @@ export default function TeacherDashboard() {
 
   // ── CLASS PAGE ──────────────────────────────────────────────────────────────
   if (mainView === "class" && selectedClass) {
-    const classSubjects = Array.from(
+    const rawClassSubjects = Array.from(
       new Set(schedule.filter((s) => s.classId === selectedClass.id).map((s) => s.subject))
     ).sort((a, b) => a.localeCompare(b, "hy"));
+    const _teacherSubjectSet = new Set(teacherProfile?.subjects ?? []);
+    const classSubjects = _teacherSubjectSet.size > 0
+      ? rawClassSubjects.filter((s) => _teacherSubjectSet.has(s))
+      : rawClassSubjects;
     const classScheduleEntries = schedule.filter((s) => s.classId === selectedClass.id);
 
     return (
@@ -517,20 +521,17 @@ export default function TeacherDashboard() {
               {classSubjects.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground">
                   <div className="text-5xl mb-4">📖</div>
-                  <p className="text-sm">Առարկաներ դեռ չkа. Административный chchi assingnvel:</p>
+                  <p className="text-sm">Առarjakkaner deR chka. Adminy koGhmits chi nshanakvel</p>
                 </div>
               ) : (
                 <div className="space-y-5">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Sranq Vy dasavcvelu araarkannern en ayd dasarannerum:
-                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {classSubjects.map((subject) => {
                       const entries = classScheduleEntries.filter((s) => s.subject === subject);
                       return (
-                        <div key={subject} className="bg-card/60 border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all">
-                          <div className="text-2xl mb-3">📖</div>
-                          <div className="font-semibold text-base mb-3">{subject}</div>
+                        <div key={subject} className="bg-card/60 border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all flex flex-col gap-3">
+                          <div className="text-2xl">📖</div>
+                          <div className="font-semibold text-base">{subject}</div>
                           {entries.length > 0 && (
                             <div className="space-y-1.5">
                               {entries.map((e) => (
@@ -542,6 +543,28 @@ export default function TeacherDashboard() {
                               ))}
                             </div>
                           )}
+                          <button
+                            onClick={() => {
+                              const match = classCourses.find((c) => c.name === subject);
+                              if (match) {
+                                setSelectedCourse(match);
+                                setMainView("course");
+                              } else {
+                                createCourse.mutate(
+                                  { classId: selectedClass!.id, data: { name: subject, description: "" } },
+                                  { onSuccess: (created) => {
+                                      qc.invalidateQueries({ queryKey: getGetClassCoursesQueryKey(selectedClass!.id) });
+                                      setSelectedCourse(created);
+                                      setMainView("course");
+                                    }
+                                  }
+                                );
+                              }
+                            }}
+                            className="mt-auto w-full py-2 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
+                          >
+                            ԴIТEЛ
+                          </button>
                         </div>
                       );
                     })}
@@ -555,42 +578,42 @@ export default function TeacherDashboard() {
           {classTab === "students" && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">Аshakertner ({students.length})</h2>
+                <h2 className="font-semibold">Աshakertner ({students.length})</h2>
                 <button onClick={() => setShowStudentForm((f) => !f)} className={btnPrimary}>
-                  + Аvelacel
+                  + + Avelacel
                 </button>
               </div>
               {showStudentForm && (
                 <form onSubmit={handleAddStudent} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                  <h3 className="font-medium text-sm">Nor Аshakert</h3>
+                  <h3 className="font-medium text-sm">Nor Ashakert</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="col-span-2">
-                      <label className="text-xs text-muted-foreground">Anun Azganun</label>
-                      <input value={studentForm.fullName} onChange={(e) => setStudentForm((f) => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Аshakerty anunny" />
+                      <label className="text-xs text-muted-foreground">Անunn Azganun</label>
+                      <input value={studentForm.fullName} onChange={(e) => setStudentForm((f) => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Ashakerty anunny" />
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground">Электр. Нամак</label>
                       <input type="email" value={(studentForm as any).email} onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value } as any))} className={inputCls} placeholder="example@mail.com" />
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground">Тariq</label>
+                      <label className="text-xs text-muted-foreground">Tariq</label>
                       <input type="number" min="5" max="25" value={(studentForm as any).age} onChange={(e) => setStudentForm((f) => ({ ...f, age: e.target.value } as any))} className={inputCls} placeholder="14" />
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground/60">Nakhnayin gaxtnabary klini "student123"</p>
+                  <p className="text-xs text-muted-foreground/60">Naghnayin gaxtnabary "student123" klini</p>
                   <div className="flex gap-2">
                     <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>
                       {addStudent.isPending ? "..." : "Pahpanel"}
                     </button>
                     <button type="button" onClick={() => setShowStudentForm(false)} className={btnOutline}>
-                      Chegharkol
+                      Chegharkel
                     </button>
                   </div>
                 </form>
               )}
               <div className="space-y-2">
                 {students.length === 0 && (
-                  <p className="text-muted-foreground text-sm py-6 text-center">Аshakert chka</p>
+                  <p className="text-muted-foreground text-sm py-6 text-center">Ashakert chka</p>
                 )}
                 {students.map((s) => (
                   <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
@@ -600,15 +623,15 @@ export default function TeacherDashboard() {
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>
-                        Мanramans
+                        ДIТEЛ
                       </button>
                       <button onClick={() => {
-                        if (!confirm("Neracel dasaranits?")) return;
+                        if (!confirm("Heracel dasaranits?")) return;
                         removeStudent.mutate({ classId: selectedClass.id, studentId: s.id }, {
                           onSuccess: () => qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }),
                         });
                       }} className={btnDanger}>
-                        Neracel
+                        Heracel
                       </button>
                     </div>
                   </div>
