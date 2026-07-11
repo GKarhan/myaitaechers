@@ -2570,6 +2570,10 @@ components:
           type: string
         time:
           type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
         subject:
           type: string
         teacherName:
@@ -2580,13 +2584,15 @@ components:
 
     CreateScheduleInput:
       type: object
-      required: [classId, day, time, subject]
+      required: [classId, day, startTime, endTime, subject]
       properties:
         classId:
           type: integer
         day:
           type: string
-        time:
+        startTime:
+          type: string
+        endTime:
           type: string
         subject:
           type: string

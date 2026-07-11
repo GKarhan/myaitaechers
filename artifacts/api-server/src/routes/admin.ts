@@ -206,6 +206,8 @@ router.get("/admin/schedule", requireAdmin, async (_req, res) => {
       className: classesTable.name,
       day: scheduleTable.day,
       time: scheduleTable.time,
+      startTime: scheduleTable.startTime,
+      endTime: scheduleTable.endTime,
       subject: scheduleTable.subject,
       createdAt: scheduleTable.createdAt,
       teacherName: usersTable.fullName,
@@ -214,28 +216,38 @@ router.get("/admin/schedule", requireAdmin, async (_req, res) => {
     .innerJoin(classesTable, eq(scheduleTable.classId, classesTable.id))
     .leftJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
     .leftJoin(usersTable, eq(teachersTable.userId, usersTable.id))
-    .orderBy(scheduleTable.day, scheduleTable.time);
+    .orderBy(scheduleTable.day, scheduleTable.startTime);
   res.json(rows);
 });
 
 router.post("/admin/schedule", requireAdmin, async (req, res) => {
-  const { classId, day, time, subject } = req.body as { classId: number; day: string; time: string; subject: string };
-  if (!classId || !day || !time || !subject) {
-    res.status(400).json({ error: "classId, day, time, subject պарtаdіr єn" }); return;
+  const { classId, day, startTime, endTime, subject } = req.body as {
+    classId: number; day: string; startTime: string; endTime: string; subject: string;
+  };
+  if (!classId || !day || !startTime || !endTime || !subject) {
+    res.status(400).json({ error: "classId, day, startTime, endTime, subject պարտադիր են" }); return;
   }
-  const [row] = await db.insert(scheduleTable).values({ classId, day, time, subject }).returning();
+  const [row] = await db.insert(scheduleTable).values({ classId, day, time: startTime, startTime, endTime, subject }).returning();
   res.status(201).json(row);
 });
 
 router.put("/admin/schedule/:id", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { classId, day, time, subject } = req.body as { classId?: number; day?: string; time?: string; subject?: string };
+  const { classId, day, startTime, endTime, subject } = req.body as {
+    classId?: number; day?: string; startTime?: string; endTime?: string; subject?: string;
+  };
   const updated = await db.update(scheduleTable)
-    .set({ ...(classId && { classId }), ...(day && { day }), ...(time && { time }), ...(subject && { subject }) })
+    .set({
+      ...(classId && { classId }),
+      ...(day && { day }),
+      ...(startTime && { time: startTime, startTime }),
+      ...(endTime && { endTime }),
+      ...(subject && { subject }),
+    })
     .where(eq(scheduleTable.id, id))
     .returning();
-  if (updated.length === 0) { res.status(404).json({ error: "Дас чи гтнвел" }); return; }
+  if (updated.length === 0) { res.status(404).json({ error: "Դասը չի գտնվել" }); return; }
   res.json(updated[0]);
 });
 

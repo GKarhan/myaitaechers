@@ -120,6 +120,8 @@ export interface ScheduleItem {
   className?: string;
   day: string;
   time: string;
+  startTime?: string;
+  endTime?: string;
   subject: string;
   teacherName?: string;
   createdAt: string;
@@ -128,7 +130,8 @@ export interface ScheduleItem {
 export interface CreateScheduleInput {
   classId: number;
   day: string;
-  time: string;
+  startTime: string;
+  endTime: string;
   subject: string;
 }
 

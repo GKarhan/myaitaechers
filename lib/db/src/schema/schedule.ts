@@ -7,7 +7,9 @@ export const scheduleTable = pgTable("schedule", {
     .notNull()
     .references(() => classesTable.id, { onDelete: "cascade" }),
   day: text("day").notNull(),
-  time: text("time").notNull(),
+  time: text("time").notNull().default(""),
+  startTime: text("start_time").notNull().default(""),
+  endTime: text("end_time").notNull().default(""),
   subject: text("subject").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -12,6 +12,8 @@ export interface ScheduleItem {
   className?: string;
   day: string;
   time: string;
+  startTime?: string;
+  endTime?: string;
   subject: string;
   teacherName?: string;
   createdAt: Date;

@@ -9,6 +9,7 @@
 export interface CreateScheduleInput {
   classId: number;
   day: string;
-  time: string;
+  startTime: string;
+  endTime: string;
   subject: string;
 }
