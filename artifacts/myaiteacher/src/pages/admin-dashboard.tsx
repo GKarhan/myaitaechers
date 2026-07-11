@@ -668,17 +668,17 @@ export default function AdminDashboard() {
             </div>
 
             <form onSubmit={handleCreateSubject} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-              <h3 className="font-medium">ավելացնել Առարկաներ</h3>
+              <h3 className="font-medium">ԱՎԵԼԱՑՆԵԼ ԱՌԱՐԿԱՆԵՐ</h3>
               {subError && <p className="text-destructive text-xs">{subError}</p>}
               <div className="flex gap-3">
                 <input
                   value={subName}
                   onChange={e => setSubName(e.target.value)}
-                  placeholder="Առարկաներ անուն (օr. Математика)"
+                  placeholder="ԱՌԱՐԿԱՆԵՐ ԱՆՈՒՆ"
                   className="flex-1 bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
                 <button type="submit" disabled={createSubject.isPending} className={btnPrimary}>
-                  {createSubject.isPending ? "..." : "ավելացնել"}
+                  {createSubject.isPending ? "..." : "ԱՎԵԼԱՑՆԵԼ"}
                 </button>
               </div>
             </form>
@@ -688,8 +688,8 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
                     <th className="pb-3 pr-4 pl-1">#</th>
-                    <th className="pb-3 pr-4">Առարկաներ անուն</th>
-                    <th className="pb-3 text-right">գործողություններ</th>
+                    <th className="pb-3 pr-4">ԱՌԱՐԿԱՆԵՐ ԱՆՈՒՆ</th>
+                    <th className="pb-3 text-right">ԳՈՐԾՈՂՈՒԹՅՈՒՆՆԵՐ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
