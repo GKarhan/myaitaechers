@@ -636,33 +636,33 @@ export default function AdminDashboard() {
 
             {showStForm && (
               <form onSubmit={handleCreateStudent} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Նոր Աշակerт {selectedClassId ? `(դաս. ${classes.find(c => c.id === selectedClassId)?.name})` : ""}</h3>
+                <h3 className="font-semibold tracking-wide uppercase text-sm">ՆՈՐ ԱՇԱԿԵՐՏ{selectedClassId ? ` · ${classes.find(c => c.id === selectedClassId)?.name}` : ""}</h3>
                 {stError && <p className="text-destructive text-xs">{stError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Անուն Ազганun *</label>
-                    <input value={stForm.fullName} onChange={e => setStForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Աshakertи Անուն" />
+                    <label className="text-xs text-muted-foreground">Անուն, ազգանուն *</label>
+                    <input value={stForm.fullName} onChange={e => setStForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Անուն, ազգանուն" />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Email</label>
+                    <label className="text-xs text-muted-foreground">Էլ. հասցե</label>
                     <input type="email" value={stForm.email} onChange={e => setStForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="example@mail.com" />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Տariq (amix)</label>
+                    <label className="text-xs text-muted-foreground">Տարիք (ամ.)</label>
                     <input type="number" min="5" max="25" value={stForm.age} onChange={e => setStForm(f => ({ ...f, age: e.target.value }))} className={inputCls} placeholder="14" />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Դasaran</label>
+                    <label className="text-xs text-muted-foreground">Դասարան</label>
                     <select value={stClassId} onChange={e => setStClassId(e.target.value)} className={inputCls}>
-                      <option value="">Ընtrek Դasaran (kamayin)</option>
+                      <option value="">Ընտրել դասարանը (կամ. )</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground/70">Аlginabarn klini "student123", ogтanunы kvik avtоmat kerpi</p>
+                <p className="text-xs text-muted-foreground/60">Օգտանունը ստեղծվում է ավտոմատ՝ «student123» ձևաչափով:</p>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "Պahpanel"}</button>
-                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չeghаrkel</button>
+                  <button type="submit" disabled={createStudent.isPending} className={btnPrimary}>{createStudent.isPending ? "..." : "ՊԱՀՊԱՆԵԼ"}</button>
+                  <button type="button" onClick={() => setShowStForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">ՉԵՂԱՐԿԵԼ</button>
                 </div>
               </form>
             )}
