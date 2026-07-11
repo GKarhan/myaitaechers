@@ -23,7 +23,7 @@ export default function ClassDetail() {
   if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex items-center justify-center">
-        <div className="text-white/50 text-sm animate-pulse">Բեռnavel...</div>
+        <div className="text-white/50 text-sm animate-pulse">Բեռնվում է...</div>
       </div>
     );
   }
@@ -31,7 +31,7 @@ export default function ClassDetail() {
   if (!detail) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex items-center justify-center">
-        <div className="text-white/50 text-sm">Դасарany чi гтnvel</div>
+        <div className="text-white/50 text-sm">Դասարանը չի գտնվել</div>
       </div>
     );
   }
@@ -44,7 +44,7 @@ export default function ClassDetail() {
           onClick={() => setLocation("/admin")}
           className="text-sm text-muted-foreground hover:text-white transition-colors flex items-center gap-1.5"
         >
-          ← Дасараннер
+          ← Դասարաններ
         </button>
         <span className="text-white/20">/</span>
         <h1 className="font-semibold text-white">{detail.name}</h1>
@@ -54,17 +54,17 @@ export default function ClassDetail() {
 
         {/* ── Title block ── */}
         <div className="bg-card/50 border border-white/10 rounded-2xl px-6 py-5">
-          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Դасарани манрамасnеры</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Դասարանի մանրամասներ</p>
           <h2 className="text-2xl font-bold text-white">{detail.name}</h2>
           {detail.grade && (
-            <p className="text-sm text-muted-foreground mt-1">{detail.grade} Карг</p>
+            <p className="text-sm text-muted-foreground mt-1">{detail.grade} կարգ</p>
           )}
         </div>
 
         {/* ── Teacher section ── */}
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-widest text-[#6366F1] mb-3">
-            Ուusуцичнер
+            Ուսուցիչներ
           </h3>
           <div className="bg-card/50 border border-white/10 rounded-2xl px-5 py-4 flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-[#6366F1]/20 flex items-center justify-center text-[#6366F1] font-bold text-lg flex-shrink-0">
@@ -95,25 +95,25 @@ export default function ClassDetail() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-semibold uppercase tracking-widest text-[#14B8A6]">
-              Ашакертнер
+              Աշակերտների ցանկ
             </h3>
             <span className="text-xs text-muted-foreground border border-white/10 rounded-full px-2.5 py-0.5">
-              {detail.students.length} հат
+              {detail.students.length} հատ
             </span>
           </div>
 
           {detail.students.length === 0 ? (
             <div className="bg-card/50 border border-white/10 rounded-2xl px-5 py-8 text-center text-muted-foreground text-sm">
-              Ашакертнер чкан
+              Աշակերտներ չկան
             </div>
           ) : (
             <div className="bg-card/50 border border-white/10 rounded-2xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 bg-white/5 text-muted-foreground text-xs uppercase tracking-wide">
-                    <th className="text-left px-5 py-3">Ануn, ازgаnuн</th>
-                    <th className="text-left px-5 py-3">Эл. hasце</th>
-                    <th className="text-left px-5 py-3">Тарик</th>
+                    <th className="text-left px-5 py-3">Անուն, ազգանուն</th>
+                    <th className="text-left px-5 py-3">Էլ. հասցե</th>
+                    <th className="text-left px-5 py-3">Տարիք</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -124,7 +124,7 @@ export default function ClassDetail() {
                     >
                       <td className="px-5 py-3 font-medium text-white">{s.fullName}</td>
                       <td className="px-5 py-3 text-muted-foreground">{s.email || "—"}</td>
-                      <td className="px-5 py-3 text-muted-foreground">{(s as any).age ? `${(s as any).age} ам.` : "—"}</td>
+                      <td className="px-5 py-3 text-muted-foreground">{(s as any).age ? `${(s as any).age} տ.` : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
