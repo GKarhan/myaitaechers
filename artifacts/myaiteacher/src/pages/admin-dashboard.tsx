@@ -203,11 +203,12 @@ export default function AdminDashboard() {
   if (user?.role !== "admin") { setLocation("/login"); return null; }
 
   const subTabs: { key: Tab; label: string }[] = [
+    { key: "home",     label: "🏠 Ադմին Գլխավոր" },
+    { key: "subjects", label: "📖 Առարկաներ" },
     { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
-    { key: "classes", label: "📚 Դasaranner" },
-    { key: "schedule", label: "📅 Dasacucak" },
-    { key: "students", label: "👨‍🎓 Aшakертнер" },
-    { key: "subjects", label: "📖 Ararqaner" },
+    { key: "students", label: "👨‍🎓 Աշակերտներ" },
+    { key: "classes",  label: "📚 Դասարաններ" },
+    { key: "schedule", label: "📅 Դասացուցակ" },
   ];
 
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -232,7 +233,7 @@ export default function AdminDashboard() {
 
       <div className="max-w-6xl mx-auto px-6 py-6">
 
-        {/* Sub-tabs nav (always visible) */}
+        {/* Main nav (always visible) */}
         <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto">
           {subTabs.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -240,23 +241,7 @@ export default function AdminDashboard() {
               {t.label}
             </button>
           ))}
-          {/* Stats tab at end */}
-          <button onClick={() => setTab("home")}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${tab === "home" ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"}`}>
-            📊 Վիճակագրություն
-          </button>
         </div>
-
-        {/* Back button when inside a sub-tab */}
-        {tab !== "home" && (
-          <button
-            onClick={() => setTab("home")}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-white transition-colors mb-6 group"
-          >
-            <span className="text-lg leading-none group-hover:-translate-x-0.5 transition-transform">←</span>
-            <span>Admin Dashboard</span>
-          </button>
-        )}
 
         {/* ── HOME: stats + schedule ── */}
         {tab === "home" && (
