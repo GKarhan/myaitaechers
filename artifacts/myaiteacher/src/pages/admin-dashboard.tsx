@@ -247,11 +247,12 @@ export default function AdminDashboard() {
         {tab === "home" && (
           <div className="space-y-8">
             {/* Stats cards */}
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-4 gap-6">
               {[
+                { icon: "📖", label: "Առարկաներ", value: subjectsList.length, color: "text-purple-400", tabKey: "subjects" as Tab },
                 { icon: "👨‍🏫", label: "Ուսուցիչներ", value: stats?.teachers ?? 0, color: "text-amber-400", tabKey: "teachers" as Tab },
-                { icon: "📚", label: "Դասարաններ", value: stats?.classes ?? 0, color: "text-teal-400", tabKey: "classes" as Tab },
                 { icon: "👨‍🎓", label: "Աշակերտներ", value: stats?.students ?? 0, color: "text-indigo-400", tabKey: "students" as Tab },
+                { icon: "📚", label: "Դասարաններ", value: stats?.classes ?? 0, color: "text-teal-400", tabKey: "classes" as Tab },
               ].map((s) => (
                 <button
                   key={s.label}
@@ -318,7 +319,7 @@ export default function AdminDashboard() {
                 <h3 className="font-medium mb-1">Նոր Ուսուցիչ</h3>
                 {subjectsList.length === 0 && (
                   <p className="text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
-                    Խndrvm em, nax avelajrec ararkaner ararkaner@baxnm:
+                    նախ ավելացեք Առարկաներ:
                   </p>
                 )}
                 {tError && <p className="text-destructive text-xs">{tError}</p>}
@@ -503,7 +504,7 @@ export default function AdminDashboard() {
                 <h3 className="font-medium">Nor das</h3>
                 {subjectsList.length === 0 && (
                   <p className="text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
-                    Խndrvm em, nax avelajrec ararkaner ararkaner@baxnm:
+                    նախ ավելացեք Առարկաներ:
                   </p>
                 )}
                 {sError && <p className="text-destructive text-xs">{sError}</p>}
@@ -523,7 +524,7 @@ export default function AdminDashboard() {
                   <div>
                     <label className="text-xs text-muted-foreground">Առարկա *</label>
                     <select value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} disabled={subjectsList.length === 0}>
-                      <option value="">Yntrek Ararkany</option>
+                      <option value="">ընտրեք Առարկաներ</option>
                       {subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
@@ -663,7 +664,7 @@ export default function AdminDashboard() {
         {tab === "subjects" && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">📖 Ararkaner</h2>
+              <h2 className="font-semibold text-lg">📖 Առարկաներ</h2>
             </div>
 
             <form onSubmit={handleCreateSubject} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
@@ -694,7 +695,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {subjectsList.length === 0 && (
-                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Ararkaner chka · Avaelajrecek ararkaner verevum</td></tr>
+                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Առարկաներ չկա · ավելացեք Առարկաներ</td></tr>
                   )}
                   {subjectsList.map((s, idx) => {
                     const linkedTeachers = teachers.filter(t => t.subject === s.name);
