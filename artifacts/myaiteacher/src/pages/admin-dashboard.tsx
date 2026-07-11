@@ -325,8 +325,8 @@ export default function AdminDashboard() {
                 {tError && <p className="text-destructive text-xs">{tError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Անուն ազգանուն *</label>
-                    <input value={tForm.fullName} onChange={e => setTForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} />
+                    <label className="text-xs text-muted-foreground">Անուն, ազգանուն *</label>
+                    <input value={tForm.fullName} onChange={e => setTForm(f => ({ ...f, fullName: e.target.value }))} required placeholder="Անուն, ազգանուն" className={inputCls} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Էլ. հասցե</label>
@@ -365,8 +365,8 @@ export default function AdminDashboard() {
                 <h3 className="font-medium">Խմբագրել ուսուցիչին</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Անուն ազգանուն</label>
-                    <input value={editTeacher.fullName} onChange={e => setEditTeacher(t => t && ({ ...t, fullName: e.target.value }))} className={inputCls} />
+                    <label className="text-xs text-muted-foreground">Անուն, ազգանուն</label>
+                    <input value={editTeacher.fullName} onChange={e => setEditTeacher(t => t && ({ ...t, fullName: e.target.value }))} placeholder="Անուն, ազգանուն" className={inputCls} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Էլ. հասցե</label>
