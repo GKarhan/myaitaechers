@@ -68,21 +68,21 @@ export default function Home() {
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
             >
-              👑 Ադմին
+              ADADMIN
             </button>
             <button
               onClick={() => quickLogin("teacher1", "teacher123")}
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
             >
-              ԱՐАG ՄOUTK
+              UDUDCHIЧ
             </button>
             <button
               onClick={() => quickLogin("student1", "student123")}
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 transition-colors disabled:opacity-50"
             >
-              👨‍🎓 Աշակերտ
+              ASHAKERT
             </button>
           </div>
         </div>

@@ -55,7 +55,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
             >
-              👑 Ադմին
+              ADADMIN
             </button>
             <button
               type="button"
@@ -63,7 +63,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
             >
-              ԱՐԱG ՄOUTK
+              UDUDCHIЧ
             </button>
             <button
               type="button"
@@ -71,7 +71,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 transition-colors disabled:opacity-50"
             >
-              👨‍🎓 Աշակերտ
+              ASHAKERT
             </button>
           </div>
         </div>

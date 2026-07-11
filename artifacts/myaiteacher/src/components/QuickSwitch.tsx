@@ -20,7 +20,7 @@ export default function QuickSwitch() {
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("admin", "admin123", "/admin")}
         className="py-1.5 px-3 rounded-xl text-[11px] font-medium border transition-colors disabled:opacity-50 bg-amber-500/20 border-amber-500/30 text-amber-400 hover:bg-amber-500/30">
-        ԱԴՄԻՆ
+        ADADMIN
       </button>
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("teacher1", "teacher123", "/teacher")}
