@@ -208,9 +208,13 @@ router.get("/admin/schedule", requireAdmin, async (_req, res) => {
       time: scheduleTable.time,
       subject: scheduleTable.subject,
       createdAt: scheduleTable.createdAt,
+      teacherName: usersTable.fullName,
     })
     .from(scheduleTable)
-    .innerJoin(classesTable, eq(scheduleTable.classId, classesTable.id));
+    .innerJoin(classesTable, eq(scheduleTable.classId, classesTable.id))
+    .leftJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
+    .leftJoin(usersTable, eq(teachersTable.userId, usersTable.id))
+    .orderBy(scheduleTable.day, scheduleTable.time);
   res.json(rows);
 });
 

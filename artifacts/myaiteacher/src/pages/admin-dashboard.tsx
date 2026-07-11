@@ -176,6 +176,9 @@ export default function AdminDashboard() {
   const [sError, setSError] = useState("");
   const [showSForm, setShowSForm] = useState(false);
   const [editSched, setEditSched] = useState<{ id: number; classId: number; day: string; time: string; subject: string } | null>(null);
+  const [cellAdd, setCellAdd] = useState<{ day: string; classId: number } | null>(null);
+  const [cellTime, setCellTime] = useState(TIMES[0]);
+  const [cellSubject, setCellSubject] = useState("");
 
   const handleCreateSched = (e: React.FormEvent) => {
     e.preventDefault(); setSError("");
@@ -191,6 +194,23 @@ export default function AdminDashboard() {
     updateSchedule.mutate({ id: editSched.id, data: { classId: editSched.classId, day: editSched.day, time: editSched.time, subject: editSched.subject } }, {
       onSuccess: () => { setEditSched(null); inv("schedule"); },
     });
+  };
+
+  // ── schedule grid helpers ─────────────────────────────────────────────────
+  const SCHOOL_DAYS = DAYS.slice(0, 5);
+  const sortedClasses = [...classes].sort((a, b) => a.name.localeCompare(b.name, "hy"));
+  const getTeacherForClass = (classId: number) => {
+    const cls = classes.find(c => c.id === classId);
+    return teachers.find(t => t.id === cls?.teacherId);
+  };
+  const getValidSubjects = (classId: number): string[] =>
+    getTeacherForClass(classId)?.subjects ?? [];
+  const handleCellAdd = () => {
+    if (!cellAdd || !cellSubject) return;
+    createSchedule.mutate(
+      { data: { classId: cellAdd.classId, day: cellAdd.day, time: cellTime, subject: cellSubject } },
+      { onSuccess: () => { setCellAdd(null); inv("schedule"); } }
+    );
   };
 
   // ── student form ──────────────────────────────────────────────────────────
@@ -282,42 +302,65 @@ export default function AdminDashboard() {
               ))}
             </div>
 
-            {/* Schedule preview */}
+            {/* Schedule preview – compact read-only grid */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-lg">📅 Դասացուցակ</h2>
-                <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:text-primary/80 transition-colors">Խմբագրել →</button>
+                <h2 className="font-semibold text-lg">📅 Վիճակագրություն — Դասացուցակ</h2>
+                <button onClick={() => setTab("schedule")} className="text-xs text-primary hover:text-primary/80 transition-colors">Դիտել ամբողջը →</button>
               </div>
-              <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/10 text-muted-foreground text-left">
-                        <th className="pb-3 pr-4 pl-4 pt-3">Օր</th>
-                        <th className="pb-3 pr-4 pt-3">Ժամ</th>
-                        <th className="pb-3 pr-4 pt-3">Առարկա</th>
-                        <th className="pb-3 pr-4 pt-3">Դասարան</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {schedule.length === 0 && (
-                        <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">
-                          Դասացուցակ չկա ·{" "}
-                          <button onClick={() => setTab("schedule")} className="text-primary hover:underline">Ավելացել դաս</button>
-                        </td></tr>
-                      )}
-                      {schedule.map((s) => (
-                        <tr key={s.id} className="hover:bg-white/2 transition-colors">
-                          <td className="py-3 pr-4 pl-4 font-medium">{s.day}</td>
-                          <td className="py-3 pr-4 text-teal-400 font-mono">{s.time}</td>
-                          <td className="py-3 pr-4">{s.subject}</td>
-                          <td className="py-3 pr-4 text-muted-foreground">{s.className}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {schedule.length === 0 ? (
+                <div className="bg-card/40 border border-white/10 rounded-2xl py-10 text-center text-muted-foreground text-sm">
+                  Դասացուցակ չկա ·{" "}
+                  <button onClick={() => setTab("schedule")} className="text-primary hover:underline">Ավելացնել դաս</button>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-white/5 border-b border-white/10">
+                          <th className="text-left px-4 py-2.5 text-muted-foreground font-medium min-w-[110px]">Օր</th>
+                          {sortedClasses.map(c => (
+                            <th key={c.id} className="text-left px-3 py-2.5 text-muted-foreground font-medium min-w-[110px] border-l border-white/5">{c.name}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SCHOOL_DAYS.map((day, di) => (
+                          <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
+                            <td className="px-4 py-2.5 font-medium text-white/80 align-top whitespace-nowrap">{day}</td>
+                            {sortedClasses.map(c => {
+                              const entries = schedule.filter(s => s.day === day && s.classId === c.id)
+                                .sort((a, b) => a.time.localeCompare(b.time));
+                              const teacher = getTeacherForClass(c.id);
+                              return (
+                                <td key={c.id} className="px-3 py-2 align-top border-l border-white/5">
+                                  {entries.length === 0 ? (
+                                    <span className="text-white/15">—</span>
+                                  ) : (
+                                    <div className="flex flex-col gap-1">
+                                      {entries.map(e => (
+                                        <div
+                                          key={e.id}
+                                          title={`Ուսուցիչ՝ ${e.teacherName ?? teacher?.fullName ?? "—"}`}
+                                          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#14B8A6]/10 border border-[#14B8A6]/20 cursor-default"
+                                        >
+                                          <span className="text-[#14B8A6] font-mono">{e.time}</span>
+                                          <span className="text-white/80 truncate">{e.subject}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -578,63 +621,19 @@ export default function AdminDashboard() {
         {/* ── SCHEDULE ── */}
         {tab === "schedule" && (
           <div>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-lg">Դասացուցակ</h2>
-              <button onClick={() => setShowSForm(!showSForm)} className={btnPrimary}>+ Ավելացել դաս</button>
+            <div className="mb-5">
+              <h2 className="font-semibold text-lg">Դасацуцак</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Ուusуцичи арarканеrы авtomаt ернvum еn bаjijum. Sеjmеk «+»՝ das аvеlасеlу hаmar.</p>
             </div>
-
-            {showSForm && (
-              <form onSubmit={handleCreateSched} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Nor das</h3>
-                {subjectsList.length === 0 && (
-                  <p className="text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
-                    նախ ավելացեք Առարկաներ:
-                  </p>
-                )}
-                {sError && <p className="text-destructive text-xs">{sError}</p>}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Or *</label>
-                    <select value={sForm.day} onChange={e => setSForm(f => ({ ...f, day: e.target.value }))} className={inputCls}>
-                      {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Jam *</label>
-                    <select value={sForm.time} onChange={e => setSForm(f => ({ ...f, time: e.target.value }))} className={inputCls}>
-                      {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Առարկա *</label>
-                    <select value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} disabled={subjectsList.length === 0}>
-                      <option value="">ընտրեք Առարկաներ</option>
-                      {subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Դասարան *</label>
-                    <select value={sForm.classId} onChange={e => setSForm(f => ({ ...f, classId: e.target.value }))} className={inputCls}>
-                      <option value="">Ընտրեկ դասարան</option>
-                      {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createSchedule.isPending} className={btnPrimary}>{createSchedule.isPending ? "..." : "Պահպանել"}</button>
-                  <button type="button" onClick={() => setShowSForm(false)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
-                </div>
-              </form>
-            )}
 
             {editSched && (
               <form onSubmit={handleUpdateSched} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Խմբագրել դաս</h3>
+                <h3 className="font-medium">Хмбаgrel das</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-muted-foreground">Օր</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Օր</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{SCHOOL_DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
                   <div><label className="text-xs text-muted-foreground">Ժամ</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Առարկա</label><select value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls}><option value="">—</option>{subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Դասարան</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Առարկա</label><select value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls}><option value="">—</option>{getValidSubjects(editSched.classId).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground">Դասարան</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{sortedClasses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" className={btnPrimary}>Պահպանել</button>
@@ -643,36 +642,123 @@ export default function AdminDashboard() {
               </form>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 text-muted-foreground text-left">
-                    <th className="pb-3 pr-4">Օր</th>
-                    <th className="pb-3 pr-4">Ժամ</th>
-                    <th className="pb-3 pr-4">Առարկա</th>
-                    <th className="pb-3 pr-4">Դասարան</th>
-                    <th className="pb-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {schedule.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասացուցակ չկա</td></tr>}
-                  {schedule.map((s) => (
-                    <tr key={s.id} className="hover:bg-white/2">
-                      <td className="py-3 pr-4 font-medium">{s.day}</td>
-                      <td className="py-3 pr-4 text-teal-400 font-mono">{s.time}</td>
-                      <td className="py-3 pr-4">{s.subject}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{s.className}</td>
-                      <td className="py-3">
-                        <div className="flex gap-1">
-                          <button onClick={() => setEditSched({ id: s.id, classId: s.classId, day: s.day, time: s.time, subject: s.subject })} className={btnGhost}>✏️</button>
-                          <button onClick={() => { if (confirm("Ջնջել?")) deleteSchedule.mutate({ id: s.id }, { onSuccess: () => inv("schedule") }); }} className={btnDanger}>🗑</button>
-                        </div>
-                      </td>
+            {classes.length === 0 ? (
+              <div className="bg-card/50 border border-white/10 rounded-2xl py-12 text-center text-muted-foreground text-sm">
+                Դասառաններ չկան.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-white/10">
+                <table className="min-w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-white/5 border-b border-white/10">
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs uppercase tracking-wide min-w-[130px] sticky left-0 bg-[#0F172A]/80 backdrop-blur-sm z-10">Օր</th>
+                      {sortedClasses.map(c => {
+                        const teacher = getTeacherForClass(c.id);
+                        return (
+                          <th key={c.id} className="text-left px-3 py-3 min-w-[160px] border-l border-white/5 font-normal">
+                            <div className="font-semibold text-white/80 text-xs">{c.name}</div>
+                            {teacher && <div className="text-muted-foreground text-xs truncate">{teacher.fullName}</div>}
+                          </th>
+                        );
+                      })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {SCHOOL_DAYS.map((day, di) => (
+                      <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "bg-white/[0.01]" : ""}`}>
+                        <td className="px-4 py-3 font-semibold text-white/70 align-top whitespace-nowrap text-xs uppercase tracking-wide sticky left-0 bg-[#0F172A]/80 backdrop-blur-sm border-r border-white/5 z-10">
+                          {day}
+                        </td>
+                        {sortedClasses.map(c => {
+                          const entries = schedule
+                            .filter(s => s.day === day && s.classId === c.id)
+                            .sort((a, b) => a.time.localeCompare(b.time));
+                          const validSubjs = getValidSubjects(c.id);
+                          const teacher = getTeacherForClass(c.id);
+                          const isAdding = cellAdd?.day === day && cellAdd?.classId === c.id;
+                          return (
+                            <td key={c.id} className="px-3 py-2.5 align-top border-l border-white/5 min-w-[160px]">
+                              <div className="flex flex-col gap-1.5">
+                                {entries.map(e => (
+                                  <div
+                                    key={e.id}
+                                    title={`Ուsuцich: ${e.teacherName ?? teacher?.fullName ?? "—"}`}
+                                    className="group flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#14B8A6]/10 border border-[#14B8A6]/20 hover:border-[#14B8A6]/40 transition-colors"
+                                  >
+                                    <span className="text-[#14B8A6] font-mono text-xs shrink-0">{e.time}</span>
+                                    <span className="text-white/80 text-xs flex-1 truncate">{e.subject}</span>
+                                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                      <button
+                                        onClick={() => setEditSched({ id: e.id, classId: e.classId, day: e.day, time: e.time, subject: e.subject })}
+                                        className="text-white/40 hover:text-white text-xs px-1"
+                                      >✏</button>
+                                      <button
+                                        onClick={() => { if (confirm("Jnjel?")) deleteSchedule.mutate({ id: e.id }, { onSuccess: () => inv("schedule") }); }}
+                                        className="text-red-400/60 hover:text-red-400 text-xs px-1"
+                                      >✕</button>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {isAdding ? (
+                                  <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-[#6366F1]/10 border border-[#6366F1]/25">
+                                    {validSubjs.length === 0 ? (
+                                      <p className="text-xs text-amber-400">Ուսուցիչի առարկաններ չունի</p>
+                                    ) : (
+                                      <>
+                                        {teacher && (
+                                          <p className="text-xs text-[#6366F1] font-medium truncate">Ուսուցիչ՝ {teacher.fullName}</p>
+                                        )}
+                                        <select
+                                          value={cellTime}
+                                          onChange={e => setCellTime(e.target.value)}
+                                          className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
+                                        >
+                                          {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                        <select
+                                          value={cellSubject}
+                                          onChange={e => setCellSubject(e.target.value)}
+                                          className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
+                                        >
+                                          <option value="">Yntrеk ararka</option>
+                                          {validSubjs.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={handleCellAdd}
+                                            disabled={!cellSubject || createSchedule.isPending}
+                                            className="flex-1 text-xs py-1 rounded-lg bg-[#6366F1] text-white disabled:opacity-40"
+                                          >Պահպանել</button>
+                                          <button
+                                            onClick={() => setCellAdd(null)}
+                                            className="flex-1 text-xs py-1 rounded-lg border border-white/10 text-muted-foreground hover:text-white"
+                                          >Չեղարկել</button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      const subjs = getValidSubjects(c.id);
+                                      setCellAdd({ day, classId: c.id });
+                                      setCellTime(TIMES[0]);
+                                      setCellSubject(subjs[0] ?? "");
+                                    }}
+                                    className="w-full text-xs py-1 rounded-xl border border-dashed border-white/15 text-white/30 hover:text-[#14B8A6] hover:border-[#14B8A6]/40 transition-colors"
+                                  >+</button>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

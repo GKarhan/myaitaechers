@@ -13,5 +13,6 @@ export interface ScheduleItem {
   day: string;
   time: string;
   subject: string;
+  teacherName?: string;
   createdAt: Date;
 }

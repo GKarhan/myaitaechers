@@ -870,6 +870,7 @@ export const GetAdminScheduleResponseItem = zod.object({
   "day": zod.string(),
   "time": zod.string(),
   "subject": zod.string(),
+  "teacherName": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 export const GetAdminScheduleResponse = zod.array(GetAdminScheduleResponseItem)
@@ -892,6 +893,7 @@ export const CreateScheduleEntryResponse = zod.object({
   "day": zod.string(),
   "time": zod.string(),
   "subject": zod.string(),
+  "teacherName": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 
@@ -917,6 +919,7 @@ export const UpdateScheduleEntryResponse = zod.object({
   "day": zod.string(),
   "time": zod.string(),
   "subject": zod.string(),
+  "teacherName": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 
@@ -1236,6 +1239,7 @@ export const GetTeacherScheduleResponseItem = zod.object({
   "day": zod.string(),
   "time": zod.string(),
   "subject": zod.string(),
+  "teacherName": zod.string().optional(),
   "createdAt": zod.coerce.date()
 })
 export const GetTeacherScheduleResponse = zod.array(GetTeacherScheduleResponseItem)
