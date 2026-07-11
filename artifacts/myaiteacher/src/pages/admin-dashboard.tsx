@@ -184,6 +184,7 @@ export default function AdminDashboard() {
   const [cellStartTime, setCellStartTime] = useState("08:00");
   const [cellEndTime, setCellEndTime] = useState("09:00");
   const [cellSubject, setCellSubject] = useState("");
+  const [cellGrade, setCellGrade] = useState("");
 
   const handleCreateSched = (e: React.FormEvent) => {
     e.preventDefault(); setSError("");
@@ -203,6 +204,7 @@ export default function AdminDashboard() {
 
   // ── schedule grid helpers ─────────────────────────────────────────────────
   const SCHOOL_DAYS = DAYS.slice(0, 5);
+  const GRADE_COLS = ["1","2","3","4","5","6","7","8","9"];
   const sortedClasses = [...classes].sort((a, b) => {
     const ag = parseInt(a.grade) || 0;
     const bg = parseInt(b.grade) || 0;
@@ -667,7 +669,7 @@ export default function AdminDashboard() {
               <h2 className="font-semibold text-lg">📅 Դասացուցակ — Մատրիցա</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Ենթրեկ «+»՝ դաս ավելացնելու համար.
-                 Առարկան ընթրելիս հետո Ուսուցիչին ավտոմատ բացվում ե.
+                Առարկան ընթրելիս հետո Ուսուցիչին ավտոմատ բացվում ե.
               </p>
             </div>
 
@@ -689,13 +691,13 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Ժամի սկիզբ</label>
+                    <label className="text-xs text-muted-foreground">Ժամ սկիզբ</label>
                     <select value={editSched.startTime} onChange={e => setEditSched(s => s && ({...s, startTime: e.target.value}))} className={inputCls}>
                       {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Ժամի ավարտ</label>
+                    <label className="text-xs text-muted-foreground">Ժամ ավարտ</label>
                     <select value={editSched.endTime} onChange={e => setEditSched(s => s && ({...s, endTime: e.target.value}))} className={inputCls}>
                       {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
@@ -703,158 +705,164 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" className={btnPrimary}>ՊԱՀՊԱՆԵԼ</button>
-                  <button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">Չեղարկել</button>
+                  <button type="button" onClick={() => setEditSched(null)} className="px-4 py-2 rounded-xl border border-white/10 text-sm text-muted-foreground hover:text-white">ՉԵՂԱՌԿԵԼ</button>
                 </div>
               </form>
             )}
 
-            {classes.length === 0 ? (
-              <div className="bg-card/50 border border-white/10 rounded-2xl py-12 text-center text-muted-foreground text-sm">
-                Դասառաններ չկան
-              </div>
-            ) : (
-              <div className="overflow-x-auto rounded-2xl border border-white/10">
-                <table className="min-w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-white/5 border-b border-white/10">
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs uppercase tracking-wide min-w-[130px] sticky left-0 bg-[#0F172A]/90 backdrop-blur-sm z-10">Օր</th>
-                      {sortedClasses.map(c => {
-                        const teacher = getTeacherForClass(c.id);
+            <div className="overflow-x-auto rounded-2xl border border-white/10">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-white/5 border-b border-white/10">
+                    <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs uppercase tracking-wide min-w-[130px] sticky left-0 bg-[#0F172A]/95 backdrop-blur-sm z-10">Օր</th>
+                    {GRADE_COLS.map(g => {
+                      const gClasses = classes.filter(c => c.grade === g);
+                      const singleTeacher = gClasses.length === 1 ? getTeacherForClass(gClasses[0].id) : null;
+                      return (
+                        <th key={g} className="text-left px-3 py-3 min-w-[160px] border-l border-white/5 font-normal align-top">
+                          <div className="font-semibold text-white/85 text-xs">՚{g === "1" ? `${g}-ին` : `${g}-րդ`}՚</div>
+                          {singleTeacher
+                            ? <div className="text-muted-foreground text-[11px] truncate mt-0.5">{singleTeacher.fullName}</div>
+                            : gClasses.length > 1
+                              ? <div className="text-muted-foreground text-[11px] mt-0.5">{gClasses.map(c=>c.name).join(", ")}</div>
+                              : <div className="text-white/15 text-[11px] mt-0.5">—</div>
+                          }
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SCHOOL_DAYS.map((day, di) => (
+                    <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "bg-white/[0.01]" : ""}`}>
+                      <td className="px-4 py-3 font-semibold text-white/70 align-top whitespace-nowrap text-xs uppercase tracking-wide sticky left-0 bg-[#0F172A]/95 backdrop-blur-sm border-r border-white/5 z-10">
+                        {day}
+                      </td>
+                      {GRADE_COLS.map(g => {
+                        const gClasses = classes.filter(c => c.grade === g);
+                        const entries = schedule
+                          .filter(s => s.day === day && gClasses.some(c => c.id === s.classId))
+                          .sort((a, b) => (a.startTime || a.time).localeCompare(b.startTime || b.time));
+                        const validSubjs = [...new Set(gClasses.flatMap(c => getValidSubjects(c.id)))];
+                        const isAdding = cellGrade === g && cellAdd?.day === day;
                         return (
-                          <th key={c.id} className="text-left px-3 py-3 min-w-[170px] border-l border-white/5 font-normal">
-                            <div className="font-semibold text-white/80 text-xs">՚{c.name}՚</div>
-                            {teacher && <div className="text-muted-foreground text-[11px] truncate mt-0.5">{teacher.fullName}</div>}
-                          </th>
+                          <td key={g} className="px-2.5 py-2.5 align-top border-l border-white/5 min-w-[160px]">
+                            <div className="flex flex-col gap-1.5">
+                              {entries.map(e => {
+                                const timeRange = e.startTime && e.endTime ? `${e.startTime}–${e.endTime}` : e.time;
+                                const teacherName = e.teacherName ?? getTeacherForClass(e.classId)?.fullName ?? "—";
+                                return (
+                                  <div
+                                    key={e.id}
+                                    title={`Ուսուցիչ՝ ${teacherName}\nԺամի՝ ${timeRange}`}
+                                    className="group relative flex flex-col px-2.5 py-1.5 rounded-xl bg-[#14B8A6]/10 border border-[#14B8A6]/20 hover:border-[#14B8A6]/50 hover:bg-[#14B8A6]/15 transition-all cursor-default"
+                                  >
+                                    <span className="text-white/90 text-xs font-medium truncate">{e.subject}</span>
+                                    <span className="text-[#14B8A6] font-mono text-[10px] mt-0.5">{timeRange}</span>
+                                    <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() => setEditSched({
+                                          id: e.id,
+                                          classId: e.classId,
+                                          day: e.day,
+                                          startTime: e.startTime || e.time,
+                                          endTime: e.endTime || e.time,
+                                          subject: e.subject,
+                                        })}
+                                        className="text-white/40 hover:text-white text-[10px] px-1 leading-none"
+                                      >✏</button>
+                                      <button
+                                        onClick={() => { if (confirm("Ջնջել?")) deleteSchedule.mutate({ id: e.id }, { onSuccess: () => inv("schedule") }); }}
+                                        className="text-red-400/50 hover:text-red-400 text-[10px] px-1 leading-none"
+                                      >×</button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {isAdding ? (
+                                <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-[#6366F1]/10 border border-[#6366F1]/25">
+                                  {validSubjs.length === 0 ? (
+                                    <p className="text-xs text-amber-400 leading-snug">Ուսուցիչ արարկաններ չհունի</p>
+                                  ) : (
+                                    <>
+                                      <select
+                                        value={cellSubject}
+                                        onChange={e => {
+                                          const subj = e.target.value;
+                                          setCellSubject(subj);
+                                          const match = gClasses.find(c => getValidSubjects(c.id).includes(subj));
+                                          if (match && cellAdd) setCellAdd({ ...cellAdd, classId: match.id });
+                                        }}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+                                        autoFocus
+                                      >
+                                        <option value="">Ենթրեկ առարկա</option>
+                                        {validSubjs.map(s => <option key={s} value={s}>{s}</option>)}
+                                      </select>
+                                      {cellSubject && cellAdd && (
+                                        <p className="text-[11px] text-[#6366F1] font-medium truncate px-0.5">
+                                          Ուսուցիչ՝ {getTeacherForClass(cellAdd.classId)?.fullName ?? "—"}
+                                        </p>
+                                      )}
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                        <div>
+                                          <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">սկիզբ</p>
+                                          <select
+                                            value={cellStartTime}
+                                            onChange={e => setCellStartTime(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+                                          >
+                                            {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">ավարտ</p>
+                                          <select
+                                            value={cellEndTime}
+                                            onChange={e => setCellEndTime(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+                                          >
+                                            {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                          </select>
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-1.5 mt-0.5">
+                                        <button
+                                          onClick={handleCellAdd}
+                                          disabled={!cellSubject || createSchedule.isPending}
+                                          className="flex-1 text-xs py-1.5 rounded-lg bg-[#6366F1] text-white font-medium disabled:opacity-40 hover:bg-[#5355cf] transition-colors"
+                                        >ՊԱՀՊԱՆԵԼ</button>
+                                        <button
+                                          onClick={() => { setCellAdd(null); setCellGrade(""); }}
+                                          className="flex-1 text-xs py-1.5 rounded-lg border border-white/10 text-muted-foreground hover:text-white transition-colors"
+                                        >ՉԵՂԱՌԿԵԼ</button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    const firstClass = gClasses[0];
+                                    setCellGrade(g);
+                                    setCellAdd({ day, classId: firstClass?.id ?? 0 });
+                                    setCellSubject(validSubjs[0] ?? "");
+                                    setCellStartTime("08:00");
+                                    setCellEndTime("09:00");
+                                  }}
+                                  className="w-full text-sm py-1 rounded-xl border border-dashed border-white/15 text-white/30 hover:text-[#14B8A6] hover:border-[#14B8A6]/40 transition-colors"
+                                >+</button>
+                              )}
+                            </div>
+                          </td>
                         );
                       })}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {SCHOOL_DAYS.map((day, di) => (
-                      <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "bg-white/[0.01]" : ""}`}>
-                        <td className="px-4 py-3 font-semibold text-white/70 align-top whitespace-nowrap text-xs uppercase tracking-wide sticky left-0 bg-[#0F172A]/90 backdrop-blur-sm border-r border-white/5 z-10">
-                          {day}
-                        </td>
-                        {sortedClasses.map(c => {
-                          const entries = schedule
-                            .filter(s => s.day === day && s.classId === c.id)
-                            .sort((a, b) => (a.startTime || a.time).localeCompare(b.startTime || b.time));
-                          const validSubjs = getValidSubjects(c.id);
-                          const teacher = getTeacherForClass(c.id);
-                          const isAdding = cellAdd?.day === day && cellAdd?.classId === c.id;
-                          return (
-                            <td key={c.id} className="px-2.5 py-2.5 align-top border-l border-white/5 min-w-[170px]">
-                              <div className="flex flex-col gap-1.5">
-                                {entries.map(e => {
-                                  const timeRange = e.startTime && e.endTime
-                                    ? `${e.startTime}–${e.endTime}`
-                                    : e.time;
-                                  const teacherName = e.teacherName ?? teacher?.fullName ?? '—';
-                                  return (
-                                    <div
-                                      key={e.id}
-                                      title={`Ուսուցիչ՝ ${teacherName}\nԺամ՝ ${timeRange}`}
-                                      className="group relative flex flex-col px-2.5 py-1.5 rounded-xl bg-[#14B8A6]/10 border border-[#14B8A6]/20 hover:border-[#14B8A6]/50 hover:bg-[#14B8A6]/15 transition-all cursor-default"
-                                    >
-                                      <span className="text-white/90 text-xs font-medium truncate">{e.subject}</span>
-                                      <span className="text-[#14B8A6] font-mono text-[10px] mt-0.5">{timeRange}</span>
-                                      <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                          onClick={() => setEditSched({
-                                            id: e.id,
-                                            classId: e.classId,
-                                            day: e.day,
-                                            startTime: e.startTime || e.time,
-                                            endTime: e.endTime || e.time,
-                                            subject: e.subject,
-                                          })}
-                                          className="text-white/40 hover:text-white text-[10px] px-1 leading-none"
-                                        >✏</button>
-                                        <button
-                                          onClick={() => { if (confirm('Ջնջել?')) deleteSchedule.mutate({ id: e.id }, { onSuccess: () => inv("schedule") }); }}
-                                          className="text-red-400/50 hover:text-red-400 text-[10px] px-1 leading-none"
-                                        >×</button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-
-                                {isAdding ? (
-                                  <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-[#6366F1]/10 border border-[#6366F1]/25">
-                                    {validSubjs.length === 0 ? (
-                                      <p className="text-xs text-amber-400">Ուսուցիչի առարկաններ չունի</p>
-                                    ) : (
-                                      <>
-                                        <select
-                                          value={cellSubject}
-                                          onChange={e => setCellSubject(e.target.value)}
-                                          className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
-                                        >
-                                          <option value="">Ենթրեկ առարկա</option>
-                                          {validSubjs.map(s => <option key={s} value={s}>{s}</option>)}
-                                        </select>
-                                        {cellSubject && teacher && (
-                                          <p className="text-[11px] text-[#6366F1] font-medium truncate px-0.5">
-                                            Ուսուցիչ՝ {teacher.fullName}
-                                          </p>
-                                        )}
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                          <div>
-                                            <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">Ժամի սկիզբ</p>
-                                            <select
-                                              value={cellStartTime}
-                                              onChange={e => setCellStartTime(e.target.value)}
-                                              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
-                                            >
-                                              {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                          </div>
-                                          <div>
-                                            <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">Ժամի ավարտ</p>
-                                            <select
-                                              value={cellEndTime}
-                                              onChange={e => setCellEndTime(e.target.value)}
-                                              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
-                                            >
-                                              {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                          </div>
-                                        </div>
-                                        <div className="flex gap-1.5 mt-0.5">
-                                          <button
-                                            onClick={handleCellAdd}
-                                            disabled={!cellSubject || createSchedule.isPending}
-                                            className="flex-1 text-xs py-1.5 rounded-lg bg-[#6366F1] text-white font-medium disabled:opacity-40 hover:bg-[#5355cf] transition-colors"
-                                          >Պահպանել</button>
-                                          <button
-                                            onClick={() => setCellAdd(null)}
-                                            className="flex-1 text-xs py-1.5 rounded-lg border border-white/10 text-muted-foreground hover:text-white transition-colors"
-                                          >Չեղարկել</button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      setCellAdd({ day, classId: c.id });
-                                      setCellSubject(validSubjs[0] ?? "");
-                                      setCellStartTime("08:00");
-                                      setCellEndTime("09:00");
-                                    }}
-                                    className="w-full text-sm py-1 rounded-xl border border-dashed border-white/15 text-white/30 hover:text-[#14B8A6] hover:border-[#14B8A6]/40 transition-colors"
-                                  >+</button>
-                                )}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
