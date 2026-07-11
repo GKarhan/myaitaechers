@@ -20,17 +20,17 @@ export default function QuickSwitch() {
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("admin", "admin123", "/admin")}
         className="py-1.5 px-3 rounded-xl text-[11px] font-medium border transition-colors disabled:opacity-50 bg-amber-500/20 border-amber-500/30 text-amber-400 hover:bg-amber-500/30">
-        👑 Ադմին
+        ԱԴՄԻՆ
       </button>
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("teacher1", "teacher123", "/teacher")}
         className="py-1.5 px-3 rounded-xl text-[11px] font-medium border transition-colors disabled:opacity-50 bg-teal-500/20 border-teal-500/30 text-teal-400 hover:bg-teal-500/30">
-        ԱՐАG ՄOUTK
+        UDUDCHIЧ
       </button>
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("ekarhanyan", "student123", "/dashboard")}
         className="py-1.5 px-3 rounded-xl text-[11px] font-medium border transition-colors disabled:opacity-50 bg-indigo-500/20 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30">
-        👨‍🎓 Էلеն
+        ASHAKERT
       </button>
     </div>
   );
