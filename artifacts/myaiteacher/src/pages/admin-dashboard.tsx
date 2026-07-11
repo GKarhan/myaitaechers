@@ -717,16 +717,9 @@ export default function AdminDashboard() {
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs uppercase tracking-wide min-w-[130px] sticky left-0 bg-[#0F172A]/95 backdrop-blur-sm z-10">Օր</th>
                     {GRADE_COLS.map(g => {
                       const gClasses = classes.filter(c => c.grade === g);
-                      const singleTeacher = gClasses.length === 1 ? getTeacherForClass(gClasses[0].id) : null;
                       return (
                         <th key={g} className="text-left px-3 py-3 min-w-[160px] border-l border-white/5 font-normal align-top">
                           <div className="font-semibold text-white/85 text-xs">՚{g === "1" ? `${g}-ին` : `${g}-րդ`}՚</div>
-                          {singleTeacher
-                            ? <div className="text-muted-foreground text-[11px] truncate mt-0.5">{singleTeacher.fullName}</div>
-                            : gClasses.length > 1
-                              ? <div className="text-muted-foreground text-[11px] mt-0.5">{gClasses.map(c=>c.name).join(", ")}</div>
-                              : <div className="text-white/15 text-[11px] mt-0.5">—</div>
-                          }
                         </th>
                       );
                     })}
@@ -800,31 +793,24 @@ export default function AdminDashboard() {
                                         <option value="">Ենթրեկ առարկա</option>
                                         {validSubjs.map(s => <option key={s} value={s}>{s}</option>)}
                                       </select>
-                                      {cellSubject && cellAdd && (
-                                        <p className="text-[11px] text-[#6366F1] font-medium truncate px-0.5">
-                                          Ուսուցիչ՝ {getTeacherForClass(cellAdd.classId)?.fullName ?? "—"}
-                                        </p>
-                                      )}
                                       <div className="grid grid-cols-2 gap-1.5">
                                         <div>
-                                          <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">սկիզբ</p>
-                                          <select
+                                          <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">Ժամը՝ սկիզբ</p>
+                                          <input
+                                            type="time"
                                             value={cellStartTime}
                                             onChange={e => setCellStartTime(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
-                                          >
-                                            {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                                          </select>
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none [color-scheme:dark]"
+                                          />
                                         </div>
                                         <div>
-                                          <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">ավարտ</p>
-                                          <select
+                                          <p className="text-[10px] text-muted-foreground mb-0.5 px-0.5">Ժամը՝ ավարտ</p>
+                                          <input
+                                            type="time"
                                             value={cellEndTime}
                                             onChange={e => setCellEndTime(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
-                                          >
-                                            {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                                          </select>
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none [color-scheme:dark]"
+                                          />
                                         </div>
                                       </div>
                                       <div className="flex gap-1.5 mt-0.5">
