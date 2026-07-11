@@ -278,6 +278,12 @@ export interface DashboardData {
   recentActivity: LessonActivity[];
 }
 
+export interface CreateAdminSubjectInput {
+  name: string;
+  grade?: string;
+  description?: string;
+}
+
 export interface SubjectListItem {
   id: number;
   name: string;

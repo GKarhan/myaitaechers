@@ -34,6 +34,7 @@ import type {
   CourseItem,
   CourseLessonsProgress,
   CreateAdminStudentInput,
+  CreateAdminSubjectInput,
   CreateClassInput,
   CreateCourseInput,
   CreateHomework201,
@@ -3437,6 +3438,146 @@ export const useDeleteScheduleEntry = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteScheduleEntryMutationOptions(options));
+    }
+
+export const getCreateAdminSubjectUrl = () => {
+
+
+
+
+  return `/api/admin/subjects`
+}
+
+/**
+ * @summary Create a new subject
+ */
+export const createAdminSubject = async (createAdminSubjectInput: CreateAdminSubjectInput, options?: RequestInit): Promise<SubjectListItem> => {
+
+  return customFetch<SubjectListItem>(getCreateAdminSubjectUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createAdminSubjectInput)
+  }
+);}
+
+
+
+
+export const getCreateAdminSubjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminSubject>>, TError,{data: BodyType<CreateAdminSubjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAdminSubject>>, TError,{data: BodyType<CreateAdminSubjectInput>}, TContext> => {
+
+const mutationKey = ['createAdminSubject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAdminSubject>>, {data: BodyType<CreateAdminSubjectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAdminSubject(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAdminSubjectMutationResult = NonNullable<Awaited<ReturnType<typeof createAdminSubject>>>
+    export type CreateAdminSubjectMutationBody = BodyType<CreateAdminSubjectInput>
+    export type CreateAdminSubjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a new subject
+ */
+export const useCreateAdminSubject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminSubject>>, TError,{data: BodyType<CreateAdminSubjectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAdminSubject>>,
+        TError,
+        {data: BodyType<CreateAdminSubjectInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAdminSubjectMutationOptions(options));
+    }
+
+export const getDeleteAdminSubjectUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/subjects/${id}/delete`
+}
+
+/**
+ * @summary Delete a subject from the registry
+ */
+export const deleteAdminSubject = async (id: number, options?: RequestInit): Promise<SuccessMessage> => {
+
+  return customFetch<SuccessMessage>(getDeleteAdminSubjectUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAdminSubjectMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAdminSubject>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAdminSubject>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAdminSubject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAdminSubject>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAdminSubject(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAdminSubjectMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAdminSubject>>>
+
+    export type DeleteAdminSubjectMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a subject from the registry
+ */
+export const useDeleteAdminSubject = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAdminSubject>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAdminSubject>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAdminSubjectMutationOptions(options));
     }
 
 export const getGetTeacherClassesUrl = () => {

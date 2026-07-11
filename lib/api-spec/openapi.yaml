@@ -1346,6 +1346,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/subjects:
+    post:
+      operationId: createAdminSubject
+      tags: [admin]
+      summary: Create a new subject
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdminSubjectInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectListItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/subjects/{id}/delete:
+    post:
+      operationId: deleteAdminSubject
+      tags: [admin]
+      summary: Delete a subject from the registry
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/classes:
     get:
       operationId: getTeacherClasses
@@ -2756,6 +2820,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LessonActivity"
+
+    CreateAdminSubjectInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        grade:
+          type: string
+        description:
+          type: string
 
     SubjectListItem:
       type: object

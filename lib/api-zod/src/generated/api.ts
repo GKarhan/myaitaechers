@@ -890,6 +890,35 @@ export const DeleteScheduleEntryResponse = zod.object({
 
 
 /**
+ * @summary Create a new subject
+ */
+export const CreateAdminSubjectBody = zod.object({
+  "name": zod.string(),
+  "grade": zod.string().optional(),
+  "description": zod.string().optional()
+})
+
+export const CreateAdminSubjectResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "grade": zod.string(),
+  "description": zod.string()
+})
+
+
+/**
+ * @summary Delete a subject from the registry
+ */
+export const DeleteAdminSubjectParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAdminSubjectResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary Get my classes
  */
 export const GetTeacherClassesResponseItem = zod.object({

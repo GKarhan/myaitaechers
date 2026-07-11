@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable } from "@workspace/db";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, subjectsTable } from "@workspace/db";
 import { eq, count, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 
@@ -254,6 +254,34 @@ router.post("/admin/students/:id/remove-class", requireAdmin, async (req, res) =
     sql`${classStudentsTable.studentId} = ${id} AND ${classStudentsTable.classId} = ${classId}`
   );
   res.json({ message: "Ашакерты herацvец дасаранiц" });
+});
+
+// ─── SUBJECTS ─────────────────────────────────────────────────────────────────
+
+router.post("/admin/subjects", requireAdmin, async (req, res) => {
+  const { name, grade, description } = req.body as { name?: string; grade?: string; description?: string };
+  if (!name || !name.trim()) {
+    res.status(400).json({ error: "Առarqay anunы партadир э" }); return;
+  }
+  const existing = await db.select().from(subjectsTable).where(eq(subjectsTable.name, name.trim())).limit(1);
+  if (existing.length > 0) {
+    res.status(400).json({ error: "Այս անunov ararka ardеn kaи" }); return;
+  }
+  const [subject] = await db.insert(subjectsTable).values({
+    name: name.trim(),
+    grade: grade?.trim() || "9-րդ դasaran",
+    description: description?.trim() || "",
+  }).returning();
+  res.status(201).json({ id: subject.id, name: subject.name, grade: subject.grade, description: subject.description });
+});
+
+router.post("/admin/subjects/:id/delete", requireAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [subject] = await db.select().from(subjectsTable).where(eq(subjectsTable.id, id)).limit(1);
+  if (!subject) { res.status(404).json({ error: "Ararkaan chi gtnyel" }); return; }
+  await db.delete(subjectsTable).where(eq(subjectsTable.id, id));
+  res.json({ message: "Ararkan հаjoghuthyamb djnjvec" });
 });
 
 export default router;

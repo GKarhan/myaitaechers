@@ -25,6 +25,7 @@ export * from './courseLessonsProgress';
 export * from './courseLessonsProgressStudentsItem';
 export * from './courseLessonWithProgress';
 export * from './createAdminStudentInput';
+export * from './createAdminSubjectInput';
 export * from './createClassInput';
 export * from './createCourseInput';
 export * from './createHomework201';

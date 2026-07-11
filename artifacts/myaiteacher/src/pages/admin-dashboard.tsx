@@ -21,6 +21,8 @@ import {
   useCreateScheduleEntry,
   useDeleteScheduleEntry,
   useUpdateScheduleEntry,
+  useCreateAdminSubject,
+  useDeleteAdminSubject,
   getGetAdminStatsQueryKey,
   getGetAdminTeachersQueryKey,
   getGetAdminClassesQueryKey,
@@ -30,7 +32,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
-type Tab = "home" | "teachers" | "classes" | "schedule" | "students";
+type Tab = "home" | "teachers" | "classes" | "schedule" | "students" | "subjects";
 
 const DAYS = ["Երկուշաբթի", "Երեքշաբթի", "Չորեքշաբթի", "Հինգշաբթի", "Ուրբաթ", "Շաբաթ"];
 const TIMES = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"];
@@ -68,6 +70,8 @@ export default function AdminDashboard() {
   const createSchedule = useCreateScheduleEntry();
   const deleteSchedule = useDeleteScheduleEntry();
   const updateSchedule = useUpdateScheduleEntry();
+  const createSubject = useCreateAdminSubject();
+  const deleteSubject = useDeleteAdminSubject();
 
   // ── invalidators ──────────────────────────────────────────────────────────
   const inv = (...keys: string[]) => {
@@ -76,10 +80,34 @@ export default function AdminDashboard() {
     if (keys.includes("classes")) qc.invalidateQueries({ queryKey: getGetAdminClassesQueryKey() });
     if (keys.includes("schedule")) qc.invalidateQueries({ queryKey: getGetAdminScheduleQueryKey() });
     if (keys.includes("students")) qc.invalidateQueries({ queryKey: getGetAdminStudentsQueryKey(selectedClassId ? { classId: selectedClassId as number } : {}) });
+    if (keys.includes("subjects")) qc.invalidateQueries({ queryKey: getGetSubjectsQueryKey() });
   };
 
   // ── subjects from schedule ─────────────────────────────────────────────
   const scheduleSubjects = Array.from(new Set(schedule.map((s) => s.subject).filter(Boolean)));
+
+  // ── subject registry form ─────────────────────────────────────────────────
+  const [subName, setSubName] = useState("");
+  const [subError, setSubError] = useState("");
+
+  const handleCreateSubject = (e: React.FormEvent) => {
+    e.preventDefault(); setSubError("");
+    if (!subName.trim()) { setSubError("Մուտqаgrerq ararkay anuny"); return; }
+    createSubject.mutate({ data: { name: subName.trim() } }, {
+      onSuccess: () => { setSubName(""); inv("subjects"); },
+      onError: (err: any) => setSubError(err?.response?.data?.error || "Sxal. Pordzek krkin"),
+    });
+  };
+
+  const handleDeleteSubject = (id: number, name: string) => {
+    const linked = teachers.filter(t => t.subject === name).length;
+    const msg = linked > 0
+      ? "Զgushacum. ays ararkany kapvac e vorosh usucichner het, hamovzve՞l eq vor cankanum eq djnjel:"
+      : `Djnjel «${name}»?`;
+    if (confirm(msg)) {
+      deleteSubject.mutate({ id }, { onSuccess: () => inv("subjects") });
+    }
+  };
 
   // ── teacher form ──────────────────────────────────────────────────────────
   const emptyTeacher = { fullName: "", email: "", subject: "" };
@@ -176,9 +204,10 @@ export default function AdminDashboard() {
 
   const subTabs: { key: Tab; label: string }[] = [
     { key: "teachers", label: "👨‍🏫 Ուսուցիչներ" },
-    { key: "classes", label: "📚 Դասարաններ" },
-    { key: "schedule", label: "📅 Դասացուցակ" },
-    { key: "students", label: "👨‍🎓 Աշակերտներ" },
+    { key: "classes", label: "📚 Դasaranner" },
+    { key: "schedule", label: "📅 Dasacucak" },
+    { key: "students", label: "👨‍🎓 Aшakертнер" },
+    { key: "subjects", label: "📖 Ararqaner" },
   ];
 
   const inputCls = "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -302,6 +331,11 @@ export default function AdminDashboard() {
             {showTForm && (
               <form onSubmit={handleCreateTeacher} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
                 <h3 className="font-medium mb-1">Նոր Ուսուցիչ</h3>
+                {subjectsList.length === 0 && (
+                  <p className="text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
+                    Խndrvm em, nax avelajrec ararkaner ararkaner@baxnm:
+                  </p>
+                )}
                 {tError && <p className="text-destructive text-xs">{tError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -314,7 +348,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="col-span-2">
                     <label className="text-xs text-muted-foreground">Առարկա</label>
-                    <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls}>
+                    <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls} disabled={subjectsList.length === 0}>
                       <option value="">Ընտրեկ Առարկան</option>
                       {subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
@@ -482,6 +516,11 @@ export default function AdminDashboard() {
             {showSForm && (
               <form onSubmit={handleCreateSched} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
                 <h3 className="font-medium">Nor das</h3>
+                {subjectsList.length === 0 && (
+                  <p className="text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
+                    Խndrvm em, nax avelajrec ararkaner ararkaner@baxnm:
+                  </p>
+                )}
                 {sError && <p className="text-destructive text-xs">{sError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -498,7 +537,10 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Առարկա *</label>
-                    <input value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} />
+                    <select value={sForm.subject} onChange={e => setSForm(f => ({ ...f, subject: e.target.value }))} required className={inputCls} disabled={subjectsList.length === 0}>
+                      <option value="">Yntrek Ararkany</option>
+                      {subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Դասարան *</label>
@@ -521,7 +563,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="text-xs text-muted-foreground">Օր</label><select value={editSched.day} onChange={e => setEditSched(s => s && ({ ...s, day: e.target.value }))} className={inputCls}>{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
                   <div><label className="text-xs text-muted-foreground">Ժամ</label><select value={editSched.time} onChange={e => setEditSched(s => s && ({ ...s, time: e.target.value }))} className={inputCls}>{TIMES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className="text-xs text-muted-foreground">Առարկա</label><input value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls} /></div>
+                  <div><label className="text-xs text-muted-foreground">Առարկա</label><select value={editSched.subject} onChange={e => setEditSched(s => s && ({ ...s, subject: e.target.value }))} className={inputCls}><option value="">—</option>{subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
                   <div><label className="text-xs text-muted-foreground">Դասարան</label><select value={editSched.classId} onChange={e => setEditSched(s => s && ({ ...s, classId: parseInt(e.target.value) }))} className={inputCls}>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 </div>
                 <div className="flex gap-2">
@@ -628,6 +670,69 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── SUBJECTS ── */}
+        {tab === "subjects" && (
+          <div>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-semibold text-lg">📖 Ararkaner</h2>
+            </div>
+
+            <form onSubmit={handleCreateSubject} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
+              <h3 className="font-medium">Nor Ararqa</h3>
+              {subError && <p className="text-destructive text-xs">{subError}</p>}
+              <div className="flex gap-3">
+                <input
+                  value={subName}
+                  onChange={e => setSubName(e.target.value)}
+                  placeholder="Ararqay anuny (or. Matematika)"
+                  className="flex-1 bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <button type="submit" disabled={createSubject.isPending} className={btnPrimary}>
+                  {createSubject.isPending ? "..." : "+ Avaelajrec"}
+                </button>
+              </div>
+            </form>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-muted-foreground text-left">
+                    <th className="pb-3 pr-4 pl-1">#</th>
+                    <th className="pb-3 pr-4">Ararqа</th>
+                    <th className="pb-3 pr-4">Usucichner</th>
+                    <th className="pb-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {subjectsList.length === 0 && (
+                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Ararkaner chka · Avaelajrecek ararkaner verevum</td></tr>
+                  )}
+                  {subjectsList.map((s, idx) => {
+                    const linkedTeachers = teachers.filter(t => t.subject === s.name);
+                    return (
+                      <tr key={s.id} className="hover:bg-white/2 transition-colors">
+                        <td className="py-3 pr-4 pl-1 text-muted-foreground">{idx + 1}</td>
+                        <td className="py-3 pr-4 font-medium">{s.name}</td>
+                        <td className="py-3 pr-4 text-muted-foreground text-xs">
+                          {linkedTeachers.length > 0 ? linkedTeachers.map(t => t.fullName).join(", ") : "—"}
+                        </td>
+                        <td className="py-3 text-right">
+                          <button
+                            onClick={() => handleDeleteSubject(s.id, s.name)}
+                            className={btnDanger}
+                          >
+                            🗑 Djnjel
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
