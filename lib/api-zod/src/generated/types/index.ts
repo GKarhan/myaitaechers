@@ -96,6 +96,7 @@ export * from './teacherClassLesson';
 export * from './teacherHomeworkItem';
 export * from './teacherItem';
 export * from './teacherLessonItem';
+export * from './teacherProfile';
 export * from './topicProgressItem';
 export * from './updateClassInput';
 export * from './updateLessonInput';

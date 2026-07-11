@@ -1256,6 +1256,21 @@ export const GetTeacherScheduleResponse = zod.array(GetTeacherScheduleResponseIt
 
 
 /**
+ * @summary Get current teacher's profile
+ */
+export const GetTeacherProfileResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "fullName": zod.string(),
+  "username": zod.string(),
+  "email": zod.string().nullish(),
+  "subjects": zod.array(zod.string()),
+  "school": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get lessons for a class
  */
 export const GetClassLessonsParams = zod.object({

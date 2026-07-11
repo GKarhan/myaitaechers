@@ -738,6 +738,17 @@ export interface TeacherHomeworkItem {
   createdAt: string;
 }
 
+export interface TeacherProfile {
+  id: number;
+  userId: number;
+  fullName: string;
+  username: string;
+  email?: string | null;
+  subjects: string[];
+  school: string;
+  createdAt: string;
+}
+
 export type GetChatHistoryParams = {
 lessonId?: number;
 };

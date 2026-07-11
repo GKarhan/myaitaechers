@@ -18,6 +18,7 @@ import {
   useUpdateTeacherLesson,
   useDeleteTeacherLesson,
   useGetTeacherSchedule,
+  useGetTeacherProfile,
   useGetStudentDetail,
   getGetTeacherClassesQueryKey,
   getGetClassStudentsQueryKey,
@@ -26,12 +27,13 @@ import {
   getGetCourseLessonsQueryKey,
   getGetCourseLessonsProgressQueryKey,
   getGetTeacherScheduleQueryKey,
+  getGetTeacherProfileQueryKey,
   getGetStudentDetailQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 type MainView = "dashboard" | "class" | "course" | "student";
-type ClassTab = "courses" | "students";
+type ClassTab = "subjects" | "students";
 
 const RESOURCE_TYPES = [
   { key: "textbook",      icon: "📚", label: "Կցել գիրք" },
@@ -64,14 +66,15 @@ export default function TeacherDashboard() {
   const qc = useQueryClient();
 
   const [mainView, setMainView] = useState<MainView>("dashboard");
-  const [activeTab, setActiveTab] = useState<"schedule" | "classes">("schedule");
-  const [classTab, setClassTab] = useState<ClassTab>("courses");
+  const [activeTab, setActiveTab] = useState<"classes" | "schedule" | "profile">("classes");
+  const [classTab, setClassTab] = useState<ClassTab>("subjects");
 
   const [selectedClass, setSelectedClass] = useState<{ id: number; name: string; grade: string } | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<{ id: number; name: string } | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
   const { data: schedule = [] } = useGetTeacherSchedule({ query: { queryKey: getGetTeacherScheduleQueryKey() } });
+  const { data: teacherProfile } = useGetTeacherProfile({ query: { queryKey: getGetTeacherProfileQueryKey() } });
   const { data: classes = [] } = useGetTeacherClasses({ query: { queryKey: getGetTeacherClassesQueryKey() } });
 
   const { data: students = [] } = useGetClassStudents(
@@ -477,15 +480,20 @@ export default function TeacherDashboard() {
     );
   }
 
-  // ── CLASS PAGE ────────────────────────────────────────────────────────────
+  // ── CLASS PAGE ──────────────────────────────────────────────────────────────
   if (mainView === "class" && selectedClass) {
+    const classSubjects = Array.from(
+      new Set(schedule.filter((s) => s.classId === selectedClass.id).map((s) => s.subject))
+    ).sort((a, b) => a.localeCompare(b, "hy"));
+    const classScheduleEntries = schedule.filter((s) => s.classId === selectedClass.id);
+
     return (
       <div className="min-h-[100dvh] bg-background text-white">
         <QuickSwitch />
         <header className="border-b border-white/10 px-6 py-4 flex items-center gap-3">
-          <button onClick={() => setMainView("dashboard")} className="text-muted-foreground hover:text-white text-sm transition-colors">← Վահանակ</button>
+          <button onClick={() => setMainView("dashboard")} className="text-muted-foreground hover:text-white text-sm transition-colors">← Վahanak</button>
           <div>
-            <h1 className="text-lg font-bold">📚 {selectedClass.name}</h1>
+            <h1 className="text-lg font-bold">{selectedClass.name}</h1>
             {selectedClass.grade && <p className="text-xs text-muted-foreground">{selectedClass.grade}</p>}
           </div>
           <span className="ml-auto text-sm text-muted-foreground">{user?.fullName}</span>
@@ -493,91 +501,115 @@ export default function TeacherDashboard() {
 
         <div className="max-w-5xl mx-auto px-6 py-6">
           <div className="flex gap-1 mb-6 border-b border-white/10">
-            {(["courses", "students"] as const).map(t => (
+            {(["subjects", "students"] as const).map((t) => (
               <button key={t} onClick={() => setClassTab(t)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${classTab === t ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"}`}>
-                {t === "courses" ? "📖 Դասընթացներ" : "👨‍🎓 Աշակերտներ"}
+                className={`px-5 py-2.5 text-sm font-semibold tracking-widest whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                  classTab === t ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"
+                }`}>
+                {t === "subjects" ? "Առարկաներ" : "Աշակերտներ"}
               </button>
             ))}
           </div>
 
-          {/* COURSES TAB */}
-          {classTab === "courses" && (
+          {/* ── SUBJECTS TAB ── */}
+          {classTab === "subjects" && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">Դասընթացներ ({classCourses.length})</h2>
-                <button onClick={() => setShowCourseForm(f => !f)} className={btnPrimary}>+ Ավելացնել</button>
-              </div>
-
-              {showCourseForm && (
-                <form onSubmit={handleCreateCourse} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                  <h3 className="font-medium text-sm">Դասընթաց Դասընթաց</h3>
-                  <input value={courseForm.name} onChange={e => setCourseForm(f => ({ ...f, name: e.target.value }))} required className={inputCls} placeholder="oр. Գрагируtyun..." />
-                  <input value={courseForm.description} onChange={e => setCourseForm(f => ({ ...f, description: e.target.value }))} className={inputCls} placeholder="Нkarаgrutyun" />
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={createCourse.isPending} className={btnPrimary}>{createCourse.isPending ? "..." : "Պահպանել"}</button>
-                    <button type="button" onClick={() => setShowCourseForm(false)} className={btnOutline}>Չեղարկել</button>
-                  </div>
-                </form>
-              )}
-
-              {classCourses.length === 0 && !showCourseForm && (
+              {classSubjects.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground">
                   <div className="text-5xl mb-4">📖</div>
-                  <p>Դասընթաց չka</p>
+                  <p className="text-sm">Առարկաներ դեռ չkа. Административный chchi assingnvel:</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Sranq Vy dasavcvelu araarkannern en ayd dasarannerum:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {classSubjects.map((subject) => {
+                      const entries = classScheduleEntries.filter((s) => s.subject === subject);
+                      return (
+                        <div key={subject} className="bg-card/60 border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all">
+                          <div className="text-2xl mb-3">📖</div>
+                          <div className="font-semibold text-base mb-3">{subject}</div>
+                          {entries.length > 0 && (
+                            <div className="space-y-1.5">
+                              {entries.map((e) => (
+                                <div key={e.id} className="flex items-center gap-2 text-xs">
+                                  <span className="w-2 h-2 rounded-full bg-[#14B8A6] shrink-0" />
+                                  <span className="text-muted-foreground">{e.day}</span>
+                                  <span className="text-[#14B8A6] font-mono ml-auto">{e.time}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {classCourses.map(c => (
-                  <div key={c.id} className="bg-card/60 border border-white/10 rounded-2xl p-5 hover:border-primary/40 hover:bg-primary/5 transition-all group">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="text-2xl">📖</div>
-                      <button onClick={() => { if (!confirm("Ջնջել " + c.name + "?")) return; deleteCourse.mutate({ courseId: c.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetClassCoursesQueryKey(selectedClass.id) }) }); }} className="opacity-0 group-hover:opacity-100 text-xs text-muted-foreground hover:text-destructive transition-all">🗑</button>
-                    </div>
-                    <div className="font-semibold mb-1">{c.name}</div>
-                    {c.description && <div className="text-xs text-muted-foreground mb-3">{c.description}</div>}
-                    <button onClick={() => { setSelectedCourse({ id: c.id, name: c.name }); setMainView("course"); }} className="mt-2 w-full text-xs text-primary font-medium py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors">
-                      Mtnel →
-                    </button>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
-          {/* STUDENTS TAB */}
+          {/* ── STUDENTS TAB ── */}
           {classTab === "students" && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">Աշակերտներ ({students.length})</h2>
-                <button onClick={() => setShowStudentForm(f => !f)} className={btnPrimary}>+ Аvelacel</button>
+                <h2 className="font-semibold">Аshakertner ({students.length})</h2>
+                <button onClick={() => setShowStudentForm((f) => !f)} className={btnPrimary}>
+                  + Аvelacel
+                </button>
               </div>
               {showStudentForm && (
                 <form onSubmit={handleAddStudent} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                  <h3 className="font-medium text-sm">Նոյ Աշակերտ</h3>
+                  <h3 className="font-medium text-sm">Nor Аshakert</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2"><label className="text-xs text-muted-foreground">Անուն Ազգանուն</label><input value={studentForm.fullName} onChange={e => setStudentForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Աշակերտի անունը" /></div>
-                    <div><label className="text-xs text-muted-foreground">Email</label><input type="email" value={(studentForm as any).email} onChange={e => setStudentForm(f => ({ ...f, email: e.target.value } as any))} className={inputCls} placeholder="example@mail.com" /></div>
-                    <div><label className="text-xs text-muted-foreground">Таriq</label><input type="number" min="5" max="25" value={(studentForm as any).age} onChange={e => setStudentForm(f => ({ ...f, age: e.target.value } as any))} className={inputCls} placeholder="14" /></div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-muted-foreground">Anun Azganun</label>
+                      <input value={studentForm.fullName} onChange={(e) => setStudentForm((f) => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Аshakerty anunny" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Электр. Нամак</label>
+                      <input type="email" value={(studentForm as any).email} onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value } as any))} className={inputCls} placeholder="example@mail.com" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Тariq</label>
+                      <input type="number" min="5" max="25" value={(studentForm as any).age} onChange={(e) => setStudentForm((f) => ({ ...f, age: e.target.value } as any))} className={inputCls} placeholder="14" />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground/60">Аlginаbаry klini "student123"</p>
+                  <p className="text-xs text-muted-foreground/60">Nakhnayin gaxtnabary klini "student123"</p>
                   <div className="flex gap-2">
-                    <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>{addStudent.isPending ? "..." : "Պահպանել"}</button>
-                    <button type="button" onClick={() => setShowStudentForm(false)} className={btnOutline}>Չեղարկել</button>
+                    <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>
+                      {addStudent.isPending ? "..." : "Pahpanel"}
+                    </button>
+                    <button type="button" onClick={() => setShowStudentForm(false)} className={btnOutline}>
+                      Chegharkol
+                    </button>
                   </div>
                 </form>
               )}
               <div className="space-y-2">
-                {students.length === 0 && <p className="text-muted-foreground text-sm py-6 text-center">Աշակերտ չկա</p>}
-                {students.map(s => (
+                {students.length === 0 && (
+                  <p className="text-muted-foreground text-sm py-6 text-center">Аshakert chka</p>
+                )}
+                {students.map((s) => (
                   <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
                     <div>
                       <div className="font-medium">{s.fullName}</div>
                       <div className="text-xs text-muted-foreground">{(s as any).email || s.username}</div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>🔍 Мanramans</button>
-                      <button onClick={() => { if (!confirm("Нeracel Dasaranits?")) return; removeStudent.mutate({ classId: selectedClass.id, studentId: s.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }) }); }} className={btnDanger}>Нeracel</button>
+                      <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>
+                        Мanramans
+                      </button>
+                      <button onClick={() => {
+                        if (!confirm("Neracel dasaranits?")) return;
+                        removeStudent.mutate({ classId: selectedClass.id, studentId: s.id }, {
+                          onSuccess: () => qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }),
+                        });
+                      }} className={btnDanger}>
+                        Neracel
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -591,9 +623,7 @@ export default function TeacherDashboard() {
 
   // ── MAIN DASHBOARD ───────────────────────────────────────────────────────
   const SCHOOL_DAYS_HY = ["Երկուշաբթի", "Երեքշաբթի", "Չորեքշաբթի", "Հինգշաբթի", "Ուրբաթ"];
-  const sortedTeacherClasses = [...classes].sort((a, b) =>
-    a.name.localeCompare(b.name, "hy")
-  );
+  const sortedTeacherClasses = [...classes].sort((a, b) => a.name.localeCompare(b.name, "hy"));
 
   return (
     <div className="min-h-[100dvh] bg-background text-white">
@@ -602,12 +632,13 @@ export default function TeacherDashboard() {
       {/* Header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Ուսուցչի Էջ</h1>
-          <p className="text-xs text-muted-foreground">Karhanyan School · myaiteacher</p>
+          <p className="text-xs text-muted-foreground mb-0.5">Karhanyan School · myaiteacher</p>
+          <h1 className="text-xl font-bold">
+            Բարի գալուստ, {user?.fullName ?? "…"}
+          </h1>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">{user?.fullName}</span>
-          <button onClick={logout} className="text-sm text-destructive hover:text-white transition-colors">Ելք</button>
+          <button onClick={logout} className="text-sm text-destructive hover:text-white transition-colors">Yelq</button>
         </div>
       </header>
 
@@ -615,7 +646,7 @@ export default function TeacherDashboard() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto">
-          {(["classes", "schedule"] as const).map((t) => (
+          {(["classes", "schedule", "profile"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setActiveTab(t)}
@@ -625,7 +656,11 @@ export default function TeacherDashboard() {
                   : "border-transparent text-muted-foreground hover:text-white"
               }`}
             >
-              {t === "classes" ? "ԻՄ ԴԱՍԱՐԱՆՆԵՐԸ" : "ԻՄ ԴԱՍԱՑՈՒՑԱԿԸ"}
+              {t === "classes"
+                ? "ԻՄ ԴАСАРAННЕРНY"
+                : t === "schedule"
+                ? "ԻՄ ДАСАТSУТSАKY"
+                : "АНDZНАКАN ТVЯЛНЕР"}
             </button>
           ))}
         </div>
@@ -636,7 +671,7 @@ export default function TeacherDashboard() {
             {classes.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
                 <div className="text-5xl mb-4">📚</div>
-                <p className="text-sm">Դասարաններ չկան</p>
+                <p className="text-sm">Dasaranneq adminy kognits chi nshanakvac</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -648,17 +683,15 @@ export default function TeacherDashboard() {
                     <div className="text-4xl">📚</div>
                     <div className="flex-1">
                       <div className="font-bold text-xl mb-1">{c.name}</div>
-                      {c.grade && (
-                        <div className="text-sm text-muted-foreground mb-2">{c.grade}</div>
-                      )}
+                      {c.grade && <div className="text-sm text-muted-foreground mb-2">{c.grade}</div>}
                       <div className="text-xs text-muted-foreground">
-                        👨‍🎓 {(c as any).studentCount ?? 0} Աշակերտ
+                        👨‍🎓 {(c as any).studentCount ?? 0} Аshakert
                       </div>
                     </div>
                     <button
                       onClick={() => {
                         setSelectedClass({ id: c.id, name: c.name, grade: c.grade });
-                        setClassTab("courses");
+                        setClassTab("subjects");
                         setMainView("class");
                       }}
                       className="w-full py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
@@ -678,7 +711,7 @@ export default function TeacherDashboard() {
             {schedule.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
                 <div className="text-5xl mb-4">📅</div>
-                <p className="text-sm">Դասացուցակ չկա</p>
+                <p className="text-sm">Dasatsutsak chka</p>
               </div>
             ) : (
               <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
@@ -687,7 +720,7 @@ export default function TeacherDashboard() {
                     <thead>
                       <tr className="bg-white/5 border-b border-white/10">
                         <th className="text-left px-4 py-3 text-muted-foreground font-medium min-w-[130px]">
-                          Օր
+                          Or
                         </th>
                         {sortedTeacherClasses.map((c) => (
                           <th
@@ -717,10 +750,7 @@ export default function TeacherDashboard() {
                                 )
                               );
                             return (
-                              <td
-                                key={c.id}
-                                className="px-3 py-2 align-top border-l border-white/5"
-                              >
+                              <td key={c.id} className="px-3 py-2 align-top border-l border-white/5">
                                 {entries.length === 0 ? (
                                   <span className="text-white/15">—</span>
                                 ) : (
@@ -749,6 +779,64 @@ export default function TeacherDashboard() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PROFILE TAB ── */}
+        {activeTab === "profile" && (
+          <div className="max-w-xl">
+            {!teacherProfile ? (
+              <div className="text-center py-16 text-muted-foreground">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-sm">Bartvum e...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-card/60 border border-white/10 rounded-2xl p-6 space-y-5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center text-3xl">
+                      👨‍🏫
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">{teacherProfile.fullName}</h2>
+                      <p className="text-sm text-muted-foreground">@{teacherProfile.username}</p>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-white/5">
+                    {[
+                      { labelKey: "Дпrac", value: teacherProfile.school || "—" },
+                      { labelKey: "Электр. Намак", value: teacherProfile.email ?? "—" },
+                    ].map(({ labelKey, value }) => (
+                      <div key={labelKey} className="py-3 flex justify-between items-center gap-4">
+                        <span className="text-sm text-muted-foreground">{labelKey}</span>
+                        <span className="text-sm font-medium text-right">{value}</span>
+                      </div>
+                    ))}
+                    <div className="py-3">
+                      <span className="text-sm text-muted-foreground block mb-2">Araarkanerə</span>
+                      {teacherProfile.subjects && teacherProfile.subjects.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {teacherProfile.subjects.map((s: string) => (
+                            <span key={s} className="px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-primary text-xs font-medium">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-white/40">Araarkaner chi nshanakvac</span>
+                      )}
+                    </div>
+                    <div className="py-3 flex justify-between items-center gap-4">
+                      <span className="text-sm text-muted-foreground">Grkavel e</span>
+                      <span className="text-sm font-medium">
+                        {new Date(teacherProfile.createdAt).toLocaleDateString("hy-AM", { year: "numeric", month: "long", day: "numeric" })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

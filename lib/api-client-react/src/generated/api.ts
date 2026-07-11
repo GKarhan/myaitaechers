@@ -89,6 +89,7 @@ import type {
   TeacherHomeworkItem,
   TeacherItem,
   TeacherLessonItem,
+  TeacherProfile,
   UpdateClassInput,
   UpdateLessonInput,
   UpdateStudentProfileInput,
@@ -4841,6 +4842,83 @@ export function useGetTeacherSchedule<TData = Awaited<ReturnType<typeof getTeach
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTeacherScheduleQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTeacherProfileUrl = () => {
+
+
+
+
+  return `/api/teacher/profile`
+}
+
+/**
+ * @summary Get current teacher's profile
+ */
+export const getTeacherProfile = async ( options?: RequestInit): Promise<TeacherProfile> => {
+
+  return customFetch<TeacherProfile>(getGetTeacherProfileUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeacherProfileQueryKey = () => {
+    return [
+    `/api/teacher/profile`
+    ] as const;
+    }
+
+
+export const getGetTeacherProfileQueryOptions = <TData = Awaited<ReturnType<typeof getTeacherProfile>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeacherProfile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeacherProfileQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeacherProfile>>> = ({ signal }) => getTeacherProfile({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeacherProfile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeacherProfileQueryResult = NonNullable<Awaited<ReturnType<typeof getTeacherProfile>>>
+export type GetTeacherProfileQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get current teacher's profile
+ */
+
+export function useGetTeacherProfile<TData = Awaited<ReturnType<typeof getTeacherProfile>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeacherProfile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeacherProfileQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

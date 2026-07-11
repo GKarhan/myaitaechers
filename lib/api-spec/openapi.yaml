@@ -1857,6 +1857,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /teacher/profile:
+    get:
+      operationId: getTeacherProfile
+      tags: [teacher]
+      summary: Get current teacher's profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Teacher profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/classes/{classId}/lessons:
     get:
       operationId: getClassLessons
@@ -3790,6 +3810,31 @@ components:
           type: string
           format: date-time
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    TeacherProfile:
+      type: object
+      required: [id, userId, fullName, username, subjects, school, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        fullName:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+          nullable: true
+        subjects:
+          type: array
+          items:
+            type: string
+        school:
+          type: string
         createdAt:
           type: string
           format: date-time

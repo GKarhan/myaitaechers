@@ -556,4 +556,27 @@ router.get("/teacher/documents/files/:filename", requireAuth, async (req: AuthRe
   res.sendFile(filePath);
 });
 
+// ─── PROFILE ──────────────────────────────────────────────────────────────────
+
+router.get("/teacher/profile", requireTeacher, async (req: AuthRequest, res) => {
+  const teacher = await getTeacherForUser(req.userId!);
+  if (!teacher) { res.status(404).json({ error: "Teacher not found" }); return; }
+  const [userRow] = await db
+    .select({ id: usersTable.id, fullName: usersTable.fullName, username: usersTable.username, email: usersTable.email, createdAt: usersTable.createdAt })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.userId!))
+    .limit(1);
+  if (!userRow) { res.status(404).json({ error: "User not found" }); return; }
+  res.json({
+    id: teacher.id,
+    userId: teacher.userId,
+    fullName: userRow.fullName,
+    username: userRow.username,
+    email: teacher.email ?? userRow.email ?? null,
+    subjects: teacher.subjects,
+    school: teacher.school,
+    createdAt: teacher.createdAt,
+  });
+});
+
 export default router;
