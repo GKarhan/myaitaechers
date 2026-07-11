@@ -589,13 +589,20 @@ export default function TeacherDashboard() {
     );
   }
 
-  // ── MAIN DASHBOARD ────────────────────────────────────────────────────────
+  // ── MAIN DASHBOARD ───────────────────────────────────────────────────────
+  const SCHOOL_DAYS_HY = ["Երկուշաբթի", "Երեքշաբթի", "Չորեքշաբթի", "Հինգշաբթի", "Ուրբաթ"];
+  const sortedTeacherClasses = [...classes].sort((a, b) =>
+    a.name.localeCompare(b.name, "hy")
+  );
+
   return (
     <div className="min-h-[100dvh] bg-background text-white">
       <QuickSwitch />
+
+      {/* Header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">👨‍🏫 Ուսուցիչ Вahаnak</h1>
+          <h1 className="text-xl font-bold">Ուսուցչի Էջ</h1>
           <p className="text-xs text-muted-foreground">Karhanyan School · myaiteacher</p>
         </div>
         <div className="flex items-center gap-4">
@@ -604,88 +611,150 @@ export default function TeacherDashboard() {
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-6">
-        <div className="flex gap-1 mb-8 border-b border-white/10">
-          {(["schedule", "classes"] as const).map(t => (
-            <button key={t} onClick={() => setActiveTab(t)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === t ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"}`}>
-              {t === "schedule" ? "📅 Իմ Դասացուցակը" : "📚 Իմ Դասարանները"}
+      <div className="max-w-6xl mx-auto px-6 py-6">
+
+        {/* Tab bar */}
+        <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto">
+          {(["classes", "schedule"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              className={`px-5 py-2.5 text-sm font-semibold tracking-widest whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                activeTab === t
+                  ? "border-primary text-white"
+                  : "border-transparent text-muted-foreground hover:text-white"
+              }`}
+            >
+              {t === "classes" ? "ԻՄ ԴԱՍԱՐԱՆՆԵՐԸ" : "ԻՄ ԴԱՍԱՑՈՒՑԱԿԸ"}
             </button>
           ))}
         </div>
 
-        {activeTab === "schedule" && (
-          <div>
-            {schedule.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <div className="text-5xl mb-4">📅</div>
-                <p>Իմ Դասացուցակը չka</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {["Երկuшаbti","Еreqshаbti","Chorеqshаbti","Нingshаbti","Urbаt","Shаbаt"].map(day => {
-                  const items = schedule.filter(s => s.day === day || s.day.startsWith(day.slice(0,4)));
-                  return items.length > 0 ? (
-                    <div key={day}>
-                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">{day}</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {items.sort((a, b) => a.time.localeCompare(b.time)).map(s => (
-                          <div key={s.id} className="bg-card/60 border border-white/10 rounded-xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
-                              <span className="text-xs text-muted-foreground">{s.className}</span>
-                            </div>
-                            <div className="font-medium">{s.subject}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null;
-                })}
-                {!["Երkushаbti","Еreqshаbti","Chorеqshаbti","Нingshаbti","Urbаt","Shаbаt"].some(d => schedule.some(s => s.day === d || s.day.startsWith(d.slice(0,4)))) && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {schedule.map(s => (
-                      <div key={s.id} className="bg-card/60 border border-white/10 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-teal-400 font-mono text-sm font-bold">{s.time}</span>
-                          <span className="text-xs text-muted-foreground">{s.className}</span>
-                        </div>
-                        <div className="font-medium">{s.subject}</div>
-                        <div className="text-xs text-muted-foreground mt-1">{s.day}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
+        {/* ── CLASSES TAB ── */}
         {activeTab === "classes" && (
           <div>
             {classes.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
                 <div className="text-5xl mb-4">📚</div>
-                <p>Դասընթացներ чka</p>
+                <p className="text-sm">Դասարաններ չկան</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {classes.map(c => (
-                  <button key={c.id} onClick={() => { setSelectedClass({ id: c.id, name: c.name, grade: c.grade }); setClassTab("courses"); setMainView("class"); }}
-                    className="bg-card/60 border border-white/10 rounded-2xl p-6 text-left hover:border-primary/40 hover:bg-primary/5 transition-all group">
-                    <div className="text-3xl mb-3">📚</div>
-                    <div className="font-semibold text-lg mb-1 group-hover:text-primary transition-colors">{c.name}</div>
-                    {c.grade && <div className="text-sm text-muted-foreground mb-3">{c.grade}</div>}
-                    <div className="text-xs text-muted-foreground">
-                      👨‍🎓 {(c as any).studentCount ?? 0} {((c as any).studentCount === 1) ? "Աշակերտ" : "Աշակերտ"}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {classes.map((c) => (
+                  <div
+                    key={c.id}
+                    className="bg-card/60 border border-white/10 rounded-2xl p-6 flex flex-col gap-4 hover:border-white/20 hover:bg-card/80 transition-all"
+                  >
+                    <div className="text-4xl">📚</div>
+                    <div className="flex-1">
+                      <div className="font-bold text-xl mb-1">{c.name}</div>
+                      {c.grade && (
+                        <div className="text-sm text-muted-foreground mb-2">{c.grade}</div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        👨‍🎓 {(c as any).studentCount ?? 0} Աշակերտ
+                      </div>
                     </div>
-                    <div className="mt-4 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">Бacel →</div>
-                  </button>
+                    <button
+                      onClick={() => {
+                        setSelectedClass({ id: c.id, name: c.name, grade: c.grade });
+                        setClassTab("courses");
+                        setMainView("class");
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
+                    >
+                      ԴԻՏԵԼ
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
           </div>
         )}
+
+        {/* ── SCHEDULE TAB ── */}
+        {activeTab === "schedule" && (
+          <div>
+            {schedule.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                <div className="text-5xl mb-4">📅</div>
+                <p className="text-sm">Դասացուցակ չկա</p>
+              </div>
+            ) : (
+              <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-white/5 border-b border-white/10">
+                        <th className="text-left px-4 py-3 text-muted-foreground font-medium min-w-[130px]">
+                          Օր
+                        </th>
+                        {sortedTeacherClasses.map((c) => (
+                          <th
+                            key={c.id}
+                            className="text-left px-3 py-3 text-muted-foreground font-medium min-w-[140px] border-l border-white/5"
+                          >
+                            {c.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SCHOOL_DAYS_HY.map((day, di) => (
+                        <tr
+                          key={day}
+                          className={`border-b border-white/5 ${di % 2 === 0 ? "" : "bg-white/[0.02]"}`}
+                        >
+                          <td className="px-4 py-3 font-medium text-white/80 align-top whitespace-nowrap">
+                            {day}
+                          </td>
+                          {sortedTeacherClasses.map((c) => {
+                            const entries = schedule
+                              .filter((s) => s.day === day && s.classId === c.id)
+                              .sort((a, b) =>
+                                ((a as any).startTime || a.time).localeCompare(
+                                  (b as any).startTime || b.time
+                                )
+                              );
+                            return (
+                              <td
+                                key={c.id}
+                                className="px-3 py-2 align-top border-l border-white/5"
+                              >
+                                {entries.length === 0 ? (
+                                  <span className="text-white/15">—</span>
+                                ) : (
+                                  <div className="flex flex-col gap-1">
+                                    {entries.map((e) => (
+                                      <div
+                                        key={e.id}
+                                        className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#14B8A6]/10 border border-[#14B8A6]/20"
+                                      >
+                                        <span className="text-white/85 truncate font-medium">
+                                          {e.subject}
+                                        </span>
+                                        <span className="text-[#14B8A6] font-mono text-[10px] shrink-0">
+                                          {(e as any).startTime && (e as any).endTime
+                                            ? `${(e as any).startTime}–${(e as any).endTime}`
+                                            : e.time}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
     </div>
   );
