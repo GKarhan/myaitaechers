@@ -23,9 +23,9 @@ export default function QuickSwitch() {
         👑 Ադմին
       </button>
       <button type="button" disabled={loginMutation.isPending}
-        onClick={() => doSwitch("lkarhanyan", "teacher123", "/teacher")}
+        onClick={() => doSwitch("teacher1", "teacher123", "/teacher")}
         className="py-1.5 px-3 rounded-xl text-[11px] font-medium border transition-colors disabled:opacity-50 bg-teal-500/20 border-teal-500/30 text-teal-400 hover:bg-teal-500/30">
-        👨‍🏫 Ուսուցիչ
+        ԱՐАG ՄOUTK
       </button>
       <button type="button" disabled={loginMutation.isPending}
         onClick={() => doSwitch("ekarhanyan", "student123", "/dashboard")}

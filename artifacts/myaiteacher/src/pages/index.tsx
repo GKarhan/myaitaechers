@@ -75,7 +75,7 @@ export default function Home() {
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
             >
-              👨‍🏫 Ուսուցիչ
+              ԱՐАG ՄOUTK
             </button>
             <button
               onClick={() => quickLogin("student1", "student123")}
