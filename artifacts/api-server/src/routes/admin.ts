@@ -137,6 +137,15 @@ router.post("/admin/classes/:id/delete", requireAdmin, async (req, res) => {
   res.json({ message: "Դасараны hajakaпес джnjvец" });
 });
 
+router.post("/admin/classes/:id/add-student", requireAdmin, async (req, res) => {
+  const classId = parseInt(String(req.params.id));
+  if (isNaN(classId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const { studentId } = req.body as { studentId: number };
+  if (!studentId) { res.status(400).json({ error: "studentId պարտադիր է" }); return; }
+  await db.insert(classStudentsTable).values({ classId, studentId }).onConflictDoNothing();
+  res.json({ message: "Աшакертy avaelajrecvec дасаranin" });
+});
+
 // ─── SCHEDULE ────────────────────────────────────────────────────────────────
 
 router.get("/admin/schedule", requireAdmin, async (_req, res) => {

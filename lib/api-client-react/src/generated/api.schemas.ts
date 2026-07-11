@@ -75,6 +75,10 @@ export interface RemoveFromClassInput {
   classId: number;
 }
 
+export interface AssignStudentToClassInput {
+  studentId: number;
+}
+
 export interface CreateAdminStudentInput {
   fullName: string;
   email?: string;

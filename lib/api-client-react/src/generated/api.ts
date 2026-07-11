@@ -23,6 +23,7 @@ import type {
   AdminStats,
   AdvancePhaseInput,
   AiGradeSuggestion,
+  AssignStudentToClassInput,
   AuthResponse,
   BookGenerationResult,
   BookItem,
@@ -2784,6 +2785,77 @@ export const useDeleteClass = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteClassMutationOptions(options));
+    }
+
+export const getAssignStudentToClassUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/classes/${id}/add-student`
+}
+
+/**
+ * @summary Assign an existing student to a class
+ */
+export const assignStudentToClass = async (id: number,
+    assignStudentToClassInput: AssignStudentToClassInput, options?: RequestInit): Promise<SuccessMessage> => {
+
+  return customFetch<SuccessMessage>(getAssignStudentToClassUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(assignStudentToClassInput)
+  }
+);}
+
+
+
+
+export const getAssignStudentToClassMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignStudentToClass>>, TError,{id: number;data: BodyType<AssignStudentToClassInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignStudentToClass>>, TError,{id: number;data: BodyType<AssignStudentToClassInput>}, TContext> => {
+
+const mutationKey = ['assignStudentToClass'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignStudentToClass>>, {id: number;data: BodyType<AssignStudentToClassInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  assignStudentToClass(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignStudentToClassMutationResult = NonNullable<Awaited<ReturnType<typeof assignStudentToClass>>>
+    export type AssignStudentToClassMutationBody = BodyType<AssignStudentToClassInput>
+    export type AssignStudentToClassMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Assign an existing student to a class
+ */
+export const useAssignStudentToClass = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignStudentToClass>>, TError,{id: number;data: BodyType<AssignStudentToClassInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignStudentToClass>>,
+        TError,
+        {id: number;data: BodyType<AssignStudentToClassInput>},
+        TContext
+      > => {
+      return useMutation(getAssignStudentToClassMutationOptions(options));
     }
 
 export const getGetAdminStudentsUrl = (params?: GetAdminStudentsParams,) => {

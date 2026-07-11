@@ -11,6 +11,7 @@ export * from './advancePhaseInput';
 export * from './aiGradeSuggestion';
 export * from './aIRecommendation';
 export * from './aIRecommendationType';
+export * from './assignStudentToClassInput';
 export * from './authResponse';
 export * from './bloomLevel';
 export * from './bookGenerationResult';

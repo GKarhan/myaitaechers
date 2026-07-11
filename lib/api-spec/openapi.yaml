@@ -1088,6 +1088,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/classes/{id}/add-student:
+    post:
+      operationId: assignStudentToClass
+      tags: [admin]
+      summary: Assign an existing student to a class
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignStudentToClassInput"
+      responses:
+        "200":
+          description: Assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/students:
     get:
       operationId: getAdminStudents
@@ -2410,6 +2448,13 @@ components:
       required: [classId]
       properties:
         classId:
+          type: integer
+
+    AssignStudentToClassInput:
+      type: object
+      required: [studentId]
+      properties:
+        studentId:
           type: integer
 
     CreateAdminStudentInput:

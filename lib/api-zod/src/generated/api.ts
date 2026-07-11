@@ -733,6 +733,22 @@ export const DeleteClassResponse = zod.object({
 
 
 /**
+ * @summary Assign an existing student to a class
+ */
+export const AssignStudentToClassParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AssignStudentToClassBody = zod.object({
+  "studentId": zod.number()
+})
+
+export const AssignStudentToClassResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary List students (optionally by classId)
  */
 export const GetAdminStudentsQueryParams = zod.object({

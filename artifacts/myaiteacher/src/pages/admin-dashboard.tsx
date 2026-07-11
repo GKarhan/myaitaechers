@@ -18,6 +18,7 @@ import {
   useCreateAdminStudent,
   useDeleteAdminStudent,
   useRemoveStudentFromClassAdmin,
+  useAssignStudentToClass,
   useCreateScheduleEntry,
   useDeleteScheduleEntry,
   useUpdateScheduleEntry,
@@ -50,11 +51,16 @@ export default function AdminDashboard() {
   const { data: schedule = [] } = useGetAdminSchedule({ query: { queryKey: getGetAdminScheduleQueryKey() } });
   const { data: subjectsList = [] } = useGetSubjects({ query: { queryKey: getGetSubjectsQueryKey() } });
 
-  // students — filtered by selected class
+  // students — filtered by selected class (for the students tab)
   const [selectedClassId, setSelectedClassId] = useState<number | "">("");
   const { data: students = [] } = useGetAdminStudents(
     selectedClassId ? { classId: selectedClassId as number } : {},
     { query: { queryKey: getGetAdminStudentsQueryKey(selectedClassId ? { classId: selectedClassId as number } : {}) } }
+  );
+  // all students unfiltered — for assignment dropdown in classes tab
+  const { data: allStudents = [] } = useGetAdminStudents(
+    {},
+    { query: { queryKey: [...getGetAdminStudentsQueryKey({}), "all"] } }
   );
 
   // ── mutations ─────────────────────────────────────────────────────────────
@@ -67,6 +73,7 @@ export default function AdminDashboard() {
   const createStudent = useCreateAdminStudent();
   const deleteStudent = useDeleteAdminStudent();
   const removeFromClass = useRemoveStudentFromClassAdmin();
+  const assignStudent = useAssignStudentToClass();
   const createSchedule = useCreateScheduleEntry();
   const deleteSchedule = useDeleteScheduleEntry();
   const updateSchedule = useUpdateScheduleEntry();
@@ -137,6 +144,8 @@ export default function AdminDashboard() {
   const [cError, setCError] = useState("");
   const [showCForm, setShowCForm] = useState(false);
   const [editClass, setEditClass] = useState<{ id: number; name: string; grade: string; teacherId: number } | null>(null);
+  const [assignClassId, setAssignClassId] = useState<number | null>(null);
+  const [assignStudentId, setAssignStudentId] = useState<string>("");
 
   const handleCreateClass = (e: React.FormEvent) => {
     e.preventDefault(); setCError("");
@@ -151,6 +160,13 @@ export default function AdminDashboard() {
     e.preventDefault(); if (!editClass) return;
     updateClass.mutate({ id: editClass.id, data: { name: editClass.name, grade: editClass.grade, teacherId: editClass.teacherId } }, {
       onSuccess: () => { setEditClass(null); inv("classes"); },
+    });
+  };
+
+  const handleAssignStudent = () => {
+    if (!assignClassId || !assignStudentId) return;
+    assignStudent.mutate({ id: assignClassId, data: { studentId: parseInt(assignStudentId) } }, {
+      onSuccess: () => { setAssignClassId(null); setAssignStudentId(""); inv("classes", "students"); },
     });
   };
 
@@ -487,36 +503,74 @@ export default function AdminDashboard() {
               </form>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 text-muted-foreground text-left">
-                    <th className="pb-3 pr-4">Անուն</th>
-                    <th className="pb-3 pr-4">Կարգ</th>
-                    <th className="pb-3 pr-4">Ուսուցիչ</th>
-                    <th className="pb-3 pr-4">Աշակերտներ</th>
-                    <th className="pb-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {classes.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">Դասարան չկա</td></tr>}
+            {classes.length === 0
+              ? <p className="text-muted-foreground text-sm py-8 text-center">Դասարան չկա</p>
+              : <div className="space-y-3">
                   {classes.map((c) => (
-                    <tr key={c.id} className="hover:bg-white/2 transition-colors">
-                      <td className="py-3 pr-4 font-medium">{c.name}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{c.grade || "—"}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{c.teacherName}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{(c as any).studentCount ?? 0}</td>
-                      <td className="py-3">
-                        <div className="flex gap-1">
-                          <button onClick={() => setEditClass({ id: c.id, name: c.name, grade: c.grade, teacherId: c.teacherId })} className={btnGhost}>✏️</button>
-                          <button onClick={() => { if (confirm("Ջնջել դասարանին?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
+                    <div key={c.id} className="bg-card/50 border border-white/10 rounded-2xl overflow-hidden">
+                      {/* ── class row ── */}
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div>
+                            <div className="font-medium">{c.name}</div>
+                            <div className="text-xs text-muted-foreground">{c.grade || "—"} · {c.teacherName}</div>
+                          </div>
+                          <div className="text-xs text-muted-foreground/70 border border-white/10 rounded-lg px-2 py-1">
+                            <span className="text-teal-400 font-medium">{(c as any).studentCount ?? 0}</span> աշակերտ
+                          </div>
                         </div>
-                      </td>
-                    </tr>
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => { setAssignClassId(assignClassId === c.id ? null : c.id); setAssignStudentId(""); }}
+                            className="px-3 py-1.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-400 text-xs font-semibold hover:bg-teal-500/20 transition-colors"
+                          >
+                            + ԱՎԵԼԱՑՆԵԼ ԱՇԱԿԵՐՏ
+                          </button>
+                          <button onClick={() => { setEditClass({ id: c.id, name: c.name, grade: c.grade, teacherId: c.teacherId }); setAssignClassId(null); }} className={btnGhost}>✏️</button>
+                          <button onClick={() => { if (confirm("Ջնջե՞լ դասարանը?")) deleteClass.mutate({ id: c.id }, { onSuccess: () => inv("classes", "stats") }); }} className={btnDanger}>🗑</button>
+                        </div>
+                      </div>
+
+                      {/* ── assign student panel ── */}
+                      {assignClassId === c.id && (
+                        <div className="border-t border-white/10 bg-teal-500/5 px-4 py-4 space-y-3">
+                          <p className="text-xs font-semibold text-teal-400 uppercase tracking-wide">Աշակերտների ցանկ</p>
+                          <div className="flex gap-2 items-center">
+                            <select
+                              value={assignStudentId}
+                              onChange={e => setAssignStudentId(e.target.value)}
+                              className={`${inputCls} flex-1`}
+                            >
+                              <option value="">Ընտրել աշակերտ</option>
+                              {allStudents.map(s => (
+                                <option key={s.id} value={s.id}>{s.fullName}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={handleAssignStudent}
+                              disabled={!assignStudentId || assignStudent.isPending}
+                              className={btnPrimary}
+                            >
+                              {assignStudent.isPending ? "..." : "ՊԱՀՊԱՆԵԼ"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setAssignClassId(null); setAssignStudentId(""); }}
+                              className="px-3 py-2 rounded-xl border border-white/10 text-xs text-muted-foreground hover:text-white"
+                            >
+                              ՉԵՂԱՐԿԵԼ
+                            </button>
+                          </div>
+                          {allStudents.length === 0 && (
+                            <p className="text-xs text-amber-400">Աշակերտներ չկան: Նախ ստեղծեք աշակերտ:</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+            }
           </div>
         )}
 
