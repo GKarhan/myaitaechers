@@ -63,7 +63,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
             >
-              👨‍🏫 Ուսուցիչ
+              ԱՐԱG ՄOUTK
             </button>
             <button
               type="button"
