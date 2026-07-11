@@ -628,7 +628,7 @@ export const GetAdminStatsResponse = zod.object({
 export const GetAdminTeachersResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
-  "subject": zod.string(),
+  "subjects": zod.array(zod.string()),
   "fullName": zod.string(),
   "username": zod.string(),
   "email": zod.string().optional(),
@@ -643,13 +643,13 @@ export const GetAdminTeachersResponse = zod.array(GetAdminTeachersResponseItem)
 export const CreateTeacherBody = zod.object({
   "fullName": zod.string(),
   "email": zod.string().optional(),
-  "subject": zod.string().optional()
+  "subjects": zod.array(zod.string()).optional()
 })
 
 export const CreateTeacherResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
-  "subject": zod.string(),
+  "subjects": zod.array(zod.string()),
   "fullName": zod.string(),
   "username": zod.string(),
   "email": zod.string().optional(),
@@ -678,7 +678,7 @@ export const UpdateTeacherParams = zod.object({
 
 export const UpdateTeacherBody = zod.object({
   "fullName": zod.string().optional(),
-  "subject": zod.string().optional(),
+  "subjects": zod.array(zod.string()).optional(),
   "email": zod.string().optional()
 })
 

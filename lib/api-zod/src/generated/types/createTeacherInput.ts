@@ -9,5 +9,5 @@
 export interface CreateTeacherInput {
   fullName: string;
   email?: string;
-  subject?: string;
+  subjects?: string[];
 }

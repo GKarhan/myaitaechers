@@ -82,7 +82,7 @@ router.get("/student/teachers", requireAuth, async (req: AuthRequest, res) => {
     .select({
       teacherId: teachersTable.id,
       teacherName: usersTable.fullName,
-      subject: teachersTable.subject,
+      subjects: teachersTable.subjects,
       school: teachersTable.school,
       classId: classesTable.id,
       className: classesTable.name,

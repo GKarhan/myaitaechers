@@ -22,7 +22,7 @@ export interface AdminStats {
 export interface TeacherItem {
   id: number;
   userId: number;
-  subject: string;
+  subjects: string[];
   fullName: string;
   username: string;
   email?: string;
@@ -50,12 +50,12 @@ export interface StudentItem {
 export interface CreateTeacherInput {
   fullName: string;
   email?: string;
-  subject?: string;
+  subjects?: string[];
 }
 
 export interface UpdateTeacherInput {
   fullName?: string;
-  subject?: string;
+  subjects?: string[];
   email?: string;
 }
 

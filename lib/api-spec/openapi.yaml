@@ -2302,14 +2302,16 @@ components:
 
     TeacherItem:
       type: object
-      required: [id, userId, subject, fullName, username, createdAt]
+      required: [id, userId, subjects, fullName, username, createdAt]
       properties:
         id:
           type: integer
         userId:
           type: integer
-        subject:
-          type: string
+        subjects:
+          type: array
+          items:
+            type: string
         fullName:
           type: string
         username:
@@ -2364,16 +2366,20 @@ components:
           type: string
         email:
           type: string
-        subject:
-          type: string
+        subjects:
+          type: array
+          items:
+            type: string
 
     UpdateTeacherInput:
       type: object
       properties:
         fullName:
           type: string
-        subject:
-          type: string
+        subjects:
+          type: array
+          items:
+            type: string
         email:
           type: string
 

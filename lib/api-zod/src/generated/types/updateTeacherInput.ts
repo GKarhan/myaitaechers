@@ -8,6 +8,6 @@
 
 export interface UpdateTeacherInput {
   fullName?: string;
-  subject?: string;
+  subjects?: string[];
   email?: string;
 }

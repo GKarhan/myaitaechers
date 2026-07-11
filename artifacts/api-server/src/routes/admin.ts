@@ -26,7 +26,7 @@ router.get("/admin/teachers", requireAdmin, async (_req, res) => {
     .select({
       id: teachersTable.id,
       userId: teachersTable.userId,
-      subject: teachersTable.subject,
+      subjects: teachersTable.subjects,
       email: teachersTable.email,
       fullName: usersTable.fullName,
       username: usersTable.username,
@@ -38,8 +38,8 @@ router.get("/admin/teachers", requireAdmin, async (_req, res) => {
 });
 
 router.post("/admin/teachers", requireAdmin, async (req, res) => {
-  const { fullName, email, subject } = req.body as {
-    fullName: string; email?: string; subject?: string;
+  const { fullName, email, subjects } = req.body as {
+    fullName: string; email?: string; subjects?: string[];
   };
   if (!fullName) {
     res.status(400).json({ error: "Անուն Ազգանունը պարտադիր է" }); return;
@@ -55,23 +55,23 @@ router.post("/admin/teachers", requireAdmin, async (req, res) => {
   const tempPassword = Math.random().toString(36).slice(2, 10);
   const passwordHash = await bcrypt.hash(tempPassword, 10);
   const [user] = await db.insert(usersTable).values({ username, passwordHash, fullName, role: "teacher" }).returning();
-  const [teacher] = await db.insert(teachersTable).values({ userId: user.id, subject: subject ?? "", school: "", email: email ?? null }).returning();
-  res.status(201).json({ id: teacher.id, userId: user.id, username: user.username, fullName: user.fullName, subject: teacher.subject, email: teacher.email, createdAt: teacher.createdAt });
+  const [teacher] = await db.insert(teachersTable).values({ userId: user.id, subjects: subjects ?? [], school: "", email: email ?? null }).returning();
+  res.status(201).json({ id: teacher.id, userId: user.id, username: user.username, fullName: user.fullName, subjects: teacher.subjects, email: teacher.email, createdAt: teacher.createdAt });
 });
 
 router.put("/admin/teachers/:id", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { subject, email, fullName } = req.body as { subject?: string; email?: string; fullName?: string };
+  const { subjects, email, fullName } = req.body as { subjects?: string[]; email?: string; fullName?: string };
   const [teacher] = await db.select().from(teachersTable).where(eq(teachersTable.id, id)).limit(1);
   if (!teacher) { res.status(404).json({ error: "Ուսուցիչը չի գտնվել" }); return; }
-  if (subject !== undefined || email !== undefined) {
-    await db.update(teachersTable).set({ ...(subject !== undefined && { subject }), ...(email !== undefined && { email }) }).where(eq(teachersTable.id, id));
+  if (subjects !== undefined || email !== undefined) {
+    await db.update(teachersTable).set({ ...(subjects !== undefined && { subjects }), ...(email !== undefined && { email }) }).where(eq(teachersTable.id, id));
   }
   if (fullName) {
     await db.update(usersTable).set({ fullName }).where(eq(usersTable.id, teacher.userId));
   }
-  res.json({ message: "Ուusucichy tarmacvec" });
+  res.json({ message: "Ուսուցիչը թարմացվեց" });
 });
 
 router.post("/admin/teachers/:id/delete", requireAdmin, async (req, res) => {

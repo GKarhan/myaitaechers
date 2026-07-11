@@ -7,7 +7,7 @@ export const teachersTable = pgTable("teachers", {
     .notNull()
     .unique()
     .references(() => usersTable.id, { onDelete: "cascade" }),
-  subject: text("subject").notNull().default(""),
+  subjects: text("subjects").array().notNull().default([]),
   school: text("school").notNull().default(""),
   email: text("email"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

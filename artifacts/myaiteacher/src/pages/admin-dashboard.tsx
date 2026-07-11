@@ -100,7 +100,7 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteSubject = (id: number, name: string) => {
-    const linked = teachers.filter(t => t.subject === name).length;
+    const linked = teachers.filter(t => t.subjects?.includes(name)).length;
     const msg = linked > 0
       ? "Զgushacum. ays ararkany kapvac e vorosh usucichner het, hamovzve՞l eq vor cankanum eq djnjel:"
       : `Djnjel «${name}»?`;
@@ -110,11 +110,11 @@ export default function AdminDashboard() {
   };
 
   // ── teacher form ──────────────────────────────────────────────────────────
-  const emptyTeacher = { fullName: "", email: "", subject: "" };
+  const emptyTeacher = { fullName: "", email: "", subjects: [] as string[] };
   const [tForm, setTForm] = useState(emptyTeacher);
   const [tError, setTError] = useState("");
   const [showTForm, setShowTForm] = useState(false);
-  const [editTeacher, setEditTeacher] = useState<{ id: number; fullName: string; subject: string; email: string } | null>(null);
+  const [editTeacher, setEditTeacher] = useState<{ id: number; fullName: string; subjects: string[]; email: string } | null>(null);
 
   const handleCreateTeacher = (e: React.FormEvent) => {
     e.preventDefault(); setTError("");
@@ -126,7 +126,7 @@ export default function AdminDashboard() {
 
   const handleUpdateTeacher = (e: React.FormEvent) => {
     e.preventDefault(); if (!editTeacher) return;
-    updateTeacher.mutate({ id: editTeacher.id, data: { fullName: editTeacher.fullName, subject: editTeacher.subject, email: editTeacher.email } }, {
+    updateTeacher.mutate({ id: editTeacher.id, data: { fullName: editTeacher.fullName, subjects: editTeacher.subjects, email: editTeacher.email } }, {
       onSuccess: () => { setEditTeacher(null); inv("teachers"); },
     });
   };
@@ -311,33 +311,45 @@ export default function AdminDashboard() {
           <div>
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-semibold text-lg">Ուսուցիչներ</h2>
-              <button onClick={() => setShowTForm(!showTForm)} className={btnPrimary}>+ Ավելացել Ուսուցիչ</button>
+              <button onClick={() => { setShowTForm(!showTForm); setEditTeacher(null); }} className={btnPrimary}>+ Ավելացնել ուսուցիչ</button>
             </div>
 
             {showTForm && (
               <form onSubmit={handleCreateTeacher} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium mb-1">Նոր Ուսուցիչ</h3>
+                <h3 className="font-medium mb-1">Նոր ուսուցիչ</h3>
                 {subjectsList.length === 0 && (
                   <p className="text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
-                    նախ ավելացեք Առարկաներ:
+                    Նախ ավելացեք առարկաներ:
                   </p>
                 )}
                 {tError && <p className="text-destructive text-xs">{tError}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Անuն Azganun *</label>
+                    <label className="text-xs text-muted-foreground">Անուն ազգանուն *</label>
                     <input value={tForm.fullName} onChange={e => setTForm(f => ({ ...f, fullName: e.target.value }))} required className={inputCls} />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Email</label>
+                    <label className="text-xs text-muted-foreground">Էլ. հասցե</label>
                     <input type="email" value={tForm.email} onChange={e => setTForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="teacher@school.am" />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Առարկա</label>
-                    <select value={tForm.subject} onChange={e => setTForm(f => ({ ...f, subject: e.target.value }))} className={inputCls} disabled={subjectsList.length === 0}>
-                      <option value="">Ընտրեկ Առարկան</option>
-                      {subjectsList.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                    </select>
+                    <label className="text-xs text-muted-foreground mb-1 block">Ընտրեք առարկաները</label>
+                    {subjectsList.length === 0
+                      ? <p className="text-xs text-muted-foreground italic">Առարկաներ չկան</p>
+                      : <div className="grid grid-cols-2 gap-1.5">
+                          {subjectsList.map(s => (
+                            <label key={s.id} className="flex items-center gap-2 text-sm cursor-pointer select-none rounded-lg px-3 py-2 border border-white/10 hover:border-primary/40 transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={tForm.subjects.includes(s.name)}
+                                onChange={e => setTForm(f => ({ ...f, subjects: e.target.checked ? [...f.subjects, s.name] : f.subjects.filter(x => x !== s.name) }))}
+                                className="accent-indigo-500"
+                              />
+                              {s.name}
+                            </label>
+                          ))}
+                        </div>
+                    }
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
@@ -350,34 +362,34 @@ export default function AdminDashboard() {
             {/* Edit teacher */}
             {editTeacher && (
               <form onSubmit={handleUpdateTeacher} className="mb-6 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium">Խմբագրել Ուսուցիչին</h3>
+                <h3 className="font-medium">Խմբագրել ուսուցիչին</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Անuն Azganun</label>
+                    <label className="text-xs text-muted-foreground">Անուն ազգանուն</label>
                     <input value={editTeacher.fullName} onChange={e => setEditTeacher(t => t && ({ ...t, fullName: e.target.value }))} className={inputCls} />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Email</label>
+                    <label className="text-xs text-muted-foreground">Էլ. հասցե</label>
                     <input type="email" value={editTeacher.email} onChange={e => setEditTeacher(t => t && ({ ...t, email: e.target.value }))} className={inputCls} />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Առարկա</label>
-                    {scheduleSubjects.length > 0 ? (
-                      <select value={editTeacher.subject} onChange={e => setEditTeacher(t => t && ({ ...t, subject: e.target.value }))} className={inputCls}>
-                        <option value="">Ընտրեկ Առարկան</option>
-                        {scheduleSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    ) : (
-                      <input
-                        list="subjects-list-edit"
-                        value={editTeacher.subject}
-                        onChange={e => setEditTeacher(t => t && ({ ...t, subject: e.target.value }))}
-                        className={inputCls}
-                      />
-                    )}
-                    <datalist id="subjects-list-edit">
-                      {scheduleSubjects.map(s => <option key={s} value={s} />)}
-                    </datalist>
+                    <label className="text-xs text-muted-foreground mb-1 block">Ընտրեք առարկաները</label>
+                    {subjectsList.length === 0
+                      ? <p className="text-xs text-muted-foreground italic">Առարկաներ չկան</p>
+                      : <div className="grid grid-cols-2 gap-1.5">
+                          {subjectsList.map(s => (
+                            <label key={s.id} className="flex items-center gap-2 text-sm cursor-pointer select-none rounded-lg px-3 py-2 border border-white/10 hover:border-primary/40 transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={editTeacher.subjects.includes(s.name)}
+                                onChange={e => setEditTeacher(t => t && ({ ...t, subjects: e.target.checked ? [...t.subjects, s.name] : t.subjects.filter(x => x !== s.name) }))}
+                                className="accent-indigo-500"
+                              />
+                              {s.name}
+                            </label>
+                          ))}
+                        </div>
+                    }
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -387,24 +399,41 @@ export default function AdminDashboard() {
               </form>
             )}
 
-            <div className="space-y-2">
-              {teachers.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">Ուսուցիչ չկա</p>}
-              {teachers.map((t) => (
-                <div key={t.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">{t.fullName}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {t.subject && <span>{t.subject}</span>}
-                      {t.email && <span className="ml-2 opacity-60">· {t.email}</span>}
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => setEditTeacher({ id: t.id, fullName: t.fullName, subject: t.subject, email: t.email ?? "" })} className={btnGhost}>✏️ Խմբագրել</button>
-                    <button onClick={() => { if (confirm("Ջնջել Ուսուցիչին?")) deleteTeacher.mutate({ id: t.id }, { onSuccess: () => inv("teachers", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>
-                  </div>
+            {teachers.length === 0
+              ? <p className="text-muted-foreground text-sm py-8 text-center">Ուսուցիչ չկա</p>
+              : <div className="overflow-x-auto rounded-2xl border border-white/10">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/5 text-muted-foreground text-xs uppercase tracking-wide">
+                        <th className="text-left px-4 py-3">Անուն</th>
+                        <th className="text-left px-4 py-3">Էլ. հասցե</th>
+                        <th className="text-left px-4 py-3">Առարկաներ</th>
+                        <th className="text-right px-4 py-3">Գործողություններ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teachers.map((t, i) => (
+                        <tr key={t.id} className={`border-b border-white/5 ${i % 2 === 0 ? "" : "bg-white/[0.02]"} hover:bg-white/5 transition-colors`}>
+                          <td className="px-4 py-3 font-medium">{t.fullName}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{t.email || "—"}</td>
+                          <td className="px-4 py-3">
+                            {t.subjects && t.subjects.length > 0
+                              ? <span className="text-teal-400">{t.subjects.join(", ")}</span>
+                              : <span className="text-muted-foreground/50">—</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex gap-1 justify-end">
+                              <button onClick={() => { setShowTForm(false); setEditTeacher({ id: t.id, fullName: t.fullName, subjects: t.subjects ?? [], email: t.email ?? "" }); }} className={btnGhost}>✏️ Խմբագրել</button>
+                              <button onClick={() => { if (confirm("Ջնջե՞լ ուսուցիչին?")) deleteTeacher.mutate({ id: t.id }, { onSuccess: () => inv("teachers", "stats") }); }} className={btnDanger}>🗑 Ջնջել</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
+            }
           </div>
         )}
 
@@ -427,7 +456,7 @@ export default function AdminDashboard() {
                     <label className="text-xs text-muted-foreground">Ուսուցիչ *</label>
                     <select value={cForm.teacherId} onChange={e => setCForm(f => ({ ...f, teacherId: e.target.value }))} className={inputCls}>
                       <option value="">Ընտրեկ Ուսուցիչ</option>
-                      {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName} {t.subject && `(${t.subject})`}</option>)}
+                      {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName}{t.subjects && t.subjects.length > 0 ? ` (${t.subjects.join(", ")})` : ""}</option>)}
                     </select>
                   </div>
                 </div>

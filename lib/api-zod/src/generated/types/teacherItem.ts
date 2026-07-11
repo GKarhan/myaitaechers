@@ -9,7 +9,7 @@
 export interface TeacherItem {
   id: number;
   userId: number;
-  subject: string;
+  subjects: string[];
   fullName: string;
   username: string;
   email?: string;
