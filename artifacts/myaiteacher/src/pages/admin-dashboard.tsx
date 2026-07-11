@@ -668,17 +668,17 @@ export default function AdminDashboard() {
             </div>
 
             <form onSubmit={handleCreateSubject} className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-              <h3 className="font-medium">Nor Ararqa</h3>
+              <h3 className="font-medium">ավելացնել Առարկաներ</h3>
               {subError && <p className="text-destructive text-xs">{subError}</p>}
               <div className="flex gap-3">
                 <input
                   value={subName}
                   onChange={e => setSubName(e.target.value)}
-                  placeholder="Ararqay anuny (or. Matematika)"
+                  placeholder="Առարկաներ անուն (օr. Математика)"
                   className="flex-1 bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
                 <button type="submit" disabled={createSubject.isPending} className={btnPrimary}>
-                  {createSubject.isPending ? "..." : "+ Avaelajrec"}
+                  {createSubject.isPending ? "..." : "ավելացնել"}
                 </button>
               </div>
             </form>
@@ -688,35 +688,28 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
                     <th className="pb-3 pr-4 pl-1">#</th>
-                    <th className="pb-3 pr-4">Ararqа</th>
-                    <th className="pb-3 pr-4">Usucichner</th>
-                    <th className="pb-3"></th>
+                    <th className="pb-3 pr-4">Առարկաներ անուն</th>
+                    <th className="pb-3 text-right">գործողություններ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {subjectsList.length === 0 && (
-                    <tr><td colSpan={4} className="py-8 text-center text-muted-foreground">Առարկաներ չկա · ավելացեք Առարկաներ</td></tr>
+                    <tr><td colSpan={3} className="py-8 text-center text-muted-foreground">Առարկաներ չկա</td></tr>
                   )}
-                  {subjectsList.map((s, idx) => {
-                    const linkedTeachers = teachers.filter(t => t.subject === s.name);
-                    return (
-                      <tr key={s.id} className="hover:bg-white/2 transition-colors">
-                        <td className="py-3 pr-4 pl-1 text-muted-foreground">{idx + 1}</td>
-                        <td className="py-3 pr-4 font-medium">{s.name}</td>
-                        <td className="py-3 pr-4 text-muted-foreground text-xs">
-                          {linkedTeachers.length > 0 ? linkedTeachers.map(t => t.fullName).join(", ") : "—"}
-                        </td>
-                        <td className="py-3 text-right">
-                          <button
-                            onClick={() => handleDeleteSubject(s.id, s.name)}
-                            className={btnDanger}
-                          >
-                            🗑 Djnjel
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {subjectsList.map((s, idx) => (
+                    <tr key={s.id} className="hover:bg-white/2 transition-colors">
+                      <td className="py-3 pr-4 pl-1 text-muted-foreground">{idx + 1}</td>
+                      <td className="py-3 pr-4 font-medium">{s.name}</td>
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => handleDeleteSubject(s.id, s.name)}
+                          className={btnDanger}
+                        >
+                          🗑 Ջնջել
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
