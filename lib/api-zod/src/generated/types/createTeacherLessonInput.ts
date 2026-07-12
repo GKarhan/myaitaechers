@@ -17,6 +17,8 @@ export interface CreateTeacherLessonInput {
   lessonNumber?: number;
   pagesFrom?: number;
   pagesTo?: number;
-  month?: number;
-  day?: number;
+  textbookAuthor?: string;
+  textbookTitle?: string;
+  chapterTitle?: string;
+  paragraphNumber?: string;
 }

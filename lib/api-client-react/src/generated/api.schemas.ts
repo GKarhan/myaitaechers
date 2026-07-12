@@ -206,8 +206,13 @@ export interface TeacherLessonItem {
   lessonNumber?: number | null;
   pagesFrom?: number | null;
   pagesTo?: number | null;
-  month?: number | null;
-  day?: number | null;
+  textbookAuthor?: string | null;
+  textbookTitle?: string | null;
+  chapterTitle?: string | null;
+  paragraphNumber?: string | null;
+  status: string;
+  assignedAt?: string | null;
+  completedAt?: string | null;
   createdAt: string;
 }
 
@@ -222,8 +227,39 @@ export interface CreateTeacherLessonInput {
   lessonNumber?: number;
   pagesFrom?: number;
   pagesTo?: number;
-  month?: number;
-  day?: number;
+  textbookAuthor?: string;
+  textbookTitle?: string;
+  chapterTitle?: string;
+  paragraphNumber?: string;
+}
+
+export type UpdateLessonStatusInputStatus = typeof UpdateLessonStatusInputStatus[keyof typeof UpdateLessonStatusInputStatus];
+
+
+export const UpdateLessonStatusInputStatus = {
+  assigned: 'assigned',
+  active: 'active',
+  completed: 'completed',
+} as const;
+
+export interface UpdateLessonStatusInput {
+  status: UpdateLessonStatusInputStatus;
+}
+
+export interface StudentCourseLessonItem {
+  id: number;
+  courseId: number;
+  title: string;
+  lessonNumber?: number | null;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
+  textbookAuthor?: string | null;
+  textbookTitle?: string | null;
+  chapterTitle?: string | null;
+  paragraphNumber?: string | null;
+  status: string;
+  assignedAt?: string | null;
+  completedAt?: string | null;
 }
 
 export interface ClassDocumentItem {
@@ -647,6 +683,10 @@ export interface UpdateLessonInput {
   month?: number;
   day?: number;
   courseId?: number;
+  textbookAuthor?: string | null;
+  textbookTitle?: string | null;
+  chapterTitle?: string | null;
+  paragraphNumber?: string | null;
 }
 
 export interface GenerateLessonsInput {
@@ -758,6 +798,10 @@ classId?: number;
 };
 
 export type CreateHomework201 = { [key: string]: unknown };
+
+export type GetStudentCourseLessonsParams = {
+subject: string;
+};
 
 export type DeleteClassDocument200 = { [key: string]: unknown };
 

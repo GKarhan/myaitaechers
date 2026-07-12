@@ -55,6 +55,7 @@ import type {
   GenerateLessonsInput,
   GetAdminStudentsParams,
   GetChatHistoryParams,
+  GetStudentCourseLessonsParams,
   GradeHomeworkInput,
   HealthStatus,
   HomeworkDetail,
@@ -75,6 +76,7 @@ import type {
   ScheduleItem,
   StartLessonInput,
   StartLessonSessionInput,
+  StudentCourseLessonItem,
   StudentDetail,
   StudentHomeworkSummary,
   StudentItem,
@@ -92,6 +94,7 @@ import type {
   TeacherProfile,
   UpdateClassInput,
   UpdateLessonInput,
+  UpdateLessonStatusInput,
   UpdateStudentProfileInput,
   UpdateTeacherInput,
   UserProfile
@@ -4854,6 +4857,90 @@ export function useGetTeacherSchedule<TData = Awaited<ReturnType<typeof getTeach
 
 
 
+export const getGetStudentCourseLessonsUrl = (params: GetStudentCourseLessonsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/student/course-lessons?${stringifiedParams}` : `/api/student/course-lessons`
+}
+
+/**
+ * @summary Get visible lessons for a student's course by subject name
+ */
+export const getStudentCourseLessons = async (params: GetStudentCourseLessonsParams, options?: RequestInit): Promise<StudentCourseLessonItem[]> => {
+
+  return customFetch<StudentCourseLessonItem[]>(getGetStudentCourseLessonsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStudentCourseLessonsQueryKey = (params?: GetStudentCourseLessonsParams,) => {
+    return [
+    `/api/student/course-lessons`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetStudentCourseLessonsQueryOptions = <TData = Awaited<ReturnType<typeof getStudentCourseLessons>>, TError = ErrorType<ErrorResponse>>(params: GetStudentCourseLessonsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentCourseLessons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStudentCourseLessonsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStudentCourseLessons>>> = ({ signal }) => getStudentCourseLessons(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStudentCourseLessons>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStudentCourseLessonsQueryResult = NonNullable<Awaited<ReturnType<typeof getStudentCourseLessons>>>
+export type GetStudentCourseLessonsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get visible lessons for a student's course by subject name
+ */
+
+export function useGetStudentCourseLessons<TData = Awaited<ReturnType<typeof getStudentCourseLessons>>, TError = ErrorType<ErrorResponse>>(
+ params: GetStudentCourseLessonsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStudentCourseLessons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStudentCourseLessonsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetTeacherProfileUrl = () => {
 
 
@@ -5901,6 +5988,77 @@ export const useUpdateTeacherLesson = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateTeacherLessonMutationOptions(options));
+    }
+
+export const getUpdateLessonStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/teacher/lessons/${id}/status`
+}
+
+/**
+ * @summary Change lesson status
+ */
+export const updateLessonStatus = async (id: number,
+    updateLessonStatusInput: UpdateLessonStatusInput, options?: RequestInit): Promise<TeacherLessonItem> => {
+
+  return customFetch<TeacherLessonItem>(getUpdateLessonStatusUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateLessonStatusInput)
+  }
+);}
+
+
+
+
+export const getUpdateLessonStatusMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLessonStatus>>, TError,{id: number;data: BodyType<UpdateLessonStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateLessonStatus>>, TError,{id: number;data: BodyType<UpdateLessonStatusInput>}, TContext> => {
+
+const mutationKey = ['updateLessonStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLessonStatus>>, {id: number;data: BodyType<UpdateLessonStatusInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateLessonStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateLessonStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updateLessonStatus>>>
+    export type UpdateLessonStatusMutationBody = BodyType<UpdateLessonStatusInput>
+    export type UpdateLessonStatusMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Change lesson status
+ */
+export const useUpdateLessonStatus = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLessonStatus>>, TError,{id: number;data: BodyType<UpdateLessonStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateLessonStatus>>,
+        TError,
+        {id: number;data: BodyType<UpdateLessonStatusInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateLessonStatusMutationOptions(options));
     }
 
 export const getDeleteTeacherLessonUrl = (id: number,) => {

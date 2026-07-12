@@ -1,0 +1,406 @@
+Update the teacher course page and prepare the student-side course structure without breaking any existing working functionality.
+
+IMPORTANT:
+- Preserve all existing API calls, authentication, routes, database behavior, teacher access, admin access, student access, file upload, lesson creation, lesson editing, lesson deletion, and progress tracking.
+- Do not remove working functionality.
+- Reuse the current design system and styling.
+- Keep all visible UI text in correct Armenian.
+- Remove all remaining transliterated, Russian, or mixed-script labels in the modified areas.
+- Before making changes, inspect the existing frontend, backend, API schemas, database models, and student course pages.
+- If a database migration is required, implement it safely and preserve existing lesson records.
+
+==================================================
+1. UPDATE THE ATTACHED MATERIALS SECTION
+==================================================
+
+On the teacher course page, change the four resource category titles to uppercase Armenian:
+
+📚 ԴԱՍԱԳԻՐՔ
+📄 ԾՐԱԳԻՐ
+📑 ԹԵՄԱՏԻԿ ՊԼԱՆ
+📎 ԱՅԼ ՆՅՈՒԹԵՐ
+
+Change the resource button label:
+
+Current:
++ Կցել
+
+New:
++ ԿՑԵԼ ՆՅՈՒԹ
+
+Change the empty-state text:
+
+Current:
+Նյութ չկա
+
+New:
+Կցված նյութ դեռ չկա
+
+Keep the existing file upload behavior working.
+
+==================================================
+2. UPDATE THE “ADD LESSON” FORM
+==================================================
+
+Remove these fields completely from the lesson form:
+
+- Ամիս
+- Ամսաթիվ
+
+These fields are not needed in the lesson structure.
+
+Replace the current lesson form with the following fields in this exact logical order:
+
+A. TEXTBOOK INFORMATION
+
+1. Դասագրքի հեղինակ
+   - field key suggestion: textbookAuthor
+   - text input
+   - example placeholder: «Ա. Մարտիրոսյան»
+
+2. Դասագրքի անվանում
+   - field key suggestion: textbookTitle
+   - text input
+   - example placeholder: «Մաթեմատիկա 7»
+
+B. CONTENT STRUCTURE
+
+3. Թեմա / Գլուխ
+   - field key suggestion: chapterTitle
+   - text input
+   - example placeholder: «Բնական թվեր»
+
+4. Դասի համարը
+   - field key suggestion: lessonNumber
+   - numeric input
+   - example: 1
+
+5. Պարագրաֆ
+   - field key suggestion: paragraphNumber
+   - text input
+   - example: 1.1
+
+6. Դասի վերնագիր
+   - field key suggestion: title
+   - required text input
+   - example placeholder: «Բնական թվերի գրառումը»
+
+7. Էջ՝ սկիզբ
+   - field key suggestion: pagesFrom
+   - numeric input
+
+8. Էջ՝ վերջ
+   - field key suggestion: pagesTo
+   - numeric input
+
+Buttons:
+
+- ՊԱՀՊԱՆԵԼ
+- ՉԵՂԱՐԿԵԼ
+
+Use clear Armenian labels and placeholders.
+
+==================================================
+3. LESSON DATA STRUCTURE
+==================================================
+
+Each lesson must store or return the following structured information:
+
+- courseId
+- textbookAuthor
+- textbookTitle
+- chapterTitle
+- lessonNumber
+- paragraphNumber
+- title
+- pagesFrom
+- pagesTo
+- status
+- assignedAt, if applicable
+- completedAt, if applicable
+
+If some fields already exist under different names, reuse them carefully.
+
+For existing lessons:
+- Preserve existing data.
+- Use safe defaults for newly introduced fields.
+- Do not delete or corrupt old lesson records.
+
+Recommended default lesson status:
+
+draft
+
+Recommended statuses:
+
+- draft
+- assigned
+- active
+- completed
+
+Use backend-safe English values for status and Armenian labels in the UI.
+
+==================================================
+4. DISPLAY THE TEACHER’S LESSON LIST HIERARCHICALLY
+==================================================
+
+The teacher-created lesson list should not appear as a flat list only.
+
+Group lessons visually by:
+
+Course
+→ Դասագիրք
+→ Թեմա / Գլուխ
+→ Դաս
+
+Example:
+
+ԴԱՍԱԳԻՐՔ
+Մաթեմատիկա 7
+Հեղինակ՝ Ա. Մարտիրոսյան
+
+ԹԵՄԱ 1․ Բնական թվեր
+
+Դաս 1
+Պարագրաֆ 1.1
+Բնական թվերի գրառումը
+Էջեր՝ 5–15
+
+Դաս 2
+Պարագրաֆ 1.2
+Թվերի համեմատումը
+Էջեր՝ 16–22
+
+If multiple lessons have the same textbook and chapter, group them under one shared heading.
+
+Sort lessons by:
+1. textbookTitle
+2. chapterTitle
+3. lessonNumber
+4. paragraphNumber
+
+==================================================
+5. ADD LESSON ACTIONS
+==================================================
+
+Each lesson card should include:
+
+- Խմբագրել
+- Ջնջել
+- Հանձնարարել
+- Նշել որպես այսօրվա դաս
+- Նշել ավարտված
+
+The current edit and delete behavior must continue working.
+
+Status labels shown in Armenian:
+
+draft → Նախապատրաստված
+assigned → Հանձնարարված
+active → Այսօրվա դաս
+completed → Ավարտված
+
+Visually highlight the active lesson.
+
+Recommended button behavior:
+
+A. Հանձնարարել
+- Makes the lesson visible to the relevant students.
+- Sets status to assigned.
+- Records assignedAt.
+
+B. Նշել որպես այսօրվա դաս
+- Sets status to active.
+- Makes it prominent on the student page.
+- Only one active lesson per course should be allowed at a time.
+- When another lesson becomes active, the previous active lesson should return to assigned status unless it is completed.
+
+C. Նշել ավարտված
+- Sets status to completed.
+- Records completedAt.
+
+Do not connect this to complex scheduling yet unless the existing architecture already supports it.
+
+==================================================
+6. STUDENT-SIDE COURSE PAGE
+==================================================
+
+The full lesson list created by the teacher must also be visible to students.
+
+Current student flow:
+
+ԻՄ ԱՌԱՐԿԱՆԵՐԸ
+→ click a subject
+→ open that subject’s course page
+
+Update that course page so the student sees the teacher-created lessons.
+
+The student course page must display:
+
+A. ԱՅՍՕՐՎԱ ԴԱՍԸ
+
+If there is an active lesson, show prominently:
+
+- Առարկա
+- Դասագրքի անվանում
+- Դասագրքի հեղինակ
+- Թեմա / Գլուխ
+- Դասի համարը
+- Պարագրաֆ
+- Դասի վերնագիրը
+- Էջեր
+- Status label: Այսօրվա դաս
+
+Add button:
+
+ՍԿՍԵԼ ՍՈՎՈՐԵԼ ԱԲ ՈՒՍՈՒՑՉԻ ՀԵՏ
+
+For now, connect this button to the existing lesson learning page if one already exists.
+If no complete AI lesson flow exists yet, route safely to the existing lesson page or create a clear placeholder action without breaking navigation.
+
+B. ԲՈԼՈՐ ԴԱՍԵՐԸ
+
+Show the complete teacher-created lesson list grouped by textbook and chapter.
+
+For every lesson, show:
+
+- Դասի համար
+- Պարագրաֆ
+- Վերնագիր
+- Էջեր
+- Status
+
+Student-facing Armenian status labels:
+
+- Նախապատրաստված
+- Հանձնարարված
+- Այսօրվա դաս
+- Ավարտված
+
+Rules:
+- Students should see assigned, active, and completed lessons.
+- Draft lessons should remain hidden from students.
+- Completed lessons should remain visible in the full lesson list.
+- The active lesson should appear both in the “Այսօրվա դասը” section and in the full list with active styling.
+
+==================================================
+7. STUDENT LESSON NAVIGATION
+==================================================
+
+When a student clicks a lesson, open the existing lesson page.
+
+The lesson page should receive or be able to fetch:
+
+- courseId
+- lessonId
+- textbookAuthor
+- textbookTitle
+- chapterTitle
+- lessonNumber
+- paragraphNumber
+- title
+- pagesFrom
+- pagesTo
+- current status
+
+Do not duplicate lesson data unnecessarily in the frontend.
+
+Use lessonId as the main identifier.
+
+==================================================
+8. BACKEND AND API REQUIREMENTS
+==================================================
+
+Inspect the current lesson database schema and API endpoints.
+
+Extend them only as needed to support:
+
+- textbookAuthor
+- textbookTitle
+- chapterTitle
+- paragraphNumber
+- status
+- assignedAt
+- completedAt
+
+Teacher APIs should support:
+
+- create lesson
+- update lesson
+- delete lesson
+- change lesson status
+- get lessons for a course
+
+Student APIs should return only lessons visible to students:
+
+- assigned
+- active
+- completed
+
+Do not expose draft lessons to students.
+
+Use authorization checks:
+- only teachers/admins may create, edit, delete, assign, activate, or complete lessons
+- students may only view lessons assigned to their own class/course
+
+==================================================
+9. UX AND RESPONSIVE DESIGN
+==================================================
+
+Keep the current dark visual style.
+
+Ensure the layout works on:
+- desktop
+- tablet
+- mobile
+
+Avoid horizontal overflow in lesson cards and forms.
+
+Use responsive grids:
+- desktop: two-column form where appropriate
+- mobile: single-column form
+
+Keep Armenian text readable and avoid excessive uppercase except for section headings.
+
+==================================================
+10. ACCEPTANCE TESTS
+==================================================
+
+Verify all of the following:
+
+1. Teacher can open a course.
+2. Teacher can upload resources as before.
+3. Resource categories display:
+   - ԴԱՍԱԳԻՐՔ
+   - ԾՐԱԳԻՐ
+   - ԹԵՄԱՏԻԿ ՊԼԱՆ
+   - ԱՅԼ ՆՅՈՒԹԵՐ
+4. Teacher can create a lesson with:
+   - textbook author
+   - textbook title
+   - chapter
+   - lesson number
+   - paragraph
+   - title
+   - page range
+5. Month and date fields are removed.
+6. Lesson appears in the teacher list under the correct textbook and chapter.
+7. Teacher can edit and delete the lesson.
+8. Teacher can assign the lesson.
+9. Teacher can mark one lesson as today’s active lesson.
+10. Teacher can mark a lesson completed.
+11. Student opens “Իմ առարկաները”.
+12. Student clicks a subject.
+13. Student sees the full visible lesson list.
+14. Student sees the active lesson under “Այսօրվա դասը”.
+15. Draft lessons are not visible to students.
+16. Completed lessons remain visible.
+17. Existing authentication and navigation still work.
+18. No transliterated, Russian, or mixed-script labels remain in the modified UI.
+
+After implementation, provide a concise summary of:
+- files changed
+- database/schema changes
+- API changes
+- frontend changes
+- any migrations added
+- how the teacher-to-student lesson visibility works

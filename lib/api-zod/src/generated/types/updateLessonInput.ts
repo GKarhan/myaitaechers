@@ -17,4 +17,8 @@ export interface UpdateLessonInput {
   month?: number;
   day?: number;
   courseId?: number;
+  textbookAuthor?: string | null;
+  textbookTitle?: string | null;
+  chapterTitle?: string | null;
+  paragraphNumber?: string | null;
 }

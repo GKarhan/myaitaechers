@@ -25,6 +25,14 @@ export const lessonsTable = pgTable("lessons", {
   month: integer("month"),
   day: integer("day"),
   courseId: integer("course_id"),
+  // New structured fields
+  textbookAuthor: text("textbook_author"),
+  textbookTitle: text("textbook_title"),
+  chapterTitle: text("chapter_title"),
+  paragraphNumber: text("paragraph_number"),
+  status: text("status").notNull().default("draft"),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

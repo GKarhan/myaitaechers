@@ -1857,6 +1857,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+
+  /student/course-lessons:
+    get:
+      operationId: getStudentCourseLessons
+      tags: [teacher]
+      summary: Get visible lessons for a student's course by subject name
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Visible lessons for this student's class course
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudentCourseLessonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /teacher/profile:
     get:
       operationId: getTeacherProfile
@@ -2240,6 +2269,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LessonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+
+  /teacher/lessons/{id}/status:
+    put:
+      operationId: updateLessonStatus
+      tags: [teacher]
+      summary: Change lesson status
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLessonStatusInput"
+      responses:
+        "200":
+          description: Updated lesson
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherLessonItem"
         "401":
           description: Unauthorized
           content:
@@ -2746,7 +2808,7 @@ components:
 
     TeacherLessonItem:
       type: object
-      required: [id, subjectId, title, createdAt]
+      required: [id, subjectId, title, status, createdAt]
       properties:
         id:
           type: integer
@@ -2776,11 +2838,27 @@ components:
         pagesTo:
           type: integer
           nullable: true
-        month:
-          type: integer
+        textbookAuthor:
+          type: string
           nullable: true
-        day:
-          type: integer
+        textbookTitle:
+          type: string
+          nullable: true
+        chapterTitle:
+          type: string
+          nullable: true
+        paragraphNumber:
+          type: string
+          nullable: true
+        status:
+          type: string
+        assignedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
           nullable: true
         createdAt:
           type: string
@@ -2810,10 +2888,64 @@ components:
           type: integer
         pagesTo:
           type: integer
-        month:
+        textbookAuthor:
+          type: string
+        textbookTitle:
+          type: string
+        chapterTitle:
+          type: string
+        paragraphNumber:
+          type: string
+
+    UpdateLessonStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [assigned, active, completed]
+
+    StudentCourseLessonItem:
+      type: object
+      required: [id, title, status, courseId]
+      properties:
+        id:
           type: integer
-        day:
+        courseId:
           type: integer
+        title:
+          type: string
+        lessonNumber:
+          type: integer
+          nullable: true
+        pagesFrom:
+          type: integer
+          nullable: true
+        pagesTo:
+          type: integer
+          nullable: true
+        textbookAuthor:
+          type: string
+          nullable: true
+        textbookTitle:
+          type: string
+          nullable: true
+        chapterTitle:
+          type: string
+          nullable: true
+        paragraphNumber:
+          type: string
+          nullable: true
+        status:
+          type: string
+        assignedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
 
     ClassDocumentItem:
       type: object
@@ -3638,6 +3770,18 @@ components:
           type: integer
         courseId:
           type: integer
+        textbookAuthor:
+          type: string
+          nullable: true
+        textbookTitle:
+          type: string
+          nullable: true
+        chapterTitle:
+          type: string
+          nullable: true
+        paragraphNumber:
+          type: string
+          nullable: true
 
     GenerateLessonsInput:
       type: object

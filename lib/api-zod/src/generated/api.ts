@@ -1057,8 +1057,13 @@ export const GetTeacherLessonsResponseItem = zod.object({
   "lessonNumber": zod.number().nullish(),
   "pagesFrom": zod.number().nullish(),
   "pagesTo": zod.number().nullish(),
-  "month": zod.number().nullish(),
-  "day": zod.number().nullish(),
+  "textbookAuthor": zod.string().nullish(),
+  "textbookTitle": zod.string().nullish(),
+  "chapterTitle": zod.string().nullish(),
+  "paragraphNumber": zod.string().nullish(),
+  "status": zod.string(),
+  "assignedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
 })
 export const GetTeacherLessonsResponse = zod.array(GetTeacherLessonsResponseItem)
@@ -1078,8 +1083,10 @@ export const CreateTeacherLessonBody = zod.object({
   "lessonNumber": zod.number().optional(),
   "pagesFrom": zod.number().optional(),
   "pagesTo": zod.number().optional(),
-  "month": zod.number().optional(),
-  "day": zod.number().optional()
+  "textbookAuthor": zod.string().optional(),
+  "textbookTitle": zod.string().optional(),
+  "chapterTitle": zod.string().optional(),
+  "paragraphNumber": zod.string().optional()
 })
 
 export const CreateTeacherLessonResponse = zod.object({
@@ -1095,8 +1102,13 @@ export const CreateTeacherLessonResponse = zod.object({
   "lessonNumber": zod.number().nullish(),
   "pagesFrom": zod.number().nullish(),
   "pagesTo": zod.number().nullish(),
-  "month": zod.number().nullish(),
-  "day": zod.number().nullish(),
+  "textbookAuthor": zod.string().nullish(),
+  "textbookTitle": zod.string().nullish(),
+  "chapterTitle": zod.string().nullish(),
+  "paragraphNumber": zod.string().nullish(),
+  "status": zod.string(),
+  "assignedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
 })
 
@@ -1253,6 +1265,31 @@ export const GetTeacherScheduleResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetTeacherScheduleResponse = zod.array(GetTeacherScheduleResponseItem)
+
+
+/**
+ * @summary Get visible lessons for a student's course by subject name
+ */
+export const GetStudentCourseLessonsQueryParams = zod.object({
+  "subject": zod.coerce.string()
+})
+
+export const GetStudentCourseLessonsResponseItem = zod.object({
+  "id": zod.number(),
+  "courseId": zod.number(),
+  "title": zod.string(),
+  "lessonNumber": zod.number().nullish(),
+  "pagesFrom": zod.number().nullish(),
+  "pagesTo": zod.number().nullish(),
+  "textbookAuthor": zod.string().nullish(),
+  "textbookTitle": zod.string().nullish(),
+  "chapterTitle": zod.string().nullish(),
+  "paragraphNumber": zod.string().nullish(),
+  "status": zod.string(),
+  "assignedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish()
+})
+export const GetStudentCourseLessonsResponse = zod.array(GetStudentCourseLessonsResponseItem)
 
 
 /**
@@ -1455,8 +1492,13 @@ export const GetCourseLessonsResponseItem = zod.object({
   "lessonNumber": zod.number().nullish(),
   "pagesFrom": zod.number().nullish(),
   "pagesTo": zod.number().nullish(),
-  "month": zod.number().nullish(),
-  "day": zod.number().nullish(),
+  "textbookAuthor": zod.string().nullish(),
+  "textbookTitle": zod.string().nullish(),
+  "chapterTitle": zod.string().nullish(),
+  "paragraphNumber": zod.string().nullish(),
+  "status": zod.string(),
+  "assignedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
 })
 export const GetCourseLessonsResponse = zod.array(GetCourseLessonsResponseItem)
@@ -1536,7 +1578,11 @@ export const UpdateTeacherLessonBody = zod.object({
   "pagesTo": zod.number().optional(),
   "month": zod.number().optional(),
   "day": zod.number().optional(),
-  "courseId": zod.number().optional()
+  "courseId": zod.number().optional(),
+  "textbookAuthor": zod.string().nullish(),
+  "textbookTitle": zod.string().nullish(),
+  "chapterTitle": zod.string().nullish(),
+  "paragraphNumber": zod.string().nullish()
 })
 
 export const UpdateTeacherLessonResponse = zod.object({
@@ -1546,6 +1592,41 @@ export const UpdateTeacherLessonResponse = zod.object({
   "score": zod.number(),
   "status": zod.string(),
   "masteryScore": zod.number().nullish()
+})
+
+
+/**
+ * @summary Change lesson status
+ */
+export const UpdateLessonStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateLessonStatusBody = zod.object({
+  "status": zod.enum(['assigned', 'active', 'completed'])
+})
+
+export const UpdateLessonStatusResponse = zod.object({
+  "id": zod.number(),
+  "subjectId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "bloomLevel": zod.number().optional(),
+  "content": zod.string().optional(),
+  "classId": zod.number().optional(),
+  "courseId": zod.number().nullish(),
+  "teacherId": zod.number().optional(),
+  "lessonNumber": zod.number().nullish(),
+  "pagesFrom": zod.number().nullish(),
+  "pagesTo": zod.number().nullish(),
+  "textbookAuthor": zod.string().nullish(),
+  "textbookTitle": zod.string().nullish(),
+  "chapterTitle": zod.string().nullish(),
+  "paragraphNumber": zod.string().nullish(),
+  "status": zod.string(),
+  "assignedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
 })
 
 

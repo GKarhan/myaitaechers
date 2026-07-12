@@ -6,16 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TeacherLessonItem {
+export interface StudentCourseLessonItem {
   id: number;
-  subjectId: number;
+  courseId: number;
   title: string;
-  description?: string;
-  bloomLevel?: number;
-  content?: string;
-  classId?: number;
-  courseId?: number | null;
-  teacherId?: number;
   lessonNumber?: number | null;
   pagesFrom?: number | null;
   pagesTo?: number | null;
@@ -26,5 +20,4 @@ export interface TeacherLessonItem {
   status: string;
   assignedAt?: Date | null;
   completedAt?: Date | null;
-  createdAt: Date;
 }

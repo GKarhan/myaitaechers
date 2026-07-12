@@ -26,8 +26,8 @@ export default function Login() {
         },
         onError: () => {
           setError("Սխալ օգտանուն կամ գաղտնաբառ");
-        }
-      }
+        },
+      },
     );
   };
 
@@ -47,7 +47,9 @@ export default function Login() {
       <div className="w-full max-w-md z-10">
         {/* Quick login */}
         <div className="mb-4 p-4 rounded-2xl bg-card/40 border border-white/10 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground mb-3 text-center">⚡ Արագ մուտք</p>
+          <p className="text-xs text-muted-foreground mb-3 text-center">
+            ⚡ Արագ մուտք
+          </p>
           <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
@@ -55,7 +57,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
             >
-              ADADMIN
+              Ադմին
             </button>
             <button
               type="button"
@@ -63,7 +65,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
             >
-              UDUDCHIЧ
+              Ուսուցիչ
             </button>
             <button
               type="button"
@@ -71,7 +73,7 @@ export default function Login() {
               disabled={loginMutation.isPending}
               className="py-2 px-3 rounded-xl text-xs font-medium bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 transition-colors disabled:opacity-50"
             >
-              ASHAKERT
+              Աշակերտ
             </button>
           </div>
         </div>
@@ -79,7 +81,9 @@ export default function Login() {
         <div className="p-8 rounded-2xl bg-card/60 backdrop-blur-xl border border-card-border shadow-2xl">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-white mb-2">Մուտք</h1>
-            <p className="text-muted-foreground">Բարի գալուստ Karhanyan School</p>
+            <p className="text-muted-foreground">
+              Բարի գալուստ Karhanyan School
+            </p>
           </div>
 
           {error && (
@@ -90,7 +94,9 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Օգտանուն</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Օգտանուն
+              </label>
               <input
                 type="text"
                 value={username}
@@ -101,7 +107,9 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Գաղտնաբառ</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Գաղտնաբառ
+              </label>
               <input
                 type="password"
                 value={password}
@@ -121,7 +129,13 @@ export default function Login() {
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Դեռ գրանցված չե՞ք: <Link href="/register" className="text-secondary hover:text-white transition-colors">Գրանցում</Link>
+            Դեռ գրանցված չե՞ք:{" "}
+            <Link
+              href="/register"
+              className="text-secondary hover:text-white transition-colors"
+            >
+              Գրանցում
+            </Link>
           </div>
         </div>
       </div>

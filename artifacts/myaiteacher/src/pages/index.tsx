@@ -18,13 +18,12 @@ export default function Home() {
           else if (role === "teacher") setLocation("/teacher");
           else setLocation("/dashboard");
         },
-      }
+      },
     );
   };
 
   return (
     <div className="min-h-[100dvh] w-full flex flex-col items-center justify-center px-4 bg-background relative overflow-hidden">
-
       {/* Decorative background effects */}
       <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[500px] bg-primary/20 blur-[120px] rounded-full pointer-events-none" />
@@ -61,28 +60,30 @@ export default function Home() {
 
         {/* Demo access */}
         <div className="flex flex-col items-center gap-3">
-          <span className="text-xs text-muted-foreground uppercase tracking-widest">Demo Access</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-widest">
+            Demo Access
+          </span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => quickLogin("admin", "admin123")}
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
             >
-              ADADMIN
+              Ադմին
             </button>
             <button
               onClick={() => quickLogin("teacher1", "teacher123")}
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30 transition-colors disabled:opacity-50"
             >
-              UDUDCHIЧ
+              Ուսուցիչ
             </button>
             <button
               onClick={() => quickLogin("student1", "student123")}
               disabled={loginMutation.isPending}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 transition-colors disabled:opacity-50"
             >
-              ASHAKERT
+              Աշակերտ
             </button>
           </div>
         </div>

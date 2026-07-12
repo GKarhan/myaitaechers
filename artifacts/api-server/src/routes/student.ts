@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, homeworkTable, lessonsTable, subjectsTable } from "@workspace/db";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, homeworkTable, lessonsTable, subjectsTable, coursesTable } from "@workspace/db";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
@@ -205,6 +205,72 @@ router.get("/student/homework-summary", requireAuth, async (req: AuthRequest, re
     : null;
 
   res.json({ notSubmitted, pending, graded, avgScore, items: hw });
+});
+
+
+// GET /api/student/course-lessons?subject=name — get visible teacher lessons for student's class course
+router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const subject = req.query.subject as string | undefined;
+  if (!subject) { res.status(400).json({ error: "subject query param required" }); return; }
+
+  // Find student's enrolled classes
+  const enrollments = await db
+    .select({ classId: classStudentsTable.classId })
+    .from(classStudentsTable)
+    .where(eq(classStudentsTable.studentId, userId));
+
+  if (enrollments.length === 0) { res.json([]); return; }
+
+  const classIds = enrollments.map((e) => e.classId);
+
+  // Find a course in one of the student's classes matching the subject name
+  const courses = await db
+    .select()
+    .from(coursesTable)
+    .where(inArray(coursesTable.classId, classIds));
+
+  const matchingCourse = courses.find(
+    (c) => c.name.trim().toLowerCase() === subject.trim().toLowerCase()
+  );
+
+  if (!matchingCourse) { res.json([]); return; }
+
+  // Return non-draft lessons for this course, sorted hierarchically
+  const lessons = await db
+    .select()
+    .from(lessonsTable)
+    .where(and(
+      eq(lessonsTable.courseId, matchingCourse.id),
+      sql`${lessonsTable.status} != 'draft'`
+    ));
+
+  // Sort: textbookTitle, chapterTitle, lessonNumber, paragraphNumber
+  lessons.sort((a, b) => {
+    const ta = (a.textbookTitle ?? "").localeCompare(b.textbookTitle ?? "", "hy");
+    if (ta !== 0) return ta;
+    const ca = (a.chapterTitle ?? "").localeCompare(b.chapterTitle ?? "", "hy");
+    if (ca !== 0) return ca;
+    const la = (a.lessonNumber ?? 9999) - (b.lessonNumber ?? 9999);
+    if (la !== 0) return la;
+    return (a.paragraphNumber ?? "").localeCompare(b.paragraphNumber ?? "");
+  });
+
+  res.json(lessons.map((l) => ({
+    id: l.id,
+    courseId: l.courseId,
+    title: l.title,
+    lessonNumber: l.lessonNumber,
+    pagesFrom: l.pagesFrom,
+    pagesTo: l.pagesTo,
+    textbookAuthor: l.textbookAuthor,
+    textbookTitle: l.textbookTitle,
+    chapterTitle: l.chapterTitle,
+    paragraphNumber: l.paragraphNumber,
+    status: l.status,
+    assignedAt: l.assignedAt,
+    completedAt: l.completedAt,
+  })));
 });
 
 export default router;
