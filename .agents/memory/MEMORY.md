@@ -1,4 +1,2 @@
-- [Lesson schema new fields](lesson-schema-fields.md) — lessons table gained textbookAuthor/Title, chapterTitle, paragraphNumber (text), status (draft→assigned→active→completed), assignedAt, completedAt in 2026-07.
-- [API route vs OpenAPI mismatch](api-route-patterns.md) — useCreateTeacherLesson calls POST /api/teacher/lessons (body has courseId), not /teacher/courses/{id}/lessons; always verify generated hook URL via getCreate*Url() in api.ts before adding new Express routes.
-- [Seed student1](seed-student1.md) — student1 was missing from seed; S_HASH added for student123; always verify all demo users have explicit seeds with ON CONFLICT DO UPDATE to avoid stale password issues after restarts.
-- [Armenian text edits use Python](armenian-edits.md) — edit tool fails on Armenian old_string matching; use Python line-range splicing: read file, slice before/after boundary lines, write temp block to /tmp file, merge and write back.
+- [Armenian UTF-8 file writes](armenian-writes.md) — use Python template+replace to write files with Armenian; never f-strings or bash heredocs
+- [Dashboard sidebar architecture](dashboard-sidebar.md) — left sidebar with state-based section switching (no URL changes); Section type union drives content

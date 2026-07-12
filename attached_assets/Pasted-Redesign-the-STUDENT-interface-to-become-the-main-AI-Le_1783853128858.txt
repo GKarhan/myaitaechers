@@ -1,0 +1,266 @@
+Redesign the STUDENT interface to become the main AI Learning Dashboard.
+
+IMPORTANT
+
+- Do NOT change authentication.
+- Do NOT change APIs.
+- Do NOT change database schema.
+- Do NOT change teacher functionality.
+- Preserve all existing backend logic.
+- Preserve Armenian language everywhere.
+- Do NOT introduce English, Russian or transliterated text.
+- Keep the current dark theme and design style.
+
+==================================================
+1. REPLACE THE TOP HORIZONTAL MENU
+==================================================
+
+Remove the current horizontal navigation tabs.
+
+Create a permanent LEFT SIDEBAR.
+
+Items (top to bottom):
+
+🤖 ԱԲ ուսուցիչ
+
+🏠 Գլխավոր
+
+📝 Իմ անելիքները
+
+📚 Իմ առարկաները
+
+📅 Դասացուցակ
+
+📈 Իմ առաջընթացը
+
+📖 Գրադարան
+
+👤 Իմ պրոֆիլը
+
+Highlight the active page.
+
+==================================================
+2. DASHBOARD
+==================================================
+
+Dashboard should become a learning center.
+
+Top:
+
+Բարի գալուստ, {Student Name}
+
+Դասարան
+
+Current date
+
+==================================================
+3. MOST IMPORTANT SECTION
+==================================================
+
+Replace
+
+«Այսօրվա դաս»
+
+with
+
+📝 ԻՄ ԱՆԵԼԻՔՆԵՐԸ
+
+This section displays ALL lessons assigned by teachers.
+
+NOT only today's timetable.
+
+Each card contains:
+
+Առարկա
+
+Ուսուցիչ
+
+Դաս
+
+Թեմա
+
+Պարագրաֆ
+
+Էջեր
+
+Location badge
+
+🏫 Դասարանում
+
+or
+
+🏠 Տանը
+
+Large button
+
+▶ ՍԿՍԵԼ ԴԱՍԸ
+
+Clicking opens the AI lesson page.
+
+==================================================
+4. LESSON STATUS
+==================================================
+
+Student sees only these states.
+
+🟡 Սպասում է
+
+🟢 Ընթացքի մեջ
+
+✅ Ավարտված
+
+Do NOT show
+
+0/1
+
+progress counters
+
+internal lesson status
+
+technical fields
+
+==================================================
+5. MY SUBJECTS
+==================================================
+
+Display cards.
+
+Each card:
+
+Առարկա
+
+Ուսուցիչ
+
+Number of lessons
+
+Current progress
+
+Button
+
+Բացել
+
+Opening a subject goes to the subject page.
+
+==================================================
+6. HOMEWORK
+==================================================
+
+Display only homework.
+
+If empty show
+
+Տնային աշխատանքներ չկան։
+
+==================================================
+7. TIMETABLE
+==================================================
+
+Display today's timetable only.
+
+Simple list.
+
+No large timetable blocks.
+
+==================================================
+8. PROGRESS
+==================================================
+
+Simple statistics.
+
+Completed lessons
+
+Completed homework
+
+Average score
+
+Learning time with AI
+
+No charts yet.
+
+==================================================
+9. AI TEACHER
+==================================================
+
+The first sidebar item
+
+🤖 ԱԲ ուսուցիչ
+
+must NOT open a generic chat.
+
+It must open a dedicated AI Learning page.
+
+Later this page will become the complete AI Teacher.
+
+Do not implement learning logic yet.
+
+Only prepare the navigation.
+
+==================================================
+10. SUBJECT PAGE
+==================================================
+
+Do NOT redesign yet.
+
+Only ensure future compatibility.
+
+Later each subject page will contain:
+
+Today's assigned lesson
+
+All lessons
+
+Completed lessons
+
+Start Lesson button
+
+==================================================
+11. REMOVE
+==================================================
+
+Remove:
+
+large empty blocks
+
+demo placeholders
+
+mixed languages
+
+Russian text
+
+transliterated Armenian
+
+unused widgets
+
+==================================================
+12. DESIGN
+==================================================
+
+The dashboard should immediately answer one question:
+
+"What should this student learn now?"
+
+The most visually important section is
+
+📝 ԻՄ ԱՆԵԼԻՔՆԵՐԸ
+
+Every assigned lesson must have one clear action:
+
+▶ ՍԿՍԵԼ ԴԱՍԸ
+
+==================================================
+13. DO NOT BREAK ANYTHING
+==================================================
+
+Do not modify
+
+teacher pages
+
+lesson assignment logic
+
+routing
+
+authentication
+
+existing APIs
+
+Only redesign the student interface and navigation.
