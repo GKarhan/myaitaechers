@@ -1,0 +1,195 @@
+Simplify ONLY the lesson status controls on the teacher course page.
+
+IMPORTANT:
+- Do not redesign or modify any other part of the page.
+- Do not change the lesson creation form, textbook fields, chapter grouping, resource upload section, lesson editing, lesson deletion, authentication, routes, or existing Armenian text.
+- Preserve all current working functionality.
+- Keep all visible text in correct Armenian.
+- Do not introduce transliterated, Russian, or mixed-script text.
+- Make the smallest possible targeted change.
+
+==================================================
+1. REMOVE THE CURRENT COMPLEX STATUS UI
+==================================================
+
+On each teacher lesson card, remove all of the following visible elements:
+
+- «Հանձնարարել»
+- «Այսօրվա դաս»
+- «Ընթացքի մեջ»
+- «Նախապատրաստված»
+- any other status chip or label related to draft, assigned, active, or in progress
+- the student progress counter such as:
+  - 0/1
+  - 1/1
+  - any similar completed-student count
+
+The teacher lesson card must no longer display the 0/1 progress calculation.
+
+Do not delete backend progress data if it is used elsewhere.
+Only remove this progress counter from this teacher lesson card UI.
+
+==================================================
+2. USE ONLY TWO TEACHER-FACING LESSON STATES
+==================================================
+
+The teacher-facing interface must show only these two Armenian states:
+
+1. Նոր դաս
+2. Ավարտված
+
+Do not display any other lesson status text on the teacher course page.
+
+Backend values may remain in English if needed, but the teacher UI must only show:
+
+- Նոր դաս
+- Ավարտված
+
+==================================================
+3. “ՆՈՐ ԴԱՍ” BEHAVIOR
+==================================================
+
+Each non-completed lesson should have one clear action/state button:
+
+Նոր դաս
+
+When the teacher clicks «Նոր դաս»:
+
+- mark that lesson as the current assigned lesson for that course
+- make it visible to the students of the relevant class
+- on the student subject page, display that lesson with the Armenian label:
+  «Այսօրվա դասը»
+- only one lesson per course may be the current “today’s lesson” at a time
+- if another lesson was previously current, replace it with the newly selected lesson
+- do not show «Հանձնարարված», «Ակտիվ», «Ընթացքի մեջ» or «Այսօրվա դաս» on the teacher card
+
+The teacher side should remain simple:
+- Նոր դաս
+- Ավարտված
+
+==================================================
+4. COMPLETING A LESSON
+==================================================
+
+Provide a simple teacher action:
+
+Ավարտել դասը
+
+When clicked:
+
+- change the lesson state to completed
+- show the visible status:
+  Ավարտված
+- keep the lesson in the teacher’s lesson list
+- keep the lesson visible in the student’s full lesson history
+- remove it from the student’s «Այսօրվա դասը» section
+- do not delete the lesson or its progress data
+
+If a confirmation is needed, use:
+
+«Ավարտե՞լ այս դասը»
+
+Buttons:
+
+- Հաստատել
+- Չեղարկել
+
+==================================================
+5. TEACHER LESSON CARD
+==================================================
+
+Keep the lesson card content unchanged:
+
+- lesson number
+- paragraph
+- lesson title
+- page range
+- edit button
+- delete button
+
+For a new/non-completed lesson, show:
+
+Նոր դաս
+
+and provide the ability to select it as the current lesson.
+
+For a completed lesson, show:
+
+Ավարտված
+
+Do not show:
+
+- Հանձնարարել
+- Այսօրվա դաս
+- Ընթացքի մեջ
+- Նախապատրաստված
+- 0/1
+- any student completion fraction
+
+==================================================
+6. STUDENT-SIDE RESULT
+==================================================
+
+Do not redesign the student page in this task.
+
+Only ensure the data behavior works:
+
+When the teacher clicks «Նոր դաս» on a lesson:
+
+- that lesson becomes the current lesson for the course
+- the student subject page can receive it as the current lesson
+- the student UI will later display:
+  «Այսօրվա դասը»
+
+When the teacher marks it completed:
+
+- it is no longer the current lesson
+- it remains available as an «Ավարտված» lesson
+
+==================================================
+7. PRESERVE EXISTING ARMENIAN TEXT
+==================================================
+
+Do not change any existing correct Armenian labels, including:
+
+- ԴԱՍԱԳԻՐՔ
+- Դասագրքի հեղինակ
+- Դասագրքի անվանում
+- Թեմա / Գլուխ
+- Դասի համարը
+- Պարագրաֆ
+- Դասի վերնագիր
+- Էջ՝ սկիզբ
+- Էջ՝ վերջ
+- Խմբագրել
+- Ջնջել
+- ՊԱՀՊԱՆԵԼ
+- ՉԵՂԱՐԿԵԼ
+
+Do not translate or rewrite unrelated content.
+
+==================================================
+8. ACCEPTANCE TESTS
+==================================================
+
+Verify:
+
+1. Lesson cards no longer show «Հանձնարարել».
+2. Lesson cards no longer show «Այսօրվա դաս».
+3. Lesson cards no longer show «Ընթացքի մեջ».
+4. Lesson cards no longer show «Նախապատրաստված».
+5. Lesson cards no longer show 0/1 or similar counters.
+6. A non-completed lesson shows «Նոր դաս».
+7. Clicking «Նոր դաս» makes it the current student lesson.
+8. Only one current lesson exists per course.
+9. The student API returns this lesson as the current/today lesson.
+10. The teacher can mark the lesson «Ավարտված».
+11. A completed lesson remains in the lesson list.
+12. Edit and delete buttons still work.
+13. No other page, text, design, or functionality is changed.
+14. All modified visible UI text remains correct Armenian.
+
+After completion, briefly list only:
+- files changed
+- status behavior changed
+- how the current lesson is exposed to students

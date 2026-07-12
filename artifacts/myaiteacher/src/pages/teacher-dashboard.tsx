@@ -343,15 +343,20 @@ export default function TeacherDashboard() {
     );
   };
 
-  const handleStatusChange = (lessonId: number, status: "assigned" | "active" | "completed") => {
+  const handleStatusChange = (
+    lessonId: number,
+    status: "assigned" | "active" | "completed",
+  ) => {
     if (!selectedCourse) return;
     updateStatus.mutate(
       { id: lessonId, data: { status } },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(selectedCourse.id) });
+          qc.invalidateQueries({
+            queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
+          });
         },
-      }
+      },
     );
   };
 
@@ -642,96 +647,157 @@ export default function TeacherDashboard() {
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Դասագրքի հեղինակ</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասագրքի հեղինակ
+                    </label>
                     <input
                       value={lessonForm.textbookAuthor}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, textbookAuthor: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          textbookAuthor: e.target.value,
+                        }))
+                      }
                       className={inputCls}
-                      placeholder="«Ա. Մartirosyan»"
+                      placeholder="«Ա. Մարտիրոսյան»"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasagrqi անvanumы</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասագրքի անվանումը
+                    </label>
                     <input
                       value={lessonForm.textbookTitle}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, textbookTitle: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          textbookTitle: e.target.value,
+                        }))
+                      }
                       className={inputCls}
-                      placeholder="«Matematika 7»"
+                      placeholder="«Առարկան»"
                     />
                   </div>
                 </div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
-                  Բ. ԲOVANDAKAIN KARUQY
+                  Բ. Բովանդակություն
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Թema / Glux</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Թema / Գլուխ
+                    </label>
                     <input
                       value={lessonForm.chapterTitle}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, chapterTitle: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          chapterTitle: e.target.value,
+                        }))
+                      }
                       className={inputCls}
-                      placeholder="«Bnakan tvery»"
+                      placeholder="«Դասի թեման»"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasі hamary</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասի համարը
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={lessonForm.lessonNumber}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, lessonNumber: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          lessonNumber: e.target.value,
+                        }))
+                      }
                       className={inputCls}
                       placeholder="1"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Paragraf</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Պարագրաֆ
+                    </label>
                     <input
                       value={lessonForm.paragraphNumber}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, paragraphNumber: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          paragraphNumber: e.target.value,
+                        }))
+                      }
                       className={inputCls}
                       placeholder="1.1"
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasі vernagir *</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասի վերնագիրը *
+                    </label>
                     <input
                       value={lessonForm.title}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, title: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({ ...f, title: e.target.value }))
+                      }
                       required
                       className={inputCls}
-                      placeholder="«Bnakan tveri grarum»"
+                      placeholder="«Դասի վերնագիրը»"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Էj' skizb</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Էջի սկիզբը
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={lessonForm.pagesFrom}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, pagesFrom: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          pagesFrom: e.target.value,
+                        }))
+                      }
                       className={inputCls}
                       placeholder="5"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Էj' verj</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Էջի վերջը
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={lessonForm.pagesTo}
-                      onChange={(e) => setLessonForm((f) => ({ ...f, pagesTo: e.target.value }))}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({
+                          ...f,
+                          pagesTo: e.target.value,
+                        }))
+                      }
                       className={inputCls}
                       placeholder="15"
                     />
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={createLesson.isPending} className={btnPrimary}>
-                    {createLesson.isPending ? "..." : "ՊAHPANANEL"}
+                  <button
+                    type="submit"
+                    disabled={createLesson.isPending}
+                    className={btnPrimary}
+                  >
+                    {createLesson.isPending ? "..." : "Պահպանել"}
                   </button>
-                  <button type="button" onClick={() => setShowLessonForm(false)} className={btnOutline}>
-                    ՉEGHАRKEL
+                  <button
+                    type="button"
+                    onClick={() => setShowLessonForm(false)}
+                    className={btnOutline}
+                  >
+                    Չեղարկել
                   </button>
                 </div>
               </form>
@@ -742,83 +808,141 @@ export default function TeacherDashboard() {
                 onSubmit={handleUpdateLesson}
                 className="mb-5 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-4"
               >
-                <h3 className="font-semibold text-sm text-white/90">Խmbagrel das</h3>
+                <h3 className="font-semibold text-sm text-white/90">
+                  Խմբագրել դասը
+                </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasagrqi heleghnak</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասագրքի հեղինակը
+                    </label>
                     <input
                       value={editLesson.textbookAuthor}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, textbookAuthor: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, textbookAuthor: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasagrqi anvanumы</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասագրքի անվանումը
+                    </label>
                     <input
                       value={editLesson.textbookTitle}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, textbookTitle: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, textbookTitle: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Թema / Glux</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Թema / Գլուխ
+                    </label>
                     <input
                       value={editLesson.chapterTitle}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, chapterTitle: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, chapterTitle: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasі hamary</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասի համարը
+                    </label>
                     <input
                       type="number"
                       value={editLesson.lessonNumber}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, lessonNumber: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, lessonNumber: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Paragraf</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Պարագրաֆ
+                    </label>
                     <input
                       value={editLesson.paragraphNumber}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, paragraphNumber: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, paragraphNumber: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Դasі vernagir *</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասի վերնագիրը *
+                    </label>
                     <input
                       value={editLesson.title}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, title: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, title: e.target.value },
+                        )
+                      }
                       required
                       className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Էj' skizb</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Էj' skizb
+                    </label>
                     <input
                       type="number"
                       value={editLesson.pagesFrom}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, pagesFrom: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, pagesFrom: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Էj' verj</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Էj' verj
+                    </label>
                     <input
                       type="number"
                       value={editLesson.pagesTo}
-                      onChange={(e) => setEditLesson((l) => l && { ...l, pagesTo: e.target.value })}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, pagesTo: e.target.value },
+                        )
+                      }
                       className={inputCls}
                     />
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={updateLesson.isPending} className={btnPrimary}>
-                    {updateLesson.isPending ? "..." : "ՊAHPANANEL"}
+                  <button
+                    type="submit"
+                    disabled={updateLesson.isPending}
+                    className={btnPrimary}
+                  >
+                    {updateLesson.isPending ? "..." : "ՊԱՀՊԱՆԵԼ"}
                   </button>
-                  <button type="button" onClick={() => setEditLesson(null)} className={btnOutline}>
-                    ՉEGHАRKEL
+                  <button
+                    type="button"
+                    onClick={() => setEditLesson(null)}
+                    className={btnOutline}
+                  >
+                    ՉԵՂԱՐԿԵԼ
                   </button>
                 </div>
               </form>
@@ -827,26 +951,55 @@ export default function TeacherDashboard() {
             {courseLessons.length === 0 && !showLessonForm && (
               <div className="text-center py-10 text-muted-foreground">
                 <div className="text-4xl mb-3">📝</div>
-                <p className="text-sm">Das chka · Steghdzek araich dasy</p>
+                <p className="text-sm">Դաս չկա · Ստեղծեք առաջին դասը</p>
               </div>
             )}
 
             {/* Hierarchical: textbook → chapter → lessons */}
             {(() => {
               const statusMeta = (s: string) => {
-                if (s === "active")    return { label: "Aysorvada das",   cls: "bg-primary/20 text-primary border-primary/30", dot: "bg-primary" };
-                if (s === "assigned")  return { label: "Handznaravats",   cls: "bg-amber-400/15 text-amber-400 border-amber-400/30", dot: "bg-amber-400" };
-                if (s === "completed") return { label: "Avartvatc",       cls: "bg-teal-400/15 text-teal-400 border-teal-400/30", dot: "bg-teal-400" };
-                return { label: "Naxapastgatsvats",                        cls: "bg-white/5 text-muted-foreground border-white/10", dot: "bg-white/30" };
+                if (s === "active")
+                  return {
+                    label: "Aysorvada das",
+                    cls: "bg-primary/20 text-primary border-primary/30",
+                    dot: "bg-primary",
+                  };
+                if (s === "assigned")
+                  return {
+                    label: "Handznaravats",
+                    cls: "bg-amber-400/15 text-amber-400 border-amber-400/30",
+                    dot: "bg-amber-400",
+                  };
+                if (s === "completed")
+                  return {
+                    label: "Ավարտված",
+                    cls: "bg-teal-400/15 text-teal-400 border-teal-400/30",
+                    dot: "bg-teal-400",
+                  };
+                return {
+                  label: " Ընթացքի մեջ",
+                  cls: "bg-white/5 text-muted-foreground border-white/10",
+                  dot: "bg-white/30",
+                };
               };
               const sorted = [...courseLessons].sort((a, b) => {
-                const ta = ((a as any).textbookTitle ?? "").localeCompare((b as any).textbookTitle ?? "", "hy");
+                const ta = ((a as any).textbookTitle ?? "").localeCompare(
+                  (b as any).textbookTitle ?? "",
+                  "hy",
+                );
                 if (ta !== 0) return ta;
-                const ca = ((a as any).chapterTitle ?? "").localeCompare((b as any).chapterTitle ?? "", "hy");
+                const ca = ((a as any).chapterTitle ?? "").localeCompare(
+                  (b as any).chapterTitle ?? "",
+                  "hy",
+                );
                 if (ca !== 0) return ca;
-                const la = ((a as any).lessonNumber ?? 9999) - ((b as any).lessonNumber ?? 9999);
+                const la =
+                  ((a as any).lessonNumber ?? 9999) -
+                  ((b as any).lessonNumber ?? 9999);
                 if (la !== 0) return la;
-                return ((a as any).paragraphNumber ?? "").localeCompare((b as any).paragraphNumber ?? "");
+                return ((a as any).paragraphNumber ?? "").localeCompare(
+                  (b as any).paragraphNumber ?? "",
+                );
               });
               const textbookGroups: Map<string, typeof sorted> = new Map();
               for (const l of sorted) {
@@ -856,144 +1009,157 @@ export default function TeacherDashboard() {
               }
               return (
                 <div className="space-y-6">
-                  {Array.from(textbookGroups.entries()).map(([tbTitle, tbLessons]) => {
-                    const tbAuthor = (tbLessons[0] as any).textbookAuthor as string | null;
-                    const chapterGroups: Map<string, typeof tbLessons> = new Map();
-                    for (const l of tbLessons) {
-                      const ch = ((l as any).chapterTitle as string | null) ?? "";
-                      if (!chapterGroups.has(ch)) chapterGroups.set(ch, []);
-                      chapterGroups.get(ch)!.push(l);
-                    }
-                    return (
-                      <div key={tbTitle} className="bg-card/30 border border-white/10 rounded-2xl overflow-hidden">
-                        <div className="px-5 py-4 border-b border-white/10 bg-card/50">
-                          <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">DASAGIRK</div>
-                          <div className="font-semibold text-base text-white">{tbTitle || "(Dasagriq nshvatc chi)"}</div>
-                          {tbAuthor && <div className="text-xs text-muted-foreground mt-0.5">Heleghnak' {tbAuthor}</div>}
-                        </div>
-                        <div className="divide-y divide-white/5">
-                          {Array.from(chapterGroups.entries()).map(([chTitle, chLessons]) => (
-                            <div key={chTitle} className="px-5 py-4">
-                              {chTitle && (
-                                <div className="text-xs font-semibold text-secondary/80 uppercase tracking-wide mb-3">
-                                  TEMA · {chTitle}
-                                </div>
-                              )}
-                              <div className="space-y-2">
-                                {chLessons.map((l) => {
-                                  const sm = statusMeta((l as any).status ?? "draft");
-                                  const isExpanded = expandedLessonId === l.id;
-                                  const progressLesson = lessonsProgress?.lessons?.find((pl) => pl.id === l.id);
-                                  const students = lessonsProgress?.students ?? [];
-                                  const completedCount = progressLesson?.results?.filter((r) => r.status === "completed").length ?? 0;
-                                  const totalStudents = students.length;
-                                  const isActive = (l as any).status === "active";
-                                  return (
-                                    <div key={l.id} className={`rounded-xl overflow-hidden border transition-colors ${isActive ? "border-primary/40 bg-primary/5" : "border-white/8 bg-background/40"}`}>
-                                      <div className="px-4 py-3 flex items-start gap-3">
-                                        <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
-                                          {(l as any).lessonNumber ?? "—"}
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm">{l.title}</div>
-                                          <div className="flex flex-wrap gap-2 mt-1 items-center">
-                                            {(l as any).paragraphNumber && (
-                                              <span className="text-xs text-muted-foreground">§{(l as any).paragraphNumber}</span>
-                                            )}
-                                            {((l as any).pagesFrom || (l as any).pagesTo) && (
-                                              <span className="text-xs text-muted-foreground">Ej' {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}</span>
-                                            )}
-                                            <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${sm.cls}`}>
-                                              <span className={`w-1.5 h-1.5 rounded-full ${sm.dot}`} />
-                                              {sm.label}
-                                            </span>
-                                            {totalStudents > 0 && (
-                                              <span className="text-xs text-primary/60">✓ {completedCount}/{totalStudents}</span>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
-                                          {(l as any).status === "draft" && (
-                                            <button onClick={() => handleStatusChange(l.id, "assigned")} disabled={updateStatus.isPending} className="px-2 py-1 rounded-lg text-xs bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20">
-                                              Handznarayel
-                                            </button>
-                                          )}
-                                          {((l as any).status === "draft" || (l as any).status === "assigned") && (
-                                            <button onClick={() => handleStatusChange(l.id, "active")} disabled={updateStatus.isPending} className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20">
-                                              Aysorvada
-                                            </button>
-                                          )}
-                                          {(l as any).status !== "completed" && (l as any).status !== "draft" && (
-                                            <button onClick={() => handleStatusChange(l.id, "completed")} disabled={updateStatus.isPending} className="px-2 py-1 rounded-lg text-xs bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20">
-                                              ✓ Avartvatc
-                                            </button>
-                                          )}
-                                          {totalStudents > 0 && (
-                                            <button onClick={() => setExpandedLessonId(isExpanded ? null : l.id)} className={`px-2 py-1 rounded-lg text-xs transition-colors ${isExpanded ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-white border border-transparent hover:border-white/10"}`}>
-                                              {isExpanded ? "▲" : "▼"}
-                                            </button>
-                                          )}
-                                          <button
-                                            onClick={() => {
-                                              setEditLesson({
-                                                id: l.id,
-                                                title: l.title,
-                                                lessonNumber: String((l as any).lessonNumber ?? ""),
-                                                pagesFrom: String((l as any).pagesFrom ?? ""),
-                                                pagesTo: String((l as any).pagesTo ?? ""),
-                                                textbookAuthor: (l as any).textbookAuthor ?? "",
-                                                textbookTitle: (l as any).textbookTitle ?? "",
-                                                chapterTitle: (l as any).chapterTitle ?? "",
-                                                paragraphNumber: (l as any).paragraphNumber ?? "",
-                                              });
-                                              setShowLessonForm(false);
-                                            }}
-                                            className={btnGhost}
-                                          >✏️</button>
-                                          <button
-                                            onClick={() => {
-                                              if (!selectedCourse || !confirm("Jnjel " + l.title + "?")) return;
-                                              deleteLesson.mutate({ id: l.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(selectedCourse.id) }) });
-                                            }}
-                                            className={btnDanger}
-                                          >🗑</button>
-                                        </div>
-                                      </div>
-                                      {isExpanded && progressLesson && students.length > 0 && (
-                                        <div className="border-t border-white/10 bg-background/30 px-4 py-3">
-                                          <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Ashakertnyeri ard'yuqnery</div>
-                                          <div className="space-y-1.5">
-                                            {students.map((s) => {
-                                              const r = progressLesson.results?.find((res) => res.studentId === s.id);
-                                              const pStatus = r?.status ?? "not_started";
-                                              const score = r?.masteryScore ?? null;
-                                              const phase = r?.currentPhase ?? 0;
-                                              const info = pStatus === "completed"
-                                                ? { label: "Avartats", color: "text-teal-400", bg: "bg-teal-400/10" }
-                                                : pStatus === "active"
-                                                ? { label: `Kap ${phase}/4`, color: "text-amber-400", bg: "bg-amber-400/10" }
-                                                : { label: "Chi sksvels", color: "text-muted-foreground", bg: "bg-white/5" };
-                                              return (
-                                                <div key={s.id} className={`flex items-center gap-3 rounded-lg px-3 py-2 ${info.bg}`}>
-                                                  <span className="flex-1 text-sm truncate">{s.fullName}</span>
-                                                  <span className={`text-xs ${info.color}`}>{info.label}</span>
-                                                  {score !== null && <span className="text-xs font-mono font-semibold text-white/80 bg-white/10 px-2 py-0.5 rounded-full">{score}/100</span>}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                  {Array.from(textbookGroups.entries()).map(
+                    ([tbTitle, tbLessons]) => {
+                      const tbAuthor = (tbLessons[0] as any).textbookAuthor as
+                        | string
+                        | null;
+                      const chapterGroups: Map<string, typeof tbLessons> =
+                        new Map();
+                      for (const l of tbLessons) {
+                        const ch =
+                          ((l as any).chapterTitle as string | null) ?? "";
+                        if (!chapterGroups.has(ch)) chapterGroups.set(ch, []);
+                        chapterGroups.get(ch)!.push(l);
+                      }
+                      return (
+                        <div
+                          key={tbTitle}
+                          className="bg-card/30 border border-white/10 rounded-2xl overflow-hidden"
+                        >
+                          <div className="px-5 py-4 border-b border-white/10 bg-card/50">
+                            <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">
+                              ԴԱՍԱԳԻՐՔ
                             </div>
-                          ))}
+                            <div className="font-semibold text-base text-white">
+                              {tbTitle || "(Dasagriq nshvatc chi)"}
+                            </div>
+                            {tbAuthor && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                Հեղինակ' {tbAuthor}
+                              </div>
+                            )}
+                          </div>
+                          <div className="divide-y divide-white/5">
+                            {Array.from(chapterGroups.entries()).map(
+                              ([chTitle, chLessons]) => (
+                                <div key={chTitle} className="px-5 py-4">
+                                  {chTitle && (
+                                    <div className="text-xs font-semibold text-secondary/80 uppercase tracking-wide mb-3">
+                                      Թեմա · {chTitle}
+                                    </div>
+                                  )}
+                                  <div className="space-y-2">
+                                    {chLessons.map((l) => {
+                                      const isCompleted = (l as any).status === "completed";
+                                      const isActive    = (l as any).status === "active";
+                                      return (
+                                        <div
+                                          key={l.id}
+                                          className={`rounded-xl overflow-hidden border transition-colors ${isActive ? "border-primary/40 bg-primary/5" : "border-white/8 bg-background/40"}`}
+                                        >
+                                          <div className="px-4 py-3 flex items-start gap-3">
+                                            <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
+                                              {(l as any).lessonNumber ?? "—"}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="font-medium text-sm">{l.title}</div>
+                                              <div className="flex flex-wrap gap-2 mt-1 items-center">
+                                                {(l as any).paragraphNumber && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    §{(l as any).paragraphNumber}
+                                                  </span>
+                                                )}
+                                                {((l as any).pagesFrom || (l as any).pagesTo) && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
+                                                  </span>
+                                                )}
+                                                {isCompleted ? (
+                                                  <span className="text-xs px-2 py-0.5 rounded-full border border-teal-400/30 text-teal-400 bg-teal-400/10">
+                                                    Ավարտված
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-xs px-2 py-0.5 rounded-full border border-white/15 text-muted-foreground/70 bg-white/5">
+                                                    Նոր դաս
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
+                                              {!isCompleted && (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleStatusChange(l.id, "active")}
+                                                    disabled={updateStatus.isPending}
+                                                    className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
+                                                  >
+                                                    Նոր դաս
+                                                  </button>
+                                                  <button
+                                                    onClick={() => {
+                                                      if (confirm("«Ավարտե՞լ այս դասը»")) {
+                                                        handleStatusChange(l.id, "completed");
+                                                      }
+                                                    }}
+                                                    disabled={updateStatus.isPending}
+                                                    className="px-2 py-1 rounded-lg text-xs bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20"
+                                                  >
+                                                    Ավարտել դասը
+                                                  </button>
+                                                </>
+                                              )}
+                                              <button
+                                                onClick={() => {
+                                                  setEditLesson({
+                                                    id: l.id,
+                                                    title: l.title,
+                                                    lessonNumber: String((l as any).lessonNumber ?? ""),
+                                                    pagesFrom: String((l as any).pagesFrom ?? ""),
+                                                    pagesTo: String((l as any).pagesTo ?? ""),
+                                                    textbookAuthor: (l as any).textbookAuthor ?? "",
+                                                    textbookTitle: (l as any).textbookTitle ?? "",
+                                                    chapterTitle: (l as any).chapterTitle ?? "",
+                                                    paragraphNumber: (l as any).paragraphNumber ?? "",
+                                                  });
+                                                  setShowLessonForm(false);
+                                                }}
+                                                className={btnGhost}
+                                              >
+                                                ✏️
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  if (!selectedCourse || !confirm("Ջնջել " + l.title + "?")) return;
+                                                  deleteLesson.mutate(
+                                                    { id: l.id },
+                                                    {
+                                                      onSuccess: () =>
+                                                        qc.invalidateQueries({
+                                                          queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
+                                                        }),
+                                                    },
+                                                  );
+                                                }}
+                                                className={btnDanger}
+                                              >
+                                                🗑
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    },
+                  )}
                 </div>
               );
             })()}
