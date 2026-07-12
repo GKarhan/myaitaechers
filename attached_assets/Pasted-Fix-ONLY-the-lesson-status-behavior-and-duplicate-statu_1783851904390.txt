@@ -1,0 +1,206 @@
+Fix ONLY the lesson status behavior and duplicate status controls on the teacher course page.
+
+IMPORTANT:
+- Do not modify the lesson creation form.
+- Do not modify textbook, chapter, paragraph, title, or page fields.
+- Do not modify resource uploads.
+- Do not modify edit or delete behavior.
+- Do not redesign the page.
+- Do not change unrelated Armenian text.
+- Keep all visible UI text in correct Armenian.
+- Make the smallest possible targeted change.
+
+==================================================
+GOAL
+==================================================
+
+Each lesson card must have only ONE status/action control.
+
+Right now the lesson card incorrectly shows:
+
+- Նոր դաս
+- Նոր դաս
+- Ավարտել դասը
+
+This is wrong.
+
+Remove the duplicate status labels and remove the separate «Ավարտել դասը» button.
+
+The lesson card must show only one state button that changes according to the lesson status:
+
+Նոր դաս
+→ Ընթացքի մեջ
+→ Ավարտված
+
+==================================================
+1. INITIAL STATE
+==================================================
+
+For every newly created lesson, show only one button:
+
+Նոր դաս
+
+Do not show:
+- a second «Նոր դաս»
+- «Ավարտել դասը»
+- «Հանձնարարված»
+- «Այսօրվա դաս»
+- «Նախապատրաստված»
+- any other status chip
+
+==================================================
+2. WHEN THE TEACHER CLICKS “ՆՈՐ ԴԱՍ”
+==================================================
+
+When the teacher clicks:
+
+Նոր դաս
+
+the following must happen:
+
+- the lesson becomes the current active lesson for that course
+- the same button text changes to:
+
+Ընթացքի մեջ
+
+- the lesson becomes visible to students as the current lesson
+- on the student subject page, this lesson must appear under:
+
+Այսօրվա դասը
+
+- only one lesson per course may be in the active/in-progress state at a time
+- if another lesson in the same course was already active, it must automatically become:
+
+Ավարտված
+
+Do not show multiple buttons or duplicate labels.
+
+==================================================
+3. ACTIVE LESSON STATE
+==================================================
+
+For the current active lesson, show only one non-duplicated button:
+
+Ընթացքի մեջ
+
+This button is only a status indicator and must not create another action.
+
+Do not show:
+- «Նոր դաս»
+- «Ավարտել դասը»
+- «Հանձնարարված»
+- «Այսօրվա դաս»
+
+on the teacher lesson card while the lesson is active.
+
+==================================================
+4. WHEN A NEW LESSON IS ASSIGNED
+==================================================
+
+When the teacher clicks «Նոր դաս» on another lesson in the same course:
+
+- the previously active lesson becomes:
+
+Ավարտված
+
+- the newly selected lesson becomes:
+
+Ընթացքի մեջ
+
+- the newly selected lesson becomes the student’s:
+
+Այսօրվա դասը
+
+This transition should happen automatically.
+
+==================================================
+5. COMPLETED LESSON STATE
+==================================================
+
+For completed lessons, show only:
+
+Ավարտված
+
+The completed status must not be clickable.
+
+Completed lessons must remain visible in the teacher lesson list and in the student lesson history.
+
+==================================================
+6. STUDENT-SIDE BEHAVIOR
+==================================================
+
+Do not redesign the student page in this task.
+
+Only preserve the data behavior:
+
+- the teacher’s «Ընթացքի մեջ» lesson must be returned to the student as the current lesson
+- the student UI will display it as:
+
+Այսօրվա դասը
+
+- when the teacher activates a new lesson, the previous student current lesson becomes completed
+- the new lesson becomes the student’s current lesson
+
+==================================================
+7. UI CLEANUP
+==================================================
+
+Remove all duplicate or unnecessary status UI from the teacher lesson card.
+
+A lesson card must display exactly one of these:
+
+- Նոր դաս
+- Ընթացքի մեջ
+- Ավարտված
+
+Never show two status labels or two status buttons at the same time.
+
+Do not show the 0/1 progress counter or any similar fraction on the teacher lesson card.
+
+Keep:
+- lesson number
+- paragraph
+- title
+- page range
+- edit icon
+- delete icon
+
+==================================================
+8. BACKEND STATUS MAPPING
+==================================================
+
+You may keep backend values in English.
+
+Recommended mapping:
+
+draft → Նոր դաս
+active → Ընթացքի մեջ
+completed → Ավարտված
+
+Do not use assigned as a separate teacher-facing state.
+
+If assigned already exists internally, do not display it on the teacher page.
+
+==================================================
+9. ACCEPTANCE TESTS
+==================================================
+
+Verify all of the following:
+
+1. A newly created lesson shows only one label/button: «Նոր դաս».
+2. There is no duplicate «Նոր դաս».
+3. There is no separate «Ավարտել դասը» button.
+4. Clicking «Նոր դաս» changes that same control to «Ընթացքի մեջ».
+5. The active lesson is returned to students as «Այսօրվա դասը».
+6. Only one lesson per course can be «Ընթացքի մեջ».
+7. Activating another lesson automatically changes the previous one to «Ավարտված».
+8. Completed lessons show only «Ավարտված».
+9. The 0/1 counter is removed from the teacher lesson card.
+10. Edit and delete still work.
+11. No unrelated UI or Armenian text is changed.
+12. No Russian, transliterated, or mixed-script text is introduced.
+
+After implementation, report only:
+- files changed
+- exact status flow implemented
+- how the current lesson reaches the student page

@@ -1075,40 +1075,26 @@ export default function TeacherDashboard() {
                                                     Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
                                                   </span>
                                                 )}
-                                                {isCompleted ? (
-                                                  <span className="text-xs px-2 py-0.5 rounded-full border border-teal-400/30 text-teal-400 bg-teal-400/10">
-                                                    Ավարտված
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-xs px-2 py-0.5 rounded-full border border-white/15 text-muted-foreground/70 bg-white/5">
-                                                    Նոր դաս
-                                                  </span>
-                                                )}
                                               </div>
                                             </div>
                                             <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
-                                              {!isCompleted && (
-                                                <>
-                                                  <button
-                                                    onClick={() => handleStatusChange(l.id, "active")}
-                                                    disabled={updateStatus.isPending}
-                                                    className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
-                                                  >
-                                                    Նոր դաս
-                                                  </button>
-                                                  <button
-                                                    onClick={() => {
-                                                      if (confirm("«Ավարտե՞լ այս դասը»")) {
-                                                        handleStatusChange(l.id, "completed");
-                                                      }
-                                                    }}
-                                                    disabled={updateStatus.isPending}
-                                                    className="px-2 py-1 rounded-lg text-xs bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20"
-                                                  >
-                                                    Ավարտել դասը
-                                                  </button>
-                                                </>
-                                              )}
+                                               {(l as any).status === "completed" ? (
+                                                 <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
+                                                   Ավարտված
+                                                 </span>
+                                               ) : (l as any).status === "active" ? (
+                                                 <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
+                                                   Ընթացքի մեջ
+                                                 </span>
+                                               ) : (
+                                                 <button
+                                                   onClick={() => handleStatusChange(l.id, "active")}
+                                                   disabled={updateStatus.isPending}
+                                                   className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
+                                                 >
+                                                   Նոր դաս
+                                                 </button>
+                                               )}
                                               <button
                                                 onClick={() => {
                                                   setEditLesson({
