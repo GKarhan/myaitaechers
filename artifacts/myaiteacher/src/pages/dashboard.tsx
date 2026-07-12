@@ -6,33 +6,47 @@ import {
   useGetDashboard,
   useGetStudentSchedule,
   useGetStudentTeachers,
-  useGetStudentTodayLessons,
-  useUpdateStudentProfile,
+  useGetStudentHomeworkSummary,
   getGetDashboardQueryKey,
   getGetStudentScheduleQueryKey,
   getGetStudentTeachersQueryKey,
-  getGetStudentTodayLessonsQueryKey,
+  getGetStudentHomeworkSummaryQueryKey,
 } from "@workspace/api-client-react";
 
-type Tab = "overview" | "schedule" | "subjects" | "teachers" | "profile";
+type ActiveLesson = {
+  id: number;
+  subject: string;
+  teacherName: string;
+  title: string;
+  lessonNumber?: number | null;
+  paragraphNumber?: string | null;
+  textbookTitle?: string | null;
+  chapterTitle?: string | null;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
+};
+
+type ProfileForm = { fullName: string; email: string; age: string; bio: string };
 
 const DAY_ORDER: Record<string, number> = {
-  "Երկուշաբթի": 0,
-  "Երեքշաբթի": 1,
-  "Չորեքշաբթի": 2,
-  "Հինգշաբթի": 3,
-  "Ուրբաթ": 4,
-  "Շաբաթ": 5,
+  "Երկuшabbti": 0,
+  "Erekshabbti": 1,
+  "Choreqshabbti": 2,
+  "Hingshabbti": 3,
+  "Urbat": 4,
+  "Shabbat": 5,
 };
 
 export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
-  const [tab, setTab] = useState<Tab>("overview");
-  const [profileForm, setProfileForm] = useState({ fullName: "", email: "", age: "", bio: "" });
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState<ProfileForm>({
+    fullName: "", email: "", age: "", bio: "",
+  });
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileError, setProfileError] = useState("");
-  const updateProfile = useUpdateStudentProfile();
+  const [activeLesson, setActiveLesson] = useState<ActiveLesson | null | undefined>(undefined);
 
   useEffect(() => {
     if (!authLoading && !token) setLocation("/login");
@@ -47,16 +61,60 @@ export default function Dashboard() {
   const { data: teachers = [] } = useGetStudentTeachers({
     query: { queryKey: getGetStudentTeachersQueryKey(), enabled: !!token },
   });
-  const { data: todayLessons = [] } = useGetStudentTodayLessons({
-    query: { queryKey: getGetStudentTodayLessonsQueryKey(), enabled: !!token },
+  const { data: hwSummary } = useGetStudentHomeworkSummary({
+    query: { queryKey: getGetStudentHomeworkSummaryQueryKey(), enabled: !!token },
   });
 
-  // Redirect non-students — wait until profile is fully loaded to avoid stale-cache race
   useEffect(() => {
     if (authLoading || !user) return;
     if (user.role === "admin") setLocation("/admin");
     else if (user.role === "teacher") setLocation("/teacher");
   }, [user, authLoading, setLocation]);
+
+  // Sequentially search all enrolled subjects for an active teacher lesson
+  useEffect(() => {
+    if (!token || schedule.length === 0) return;
+    const uniqueSubjects = [...new Set(schedule.map((s) => s.subject))];
+    let cancelled = false;
+    const tryNext = async (i: number) => {
+      if (cancelled || i >= uniqueSubjects.length) {
+        if (!cancelled) setActiveLesson(null);
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/student/course-lessons?subject=${encodeURIComponent(uniqueSubjects[i])}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) { tryNext(i + 1); return; }
+        const lessons: any[] = await res.json();
+        const active = lessons.find((l) => l.status === "active");
+        if (active && !cancelled) {
+          const entry = schedule.find(
+            (s) => s.subject.toLowerCase() === uniqueSubjects[i].toLowerCase()
+          );
+          setActiveLesson({
+            id: active.id,
+            subject: uniqueSubjects[i],
+            teacherName: entry?.teacherName ?? (teachers[0] as any)?.teacherName ?? "",
+            title: active.title,
+            lessonNumber: active.lessonNumber,
+            paragraphNumber: active.paragraphNumber,
+            textbookTitle: active.textbookTitle,
+            chapterTitle: active.chapterTitle,
+            pagesFrom: active.pagesFrom,
+            pagesTo: active.pagesTo,
+          });
+        } else {
+          tryNext(i + 1);
+        }
+      } catch {
+        tryNext(i + 1);
+      }
+    };
+    tryNext(0);
+    return () => { cancelled = true; };
+  }, [token, schedule, teachers]);
 
   if (authLoading || dashLoading) {
     return (
@@ -67,348 +125,422 @@ export default function Dashboard() {
   }
   if (!user || user.role !== "student") return null;
 
-  const todayLessonMap = new Map(todayLessons.map((l) => [l.scheduleId, l]));
-
   const todayArm = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
-  const todayItems = schedule.filter(
-    (s) => s.day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "")
-  );
-
-  const grouped: Record<string, typeof schedule> = {};
-  for (const item of schedule) {
-    if (!grouped[item.day]) grouped[item.day] = [];
-    grouped[item.day].push(item);
-  }
-  const sortedDays = Object.keys(grouped).sort(
-    (a, b) => (DAY_ORDER[a] ?? 99) - (DAY_ORDER[b] ?? 99)
-  );
+  const todayDate = new Date().toLocaleDateString("hy-AM", {
+    day: "numeric", month: "long", year: "numeric",
+  });
+  const todayItems = [...schedule]
+    .filter(
+      (s) =>
+        s.day.toLowerCase().replace(/\./g, "") ===
+        todayArm.toLowerCase().replace(/\./g, "")
+    )
+    .sort((a, b) => a.time.localeCompare(b.time));
 
   const subjects = dashboard?.subjects ?? [];
+  const stats = dashboard?.stats ?? {
+    completedLessons: 0, averageScore: 0, pendingHomework: 0, overallProgress: 0,
+  };
 
-  const pctColor = (pct: number) =>
-    pct >= 80 ? "bg-teal-400" : pct >= 50 ? "bg-amber-400" : "bg-primary";
-
-  const pctBadge = (pct: number) =>
-    pct >= 80
-      ? { cls: "bg-teal-400/20 text-teal-400", text: "Յուրացված" }
-      : pct >= 50
-      ? { cls: "bg-amber-400/20 text-amber-400", text: "Ընթացքում" }
-      : { cls: "bg-white/10 text-muted-foreground", text: "Չսկսած" };
+  const hwItems: any[] = (hwSummary as any)?.items ?? [];
+  const activeHw = hwItems.filter(
+    (h) => h.status === "not_submitted" || h.status === "pending"
+  );
 
   const inputCls =
     "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "overview",  label: "Ընդհանուր" },
-    { key: "schedule",  label: "Դասացուցակ 📅" },
-    { key: "subjects",  label: "Առարկաներ 📚" },
-    { key: "teachers",  label: "Ուսուցիչներ 👨‍🏫" },
-    { key: "profile",   label: "Անձնական 📋" },
-  ];
-
-  const findSubject = (subjectName: string) =>
-    subjects.find((x) => x.subject.toLowerCase() === subjectName.toLowerCase());
-
-  // Next upcoming lesson: sorted by DAY_ORDER then time; wrap to start of week if nothing later today
-  const todayOrder = DAY_ORDER[Object.keys(DAY_ORDER).find(
-    (k) => k.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "")
-  ) ?? ""] ?? -1;
-  const sortedSchedule = [...schedule].sort((a, b) => {
-    const da = DAY_ORDER[a.day] ?? 99;
-    const db = DAY_ORDER[b.day] ?? 99;
-    return da !== db ? da - db : a.time.localeCompare(b.time);
-  });
-  const nextLesson =
-    sortedSchedule.find((s) => (DAY_ORDER[s.day] ?? 99) > todayOrder) ??
-    sortedSchedule[0] ??
-    null;
+  const SectionTitle = ({ emoji, text }: { emoji: string; text: string }) => (
+    <h2 className="flex items-center gap-2 text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
+      <span>{emoji}</span>
+      {text}
+    </h2>
+  );
 
   return (
     <div className="min-h-[100dvh] bg-background text-white">
       <QuickSwitch />
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header className="border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+        <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
+          <div className="font-bold text-base bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
             myaiteacher
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground hidden sm:block">{user.fullName}</span>
-            <button onClick={logout} className="text-sm text-muted-foreground hover:text-white transition-colors">
-              Ելք
+            <button
+              onClick={() => setShowProfile((v) => !v)}
+              className="text-sm text-muted-foreground hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              👤 <span className="hidden sm:inline">{user.fullName}</span>
+            </button>
+            <button
+              onClick={logout}
+              className="text-sm text-muted-foreground hover:text-white transition-colors"
+            >
+              Ելq
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="max-w-5xl mx-auto px-5 py-8 space-y-12">
 
-        {/* Greeting */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">Բարի գալուստ, {user.fullName} 👋</h1>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 overflow-x-auto mb-6">
-          {tabs.map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
-                tab === t.key ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"
-              }`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── OVERVIEW — full schedule with lesson links ── */}
-        {tab === "overview" && (
-          <div>
-            {schedule.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground">
-                <div className="text-5xl mb-4">📅</div>
-                <p>Դասացուցակ չկա · Ադմինը կամ ուսուցիչը պետք է ավելացնի</p>
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {sortedDays.map((day) => {
-                  const items = grouped[day];
-                  const isToday = day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "");
-                  return (
-                    <div key={day}>
-                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-                        {day}
-                        {isToday && (
-                          <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full normal-case tracking-normal">
-                            Այսօր
-                          </span>
-                        )}
-                      </h3>
-                      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {items.slice().sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
-                          const todayItem = todayLessonMap.get(s.id);
-                          const sub = findSubject(s.subject);
-                          const lessonHref = todayItem?.lessonId
-                            ? `/lessons/${todayItem.lessonId}`
-                            : sub
-                            ? `/subjects/${sub.id}`
-                            : null;
-                          return (
-                            <div key={s.id} className="bg-card/60 border border-white/10 rounded-2xl p-5 flex flex-col gap-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-teal-400 font-mono text-base font-bold">{s.time}</span>
-                                <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full">{s.className}</span>
-                              </div>
-                              <div className="font-semibold text-lg">{s.subject}</div>
-                              <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName}</div>
-                              {lessonHref ? (
-                                <Link
-                                  href={lessonHref}
-                                  className="mt-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
-                                >
-                                  📖 Սովորել
-                                </Link>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Առարկայի կապ չկա</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+        {/* ── SECTION 1: Welcome ── */}
+        <section>
+          <h1 className="text-2xl font-bold mb-1">
+            Барі галust, {user.fullName} 👋
+          </h1>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>Дасаран՝ 7Ա</span>
+            <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
+            <span>{todayDate}</span>
           </div>
-        )}
+        </section>
 
-        {/* ── SCHEDULE ── */}
-        {tab === "schedule" && (
-          <div>
-            {schedule.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground">
-                <div className="text-5xl mb-4">📅</div>
-                <p>Դասացուցակ չկա · Ադմինը կամ ուսուցիչը պետք է ավելացնի</p>
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {sortedDays.map((day) => {
-                  const items = grouped[day];
-                  const isToday = day.toLowerCase().replace(/[.]/g, "") === todayArm.toLowerCase().replace(/[.]/g, "");
-                  return (
-                    <div key={day}>
-                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-                        {day}
-                        {isToday && (
-                          <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full normal-case tracking-normal">
-                            Այսօր
-                          </span>
-                        )}
-                      </h3>
-                      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {items.slice().sort((a, b) => a.time.localeCompare(b.time)).map((s) => {
-                          const sub = findSubject(s.subject);
-                          return (
-                            <div key={s.id} className="bg-card/60 border border-white/10 rounded-2xl p-5 flex flex-col gap-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-teal-400 font-mono text-base font-bold">{s.time}</span>
-                                <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full">{s.className}</span>
-                              </div>
-                              <div className="font-semibold text-lg">{s.subject}</div>
-                              <div className="text-xs text-muted-foreground">👨‍🏫 {s.teacherName}</div>
-                              {sub ? (
-                                <Link href={`/subjects/${sub.id}`}
-                                  className="mt-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity">
-                                  📖 Սովորել
-                                </Link>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Առարկայի կապ չկա</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        {/* ── SECTION 2: Today's active lesson ── */}
+        <section>
+          <SectionTitle emoji="📖" text="АЙSORВADA DASЫ" />
 
-        {/* ── SUBJECTS ── */}
-        {tab === "subjects" && (
-          <div>
-            {subjects.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground">
-                <div className="text-5xl mb-4">📚</div>
-                <p>Առարկաներ չկան</p>
-              </div>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {subjects.map((sub) => {
-                  const pct = Math.round(sub.progressPercent);
-                  const { cls, text } = pctBadge(pct);
-                  return (
-                    <div key={sub.id} className="bg-card/60 border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-semibold text-lg">{sub.subject}</h3>
-                          {sub.grade && (
-                            <p className="text-xs text-muted-foreground mt-0.5">🎓 {sub.grade}</p>
-                          )}
-                        </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${cls}`}>{text}</span>
-                      </div>
-                      <div className="flex justify-between text-sm text-muted-foreground">
-                        <span>{sub.completedLessons}/{sub.totalLessons} դաս</span>
-                        <span className="font-bold text-white">{pct}%</span>
-                      </div>
-                      <div className="h-2 w-full bg-background rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${pctColor(pct)}`} style={{ width: `${pct}%` }} />
-                      </div>
-                      <Link href={`/subjects/${sub.id}`}
-                        className="mt-auto flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity">
-                        📖 Դիտել
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── TEACHERS ── */}
-        {tab === "teachers" && (
-          <div>
-            {teachers.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground">
-                <div className="text-5xl mb-4">👨‍🏫</div>
-                <p>Ուսուցիչ չկան · Ադմինը պետք է նշանակի</p>
-              </div>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {teachers.map((t) => (
-                  <div key={t.teacherId} className="bg-card/60 border border-white/10 rounded-2xl p-6">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-lg font-bold text-primary mb-4">
-                      {t.teacherName.slice(0, 1)}
-                    </div>
-                    <div className="font-semibold text-lg mb-1">{t.teacherName}</div>
-                    {t.subject && <div className="text-sm text-secondary mb-1">📚 {t.subject}</div>}
-                    <div className="text-xs text-muted-foreground">📋 {t.className}</div>
-                    {t.school && <div className="text-xs text-muted-foreground mt-1">🏫 {t.school}</div>}
+          {activeLesson === undefined ? (
+            <div className="rounded-2xl border border-white/10 bg-card/40 p-8 flex items-center justify-center gap-3 text-muted-foreground text-sm">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              Bayramnavoum e...
+            </div>
+          ) : activeLesson === null ? (
+            <div className="rounded-2xl border border-white/10 bg-card/40 p-8 text-center text-muted-foreground">
+              <div className="text-4xl mb-3">📭</div>
+              <p className="text-sm">Айsord nor das chi nshanakvel։</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background/60 to-secondary/5 p-6 sm:p-8">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+                <div className="flex-1 space-y-3 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/20">
+                      {activeLesson.subject}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      👨‍🏫 {activeLesson.teacherName}
+                    </span>
                   </div>
-                ))}
+                  {activeLesson.lessonNumber != null && (
+                    <div className="text-xs text-muted-foreground">
+                      Дас #{activeLesson.lessonNumber}
+                    </div>
+                  )}
+                  <h3 className="text-xl font-bold leading-snug">{activeLesson.title}</h3>
+                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    {activeLesson.chapterTitle && (
+                      <span>📂 {activeLesson.chapterTitle}</span>
+                    )}
+                    {activeLesson.paragraphNumber && (
+                      <span>§{activeLesson.paragraphNumber}</span>
+                    )}
+                    {(activeLesson.pagesFrom || activeLesson.pagesTo) && (
+                      <span>
+                        Эj {activeLesson.pagesFrom ?? "?"}–{activeLesson.pagesTo ?? "?"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Link
+                  href={`/chat/${activeLesson.id}`}
+                  className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-base hover:opacity-90 active:scale-[0.98] transition-all shadow-xl shadow-primary/25 whitespace-nowrap shrink-0"
+                >
+                  ▶ СKSEL DASЫ
+                </Link>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </section>
 
-        {/* ── PROFILE ── */}
-        {tab === "profile" && (
-          <div className="max-w-xl">
-            <h2 className="font-semibold text-lg mb-5">📋 Անձնական տվյալներ</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setProfileError("");
-                setProfileSaved(false);
-                updateProfile.mutate({ data: {
-                  fullName: profileForm.fullName || undefined,
-                  email: profileForm.email || undefined,
-                  age: profileForm.age ? parseInt(profileForm.age) : undefined,
-                  bio: profileForm.bio || undefined,
-                } }, {
-                  onSuccess: () => setProfileSaved(true),
-                  onError: () => setProfileError("Սխալ · Փորձեք կրկին"),
-                });
-              }}
-              className="bg-card/60 border border-white/10 rounded-2xl p-6 space-y-4"
-            >
-              {profileSaved && <p className="text-teal-400 text-sm">Պահպանվեց ✓</p>}
-              {profileError && <p className="text-destructive text-sm">{profileError}</p>}
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Անուն Ազգանուն</label>
-                <input className={inputCls} value={profileForm.fullName}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, fullName: e.target.value }))}
-                  placeholder={user.fullName} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Email</label>
-                <input type="email" className={inputCls} value={profileForm.email}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder={(user as any).email || "example@mail.com"} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Տարիք (ամիք)</label>
-                <input type="number" min="5" max="25" className={inputCls} value={profileForm.age}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, age: e.target.value }))}
-                  placeholder={(user as any).age ? String((user as any).age) : "14"} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">Նկարագրություն (կամայական)</label>
-                <textarea rows={3} className={`${inputCls} resize-none`} value={profileForm.bio}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, bio: e.target.value }))}
-                  placeholder="..." />
-              </div>
-              <button type="submit" disabled={updateProfile.isPending}
-                className="px-6 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium disabled:opacity-50 transition-all">
-                {updateProfile.isPending ? "..." : "Պահպանել"}
-              </button>
-            </form>
+        {/* ── SECTION 3: Subjects ── */}
+        <section>
+          <SectionTitle emoji="📚" text="IM ARRAРAKNERЫ" />
+          {subjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Arraрakner chkan · Adminа kaм usuciche petq e aveli
+            </p>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {subjects.map((sub) => {
+                const entry = schedule.find(
+                  (s) => s.subject.toLowerCase() === sub.subject.toLowerCase()
+                );
+                const pct = Math.round(sub.progressPercent ?? 0);
+                return (
+                  <Link
+                    key={sub.id}
+                    href={`/subjects/${sub.id}`}
+                    className="block rounded-2xl border border-white/10 bg-card/60 p-5 hover:border-primary/30 hover:bg-card/80 transition-colors group"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="font-semibold group-hover:text-primary transition-colors">
+                        {sub.subject}
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {sub.completedLessons}/{sub.totalLessons}
+                      </span>
+                    </div>
+                    {entry?.teacherName && (
+                      <div className="text-xs text-muted-foreground mb-3">
+                        👨‍🏫 {entry.teacherName}
+                      </div>
+                    )}
+                    <div className="h-1.5 w-full bg-background rounded-full overflow-hidden mt-auto">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1.5 text-right">{pct}%</div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-            <div className="mt-4 bg-card/30 border border-white/10 rounded-2xl p-4">
-              <h3 className="text-sm font-medium mb-2 text-muted-foreground">Լրացուցիչ տվյալներ</h3>
-              <div className="text-sm space-y-1">
-                <div><span className="text-muted-foreground">Օգտանուն:</span> <span className="ml-2">{user.username}</span></div>
-                {(user as any).email && <div><span className="text-muted-foreground">Email:</span> <span className="ml-2">{(user as any).email}</span></div>}
-                {(user as any).age && <div><span className="text-muted-foreground">Տարիք:</span> <span className="ml-2">{(user as any).age}</span></div>}
-                {(user as any).bio && <div><span className="text-muted-foreground">Նկարագր:</span> <span className="ml-2 text-muted-foreground">{(user as any).bio}</span></div>}
+        {/* ── SECTION 4: Homework ── */}
+        <section>
+          <SectionTitle emoji="📝" text="TNYIN ASHKHATANKNER" />
+          {activeHw.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-card/40 p-5 text-center text-sm text-muted-foreground">
+              Aktiv tnayin ashkhatank chka ✓
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activeHw.map((h: any) => (
+                <div
+                  key={h.id}
+                  className="rounded-xl border border-white/10 bg-card/60 p-4 flex items-center gap-4"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-muted-foreground mb-0.5">
+                      {h.lessonTitle ?? "Дас"}
+                    </div>
+                    <div className="font-medium text-sm truncate">{h.title}</div>
+                    {h.createdAt && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(h.createdAt).toLocaleDateString("hy-AM")}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                      h.status === "pending"
+                        ? "bg-amber-400/15 text-amber-400"
+                        : "bg-white/10 text-muted-foreground"
+                    }`}
+                  >
+                    {h.status === "pending" ? "Ynthatsum" : "Chi nurarkvel"}
+                  </span>
+                  <Link
+                    href={`/homework/${h.id}`}
+                    className="shrink-0 px-3 py-1.5 text-xs rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
+                  >
+                    Bacel
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ── SECTION 5: Today's schedule ── */}
+        <section>
+          <SectionTitle emoji="📅" text="АЙSORVADA DASATSУTSAK" />
+          {todayItems.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-card/40 p-5 text-center text-sm text-muted-foreground">
+              Айsord dasatsutsak chka
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-card/60 divide-y divide-white/8 overflow-hidden">
+              {todayItems.map((s) => {
+                const sub = subjects.find(
+                  (x) => x.subject.toLowerCase() === s.subject.toLowerCase()
+                );
+                return (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/5 transition-colors"
+                  >
+                    <span className="text-primary font-mono text-sm font-bold w-14 shrink-0">
+                      {s.time}
+                    </span>
+                    <span className="flex-1 font-medium text-sm">{s.subject}</span>
+                    <span className="text-xs text-muted-foreground hidden sm:block">
+                      👨‍🏫 {s.teacherName}
+                    </span>
+                    {sub ? (
+                      <Link
+                        href={`/subjects/${sub.id}`}
+                        className="text-xs text-muted-foreground hover:text-primary transition-colors ml-2"
+                      >
+                        →
+                      </Link>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ── SECTION 6: Progress ── */}
+        <section>
+          <SectionTitle emoji="📈" text="IM ARRAJNTHACY" />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-2xl border border-white/10 bg-card/60 p-5 text-center">
+              <div className="text-3xl font-bold text-primary mb-1">
+                {stats.completedLessons}
+              </div>
+              <div className="text-xs text-muted-foreground leading-tight">
+                Avartvatc дасеr
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-card/60 p-5 text-center">
+              <div className="text-3xl font-bold text-teal-400 mb-1">
+                {stats.averageScore > 0 ? stats.averageScore : "—"}
+              </div>
+              <div className="text-xs text-muted-foreground leading-tight">
+                Mijnin gnahatakan
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-card/60 p-5 text-center">
+              <div className="text-3xl font-bold text-amber-400 mb-1">
+                {stats.pendingHomework}
+              </div>
+              <div className="text-xs text-muted-foreground leading-tight">
+                Mnacel ashkhatank
               </div>
             </div>
           </div>
+        </section>
+
+        {/* ── Profile (toggled from header) ── */}
+        {showProfile && (
+          <section>
+            <SectionTitle emoji="👤" text="ANDZNAКAN TVYALNER" />
+            <div className="max-w-xl">
+              <div className="bg-card/60 border border-white/10 rounded-2xl p-5 mb-4 space-y-1 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Ogtanunn:</span>{" "}
+                  <span className="ml-2">{user.username}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Anun:</span>{" "}
+                  <span className="ml-2">{user.fullName}</span>
+                </div>
+                {(user as any).email && (
+                  <div>
+                    <span className="text-muted-foreground">Email:</span>{" "}
+                    <span className="ml-2">{(user as any).email}</span>
+                  </div>
+                )}
+              </div>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setProfileError("");
+                  setProfileSaved(false);
+                  try {
+                    const res = await fetch("/api/student/profile", {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        fullName: profileForm.fullName || undefined,
+                        email: profileForm.email || undefined,
+                        age: profileForm.age ? parseInt(profileForm.age) : undefined,
+                        bio: profileForm.bio || undefined,
+                      }),
+                    });
+                    if (res.ok) setProfileSaved(true);
+                    else setProfileError("Skhalt · Profayeq krkin");
+                  } catch {
+                    setProfileError("Skhalt · Profayeq krkin");
+                  }
+                }}
+                className="bg-card/60 border border-white/10 rounded-2xl p-6 space-y-4"
+              >
+                {profileSaved && (
+                  <p className="text-teal-400 text-sm">Pahpanvets ✓</p>
+                )}
+                {profileError && (
+                  <p className="text-destructive text-sm">{profileError}</p>
+                )}
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Anun Azganun
+                  </label>
+                  <input
+                    className={inputCls}
+                    value={profileForm.fullName}
+                    onChange={(e) =>
+                      setProfileForm((f) => ({ ...f, fullName: e.target.value }))
+                    }
+                    placeholder={user.fullName}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    className={inputCls}
+                    value={profileForm.email}
+                    onChange={(e) =>
+                      setProfileForm((f) => ({ ...f, email: e.target.value }))
+                    }
+                    placeholder={(user as any).email || "example@mail.com"}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Tarik
+                  </label>
+                  <input
+                    type="number"
+                    min="5"
+                    max="25"
+                    className={inputCls}
+                    value={profileForm.age}
+                    onChange={(e) =>
+                      setProfileForm((f) => ({ ...f, age: e.target.value }))
+                    }
+                    placeholder={
+                      (user as any).age ? String((user as any).age) : "14"
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Nkaragrutyun
+                  </label>
+                  <textarea
+                    rows={3}
+                    className={`${inputCls} resize-none`}
+                    value={profileForm.bio}
+                    onChange={(e) =>
+                      setProfileForm((f) => ({ ...f, bio: e.target.value }))
+                    }
+                    placeholder="..."
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-medium hover:opacity-90 transition-all"
+                >
+                  Pahpanel
+                </button>
+              </form>
+            </div>
+          </section>
         )}
 
       </div>

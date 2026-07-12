@@ -1,0 +1,265 @@
+Redesign ONLY the student dashboard (/dashboard).
+
+IMPORTANT
+
+- Do not modify authentication.
+- Do not modify routes.
+- Do not modify APIs.
+- Do not modify teacher pages.
+- Do not modify lesson database.
+- Preserve all existing functionality.
+- Keep the current dark design language.
+- Keep all visible text in correct Armenian.
+- Do not introduce Russian, transliterated or mixed-script text.
+
+The goal is to transform the student dashboard into a Learning Dashboard instead of a timetable page.
+
+====================================================
+1. REMOVE THE CURRENT HOME LAYOUT
+====================================================
+
+Remove the current large timetable-first layout.
+
+The dashboard should focus on learning.
+
+====================================================
+2. NEW DASHBOARD STRUCTURE
+====================================================
+
+Create the following sections in this order.
+
+---------------------------------------
+SECTION 1
+---------------------------------------
+
+Բարի գալուստ, {Student Name}
+
+Below it display:
+
+Դասարան՝ 7Ա
+
+Today's date.
+
+---------------------------------------
+SECTION 2
+---------------------------------------
+
+📖 ԱՅՍՕՐՎԱ ԴԱՍԸ
+
+This is the most important block.
+
+If there is an active lesson from the teacher:
+
+display
+
+Առարկա
+
+Ուսուցիչ
+
+Դասի վերնագիր
+
+Թեմա
+
+Պարագրաֆ
+
+Էջեր
+
+Large primary button:
+
+▶ ՍԿՍԵԼ ԴԱՍԸ
+
+Do NOT write
+
+"Սկսել սովորել ԱԲ ուսուցչի հետ"
+
+The student only needs to see:
+
+ՍԿՍԵԼ ԴԱՍԸ
+
+Clicking this button should open the AI lesson page for this lesson.
+
+If there is no active lesson display
+
+Այսօր նոր դաս չի նշանակվել։
+
+====================================================
+3. SECTION
+====================================================
+
+📚 ԻՄ ԱՌԱՐԿԱՆԵՐԸ
+
+Show cards.
+
+Each card contains
+
+Առարկա
+
+Ուսուցիչ
+
+Number of completed lessons
+
+Current lesson if exists
+
+Clicking the card opens the subject page.
+
+====================================================
+4. SECTION
+====================================================
+
+📝 ՏՆԱՅԻՆ ԱՇԽԱՏԱՆՔՆԵՐ
+
+Show only active homework.
+
+Each card
+
+Առարկա
+
+Վերնագիր
+
+Վերջնաժամկետ
+
+Status
+
+Button
+
+Բացել
+
+====================================================
+5. SECTION
+====================================================
+
+📅 ԱՅՍՕՐՎԱ ԴԱՍԱՑՈՒՑԱԿ
+
+Display today's lessons only.
+
+Example
+
+09:00 Անգլերեն
+
+10:00 Մաթեմատիկա
+
+11:00 Հայոց լեզու
+
+Click opens subject page.
+
+====================================================
+6. SECTION
+====================================================
+
+📈 ԻՄ ԱՌԱՋԸՆԹԱՑԸ
+
+Simple cards only.
+
+Completed lessons
+
+Average score
+
+Homework completed
+
+No charts yet.
+
+====================================================
+7. REMOVE
+====================================================
+
+Remove from dashboard:
+
+large empty timetable blocks
+
+unused lesson cards
+
+Russian text
+
+placeholder subjects
+
+fake demo content
+
+Keep only real student data.
+
+====================================================
+8. BUTTON STYLE
+====================================================
+
+The most important button on the page is
+
+▶ ՍԿՍԵԼ ԴԱՍԸ
+
+Large
+
+Gradient
+
+Centered
+
+Easy to notice
+
+Only appears if today's lesson exists.
+
+====================================================
+9. SUBJECT PAGE (PREPARE ONLY)
+====================================================
+
+Do not redesign completely yet.
+
+Just make sure clicking a subject opens the subject page.
+
+Later this page will contain
+
+Today's lesson
+
+All lessons
+
+Completed lessons
+
+AI lesson button
+
+Do not implement that yet.
+
+====================================================
+10. KEEP
+====================================================
+
+Keep existing
+
+student authentication
+
+student profile
+
+teacher assignment logic
+
+lesson APIs
+
+====================================================
+11. ACCEPTANCE TEST
+====================================================
+
+Dashboard must show
+
+✓ Welcome
+
+✓ Today's lesson
+
+✓ Start Lesson button
+
+✓ Subjects
+
+✓ Homework
+
+✓ Today's timetable
+
+✓ Progress
+
+No Russian text
+
+No demo placeholders
+
+No broken routes
+
+No API regressions.
+
+Report only
+
+files changed
+
+components changed
+
+data sources used
