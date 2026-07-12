@@ -1,2 +1,2 @@
-- [Armenian UTF-8 file writes](armenian-writes.md) — use Python template+replace to write files with Armenian; never f-strings or bash heredocs
-- [Dashboard sidebar architecture](dashboard-sidebar.md) — left sidebar with state-based section switching (no URL changes); Section type union drives content
+- [Armenian Python scripts](armenian-python-scripts.md) — avoid `\u{XXX}` JS syntax or 3-digit `\uXXX` in Python strings; use actual Unicode chars or `\uXXXX` (4-digit) / `\UXXXXXXXX` (8-digit).
+- [Dashboard architecture](dashboard-arch.md) — student dashboard uses 9 nav sections including homework (📋); user JWT has only `{id, username, role, fullName}` — no createdAt.

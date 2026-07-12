@@ -1,0 +1,563 @@
+Improve the STUDENT dashboard and navigation using only real data from the existing Admin, Teacher, Student, Lesson, Homework, Schedule, and Progress APIs.
+
+IMPORTANT:
+- Do not use fake demo data.
+- Do not hardcode student name, class, teacher name, subject, lesson title, schedule, homework, or progress.
+- Do not change authentication.
+- Do not break teacher or admin pages.
+- Do not remove existing working APIs.
+- Do not change database schemas unless absolutely required.
+- Reuse the current dark visual style.
+- Keep all visible text in correct Armenian.
+- Do not introduce English, Russian, transliterated Armenian, or mixed-script labels.
+- Before editing, inspect where every displayed value currently comes from.
+- Make targeted improvements to the student interface only.
+
+==================================================
+1. DATA OWNERSHIP — USE THE CORRECT SOURCE
+==================================================
+
+The student page must display real information from the correct source.
+
+A. DATA COMING FROM ADMIN
+
+Use Admin-created or Admin-managed data for:
+
+- Student full name
+- Student username
+- Student class
+- Class name
+- Subjects assigned to the class
+- Teachers assigned to the class or subject
+- School timetable
+- Student-to-class assignment
+- School name, if available
+
+Do not hardcode these values in the student frontend.
+
+B. DATA COMING FROM TEACHER
+
+Use Teacher-created or Teacher-managed data for:
+
+- Active/current lesson for each subject
+- Lesson title
+- Textbook author
+- Textbook title
+- Chapter/topic
+- Lesson number
+- Paragraph number
+- Page range
+- Lesson status
+- Teacher name
+- Assigned learning task
+- Lesson history
+- Teacher-approved homework
+- Teacher comments or feedback, when available
+
+C. DATA COMING FROM AI LEARNING SYSTEM
+
+Use AI-generated and stored data for:
+
+- Lesson completion
+- Mastery score
+- Learning time
+- Number of completed lessons
+- Detected learning difficulties
+- AI-generated homework proposal
+- Homework result
+- Progress summaries
+
+Do not display AI-generated homework to the student until it is approved by the human teacher.
+
+==================================================
+2. LEFT SIDEBAR
+==================================================
+
+Keep the left sidebar.
+
+Use these items in this exact order:
+
+🤖 ԱԲ ուսուցիչ
+🏠 Գլխավոր
+📝 Իմ անելիքները
+📚 Իմ առարկաները
+📋 Իմ տնայինները
+📅 Դասացուցակ
+📈 Իմ առաջընթացը
+📖 Գրադարան
+👤 Իմ պրոֆիլը
+
+Highlight the active item.
+
+The sidebar must work on desktop and collapse into a menu on mobile.
+
+Remove incorrect or mixed-language labels.
+
+==================================================
+3. STUDENT DASHBOARD — MAIN PAGE
+==================================================
+
+The main dashboard must answer:
+
+«Ի՞նչ պետք է անեմ հիմա»։
+
+At the top display real student data:
+
+Բարի գալուստ, {student.fullName}
+
+Դասարան՝ {class.name}
+
+Current date in Armenian.
+
+Use a reliable Armenian date formatter.
+Do not show Russian month names.
+
+==================================================
+4. “ԻՄ ԱՆԵԼԻՔՆԵՐԸ” — MOST IMPORTANT SECTION
+==================================================
+
+This section must display all currently assigned learning tasks.
+
+Do not limit this section to the timetable or to one subject.
+
+Each task comes from a teacher-assigned active lesson.
+
+Each card must display:
+
+- Առարկա
+- Ուսուցիչ
+- Դասի վերնագիր
+- Թեմա / Գլուխ
+- Դասի համարը
+- Պարագրաֆ
+- Էջեր
+- Work mode:
+  - Դասարանում
+  - Տանը
+
+Main action:
+
+▶ ՍԿՍԵԼ ԴԱՍԸ
+
+Clicking it must open the AI lesson page for that exact lessonId.
+
+Do not open a generic AI chat.
+
+If there are multiple assigned lessons from different teachers, display all of them.
+
+Sort by:
+1. lessons intended for classroom work
+2. lessons intended for home
+3. assignment creation time
+
+If there are no assigned lessons, show:
+
+Այս պահին հանձնարարված դաս չկա։
+
+==================================================
+5. TODAY SUMMARY
+==================================================
+
+At the top of the dashboard show a small summary:
+
+Այսօր՝ {completedToday} / {totalAssignedToday}
+
+Example:
+
+Այսօր՝ 1 / 3 ավարտված
+
+Use only real data.
+
+Do not count:
+- draft lessons
+- lessons that are not assigned to the student
+- unapproved homework
+
+When all tasks are completed, show:
+
+🎉 Այսօրվա անելիքներն ավարտված են։
+
+==================================================
+6. MY SUBJECTS
+==================================================
+
+Display only subjects assigned to the student’s class.
+
+Each subject card must use:
+
+- subject name from Admin/Class data
+- teacher name from teacher assignment data
+- visible lesson count
+- completed lesson count
+- progress percentage
+- current active lesson, if available
+
+Card example:
+
+Անգլերեն
+Ուսուցիչ՝ Լաուրա Քարհանյան
+Ավարտված դասեր՝ 3 / 12
+Առաջընթաց՝ 25%
+
+Button:
+
+ԲԱՑԵԼ
+
+Clicking opens the subject page.
+
+Do not show fake percentages.
+
+If progress data is unavailable, show:
+
+Առաջընթացի տվյալ դեռ չկա։
+
+Do not show 0% unless the real value is actually zero.
+
+==================================================
+7. SUBJECT PAGE
+==================================================
+
+The subject page must display data created by the teacher.
+
+Header:
+
+- Առարկա
+- Ուսուցիչ
+- Դասարան
+
+Sections:
+
+A. ԸՆԹԱՑԻԿ ԴԱՍ
+
+Show the teacher’s active lesson for this subject.
+
+Display:
+
+- textbook title
+- textbook author
+- chapter/topic
+- lesson number
+- paragraph
+- title
+- pages
+
+Button:
+
+▶ ՍԿՍԵԼ ԴԱՍԸ
+
+B. ԲՈԼՈՐ ԴԱՍԵՐԸ
+
+Display the teacher-created lesson list.
+
+Group lessons by:
+
+Դասագիրք
+→ Թեմա / Գլուխ
+→ Դասեր
+
+Student-visible statuses only:
+
+- Ընթացքի մեջ
+- Ավարտված
+
+Do not show:
+- draft lessons
+- internal statuses
+- technical IDs
+- teacher-only action buttons
+
+==================================================
+8. MY HOMEWORK
+==================================================
+
+Add the missing sidebar item and page:
+
+📋 ԻՄ ՏՆԱՅԻՆՆԵՐԸ
+
+Homework workflow:
+
+1. AI creates a homework proposal after an AI lesson.
+2. Human teacher reviews it.
+3. Teacher may edit, approve, or reject it.
+4. Only approved homework becomes visible to the student.
+5. Student clicks «Կատարել տնայինը».
+6. The homework opens in the AI Teacher workspace.
+7. AI guides and checks the work.
+8. The result is saved and becomes visible to the teacher.
+
+The student homework page must show only teacher-approved homework.
+
+Sections:
+
+- Պետք է կատարել
+- Ընթացքի մեջ
+- Ավարտված
+
+Each homework card must display:
+
+- Առարկա
+- Ուսուցիչ
+- Կապված դաս
+- Առաջադրանքի անվանում
+- Կարճ նկարագրություն
+- Նախատեսվող տևողություն, if available
+- Status
+
+Button for active homework:
+
+▶ ԿԱՏԱՐԵԼ ՏՆԱՅԻՆԸ
+
+Clicking must open the AI homework workspace with the correct homeworkId and lesson context.
+
+If no homework exists, show:
+
+Հաստատված տնային հանձնարարություն չկա։
+
+Do not display:
+- AI drafts
+- rejected homework
+- homework waiting for teacher approval
+
+==================================================
+9. TEACHER-SIDE HOMEWORK REVIEW — PREPARE DATA COMPATIBILITY
+==================================================
+
+Do not redesign the teacher page in this task.
+
+But ensure the student interface is compatible with teacher-approved homework.
+
+Expected teacher-side statuses:
+
+- ԱԲ-ի առաջարկ
+- Սպասում է հաստատման
+- Հաստատված
+- Մերժված
+- Ավարտված
+
+Student should receive homework only when status is:
+
+approved / assigned
+
+Use the existing internal status naming if already implemented.
+
+==================================================
+10. TODAY’S TIMETABLE
+==================================================
+
+Use the real timetable created by Admin.
+
+Display only the student’s class schedule.
+
+Show today’s Armenian weekday.
+
+Each row:
+
+- start time
+- end time
+- subject
+- teacher
+
+Clicking a subject should open its subject page.
+
+If no schedule exists for today, show:
+
+Այսօրվա դասացուցակ չկա։
+
+Do not show large empty placeholder cards.
+
+==================================================
+11. PROGRESS PAGE
+==================================================
+
+Use only real stored progress data.
+
+Show:
+
+- Ավարտված դասեր
+- Ավարտված տնայիններ
+- Միջին արդյունք
+- ԱԲ-ի հետ սովորելու ժամանակ
+
+Then show per-subject progress:
+
+- Subject
+- completed lessons
+- total visible lessons
+- mastery score
+- progress bar
+
+If a metric is not yet available, show:
+
+Տվյալ դեռ չկա
+
+Do not display:
+- “—” without explanation
+- fake values
+- hardcoded numbers
+- English labels such as “Graded”, “Average”, “AI time”
+
+Correct Armenian labels:
+
+- Ավարտված դասեր
+- Ստուգված աշխատանքներ
+- Միջին արդյունք
+- ԱԲ-ի հետ սովորելու ժամանակ
+
+==================================================
+12. AI TEACHER PAGE
+==================================================
+
+The sidebar item:
+
+🤖 ԱԲ ուսուցիչ
+
+must not open a generic empty chat.
+
+For now, create a simple AI Learning Center page that lists:
+
+- lessons currently assigned
+- homework currently assigned
+- last unfinished AI session, if available
+
+Each item must have:
+
+ՇԱՐՈՒՆԱԿԵԼ
+
+or
+
+ՍԿՍԵԼ
+
+Do not implement the full AI teaching engine in this task.
+
+Prepare navigation so later:
+
+lessonId → AI lesson workspace
+homeworkId → AI homework workspace
+
+==================================================
+13. LIBRARY
+==================================================
+
+Keep the library as a simple placeholder for now.
+
+Use correct Armenian:
+
+Գրադարան
+
+Նյութերի գրադարանը հասանելի կլինի շուտով։
+
+Button:
+
+ՇՈՒՏՈՎ
+
+Do not show transliterated text.
+
+==================================================
+14. PROFILE
+==================================================
+
+Display real student data:
+
+- full name
+- username
+- class
+- email, if available
+- school
+- registration date
+
+Use correct Armenian date formatting.
+
+Do not allow editing unless a working update API already exists.
+
+==================================================
+15. LANGUAGE CLEANUP
+==================================================
+
+Remove all mixed or transliterated labels, including examples such as:
+
+- “das”
+- “Bacel”
+- “Aysor”
+- “Tnayin”
+- “Graded”
+- “AI-i het Sովորելու Zham”
+- Russian date strings
+- any Armenian word written with Latin or Cyrillic characters
+
+All visible UI must be correct Armenian Unicode text.
+
+==================================================
+16. EMPTY STATES
+==================================================
+
+Use clear Armenian empty states.
+
+Examples:
+
+Այս պահին հանձնարարված դաս չկա։
+Հաստատված տնային հանձնարարություն չկա։
+Այսօրվա դասացուցակ չկա։
+Առաջընթացի տվյալ դեռ չկա։
+Առարկաներ դեռ նշանակված չեն։
+
+Avoid large empty screens with only icons.
+
+==================================================
+17. DO NOT BREAK EXISTING SYSTEM
+==================================================
+
+Do not modify or break:
+
+- admin authentication
+- teacher authentication
+- student authentication
+- class assignment
+- timetable creation
+- teacher lesson creation
+- teacher lesson activation
+- lesson edit/delete
+- existing lesson progress
+- current routes
+- API generation
+
+Reuse existing endpoints whenever possible.
+
+If data required by the student page does not exist in an endpoint:
+- first inspect current backend models
+- add the smallest safe API extension
+- preserve existing response compatibility
+- do not duplicate data unnecessarily
+
+==================================================
+18. ACCEPTANCE TESTS
+==================================================
+
+Verify:
+
+1. Student name and class come from real student/admin data.
+2. Subject list comes from the student’s assigned class.
+3. Teacher names come from teacher assignments.
+4. Timetable comes from Admin-created schedule.
+5. Assigned lessons come from Teacher-created lesson data.
+6. Only active lessons appear in «Իմ անելիքները».
+7. Draft lessons are hidden from students.
+8. «Սկսել դասը» opens the correct lessonId.
+9. Homework menu exists.
+10. Only teacher-approved homework appears to students.
+11. «Կատարել տնայինը» opens the correct homework context.
+12. Progress uses real stored results.
+13. No fake data remains.
+14. No mixed-language or transliterated labels remain.
+15. Desktop and mobile sidebar work.
+16. Teacher and Admin pages continue working.
+17. Existing APIs and authentication remain functional.
+
+After implementation, report:
+
+- files changed
+- APIs reused
+- APIs extended
+- which data comes from Admin
+- which data comes from Teacher
+- which data comes from AI/progress
+- how homework approval controls student visibility

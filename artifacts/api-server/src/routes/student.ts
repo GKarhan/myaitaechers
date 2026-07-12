@@ -182,6 +182,8 @@ router.get("/student/homework-summary", requireAuth, async (req: AuthRequest, re
       id: homeworkTable.id,
       lessonId: homeworkTable.lessonId,
       lessonTitle: lessonsTable.title,
+      subject: coursesTable.name,
+      teacherName: usersTable.fullName,
       title: homeworkTable.title,
       task: homeworkTable.task,
       status: homeworkTable.status,
@@ -193,6 +195,10 @@ router.get("/student/homework-summary", requireAuth, async (req: AuthRequest, re
     })
     .from(homeworkTable)
     .innerJoin(lessonsTable, eq(homeworkTable.lessonId, lessonsTable.id))
+    .innerJoin(coursesTable, eq(lessonsTable.courseId, coursesTable.id))
+    .innerJoin(classesTable, eq(coursesTable.classId, classesTable.id))
+    .innerJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
+    .innerJoin(usersTable, eq(teachersTable.userId, usersTable.id))
     .where(eq(homeworkTable.studentId, userId))
     .orderBy(homeworkTable.createdAt);
 

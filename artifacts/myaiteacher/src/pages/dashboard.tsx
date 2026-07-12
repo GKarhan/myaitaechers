@@ -12,14 +12,15 @@ import {
 } from "@workspace/api-client-react";
 
 type Section =
-  | "ai-teacher" | "home" | "tasks" | "subjects"
+  | "ai-teacher" | "home" | "tasks" | "subjects" | "homework"
   | "schedule" | "progress" | "library" | "profile";
 
 type AssignedLesson = {
   id: number; subject: string; teacherName: string; title: string;
   lessonNumber?: number | null; paragraphNumber?: string | null;
-  textbookTitle?: string | null; chapterTitle?: string | null;
-  pagesFrom?: number | null; pagesTo?: number | null; status: string;
+  textbookTitle?: string | null; textbookAuthor?: string | null;
+  chapterTitle?: string | null; pagesFrom?: number | null;
+  pagesTo?: number | null; status: string; assignedAt?: string | null;
 };
 
 const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
@@ -27,6 +28,7 @@ const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
   { key: "home",       emoji: "🏠", label: "Գլխավոր" },
   { key: "tasks",      emoji: "📝", label: "Իմ անելիքները" },
   { key: "subjects",   emoji: "📚", label: "Իմ առարկաները" },
+  { key: "homework",   emoji: "📋", label: "Իմ տնայինները" },
   { key: "schedule",   emoji: "📅", label: "Դասացուցակ" },
   { key: "progress",   emoji: "📈", label: "Իմ առաջընթացը" },
   { key: "library",    emoji: "📖", label: "Գրադարան" },
@@ -35,10 +37,10 @@ const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
 
 function lessonStatusBadge(status: string): { text: string; cls: string } {
   if (status === "active")
-    return { text: "Ընթացքի մեջ", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
+    return { text: "🟢 Ընթացքի մեջ", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
   if (status === "completed")
-    return { text: "Ավարտված", cls: "bg-teal-400/15 text-teal-400 border-teal-400/20" };
-  return { text: "Սպասում է", cls: "bg-amber-400/15 text-amber-400 border-amber-400/20" };
+    return { text: "✅ Ավարտված", cls: "bg-teal-400/15 text-teal-400 border-teal-400/20" };
+  return { text: "🟡 Սպասում է", cls: "bg-amber-400/15 text-amber-400 border-amber-400/20" };
 }
 
 export default function Dashboard() {
@@ -69,7 +71,6 @@ export default function Dashboard() {
     query: { queryKey: getGetStudentHomeworkSummaryQueryKey(), enabled: !!token },
   });
 
-  // Parallel-fetch ALL teacher-assigned lessons across every subject
   useEffect(() => {
     if (!token || schedule.length === 0) return;
     const subjects = [...new Set(schedule.map((s) => s.subject))];
@@ -81,7 +82,9 @@ export default function Dashboard() {
         })
           .then((r) => (r.ok ? r.json() : []))
           .then((lessons: any[]) => {
-            const entry = schedule.find((s) => s.subject.toLowerCase() === subject.toLowerCase());
+            const entry = schedule.find(
+              (s) => s.subject.toLowerCase() === subject.toLowerCase()
+            );
             return lessons.map((l) => ({ ...l, subject, teacherName: entry?.teacherName ?? "" }));
           })
           .catch(() => [])
@@ -94,7 +97,9 @@ export default function Dashboard() {
         );
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [token, schedule]);
 
   useEffect(() => {
@@ -118,21 +123,38 @@ export default function Dashboard() {
   const subjects  = dashboard?.subjects ?? [];
   const stats     = dashboard?.stats ?? { completedLessons: 0, averageScore: 0, pendingHomework: 0 };
   const hwItems   = ((hwSummary as any)?.items ?? []) as any[];
-  const pendingHw = hwItems.filter((h) => h.status === "not_submitted" || h.status === "pending");
-  const gradedHw  = hwItems.filter((h) => h.status === "graded");
+  const hwTodo    = hwItems.filter((h) => h.status === "not_submitted");
+  const hwInProg  = hwItems.filter((h) => h.status === "pending");
+  const hwDone    = hwItems.filter((h) => h.status === "graded");
 
-  const todayArm  = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
-  const todayDate = new Date().toLocaleDateString("hy-AM", { day: "numeric", month: "long", year: "numeric" });
+  const className  = (schedule as any[])[0]?.className ?? "";
+  const todayDate  = new Date().toLocaleDateString("hy-AM", { day: "numeric", month: "long", year: "numeric" });
+  const todayArm   = new Date().toLocaleDateString("hy-AM", { weekday: "long" });
   const todayItems = [...schedule]
     .filter((s) => s.day.toLowerCase().replace(/\./g, "") === todayArm.toLowerCase().replace(/\./g, ""))
     .sort((a, b) => a.time.localeCompare(b.time));
 
+  const assignedLessons = (allLessons ?? []).filter((l) => l.status !== "completed");
+  const todaySubjects   = new Set(todayItems.map((s) => s.subject.toLowerCase()));
+  const completedToday  = (allLessons ?? []).filter(
+    (l) =>
+      l.status === "completed" &&
+      (todaySubjects.size === 0 || todaySubjects.has(l.subject.toLowerCase()))
+  ).length;
+  const totalToday = (allLessons ?? []).filter(
+    (l) => todaySubjects.size === 0 || todaySubjects.has(l.subject.toLowerCase())
+  ).length;
+  const allDoneToday =
+    allLessons !== undefined && assignedLessons.length === 0 && allLessons.length > 0;
   const activeLesson = allLessons?.find((l) => l.status === "active") ?? null;
 
-  /* ────────────────── NAV ITEM ────────────────── */
-  const NavBtn = ({ item }: { item: typeof NAV_ITEMS[0] }) => (
+  /* ── NAV BUTTON ── */
+  const NavBtn = ({ item }: { item: (typeof NAV_ITEMS)[0] }) => (
     <button
-      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+      onClick={() => {
+        setSection(item.key);
+        setSidebarOpen(false);
+      }}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
         section === item.key
           ? "bg-primary/20 text-primary border border-primary/20"
@@ -144,42 +166,126 @@ export default function Dashboard() {
     </button>
   );
 
-  /* ────────────────── AI TEACHER ────────────────── */
+  /* ── AI TEACHER ── */
   const SectionAI = () => (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
-      <div className="text-8xl">🤖</div>
-      <h2 className="text-2xl font-bold">ԱԲ ուսուցիչ</h2>
-      <p className="text-muted-foreground max-w-xs leading-relaxed">
-        ԱԲ ուսուցիչ-ի հետ սովորելու հնարավորությունը կբացվի շուտով
-      </p>
-      <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-        Շուտով
-      </span>
+    <div>
+      <h2 className="text-lg font-bold mb-6">🤖 ԱԲ ուսուցիչ</h2>
+      {assignedLessons.length === 0 && hwTodo.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-6 py-16">
+          <div className="text-7xl">🤖</div>
+          <p className="text-muted-foreground max-w-xs leading-relaxed text-sm">Այս պահին հանձնարարված դաս չկա։</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {assignedLessons.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-3">Իմ անելիքները</h3>
+              <div className="space-y-3">
+                {assignedLessons.map((lesson) => (
+                  <div
+                    key={`ai-${lesson.subject}-${lesson.id}`}
+                    className="rounded-2xl border border-white/10 bg-card/60 p-4 flex items-center gap-4"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-muted-foreground mb-0.5">
+                        {lesson.subject} · {lesson.teacherName}
+                      </div>
+                      <div className="font-medium text-sm truncate">{lesson.title}</div>
+                    </div>
+                    <Link
+                      href={`/chat/${lesson.id}`}
+                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold hover:opacity-90 transition-all whitespace-nowrap"
+                    >
+                      {lesson.status === "active" ? "ՇԱՐՈՒՆԱԿԵԼ" : "ՍԿՍԵԼ"}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {hwTodo.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-3">Իմ տնայինները</h3>
+              <div className="space-y-3">
+                {hwTodo.map((hw: any) => (
+                  <div
+                    key={`ai-hw-${hw.id}`}
+                    className="rounded-2xl border border-white/10 bg-card/60 p-4 flex items-center gap-4"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-muted-foreground mb-0.5">
+                        {hw.subject ?? hw.lessonTitle}
+                      </div>
+                      <div className="font-medium text-sm truncate">{hw.title}</div>
+                    </div>
+                    <Link
+                      href={`/chat/${hw.lessonId}?hw=${hw.id}`}
+                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400/15 text-amber-400 text-xs font-bold hover:bg-amber-400/25 transition-all border border-amber-400/20 whitespace-nowrap"
+                    >
+                      ՍԿՍԵԼ
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
-  /* ────────────────── HOME ────────────────── */
+  /* ── HOME ── */
   const SectionHome = () => (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold mb-1.5">
-          Բarі galust, {user.fullName} 👋
+          Բարի գալուստ, {user.fullName} 👋
         </h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>Դասարան 7Ա</span>
-          <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+          {className && (
+            <>
+              <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium">
+                Դասարան՝ {className}
+              </span>
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+            </>
+          )}
           <span>{todayDate}</span>
         </div>
       </div>
 
+      {/* Today summary */}
+      <div
+        className={`rounded-2xl border p-4 flex items-center gap-4 ${
+          allDoneToday ? "border-teal-400/30 bg-teal-400/5" : "border-white/10 bg-card/40"
+        }`}
+      >
+        {allDoneToday ? (
+          <p className="text-sm font-medium">🎉 🎉 Այսօրվա անելիքներն ավարտված են։</p>
+        ) : allLessons === undefined ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span>...</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">Այսօր՝</span>
+            <span className="text-lg font-bold text-primary">{completedToday}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-lg font-bold">{totalToday}</span>
+            <span className="text-sm text-muted-foreground">✅ Ավարտված</span>
+          </div>
+        )}
+      </div>
+
+      {/* Active lesson hero */}
       <div>
         <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
-          📝 ԻՄ ԱՆԵԼԻՔՆԵՐԸ
+          📝 Իմ անելիքները
         </h2>
         {allLessons === undefined ? (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 flex items-center justify-center gap-3 text-muted-foreground text-sm">
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            Բersumner en bername…
           </div>
         ) : activeLesson ? (
           <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background/60 to-secondary/5 p-6 sm:p-8">
@@ -189,14 +295,18 @@ export default function Dashboard() {
                   <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/20">
                     {activeLesson.subject}
                   </span>
-                  <span className="text-xs text-muted-foreground">👨‍🏫 {activeLesson.teacherName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    👨‍🏫 {activeLesson.teacherName}
+                  </span>
                 </div>
                 <h3 className="text-xl font-bold leading-snug">{activeLesson.title}</h3>
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                   {activeLesson.chapterTitle && <span>📂 {activeLesson.chapterTitle}</span>}
                   {activeLesson.paragraphNumber && <span>§{activeLesson.paragraphNumber}</span>}
                   {(activeLesson.pagesFrom || activeLesson.pagesTo) && (
-                    <span>Էջ {activeLesson.pagesFrom ?? "?"}–{activeLesson.pagesTo ?? "?"}</span>
+                    <span>
+                      Էջեր {activeLesson.pagesFrom ?? "?"}–{activeLesson.pagesTo ?? "?"}
+                    </span>
                   )}
                 </div>
               </div>
@@ -211,11 +321,12 @@ export default function Dashboard() {
         ) : (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 text-center text-muted-foreground">
             <div className="text-4xl mb-3">📭</div>
-            <p className="text-sm">Aktiv das chi nshanakvats</p>
+            <p className="text-sm">Այս պահին հանձնարարված դաս չկա։</p>
           </div>
         )}
       </div>
 
+      {/* Stats */}
       <div>
         <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
           📊 Իմ առաջընթացը
@@ -223,46 +334,47 @@ export default function Dashboard() {
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-center">
             <div className="text-2xl font-bold text-primary mb-1">{stats.completedLessons}</div>
-            <div className="text-xs text-muted-foreground leading-tight">Ավարտված Daserre</div>
+            <div className="text-xs text-muted-foreground leading-tight">Ավարտված դասեր</div>
           </div>
           <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-center">
             <div className="text-2xl font-bold text-teal-400 mb-1">
               {stats.averageScore > 0 ? stats.averageScore : "—"}
             </div>
-            <div className="text-xs text-muted-foreground leading-tight">Mijnin Ball</div>
+            <div className="text-xs text-muted-foreground leading-tight">Միջին արդյունք</div>
           </div>
           <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-center">
-            <div className="text-2xl font-bold text-amber-400 mb-1">{pendingHw.length}</div>
-            <div className="text-xs text-muted-foreground leading-tight">Tnayin Ashkh.</div>
+            <div className="text-2xl font-bold text-amber-400 mb-1">
+              {hwTodo.length + hwInProg.length}
+            </div>
+            <div className="text-xs text-muted-foreground leading-tight">Իմ տնայինները</div>
           </div>
         </div>
       </div>
     </div>
   );
 
-  /* ────────────────── TASKS ────────────────── */
+  /* ── TASKS ── */
   const SectionTasks = () => (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-bold">📝 ԻՄ ԱՆԵԼԻՔՆԵՐԸ</h2>
+        <h2 className="text-lg font-bold">📝 Իմ անելիքները</h2>
         <span className="text-xs text-muted-foreground bg-white/5 px-2.5 py-1 rounded-full">
-          {allLessons?.length ?? "…"} das
+          {assignedLessons.length}
         </span>
       </div>
 
       {allLessons === undefined ? (
         <div className="flex items-center justify-center py-24 gap-3 text-muted-foreground">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          Bersumner en bername…
         </div>
-      ) : allLessons.length === 0 ? (
+      ) : assignedLessons.length === 0 ? (
         <div className="text-center py-24 text-muted-foreground">
           <div className="text-5xl mb-4">📭</div>
-          <p>Aneliqnere chkan</p>
+          <p>Այս պահին հանձնարարված դաս չկա։</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {allLessons.map((lesson) => {
+          {assignedLessons.map((lesson) => {
             const badge = lessonStatusBadge(lesson.status);
             return (
               <div
@@ -287,70 +399,15 @@ export default function Dashboard() {
                     {lesson.chapterTitle && <span>📂 {lesson.chapterTitle}</span>}
                     {lesson.paragraphNumber && <span>§{lesson.paragraphNumber}</span>}
                     {(lesson.pagesFrom || lesson.pagesTo) && (
-                      <span>Էջ {lesson.pagesFrom ?? "?"}–{lesson.pagesTo ?? "?"}</span>
+                      <span>Էջեր {lesson.pagesFrom ?? "?"}–{lesson.pagesTo ?? "?"}</span>
                     )}
                   </div>
                 </div>
-
-                {lesson.status !== "completed" ? (
-                  <Link
-                    href={`/chat/${lesson.id}`}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
-                  >
-                    ▶ ՍԿՍԵԼ ԴԱՍԸ
-                  </Link>
-                ) : (
-                  <Link
-                    href={`/chat/${lesson.id}`}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-teal-400/10 text-teal-400 font-medium text-sm hover:bg-teal-400/20 transition-all border border-teal-400/20 whitespace-nowrap shrink-0"
-                  >
-                    🔁 Krkin Sovorel
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-
-  /* ────────────────── SUBJECTS ────────────────── */
-  const SectionSubjects = () => (
-    <div>
-      <h2 className="text-lg font-bold mb-6">📚 Իմ առարկաները</h2>
-      {subjects.length === 0 ? (
-        <div className="text-center py-24 text-muted-foreground">
-          <div className="text-5xl mb-4">📚</div>
-          <p>Araraknere chkan</p>
-        </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map((sub) => {
-            const entry = schedule.find((sc) => sc.subject.toLowerCase() === sub.subject.toLowerCase());
-            const pct   = Math.round(sub.progressPercent ?? 0);
-            const cnt   = allLessons?.filter((l) => l.subject.toLowerCase() === sub.subject.toLowerCase()).length
-                          ?? sub.totalLessons;
-            return (
-              <div key={sub.id} className="rounded-2xl border border-white/10 bg-card/60 p-6 flex flex-col gap-4 hover:border-white/20 transition-colors">
-                <div>
-                  <h3 className="font-semibold text-base mb-1">{sub.subject}</h3>
-                  {entry?.teacherName && (
-                    <div className="text-xs text-muted-foreground">👨‍🏫 {entry.teacherName}</div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{cnt} das</span>
-                  <span className="font-bold">{pct}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary" style={{ width: `${pct}%` }} />
-                </div>
                 <Link
-                  href={`/subjects/${sub.id}`}
-                  className="mt-auto flex items-center justify-center px-4 py-2.5 rounded-xl bg-primary/15 text-white text-sm font-medium hover:bg-primary/25 transition-all border border-white/10"
+                  href={`/chat/${lesson.id}`}
+                  className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
                 >
-                  Բացել
+                  ▶ ՍԿՍԵԼ ԴԱՍԸ
                 </Link>
               </div>
             );
@@ -360,7 +417,146 @@ export default function Dashboard() {
     </div>
   );
 
-  /* ────────────────── SCHEDULE ────────────────── */
+  /* ── SUBJECTS ── */
+  const SectionSubjects = () => (
+    <div>
+      <h2 className="text-lg font-bold mb-6">📚 Իմ առարկաները</h2>
+      {subjects.length === 0 ? (
+        <div className="text-center py-24 text-muted-foreground">
+          <div className="text-5xl mb-4">📚</div>
+          <p>Առաջընթացի տվյալ դեռ չկա։</p>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {subjects.map((sub) => {
+            const entry = schedule.find(
+              (sc) => sc.subject.toLowerCase() === sub.subject.toLowerCase()
+            );
+            const pct   = Math.round(sub.progressPercent ?? 0);
+            const done  = sub.completedLessons ?? 0;
+            const total = sub.totalLessons ?? 0;
+            return (
+              <div
+                key={sub.id}
+                className="rounded-2xl border border-white/10 bg-card/60 p-6 flex flex-col gap-4 hover:border-white/20 transition-colors"
+              >
+                <div>
+                  <h3 className="font-semibold text-base mb-1">{sub.subject}</h3>
+                  {entry?.teacherName && (
+                    <div className="text-xs text-muted-foreground">👨‍🏫 {entry.teacherName}</div>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <div>Ավարտված դասեր՝ {done} / {total}</div>
+                  {total > 0 ? (
+                    <div>Առաջընթաց՝ {pct}%</div>
+                  ) : (
+                    <div className="text-xs italic">Առաջընթացի տվյալ դեռ չկա։</div>
+                  )}
+                </div>
+                {total > 0 && (
+                  <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-primary to-secondary"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+                <Link
+                  href={`/subjects/${sub.id}`}
+                  className="mt-auto flex items-center justify-center px-4 py-2.5 rounded-xl bg-primary/15 text-white text-sm font-medium hover:bg-primary/25 transition-all border border-white/10"
+                >
+                  ԲԱՑԵԼ
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ── HOMEWORK ── */
+  const SectionHomework = () => {
+    const HwCard = ({ hw }: { hw: any }) => (
+      <div className="rounded-2xl border border-white/10 bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-white/20 transition-colors">
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {hw.subject && (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/15">
+                {hw.subject}
+              </span>
+            )}
+          </div>
+          <h3 className="font-semibold text-sm leading-snug">{hw.title}</h3>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {hw.teacherName && <span>👨‍🏫 {hw.teacherName}</span>}
+            {hw.lessonTitle && <span>📖 {hw.lessonTitle}</span>}
+          </div>
+          {hw.task && (
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{hw.task}</p>
+          )}
+        </div>
+        {hw.status !== "graded" && (
+          <Link
+            href={`/chat/${hw.lessonId}?hw=${hw.id}`}
+            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs hover:opacity-90 transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
+          >
+            ▶ ԿԱՏԱՐԵԼ ՏՆԱՅԻՆԸ
+          </Link>
+        )}
+      </div>
+    );
+    return (
+      <div>
+        <h2 className="text-lg font-bold mb-6">📋 Իմ տնայինները</h2>
+        {hwItems.length === 0 ? (
+          <div className="text-center py-24 text-muted-foreground">
+            <div className="text-5xl mb-4">✅</div>
+            <p>Հաստատված տնային հանձնարարություն չկա։</p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {hwTodo.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
+                  Պետք է կատարել
+                </h3>
+                <div className="space-y-3">
+                  {hwTodo.map((hw: any) => <HwCard key={hw.id} hw={hw} />)}
+                </div>
+              </div>
+            )}
+            {hwInProg.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
+                  Ընթացքի մեջ
+                </h3>
+                <div className="space-y-3">
+                  {hwInProg.map((hw: any) => <HwCard key={hw.id} hw={hw} />)}
+                </div>
+              </div>
+            )}
+            {hwDone.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-teal-400" />
+                  Ավարտված
+                </h3>
+                <div className="space-y-3">
+                  {hwDone.map((hw: any) => <HwCard key={hw.id} hw={hw} />)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /* ── SCHEDULE ── */
   const SectionSchedule = () => (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -368,22 +564,30 @@ export default function Dashboard() {
         <span className="text-xs text-muted-foreground">{todayDate}</span>
       </div>
       {todayItems.length === 0 ? (
-        <div className="text-center py-24 text-muted-foreground">
-          <div className="text-5xl mb-4">📅</div>
-          <p>Aysorvad dasatsutsak chka</p>
+        <div className="text-center py-16 text-muted-foreground">
+          <div className="text-4xl mb-3">📅</div>
+          <p className="text-sm">Այսօրվա դասացուցակ չկա։</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-white/10 bg-card/60 overflow-hidden divide-y divide-white/8">
           {todayItems.map((sc, i) => {
-            const sub = subjects.find((x) => x.subject.toLowerCase() === sc.subject.toLowerCase());
+            const sub = subjects.find(
+              (x) => x.subject.toLowerCase() === sc.subject.toLowerCase()
+            );
             return (
-              <div key={sc.id} className="flex items-center gap-4 px-5 py-4 hover:bg-white/5 transition-colors">
+              <div
+                key={sc.id}
+                className="flex items-center gap-4 px-5 py-4 hover:bg-white/5 transition-colors"
+              >
                 <span className="text-xs text-muted-foreground w-5 shrink-0 text-center">{i + 1}</span>
                 <span className="text-primary font-mono font-bold w-14 shrink-0">{sc.time}</span>
                 <span className="flex-1 font-medium">{sc.subject}</span>
                 <span className="text-xs text-muted-foreground hidden sm:block">👨‍🏫 {sc.teacherName}</span>
                 {sub && (
-                  <Link href={`/subjects/${sub.id}`} className="text-primary text-sm ml-2 shrink-0 hover:underline">
+                  <Link
+                    href={`/subjects/${sub.id}`}
+                    className="text-primary text-sm ml-2 shrink-0 hover:underline"
+                  >
                     →
                   </Link>
                 )}
@@ -395,35 +599,45 @@ export default function Dashboard() {
     </div>
   );
 
-  /* ────────────────── PROGRESS ────────────────── */
+  /* ── PROGRESS ── */
   const SectionProgress = () => (
     <div>
       <h2 className="text-lg font-bold mb-6">📈 Իմ առաջընթացը</h2>
       <div className="grid sm:grid-cols-2 gap-4 mb-8">
         <div className="rounded-2xl border border-white/10 bg-card/60 p-6">
-          <div className="text-4xl font-bold text-primary mb-2">{stats.completedLessons}</div>
-          <div className="text-sm text-muted-foreground">Ավարտված Daserre</div>
+          <div className="text-4xl font-bold text-primary mb-2">
+            {stats.completedLessons || (
+              <span className="text-muted-foreground text-2xl">Տվյալ դեռ չկա</span>
+            )}
+          </div>
+          <div className="text-sm text-muted-foreground">Ավարտված դասեր</div>
         </div>
         <div className="rounded-2xl border border-white/10 bg-card/60 p-6">
-          <div className="text-4xl font-bold text-teal-400 mb-2">{gradedHw.length}</div>
-          <div className="text-sm text-muted-foreground">Graded Ashkhatank</div>
+          <div className="text-4xl font-bold text-teal-400 mb-2">
+            {hwDone.length || <span className="text-muted-foreground text-2xl">Տվյալ դեռ չկա</span>}
+          </div>
+          <div className="text-sm text-muted-foreground">Ստուգված աշխատանքներ</div>
         </div>
         <div className="rounded-2xl border border-white/10 bg-card/60 p-6">
           <div className="text-4xl font-bold text-amber-400 mb-2">
-            {stats.averageScore > 0 ? stats.averageScore : "—"}
+            {stats.averageScore > 0 ? (
+              stats.averageScore
+            ) : (
+              <span className="text-muted-foreground text-2xl">Տվյալ դեռ չկա</span>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">Mijnin Ball</div>
+          <div className="text-sm text-muted-foreground">Միջին արդյունք</div>
         </div>
         <div className="rounded-2xl border border-white/10 bg-card/60 p-6">
-          <div className="text-4xl font-bold text-secondary mb-2">—</div>
-          <div className="text-sm text-muted-foreground">AI-i het Sovorelu Zham</div>
+          <div className="text-4xl font-bold mb-2">
+            <span className="text-muted-foreground text-2xl">Տվյալ դեռ չկա</span>
+          </div>
+          <div className="text-sm text-muted-foreground">ԱԲ-ի հետ սովորելու ժամանակ</div>
         </div>
       </div>
       {subjects.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4">
-            Իմ առարկաները
-          </h3>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-4">Իմ առարկաները</h3>
           <div className="space-y-4">
             {subjects.map((sub) => {
               const pct = Math.round(sub.progressPercent ?? 0);
@@ -431,9 +645,14 @@ export default function Dashboard() {
                 <div key={sub.id} className="flex items-center gap-4">
                   <span className="w-36 text-sm truncate shrink-0">{sub.subject}</span>
                   <div className="flex-1 h-2 bg-background rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary" style={{ width: `${pct}%` }} />
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-primary to-secondary"
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
-                  <span className="text-sm font-bold w-10 text-right shrink-0">{pct}%</span>
+                  <span className="text-sm font-bold w-10 text-right shrink-0">
+                    {pct > 0 ? `${pct}%` : "—"}
+                  </span>
                 </div>
               );
             })}
@@ -443,49 +662,63 @@ export default function Dashboard() {
     </div>
   );
 
-  /* ────────────────── LIBRARY ────────────────── */
+  /* ── LIBRARY ── */
   const SectionLibrary = () => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
       <div className="text-8xl">📖</div>
       <h2 className="text-2xl font-bold">Գրադարան</h2>
-      <p className="text-muted-foreground max-w-xs leading-relaxed">
-        Nyuteri gradarany kbatvyi shotov
-      </p>
+      <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
       <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-        Shutov
+        ՇՈՒՏՈՎ
       </span>
     </div>
   );
 
-  /* ────────────────── PROFILE ────────────────── */
+  /* ── PROFILE ── */
   const SectionProfile = () => (
     <div className="max-w-xl">
       <h2 className="text-lg font-bold mb-6">👤 Իմ պրոֆիլը</h2>
-      <div className="bg-card/60 border border-white/10 rounded-2xl p-5 mb-5 space-y-2 text-sm">
+      <div className="bg-card/60 border border-white/10 rounded-2xl p-5 space-y-3 text-sm">
         <div className="flex gap-2">
-          <span className="text-muted-foreground w-24 shrink-0">Ogtanunn:</span>
-          <span>{user.username}</span>
+          <span className="text-muted-foreground w-32 shrink-0">Օգտանուն:</span>
+          <span className="font-medium">{user.username}</span>
         </div>
         <div className="flex gap-2">
-          <span className="text-muted-foreground w-24 shrink-0">Anun:</span>
-          <span>{user.fullName}</span>
+          <span className="text-muted-foreground w-32 shrink-0">Անուն Ազգանուն:</span>
+          <span className="font-medium">{user.fullName}</span>
         </div>
-      </div>
-      <div className="bg-card/60 border border-white/10 rounded-2xl p-6 text-sm text-muted-foreground text-center py-10">
-        Profily kkhmbagrvyi shotov
+        {className && (
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-32 shrink-0">Դասարան՝</span>
+            <span className="font-medium">{className}</span>
+          </div>
+        )}
+        {(user as any).createdAt && (
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-32 shrink-0">Ands.:</span>
+            <span className="font-medium">
+              {new Date((user as any).createdAt).toLocaleDateString("hy-AM", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 
   const SECTIONS = {
     "ai-teacher": SectionAI,
-    "home":       SectionHome,
-    "tasks":      SectionTasks,
-    "subjects":   SectionSubjects,
-    "schedule":   SectionSchedule,
-    "progress":   SectionProgress,
-    "library":    SectionLibrary,
-    "profile":    SectionProfile,
+    home:         SectionHome,
+    tasks:        SectionTasks,
+    subjects:     SectionSubjects,
+    homework:     SectionHomework,
+    schedule:     SectionSchedule,
+    progress:     SectionProgress,
+    library:      SectionLibrary,
+    profile:      SectionProfile,
   };
   const ActiveSection = SECTIONS[section] ?? SectionHome;
 
@@ -494,10 +727,13 @@ export default function Dashboard() {
       <QuickSwitch />
 
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <aside
         ref={sidebarRef}
         className={`fixed top-0 left-0 h-full z-50 w-60 bg-card/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-transform duration-200 ${
@@ -510,23 +746,23 @@ export default function Dashboard() {
           </div>
           <div className="text-xs text-muted-foreground mt-0.5 truncate">{user.fullName}</div>
         </div>
-
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => <NavBtn key={item.key} item={item} />)}
+          {NAV_ITEMS.map((item) => (
+            <NavBtn key={item.key} item={item} />
+          ))}
         </nav>
-
         <div className="px-3 py-4 border-t border-white/10">
           <button
             onClick={logout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-muted-foreground hover:text-white hover:bg-white/5 transition-all text-left"
           >
             <span className="text-lg">🚪</span>
-            <span>Elq</span>
+            <span>Ելք</span>
           </button>
         </div>
       </aside>
 
-      {/* ── Main ── */}
+      {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="lg:hidden border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
           <div className="px-4 py-3.5 flex items-center gap-3">
@@ -544,10 +780,11 @@ export default function Dashboard() {
             <div className="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
               myaiteacher
             </div>
-            <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">{user.fullName}</div>
+            <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">
+              {user.fullName}
+            </div>
           </div>
         </header>
-
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto px-5 sm:px-8 py-8">
             <ActiveSection />
