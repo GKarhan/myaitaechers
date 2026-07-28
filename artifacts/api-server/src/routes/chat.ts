@@ -3,6 +3,7 @@ import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEvent
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { callAI, type ChatMessage } from "../services/ai";
+import { updateTopicScoring } from "../services/scoring";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -77,9 +78,9 @@ DOU OUCOUCICH ES — nerkayatsroum es nor nywth kaŕ-kaŕ.
 ── QAYL A: TEORIA ──
 Nerkayas "«${lessonTitle}»" dassi HIMNAKAN gaghaparĕ — 3-4 kaŕts nakhadas.
 Oktagortse dasagirqi lezoun, hayeren:
-• Sovoroutyounĕ ĝkelĕ amenaporov
-• Iravounakavor ornakoumner
-• Iraskanali kyanki haraberoutyoun
+- Sovoroutyounĕ ĝkelĕ amenaporov
+- Iravounakavor ornakoumner
+- Iraskanali kyanki haraberoutyoun
 
 ── QAYL B: MC ՀАРCOUK ──
 Teoria nerkaycnoum e heto MEC-MIAYN MEK HARC tuĵr 1) 2) 3) dzevachaphov:
@@ -259,7 +260,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     content: message,
   });
 
-  // Record evidence event for this student answer
+  // Record evidence event for this student answer, then refresh this topic's
+  // scoring (mastery/confidence/retention) from the accumulated evidence.
   db.insert(evidenceEventsTable).values({
     userId: req.userId!,
     lessonSessionId: sessionId,
@@ -269,6 +271,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     responseTimeMs,
     hintUsed: false,
     metadata: {},
+  }).then(() => {
+    if (topicId !== null) {
+      updateTopicScoring(topicId, req.userId!).catch((err: unknown) =>
+        logger.error({ err }, "scoring engine update failed")
+      );
+    }
   }).catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
 
   const chatHistory: ChatMessage[] = [
