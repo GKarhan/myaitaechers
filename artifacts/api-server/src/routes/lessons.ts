@@ -1,5 +1,7 @@
+import { logger } from "../lib/logger";
+import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
@@ -188,6 +190,12 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
   });
 });
 
+// Minimum mastery required on the CURRENT topic before the student is
+// allowed to advance to the next phase — this is the code-level enforcement
+// of the P4 "Golden Rule" (MICRO_CHECK before moving forward), which until
+// now only existed as a text instruction to the AI, not as an actual check.
+const MASTERY_ADVANCE_THRESHOLD = 80;
+
 // Advance phase (max 4) — optional masteryScore saved on completion
 router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
@@ -209,9 +217,49 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     return;
   }
 
+  const [lesson] = await db
+    .select()
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  // Look up this topic's current mastery (same node chat.ts creates/updates)
+  // and block advancing if it isn't there yet.
+  const [node] = await db
+    .select({ masteryScore: knowledgeNodesTable.masteryScore })
+    .from(knowledgeNodesTable)
+    .where(
+      and(
+        eq(knowledgeNodesTable.subjectId, lesson.subjectId),
+        eq(knowledgeNodesTable.userId, req.userId!),
+        eq(knowledgeNodesTable.topicName, lesson.title)
+      )
+    )
+    .limit(1);
+
+  const currentMastery = node?.masteryScore ?? null;
+
   // 4 phases total; phase 4 → completed
   const isComplete = session.currentPhase >= 4;
   const nextPhase = isComplete ? 4 : session.currentPhase + 1;
+
+  if (
+    !isComplete &&
+    (currentMastery === null || currentMastery < MASTERY_ADVANCE_THRESHOLD)
+  ) {
+    res.status(409).json({
+      error:
+        "Այս թեման դեռ բավարար չափով յուրացված չէ, շարունակիր հարցերին պատասխանել, նախքան հաջորդ փուլին անցնելը",
+      currentMastery,
+      requiredMastery: MASTERY_ADVANCE_THRESHOLD,
+    });
+    return;
+  }
 
   const [updated] = await db
     .update(lessonSessionsTable)
@@ -227,6 +275,12 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     .where(eq(lessonSessionsTable.id, session.id))
     .returning();
 
+  if (isComplete) {
+    updateStudentProfile(req.userId!).catch((err: unknown) =>
+      logger.error({ err }, "student profile update failed")
+    );
+  }
+
   res.json({
     id: updated.id,
     lessonId: updated.lessonId,
@@ -237,5 +291,4 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     completedAt: updated.completedAt?.toISOString() ?? null,
   });
 });
-
 export default router;

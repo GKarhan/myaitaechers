@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { lessonsTable } from "./lessons";
+import { lessonNodesTable } from "./lesson-nodes";
 
 export const lessonSessionsTable = pgTable("lesson_sessions", {
   id: serial("id").primaryKey(),
@@ -15,6 +16,9 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   currentPhase: integer("current_phase").notNull().default(1),
   status: text("status").notNull().default("active"),
   masteryScore: integer("mastery_score"),
+  currentNodeId: integer("current_node_id")
+    .references(() => lessonNodesTable.id, { onDelete: "set null" }),
+  nodeStartedAt: timestamp("node_started_at", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

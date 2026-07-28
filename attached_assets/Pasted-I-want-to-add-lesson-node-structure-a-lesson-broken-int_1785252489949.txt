@@ -1,0 +1,32 @@
+I want to add lesson-node structure (a lesson broken into multiple sequential nodes/sub-topics) to the schema, WITHOUT changing or breaking any existing functionality. This is additive only — do not modify or remove any existing route, chat.ts, scoring.ts, or frontend page in this task. We will wire the runtime logic into chat.ts/lessons.ts in a separate, later task.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase must be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing garbled string elsewhere, leave it untouched.
+
+1. Create a new file: lib/db/src/schema/lesson-nodes.ts, following the same Drizzle ORM style as the other schema files in this folder.
+
+   Table name: lesson_nodes
+   Fields:
+   - id: serial primary key
+   - lessonId: integer, references lessons.id, onDelete cascade, notNull
+   - sequence: integer, notNull (order of this node within the lesson, starting at 1)
+   - title: text, notNull (the specific sub-topic name for this node, e.g. a narrower topic than the lesson's own title)
+   - theoryContent: text, nullable
+   - targetBloomLevel: integer, notNull, default 1
+   - estimatedMinutes: integer, notNull, default 5 (relative time weight used to plan how many nodes fit in the time budget — not an exact guarantee)
+   - createdAt: timestamp with timezone, notNull, defaultNow
+
+   Add insertLessonNodeSchema (via drizzle-zod, omitting id and createdAt) and type exports (InsertLessonNode, LessonNode), matching the pattern used in other schema files.
+
+2. Export this new table from lib/db/src/schema/index.ts, the same way other tables are exported there.
+
+3. In lib/db/src/schema/lesson-sessions.ts, add two new nullable columns to the EXISTING lessonSessionsTable (do not remove or rename any existing column):
+   - currentNodeId: integer, references lesson_nodes.id, onDelete set null, nullable (which node the session is currently working on; null means not yet started or the lesson has no nodes defined)
+   - nodeStartedAt: timestamp with timezone, nullable (when work on the current node began, for time-budget tracking)
+
+   Update its insert schema / type exports only if needed to keep them consistent with the new columns, following whatever pattern that file already uses.
+
+4. Generate the Drizzle migration (check package.json for the exact script already used in this project) and apply it to the database.
+
+5. Confirm that `pnpm run typecheck` passes with no errors, and that nothing existing (lessons.ts, chat.ts, scoring.ts, any frontend page) was touched.
+
+This task is schema scaffolding only. No lesson currently has any lesson_nodes rows yet — that's expected, and existing lessons/chat behavior must keep working exactly as before, since nothing reads from this new table yet.

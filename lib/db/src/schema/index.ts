@@ -19,3 +19,4 @@ export * from "./knowledge-nodes";
 export * from "./knowledge-edges";
 export * from "./review-schedule";
 export * from "./student-profile";
+export * from "./lesson-nodes";
