@@ -811,3 +811,27 @@ export type DeleteCourseResource200 = { [key: string]: unknown };
 
 export type GenerateLessonsAI201 = { [key: string]: unknown };
 
+export interface LessonNode {
+  id: number;
+  lessonId: number;
+  sequence: number;
+  title: string;
+  theoryContent?: string | null;
+  targetBloomLevel?: number | null;
+  estimatedMinutes?: number | null;
+}
+
+export interface CreateLessonNodeInput {
+  title: string;
+  theoryContent?: string;
+  targetBloomLevel?: number;
+  estimatedMinutes?: number;
+}
+
+export interface UpdateLessonNodeInput {
+  title?: string;
+  theoryContent?: string;
+  targetBloomLevel?: number;
+  estimatedMinutes?: number;
+}
+

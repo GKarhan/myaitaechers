@@ -1,0 +1,27 @@
+I want to add teacher-facing CRUD for lesson_nodes (breaking a lesson into ordered sub-topic nodes), WITHOUT changing or breaking any existing lesson-creation functionality. This is additive only.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase must be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing garbled string elsewhere, leave it untouched — do not "clean up" unrelated strings as a side effect of this task.
+
+BACKEND — add to artifacts/api-server/src/routes/lessons.ts (do not touch any existing route in this file):
+
+1. GET /lessons/:lessonId/nodes (requireAuth) — returns all lesson_nodes for this lesson, ordered by sequence ascending. Each item: id, sequence, title, theoryContent, targetBloomLevel, estimatedMinutes.
+
+2. POST /lessons/:lessonId/nodes (requireAuth) — body: { title: string, theoryContent?: string, targetBloomLevel?: number, estimatedMinutes?: number }. Validate title is required and non-empty. Auto-assign sequence as (max existing sequence for this lessonId) + 1, or 1 if none exist. Insert and return the created node.
+
+3. POST /lessons/:lessonId/nodes/:nodeId/update (requireAuth) — body: same fields as create, all optional, only update fields that are provided. Return the updated node.
+
+4. POST /lessons/:lessonId/nodes/:nodeId/delete (requireAuth) — delete the node. If this node is currently referenced by any lesson_sessions.currentNodeId, that's fine — the existing onDelete: "set null" on that foreign key already handles it safely.
+
+FRONTEND — in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx:
+
+Find the existing lesson list rendering (where each created lesson is shown with its title, chapter/paragraph info, and edit/delete icons — near the "Ավելացնել դաս" form). For each lesson in that list, add an expandable/collapsible section labeled "Ենթաթեմաներ (Node-եր)" that:
+
+- Shows the current list of nodes for that lesson (sequence number, title, target Bloom level, estimated minutes), each with a small delete button
+- Has a small inline form to add a new node: a text input for title (required), a text input for theory content (optional, textarea), a number input for target Bloom level (1-6, default 1), a number input for estimated minutes (default 5), and an "Ավելացնել" button
+- After adding/deleting a node, refresh the node list for that lesson (invalidate the relevant query)
+- Use the same visual style (dark theme, existing color/spacing conventions) already used in this file for the lesson list and forms — do not introduce a different visual style
+- Generate/use API client hooks for the three new routes above, following the exact same pattern already used in this codebase for the other lesson CRUD hooks (this project uses an OpenAPI-generated client — regenerate or add hooks consistently with the existing convention, check how existing lesson hooks like useCreateLesson are wired and follow the same approach)
+
+Do not change the existing lesson creation form, its fields, or any other part of teacher-dashboard.tsx beyond adding this new per-lesson nodes section.
+
+Confirm `pnpm run typecheck` passes with no errors when done.

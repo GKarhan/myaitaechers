@@ -1,8 +1,8 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable } from "@workspace/db";
+import { eq, and, asc, max } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
@@ -123,6 +123,8 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
           currentPhase: session.currentPhase,
           status: session.status,
           masteryScore: session.masteryScore ?? null,
+          currentNodeId: session.currentNodeId ?? null,
+          nodeStartedAt: session.nodeStartedAt?.toISOString() ?? null,
           startedAt: session.startedAt.toISOString(),
           completedAt: session.completedAt?.toISOString() ?? null,
         }
@@ -168,15 +170,35 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
       currentPhase: s.currentPhase,
       status: s.status,
       masteryScore: s.masteryScore ?? null,
+      currentNodeId: s.currentNodeId ?? null,
+      nodeStartedAt: s.nodeStartedAt?.toISOString() ?? null,
       startedAt: s.startedAt.toISOString(),
       completedAt: s.completedAt?.toISOString() ?? null,
     });
     return;
   }
 
+  // If this lesson has been broken into nodes, start on the first one.
+  // Lessons without nodes yet behave exactly as before (currentNodeId stays null).
+  const [firstNode] = await db
+    .select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId))
+    .orderBy(asc(lessonNodesTable.sequence))
+    .limit(1);
+
+  const now = new Date();
+
   const [session] = await db
     .insert(lessonSessionsTable)
-    .values({ userId: req.userId!, lessonId, currentPhase: 1, status: "active" })
+    .values({
+      userId: req.userId!,
+      lessonId,
+      currentPhase: 1,
+      status: "active",
+      currentNodeId: firstNode?.id ?? null,
+      nodeStartedAt: firstNode ? now : null,
+    })
     .returning();
 
   res.status(201).json({
@@ -185,6 +207,8 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     currentPhase: session.currentPhase,
     status: session.status,
     masteryScore: null,
+    currentNodeId: session.currentNodeId ?? null,
+    nodeStartedAt: session.nodeStartedAt?.toISOString() ?? null,
     startedAt: session.startedAt.toISOString(),
     completedAt: null,
   });
@@ -228,8 +252,18 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     return;
   }
 
-  // Look up this topic's current mastery (same node chat.ts creates/updates)
-  // and block advancing if it isn't there yet.
+  // Which topic name gates advancement: the CURRENT node's title if this
+  // lesson has nodes, otherwise the lesson's own title (old behavior).
+  let topicName = lesson.title;
+  if (session.currentNodeId) {
+    const [node] = await db
+      .select({ title: lessonNodesTable.title })
+      .from(lessonNodesTable)
+      .where(eq(lessonNodesTable.id, session.currentNodeId))
+      .limit(1);
+    if (node) topicName = node.title;
+  }
+
   const [node] = await db
     .select({ masteryScore: knowledgeNodesTable.masteryScore })
     .from(knowledgeNodesTable)
@@ -237,7 +271,7 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
       and(
         eq(knowledgeNodesTable.subjectId, lesson.subjectId),
         eq(knowledgeNodesTable.userId, req.userId!),
-        eq(knowledgeNodesTable.topicName, lesson.title)
+        eq(knowledgeNodesTable.topicName, topicName)
       )
     )
     .limit(1);
@@ -287,8 +321,272 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
     currentPhase: updated.currentPhase,
     status: updated.status,
     masteryScore: updated.masteryScore ?? null,
+    currentNodeId: updated.currentNodeId ?? null,
+    nodeStartedAt: updated.nodeStartedAt?.toISOString() ?? null,
     startedAt: updated.startedAt.toISOString(),
     completedAt: updated.completedAt?.toISOString() ?? null,
   });
 });
+
+// Advance from the current lesson node to the next one (within phases 2/3).
+// Same mastery gate as advance-phase, but scoped to the CURRENT NODE's
+// topic, not the whole lesson. When there is no next node, currentNodeId
+// is cleared — that's the signal the node queue for this lesson is
+// exhausted and it's time to move to the next macro-phase.
+router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+
+  const [session] = await db
+    .select()
+    .from(lessonSessionsTable)
+    .where(
+      and(
+        eq(lessonSessionsTable.lessonId, lessonId),
+        eq(lessonSessionsTable.userId, req.userId!)
+      )
+    )
+    .limit(1);
+
+  if (!session) {
+    res.status(404).json({ error: "No active session for this lesson" });
+    return;
+  }
+
+  if (!session.currentNodeId) {
+    res.status(400).json({ error: "This session has no active node" });
+    return;
+  }
+
+  const [lesson] = await db
+    .select()
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  const [currentNode] = await db
+    .select()
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, session.currentNodeId))
+    .limit(1);
+
+  if (!currentNode) {
+    res.status(404).json({ error: "Current node not found" });
+    return;
+  }
+
+  const [knowledgeNode] = await db
+    .select({ masteryScore: knowledgeNodesTable.masteryScore })
+    .from(knowledgeNodesTable)
+    .where(
+      and(
+        eq(knowledgeNodesTable.subjectId, lesson.subjectId),
+        eq(knowledgeNodesTable.userId, req.userId!),
+        eq(knowledgeNodesTable.topicName, currentNode.title)
+      )
+    )
+    .limit(1);
+
+  const currentMastery = knowledgeNode?.masteryScore ?? null;
+
+  if (currentMastery === null || currentMastery < MASTERY_ADVANCE_THRESHOLD) {
+    res.status(409).json({
+      error:
+        "Այս թեման դեռ բավարար չափով յուրացված չէ, շարունակիր հարցերին պատասխանել, նախքան հաջորդ ենթաթեմային անցնելը",
+      currentMastery,
+      requiredMastery: MASTERY_ADVANCE_THRESHOLD,
+    });
+    return;
+  }
+
+  const [nextNode] = await db
+    .select()
+    .from(lessonNodesTable)
+    .where(
+      and(
+        eq(lessonNodesTable.lessonId, lessonId),
+        eq(lessonNodesTable.sequence, currentNode.sequence + 1)
+      )
+    )
+    .limit(1);
+
+  const now = new Date();
+
+  const [updated] = await db
+    .update(lessonSessionsTable)
+    .set({
+      currentNodeId: nextNode?.id ?? null,
+      nodeStartedAt: nextNode ? now : null,
+    })
+    .where(eq(lessonSessionsTable.id, session.id))
+    .returning();
+
+  res.json({
+    currentNodeId: updated.currentNodeId ?? null,
+    nodeStartedAt: updated.nodeStartedAt?.toISOString() ?? null,
+    nodeTitle: nextNode?.title ?? null,
+    sequence: nextNode?.sequence ?? null,
+    estimatedMinutes: nextNode?.estimatedMinutes ?? null,
+    done: !nextNode, // true = no more nodes queued for this lesson right now
+  });
+});
+
+// ── LESSON NODES CRUD ────────────────────────────────────────────────────────
+
+// GET /lessons/:lessonId/nodes — list all nodes for this lesson, ordered by sequence
+router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid lesson id" });
+    return;
+  }
+
+  const nodes = await db
+    .select()
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId))
+    .orderBy(asc(lessonNodesTable.sequence));
+
+  res.json(
+    nodes.map((n) => ({
+      id: n.id,
+      lessonId: n.lessonId,
+      sequence: n.sequence,
+      title: n.title,
+      theoryContent: n.theoryContent ?? null,
+      targetBloomLevel: n.targetBloomLevel ?? null,
+      estimatedMinutes: n.estimatedMinutes ?? null,
+    }))
+  );
+});
+
+// POST /lessons/:lessonId/nodes — create a new node (sequence auto-assigned)
+router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid lesson id" });
+    return;
+  }
+
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes } = req.body as {
+    title?: string;
+    theoryContent?: string;
+    targetBloomLevel?: number;
+    estimatedMinutes?: number;
+  };
+
+  if (!title?.trim()) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+
+  const [maxRow] = await db
+    .select({ maxSeq: max(lessonNodesTable.sequence) })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId));
+
+  const nextSeq = (maxRow?.maxSeq ?? 0) + 1;
+
+  const [node] = await db
+    .insert(lessonNodesTable)
+    .values({
+      lessonId,
+      sequence: nextSeq,
+      title: title.trim(),
+      theoryContent: theoryContent?.trim() ?? null,
+      targetBloomLevel: targetBloomLevel ?? 1,
+      estimatedMinutes: estimatedMinutes ?? 5,
+    })
+    .returning();
+
+  res.status(201).json({
+    id: node.id,
+    lessonId: node.lessonId,
+    sequence: node.sequence,
+    title: node.title,
+    theoryContent: node.theoryContent ?? null,
+    targetBloomLevel: node.targetBloomLevel ?? null,
+    estimatedMinutes: node.estimatedMinutes ?? null,
+  });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/update — partial update
+router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId = parseInt(String(req.params.nodeId), 10);
+  if (isNaN(lessonId) || isNaN(nodeId)) {
+    res.status(400).json({ error: "Invalid lesson id or node id" });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Node not found" });
+    return;
+  }
+
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes } = req.body as {
+    title?: string;
+    theoryContent?: string;
+    targetBloomLevel?: number;
+    estimatedMinutes?: number;
+  };
+
+  const patch: Partial<typeof existing> = {};
+  if (title !== undefined) patch.title = title.trim();
+  if (theoryContent !== undefined) patch.theoryContent = theoryContent.trim() || null;
+  if (targetBloomLevel !== undefined) patch.targetBloomLevel = targetBloomLevel;
+  if (estimatedMinutes !== undefined) patch.estimatedMinutes = estimatedMinutes;
+
+  const [updated] = await db
+    .update(lessonNodesTable)
+    .set(patch)
+    .where(eq(lessonNodesTable.id, nodeId))
+    .returning();
+
+  res.json({
+    id: updated.id,
+    lessonId: updated.lessonId,
+    sequence: updated.sequence,
+    title: updated.title,
+    theoryContent: updated.theoryContent ?? null,
+    targetBloomLevel: updated.targetBloomLevel ?? null,
+    estimatedMinutes: updated.estimatedMinutes ?? null,
+  });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/delete — delete a node
+// lesson_sessions.currentNodeId has onDelete: "set null" so no manual cleanup needed
+router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId = parseInt(String(req.params.nodeId), 10);
+  if (isNaN(lessonId) || isNaN(nodeId)) {
+    res.status(400).json({ error: "Invalid lesson id or node id" });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Node not found" });
+    return;
+  }
+
+  await db.delete(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId));
+  res.json({ message: "Node deleted" });
+});
+
 export default router;

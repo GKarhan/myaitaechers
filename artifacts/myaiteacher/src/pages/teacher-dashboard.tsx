@@ -21,6 +21,9 @@ import {
   useGetTeacherSchedule,
   useGetTeacherProfile,
   useGetStudentDetail,
+  useGetLessonNodes,
+  useCreateLessonNode,
+  useDeleteLessonNode,
   getGetTeacherClassesQueryKey,
   getGetClassStudentsQueryKey,
   getGetClassCoursesQueryKey,
@@ -30,6 +33,7 @@ import {
   getGetTeacherScheduleQueryKey,
   getGetTeacherProfileQueryKey,
   getGetStudentDetailQueryKey,
+  getGetLessonNodesQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -75,6 +79,166 @@ async function uploadResource(
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+// ── Lesson Nodes sub-component ────────────────────────────────────────────────
+function LessonNodesPanel({ lessonId }: { lessonId: number }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    title: "",
+    theoryContent: "",
+    targetBloomLevel: "1",
+    estimatedMinutes: "5",
+  });
+
+  const { data: nodes = [], isFetching } = useGetLessonNodes(lessonId, {
+    query: {
+      enabled: open,
+      queryKey: getGetLessonNodesQueryKey(lessonId),
+    },
+  });
+
+  const createNode = useCreateLessonNode();
+  const deleteNode = useDeleteLessonNode();
+
+  const refresh = () =>
+    qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    createNode.mutate(
+      {
+        lessonId,
+        data: {
+          title: form.title.trim(),
+          theoryContent: form.theoryContent.trim() || undefined,
+          targetBloomLevel: parseInt(form.targetBloomLevel) || 1,
+          estimatedMinutes: parseInt(form.estimatedMinutes) || 5,
+        },
+      },
+      {
+        onSuccess: () => {
+          setForm({ title: "", theoryContent: "", targetBloomLevel: "1", estimatedMinutes: "5" });
+          refresh();
+        },
+      },
+    );
+  };
+
+  const inputCls =
+    "w-full bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50";
+
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">
+          📋 Ենթաթեմաներ (Node-եր){nodes.length > 0 ? ` · ${nodes.length}` : ""}
+        </span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {/* Node list */}
+          {isFetching && nodes.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Բեռնվում...</p>
+          ) : nodes.length === 0 ? (
+            <p className="text-xs text-muted-foreground/60">Node-եր դեռ չկան</p>
+          ) : (
+            <div className="space-y-1">
+              {nodes.map((n) => (
+                <div
+                  key={n.id}
+                  className="flex items-center gap-2 bg-background/40 rounded-lg px-3 py-2"
+                >
+                  <span className="text-xs font-mono text-primary/60 w-5 shrink-0">{n.sequence}.</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium truncate block">{n.title}</span>
+                    <span className="text-xs text-muted-foreground/70">
+                      {n.targetBloomLevel != null ? `Bloom ${n.targetBloomLevel}` : ""}
+                      {n.targetBloomLevel != null && n.estimatedMinutes != null ? " · " : ""}
+                      {n.estimatedMinutes != null ? `${n.estimatedMinutes} ր` : ""}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!confirm(`Ջնջե՞լ «${n.title}»`)) return;
+                      deleteNode.mutate(
+                        { lessonId, nodeId: n.id },
+                        { onSuccess: refresh },
+                      );
+                    }}
+                    className="text-xs text-muted-foreground hover:text-destructive shrink-0 transition-colors"
+                  >
+                    🗑
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add node form */}
+          <form
+            onSubmit={handleAdd}
+            className="border border-white/10 rounded-xl p-3 space-y-2 bg-background/30"
+          >
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Ավելացնել node
+            </p>
+            <input
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              required
+              className={inputCls}
+              placeholder="Վերնագիր *"
+            />
+            <textarea
+              value={form.theoryContent}
+              onChange={(e) => setForm((f) => ({ ...f, theoryContent: e.target.value }))}
+              rows={2}
+              className={inputCls + " resize-none"}
+              placeholder="Տեսական բովանդակություն (ըստ ցանկության)"
+            />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground mb-1 block">Bloom մակարդակ (1–6)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="6"
+                  value={form.targetBloomLevel}
+                  onChange={(e) => setForm((f) => ({ ...f, targetBloomLevel: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground mb-1 block">Րոպե</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.estimatedMinutes}
+                  onChange={(e) => setForm((f) => ({ ...f, estimatedMinutes: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={createNode.isPending}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-medium disabled:opacity-50 transition-all hover:opacity-90"
+            >
+              {createNode.isPending ? "..." : "Ավելացնել"}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function TeacherDashboard() {
@@ -1133,6 +1297,8 @@ export default function TeacherDashboard() {
                                               </button>
                                             </div>
                                           </div>
+                                          {/* Ենթաթեմաներ (Node-եր) */}
+                                          <LessonNodesPanel lessonId={l.id} />
                                         </div>
                                       );
                                     })}

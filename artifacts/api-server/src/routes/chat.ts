@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEventsTable, knowledgeNodesTable } from "@workspace/db";
+import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEventsTable, knowledgeNodesTable, lessonNodesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { callAI, type ChatMessage } from "../services/ai";
@@ -10,19 +10,19 @@ import { logger } from "../lib/logger";
 const router = Router();
 
 // ─────────────────────────────────────────────
-//  4-PHASE LESSON STRUCTURE
+//   4-ՓՈՒԼԱՅԻՆ ԴԱՍԻ ԿԱՌՈՒՑՎԱԾՔ
 //
-//  Phase 1 — Կrknoutyun (Review of previous lesson)
-//    3–5 MC questions, one at a time → mastery %
+//   Փուլ 1 — Կրկնություն (Նախորդ դասի կրկնություն)
+//     3–5 միավոր հարց, մեկը մյուսի հետևից → յուրացման %
 //
-//  Phase 2 — Nor das / Himnakan (New lesson – basics)
-//    Theory → MC questions → 1-3 exercises → if ok → advance
+//   Փուլ 2 — Նոր դաս / Հիմնական (Նոր դաս՝ հիմունքներ)
+//     Տեսություն → հարցեր → 1-3 վարժություն → եթե ճիշտ է → առաջ
 //
-//  Phase 3 — Khor ousumnasirum (Deep study)
-//    Deeper theory → 1-3 exercises → full knowledge check → mastery %
+//   Փուլ 3 — Խորը ուսումնասիրություն (Խորացված)
+//     Ավելի խորը տեսություն → 1-3 վարժություն → լիարժեք գիտելիքի ստուգում → յուրացման %
 //
-//  Phase 4 — Tnayin (Homework + end)
-//    3-level HW → warm goodbye
+//   Փուլ 4 — Տնային աշխատանք (Տնային + ավարտ)
+//     3 մակարդակով տնային → ջերմ հրաժեշտ
 // ─────────────────────────────────────────────
 
 function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: string): string {
@@ -30,139 +30,139 @@ function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: 
 
     // ══════════════════════════════════════════════
     case 1:
-      return `=== ՓՈՒLL 1 — ԿRKNOUTYUN (Նախord dassi krknutyun) ===
+      return `=== ՓՈՒԼ 1 — ԿՐԿՆՈՒԹՅՈՒՆ (Նախորդ դասի կրկնություն) ===
 
-ԿARGOR KANONNNER — katarelou hamar khstaguyn hamataragoutyoumb:
+ԿԱՆՈՆՆԵՐ — կատարելու համար խստագույն հետևողականությամբ.
 
-▸ ТОTAL: 3-ից 5 harc (ĉer voroshes storoghoutyoun-ic, 3 lav e)
-▸ MEK MEK: Мек harc → spasir pataskhani → feedback → haĵord harc
-▸ ТEMA: Namanakavor ${subjectName}-i NAXORD DASERIC (vorĕ nochin arajin "${lessonTitle}" dasĕ cĕ)
-▸ DZEVACHAPH (KHSTAGOUYN HAVAROUTYOUMB HANDARTSI):
+▸ ԸՆԴՀԱՆՈՒՐ: 3-ից 5 հարց (ելնելով կարողությունից, 3-ը լավ է)
+▸ ՄԵԿ-ՄԵԿ: Մեկ հարց → սպասիր պատասխանի → կարծիք (feedback) → հաջորդ հարց
+▸ ԹԵՄԱ: Համապատասխան ${subjectName}-ի ՆԱԽՈՐԴ ԴԱՍԵՐԻՑ (որը ոչ թե առաջին «${lessonTitle}» դասն է)
+▸ ՁԵՎԱՉԱՓ (ԽՍՏԱԳՈՒՅՆ ՀԵՏԵՎՈՂՈՒԹՅԱՄԲ):
 
-ՀАРЦ [N]։ [Harc hayerĕn?]
-1) [Ĉanaparh A]
-2) [Ĉanaparh B]
-3) [Ĉanaparh G]
+ՀԱՐՑ [N]։ [Հարց հայերեն՞]
+1) [Տարբերակ Ա]
+2) [Տարբերակ Բ]
+3) [Տարբերակ Գ]
 
-ARACHĬN PATASKHANE PETQ E PARVATSNI:
-1. Mek ĵerm barevorakan nakhadas (1 banak)
-2. Anmijayapes ՀАРЦ 1-ĕ verevagirts dzevachaphov
+ԱՌԱՋԻՆ ՊԱՏԱՍԽԱՆԸ ՊԵՏՔ Է ՊԱՐՈՒՆԱԿԻ:
+1. Մեկ ջերմ բարևորական նախադասություն (1 տող)
+2. Անմիջապես ՀԱՐՑ 1-ը վերևում գրված ձևաչափով
 
-AMBOGĴ KRKNUTYOUNY AVARTVOUM E AYSPIS:
-▸ Ĉisht pataskhanic heto: «✓ Ĉisht e! [Kaŕts bacatroutyoun]» → haĵord harc
-▸ Skhal pataskhanic heto: «✗ Oche ĉisht: Ĉisht pataskhane [N]-n er — [bacatroutyoun]» → haĵord harc
+ԱՄԲՈՂՋ ԿՐԿՆՈՒԹՅՈՒՆԸ ԱՎԱՐՏՎՈՒՄ Է ԱՅՍՊԵՍ:
+▸ Ճիշտ պատասխանից հետո։ «✓ Ճիշտ է։ [Կարճ բացատրություն]» → հաջորդ հարց
+▸ Սխալ պատասխանից հետո։ «✗ Ոչ ճիշտ է։ Ճիշտ պատասխանը [N]-ն էր — [բացատրություն]» → հաջորդ հարց
 
-VERJIN GROUM (ambogh 3-5 harc avartvoum e heto):
+ՎԵՐՋԻՆ ԳՐՈՒՄ (ամբողջ 3-5 հարցն ավարտվելուց հետո):
 ---
-📊 Нախord dasi krknutyouni ardyunknerĕ.
+📊 Նախորդ դասի կրկնության արդյունքները։
 
-Ĉisht patakhanner: [X]-ic [YNDAMENE] ([PERCENT]%)
+Ճիշտ պատասխաններ՝ [X]-ից [ԸՆԴԱՄԵՆԸ] ([PERCENT]%)
 
-[Eke ≥ 70%]:
-Ĉarĭ! Naxord theman lav ĕ yuratsrel: Sharchakareri kĕ gnas nor dassi:
+[Եթե ≥ 70%]:
+Հրաշալի՛ է։ Նախորդ թեման լավ ես յուրացրել։ Անցնում ենք նոր դասին։
 
-[Eke < 70%]:
-Mot naxord theman mĕknabar krnĕr krknel, bayts aysor el sharchakareri kĕ gnas nor dassi:
+[Եթե < 70%]:
+Ավելի լավ կլիներ նախորդ թեման կրկին վերհիշել, բայց այսօր էլ կանցնենք նոր դասին։
 ---
 
-MATH FORMAT: MIAYĬN Unicode — 2³, 5², ×, ÷, √ (VOĈ LaTeX \\( \\) kam \\[ \\])
-LEZOU: MIAYĬN HAYEREN`;
+ՄԱԹԵՄԱՏԻԿԱԿԱՆ ՁԵՎԱՉԱՓ: ՄԻԱՅՆ Յունիկոդ — 2³, 5², ×, ÷, √ (ՈՉ LaTeX \\( \\) կամ \\[ \\])
+ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
 
     // ══════════════════════════════════════════════
     case 2:
-      return `=== ՓOUЛL 2 — НОR DAS: HIMNAKAN MASER ===
+      return `=== ՓՈՒԼ 2 — ՆՈՐ ԴԱՍ. ՀԻՄՆԱԿԱՆ ՄԱՍԵՐ ===
 
-DOU OUCOUCICH ES — nerkayatsroum es nor nywth kaŕ-kaŕ.
+ԴՈՒ ՈՒՍՈՒՑԻՉ ԵՍ — ներկայացնում ես նոր նյութը քայլ առ քայլ։
 
-АKĴORD PATTERN-ĕ kataril (3 qayl):
+ԱԿՆԿԱԼՎՈՂ ԿԱՌՈՒՑՎԱԾՔԸ կատարել (3 քայլ).
 
-── QAYL A: TEORIA ──
-Nerkayas "«${lessonTitle}»" dassi HIMNAKAN gaghaparĕ — 3-4 kaŕts nakhadas.
-Oktagortse dasagirqi lezoun, hayeren:
-- Sovoroutyounĕ ĝkelĕ amenaporov
-- Iravounakavor ornakoumner
-- Iraskanali kyanki haraberoutyoun
+── ՔԱՅԼ Ա. ՏԵՈՐԻԱ ──
+Ներկայացրո՛ւ «${lessonTitle}» դասի ՀԻՄՆԱԿԱՆ գաղափարը — 3-4 կարճ նախադասություն։
+Օգտագործիր դասագրքի լեզուն, հայերեն.
+- Սովորույթը կիրառելով ամենապարզով
+- Իրական կյանքից օրինակներով
+- Կապը կյանքի հարաբերությունների հետ
 
-── QAYL B: MC ՀАРCOUK ──
-Teoria nerkaycnoum e heto MEC-MIAYN MEK HARC tuĵr 1) 2) 3) dzevachaphov:
-ՀАРЦ [N]։ [Teoria masic harc?]
-1) ...   2) ...   3) ...
+── ՔԱՅԼ Բ. ԲԱԶՄԱԿԻ ԸՆՐՈՒԹՅԱՄԲ ՀԱՐՑ (MCQ) ──
+Տեսությունը ներկայացնելուց հետո տուր ՄԻԱՅՆ ՄԵԿ ՀԱՐՑ 1) 2) 3) ձևաչափով։
+ՀԱՐՑ [N]։ [Տեսության մասից հարց՞]
+1) ...    2) ...    3) ...
 
-Spasir pataskhani → ĉisht/skhal feedback → haĵord teorian kam harc
+Սպասիր պատասխանի → ճիշտ/սխալ կարծիք (feedback) → հաջորդ տեսությունը կամ հարցը
 
-── QAYL G: VARZHOUTYOUNNNER ──
-1-3 varzhoutyoun (parzic → baroguin).
-Tuĵr MEK VARZHOUTYOUN — spasir pataskhani:
-ВАРज [N]։ [Varzhoutyoun hayerĕn]
-Ughordir, min cĝel patĥasty patrasty pataskhane.
-Eke ashakertn inkouroujov luzum er → govabanil.
-Eke kaŕ er → ogjanel kaŕts ughordomov, mer mek varzhoutyoun tuĵr.
+── ՔԱՅԼ Գ. ՎԱՐԺՈՒԹՅՈՒՆՆԵՐ ──
+1-3 վարժություն (պարզից → բարդին)։
+Տուր ՄԵԿ ՎԱՐԺՈՒԹՅՈՒՆ — սպասիր պատասխանի։
+ՎԱՐԺ [N]։ [Վարժություն հայերեն]
+Ուղղորդիր, մինչև գտնի պատշաճ պատասխանը։
+Եթե աշակերտը ինքնուրույն է լուծում — խրախուսի՛ր։
+Եթե դժվարանում է — օգնի՛ր կարճ ուղղորդումով, մի՛ տուր պատրաստի պատասխանը։
 
-AVARTVOUM AYSPIS (bazhakabar yuratsnel heto):
+ԱՎԱՐՏՎՈՒՄ Է ԱՅՍՊԵՍ (բաժնաբար յուրացնելուց հետո):
 ---
-✅ Himnakan masĕ yuratsvel e [PERCENT]%-ov.
+✅ Հիմնական մասը յուրացվել է [PERCENT]%-ով։
 
-[Eke ≥ 70%]: Ĉarĭ! Sharchakareri kĕ gnas "${lessonTitle}"-i khkhoran ousumnasirumy.
-[Eke < 70%]: Menak mi harc kaŕts krknenq, heto sharchakareri kĕ gnas.
+[Եթե ≥ 70%]: Հրաշալի՛ է։ Անցնում ենք «${lessonTitle}»-ի խորը ուսումնասիրությանը։
+[Եթե < 70%]: Եկեք մի փոքր էլ կրկնենք, հետո կանցնենք առաջ։
 ---
 
-MATH FORMAT: Unicode only — 2³, ×, ÷, √. VOĈ LaTeX.
-LEZOU: MIAYĬN HAYEREN`;
+ՄԱԹԵՄԱՏԻԿԱԿԱՆ ՁԵՎԱՉԱՓ: ՄԻԱՅՆ Յունիկոդ — 2³, ×, ÷, √։ ՈՉ LaTeX։
+ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
 
     // ══════════════════════════════════════════════
     case 3:
-      return `=== ՓOUЛL 3 — KHOR OUSUMNASIRUM + AMBOGH STUGUM ===
+      return `=== ՓՈՒԼ 3 — ԽՈՐԱՑՎԱԾ ՈՒՍՈՒՑՈՒՄ + ԱՄԲՈՂՋԱԿԱՆ ՍՏՈՒԳՈՒՄ ===
 
-MASER A — KHOR TEORIA:
-Nerkayas "${lessonTitle}"-i KHKHOR aspektnerĕ — 3-4 kaŕts nakhadas.
-Mej mтĕv barzrakarg orinakner, kapmoutyounner ayl themanerĕ.
+ՄԱՍ Ա — ԽՈՐԸ ՏԵՈՐԻԱ.
+Ներկայացրո՛ւ «${lessonTitle}»-ի ԽՈՐԱՑՎԱԾ ասպեկտները — 3-4 կարճ նախադասություն։
+Ներառիր բարձրակարգ օրինակներ, կապեր այլ թեմաների հետ։
 
-MASER B — VARZHOUTYOUNNNER (1–3 hath):
-Tuĵr AMM-ic MEKĜ khŗndir parzic → miĵin → barouguin:
-ВАРज [N]։ [Varzhoutyoun]
-Ughordir, min cĝel. Eke kaŕ er → khnayakan harc tuĵr.
+ՄԱՍ Բ — ՎԱՐԺՈՒԹՅՈՒՆՆԵՐ (1–3 հատ).
+Տուր ըստ հերթականության՝ պարզից → միջին → բարդ.
+ՎԱՐԺ [N]։ [Վարժություն]
+Ուղղորդիր, մինչև գտնի։ Եթե դժվարանում է — տուր հուշող հարց։
 
-MASER G — AMBOGH STUGUM:
-Verchin 3–5 harc AMBOGH THEMATIC "${lessonTitle}"-ic:
-Bloom makardaknerĕ 1-ic minchev 4 (hisel, haskanal, kiraril, verlucel):
-ՀАРЦ [N]։ [Ambogh harc 1) 2) 3) dzevachaphov]
+ՄԱՍ Գ — ԱՄԲՈՂՋԱԿԱՆ ՍՏՈՒԳՈՒՄ.
+Վերջում 3–5 հարց ԱՄԲՈՂՋԱԿԱՆ ԹԵՄԱՏԻԿ «${lessonTitle}»-ից։
+Բլումի մակարդակները 1-ից մինչև 4 (հիշել, հասկանալ, կիրառել, վերլուծել):
+ՀԱՐՑ [N]։ [Ամբողջական հարց 1) 2) 3) ձևաչափով]
 
-AVARTVOUM (ambogh stugoumy avartvoum e heto):
+ԱՎԱՐՏՎՈՒՄ Է (ամբողջական ստուգումն ավարտվելուց հետո):
 ---
-🎓 Dasi amboxĥ stougoumy:
+🎓 Դասի ամբողջական ստուգումը.
 
-✓ Ĉisht patakhanner: [X]-ic [YNDAMENE] ([PERCENT]%)
+✓ Ճիշտ պատասխաններ՝ [X]-ից [ԸՆԴԱՄԵՆԸ] ([PERCENT]%)
 
-[Eke ≥ 80%]: ⭐ Gĉhejn! "${lessonTitle}" theman pudjapĝs yuratsvel e: 
-[Eke ≥ 60%]: 👍 Lav mekнarkoum: Mĭ kaŕts sharoujnakel.
-[Eke < 60%]: 💪 Ays theman krknoum en haskanal: Chabampknel.
+[Եթե ≥ 80%]: ⭐ Հրաշալի՛ է։ «${lessonTitle}» թեման գերազանց է յուրացվել։
+[Եթե ≥ 60%]: 👍 Լավ մեկնարկ. շարունակիր մի փոքր էլ։
+[Եթե < 60%]: 💪 Այս թեման հարկավոր է վերհիշել ու կրկնել։
 
-Шarchakareri kĕ gnas tnayin handnaraŕoutyoun:
+Անցնում ենք տնային հանձնարարությանը։
 ---
 
-MATH FORMAT: Unicode only. LEZOU: MIAYĬN HAYEREN`;
+ՄԱԹԵՄԱՏԻԿԱԿԱՆ ՁԵՎԱՉԱՓ: ՄԻԱՅՆ Յունիկոդ։ ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
 
     // ══════════════════════════════════════════════
     case 4:
-      return `=== ՓOUЛL 4 — TNAYIN HANDNARAŔOUTYOUN + AVART ===
+      return `=== ՓՈՒԼ 4 — ՏՆԱՅԻՆ ՀԱՆՁՆԱՐԱՐՈՒԹՅՈՒՆ + ԱՎԱՐՏ ===
 
-Patarastel ԵՐΕQ makardaki tnayin. Ashakertn ĕntroum e:
+Պատրաստել ԵՐԵՔ մակարդակի տնային աշխատանք։ Աշակերտը ընտրում է.
 
-⭐ HIMNAKAN (Bloom 1–2):
-[2-3 hanel varzhoutyoun himnakan haskacoutyounit]
+⭐ ՀԻՄՆԱԿԱՆ (Բլում 1–2):
+[2-3 հիմնական հասկացությունների վարժություն]
 
-⭐⭐ KHORHRDATAKAN (Bloom 3–4):
-[1-2 varzhoutyoun kiraroumov ev bacatroutyoumb]
+⭐⭐ ՀԱՎԵԼՅԱԼ (Բլում 3–4):
+[1-2 վարժություն կիրառումով և բացատրությամբ]
 
-⭐⭐⭐ STEGHTSAGORTSAKAН (Bloom 5–6):
-[1 steghtsagortsakaн hnarcavoroutyoun kyanquic]
+⭐⭐⭐ ՍՏԵՂԾԱԳՈՐԾԱԿԱՆ (Բլում 5–6):
+[1 ստեղծագործական հնարավորություն կյանքից]
 
-Dasĕ avartel ĵerm avartabanakoumov — shnorhakalerov ev qaджalararoutyoumb haĵord dassi hamar.
+Դասը ավարտել ջերմ հրաժեշտով՝ շնորհակալություններով և քաջալերանքով հաջորդ դասի համար։
 
-LEZOU: MIAYĬN HAYEREN`;
+ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
 
     default:
-      return `Ughordir aŝakertĕn "${lessonTitle}" themayin kapa ${subjectName}-i masnahatoroutyoumb. MIAYĬN HAYEREN.`;
+      return `Ուղղորդիր աշակերտին «${lessonTitle}» թեմային կապված ${subjectName}-ի մասնագիտությամբ։ ՄԻԱՅՆ ՀԱՅԵՐԵՆ։`;
   }
 }
 
@@ -192,6 +192,28 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const phase = session?.currentPhase ?? 1;
       const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
 
+      // If this session is working through lesson_nodes, use the CURRENT
+      // node's title/theory/bloom level instead of the whole lesson's —
+      // this is what lets mastery be tracked per sub-topic. Lessons with
+      // no nodes yet fall back to the old whole-lesson behavior unchanged.
+      let currentNode: { title: string; theoryContent: string | null; targetBloomLevel: number; estimatedMinutes: number } | null = null;
+      if (session?.currentNodeId) {
+        const [node] = await db
+          .select({
+            title: lessonNodesTable.title,
+            theoryContent: lessonNodesTable.theoryContent,
+            targetBloomLevel: lessonNodesTable.targetBloomLevel,
+            estimatedMinutes: lessonNodesTable.estimatedMinutes,
+          })
+          .from(lessonNodesTable)
+          .where(eq(lessonNodesTable.id, session.currentNodeId))
+          .limit(1);
+        currentNode = node ?? null;
+      }
+
+      const topicName = currentNode?.title ?? lesson.title;
+      const topicContent = currentNode?.theoryContent ?? lesson.content;
+
       // Phase 1 is the review phase — prioritize topics that are actually
       // due for spaced-repetition review, instead of reviewing vaguely.
       let dueReviewsLine = "";
@@ -204,17 +226,23 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
       }
 
+      const nodeLine = currentNode
+        ? `CURRENT NODE: «${currentNode.title}» (target Bloom level: ${currentNode.targetBloomLevel}, estimated ${currentNode.estimatedMinutes} min)`
+        : "";
+
       lessonContext = [
         `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
+        nodeLine,
         lesson.description ? `DESCRIPTION: ${lesson.description}` : "",
-        lesson.content ? `TEXTBOOK CONTENT:\n${lesson.content}` : "",
+        topicContent ? `TEXTBOOK CONTENT:\n${topicContent}` : "",
         dueReviewsLine,
         ``,
-        buildPhaseInstruction(phase, lesson.title, subjectName),
+        buildPhaseInstruction(phase, topicName, subjectName),
       ].filter(Boolean).join("\n");
 
-      // Resolve (or create) a knowledge_nodes row for this lesson topic
+      // Resolve (or create) a knowledge_nodes row for this topic (the
+      // current lesson node if there is one, otherwise the lesson itself).
       try {
         const [existingNode] = await db
           .select()
@@ -223,7 +251,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             and(
               eq(knowledgeNodesTable.subjectId, lesson.subjectId),
               eq(knowledgeNodesTable.userId, req.userId!),
-              eq(knowledgeNodesTable.topicName, lesson.title)
+              eq(knowledgeNodesTable.topicName, topicName)
             )
           )
           .limit(1);
@@ -236,10 +264,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             .values({
               subjectId: lesson.subjectId,
               userId: req.userId!,
-              topicName: lesson.title,
+              topicName,
               status: "not_started",
               isProvisional: true,
-              bloomLevel: 1,
+              bloomLevel: currentNode?.targetBloomLevel ?? 1,
             })
             .returning({ id: knowledgeNodesTable.id });
           topicId = newNode?.id ?? null;
@@ -274,32 +302,44 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     content: message,
   });
 
-  // Record evidence event for this student answer, then refresh this topic's
-  // scoring (mastery/confidence/retention) from the accumulated evidence.
-  db.insert(evidenceEventsTable).values({
-    userId: req.userId!,
-    lessonSessionId: sessionId,
-    topicId,
-    eventType: "answer",
-    wasCorrect: null,
-    responseTimeMs,
-    hintUsed: false,
-    metadata: {},
-  }).then(() => {
-    if (topicId !== null) {
-      updateTopicScoring(topicId, req.userId!).catch((err: unknown) =>
-        logger.error({ err }, "scoring engine update failed")
-      );
-    }
-  }).catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
-
   const chatHistory: ChatMessage[] = [
     ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     { role: "user", content: message },
   ];
 
   try {
-    const aiResponse = await callAI(chatHistory, lessonContext);
+    const rawAiResponse = await callAI(chatHistory, lessonContext);
+
+    // Parse the mandatory ###EVAL:CORRECT/INCORRECT/NONE### control tag the
+    // AI is instructed to append, and strip it before showing/saving the
+    // response — the student must never see this technical marker.
+    const evalMatch = rawAiResponse.match(/\s*###EVAL:(CORRECT|INCORRECT|NONE)###\s*$/);
+    const wasCorrect =
+      evalMatch?.[1] === "CORRECT" ? true : evalMatch?.[1] === "INCORRECT" ? false : null;
+    const aiResponse = evalMatch
+      ? rawAiResponse.slice(0, evalMatch.index).trimEnd()
+      : rawAiResponse;
+
+    // Record evidence for this student answer now that we know whether it
+    // was actually correct, then refresh this topic's scoring (mastery/
+    // confidence/retention) from the accumulated evidence.
+    db.insert(evidenceEventsTable).values({
+      userId: req.userId!,
+      lessonSessionId: sessionId,
+      topicId,
+      eventType: "answer",
+      wasCorrect,
+      responseTimeMs,
+      hintUsed: false,
+      metadata: {},
+    }).then(() => {
+      if (topicId !== null) {
+        updateTopicScoring(topicId, req.userId!).catch((err: unknown) =>
+          logger.error({ err }, "scoring engine update failed")
+        );
+      }
+    }).catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
+
     const [assistantMsg] = await db
       .insert(chatMessagesTable)
       .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: aiResponse })

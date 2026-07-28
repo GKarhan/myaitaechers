@@ -430,6 +430,160 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /lessons/{lessonId}/nodes:
+    get:
+      operationId: getLessonNodes
+      tags: [lessons]
+      summary: List all nodes for a lesson ordered by sequence
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of lesson nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LessonNode"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createLessonNode
+      tags: [lessons]
+      summary: Create a new node for a lesson
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLessonNodeInput"
+      responses:
+        "201":
+          description: Node created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonNode"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /lessons/{lessonId}/nodes/{nodeId}/update:
+    post:
+      operationId: updateLessonNode
+      tags: [lessons]
+      summary: Update a lesson node
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLessonNodeInput"
+      responses:
+        "200":
+          description: Node updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonNode"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /lessons/{lessonId}/nodes/{nodeId}/delete:
+    post:
+      operationId: deleteLessonNode
+      tags: [lessons]
+      summary: Delete a lesson node
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Node deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /lessons/{lessonId}/advance-phase:
     post:
       operationId: advanceLessonPhase
@@ -3957,6 +4111,53 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    LessonNode:
+      type: object
+      required: [id, lessonId, sequence, title]
+      properties:
+        id:
+          type: integer
+        lessonId:
+          type: integer
+        sequence:
+          type: integer
+        title:
+          type: string
+        theoryContent:
+          type: string
+          nullable: true
+        targetBloomLevel:
+          type: integer
+          nullable: true
+        estimatedMinutes:
+          type: integer
+          nullable: true
+
+    CreateLessonNodeInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        theoryContent:
+          type: string
+        targetBloomLevel:
+          type: integer
+        estimatedMinutes:
+          type: integer
+
+    UpdateLessonNodeInput:
+      type: object
+      properties:
+        title:
+          type: string
+        theoryContent:
+          type: string
+        targetBloomLevel:
+          type: integer
+        estimatedMinutes:
+          type: integer
 
     TeacherProfile:
       type: object

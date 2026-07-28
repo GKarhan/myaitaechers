@@ -42,6 +42,7 @@ import type {
   CreateHomework201,
   CreateHomeworkInput,
   CreateLessonInput,
+  CreateLessonNodeInput,
   CreateScheduleInput,
   CreateStudentInput,
   CreateTeacherInput,
@@ -65,6 +66,7 @@ import type {
   LessonActivity,
   LessonDetail,
   LessonItem,
+  LessonNode,
   LessonSession,
   LoginInput,
   NewLesson,
@@ -94,6 +96,7 @@ import type {
   TeacherProfile,
   UpdateClassInput,
   UpdateLessonInput,
+  UpdateLessonNodeInput,
   UpdateLessonStatusInput,
   UpdateStudentProfileInput,
   UpdateTeacherInput,
@@ -6200,6 +6203,185 @@ export const useGenerateLessonsAI = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getGenerateLessonsAIMutationOptions(options));
     }
+
+// ── LESSON NODES ─────────────────────────────────────────────────────────────
+
+export const getGetLessonNodesUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/nodes`;
+
+/**
+ * @summary List all nodes for a lesson ordered by sequence
+ */
+export const getLessonNodes = async (lessonId: number, options?: RequestInit): Promise<LessonNode[]> => {
+  return customFetch<LessonNode[]>(getGetLessonNodesUrl(lessonId), {
+    ...options,
+    method: 'GET',
+  });
+};
+
+export const getGetLessonNodesQueryKey = (lessonId: number) =>
+  [`/api/lessons/${lessonId}/nodes`] as const;
+
+export const getGetLessonNodesQueryOptions = <TData = Awaited<ReturnType<typeof getLessonNodes>>, TError = ErrorType<ErrorResponse>>(
+  lessonId: number,
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getLessonNodes>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetLessonNodesQueryKey(lessonId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getLessonNodes>>> = ({ signal }) =>
+    getLessonNodes(lessonId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: lessonId !== null && lessonId !== undefined, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getLessonNodes>>, TError, TData> & { queryKey: QueryKey };
+};
+
+export type GetLessonNodesQueryResult = NonNullable<Awaited<ReturnType<typeof getLessonNodes>>>;
+export type GetLessonNodesQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List all nodes for a lesson ordered by sequence
+ */
+export function useGetLessonNodes<TData = Awaited<ReturnType<typeof getLessonNodes>>, TError = ErrorType<ErrorResponse>>(
+  lessonId: number,
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getLessonNodes>>, TError, TData>; request?: SecondParameter<typeof customFetch> },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLessonNodesQueryOptions(lessonId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ── CREATE LESSON NODE ───────────────────────────────────────────────────────
+
+export const getCreateLessonNodeUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/nodes`;
+
+/**
+ * @summary Create a new node for a lesson
+ */
+export const createLessonNode = async (lessonId: number, createLessonNodeInput: CreateLessonNodeInput, options?: RequestInit): Promise<LessonNode> => {
+  return customFetch<LessonNode>(getCreateLessonNodeUrl(lessonId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createLessonNodeInput),
+  });
+};
+
+export const getCreateLessonNodeMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createLessonNode>>, TError, { lessonId: number; data: BodyType<CreateLessonNodeInput> }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof createLessonNode>>, TError, { lessonId: number; data: BodyType<CreateLessonNodeInput> }, TContext> => {
+  const mutationKey = ['createLessonNode'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLessonNode>>, { lessonId: number; data: BodyType<CreateLessonNodeInput> }> = (props) => {
+    const { lessonId, data } = props ?? {};
+    return createLessonNode(lessonId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLessonNodeMutationResult = NonNullable<Awaited<ReturnType<typeof createLessonNode>>>;
+export type CreateLessonNodeMutationBody = BodyType<CreateLessonNodeInput>;
+export type CreateLessonNodeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new node for a lesson
+ */
+export const useCreateLessonNode = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createLessonNode>>, TError, { lessonId: number; data: BodyType<CreateLessonNodeInput> }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof createLessonNode>>, TError, { lessonId: number; data: BodyType<CreateLessonNodeInput> }, TContext> => {
+  return useMutation(getCreateLessonNodeMutationOptions(options));
+};
+
+// ── UPDATE LESSON NODE ───────────────────────────────────────────────────────
+
+export const getUpdateLessonNodeUrl = (lessonId: number, nodeId: number) =>
+  `/api/lessons/${lessonId}/nodes/${nodeId}/update`;
+
+/**
+ * @summary Update a lesson node
+ */
+export const updateLessonNode = async (lessonId: number, nodeId: number, updateLessonNodeInput: UpdateLessonNodeInput, options?: RequestInit): Promise<LessonNode> => {
+  return customFetch<LessonNode>(getUpdateLessonNodeUrl(lessonId, nodeId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateLessonNodeInput),
+  });
+};
+
+export const getUpdateLessonNodeMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateLessonNode>>, TError, { lessonId: number; nodeId: number; data: BodyType<UpdateLessonNodeInput> }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof updateLessonNode>>, TError, { lessonId: number; nodeId: number; data: BodyType<UpdateLessonNodeInput> }, TContext> => {
+  const mutationKey = ['updateLessonNode'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLessonNode>>, { lessonId: number; nodeId: number; data: BodyType<UpdateLessonNodeInput> }> = (props) => {
+    const { lessonId, nodeId, data } = props ?? {};
+    return updateLessonNode(lessonId, nodeId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateLessonNodeMutationResult = NonNullable<Awaited<ReturnType<typeof updateLessonNode>>>;
+export type UpdateLessonNodeMutationBody = BodyType<UpdateLessonNodeInput>;
+export type UpdateLessonNodeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a lesson node
+ */
+export const useUpdateLessonNode = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateLessonNode>>, TError, { lessonId: number; nodeId: number; data: BodyType<UpdateLessonNodeInput> }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof updateLessonNode>>, TError, { lessonId: number; nodeId: number; data: BodyType<UpdateLessonNodeInput> }, TContext> => {
+  return useMutation(getUpdateLessonNodeMutationOptions(options));
+};
+
+// ── DELETE LESSON NODE ───────────────────────────────────────────────────────
+
+export const getDeleteLessonNodeUrl = (lessonId: number, nodeId: number) =>
+  `/api/lessons/${lessonId}/nodes/${nodeId}/delete`;
+
+/**
+ * @summary Delete a lesson node
+ */
+export const deleteLessonNode = async (lessonId: number, nodeId: number, options?: RequestInit): Promise<SuccessMessage> => {
+  return customFetch<SuccessMessage>(getDeleteLessonNodeUrl(lessonId, nodeId), {
+    ...options,
+    method: 'POST',
+  });
+};
+
+export const getDeleteLessonNodeMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLessonNode>>, TError, { lessonId: number; nodeId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLessonNode>>, TError, { lessonId: number; nodeId: number }, TContext> => {
+  const mutationKey = ['deleteLessonNode'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLessonNode>>, { lessonId: number; nodeId: number }> = (props) => {
+    const { lessonId, nodeId } = props ?? {};
+    return deleteLessonNode(lessonId, nodeId, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteLessonNodeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLessonNode>>>;
+export type DeleteLessonNodeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a lesson node
+ */
+export const useDeleteLessonNode = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLessonNode>>, TError, { lessonId: number; nodeId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof deleteLessonNode>>, TError, { lessonId: number; nodeId: number }, TContext> => {
+  return useMutation(getDeleteLessonNodeMutationOptions(options));
+};
 
 export const getGetStudentDetailUrl = (studentId: number,) => {
 
