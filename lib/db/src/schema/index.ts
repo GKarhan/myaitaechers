@@ -14,3 +14,4 @@ export * from "./homework";
 export * from "./class-documents";
 export * from "./courses";
 export * from "./resources";
+export * from "./evidence-events";

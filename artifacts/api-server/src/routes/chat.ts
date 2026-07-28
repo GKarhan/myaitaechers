@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, chatMessagesTable, lessonsTable, lessonSessionsTable } from "@workspace/db";
+import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEventsTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { callAI, type ChatMessage } from "../services/ai";
@@ -172,7 +172,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  const userMessageAt = Date.now();
   let lessonContext: string | undefined;
+  let sessionId: number | null = null;
+
   if (lessonId) {
     const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
     if (lesson) {
@@ -182,6 +185,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .where(and(eq(lessonSessionsTable.lessonId, lessonId), eq(lessonSessionsTable.userId, req.userId!)))
         .limit(1);
 
+      sessionId = session?.id ?? null;
       const phase = session?.currentPhase ?? 1;
       const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
 
@@ -207,12 +211,30 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .orderBy(asc(chatMessagesTable.createdAt))
     .limit(30);
 
+  // Compute response time from last assistant message to this user message
+  const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
+  const responseTimeMs = lastAssistant
+    ? userMessageAt - new Date(lastAssistant.createdAt).getTime()
+    : null;
+
   await db.insert(chatMessagesTable).values({
     userId: req.userId!,
     lessonId: lessonId ?? null,
     role: "user",
     content: message,
   });
+
+  // Record evidence event for this student answer
+  db.insert(evidenceEventsTable).values({
+    userId: req.userId!,
+    lessonSessionId: sessionId,
+    topicId: null,
+    eventType: "answer",
+    wasCorrect: null,
+    responseTimeMs,
+    hintUsed: false,
+    metadata: {},
+  }).catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
 
   const chatHistory: ChatMessage[] = [
     ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),

@@ -1,0 +1,33 @@
+Ես ուզում եմ ավելացնել նոր Drizzle schema աղյուսակ և դրա հետ կապված ենթակառուցվածքը՝ առանց որևէ գոյություն ունեցող ֆունկցիոնալություն կոտրելու։
+
+1. Ստեղծիր նոր ֆայլ՝ lib/db/src/schema/evidence-events.ts, հետևյալ բովանդակությամբ (Drizzle ORM, նույն ոճով, ինչ մյուս schema ֆայլերը այս պանակում).
+
+   Աղյուսակի անունը՝ evidence_events
+   Դաշտեր՝
+   - id: serial primary key
+   - userId: integer, references users.id, onDelete cascade, notNull
+   - lessonSessionId: integer, references lesson_sessions.id, onDelete cascade, nullable (որոշ evidence-ներ կարող են չլինել կոնկրետ session-ի հետ կապված)
+   - topicId: integer, references knowledge_topics.id, onDelete cascade, nullable
+   - eventType: text, notNull (հնարավոր արժեքներ՝ "answer", "hint_used", "pause", "error", "completion")
+   - wasCorrect: boolean, nullable
+   - responseTimeMs: integer, nullable
+   - hintUsed: boolean, notNull, default false
+   - metadata: jsonb, notNull, default '{}' (հավելյալ ազատ դաշտեր ապագայի համար)
+   - createdAt: timestamp with timezone, notNull, defaultNow
+
+   Ավելացրու insertEvidenceEventSchema (drizzle-zod-ով, omit id և createdAt) և type export-ներ (InsertEvidenceEvent, EvidenceEvent), ինչպես մյուս schema ֆայլերում։
+
+2. Ավելացրու այս նոր table export-ը lib/db/src/schema/index.ts-ում (նույն ձևով, ինչ մյուսներն են export արված)։
+
+3. artifacts/api-server/src/routes/chat.ts-ում, հենց այն տեղում, որտեղ ամեն student message-ից հետո լոգիկան աշխատում է (chat-ի ամեն turn-ը), ավելացրու db.insert(evidenceEventsTable) կանչ, որ գրանցի.
+   - eventType: "answer"
+   - wasCorrect (եթե արդեն հասանելի է chat-ի տրամաբանության մեջ, հակառակ դեպքում թող null)
+   - responseTimeMs (հաշվարկիր՝ ժամանակի տարբերությունը նախորդ assistant message-ից մինչև այս user message-ը)
+   - hintUsed: false (առայժմ default, հետո կավելացնենք իրական logic)
+   - userId, lessonSessionId, topicId՝ եթե արդեն հասանելի են այդ route-ի context-ում
+
+4. Գեներացրու Drizzle migration-ը (drizzle-kit generate կամ push, ինչ script-ը արդեն օգտագործվում է այս պրոյեկտում — ստուգիր package.json-ը) և կիրառիր database-ի վրա։
+
+5. Ստուգիր, որ pnpm run typecheck-ը անցնում է առանց սխալի։
+
+Մի փոփոխիր որևէ այլ existing route/component behavior-ը։ Սա միայն ավելացում է, ոչ refactor։
