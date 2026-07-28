@@ -1,0 +1,52 @@
+I want to add two new Drizzle schema tables and migrate existing data into them, WITHOUT changing or breaking any existing functionality. This is additive only — do not modify or remove the existing knowledge_topics table or any route/component that currently uses it. Existing behavior must keep working exactly as before after this task.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase (UI strings, labels, error messages, comments meant for end users, seed data) MUST be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing string elsewhere in the codebase that mixes Armenian with Latin or Cyrillic characters, leave it untouched — do not "clean up" unrelated strings as a side effect of this task.
+
+1. Create a new file: lib/db/src/schema/knowledge-nodes.ts, following the same Drizzle ORM style as the other schema files in this folder.
+
+   Table name: knowledge_nodes
+   Fields:
+   - id: serial primary key
+   - subjectId: integer, references subjects.id, onDelete cascade, notNull
+   - userId: integer, references users.id, onDelete cascade, notNull
+   - topicName: text, notNull
+   - masteryScore: integer, nullable (0-100 scale)
+   - confidenceScore: integer, nullable (0-100 scale)
+   - retentionScore: integer, nullable (0-100 scale; null means "not yet assessed", this is a valid and expected state, not missing data)
+   - bloomLevel: integer, notNull, default 1
+   - isProvisional: boolean, notNull, default true (true means the scores above are estimates from insufficient data, not confirmed measurements)
+   - status: text, notNull, default "not_started" (keep the same possible values as the current knowledge_topics.status field: not_started/weak/mastered, for compatibility)
+   - createdAt: timestamp with timezone, notNull, defaultNow
+   - updatedAt: timestamp with timezone, notNull, defaultNow
+
+   Add insertKnowledgeNodeSchema (via drizzle-zod, omitting id, createdAt, updatedAt) and type exports (InsertKnowledgeNode, KnowledgeNode), matching the pattern used in other schema files.
+
+2. Create a second new file: lib/db/src/schema/knowledge-edges.ts.
+
+   Table name: knowledge_edges
+   Fields:
+   - id: serial primary key
+   - fromNodeId: integer, references knowledge_nodes.id, onDelete cascade, notNull
+   - toNodeId: integer, references knowledge_nodes.id, onDelete cascade, notNull
+   - relationType: text, notNull, default "prerequisite" (fromNode must be learned before toNode)
+   - createdAt: timestamp with timezone, notNull, defaultNow
+
+   Add insertKnowledgeEdgeSchema and type exports (InsertKnowledgeEdge, KnowledgeEdge), same pattern.
+
+3. Export both new tables from lib/db/src/schema/index.ts, the same way other tables are exported there.
+
+4. Generate the Drizzle migration (check package.json for the exact script already used in this project — drizzle-kit generate or push) and apply it to the database.
+
+5. Write and run a one-time data migration script (place it in scripts/src/, following the existing style of scripts in that folder) that copies every existing row from knowledge_topics into knowledge_nodes:
+   - subjectId → subjectId
+   - userId → userId
+   - topicName → topicName
+   - score → masteryScore
+   - status → status
+   - confidenceScore, retentionScore → leave null
+   - isProvisional → true
+   Do not delete or modify the original knowledge_topics table or its rows — this is a copy, not a move.
+
+6. Confirm that `pnpm run typecheck` passes with no errors, and that all existing routes/pages that use knowledge_topics still work unchanged.
+
+Do not touch knowledge-tree.ts, knowledge-topics.ts, or any frontend page in this task. We will migrate the routes to use the new tables in a separate, later task.
