@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEventsTable } from "@workspace/db";
+import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEventsTable, knowledgeNodesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { callAI, type ChatMessage } from "../services/ai";
@@ -175,6 +175,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   const userMessageAt = Date.now();
   let lessonContext: string | undefined;
   let sessionId: number | null = null;
+  let topicId: number | null = null;
 
   if (lessonId) {
     const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
@@ -197,6 +198,40 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         ``,
         buildPhaseInstruction(phase, lesson.title, subjectName),
       ].filter(Boolean).join("\n");
+
+      // Resolve (or create) a knowledge_nodes row for this lesson topic
+      try {
+        const [existingNode] = await db
+          .select()
+          .from(knowledgeNodesTable)
+          .where(
+            and(
+              eq(knowledgeNodesTable.subjectId, lesson.subjectId),
+              eq(knowledgeNodesTable.userId, req.userId!),
+              eq(knowledgeNodesTable.topicName, lesson.title)
+            )
+          )
+          .limit(1);
+
+        if (existingNode) {
+          topicId = existingNode.id;
+        } else {
+          const [newNode] = await db
+            .insert(knowledgeNodesTable)
+            .values({
+              subjectId: lesson.subjectId,
+              userId: req.userId!,
+              topicName: lesson.title,
+              status: "not_started",
+              isProvisional: true,
+              bloomLevel: 1,
+            })
+            .returning({ id: knowledgeNodesTable.id });
+          topicId = newNode?.id ?? null;
+        }
+      } catch (err: unknown) {
+        logger.error({ err }, "knowledge_nodes lookup/create failed");
+      }
     }
   }
 
@@ -228,7 +263,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   db.insert(evidenceEventsTable).values({
     userId: req.userId!,
     lessonSessionId: sessionId,
-    topicId: null,
+    topicId,
     eventType: "answer",
     wasCorrect: null,
     responseTimeMs,

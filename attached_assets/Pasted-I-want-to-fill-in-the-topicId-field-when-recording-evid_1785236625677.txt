@@ -1,0 +1,32 @@
+I want to fill in the topicId field when recording evidence events in chat.ts, instead of always passing null. This connects each answer/evidence event to a specific knowledge_nodes row, so future scoring calculations know which topic to update.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase must be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing garbled string elsewhere, leave it untouched.
+
+Context: in artifacts/api-server/src/routes/chat.ts, inside the POST /chat handler, there is already a lesson lookup (`const [lesson] = await db.select().from(lessonsTable)...`) and an evidence_events insert that currently sets `topicId: null`. There is no existing table that maps a lesson directly to a knowledge_nodes row — we need to derive it.
+
+Please implement this logic, right after the lesson is loaded and before the evidence_events insert:
+
+1. If a lesson was found (the `lesson` variable is not undefined), look up a knowledge_nodes row matching:
+   - subjectId = lesson.subjectId
+   - userId = req.userId
+   - topicName = lesson.title
+   (use knowledgeNodesTable, already exported from @workspace/db, import it in this file if not already imported)
+
+2. If no matching row exists, create one with:
+   - subjectId: lesson.subjectId
+   - userId: req.userId
+   - topicName: lesson.title
+   - status: "not_started"
+   - isProvisional: true
+   - bloomLevel: 1
+   (leave masteryScore, confidenceScore, retentionScore as null/default — do not set them here, that's the Scoring Engine's job, not this task)
+
+3. Use that row's `id` as the `topicId` value in the evidence_events insert that already exists further down in this handler, instead of the current hardcoded `null`.
+
+4. If no lesson was found at all (lessonId wasn't provided or lesson doesn't exist), keep topicId as null — don't create a knowledge_nodes row without a real lesson/subject context.
+
+5. Wrap the lookup/creation in the same fire-and-forget error handling style already used for the evidence_events insert in this file (log and continue, never block or fail the chat response because of this).
+
+Do not change anything else in this file — the AI call, the phase instructions, the chat history logic, and the chat_messages inserts must stay exactly as they are.
+
+Run `pnpm run typecheck` and confirm it passes with no new errors.
