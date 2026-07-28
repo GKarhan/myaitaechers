@@ -1,0 +1,29 @@
+I want to add a new Drizzle schema table for an aggregated student profile, WITHOUT changing or breaking any existing functionality. This is additive only.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase must be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing garbled string elsewhere, leave it untouched.
+
+1. Create a new file: lib/db/src/schema/student-profile.ts, following the same Drizzle ORM style as the other schema files in this folder.
+
+   Table name: student_profile
+   Fields:
+   - id: serial primary key
+   - userId: integer, references users.id, onDelete cascade, notNull, UNIQUE (one profile row per student)
+   - avgMastery: integer, nullable (0-100 scale, average masteryScore across all their knowledge_nodes)
+   - masteredTopicsCount: integer, notNull, default 0
+   - weakTopicsCount: integer, notNull, default 0
+   - notStartedTopicsCount: integer, notNull, default 0
+   - totalLessonsCompleted: integer, notNull, default 0
+   - overallK: integer, nullable (reserved for future use once K is computable; leave null for now)
+   - reviewQueueSummary: jsonb, notNull, default '[]' (a short list of topics currently needing review — reserved for a future, richer review-queue structure; leave as an empty array for now, do not populate it in this task)
+   - lastUpdatedAt: timestamp with timezone, notNull, defaultNow
+   - createdAt: timestamp with timezone, notNull, defaultNow
+
+   Add insertStudentProfileSchema (via drizzle-zod, omitting id and createdAt) and type exports (InsertStudentProfile, StudentProfile), matching the pattern used in other schema files.
+
+2. Export this new table from lib/db/src/schema/index.ts, the same way other tables are exported there.
+
+3. Generate the Drizzle migration (check package.json for the exact script already used in this project) and apply it to the database.
+
+4. Confirm that `pnpm run typecheck` passes with no errors.
+
+Do not touch lessons.ts, chat.ts, scoring.ts, or any frontend page in this task — this is schema scaffolding only. We will wire the aggregation logic into the lesson-completion route in a separate, later task.

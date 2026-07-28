@@ -4,6 +4,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { callAI, type ChatMessage } from "../services/ai";
 import { updateTopicScoring } from "../services/scoring";
+import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -191,11 +192,24 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const phase = session?.currentPhase ?? 1;
       const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
 
+      // Phase 1 is the review phase — prioritize topics that are actually
+      // due for spaced-repetition review, instead of reviewing vaguely.
+      let dueReviewsLine = "";
+      if (phase === 1) {
+        const dueTopics = await getDueReviewTopics(req.userId!);
+        if (dueTopics.length > 0) {
+          dueReviewsLine = `DUE_REVIEWS (prioritize these topics in this review): ${dueTopics
+            .map((t) => t.topicName)
+            .join(", ")}`;
+        }
+      }
+
       lessonContext = [
         `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
         lesson.description ? `DESCRIPTION: ${lesson.description}` : "",
         lesson.content ? `TEXTBOOK CONTENT:\n${lesson.content}` : "",
+        dueReviewsLine,
         ``,
         buildPhaseInstruction(phase, lesson.title, subjectName),
       ].filter(Boolean).join("\n");

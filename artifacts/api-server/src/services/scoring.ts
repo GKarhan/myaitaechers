@@ -1,6 +1,7 @@
 import { db, evidenceEventsTable, knowledgeNodesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { scheduleReview } from "./review-schedule";
 
 /**
  * Scoring Engine — MVP Implementation Profile (Scoring_Engine_Specification_v1_0, Section 24)
@@ -238,6 +239,10 @@ export async function updateTopicScoring(topicId: number, userId: number): Promi
       { topicId, userId, p, l, r, k, masteryScore, confidenceScore },
       "scoring engine: topic updated"
     );
+
+    // Schedule (or reschedule) this topic's next spaced-repetition review
+    // based on the mastery score we just computed.
+    await scheduleReview(topicId, userId, masteryScore);
   } catch (err) {
     logger.error({ err, topicId, userId }, "scoring engine: update failed");
   }
