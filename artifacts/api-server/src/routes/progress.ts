@@ -4,7 +4,7 @@ import {
   lessonsTable,
   lessonSessionsTable,
   subjectsTable,
-  knowledgeTopicsTable,
+  knowledgeNodesTable,
   homeworkTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -151,11 +151,11 @@ router.get("/progress/subject/:subjectId", requireAuth, async (req: AuthRequest,
 
   const topics = await db
     .select()
-    .from(knowledgeTopicsTable)
+    .from(knowledgeNodesTable)
     .where(
       and(
-        eq(knowledgeTopicsTable.subjectId, subjectId),
-        eq(knowledgeTopicsTable.userId, userId)
+        eq(knowledgeNodesTable.subjectId, subjectId),
+        eq(knowledgeNodesTable.userId, userId)
       )
     );
 
@@ -201,9 +201,9 @@ router.get("/progress/subject/:subjectId", requireAuth, async (req: AuthRequest,
   const topicItems = topics.map((t) => ({
     id: t.id,
     topicName: t.topicName,
-    score: t.score,
+    score: t.masteryScore ?? 0,
     status: t.status,
-    masteryLevel: masteryLevel(t.score),
+    masteryLevel: masteryLevel(t.masteryScore ?? 0),
   }));
 
   res.json({

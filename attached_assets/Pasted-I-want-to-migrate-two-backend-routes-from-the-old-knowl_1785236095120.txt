@@ -1,0 +1,24 @@
+I want to migrate two backend routes from the old knowledge_topics table to the new knowledge_nodes table, WITHOUT changing the API response shape or breaking any frontend behavior. Both routes currently only read (SELECT) from knowledge_topics — neither has any INSERT or UPDATE to that table, so this is purely a data-source swap.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase must be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing garbled string elsewhere, leave it untouched — do not "clean up" unrelated strings as a side effect of this task.
+
+1. In artifacts/api-server/src/routes/knowledge-tree.ts:
+   - Replace the import and query that use knowledgeTopicsTable with knowledgeNodesTable (from @workspace/db).
+   - The current query filters by subjectId and userId, ordered by id — keep the exact same filter and ordering logic, just against knowledge_nodes.
+   - In the `mappedTopics` mapping, map the new table's fields back to the SAME output keys the frontend already expects:
+     - `score` in the response = `masteryScore` from knowledge_nodes, defaulting to 0 if null (since masteryScore is nullable in the new table but the old `score` was never null)
+     - `status` stays the same field name
+     - `topicName` stays the same field name
+     - keep `id` and `masteryLevel` (computed by the existing getMasteryLevel function) exactly as they are now
+   - Do not change the response JSON structure, the recommendations logic, or anything else in this file beyond swapping the data source and this one field mapping.
+
+2. In artifacts/api-server/src/routes/progress.ts:
+   - Same change: replace the knowledgeTopicsTable import and the query around the `/progress/subject/:subjectId` route with knowledgeNodesTable, same filter (subjectId + userId).
+   - Wherever the fetched `topics` result is later used in this file, apply the same field mapping as above (masteryScore → treated as `score`, defaulting to 0 if null) so downstream logic in this file keeps working unchanged.
+   - Do not change anything else in this file.
+
+3. Do not modify the knowledge_topics table itself, its schema file, or any other route/component that isn't listed above.
+
+4. Run `pnpm run typecheck` and confirm it passes with no new errors (any pre-existing unrelated errors, e.g. in teacher.ts, are fine to leave as-is).
+
+This is a swap of the underlying data source only — the goal is that every existing page (knowledge tree view, progress view) looks and behaves exactly the same as before, just backed by the new table.

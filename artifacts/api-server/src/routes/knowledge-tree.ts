@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, subjectsTable, knowledgeTopicsTable } from "@workspace/db";
+import { db, subjectsTable, knowledgeNodesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
@@ -35,21 +35,21 @@ router.get(
 
     const topics = await db
       .select()
-      .from(knowledgeTopicsTable)
+      .from(knowledgeNodesTable)
       .where(
         and(
-          eq(knowledgeTopicsTable.subjectId, subjectId),
-          eq(knowledgeTopicsTable.userId, req.userId!)
+          eq(knowledgeNodesTable.subjectId, subjectId),
+          eq(knowledgeNodesTable.userId, req.userId!)
         )
       )
-      .orderBy(knowledgeTopicsTable.id);
+      .orderBy(knowledgeNodesTable.id);
 
     const mappedTopics = topics.map((t) => ({
       id: t.id,
       topicName: t.topicName,
-      score: t.score,
+      score: t.masteryScore ?? 0,
       status: t.status,
-      masteryLevel: getMasteryLevel(t.score, t.status),
+      masteryLevel: getMasteryLevel(t.masteryScore ?? 0, t.status),
     }));
 
     // Build AI recommendations
