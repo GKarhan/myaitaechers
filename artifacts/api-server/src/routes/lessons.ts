@@ -1,9 +1,10 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable } from "@workspace/db";
 import { eq, and, asc, max } from "drizzle-orm";
-import { requireAuth, type AuthRequest } from "../middlewares/auth";
+import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
+import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI } from "../services/lesson-mapping";
 
 const router = Router();
 
@@ -587,6 +588,122 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
 
   await db.delete(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId));
   res.json({ message: "Node deleted" });
+});
+// ── LESSON MAPPING (P1-lite) ────────────────────────────────────────────────
+
+// POST /lessons/:lessonId/map — extract the real textbook text for this
+// lesson's page range from its linked textbook resource, call the AI to
+// produce a lesson goal/outcomes/core idea plus structured knowledge nodes,
+// then replace this lesson's existing lesson_nodes with the new ones.
+router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid lesson id" });
+    return;
+  }
+
+  const [lesson] = await db
+    .select()
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  if (!lesson.textbookResourceId) {
+    res.status(400).json({
+      error: "Այս դասին կապված դասագրքի ֆայլ չկա, ընտրիր այն դասը խմբագրելիս",
+    });
+    return;
+  }
+
+  if (!lesson.pagesFrom || !lesson.pagesTo) {
+    res.status(400).json({
+      error: "Այս դասին սահմանված չեն էջերի սկիզբն ու ավարտը",
+    });
+    return;
+  }
+
+  const [resource] = await db
+    .select()
+    .from(resourcesTable)
+    .where(eq(resourcesTable.id, lesson.textbookResourceId))
+    .limit(1);
+
+  if (!resource?.fileUrl) {
+    res.status(400).json({ error: "Կապված դասագրքի ֆայլը չի գտնվել" });
+    return;
+  }
+
+  const [subject] = await db
+    .select()
+    .from(subjectsTable)
+    .where(eq(subjectsTable.id, lesson.subjectId))
+    .limit(1);
+
+  try {
+    const filePath = resolveUploadedFilePath(resource.fileUrl);
+    const lessonText = await extractPdfPageRange(
+      filePath,
+      lesson.pagesFrom,
+      lesson.pagesTo
+    );
+
+    const mapping = await mapLessonWithAI({
+      subjectName: subject?.name ?? "",
+      lessonTitle: lesson.title,
+      chapterTitle: lesson.chapterTitle ?? null,
+      textbookTitle: lesson.textbookTitle ?? null,
+      textbookAuthor: lesson.textbookAuthor ?? null,
+      pagesFrom: lesson.pagesFrom,
+      pagesTo: lesson.pagesTo,
+      lessonText,
+    });
+
+    await db
+      .update(lessonsTable)
+      .set({
+        lessonGoal: mapping.lessonGoal,
+        lessonOutcomes: mapping.lessonOutcomes,
+        coreIdea: mapping.coreIdea,
+      })
+      .where(eq(lessonsTable.id, lessonId));
+
+    // Replace this lesson's node set with the freshly mapped one.
+    await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+
+    const insertedNodes = await db
+      .insert(lessonNodesTable)
+      .values(
+        mapping.nodes.map((n, i) => ({
+          lessonId,
+          sequence: i + 1,
+          title: n.title,
+          theoryContent: n.theoryContent,
+          targetBloomLevel: n.targetBloomLevel,
+          estimatedMinutes: n.estimatedMinutes,
+        }))
+      )
+      .returning();
+
+    res.json({
+      nodesCreated: insertedNodes.length,
+      lessonGoal: mapping.lessonGoal,
+      lessonOutcomes: mapping.lessonOutcomes,
+      coreIdea: mapping.coreIdea,
+    });
+  } catch (err) {
+    logger.error({ err, lessonId }, "lesson mapping failed");
+    res.status(500).json({
+      error:
+        err instanceof Error
+          ? err.message
+          : "Դասի քարտեզագրումը ձախողվեց, փորձիր կրկին",
+    });
+  }
 });
 
 export default router;

@@ -95,8 +95,9 @@ function LessonMapButton({ lessonId }: { lessonId: number }) {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
         },
-        onError: () => {
-          setMapError("Քartezmapel chi hastecav");
+        onError: (err: unknown) => {
+          const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+          setMapError(responseData?.error ?? "Քարտեզագրումը ձախողվեց, փորձիր կրկին");
         },
       },
     );
