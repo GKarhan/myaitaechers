@@ -259,7 +259,7 @@ export default function AdminDashboard() {
     e.preventDefault();
     setCError("");
     if (!cForm.teacherId) {
-      setCError("Ենթրեկ Ուսուցիչ");
+      setCError("Ընտրեք Ուսուցիչ");
       return;
     }
     createClass.mutate(
@@ -1066,7 +1066,7 @@ export default function AdminDashboard() {
                     disabled={createClass.isPending}
                     className={btnPrimary}
                   >
-                    {createClass.isPending ? "..." : "ՍՏЕՂԾЕЛ"}
+                    {createClass.isPending ? "..." : "ՍՏЕՂԾԵԼ"}
                   </button>
                   <button
                     type="button"
@@ -1779,7 +1779,7 @@ export default function AdminDashboard() {
             <div className="space-y-2">
               {students.length === 0 && (
                 <p className="text-muted-foreground text-sm py-8 text-center">
-                  Ashakert չկա
+              Աշակերտ չկա
                 </p>
               )}
               {students.map((s) => (

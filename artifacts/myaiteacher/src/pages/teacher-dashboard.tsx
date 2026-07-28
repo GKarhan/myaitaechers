@@ -1309,7 +1309,7 @@ export default function TeacherDashboard() {
                   onClick={() => setShowStudentForm((f) => !f)}
                   className={btnPrimary}
                 >
-                  + + Ավելացնել
+                  Ավելացնել
                 </button>
               </div>
               {showStudentForm && (
@@ -1499,10 +1499,10 @@ export default function TeacherDashboard() {
               }`}
             >
               {t === "classes"
-                ? "ԻՄ ԴԱՍԱՐԱՆՆԵՐԸ"
+                ? "Իմ դասարանները"
                 : t === "schedule"
-                  ? "ԻՄ ԴԱՍԱՑՈՒՑԱԿԸ"
-                  : "ԱՆՁՆԱԿԱՆ ՏՎՅԱԼՆԵՐ"}
+                  ? "Իմ Դասացուցակը"
+                  : "Անձնական տվյալներ"}
             </button>
           ))}
         </div>
