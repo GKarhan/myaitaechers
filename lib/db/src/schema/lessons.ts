@@ -33,6 +33,10 @@ export const lessonsTable = pgTable("lessons", {
   paragraphNumber: text("paragraph_number"),
   textbookResourceId: integer("textbook_resource_id")
     .references(() => resourcesTable.id, { onDelete: "set null" }),
+  // AI-generated lesson mapping fields
+  lessonGoal: text("lesson_goal"),
+  lessonOutcomes: jsonb("lesson_outcomes").notNull().default([]),
+  coreIdea: text("core_idea"),
   status: text("status").notNull().default("draft"),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
