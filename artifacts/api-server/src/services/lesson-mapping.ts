@@ -2,10 +2,12 @@ import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
-const pdfParse = _require("pdf-parse") as (
-  buf: Buffer,
-  options?: { pagerender?: (pageData: { pageNumber: number; getTextContent: () => Promise<{ items: { str: string }[] }> }) => Promise<string> }
-) => Promise<{ text: string; numpages: number }>;
+const { PDFParse } = _require("pdf-parse") as {
+  PDFParse: new (opts: { data: Buffer }) => {
+    getText(opts?: { partial?: number[] }): Promise<{ text: string }>;
+    destroy(): Promise<void>;
+  };
+};
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { logger } from "../lib/logger";
 
@@ -22,22 +24,16 @@ export async function extractPdfPageRange(
   pagesTo: number
 ): Promise<string> {
   const dataBuffer = fs.readFileSync(filePath);
-  const collected: string[] = [];
+  const pageNumbers: number[] = [];
+  for (let p = pagesFrom; p <= pagesTo; p++) pageNumbers.push(p);
 
-  await pdfParse(dataBuffer, {
-    pagerender: async (pageData: {
-      pageNumber: number;
-      getTextContent: () => Promise<{ items: { str: string }[] }>;
-    }) => {
-      if (pageData.pageNumber >= pagesFrom && pageData.pageNumber <= pagesTo) {
-        const textContent = await pageData.getTextContent();
-        collected.push(textContent.items.map((item) => item.str).join(" "));
-      }
-      return "";
-    },
-  });
-
-  return collected.join("\n\n").trim();
+  const parser = new PDFParse({ data: dataBuffer });
+  try {
+    const result = await parser.getText({ partial: pageNumbers });
+    return result.text.trim();
+  } finally {
+    await parser.destroy();
+  }
 }
 
 /** Resolves a resources-table fileUrl (e.g. /api/teacher/documents/files/xyz.pdf) to its real path on disk. */
