@@ -1,0 +1,22 @@
+I want to add textbook-resource linking to lessons, plus a "map with AI" trigger button, WITHOUT changing or breaking any existing functionality. This is additive only. Do NOT implement the actual AI mapping logic yet — just the schema field, the resource picker, and a button that calls a not-yet-implemented endpoint. That endpoint will be added in a separate task.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write or touch anywhere in this codebase must be real Armenian script (Unicode Armenian letters, ԱԲԳԴ...), never Latin transliteration and never Cyrillic look-alike characters. If you notice any existing garbled string elsewhere, leave it untouched.
+
+1. SCHEMA — in lib/db/src/schema/lessons.ts, add one new nullable column to the EXISTING lessonsTable (do not remove or rename any existing column):
+   - textbookResourceId: integer, references resources.id (the existing resourcesTable), onDelete: "set null", nullable
+
+   Update insertLessonSchema only if needed to keep it consistent with the new column. Generate the Drizzle migration (check package.json for the exact script already used) and apply it.
+
+2. BACKEND — in artifacts/api-server/src/routes/teacher.ts (or wherever the existing lesson create/update routes for teachers live — find the existing "createTeacherLesson" / "updateTeacherLesson" style routes and follow their exact pattern), allow an optional textbookResourceId field to be accepted and stored when creating or updating a lesson. Just pass it through to the insert/update values — same pattern as the other optional fields like textbookAuthor.
+
+3. FRONTEND — in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx:
+
+   a) In the lesson creation form and the lesson edit form (the ones with textbookAuthor/textbookTitle/chapterTitle/etc. fields), add a dropdown labeled "Կապված դասագրքի ֆայլ" that lists the current course's resources where type === "textbook" (courseResources is already fetched and available in this component — filter it). Store the selected resource's id in the lesson form state as textbookResourceId, and include it when submitting create/update.
+
+   b) In each lesson card (where LessonNodesPanel is already rendered), add a button labeled "🗺️ Քարտեզագրել AI-ով" placed next to the existing edit/delete icon buttons. On click, it should call a new mutation hook (generate it following the exact same orval pattern already used for useCreateLessonNode etc.) that POSTs to `/lessons/:lessonId/map` with no body, expecting a response like `{ nodesCreated: number }`. Show a loading spinner state on the button while pending, and on success, invalidate the lesson_nodes query for that lesson (getGetLessonNodesQueryKey(lessonId)) so the panel refreshes. On error, show a small inline error message near the button (a piece of local state is fine) — don't use alert().
+
+   You do NOT need to implement the /lessons/:lessonId/map backend route in this task — just wire the button and hook to call it. It's fine if the route doesn't exist yet (that's the next task); the button just needs to be ready to call it once it does.
+
+4. Confirm `pnpm run typecheck` passes with no errors (the missing route is fine to leave as a TODO — do not stub a fake implementation of it).
+
+Do not change any other existing behavior.

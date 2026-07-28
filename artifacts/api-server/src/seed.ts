@@ -24,12 +24,11 @@ export async function seed() {
 
     await client.query(`
       INSERT INTO users (username, password_hash, full_name, role)
-      VALUES ('student1', '${S_HASH}', 'Արամ Կarapetyаn', 'student')
+      VALUES ('admin', '${A_HASH}', 'Ադմինիստրատոր', 'admin')
       ON CONFLICT (username) DO UPDATE
         SET password_hash = EXCLUDED.password_hash,
             role          = EXCLUDED.role
     `);
-
     await client.query(`
       UPDATE users
       SET full_name = (SELECT full_name FROM users WHERE username = 'ekarhanyan')

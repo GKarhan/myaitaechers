@@ -130,10 +130,11 @@ router.get("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => 
 });
 
 router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => {
-  const { subjectId, classId, courseId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber } = req.body as {
+  const { subjectId, classId, courseId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId } = req.body as {
     subjectId?: number; classId?: number; courseId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
     lessonNumber?: number; pagesFrom?: number; pagesTo?: number; month?: number; day?: number;
     textbookAuthor?: string; textbookTitle?: string; chapterTitle?: string; paragraphNumber?: string;
+    textbookResourceId?: number;
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
   let resolvedSubjectId = subjectId;
@@ -151,6 +152,7 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
     month: month ?? null, day: day ?? null,
     textbookAuthor: textbookAuthor ?? null, textbookTitle: textbookTitle ?? null,
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
+    textbookResourceId: textbookResourceId ?? null,
     status: "draft",
   }).returning();
   res.status(201).json(lesson);
@@ -159,10 +161,11 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
 router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber } = req.body as {
+  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId } = req.body as {
     title?: string; description?: string; bloomLevel?: number; content?: string;
     lessonNumber?: number; pagesFrom?: number; pagesTo?: number; month?: number; day?: number;
     textbookAuthor?: string; textbookTitle?: string; chapterTitle?: string; paragraphNumber?: string;
+    textbookResourceId?: number | null;
   };
   const updated = await db.update(lessonsTable)
     .set({
@@ -179,6 +182,7 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
       ...(textbookTitle !== undefined && { textbookTitle }),
       ...(chapterTitle !== undefined && { chapterTitle }),
       ...(paragraphNumber !== undefined && { paragraphNumber }),
+      ...(textbookResourceId !== undefined && { textbookResourceId }),
     })
     .where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!)))
     .returning();
@@ -493,10 +497,11 @@ router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Aut
 router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: AuthRequest, res) => {
   const courseId = parseInt(String(req.params.courseId));
   if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
-  const { subjectId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber } = req.body as {
+  const { subjectId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId } = req.body as {
     subjectId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
     lessonNumber?: number; pagesFrom?: number; pagesTo?: number;
     textbookAuthor?: string; textbookTitle?: string; chapterTitle?: string; paragraphNumber?: string;
+    textbookResourceId?: number;
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
   let resolvedSubjectId = subjectId;
@@ -516,6 +521,7 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,
     textbookAuthor: textbookAuthor ?? null, textbookTitle: textbookTitle ?? null,
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
+    textbookResourceId: textbookResourceId ?? null,
     status: "draft",
   }).returning();
   res.status(201).json(lesson);

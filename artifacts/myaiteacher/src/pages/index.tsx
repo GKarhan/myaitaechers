@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLogin } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
@@ -6,8 +7,10 @@ export default function Home() {
   const { login: setAuthToken } = useAuth();
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
+  const [quickLoginError, setQuickLoginError] = useState("");
 
   const quickLogin = (username: string, password: string) => {
+    setQuickLoginError("");
     loginMutation.mutate(
       { data: { username, password } },
       {
@@ -17,6 +20,14 @@ export default function Home() {
           if (role === "admin") setLocation("/admin");
           else if (role === "teacher") setLocation("/teacher");
           else setLocation("/dashboard");
+        },
+        onError: (err: unknown) => {
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          setQuickLoginError(
+            status === 401 || status === 400
+              ? `Այս demo հաշիվը (${username}) գոյություն չունի կամ գաղտնաբառը սխալ է։`
+              : "Մուտքը ձախողվեց, փորձիր կրկին։"
+          );
         },
       },
     );
@@ -86,6 +97,9 @@ export default function Home() {
               Աշակերտ
             </button>
           </div>
+          {quickLoginError && (
+            <p className="text-xs text-destructive mt-1">{quickLoginError}</p>
+          )}
         </div>
       </div>
     </div>

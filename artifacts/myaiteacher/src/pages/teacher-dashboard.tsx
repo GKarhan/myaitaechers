@@ -24,6 +24,7 @@ import {
   useGetLessonNodes,
   useCreateLessonNode,
   useDeleteLessonNode,
+  useMapLessonWithAI,
   getGetTeacherClassesQueryKey,
   getGetClassStudentsQueryKey,
   getGetClassCoursesQueryKey,
@@ -79,6 +80,48 @@ async function uploadResource(
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+// ── Lesson Map Button sub-component ──────────────────────────────────────────
+function LessonMapButton({ lessonId }: { lessonId: number }) {
+  const qc = useQueryClient();
+  const [mapError, setMapError] = useState<string | null>(null);
+  const mapLesson = useMapLessonWithAI();
+
+  const handleMap = () => {
+    setMapError(null);
+    mapLesson.mutate(
+      { lessonId },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+        },
+        onError: () => {
+          setMapError("Քartezmapel chi hastecav");
+        },
+      },
+    );
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleMap}
+        disabled={mapLesson.isPending}
+        title="Քartezmapel AI-ov"
+        className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
+      >
+        {mapLesson.isPending ? (
+          <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        ) : (
+          "🗺️"
+        )}
+      </button>
+      {mapError && (
+        <span className="text-xs text-destructive whitespace-nowrap">{mapError}</span>
+      )}
+    </>
+  );
 }
 
 // ── Lesson Nodes sub-component ────────────────────────────────────────────────
@@ -428,6 +471,7 @@ export default function TeacherDashboard() {
     textbookTitle: "",
     chapterTitle: "",
     paragraphNumber: "",
+    textbookResourceId: "",
   };
   const [lessonForm, setLessonForm] = useState(emptyLesson);
   const [showLessonForm, setShowLessonForm] = useState(false);
@@ -458,6 +502,9 @@ export default function TeacherDashboard() {
           textbookTitle: lessonForm.textbookTitle || undefined,
           chapterTitle: lessonForm.chapterTitle || undefined,
           paragraphNumber: lessonForm.paragraphNumber || undefined,
+          textbookResourceId: lessonForm.textbookResourceId
+            ? parseInt(lessonForm.textbookResourceId)
+            : undefined,
         },
       },
       {
@@ -493,6 +540,9 @@ export default function TeacherDashboard() {
           textbookTitle: editLesson.textbookTitle || undefined,
           chapterTitle: editLesson.chapterTitle || undefined,
           paragraphNumber: editLesson.paragraphNumber || undefined,
+          textbookResourceId: editLesson.textbookResourceId
+            ? parseInt(editLesson.textbookResourceId)
+            : null,
         },
       },
       {
@@ -1259,6 +1309,7 @@ export default function TeacherDashboard() {
                                                    Նոր դաս
                                                  </button>
                                                )}
+                                              <LessonMapButton lessonId={l.id} />
                                               <button
                                                 onClick={() => {
                                                   setEditLesson({
@@ -1271,6 +1322,7 @@ export default function TeacherDashboard() {
                                                     textbookTitle: (l as any).textbookTitle ?? "",
                                                     chapterTitle: (l as any).chapterTitle ?? "",
                                                     paragraphNumber: (l as any).paragraphNumber ?? "",
+                                                    textbookResourceId: String((l as any).textbookResourceId ?? ""),
                                                   });
                                                   setShowLessonForm(false);
                                                 }}

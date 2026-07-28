@@ -68,6 +68,7 @@ import type {
   LessonItem,
   LessonNode,
   LessonSession,
+  MapLessonResult,
   LoginInput,
   NewLesson,
   OverallProgress,
@@ -6203,6 +6204,49 @@ export const useGenerateLessonsAI = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getGenerateLessonsAIMutationOptions(options));
     }
+
+// ── MAP LESSON WITH AI ────────────────────────────────────────────────────────
+
+export const getMapLessonWithAIUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/map`;
+
+/**
+ * @summary Trigger AI mapping of a lesson into nodes (POST /lessons/:lessonId/map)
+ */
+export const mapLessonWithAI = async (lessonId: number, options?: RequestInit): Promise<MapLessonResult> => {
+  return customFetch<MapLessonResult>(getMapLessonWithAIUrl(lessonId), {
+    ...options,
+    method: 'POST',
+  });
+};
+
+export const getMapLessonWithAIMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof mapLessonWithAI>>, TError, { lessonId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof mapLessonWithAI>>, TError, { lessonId: number }, TContext> => {
+  const mutationKey = ['mapLessonWithAI'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof mapLessonWithAI>>, { lessonId: number }> = (props) => {
+    const { lessonId } = props ?? {};
+    return mapLessonWithAI(lessonId, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MapLessonWithAIMutationResult = NonNullable<Awaited<ReturnType<typeof mapLessonWithAI>>>;
+export type MapLessonWithAIMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Trigger AI mapping of a lesson into nodes
+ */
+export const useMapLessonWithAI = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof mapLessonWithAI>>, TError, { lessonId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof mapLessonWithAI>>, TError, { lessonId: number }, TContext> => {
+  return useMutation(getMapLessonWithAIMutationOptions(options));
+};
 
 // ── LESSON NODES ─────────────────────────────────────────────────────────────
 

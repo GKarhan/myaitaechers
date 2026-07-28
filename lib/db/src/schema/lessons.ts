@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { subjectsTable } from "./subjects";
 import { usersTable } from "./users";
 import { classesTable } from "./classes";
+import { resourcesTable } from "./resources";
 
 export const lessonsTable = pgTable("lessons", {
   id: serial("id").primaryKey(),
@@ -30,6 +31,8 @@ export const lessonsTable = pgTable("lessons", {
   textbookTitle: text("textbook_title"),
   chapterTitle: text("chapter_title"),
   paragraphNumber: text("paragraph_number"),
+  textbookResourceId: integer("textbook_resource_id")
+    .references(() => resourcesTable.id, { onDelete: "set null" }),
   status: text("status").notNull().default("draft"),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
