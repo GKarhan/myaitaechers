@@ -1,0 +1,25 @@
+I need three coordinated changes: a schema addition, a service update, and a route update — to make lesson mapping produce richer data for the AI teacher (P4/P5 prompts) to actually use during a lesson, while keeping the teacher-facing frontend display unchanged (it will keep showing only the current subset — no frontend changes in this task).
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+CHANGE 1 — lib/db/src/schema/lesson-nodes.ts (schema addition + migration)
+Add these columns to `lessonNodesTable`:
+- `childFriendlyExplanation: text("child_friendly_explanation")` — the exact plain-language explanation the AI teacher should say to the student for this node
+- `basicExamples: jsonb("basic_examples").notNull().default([])` — array of short example strings
+- `realLifeExamples: jsonb("real_life_examples").notNull().default([])` — array of short real-life-context example strings
+- `commonMisconception: text("common_misconception")` — the most likely wrong answer/confusion a student will have for this node, so the evaluation step can recognize it
+- `prerequisiteNodes: jsonb("prerequisite_nodes").notNull().default([])` — array of short text labels naming what a student needs to already know before this node (not IDs — just short descriptive phrases, since there's no cross-lesson node-ID system yet)
+Run the drizzle migration after adding these.
+
+CHANGE 2 — artifacts/api-server/src/services/lesson-mapping.ts
+- Extend the node shape in `LessonMappingResult` to include the four new fields above (childFriendlyExplanation: string, basicExamples: string[], realLifeExamples: string[], commonMisconception: string, prerequisiteNodes: string[]).
+- Extend the `practicalTasks` item shape to add: `sourcePage: string | null` (the textbook page this exercise came from, or null if AI-proposed), `difficultyLevel: "LOW" | "MEDIUM" | "HIGH"`, `successCriteria: string` (the correct answer or what counts as correct), `relatedNodeTitle: string` (which node this task reinforces, matched by node title).
+- Update the SYSTEM_PROMPT: for each node, now also ask the model to produce a child-friendly explanation (plain language, as if speaking directly to the student), 1-2 basic examples, 0-2 real-life examples, the single most likely misconception/wrong answer for that node, and a short list of prerequisite knowledge phrases. For each practical task, ask for the source page (or null if AI-proposed), a difficulty level, explicit success criteria (the correct answer), and which node title it reinforces. Base the depth and style of these fields on the Node Passport and Textbook Exercise Map sections of the P1 — Lesson Knowledge Package Generator spec (already in the codebase context) — same spirit, simplified to these specific fields, not the full P1 structure.
+- Update the JSON output shape example in the prompt accordingly.
+- Update the defensive-parse fallbacks: default any missing array field to `[]`, missing commonMisconception/childFriendlyExplanation to `""`, missing difficultyLevel to `"MEDIUM"`.
+
+CHANGE 3 — artifacts/api-server/src/routes/lessons.ts, POST /lessons/:lessonId/map
+- When inserting into `lessonNodesTable`, also include the four new node fields from the mapping result for each node.
+- The `practicalTasks` array is stored as-is (already jsonb on lessonsTable), so its richer object shape needs no route change beyond what's already there — just confirm the whole richer object is what gets saved, not a stripped-down version.
+
+Keep the frontend exactly as it is — do not touch teacher-dashboard.tsx in this task. Run a typecheck after all three changes and confirm zero errors, then hit the map endpoint on lesson id 41 again and paste me the full JSON response.

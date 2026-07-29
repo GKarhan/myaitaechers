@@ -691,6 +691,11 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           theoryContent: n.theoryContent,
           targetBloomLevel: n.targetBloomLevel,
           estimatedMinutes: n.estimatedMinutes,
+          childFriendlyExplanation: n.childFriendlyExplanation,
+          basicExamples: n.basicExamples,
+          realLifeExamples: n.realLifeExamples,
+          commonMisconception: n.commonMisconception,
+          prerequisiteNodes: n.prerequisiteNodes,
         }))
       )
       .returning();

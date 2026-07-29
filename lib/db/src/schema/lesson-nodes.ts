@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { lessonsTable } from "./lessons";
@@ -13,6 +14,12 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   theoryContent: text("theory_content"),
   targetBloomLevel: integer("target_bloom_level").notNull().default(1),
   estimatedMinutes: integer("estimated_minutes").notNull().default(5),
+  // AI-teacher fields (P4/P5 runtime use)
+  childFriendlyExplanation: text("child_friendly_explanation"),
+  basicExamples: jsonb("basic_examples").notNull().default(sql`'[]'::jsonb`),
+  realLifeExamples: jsonb("real_life_examples").notNull().default(sql`'[]'::jsonb`),
+  commonMisconception: text("common_misconception"),
+  prerequisiteNodes: jsonb("prerequisite_nodes").notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
