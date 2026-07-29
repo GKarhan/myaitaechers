@@ -98,7 +98,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         },
         onError: (err: unknown) => {
           const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
-          setMapError(responseData?.error ?? "Քartezmapel AI-ov bandzaxvel");
+          setMapError(responseData?.error ?? "Քարտեզագրումը ձախողվեց, փորձիր կրկին");
         },
       },
     );

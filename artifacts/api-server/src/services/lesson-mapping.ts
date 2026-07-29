@@ -110,6 +110,9 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
 - theoryContent-ը պիտի հիմնված լինի տրված իրական տեքստի վրա, ոչ հորինված նյութի վրա
 - estimatedMinutes-ը ամեն node-ի հարաբերական ժամանակի կշիռն է (ոչ ճշգրիտ երաշխիք)
 - practicalTasks: 2-5 tasks; prefer real textbook exercises/examples over invented ones
+- գլխի/բաժնի վնագիրներ (օրինակները։ «ԳԼՈՒԽ 1», «ԲԱԺԻՆ 2» ev ախնկալ) ախնկալ վնագիրներ են — անտել դրանք որպես աղբյուր node-ի, coreProblem-ի, coreIdea-ի և practicalTasks-ի համար
+- Node-երը, coreProblem-ը, coreIdea-ն և practicalTasks-ը պիտի բացառապես համապատասխանեն դասի սեփական տեքստում և վերնագրի — այլ դասերի վնագիրներ և forward-reference-ները անտել վորպես աղբյուր
+- Եթե դասի վերնագրը չի համապատասխանում գլխի ախնկալ վերնագրին, վստահել դասի վերնագրը որպես բովանդակության սահմանը
 `;
 
 export async function mapLessonWithAI(

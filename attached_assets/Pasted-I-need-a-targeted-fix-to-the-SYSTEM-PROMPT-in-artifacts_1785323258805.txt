@@ -1,0 +1,14 @@
+I need a targeted fix to the SYSTEM_PROMPT in artifacts/api-server/src/services/lesson-mapping.ts. No schema, no route, no frontend changes.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+PROBLEM: When mapping a lesson, the extracted textbook text often includes a running page header showing the broader chapter/unit title (e.g. a line like "ԳԼՈՒԽ 1 | Բնական թվերը և կոորդինատային ճառագայթը" printed at the top of the physical page), which covers several lessons, not just this one. The model has been treating that broader chapter heading as if it were part of this specific lesson's content, and has generated a knowledge node for a topic that actually belongs to a LATER lesson in the same chapter (e.g. generating a node about "coordinate ray" when the lesson being mapped is only about "building numbering", which is an earlier lesson in the same chapter).
+
+FIX: Add an explicit rule/step to the SYSTEM_PROMPT (near the existing numbered process steps) making clear:
+- Any line in the provided textbook text that looks like a running chapter/unit header (matches patterns like "ԳԼՈՒԽ <number>", "unit title spanning multiple lessons", or repeats the subject's higher-level topic rather than this specific lesson's title) is page-header noise, not lesson content, and must be IGNORED as a source for nodes, coreIdea, or coreProblem.
+- Nodes, coreProblem, coreIdea, and practicalTasks must all stay strictly scoped to what is actually taught in THIS lesson's own text and its own lesson title — never include a topic that is clearly a different, later (or earlier) lesson's subject, even if it's mentioned in a chapter-level heading or as a forward-reference in the text.
+- If the lesson title given (e.g. "Շենքերի համարակալումը") doesn't match a broader heading found in the extracted text, trust the lesson title as the scope boundary.
+
+Add this as a clearly labeled rule in the existing "Կանոններ" bullet list in the SYSTEM_PROMPT (don't restructure the whole prompt, just add these rules to the existing list, in Armenian, matching the style of the other bullet rules already there).
+
+After the change, run a typecheck and confirm zero errors. Then re-run the map endpoint on lesson id 41 (the "Շենքերի համարակալումը" lesson, already has textbook resource linked now) and paste me the full JSON response so I can verify the coordinate-ray node is gone and the nodes now stay within the lesson's actual scope.
