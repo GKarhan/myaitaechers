@@ -1,0 +1,20 @@
+Five UI/logic fixes needed in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx. Frontend-only, no schema changes (existing DB columns for the removed form fields stay in the database, just stop collecting/showing them in the forms).
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic. Double-check every character you output actually matches the intended Armenian letter (this codebase has had bugs before where a similar-looking wrong Armenian letter got used, e.g. "Ե" instead of "Է" — verify carefully).
+
+FIX 1 — lesson ordering
+In the `sorted` array comparator (the one currently ordering by textbookTitle, then chapterTitle, then lessonNumber, then paragraphNumber), change the priority so lessonNumber (ascending numeric) is compared right after textbookTitle, BEFORE chapterTitle. So a newly added lesson with a higher lessonNumber should always appear below lessons with lower lessonNumber, regardless of chapterTitle text. Keep paragraphNumber as the final tiebreaker. Don't otherwise change the grouping logic (chapterGroups can stay keyed by chapterTitle as before — just fix the sort order feeding into it).
+
+FIX 2 — LessonGoalOutcomesPanel text color
+In the `LessonGoalOutcomesPanel` component, change the goal text and each outcome list item's text color to plain white (same white used for node titles and the coreProblem/coreIdea text), same font size as now. Leave the "Նպատակ" / "Վերջնարդյունքներ" small labels in their current color/style — only the body text under each changes to white.
+
+FIX 3 — remove the node count from the panel header
+In `LessonNodesPanel`, the toggle button label is currently "🗺️ Քարտեզագրված դաս{nodes.length > 0 ? ` · ${nodes.length}` : ""}". Remove the count entirely — it should just always read "🗺️ Քարտեզագրված դաս" regardless of how many nodes exist.
+
+FIX 4 — fix "Էջ" typo and spacing
+Find wherever the lesson row displays the paragraph number and the page range together (the `§{paragraphNumber}` span and the `Էջ {pagesFrom}–{pagesTo}` span in the lesson list row). If the word is spelled "Եջ" anywhere (wrong letter — should be "Է" not "Ե"), fix it to "Էջ". Also add a visible separator between the paragraph span and the page-range span — e.g. wrap them so there's a " · " (space-middledot-space) between "§1.2" and "Էջ 13–14", since right now they render jammed together with no visible gap.
+
+FIX 5 — remove three redundant fields from both lesson forms
+In BOTH the "New lesson" (create) form and the "Edit lesson" form, remove these three inputs entirely (including their labels and the state fields backing them, and stop sending them in the create/update submit payloads): the "Թեմա / Գլուխ" text field (chapterTitle), the "Դասագրքի անվանումը" text field (textbookTitle), and the "Դասագրքի հեղինակը" text field (textbookAuthor). These are now redundant since the "Դասագրքի ֆայլը" dropdown (textbookResourceId) already identifies the linked textbook resource. Keep everything else in both forms unchanged (lesson number, paragraph number, lesson title, pages from/to, the textbook-file dropdown, goal/outcomes textareas).
+
+After all five fixes, run a typecheck and confirm zero errors, then describe or screenshot how the lesson list and a lesson card look now.

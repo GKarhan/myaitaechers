@@ -158,7 +158,7 @@ function LessonNodesPanel({
         className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
       >
         <span className="font-medium tracking-wide">
-          🗺️ Քարտեզագրված դաս{nodes.length > 0 ? ` · ${nodes.length}` : ""}
+          🗺️ Քարտեզագրված դաս
         </span>
         <span>{open ? "▲" : "▼"}</span>
       </button>
@@ -277,14 +277,14 @@ function LessonGoalOutcomesPanel({
         <div className="px-4 pb-4 space-y-2">
           <div>
             <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Նպատակ</div>
-            <p className="text-xs text-muted-foreground">{lessonGoal}</p>
+            <p className="text-xs text-white">{lessonGoal}</p>
           </div>
           {lessonOutcomes.length > 0 && (
             <div>
               <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Վերջնարդյունքներ</div>
               <ul className="list-disc list-inside space-y-0.5">
                 {lessonOutcomes.map((o, i) => (
-                  <li key={i} className="text-xs text-muted-foreground">
+                  <li key={i} className="text-xs text-white">
                     {o}
                   </li>
                 ))}
@@ -480,9 +480,6 @@ export default function TeacherDashboard() {
     lessonNumber: "",
     pagesFrom: "",
     pagesTo: "",
-    textbookAuthor: "",
-    textbookTitle: "",
-    chapterTitle: "",
     paragraphNumber: "",
     textbookResourceId: "",
     lessonGoal: "",
@@ -513,9 +510,6 @@ export default function TeacherDashboard() {
           pagesTo: lessonForm.pagesTo
             ? parseInt(lessonForm.pagesTo)
             : undefined,
-          textbookAuthor: lessonForm.textbookAuthor || undefined,
-          textbookTitle: lessonForm.textbookTitle || undefined,
-          chapterTitle: lessonForm.chapterTitle || undefined,
           paragraphNumber: lessonForm.paragraphNumber || undefined,
           textbookResourceId: lessonForm.textbookResourceId
             ? parseInt(lessonForm.textbookResourceId)
@@ -555,9 +549,6 @@ export default function TeacherDashboard() {
           pagesTo: editLesson.pagesTo
             ? parseInt(editLesson.pagesTo)
             : undefined,
-          textbookAuthor: editLesson.textbookAuthor || undefined,
-          textbookTitle: editLesson.textbookTitle || undefined,
-          chapterTitle: editLesson.chapterTitle || undefined,
           paragraphNumber: editLesson.paragraphNumber || undefined,
           textbookResourceId: editLesson.textbookResourceId
             ? parseInt(editLesson.textbookResourceId)
@@ -1344,15 +1335,15 @@ export default function TeacherDashboard() {
                   "hy",
                 );
                 if (ta !== 0) return ta;
+                const la =
+                  ((a as any).lessonNumber ?? 9999) -
+                  ((b as any).lessonNumber ?? 9999);
+                if (la !== 0) return la;
                 const ca = ((a as any).chapterTitle ?? "").localeCompare(
                   (b as any).chapterTitle ?? "",
                   "hy",
                 );
                 if (ca !== 0) return ca;
-                const la =
-                  ((a as any).lessonNumber ?? 9999) -
-                  ((b as any).lessonNumber ?? 9999);
-                if (la !== 0) return la;
                 return ((a as any).paragraphNumber ?? "").localeCompare(
                   (b as any).paragraphNumber ?? "",
                 );
@@ -1426,6 +1417,9 @@ export default function TeacherDashboard() {
                                                   <span className="text-xs text-muted-foreground">
                                                     §{(l as any).paragraphNumber}
                                                   </span>
+                                                )}
+                                                {(l as any).paragraphNumber && ((l as any).pagesFrom || (l as any).pagesTo) && (
+                                                  <span className="text-xs text-muted-foreground/40"> · </span>
                                                 )}
                                                 {((l as any).pagesFrom || (l as any).pagesTo) && (
                                                   <span className="text-xs text-muted-foreground">
