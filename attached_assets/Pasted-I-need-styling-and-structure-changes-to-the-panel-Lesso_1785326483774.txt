@@ -1,0 +1,27 @@
+I need styling and structure changes to the "Քարտեզագրված դաս" panel (`LessonNodesPanel` in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx), plus one backend change to lesson-mapping.ts so practicalTasks are split into classwork vs homework.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+FRONTEND CHANGE 1 — text color
+For the coreProblem and coreIdea sections just added: keep the label lines ("🎯 Հիմնահարց", "💡 Գլխավոր գաղափար") in their current accent color/style — only change the body text right below each label from the muted/gray color to plain white (same text color the node titles already use), same font size as now.
+
+FRONTEND CHANGE 2 — add a header above the node list
+Right above the existing node list (between the coreIdea section and the first node row), add a small label header styled exactly like the other section labels (same classes/color as "🎯 Հիմնահարց" etc.): "📋 Գիտելիքի միավորներ". Only show this header when there's at least one node (same condition already guarding the node list).
+
+FRONTEND CHANGE 3 — remove minutes from each node row
+In the node list, each row currently shows something like "Bloom {level} · {minutes} ր". Remove the " · {minutes} ր" part — show only "Bloom {level}". Don't touch anything else about the node row (title, delete button, etc.).
+
+FRONTEND CHANGE 4a — rename the exercises header
+Rename the "✏️ Վարժություններ" header to "✏️ Գործնական աշխատանք".
+
+BACKEND CHANGE — split practicalTasks into classwork vs homework
+In artifacts/api-server/src/services/lesson-mapping.ts:
+- Add a field to each practicalTask item: `assignment: "CLASS" | "HOMEWORK"`.
+- Update the SYSTEM_PROMPT: after proposing all practicalTasks (as already done), the model should decide, based on the lesson's total available time (sum of node estimatedMinutes already consumes part of the lesson; assume a lesson is roughly 40-45 minutes total unless stated otherwise) and each task's implied difficulty/length, which tasks realistically fit as in-class practice ("CLASS") versus which should be assigned as homework ("HOMEWORK") because there isn't enough remaining class time. Most lessons should have at least 1-2 CLASS tasks; any remaining proposed tasks beyond what fits should be marked "HOMEWORK".
+- Update the JSON example in the prompt to include `"assignment": "CLASS"` (or `"HOMEWORK"`) on each task.
+- Add a defensive default: if `assignment` is missing or not one of the two values, default it to `"CLASS"`.
+
+FRONTEND CHANGE 4b — split display of practicalTasks by assignment
+Under the renamed "✏️ Գործնական աշխատանք" header, only list tasks where `task.assignment === "CLASS"` (or where assignment is missing, treat as CLASS, matching the backend default). Then, only if there is at least one task with `assignment === "HOMEWORK"`, add a second small section below it, inside the same panel, with its own label "🏠 Տնային աշխատանք", listing those homework tasks the same way (task text + "(էջ {sourcePage})" if present, same styling as the practical-work list items).
+
+Do not change anything else — not the schema, not any route beyond what's needed to pass the new field through (practicalTasks is already stored as a flexible jsonb array on lessonsTable, so no schema change should be needed — confirm this before making any schema edit). Run a typecheck after all changes and confirm zero errors, then show me how lesson id 41 renders after re-mapping it.

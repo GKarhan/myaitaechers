@@ -78,6 +78,7 @@ export interface LessonMappingResult {
     difficultyLevel: "LOW" | "MEDIUM" | "HIGH";
     successCriteria: string;
     relatedNodeTitle: string;
+    assignment: "CLASS" | "HOMEWORK";
   }[];
 }
 
@@ -119,7 +120,8 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
       "sourcePage": "10",
       "difficultyLevel": "MEDIUM",
       "successCriteria": "The correct answer or what counts as a correct student response (in Armenian)",
-      "relatedNodeTitle": "Exact title of the node this task reinforces (must match a node title)"
+      "relatedNodeTitle": "Exact title of the node this task reinforces (must match a node title)",
+      "assignment": "CLASS"
     }
   ]
 }
@@ -136,6 +138,7 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
 - Եթե դասի վերնագրը չի համապատասխանում գլխի ախնկալ վերնագրին, վստահել դասի վերնագրը որպես բովանդակության սահմանը
 - childFriendlyExplanation: 1-3 նախադասություն plain language, direct address to student; basicExamples: 1-2 short items; realLifeExamples: 0-2 items; commonMisconception: 1 sentence; prerequisiteNodes: 1-4 short phrases
 - practicalTasks: sourcePage = exact page number as string, or null if AI-proposed; difficultyLevel = LOW/MEDIUM/HIGH; successCriteria = իրական իսկական correct answer (Armenian); relatedNodeTitle = must exactly match one of the node titles in this response
+- assignment: after proposing all tasks, estimate total node time (sum of estimatedMinutes). A lesson is roughly 40-45 minutes total; the remaining time after nodes is available for in-class practice. Mark tasks that realistically fit within that remaining time as "CLASS"; mark any remaining tasks (beyond what fits in class) as "HOMEWORK". Ensure at least 1-2 tasks are "CLASS". Value must be exactly "CLASS" or "HOMEWORK".
 `;
 
 export async function mapLessonWithAI(
@@ -214,6 +217,9 @@ export async function mapLessonWithAI(
       : "MEDIUM") as "LOW" | "MEDIUM" | "HIGH",
     successCriteria: t.successCriteria ?? "",
     relatedNodeTitle: t.relatedNodeTitle ?? "",
+    assignment: (["CLASS", "HOMEWORK"].includes(t.assignment)
+      ? t.assignment
+      : "CLASS") as "CLASS" | "HOMEWORK",
   }));
 
   return parsed;
