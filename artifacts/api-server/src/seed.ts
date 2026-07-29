@@ -28,6 +28,21 @@ export async function seed() {
       ON CONFLICT (user_id) DO NOTHING
     `);
 
+    // If teacher1 was deleted and recreated (new teachers.id), any classes that
+    // previously pointed to the old teachers.id now have an orphaned teacher_id.
+    // Reassign those orphaned classes to teacher1's current teachers.id so the
+    // teacher dashboard always shows the right data after a restart.
+    await client.query(`
+      UPDATE classes
+      SET teacher_id = (
+        SELECT t.id FROM teachers t
+        JOIN users u ON t.user_id = u.id
+        WHERE u.username = 'teacher1'
+        LIMIT 1
+      )
+      WHERE teacher_id NOT IN (SELECT id FROM teachers)
+    `);
+
     await client.query(`
       INSERT INTO users (username, password_hash, full_name, role)
       VALUES ('admin', '${A_HASH}', 'Ադմինիստրատոր', 'admin')

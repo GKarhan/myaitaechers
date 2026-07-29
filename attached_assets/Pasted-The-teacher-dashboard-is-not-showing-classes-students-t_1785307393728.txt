@@ -1,0 +1,13 @@
+The teacher dashboard is not showing classes/students that the admin has assigned, AGAIN — this is a recurring bug, and last time it was fixed by directly patching one specific class row's teacher_id in the database. That was a band-aid, not a root-cause fix, and it broke again. This time, find and fix the actual root cause in the admin's class/teacher-assignment logic itself, so this never needs a manual DB patch again.
+
+1. Show me the exact backend code in artifacts/api-server/src/routes/admin.ts for: (a) creating a class, (b) assigning/changing a class's teacher. Confirm precisely what value gets written to classes.teacher_id — is it referencing teachersTable.id or usersTable.id? Compare this against what artifacts/api-server/src/routes/teacher.ts's "get my classes" query actually filters on (which id it expects in classes.teacher_id).
+
+2. If there's a mismatch (e.g., admin.ts writes a usersTable.id but teacher.ts expects a teachersTable.id, or vice versa), fix admin.ts's assignment logic itself so future class creations/assignments always write the correct id — not just for the currently broken class, but for the underlying code path so this is structurally correct going forward.
+
+3. After fixing the code, prove it works end-to-end with a FRESH test, not the already-patched class: create a brand NEW class via the actual admin API (not a DB patch) with teacher1 assigned to it, then call the teacher dashboard's "my classes" endpoint as teacher1 and confirm the new class shows up automatically, with no manual DB intervention. Delete this test class afterward so it doesn't clutter the real data.
+
+4. Also double check: does the admin's "assign teacher to class" dropdown/API even resolve to the correct teacher identity when there might be multiple teacher-like rows (e.g., a demo teacher1 account vs a separately invited teacher with the same or a similar display name)? If there's any ambiguity in how a teacher is selected/resolved during assignment, tell me about it — this may be why the wrong teacher got linked in previous sessions.
+
+5. Confirm student assignment to classes works the same reliable way (a student assigned by admin should immediately show up in that student's own dashboard) — check this with the same kind of root-cause approach, not just re-verifying the already-working student1/class 18 pairing.
+
+Explain the root cause clearly before and after the fix so we understand why this kept recurring.
