@@ -1,0 +1,77 @@
+I want two UI changes on the teacher's course/subject page, file: artifacts/myaiteacher/src/pages/teacher-dashboard.tsx. UI-only, no schema/backend changes.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch in this file MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic. If unsure of a word, leave existing Armenian text unchanged rather than guessing.
+
+CHANGE 1 — Rename the node collapsible's header text
+In the `LessonNodesPanel` component, the toggle button currently shows:
+  "📋 Ենթաթեմաներ (Node-եր){nodes.length > 0 ? ` · ${nodes.length}` : ""}"
+Change the label text to:
+  "🗺️ Քարտեզագրված դաս{nodes.length > 0 ? ` · ${nodes.length}` : ""}"
+Keep everything else in that component (the open/close state, the node list rendering, delete button, empty-state message) exactly as it is.
+
+CHANGE 2 — Add a new collapsible "Նպատակ/Վերջնարդյունք" panel per lesson row
+Currently, in the `chLessons.map((l) => {...})` block, there is a small inline info column that shows a truncated one-line lesson goal and a truncated one-line outcomes string (the `hidden md:block max-w-[220px] shrink-0 px-2` div with the "Նպատակ" label). Remove that inline truncated column entirely.
+
+Instead, add a new component, e.g. `LessonGoalOutcomesPanel`, styled the same way as `LessonNodesPanel` (a full-width button with `border-t border-white/8`, `flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5`, and a ▲/▼ indicator toggling local `open` state):
+
+```tsx
+function LessonGoalOutcomesPanel({
+  lessonGoal,
+  lessonOutcomes,
+}: {
+  lessonGoal: string;
+  lessonOutcomes: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">🎯 Նպատակ/Վերջնարդյունք</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-2">
+          <div>
+            <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Նպատակ</div>
+            <p className="text-xs text-muted-foreground">{lessonGoal}</p>
+          </div>
+          {lessonOutcomes.length > 0 && (
+            <div>
+              <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Վերջնարդյունքներ</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {lessonOutcomes.map((o, i) => (
+                  <li key={i} className="text-xs text-muted-foreground">
+                    {o}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+Place this component definition near `LessonNodesPanel` (same file, module scope).
+
+Then, inside each lesson row's `<div>` — right after the existing top `px-4 py-3 flex items-start gap-3` row and BEFORE the `<LessonNodesPanel lessonId={l.id} />` line — render this new panel, but ONLY when `(l as any).lessonGoal` is truthy:
+
+```tsx
+{(l as any).lessonGoal && (
+  <LessonGoalOutcomesPanel
+    lessonGoal={(l as any).lessonGoal}
+    lessonOutcomes={
+      Array.isArray((l as any).lessonOutcomes) ? (l as any).lessonOutcomes : []
+    }
+  />
+)}
+```
+
+So the vertical order inside each lesson card becomes: top info row → (if goal exists) Նպատակ/Վերջնարդյունք panel → Քարտեզագրված դաս (node) panel.
+
+Do not change anything else in the file — not the schema, not any backend route, not the LessonMapButton component, not the status/action button logic. Run a typecheck after the change and confirm zero errors.

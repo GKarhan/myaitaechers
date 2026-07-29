@@ -148,7 +148,7 @@ function LessonNodesPanel({ lessonId }: { lessonId: number }) {
         className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
       >
         <span className="font-medium tracking-wide">
-          📋 Ենթաթեմաներ (Node-եր){nodes.length > 0 ? ` · ${nodes.length}` : ""}
+          🗺️ Քարտեզագրված դաս{nodes.length > 0 ? ` · ${nodes.length}` : ""}
         </span>
         <span>{open ? "▲" : "▼"}</span>
       </button>
@@ -199,6 +199,47 @@ function LessonNodesPanel({ lessonId }: { lessonId: number }) {
     </div>
   );
 }
+function LessonGoalOutcomesPanel({
+  lessonGoal,
+  lessonOutcomes,
+}: {
+  lessonGoal: string;
+  lessonOutcomes: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">🎯 Նպատակ/Վերջնարդյունք</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-2">
+          <div>
+            <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Նպատակ</div>
+            <p className="text-xs text-muted-foreground">{lessonGoal}</p>
+          </div>
+          {lessonOutcomes.length > 0 && (
+            <div>
+              <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Վերջնարդյունքներ</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {lessonOutcomes.map((o, i) => (
+                  <li key={i} className="text-xs text-muted-foreground">
+                    {o}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TeacherDashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -1279,17 +1320,6 @@ export default function TeacherDashboard() {
                                                 )}
                                               </div>
                                             </div>
-                                            {(l as any).lessonGoal && (
-                                              <div className="hidden md:block flex-1 min-w-0 max-w-xs text-right">
-                                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-0.5">Նպատակ</p>
-                                                <p className="text-xs text-muted-foreground truncate">{(l as any).lessonGoal}</p>
-                                                {Array.isArray((l as any).lessonOutcomes) && (l as any).lessonOutcomes.length > 0 && (
-                                                  <p className="text-xs text-muted-foreground/60 truncate mt-0.5">
-                                                    {(l as any).lessonOutcomes.join(" · ")}
-                                                  </p>
-                                                )}
-                                              </div>
-                                            )}
                                             <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
                                               {isCompleted ? (
                                                 <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
@@ -1360,6 +1390,14 @@ export default function TeacherDashboard() {
                                             </div>
                                           </div>
                                           {/* Ենթաթեմաներ (Node-եր) */}
+                                          {(l as any).lessonGoal && (
+                                            <LessonGoalOutcomesPanel
+                                              lessonGoal={(l as any).lessonGoal}
+                                              lessonOutcomes={
+                                                Array.isArray((l as any).lessonOutcomes) ? (l as any).lessonOutcomes : []
+                                              }
+                                            />
+                                          )}
                                           <LessonNodesPanel lessonId={l.id} />
                                         </div>
                                       );
