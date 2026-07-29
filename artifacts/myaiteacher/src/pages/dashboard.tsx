@@ -64,7 +64,7 @@ export default function Dashboard() {
   const { data: dashboard, isLoading: dashLoading } = useGetDashboard({
     query: { queryKey: getGetDashboardQueryKey(), enabled: !!token },
   });
-  const { data: schedule = [] } = useGetStudentSchedule({
+  const { data: schedule = [], isSuccess: scheduleLoaded } = useGetStudentSchedule({
     query: { queryKey: getGetStudentScheduleQueryKey(), enabled: !!token },
   });
   const { data: hwSummary } = useGetStudentHomeworkSummary({
@@ -72,7 +72,14 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    if (!token || schedule.length === 0) return;
+    if (!token || !scheduleLoaded) return;
+    // Schedule has resolved. If it's empty there are no subjects to fetch lessons
+    // for — resolve allLessons to [] so spinners show proper empty states instead
+    // of spinning forever.
+    if (schedule.length === 0) {
+      setAllLessons([]);
+      return;
+    }
     const subjects = [...new Set(schedule.map((s) => s.subject))];
     let cancelled = false;
     Promise.all(
@@ -100,7 +107,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [token, schedule]);
+  }, [token, schedule, scheduleLoaded]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
