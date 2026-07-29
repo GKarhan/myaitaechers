@@ -79,6 +79,8 @@ router.post("/admin/teachers/:id/delete", requireAdmin, async (req, res) => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [teacher] = await db.select().from(teachersTable).where(eq(teachersTable.id, id)).limit(1);
   if (!teacher) { res.status(404).json({ error: "Ուսուցիչը չի գտնվել" }); return; }
+  const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, teacher.userId)).limit(1);
+  if (user?.username === "teacher1") { res.status(403).json({ error: "Demo հաշիվը հնարավոր չէ ջնջել" }); return; }
   await db.delete(usersTable).where(eq(usersTable.id, teacher.userId));
   res.json({ message: "Ուսուցիչը հաջողությամբ ջնջվեց" });
 });
@@ -317,8 +319,10 @@ router.post("/admin/students", requireAdmin, async (req, res) => {
 router.post("/admin/students/:id/delete", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+  if (user?.username === "student1") { res.status(403).json({ error: "Demo հաշիվը հնարավոր չէ ջնջել" }); return; }
   await db.delete(usersTable).where(eq(usersTable.id, id));
-  res.json({ message: "Ашакерты джnjvец" });
+  res.json({ message: "Աշակերտը ջնջվեց" });
 });
 
 router.post("/admin/students/:id/remove-class", requireAdmin, async (req, res) => {
