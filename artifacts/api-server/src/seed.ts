@@ -16,10 +16,16 @@ export async function seed() {
 
     await client.query(`
       INSERT INTO users (username, password_hash, full_name, role)
-      VALUES ('teacher1', '${T_HASH}', 'Լաուրա Քարhanyan', 'teacher')
+      VALUES ('teacher1', '${T_HASH}', 'Լաուրա Քարհանյան', 'teacher')
       ON CONFLICT (username) DO UPDATE
         SET password_hash = EXCLUDED.password_hash,
             role          = EXCLUDED.role
+    `);
+
+    await client.query(`
+      INSERT INTO teachers (user_id, subjects, school, email)
+      SELECT id, ARRAY[]::text[], '', NULL FROM users WHERE username = 'teacher1'
+      ON CONFLICT (user_id) DO NOTHING
     `);
 
     await client.query(`

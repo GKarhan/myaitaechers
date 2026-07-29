@@ -1,0 +1,22 @@
+There is a data-wiring bug affecting both the teacher and student dashboards. Here's the expected flow:
+
+1. Admin adds a subject
+2. Admin invites a teacher
+3. Admin creates a class
+4. Admin assigns that teacher and some students to the class (and presumably links the subject to the class too)
+
+After all this, the TEACHER's dashboard should automatically show: their assigned class(es), their own profile info (whatever the admin set for them), and the students assigned to their class(es). Similarly, the STUDENT's dashboard should automatically show their class, teacher(s), and subjects.
+
+Currently NONE of this is showing up on either the teacher or student side — the class/teacher/student assignments made by the admin are not appearing.
+
+Please investigate before changing anything:
+
+1. Look at artifacts/api-server/src/routes/admin.ts — find the routes that (a) create a class, (b) assign a teacher to a class, (c) assign students to a class, (d) assign a subject to a class. Confirm exactly what gets written to the database in each case (which tables, which foreign keys).
+
+2. Look at artifacts/api-server/src/routes/teacher.ts — find the routes behind useGetTeacherClasses and useGetTeacherProfile (whatever they're actually called server-side). Confirm exactly which tables/columns they query to determine "this teacher's classes" and "this teacher's assigned students" — and compare that against what admin.ts actually writes in step 1. Look for a mismatch: e.g., admin.ts might write to a different column/table than what teacher.ts reads from, or a foreign key might not be getting set at all when the admin assigns things.
+
+3. Do the same comparison for artifacts/api-server/src/routes/student.ts — whatever route feeds the student's own class/teacher/subject info.
+
+4. Report back to me exactly what you find — where the disconnect is — before making changes. If it's a clear, obvious bug (e.g., a missing INSERT, a wrong column reference, a query filtering on the wrong field), go ahead and fix it and tell me what you fixed. If there are multiple plausible causes or the schema doesn't clearly show what "assigning a teacher/student to a class" is supposed to mean structurally, stop and report your findings to me first instead of guessing.
+
+Do not change the frontend in this task unless the backend investigation clearly shows the bug is only in how the frontend calls things.
