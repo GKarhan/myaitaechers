@@ -1298,10 +1298,18 @@ export default function TeacherDashboard() {
       ),
     ).sort((a, b) => a.localeCompare(b, "hy"));
     const _teacherSubjectSet = new Set(teacherProfile?.subjects ?? []);
+    // If schedule has entries for this class, intersect with teacher's subjects
+    // (or show all if teacher has no subjects declared).
+    // If schedule has NO entries yet, fall back to the teacher's own subjects so
+    // they can still create lessons even before the timetable is set up.
     const classSubjects =
-      _teacherSubjectSet.size > 0
-        ? rawClassSubjects.filter((s) => _teacherSubjectSet.has(s))
-        : rawClassSubjects;
+      rawClassSubjects.length > 0
+        ? _teacherSubjectSet.size > 0
+          ? rawClassSubjects.filter((s) => _teacherSubjectSet.has(s))
+          : rawClassSubjects
+        : Array.from(_teacherSubjectSet).sort((a, b) =>
+            a.localeCompare(b, "hy"),
+          );
     const classScheduleEntries = schedule.filter(
       (s) => s.classId === selectedClass.id,
     );

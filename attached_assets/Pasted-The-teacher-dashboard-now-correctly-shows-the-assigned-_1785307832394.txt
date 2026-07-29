@@ -1,0 +1,15 @@
+The teacher dashboard now correctly shows the assigned class ("7 Ա"), but when opening that class, its subject does not appear, even though the admin has attached that subject to the class. Without a visible subject, the teacher cannot add lessons.
+
+Please investigate before fixing, using the same rigor as the last task:
+
+1. Show me the exact backend/frontend logic for how the ADMIN attaches a subject to a class. Is this done through the schedule table (creating a timetable entry with day/time/subject), through a dedicated class-subject association, or some other mechanism? Show me exactly what gets written and where.
+
+2. Show me the exact logic in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx (and whatever backend route it calls) that determines which subjects appear for a class on the teacher's side. I recall it involves something like: rawClassSubjects derived from the `schedule` table filtered by classId, intersected with the teacher's own `teachers.subjects` array (falling back to showing all if that array is empty). Confirm this is still accurate, and identify exactly which of these two pieces (the schedule entry, or the teacher's subjects array) is missing or empty for teacher1 and the "7 Ա" class right now.
+
+3. Identify the root cause: is it that the admin's "attach subject" action never created a schedule row for this class/subject, or that teacher1's teachers.subjects array doesn't include this subject (e.g., because it was reset to empty during the recent teacher1 identity-recreation fix), or something else entirely?
+
+4. Fix the actual root cause — not just this one class, but the underlying logic/data so this works correctly for any future subject/class/teacher assignment the admin makes.
+
+5. Prove it with a fresh end-to-end test: as admin, attach a NEW subject to a class (or create a new class+subject pairing) via the real admin UI/API, then confirm as teacher1 that the subject appears immediately in the teacher dashboard, with no manual DB patch. Clean up the test data afterward.
+
+Explain the root cause clearly before and after fixing.
