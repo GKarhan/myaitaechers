@@ -1,0 +1,19 @@
+I want to extend the AI lesson-mapping feature so that mapping a lesson also produces coreProblem and practicalTasks, not just lessonGoal/lessonOutcomes/coreIdea/nodes. Two files are involved, both under artifacts/api-server/src/:
+
+First, check the current state of these two files yourself before editing (services/lesson-mapping.ts and routes/lessons.ts, the POST /lessons/:lessonId/map handler) — I want you to only apply what's actually missing, not duplicate anything already there.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+CHANGE 1 — services/lesson-mapping.ts
+- Add two new optional fields to `LessonMappingInput`: `teacherGoal?: string | null` and `teacherOutcomes?: string[] | null` — these represent the teacher's own draft goal/outcomes, already saved on the lesson, and should be treated as guidance for the AI to refine (not something to silently overwrite, and not something the AI must invent from scratch if absent).
+- Add two new fields to `LessonMappingResult`: `coreProblem: string` (the essential question/core problem this lesson answers) and `practicalTasks: { task: string; purpose: string }[]` (2-5 practical exercises reinforcing the lesson's theory — prefer real textbook exercises/examples found in the provided text over invented ones).
+- Update the SYSTEM_PROMPT so the model's process is: (1) if teacherGoal/teacherOutcomes are given, refine them against the real textbook text rather than inventing new ones; if absent, derive them from the text; (2) determine coreProblem (the lesson's essential question/problem); (3) formulate ONE coreIdea that answers coreProblem; (4) break coreIdea into knowledge nodes as already done; (5) propose practicalTasks. Update the JSON output shape in the prompt to include "coreProblem" and "practicalTasks" fields with the same key names, and add a rule that practicalTasks should number 2-5.
+- In the user-prompt builder, append the teacherGoal/teacherOutcomes lines when present (something like "ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ" / "ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ").
+- After parsing the JSON response, if `practicalTasks` isn't an array, default it to `[]` (same defensive pattern already used for `nodes`).
+
+CHANGE 2 — routes/lessons.ts, the POST /lessons/:lessonId/map handler
+- When calling `mapLessonWithAI(...)`, also pass `teacherGoal: lesson.lessonGoal ?? null` and `teacherOutcomes: Array.isArray(lesson.lessonOutcomes) ? (lesson.lessonOutcomes as string[]) : null`.
+- In the `db.update(lessonsTable).set({...})` call right after, also set `coreProblem: mapping.coreProblem` and `practicalTasks: mapping.practicalTasks` (both columns already exist in the schema — do not touch the schema).
+- In the final `res.json({...})` response, also include `coreProblem: mapping.coreProblem` and `practicalTasks: mapping.practicalTasks`.
+
+Do not change anything else — not the schema, not the frontend, not any other route. Run a typecheck after the change and confirm zero errors, then show me a sample response from actually hitting the map endpoint on an existing mapped lesson so I can see the new fields populated.

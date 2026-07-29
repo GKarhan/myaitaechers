@@ -51,11 +51,14 @@ export interface LessonMappingInput {
   pagesFrom: number | null;
   pagesTo: number | null;
   lessonText: string; // the real extracted textbook text for this lesson's pages
+  teacherGoal?: string | null;       // teacher's draft goal — refine against text, don't silently overwrite
+  teacherOutcomes?: string[] | null; // teacher's draft outcomes — refine if present, derive if absent
 }
 
 export interface LessonMappingResult {
   lessonGoal: string;
   lessonOutcomes: string[];
+  coreProblem: string;
   coreIdea: string;
   nodes: {
     title: string;
@@ -63,17 +66,26 @@ export interface LessonMappingResult {
     targetBloomLevel: number;
     estimatedMinutes: number;
   }[];
+  practicalTasks: { task: string; purpose: string }[];
 }
 
 const SYSTEM_PROMPT = `Դու կրթական բովանդակության վերլուծաբան ես (հիմնված P1 — Lesson Knowledge Package Generator սկզբունքների վրա)։ Քո խնդիրն է վերլուծել դասագրքի կոնկրետ դասի իրական տեքստը և կառուցել դասի քարտեզագրում։
 
-ԿԱՐԵՎՈՐ ՍԿԶԲՈՒՆՔ. Node-երը (ենթաթեմաները) չեն կարող լինել պատահական ենթաբաժանումներ։ Նախ պիտի որոշես դասի ԿԵՆՏՐՈՆԱԿԱՆ ԳԱՂԱՓԱՐԸ/ՀԻՄՆԱԽՆԴԻՐԸ (core idea), և ամեն node պիտի հստակորեն ծառայի այդ գաղափարին։
+ԱՇԽԱՏԱՆՔԻ ՀԱՋՈՐԴԱԿԱՆՈՒԹՅՈՒՆԸ.
+(1) ՆПАТАК / ВЕРДЖNАРDUYNKНЕР — if the user message contains a teacher draft (see labels below), refine those against the real textbook text rather than inventing from scratch; if absent, derive from the text.
+(2) coreProblem — identify the essential question or problem this lesson answers (one sentence).
+(3) coreIdea — formulate ONE central idea that directly answers coreProblem.
+(4) nodes — break coreIdea into knowledge nodes as described below; each node must serve coreIdea.
+(5) practicalTasks — propose 2-5 tasks reinforcing the theory; prefer real textbook exercises over invented ones.
+
+ԿARЕWWOR СКЗБUNKERY. Node-ery (enthathemanerr) chen karog liner patahakan enthababazhanumnner. Amen node piti hstakores tsarayutsi coreIdea-in.
 
 Պատասխանիր ԲԱՑԱՌԱՊԵՍ վավեր JSON-ով, ոչինչ ավելին (ոչ մեկնաբանություն, ոչ markdown code fence), ուղիղ այս կառուցվածքով.
 
 {
   "lessonGoal": "Դասի նպատակը, 1-2 նախադասությամբ",
   "lessonOutcomes": ["Վերջնարդյունք 1", "Վերջնարդյունք 2", "..."],
+  "coreProblem": "The essential question this lesson answers (one sentence in Armenian)",
   "coreIdea": "Դասի կենտրոնական գաղափարը/հիմնախնդիրը, հստակ ձևակերպված",
   "nodes": [
     {
@@ -81,6 +93,12 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
       "theoryContent": "Այս ենթաթեմայի տեսական բովանդակությունը՝ բխեցված իրական դասագրքի տեքստից, և բացատրություն, թե ինչպես է այն ծառայում coreIdea-ին",
       "targetBloomLevel": 1,
       "estimatedMinutes": 5
+    }
+  ],
+  "practicalTasks": [
+    {
+      "task": "A concrete exercise or problem from/inspired by the textbook (in Armenian)",
+      "purpose": "How this task reinforces the core idea (in Armenian)"
     }
   ]
 }
@@ -90,12 +108,15 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
 - targetBloomLevel՝ 1-ից 6 (1=Հիշել, 2=Հասկանալ, 3=Կիրառել, 4=Վերլուծել, 5=Գնահատել, 6=Ստեղծել)
 - node-երի քանակը թող համապատասխանի իրական տեքստի ծավալին ու բարդությանը (սովորաբար 3-8 node), ոչ մի կանխորոշված թիվ
 - theoryContent-ը պիտի հիմնված լինի տրված իրական տեքստի վրա, ոչ հորինված նյութի վրա
-- estimatedMinutes-ը ամեն node-ի հարաբերական ժամանակի կշիռն է (ոչ ճշգրիտ երաշխիք)`;
+- estimatedMinutes-ը ամեն node-ի հարաբերական ժամանակի կշիռն է (ոչ ճշգրիտ երաշխիք)
+- practicalTasks: 2-5 tasks; prefer real textbook exercises/examples over invented ones
+`;
 
 export async function mapLessonWithAI(
   input: LessonMappingInput
 ): Promise<LessonMappingResult> {
-  const userPrompt = [
+  const userPromptParts: string[] = [
+
     `ԱՌԱՐԿԱ: ${input.subjectName}`,
     `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
     input.chapterTitle ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}` : "",
@@ -107,9 +128,15 @@ export async function mapLessonWithAI(
     ``,
     `ԴԱՍԱԳՐՔԻ ԻՐԱԿԱՆ ՏԵՔՍՏԸ ԱՅՍ ԷՋԵՐԻՑ.`,
     input.lessonText || "(տեքստ չի հաջողվել հանել այս էջերից)",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  
+  ];
+  if (input.teacherGoal) {
+    userPromptParts.push("", `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}`);
+  }
+  if (input.teacherOutcomes && input.teacherOutcomes.length > 0) {
+    userPromptParts.push(`ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ: ${input.teacherOutcomes.join("; ")}`);
+  }
+  const userPrompt = userPromptParts.filter(Boolean).join("\n");
 
   const response = await openrouter.chat.completions.create({
     model: MODEL,
@@ -136,6 +163,10 @@ export async function mapLessonWithAI(
 
   if (!Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
     throw new Error("AI mapping response contained no nodes");
+  }
+
+  if (!Array.isArray(parsed.practicalTasks)) {
+    parsed.practicalTasks = [];
   }
 
   return parsed;

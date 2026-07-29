@@ -661,6 +661,10 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       pagesFrom: lesson.pagesFrom,
       pagesTo: lesson.pagesTo,
       lessonText,
+      teacherGoal: lesson.lessonGoal ?? null,
+      teacherOutcomes: Array.isArray(lesson.lessonOutcomes)
+        ? (lesson.lessonOutcomes as string[])
+        : null,
     });
 
     await db
@@ -668,7 +672,9 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       .set({
         lessonGoal: mapping.lessonGoal,
         lessonOutcomes: mapping.lessonOutcomes,
+        coreProblem: mapping.coreProblem,
         coreIdea: mapping.coreIdea,
+        practicalTasks: mapping.practicalTasks,
       })
       .where(eq(lessonsTable.id, lessonId));
 
@@ -693,7 +699,9 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       nodesCreated: insertedNodes.length,
       lessonGoal: mapping.lessonGoal,
       lessonOutcomes: mapping.lessonOutcomes,
+      coreProblem: mapping.coreProblem,
       coreIdea: mapping.coreIdea,
+      practicalTasks: mapping.practicalTasks,
     });
   } catch (err) {
     logger.error({ err, lessonId }, "lesson mapping failed");
