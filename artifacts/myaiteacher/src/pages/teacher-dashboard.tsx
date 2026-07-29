@@ -886,7 +886,7 @@ export default function TeacherDashboard() {
               >
                 <h3 className="font-semibold text-sm text-white/90">Նոր դաս</h3>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
-                  Ա. ԴԱՍԱԳԻՌՔ
+                  Ա. ԴԱՍԱԳԻՐՔ
                 </p>
                 <div>
                   <select
@@ -1279,196 +1279,209 @@ export default function TeacherDashboard() {
                   dot: "bg-white/30",
                 };
               };
+              // Sort globally by lessonNumber — single source of truth for render order
               const sorted = [...courseLessons].sort((a, b) => {
-                const ta = ((a as any).textbookTitle ?? "").localeCompare(
-                  (b as any).textbookTitle ?? "",
-                  "hy",
-                );
-                if (ta !== 0) return ta;
                 const la =
                   ((a as any).lessonNumber ?? 9999) -
                   ((b as any).lessonNumber ?? 9999);
                 if (la !== 0) return la;
-                const ca = ((a as any).chapterTitle ?? "").localeCompare(
-                  (b as any).chapterTitle ?? "",
-                  "hy",
-                );
-                if (ca !== 0) return ca;
                 return ((a as any).paragraphNumber ?? "").localeCompare(
-                  (b as any).paragraphNumber ?? "",
+                  (b as any).paragraphNumber ?? ""
                 );
               });
-              // Group by textbookResourceId (or textbookTitle for legacy data)
-              const tbGroups: Map<string, typeof sorted> = new Map();
+
+              // Single top-to-bottom pass — no group buckets, rendering order
+              // is driven entirely by the sorted list.
+              type PassItem = {
+                tbHeader: { tbTitle: string | null; tbAuthor: string | null } | null;
+                topicHeader: string | null;
+                lesson: (typeof sorted)[0];
+                isFirstLesson: boolean;
+              };
+              let _currentTbKey: string | null = null;
+              let _currentTopic: string | null = null;
+              const passItems: PassItem[] = [];
               for (const l of sorted) {
                 const resId = (l as any).textbookResourceId;
-                const tbKey = resId != null ? String(resId) : ((l as any).textbookTitle as string | null) ?? "";
-                if (!tbGroups.has(tbKey)) tbGroups.set(tbKey, []);
-                tbGroups.get(tbKey)!.push(l);
+                const tbKey =
+                  resId != null
+                    ? String(resId)
+                    : ((l as any).textbookTitle as string | null) ?? "";
+                const resource =
+                  resId != null
+                    ? courseResources.find((r) => r.id === resId) ?? null
+                    : null;
+                const tbTitle =
+                  resource?.title ?? ((l as any).textbookTitle as string | null) ?? null;
+                const tbAuthor = (resource as any)?.author ?? null;
+                const ct = ((l as any).chapterTitle as string | null) ?? "";
+
+                let tbHeader: PassItem["tbHeader"] = null;
+                if (tbKey !== _currentTbKey) {
+                  tbHeader = { tbTitle, tbAuthor };
+                  _currentTbKey = tbKey;
+                  _currentTopic = null; // reset topic on textbook change
+                }
+
+                let topicHeader: string | null = null;
+                if (ct && ct !== _currentTopic) {
+                  topicHeader = ct;
+                  _currentTopic = ct;
+                }
+
+                passItems.push({
+                  tbHeader,
+                  topicHeader,
+                  lesson: l,
+                  isFirstLesson: passItems.length === 0,
+                });
               }
+
               return (
-                <div className="space-y-6">
-                  {Array.from(tbGroups.entries()).map(([tbKey, tbLessons]) => {
-                    const resId = (tbLessons[0] as any).textbookResourceId;
-                    const resource = resId != null
-                      ? courseResources.find((r) => r.id === resId) ?? null
-                      : null;
-                    const tbTitle = resource?.title ?? (tbLessons[0] as any).textbookTitle ?? null;
-                    const tbAuthor = (resource as any)?.author ?? null;
-
-                    // CHANGE B: carry-forward topic grouping
-                    let currentTopic: string | null = null;
-                    const lessonItems: Array<{ topicHeader: string | null; lesson: (typeof tbLessons)[0] }> = [];
-                    for (const l of tbLessons) {
-                      const ct = ((l as any).chapterTitle as string | null) ?? "";
-                      let topicHeader: string | null = null;
-                      if (ct && ct !== currentTopic) {
-                        topicHeader = ct;
-                        currentTopic = ct;
-                      }
-                      lessonItems.push({ topicHeader, lesson: l });
-                    }
-
+                <div className="space-y-2">
+                  {passItems.map(({ tbHeader, topicHeader, lesson: l, isFirstLesson }, _idx) => {
+                    const isCompleted = (l as any).status === "completed";
+                    const isActive    = (l as any).status === "active";
+                    const isMapped    = Boolean((l as any).coreIdea);
                     return (
-                      <div
-                        key={tbKey}
-                        className="bg-card/30 border border-white/10 rounded-2xl overflow-hidden"
-                      >
-                        <div className="px-5 py-4 border-b border-white/10 bg-card/50">
-                          <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">
-                            ԴԱՍԱԳԻՌՔ
-                          </div>
-                          <div className="font-semibold text-base text-white">
-                            {tbTitle || "(դասագիրք նշված չի)"}
-                          </div>
-                          {tbAuthor && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              Հեղինակ · {tbAuthor}
+                      <div key={l.id}>
+                        {tbHeader && (
+                          <div className={`${!isFirstLesson ? "mt-6 " : ""}mb-3 px-1 pb-2 border-b border-white/10`}>
+                            <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-0.5">
+                              ԴԱՍԱԳԻՌՔ
                             </div>
-                          )}
-                        </div>
-                        <div className="px-5 py-4 space-y-2">
-                          {lessonItems.map(({ topicHeader, lesson: l }, _itemIdx) => {
-                            const isCompleted = (l as any).status === "completed";
-                            const isActive    = (l as any).status === "active";
-                            const isMapped    = Boolean((l as any).coreIdea);
-                            return (
-                              <div key={l.id}>
-                                {topicHeader && (
-                                  <div className="text-xs font-semibold text-secondary/80 uppercase tracking-wide mb-2 mt-3 first:mt-0">
-                                    Թեմա · {topicHeader}
-                                  </div>
-                                )}
-                                <div
-                                  className={`rounded-xl overflow-hidden border transition-colors ${isActive ? "border-primary/40 bg-primary/5" : "border-white/8 bg-background/40"}`}
-                                >
-                                  <div className="px-4 py-3 flex items-start gap-3">
-                                    <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
-                                      {(l as any).lessonNumber ?? "—"}
-                                    </span>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="font-medium text-sm">{l.title}</div>
-                                      <div className="flex flex-wrap gap-2 mt-1 items-center">
-                                        {(l as any).paragraphNumber && (
-                                          <span className="text-xs text-muted-foreground">
-                                            §{(l as any).paragraphNumber}
-                                          </span>
-                                        )}
-                                        {(l as any).paragraphNumber && ((l as any).pagesFrom || (l as any).pagesTo) && (
-                                          <span className="text-xs text-muted-foreground/40"> · </span>
-                                        )}
-                                        {((l as any).pagesFrom || (l as any).pagesTo) && (
-                                          <span className="text-xs text-muted-foreground">
-                                            Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
-                                      {isCompleted ? (
-                                        <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
-                                          Ավառտված
-                                        </span>
-                                      ) : isActive ? (
-                                        <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
-                                          Ընթացքի մևի
-                                        </span>
-                                      ) : isMapped ? (
-                                        <button
-                                          onClick={() => handleStatusChange(l.id, "active")}
-                                          disabled={updateStatus.isPending}
-                                          className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
-                                        >
-                                          Հանձնարարել սովորողին
-                                        </button>
-                                      ) : (
-                                        <span
-                                          title="Նախ քարտևզագրիր դասը"
-                                          className="px-2 py-1 rounded-lg text-xs text-muted-foreground/40 border border-white/5 select-none cursor-default"
-                                        >
-                                          Հանձնարարել սովորողին
-                                        </span>
-                                      )}
-                                      <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
-                                      <button
-                                        onClick={() => {
-                                          setEditLesson({
-                                            id: l.id,
-                                            title: l.title,
-                                            lessonNumber: String((l as any).lessonNumber ?? ""),
-                                            pagesFrom: String((l as any).pagesFrom ?? ""),
-                                            pagesTo: String((l as any).pagesTo ?? ""),
-                                            chapterTitle: (l as any).chapterTitle ?? "",
-                                            paragraphNumber: (l as any).paragraphNumber ?? "",
-                                            textbookResourceId: String((l as any).textbookResourceId ?? ""),
-                                            lessonGoal: (l as any).lessonGoal ?? "",
-                                            lessonOutcomes: Array.isArray((l as any).lessonOutcomes)
-                                              ? (l as any).lessonOutcomes.join("\n")
-                                              : "",
-                                          });
-                                          setShowLessonForm(false);
-                                        }}
-                                        className={btnGhost}
-                                      >
-                                        ✏️
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          if (!selectedCourse || !confirm("Ծնջել " + l.title + "?")) return;
-                                          deleteLesson.mutate(
-                                            { id: l.id },
-                                            {
-                                              onSuccess: () =>
-                                                qc.invalidateQueries({
-                                                  queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
-                                                }),
-                                            },
-                                          );
-                                        }}
-                                        className={btnDanger}
-                                      >
-                                        🗑
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {(l as any).lessonGoal && (
-                                    <LessonGoalOutcomesPanel
-                                      lessonGoal={(l as any).lessonGoal}
-                                      lessonOutcomes={
-                                        Array.isArray((l as any).lessonOutcomes) ? (l as any).lessonOutcomes : []
-                                      }
-                                    />
-                                  )}
-                                  <LessonNodesPanel
-                                    lessonId={l.id}
-                                    coreProblem={(l as any).coreProblem ?? null}
-                                    coreIdea={(l as any).coreIdea ?? null}
-                                    practicalTasks={Array.isArray((l as any).practicalTasks) ? (l as any).practicalTasks : []}
-                                  />
-                                </div>
+                            <div className="font-semibold text-base text-white">
+                              {tbHeader.tbTitle || "(դասագիրք նշված չի)"}
+                            </div>
+                            {tbHeader.tbAuthor && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                Հեղինակ · {tbHeader.tbAuthor}
                               </div>
-                            );
-                          })}
+                            )}
+                          </div>
+                        )}
+                        {topicHeader && (
+                          <div className="text-xs font-semibold text-secondary/80 uppercase tracking-wide mb-2 mt-3 first:mt-0 px-1">
+                            Թեմա · {topicHeader}
+                          </div>
+                        )}
+                        <div
+                          className={`rounded-xl overflow-hidden border transition-colors ${
+                            isActive
+                              ? "border-primary/40 bg-primary/5"
+                              : "border-white/8 bg-background/40"
+                          }`}
+                        >
+                          <div className="px-4 py-3 flex items-start gap-3">
+                            <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
+                              {(l as any).lessonNumber ?? "—"}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm">{l.title}</div>
+                              <div className="flex flex-wrap gap-2 mt-1 items-center">
+                                {(l as any).paragraphNumber && (
+                                  <span className="text-xs text-muted-foreground">
+                                    §{(l as any).paragraphNumber}
+                                  </span>
+                                )}
+                                {(l as any).paragraphNumber &&
+                                  ((l as any).pagesFrom || (l as any).pagesTo) && (
+                                  <span className="text-xs text-muted-foreground/40"> · </span>
+                                )}
+                                {((l as any).pagesFrom || (l as any).pagesTo) && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
+                              {isCompleted ? (
+                                <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
+                                  Ավարտված
+                                </span>
+                              ) : isActive ? (
+                                <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
+                                  Ընթացքի մևի
+                                </span>
+                              ) : isMapped ? (
+                                <button
+                                  onClick={() => handleStatusChange(l.id, "active")}
+                                  disabled={updateStatus.isPending}
+                                  className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
+                                >
+                                  Հանձնարարել սովորողին
+                                </button>
+                              ) : (
+                                <span
+                                  title="Նախ քարտևզագրիր"
+                                  className="px-2 py-1 rounded-lg text-xs text-muted-foreground/40 border border-white/5 select-none cursor-default"
+                                >
+                                  Հանձնարարել սովորողին
+                                </span>
+                              )}
+                              <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
+                              <button
+                                onClick={() => {
+                                  setEditLesson({
+                                    id: l.id,
+                                    title: l.title,
+                                    lessonNumber: String((l as any).lessonNumber ?? ""),
+                                    pagesFrom: String((l as any).pagesFrom ?? ""),
+                                    pagesTo: String((l as any).pagesTo ?? ""),
+                                    chapterTitle: (l as any).chapterTitle ?? "",
+                                    paragraphNumber: (l as any).paragraphNumber ?? "",
+                                    textbookResourceId: String((l as any).textbookResourceId ?? ""),
+                                    lessonGoal: (l as any).lessonGoal ?? "",
+                                    lessonOutcomes: Array.isArray((l as any).lessonOutcomes)
+                                      ? (l as any).lessonOutcomes.join("\n")
+                                      : "",
+                                  });
+                                  setShowLessonForm(false);
+                                }}
+                                className={btnGhost}
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (!selectedCourse || !confirm("Ծնջել " + l.title + "?")) return;
+                                  deleteLesson.mutate(
+                                    { id: l.id },
+                                    {
+                                      onSuccess: () =>
+                                        qc.invalidateQueries({
+                                          queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
+                                        }),
+                                    },
+                                  );
+                                }}
+                                className={btnDanger}
+                              >
+                                🗑
+                              </button>
+                            </div>
+                          </div>
+                          {(l as any).lessonGoal && (
+                            <LessonGoalOutcomesPanel
+                              lessonGoal={(l as any).lessonGoal}
+                              lessonOutcomes={
+                                Array.isArray((l as any).lessonOutcomes)
+                                  ? (l as any).lessonOutcomes
+                                  : []
+                              }
+                            />
+                          )}
+                          <LessonNodesPanel
+                            lessonId={l.id}
+                            coreProblem={(l as any).coreProblem ?? null}
+                            coreIdea={(l as any).coreIdea ?? null}
+                            practicalTasks={
+                              Array.isArray((l as any).practicalTasks)
+                                ? (l as any).practicalTasks
+                                : []
+                            }
+                          />
                         </div>
                       </div>
                     );
