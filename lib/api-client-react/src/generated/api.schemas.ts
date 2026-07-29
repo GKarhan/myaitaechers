@@ -215,6 +215,10 @@ export interface TeacherLessonItem {
   assignedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
+  lessonGoal?: string | null;
+  lessonOutcomes?: string[] | null;
+  coreProblem?: string | null;
+  practicalTasks?: string[] | null;
 }
 
 export interface MapLessonResult {
@@ -237,6 +241,8 @@ export interface CreateTeacherLessonInput {
   chapterTitle?: string;
   paragraphNumber?: string;
   textbookResourceId?: number | null;
+  lessonGoal?: string;
+  lessonOutcomes?: string[];
 }
 
 export type UpdateLessonStatusInputStatus = typeof UpdateLessonStatusInputStatus[keyof typeof UpdateLessonStatusInputStatus];
@@ -694,6 +700,8 @@ export interface UpdateLessonInput {
   chapterTitle?: string | null;
   paragraphNumber?: string | null;
   textbookResourceId?: number | null;
+  lessonGoal?: string;
+  lessonOutcomes?: string[];
 }
 
 export interface GenerateLessonsInput {

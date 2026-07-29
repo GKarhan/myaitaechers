@@ -1,0 +1,31 @@
+I want to extend the lesson data model and the teacher's lesson form, in preparation for a richer AI mapping step. This is additive only — do not touch /lessons/:lessonId/map or lesson-mapping.ts, those will be updated separately.
+
+IMPORTANT PROJECT-WIDE RULE: Any Armenian text you write must be real Armenian script (Unicode Armenian letters), never Latin transliteration and never Cyrillic look-alike characters.
+
+1. SCHEMA — in lib/db/src/schema/lessons.ts, add two new nullable columns to the EXISTING lessonsTable (do not remove or rename any existing column):
+   - coreProblem: text, nullable (the lesson's central problem/essential question)
+   - practicalTasks: jsonb, notNull, default '[]' (an array of strings — practical tasks/exercises tied to this lesson's content)
+
+   Update insertLessonSchema only if needed. Generate the Drizzle migration and apply it.
+
+2. FRONTEND — in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx:
+
+   a) In both the "Նոր դաս" (create) form and the "Խմբագրել դասը" (edit) form, add a new section after "Բ. Բովանդակություն", labeled "Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)", with:
+      - A textarea labeled "Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)" — free text, maps to `lessonGoal` in form state
+      - A textarea labeled "Վերջնարդյունքների սևագիր (մեկական տողում)" — free text, maps to `lessonOutcomes` in form state (plain string in form state, split into an array on newlines when submitting, filtering empty lines)
+
+   b) Add `lessonGoal: ""` and `lessonOutcomes: ""` to `emptyLesson` and to the `editLesson` state shape.
+
+   c) In `handleCreateLesson` and `handleUpdateLesson`, include in the submitted payload:
+      - `lessonGoal: lessonForm.lessonGoal.trim() || undefined`
+      - `lessonOutcomes: lessonForm.lessonOutcomes.split("\n").map(s => s.trim()).filter(Boolean)` (omit/send undefined if the resulting array is empty)
+
+   d) When opening a lesson for editing, populate `lessonGoal` from the lesson's existing value (empty string if null), and `lessonOutcomes` by joining the existing array with newlines (empty string if empty array).
+
+3. BACKEND — find the existing teacher lesson create/update routes (useCreateTeacherLesson / useUpdateTeacherLesson in artifacts/api-server/src/routes/teacher.ts). Add support for two optional body fields: `lessonGoal?: string` and `lessonOutcomes?: string[]`.
+   - On create: store them if provided, otherwise leave at column defaults.
+   - On update: only include in the SET clause if actually provided (same partial-update pattern as the other optional fields there) — don't overwrite existing values with null if the teacher didn't touch these fields.
+
+4. Make sure the lesson GET/list endpoints feeding the teacher dashboard already return lessonGoal, lessonOutcomes, coreProblem, and practicalTasks (add to the response mapping if not already included).
+
+5. Confirm `pnpm run typecheck` passes with no errors.

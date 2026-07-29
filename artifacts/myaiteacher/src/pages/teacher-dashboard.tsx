@@ -387,6 +387,8 @@ export default function TeacherDashboard() {
     chapterTitle: "",
     paragraphNumber: "",
     textbookResourceId: "",
+    lessonGoal: "",
+    lessonOutcomes: "",
   };
   const [lessonForm, setLessonForm] = useState(emptyLesson);
   const [showLessonForm, setShowLessonForm] = useState(false);
@@ -420,6 +422,10 @@ export default function TeacherDashboard() {
           textbookResourceId: lessonForm.textbookResourceId
             ? parseInt(lessonForm.textbookResourceId)
             : undefined,
+          lessonGoal: lessonForm.lessonGoal.trim() || undefined,
+          ...(lessonForm.lessonOutcomes.split("\n").map((s) => s.trim()).filter(Boolean).length > 0 && {
+            lessonOutcomes: lessonForm.lessonOutcomes.split("\n").map((s) => s.trim()).filter(Boolean),
+          }),
         },
       },
       {
@@ -458,6 +464,10 @@ export default function TeacherDashboard() {
           textbookResourceId: editLesson.textbookResourceId
             ? parseInt(editLesson.textbookResourceId)
             : null,
+          lessonGoal: editLesson.lessonGoal.trim() || undefined,
+          ...(editLesson.lessonOutcomes.split("\n").map((s) => s.trim()).filter(Boolean).length > 0 && {
+            lessonOutcomes: editLesson.lessonOutcomes.split("\n").map((s) => s.trim()).filter(Boolean),
+          }),
         },
       },
       {
@@ -913,6 +923,37 @@ export default function TeacherDashboard() {
                     />
                   </div>
                 </div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
+                  Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)
+                    </label>
+                    <textarea
+                      value={lessonForm.lessonGoal}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({ ...f, lessonGoal: e.target.value }))
+                      }
+                      className={`${inputCls} min-h-[72px] resize-y`}
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Վերջնարդյունքների սևագիր (մեկական տողում)
+                    </label>
+                    <textarea
+                      value={lessonForm.lessonOutcomes}
+                      onChange={(e) =>
+                        setLessonForm((f) => ({ ...f, lessonOutcomes: e.target.value }))
+                      }
+                      className={`${inputCls} min-h-[72px] resize-y`}
+                      placeholder=""
+                    />
+                  </div>
+                </div>
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
@@ -1055,6 +1096,37 @@ export default function TeacherDashboard() {
                         )
                       }
                       className={inputCls}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
+                  Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)
+                    </label>
+                    <textarea
+                      value={editLesson.lessonGoal}
+                      onChange={(e) =>
+                        setEditLesson((l) => l && ({ ...l, lessonGoal: e.target.value }))
+                      }
+                      className={`${inputCls} min-h-[72px] resize-y`}
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Վերջնարդյունքների սևագիր (մեկական տողում)
+                    </label>
+                    <textarea
+                      value={editLesson.lessonOutcomes}
+                      onChange={(e) =>
+                        setEditLesson((l) => l && ({ ...l, lessonOutcomes: e.target.value }))
+                      }
+                      className={`${inputCls} min-h-[72px] resize-y`}
+                      placeholder=""
                     />
                   </div>
                 </div>
@@ -1238,6 +1310,10 @@ export default function TeacherDashboard() {
                                                     chapterTitle: (l as any).chapterTitle ?? "",
                                                     paragraphNumber: (l as any).paragraphNumber ?? "",
                                                     textbookResourceId: String((l as any).textbookResourceId ?? ""),
+                                                    lessonGoal: (l as any).lessonGoal ?? "",
+                                                    lessonOutcomes: Array.isArray((l as any).lessonOutcomes)
+                                                      ? (l as any).lessonOutcomes.join("\n")
+                                                      : "",
                                                   });
                                                   setShowLessonForm(false);
                                                 }}
