@@ -224,8 +224,8 @@ function LessonNodesPanel({
                 {practicalTasks
                   .filter((pt: any) => pt.assignment !== "HOMEWORK")
                   .map((pt, idx) => (
-                  <div key={idx} className="text-xs text-muted-foreground/80 leading-relaxed flex flex-wrap gap-x-1">
-                    <span>{pt.task}</span>
+                  <div key={idx} className="text-xs leading-relaxed flex flex-wrap gap-x-1">
+                    <span className="text-white">{pt.task}</span>
                     {pt.sourcePage != null && (
                       <span className="text-xs text-muted-foreground/50 shrink-0">(էջ {pt.sourcePage})</span>
                     )}
@@ -241,8 +241,8 @@ function LessonNodesPanel({
                 {practicalTasks
                   .filter((pt: any) => pt.assignment === "HOMEWORK")
                   .map((pt, idx) => (
-                  <div key={idx} className="text-xs text-muted-foreground/80 leading-relaxed flex flex-wrap gap-x-1">
-                    <span>{pt.task}</span>
+                  <div key={idx} className="text-xs leading-relaxed flex flex-wrap gap-x-1">
+                    <span className="text-white">{pt.task}</span>
                     {pt.sourcePage != null && (
                       <span className="text-xs text-muted-foreground/50 shrink-0">(էջ {pt.sourcePage})</span>
                     )}
