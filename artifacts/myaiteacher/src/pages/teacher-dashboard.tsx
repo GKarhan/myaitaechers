@@ -82,7 +82,7 @@ async function uploadResource(
 }
 
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
-function LessonMapButton({ lessonId }: { lessonId: number }) {
+function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
   const [mapError, setMapError] = useState<string | null>(null);
   const mapLesson = useMapLessonWithAI();
@@ -94,10 +94,11 @@ function LessonMapButton({ lessonId }: { lessonId: number }) {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+          qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
         },
         onError: (err: unknown) => {
           const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
-          setMapError(responseData?.error ?? "Քարտեզագրումը ձախողվեց, փորձիր կրկին");
+          setMapError(responseData?.error ?? "Քartezmapel AI-ov bandzaxvel");
         },
       },
     );
@@ -108,13 +109,12 @@ function LessonMapButton({ lessonId }: { lessonId: number }) {
       <button
         onClick={handleMap}
         disabled={mapLesson.isPending}
-        title="Քartezmapel AI-ov"
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
         {mapLesson.isPending ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : (
-          "🗺️"
+          isMapped ? "🗺️ Կրկին քարտեզագրել" : "🗺️ Քարտեզագրել"
         )}
       </button>
       {mapError && (
@@ -1254,6 +1254,7 @@ export default function TeacherDashboard() {
                                     {chLessons.map((l) => {
                                       const isCompleted = (l as any).status === "completed";
                                       const isActive    = (l as any).status === "active";
+                                      const isMapped    = Boolean((l as any).coreIdea);
                                       return (
                                         <div
                                           key={l.id}
@@ -1273,30 +1274,48 @@ export default function TeacherDashboard() {
                                                 )}
                                                 {((l as any).pagesFrom || (l as any).pagesTo) && (
                                                   <span className="text-xs text-muted-foreground">
-                                                    Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
+                                                    Եջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
                                                   </span>
                                                 )}
                                               </div>
                                             </div>
+                                            {(l as any).lessonGoal && (
+                                              <div className="hidden md:block flex-1 min-w-0 max-w-xs text-right">
+                                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-0.5">Նպատակ</p>
+                                                <p className="text-xs text-muted-foreground truncate">{(l as any).lessonGoal}</p>
+                                                {Array.isArray((l as any).lessonOutcomes) && (l as any).lessonOutcomes.length > 0 && (
+                                                  <p className="text-xs text-muted-foreground/60 truncate mt-0.5">
+                                                    {(l as any).lessonOutcomes.join(" · ")}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            )}
                                             <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
-                                               {(l as any).status === "completed" ? (
-                                                 <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
-                                                   Ավարտված
-                                                 </span>
-                                               ) : (l as any).status === "active" ? (
-                                                 <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
-                                                   Ընթացքի մեջ
-                                                 </span>
-                                               ) : (
-                                                 <button
-                                                   onClick={() => handleStatusChange(l.id, "active")}
-                                                   disabled={updateStatus.isPending}
-                                                   className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
-                                                 >
-                                                   Նոր դաս
-                                                 </button>
-                                               )}
-                                              <LessonMapButton lessonId={l.id} />
+                                              {isCompleted ? (
+                                                <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
+                                                  Ավարտված
+                                                </span>
+                                              ) : isActive ? (
+                                                <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
+                                                  Ընթացքի մեջ
+                                                </span>
+                                              ) : isMapped ? (
+                                                <button
+                                                  onClick={() => handleStatusChange(l.id, "active")}
+                                                  disabled={updateStatus.isPending}
+                                                  className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
+                                                >
+                                                  Հանձնարարել սովորողին
+                                                </button>
+                                              ) : (
+                                                <span
+                                                  title="Նախ քարտեզագրիր դասը"
+                                                  className="px-2 py-1 rounded-lg text-xs text-muted-foreground/40 border border-white/5 select-none cursor-default"
+                                                >
+                                                  Հանձնարարել սովորողին
+                                                </span>
+                                              )}
+                                              <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
                                               <button
                                                 onClick={() => {
                                                   setEditLesson({

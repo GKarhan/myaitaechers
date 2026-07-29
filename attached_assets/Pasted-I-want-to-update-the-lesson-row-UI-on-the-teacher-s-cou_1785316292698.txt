@@ -1,0 +1,24 @@
+I want to update the lesson row UI on the teacher's course/subject page (file: artifacts/myaiteacher/src/pages/teacher-dashboard.tsx). This is a UI/logic-only change — no schema or backend changes needed.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch in this file MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic. If you are unsure of a word, leave the existing Armenian text unchanged rather than guessing.
+
+Two changes, both inside this one file:
+
+1. Replace the `LessonMapButton` component (currently around lines 85-125) so it:
+   - accepts three props: `lessonId: number`, `courseId: number`, `isMapped: boolean`
+   - on successful mapping, invalidates BOTH the lesson-nodes query (getGetLessonNodesQueryKey(lessonId)) AND the course-lessons query (getGetCourseLessonsQueryKey(courseId)), so the lesson's goal/outcomes/coreIdea refresh immediately in the list, not just the nodes
+   - renders a labeled button (not just an emoji): shows "🗺️ Կրկին քարտեզագրել" if `isMapped` is true, otherwise "🗺️ Քարտեզագրել"
+   - keeps the existing loading spinner and error message behavior
+
+2. Inside the `chLessons.map((l) => { ... })` block that renders each lesson row (currently around lines 1254-1347):
+   - compute `const isMapped = Boolean((l as any).coreIdea);` alongside the existing `isCompleted`/`isActive` consts
+   - between the lesson title/paragraph/pages block and the action-buttons block, add a right-aligned info column (hidden on small screens, e.g. `hidden md:block`) that shows the lesson's goal and outcomes ONLY if `(l as any).lessonGoal` is truthy: a small label "Նպատակ", then the goal text truncated to one line, then (if `(l as any).lessonOutcomes` is a non-empty array) the outcomes joined by " · " on a second truncated line
+   - change the status/action button logic so that:
+     - if `isCompleted` → show the existing "Ավարտված" badge
+     - else if `isActive` → show the existing "Ընթացքի մեջ" badge
+     - else if `isMapped` → show a button "Հանձնարարել սովորողին" that calls the existing `handleStatusChange(l.id, "active")` (same as the old "Նոր դաս" button did)
+     - else (not mapped yet) → show a disabled-looking, non-clickable span with the same label "Հանձնարարել սովորողին", grayed out (e.g. `text-muted-foreground/40`, no hover), with a `title` attribute "Նախ քարտեզագրիր դասը"
+   - pass `courseId={selectedCourse!.id}` and `isMapped={isMapped}` to `<LessonMapButton lessonId={l.id} .../>` in addition to the existing `lessonId` prop
+   - keep the edit (✏️) and delete (🗑) buttons exactly as they are now, unchanged, right after the map button
+
+Do not touch any other part of the file, do not change the schema, do not change any backend route, and do not change the LessonNodesPanel component. Run a typecheck after the change and confirm zero errors.
