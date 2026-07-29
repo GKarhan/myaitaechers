@@ -1,0 +1,15 @@
+I want the "Քարտեզագրված դաս" collapsible panel (the `LessonNodesPanel` component in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx) to show more than just the node list — it should also show the lesson's coreProblem, coreIdea, and practicalTasks when expanded. This is a frontend-only change; all this data already exists in the database and is already returned by the course-lessons query on each lesson object.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+CHANGE — extend `LessonNodesPanel`:
+- Add three new props to `LessonNodesPanel`: `coreProblem: string | null`, `coreIdea: string | null`, `practicalTasks: { task: string; sourcePage?: string | null }[]` (an empty array default is fine if the type is stricter elsewhere).
+- Inside the expanded panel content (the `{open && (...)}` block), render sections in this exact top-to-bottom order:
+  1. "🎯 Հիմնահարց" label followed by the coreProblem text below it (only if non-empty), styled like a small muted paragraph (similar text sizing to the existing empty-state hints, e.g. text-xs text-muted-foreground)
+  2. "💡 Գլխավոր գաղափար" label followed by the coreIdea text (only if non-empty), same styling
+  3. The existing node list, completely unchanged (title/Bloom/time, delete button)
+  4. "✏️ Վարժություններ" section (only if practicalTasks.length > 0): header, then a list of the tasks, each showing the task text, and if `sourcePage` is present, a small trailing note like "(էջ {sourcePage})" in a more muted/smaller style right after the task text — if `sourcePage` is null/missing, just show the task text with no page note.
+- Keep the existing node-list rendering and delete-node behavior completely unchanged.
+- At the call site where `<LessonNodesPanel lessonId={l.id} />` is rendered (inside the `chLessons.map((l) => {...})` block), pass the three new props from the lesson object: `coreProblem={(l as any).coreProblem ?? null}`, `coreIdea={(l as any).coreIdea ?? null}`, `practicalTasks={Array.isArray((l as any).practicalTasks) ? (l as any).practicalTasks : []}`.
+
+Do not change anything else — not the schema, not any backend route, not the node-fetching logic, not the LessonMapButton or LessonGoalOutcomesPanel components. Run a typecheck after the change and confirm zero errors, then paste me a screenshot or description of how it renders for lesson id 41.
