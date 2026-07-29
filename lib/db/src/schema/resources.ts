@@ -17,6 +17,7 @@ export const resourcesTable = pgTable("resources", {
   fileName: text("file_name"),
   fileUrl: text("file_url"),
   fileSize: integer("file_size"),
+  author: text("author"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

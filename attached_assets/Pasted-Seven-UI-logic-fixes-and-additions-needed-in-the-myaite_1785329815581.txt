@@ -1,0 +1,30 @@
+Seven UI/logic fixes and additions needed in the myaiteacher teacher dashboard (artifacts/myaiteacher/src/pages/teacher-dashboard.tsx) and, where noted, in lib/db/src/schema. If you already applied part of this from an earlier message, just verify it's fully correct and finish whatever remains — don't redo already-correct work.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic. Verify every character carefully — this codebase has had repeated bugs with wrong-but-similar-looking Armenian letters (e.g. "Ե" instead of "Է").
+
+FIX 1 — lesson ordering
+In the `sorted` array comparator (currently ordering by textbookTitle, then chapterTitle, then lessonNumber, then paragraphNumber), change the priority so lessonNumber (ascending numeric) is compared right after textbookTitle, BEFORE chapterTitle. A newly added lesson with a higher lessonNumber must always appear below lessons with lower lessonNumber, regardless of chapterTitle text. Keep paragraphNumber as the final tiebreaker.
+
+FIX 2 — LessonGoalOutcomesPanel text color
+In `LessonGoalOutcomesPanel`, change the goal text and each outcome list item's text color to plain white (same white as node titles / coreProblem / coreIdea text). Leave the "Նպատակ" / "Վերջնարդյունքներ" small labels in their current color/style — only the body text changes.
+
+FIX 3 — remove the node count from the panel header
+In `LessonNodesPanel`, the toggle label is currently "🗺️ Քարտեզագրված դաս{nodes.length > 0 ? ` · ${nodes.length}` : ""}". Remove the count entirely — always show just "🗺️ Քարտեզագրված դաս".
+
+FIX 4 — fix "Էջ" typo and spacing
+Wherever the lesson row shows the paragraph number and page range together (`§{paragraphNumber}` and `Էջ {pagesFrom}–{pagesTo}`), fix any occurrence spelled "Եջ" (wrong letter) to "Էջ", and add a visible " · " separator between the two spans so they don't render jammed together.
+
+FIX 5 — remove three redundant fields from both lesson forms
+In BOTH the New lesson and Edit lesson forms, remove: "Թեմա / Գլուխ" (chapterTitle), "Դասագրքի անվանումը" (textbookTitle), "Դասագրքի հեղինակը" (textbookAuthor) — including their state and submit-payload wiring. These are redundant now that "Դասագրքի ֆայլը" (textbookResourceId dropdown) identifies the linked resource. Keep lesson number, paragraph number, lesson title, pages from/to, the textbook-file dropdown, and goal/outcomes textareas untouched.
+
+CHANGE A — move "author" from lesson to the course resource itself
+1. Schema: add `author: text("author")` to `resourcesTable` in lib/db/src/schema/resources.ts (nullable), applied via migration/ALTER TABLE.
+2. In the "📚 ԴԱՍԱԳԻՐՔ + ԿՑԵԼ ՆՅՈՒԹ" resource-upload form, add an optional "Հեղինակ" text input, sent as `author` in the upload FormData, next to the title field.
+3. Wherever a resource's info is shown (resource cards, and the textbook-group header in the lesson list that currently reads "Հեղինակ' {tbAuthor}"), source the author from the linked RESOURCE's `author` field (looked up via courseResources by the group's textbookResourceId) instead of from the now-removed lesson.textbookAuthor.
+
+CHANGE B — bring back an optional "Թեմա" (topic) field per lesson, with carry-forward grouping
+1. Re-add a single optional "Թեմա" text input to both lesson forms, binding to `chapterTitle` (the column already exists — just the form UI and submit payload need it back).
+2. Grouping/display: sort lessons strictly by lessonNumber ascending (per FIX 1), then walk through in that order carrying forward the topic — a lesson with non-empty chapterTitle becomes the new "current topic"; a lesson with empty chapterTitle silently inherits the current topic for grouping purposes but does NOT repeat the "Թեմա · ..." header. Only render that header once, above the first lesson where the topic changed to a new non-empty value.
+3. Lessons before any chapterTitle has ever been set render with no topic header, same as today.
+
+After everything, run a typecheck and confirm zero errors, then describe how the lesson list and a lesson card render now — including one example of a topic header followed by multiple lessons stacked under it without repeating the header.

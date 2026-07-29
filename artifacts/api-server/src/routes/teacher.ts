@@ -463,12 +463,13 @@ router.get("/teacher/courses/:courseId/resources", requireTeacher, async (req: A
 router.post("/teacher/courses/:courseId/resources", requireTeacher, upload.single("file"), async (req: AuthRequest, res) => {
   const courseId = parseInt(String(req.params.courseId));
   if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
-  const { type, title, description } = req.body as { type: string; title: string; description?: string };
+  const { type, title, description, author } = req.body as { type: string; title: string; description?: string; author?: string };
   if (!type || !title) { res.status(400).json({ error: "type, title partadir en" }); return; }
   const file = req.file;
   const [resource] = await db.insert(resourcesTable).values({
     courseId, teacherId: req.userId!, type, title,
     description: description ?? "",
+    author: author || null,
     fileName: file?.originalname ?? null,
     fileUrl: file ? `/api/teacher/documents/files/${file.filename}` : null,
     fileSize: file?.size ?? null,
