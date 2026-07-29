@@ -1053,6 +1053,34 @@ export default function TeacherDashboard() {
                   </div>
                   <div className="sm:col-span-2">
                     <label className="text-xs text-muted-foreground mb-1 block">
+                      Դասագրքի ֆայլը
+                    </label>
+                    <select
+                      value={editLesson.textbookResourceId}
+                      onChange={(e) =>
+                        setEditLesson(
+                          (l) => l && { ...l, textbookResourceId: e.target.value },
+                        )
+                      }
+                      className={inputCls}
+                    >
+                      <option value="">— ընտրել —</option>
+                      {courseResources
+                        .filter((r) => r.type === "textbook")
+                        .map((r) => (
+                          <option key={r.id} value={String(r.id)}>
+                            {r.title}
+                          </option>
+                        ))}
+                    </select>
+                    {courseResources.filter((r) => r.type === "textbook").length === 0 && (
+                      <p className="text-xs text-muted-foreground/50 mt-1">
+                        Դասագիրք դեռ վերբեռնված չէ subject-ի էջում
+                      </p>
+                    )}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-muted-foreground mb-1 block">
                       Թema / Գլուխ
                     </label>
                     <input

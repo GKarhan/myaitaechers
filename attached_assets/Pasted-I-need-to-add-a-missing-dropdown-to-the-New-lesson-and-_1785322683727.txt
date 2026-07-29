@@ -1,0 +1,16 @@
+I need to add a missing dropdown to the "New lesson" and "Edit lesson" forms in artifacts/myaiteacher/src/pages/teacher-dashboard.tsx. This is a UI-only change.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+CONTEXT: Both `lessonForm` and `editLesson` state objects already have a `textbookResourceId: string` field, and the submit handlers already send it as a number to the backend. The component already fetches `courseResources` via `useGetCourseResources` (see around line 292). But right now there is NO input in the form that lets the teacher actually pick a value for `textbookResourceId` — only free-text fields for textbookAuthor/textbookTitle exist. This means textbookResourceId is always left empty, so the AI mapping feature fails with "no textbook file linked to this lesson."
+
+CHANGE — add a `<select>` dropdown for choosing the linked textbook resource, in BOTH the "new lesson" form and the "edit lesson" form, right near the existing "Դասագրքի հեղինակը" / "Դասագրքի անվանումը" text fields:
+
+- Label it "Դասագրքի ֆայլը" (the actual uploaded textbook file, not the text description).
+- Populate the `<option>` list from `courseResources.filter((r) => r.type === "textbook")`, showing each resource's title as the option label and its id as the option value.
+- Include a default empty option like "— ընտրել —" with value "".
+- Bind the new-lesson version to `lessonForm.textbookResourceId` / `setLessonForm`, and the edit version to `editLesson.textbookResourceId` / `setEditLesson`, exactly the same way the existing text fields are bound in each form (same onChange pattern).
+- Style it to match the existing form inputs in that section (same classes as the neighboring text inputs, just swap `<input>` for `<select>` with `<option>` children).
+- If `courseResources` has zero textbook-type resources, still render the dropdown with only the default empty option (don't hide it) — but you can add a small muted-text hint below it like "Դասագիրք դեռ վերբեռնված չէ subject-ի էջում" shown only when the filtered list is empty.
+
+Do not change the schema, do not change any backend route, do not change textbookAuthor/textbookTitle fields (leave them as free text, unrelated to this). Run a typecheck after the change and confirm zero errors.
