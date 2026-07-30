@@ -139,6 +139,7 @@ export interface CourseItem {
   id: number;
   classId: number;
   teacherId?: number | null;
+  subjectId?: number | null;
   name: string;
   description?: string;
   lessonCount?: number;
@@ -148,6 +149,7 @@ export interface CourseItem {
 export interface CreateCourseInput {
   name: string;
   description?: string;
+  subjectId: number;
 }
 
 export interface ResourceItem {

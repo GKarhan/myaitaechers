@@ -1,0 +1,58 @@
+ԽՆԴԻՐ. Ուղղել 2 կապակցված bug, որոնք առաջանում են նոր subject ավելացնելիս
+ուսուցչի dashboard-ում course/lesson/resource flow-ում։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — Sուբյեկտ-Course կապի ուղղում (արմատական պատճառ)
+═══════════════════════════════════════════
+
+1.1. lib/db/src/schema/courses.ts-ում ավելացրու.
+  subjectId: integer("subject_id").references(() => subjectsTable.id, { onDelete: "set null" }),
+Ավելացրու import { subjectsTable } from "./subjects";: Գործարկիր migration:
+
+1.2. artifacts/api-server/src/routes/teacher.ts-ի
+POST /teacher/classes/:classId/courses route-ում (ուր հիմա միայն name+description
+է ընդունում), ընդունիր նաև subjectId պարտադիր դաշտ և insert արա այն
+coursesTable-ում։ Եթե subjectId բացակայում է request-ից, վերադարձրու 400 error
+(մի հորինիր fallback, ինչպես հիմա lessons-ի endpoint-ն է անում)։
+
+1.3. Ամենակարևորը. POST /teacher/courses/:courseId/lessons route-ում (lessons.ts
+կամ teacher.ts, ուր հիմա կա "let resolvedSubjectId = subjectId; if (!resolvedSubjectId)
+{ ... .limit(1) ... }") — ՋՆՋԻՐ այս fallback-ը ամբողջությամբ։ Փոխարենը.
+  - Fetch արա course-ի subjectId-ն ուղիղ coursesTable-ից (WHERE id = courseId)
+  - Օգտագործիր հենց այդ subjectId-ն, ոչ թե request body-ից եկածը
+  - Եթե course.subjectId-ը NULL է (հին course, ստեղծված մինչ այս ուղղումը),
+    վերադարձրու հստակ 400 error՝ "Այս Course-ը դեռ կապված չէ որևէ Subject-ի հետ,
+    խնդրում ենք վերակապակցել admin-ի միջոցով", մի հորինիր random subject
+Սա երաշխավորում է, որ դասը միշտ ստեղծվում է course-ի իրական subject-ի հետ, ոչ
+թե db-ի պատահական առաջին subject-ի։
+
+1.4. artifacts/myaiteacher/src/pages/teacher-dashboard.tsx-ում.
+  - courseForm-ը (հիմա { name, description }) փոխիր՝ ավելացնելով subjectId
+    ընտրության dropdown (fetch արա useGetSubjects-ով, ցույց տուր անուններով,
+    արժեքը subjectId), name-ը կարող է ավտոմատ լցվել ընտրված subject-ի անունով
+    (կարող ես դեռ թողնել խմբագրելի, բայց subjectId-ը պարտադիր ուղարկվում է)
+  - handleCreateCourse-ում ուղարկիր subjectId-ը POST body-ում
+  - handleCreateLesson-ում ուղարկիր subjectId-ը (selectedCourse.subjectId-ից,
+    ոչ նոր input-ից), որ POST /teacher/courses/:courseId/lessons-ը միշտ ստանա
+    ճիշտ subjectId ուղիղ frontend-ից էլ (redundant բայց անվտանգ)
+
+1.5. Գոյություն ունեցող course-երի համար (որոնց subjectId-ը NULL կլինի
+migration-ից հետո), գրիր փոքր one-time backfill script, որ փորձի կապել
+ըստ course.name === subjects.name exact match-ի, և log-ի այն course-երը, որոնց
+համար match չի գտնվել (որ ես ձեռքով ուղղեմ admin-ից)։
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — Լուռ սխալների ուղղում (UX)
+═══════════════════════════════════════════
+
+2.1. teacher-dashboard.tsx-ի handleAddResource-ում, catch-ի "/* ignore */"-ի
+փոխարեն ցույց տուր հստակ error state (օրինակ՝ setResError(err.message)) և
+ցուցադրիր այն ձևի վերևում կարմիր տեքստով, մինչև հաջորդ փորձը կամ ձևը փակելը։
+
+2.2. Նույն կերպ ստուգիր handleCreateLesson/handleCreateCourse-ի error handling-ը
+(createLesson.mutate/createCourse.mutate-ի onError callback-ը) — եթե սխալի
+ցուցադրում չկա, ավելացրու նույն ձևով (setLessonError/setCourseError state +
+ցուցադրում ձևի մեջ)։
+
+Ավարտից հետո ասա՛՝ արդյոք կան հին course-եր, որոնց subjectId-ի backfill-ը
+match չի գտել, որ ես ձեռքով ուղղեմ։

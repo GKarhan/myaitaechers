@@ -1,4 +1,4 @@
 - [Armenian Python scripts](armenian-python-scripts.md) — avoid `\u{XXX}` JS syntax or 3-digit `\uXXX` in Python strings; use actual Unicode chars or `\uXXXX` (4-digit) / `\UXXXXXXXX` (8-digit).
 - [Dashboard architecture](dashboard-arch.md) — student dashboard uses 9 nav sections including homework (📋); user JWT has only `{id, username, role, fullName}` — no createdAt.
 - [Armenian label insertion](armenian-label-insertion.md) — never type Armenian labels directly in Edit calls; read from spec file via Python and use a script to insert, avoiding Cyrillic/Latin lookalike confusion.
-- [Courses table has no subjectId](courses-no-subjectid.md) — coursesTable only has id, classId, teacherId, name, description, createdAt; fall back to first subjectsTable row when subjectId is missing.
+- [Courses-Subject link](courses-subject-link.md) — coursesTable now has subjectId (nullable FK); POST courses requires it; POST /courses/:id/lessons derives subjectId from course, never from request body; api.schemas in both api-zod and api-client-react src+dist must be updated together.

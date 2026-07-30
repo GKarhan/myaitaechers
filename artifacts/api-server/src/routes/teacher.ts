@@ -430,9 +430,13 @@ router.get("/teacher/classes/:classId/courses", requireTeacher, async (req: Auth
 router.post("/teacher/classes/:classId/courses", requireTeacher, async (req: AuthRequest, res) => {
   const classId = parseInt(String(req.params.classId));
   if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
-  const { name, description } = req.body as { name: string; description?: string };
+  const { name, description, subjectId } = req.body as { name: string; description?: string; subjectId?: number };
   if (!name) { res.status(400).json({ error: "name partadir e" }); return; }
-  const [course] = await db.insert(coursesTable).values({ classId, teacherId: req.userId!, name, description: description ?? "" }).returning();
+  if (!subjectId) { res.status(400).json({ error: "subjectId is required" }); return; }
+  const [course] = await db.insert(coursesTable).values({
+    classId, teacherId: req.userId!, name, description: description ?? "",
+    subjectId,
+  }).returning();
   res.status(201).json({ ...course, lessonCount: 0 });
 });
 
@@ -502,21 +506,26 @@ router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Aut
 router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: AuthRequest, res) => {
   const courseId = parseInt(String(req.params.courseId));
   if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
-  const { subjectId, title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId, lessonGoal, lessonOutcomes } = req.body as {
-    subjectId?: number; title: string; description?: string; bloomLevel?: number; content?: string;
+  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId, lessonGoal, lessonOutcomes } = req.body as {
+    title: string; description?: string; bloomLevel?: number; content?: string;
     lessonNumber?: number; pagesFrom?: number; pagesTo?: number;
     textbookAuthor?: string; textbookTitle?: string; chapterTitle?: string; paragraphNumber?: string;
     textbookResourceId?: number; lessonGoal?: string; lessonOutcomes?: string[];
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
-  let resolvedSubjectId = subjectId;
-  if (!resolvedSubjectId) {
-    const { subjectsTable } = await import("@workspace/db");
-    const [s] = await db.select().from(subjectsTable).limit(1);
-    resolvedSubjectId = s?.id ?? 1;
+
+  // Always derive subjectId from the course — never trust the request body
+  const [parentCourse] = await db.select({ subjectId: coursesTable.subjectId }).from(coursesTable).where(eq(coursesTable.id, courseId)).limit(1);
+  if (!parentCourse) { res.status(404).json({ error: "Course not found" }); return; }
+  if (!parentCourse.subjectId) {
+    res.status(400).json({
+      error: "This Course is not linked to a Subject. Please re-link via the admin panel.",
+    });
+    return;
   }
+
   const [lesson] = await db.insert(lessonsTable).values({
-    subjectId: resolvedSubjectId, title,
+    subjectId: parentCourse.subjectId, title,
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, courseId,
     lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,

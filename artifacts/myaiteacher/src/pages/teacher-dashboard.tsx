@@ -34,6 +34,8 @@ import {
   getGetTeacherProfileQueryKey,
   getGetStudentDetailQueryKey,
   getGetLessonNodesQueryKey,
+  useGetSubjects,
+  getGetSubjectsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -317,6 +319,7 @@ export default function TeacherDashboard() {
   const [selectedCourse, setSelectedCourse] = useState<{
     id: number;
     name: string;
+    subjectId?: number | null;
   } | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(
     null,
@@ -381,6 +384,10 @@ export default function TeacherDashboard() {
     },
   });
 
+  const { data: subjectsList = [] } = useGetSubjects({
+    query: { queryKey: getGetSubjectsQueryKey() },
+  });
+
   const addStudent = useAddStudentToClass();
   const removeStudent = useRemoveStudentFromClass();
   const createCourse = useCreateCourse();
@@ -423,24 +430,30 @@ export default function TeacherDashboard() {
     );
   };
 
-  const [courseForm, setCourseForm] = useState({ name: "", description: "" });
+  const [courseForm, setCourseForm] = useState({ name: "", description: "", subjectId: null as number | null });
   const [showCourseForm, setShowCourseForm] = useState(false);
 
   const handleCreateCourse = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClass) return;
+    if (!courseForm.subjectId) { setCourseError("Subject is required"); return; }
+    setCourseError(null);
     createCourse.mutate(
       {
         classId: selectedClass.id,
-        data: { name: courseForm.name, description: courseForm.description },
+        data: { name: courseForm.name, description: courseForm.description, subjectId: courseForm.subjectId },
       },
       {
         onSuccess: () => {
           setShowCourseForm(false);
-          setCourseForm({ name: "", description: "" });
+          setCourseForm({ name: "", description: "", subjectId: null });
           qc.invalidateQueries({
             queryKey: getGetClassCoursesQueryKey(selectedClass.id),
           });
+        },
+        onError: (err: unknown) => {
+          const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
+          setCourseError(d?.error ?? "Course creation failed");
         },
       },
     );
@@ -456,6 +469,9 @@ export default function TeacherDashboard() {
   const [resForm, setResForm] = useState(emptyResForm);
   const [showResForm, setShowResForm] = useState<string | null>(null);
   const [resUploading, setResUploading] = useState(false);
+  const [resError, setResError] = useState<string | null>(null);
+  const [lessonError, setLessonError] = useState<string | null>(null);
+  const [courseError, setCourseError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleAddResource = async (e: React.FormEvent) => {
@@ -470,8 +486,8 @@ export default function TeacherDashboard() {
       qc.invalidateQueries({
         queryKey: getGetCourseResourcesQueryKey(selectedCourse.id),
       });
-    } catch {
-      /* ignore */
+    } catch (err: unknown) {
+      setResError(err instanceof Error ? err.message : "Resource upload failed");
     } finally {
       setResUploading(false);
     }
@@ -499,10 +515,12 @@ export default function TeacherDashboard() {
   const handleCreateLesson = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCourse) return;
+    setLessonError(null);
     createLesson.mutate(
       {
         data: {
           courseId: selectedCourse.id,
+          ...(selectedCourse.subjectId != null && { subjectId: selectedCourse.subjectId }),
           title: lessonForm.title,
           lessonNumber: lessonForm.lessonNumber
             ? parseInt(lessonForm.lessonNumber)
@@ -531,6 +549,10 @@ export default function TeacherDashboard() {
           qc.invalidateQueries({
             queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
           });
+        },
+        onError: (err: unknown) => {
+          const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
+          setLessonError(d?.error ?? "Lesson creation failed");
         },
       },
     );
@@ -727,7 +749,7 @@ export default function TeacherDashboard() {
                       </span>
                       <button
                         onClick={() => {
-                          setShowResForm(isOpen ? null : key);
+                          setShowResForm(isOpen ? null : key); setResError(null);
                           setResForm({ ...emptyResForm, type: key });
                           if (fileRef.current) fileRef.current.value = "";
                         }}
@@ -784,6 +806,9 @@ export default function TeacherDashboard() {
                           }
                           className="w-full text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-primary/20 file:text-primary hover:file:bg-primary/30 cursor-pointer"
                         />
+                        {resError && (
+                          <p className="text-xs text-red-400">{resError}</p>
+                        )}
                         <div className="flex gap-2">
                           <button
                             type="submit"
@@ -885,6 +910,9 @@ export default function TeacherDashboard() {
                 className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-4"
               >
                 <h3 className="font-semibold text-sm text-white/90">Նոր դաս</h3>
+                {lessonError && (
+                  <p className="text-xs text-red-400">{lessonError}</p>
+                )}
                 <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
                   Ա. ԴԱՍԱԳԻՐՔ
                 </p>
@@ -1564,6 +1592,60 @@ export default function TeacherDashboard() {
           {/* ── SUBJECTS TAB ── */}
           {classTab === "subjects" && (
             <div>
+              {/* Course error display */}
+              {courseError && (
+                <p className="text-sm text-red-400 mb-3">{courseError}</p>
+              )}
+
+              {/* Manual course creation form */}
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={() => { setShowCourseForm((f) => !f); setCourseError(null); }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-semibold"
+                >
+                  {showCourseForm ? "Cancel" : "+ Create Course"}
+                </button>
+              </div>
+              {showCourseForm && (
+                <form
+                  onSubmit={handleCreateCourse}
+                  className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3"
+                >
+                  <h3 className="font-semibold text-sm text-white/90">New Course</h3>
+                  <select
+                    required
+                    value={courseForm.subjectId ?? ""}
+                    onChange={(e) => {
+                      const id = e.target.value ? parseInt(e.target.value) : null;
+                      const sub = subjectsList.find((s) => s.id === id);
+                      setCourseForm((f) => ({ ...f, subjectId: id, name: sub?.name ?? f.name }));
+                    }}
+                    className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  >
+                    <option value="">Select subject *</option>
+                    {subjectsList.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    required
+                    value={courseForm.name}
+                    onChange={(e) => setCourseForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Course name *"
+                    className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                  {courseError && <p className="text-xs text-red-400">{courseError}</p>}
+                  <div className="flex gap-2">
+                    <button type="submit" className="px-4 py-1.5 rounded-xl bg-primary text-black text-xs font-bold hover:opacity-90 transition-opacity">
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setShowCourseForm(false)} className="px-4 py-1.5 rounded-xl border border-white/20 text-muted-foreground text-xs hover:text-white transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
               {classSubjects.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground">
                   <div className="text-5xl mb-4">📖</div>
@@ -1614,10 +1696,16 @@ export default function TeacherDashboard() {
                                 setSelectedCourse(match);
                                 setMainView("course");
                               } else {
+                                const subjectItem = subjectsList.find((s) => s.name === subject);
+                                if (!subjectItem) {
+                                  setCourseError("Subject not found in list — please refresh");
+                                  return;
+                                }
+                                setCourseError(null);
                                 createCourse.mutate(
                                   {
                                     classId: selectedClass!.id,
-                                    data: { name: subject, description: "" },
+                                    data: { name: subject, description: "", subjectId: subjectItem.id },
                                   },
                                   {
                                     onSuccess: (created) => {
@@ -1628,6 +1716,10 @@ export default function TeacherDashboard() {
                                       });
                                       setSelectedCourse(created);
                                       setMainView("course");
+                                    },
+                                    onError: (err: unknown) => {
+                                      const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
+                                      setCourseError(d?.error ?? "Course creation failed");
                                     },
                                   },
                                 );
