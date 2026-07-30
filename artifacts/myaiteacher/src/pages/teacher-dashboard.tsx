@@ -80,7 +80,19 @@ async function uploadResource(
     headers: { Authorization: `Bearer ${token}` },
     body: fd,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("application/json")) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? "Upload failed");
+    }
+    // Non-JSON (e.g. raw HTML from Multer before route handler) — extract a clean message
+    const text = await res.text();
+    if (text.includes("File too large") || res.status === 413) {
+      throw new Error("File too large — maximum allowed size is 100 MB.");
+    }
+    throw new Error(`Upload failed (${res.status})`);
+  }
   return res.json();
 }
 

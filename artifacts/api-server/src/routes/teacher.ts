@@ -17,7 +17,24 @@ const storage = multer.diskStorage({
     cb(null, `${unique}${path.extname(file.originalname)}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } }); // 100 MB
+
+// Wrapper: catches MulterError before it reaches Express's default HTML handler
+import type { Request, Response, NextFunction } from "express";
+function singleUpload(req: Request, res: Response, next: NextFunction) {
+  upload.single("file")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ error: "File too large — maximum allowed size is 100 MB." });
+      } else {
+        res.status(400).json({ error: `Upload error: ${err.message}` });
+      }
+      return;
+    }
+    if (err) { next(err); return; }
+    next();
+  });
+}
 
 const router = Router();
 
@@ -479,7 +496,7 @@ router.get("/teacher/courses/:courseId/resources", requireTeacher, async (req: A
   res.json(resources);
 });
 
-router.post("/teacher/courses/:courseId/resources", requireTeacher, upload.single("file"), async (req: AuthRequest, res) => {
+router.post("/teacher/courses/:courseId/resources", requireTeacher, singleUpload, async (req: AuthRequest, res) => {
   const courseId = parseInt(String(req.params.courseId));
   if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
   const { type, title, description, author } = req.body as { type: string; title: string; description?: string; author?: string };
@@ -640,7 +657,7 @@ router.get("/teacher/classes/:classId/documents", requireTeacher, async (req: Au
   res.json(docs);
 });
 
-router.post("/teacher/classes/:classId/documents", requireTeacher, upload.single("file"), async (req: AuthRequest, res) => {
+router.post("/teacher/classes/:classId/documents", requireTeacher, singleUpload, async (req: AuthRequest, res) => {
   const classId = parseInt(String(req.params.classId));
   if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
   const { type, title, description } = req.body as { type: string; title: string; description?: string };
