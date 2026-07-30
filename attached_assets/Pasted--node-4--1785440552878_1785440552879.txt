@@ -1,0 +1,61 @@
+ԽՆԴԻՐ. Ամեն node-ի ուսուցումը պիտի հետևի ԽԻՍՏ, կոդով-հարկադրված 4-փուլանոց
+ցիկլի՝ ТЕОРИЯ → ГՈՐԾՆԱԿԱՆ ԿԻՐԱՌՈՒՄ → ՍՏՈՒԳՈՒՄ → ХАЖОРД NODE, ոչ թե
+ազատ, model-ի հայեցողությամբ MICRO_CHECK-ի անվերջ ցիկլ։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — Schema. Node-ի ուսուցման փուլի հետևում
+═══════════════════════════════════════════
+lib/db/src/schema/lesson-nodes.ts-ում ավելացրու.
+  teachingStage: text("teaching_stage").notNull().default("THEORY"),
+    // THEORY | MICRO_CHECK | EXERCISE | VERIFIED
+Migration գործարկիր։
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — Կոդով հարկադրված անցումներ (chat.ts)
+═══════════════════════════════════════════
+Ամեն node-ի սկզբում (երբ currentNodeId նոր է դառնում, կամ դեռ THEORY է).
+  - lessonContext-ին ավելացրու հատուկ DIRECTIVE տող, կախված node.teachingStage-ից.
+
+  THEORY (առաջին turn-ը այս node-ի վրա).
+  "ԱՅՍ TURN-ՈՒՄ ՊԱՐՏԱԴԻՐ ԵՍ. ներկայացրու APPROVED_EXPLANATION-ը (2-3
+  նախադասությամբ), անմիջապես հետո տուր ՄԵԿ MICRO_CHECK հարց։ Այս turn-ից
+  հետո stage-ը կդառնա MICRO_CHECK։"
+  → Պատասխանից հետո, կոդով push arա teachingStage = "MICRO_CHECK"
+
+  MICRO_CHECK (մինչև 2 փորձ, հետևիր microCheckCount-ին lessonNodesTable-ում
+  կամ նոր դաշտով).
+  - Եթե classExercises.length > 0 ԵՎ microCheckCount >= 1 (առնվազն 1
+    MICRO_CHECK արդեն արված է).
+    "ԱՅՍ TURN-ՈՒՄ ՊԱՐՏԱԴԻՐ ԵՍ. ներկայացրու CLASS_EXERCISES-ի առաջին
+    չօգտագործված վարժությունը (exerciseTextVerbatim-ով), ոչ մի նոր
+    MICRO_CHECK հարց մի հորինիր։ stage-ը կդառնա EXERCISE։"
+    → կոդով push արա teachingStage = "EXERCISE"
+  - Եթե classExercises.length === 0 (այս node-ին կապված իրական
+    վարժություն չկա). թույլատրիր մինչև 2 MICRO_CHECK, հետո թույլատրիր
+    COMPLETE_NODE MODERATE evidence-ով (բացառություն, քանի որ իրական
+    վարժություն չկա այս node-ի համար)
+
+  EXERCISE (student-ը պատասխանում է իրական վարժությանը).
+  - Եթե ուսանողի պատասխանը ճիշտ է → evidence_quality = STRONG (ինչպես
+    արդեն կանոնավորված է), stage = VERIFIED, node-ը կարող է advance անել
+  - Եթե սխալ է → persona-ի ջերմ ուղղորդման կանոնով նորից նույն կամ 2-րդ
+    վարժությունը (եթե կա), stage մնում է EXERCISE
+
+  VERIFIED. node-ը ավարտված է, advanceNodeInSession-ը կանչվում է
+  (կոդը արդեն ունի սա), teachingStage reset-վում է "THEORY" հաջորդ node-ի
+  համար
+
+═══════════════════════════════════════════
+ՄԱՍ 3 — Persona-ի "Ոչ"-ով սկսելու խախտման պաշտպանություն
+═══════════════════════════════════════════
+callAIStructured-ի պատասխանից անմիջապես հետո, ՆԱԽՔԱՆ ցուցադրելը.
+  if (studentMessage.trim().match(/^(Ոչ[,։]|Սխալ է[,։]|Դու չես)/)) {
+    studentMessage = studentMessage.replace(/^(Ոչ[,։]|Սխալ է[,։]|Դու չես)\s*/, "");
+    // ըստ ցանկության՝ prepend մեկ warm redirect ֆրազ պատահականորեն ընտրված
+    // ֆիքսված ցուցակից (ոչ model-ից), եթե արդյունքում մնացած տեքստը
+    // շատ կտրուկ է սկսվում
+  }
+
+Ավարտից հետո ցույց տուր node 1-ի ամբողջ ցիկլը (THEORY→MICRO_CHECK→
+EXERCISE→VERIFIED) մեկ live-test-ում, մասնավորապես՝ ե՞րբ առաջին անգամ
+երևաց իրական CLASS exercise-ը (exerciseTextVerbatim-ով)։

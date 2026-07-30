@@ -64,7 +64,15 @@ Step 2. Immediately ask ONE MICRO_CHECK question about that concept (≤25 words
 Step 3. Wait for student answer → FEEDBACK (correct/guide) → next concept or exercise.
 Step 4. After concepts are taught, present CLASS EXERCISES above (VERBATIM if exerciseTextVerbatim is non-empty).
 Step 5. Do NOT present a new exercise until student demonstrates understanding of the current one.
-NEVER give the answer directly — always hint and guide.`;
+NEVER give the answer directly — always hint and guide.
+
+EXERCISE TRANSITION RULE (mandatory — never skip):
+- If CLASS_EXERCISES appear in this context AND you have already asked 2 or more MICRO_CHECK questions on this node → you MUST present an exercise NOW using teaching_mode: "TRANSITION". Do NOT invent another MICRO_CHECK.
+- Present the first unused CLASS_EXERCISE VERBATIM (copy exerciseTextVerbatim exactly). Ask the student to attempt it.
+- Only move to the next exercise after the student has attempted the current one.
+
+NO-EXERCISE COMPLETION RULE:
+- If CLASS_EXERCISES is ABSENT from this context (the node has no exercises) AND you have already asked 2+ MICRO_CHECK questions showing the student understands → set node_decision.action = "COMPLETE_NODE" to advance. Do NOT keep inventing more questions.`;
 
     case 3:
       return `DEEP STUDY PHASE — apply concepts to complex scenarios:
@@ -324,6 +332,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             eq(lessonExercisesTable.assignment, "CLASS")
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
+        // DEBUG: log class exercises found for current node
+        logger.info({
+          phase,
+          currentNodeId: session?.currentNodeId,
+          classExercisesCount: classExercises.length,
+          exercises: classExercises.map(e => ({
+            exerciseId: e.exerciseId,
+            relatedNodeId: e.relatedNodeId,
+            verbatim: e.exerciseTextVerbatim?.slice(0, 80),
+          })),
+        }, "Phase2 classExercises loaded");
       } else if (phase === 3 && allNodeIds.length > 0) {
         // Phase 3 bug fix: currentNodeId is null here — fetch ALL class exercises for lesson
         classExercises = await db
@@ -430,6 +449,23 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         ? `USED_QUESTION_TEMPLATES (do NOT repeat these for this node): ${usedTemplates.join(", ")}`
         : "";
 
+      // Safety: if 3+ attempts on node and exercises exist but still Phase 2, force exercise presentation
+      const forcedExerciseLine: string = (() => {
+        if (phase !== 2 || !session || classExercises.length === 0) return "";
+        const attempts = session.nodeAttemptCount;
+        if (attempts < 3) return "";
+        const ex = classExercises[0];
+        const verbatim = ex.exerciseTextVerbatim?.trim()
+          ? ex.exerciseTextVerbatim
+          : `[${ex.exerciseId}]`;
+        return (
+          `⚠️ SAFETY OVERRIDE: ${attempts} student turns logged on this node with no node advance yet. ` +
+          `You MUST present a CLASS_EXERCISE in THIS response (teaching_mode: "TRANSITION"). ` +
+          `Do NOT ask another MICRO_CHECK question. ` +
+          `Present this exercise VERBATIM right now: "${verbatim}"`
+        );
+      })();
+
       lessonContext = [
         absoluteRuleBlock,
         studentName ? `STUDENT_NAME: ${studentName}` : "",
@@ -443,6 +479,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         coreIdea    ? `CORE_IDEA: ${coreIdea}`       : "",
         `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
         phase1ProgressLine,
+        forcedExerciseLine,
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
         cfeBlock,
         examplesBlock,
@@ -537,6 +574,30 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     aiResult = await callAIStructured(chatHistory, lessonContext);
+
+    // ── P9: Strip denial-opener ("Ոchch,", "Sxal e", etc.) from student_message ──
+    {
+      const DENIAL_PREFIXES = ["\u0548\u0579,", "\u0548\u0579 ", "\u054d\u056e\u0561\u056c \u0567"];
+      const msg = aiResult.student_message;
+      const matched = DENIAL_PREFIXES.find(p => msg.startsWith(p));
+      if (matched) {
+        const SEP = ["\u0589", ".\n", "! ", "? "];
+        let firstSentEnd = -1;
+        for (const sep of SEP) {
+          const idx = msg.indexOf(sep);
+          if (idx >= 0 && (firstSentEnd < 0 || idx < firstSentEnd)) {
+            firstSentEnd = idx + sep.length;
+          }
+        }
+        const stripped = firstSentEnd > matched.length
+          ? msg.slice(firstSentEnd).trimStart()
+          : msg.slice(matched.length).trimStart();
+        if (stripped.length > 10) {
+          (aiResult as { student_message: string }).student_message = stripped;
+          logger.info({ opener: msg.slice(0, 50) }, "P9: stripped denial opener from student_message");
+        }
+      }
+    }
 
     // ── P7 Part 3.1: Hard code-level scope-drift validation ──────────────────
     // Extract the allNodeTitles that were built above (available in outer scope
