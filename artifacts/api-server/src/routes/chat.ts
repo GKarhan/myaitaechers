@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
   evidenceEventsTable, knowledgeNodesTable, lessonNodesTable, lessonExercisesTable,
-  lessonNodeDependenciesTable,
+  lessonNodeDependenciesTable, usersTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
@@ -212,6 +212,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   type SessionRef = {
     id: number; currentPhase: number; currentNodeId: number | null; status: string;
     lastQuestionAsked: string | null; askedQuestionTemplates: string[]; nodeAttemptCount: number;
+    reviewQuestionCount: number; deepDiveExerciseIndex: number;
   };
   let session: SessionRef | null = null;
 
@@ -249,6 +250,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             ? (sessionRow.askedQuestionTemplates as string[])
             : [],
           nodeAttemptCount: sessionRow.nodeAttemptCount ?? 0,
+          reviewQuestionCount: sessionRow.reviewQuestionCount ?? 0,
+          deepDiveExerciseIndex: sessionRow.deepDiveExerciseIndex ?? 0,
         };
         sessionId = sessionRow.id;
       }
@@ -257,6 +260,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const subjectName  = (lesson as { subjectName?: string }).subjectName ?? "Subject";
       const coreProblem  = (lesson as { coreProblem?: string | null }).coreProblem ?? null;
       const coreIdea     = (lesson as { coreIdea?: string | null }).coreIdea ?? null;
+      const essentialQuestion = (lesson as { essentialQuestion?: string | null }).essentialQuestion ?? null;
+
+      // Fetch student name for teacher persona greeting
+      const [studentRow] = await db
+        .select({ fullName: usersTable.fullName })
+        .from(usersTable)
+        .where(eq(usersTable.id, req.userId!))
+        .limit(1);
+      const studentName = studentRow?.fullName ?? null;
 
       // All nodes for this lesson (for progress computation + node-lock)
       const allNodes = await db
@@ -300,19 +312,42 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         total_nodes:     totalNodes,
       };
 
-      // Class exercises for the current node
-      const classExercises = session?.currentNodeId
-        ? await db
-            .select()
-            .from(lessonExercisesTable)
-            .where(
-              and(
-                eq(lessonExercisesTable.relatedNodeId, session.currentNodeId),
-                eq(lessonExercisesTable.assignment, "CLASS")
-              )
-            )
-            .orderBy(asc(lessonExercisesTable.sequence))
-        : [];
+      // ── Class exercises (Phase 2: current node only; Phase 3: ALL lesson nodes) ──
+      const allNodeIds = allNodes.map((n) => n.id);
+      let classExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
+      if (phase === 2 && session?.currentNodeId) {
+        classExercises = await db
+          .select()
+          .from(lessonExercisesTable)
+          .where(and(
+            eq(lessonExercisesTable.relatedNodeId, session.currentNodeId),
+            eq(lessonExercisesTable.assignment, "CLASS")
+          ))
+          .orderBy(asc(lessonExercisesTable.sequence));
+      } else if (phase === 3 && allNodeIds.length > 0) {
+        // Phase 3 bug fix: currentNodeId is null here — fetch ALL class exercises for lesson
+        classExercises = await db
+          .select()
+          .from(lessonExercisesTable)
+          .where(and(
+            inArray(lessonExercisesTable.relatedNodeId, allNodeIds),
+            eq(lessonExercisesTable.assignment, "CLASS")
+          ))
+          .orderBy(asc(lessonExercisesTable.sequence));
+      }
+
+      // ── Phase 4: homework exercises ──────────────────────────────────────────
+      let homeworkExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
+      if (phase === 4) {
+        homeworkExercises = await db
+          .select()
+          .from(lessonExercisesTable)
+          .where(and(
+            eq(lessonExercisesTable.lessonId, lessonId),
+            eq(lessonExercisesTable.assignment, "HOMEWORK")
+          ))
+          .orderBy(asc(lessonExercisesTable.sequence));
+      }
 
       // Phase 1: due review topics
       let dueReviewsLine = "";
@@ -339,7 +374,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         ? `\nKNOWN_MISCONCEPTION (design MICRO_CHECK distractors around this):\n${currentNodeRecord.commonMisconception}`
         : "";
 
-      const exBlock = classExercises.length > 0
+      const deepDiveIdx = session?.deepDiveExerciseIndex ?? 0;
+      const exBlock = phase === 3 && classExercises.length > 0
+        ? `\nDEEP_DIVE_EXERCISES (all lesson exercises, start presenting from index ${deepDiveIdx}):\n` +
+          classExercises.map((e, i) =>
+            `[idx=${i}] [${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
+            `  VERBATIM: ${e.exerciseTextVerbatim || "(none — AI may invent)"}\n` +
+            `  successCriteria: ${e.successCriteria ?? ""}`
+          ).join("\n")
+        : phase === 2 && classExercises.length > 0
         ? `\nCLASS_EXERCISES (use verbatim when exerciseTextVerbatim is non-empty):\n` +
           classExercises.map((e) =>
             `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
@@ -348,10 +391,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ).join("\n")
         : "";
 
+      const hwBlock = homeworkExercises.length > 0
+        ? `\nHOMEWORK_TASKS (present verbatim, explain why each matters):\n` +
+          homeworkExercises.map((e) =>
+            `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
+            `  VERBATIM: ${e.exerciseTextVerbatim || "(no text — describe the task)"}\n` +
+            `  successCriteria: ${e.successCriteria ?? ""}`
+          ).join("\n")
+        : "";
+
       const allNodeTitles = allNodes.map((n) => n.title);
       _allNodeTitles = allNodeTitles; // expose to outer scope for scope-drift check
 
-      // P7: ABSOLUTE RULE block — injected at top of context so model sees it first
+      // P7: ABSOLUTE RULE block
       const absoluteRuleBlock = currentNodeRecord && allNodeTitles.length > 0
         ? [
             `╔══ ABSOLUTE NODE LOCK — NEVER VIOLATE ══╗`,
@@ -360,19 +412,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             `ALLOWED_NODES (full list): ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`,
             `FORBIDDEN: mention/suggest any topic NOT in ALLOWED_NODES`,
             `FORBIDDEN: declare lesson/node complete (backend decides mastery, not you)`,
-            `FORBIDDEN: agree with student if they ask to skip/change topic — instead set redirect_needed:true and warmly redirect back to the current unanswered question`,
+            `FORBIDDEN: agree with student if they ask to skip/change topic — instead set redirect_needed:true and warmly redirect back`,
             `╚════════════════════════════════════════╝`,
           ].join("\n")
         : "";
 
-      // P7: Phase 1 progress indicator (Part 5.1)
-      const phase1AttemptCount = session?.nodeAttemptCount ?? 0;
+      // P8: Phase 1 counter (now uses reviewQuestionCount)
       const PHASE1_CAP = 5;
+      const reviewQCount = session?.reviewQuestionCount ?? 0;
       const phase1ProgressLine = phase === 1
-        ? `PHASE_1_PROGRESS: question ${phase1AttemptCount + 1}/${PHASE1_CAP} (auto-advance to Phase 2 after cap)`
+        ? `PHASE_1_PROGRESS: question ${reviewQCount + 1}/${PHASE1_CAP}${reviewQCount + 1 === PHASE1_CAP ? " — this is the LAST question: after student answers, give a brief summary of the review and do NOT ask a new question" : ""}`
         : "";
 
-      // P7: Question dedup — pass already-used templates for current node
+      // P7: Question dedup
       const usedTemplates = session?.askedQuestionTemplates ?? [];
       const usedTemplatesBlock = usedTemplates.length > 0
         ? `USED_QUESTION_TEMPLATES (do NOT repeat these for this node): ${usedTemplates.join(", ")}`
@@ -380,6 +432,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       lessonContext = [
         absoluteRuleBlock,
+        studentName ? `STUDENT_NAME: ${studentName}` : "",
+        essentialQuestion ? `ESSENTIAL_QUESTION: ${essentialQuestion}` : "",
         `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
         currentNodeRecord
@@ -394,6 +448,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         examplesBlock,
         misconceptionBlock,
         exBlock,
+        hwBlock,
         usedTemplatesBlock,
         dueReviewsLine,
         ``,
@@ -401,11 +456,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         buildPhaseGuidance(phase, topicName, subjectName),
       ].filter(Boolean).join("\n");
 
-      // Phase 1 progress indicator (Part 5.1) — show question X/N to frontend
+      // Phase 1 progress indicator — show question X/N to frontend
       if (phase === 1) {
         progressIndicator = {
           current_node_name: topicName,
-          step: Math.min(phase1AttemptCount + 1, PHASE1_CAP),
+          step: Math.min(reviewQCount + 1, PHASE1_CAP),
           total_steps: PHASE1_CAP,
           completed_nodes: 0,
           total_nodes: totalNodes,
@@ -667,12 +722,27 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
-  // ── P7 Part 5.1: Phase 1 attempt tracking + auto-advance to Phase 2 ────────
+  // ── P8: Phase 1 reviewQuestionCount tracking + hard cap + early exit ────────
   if (session && session.currentPhase === 1 && lessonId && aiResult) {
-    const newP1Count = (session.nodeAttemptCount ?? 0) + 1;
     const PHASE1_CAP = 5;
-    if (newP1Count >= PHASE1_CAP) {
-      // Auto-advance Phase 1 → 2; assign currentNodeId to the first lesson node
+    const newReviewCount = (session.reviewQuestionCount ?? 0) + 1;
+
+    // Early exit: > 3 questions answered AND last 2 correct
+    let earlyExit = false;
+    if (newReviewCount > 3 && wasCorrect === true) {
+      // Check the previous turn's evidence event for this session
+      const [prevEvent] = await db
+        .select({ wasCorrect: evidenceEventsTable.wasCorrect })
+        .from(evidenceEventsTable)
+        .where(eq(evidenceEventsTable.lessonSessionId, session.id))
+        .orderBy(asc(evidenceEventsTable.id))
+        // get second-to-last
+        .offset(Math.max(0, newReviewCount - 2))
+        .limit(1);
+      earlyExit = prevEvent?.wasCorrect === true;
+    }
+
+    if (newReviewCount >= PHASE1_CAP || earlyExit) {
       const [firstNode] = await db
         .select({ id: lessonNodesTable.id })
         .from(lessonNodesTable)
@@ -683,17 +753,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .update(lessonSessionsTable)
         .set({
           currentPhase: 2,
+          reviewQuestionCount: newReviewCount,
           nodeAttemptCount: 0,
           askedQuestionTemplates: [],
           currentNodeId: firstNode?.id ?? null,
           nodeStartedAt: firstNode ? new Date() : null,
         })
         .where(eq(lessonSessionsTable.id, session.id));
-      logger.info({ lessonId, sessionId: session.id }, "P7: Phase 1 cap reached — auto-advanced to Phase 2");
+      logger.info(
+        { lessonId, sessionId: session.id, reason: earlyExit ? "early_exit" : "cap" },
+        "P8: Phase 1 complete — auto-advanced to Phase 2"
+      );
     } else {
       await db
         .update(lessonSessionsTable)
-        .set({ nodeAttemptCount: newP1Count })
+        .set({ reviewQuestionCount: newReviewCount })
         .where(eq(lessonSessionsTable.id, session.id));
     }
   }

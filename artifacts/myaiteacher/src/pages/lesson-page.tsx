@@ -42,10 +42,18 @@ export default function LessonPage() {
   const lessonId = parseInt(id || "0", 10);
   const queryClient = useQueryClient();
 
+  type P6Result = {
+    completionStatus: string;
+    homeworkTasks: { exercise_id: string | null; text: string; difficulty_level: string | null; source_page: string | null }[];
+    summaryMessage: string;
+  };
+
   const [message, setMessage] = useState("");
   const [autoStarted, setAutoStarted] = useState(false);
   const [gateMessage, setGateMessage] = useState<string | null>(null);
   const [progressIndicator, setProgressIndicator] = useState<ProgressIndicator | null>(null);
+  const [p6Result, setP6Result] = useState<P6Result | null>(null);
+  const [p6Loading, setP6Loading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -126,7 +134,45 @@ export default function LessonPage() {
         onError: (err: unknown) => {
           const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
           setGateMessage(
-            responseData?.error ?? "Հաջորդ փուլին անցնել հնարավոր չեղավ, փորձիր կրկին։"
+            responseData?.error ?? "Հաջորդ փուլին անցնել հնարարոր չելավ, փորցիր կրկին"
+          );
+        },
+      }
+    );
+  };
+
+  // Phase 4 "Finish lesson" — calls advancePhase + p6-summary in parallel
+  const handleFinishLesson = () => {
+    setGateMessage(null);
+    setP6Loading(true);
+    advancePhase.mutate(
+      { lessonId },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: lessonKey });
+          // Call p6-summary for the rich completion screen
+          fetch(`/api/lessons/${lessonId}/p6-summary`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          })
+            .then((r) => r.json())
+            .then((data: P6Result) => {
+              setP6Result(data);
+              setP6Loading(false);
+            })
+            .catch(() => {
+              // P6 failed — generic screen will show as fallback
+              setP6Loading(false);
+            });
+        },
+        onError: (err: unknown) => {
+          setP6Loading(false);
+          const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+          setGateMessage(
+            responseData?.error ?? "Դասն ավարտել հնարարոր չելավ, փորցիր կրկին"
           );
         },
       }
@@ -259,11 +305,11 @@ export default function LessonPage() {
           )}
           {!isCompleted && currentPhase === 4 && (
             <button
-              onClick={handleAdvancePhase}
-              disabled={advancePhase.isPending}
+              onClick={handleFinishLesson}
+              disabled={advancePhase.isPending || p6Loading}
               className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50"
             >
-              ✅ Ավարտել դասը
+              {p6Loading ? "⏳ ..." : "✅ Ավարտել դասը"}
             </button>
           )}
           {isCompleted && (
@@ -327,23 +373,71 @@ export default function LessonPage() {
 
       {/* Completion summary */}
       {isCompleted ? (
-        <main className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-6 overflow-y-auto">
-          <div className="text-6xl animate-bounce">🎉</div>
-          <div>
-            <h2 className="text-2xl font-bold mb-2">դասն ավարտված և</h2>
-            <p className="text-muted-foreground text-sm">{lesson.title}</p>
-          </div>
-          {session?.masteryScore != null && (
-            <div className="flex flex-col items-center gap-1 px-8 py-4 rounded-2xl bg-primary/10 border border-primary/20">
-              <span className="text-3xl font-bold text-primary">{session.masteryScore}%</span>
-              <span className="text-xs text-muted-foreground">Կառգիչություն</span>
+        <main className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-5 overflow-y-auto">
+          {p6Loading ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-muted-foreground text-sm">Ամփոփում...</p>
             </div>
+          ) : p6Result ? (
+            /* ── P6 Rich completion screen ─────────────────────────────── */
+            <div className="w-full max-w-lg flex flex-col gap-5">
+              <div className="text-5xl">🎓</div>
+              <div className="rounded-2xl bg-card border border-white/10 p-5 text-left">
+                <div className="text-xs font-semibold text-secondary mb-2">AI Ուսուցիչ</div>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{p6Result.summaryMessage}</p>
+              </div>
+              {p6Result.homeworkTasks.length > 0 && (
+                <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-5 text-left">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-lg">📚</span>
+                    <span className="font-semibold text-amber-300 text-sm">Տնային աշխատանք</span>
+                  </div>
+                  <ol className="space-y-3">
+                    {p6Result.homeworkTasks.map((t, i) => (
+                      <li key={i} className="text-sm leading-relaxed">
+                        <span className="font-medium text-amber-200">{i + 1}. </span>
+                        <span className="text-foreground/90">{t.text}</span>
+                        {(t.source_page || t.difficulty_level) && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {t.source_page ? `Էջ ${t.source_page}` : ""}
+                            {t.source_page && t.difficulty_level ? " · " : ""}
+                            {t.difficulty_level ?? ""}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {session?.masteryScore != null && (
+                <div className="flex items-center justify-center gap-3 px-6 py-3 rounded-2xl bg-primary/10 border border-primary/20">
+                  <span className="text-2xl font-bold text-primary">{session.masteryScore}%</span>
+                  <span className="text-xs text-muted-foreground">Չրագարկցություն</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── Generic fallback screen ───────────────────────────────── */
+            <>
+              <div className="text-6xl animate-bounce">🎉</div>
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Դասն ավարտվել ե</h2>
+                <p className="text-muted-foreground text-sm">{lesson.title}</p>
+              </div>
+              {session?.masteryScore != null && (
+                <div className="flex flex-col items-center gap-1 px-8 py-4 rounded-2xl bg-primary/10 border border-primary/20">
+                  <span className="text-3xl font-bold text-primary">{session.masteryScore}%</span>
+                  <span className="text-xs text-muted-foreground">Չրագարկցություն</span>
+                </div>
+              )}
+            </>
           )}
           <Link
             href={`/subjects/${lesson.subjectId}`}
-            className="mt-2 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-semibold text-sm hover:opacity-90 transition-opacity"
+            className="mt-1 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-semibold text-sm hover:opacity-90 transition-opacity"
           >
-            Վերադառնալ Առառկային →
+            Վերադարնալ Առարկային →
           </Link>
         </main>
       ) : (

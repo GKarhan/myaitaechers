@@ -29,6 +29,10 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
     .$type<string[]>()
     .notNull()
     .default(sql`'[]'::jsonb`),
+  // P8 Phase 1: how many review questions have been asked (separate from nodeAttemptCount)
+  reviewQuestionCount: integer("review_question_count").notNull().default(0),
+  // P8 Phase 3: index of next exercise to present in deep-dive phase
+  deepDiveExerciseIndex: integer("deep_dive_exercise_index").notNull().default(0),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
