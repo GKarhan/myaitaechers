@@ -5,8 +5,10 @@ import {
   subjectsTable,
   lessonsTable,
   lessonSessionsTable,
+  classStudentsTable,
+  coursesTable,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const router = Router();
@@ -28,41 +30,65 @@ router.get("/dashboard", requireAuth, async (req: AuthRequest, res) => {
       ? completed.reduce((sum, r) => sum + r.score, 0) / completed.length
       : 0;
 
-  const subjectRows = await db
-    .select({
-      id: subjectsTable.id,
-      name: subjectsTable.name,
-      grade: subjectsTable.grade,
-      totalLessons: sql<number>`count(distinct ${lessonsTable.id})`,
-      completedLessons: sql<number>`count(distinct case when ${lessonSessionsTable.status} = 'completed' then ${lessonsTable.id} end)`,
-    })
-    .from(subjectsTable)
-    .leftJoin(lessonsTable, eq(lessonsTable.subjectId, subjectsTable.id))
-    .leftJoin(
-      lessonSessionsTable,
-      and(
-        eq(lessonSessionsTable.lessonId, lessonsTable.id),
-        eq(lessonSessionsTable.userId, userId)
-      )
-    )
-    .groupBy(subjectsTable.id, subjectsTable.name, subjectsTable.grade)
-    .orderBy(subjectsTable.id);
+  // Build subjects from the student's enrolled courses, not from global lesson counts.
+  // This ensures any subject whose course exists in the student's class always appears,
+  // even if some lessons have a mismatched subject_id.
+  const enrollments = await db
+    .select({ classId: classStudentsTable.classId })
+    .from(classStudentsTable)
+    .where(eq(classStudentsTable.studentId, userId));
 
-  const subjects = subjectRows
-    .filter((row) => Number(row.totalLessons) > 0)
-    .map((row) => {
+  const classIds = enrollments.map((e) => e.classId);
+
+  let subjects: {
+    id: number; subject: string; grade: string | null;
+    completedLessons: number; totalLessons: number;
+    averageScore: number; progressPercent: number;
+  }[] = [];
+
+  if (classIds.length > 0) {
+    // Courses in student's classes that are linked to a subject
+    const enrolledCourses = await db
+      .select({
+        courseId: coursesTable.id,
+        subjectId: subjectsTable.id,
+        subjectName: subjectsTable.name,
+        subjectGrade: subjectsTable.grade,
+        totalLessons: sql<number>`count(distinct case when ${lessonsTable.status} != 'draft' then ${lessonsTable.id} end)`,
+        completedLessons: sql<number>`count(distinct case when ${lessonSessionsTable.status} = 'completed' then ${lessonsTable.id} end)`,
+      })
+      .from(coursesTable)
+      .innerJoin(subjectsTable, eq(subjectsTable.id, coursesTable.subjectId))
+      .leftJoin(lessonsTable, eq(lessonsTable.courseId, coursesTable.id))
+      .leftJoin(
+        lessonSessionsTable,
+        and(
+          eq(lessonSessionsTable.lessonId, lessonsTable.id),
+          eq(lessonSessionsTable.userId, userId)
+        )
+      )
+      .where(inArray(coursesTable.classId, classIds))
+      .groupBy(coursesTable.id, subjectsTable.id, subjectsTable.name, subjectsTable.grade)
+      .orderBy(subjectsTable.id);
+
+    // Deduplicate by subjectId (a subject may span multiple courses in different classes)
+    const seenSubjectIds = new Set<number>();
+    for (const row of enrolledCourses) {
+      if (seenSubjectIds.has(row.subjectId)) continue;
+      seenSubjectIds.add(row.subjectId);
       const total = Number(row.totalLessons);
       const done = Number(row.completedLessons);
-      return {
-        id: row.id,
-        subject: row.name,
-        grade: row.grade,
+      subjects.push({
+        id: row.subjectId,
+        subject: row.subjectName,
+        grade: row.subjectGrade ?? null,
         completedLessons: done,
         totalLessons: total,
         averageScore: 0,
         progressPercent: total > 0 ? Math.round((done / total) * 1000) / 10 : 0,
-      };
-    });
+      });
+    }
+  }
 
   const completedFromSessions = subjects.reduce(
     (sum, s) => sum + s.completedLessons,

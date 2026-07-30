@@ -1,0 +1,123 @@
+ԽՆԴԻՐ. lesson-mapping.ts-ը ընդլայնել, որպեսզի node-երի հերթականությունը
+(sequence) հաշվարկվի ԿՈԴՈՎ՝ ելնելով node-երի իրական կախվածությունից, ոչ թե
+model-ի JSON array-ի պատահական կարգից։ Սա P1 սպեցի STEP 5 (Essential Question),
+STEP 11 (Prerequisite Map) և STEP 12 (Dependency Graph) քայլերի իրական
+իրականացումն է։
+
+Կարևոր. knowledge_nodes/knowledge_edges աղյուսակները ՄԻ խառնիր սրա հետ. դրանք
+յուրաքանչյուր ՈՒՍԱՆՈՂԻ անհատական mastery-tracking գրաֆն են (userId-ով), իսկ
+այստեղ խոսքը դասի ՔԱՐՏԵԶԱԳՐՄԱՆ ժամանակի (authoring-time), մեկ դասի node-երի
+միջև եղած կախվածության գրաֆի մասին է։ Սրանք տարբեր հասկացություններ են,
+պահիր առանձին։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — SCHEMA ՓՈՓՈԽՈՒԹՅՈՒՆՆԵՐ
+═══════════════════════════════════════════
+
+1.1. lib/db/src/schema/lessons.ts-ում ավելացրու.
+  essentialQuestion: text("essential_question")
+(coreProblem-ից տարբեր դաշտ — coreProblem-ը մնում է ինչպես կա, essentialQuestion-ը
+առանձին, ուսանողին ուղղակի ուղղված հարցի ձևով դաշտ է, ըստ P1 STEP 5-ի օրինակի.
+"Ինչպե՞ս կարելի է շատ մեծ թվերը հեշտ կարդալ և հասկանալ" այլ ոչ "Ի՞նչ է
+միլիոնների դասը")
+
+1.2. lib/db/src/schema/lesson-nodes.ts-ում ավելացրու.
+  requiredLevel: text("required_level")   // ինքն իր մասին չէ, սա removeացվում է, տես 1.3
+
+1.3. Ստեղծիր ՆՈՐ աղյուսակ lesson-node-dependencies.ts (սա authoring-time
+Dependency Graph-ն է, մեկ դասի node-երի միջև).
+  export const lessonNodeDependenciesTable = pgTable("lesson_node_dependencies", {
+    id: serial("id").primaryKey(),
+    lessonId: integer("lesson_id").notNull().references(() => lessonsTable.id, { onDelete: "cascade" }),
+    fromNodeId: integer("from_node_id").notNull().references(() => lessonNodesTable.id, { onDelete: "cascade" }), // prerequisite-ը
+    toNodeId: integer("to_node_id").notNull().references(() => lessonNodesTable.id, { onDelete: "cascade" }),     // depend-ողը
+    dependencyType: text("dependency_type").notNull().default("SEQUENTIAL"), // REQUIRED | SEQUENTIAL | CONCEPTUAL
+    requiredLevel: text("required_level").notNull().default("SUPPORTING"),   // CRITICAL | SUPPORTING
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+Ավելացրու export-ը schema/index.ts-ում։ Գործարկիր migration (db:generate + db:push)։
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — lesson-mapping.ts-ի prompt-ի ընդլայնում
+═══════════════════════════════════════════
+
+2.1. LessonMappingResult interface-ին ավելացրու.
+  essentialQuestion: string;
+  nodeDependencies: {
+    fromNodeTitle: string;   // prerequisite node-ի title-ը
+    toNodeTitle: string;     // depend-ող node-ի title-ը
+    dependencyType: "REQUIRED" | "SEQUENTIAL" | "CONCEPTUAL";
+    requiredLevel: "CRITICAL" | "SUPPORTING";
+    reason: string;
+  }[];
+
+2.2. SYSTEM_PROMPT-ում, coreIdea-ից անմիջապես հետո ավելացրու հրահանգ.
+"essentialQuestion — ձևակերպիր ԴԱՍԻ ամբողջ բովանդակությունն ընդգրկող մեկ հարց,
+որին ամբողջ դասը պատասխանում է (ուսանողին ուղղակի ուղղված, ոչ սահմանման
+հարց՝ ինչպես 'Ի՞նչ է X-ը'). օրինակ 'Ինչպե՞ս կարելի է...' 'Ինչո՞ւ...' 'Ինչպե՞ս
+կարող ենք...'."
+
+2.3. nodes-ի սահմանման հատվածում, prerequisiteNodes դաշտի փոխարեն
+(կամ դրանից բացի, թողնելով որպես ազատ-տեքստ 'assumedPriorKnowledge' ընդհանուր
+նախնական գիտելիքի համար, ոչ blocking) ավելացրու առանձին top-level
+nodeDependencies array, հետևյալ հրահանգով.
+
+"nodeDependencies — սահմանիր ՄԻԱՅՆ այս դասի node-երի միջև եղած իրական
+կախվածությունը (ոչ արտաքին/նախորդ դասերի գիտելիք — դա assumedPriorKnowledge-ի
+դերն է): ամեն կախվածության համար նշիր fromNodeTitle (որը պետք է սովորեցվի
+ԱՌԱՋ) և toNodeTitle (որը կախված է դրանից), dependencyType-ը.
+- REQUIRED. toNodeTitle-ը լիովին անհասկանալի կլինի առանց fromNodeTitle-ի
+- SEQUENTIAL. բնական է սովորեցնել այս կարգով, բայց տեխնիկապես հնարավոր է հակառակը
+- CONCEPTUAL. հասկացությունները կապված են, բայց ոչ խիստ հաջորդական
+requiredLevel = CRITICAL, եթե REQUIRED է, հակառակ դեպքում SUPPORTING:
+Մի ստեղծիր կախվածություն, որը պարզապես կրկնում է node-երի արդեն իսկ ցանկի
+կարգը. կախվածությունը պիտի արտացոլի իրական մանկավարժական տրամաբանությունը,
+ոչ միայն դասագրքի էջերի հերթականությունը: Եթե node-երը անկախ են միմյանցից
+(օրինակ՝ երկու տարբեր օրինակատեսակներ նույն կանոնի), մի հորինիր
+արհեստական կախվածություն:"
+
+═══════════════════════════════════════════
+ՄԱՍ 3 — Կոդով topological sort (ՈՉ model-կանչով)
+═══════════════════════════════════════════
+
+3.1. lesson-mapping.ts-ի insert-ի հատվածում (որտեղ հիմա nodes-ը ուղղակի insert
+են արվում ըստ array-ի կարգի), ավելացրու ֆունկցիա.
+
+function topologicalSortNodes(
+  nodeTitles: string[],
+  dependencies: { fromNodeTitle: string; toNodeTitle: string; dependencyType: string }[]
+): string[] {
+  // Kahn's algorithm. fromNodeTitle → toNodeTitle edges (from must come before to)
+  // REQUIRED/SEQUENTIAL edges-ը մասնակցում են sort-ին, CONCEPTUAL-ը ոչ (informational only)
+  // Cycle հայտնաբերվելու դեպքում. log warning, fallback սկզբնական nodeTitles կարգին
+  // (մի նետիր error, երբեք մի արգելափակիր ամբողջ mapping-ը dependency-ի խնդրի պատճառով)
+}
+
+3.2. Node-երը insert անելուց առաջ, կանչիր topologicalSortNodes-ը՝ ստանալով
+ճշգրիտ կարգը, և ըստ դրա նշանակիր sequence-ը (1, 2, 3...), ՈՉ ԹԵ ըստ model-ի
+array-ի բնիկ կարգի։
+
+3.3. Node-երը insert անելուց հետո (և ունենալով նրանց իրական DB id-ները),
+insert արա lessonNodeDependenciesTable-ում՝ fromNodeTitle/toNodeTitle-ը
+վերածելով իրական lessonNodesTable.id-երի (match by title within same lessonId)։
+Եթե title-ը չի գտնվում (model-ի սխալ), skip արա այդ dependency-ն, log warning,
+մի՛ ձախողիր ամբողջ mapping-ը։
+
+═══════════════════════════════════════════
+ՄԱՍ 4 — Runtime defensive check (chat.ts/lessons.ts-ի node-առաջընթացում)
+═══════════════════════════════════════════
+
+4.1. Node-ի ինքնաշխարժ առաջընթացի կոդում (որ նախորդ պրոմտով արդեն գրվում է),
+նախքան currentNodeId-ը հաջորդ node-ին տեղափոխելը, ավելացրու defensive check.
+ստուգիր lessonNodeDependenciesTable-ից՝ արդյոք հաջորդ node-ն ունի CRITICAL
+(dependencyType=REQUIRED) prerequisite, որը դեռ չկա completed_node_ids-ում
+(իրականում sequence-ի sort-ի շնորհիվ սա երբեք չպիտի պատահի, բայց սա
+անվտանգության շերտ է սխալների դեմ)։ Եթե հայտնաբերվի խախտում, log warning
+և թող առաջընթացը շարունակվի (մի արգելափակիր ուսանողին), բայց գրանցիր
+դեպքը ապագա review-ի համար։
+
+Ավարտից հետո պատրաստիր summary, թե ինչ ֆայլեր փոխվեցին, արդյոք migration-ը
+հաջողությամբ գործարկվեց, և ցույց տուր մեկ օրինակ dependency-graph output
+վերջին քարտեզագրված դասից (եթե կա dev/test դաս, որի վրա կարող ես փորձարկել
+lesson-mapping.ts-ը կրկին)։

@@ -38,6 +38,7 @@ export const lessonsTable = pgTable("lessons", {
   lessonOutcomes: jsonb("lesson_outcomes").notNull().default([]),
   coreIdea: text("core_idea"),
   coreProblem: text("core_problem"),
+  essentialQuestion: text("essential_question"),
   practicalTasks: jsonb("practical_tasks").notNull().default([]),
   status: text("status").notNull().default("draft"),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),

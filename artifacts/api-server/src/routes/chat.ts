@@ -2,8 +2,9 @@ import { Router } from "express";
 import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
   evidenceEventsTable, knowledgeNodesTable, lessonNodesTable, lessonExercisesTable,
+  lessonNodeDependenciesTable,
 } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import {
   callAI, callAIStructured,
@@ -92,6 +93,41 @@ async function advanceNodeInSession(
       lastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
     })
     .where(eq(lessonNodesTable.id, currentNodeId));
+
+  // ── P4 Defensive check: verify CRITICAL prerequisites of nextNode are done ──
+  if (nextNode) {
+    try {
+      const criticalDeps = await db
+        .select({ fromNodeId: lessonNodeDependenciesTable.fromNodeId })
+        .from(lessonNodeDependenciesTable)
+        .where(
+          and(
+            eq(lessonNodeDependenciesTable.lessonId, lessonId),
+            eq(lessonNodeDependenciesTable.toNodeId, nextNode.id),
+            eq(lessonNodeDependenciesTable.dependencyType, "REQUIRED")
+          )
+        );
+      if (criticalDeps.length > 0) {
+        const prereqIds = criticalDeps.map((d) => d.fromNodeId);
+        // Check that all prerequisite nodes have sequence < nextNode.sequence
+        // (i.e., they appear before the node we're advancing to)
+        const prereqNodes = await db
+          .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
+          .from(lessonNodesTable)
+          .where(inArray(lessonNodesTable.id, prereqIds));
+        const nextSeq = currentNode.sequence + 1;
+        const unmet = prereqNodes.filter((p) => p.sequence >= nextSeq);
+        if (unmet.length > 0) {
+          logger.warn(
+            { lessonId, nextNodeId: nextNode.id, unmetPrereqIds: unmet.map((u) => u.id) },
+            "advanceNodeInSession: CRITICAL prerequisite(s) not completed before advancing — continuing anyway (defensive log)"
+          );
+        }
+      }
+    } catch (checkErr) {
+      logger.warn({ checkErr }, "advanceNodeInSession: defensive prereq check failed — continuing");
+    }
+  }
 
   const allNodesDone = !nextNode;
   let newPhase = currentPhase;

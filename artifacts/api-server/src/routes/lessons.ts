@@ -1,10 +1,10 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable } from "@workspace/db";
 import { eq, and, asc, max } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, topologicalSortNodes } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
 
 const router = Router();
@@ -675,19 +675,27 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         lessonOutcomes: mapping.lessonOutcomes,
         coreProblem: mapping.coreProblem,
         coreIdea: mapping.coreIdea,
+        essentialQuestion: mapping.essentialQuestion ?? null,
         practicalTasks: mapping.practicalTasks,
       })
       .where(eq(lessonsTable.id, lessonId));
 
-    // Replace this lesson's node set with the freshly mapped one.
+    // ── Replace this lesson's node set with the freshly mapped one ──
     await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+
+    // Topological sort: assign sequence by real pedagogical dependency, not model array order
+    const sortedTitles = topologicalSortNodes(
+      mapping.nodes.map((n) => n.title),
+      mapping.nodeDependencies ?? []
+    );
+    const titleToSeq = new Map<string, number>(sortedTitles.map((t, i) => [t, i + 1]));
 
     const insertedNodes = await db
       .insert(lessonNodesTable)
       .values(
-        mapping.nodes.map((n, i) => ({
+        mapping.nodes.map((n) => ({
           lessonId,
-          sequence: i + 1,
+          sequence: titleToSeq.get(n.title) ?? 999,
           title: n.title,
           theoryContent: n.theoryContent,
           targetBloomLevel: n.targetBloomLevel,
@@ -701,6 +709,37 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       )
       .returning();
 
+    // ── Persist authoring-time dependency graph ──────────────────────────────
+    await db.delete(lessonNodeDependenciesTable).where(
+      eq(lessonNodeDependenciesTable.lessonId, lessonId)
+    );
+    if ((mapping.nodeDependencies ?? []).length > 0) {
+      const nodeTitleToIdMap = new Map<string, number>(insertedNodes.map((n) => [n.title, n.id]));
+      const depRows = (mapping.nodeDependencies ?? [])
+        .map((dep) => {
+          const fromId = nodeTitleToIdMap.get(dep.fromNodeTitle);
+          const toId   = nodeTitleToIdMap.get(dep.toNodeTitle);
+          if (!fromId || !toId) {
+            logger.warn({ dep, lessonId }, "lesson-mapping: dependency title not found in inserted nodes — skipped");
+            return null;
+          }
+          return {
+            lessonId,
+            fromNodeId: fromId,
+            toNodeId: toId,
+            dependencyType: dep.dependencyType,
+            requiredLevel: dep.requiredLevel,
+            reason: dep.reason ?? null,
+          };
+        })
+        .filter(Boolean) as {
+          lessonId: number; fromNodeId: number; toNodeId: number;
+          dependencyType: string; requiredLevel: string; reason: string | null;
+        }[];
+      if (depRows.length > 0) {
+        await db.insert(lessonNodeDependenciesTable).values(depRows);
+      }
+    }
 
     // P1 STEP 17: Populate lesson_exercises with structured, queryable exercise data
     await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
