@@ -169,6 +169,21 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
     textbookAuthor?: string; textbookTitle?: string; chapterTitle?: string; paragraphNumber?: string;
     textbookResourceId?: number | null; lessonGoal?: string; lessonOutcomes?: string[];
   };
+  // If a resource is being linked/changed, derive title/author from it
+  let resolvedTextbookTitle = textbookTitle;
+  let resolvedTextbookAuthor = textbookAuthor;
+  if (textbookResourceId) {
+    const [res] = await db
+      .select({ title: resourcesTable.title, author: resourcesTable.author })
+      .from(resourcesTable)
+      .where(eq(resourcesTable.id, textbookResourceId))
+      .limit(1);
+    if (res) {
+      resolvedTextbookTitle = res.title;
+      resolvedTextbookAuthor = res.author ?? resolvedTextbookAuthor;
+    }
+  }
+
   const updated = await db.update(lessonsTable)
     .set({
       ...(title && { title }),
@@ -180,8 +195,8 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
       ...(pagesTo !== undefined && { pagesTo }),
       ...(month !== undefined && { month }),
       ...(day !== undefined && { day }),
-      ...(textbookAuthor !== undefined && { textbookAuthor }),
-      ...(textbookTitle !== undefined && { textbookTitle }),
+      ...(resolvedTextbookAuthor !== undefined && { textbookAuthor: resolvedTextbookAuthor }),
+      ...(resolvedTextbookTitle !== undefined && { textbookTitle: resolvedTextbookTitle }),
       ...(chapterTitle !== undefined && { chapterTitle }),
       ...(paragraphNumber !== undefined && { paragraphNumber }),
       ...(textbookResourceId !== undefined && { textbookResourceId }),
@@ -524,12 +539,27 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     return;
   }
 
+  // Derive textbookTitle/Author from the linked resource — single source of truth
+  let resolvedTextbookTitle = textbookTitle ?? null;
+  let resolvedTextbookAuthor = textbookAuthor ?? null;
+  if (textbookResourceId) {
+    const [res] = await db
+      .select({ title: resourcesTable.title, author: resourcesTable.author })
+      .from(resourcesTable)
+      .where(eq(resourcesTable.id, textbookResourceId))
+      .limit(1);
+    if (res) {
+      resolvedTextbookTitle = res.title;
+      resolvedTextbookAuthor = res.author ?? resolvedTextbookAuthor;
+    }
+  }
+
   const [lesson] = await db.insert(lessonsTable).values({
     subjectId: parentCourse.subjectId, title,
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, courseId,
     lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,
-    textbookAuthor: textbookAuthor ?? null, textbookTitle: textbookTitle ?? null,
+    textbookAuthor: resolvedTextbookAuthor, textbookTitle: resolvedTextbookTitle,
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
     textbookResourceId: textbookResourceId ?? null,
     ...(lessonGoal !== undefined && { lessonGoal }),

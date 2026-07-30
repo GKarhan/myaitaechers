@@ -844,6 +844,9 @@ export default function TeacherDashboard() {
                         >
                           <span className="text-xs flex-1 truncate">
                             {d.title}
+                            {(d as { author?: string | null }).author && (
+                              <span className="text-muted-foreground ml-1">{"— "}{(d as { author?: string | null }).author}</span>
+                            )}
                           </span>
                           {d.fileUrl && (
                             <a
