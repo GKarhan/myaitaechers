@@ -1,0 +1,16 @@
+Found a real bug in artifacts/myaiteacher/src/pages/lesson-page.tsx: the header button that advances the lesson phase ("Հաջ. փուլ →") is only rendered when `currentPhase < 4 && !isCompleted`. But once the student reaches phase 4, that condition becomes false and the button disappears entirely — meaning there is no way to actually trigger the final advance-phase call that marks the session "completed". The lesson gets permanently stuck at phase 4 with no way to finish it.
+
+MANDATORY ARMENIAN SCRIPT RULE: Any Armenian text you write or touch MUST be real Armenian Unicode script (Ա-Ֆ, ա-ֆ). Never transliterate Armenian into Latin letters or Cyrillic.
+
+FIX 1 — make the phase-4 completion button reachable
+Change the header button condition so that when `currentPhase === 4 && !isCompleted`, it still renders — but relabeled, e.g. "✅ Ավարտել դասը" instead of "Հաջ. փուլ →" — and calls the same `handleAdvancePhase` function (no change needed to that function itself, since the backend already correctly marks the session completed when called at phase 4). Keep the existing "Հաջ. փուլ →" button and label for `currentPhase < 4`.
+
+FIX 2 — add a completion summary instead of just a small badge
+Right now, when `isCompleted` is true, the header just shows a small "✓ Ավարտված" pill and the chat view presumably continues showing normally underneath. Instead, when `isCompleted` is true, show a proper completion summary screen/panel (can replace or overlay the chat view) that includes at minimum:
+- A congratulatory header (e.g. "🎉 Դասն ավարտված է") 
+- The lesson title
+- The session's `masteryScore` if available (already a field on the session — display it as a percentage or score, whatever unit it already represents)
+- A "Վերադառնալ առարկային" button/link back to `/subjects/${lesson.subjectId}`
+Keep the small "✓ Ավարտված" pill in the header too if useful for consistency, but the main content area should now clearly communicate completion rather than just looking like a static chat.
+
+Do not change anything else in this file — not the phase-advance mutation logic, not the chat message flow, not the welcome screen. Run a typecheck and confirm zero errors, then describe what the screen looks like right after a student clicks the phase-4 completion button.

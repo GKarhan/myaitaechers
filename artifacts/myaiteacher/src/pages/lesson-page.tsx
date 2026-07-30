@@ -235,6 +235,15 @@ export default function LessonPage() {
               Հաջ. փուլ →
             </button>
           )}
+          {!isCompleted && currentPhase === 4 && (
+            <button
+              onClick={handleAdvancePhase}
+              disabled={advancePhase.isPending}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold hover:bg-green-500/30 transition-colors disabled:opacity-50"
+            >
+              ✅ Ավարտել դասը
+            </button>
+          )}
           {isCompleted && (
             <span className="shrink-0 px-3 py-1.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
               ✓ Ավարտված
@@ -282,7 +291,28 @@ export default function LessonPage() {
         </div>
       )}
 
-      {/* Chat Messages */}
+      {/* Completion summary */}
+      {isCompleted ? (
+        <main className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-6 overflow-y-auto">
+          <div className="text-6xl animate-bounce">🎉</div>
+          <div>
+            <h2 className="text-2xl font-bold mb-2">դասն ավարտված և</h2>
+            <p className="text-muted-foreground text-sm">{lesson.title}</p>
+          </div>
+          {session?.masteryScore != null && (
+            <div className="flex flex-col items-center gap-1 px-8 py-4 rounded-2xl bg-primary/10 border border-primary/20">
+              <span className="text-3xl font-bold text-primary">{session.masteryScore}%</span>
+              <span className="text-xs text-muted-foreground">Կառգիչություն</span>
+            </div>
+          )}
+          <Link
+            href={`/subjects/${lesson.subjectId}`}
+            className="mt-2 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-semibold text-sm hover:opacity-90 transition-opacity"
+          >
+            Վերադառնալ Առառկային →
+          </Link>
+        </main>
+      ) : (
       <main className="flex-1 overflow-y-auto p-4 space-y-4">
         <div className="max-w-3xl mx-auto flex flex-col gap-4">
 
@@ -354,6 +384,8 @@ export default function LessonPage() {
           <div ref={messagesEndRef} />
         </div>
       </main>
+
+      )}
 
       {/* Input */}
       <footer className="shrink-0 p-4 border-t border-white/10 bg-card/50 backdrop-blur-lg">
