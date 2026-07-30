@@ -575,26 +575,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   try {
     aiResult = await callAIStructured(chatHistory, lessonContext);
 
-    // ── P9: Strip denial-opener ("Ոchch,", "Sxal e", etc.) from student_message ──
+    // ── P9: Strip denial-opener per spec regex (Ոchch, Schalě e, Du ches) ────
     {
-      const DENIAL_PREFIXES = ["\u0548\u0579,", "\u0548\u0579 ", "\u054d\u056e\u0561\u056c \u0567"];
-      const msg = aiResult.student_message;
-      const matched = DENIAL_PREFIXES.find(p => msg.startsWith(p));
-      if (matched) {
-        const SEP = ["\u0589", ".\n", "! ", "? "];
-        let firstSentEnd = -1;
-        for (const sep of SEP) {
-          const idx = msg.indexOf(sep);
-          if (idx >= 0 && (firstSentEnd < 0 || idx < firstSentEnd)) {
-            firstSentEnd = idx + sep.length;
-          }
-        }
-        const stripped = firstSentEnd > matched.length
-          ? msg.slice(firstSentEnd).trimStart()
-          : msg.slice(matched.length).trimStart();
+      const _p9msg = aiResult.student_message.trimStart();
+      const _p9match = _p9msg.match(/^(\u0548\u0579[,\u0589]|\u054d\u056d\u0561\u056c \u0567[,\u0589]|\u0534\u0578\u0582 \u0579\u0565\u057d)/u);
+      if (_p9match) {
+        const stripped = _p9msg.replace(/^(\u0548\u0579[,\u0589]|\u054d\u056d\u0561\u056c \u0567[,\u0589]|\u0534\u0578\u0582 \u0579\u0565\u057d)\s*/u, "");
         if (stripped.length > 10) {
           (aiResult as { student_message: string }).student_message = stripped;
-          logger.info({ opener: msg.slice(0, 50) }, "P9: stripped denial opener from student_message");
+          logger.info({ opener: _p9msg.slice(0, 50) }, "P9: stripped denial opener");
         }
       }
     }

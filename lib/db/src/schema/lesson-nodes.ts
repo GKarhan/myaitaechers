@@ -25,6 +25,8 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   lastEvidenceQuality: text("last_evidence_quality"), // nullable: "NONE"|"WEAK"|"MODERATE"|"STRONG"|"CONCLUSIVE"
   consecutiveCorrect: integer("consecutive_correct").notNull().default(0),
   consecutiveIncorrect: integer("consecutive_incorrect").notNull().default(0),
+  // Node-level teaching stage machine (THEORY → MICRO_CHECK → EXERCISE → VERIFIED)
+  teachingStage: text("teaching_stage").notNull().default("THEORY"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
