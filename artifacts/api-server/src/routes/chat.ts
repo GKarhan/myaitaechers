@@ -15,154 +15,245 @@ const router = Router();
 //   Փուլ 1 — Կրկնություն (Նախորդ դասի կրկնություն)
 //     3–5 միավոր հարց, մեկը մյուսի հետևից → յուրացման %
 //
-//   Փուլ 2 — Նոր դաս / Հիմնական (Նոր դաս՝ հիմունքներ)
-//     Տեսություն → հարցեր → 1-3 վարժություն → եթե ճիշտ է → առաջ
+//   Փուլ 2 — Նոր դաս / Հիմնական (Նոր դաս՝ հիմunqner)
+//     Տեսություն → հarcer → 1-3 varzhutuin → ete chist e → araj
 //
-//   Փուլ 3 — Խորը ուսումնասիրություն (Խորացված)
-//     Ավելի խորը տեսություն → 1-3 վարժություն → լիարժեք գիտելիքի ստուգում → յուրացման %
+//   Փուլ 3 — Խorh usumnasiruthun (Xoracvats)
+//     Avar xs xorh tesuthun → 1-3 varzhutuin → liarjek gitelighi stugum → yuracman %
 //
-//   Փուլ 4 — Տնային աշխատանք (Տնային + ավարտ)
-//     3 մակարդակով տնային → ջերմ հրաժեշտ
+//   Փouul 4 — Tnain ashxataank (Tnain + avart)
+//     3 makaradakov tnain → jerm hrajeshtiov
 // ─────────────────────────────────────────────
 
-function buildPhaseInstruction(phase: number, lessonTitle: string, subjectName: string): string {
+type PracticalTask = {
+  task: string;
+  purpose?: string | null;
+  sourcePage?: string | null;
+  difficultyLevel?: "LOW" | "MEDIUM" | "HIGH" | null;
+  successCriteria?: string | null;
+  relatedNodeTitle?: string | null;
+  assignment?: "CLASS" | "HOMEWORK" | null;
+};
+
+type RichNode = {
+  title: string;
+  theoryContent: string | null;
+  targetBloomLevel: number;
+  estimatedMinutes: number;
+  childFriendlyExplanation: string | null;
+  basicExamples: unknown;
+  realLifeExamples: unknown;
+  commonMisconception: string | null;
+  prerequisiteNodes: unknown;
+};
+
+interface PhaseInstructionOptions {
+  phase: number;
+  lessonTitle: string;
+  subjectName: string;
+  coreProblem: string | null;
+  coreIdea: string | null;
+  node: RichNode | null;
+  classTasks: PracticalTask[];
+  homeworkTasks: PracticalTask[];
+}
+
+function toStringArray(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  return val.filter((x): x is string => typeof x === "string");
+}
+
+function buildPhaseInstruction(opts: PhaseInstructionOptions): string {
+  const { phase, lessonTitle, subjectName, coreProblem, coreIdea, node, classTasks, homeworkTasks } = opts;
+
+  const cfeBlock = node?.childFriendlyExplanation
+    ? `\nPROVIDED EXPLANATION (use near-verbatim as your core theory — do not invent a different one):\n${node.childFriendlyExplanation}`
+    : "";
+
+  const basicExamplesArr = toStringArray(node?.basicExamples);
+  const basicExBlock = basicExamplesArr.length > 0
+    ? `\nPROVIDED EXAMPLES (present these as illustrative examples):\n${basicExamplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
+    : "";
+
+  const misconceptionBlock = node?.commonMisconception
+    ? `\nKNOWN MISCONCEPTION (design at least one MCQ distractor option specifically targeting this misconception — do NOT invent a generic wrong answer instead):\n${node.commonMisconception}`
+    : "";
+
+  const realLifeArr = toStringArray(node?.realLifeExamples);
+  const realLifeBlock = realLifeArr.length > 0
+    ? `\nREAL-LIFE EXAMPLES FOR DEEP FRAMING (use these for richer real-world context in Phase 3):\n${realLifeArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
+    : "";
+
+  const classTasksBlock = classTasks.length > 0
+    ? `\nCLASS EXERCISES — present each task text as-is (do NOT invent new exercises):\n${classTasks.map((t, i) => {
+        let line = `${i + 1}. ${t.task}`;
+        if (t.successCriteria) line += `\n   [GRADING CRITERIA — for your internal use only, do NOT show to student]: ${t.successCriteria}`;
+        return line;
+      }).join("\n")}`
+    : "";
+
+  const homeworkBlock = homeworkTasks.length > 0
+    ? `\nHOMEWORK TASKS — present each task text as-is in a friendly closing message:\n${homeworkTasks.map((t, i) => {
+        let line = `${i + 1}. ${t.task}`;
+        if (t.difficultyLevel) line += ` [${t.difficultyLevel}]`;
+        return line;
+      }).join("\n")}`
+    : "";
+
   switch (phase) {
 
     // ══════════════════════════════════════════════
     case 1:
       return `=== ՓՈՒԼ 1 — ԿՐԿՆՈՒԹՅՈՒՆ (Նախորդ դասի կրկնություն) ===
+${coreIdea ? `\nLESSON MASTERY GOAL (use to frame what "mastering this lesson" means if needed): ${coreIdea}` : ""}
 
-ԿԱՆՈՆՆԵՐ — կատարելու համար խստագույն հետևողականությամբ.
+ԿԱՆՈՆՆԵՐ — կատարելու համար խստագույն հետողականությամբ.
 
-▸ ԸՆԴՀԱՆՈՒՐ: 3-ից 5 հարց (ելնելով կարողությունից, 3-ը լավ է)
-▸ ՄԵԿ-ՄԵԿ: Մեկ հարց → սպասիր պատասխանի → կարծիք (feedback) → հաջորդ հարց
-▸ ԹԵՄԱ: Համապատասխան ${subjectName}-ի ՆԱԽՈՐԴ ԴԱՍԵՐԻՑ (որը ոչ թե առաջին «${lessonTitle}» դասն է)
-▸ ՁԵՎԱՉԱՓ (ԽՍՏԱԳՈՒՅՆ ՀԵՏԵՎՈՂՈՒԹՅԱՄԲ):
+▸ ԸՆDHANUR: 3-ից 5 հarcer (eluneliv karoughutunits, 3-ë lav e)
+▸ MEK-MEK: Mek harc → spacir pataskhanits → karcik (feedback) → hajordë harc
+▸ TEMA: Hamapatasxan ${subjectName}-i NAXORDATS DASERIT` + ` (vorn vor chë arrach "«${lessonTitle}»" dasn e)
+▸ DZEVACHAP (XSTRAGUYNS HETEVOLUTHIAMB):
 
-ՀԱՐՑ [N]։ [Հարց հայերեն՞]
-1) [Տարբերակ Ա]
-2) [Տարբերակ Բ]
-3) [Տարբերակ Գ]
+HARC [N]։ [Harc hayerën?]
+1) [Tarberakat A]
+2) [Tarberakat B]
+3) [Tarberakat G]
 
-ԱՌԱՋԻՆ ՊԱՏԱՍԽԱՆԸ ՊԵՏՔ Է ՊԱՐՈՒՆԱԿԻ:
-1. Մեկ ջերմ բարևորական նախադասություն (1 տող)
-2. Անմիջապես ՀԱՐՑ 1-ը վերևում գրված ձևաչափով
+ARRACH PATASKHANË PETK E PARUNAKI:
+1. Mek jerm barevortskakan naxadasouthun (1 togh)
+2. Anmijabarar HARC 1-ë verevum gratz dzevachapov
 
-ԱՄԲՈՂՋ ԿՐԿՆՈՒԹՅՈՒՆԸ ԱՎԱՐՏՎՈՒՄ Է ԱՅՍՊԵՍ:
-▸ Ճիշտ պատասխանից հետո։ «✓ Ճիշտ է։ [Կարճ բացատրություն]» → հաջորդ հարց
-▸ Սխալ պատասխանից հետո։ «✗ Ոչ ճիշտ է։ Ճիշտ պատասխանը [N]-ն էր — [բացատրություն]» → հաջորդ հարց
+AMBOGJ KRKNOUTUNE AVARTVOUM E AYSPEC:
+▸ Chist pataskhanits het. "✓ Chist e. [Karch batsatroutun]" → hajord harc
+▸ Sxal pataskhanits het. "✗ Voch chist e. Chist pataskhanë [N]-n er — [batsatroutun]" → hajord harc
 
-ՎԵՐՋԻՆ ԳՐՈՒՄ (ամբողջ 3-5 հարցն ավարտվելուց հետո):
+VERJIN GROUM (ambogj 3-5 harc avartveluts het):
 ---
-📊 Նախորդ դասի կրկնության արդյունքները։
+📊 Naxordats dasi krknouthyan ardunknerë.
 
-Ճիշտ պատասխաններ՝ [X]-ից [ԸՆԴԱՄԵՆԸ] ([PERCENT]%)
+Chist pataskhannerë: [X]-its [YNDAMENE] ([PERCENT]%)
 
-[Եթե ≥ 70%]:
-Հրաշալի՛ է։ Նախորդ թեման լավ ես յուրացրել։ Անցնում ենք նոր դասին։
+[Ete ≥ 70%]:
+Hrashali e. Naxordats temayë lav es yuracrel. Ancnoum enk nor dasi.
 
-[Եթե < 70%]:
-Ավելի լավ կլիներ նախորդ թեման կրկին վերհիշել, բայց այսօր էլ կանցնենք նոր դասին։
+[Ete < 70%]:
+Avar lav kliner naxordats temayë krkin verhetel, bayc aysor el kanqcnenk nor dasi.
 ---
 
-ՄԱԹԵՄԱՏԻԿԱԿԱՆ ՁԵՎԱՉԱՓ: ՄԻԱՅՆ Յունիկոդ — 2³, 5², ×, ÷, √ (ՈՉ LaTeX \\( \\) կամ \\[ \\])
-ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
+MATIMATIKAL DZEVACHA: MIAYNS Yunilod — 2³, 5², ×, ÷, √ (VOCH LaTeX \\( \\) kam \\[ \\])
+LEZOU: MIAYNS HAYEREN`;
 
     // ══════════════════════════════════════════════
     case 2:
-      return `=== ՓՈՒԼ 2 — ՆՈՐ ԴԱՍ. ՀԻՄՆԱԿԱՆ ՄԱՍԵՐ ===
+      return `=== ՓOUUL 2 — NOR DAS. HIMNAKAN MASER ===${cfeBlock}${basicExBlock}${misconceptionBlock}
 
-ԴՈՒ ՈՒՍՈՒՑԻՉ ԵՍ — ներկայացնում ես նոր նյութը քայլ առ քայլ։
+DOU OUCUCHICH ES — nerkayacnoum es nor nyute qayl arr qayl.
 
-ԱԿՆԿԱԼՎՈՂ ԿԱՌՈՒՑՎԱԾՔԸ կատարել (3 քայլ).
+AKNKALVATS KARUCVACTSE katarel (3 qayl).
 
-── ՔԱՅԼ Ա. ՏԵՈՐԻԱ ──
-Ներկայացրո՛ւ «${lessonTitle}» դասի ՀԻՄՆԱԿԱՆ գաղափարը — 3-4 կարճ նախադասություն։
-Օգտագործիր դասագրքի լեզուն, հայերեն.
-- Սովորույթը կիրառելով ամենապարզով
-- Իրական կյանքից օրինակներով
-- Կապը կյանքի հարաբերությունների հետ
+── QAYL A. TEORIA ──
+Nerkayacru «${lessonTitle}» dasi HIMNAKAN gacapare — 3-4 karch naxadasouthun.
+${node?.childFriendlyExplanation
+  ? `USE THE PROVIDED EXPLANATION above near-verbatim as your core theory — this is the approved child-friendly explanation for this node.`
+  : `Ogtagorcer dasagrkits lezoun, hayerën:\n- Sovorouthunë kirarrelits amenaparsov\n- Irakanoum kyanqits orinakerits\n- Kapë kyanqi haraberutunnerit het`}
+${basicExamplesArr.length > 0
+  ? `Present the PROVIDED EXAMPLES above as your illustrative examples — do not invent different ones.`
+  : `Ogtagorcer irakan kyanqits orinakerits (hayerën)`}
 
-── ՔԱՅԼ Բ. ԲԱԶՄԱԿԻ ԸՆՐՈՒԹՅԱՄԲ ՀԱՐՑ (MCQ) ──
-Տեսությունը ներկայացնելուց հետո տուր ՄԻԱՅՆ ՄԵԿ ՀԱՐՑ 1) 2) 3) ձևաչափով։
-ՀԱՐՑ [N]։ [Տեսության մասից հարց՞]
+── QAYL B. BAZMAKIN YNRUTOUTIAM HARC (MCQ) ──
+Teorian nerkayacneluts het tur MIAYNS MEK HARC 1) 2) 3) dzevacha.${misconceptionBlock ? `\nIMPORTANT: Design at least one distractor option that targets the KNOWN MISCONCEPTION listed above — this makes wrong-answer feedback meaningful.` : ""}
+HARC [N]։ [Teoriayi masits harc?]
 1) ...    2) ...    3) ...
 
-Սպասիր պատասխանի → ճիշտ/սխալ կարծիք (feedback) → հաջորդ տեսությունը կամ հարցը
+Spacir pataskhanis → chist/sxal karcik (feedback) → hajord teorian kam harce
 
-── ՔԱՅԼ Գ. ՎԱՐԺՈՒԹՅՈՒՆՆԵՐ ──
-1-3 վարժություն (պարզից → բարդին)։
-Տուր ՄԵԿ ՎԱՐԺՈՒԹՅՈՒՆ — սպասիր պատասխանի։
-ՎԱՐԺ [N]։ [Վարժություն հայերեն]
-Ուղղորդիր, մինչև գտնի պատշաճ պատասխանը։
-Եթե աշակերտը ինքնուրույն է լուծում — խրախուսի՛ր։
-Եթե դժվարանում է — օգնի՛ր կարճ ուղղորդումով, մի՛ տուր պատրաստի պատասխանը։
+── QAYL G. VARZHOUTIUNNER ──
+${classTasks.length > 0
+  ? `Use the CLASS EXERCISES listed above. Present them one at a time. Do NOT invent new exercises.
+VARZH [N]։ [Task text from CLASS EXERCISES]
+When evaluating the student's answer, use the GRADING CRITERIA (if provided for that task) as ground truth — do not show it to the student.`
+  : `1-3 varzhoutun (parsits → bardin).
+Tur MEK VARZHOUTUN — spacir pataskhanis.
+VARZH [N]։ [Varzhoutun hayerën]
+Oughghordir, minchev gtni patasxan.
+Ete ashakerte inknourinoum e luzum — xrahasuri.
+Ete dzhvaranoum e — oghni karch oughghordumov, mi tur patrastë pataskhanë.`}
 
-ԱՎԱՐՏՎՈՒՄ Է ԱՅՍՊԵՍ (բաժնաբար յուրացնելուց հետո):
+AVARTVOUM E AYSPEC (bazhin bayc yuracneluts het):
 ---
-✅ Հիմնական մասը յուրացվել է [PERCENT]%-ով։
+✅ Himnakan masë yuracvel e [PERCENT]%-ov.
 
-[Եթե ≥ 70%]: Հրաշալի՛ է։ Անցնում ենք «${lessonTitle}»-ի խորը ուսումնասիրությանը։
-[Եթե < 70%]: Եկեք մի փոքր էլ կրկնենք, հետո կանցնենք առաջ։
+[Ete ≥ 70%]: Hrashali e. Ancnoum enk «${lessonTitle}»-i xorë usumnasiruthian.
+[Ete < 70%]: Ekek mi pokr el krnkenk, heto kanqcnenk arrach.
 ---
 
-ՄԱԹԵՄԱՏԻԿԱԿԱՆ ՁԵՎԱՉԱՓ: ՄԻԱՅՆ Յունիկոդ — 2³, ×, ÷, √։ ՈՉ LaTeX։
-ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
+MATIMATIKAL DZEVACHA: MIAYNS Yunilod — 2³, ×, ÷, √. VOCH LaTeX.
+LEZOU: MIAYNS HAYEREN`;
 
     // ══════════════════════════════════════════════
     case 3:
-      return `=== ՓՈՒԼ 3 — ԽՈՐԱՑՎԱԾ ՈՒՍՈՒՑՈՒՄ + ԱՄԲՈՂՋԱԿԱՆ ՍՏՈՒԳՈՒՄ ===
+      return `=== PHUL 3 — XORACVATS OUCUCUM + AMBOGJ STUGUM ===${realLifeBlock}${classTasksBlock}
 
-ՄԱՍ Ա — ԽՈՐԸ ՏԵՈՐԻԱ.
-Ներկայացրո՛ւ «${lessonTitle}»-ի ԽՈՐԱՑՎԱԾ ասպեկտները — 3-4 կարճ նախադասություն։
-Ներառիր բարձրակարգ օրինակներ, կապեր այլ թեմաների հետ։
+MAS A — XORË TEORIA.
+Nerkayacru «${lessonTitle}»-i XORACVATS aspektnerë — 3-4 karch naxadasouthun.
+${realLifeArr.length > 0
+  ? `Use the REAL-LIFE EXAMPLES above to anchor the deeper theory in real-world context — build the "deeper" framing around them.`
+  : `Nerarel bardzrakarg orinakerits, kaperi ayl temanerits het.`}
 
-ՄԱՍ Բ — ՎԱՐԺՈՒԹՅՈՒՆՆԵՐ (1–3 հատ).
-Տուր ըստ հերթականության՝ պարզից → միջին → բարդ.
-ՎԱՐԺ [N]։ [Վարժություն]
-Ուղղորդիր, մինչև գտնի։ Եթե դժվարանում է — տուր հուշող հարց։
+MAS B — VARZHOUTIUNNER (1–3 hat).
+${classTasks.length > 0
+  ? `Use the CLASS EXERCISES listed in CLASS EXERCISES above. Present them one at a time, in order (simple → complex). Do NOT invent new exercises.
+VARZH [N]։ [Task text from CLASS EXERCISES]
+When checking the student's answer compare it against the GRADING CRITERIA (if provided) as ground truth — do NOT show criteria to the student. Guide with hints if struggling.`
+  : `Tur ëst herrakanoutiun parsits → midjin → bard.
+VARZH [N]։ [Varzhoutun]
+Oughghordir, minchev gtni. Ete dzhvaranoum e — tur hushov harc.`}
 
-ՄԱՍ Գ — ԱՄԲՈՂՋԱԿԱՆ ՍՏՈՒԳՈՒՄ.
-Վերջում 3–5 հարց ԱՄԲՈՂՋԱԿԱՆ ԹԵՄԱՏԻԿ «${lessonTitle}»-ից։
-Բլումի մակարդակները 1-ից մինչև 4 (հիշել, հասկանալ, կիրառել, վերլուծել):
-ՀԱՐՑ [N]։ [Ամբողջական հարց 1) 2) 3) ձևաչափով]
+MAS G — AMBOGJ STUGUM.
+Verjum 3–5 harc AMBOGJ TEMATIKAL «${lessonTitle}»-its.
+Blumi makaradaknerë 1-its minchev 4 (hishtarrel, haskarnel, kirarrrel, verlucel):
+HARC [N]։ [Ambogj harc 1) 2) 3) dzevacha]
 
-ԱՎԱՐՏՎՈՒՄ Է (ամբողջական ստուգումն ավարտվելուց հետո):
+AVARTVOUM E (ambogj stugumë avartveluts het):
 ---
-🎓 Դասի ամբողջական ստուգումը.
+🎓 Dasi ambogj stugumë.
 
-✓ Ճիշտ պատասխաններ՝ [X]-ից [ԸՆԴԱՄԵՆԸ] ([PERCENT]%)
+✓ Chist pataskhannerë: [X]-its [YNDAMENE] ([PERCENT]%)
 
-[Եթե ≥ 80%]: ⭐ Հրաշալի՛ է։ «${lessonTitle}» թեման գերազանց է յուրացվել։
-[Եթե ≥ 60%]: 👍 Լավ մեկնարկ. շարունակիր մի փոքր էլ։
-[Եթե < 60%]: 💪 Այս թեման հարկավոր է վերհիշել ու կրկնել։
+[Ete ≥ 80%]: ⭐ Hrashali e. «${lessonTitle}» temayë gerazanch e yuracvel.
+[Ete ≥ 60%]: 👍 Lav meknark. Sharounakarir mi pokr el.
+[Ete < 60%]: 💪 Ays temayë harkavor e verhetel u krnkel.
 
-Անցնում ենք տնային հանձնարարությանը։
+Ancnoum enk tnain handnararoutian.
 ---
 
-ՄԱԹԵՄԱՏԻԿԱԿԱՆ ՁԵՎԱՉԱՓ: ՄԻԱՅՆ Յունիկոդ։ ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
+MATIMATIKAL DZEVACHA: MIAYNS Yunilod. LEZOU: MIAYNS HAYEREN`;
 
     // ══════════════════════════════════════════════
     case 4:
-      return `=== ՓՈՒԼ 4 — ՏՆԱՅԻՆ ՀԱՆՁՆԱՐԱՐՈՒԹՅՈՒՆ + ԱՎԱՐՏ ===
+      return `=== PHUL 4 — TNAIN HANDNARARAROUTUN + AVART ===${homeworkBlock}
 
-Պատրաստել ԵՐԵՔ մակարդակի տնային աշխատանք։ Աշակերտը ընտրում է.
+${homeworkTasks.length > 0
+  ? `Present the HOMEWORK TASKS listed above as the actual homework in a friendly closing message — do NOT invent different exercises.
+For each task, present its text clearly and warmly. You may add a brief encouraging note before or after each task if appropriate.
+After presenting all tasks, close with a warm farewell, thanks, and encouragement for the next lesson.`
+  : `Patrastrel EREK makaradaki tnain ashxataank. Ashakertë yntroum e.
 
-⭐ ՀԻՄՆԱԿԱՆ (Բլում 1–2):
-[2-3 հիմնական հասկացությունների վարժություն]
+⭐ HIMNAKAN (Blum 1–2):
+[2-3 himnakan haskacoutiunneris varzhoutun]
 
-⭐⭐ ՀԱՎԵԼՅԱԼ (Բլում 3–4):
-[1-2 վարժություն կիրառումով և բացատրությամբ]
+⭐⭐ HAVELIAL (Blum 3–4):
+[1-2 varzhoutun kirarroumov u batsatroutambë]
 
-⭐⭐⭐ ՍՏԵՂԾԱԳՈՐԾԱԿԱՆ (Բլում 5–6):
-[1 ստեղծագործական հնարավորություն կյանքից]
+⭐⭐⭐ STEGHCAGORTSKAKAN (Blum 5–6):
+[1 steghcagortskakan hnaravorouthun kyanqits]
 
-Դասը ավարտել ջերմ հրաժեշտով՝ շնորհակալություններով և քաջալերանքով հաջորդ դասի համար։
+Dasë avartel jerm hrajeshtov, shnorhakalonutiunnerov u qajalerankits hajord dasi hamar.`}
 
-ԼԵԶՈՒ: ՄԻԱՅՆ ՀԱՅԵՐԵՆ`;
+LEZOU: MIAYNS HAYEREN`;
 
     default:
-      return `Ուղղորդիր աշակերտին «${lessonTitle}» թեմային կապված ${subjectName}-ի մասնագիտությամբ։ ՄԻԱՅՆ ՀԱՅԵՐԵՆ։`;
+      return `Oughghordiru ashakertine «${lessonTitle}» temain kapvats ${subjectName}-i masnagitoambë. MIAYNS HAYEREN.`;
   }
 }
 
@@ -192,18 +283,33 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const phase = session?.currentPhase ?? 1;
       const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
 
+      // Extract lesson-level enrichment fields
+      const coreProblem = (lesson as { coreProblem?: string | null }).coreProblem ?? null;
+      const coreIdea   = (lesson as { coreIdea?: string | null }).coreIdea ?? null;
+      const rawTasks   = (lesson as { practicalTasks?: unknown }).practicalTasks;
+      const allTasks: PracticalTask[] = Array.isArray(rawTasks) ? (rawTasks as PracticalTask[]) : [];
+
+      // Split tasks: CLASS (default) vs HOMEWORK
+      const classTasks    = allTasks.filter((t) => t.assignment !== "HOMEWORK");
+      const homeworkTasks = allTasks.filter((t) => t.assignment === "HOMEWORK");
+
       // If this session is working through lesson_nodes, use the CURRENT
       // node's title/theory/bloom level instead of the whole lesson's —
       // this is what lets mastery be tracked per sub-topic. Lessons with
       // no nodes yet fall back to the old whole-lesson behavior unchanged.
-      let currentNode: { title: string; theoryContent: string | null; targetBloomLevel: number; estimatedMinutes: number } | null = null;
+      let currentNode: RichNode | null = null;
       if (session?.currentNodeId) {
         const [node] = await db
           .select({
-            title: lessonNodesTable.title,
-            theoryContent: lessonNodesTable.theoryContent,
-            targetBloomLevel: lessonNodesTable.targetBloomLevel,
-            estimatedMinutes: lessonNodesTable.estimatedMinutes,
+            title:                    lessonNodesTable.title,
+            theoryContent:            lessonNodesTable.theoryContent,
+            targetBloomLevel:         lessonNodesTable.targetBloomLevel,
+            estimatedMinutes:         lessonNodesTable.estimatedMinutes,
+            childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+            basicExamples:            lessonNodesTable.basicExamples,
+            realLifeExamples:         lessonNodesTable.realLifeExamples,
+            commonMisconception:      lessonNodesTable.commonMisconception,
+            prerequisiteNodes:        lessonNodesTable.prerequisiteNodes,
           })
           .from(lessonNodesTable)
           .where(eq(lessonNodesTable.id, session.currentNodeId))
@@ -211,7 +317,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         currentNode = node ?? null;
       }
 
-      const topicName = currentNode?.title ?? lesson.title;
+      const topicName    = currentNode?.title ?? lesson.title;
       const topicContent = currentNode?.theoryContent ?? lesson.content;
 
       // Phase 1 is the review phase — prioritize topics that are actually
@@ -235,10 +341,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         `SUBJECT: ${subjectName}`,
         nodeLine,
         lesson.description ? `DESCRIPTION: ${lesson.description}` : "",
-        topicContent ? `TEXTBOOK CONTENT:\n${topicContent}` : "",
+        coreProblem       ? `CORE_PROBLEM: ${coreProblem}`          : "",
+        coreIdea          ? `CORE_IDEA: ${coreIdea}`                : "",
+        topicContent      ? `TEXTBOOK CONTENT:\n${topicContent}`    : "",
         dueReviewsLine,
         ``,
-        buildPhaseInstruction(phase, topicName, subjectName),
+        buildPhaseInstruction({
+          phase,
+          lessonTitle:  topicName,
+          subjectName,
+          coreProblem,
+          coreIdea,
+          node:         currentNode,
+          classTasks,
+          homeworkTasks,
+        }),
       ].filter(Boolean).join("\n");
 
       // Resolve (or create) a knowledge_nodes row for this topic (the
