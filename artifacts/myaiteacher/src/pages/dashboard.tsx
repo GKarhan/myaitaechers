@@ -20,7 +20,8 @@ type AssignedLesson = {
   lessonNumber?: number | null; paragraphNumber?: string | null;
   textbookTitle?: string | null; textbookAuthor?: string | null;
   chapterTitle?: string | null; pagesFrom?: number | null;
-  pagesTo?: number | null; status: string; assignedAt?: string | null;
+  pagesTo?: number | null; status: string; mySessionStatus?: string | null;
+  assignedAt?: string | null;
 };
 
 const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
@@ -35,11 +36,11 @@ const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
   { key: "profile",    emoji: "👤", label: "Իմ պրոֆիլը" },
 ];
 
-function lessonStatusBadge(status: string): { text: string; cls: string } {
-  if (status === "active")
-    return { text: "🟢 Ընթացքի մեջ", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
-  if (status === "completed")
+function lessonStatusBadge(mySessionStatus: string | null | undefined): { text: string; cls: string } {
+  if (mySessionStatus === "completed")
     return { text: "✅ Ավարտված", cls: "bg-teal-400/15 text-teal-400 border-teal-400/20" };
+  if (mySessionStatus === "active")
+    return { text: "🟢 Ընթացքի մեջ", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
   return { text: "🟡 Սպասում է", cls: "bg-amber-400/15 text-amber-400 border-amber-400/20" };
 }
 
@@ -140,11 +141,11 @@ export default function Dashboard() {
     .filter((s) => s.day.toLowerCase().replace(/\./g, "") === todayArm.toLowerCase().replace(/\./g, ""))
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  const assignedLessons = (allLessons ?? []).filter((l) => l.status !== "completed");
+  const assignedLessons = (allLessons ?? []).filter((l) => l.mySessionStatus !== "completed");
   const todaySubjects   = new Set(todayItems.map((s) => s.subject.toLowerCase()));
   const completedToday  = (allLessons ?? []).filter(
     (l) =>
-      l.status === "completed" &&
+      l.mySessionStatus === "completed" &&
       (todaySubjects.size === 0 || todaySubjects.has(l.subject.toLowerCase()))
   ).length;
   const totalToday = (allLessons ?? []).filter(
@@ -202,7 +203,7 @@ export default function Dashboard() {
                       href={`/chat/${lesson.id}`}
                       className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold hover:opacity-90 transition-all whitespace-nowrap"
                     >
-                      {lesson.status === "active" ? "ՇԱՐՈՒՆԱԿԵԼ" : "ՍԿՍԵԼ"}
+                      {lesson.mySessionStatus === "active" ? "ՇԱՐՈՒՆԱԿԵԼ" : "ՍԿՍԵԼ"}
                     </Link>
                   </div>
                 ))}
@@ -381,7 +382,7 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-4">
           {assignedLessons.map((lesson) => {
-            const badge = lessonStatusBadge(lesson.status);
+            const badge = lessonStatusBadge(lesson.mySessionStatus);
             return (
               <div
                 key={`${lesson.subject}-${lesson.id}`}

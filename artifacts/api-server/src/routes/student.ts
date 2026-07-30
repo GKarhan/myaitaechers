@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, homeworkTable, lessonsTable, subjectsTable, coursesTable } from "@workspace/db";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, homeworkTable, lessonsTable, subjectsTable, coursesTable, lessonSessionsTable } from "@workspace/db";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
@@ -242,14 +242,37 @@ router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res)
 
   if (!matchingCourse) { res.json([]); return; }
 
-  // Return non-draft lessons for this course, sorted hierarchically
-  const lessons = await db
-    .select()
+  // Return non-draft lessons for this course with per-student session status
+  const rows = await db
+    .select({
+      id: lessonsTable.id,
+      courseId: lessonsTable.courseId,
+      title: lessonsTable.title,
+      lessonNumber: lessonsTable.lessonNumber,
+      pagesFrom: lessonsTable.pagesFrom,
+      pagesTo: lessonsTable.pagesTo,
+      textbookAuthor: lessonsTable.textbookAuthor,
+      textbookTitle: lessonsTable.textbookTitle,
+      chapterTitle: lessonsTable.chapterTitle,
+      paragraphNumber: lessonsTable.paragraphNumber,
+      status: lessonsTable.status,
+      assignedAt: lessonsTable.assignedAt,
+      completedAt: lessonsTable.completedAt,
+      mySessionStatus: lessonSessionsTable.status,
+    })
     .from(lessonsTable)
+    .leftJoin(
+      lessonSessionsTable,
+      and(
+        eq(lessonSessionsTable.lessonId, lessonsTable.id),
+        eq(lessonSessionsTable.userId, userId)
+      )
+    )
     .where(and(
       eq(lessonsTable.courseId, matchingCourse.id),
       sql`${lessonsTable.status} != 'draft'`
     ));
+  const lessons = rows;
 
   // Sort: textbookTitle, chapterTitle, lessonNumber, paragraphNumber
   lessons.sort((a, b) => {
@@ -274,6 +297,7 @@ router.get("/student/course-lessons", requireAuth, async (req: AuthRequest, res)
     chapterTitle: l.chapterTitle,
     paragraphNumber: l.paragraphNumber,
     status: l.status,
+    mySessionStatus: l.mySessionStatus ?? null,
     assignedAt: l.assignedAt,
     completedAt: l.completedAt,
   })));

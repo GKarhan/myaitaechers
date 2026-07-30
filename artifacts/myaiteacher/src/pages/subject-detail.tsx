@@ -20,6 +20,7 @@ type StudentLesson = {
   chapterTitle?: string | null;
   paragraphNumber?: string | null;
   status: string;
+  mySessionStatus?: string | null;
   assignedAt?: string | null;
   completedAt?: string | null;
 };
@@ -84,12 +85,12 @@ export default function SubjectDetail() {
   // Active lesson (from teacher) for "Aysorvada dasy" section
   const activeLesson = (teacherLessons as StudentLesson[]).find((l) => l.status === "active");
 
-  // Status display helpers
-  const statusLabel = (status: string) => {
-    if (status === "active")    return { text: "Aysorvada das",   cls: "text-primary border-primary/30 bg-primary/10" };
-    if (status === "assigned")  return { text: "Handznaravats",   cls: "text-amber-400 border-amber-400/30 bg-amber-400/10" };
-    if (status === "completed") return { text: "Avartvatc",       cls: "text-teal-400 border-teal-400/30 bg-teal-400/10" };
-    return                             { text: "Naxapastgatsvats",cls: "text-muted-foreground border-white/10 bg-white/5" };
+  // Status display helpers — completed uses per-student session status, not global lesson status
+  const statusLabel = (l: StudentLesson) => {
+    if (l.mySessionStatus === "completed") return { text: "Avartvatc",       cls: "text-teal-400 border-teal-400/30 bg-teal-400/10" };
+    if (l.status === "active")             return { text: "Aysorvada das",   cls: "text-primary border-primary/30 bg-primary/10" };
+    if (l.status === "assigned")           return { text: "Handznaravats",   cls: "text-amber-400 border-amber-400/30 bg-amber-400/10" };
+    return                                        { text: "Naxapastgatsvats",cls: "text-muted-foreground border-white/10 bg-white/5" };
   };
 
   // Hierarchical grouping for the "all lessons" section
@@ -244,7 +245,7 @@ export default function SubjectDetail() {
                           )}
                           <div className="space-y-2">
                             {chLessons.map((l) => {
-                              const sl = statusLabel(l.status);
+                              const sl = statusLabel(l);
                               const isActive = l.status === "active";
                               return (
                                 <div
@@ -272,14 +273,14 @@ export default function SubjectDetail() {
                                       </div>
                                     </div>
                                   </div>
-                                  {isActive ? (
+                                  {(isActive && l.mySessionStatus !== "completed") ? (
                                     <Link
                                       href={`/lessons/${l.id}`}
                                       className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
                                     >
                                       📖 Սովորել
                                     </Link>
-                                  ) : l.status !== "completed" ? (
+                                  ) : l.mySessionStatus !== "completed" ? (
                                     <span className="shrink-0 text-xs text-muted-foreground/50 px-3 py-2 rounded-xl border border-white/5 select-none">
                                       Դեռ հանձնարարված չէ
                                     </span>
