@@ -1348,7 +1348,7 @@ export default function TeacherDashboard() {
                         {tbHeader && (
                           <div className={`${!isFirstLesson ? "mt-6 " : ""}mb-3 px-1 pb-2 border-b border-white/10`}>
                             <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-0.5">
-                              ԴԱՍԱԳԻՌՔ
+                              ԴԱՍԱԳԻՐՔ
                             </div>
                             <div className="font-semibold text-base text-white">
                               {tbHeader.tbTitle || "(դասագիրք նշված չի)"}
@@ -1402,7 +1402,7 @@ export default function TeacherDashboard() {
                                 </span>
                               ) : isActive ? (
                                 <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
-                                  Ընթացքի մևի
+                                  Ընթացքի մեջ
                                 </span>
                               ) : isMapped ? (
                                 <button

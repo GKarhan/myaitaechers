@@ -272,12 +272,18 @@ export default function SubjectDetail() {
                                       </div>
                                     </div>
                                   </div>
-                                  <Link
-                                    href={`/lessons/${l.id}`}
-                                    className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
-                                  >
-                                    📖 Sovorel
-                                  </Link>
+                                  {isActive ? (
+                                    <Link
+                                      href={`/lessons/${l.id}`}
+                                      className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+                                    >
+                                      📖 Սովորել
+                                    </Link>
+                                  ) : l.status !== "completed" ? (
+                                    <span className="shrink-0 text-xs text-muted-foreground/50 px-3 py-2 rounded-xl border border-white/5 select-none">
+                                      Դեռ հանձնարարված չէ
+                                    </span>
+                                  ) : null}
                                 </div>
                               );
                             })}
@@ -335,12 +341,18 @@ export default function SubjectDetail() {
                       </div>
                     </div>
                   </div>
-                  <Link
-                    href={`/lessons/${lesson.id}`}
-                    className="shrink-0 flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
-                  >
-                    📖 Sovorel
-                  </Link>
+                  {lesson.status === "pending" ? (
+                    <Link
+                      href={`/lessons/${lesson.id}`}
+                      className="shrink-0 flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+                    >
+                      📖 Սովորել
+                    </Link>
+                  ) : lesson.status !== "completed" ? (
+                    <span className="shrink-0 text-xs text-muted-foreground/50 px-3 py-2 rounded-xl border border-white/5 select-none">
+                      Դեռ հանձնարարված չէ
+                    </span>
+                  ) : null}
                 </div>
               );
             })

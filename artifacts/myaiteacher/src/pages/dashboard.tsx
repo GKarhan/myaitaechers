@@ -72,15 +72,14 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    if (!token || !scheduleLoaded) return;
-    // Schedule has resolved. If it's empty there are no subjects to fetch lessons
-    // for — resolve allLessons to [] so spinners show proper empty states instead
-    // of spinning forever.
-    if (schedule.length === 0) {
+    if (!token || !dashboard) return;
+    // Derive subjects from enrolled dashboard.subjects — NOT from the weekly
+    // schedule — so lessons show up even when the schedule is empty.
+    const subjects = (dashboard.subjects ?? []).map((s) => s.subject);
+    if (subjects.length === 0) {
       setAllLessons([]);
       return;
     }
-    const subjects = [...new Set(schedule.map((s) => s.subject))];
     let cancelled = false;
     Promise.all(
       subjects.map((subject) =>
@@ -107,7 +106,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [token, schedule, scheduleLoaded]);
+  }, [token, dashboard]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
