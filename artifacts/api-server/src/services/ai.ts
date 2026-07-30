@@ -1,7 +1,10 @@
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { logger } from "../lib/logger";
+import { z } from "zod/v4";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
+
+// ── Legacy system prompt (used by callAI for non-structured contexts) ────────
 
 const SYSTEM_PROMPT = `Դու myaiteacher-ի AI ուսուցիչն ես — Karhanyan School-ի թվային դաստիարակը:
 
@@ -15,36 +18,164 @@ const SYSTEM_PROMPT = `Դու myaiteacher-ի AI ուսուցիչն ես — Karh
 - Բազմապատկում: × նշանով (ոչ թե *)
 - Բաժանում: ÷ նշանով
 - Արմատ: √
-- Օրինակներ (այս ձևով գրիր):
-  — 2³ = 2 × 2 × 2 = 8
-  — 5⁴ = 5 × 5 × 5 × 5 = 625
-  — a² + b² = c²
-  — Աստիճան: aⁿ = a × a × ... × a (n անգամ)
 
 ═══ ՈՒՍՈՒՑՄԱՆ ՌԱԶՄԱՎԱՐՈՒԹՅՈՒՆ ═══
 ՈՒՍՈՒՑԻՉ-ՈՒՂՂՈՐԴՈՂ մոդել:
 1. ՆԵՐԿԱՅԱՑՆԻՐ — մեկ կարճ բաժին (2-3 նախադաս.)
-2. ՀԱՐՑՐԻՐ — 1-2 հարց ըմբռնումը ստուգելու
-3. ԱՄՐԱՑՐԻՐ կամ ԽՈՐԱՑՆԻՐ — ըստ պատասխանի
+2. ՀARCEIR — 1-2 հarcer ymbrnutunë stughelam
+3. AMRACRIR kam XORACZIN — yst pataskhanin
 
-ՁԵՎԱՉԱՓ: Կարճ — ոչ ավելի քան 4-5 նախադաս. + 1-2 հարց:
-ՆՊԱՏԱԿ: Աշակերտը ԻՆՔՆՈՒՐՈՒՅՆ հայտնաբերի ճշմարտությունը, ոչ թե ստանա այն պատրաստի:
+ՁEVACHAP: Karrc — voch avaelin qan 4-5 nakhadas. + 1-2 harc:
+NAPATAC: Ashakertë INKNARUTYAMB haytnaberi chshmartutiunë, voch te stana ayn patrastë:`;
 
-═══ ԱՐԳԵԼՎՈՒՄ Է ═══
-- Երբեք չի տալիս պատրաստի պատասխանը — ուղղորդիր, հարց տուր
-- Երբեք չի գնումաբանում (դատապարտում) — խրախուսիր, լավ քաջալերելով առաջ
+// ── Structured output schemas (P4+P5+P7 combined) ────────────────────────────
 
-═══ ԳՆԱՀԱՏՄԱՆ ՊԱՐՏԱԴԻՐ ՆՇԱՆ ═══
-Ամեն անգամ, երբ գնահատում ես աշակերտի պատասխանը (որոշում ես՝ ճիշտ էր, թե սխալ), քո պատասխանի հենց վերջում, նոր տողում, պարտադիր ավելացրու հետևյալ նշաններից ուղիղ մեկը.
-###EVAL:CORRECT### — եթե աշակերտի պատասխանը ճիշտ էր
-###EVAL:INCORRECT### — եթե աշակերտի պատասխանը սխալ էր
-###EVAL:NONE### — եթե այս հաղորդագրությունը ընդհանրապես չի գնահատում պատասխան (օրինակ՝ միայն տեսություն ես ներկայացնում կամ հարց ես տալիս)
-Այս նշանը գրիր միշտ, առանց բացառության, նույնիսկ եթե արդեն գրել ես «✓ Ճիշտ է» կամ նմանատիպ բան տեքստի մեջ։ Այս նշանը երբեք տեսանելի չի լինի աշակերտին. այն ավտոմատ հեռացվում է ցուցադրվելուց առաջ։`;
+export const answerEvaluationSchema = z.object({
+  status: z.enum(["CORRECT", "PARTIALLY_CORRECT", "INCORRECT", "UNCLEAR", "NO_RESPONSE", "NOT_APPLICABLE"]),
+  evidence_quality: z.enum(["NONE", "WEAK", "MODERATE", "STRONG", "CONCLUSIVE"]),
+  error_family: z.string().nullable(),
+});
+
+export const nodeDecisionSchema = z.object({
+  action: z.enum(["CONTINUE_SAME_NODE", "COMPLETE_NODE", "REPAIR"]),
+  reason: z.string(),
+});
+
+export const progressIndicatorSchema = z.object({
+  current_node_name: z.string(),
+  step: z.number().int(),
+  total_steps: z.number().int(),
+  completed_nodes: z.number().int(),
+  total_nodes: z.number().int(),
+});
+
+export const sourceFidelitySchema = z.object({
+  type: z.enum(["SOURCE_EXACT", "SOURCE_PARAPHRASED", "AI_ADAPTED", "AI_GENERATED"]),
+  exercise_id: z.string().nullable(),
+});
+
+export const aiStructuredResponseSchema = z.object({
+  student_message: z.string(),
+  progress_indicator: progressIndicatorSchema,
+  teaching_mode: z.enum(["TEACH", "MICRO_CHECK", "FEEDBACK", "TRANSITION"]),
+  is_micro_check: z.boolean(),
+  answer_evaluation: answerEvaluationSchema,
+  node_decision: nodeDecisionSchema,
+  source_fidelity: sourceFidelitySchema,
+});
+
+export type AIStructuredResponse = z.infer<typeof aiStructuredResponseSchema>;
+export type ProgressIndicator = z.infer<typeof progressIndicatorSchema>;
+
+// ── P6 completion schema ─────────────────────────────────────────────────────
+
+export const p6ResponseSchema = z.object({
+  completion_status: z.enum(["COMPLETED", "PARTIALLY_COMPLETED"]),
+  homework_tasks: z.array(z.object({
+    exercise_id: z.string().nullable(),
+    text: z.string(),
+    difficulty_level: z.string().nullable(),
+    source_page: z.string().nullable(),
+  })),
+  student_summary: z.object({
+    message: z.string(),
+  }),
+});
+
+export type P6Response = z.infer<typeof p6ResponseSchema>;
+
+// ── Structured output system prompt ─────────────────────────────────────────
+
+const STRUCTURED_SYSTEM_PROMPT = `You are myaiteacher's AI teacher — Karhanyan School's digital educator.
+
+CRITICAL RULES:
+1. student_message MUST be written entirely in Armenian script (Ա-Ֆ, ա-ֆ). Never use Cyrillic, Latin, or Arabic there.
+2. MATH in student_message: Unicode superscripts only (2², 5³, x⁴). NEVER LaTeX (\\( \\) or \\[ \\]). Use ×, ÷, √.
+3. Never give direct answers — guide, ask, hint, encourage. Never criticize or demotivate.
+4. Keep student_message concise: max 4-5 sentences + 1-2 questions.
+
+TEACHING CYCLE (P4 §11):
+- TEACH: Present ONE concept (2-3 sentences) then ask ONE MICRO_CHECK question (≤25 words) in the same message.
+- MICRO_CHECK: Standalone check question only (no new theory).
+- FEEDBACK: Evaluate student answer → correct/guide → ask next MICRO_CHECK or proceed.
+- TRANSITION: Signal moving to next concept/phase.
+
+EVIDENCE QUALITY (P5 §17.13) — STRICT:
+- Student answers MICRO_CHECK correctly → evidence_quality = "MODERATE" (NEVER "STRONG" from MICRO_CHECK alone)
+- Student solves a practical exercise successfully → evidence_quality = "STRONG"
+- node_decision.action = "COMPLETE_NODE" requires at least 1 STRONG evidence event on this node. Never recommend COMPLETE_NODE based only on a MICRO_CHECK.
+
+EXERCISE VERBATIM RULE:
+- If exerciseTextVerbatim is listed for an exercise: reproduce it WORD FOR WORD in student_message (no changes to any number, variable, or word).
+- Append "(Էջ {sourcePage}, Վ. {exerciseId})" immediately after the verbatim exercise text.
+
+OUTPUT FORMAT: Return VALID JSON ONLY. No markdown, no \`\`\`json fences, no explanatory text outside the JSON.
+
+Required JSON schema:
+{
+  "student_message": "<full Armenian text to display to the student>",
+  "progress_indicator": {
+    "current_node_name": "<exact node title or lesson title if no node>",
+    "step": <1-based index of current node, 0 if no nodes>,
+    "total_steps": <total node count in lesson, 0 if no nodes>,
+    "completed_nodes": <nodes fully mastered so far>,
+    "total_nodes": <same as total_steps>
+  },
+  "teaching_mode": "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION",
+  "is_micro_check": true | false,
+  "answer_evaluation": {
+    "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "NOT_APPLICABLE",
+    "evidence_quality": "NONE" | "WEAK" | "MODERATE" | "STRONG" | "CONCLUSIVE",
+    "error_family": "<brief error label or null>"
+  },
+  "node_decision": {
+    "action": "CONTINUE_SAME_NODE" | "COMPLETE_NODE" | "REPAIR",
+    "reason": "<brief internal reason in English>"
+  },
+  "source_fidelity": {
+    "type": "SOURCE_EXACT" | "SOURCE_PARAPHRASED" | "AI_ADAPTED" | "AI_GENERATED",
+    "exercise_id": "<e.g. EX-5-2, or null>"
+  }
+}`;
+
+// ── P6 system prompt ─────────────────────────────────────────────────────────
+
+const P6_SYSTEM_PROMPT = `You are myaiteacher's AI teacher summarizing a completed lesson session.
+
+CRITICAL: student_summary.message MUST be in Armenian script (Ա-Ֆ, ա-ֆ). Warm, encouraging, personal tone.
+
+OUTPUT FORMAT: VALID JSON ONLY. No markdown, no code fences.
+
+Required JSON schema:
+{
+  "completion_status": "COMPLETED" | "PARTIALLY_COMPLETED",
+  "homework_tasks": [
+    {
+      "exercise_id": "<exercise id or null>",
+      "text": "<verbatim exercise text — do NOT change a single word or number>",
+      "difficulty_level": "<LOW | MEDIUM | HIGH | null>",
+      "source_page": "<page number string or null>"
+    }
+  ],
+  "student_summary": {
+    "message": "<warm 3-5 sentence Armenian summary: what was learned, encouragement, brief mention of homework>"
+  }
+}
+
+Rules:
+- completion_status = "COMPLETED" if mastery evidence suggests ≥60% success rate overall; otherwise "PARTIALLY_COMPLETED".
+- homework_tasks: include ONLY tasks provided in context with assignment=HOMEWORK. Copy text VERBATIM (no rewording).
+- If no homework tasks provided, return homework_tasks = [].
+- student_summary.message: reference what the student studied today, praise effort, mention homework warmly.`;
+
+// ── Interfaces ───────────────────────────────────────────────────────────────
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
 }
+
+// ── Functions ────────────────────────────────────────────────────────────────
 
 export async function callAI(
   messages: ChatMessage[],
@@ -69,5 +200,104 @@ export async function callAI(
   } catch (err) {
     logger.error({ err }, "OpenRouter AI error");
     throw err;
+  }
+}
+
+export async function callAIStructured(
+  messages: ChatMessage[],
+  lessonContext: string
+): Promise<AIStructuredResponse> {
+  const systemWithContext = `${STRUCTURED_SYSTEM_PROMPT}\n\n══════════════════\n${lessonContext}\n══════════════════`;
+
+  const response = await openrouter.chat.completions.create({
+    model: MODEL,
+    max_tokens: 1500,
+    temperature: 0.5,
+    response_format: { type: "json_object" } as { type: "json_object" },
+    messages: [
+      { role: "system", content: systemWithContext },
+      ...messages,
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "{}";
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    logger.error({ err, raw }, "callAIStructured: JSON parse failed");
+    throw new Error(`AI structured response was not valid JSON: ${String(err)}`);
+  }
+
+  try {
+    return aiStructuredResponseSchema.parse(parsed);
+  } catch (err) {
+    logger.error({ err, parsed }, "callAIStructured: Zod validation failed");
+    throw new Error(`AI structured response failed schema validation: ${String(err)}`);
+  }
+}
+
+export interface P6Input {
+  lessonTitle: string;
+  subjectName: string;
+  coreProblem: string | null;
+  coreIdea: string | null;
+  nodePerformanceSummary: string; // brief text describing how the student performed
+  homeworkExercises: {
+    exerciseId: string | null;
+    text: string;
+    difficultyLevel: string | null;
+    sourcePage: string | null;
+  }[];
+}
+
+export async function callAIP6(input: P6Input): Promise<P6Response> {
+  const hwBlock = input.homeworkExercises.length > 0
+    ? `HOMEWORK EXERCISES (copy text VERBATIM into homework_tasks[].text):\n` +
+      input.homeworkExercises.map((e, i) =>
+        `[${i + 1}] id=${e.exerciseId ?? "null"} difficulty=${e.difficultyLevel ?? "?"} page=${e.sourcePage ?? "?"}\n  TEXT: ${e.text}`
+      ).join("\n")
+    : "HOMEWORK EXERCISES: none";
+
+  const context = [
+    `LESSON: «${input.lessonTitle}»`,
+    `SUBJECT: ${input.subjectName}`,
+    input.coreProblem ? `CORE PROBLEM: ${input.coreProblem}` : "",
+    input.coreIdea    ? `CORE IDEA: ${input.coreIdea}`       : "",
+    ``,
+    `STUDENT PERFORMANCE SUMMARY: ${input.nodePerformanceSummary}`,
+    ``,
+    hwBlock,
+  ].filter(Boolean).join("\n");
+
+  const response = await openrouter.chat.completions.create({
+    model: MODEL,
+    max_tokens: 800,
+    temperature: 0.5,
+    response_format: { type: "json_object" } as { type: "json_object" },
+    messages: [
+      { role: "system", content: P6_SYSTEM_PROMPT },
+      { role: "user", content: context },
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "{}";
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    logger.error({ err, raw }, "callAIP6: JSON parse failed");
+    throw new Error(`P6 response was not valid JSON: ${String(err)}`);
+  }
+
+  try {
+    return p6ResponseSchema.parse(parsed);
+  } catch (err) {
+    logger.error({ err, parsed }, "callAIP6: Zod validation failed");
+    throw new Error(`P6 response failed schema validation: ${String(err)}`);
   }
 }

@@ -20,3 +20,4 @@ export * from "./knowledge-edges";
 export * from "./review-schedule";
 export * from "./student-profile";
 export * from "./lesson-nodes";
+export * from "./lesson-exercises";

@@ -1,0 +1,177 @@
+ԽՆԴԻՐ. chat.ts-ի AI-ուսուցչի ամբողջ տրամաբանությունը վերակառուցել, որպեսզի այն
+հավատարիմ լինի մեր Karhanyan AI Learning OS-ի P0-P7 սպեցերի արդյունավետ մասերին
+(P4 վարքային կանոններ, P5 մանկավարժական որոշում, P7 հաջորդ քայլի ձևակերպում,
+P6 դասի ավարտ), բայց cost-ի պատճառով P4/P5/P7-ը միացնել ՄԵԿ model-կանչի մեջ per-turn
+(ոչ թե 3 առանձին կանչ), իսկ P6-ը մնա առանձին կանչ, բայց միայն դասի ավարտին
+(մեկ դասում մեկ անգամ)։ P0-ի ողջ տրամաբանությունը (routing, session state, node
+queue) իրականացվում է ՄԱՔՈՒՐ ԿՈԴՈՎ, ոչ model-կանչով։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — SCHEMA ՓՈՓՈԽՈՒԹՅՈՒՆՆԵՐ
+═══════════════════════════════════════════
+
+1.1. lib/db/src/schema/lesson-nodes.ts-ում ավելացրու node-level progress-tracking
+դաշտեր, որ P0-ի node-queue տրամաբանությունը իրականում ունենա տվյալներ, որոնց
+հիման վրա որոշի.
+  - masteryEvidenceCount: integer, default 0 (քանի MICRO_CHECK/task է եղել այս node-ի վրա)
+  - lastEvidenceQuality: text, nullable ("NONE"|"WEAK"|"MODERATE"|"STRONG"|"CONCLUSIVE")
+  - consecutiveCorrect: integer, default 0
+  - consecutiveIncorrect: integer, default 0
+
+1.2. Ստեղծիր նոր աղյուսակ lesson-exercises.ts (սա P1 STEP 17-ի Textbook Exercise
+Map-ի իրական պահեստավորումն է).
+  export const lessonExercisesTable = pgTable("lesson_exercises", {
+    id: serial("id").primaryKey(),
+    lessonId: integer("lesson_id").notNull().references(() => lessonsTable.id, { onDelete: "cascade" }),
+    exerciseId: text("exercise_id").notNull(),        // օր. "EX-67"
+    sourcePage: text("source_page"),
+    exerciseTextVerbatim: text("exercise_text_verbatim").notNull(), // ԲՆԱԳԻՐ տեքստ, ոչ մի փոփոխություն
+    exercisePurpose: text("exercise_purpose"),         // CONCEPT_DISCOVERY | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | ...
+    relatedNodeId: integer("related_node_id").references(() => lessonNodesTable.id),
+    successCriteria: text("success_criteria"),
+    difficultyLevel: text("difficulty_level"),          // LOW | MEDIUM | HIGH
+    assignment: text("assignment"),                     // CLASS | HOMEWORK
+    sequence: integer("sequence").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+Ավելացրու lesson-exercises.ts-ը schema/index.ts export-ների մեջ։
+Գործարկիր drizzle migration-ը (db:generate + db:push, ինչպես նախկինում ես արել)։
+
+1.3. lib/db/src/schema/lesson-sessions.ts-ում ավելացրու.
+  - nodeAttemptCount: integer, default 0 (քանի փորձ է եղել ընթացիկ node-ի վրա, safety cap-ի համար)
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — lesson-mapping.ts-ի ուղղում (P1 STEP 17)
+═══════════════════════════════════════════
+
+Հիմա practicalTasks-ը lessons.practical_tasks jsonb column-ում է, և prompt-ը
+միայն ասում է "prefer real textbook exercises over invented ones" — սա թույլ
+պահանջ է։ Փոխարինիր հետևյալով.
+
+2.1. lesson-mapping.ts-ի prompt-ում ավելացրու հստակ պահանջ.
+"Յուրաքանչյուր practicalTask-ի համար, եթե այն դասագրքից է, exerciseTextVerbatim
+դաշտում տուր ԲԱՌ ԱՌ ԲԱՌ դասագրքի բնագիր տեքստը (ոչ մի թիվ, ոչ մի բառ չփոխես) և
+sourcePage-ը։ Եթե վարժությունը քո ստեղծած է (ոչ դասագրքից), exerciseTextVerbatim-ը
+դատարկ թող, և exercisePurpose = 'AI_ADAPTED': նշիր հստակ։ Յուրաքանչյուր tas-ի
+համար նաև տուր exercisePurpose-ը հետևյալ ցանկից. CONCEPT_DISCOVERY,
+RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE,
+PROBLEM_SOLVING, REVIEW, ASSESSMENT: relatedNodeTitle-ը պիտի ճշգրիտ համընկնի
+node-երից մեկի title-ի հետ (ինչպես արդեն կա)."
+
+2.2. Երբ lesson-mapping.ts-ը insert է անում practicalTasks-ը, զուգահեռաբար
+insert արա lessonExercisesTable-ում (նույն տվյալները structured ձևով, exercise_id
+generate արա որպես "EX-{lessonId}-{sequence}").
+
+═══════════════════════════════════════════
+ՄԱՍ 3 — chat.ts-ի ամբողջական վերակառուցում
+═══════════════════════════════════════════
+
+3.1. ՆՈՐ single structured-output model-կանչ (P4+P5+P7 միասին, մեկ կանչով)
+
+Փոխարինիր rawAiResponse-ի string-parsing մոտեցումը (###EVAL:### tag) մեկ
+JSON-output կանչով, որ callAI-ից պահանջում ես (function calling կամ
+response_format json_schema, եթե OpenRouter/DeepSeek-ը թույլ է տալիս, հակառակ
+դեպքում խիստ պահանջիր JSON-only output prompt-ում).
+
+{
+  "student_message": string,           // սա է P7-ի ելքը, ցուցադրվում է ուսանողին
+  "progress_indicator": {
+    "current_node_name": string,
+    "step": number,
+    "total_steps": number,             // = node-երի քանակը այս դասում
+    "completed_nodes": number,
+    "total_nodes": number
+  },
+  "teaching_mode": "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION",
+  "is_micro_check": boolean,
+  "answer_evaluation": {               // սա է P5-ի decision-ը, ՄԻԱՅՆ եթե ուսանողը հենց նոր պատասխանել է
+    "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "NOT_APPLICABLE",
+    "evidence_quality": "NONE" | "WEAK" | "MODERATE" | "STRONG",
+    "error_family": string | null
+  },
+  "node_decision": {
+    "action": "CONTINUE_SAME_NODE" | "COMPLETE_NODE" | "REPAIR",
+    "reason": string
+  },
+  "source_fidelity": {
+    "type": "SOURCE_EXACT" | "SOURCE_PARAPHRASED" | "AI_ADAPTED" | "AI_GENERATED",
+    "exercise_id": string | null
+  }
+}
+
+Prompt-ի մեջ, ինչպես նախկինում, մուտքագրիր ՆԵՐԿԱ node-ի childFriendlyExplanation/
+basicExamples/commonMisconception-ը, ԲԱՅՑ ՀԻՄԱ ՆԱԵՎ.
+  - Այս node-ին կապված lessonExercisesTable-ի տողերը (exerciseTextVerbatim-ը,
+    եթե կա) — հստակ ասա մոդելին. "եթե exerciseTextVerbatim-ը լցված է,
+    օգտագործիր ԲԱՌ ԱՌ ԲԱՌ, մի փոփոխես ոչ մի թիվ, ավելացրու (Էջ X, վարժ. Y)"
+  - TEACH → MICRO_CHECK ցիկլի հստակ հրահանգ (P4 §11). ամեն նոր տեսության
+    հատվածից անմիջապես հետո՝ 1-2 հարց, ≤25 բառ, նախքան հաջորդ tas/exercise-ին անցնելը
+  - Progress Indicator-ի հաշվարկման տվյալները (քանի node է ընդհանուր
+    այս դասում, քանիսն են completed_node_ids-ում)
+  - MICRO_CHECK-ի հատուկ գնահատման կանոն (P5 §17.13). CORRECT → evidence_quality
+    = MODERATE (ոչ STRONG), երբեք մի առաջարկիր node_decision.action =
+    COMPLETE_NODE միայն մեկ MICRO_CHECK-ի հիման վրա. դրա համար պետք է առնվազն
+    մեկ STRONG-mastery practicalTask/exercise լուծված լինի
+
+3.2. ՆՈՐ. node-ի ինքնաշխարժ առաջընթաց (կոդով, ոչ model-կանչով — սա P0-ի դերն է)
+
+Ուսանողի պատասխանից հետո, callAI-ի structured output-ը ստանալուց հետո.
+
+  a) Թարմացրու lessonNodesTable-ի/lessonSessionsTable-ի tracking դաշտերը՝
+     ըստ answer_evaluation.status-ի (consecutiveCorrect++, կամ reset to 0,
+     masteryEvidenceCount++ եթե evidence_quality != NONE)
+
+  b) Ստուգիր model-ի node_decision.action-ը ԵՎ անկախ դրանից, կոդով ստուգիր
+     հետևյալ pragmatic gate (սա P6-ի Core Node Outcome կանոնի պարզեցումն է).
+       նվազագույնը 2 STRONG-quality evidence այս node-ի վրա (ոչ միայն MICRO_CHECK)
+       ԵՎ consecutiveIncorrect < 2 վերջին փորձերում
+     → եթե բավարարված է, կանչիր (ներքին ֆունկցիա, ոչ HTTP endpoint) այն նույն
+       տրամաբանությունը, ինչ հիմա lessons.ts routes.ts-ի /advance-node-ն ունի.
+       currentNodeId = հաջորդ sequence-ով node, կամ null եթե վերջինն էր
+     → resetացրու nodeAttemptCount, consecutiveCorrect/Incorrect, masteryEvidenceCount
+
+  c) ԱՆՎՏԱՆԳՈՒԹՅԱՆ CAP. եթե nodeAttemptCount > 6 այս node-ի վրա և դեռ
+     չենք հասել shrïktun-ին, ինքնաշխարժ advance արա node-ը REVIEW_NEEDED
+     նշումով (փոխարեն anվերջ կպչելու)՝ սա ուղղակի կիրառում է P6-ի
+     "REVIEW_NEEDED" outcome-ը, առանց ամբողջ P6 կանչի սպասելու
+
+  d) Երբ currentNodeId → null (բոլոր node-երն սպառված են), ավտոմատ
+     փոխանցիր session-ը «ready for macro-phase-advance» վիճակի (ոչ մի
+     UI-ից կախված բան), որ գործող advance-phase-ի gate-ը հիմա հաստատ անցնի
+
+3.3. Ջնջիր (deprecate) rawAiResponse-ի string-parsing (###EVAL:### regex-ը)
+ամբողջությամբ, փոխարինիր structured output-ի validation-ով (Zod schema)։
+
+3.4. Ջնջիր buildPhaseInstruction-ի Phase 2/3 case-երի մեջ եղած "3-4 քայլանոց
+teoria→harc→varzhutun" կոպիտ հրահանգները. փոխարինիր TEACH→MICRO_CHECK→
+(CONTINUE|REPAIR) ցիկլով, ինչպես P4 §11-ում է նկարագրված։
+
+═══════════════════════════════════════════
+ՄԱՍ 4 — P6-ի իրական կանչ դասի ավարտին (Phase 4-ի փոխարեն)
+═══════════════════════════════════════════
+
+4.1. Երբ currentNodeId=null ԵՎ ուսանողը հասել է Phase 3/4-ի ավարտին (կամ
+ժամանակը սպառվել է), կատարիր ԱՌԱՆՁԻՆ model-կանչ (սա P6 է) որ ստանա.
+  - completion_status (COMPLETED | PARTIALLY_COMPLETED, ըստ P6 §7-ի 60%
+    threshold-ի, հաշվի առնելով lessonExercisesTable-ի arddունքները)
+  - homework tasks (lessonExercisesTable-ից assignment=HOMEWORK, exact
+    verbatim տեքստով, ոչ նոր հորինված)
+  - student_summary.message (ջերմ ամփոփում)
+Սա մեկ կանչ մեկ դասում — cost-ի վրա աննշան ազդեցություն։
+
+═══════════════════════════════════════════
+ՄԱՍ 5 — Frontend-ի մաքրում
+═══════════════════════════════════════════
+
+5.1. lesson-page.tsx-ից ջնջիր useAdvanceLessonPhase-ի ձեռքով-սեղմվող
+gate-ը Phase 2→3-ի համար (քանի որ հիմա currentNodeId=null-ը ինքնաշխարժ
+azdak է, որ պատրաստ է). Advance-Phase կոճակը կարող է մնալ Phase 3→4-ի
+համար (Final Assessment-ից հետո), բայց ոչ node-կախյալ mastery-gate-ով,
+քանի որ node-ի mastery-ն արդեն ստուգված է եղել ավտոմատ (Մաս 3.2)-ում։
+
+5.2. Progress Indicator-ը (📍 node անուն | Քայլ X/Y | ✅ Z/N) ցուցադրիր
+chat-ի յուրաքանչյուր հաղորդագրության վերևում, ինչպես model-ի progress_indicator
+դաշտն է վերադարձնում։
+
+Սա ավարտելուց հետո, խնդրում եմ պատրաստիր summary, թե ինչ ֆայլեր փոխվեցին,
+և արդյոք migration-ը հաջողությամբ գործարկվեց։

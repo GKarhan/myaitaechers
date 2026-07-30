@@ -1,261 +1,122 @@
 import { Router } from "express";
-import { db, chatMessagesTable, lessonsTable, lessonSessionsTable, evidenceEventsTable, knowledgeNodesTable, lessonNodesTable } from "@workspace/db";
+import {
+  db, chatMessagesTable, lessonsTable, lessonSessionsTable,
+  evidenceEventsTable, knowledgeNodesTable, lessonNodesTable, lessonExercisesTable,
+} from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-import { callAI, type ChatMessage } from "../services/ai";
+import {
+  callAI, callAIStructured,
+  type ChatMessage, type AIStructuredResponse, type ProgressIndicator,
+} from "../services/ai";
 import { updateTopicScoring } from "../services/scoring";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
 
 const router = Router();
 
-// ─────────────────────────────────────────────
-//   4-ՓՈՒԼԱՅԻՆ ԴԱՍԻ ԿԱՌՈՒՑՎԱԾՔ
-//
-//   Փուլ 1 — Կրկնություն (Նախորդ դասի կրկնություն)
-//     3–5 միավոր հարց, մեկը մյուսի հետևից → յուրացման %
-//
-//   Փուլ 2 — Նոր դաս / Հիմնական (Նոր դաս՝ հիմunqner)
-//     Տեսություն → հarcer → 1-3 varzhutuin → ete chist e → araj
-//
-//   Փուլ 3 — Խorh usumnasiruthun (Xoracvats)
-//     Avar xs xorh tesuthun → 1-3 varzhutuin → liarjek gitelighi stugum → yuracman %
-//
-//   Փouul 4 — Tnain ashxataank (Tnain + avart)
-//     3 makaradakov tnain → jerm hrajeshtiov
-// ─────────────────────────────────────────────
+// ── Phase guidance (compact, replaces the old buildPhaseInstruction) ─────────
 
-type PracticalTask = {
-  task: string;
-  purpose?: string | null;
-  sourcePage?: string | null;
-  difficultyLevel?: "LOW" | "MEDIUM" | "HIGH" | null;
-  successCriteria?: string | null;
-  relatedNodeTitle?: string | null;
-  assignment?: "CLASS" | "HOMEWORK" | null;
-};
-
-type RichNode = {
-  title: string;
-  theoryContent: string | null;
-  targetBloomLevel: number;
-  estimatedMinutes: number;
-  childFriendlyExplanation: string | null;
-  basicExamples: unknown;
-  realLifeExamples: unknown;
-  commonMisconception: string | null;
-  prerequisiteNodes: unknown;
-};
-
-interface PhaseInstructionOptions {
-  phase: number;
-  lessonTitle: string;
-  subjectName: string;
-  coreProblem: string | null;
-  coreIdea: string | null;
-  node: RichNode | null;
-  classTasks: PracticalTask[];
-  homeworkTasks: PracticalTask[];
-}
-
-function toStringArray(val: unknown): string[] {
-  if (!Array.isArray(val)) return [];
-  return val.filter((x): x is string => typeof x === "string");
-}
-
-function buildPhaseInstruction(opts: PhaseInstructionOptions): string {
-  const { phase, lessonTitle, subjectName, coreProblem, coreIdea, node, classTasks, homeworkTasks } = opts;
-
-  const cfeBlock = node?.childFriendlyExplanation
-    ? `\nPROVIDED EXPLANATION (use near-verbatim as your core theory — do not invent a different one):\n${node.childFriendlyExplanation}`
-    : "";
-
-  const basicExamplesArr = toStringArray(node?.basicExamples);
-  const basicExBlock = basicExamplesArr.length > 0
-    ? `\nPROVIDED EXAMPLES (present these as illustrative examples):\n${basicExamplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
-    : "";
-
-  const misconceptionBlock = node?.commonMisconception
-    ? `\nKNOWN MISCONCEPTION (design at least one MCQ distractor option specifically targeting this misconception — do NOT invent a generic wrong answer instead):\n${node.commonMisconception}`
-    : "";
-
-  const realLifeArr = toStringArray(node?.realLifeExamples);
-  const realLifeBlock = realLifeArr.length > 0
-    ? `\nREAL-LIFE EXAMPLES FOR DEEP FRAMING (use these for richer real-world context in Phase 3):\n${realLifeArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
-    : "";
-
-  const classTasksBlock = classTasks.length > 0
-    ? `\nCLASS EXERCISES — present each task text as-is (do NOT invent new exercises):\n${classTasks.map((t, i) => {
-        let line = `${i + 1}. ${t.task}`;
-        if (t.successCriteria) line += `\n   [GRADING CRITERIA — for your internal use only, do NOT show to student]: ${t.successCriteria}`;
-        return line;
-      }).join("\n")}`
-    : "";
-
-  const homeworkBlock = homeworkTasks.length > 0
-    ? `\nHOMEWORK TASKS — present each task text as-is in a friendly closing message:\n${homeworkTasks.map((t, i) => {
-        let line = `${i + 1}. ${t.task}`;
-        if (t.difficultyLevel) line += ` [${t.difficultyLevel}]`;
-        return line;
-      }).join("\n")}`
-    : "";
-
+function buildPhaseGuidance(phase: number, topicName: string, subjectName: string): string {
   switch (phase) {
-
-    // ══════════════════════════════════════════════
     case 1:
-      return `=== ՓՈՒԼ 1 — ԿՐԿՆՈՒԹՅՈՒՆ (Նախորդ դասի կրկնություն) ===
-${coreIdea ? `\nLESSON MASTERY GOAL (use to frame what "mastering this lesson" means if needed): ${coreIdea}` : ""}
+      return `REVIEW PHASE — spaced-repetition review of PREVIOUS ${subjectName} lessons (NOT «${topicName}»).
+Ask 3-5 questions, one at a time. After student answers each → give feedback → next question.
+After all questions, show a brief accuracy summary.
+Use DUE_REVIEWS topics (if listed above) as priority targets.`;
 
-ԿԱՆՈՆՆԵՐ — կատարելու համար խստագույն հետողականությամբ.
-
-▸ ԸՆDHANUR: 3-ից 5 հarcer (eluneliv karoughutunits, 3-ë lav e)
-▸ MEK-MEK: Mek harc → spacir pataskhanits → karcik (feedback) → hajordë harc
-▸ TEMA: Hamapatasxan ${subjectName}-i NAXORDATS DASERIT` + ` (vorn vor chë arrach "«${lessonTitle}»" dasn e)
-▸ DZEVACHAP (XSTRAGUYNS HETEVOLUTHIAMB):
-
-HARC [N]։ [Harc hayerën?]
-1) [Tarberakat A]
-2) [Tarberakat B]
-3) [Tarberakat G]
-
-ARRACH PATASKHANË PETK E PARUNAKI:
-1. Mek jerm barevortskakan naxadasouthun (1 togh)
-2. Anmijabarar HARC 1-ë verevum gratz dzevachapov
-
-AMBOGJ KRKNOUTUNE AVARTVOUM E AYSPEC:
-▸ Chist pataskhanits het. "✓ Chist e. [Karch batsatroutun]" → hajord harc
-▸ Sxal pataskhanits het. "✗ Voch chist e. Chist pataskhanë [N]-n er — [batsatroutun]" → hajord harc
-
-VERJIN GROUM (ambogj 3-5 harc avartveluts het):
----
-📊 Naxordats dasi krknouthyan ardunknerë.
-
-Chist pataskhannerë: [X]-its [YNDAMENE] ([PERCENT]%)
-
-[Ete ≥ 70%]:
-Hrashali e. Naxordats temayë lav es yuracrel. Ancnoum enk nor dasi.
-
-[Ete < 70%]:
-Avar lav kliner naxordats temayë krkin verhetel, bayc aysor el kanqcnenk nor dasi.
----
-
-MATIMATIKAL DZEVACHA: MIAYNS Yunilod — 2³, 5², ×, ÷, √ (VOCH LaTeX \\( \\) kam \\[ \\])
-LEZOU: MIAYNS HAYEREN`;
-
-    // ══════════════════════════════════════════════
     case 2:
-      return `=== ՓOUUL 2 — NOR DAS. HIMNAKAN MASER ===${cfeBlock}${basicExBlock}${misconceptionBlock}
+      return `TEACHING PHASE — strict TEACH → MICRO_CHECK cycle (P4 §11):
+Step 1. Present ONE concept from APPROVED_EXPLANATION above (2-3 sentences, plain language).
+Step 2. Immediately ask ONE MICRO_CHECK question about that concept (≤25 words).
+Step 3. Wait for student answer → FEEDBACK (correct/guide) → next concept or exercise.
+Step 4. After concepts are taught, present CLASS EXERCISES above (VERBATIM if exerciseTextVerbatim is non-empty).
+Step 5. Do NOT present a new exercise until student demonstrates understanding of the current one.
+NEVER give the answer directly — always hint and guide.`;
 
-DOU OUCUCHICH ES — nerkayacnoum es nor nyute qayl arr qayl.
-
-AKNKALVATS KARUCVACTSE katarel (3 qayl).
-
-── QAYL A. TEORIA ──
-Nerkayacru «${lessonTitle}» dasi HIMNAKAN gacapare — 3-4 karch naxadasouthun.
-${node?.childFriendlyExplanation
-  ? `USE THE PROVIDED EXPLANATION above near-verbatim as your core theory — this is the approved child-friendly explanation for this node.`
-  : `Ogtagorcer dasagrkits lezoun, hayerën:\n- Sovorouthunë kirarrelits amenaparsov\n- Irakanoum kyanqits orinakerits\n- Kapë kyanqi haraberutunnerit het`}
-${basicExamplesArr.length > 0
-  ? `Present the PROVIDED EXAMPLES above as your illustrative examples — do not invent different ones.`
-  : `Ogtagorcer irakan kyanqits orinakerits (hayerën)`}
-
-── QAYL B. BAZMAKIN YNRUTOUTIAM HARC (MCQ) ──
-Teorian nerkayacneluts het tur MIAYNS MEK HARC 1) 2) 3) dzevacha.${misconceptionBlock ? `\nIMPORTANT: Design at least one distractor option that targets the KNOWN MISCONCEPTION listed above — this makes wrong-answer feedback meaningful.` : ""}
-HARC [N]։ [Teoriayi masits harc?]
-1) ...    2) ...    3) ...
-
-Spacir pataskhanis → chist/sxal karcik (feedback) → hajord teorian kam harce
-
-── QAYL G. VARZHOUTIUNNER ──
-${classTasks.length > 0
-  ? `Use the CLASS EXERCISES listed above. Present them one at a time. Do NOT invent new exercises.
-VARZH [N]։ [Task text from CLASS EXERCISES]
-When evaluating the student's answer, use the GRADING CRITERIA (if provided for that task) as ground truth — do not show it to the student.`
-  : `1-3 varzhoutun (parsits → bardin).
-Tur MEK VARZHOUTUN — spacir pataskhanis.
-VARZH [N]։ [Varzhoutun hayerën]
-Oughghordir, minchev gtni patasxan.
-Ete ashakerte inknourinoum e luzum — xrahasuri.
-Ete dzhvaranoum e — oghni karch oughghordumov, mi tur patrastë pataskhanë.`}
-
-AVARTVOUM E AYSPEC (bazhin bayc yuracneluts het):
----
-✅ Himnakan masë yuracvel e [PERCENT]%-ov.
-
-[Ete ≥ 70%]: Hrashali e. Ancnoum enk «${lessonTitle}»-i xorë usumnasiruthian.
-[Ete < 70%]: Ekek mi pokr el krnkenk, heto kanqcnenk arrach.
----
-
-MATIMATIKAL DZEVACHA: MIAYNS Yunilod — 2³, ×, ÷, √. VOCH LaTeX.
-LEZOU: MIAYNS HAYEREN`;
-
-    // ══════════════════════════════════════════════
     case 3:
-      return `=== PHUL 3 — XORACVATS OUCUCUM + AMBOGJ STUGUM ===${realLifeBlock}${classTasksBlock}
+      return `DEEP STUDY PHASE — apply concepts to complex scenarios:
+Use REAL_LIFE_EXAMPLES (if provided above) to frame exercises in real-world context.
+Present CLASS EXERCISES (higher difficulty levels preferred).
+Challenge the student with Bloom level 3-4 tasks (Apply, Analyze).
+Socratic method: ask questions that lead the student to discover answers themselves.`;
 
-MAS A — XORË TEORIA.
-Nerkayacru «${lessonTitle}»-i XORACVATS aspektnerë — 3-4 karch naxadasouthun.
-${realLifeArr.length > 0
-  ? `Use the REAL-LIFE EXAMPLES above to anchor the deeper theory in real-world context — build the "deeper" framing around them.`
-  : `Nerarel bardzrakarg orinakerits, kaperi ayl temanerits het.`}
-
-MAS B — VARZHOUTIUNNER (1–3 hat).
-${classTasks.length > 0
-  ? `Use the CLASS EXERCISES listed in CLASS EXERCISES above. Present them one at a time, in order (simple → complex). Do NOT invent new exercises.
-VARZH [N]։ [Task text from CLASS EXERCISES]
-When checking the student's answer compare it against the GRADING CRITERIA (if provided) as ground truth — do NOT show criteria to the student. Guide with hints if struggling.`
-  : `Tur ëst herrakanoutiun parsits → midjin → bard.
-VARZH [N]։ [Varzhoutun]
-Oughghordir, minchev gtni. Ete dzhvaranoum e — tur hushov harc.`}
-
-MAS G — AMBOGJ STUGUM.
-Verjum 3–5 harc AMBOGJ TEMATIKAL «${lessonTitle}»-its.
-Blumi makaradaknerë 1-its minchev 4 (hishtarrel, haskarnel, kirarrrel, verlucel):
-HARC [N]։ [Ambogj harc 1) 2) 3) dzevacha]
-
-AVARTVOUM E (ambogj stugumë avartveluts het):
----
-🎓 Dasi ambogj stugumë.
-
-✓ Chist pataskhannerë: [X]-its [YNDAMENE] ([PERCENT]%)
-
-[Ete ≥ 80%]: ⭐ Hrashali e. «${lessonTitle}» temayë gerazanch e yuracvel.
-[Ete ≥ 60%]: 👍 Lav meknark. Sharounakarir mi pokr el.
-[Ete < 60%]: 💪 Ays temayë harkavor e verhetel u krnkel.
-
-Ancnoum enk tnain handnararoutian.
----
-
-MATIMATIKAL DZEVACHA: MIAYNS Yunilod. LEZOU: MIAYNS HAYEREN`;
-
-    // ══════════════════════════════════════════════
     case 4:
-      return `=== PHUL 4 — TNAIN HANDNARARAROUTUN + AVART ===${homeworkBlock}
-
-${homeworkTasks.length > 0
-  ? `Present the HOMEWORK TASKS listed above as the actual homework in a friendly closing message — do NOT invent different exercises.
-For each task, present its text clearly and warmly. You may add a brief encouraging note before or after each task if appropriate.
-After presenting all tasks, close with a warm farewell, thanks, and encouragement for the next lesson.`
-  : `Patrastrel EREK makaradaki tnain ashxataank. Ashakertë yntroum e.
-
-⭐ HIMNAKAN (Blum 1–2):
-[2-3 himnakan haskacoutiunneris varzhoutun]
-
-⭐⭐ HAVELIAL (Blum 3–4):
-[1-2 varzhoutun kirarroumov u batsatroutambë]
-
-⭐⭐⭐ STEGHCAGORTSKAKAN (Blum 5–6):
-[1 steghcagortskakan hnaravorouthun kyanqits]
-
-Dasë avartel jerm hrajeshtov, shnorhakalonutiunnerov u qajalerankits hajord dasi hamar.`}
-
-LEZOU: MIAYNS HAYEREN`;
+      return `HOMEWORK PRESENTATION PHASE:
+Present the student's homework assignment warmly and clearly.
+Use verbatim exercise texts if available. Briefly explain why each task matters.
+Close the session with warm encouragement for the next lesson.`;
 
     default:
-      return `Oughghordiru ashakertine «${lessonTitle}» temain kapvats ${subjectName}-i masnagitoambë. MIAYNS HAYEREN.`;
+      return `Guide the student through «${topicName}» in ${subjectName}. Armenian only.`;
   }
 }
+
+// ── P0: Advance session to next node (or auto-advance phase when exhausted) ──
+
+async function advanceNodeInSession(
+  sessionId: number,
+  lessonId: number,
+  currentNodeId: number,
+  currentPhase: number,
+  reviewNeeded: boolean
+): Promise<{ newNodeId: number | null; newPhase: number; allNodesDone: boolean }> {
+  const [currentNode] = await db
+    .select({ sequence: lessonNodesTable.sequence })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, currentNodeId))
+    .limit(1);
+
+  if (!currentNode) {
+    return { newNodeId: null, newPhase: currentPhase, allNodesDone: true };
+  }
+
+  const [nextNode] = await db
+    .select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(
+      and(
+        eq(lessonNodesTable.lessonId, lessonId),
+        eq(lessonNodesTable.sequence, currentNode.sequence + 1)
+      )
+    )
+    .limit(1);
+
+  // Reset mastery tracking on the completed node
+  await db
+    .update(lessonNodesTable)
+    .set({
+      masteryEvidenceCount: 0,
+      consecutiveCorrect:   0,
+      consecutiveIncorrect: 0,
+      lastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
+    })
+    .where(eq(lessonNodesTable.id, currentNodeId));
+
+  const allNodesDone = !nextNode;
+  let newPhase = currentPhase;
+  let newNodeId: number | null = nextNode?.id ?? null;
+
+  // Phase 2 → 3 auto-advance when the last node is done
+  if (allNodesDone && currentPhase === 2) {
+    newPhase = 3;
+    newNodeId = null;
+  }
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      currentNodeId: newNodeId,
+      nodeStartedAt: newNodeId ? new Date() : null,
+      nodeAttemptCount: 0,
+      currentPhase: newPhase,
+    })
+    .where(eq(lessonSessionsTable.id, sessionId));
+
+  return { newNodeId, newPhase, allNodesDone };
+}
+
+// ── POST /chat ────────────────────────────────────────────────────────────────
 
 router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   const { message, lessonId } = req.body as { message: string; lessonId?: number };
@@ -266,117 +127,187 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   }
 
   const userMessageAt = Date.now();
-  let lessonContext: string | undefined;
   let sessionId: number | null = null;
   let topicId: number | null = null;
+  let teachingMode = "TEACH";
+
+  let lessonContext = "";
+  let topicName = "";
+  let progressIndicator: ProgressIndicator = {
+    current_node_name: "",
+    step: 0,
+    total_steps: 0,
+    completed_nodes: 0,
+    total_nodes: 0,
+  };
+
+  type SessionRef = { id: number; currentPhase: number; currentNodeId: number | null; status: string };
+  let session: SessionRef | null = null;
+
+  type NodeRef = {
+    id: number; title: string; theoryContent: string | null;
+    targetBloomLevel: number; estimatedMinutes: number;
+    childFriendlyExplanation: string | null;
+    basicExamples: unknown; realLifeExamples: unknown;
+    commonMisconception: string | null; prerequisiteNodes: unknown;
+  };
+  let currentNodeRecord: NodeRef | null = null;
 
   if (lessonId) {
-    const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    const [lesson] = await db
+      .select()
+      .from(lessonsTable)
+      .where(eq(lessonsTable.id, lessonId))
+      .limit(1);
+
     if (lesson) {
-      const [session] = await db
+      const [sessionRow] = await db
         .select()
         .from(lessonSessionsTable)
         .where(and(eq(lessonSessionsTable.lessonId, lessonId), eq(lessonSessionsTable.userId, req.userId!)))
         .limit(1);
 
-      sessionId = session?.id ?? null;
-      const phase = session?.currentPhase ?? 1;
-      const subjectName = (lesson as { subjectName?: string }).subjectName ?? "Subject";
+      if (sessionRow) {
+        session = {
+          id: sessionRow.id,
+          currentPhase: sessionRow.currentPhase,
+          currentNodeId: sessionRow.currentNodeId ?? null,
+          status: sessionRow.status,
+        };
+        sessionId = sessionRow.id;
+      }
 
-      // Extract lesson-level enrichment fields
-      const coreProblem = (lesson as { coreProblem?: string | null }).coreProblem ?? null;
-      const coreIdea   = (lesson as { coreIdea?: string | null }).coreIdea ?? null;
-      const rawTasks   = (lesson as { practicalTasks?: unknown }).practicalTasks;
-      const allTasks: PracticalTask[] = Array.isArray(rawTasks) ? (rawTasks as PracticalTask[]) : [];
+      const phase        = session?.currentPhase ?? 1;
+      const subjectName  = (lesson as { subjectName?: string }).subjectName ?? "Subject";
+      const coreProblem  = (lesson as { coreProblem?: string | null }).coreProblem ?? null;
+      const coreIdea     = (lesson as { coreIdea?: string | null }).coreIdea ?? null;
 
-      // Split tasks: CLASS (default) vs HOMEWORK
-      const classTasks    = allTasks.filter((t) => t.assignment !== "HOMEWORK");
-      const homeworkTasks = allTasks.filter((t) => t.assignment === "HOMEWORK");
+      // All nodes for this lesson (for progress computation)
+      const allNodes = await db
+        .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
+        .from(lessonNodesTable)
+        .where(eq(lessonNodesTable.lessonId, lessonId))
+        .orderBy(asc(lessonNodesTable.sequence));
 
-      // If this session is working through lesson_nodes, use the CURRENT
-      // node's title/theory/bloom level instead of the whole lesson's —
-      // this is what lets mastery be tracked per sub-topic. Lessons with
-      // no nodes yet fall back to the old whole-lesson behavior unchanged.
-      let currentNode: RichNode | null = null;
+      const totalNodes      = allNodes.length;
+      const currentNodeEntry = allNodes.find((n) => n.id === session?.currentNodeId);
+      const currentNodeSeq   = currentNodeEntry?.sequence ?? (totalNodes + 1);
+      const completedNodes   = session?.currentNodeId != null ? currentNodeSeq - 1 : totalNodes;
+
+      // Rich node data for the current node
       if (session?.currentNodeId) {
-        const [node] = await db
+        const [nodeRow] = await db
           .select({
-            title:                    lessonNodesTable.title,
-            theoryContent:            lessonNodesTable.theoryContent,
-            targetBloomLevel:         lessonNodesTable.targetBloomLevel,
-            estimatedMinutes:         lessonNodesTable.estimatedMinutes,
+            id: lessonNodesTable.id, title: lessonNodesTable.title,
+            theoryContent: lessonNodesTable.theoryContent,
+            targetBloomLevel: lessonNodesTable.targetBloomLevel,
+            estimatedMinutes: lessonNodesTable.estimatedMinutes,
             childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
-            basicExamples:            lessonNodesTable.basicExamples,
-            realLifeExamples:         lessonNodesTable.realLifeExamples,
-            commonMisconception:      lessonNodesTable.commonMisconception,
-            prerequisiteNodes:        lessonNodesTable.prerequisiteNodes,
+            basicExamples: lessonNodesTable.basicExamples,
+            realLifeExamples: lessonNodesTable.realLifeExamples,
+            commonMisconception: lessonNodesTable.commonMisconception,
+            prerequisiteNodes: lessonNodesTable.prerequisiteNodes,
           })
           .from(lessonNodesTable)
           .where(eq(lessonNodesTable.id, session.currentNodeId))
           .limit(1);
-        currentNode = node ?? null;
+        currentNodeRecord = nodeRow ?? null;
       }
 
-      const topicName    = currentNode?.title ?? lesson.title;
-      const topicContent = currentNode?.theoryContent ?? lesson.content;
+      topicName = currentNodeRecord?.title ?? lesson.title;
 
-      // Phase 1 is the review phase — prioritize topics that are actually
-      // due for spaced-repetition review, instead of reviewing vaguely.
+      progressIndicator = {
+        current_node_name: topicName,
+        step:            Math.min(currentNodeSeq, Math.max(totalNodes, 1)),
+        total_steps:     totalNodes,
+        completed_nodes: completedNodes,
+        total_nodes:     totalNodes,
+      };
+
+      // Class exercises for the current node
+      const classExercises = session?.currentNodeId
+        ? await db
+            .select()
+            .from(lessonExercisesTable)
+            .where(
+              and(
+                eq(lessonExercisesTable.relatedNodeId, session.currentNodeId),
+                eq(lessonExercisesTable.assignment, "CLASS")
+              )
+            )
+            .orderBy(asc(lessonExercisesTable.sequence))
+        : [];
+
+      // Phase 1: due review topics
       let dueReviewsLine = "";
       if (phase === 1) {
         const dueTopics = await getDueReviewTopics(req.userId!);
         if (dueTopics.length > 0) {
-          dueReviewsLine = `DUE_REVIEWS (prioritize these topics in this review): ${dueTopics
-            .map((t) => t.topicName)
-            .join(", ")}`;
+          dueReviewsLine = `DUE_REVIEWS (priority): ${dueTopics.map((t) => t.topicName).join(", ")}`;
         }
       }
 
-      const nodeLine = currentNode
-        ? `CURRENT NODE: «${currentNode.title}» (target Bloom level: ${currentNode.targetBloomLevel}, estimated ${currentNode.estimatedMinutes} min)`
+      const toStrArr = (v: unknown) =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+      const cfeBlock = currentNodeRecord?.childFriendlyExplanation
+        ? `\nAPPROVED_EXPLANATION (use near-verbatim):\n${currentNodeRecord.childFriendlyExplanation}`
+        : "";
+
+      const examplesArr = toStrArr(currentNodeRecord?.basicExamples);
+      const examplesBlock = examplesArr.length > 0
+        ? `\nBASIC_EXAMPLES:\n${examplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
+        : "";
+
+      const misconceptionBlock = currentNodeRecord?.commonMisconception
+        ? `\nKNOWN_MISCONCEPTION (design MICRO_CHECK distractors around this):\n${currentNodeRecord.commonMisconception}`
+        : "";
+
+      const exBlock = classExercises.length > 0
+        ? `\nCLASS_EXERCISES (use verbatim when exerciseTextVerbatim is non-empty):\n` +
+          classExercises.map((e) =>
+            `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
+            `  VERBATIM: ${e.exerciseTextVerbatim || "(none — AI may invent)"}\n` +
+            `  successCriteria: ${e.successCriteria ?? ""}`
+          ).join("\n")
         : "";
 
       lessonContext = [
         `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
-        nodeLine,
-        lesson.description ? `DESCRIPTION: ${lesson.description}` : "",
-        coreProblem       ? `CORE_PROBLEM: ${coreProblem}`          : "",
-        coreIdea          ? `CORE_IDEA: ${coreIdea}`                : "",
-        topicContent      ? `TEXTBOOK CONTENT:\n${topicContent}`    : "",
+        currentNodeRecord
+          ? `CURRENT_NODE: «${currentNodeRecord.title}» (Bloom ${currentNodeRecord.targetBloomLevel}, ~${currentNodeRecord.estimatedMinutes} min)`
+          : "",
+        coreProblem ? `CORE_PROBLEM: ${coreProblem}` : "",
+        coreIdea    ? `CORE_IDEA: ${coreIdea}`       : "",
+        `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
+        currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
+        cfeBlock,
+        examplesBlock,
+        misconceptionBlock,
+        exBlock,
         dueReviewsLine,
         ``,
-        buildPhaseInstruction({
-          phase,
-          lessonTitle:  topicName,
-          subjectName,
-          coreProblem,
-          coreIdea,
-          node:         currentNode,
-          classTasks,
-          homeworkTasks,
-        }),
+        `=== PHASE ${phase} GUIDANCE ===`,
+        buildPhaseGuidance(phase, topicName, subjectName),
       ].filter(Boolean).join("\n");
 
-      // Resolve (or create) a knowledge_nodes row for this topic (the
-      // current lesson node if there is one, otherwise the lesson itself).
+      // Ensure a knowledge node row exists for scoring
       try {
-        const [existingNode] = await db
+        const [existingKN] = await db
           .select()
           .from(knowledgeNodesTable)
-          .where(
-            and(
-              eq(knowledgeNodesTable.subjectId, lesson.subjectId),
-              eq(knowledgeNodesTable.userId, req.userId!),
-              eq(knowledgeNodesTable.topicName, topicName)
-            )
-          )
+          .where(and(
+            eq(knowledgeNodesTable.subjectId, lesson.subjectId),
+            eq(knowledgeNodesTable.userId, req.userId!),
+            eq(knowledgeNodesTable.topicName, topicName),
+          ))
           .limit(1);
 
-        if (existingNode) {
-          topicId = existingNode.id;
+        if (existingKN) {
+          topicId = existingKN.id;
         } else {
-          const [newNode] = await db
+          const [newKN] = await db
             .insert(knowledgeNodesTable)
             .values({
               subjectId: lesson.subjectId,
@@ -384,17 +315,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               topicName,
               status: "not_started",
               isProvisional: true,
-              bloomLevel: currentNode?.targetBloomLevel ?? 1,
+              bloomLevel: currentNodeRecord?.targetBloomLevel ?? 1,
             })
             .returning({ id: knowledgeNodesTable.id });
-          topicId = newNode?.id ?? null;
+          topicId = newKN?.id ?? null;
         }
-      } catch (err: unknown) {
+      } catch (err) {
         logger.error({ err }, "knowledge_nodes lookup/create failed");
       }
     }
   }
 
+  // ── Load history ──────────────────────────────────────────────────────────
   const history = await db
     .select()
     .from(chatMessagesTable)
@@ -406,7 +338,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .orderBy(asc(chatMessagesTable.createdAt))
     .limit(30);
 
-  // Compute response time from last assistant message to this user message
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
   const responseTimeMs = lastAssistant
     ? userMessageAt - new Date(lastAssistant.createdAt).getTime()
@@ -424,23 +355,135 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     { role: "user", content: message },
   ];
 
+  // ── Call AI (structured output with fallback) ─────────────────────────────
+  let aiResult: AIStructuredResponse | null = null;
+  let studentMessage: string;
+  let wasCorrect: boolean | null = null;
+
   try {
-    const rawAiResponse = await callAI(chatHistory, lessonContext);
+    aiResult = await callAIStructured(chatHistory, lessonContext);
+    studentMessage = aiResult.student_message;
+    teachingMode = aiResult.teaching_mode;
+    const st = aiResult.answer_evaluation.status;
+    wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
+  } catch (err) {
+    logger.error({ err }, "callAIStructured failed — falling back to callAI");
+    try {
+      studentMessage = await callAI(chatHistory, lessonContext || undefined);
+      // Legacy ###EVAL:### extraction for fallback path
+      const evalMatch = studentMessage.match(/\s*###EVAL:(CORRECT|INCORRECT|NONE)###\s*$/);
+      wasCorrect = evalMatch?.[1] === "CORRECT" ? true : evalMatch?.[1] === "INCORRECT" ? false : null;
+      if (evalMatch) studentMessage = studentMessage.slice(0, evalMatch.index).trimEnd();
+    } catch (err2) {
+      logger.error({ err: err2 }, "callAI fallback also failed");
+      res.status(503).json({ error: "AI service unavailable" });
+      return;
+    }
+  }
 
-    // Parse the mandatory ###EVAL:CORRECT/INCORRECT/NONE### control tag the
-    // AI is instructed to append, and strip it before showing/saving the
-    // response — the student must never see this technical marker.
-    const evalMatch = rawAiResponse.match(/\s*###EVAL:(CORRECT|INCORRECT|NONE)###\s*$/);
-    const wasCorrect =
-      evalMatch?.[1] === "CORRECT" ? true : evalMatch?.[1] === "INCORRECT" ? false : null;
-    const aiResponse = evalMatch
-      ? rawAiResponse.slice(0, evalMatch.index).trimEnd()
-      : rawAiResponse;
+  // ── P0: Update node tracking & check mastery gate ─────────────────────────
+  if (aiResult && session?.currentNodeId && session.currentPhase >= 2 && lessonId) {
+    const status      = aiResult.answer_evaluation.status;
+    const quality     = aiResult.answer_evaluation.evidence_quality;
+    const isCorrect   = status === "CORRECT" || status === "PARTIALLY_CORRECT";
+    const isIncorrect = status === "INCORRECT";
+    const wasEval     = status !== "NOT_APPLICABLE";
 
-    // Record evidence for this student answer now that we know whether it
-    // was actually correct, then refresh this topic's scoring (mastery/
-    // confidence/retention) from the accumulated evidence.
-    db.insert(evidenceEventsTable).values({
+    if (wasEval) {
+      // Read current node tracking values
+      const [nodeStats] = await db
+        .select({
+          masteryEvidenceCount: lessonNodesTable.masteryEvidenceCount,
+          consecutiveCorrect:   lessonNodesTable.consecutiveCorrect,
+          consecutiveIncorrect: lessonNodesTable.consecutiveIncorrect,
+        })
+        .from(lessonNodesTable)
+        .where(eq(lessonNodesTable.id, session.currentNodeId))
+        .limit(1);
+
+      const prevMastery  = nodeStats?.masteryEvidenceCount ?? 0;
+      const prevCC       = nodeStats?.consecutiveCorrect   ?? 0;
+      const prevCI       = nodeStats?.consecutiveIncorrect ?? 0;
+
+      const newMasteryCount    = prevMastery + (quality !== "NONE" ? 1 : 0);
+      const newConsecCorrect   = isCorrect   ? prevCC + 1 : isIncorrect ? 0 : prevCC;
+      const newConsecIncorrect = isIncorrect ? prevCI + 1 : isCorrect   ? 0 : prevCI;
+
+      await db
+        .update(lessonNodesTable)
+        .set({
+          masteryEvidenceCount: newMasteryCount,
+          lastEvidenceQuality:  quality,
+          consecutiveCorrect:   newConsecCorrect,
+          consecutiveIncorrect: newConsecIncorrect,
+        })
+        .where(eq(lessonNodesTable.id, session.currentNodeId));
+
+      // Increment session nodeAttemptCount
+      const [sessionStats] = await db
+        .select({ nodeAttemptCount: lessonSessionsTable.nodeAttemptCount })
+        .from(lessonSessionsTable)
+        .where(eq(lessonSessionsTable.id, session.id))
+        .limit(1);
+
+      const newAttemptCount = (sessionStats?.nodeAttemptCount ?? 0) + 1;
+
+      await db
+        .update(lessonSessionsTable)
+        .set({ nodeAttemptCount: newAttemptCount })
+        .where(eq(lessonSessionsTable.id, session.id));
+
+      // ── Mastery gate check ───────────────────────────────────────────────
+      const modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE";
+      const codeGate =
+        newMasteryCount >= 2 &&
+        (quality === "STRONG" || quality === "CONCLUSIVE") &&
+        newConsecIncorrect < 2;
+      const safetyCapHit = newAttemptCount > 6;
+
+      if (safetyCapHit || (modelSaysComplete && codeGate)) {
+        await advanceNodeInSession(
+          session.id,
+          lessonId,
+          session.currentNodeId,
+          session.currentPhase,
+          safetyCapHit
+        );
+
+        // Refresh progress indicator after node advancement
+        const [updSess] = await db
+          .select({ currentNodeId: lessonSessionsTable.currentNodeId })
+          .from(lessonSessionsTable)
+          .where(eq(lessonSessionsTable.id, session.id))
+          .limit(1);
+
+        if (updSess) {
+          const allNodes2 = await db
+            .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence, title: lessonNodesTable.title })
+            .from(lessonNodesTable)
+            .where(eq(lessonNodesTable.lessonId, lessonId))
+            .orderBy(asc(lessonNodesTable.sequence));
+
+          const tn2 = allNodes2.length;
+          const ne2 = allNodes2.find((n) => n.id === updSess.currentNodeId);
+          const seq2 = ne2?.sequence ?? (tn2 + 1);
+          const comp2 = updSess.currentNodeId != null ? seq2 - 1 : tn2;
+
+          progressIndicator = {
+            current_node_name: ne2?.title ?? topicName,
+            step:            Math.min(seq2, Math.max(tn2, 1)),
+            total_steps:     tn2,
+            completed_nodes: comp2,
+            total_nodes:     tn2,
+          };
+        }
+      }
+    }
+  }
+
+  // ── Record evidence event (fire-and-forget) ───────────────────────────────
+  db.insert(evidenceEventsTable)
+    .values({
       userId: req.userId!,
       lessonSessionId: sessionId,
       topicId,
@@ -449,25 +492,31 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       responseTimeMs,
       hintUsed: false,
       metadata: {},
-    }).then(() => {
+    })
+    .then(() => {
       if (topicId !== null) {
         updateTopicScoring(topicId, req.userId!).catch((err: unknown) =>
           logger.error({ err }, "scoring engine update failed")
         );
       }
-    }).catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
+    })
+    .catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
 
-    const [assistantMsg] = await db
-      .insert(chatMessagesTable)
-      .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: aiResponse })
-      .returning();
+  // ── Store assistant message ───────────────────────────────────────────────
+  const [assistantMsg] = await db
+    .insert(chatMessagesTable)
+    .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: studentMessage })
+    .returning();
 
-    res.json({ response: aiResponse, messageId: assistantMsg.id });
-  } catch (err) {
-    logger.error({ err }, "AI chat error");
-    res.status(503).json({ error: err instanceof Error ? err.message : "AI service unavailable" });
-  }
+  res.json({
+    response: studentMessage,
+    messageId: assistantMsg.id,
+    progressIndicator,
+    teachingMode,
+  });
 });
+
+// ── GET /chat/history ─────────────────────────────────────────────────────────
 
 router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = req.query.lessonId ? parseInt(String(req.query.lessonId), 10) : undefined;
@@ -483,7 +532,14 @@ router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {
     .orderBy(asc(chatMessagesTable.createdAt))
     .limit(50);
 
-  res.json(messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt.toISOString() })));
+  res.json(
+    messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      createdAt: m.createdAt.toISOString(),
+    }))
+  );
 });
 
 export default router;

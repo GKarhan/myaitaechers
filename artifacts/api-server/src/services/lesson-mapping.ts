@@ -74,6 +74,9 @@ export interface LessonMappingResult {
   practicalTasks: {
     task: string;
     purpose: string;
+    // P1 STEP 17 — verbatim textbook exercise text and purpose enum
+    exerciseTextVerbatim: string;   // word-for-word from textbook, or "" if AI-invented
+    exercisePurpose: string;        // CONCEPT_DISCOVERY | RULE_DISCOVERY | WORKED_EXAMPLE | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | PROBLEM_SOLVING | REVIEW | ASSESSMENT | AI_ADAPTED
     sourcePage: string | null;
     difficultyLevel: "LOW" | "MEDIUM" | "HIGH";
     successCriteria: string;
@@ -84,26 +87,24 @@ export interface LessonMappingResult {
 
 const SYSTEM_PROMPT = `Դու կրթական բովանդակության վերլուծաբան ես (հիմնված P1 — Lesson Knowledge Package Generator սկզբունքների վրա)։ Քո խնդիրն է վերլուծել դասագրքի կոնկրետ դասի իրական տեքստը և կառուցել դասի քարտեզագրում։
 
-ԱՇԽԱՏԱՆՔԻ ՀԱՋՈՐԴԱԿԱՆՈՒԹՅՈՒՆԸ.
-(1) ՆПАТАК / ВЕРДЖNАРDUYNKНЕР — if the user message contains a teacher draft (see labels below), refine those against the real textbook text rather than inventing from scratch; if absent, derive from the text.
+ԱՇԽԱՏԱՆQԻ ՀԱJОРДАKАNUTIUNA.
+(1) NPATAК / VERJNАRDIUNKNЕR — if the user message contains a teacher draft (see labels below), refine those against the real textbook text rather than inventing from scratch; if absent, derive from the text.
 (2) coreProblem — identify the essential question or problem this lesson answers (one sentence).
 (3) coreIdea — formulate ONE central idea that directly answers coreProblem.
 (4) nodes — break coreIdea into knowledge nodes as described below; each node must serve coreIdea.
 (5) practicalTasks — propose 2-5 tasks reinforcing the theory; prefer real textbook exercises over invented ones.
 
-ԿARЕWWOR СКЗБUNKERY. Node-ery (enthathemanerr) chen karog liner patahakan enthababazhanumnner. Amen node piti hstakores tsarayutsi coreIdea-in.
-
-Պատասխանիր ԲԱՑԱՌԱՊԵՍ վավեր JSON-ով, ոչինչ ավելին (ոչ մեկնաբանություն, ոչ markdown code fence), ուղիղ այս կառուցվածքով.
+Пataskhanir BАCАRRАРES vaver JSON-ov, vochinch avaelin (voch meknabanutiun, voch markdown code fence), ughin ays karrucvackov.
 
 {
-  "lessonGoal": "Դասի նպատակը, 1-2 նախադասությամբ",
-  "lessonOutcomes": ["Վերջնարդյունք 1", "Վերջնարդյունք 2", "..."],
+  "lessonGoal": "Dasi npatakë, 1-2 nakhadas.",
+  "lessonOutcomes": ["Verjnardiunq 1", "Verjnardiunq 2", "..."],
   "coreProblem": "The essential question this lesson answers (one sentence in Armenian)",
-  "coreIdea": "Դասի կենտրոնական գաղափարը/հիմնախնդիրը, հստակ ձևակերպված",
+  "coreIdea": "Dasi kentronakan gaghaparë, hstakats jevakerpvac",
   "nodes": [
     {
-      "title": "Ենթաթեմայի կարճ վերնագիր",
-      "theoryContent": "Այս ենթաթեմայի տեսական բովանդակությունը՝ բխեցված իրական դասագրքի տեքստից, և բացատրություն, թե ինչպես է այն ծառայում coreIdea-ին",
+      "title": "Enthathemayi karrc vernagiR",
+      "theoryContent": "Ays enthathemayi tesakank bovandasthanotyunë",
       "targetBloomLevel": 1,
       "estimatedMinutes": 5,
       "childFriendlyExplanation": "How the AI teacher should explain this node to the student in plain language (in Armenian, 1-3 sentences, direct address)",
@@ -116,29 +117,34 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
   "practicalTasks": [
     {
       "task": "A concrete exercise or problem from/inspired by the textbook (in Armenian)",
-      "purpose": "How this task reinforces the core idea (in Armenian)",
+      "purpose": "How this task reinforces the core idea (in Armenian, 1 sentence)",
+      "exerciseTextVerbatim": "WORD-FOR-WORD textbook text (copy exactly — no changes to any number, sign, or formula). Empty string '' if this is an AI-invented task.",
+      "exercisePurpose": "GUIDED_PRACTICE",
       "sourcePage": "10",
       "difficultyLevel": "MEDIUM",
       "successCriteria": "The correct answer or what counts as a correct student response (in Armenian)",
-      "relatedNodeTitle": "Exact title of the node this task reinforces (must match a node title)",
+      "relatedNodeTitle": "Exact title of the node this task reinforces (must match a node title above)",
       "assignment": "CLASS"
     }
   ]
 }
 
-Կանոններ.
-- Ամեն ինչ գրիր ՄԻԱՅՆ իրական հայերենով (հայատառ), ոչ մի տառադարձություն, ոչ մի կիրիլիցա
-- targetBloomLevel՝ 1-ից 6 (1=Հիշել, 2=Հասկանալ, 3=Կիրառել, 4=Վերլուծել, 5=Գնահատել, 6=Ստեղծել)
-- node-երի քանակը թող համապատասխանի իրական տեքստի ծավալին ու բարդությանը (սովորաբար 3-8 node), ոչ մի կանխորոշված թիվ
-- theoryContent-ը պիտի հիմնված լինի տրված իրական տեքստի վրա, ոչ հորինված նյութի վրա
-- estimatedMinutes-ը ամեն node-ի հարաբերական ժամանակի կշիռն է (ոչ ճշգրիտ երաշխիք)
+KANOНNER.
+- Amen inch grir МИЯNS irakank hayerënov (hayatarr), voch mek tarradarzutiun, voch mek kiriliqa
+- targetBloomLevel: 1-ic 6 (1=Hishtarrel, 2=Haskarnel, 3=Kirarrel, 4=Verluczel, 5=Gnahatel, 6=Stepghcel)
+- node-eri qanakë thogh hamapataskhani iraкank teksti cvаlini (sovorаbar 3-8 node)
+- theoryContent-ë piti himnvat lini trvats iraкan teksti vra
 - practicalTasks: 2-5 tasks; prefer real textbook exercises/examples over invented ones
-- գլխի/բաժնի վնագիրներ (օրինակները։ «ԳԼՈՒԽ 1», «ԲԱԺԻՆ 2» ev ախնկալ) ախնկալ վնագիրներ են — անտել դրանք որպես աղբյուր node-ի, coreProblem-ի, coreIdea-ի և practicalTasks-ի համար
-- Node-երը, coreProblem-ը, coreIdea-ն և practicalTasks-ը պիտի բացառապես համապատասխանեն դասի սեփական տեքստում և վերնագրի — այլ դասերի վնագիրներ և forward-reference-ները անտել վորպես աղբյուր
-- Եթե դասի վերնագրը չի համապատասխանում գլխի ախնկալ վերնագրին, վստահել դասի վերնագրը որպես բովանդակության սահմանը
-- childFriendlyExplanation: 1-3 նախադասություն plain language, direct address to student; basicExamples: 1-2 short items; realLifeExamples: 0-2 items; commonMisconception: 1 sentence; prerequisiteNodes: 1-4 short phrases
-- practicalTasks: sourcePage = exact page number as string, or null if AI-proposed; difficultyLevel = LOW/MEDIUM/HIGH; successCriteria = իրական իսկական correct answer (Armenian); relatedNodeTitle = must exactly match one of the node titles in this response
-- assignment: after proposing all tasks, estimate total node time (sum of estimatedMinutes). A lesson is roughly 40-45 minutes total; the remaining time after nodes is available for in-class practice. Mark tasks that realistically fit within that remaining time as "CLASS"; mark any remaining tasks (beyond what fits in class) as "HOMEWORK". Ensure at least 1-2 tasks are "CLASS". Value must be exactly "CLASS" or "HOMEWORK".
+- exerciseTextVerbatim ПРАВИЛО (ШАТРАБАГОВАН):
+    * Ete varjhutiunë dasagrkis e → grir BARR ARR BARR (mek tiv, mek barr, mek nshan mi khojafkhes).
+      exercisePurpose-ë inchknavor e ayn enum-ic: CONCEPT_DISCOVERY, RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE, PROBLEM_SOLVING, REVIEW, ASSESSMENT
+    * Ete varjhutiunë AI-i stehcagortsakanë e (voch dasagrkis) → exerciseTextVerbatim = "" (datark texaragir), exercisePurpose = "AI_ADAPTED"
+    * sourcePage = SHTKIT ej hamare (1-10 nman), kam null ete AI-i
+- exercisePurpose valid values: CONCEPT_DISCOVERY | RULE_DISCOVERY | WORKED_EXAMPLE | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | PROBLEM_SOLVING | REVIEW | ASSESSMENT | AI_ADAPTED
+- relatedNodeTitle = piti hstakores hamnapataskhani verin node-eri vernagir-eri mekic
+- assignment: after proposing all tasks, estimate total node time. Mark tasks that fit in class as "CLASS"; extras as "HOMEWORK". Ensure at least 1-2 are "CLASS". Exact value: "CLASS" or "HOMEWORK".
+- glkhchi/bazhneri vernagirner (GLUKH 1, BAZHINN 2 ev nman) — antel drank vorpis aghbyur
+- Node-erë, coreProblem-ë, coreIdea-n ev practicalTasks-ë piti bacарrapёs hamапataskhani dasi seфhakan teksti ev vernagiRi
 `;
 
 export async function mapLessonWithAI(
@@ -146,24 +152,24 @@ export async function mapLessonWithAI(
 ): Promise<LessonMappingResult> {
   const userPromptParts: string[] = [
 
-    `ԱՌԱՐԿԱ: ${input.subjectName}`,
-    `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
-    input.chapterTitle ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}` : "",
-    input.textbookTitle ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}` : "",
-    input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}` : "",
+    `ARRARKA: ${input.subjectName}`,
+    `DASI VERNAGIR: ${input.lessonTitle}`,
+    input.chapterTitle ? `TEMA/GLUKH: ${input.chapterTitle}` : "",
+    input.textbookTitle ? `DASAGIRK: ${input.textbookTitle}` : "",
+    input.textbookAuthor ? `HEGHINAR: ${input.textbookAuthor}` : "",
     input.pagesFrom && input.pagesTo
-      ? `ԷՋԵՐ: ${input.pagesFrom}-${input.pagesTo}`
+      ? `EJER: ${input.pagesFrom}-${input.pagesTo}`
       : "",
     ``,
-    `ԴԱՍԱԳՐՔԻ ԻՐԱԿԱՆ ՏԵՔՍՏԸ ԱՅՍ ԷՋԵՐԻՑ.`,
-    input.lessonText || "(տեքստ չի հաջողվել հանել այս էջերից)",
+    `DASAGRKIS IRAКAN TEKSTË АYS EJERIC.`,
+    input.lessonText || "(tekst chi hajoghhel hanelm ays ejerics)",
   
   ];
   if (input.teacherGoal) {
-    userPromptParts.push("", `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}`);
+    userPromptParts.push("", `OUCUKCHOGH SEVAGIR NAРATAК: ${input.teacherGoal}`);
   }
   if (input.teacherOutcomes && input.teacherOutcomes.length > 0) {
-    userPromptParts.push(`ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ: ${input.teacherOutcomes.join("; ")}`);
+    userPromptParts.push(`OUCUKCHOGH SEVAGIR VERJNARDIUNKNЕР: ${input.teacherOutcomes.join("; ")}`);
   }
   const userPrompt = userPromptParts.filter(Boolean).join("\n");
 
@@ -194,7 +200,7 @@ export async function mapLessonWithAI(
     throw new Error("AI mapping response contained no nodes");
   }
 
-  // Defensive defaults for new node fields
+  // Defensive defaults for node fields
   parsed.nodes = parsed.nodes.map((n) => ({
     ...n,
     childFriendlyExplanation: n.childFriendlyExplanation ?? "",
@@ -208,9 +214,13 @@ export async function mapLessonWithAI(
     parsed.practicalTasks = [];
   }
 
-  // Defensive defaults for new practicalTask fields
-  parsed.practicalTasks = parsed.practicalTasks.map((t) => ({
+  // Defensive defaults for practicalTask fields (including new P1 STEP 17 fields)
+  parsed.practicalTasks = parsed.practicalTasks.map((t, i) => ({
     ...t,
+    task: t.task ?? "",
+    purpose: t.purpose ?? "",
+    exerciseTextVerbatim: typeof t.exerciseTextVerbatim === "string" ? t.exerciseTextVerbatim : "",
+    exercisePurpose: typeof t.exercisePurpose === "string" ? t.exercisePurpose : "AI_ADAPTED",
     sourcePage: t.sourcePage ?? null,
     difficultyLevel: (["LOW", "MEDIUM", "HIGH"].includes(t.difficultyLevel)
       ? t.difficultyLevel

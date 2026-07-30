@@ -26,6 +26,15 @@ const BLOOM = [
   { level: 6, name: "Ստեղծել", color: "#EC4899" },
 ];
 
+type ProgressIndicator = {
+  current_node_name: string;
+  step: number;
+  total_steps: number;
+  completed_nodes: number;
+  total_nodes: number;
+};
+
+
 export default function LessonPage() {
   const { user, token, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -36,6 +45,7 @@ export default function LessonPage() {
   const [message, setMessage] = useState("");
   const [autoStarted, setAutoStarted] = useState(false);
   const [gateMessage, setGateMessage] = useState<string | null>(null);
+  const [progressIndicator, setProgressIndicator] = useState<ProgressIndicator | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -74,7 +84,13 @@ export default function LessonPage() {
   const triggerAI = useCallback((triggerMsg: string) => {
     sendMessage.mutate(
       { data: { message: triggerMsg, lessonId } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: chatKey }) }
+      {
+        onSuccess: (data: unknown) => {
+          const d = data as { progressIndicator?: ProgressIndicator };
+          if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
+          queryClient.invalidateQueries({ queryKey: chatKey });
+        },
+      }
     );
   }, [sendMessage, lessonId, queryClient, chatKey]);
 
@@ -124,7 +140,13 @@ export default function LessonPage() {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     sendMessage.mutate(
       { data: { message: msg, lessonId } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: chatKey }) }
+      {
+        onSuccess: (data: unknown) => {
+          const d = data as { progressIndicator?: ProgressIndicator };
+          if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
+          queryClient.invalidateQueries({ queryKey: chatKey });
+        },
+      }
     );
   };
 
@@ -226,7 +248,7 @@ export default function LessonPage() {
               <span className="text-[11px] text-muted-foreground">{progressPct}%</span>
             </div>
           </div>
-          {!isCompleted && currentPhase < 4 && (
+          {!isCompleted && currentPhase === 3 && (
             <button
               onClick={handleAdvancePhase}
               disabled={advancePhase.isPending}
@@ -275,6 +297,18 @@ export default function LessonPage() {
             );
           })}
         </div>
+
+        {/* Node progress indicator */}
+        {progressIndicator && progressIndicator.total_nodes > 0 && (
+          <div className="flex items-center gap-2 px-4 pb-2 text-[11px] text-muted-foreground overflow-x-auto scrollbar-none">
+            <span className="text-primary">&#128205;</span>
+            <span className="font-medium text-foreground/80 truncate max-w-[140px]">{progressIndicator.current_node_name}</span>
+            <span className="opacity-40">|</span>
+            <span>Step {progressIndicator.step}/{progressIndicator.total_steps}</span>
+            <span className="opacity-40">|</span>
+            <span className="text-green-400">&#10003; {progressIndicator.completed_nodes}/{progressIndicator.total_nodes}</span>
+          </div>
+        )}
       </header>
 
       {/* Mastery gate message — shown when advance-phase was blocked */}

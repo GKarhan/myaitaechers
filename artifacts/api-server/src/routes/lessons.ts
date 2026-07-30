@@ -1,10 +1,11 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable } from "@workspace/db";
 import { eq, and, asc, max } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI } from "../services/lesson-mapping";
+import { callAIP6 } from "../services/ai";
 
 const router = Router();
 
@@ -700,13 +701,38 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       )
       .returning();
 
+
+    // P1 STEP 17: Populate lesson_exercises with structured, queryable exercise data
+    await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
+
+    if (mapping.practicalTasks.length > 0) {
+      const nodeTitleToId = new Map<string, number>(
+        insertedNodes.map((n) => [n.title, n.id])
+      );
+      await db.insert(lessonExercisesTable).values(
+        mapping.practicalTasks.map((t, i) => ({
+          lessonId,
+          exerciseId:           `EX-${lessonId}-${i + 1}`,
+          sourcePage:           t.sourcePage ?? null,
+          exerciseTextVerbatim: t.exerciseTextVerbatim || t.task,
+          exercisePurpose:      t.exercisePurpose || "AI_ADAPTED",
+          relatedNodeId:        nodeTitleToId.get(t.relatedNodeTitle) ?? null,
+          successCriteria:      t.successCriteria || null,
+          difficultyLevel:      t.difficultyLevel || null,
+          assignment:           t.assignment || "CLASS",
+          sequence:             i + 1,
+        }))
+      );
+    }
+
     res.json({
-      nodesCreated: insertedNodes.length,
-      lessonGoal: mapping.lessonGoal,
-      lessonOutcomes: mapping.lessonOutcomes,
-      coreProblem: mapping.coreProblem,
-      coreIdea: mapping.coreIdea,
-      practicalTasks: mapping.practicalTasks,
+      nodesCreated:     insertedNodes.length,
+      exercisesCreated: mapping.practicalTasks.length,
+      lessonGoal:       mapping.lessonGoal,
+      lessonOutcomes:   mapping.lessonOutcomes,
+      coreProblem:      mapping.coreProblem,
+      coreIdea:         mapping.coreIdea,
+      practicalTasks:   mapping.practicalTasks,
     });
   } catch (err) {
     logger.error({ err, lessonId }, "lesson mapping failed");
@@ -714,8 +740,70 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       error:
         err instanceof Error
           ? err.message
-          : "Դասի քարտեզագրումը ձախողվեց, փորձիր կրկին",
+          : "Lesson mapping failed, please retry",
     });
+  }
+});
+
+// ── P6: One-time lesson completion summary + homework presentation ─────────────
+// POST /lessons/:lessonId/p6-summary
+// Called once per lesson when the student reaches phase 4.
+router.post("/lessons/:lessonId/p6-summary", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  const [subject] = await db.select().from(subjectsTable).where(eq(subjectsTable.id, lesson.subjectId)).limit(1);
+
+  const hwExercises = await db
+    .select()
+    .from(lessonExercisesTable)
+    .where(and(eq(lessonExercisesTable.lessonId, lessonId), eq(lessonExercisesTable.assignment, "HOMEWORK")))
+    .orderBy(asc(lessonExercisesTable.sequence));
+
+  const nodes = await db
+    .select({
+      title:                lessonNodesTable.title,
+      masteryEvidenceCount: lessonNodesTable.masteryEvidenceCount,
+      lastEvidenceQuality:  lessonNodesTable.lastEvidenceQuality,
+      consecutiveCorrect:   lessonNodesTable.consecutiveCorrect,
+      consecutiveIncorrect: lessonNodesTable.consecutiveIncorrect,
+    })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId))
+    .orderBy(asc(lessonNodesTable.sequence));
+
+  const performanceSummary = nodes.length > 0
+    ? `Nodes: ${nodes.map((n) =>
+        `\u00ab${n.title}\u00bb evidence=${n.masteryEvidenceCount} last_quality=${n.lastEvidenceQuality ?? "NONE"} consec_correct=${n.consecutiveCorrect} consec_incorrect=${n.consecutiveIncorrect}`
+      ).join("; ")}`
+    : "No node tracking data.";
+
+  try {
+    const p6 = await callAIP6({
+      lessonTitle:    lesson.title,
+      subjectName:    subject?.name ?? "",
+      coreProblem:    (lesson as { coreProblem?: string | null }).coreProblem ?? null,
+      coreIdea:       (lesson as { coreIdea?: string | null }).coreIdea ?? null,
+      nodePerformanceSummary: performanceSummary,
+      homeworkExercises: hwExercises.map((e) => ({
+        exerciseId:      e.exerciseId,
+        text:            e.exerciseTextVerbatim,
+        difficultyLevel: e.difficultyLevel ?? null,
+        sourcePage:      e.sourcePage ?? null,
+      })),
+    });
+
+    res.json({
+      completionStatus: p6.completion_status,
+      homeworkTasks:    p6.homework_tasks,
+      summaryMessage:   p6.student_summary.message,
+    });
+  } catch (err) {
+    logger.error({ err, lessonId }, "P6 summary call failed");
+    res.status(500).json({ error: "P6 summary generation failed" });
   }
 });
 
