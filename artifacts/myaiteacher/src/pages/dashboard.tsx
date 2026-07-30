@@ -200,7 +200,7 @@ export default function Dashboard() {
                       <div className="font-medium text-sm truncate">{lesson.title}</div>
                     </div>
                     <Link
-                      href={`/chat/${lesson.id}`}
+                      href={`/lessons/${lesson.id}`}
                       className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold hover:opacity-90 transition-all whitespace-nowrap"
                     >
                       {lesson.mySessionStatus === "active" ? "ՇԱՐՈՒՆԱԿԵԼ" : "ՍԿՍԵԼ"}
@@ -318,7 +318,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <Link
-                href={`/chat/${activeLesson.id}`}
+                href={`/lessons/${activeLesson.id}`}
                 className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-base hover:opacity-90 active:scale-[0.98] transition-all shadow-xl shadow-primary/25 whitespace-nowrap shrink-0"
               >
                 ▶ ՍԿՍԵԼ ԴԱՍԸ
@@ -411,7 +411,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <Link
-                  href={`/chat/${lesson.id}`}
+                  href={`/lessons/${lesson.id}`}
                   className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
                 >
                   ▶ ՍԿՍԵԼ ԴԱՍԸ
