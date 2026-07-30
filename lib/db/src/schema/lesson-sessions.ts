@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -19,8 +20,15 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   currentNodeId: integer("current_node_id")
     .references(() => lessonNodesTable.id, { onDelete: "set null" }),
   nodeStartedAt: timestamp("node_started_at", { withTimezone: true }),
-  // P0: how many AI turns have been spent on the current node (safety cap)
+  // P0: how many AI turns have been spent on the current node/phase (safety cap)
   nodeAttemptCount: integer("node_attempt_count").notNull().default(0),
+  // P7 Node Lock: last question asked in this session (for redirect canned reply)
+  lastQuestionAsked: text("last_question_asked"),
+  // P7 Question dedup: list of question-template abstracts used in current node
+  askedQuestionTemplates: jsonb("asked_question_templates")
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

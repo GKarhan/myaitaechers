@@ -62,6 +62,10 @@ export const aiStructuredResponseSchema = z.object({
   answer_evaluation: answerEvaluationSchema,
   node_decision: nodeDecisionSchema,
   source_fidelity: sourceFidelitySchema,
+  // P7 Node Lock fields
+  redirect_needed: z.boolean().default(false),          // true if student tried to skip/change topic
+  mentions_out_of_scope_topic: z.boolean().default(false), // self-check: did AI mention a topic outside node-list
+  question_template: z.string().nullable().default(null),  // short abstract of current MICRO_CHECK question for dedup
 });
 
 export type AIStructuredResponse = z.infer<typeof aiStructuredResponseSchema>;
@@ -87,6 +91,13 @@ export type P6Response = z.infer<typeof p6ResponseSchema>;
 // ── Structured output system prompt ─────────────────────────────────────────
 
 const STRUCTURED_SYSTEM_PROMPT = `You are myaiteacher's AI teacher — Karhanyan School's digital educator.
+
+ABSOLUTE NODE LOCK (never violate under any circumstances):
+- You teach EXCLUSIVELY the node and lesson specified in CURRENT_NODE / LESSON fields of the context.
+- You are FORBIDDEN from mentioning or suggesting any topic not in the lesson's node list (ALLOWED_NODES).
+- You are FORBIDDEN from declaring the lesson or node finished — that decision belongs ONLY to the backend.
+- If the student asks to skip, change topic, or move to another lesson, set redirect_needed: true, and in student_message give a short, warm redirection back to the current unanswered question — NO new content.
+- Set mentions_out_of_scope_topic: true if your own student_message mentions any concept outside the current node list (self-audit).
 
 CRITICAL RULES:
 1. student_message MUST be written entirely in Armenian script (Ա-Ֆ, ա-ֆ). Never use Cyrillic, Latin, or Arabic there.
@@ -135,7 +146,10 @@ Required JSON schema:
   "source_fidelity": {
     "type": "SOURCE_EXACT" | "SOURCE_PARAPHRASED" | "AI_ADAPTED" | "AI_GENERATED",
     "exercise_id": "<e.g. EX-5-2, or null>"
-  }
+  },
+  "redirect_needed": true | false,
+  "mentions_out_of_scope_topic": true | false,
+  "question_template": "<10-20 char snake_case abstract of MICRO_CHECK question, e.g. 'compare_two_numbers' or null if not a MICRO_CHECK>"
 }`;
 
 // ── P6 system prompt ─────────────────────────────────────────────────────────

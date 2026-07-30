@@ -16,6 +16,37 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
+// ── P7 Node Lock — scope drift detection ─────────────────────────────────────
+
+// Transition-signal phrases (Armenian Unicode, never hand-typed)
+const SCOPE_DRIFT_PHRASES = [
+  "\u0570\u0561\u057b\u0578\u0580\u0564 \u0569\u0565\u0574\u0561",           // հaJordog thyemma (next topic)
+  "\u0576\u0578\u0580 \u0564\u0561\u057d",                                     // nor das (new lesson)
+  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584",                               // ancnenk (let's move on)
+  "\u0561\u057e\u0561\u0580\u057f\u0565\u0581\u056b\u0576\u0584 \u0564\u0561\u057d\u0568", // avartecink dasy (we finished the lesson)
+];
+
+// Canned redirect reply — hardcoded, never from the model
+const REDIRECT_CANNED_PREFIX =
+  "\u0540\u0561\u057d\u056f\u0561\u0576\u0578\u0582\u0574 \u0565\u0574, " +
+  "\u0562\u0561\u0575\u0581 \u0561\u0580\u056b\u055b \u0576\u0561\u056d \u0561\u057e\u0561\u0580\u057f\u0565\u0576\u0584 " +
+  "\u0568\u0576\u0569\u0561\u0581\u056b\u056f \u0570\u0561\u0580\u0581\u0568 \ud83d\ude0a";
+// "Հaskanuk em, baits ari՛ nakhav avarthenk enthaciç hartsë 😊"
+
+/**
+ * Returns true if the AI's student_message contains a scope-drift phrase
+ * (transition signal) that doesn't match any known node title.
+ * This is a hard code-level guard — the model's response is discarded on hit.
+ */
+function validateNoScopeDrift(studentMessage: string, allNodeTitles: string[]): boolean {
+  const lower = studentMessage.toLowerCase();
+  const hasDriftPhrase = SCOPE_DRIFT_PHRASES.some((p) => lower.includes(p));
+  if (!hasDriftPhrase) return false;
+  // Allow if the message legitimately references a node title (e.g. TRANSITION to next node)
+  const refersToKnownNode = allNodeTitles.some((t) => lower.includes(t.toLowerCase()));
+  return !refersToKnownNode;
+}
+
 // ── Phase guidance (compact, replaces the old buildPhaseInstruction) ─────────
 
 function buildPhaseGuidance(phase: number, topicName: string, subjectName: string): string {
@@ -169,6 +200,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
   let lessonContext = "";
   let topicName = "";
+  let _allNodeTitles: string[] = [];
   let progressIndicator: ProgressIndicator = {
     current_node_name: "",
     step: 0,
@@ -177,7 +209,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     total_nodes: 0,
   };
 
-  type SessionRef = { id: number; currentPhase: number; currentNodeId: number | null; status: string };
+  type SessionRef = {
+    id: number; currentPhase: number; currentNodeId: number | null; status: string;
+    lastQuestionAsked: string | null; askedQuestionTemplates: string[]; nodeAttemptCount: number;
+  };
   let session: SessionRef | null = null;
 
   type NodeRef = {
@@ -209,6 +244,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           currentPhase: sessionRow.currentPhase,
           currentNodeId: sessionRow.currentNodeId ?? null,
           status: sessionRow.status,
+          lastQuestionAsked: sessionRow.lastQuestionAsked ?? null,
+          askedQuestionTemplates: Array.isArray(sessionRow.askedQuestionTemplates)
+            ? (sessionRow.askedQuestionTemplates as string[])
+            : [],
+          nodeAttemptCount: sessionRow.nodeAttemptCount ?? 0,
         };
         sessionId = sessionRow.id;
       }
@@ -218,9 +258,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const coreProblem  = (lesson as { coreProblem?: string | null }).coreProblem ?? null;
       const coreIdea     = (lesson as { coreIdea?: string | null }).coreIdea ?? null;
 
-      // All nodes for this lesson (for progress computation)
+      // All nodes for this lesson (for progress computation + node-lock)
       const allNodes = await db
-        .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
+        .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence, title: lessonNodesTable.title })
         .from(lessonNodesTable)
         .where(eq(lessonNodesTable.lessonId, lessonId))
         .orderBy(asc(lessonNodesTable.sequence));
@@ -308,7 +348,38 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ).join("\n")
         : "";
 
+      const allNodeTitles = allNodes.map((n) => n.title);
+      _allNodeTitles = allNodeTitles; // expose to outer scope for scope-drift check
+
+      // P7: ABSOLUTE RULE block — injected at top of context so model sees it first
+      const absoluteRuleBlock = currentNodeRecord && allNodeTitles.length > 0
+        ? [
+            `╔══ ABSOLUTE NODE LOCK — NEVER VIOLATE ══╗`,
+            `You are teaching EXCLUSIVELY node: «${currentNodeRecord.title}»`,
+            `Lesson: «${lesson.title}»`,
+            `ALLOWED_NODES (full list): ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`,
+            `FORBIDDEN: mention/suggest any topic NOT in ALLOWED_NODES`,
+            `FORBIDDEN: declare lesson/node complete (backend decides mastery, not you)`,
+            `FORBIDDEN: agree with student if they ask to skip/change topic — instead set redirect_needed:true and warmly redirect back to the current unanswered question`,
+            `╚════════════════════════════════════════╝`,
+          ].join("\n")
+        : "";
+
+      // P7: Phase 1 progress indicator (Part 5.1)
+      const phase1AttemptCount = session?.nodeAttemptCount ?? 0;
+      const PHASE1_CAP = 5;
+      const phase1ProgressLine = phase === 1
+        ? `PHASE_1_PROGRESS: question ${phase1AttemptCount + 1}/${PHASE1_CAP} (auto-advance to Phase 2 after cap)`
+        : "";
+
+      // P7: Question dedup — pass already-used templates for current node
+      const usedTemplates = session?.askedQuestionTemplates ?? [];
+      const usedTemplatesBlock = usedTemplates.length > 0
+        ? `USED_QUESTION_TEMPLATES (do NOT repeat these for this node): ${usedTemplates.join(", ")}`
+        : "";
+
       lessonContext = [
+        absoluteRuleBlock,
         `LESSON: «${lesson.title}»`,
         `SUBJECT: ${subjectName}`,
         currentNodeRecord
@@ -317,16 +388,29 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         coreProblem ? `CORE_PROBLEM: ${coreProblem}` : "",
         coreIdea    ? `CORE_IDEA: ${coreIdea}`       : "",
         `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
+        phase1ProgressLine,
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
         cfeBlock,
         examplesBlock,
         misconceptionBlock,
         exBlock,
+        usedTemplatesBlock,
         dueReviewsLine,
         ``,
         `=== PHASE ${phase} GUIDANCE ===`,
         buildPhaseGuidance(phase, topicName, subjectName),
       ].filter(Boolean).join("\n");
+
+      // Phase 1 progress indicator (Part 5.1) — show question X/N to frontend
+      if (phase === 1) {
+        progressIndicator = {
+          current_node_name: topicName,
+          step: Math.min(phase1AttemptCount + 1, PHASE1_CAP),
+          total_steps: PHASE1_CAP,
+          completed_nodes: 0,
+          total_nodes: totalNodes,
+        };
+      }
 
       // Ensure a knowledge node row exists for scoring
       try {
@@ -398,6 +482,50 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     aiResult = await callAIStructured(chatHistory, lessonContext);
+
+    // ── P7 Part 3.1: Hard code-level scope-drift validation ──────────────────
+    // Extract the allNodeTitles that were built above (available in outer scope
+    // via the allNodeTitles variable if lessonId was set; empty otherwise)
+    if (session?.currentNodeId && aiResult.student_message) {
+      const driftDetected = validateNoScopeDrift(aiResult.student_message, _allNodeTitles);
+      if (driftDetected) {
+        logger.warn(
+          {
+            lessonId, sessionId: session.id,
+            userInput: message,
+            modelOutput: aiResult,
+          },
+          "P7 scope-drift incident: model mentioned out-of-scope topic — suppressing response"
+        );
+        // Send canned redirect + repeat last question; never change node/phase
+        const lastQ = session.lastQuestionAsked;
+        const canned = lastQ
+          ? `${REDIRECT_CANNED_PREFIX}\n${lastQ}`
+          : REDIRECT_CANNED_PREFIX;
+        const [assistantMsgCanned] = await db
+          .insert(chatMessagesTable)
+          .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: canned })
+          .returning();
+        res.json({ response: canned, messageId: assistantMsgCanned.id, progressIndicator, teachingMode });
+        return;
+      }
+    }
+
+    // ── P7 Part 3.3: Force CONTINUE_SAME_NODE if model flagged redirect ──────
+    if (aiResult.redirect_needed) {
+      // Override model's node_decision — student wasn't actually answering the question
+      aiResult.node_decision = { action: "CONTINUE_SAME_NODE", reason: "redirect_needed: student tried to skip" };
+      // Also nullify any mistakenly optimistic evidence
+      if (aiResult.answer_evaluation.evidence_quality === "STRONG" ||
+          aiResult.answer_evaluation.evidence_quality === "CONCLUSIVE") {
+        aiResult.answer_evaluation = {
+          ...aiResult.answer_evaluation,
+          status: "NOT_APPLICABLE",
+          evidence_quality: "NONE",
+        };
+      }
+    }
+
     studentMessage = aiResult.student_message;
     teachingMode = aiResult.teaching_mode;
     const st = aiResult.answer_evaluation.status;
@@ -469,6 +597,22 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .set({ nodeAttemptCount: newAttemptCount })
         .where(eq(lessonSessionsTable.id, session.id));
 
+      // ── P7 Part 3.2/4.1: track lastQuestionAsked + askedQuestionTemplates ──
+      if (aiResult?.is_micro_check) {
+        const tmpl = aiResult.question_template ?? null;
+        const currentTemplates = session?.askedQuestionTemplates ?? [];
+        const newTemplates = tmpl && !currentTemplates.includes(tmpl)
+          ? [...currentTemplates, tmpl]
+          : currentTemplates;
+        await db
+          .update(lessonSessionsTable)
+          .set({
+            lastQuestionAsked: aiResult.student_message.slice(0, 500),
+            askedQuestionTemplates: newTemplates,
+          })
+          .where(eq(lessonSessionsTable.id, session.id));
+      }
+
       // ── Mastery gate check ───────────────────────────────────────────────
       const modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE";
       const codeGate =
@@ -478,6 +622,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const safetyCapHit = newAttemptCount > 6;
 
       if (safetyCapHit || (modelSaysComplete && codeGate)) {
+        // Clear question templates when advancing to next node
+        await db
+          .update(lessonSessionsTable)
+          .set({ askedQuestionTemplates: [] })
+          .where(eq(lessonSessionsTable.id, session.id));
+
         await advanceNodeInSession(
           session.id,
           lessonId,
@@ -514,6 +664,37 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           };
         }
       }
+    }
+  }
+
+  // ── P7 Part 5.1: Phase 1 attempt tracking + auto-advance to Phase 2 ────────
+  if (session && session.currentPhase === 1 && lessonId && aiResult) {
+    const newP1Count = (session.nodeAttemptCount ?? 0) + 1;
+    const PHASE1_CAP = 5;
+    if (newP1Count >= PHASE1_CAP) {
+      // Auto-advance Phase 1 → 2; assign currentNodeId to the first lesson node
+      const [firstNode] = await db
+        .select({ id: lessonNodesTable.id })
+        .from(lessonNodesTable)
+        .where(eq(lessonNodesTable.lessonId, lessonId))
+        .orderBy(asc(lessonNodesTable.sequence))
+        .limit(1);
+      await db
+        .update(lessonSessionsTable)
+        .set({
+          currentPhase: 2,
+          nodeAttemptCount: 0,
+          askedQuestionTemplates: [],
+          currentNodeId: firstNode?.id ?? null,
+          nodeStartedAt: firstNode ? new Date() : null,
+        })
+        .where(eq(lessonSessionsTable.id, session.id));
+      logger.info({ lessonId, sessionId: session.id }, "P7: Phase 1 cap reached — auto-advanced to Phase 2");
+    } else {
+      await db
+        .update(lessonSessionsTable)
+        .set({ nodeAttemptCount: newP1Count })
+        .where(eq(lessonSessionsTable.id, session.id));
     }
   }
 
