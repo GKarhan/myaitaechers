@@ -1,0 +1,56 @@
+# AI Tutor Bot — Agent Working Rules
+
+## Spec-ի աղբյուր
+Այս project-ի մանկավարժական տրամաբանությունը (P0-P7) ամբողջությամբ
+սահմանված է `/docs/specs/P0.md` - `/docs/specs/P7.md` ֆայլերում.
+- P0 — System Orchestrator
+- P1 — Lesson Knowledge Package Generator (քարտեզագրում)
+- P2 — Student Model Builder
+- P3 — Individual Learning Plan Generator
+- P4 — AI Teacher Core (persona, teaching cycle)
+- P5 — Pedagogical Decision & Evidence Interpretation Engine
+- P6 — Lesson Completion & Knowledge Tree Update
+- P7 — Next Teaching Step Generator
+
+Ամեն անգամ, երբ առաջադրանքը վերաբերում է ուսուցման տրամաբանությանը,
+persona-ին, mastery gate-ին, կամ mapping-ի structure-ին, ԿԱՐԴԱ՛ նախ
+համապատասխան P-ֆայլը `/docs/specs/`-ից։ Երբեք մի ենթադրիր դրա
+բովանդակությունը հիշողությունից/նախորդ context-ից. միշտ view արա
+ուղիղ ֆայլից։
+
+## Կրիտիկական կանոններ (սովորած սխալներից)
+
+1. **Հայերեն տեքստ երբեք ձեռքով մի գրիր/retype մի արա։** Copy-paste արա
+   ուղիղ աղբյուրից (spec ֆայլ, օգտագործողի տված տեքստ)։ Character-encoding
+   կամ transliteration սխալները (հայերեն+լատինատառ+կիրիլիցա խառնում)
+   մեկից ավելի անգամ պատահել են, երբ տեքստը retype է արվել։
+
+2. **Ամեն նոր endpoint/function-ից հետո, հետևիր ամբողջ call path-ին
+   մինչև վերջ։** Ստուգիր, որ backend-ում կառուցված endpoint-ը իրապես
+   կանչվում է frontend-ից (grep արա endpoint-ի path-ը frontend կոդում)։
+   Կառուցված, բայց չկանչված endpoint-ը (`dead code`) մի քանի անգամ
+   պատահել է այս project-ում։
+
+3. **Երբեք մի հայտարարիր, որ մի բան «արված է/ինտեգրված է», քանի դեռ
+   ուղիղ չես ցույց տվել իրական կոդի հատվածը**, ոչ միայն ամփոփում։ Եթե
+   օգտագործողը խնդրում է հաստատում, տուր copy-paste-ված իրական տողերը։
+
+4. **Երբեք ինքնուրույն մի ակտիվացրու/վերականգնիր հին, լքված մեխանիզմ**
+   (օրինակ՝ `attached_assets`-ում գտնված հին pasted spec-ֆայլեր) առանց
+   հստակ խնդրելու։ Եթե կասկածում ես մի բանի, հարցրու օգտագործողին,
+   նախքան կիրառելը։
+
+5. **Յուրաքանչյուր feature-ի ավարտից հետո ցույց տուր** (ա) ինչ ֆայլում/
+   տողերում է կատարվել փոփոխությունը, (բ) TypeScript typecheck-ի
+   արդյունքը, (գ) եթե հնարավոր է, մեկ կոնկրետ test/log ապացույց, որ
+   logic-ը իրապես աշխատում է։
+
+## Architecture-ի ամփոփում
+- `artifacts/api-server/src/routes/chat.ts` — session/phase/node
+  orchestration (P0), mastery gate, scope-lock (P7)
+- `artifacts/api-server/src/services/ai.ts` — model-կանչեր, persona (P4),
+  evidence rules (P5), structured output schema
+- `artifacts/api-server/src/services/lesson-mapping.ts` — դասագրքից
+  քարտեզագրում (P1)
+- `lib/db/src/schema/` — DB structure (lesson-nodes, lesson-sessions,
+  lesson-exercises, lesson-node-dependencies, lessons)
