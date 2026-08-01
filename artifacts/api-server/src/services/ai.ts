@@ -334,6 +334,13 @@ export async function callAI(
       temperature: 0.7,
     });
 
+    if (!response.choices || response.choices.length === 0) {
+      logger.error(
+        { response },
+        "callAI: API response has no choices (possible rate-limit, moderation block, or malformed API response)"
+      );
+      throw new Error("AI API returned no choices");
+    }
     return response.choices[0]?.message?.content ?? "Կներեք, կրկին փորձեք։";
   } catch (err) {
     logger.error({ err }, "OpenRouter AI error");
@@ -358,6 +365,13 @@ export async function callAIStructured(
     ],
   });
 
+  if (!response.choices || response.choices.length === 0) {
+    logger.error(
+      { response },
+      "callAIStructured: API response has no choices (possible rate-limit, moderation block, or malformed API response)"
+    );
+    throw new Error("AI API returned no choices");
+  }
   const raw = response.choices[0]?.message?.content ?? "{}";
 
   const trimmedRaw = raw.trim();
@@ -431,6 +445,13 @@ export async function callAIP6(input: P6Input): Promise<P6Response> {
     ],
   });
 
+  if (!response.choices || response.choices.length === 0) {
+    logger.error(
+      { response },
+      "callAIP6: API response has no choices (possible rate-limit, moderation block, or malformed API response)"
+    );
+    throw new Error("AI API returned no choices");
+  }
   const raw = response.choices[0]?.message?.content ?? "{}";
   const cleaned = raw.replace(/```json|```/g, "").trim();
 
