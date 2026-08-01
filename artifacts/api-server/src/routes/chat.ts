@@ -683,6 +683,24 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
     }
 
+    // ── Anticipatory MICRO_CHECK→EXERCISE stage advance ───────────────────
+    // When the AI presents a class exercise (teaching_mode=TRANSITION with a
+    // filled exercise_id) before the student has answered anything (wasEval=false),
+    // push the stage forward immediately so the NEXT turn directive correctly
+    // says "evaluate the answer" instead of "present the exercise again".
+    if (!wasEval && currentNodeRecord?.teachingStage === "MICRO_CHECK" &&
+        aiResult.teaching_mode === "TRANSITION" &&
+        aiResult.source_fidelity.exercise_id) {
+      await db
+        .update(lessonNodesTable)
+        .set({ teachingStage: "EXERCISE" })
+        .where(eq(lessonNodesTable.id, session.currentNodeId));
+      logger.info(
+        { nodeId: session.currentNodeId, exerciseId: aiResult.source_fidelity.exercise_id },
+        "teachingStage anticipatory advance: MICRO_CHECK -> EXERCISE"
+      );
+    }
+
     if (wasEval) {
       logger.info(
         {
