@@ -97,10 +97,11 @@ export default function LessonPage() {
           const d = data as { progressIndicator?: ProgressIndicator };
           if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
           queryClient.invalidateQueries({ queryKey: chatKey });
+          queryClient.invalidateQueries({ queryKey: lessonKey });
         },
       }
     );
-  }, [sendMessage, lessonId, queryClient, chatKey]);
+  }, [sendMessage, lessonId, queryClient, chatKey, lessonKey]);
 
   useEffect(() => {
     if (hasSession && !autoStarted && !chatLoading && messages.length === 0 && !sendMessage.isPending) {
@@ -191,6 +192,7 @@ export default function LessonPage() {
           const d = data as { progressIndicator?: ProgressIndicator };
           if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
           queryClient.invalidateQueries({ queryKey: chatKey });
+          queryClient.invalidateQueries({ queryKey: lessonKey });
         },
       }
     );
