@@ -684,6 +684,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (wasEval) {
+      logger.info(
+        {
+          nodeId: session.currentNodeId,
+          status,
+          quality,
+          errorFamily: aiResult.answer_evaluation.error_family,
+          errorStability: aiResult.answer_evaluation.error_stability,
+          nodeAction: aiResult.node_decision.action,
+        },
+        "P5/P7 decision snapshot"
+      );
       const [nodeStats] = await db
         .select({
           masteryEvidenceCount: lessonNodesTable.masteryEvidenceCount,

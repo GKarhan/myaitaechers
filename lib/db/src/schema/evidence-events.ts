@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { lessonSessionsTable } from "./lesson-sessions";
-import { knowledgeTopicsTable } from "./knowledge-topics";
+import { knowledgeNodesTable } from "./knowledge-nodes";
 
 export const evidenceEventsTable = pgTable("evidence_events", {
   id: serial("id").primaryKey(),
@@ -13,7 +13,7 @@ export const evidenceEventsTable = pgTable("evidence_events", {
   lessonSessionId: integer("lesson_session_id")
     .references(() => lessonSessionsTable.id, { onDelete: "cascade" }),
   topicId: integer("topic_id")
-    .references(() => knowledgeTopicsTable.id, { onDelete: "cascade" }),
+    .references(() => knowledgeNodesTable.id, { onDelete: "cascade" }),
   eventType: text("event_type").notNull(),
   wasCorrect: boolean("was_correct"),
   responseTimeMs: integer("response_time_ms"),
