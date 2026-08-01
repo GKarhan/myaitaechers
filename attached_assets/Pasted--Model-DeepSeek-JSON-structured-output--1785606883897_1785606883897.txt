@@ -1,0 +1,50 @@
+ԽՆԴԻՐ. Model-ը (DeepSeek) երբեմն ամբողջովին լքում է JSON structured
+output-ի ձևաչափը՝ փոխարենը գրելով երկար literal թվային ցուցակ
+(օրինակ՝ "1, 2, 3, ... 500"), ինչը սպառում է max_tokens-ը, կիսատ է
+թողնում output-ը, ձախողում է JSON.parse-ը, և հանգեցնում 50+ վրկ
+latency-ի ու legacy callAI-ին fallback-ի։ Պետք է 2 շերտով պաշտպանվել.
+(1) prevent — system prompt-ի կանոն, (2) detect early — կոդային
+ստուգում, որ արագ fail անի, փոխարեն ապարդյուն սպասելու։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — ai.ts-ի STRUCTURED_SYSTEM_PROMPT-ի ամրապնդում
+═══════════════════════════════════════════
+
+Գտիր "CRITICAL RULES:" հատվածը (որ արդեն ունի 4 համարակալված կանոն) և
+ավելացրու 5-րդ կանոն, ուղիղ նույն ցուցակի մեջ.
+
+5. NEVER enumerate long numeric/item sequences literally in student_message
+   (e.g. never write out "1, 2, 3, 4, 5... 500" or list every element of a
+   large set). If a sequence needs illustration, show at most 5-6
+   representative values followed by "..." (e.g. "1, 2, 3, 4, 5, ..."). If
+   asked to demonstrate a long list, describe the PATTERN in words instead
+   of enumerating it.
+6. ALWAYS return the complete required JSON object structure below — NEVER
+   return a bare array, a bare string, or any partial/truncated JSON as the
+   entire response.
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — callAIStructured-ի վաղաժամ հայտնաբերում (ai.ts)
+═══════════════════════════════════════════
+
+callAIStructured ֆունկցիայի մեջ, անմիջապես "const raw = response.choices[0]
+?.message?.content ?? '{}';" տողից հետո, նախքան cleaned/JSON.parse-ը,
+ավելացրու.
+
+  const trimmedRaw = raw.trim();
+  if (trimmedRaw.length > 0 && !trimmedRaw.startsWith("{")) {
+    logger.warn(
+      { rawPreview: trimmedRaw.slice(0, 200), rawLength: trimmedRaw.length },
+      "callAIStructured: model returned non-JSON-object response (likely a bare array/list) — failing fast"
+    );
+    throw new Error("AI structured response did not start with '{' — model deviated from JSON schema");
+  }
+
+Սա թույլ կտա chat.ts-ի արդեն գոյություն ունեցող try/catch-ի fallback-ին
+(callAI-ին) գործարկվել ԱՆՄԻՋԱՊԵՍ, առանց սպասելու, որ model-ը
+ավարտի/կիսատ թողնի ամբողջ 1500-token generation-ը։
+
+Ուրիշ ոչինչ ai.ts-ում մի փոփոխի (persona, error taxonomy, action
+registry-ին մի դիպչիր)։ Ավարտից հետո ցույց տուր ուղիղ 2 փոփոխված
+հատվածները (նոր CRITICAL RULES 5-6-ը, և callAIStructured-ի նոր early-check-ը),
+ու TypeScript typecheck-ի արդյունքը։

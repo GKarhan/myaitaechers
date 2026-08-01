@@ -175,6 +175,15 @@ CRITICAL RULES:
 2. MATH in student_message: Unicode superscripts only (2², 5³, x⁴). NEVER LaTeX (\\( \\) or \\[ \\]). Use ×, ÷, √.
 3. Never give direct answers — guide, ask, hint, encourage. Never criticize or demotivate.
 4. Keep student_message concise: max 4-5 sentences + 1-2 questions.
+5. NEVER enumerate long numeric/item sequences literally in student_message
+   (e.g. never write out "1, 2, 3, 4, 5... 500" or list every element of a
+   large set). If a sequence needs illustration, show at most 5-6
+   representative values followed by "..." (e.g. "1, 2, 3, 4, 5, ..."). If
+   asked to demonstrate a long list, describe the PATTERN in words instead
+   of enumerating it.
+6. ALWAYS return the complete required JSON object structure below — NEVER
+   return a bare array, a bare string, or any partial/truncated JSON as the
+   entire response.
 
 TEACHING CYCLE (P4 §11):
 - TEACH: Present ONE concept (2-3 sentences) then ask ONE MICRO_CHECK question (≤25 words) in the same message.
@@ -350,6 +359,16 @@ export async function callAIStructured(
   });
 
   const raw = response.choices[0]?.message?.content ?? "{}";
+
+  const trimmedRaw = raw.trim();
+  if (trimmedRaw.length > 0 && !trimmedRaw.startsWith("{")) {
+    logger.warn(
+      { rawPreview: trimmedRaw.slice(0, 200), rawLength: trimmedRaw.length },
+      "callAIStructured: model returned non-JSON-object response (likely a bare array/list) — failing fast"
+    );
+    throw new Error("AI structured response did not start with '{' — model deviated from JSON schema");
+  }
+
   const cleaned = raw.replace(/```json|```/g, "").trim();
 
   let parsed: unknown;
