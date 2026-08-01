@@ -31,13 +31,36 @@ const SYSTEM_PROMPT = `Դու myaiteacher-ի AI ուսուցիչն ես — Karh
 // ── Structured output schemas (P4+P5+P7 combined) ────────────────────────────
 
 export const answerEvaluationSchema = z.object({
-  status: z.enum(["CORRECT", "PARTIALLY_CORRECT", "INCORRECT", "UNCLEAR", "NO_RESPONSE", "NOT_APPLICABLE"]),
+  status: z.enum([
+    "CORRECT", "PARTIALLY_CORRECT", "INCORRECT",
+    "UNCLEAR", "NO_RESPONSE", "OFF_TOPIC", "NOT_APPLICABLE",
+  ]),
   evidence_quality: z.enum(["NONE", "WEAK", "MODERATE", "STRONG", "CONCLUSIVE"]),
-  error_family: z.string().nullable(),
+  error_family: z.enum([
+    "CONCEPTUAL", "PREREQUISITE", "PROCEDURAL", "CALCULATION_EXECUTION",
+    "READING_LANGUAGE", "ATTENTION_RESPONSE", "GUESSING_CONFIDENCE",
+    "INCOMPLETE_COMMUNICATION", "TRANSFER_BLOOM", "COGNITIVE_LOAD_PACE",
+  ]).nullable(),
+  error_stability: z.enum(["FIRST_OCCURRENCE", "PERSISTENT"]).nullable(),
 });
 
 export const nodeDecisionSchema = z.object({
-  action: z.enum(["CONTINUE_SAME_NODE", "COMPLETE_NODE", "REPAIR"]),
+  action: z.enum([
+    "CONTINUE_SAME_NODE",   // session node stays the same
+    "COMPLETE_NODE",        // P5 canonical — mastery gate checks this
+    "GUIDED_QUESTION",
+    "HINT",
+    "EXTRA_EXAMPLE",
+    "CONTRAST_EXAMPLE",
+    "CHANGE_REPRESENTATION",
+    "STEP_BY_STEP",
+    "SIMPLIFY_LANGUAGE",
+    "LOWER_DIFFICULTY",
+    "RAISE_DIFFICULTY",
+    "RETURN_TO_PREREQUISITE",
+    "VERIFY_SELECTION",
+    "REQUIRE_REASONING",
+  ]),
   reason: z.string(),
 });
 
@@ -164,6 +187,45 @@ EVIDENCE QUALITY (P5 §17.13) — STRICT:
 - Student solves a practical exercise successfully → evidence_quality = "STRONG"
 - node_decision.action = "COMPLETE_NODE" requires at least 1 STRONG evidence event on this node. Never recommend COMPLETE_NODE based only on a MICRO_CHECK.
 
+ERROR TAXONOMY (P4 §9 / P5 §9) — choose the SINGLE best-fitting family for error_family, or null if answer was correct/not applicable:
+- CONCEPTUAL: student hasn't formed or is confusing the core idea. Action: EXTRA_EXAMPLE or CONTRAST_EXAMPLE.
+- PREREQUISITE: student is missing knowledge from an earlier topic. Action: RETURN_TO_PREREQUISITE or HINT.
+- PROCEDURAL: student knows the idea but applies the steps in wrong order. Action: STEP_BY_STEP.
+- CALCULATION_EXECUTION: approach was correct, arithmetic/execution slipped. Action: VERIFY_SELECTION (ask to recheck only the calculation).
+- READING_LANGUAGE: student misread or misunderstood the question wording. Action: SIMPLIFY_LANGUAGE (rephrase shorter, never give the answer).
+- ATTENTION_RESPONSE: likely a careless slip/misclick, not a knowledge gap. Action: VERIFY_SELECTION.
+- GUESSING_CONFIDENCE: answer looks like a guess with no reasoning. Action: REQUIRE_REASONING (ask "why" before accepting).
+- INCOMPLETE_COMMUNICATION: response is partial or the student said "I don't know". Action: GUIDED_QUESTION (ask only for the missing part; never criticize).
+- TRANSFER_BLOOM: student understands the base concept but fails to apply/analyze at the required Bloom level.
+- COGNITIVE_LOAD_PACE: student shows signs of overload (confusion, fatigue) or underchallenge (too fast, bored). Action: LOWER_DIFFICULTY / STEP_BY_STEP (overload) or RAISE_DIFFICULTY (underchallenge).
+
+error_stability RULE (P5 §10.2) — CRITICAL, never violate:
+- A MICRO_CHECK incorrect answer is ALWAYS error_stability = "FIRST_OCCURRENCE" on its first occurrence, NEVER "PERSISTENT".
+- Only set error_stability = "PERSISTENT" if the SAME error_family has already occurred on THIS node in a PREVIOUS turn (visible in chat history above) — never from a single incorrect answer alone.
+
+MICRO_CHECK EVIDENCE TABLE (P5 §17.13.1-17.13.5) — apply exactly when is_micro_check was true on the PREVIOUS assistant turn and this turn is the student's answer to it:
+- Student answer is CORRECT → evidence_quality="MODERATE" (never STRONG), node_decision.action="CONTINUE_SAME_NODE". Do NOT use HINT/EXTRA_EXAMPLE/CHANGE_REPRESENTATION/COMPLETE_NODE this turn.
+- Student answer is INCORRECT → evidence_quality="NONE", error_family="CONCEPTUAL" (unless a different family clearly fits), error_stability="FIRST_OCCURRENCE", node_decision.action="CHANGE_REPRESENTATION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is PARTIALLY_CORRECT → evidence_quality="WEAK", error_family="CONCEPTUAL", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student gave NO_RESPONSE ("չգիտև։" or empty/off-topic) → evidence_quality="NONE", node_decision.action="HINT" or "LOWER_DIFFICULTY". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is UNCLEAR (can't tell what they mean) → evidence_quality="NONE", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+
+ACTION REGISTRY (P7 §8) — brief definition of each node_decision.action value:
+- CONTINUE_SAME_NODE: proceed within the current node (e.g. after a correct MICRO_CHECK, move to the next concept or exercise on this same node).
+- COMPLETE_NODE: this node is mastered — backend will advance to the next node (only propose this after STRONG/CONCLUSIVE evidence from a real exercise, or per the NO-EXERCISE COMPLETION RULE above).
+- GUIDED_QUESTION: ask one question that leads the student toward the missing piece, without giving the answer.
+- HINT: give a short, low-content nudge (not the answer).
+- EXTRA_EXAMPLE: present one additional worked example of the same concept, differently framed.
+- CONTRAST_EXAMPLE: show a similar-but-different example to sharpen the boundary of the concept.
+- CHANGE_REPRESENTATION: re-teach the same idea using a different form (visual, story, number line, etc.), not the same wording again.
+- STEP_BY_STEP: give only the single next step of a multi-step procedure, not the whole sequence at once.
+- SIMPLIFY_LANGUAGE: rephrase the question in fewer, simpler words — never give the answer.
+- LOWER_DIFFICULTY: reduce the complexity of the next question/task.
+- RAISE_DIFFICULTY: the student is coasting — give a harder, more interesting challenge.
+- RETURN_TO_PREREQUISITE: briefly re-teach only the specific missing prerequisite, not the whole previous lesson.
+- VERIFY_SELECTION: ask the student to double-check their answer without saying whether it was right or wrong.
+- REQUIRE_REASONING: ask the student to justify their answer in one short phrase before proceeding.
+
 EXERCISE VERBATIM RULE:
 - If exerciseTextVerbatim is listed for an exercise: reproduce it WORD FOR WORD in student_message (no changes to any number, variable, or word).
 - Append "(Էջ {sourcePage}, Վ. {exerciseId})" immediately after the verbatim exercise text.
@@ -183,12 +245,13 @@ Required JSON schema:
   "teaching_mode": "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION",
   "is_micro_check": true | false,
   "answer_evaluation": {
-    "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "NOT_APPLICABLE",
+    "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "OFF_TOPIC" | "NOT_APPLICABLE",
     "evidence_quality": "NONE" | "WEAK" | "MODERATE" | "STRONG" | "CONCLUSIVE",
-    "error_family": "<brief error label or null>"
+    "error_family": "CONCEPTUAL" | "PREREQUISITE" | "PROCEDURAL" | "CALCULATION_EXECUTION" | "READING_LANGUAGE" | "ATTENTION_RESPONSE" | "GUESSING_CONFIDENCE" | "INCOMPLETE_COMMUNICATION" | "TRANSFER_BLOOM" | "COGNITIVE_LOAD_PACE" | null,
+    "error_stability": "FIRST_OCCURRENCE" | "PERSISTENT" | null
   },
   "node_decision": {
-    "action": "CONTINUE_SAME_NODE" | "COMPLETE_NODE" | "REPAIR",
+    "action": "CONTINUE_SAME_NODE" | "COMPLETE_NODE" | "GUIDED_QUESTION" | "HINT" | "EXTRA_EXAMPLE" | "CONTRAST_EXAMPLE" | "CHANGE_REPRESENTATION" | "STEP_BY_STEP" | "SIMPLIFY_LANGUAGE" | "LOWER_DIFFICULTY" | "RAISE_DIFFICULTY" | "RETURN_TO_PREREQUISITE" | "VERIFY_SELECTION" | "REQUIRE_REASONING",
     "reason": "<brief internal reason in English>"
   },
   "source_fidelity": {

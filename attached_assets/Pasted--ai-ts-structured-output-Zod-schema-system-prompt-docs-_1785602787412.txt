@@ -1,0 +1,128 @@
+ԽՆԴԻՐ. ai.ts-ում ընդլայնել structured output-ի Zod schema-ն և system
+prompt-ը՝ ըստ /docs/specs/P5.md (§9, §16, §17.13) և /docs/specs/P7.md
+(§8)։ ՄԻ ՓՈՓՈԽԻ chat.ts-ը այս պրոմտում — դա առանձին, հաջորդ քայլ է։
+Կարդա նշված spec-ֆայլերը ուղիղ /docs/specs/-ից՝ հաստատելու ճշգրտությունը։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — answerEvaluationSchema-ի ընդլայնում
+═══════════════════════════════════════════
+
+Փոխարինիր ընթացիկ answerEvaluationSchema-ն ուղիղ սրանով.
+
+export const answerEvaluationSchema = z.object({
+  status: z.enum([
+    "CORRECT", "PARTIALLY_CORRECT", "INCORRECT",
+    "UNCLEAR", "NO_RESPONSE", "OFF_TOPIC", "NOT_APPLICABLE",
+  ]),
+  evidence_quality: z.enum(["NONE", "WEAK", "MODERATE", "STRONG", "CONCLUSIVE"]),
+  error_family: z.enum([
+    "CONCEPTUAL", "PREREQUISITE", "PROCEDURAL", "CALCULATION_EXECUTION",
+    "READING_LANGUAGE", "ATTENTION_RESPONSE", "GUESSING_CONFIDENCE",
+    "INCOMPLETE_COMMUNICATION", "TRANSFER_BLOOM", "COGNITIVE_LOAD_PACE",
+  ]).nullable(),
+  error_stability: z.enum(["FIRST_OCCURRENCE", "PERSISTENT"]).nullable(),
+});
+
+(NOT_APPLICABLE-ը մեր սեփական, redirect_needed-ի logic-ի համար ավելացրած
+արժեքն է, պահվում է P5-ի 6 canonical status-ների կողքին. OFF_TOPIC-ը
+P5 §8-ից է, մինչ այժմ բացակայում էր։)
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — nodeDecisionSchema-ի ընդլայնում
+═══════════════════════════════════════════
+
+Փոխարինիր ընթացիկ nodeDecisionSchema-ն ուղիղ սրանով.
+
+export const nodeDecisionSchema = z.object({
+  action: z.enum([
+    "CONTINUE_SAME_NODE",   // մեր սեփական, session-ի node-ը մնում է նույնը
+    "COMPLETE_NODE",        // P5 canonical, chat.ts-ի mastery gate-ը սա է ստուգում
+    "GUIDED_QUESTION",
+    "HINT",
+    "EXTRA_EXAMPLE",
+    "CONTRAST_EXAMPLE",
+    "CHANGE_REPRESENTATION",
+    "STEP_BY_STEP",
+    "SIMPLIFY_LANGUAGE",
+    "LOWER_DIFFICULTY",
+    "RAISE_DIFFICULTY",
+    "RETURN_TO_PREREQUISITE",
+    "VERIFY_SELECTION",
+    "REQUIRE_REASONING",
+  ]),
+  reason: z.string(),
+});
+
+ԿԱՐԵՎՈՐ. "COMPLETE_NODE" և "CONTINUE_SAME_NODE" արժեքները ՊԻՏԻ մնան
+ուղիղ նույն ուղղագրությամբ, քանի որ chat.ts-ի mastery-gate-ի կոդը
+(`modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE"`)
+կախված է դրանցից։ Այս պրոմտում chat.ts-ին ՄԻ ԴԻՊՉԻ. այն կշարունակի
+աշխատել անփոփոխ, պարզապես model-ը այժմ ունի ավելի հարուստ ընտրություն
+"REPAIR"-ի փոխարեն, երբ node-ը դեռ ավարտված չէ։
+
+═══════════════════════════════════════════
+ՄԱՍ 3 — STRUCTURED_SYSTEM_PROMPT-ի հարստացում
+═══════════════════════════════════════════
+
+Գտիր prompt-ի "EVIDENCE QUALITY (P5 §17.13) — STRICT" հատվածը (որ արդեն
+կա) և դրանից ԱՆՄԻՋԱՊԵՍ ՀԵՏՈ ավելացրու (նախքան "EXERCISE VERBATIM RULE"-ը)
+ուղիղ այս նոր հատվածները.
+
+ERROR TAXONOMY (P4 §9 / P5 §9) — choose the SINGLE best-fitting family for
+error_family, or null if answer was correct/not applicable:
+- CONCEPTUAL: student hasn't formed or is confusing the core idea. Action: EXTRA_EXAMPLE or CONTRAST_EXAMPLE.
+- PREREQUISITE: student is missing knowledge from an earlier topic. Action: RETURN_TO_PREREQUISITE or HINT.
+- PROCEDURAL: student knows the idea but applies the steps in wrong order. Action: STEP_BY_STEP.
+- CALCULATION_EXECUTION: approach was correct, arithmetic/execution slipped. Action: VERIFY_SELECTION (ask to recheck only the calculation).
+- READING_LANGUAGE: student misread or misunderstood the question wording. Action: SIMPLIFY_LANGUAGE (rephrase shorter, never give the answer).
+- ATTENTION_RESPONSE: likely a careless slip/misclick, not a knowledge gap. Action: VERIFY_SELECTION.
+- GUESSING_CONFIDENCE: answer looks like a guess with no reasoning. Action: REQUIRE_REASONING (ask "why" before accepting).
+- INCOMPLETE_COMMUNICATION: response is partial or the student said "I don't know". Action: GUIDED_QUESTION (ask only for the missing part; never criticize).
+- TRANSFER_BLOOM: student understands the base concept but fails to apply/analyze at the required Bloom level.
+- COGNITIVE_LOAD_PACE: student shows signs of overload (confusion, fatigue) or underchallenge (too fast, bored). Action: LOWER_DIFFICULTY / STEP_BY_STEP (overload) or RAISE_DIFFICULTY (underchallenge).
+
+error_stability RULE (P5 §10.2) — CRITICAL, never violate:
+- A MICRO_CHECK incorrect answer is ALWAYS error_stability = "FIRST_OCCURRENCE" on its first occurrence, NEVER "PERSISTENT".
+- Only set error_stability = "PERSISTENT" if the SAME error_family has already occurred on THIS node in a PREVIOUS turn (visible in chat history above) — never from a single incorrect answer alone.
+
+MICRO_CHECK EVIDENCE TABLE (P5 §17.13.1-17.13.5) — apply exactly when is_micro_check was true on the PREVIOUS assistant turn and this turn is the student's answer to it:
+- Student answer is CORRECT → evidence_quality="MODERATE" (never STRONG), node_decision.action="CONTINUE_SAME_NODE". Do NOT use HINT/EXTRA_EXAMPLE/CHANGE_REPRESENTATION/COMPLETE_NODE this turn.
+- Student answer is INCORRECT → evidence_quality="NONE", error_family="CONCEPTUAL" (unless a different family clearly fits), error_stability="FIRST_OCCURRENCE", node_decision.action="CHANGE_REPRESENTATION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is PARTIALLY_CORRECT → evidence_quality="WEAK", error_family="CONCEPTUAL", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student gave NO_RESPONSE ("չգիտեմ" or empty/off-topic) → evidence_quality="NONE", node_decision.action="HINT" or "LOWER_DIFFICULTY". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is UNCLEAR (can't tell what they mean) → evidence_quality="NONE", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+
+ACTION REGISTRY (P7 §8) — brief definition of each node_decision.action value:
+- CONTINUE_SAME_NODE: proceed within the current node (e.g. after a correct MICRO_CHECK, move to the next concept or exercise on this same node).
+- COMPLETE_NODE: this node is mastered — backend will advance to the next node (only propose this after STRONG/CONCLUSIVE evidence from a real exercise, or per the NO-EXERCISE COMPLETION RULE above).
+- GUIDED_QUESTION: ask one question that leads the student toward the missing piece, without giving the answer.
+- HINT: give a short, low-content nudge (not the answer).
+- EXTRA_EXAMPLE: present one additional worked example of the same concept, differently framed.
+- CONTRAST_EXAMPLE: show a similar-but-different example to sharpen the boundary of the concept.
+- CHANGE_REPRESENTATION: re-teach the same idea using a different form (visual, story, number line, etc.), not the same wording again.
+- STEP_BY_STEP: give only the single next step of a multi-step procedure, not the whole sequence at once.
+- SIMPLIFY_LANGUAGE: rephrase the question in fewer, simpler words — never give the answer.
+- LOWER_DIFFICULTY: reduce the complexity of the next question/task.
+- RAISE_DIFFICULTY: the student is coasting — give a harder, more interesting challenge.
+- RETURN_TO_PREREQUISITE: briefly re-teach only the specific missing prerequisite, not the whole previous lesson.
+- VERIFY_SELECTION: ask the student to double-check their answer without saying whether it was right or wrong.
+- REQUIRE_REASONING: ask the student to justify their answer in one short phrase before proceeding.
+
+Այս 3 նոր բլոկն ավելացրու ուղիղ EVIDENCE QUALITY-ի հատվածից հետո, նույն
+STRUCTURED_SYSTEM_PROMPT template string-ի մեջ (ոչ առանձին const)։
+
+═══════════════════════════════════════════
+ՄԱՍ 4 — "Required JSON schema" օրինակի թարմացում prompt-ի մեջ
+═══════════════════════════════════════════
+
+Prompt-ի ներսում արդեն կա մի JSON schema օրինակ (`"answer_evaluation": {...}`,
+`"node_decision": {...}`)։ Թարմացրու այն օրինակը՝ ցույց տալով նոր
+դաշտերը (error_stability, node_decision.action-ի նոր հնարավոր
+արժեքներից 2-3 օրինակ մեկնաբանության մեջ), որ մոդելը տեսնի output-ի
+ամբողջական սպասվող տեսքը։
+
+Ավարտից հետո, ցույց տուր ինձ ուղիղ (copy-paste, ոչ ամփոփում).
+1. Ամբողջ նոր answerEvaluationSchema-ն և nodeDecisionSchema-ն
+2. Ամբողջ 3 նոր բլոկը (Error Taxonomy, error_stability rule, MICRO_CHECK
+   Evidence Table, Action Registry), ուղիղ ինչպես մտել է ֆայլում
+3. TypeScript typecheck-ի արդյունքը (zero errors)
