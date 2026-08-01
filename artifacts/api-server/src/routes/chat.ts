@@ -664,6 +664,24 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const isCorrect   = status === "CORRECT" || status === "PARTIALLY_CORRECT";
     const isIncorrect = status === "INCORRECT";
     const wasEval     = status !== "NOT_APPLICABLE";
+    // ── Anticipatory THEORY→MICRO_CHECK stage advance ─────────────────────
+    // Fixes: on the very first turn of a node, the AI delivers THEORY +
+    // asks the first MICRO_CHECK in one turn. Since the student hasn't
+    // answered anything yet, status=NOT_APPLICABLE (wasEval=false), so the
+    // stage-machine block below never runs and teachingStage stays "THEORY".
+    // On the NEXT turn (student's actual answer), the directive would then
+    // wrongly say "give THEORY again" instead of "evaluate the answer".
+    // This block pushes the stage forward immediately, independent of wasEval.
+    if (!wasEval && currentNodeRecord?.teachingStage === "THEORY" && aiResult.is_micro_check) {
+      await db
+        .update(lessonNodesTable)
+        .set({ teachingStage: "MICRO_CHECK" })
+        .where(eq(lessonNodesTable.id, session.currentNodeId));
+      logger.info(
+        { nodeId: session.currentNodeId },
+        "teachingStage anticipatory advance: THEORY -> MICRO_CHECK"
+      );
+    }
 
     if (wasEval) {
       const [nodeStats] = await db
