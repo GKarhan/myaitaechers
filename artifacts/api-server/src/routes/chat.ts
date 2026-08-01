@@ -18,36 +18,25 @@ const router = Router();
 
 // ── P7 Node Lock — scope drift detection ─────────────────────────────────────
 
-// Transition-signal phrases (Armenian Unicode, never hand-typed)
 const SCOPE_DRIFT_PHRASES = [
-  "\u0570\u0561\u057b\u0578\u0580\u0564 \u0569\u0565\u0574\u0561",           // հaJordog thyemma (next topic)
-  "\u0576\u0578\u0580 \u0564\u0561\u057d",                                     // nor das (new lesson)
-  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584",                               // ancnenk (let's move on)
-  "\u0561\u057e\u0561\u0580\u057f\u0565\u0581\u056b\u0576\u0584 \u0564\u0561\u057d\u0568", // avartecink dasy (we finished the lesson)
+  "\u0570\u0561\u057b\u0578\u0580\u0564 \u0569\u0565\u0574\u0561",
+  "\u0576\u0578\u0580 \u0564\u0561\u057d",
+  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584",
+  "\u0561\u057e\u0561\u0580\u057f\u0565\u0581\u056b\u0576\u0584 \u0564\u0561\u057d\u0568",
 ];
 
-// Canned redirect reply — hardcoded, never from the model
 const REDIRECT_CANNED_PREFIX =
   "\u0540\u0561\u057d\u056f\u0561\u0576\u0578\u0582\u0574 \u0565\u0574, " +
   "\u0562\u0561\u0575\u0581 \u0561\u0580\u056b\u055b \u0576\u0561\u056d \u0561\u057e\u0561\u0580\u057f\u0565\u0576\u0584 " +
   "\u0568\u0576\u0569\u0561\u0581\u056b\u056f \u0570\u0561\u0580\u0581\u0568 \ud83d\ude0a";
-// "Հaskanuk em, baits ari՛ nakhav avarthenk enthaciç hartsë 😊"
 
-/**
- * Returns true if the AI's student_message contains a scope-drift phrase
- * (transition signal) that doesn't match any known node title.
- * This is a hard code-level guard — the model's response is discarded on hit.
- */
 function validateNoScopeDrift(studentMessage: string, allNodeTitles: string[]): boolean {
   const lower = studentMessage.toLowerCase();
   const hasDriftPhrase = SCOPE_DRIFT_PHRASES.some((p) => lower.includes(p));
   if (!hasDriftPhrase) return false;
-  // Allow if the message legitimately references a node title (e.g. TRANSITION to next node)
   const refersToKnownNode = allNodeTitles.some((t) => lower.includes(t.toLowerCase()));
   return !refersToKnownNode;
 }
-
-// ── Phase guidance (compact, replaces the old buildPhaseInstruction) ─────────
 
 function buildPhaseGuidance(phase: number, topicName: string, subjectName: string): string {
   switch (phase) {
@@ -92,8 +81,6 @@ Close the session with warm encouragement for the next lesson.`;
   }
 }
 
-// ── P0: Advance session to next node (or auto-advance phase when exhausted) ──
-
 async function advanceNodeInSession(
   sessionId: number,
   lessonId: number,
@@ -122,7 +109,6 @@ async function advanceNodeInSession(
     )
     .limit(1);
 
-  // Reset mastery tracking on the completed node
   await db
     .update(lessonNodesTable)
     .set({
@@ -130,10 +116,10 @@ async function advanceNodeInSession(
       consecutiveCorrect:   0,
       consecutiveIncorrect: 0,
       lastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
+      teachingStage:        "THEORY",   // reset for next session
     })
     .where(eq(lessonNodesTable.id, currentNodeId));
 
-  // ── P4 Defensive check: verify CRITICAL prerequisites of nextNode are done ──
   if (nextNode) {
     try {
       const criticalDeps = await db
@@ -148,8 +134,6 @@ async function advanceNodeInSession(
         );
       if (criticalDeps.length > 0) {
         const prereqIds = criticalDeps.map((d) => d.fromNodeId);
-        // Check that all prerequisite nodes have sequence < nextNode.sequence
-        // (i.e., they appear before the node we're advancing to)
         const prereqNodes = await db
           .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
           .from(lessonNodesTable)
@@ -172,7 +156,6 @@ async function advanceNodeInSession(
   let newPhase = currentPhase;
   let newNodeId: number | null = nextNode?.id ?? null;
 
-  // Phase 2 → 3 auto-advance when the last node is done
   if (allNodesDone && currentPhase === 2) {
     newPhase = 3;
     newNodeId = null;
@@ -190,8 +173,6 @@ async function advanceNodeInSession(
 
   return { newNodeId, newPhase, allNodesDone };
 }
-
-// ── POST /chat ────────────────────────────────────────────────────────────────
 
 router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   const { message, lessonId } = req.body as { message: string; lessonId?: number };
@@ -230,8 +211,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     childFriendlyExplanation: string | null;
     basicExamples: unknown; realLifeExamples: unknown;
     commonMisconception: string | null; prerequisiteNodes: unknown;
+    teachingStage: string | null;
+    verbatimTheoryAnchor: string | null;
+    nonExamples: unknown;
   };
   let currentNodeRecord: NodeRef | null = null;
+
+  // FIX: hoisted to outer scope so the mastery-gate 0-exercise check below can see it.
+  let classExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
 
   if (lessonId) {
     const [lesson] = await db
@@ -269,8 +256,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const coreProblem  = (lesson as { coreProblem?: string | null }).coreProblem ?? null;
       const coreIdea     = (lesson as { coreIdea?: string | null }).coreIdea ?? null;
       const essentialQuestion = (lesson as { essentialQuestion?: string | null }).essentialQuestion ?? null;
+      const knowledgeBoundaries = (lesson as { knowledgeBoundaries?: string[] }).knowledgeBoundaries ?? [];
 
-      // Fetch student name for teacher persona greeting
       const [studentRow] = await db
         .select({ fullName: usersTable.fullName })
         .from(usersTable)
@@ -278,7 +265,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .limit(1);
       const studentName = studentRow?.fullName ?? null;
 
-      // All nodes for this lesson (for progress computation + node-lock)
       const allNodes = await db
         .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence, title: lessonNodesTable.title })
         .from(lessonNodesTable)
@@ -290,7 +276,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const currentNodeSeq   = currentNodeEntry?.sequence ?? (totalNodes + 1);
       const completedNodes   = session?.currentNodeId != null ? currentNodeSeq - 1 : totalNodes;
 
-      // Rich node data for the current node
       if (session?.currentNodeId) {
         const [nodeRow] = await db
           .select({
@@ -303,6 +288,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             realLifeExamples: lessonNodesTable.realLifeExamples,
             commonMisconception: lessonNodesTable.commonMisconception,
             prerequisiteNodes: lessonNodesTable.prerequisiteNodes,
+            teachingStage: lessonNodesTable.teachingStage,
+            verbatimTheoryAnchor: lessonNodesTable.verbatimTheoryAnchor,
+            nonExamples: lessonNodesTable.nonExamples,
           })
           .from(lessonNodesTable)
           .where(eq(lessonNodesTable.id, session.currentNodeId))
@@ -320,9 +308,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         total_nodes:     totalNodes,
       };
 
-      // ── Class exercises (Phase 2: current node only; Phase 3: ALL lesson nodes) ──
       const allNodeIds = allNodes.map((n) => n.id);
-      let classExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
       if (phase === 2 && session?.currentNodeId) {
         classExercises = await db
           .select()
@@ -332,7 +318,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             eq(lessonExercisesTable.assignment, "CLASS")
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
-        // DEBUG: log class exercises found for current node
         logger.info({
           phase,
           currentNodeId: session?.currentNodeId,
@@ -344,7 +329,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           })),
         }, "Phase2 classExercises loaded");
       } else if (phase === 3 && allNodeIds.length > 0) {
-        // Phase 3 bug fix: currentNodeId is null here — fetch ALL class exercises for lesson
         classExercises = await db
           .select()
           .from(lessonExercisesTable)
@@ -355,7 +339,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .orderBy(asc(lessonExercisesTable.sequence));
       }
 
-      // ── Phase 4: homework exercises ──────────────────────────────────────────
       let homeworkExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
       if (phase === 4) {
         homeworkExercises = await db
@@ -368,7 +351,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .orderBy(asc(lessonExercisesTable.sequence));
       }
 
-      // Phase 1: due review topics
       let dueReviewsLine = "";
       if (phase === 1) {
         const dueTopics = await getDueReviewTopics(req.userId!);
@@ -384,13 +366,26 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         ? `\nAPPROVED_EXPLANATION (use near-verbatim):\n${currentNodeRecord.childFriendlyExplanation}`
         : "";
 
+      const verbatimAnchorBlock = currentNodeRecord?.verbatimTheoryAnchor
+        ? `\nVERBATIM_THEORY_ANCHOR (if non-empty, ground explanations in this exact wording — cite rules/definitions near-verbatim).\n${currentNodeRecord.verbatimTheoryAnchor}`
+        : "";
+
       const examplesArr = toStrArr(currentNodeRecord?.basicExamples);
       const examplesBlock = examplesArr.length > 0
         ? `\nBASIC_EXAMPLES:\n${examplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
         : "";
 
+      const nonExamplesArr = toStrArr(currentNodeRecord?.nonExamples);
+      const nonExamplesBlock = nonExamplesArr.length > 0
+        ? `\nNON_EXAMPLES (use as contrast and wrong-answer distractors in MICRO_CHECK).\n${nonExamplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
+        : "";
+
       const misconceptionBlock = currentNodeRecord?.commonMisconception
         ? `\nKNOWN_MISCONCEPTION (design MICRO_CHECK distractors around this):\n${currentNodeRecord.commonMisconception}`
+        : "";
+
+      const knowledgeBoundariesBlock = knowledgeBoundaries.length > 0
+        ? `\nKNOWLEDGE_BOUNDARIES (this lesson deliberately excludes these topics — redirect warmly if student asks).\n${knowledgeBoundaries.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`
         : "";
 
       const deepDiveIdx = session?.deepDiveExerciseIndex ?? 0;
@@ -420,9 +415,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         : "";
 
       const allNodeTitles = allNodes.map((n) => n.title);
-      _allNodeTitles = allNodeTitles; // expose to outer scope for scope-drift check
+      _allNodeTitles = allNodeTitles;
 
-      // P7: ABSOLUTE RULE block
       const absoluteRuleBlock = currentNodeRecord && allNodeTitles.length > 0
         ? [
             `╔══ ABSOLUTE NODE LOCK — NEVER VIOLATE ══╗`,
@@ -436,34 +430,58 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ].join("\n")
         : "";
 
-      // P8: Phase 1 counter (now uses reviewQuestionCount)
       const PHASE1_CAP = 5;
       const reviewQCount = session?.reviewQuestionCount ?? 0;
       const phase1ProgressLine = phase === 1
         ? `PHASE_1_PROGRESS: question ${reviewQCount + 1}/${PHASE1_CAP}${reviewQCount + 1 === PHASE1_CAP ? " — this is the LAST question: after student answers, give a brief summary of the review and do NOT ask a new question" : ""}`
         : "";
 
-      // P7: Question dedup
       const usedTemplates = session?.askedQuestionTemplates ?? [];
       const usedTemplatesBlock = usedTemplates.length > 0
         ? `USED_QUESTION_TEMPLATES (do NOT repeat these for this node): ${usedTemplates.join(", ")}`
         : "";
 
-      // Safety: if 3+ attempts on node and exercises exist but still Phase 2, force exercise presentation
-      const forcedExerciseLine: string = (() => {
-        if (phase !== 2 || !session || classExercises.length === 0) return "";
-        const attempts = session.nodeAttemptCount;
-        if (attempts < 3) return "";
-        const ex = classExercises[0];
-        const verbatim = ex.exerciseTextVerbatim?.trim()
-          ? ex.exerciseTextVerbatim
-          : `[${ex.exerciseId}]`;
-        return (
-          `⚠️ SAFETY OVERRIDE: ${attempts} student turns logged on this node with no node advance yet. ` +
-          `You MUST present a CLASS_EXERCISE in THIS response (teaching_mode: "TRANSITION"). ` +
-          `Do NOT ask another MICRO_CHECK question. ` +
-          `Present this exercise VERBATIM right now: "${verbatim}"`
-        );
+      // ── Stage-driven DIRECTIVE (spec-4) + safety override ────────────────
+      const teachingStage = phase === 2 ? (currentNodeRecord?.teachingStage ?? "THEORY") : "THEORY";
+      const stageDirectiveLine: string = (() => {
+        if (phase !== 2) return "";
+        if (teachingStage === "THEORY") {
+          return (
+            `NODE_STAGE: THEORY (first turn on this node)\n` +
+            `DIRECTIVE — THIS TURN YOU MUST: ` +
+            `(1) Present APPROVED_EXPLANATION in 2-3 plain sentences. ` +
+            `(2) Immediately ask ONE MICRO_CHECK question (\u226425 words). ` +
+            `teaching_mode: "TEACH" for the explanation, is_micro_check: true for the question.`
+          );
+        }
+        if (teachingStage === "MICRO_CHECK") {
+          if (classExercises.length > 0) {
+            const ex = classExercises[0];
+            const verbatim = ex.exerciseTextVerbatim?.trim() ? ex.exerciseTextVerbatim : `[${ex.exerciseId}]`;
+            return (
+              `NODE_STAGE: MICRO_CHECK\n` +
+              `DIRECTIVE — THIS TURN YOU MUST: Present this CLASS_EXERCISE VERBATIM using teaching_mode: "TRANSITION". ` +
+              `Do NOT invent another MICRO_CHECK. Exercise: "${verbatim}"`
+            );
+          }
+          const attempts = session?.nodeAttemptCount ?? 0;
+          return (
+            `NODE_STAGE: MICRO_CHECK (no exercises for this node)\n` +
+            `DIRECTIVE: Ask at most 1 more MICRO_CHECK (${attempts} attempts so far). ` +
+            `If student understands, set node_decision.action = "COMPLETE_NODE" (MODERATE evidence sufficient).`
+          );
+        }
+        if (teachingStage === "EXERCISE") {
+          return (
+            `NODE_STAGE: EXERCISE (student responding to class exercise)\n` +
+            `DIRECTIVE: Evaluate the answer. Correct (STRONG quality) \u2192 feedback + COMPLETE_NODE allowed. ` +
+            `Incorrect \u2192 warm guidance, let retry. Do NOT ask a new MICRO_CHECK.`
+          );
+        }
+        if (teachingStage === "VERIFIED") {
+          return `NODE_STAGE: VERIFIED \u2014 set node_decision.action = "COMPLETE_NODE" and praise the student.`;
+        }
+        return "";
       })();
 
       lessonContext = [
@@ -479,11 +497,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         coreIdea    ? `CORE_IDEA: ${coreIdea}`       : "",
         `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
         phase1ProgressLine,
-        forcedExerciseLine,
+        stageDirectiveLine,
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
         cfeBlock,
+        verbatimAnchorBlock,
         examplesBlock,
+        nonExamplesBlock,
         misconceptionBlock,
+        knowledgeBoundariesBlock,
         exBlock,
         hwBlock,
         usedTemplatesBlock,
@@ -493,7 +514,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         buildPhaseGuidance(phase, topicName, subjectName),
       ].filter(Boolean).join("\n");
 
-      // Phase 1 progress indicator — show question X/N to frontend
       if (phase === 1) {
         progressIndicator = {
           current_node_name: topicName,
@@ -504,7 +524,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         };
       }
 
-      // Ensure a knowledge node row exists for scoring
       try {
         const [existingKN] = await db
           .select()
@@ -538,7 +557,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
-  // ── Load history ──────────────────────────────────────────────────────────
   const history = await db
     .select()
     .from(chatMessagesTable)
@@ -567,7 +585,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     { role: "user", content: message },
   ];
 
-  // ── Call AI (structured output with fallback) ─────────────────────────────
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
   let wasCorrect: boolean | null = null;
@@ -575,7 +592,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   try {
     aiResult = await callAIStructured(chatHistory, lessonContext);
 
-    // ── P9: Strip denial-opener per spec regex (Ոchch, Schalě e, Du ches) ────
     {
       const _p9msg = aiResult.student_message.trimStart();
       const _p9match = _p9msg.match(/^(\u0548\u0579[,\u0589]|\u054d\u056d\u0561\u056c \u0567[,\u0589]|\u0534\u0578\u0582 \u0579\u0565\u057d)/u);
@@ -588,9 +604,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // ── P7 Part 3.1: Hard code-level scope-drift validation ──────────────────
-    // Extract the allNodeTitles that were built above (available in outer scope
-    // via the allNodeTitles variable if lessonId was set; empty otherwise)
     if (session?.currentNodeId && aiResult.student_message) {
       const driftDetected = validateNoScopeDrift(aiResult.student_message, _allNodeTitles);
       if (driftDetected) {
@@ -602,7 +615,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           },
           "P7 scope-drift incident: model mentioned out-of-scope topic — suppressing response"
         );
-        // Send canned redirect + repeat last question; never change node/phase
         const lastQ = session.lastQuestionAsked;
         const canned = lastQ
           ? `${REDIRECT_CANNED_PREFIX}\n${lastQ}`
@@ -616,11 +628,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // ── P7 Part 3.3: Force CONTINUE_SAME_NODE if model flagged redirect ──────
     if (aiResult.redirect_needed) {
-      // Override model's node_decision — student wasn't actually answering the question
       aiResult.node_decision = { action: "CONTINUE_SAME_NODE", reason: "redirect_needed: student tried to skip" };
-      // Also nullify any mistakenly optimistic evidence
       if (aiResult.answer_evaluation.evidence_quality === "STRONG" ||
           aiResult.answer_evaluation.evidence_quality === "CONCLUSIVE") {
         aiResult.answer_evaluation = {
@@ -639,7 +648,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     logger.error({ err }, "callAIStructured failed — falling back to callAI");
     try {
       studentMessage = await callAI(chatHistory, lessonContext || undefined);
-      // Legacy ###EVAL:### extraction for fallback path
       const evalMatch = studentMessage.match(/\s*###EVAL:(CORRECT|INCORRECT|NONE)###\s*$/);
       wasCorrect = evalMatch?.[1] === "CORRECT" ? true : evalMatch?.[1] === "INCORRECT" ? false : null;
       if (evalMatch) studentMessage = studentMessage.slice(0, evalMatch.index).trimEnd();
@@ -650,7 +658,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
-  // ── P0: Update node tracking & check mastery gate ─────────────────────────
   if (aiResult && session?.currentNodeId && session.currentPhase >= 2 && lessonId) {
     const status      = aiResult.answer_evaluation.status;
     const quality     = aiResult.answer_evaluation.evidence_quality;
@@ -659,7 +666,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const wasEval     = status !== "NOT_APPLICABLE";
 
     if (wasEval) {
-      // Read current node tracking values
       const [nodeStats] = await db
         .select({
           masteryEvidenceCount: lessonNodesTable.masteryEvidenceCount,
@@ -688,7 +694,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         })
         .where(eq(lessonNodesTable.id, session.currentNodeId));
 
-      // Increment session nodeAttemptCount
       const [sessionStats] = await db
         .select({ nodeAttemptCount: lessonSessionsTable.nodeAttemptCount })
         .from(lessonSessionsTable)
@@ -702,7 +707,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .set({ nodeAttemptCount: newAttemptCount })
         .where(eq(lessonSessionsTable.id, session.id));
 
-      // ── P7 Part 3.2/4.1: track lastQuestionAsked + askedQuestionTemplates ──
       if (aiResult?.is_micro_check) {
         const tmpl = aiResult.question_template ?? null;
         const currentTemplates = session?.askedQuestionTemplates ?? [];
@@ -718,16 +722,47 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .where(eq(lessonSessionsTable.id, session.id));
       }
 
+      // ── Stage machine: compute and push newTeachingStage (spec-4) ──────────
+      const currentStage = currentNodeRecord?.teachingStage ?? "THEORY";
+      let newTeachingStage: string | null = null;
+
+      if (currentStage === "THEORY") {
+        newTeachingStage = "MICRO_CHECK";
+      } else if (currentStage === "MICRO_CHECK") {
+        if (classExercises.length > 0) {
+          newTeachingStage = "EXERCISE";
+        }
+      } else if (currentStage === "EXERCISE") {
+        if ((quality === "STRONG" || quality === "CONCLUSIVE") && isCorrect) {
+          newTeachingStage = "VERIFIED";
+        }
+      }
+
+      if (newTeachingStage) {
+        await db
+          .update(lessonNodesTable)
+          .set({ teachingStage: newTeachingStage })
+          .where(eq(lessonNodesTable.id, session.currentNodeId));
+        logger.info({ nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
+      }
+
       // ── Mastery gate check ───────────────────────────────────────────────
+      const stageBecomesVerified = newTeachingStage === "VERIFIED";
+      const noExercisesEarlyComplete =
+        classExercises.length === 0 &&
+        (currentStage === "MICRO_CHECK") &&
+        newAttemptCount >= 2 &&
+        (quality === "MODERATE" || quality === "STRONG" || quality === "CONCLUSIVE") &&
+        isCorrect;
+
       const modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE";
-      const codeGate =
-        newMasteryCount >= 2 &&
-        (quality === "STRONG" || quality === "CONCLUSIVE") &&
-        newConsecIncorrect < 2;
+      const hasExercisesOnThisNode = classExercises.length > 0;
+      const codeGate = hasExercisesOnThisNode
+        ? (newMasteryCount >= 2 && (quality === "STRONG" || quality === "CONCLUSIVE") && newConsecIncorrect < 2)
+        : (newMasteryCount >= 2 && quality !== "NONE" && newConsecIncorrect < 2);
       const safetyCapHit = newAttemptCount > 6;
 
-      if (safetyCapHit || (modelSaysComplete && codeGate)) {
-        // Clear question templates when advancing to next node
+      if (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete || (modelSaysComplete && codeGate)) {
         await db
           .update(lessonSessionsTable)
           .set({ askedQuestionTemplates: [] })
@@ -741,7 +776,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           safetyCapHit
         );
 
-        // Refresh progress indicator after node advancement
         const [updSess] = await db
           .select({ currentNodeId: lessonSessionsTable.currentNodeId })
           .from(lessonSessionsTable)
@@ -772,21 +806,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
-  // ── P8: Phase 1 reviewQuestionCount tracking + hard cap + early exit ────────
   if (session && session.currentPhase === 1 && lessonId && aiResult) {
     const PHASE1_CAP = 5;
     const newReviewCount = (session.reviewQuestionCount ?? 0) + 1;
 
-    // Early exit: > 3 questions answered AND last 2 correct
     let earlyExit = false;
     if (newReviewCount > 3 && wasCorrect === true) {
-      // Check the previous turn's evidence event for this session
       const [prevEvent] = await db
         .select({ wasCorrect: evidenceEventsTable.wasCorrect })
         .from(evidenceEventsTable)
         .where(eq(evidenceEventsTable.lessonSessionId, session.id))
         .orderBy(asc(evidenceEventsTable.id))
-        // get second-to-last
         .offset(Math.max(0, newReviewCount - 2))
         .limit(1);
       earlyExit = prevEvent?.wasCorrect === true;
@@ -822,7 +852,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
-  // ── Record evidence event (fire-and-forget) ───────────────────────────────
   db.insert(evidenceEventsTable)
     .values({
       userId: req.userId!,
@@ -843,7 +872,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     })
     .catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
 
-  // ── Store assistant message ───────────────────────────────────────────────
   const [assistantMsg] = await db
     .insert(chatMessagesTable)
     .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: studentMessage })
@@ -856,8 +884,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingMode,
   });
 });
-
-// ── GET /chat/history ─────────────────────────────────────────────────────────
 
 router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = req.query.lessonId ? parseInt(String(req.query.lessonId), 10) : undefined;

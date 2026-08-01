@@ -1,0 +1,89 @@
+ԽՆԴԻՐ. lesson-mapping.ts-ը (արդեն ուղղված) այժմ վերադարձնում է 3 նոր դաշտ.
+knowledgeBoundaries (lesson-մակարդակ), verbatimTheoryAnchor և nonExamples
+(node-մակարդակ)։ Այս դաշտերը դեռ ոչ մի տեղ չեն պահվում DB-ում և չեն
+օգտագործվում chat.ts-ի կողմից։ Պետք է. (ա) ավելացնել DB column-ներ,
+(բ) գտնել /map route-ը (որտեղ mapLessonWithAI()-ի արդյունքն insert է
+արվում lessonsTable/lessonNodesTable-ում) և պահել այս 3 դաշտերը,
+(գ) chat.ts-ում իրապես օգտագործել դրանք։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — Schema
+═══════════════════════════════════════════
+
+1.1. lib/db/src/schema/lessons.ts-ում ավելացրու.
+  knowledgeBoundaries: jsonb("knowledge_boundaries").notNull().default(sql`'[]'::jsonb`),
+(ավելացրու sql import-ը, եթե դեռ չկա top-ում)
+
+1.2. lib/db/src/schema/lesson-nodes.ts-ում ավելացրու.
+  verbatimTheoryAnchor: text("verbatim_theory_anchor"),
+  nonExamples: jsonb("non_examples").notNull().default(sql`'[]'::jsonb`),
+
+1.3. Գործարկիր migration (drizzle-kit generate + push), ինչպես նախկինում ես արել։
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — /map route-ի insert-ի ընդլայնում
+═══════════════════════════════════════════
+
+Գտիր routes-ը, որտեղ mapLessonWithAI()-ի կանչից հետո insert է կատարվում
+lessonsTable-ում (հավանաբար lessons.ts-ում "/map" կամ նմանատիպ endpoint) և
+lessonNodesTable-ում (loop-ով node-երի insert-ը)։
+
+2.1. lessonsTable-ի update/insert-ին ավելացրու.
+  knowledgeBoundaries: mappingResult.knowledgeBoundaries,
+(որտեղ mappingResult-ը mapLessonWithAI()-ի վերադարձրած object-ն է)
+
+2.2. lessonNodesTable-ի insert-ի loop-ում (ամեն node-ի համար) ավելացրու.
+  verbatimTheoryAnchor: node.verbatimTheoryAnchor || null,
+  nonExamples: node.nonExamples ?? [],
+
+Ցույց տուր ինձ, թե ինչ ֆայլում և ինչ տողերում գտար այս insert-ի կետը,
+նախքան փոփոխելը։
+
+═══════════════════════════════════════════
+ՄԱՍ 3 — chat.ts-ի lessonContext-ի ընդլայնում
+═══════════════════════════════════════════
+
+3.1. NodeRef type-ին (chat.ts-ի սկզբում) ավելացրու.
+  verbatimTheoryAnchor: string | null;
+  nonExamples: unknown;
+
+3.2. Node-ի select query-ին (currentNodeRecord-ը fetch-ող select-ին) ավելացրու
+select-ված դաշտերի ցանկին.
+  verbatimTheoryAnchor: lessonNodesTable.verbatimTheoryAnchor,
+  nonExamples: lessonNodesTable.nonExamples,
+
+3.3. lesson-ի select-ից (որտեղ lesson-ը fetch-վում է lessonId-ով), ավելացրու
+lesson.knowledgeBoundaries-ի ընթերցում. այն արդեն jsonb է, կարիք չկա cast անել,
+բայց ավելացրու type-assertion, ինչպես coreProblem-ի/coreIdea-ի համար է արված.
+  const knowledgeBoundaries = (lesson as { knowledgeBoundaries?: string[] }).knowledgeBoundaries ?? [];
+
+3.4. Ավելացրու 2 նոր block, cfeBlock/examplesBlock-ի կողքին, ուղիղ այս
+ձևակերպումով (ԲԱՌ ԱՌ ԲԱՌ, ոչ ձեռքով-վերաշարադրված).
+
+  const verbatimAnchorBlock = currentNodeRecord?.verbatimTheoryAnchor
+    ? `\nVERBATIM_THEORY_ANCHOR (եթե ոչ դատարկ, հիմնվիր հենց սրա վրա, մեջբերիր մոտավորապես բառ առ բառ, հատկապես կանոններ/սահմանումներ ներկայացնելիս).\n${currentNodeRecord.verbatimTheoryAnchor}`
+    : "";
+
+  const nonExamplesArr = toStrArr(currentNodeRecord?.nonExamples);
+  const nonExamplesBlock = nonExamplesArr.length > 0
+    ? `\nNON_EXAMPLES (օգտագործիր սրանք որպես հակադրություն, MICRO_CHECK-ի սխալ տարբերակների աղբյուր).\n${nonExamplesArr.map((e, i) => `${i + 1}. ${e}`).join("\n")}`
+    : "";
+
+  const knowledgeBoundariesBlock = knowledgeBoundaries.length > 0
+    ? `\nKNOWLEDGE_BOUNDARIES (այս դասը ԴԻՏԱՎՈՐՅԱԼ ՉԻ ընդգրկում սրանք. մի խորանա/մի բացատրիր, եթե աշակերտը հարցնի, ասա որ դա հաջորդ դասերում կլինի).\n${knowledgeBoundaries.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`
+    : "";
+
+3.5. Ավելացրու այս 3 block-երը lessonContext-ի array-ին, cfeBlock/examplesBlock/
+misconceptionBlock-ի կողքին (նույն filter(Boolean).join("\n") array-ի մասը).
+  cfeBlock,
+  verbatimAnchorBlock,
+  examplesBlock,
+  nonExamplesBlock,
+  misconceptionBlock,
+  knowledgeBoundariesBlock,
+  exBlock,
+
+Ավարտից հետո, ցույց տուր ինձ.
+1. Ինչ ֆայլում/տողերում գտար /map-ի insert-ի կետը (Մաս 2)
+2. lessonContext-ի final array-ի իրական տեսքը (copy-paste, ոչ ամփոփում)
+3. Typecheck-ի արդյունքը (zero errors հաստատում)

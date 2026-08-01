@@ -26,6 +26,9 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   consecutiveCorrect: integer("consecutive_correct").notNull().default(0),
   consecutiveIncorrect: integer("consecutive_incorrect").notNull().default(0),
   // Node-level teaching stage machine (THEORY → MICRO_CHECK → EXERCISE → VERIFIED)
+  // Spec-5 fields
+  verbatimTheoryAnchor: text("verbatim_theory_anchor"),
+  nonExamples: jsonb("non_examples").notNull().default(sql`'[]'::jsonb`),
   teachingStage: text("teaching_stage").notNull().default("THEORY"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

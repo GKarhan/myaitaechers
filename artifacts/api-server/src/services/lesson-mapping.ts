@@ -60,15 +60,22 @@ export interface LessonMappingResult {
   lessonOutcomes: string[];
   coreProblem: string;
   coreIdea: string;
+  // NEW: what this lesson deliberately does NOT cover (prevents scope creep in chat.ts / AI teacher)
+  knowledgeBoundaries: string[];
   nodes: {
     title: string;
     theoryContent: string;
+    // NEW: word-for-word textbook paragraph(s) this node's theory is grounded in.
+    // Empty string "" if there is no single clean matching passage (AI-synthesized theory).
+    verbatimTheoryAnchor: string;
     targetBloomLevel: number;
     estimatedMinutes: number;
     childFriendlyExplanation: string;
     basicExamples: string[];
     realLifeExamples: string[];
     commonMisconception: string;
+    // NEW: 1-2 short "this is NOT X" contrasts to sharpen the concept boundary
+    nonExamples: string[];
     prerequisiteNodes: string[];
   }[];
   essentialQuestion: string;
@@ -95,76 +102,83 @@ export interface LessonMappingResult {
 
 const SYSTEM_PROMPT = `Դու կրթական բովանդակության վերլուծաբան ես (հիմնված P1 — Lesson Knowledge Package Generator սկզբունքների վրա)։ Քո խնդիրն է վերլուծել դասագրքի կոնկրետ դասի իրական տեքստը և կառուցել դասի քարտեզագրում։
 
-ԱՇԽԱՏԱՆQԻ ՀԱJОРДАKАNUTIUNA.
-(1) NPATAК / VERJNАRDIUNKNЕR — if the user message contains a teacher draft (see labels below), refine those against the real textbook text rather than inventing from scratch; if absent, derive from the text.
-(2) coreProblem — identify the essential question or problem this lesson answers (one sentence).
-(3) coreIdea — formulate ONE central idea that directly answers coreProblem.
-(3.5) essentialQuestion — one question that the ENTIRE lesson answers, addressed directly to the student (NOT a definition question like «Ինչիր՞ e X-ը»). Use style: «ԻնչՊևս՞ karely e...?» / «Ինչու՞?» / «ԻնչՊևս՞ karogh enk?»
-(4) nodes — break coreIdea into knowledge nodes as described below; each node must serve coreIdea.
-(5) practicalTasks — propose 2-5 tasks reinforcing the theory; prefer real textbook exercises over invented ones.
+ԱՇԽԱՏԱՆՔԻ ՀԱՋՈՐԴԱԿԱՆՈՒԹՅՈՒՆԸ.
+(1) ՆՊԱՏԱԿ / ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ — եթե ուսուցչի սևագիրը (տես label-երը ներքևում) տրված է, ճշգրտիր այն ըստ իրական դասագրքային տեքստի, ոչ թե հորինիր զրոյից. եթե բացակայում է, բխեցրու տեքստից։
+(2) coreProblem — բացահայտիր այն էական հարցը/խնդիրը, որին այս դասը պատասխանում է (մեկ նախադասությամբ)։
+(3) coreIdea — ձևակերպիր ՄԵԿ կենտրոնական գաղափար, որն ուղիղ պատասխանում է coreProblem-ին։
+(3.5) essentialQuestion — մեկ հարց, որին ամբողջ դասը պատասխանում է, ուղղակիորեն ուղղված աշակերտին (ՈՉ սահմանման հարց՝ ինչպես «Ի՞նչ է X-ը»)։ Ոճը՝ «Ինչպե՞ս կարելի է...», «Ինչու՞...», «Ինչպե՞ս կարող ենք...»
+(3.6) knowledgeBoundaries — 1-3 կարճ նշում, թե ինչ ԴԻՏԱՎՈՐՅԱԼ ՉԻ ընդգրկված այս դասում (հաջորդ դասերի կամ ավելի բարձր դասարանի նյութ), որ ուսուցումը չշեղվի սահմաններից դուրս։
+(4) nodes — բաժանիր coreIdea-ն գիտելիքի node-երի, ինչպես նկարագրված է ներքևում. ամեն node պիտի ծառայի coreIdea-ին։
+(5) practicalTasks — առաջարկիր 2-5 վարժություն, որ ամրապնդեն տեսությունը. նախապատվությունը իրական դասագրքային վարժություններին, ոչ հորինվածներին։
 
-Пataskhanir BАCАRRАРES vaver JSON-ov, vochinch avaelin (voch meknabanutiun, voch markdown code fence), ughin ays karrucvackov.
+Պատասխանիր ԲԱՑԱՌԱՊԵՍ վավեր JSON-ով, ոչինչ ավելին (ոչ մեկնաբանություն, ոչ markdown code fence), ուղիղ այս կառուցվածքով.
 
 {
-  "lessonGoal": "Dasi npatakë, 1-2 nakhadas.",
-  "lessonOutcomes": ["Verjnardiunq 1", "Verjnardiunq 2", "..."],
-  "coreProblem": "The essential question this lesson answers (one sentence in Armenian)",
-  "coreIdea": "Dasi kentronakan gaghaparë, hstakats jevakerpvac",
+  "lessonGoal": "Դասի նպատակը, 1-2 նախադասություն.",
+  "lessonOutcomes": ["Վերջնարդյունք 1", "Վերջնարդյունք 2", "..."],
+  "coreProblem": "Այս դասի պատասխանած էական հարցը (մեկ նախադասությամբ, հայերեն)",
+  "coreIdea": "Դասի կենտրոնական գաղափարը, հստակեցված ձևակերպումով",
+  "knowledgeBoundaries": ["Ինչ դիտավորյալ դուրս է այս դասից 1", "Ինչ դիտավորյալ դուրս է այս դասից 2"],
   "nodes": [
     {
-      "title": "Enthathemayi karrc vernagiR",
-      "theoryContent": "Ays enthathemayi tesakank bovandasthanotyunë",
+      "title": "Ենթաթեմայի կարճ վերնագիր",
+      "theoryContent": "Այս ենթաթեմայի տեսական բովանդակությունը",
+      "verbatimTheoryAnchor": "ԲԱՌ ԱՌ ԲԱՌ դասագրքի պարբերությունը, որի վրա հիմնված է այս node-ը (կամ դատարկ տող '' եթե չկա մեկ հստակ համապատասխան պարբերություն)",
       "targetBloomLevel": 1,
       "estimatedMinutes": 5,
-      "childFriendlyExplanation": "How the AI teacher should explain this node to the student in plain language (in Armenian, 1-3 sentences, direct address)",
-      "basicExamples": ["Short concrete example 1 (in Armenian)", "Short concrete example 2 (in Armenian)"],
-      "realLifeExamples": ["Real-life context example (in Armenian, 0-2 items)"],
-      "commonMisconception": "The single most likely wrong answer or confusion a student will have (in Armenian, 1 sentence)",
-      "prerequisiteNodes": ["Short phrase: prior knowledge needed 1", "Short phrase: prior knowledge needed 2"]
+      "childFriendlyExplanation": "Ինչպես AI ուսուցիչը պիտի բացատրի այս node-ը աշակերտին պարզ լեզվով (հայերեն, 1-3 նախադասություն, ուղիղ դիմելով)",
+      "basicExamples": ["Կարճ կոնկրետ օրինակ 1 (հայերեն)", "Կարճ կոնկրետ օրինակ 2 (հայերեն)"],
+      "realLifeExamples": ["Կյանքից օրինակ (հայերեն, 0-2 հատ)"],
+      "commonMisconception": "Ամենահավանական սխալ պատասխանը կամ շփոթը, որ աշակերտը կունենա (հայերեն, 1 նախադասություն)",
+      "nonExamples": ["Կարճ հակադրություն. սա ՉԷ այս հասկացությունը, քանի որ... (հայերեն)"],
+      "prerequisiteNodes": ["Կարճ արտահայտություն. պահանջվող նախնական գիտելիք 1", "Կարճ արտահայտություն. պահանջվող նախնական գիտելիք 2"]
     }
   ],
-  "essentialQuestion": "Mek hartsadzev baytzatsvats harts, vorin ambogj dashը pataskhanom e (Armenian, direct address to student, NOT \"Ինչիր՞ e X?\").",
+  "essentialQuestion": "Մեկ հարցաձև ձևակերպված հարց, որին ամբողջ դասը պատասխանում է (հայերեն, ուղիղ դիմելով աշակերտին, ՈՉ 'Ի՞նչ է X-ը' ոճով).",
   "nodeDependencies": [
     {
-      "fromNodeTitle": "Exact title of prerequisite node (must match a node title above)",
-      "toNodeTitle": "Exact title of dependent node (must match a node title above)",
+      "fromNodeTitle": "Նախապայման node-ի ճշգրիտ վերնագիրը (պիտի համընկնի վերևի node-երից մեկի հետ)",
+      "toNodeTitle": "Կախված node-ի ճշգրիտ վերնագիրը (պիտի համընկնի վերևի node-երից մեկի հետ)",
       "dependencyType": "REQUIRED",
       "requiredLevel": "CRITICAL",
-      "reason": "Brief reason why (Armenian, 1 sentence)"
+      "reason": "Կարճ պատճառաբանություն (հայերեն, 1 նախադասություն)"
     }
   ],
   "practicalTasks": [
     {
-      "task": "A concrete exercise or problem from/inspired by the textbook (in Armenian)",
-      "purpose": "How this task reinforces the core idea (in Armenian, 1 sentence)",
-      "exerciseTextVerbatim": "WORD-FOR-WORD textbook text (copy exactly — no changes to any number, sign, or formula). Empty string '' if this is an AI-invented task.",
+      "task": "Կոնկրետ վարժություն կամ խնդիր՝ դասագրքից կամ ոգեշնչված դասագրքից (հայերեն)",
+      "purpose": "Ինչպես է այս վարժությունն ամրապնդում կենտրոնական գաղափարը (հայերեն, 1 նախադասություն)",
+      "exerciseTextVerbatim": "ԲԱՌ ԱՌ ԲԱՌ դասագրքի տեքստ (պատճենիր ուղիղ, ոչ մի փոփոխություն թվին, նշանին, կամ բանաձևին). Դատարկ '' եթե սա AI-ի հորինած վարժություն է.",
       "exercisePurpose": "GUIDED_PRACTICE",
       "sourcePage": "10",
       "difficultyLevel": "MEDIUM",
-      "successCriteria": "The correct answer or what counts as a correct student response (in Armenian)",
-      "relatedNodeTitle": "Exact title of the node this task reinforces (must match a node title above)",
+      "successCriteria": "Ճիշտ պատասխանը կամ ինչն է հաշվվում ճիշտ պատասխան (հայերեն)",
+      "relatedNodeTitle": "Այս վարժությունն ամրապնդող node-ի ճշգրիտ վերնագիրը (պիտի համընկնի վերևի node-երից մեկի հետ)",
       "assignment": "CLASS"
     }
   ]
 }
 
-KANOНNER.
-- Amen inch grir МИЯNS irakank hayerënov (hayatarr), voch mek tarradarzutiun, voch mek kiriliqa
-- targetBloomLevel: 1-ic 6 (1=Hishtarrel, 2=Haskarnel, 3=Kirarrel, 4=Verluczel, 5=Gnahatel, 6=Stepghcel)
-- node-eri qanakë thogh hamapataskhani iraкank teksti cvаlini (sovorаbar 3-8 node)
-- theoryContent-ë piti himnvat lini trvats iraкan teksti vra
-- practicalTasks: 2-5 tasks; prefer real textbook exercises/examples over invented ones
-- exerciseTextVerbatim ПРАВИЛО (ШАТРАБАГОВАН):
-    * Ete varjhutiunë dasagrkis e → grir BARR ARR BARR (mek tiv, mek barr, mek nshan mi khojafkhes).
-      exercisePurpose-ë inchknavor e ayn enum-ic: CONCEPT_DISCOVERY, RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE, PROBLEM_SOLVING, REVIEW, ASSESSMENT
-    * Ete varjhutiunë AI-i stehcagortsakanë e (voch dasagrkis) → exerciseTextVerbatim = "" (datark texaragir), exercisePurpose = "AI_ADAPTED"
-    * sourcePage = SHTKIT ej hamare (1-10 nman), kam null ete AI-i
-- exercisePurpose valid values: CONCEPT_DISCOVERY | RULE_DISCOVERY | WORKED_EXAMPLE | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | PROBLEM_SOLVING | REVIEW | ASSESSMENT | AI_ADAPTED
-- nodeDependencies RULE: ONLY deps between nodes OF THIS LESSON. REQUIRED=toNode incomprehensible without fromNode (requiredLevel=CRITICAL); SEQUENTIAL=natural order, not strictly blocking (SUPPORTING); CONCEPTUAL=related, not sequential (SUPPORTING). Do NOT invent deps just to mirror the node list order. If nodes are independent, set nodeDependencies=[].
-- relatedNodeTitle = piti hstakores hamnapataskhani verin node-eri vernagir-eri mekic
-- assignment: after proposing all tasks, estimate total node time. Mark tasks that fit in class as "CLASS"; extras as "HOMEWORK". Ensure at least 1-2 are "CLASS". Exact value: "CLASS" or "HOMEWORK".
-- glkhchi/bazhneri vernagirner (GLUKH 1, BAZHINN 2 ev nman) — antel drank vorpis aghbyur
-- Node-erë, coreProblem-ë, coreIdea-n ev practicalTasks-ë piti bacарrapёs hamапataskhani dasi seфhakan teksti ev vernagiRi
+ԿԱՆՈՆՆԵՐ.
+- Ամեն ինչ գրիր ՄԻԱՅՆ իրական հայերենով (հայատառ), ոչ մի տառադարձություն, ոչ մի կիրիլիցա
+- targetBloomLevel: 1-ից 6 (1=Հիշտարել, 2=Հասկանալ, 3=Կիրառել, 4=Վերլուծել, 5=Գնահատել, 6=Ստեղծել)
+- node-երի քանակը թող համապատասխանի իրական տեքստի ծավալին (սովորաբար 3-8 node)
+- theoryContent-ը պիտի հիմնված լինի տրված իրական տեքստի վրա
+- verbatimTheoryAnchor-ի ՊԱՀԱՆՋ. եթե node-ի հիմքում կոնկրետ, հստակ առանձնացվող դասագրքային պարբերություն/կանոն կա, մեջբերիր այն ուղիղ, բառ առ բառ (ոչ մի փոփոխություն). եթե տեքստը ցրված է կամ ուղիղ մեջբերում հնարավոր չէ, թող '' (դատարկ) — մի հորինիր կեղծ մեջբերում
+- practicalTasks: 2-5 վարժություն; նախապատվությունը իրական դասագրքային վարժություններին/օրինակներին, ոչ հորինվածներին
+- exerciseTextVerbatim ԿԱՆՈՆ (ԽԻՍՏ).
+    * Եթե վարժությունը դասագրքից է → գրիր ԲԱՌ ԱՌ ԲԱՌ (մեկ թիվ, մեկ բառ, մեկ նշան մի փոփոխես).
+      exercisePurpose-ը ընտրիր այս enum-ից. CONCEPT_DISCOVERY, RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE, PROBLEM_SOLVING, REVIEW, ASSESSMENT
+    * Եթե վարժությունը AI-ի ստեղծագործականն է (ոչ դասագրքից) → exerciseTextVerbatim = "" (դատարկ տեքստադաշտ), exercisePurpose = "AI_ADAPTED"
+    * sourcePage = ճշգրիտ էջի համարը (1-10 նման), կամ null եթե AI-ինն է
+- exercisePurpose-ի վավեր արժեքներ. CONCEPT_DISCOVERY | RULE_DISCOVERY | WORKED_EXAMPLE | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | PROBLEM_SOLVING | REVIEW | ASSESSMENT | AI_ADAPTED
+- nodeDependencies ԿԱՆՈՆ. ՄԻԱՅՆ այս դասի node-երի միջև կախվածություններ։ REQUIRED=toNode-ը անհասկանալի է առանց fromNode-ի (requiredLevel=CRITICAL); SEQUENTIAL=բնական հերթականություն, բայց ոչ խիստ արգելափակող (SUPPORTING); CONCEPTUAL=կապված, բայց ոչ հաջորդական (SUPPORTING)։ Մի հորինիր կախվածություն միայն node-երի ցանկի կարգն արտացոլելու համար։ Եթե node-երն անկախ են միմյանցից, դիր nodeDependencies=[]:
+- knowledgeBoundaries-ը պիտի իրապես կապված լինի այս դասին հարակից թեմաների հետ (հաջորդ դաս, ավելի բարձր դասարան), ոչ ընդհանուր/անորոշ նշում
+- nonExamples-ը պիտի հստակ հակադրի node-ի հասկացությունը մի նման, բայց տարբեր բանի հետ (ոչ պարզապես «սա սխալ է» ընդհանուր նշում)
+- relatedNodeTitle-ը պիտի ճշգրիտ համընկնի վերևի node-երից մեկի վերնագրի հետ
+- assignment. բոլոր tasks-երն առաջարկելուց հետո, գնահատիր ընդհանուր node-ի ժամանակը. class-ում տեղավորվողները նշիր "CLASS", հավելյալները՝ "HOMEWORK": Ապահովիր առնվազն 1-2 "CLASS" tasks: Ճշգրիտ արժեք. "CLASS" կամ "HOMEWORK"
+- գլխի/բաժինների վերնագրեր (ԳԼՈՒԽ 1, ԲԱԺԻՆ 2 և նման) — մի ընդունիր դրանք որպես աղբյուր
+- Node-երը, coreProblem-ը, coreIdea-ն և practicalTasks-ը պիտի բացառապես համապատասխանեն դասի սեփական տեքստին ու վերնագրին
 `;
 
 
@@ -231,24 +245,24 @@ export async function mapLessonWithAI(
 ): Promise<LessonMappingResult> {
   const userPromptParts: string[] = [
 
-    `ARRARKA: ${input.subjectName}`,
-    `DASI VERNAGIR: ${input.lessonTitle}`,
-    input.chapterTitle ? `TEMA/GLUKH: ${input.chapterTitle}` : "",
-    input.textbookTitle ? `DASAGIRK: ${input.textbookTitle}` : "",
-    input.textbookAuthor ? `HEGHINAR: ${input.textbookAuthor}` : "",
+    `ԱՌԱՐԿԱ: ${input.subjectName}`,
+    `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
+    input.chapterTitle ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}` : "",
+    input.textbookTitle ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}` : "",
+    input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}` : "",
     input.pagesFrom && input.pagesTo
-      ? `EJER: ${input.pagesFrom}-${input.pagesTo}`
+      ? `ԷՋԵՐ: ${input.pagesFrom}-${input.pagesTo}`
       : "",
     ``,
-    `DASAGRKIS IRAКAN TEKSTË АYS EJERIC.`,
-    input.lessonText || "(tekst chi hajoghhel hanelm ays ejerics)",
-  
+    `ԴԱՍԱԳՐՔԻ ԻՐԱԿԱՆ ՏԵՔՍՏԸ ԱՅՍ ԷՋԵՐԻՑ.`,
+    input.lessonText || "(տեքստ չի հաջողվել հանել այս էջերից)",
+
   ];
   if (input.teacherGoal) {
-    userPromptParts.push("", `OUCUKCHOGH SEVAGIR NAРATAК: ${input.teacherGoal}`);
+    userPromptParts.push("", `ՈՒՍՈՒՑՉԻ ՍևԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}`);
   }
   if (input.teacherOutcomes && input.teacherOutcomes.length > 0) {
-    userPromptParts.push(`OUCUKCHOGH SEVAGIR VERJNARDIUNKNЕР: ${input.teacherOutcomes.join("; ")}`);
+    userPromptParts.push(`ՈՒՍՈՒՑՉԻ ՍևԱԳԻՐ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ: ${input.teacherOutcomes.join("; ")}`);
   }
   const userPrompt = userPromptParts.filter(Boolean).join("\n");
 
@@ -282,12 +296,16 @@ export async function mapLessonWithAI(
   // Defensive defaults for node fields
   parsed.nodes = parsed.nodes.map((n) => ({
     ...n,
+    verbatimTheoryAnchor: typeof n.verbatimTheoryAnchor === "string" ? n.verbatimTheoryAnchor : "",
     childFriendlyExplanation: n.childFriendlyExplanation ?? "",
     basicExamples: Array.isArray(n.basicExamples) ? n.basicExamples : [],
     realLifeExamples: Array.isArray(n.realLifeExamples) ? n.realLifeExamples : [],
     commonMisconception: n.commonMisconception ?? "",
+    nonExamples: Array.isArray(n.nonExamples) ? n.nonExamples : [],
     prerequisiteNodes: Array.isArray(n.prerequisiteNodes) ? n.prerequisiteNodes : [],
   }));
+
+  parsed.knowledgeBoundaries = Array.isArray(parsed.knowledgeBoundaries) ? parsed.knowledgeBoundaries : [];
 
   if (!Array.isArray(parsed.practicalTasks)) {
     parsed.practicalTasks = [];

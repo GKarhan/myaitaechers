@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { subjectsTable } from "./subjects";
@@ -40,6 +41,7 @@ export const lessonsTable = pgTable("lessons", {
   coreProblem: text("core_problem"),
   essentialQuestion: text("essential_question"),
   practicalTasks: jsonb("practical_tasks").notNull().default([]),
+  knowledgeBoundaries: jsonb("knowledge_boundaries").notNull().default(sql`'[]'::jsonb`),
   status: text("status").notNull().default("draft"),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),

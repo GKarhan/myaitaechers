@@ -677,6 +677,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         coreIdea: mapping.coreIdea,
         essentialQuestion: mapping.essentialQuestion ?? null,
         practicalTasks: mapping.practicalTasks,
+        knowledgeBoundaries: mapping.knowledgeBoundaries ?? [],
       })
       .where(eq(lessonsTable.id, lessonId));
 
@@ -705,6 +706,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           realLifeExamples: n.realLifeExamples,
           commonMisconception: n.commonMisconception,
           prerequisiteNodes: n.prerequisiteNodes,
+          verbatimTheoryAnchor: (n as { verbatimTheoryAnchor?: string }).verbatimTheoryAnchor ?? null,
+          nonExamples: (n as { nonExamples?: unknown[] }).nonExamples ?? [],
         }))
       )
       .returning();
