@@ -590,7 +590,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let wasCorrect: boolean | null = null;
 
   try {
-    aiResult = await callAIStructured(chatHistory, lessonContext);
+    try {
+      aiResult = await callAIStructured(chatHistory, lessonContext);
+    } catch (firstErr) {
+      logger.warn({ err: firstErr }, "callAIStructured failed once — retrying before fallback");
+      aiResult = await callAIStructured(chatHistory, lessonContext);
+    }
+
 
     {
       const _p9msg = aiResult.student_message.trimStart();
@@ -645,25 +651,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const st = aiResult.answer_evaluation.status;
     wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
   } catch (err) {
-    logger.warn({ err }, "callAIStructured failed — retrying once before callAI fallback");
+    logger.error({ err }, "callAIStructured failed twice — falling back to callAI");
     try {
-      aiResult = await callAIStructured(chatHistory, lessonContext);
-      studentMessage = aiResult.student_message;
-      teachingMode = aiResult.teaching_mode;
-      const st2 = aiResult.answer_evaluation.status;
-      wasCorrect = st2 === "CORRECT" ? true : st2 === "INCORRECT" ? false : null;
-    } catch (retryErr) {
-      logger.error({ err: retryErr }, "callAIStructured retry also failed — falling back to callAI");
-      try {
-        studentMessage = await callAI(chatHistory, lessonContext || undefined);
+      studentMessage = await callAI(chatHistory, lessonContext || undefined);
       const evalMatch = studentMessage.match(/\s*###EVAL:(CORRECT|INCORRECT|NONE)###\s*$/);
       wasCorrect = evalMatch?.[1] === "CORRECT" ? true : evalMatch?.[1] === "INCORRECT" ? false : null;
       if (evalMatch) studentMessage = studentMessage.slice(0, evalMatch.index).trimEnd();
-      } catch (err2) {
-        logger.error({ err: err2 }, "callAI fallback also failed");
-        res.status(503).json({ error: "AI service unavailable" });
-        return;
-      }
+    } catch (err2) {
+      logger.error({ err: err2 }, "callAI fallback also failed");
+      res.status(503).json({ error: "AI service unavailable" });
+      return;
     }
   }
 

@@ -1,0 +1,72 @@
+ԽՆԴԻՐ. 3 առանձին, ցածր-ռիսկ ամրապնդում ai.ts-ում/chat.ts-ում, ի պատասխան
+live-test-ում հայտնաբերված model-ի հուսալիության խնդիրների (enum
+խառնում, կրկնվող/այլասերված տեքստ, դանդաղ fallback)։ Ոչ մեկը չի
+փոխում node-progression/mastery-gate-ի հիմնական տրամաբանությունը։
+
+═══════════════════════════════════════════
+ՄԱՍ 1 — teaching_mode vs node_decision.action-ի հստակեցում (ai.ts)
+═══════════════════════════════════════════
+
+STRUCTURED_SYSTEM_PROMPT-ում, հենց "Required JSON schema:" տողից առաջ,
+ավելացրու.
+
+IMPORTANT — teaching_mode and node_decision.action are TWO SEPARATE
+fields with COMPLETELY DIFFERENT allowed values. Do not confuse them.
+- teaching_mode is ALWAYS exactly one of: TEACH, MICRO_CHECK, FEEDBACK, TRANSITION.
+- node_decision.action is the pedagogical action and is one of the 14
+  values listed in the ACTION REGISTRY above (CONTINUE_SAME_NODE,
+  COMPLETE_NODE, GUIDED_QUESTION, HINT, EXTRA_EXAMPLE, CONTRAST_EXAMPLE,
+  CHANGE_REPRESENTATION, STEP_BY_STEP, SIMPLIFY_LANGUAGE, LOWER_DIFFICULTY,
+  RAISE_DIFFICULTY, RETURN_TO_PREREQUISITE, VERIFY_SELECTION, REQUIRE_REASONING).
+NEVER put a node_decision.action value (e.g. "GUIDED_QUESTION") into the
+teaching_mode field. If you are asking a guiding question after an
+incorrect answer, teaching_mode should be "FEEDBACK" and
+node_decision.action should be "GUIDED_QUESTION" — these are independent.
+
+═══════════════════════════════════════════
+ՄԱՍ 2 — frequency_penalty, կրճատելու համար կրկնվող/այլասերված տեքստը
+═══════════════════════════════════════════
+
+callAIStructured-ի և callAI-ի openrouter.chat.completions.create կանչերում
+ավելացրու frequency_penalty պարամետրը (temperature-ի կողքին).
+  temperature: 0.5,
+  frequency_penalty: 0.3,
+(callAI-ի համար՝ temperature: 0.7-ի կողքին, նույն frequency_penalty: 0.3)
+
+═══════════════════════════════════════════
+ՄԱՍ 3 — callAIStructured-ի մեկ retry, նախքան callAI-ին fallback անելը
+═══════════════════════════════════════════
+
+chat.ts-ում, "aiResult = await callAIStructured(chatHistory, lessonContext);"
+կանչի շուրջ եղած try/catch-ում, մոդիֆիկացրու տրամաբանությունը, որ
+callAIStructured-ը փորձի ևս մեկ անգամ (ընդամենը 1 լրացուցիչ փորձ, ոչ
+անվերջ loop) նախքան callAI legacy fallback-ին անցնելը.
+
+  let aiResult: AIStructuredResponse | null = null;
+  let studentMessage: string;
+  let wasCorrect: boolean | null = null;
+
+  try {
+    try {
+      aiResult = await callAIStructured(chatHistory, lessonContext);
+    } catch (firstErr) {
+      logger.warn({ err: firstErr }, "callAIStructured failed once — retrying before fallback");
+      aiResult = await callAIStructured(chatHistory, lessonContext);
+    }
+
+    // ... (մնացած ամբողջ existing logic-ը՝ P9 strip, scope-drift, redirect_needed,
+    // studentMessage/teachingMode/wasCorrect-ի սահմանումը — ԱՆՓՈՓՈԽ)
+
+  } catch (err) {
+    logger.error({ err }, "callAIStructured failed twice — falling back to callAI");
+    // ... (գոյություն ունեցող callAI fallback-ը, ԱՆՓՈՓՈԽ)
+  }
+
+Կարևոր. ներքին try-ը ՄԻԱՅՆ callAIStructured-ի կանչն է փաթաթում (retry-ի
+համար), արտաքին try/catch-ը մնում է ամբողջությամբ ինչպես կա (P9,
+scope-drift, redirect_needed, callAI fallback)՝ ուղղակի ներսում
+ավելացված retry-ով։ Մի փոփոխի մնացած logic-ը։
+
+Ավարտից հետո ցույց տուր 3 փոփոխված հատվածները (persona-ի նոր
+պարզաբանումը, frequency_penalty-ի երկու տեղը, chat.ts-ի retry-ի
+կառուցվածքը) և TypeScript typecheck-ի արդյունքը։

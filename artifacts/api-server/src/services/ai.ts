@@ -241,7 +241,10 @@ EXERCISE VERBATIM RULE:
 
 OUTPUT FORMAT: Return VALID JSON ONLY. No markdown, no \`\`\`json fences, no explanatory text outside the JSON.
 
-IMPORTANT: teaching_mode and node_decision.action are TWO SEPARATE fields with DIFFERENT allowed values. teaching_mode is ONLY one of TEACH/MICRO_CHECK/FEEDBACK/TRANSITION. node_decision.action is the pedagogical action (CONTINUE_SAME_NODE/GUIDED_QUESTION/etc). NEVER put a node_decision.action value into teaching_mode.
+IMPORTANT — teaching_mode and node_decision.action are TWO SEPARATE fields with COMPLETELY DIFFERENT allowed values. Do not confuse them.
+- teaching_mode is ALWAYS exactly one of: TEACH, MICRO_CHECK, FEEDBACK, TRANSITION.
+- node_decision.action is the pedagogical action and is one of the 14 values listed in the ACTION REGISTRY above (CONTINUE_SAME_NODE, COMPLETE_NODE, GUIDED_QUESTION, HINT, EXTRA_EXAMPLE, CONTRAST_EXAMPLE, CHANGE_REPRESENTATION, STEP_BY_STEP, SIMPLIFY_LANGUAGE, LOWER_DIFFICULTY, RAISE_DIFFICULTY, RETURN_TO_PREREQUISITE, VERIFY_SELECTION, REQUIRE_REASONING).
+NEVER put a node_decision.action value (e.g. "GUIDED_QUESTION") into the teaching_mode field. If you are asking a guiding question after an incorrect answer, teaching_mode should be "FEEDBACK" and node_decision.action should be "GUIDED_QUESTION" — these are independent.
 
 Required JSON schema:
 {
