@@ -241,6 +241,8 @@ EXERCISE VERBATIM RULE:
 
 OUTPUT FORMAT: Return VALID JSON ONLY. No markdown, no \`\`\`json fences, no explanatory text outside the JSON.
 
+IMPORTANT: teaching_mode and node_decision.action are TWO SEPARATE fields with DIFFERENT allowed values. teaching_mode is ONLY one of TEACH/MICRO_CHECK/FEEDBACK/TRANSITION. node_decision.action is the pedagogical action (CONTINUE_SAME_NODE/GUIDED_QUESTION/etc). NEVER put a node_decision.action value into teaching_mode.
+
 Required JSON schema:
 {
   "student_message": "<full Armenian text to display to the student>",
@@ -332,6 +334,7 @@ export async function callAI(
         ...messages,
       ],
       temperature: 0.7,
+      frequency_penalty: 0.3,
     });
 
     if (!response.choices || response.choices.length === 0) {
@@ -358,6 +361,7 @@ export async function callAIStructured(
     model: MODEL,
     max_tokens: 1500,
     temperature: 0.5,
+    frequency_penalty: 0.3,
     response_format: { type: "json_object" } as { type: "json_object" },
     messages: [
       { role: "system", content: systemWithContext },
