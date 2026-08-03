@@ -1222,6 +1222,45 @@ export default function AdminDashboard() {
                       ))}
                     </select>
                   </div>
+                  {editClass.teacherId && (() => {
+                    const selectedTeacher = teachers.find((t) => t.id === editClass.teacherId);
+                    const teacherSubjects = selectedTeacher?.subjects ?? [];
+                    return (
+                      <div className="col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Ինչ առարկա(ներ) կդասավանդի այս դասարանում
+                        </label>
+                        {teacherSubjects.length === 0 ? (
+                          <p className="text-xs text-amber-400">Այս ուսուցիչը որակավորության առարկա նշված չունի</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {teacherSubjects.map((subName) => {
+                              const subjectItem = subjectsList.find((s) => s.name === subName);
+                              if (!subjectItem) return null;
+                              return (
+                                <label key={subjectItem.id} className="flex items-center gap-2 text-sm cursor-pointer select-none rounded-lg px-3 py-2 border border-white/10 hover:border-primary/40 transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={editClass.subjectIds.includes(subjectItem.id)}
+                                    onChange={(e) =>
+                                      setEditClass((c) => c && {
+                                        ...c,
+                                        subjectIds: e.target.checked
+                                          ? [...c.subjectIds, subjectItem.id]
+                                          : c.subjectIds.filter((id) => id !== subjectItem.id),
+                                      })
+                                    }
+                                    className="accent-indigo-500"
+                                  />
+                                  {subName}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                 </div>
                 <div className="flex gap-2">
