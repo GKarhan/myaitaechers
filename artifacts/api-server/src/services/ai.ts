@@ -344,6 +344,53 @@ export async function callAI(
   }
 }
 
+// ── Structured response validation (post-Zod semantic checks) ────────────────
+
+function validateStructuredResponse(response: AIStructuredResponse): void {
+  const msg = response.student_message;
+
+  // A) Language check — Latin or Cyrillic characters are forbidden
+  // Allow: Armenian (U+0531–U+058F), math Unicode (×÷√²³⁴⁵⁶⁷⁸⁹⁰⁻⁺ etc.),
+  //        digits, punctuation, whitespace.
+  const latinOrCyrillic = /[A-Za-z\u0400-\u04FF]/u;
+  if (latinOrCyrillic.test(msg)) {
+    const sample = msg.replace(/[^\x00-\x7F\u0400-\u04FF]/g, "").slice(0, 80);
+    throw new Error(
+      `validateStructuredResponse: student_message contains forbidden Latin/Cyrillic characters — sample: "${sample}"`
+    );
+  }
+
+  // B) Length check — more than 5 sentences or more than 700 characters
+  // Sentence split on Armenian/common sentence-ending punctuation (։ . ! ?)
+  const sentences = msg
+    .split(/[։.!?]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (sentences.length > 5) {
+    throw new Error(
+      `validateStructuredResponse: student_message has ${sentences.length} sentences (max 5)`
+    );
+  }
+  if (msg.length > 700) {
+    throw new Error(
+      `validateStructuredResponse: student_message is ${msg.length} chars (max 700)`
+    );
+  }
+
+  // C) Node lock — AI self-reported that it mentioned an out-of-scope topic
+  if (response.mentions_out_of_scope_topic === true) {
+    logger.warn(
+      { student_message_preview: msg.slice(0, 120) },
+      "validateStructuredResponse: mentions_out_of_scope_topic=true — AI deviated from node lock"
+    );
+    throw new Error(
+      "validateStructuredResponse: AI mentioned out-of-scope topic (mentions_out_of_scope_topic=true)"
+    );
+  }
+
+  // D) redirect_needed — allowed through without modification (no-op check)
+}
+
 // ── callAIStructured inner attempt (single API call + parse + validate) ───────
 
 async function _attemptStructured(
@@ -395,12 +442,16 @@ async function _attemptStructured(
     throw new Error(`AI structured response was not valid JSON: ${String(err)}`);
   }
 
+  let validated: AIStructuredResponse;
   try {
-    return aiStructuredResponseSchema.parse(parsed);
+    validated = aiStructuredResponseSchema.parse(parsed);
   } catch (err) {
     logger.error({ err, parsed }, "callAIStructured: Zod validation failed");
     throw new Error(`AI structured response failed schema validation: ${String(err)}`);
   }
+
+  validateStructuredResponse(validated);
+  return validated;
 }
 
 // ── callAIStructured (max 2 attempts, 1 retry on schema/parse/empty/deviation) ─
