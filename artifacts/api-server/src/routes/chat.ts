@@ -4,7 +4,7 @@ import {
   evidenceEventsTable, knowledgeNodesTable, lessonNodesTable, lessonExercisesTable,
   lessonNodeDependenciesTable, usersTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, gte } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import {
   callAI, callAIStructured,
@@ -203,6 +203,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     id: number; currentPhase: number; currentNodeId: number | null; status: string;
     lastQuestionAsked: string | null; askedQuestionTemplates: string[]; nodeAttemptCount: number;
     reviewQuestionCount: number; deepDiveExerciseIndex: number;
+    nodeStartedAt: Date | null;
   };
   let session: SessionRef | null = null;
 
@@ -248,6 +249,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeAttemptCount: sessionRow.nodeAttemptCount ?? 0,
           reviewQuestionCount: sessionRow.reviewQuestionCount ?? 0,
           deepDiveExerciseIndex: sessionRow.deepDiveExerciseIndex ?? 0,
+          nodeStartedAt: sessionRow.nodeStartedAt ?? null,
         };
         sessionId = sessionRow.id;
       }
@@ -648,16 +650,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
+  const nodeStartedAt = session?.nodeStartedAt ?? null;
   const history = await db
     .select()
     .from(chatMessagesTable)
     .where(
       lessonId
-        ? and(eq(chatMessagesTable.userId, req.userId!), eq(chatMessagesTable.lessonId, lessonId))
+        ? and(
+            eq(chatMessagesTable.userId, req.userId!),
+            eq(chatMessagesTable.lessonId, lessonId),
+            ...(nodeStartedAt ? [gte(chatMessagesTable.createdAt, nodeStartedAt)] : [])
+          )
         : eq(chatMessagesTable.userId, req.userId!)
     )
     .orderBy(asc(chatMessagesTable.createdAt))
-    .limit(30);
+    .limit(nodeStartedAt ? 100 : 10);
 
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
   const responseTimeMs = lastAssistant
