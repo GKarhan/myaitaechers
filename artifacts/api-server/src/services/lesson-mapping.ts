@@ -266,28 +266,64 @@ export async function mapLessonWithAI(
   }
   const userPrompt = userPromptParts.filter(Boolean).join("\n");
 
-  const response = await openrouter.chat.completions.create({
+  // ── Helper: attempt to extract valid JSON from raw model output ─────────
+  function extractJSON(raw: string): LessonMappingResult | null {
+    // 1. Strip markdown fences
+    const stripped = raw.replace(/```json\s*|```/g, "").trim();
+    // 2. Try direct parse
+    try { return JSON.parse(stripped); } catch { /* fall through */ }
+    // 3. Find the first {...} block — model sometimes wraps JSON in prose
+    const match = stripped.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch { /* fall through */ }
+    }
+    return null;
+  }
+
+  // ── First attempt ────────────────────────────────────────────────────────
+  const firstResponse = await openrouter.chat.completions.create({
     model: MODEL,
     max_tokens: 5000,
     temperature: 0.4,
+    // Force JSON output at the model level (supported by DeepSeek v3 via OpenRouter)
+    response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
   });
 
-  const raw = response.choices[0]?.message?.content ?? "";
+  const firstRaw = firstResponse.choices[0]?.message?.content ?? "";
+  let parsed: LessonMappingResult | null = extractJSON(firstRaw);
 
-  // Defensive parsing: strip ```json fences if the model added them anyway.
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-
-  let parsed: LessonMappingResult;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    logger.error({ err, raw }, "lesson mapping: failed to parse AI JSON response");
-    throw new Error("AI mapping response was not valid JSON");
+  // ── Retry once if first attempt did not return valid JSON ────────────────
+  if (!parsed) {
+    logger.warn({ raw: firstRaw.slice(0, 200) }, "lesson mapping: first attempt not valid JSON — retrying");
+    const retryResponse = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 5000,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+        { role: "assistant", content: firstRaw },
+        {
+          role: "user",
+          content:
+            "Պատասխանդ վավեր JSON չէ։ Վերադարձրու ԲԱՑԱՌԱՊԵՍ վավեր JSON օբյեկտ` առանց որևէ լրացուցիչ տեքստի, բացատրության կամ markdown-ի։",
+        },
+      ],
+    });
+    const retryRaw = retryResponse.choices[0]?.message?.content ?? "";
+    parsed = extractJSON(retryRaw);
+    if (!parsed) {
+      logger.error({ raw: retryRaw.slice(0, 300) }, "lesson mapping: failed to parse AI JSON response after retry");
+      throw new Error("AI mapping response was not valid JSON");
+    }
   }
+
+  const raw = firstRaw; // kept for downstream compat in error messages
 
   if (!Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
     throw new Error("AI mapping response contained no nodes");
