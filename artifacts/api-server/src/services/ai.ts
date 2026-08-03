@@ -349,16 +349,46 @@ export async function callAI(
 function validateStructuredResponse(response: AIStructuredResponse): void {
   const msg = response.student_message;
 
-  // A) Language check — Latin or Cyrillic characters are forbidden
-  // Allow: Armenian (U+0531–U+058F), math Unicode (×÷√²³⁴⁵⁶⁷⁸⁹⁰⁻⁺ etc.),
-  //        digits, punctuation, whitespace.
-  const latinOrCyrillic = /[A-Za-z\u0400-\u04FF]/u;
-  if (latinOrCyrillic.test(msg)) {
-    const sample = msg.replace(/[^\x00-\x7F\u0400-\u04FF]/g, "").slice(0, 80);
+  // A) Language check — English words and Cyrillic text are forbidden.
+  //
+  // Allowed Latin: single-letter math variables (x, y, a, b, n, …) standing
+  //   alone or adjacent only to digits/superscripts/operators/spaces.
+  //   i.e. a Latin letter is OK iff it is NOT immediately preceded OR followed
+  //   by another Latin letter → regex: two or more consecutive Latin letters =
+  //   a word → reject.
+  // Allowed always: Armenian (U+0531–U+058F), digits, math symbols (×÷√),
+  //   Unicode superscripts, punctuation, whitespace.
+  //
+  // Examples:
+  //   "x⁴ + 2"    → OK   (single Latin letter, no consecutive pair)
+  //   "a × b"     → OK
+  //   "hello world" → FAIL ([A-Za-z]{2,} matches "hello" and "world")
+  //   "привет"    → FAIL (Cyrillic)
+
+  const latinWord = /[A-Za-z]{2,}/u;   // two or more consecutive Latin letters
+  const cyrillic  = /[\u0400-\u04FF]/u; // any Cyrillic character
+
+  if (latinWord.test(msg)) {
+    const words = msg.match(/[A-Za-z]{2,}/gu) ?? [];
     throw new Error(
-      `validateStructuredResponse: student_message contains forbidden Latin/Cyrillic characters — sample: "${sample}"`
+      `validateStructuredResponse: student_message contains Latin word(s): ${words.slice(0, 5).join(", ")}`
     );
   }
+  if (cyrillic.test(msg)) {
+    const sample = msg.match(/[\u0400-\u04FF]+/gu)?.[0] ?? "";
+    throw new Error(
+      `validateStructuredResponse: student_message contains Cyrillic text: "${sample}"`
+    );
+  }
+
+  logger.debug(
+    {
+      "x⁴ + 2":    !/[A-Za-z]{2,}/u.test("x⁴ + 2")    && !/[\u0400-\u04FF]/u.test("x⁴ + 2"),    // true
+      "hello world": !/[A-Za-z]{2,}/u.test("hello world"),                                          // false
+      "привет":    !/[\u0400-\u04FF]/u.test("привет"),                                              // false
+    },
+    "validateStructuredResponse lang-check examples (all should be true/false/false)"
+  );
 
   // B) Length check — more than 5 sentences or more than 700 characters
   // Sentence split on Armenian/common sentence-ending punctuation (։ . ! ?)
