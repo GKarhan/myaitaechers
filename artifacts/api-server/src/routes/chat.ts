@@ -484,7 +484,76 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         return "";
       })();
 
+      // ── Structured context header (highest priority — always first) ──────────
+      // Contains the 7 canonical fields the AI must see before anything else.
+      // Missing / null fields are logged as warnings and filled with a fallback.
+
+      const _nodeObjective =
+        currentNodeRecord?.childFriendlyExplanation?.trim() ||
+        (currentNodeRecord
+          ? `Reach Bloom level ${currentNodeRecord.targetBloomLevel} understanding of «${currentNodeRecord.title}» in ~${currentNodeRecord.estimatedMinutes} min.`
+          : null);
+
+      const _expectedStep: string = (() => {
+        if (phase !== 2 || !currentNodeRecord) return `PHASE_${phase}`;
+        const stage = currentNodeRecord.teachingStage ?? "THEORY";
+        const attempts = session?.nodeAttemptCount ?? 0;
+        if (stage === "THEORY")     return `THEORY — present APPROVED_EXPLANATION then ask first MICRO_CHECK`;
+        if (stage === "MICRO_CHECK") {
+          return classExercises.length > 0
+            ? `MICRO_CHECK done — present CLASS_EXERCISE verbatim via TRANSITION`
+            : `MICRO_CHECK (attempt ${attempts + 1}) — ask or evaluate; COMPLETE_NODE if understood (no exercises)`;
+        }
+        if (stage === "EXERCISE") return `EXERCISE — evaluate student answer, give COMPLETE_NODE on STRONG+CORRECT`;
+        if (stage === "VERIFIED")  return `VERIFIED — set COMPLETE_NODE and praise`;
+        return stage;
+      })();
+
+      const _prevMicroCheck = session?.lastQuestionAsked?.trim() || null;
+
+      const _studentState = [
+        `phase=${phase}`,
+        currentNodeRecord ? `node_stage=${currentNodeRecord.teachingStage ?? "THEORY"}` : null,
+        `node_attempts=${session?.nodeAttemptCount ?? 0}`,
+        `nodes_done=${completedNodes}/${totalNodes}`,
+        phase === 1 ? `review_q=${session?.reviewQuestionCount ?? 0}` : null,
+      ].filter(Boolean).join(" | ");
+
+      // Log any missing fields so gaps in lesson data are visible in server logs
+      const _missingFields: string[] = [];
+      if (!currentNodeRecord)          _missingFields.push("CURRENT_NODE");
+      if (!_nodeObjective)             _missingFields.push("NODE_OBJECTIVE");
+      if (allNodeTitles.length === 0)  _missingFields.push("ALLOWED_NODES");
+      if (!_prevMicroCheck)            _missingFields.push("PREVIOUS_MICRO_CHECK (first turn or session reset — ok)");
+      if (_missingFields.length > 0) {
+        logger.warn(
+          { lessonId, phase, missingFields: _missingFields },
+          "lessonContext: structured header has missing/null fields"
+        );
+      }
+
+      const structuredHeader = [
+        `╔══ STRUCTURED CONTEXT (read this first — highest priority) ══╗`,
+        `CURRENT_LESSON:   «${lesson.title}» | Subject: ${subjectName}`,
+        currentNodeRecord
+          ? `CURRENT_NODE:     «${currentNodeRecord.title}»`
+          : `CURRENT_NODE:     (none — all nodes completed or phase=${phase})`,
+        _nodeObjective
+          ? `NODE_OBJECTIVE:   ${_nodeObjective}`
+          : `NODE_OBJECTIVE:   (not set for this node)`,
+        allNodeTitles.length > 0
+          ? `ALLOWED_NODES:    ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`
+          : `ALLOWED_NODES:    (no nodes defined for this lesson)`,
+        `EXPECTED_TEACHING_STEP: ${_expectedStep}`,
+        _prevMicroCheck
+          ? `PREVIOUS_MICRO_CHECK: ${_prevMicroCheck.slice(0, 200)}`
+          : `PREVIOUS_MICRO_CHECK: (none)`,
+        `STUDENT_STATE:    ${_studentState}`,
+        `╚═════════════════════════════════════════════════════════════╝`,
+      ].join("\n");
+
       lessonContext = [
+        structuredHeader,
         absoluteRuleBlock,
         studentName ? `STUDENT_NAME: ${studentName}` : "",
         essentialQuestion ? `ESSENTIAL_QUESTION: ${essentialQuestion}` : "",
