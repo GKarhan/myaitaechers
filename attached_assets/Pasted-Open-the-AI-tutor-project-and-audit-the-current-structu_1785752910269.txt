@@ -1,0 +1,167 @@
+Open the AI tutor project and audit the current structured teaching flow.
+
+We already fixed the Roman numeral validation issue and increased structured output reliability. Now investigate the remaining pedagogical control issues.
+
+PART 1 — Prevent premature topic transitions
+
+Problem observed:
+The AI sometimes says things like:
+- "Հիմա կարող ենք անցնել հաջորդ թեմային"
+- "անցնենք հաջորդ բաժինը"
+- "շարունակենք հաջորդ դասը"
+
+even when the lesson state shows:
+- current node is not completed
+- mastery progress is not achieved
+- Step counter is still incomplete
+
+Example:
+Current node:
+"Կարգային միավորի սահմանում"
+
+State:
+Step 3/5
+✓ 0/4
+
+But AI generated:
+"Հիմա կարող ենք անցնել հաջորդ թեմային"
+
+Find the existing node lock / transition validation logic.
+
+Files to inspect first:
+- artifacts/api-server/src/routes/chat.ts
+- artifacts/api-server/src/services/ai.ts
+
+Do not modify immediately.
+First report:
+1. Where node transition permission is calculated.
+2. What fields determine whether a node is complete.
+3. Where generated AI text can bypass the state machine.
+
+Then implement a guard.
+
+Requirements:
+- AI must not announce moving to another topic unless the backend state allows transition.
+- The check must not rely only on node_decision.
+- Also inspect student_message / assistant_message text for premature transition intent.
+
+Add a validation layer similar to validateNodeLock.
+
+Example forbidden transition phrases (Armenian):
+"անցնենք հաջորդ թեմային"
+"անցնենք հաջորդ դասին"
+"շարունակենք հաջորդ բաժինը"
+"անցնենք առաջ"
+
+If current node is not complete:
+- block the transition
+- keep the assistant response inside CURRENT_NODE
+- log WARN with:
+  currentNode
+  requestedNode
+  masteryScore
+  phase
+
+
+PART 2 — Add partial correctness evaluation
+
+Current problem:
+Student answers are evaluated too binary:
+CORRECT / INCORRECT
+
+Example:
+Student:
+"հարյուրավորների կարգում է կարգային միավորը 403"
+
+Actual:
+- identifying the place value is correct
+- the numeric value is wrong
+
+The AI should not mark the whole answer wrong.
+
+Audit current structured response schema.
+
+Find:
+- answer evaluation fields
+- correctness calculation
+- scoring logic
+
+Add support for:
+
+CORRECT
+PARTIALLY_CORRECT
+INCORRECT
+
+The structured output should include something like:
+
+{
+  "answer_evaluation": {
+    "status": "PARTIALLY_CORRECT",
+    "correct_parts": [],
+    "incorrect_parts": []
+  }
+}
+
+Rules:
+- If the student demonstrates the correct concept but has a small mistake, return PARTIALLY_CORRECT.
+- Feedback should acknowledge the correct part first.
+- Then explain only the mistake.
+- Do not lower confidence excessively for partially correct answers.
+
+
+PART 3 — Connect mastery gate with transitions
+
+Audit:
+- lessonNodesTable
+- lessonSessionsTable
+- masteryScore calculation
+- node completion logic
+
+Verify that:
+
+AI transition is allowed only when:
+- required micro checks are completed
+- mastery threshold is reached
+- current node requirements are satisfied
+
+If these conditions are not met:
+AI must continue CURRENT_NODE.
+
+
+PART 4 — Testing
+
+After implementation:
+
+Run at least these scenarios:
+
+Scenario 1:
+Student gives partially correct answer:
+"հարյուրավորների կարգում է, կարգային միավորը 403"
+
+Expected:
+PARTIALLY_CORRECT
+AI acknowledges correct part.
+
+Scenario 2:
+Student answers all checks correctly but mastery threshold is not reached.
+
+Expected:
+AI continues current node.
+
+Scenario 3:
+AI tries to write:
+"անցնենք հաջորդ թեմային"
+
+while current node incomplete.
+
+Expected:
+Transition blocked.
+
+
+After changes:
+Return:
+1. Modified files.
+2. Exact changed functions.
+3. Before/after explanation.
+4. Any remaining risks.
+5. Typecheck result.

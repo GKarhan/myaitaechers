@@ -42,6 +42,9 @@ export const answerEvaluationSchema = z.object({
     "INCOMPLETE_COMMUNICATION", "TRANSFER_BLOOM", "COGNITIVE_LOAD_PACE",
   ]).nullable(),
   error_stability: z.enum(["FIRST_OCCURRENCE", "PERSISTENT"]).nullable(),
+  // Required when status="PARTIALLY_CORRECT" — short English phrases, ≥1 array must be non-empty
+  correct_parts: z.array(z.string()).default([]),
+  incorrect_parts: z.array(z.string()).default([]),
 });
 
 export const nodeDecisionSchema = z.object({
@@ -169,6 +172,9 @@ ABSOLUTE NODE LOCK (never violate under any circumstances):
 - You are FORBIDDEN from declaring the lesson or node finished — that decision belongs ONLY to the backend.
 - If the student asks to skip, change topic, or move to another lesson, set redirect_needed: true, and in student_message give a short, warm redirection back to the current unanswered question — NO new content.
 - Set mentions_out_of_scope_topic: true if your own student_message mentions any concept outside the current node list (self-audit).
+- FORBIDDEN TRANSITION PHRASES — NEVER write these in student_message while STUDENT_STATE shows node_stage ≠ VERIFIED:
+  «անցնենք հաջորդ թեմային», «անցնենք հաջորդ դասին», «շարունակենք հաջորդ բաժինը», «անցնենք առաջ».
+  The backend controls ALL node transitions. Continue teaching the current node until node_stage=VERIFIED.
 
 CRITICAL RULES:
 1. student_message MUST be written entirely in Armenian script (Ա-Ֆ, ա-ֆ). Never use Cyrillic, Latin, or Arabic there.
@@ -225,6 +231,14 @@ MICRO_CHECK EVIDENCE TABLE (P5 §17.13.1-17.13.5) — apply exactly when is_micr
 - Student gave NO_RESPONSE ("չգիտեմ" or empty/off-topic) → evidence_quality="NONE", node_decision.action="HINT" or "LOWER_DIFFICULTY". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
 - Student answer is UNCLEAR (can't tell what they mean) → evidence_quality="NONE", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
 
+PARTIALLY_CORRECT RULE — mandatory when part of the answer is right and part is wrong:
+- Use status="PARTIALLY_CORRECT" when the student demonstrates the correct concept but makes a detail or calculation mistake.
+  Example: student says "the place value is hundreds" ✓ but "the value is 403" ✗ → status="PARTIALLY_CORRECT",
+  correct_parts=["identified hundreds place"], incorrect_parts=["stated value as 403 instead of 400"].
+- correct_parts and incorrect_parts MUST each contain at least one short English phrase (5-15 words) when status="PARTIALLY_CORRECT".
+- Do NOT use PARTIALLY_CORRECT if nothing is right (use INCORRECT). Do NOT use CORRECT if anything significant is wrong.
+- In student_message: acknowledge the correct part FIRST ("Ճիշտ մասը..."), then explain ONLY the mistake briefly. Never state the full correct answer.
+
 EXERCISE VERBATIM RULE:
 - If exerciseTextVerbatim is listed for an exercise: reproduce it WORD FOR WORD in student_message (no changes to any number, variable, or word).
 - Append "(Էջ {sourcePage}, Վ. {exerciseId})" immediately after the verbatim exercise text.
@@ -252,7 +266,9 @@ Required JSON schema:
     "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "OFF_TOPIC" | "NOT_APPLICABLE",
     "evidence_quality": "NONE" | "WEAK" | "MODERATE" | "STRONG" | "CONCLUSIVE",
     "error_family": "CONCEPTUAL" | "PREREQUISITE" | "PROCEDURAL" | "CALCULATION_EXECUTION" | "READING_LANGUAGE" | "ATTENTION_RESPONSE" | "GUESSING_CONFIDENCE" | "INCOMPLETE_COMMUNICATION" | "TRANSFER_BLOOM" | "COGNITIVE_LOAD_PACE" | null,
-    "error_stability": "FIRST_OCCURRENCE" | "PERSISTENT" | null
+    "error_stability": "FIRST_OCCURRENCE" | "PERSISTENT" | null,
+    "correct_parts": ["<short English phrase: what the student got right, e.g. 'identified the hundreds place'>"],
+    "incorrect_parts": ["<short English phrase: what was wrong, e.g. 'stated value as 403 instead of 400'>"]
   },
   "node_decision": {
     "action": "CONTINUE_SAME_NODE" | "COMPLETE_NODE" | "GUIDED_QUESTION" | "HINT" | "EXTRA_EXAMPLE" | "CONTRAST_EXAMPLE" | "CHANGE_REPRESENTATION" | "STEP_BY_STEP" | "SIMPLIFY_LANGUAGE" | "LOWER_DIFFICULTY" | "RAISE_DIFFICULTY" | "RETURN_TO_PREREQUISITE" | "VERIFY_SELECTION" | "REQUIRE_REASONING",
@@ -435,6 +451,18 @@ function validateStructuredResponse(response: AIStructuredResponse): void {
   }
 
   // D) redirect_needed — allowed through without modification (no-op check)
+
+  // E) PARTIALLY_CORRECT must include at least one documented part
+  if (response.answer_evaluation.status === "PARTIALLY_CORRECT") {
+    const hasParts =
+      response.answer_evaluation.correct_parts.length > 0 ||
+      response.answer_evaluation.incorrect_parts.length > 0;
+    if (!hasParts) {
+      throw new Error(
+        "validateStructuredResponse: PARTIALLY_CORRECT requires non-empty correct_parts or incorrect_parts"
+      );
+    }
+  }
 }
 
 // ── Node Lock consistency check ──────────────────────────────────────────────
@@ -518,6 +546,115 @@ function validateNodeLock(
         "validateNodeLock: student_message contains no keyword from CURRENT_NODE title (possible topic drift)"
       );
       // warn only — do not throw (Armenian morphology causes false positives)
+    }
+  }
+}
+
+// ── Premature transition guard ────────────────────────────────────────────────
+//
+// Detects two classes of premature transition:
+//   (A) Text-based: forbidden Armenian phrases in student_message while the node
+//       is not yet complete (node_stage ≠ VERIFIED and not on the no-exercise
+//       early-complete path).
+//   (B) Decision-based: node_decision.action="COMPLETE_NODE" during THEORY stage
+//       or during MICRO_CHECK stage when exercises exist (must go through EXERCISE).
+//
+// "Node complete" is defined by STUDENT_STATE in lessonContext:
+//   node_stage=VERIFIED                 → complete (transition allowed)
+//   no node_stage in context            → no active node (no-op)
+//   node_stage=MICRO_CHECK + no exercises + node_attempts ≥ 2 → early-complete path (allowed)
+//   everything else                     → incomplete → guard fires
+
+const PREMATURE_TRANSITION_PHRASES: string[] = [
+  // full spec phrases
+  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584 \u0570\u0561\u057b\u0578\u0580\u0564 \u0569\u0565\u0574\u0561\u0575\u056b\u0576", // անcнenq hajoRд themayin
+  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584 \u0570\u0561\u057b\u0578\u0580\u0564 \u0564\u0561\u057d\u056b\u0576",               // անcнenq hajoRд dassin
+  "\u0577\u0561\u0580\u0578\u0582\u0576\u0561\u056f\u0565\u0576\u0584 \u0570\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u056a\u056b\u0576\u0568", // sharunakenq hajoRд bazhine
+  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584 \u0561\u057c\u0561\u057b",                                                          // anctnenq arraj
+  // shorter sub-phrases (broad catch)
+  "\u0561\u0576\u0581\u0576\u0565\u0576\u0584 \u0570\u0561\u057b\u0578\u0580\u0564",  // anctnenq hajoRд (let's move to next X)
+  "\u0577\u0561\u0580\u0578\u0582\u0576\u0561\u056f\u0565\u0576\u0584 \u0570\u0561\u057b\u0578\u0580\u0564", // sharunakenq hajoRд
+  "\u0570\u0561\u057b\u0578\u0580\u0564 \u0569\u0565\u0574\u0561",  // hajoRд thema (next topic)
+  "\u0570\u0561\u057b\u0578\u0580\u0564 \u0564\u0561\u057d",        // hajoRд das   (next lesson)
+  "\u0576\u0578\u0580 \u0564\u0561\u057d",                          // nor das      (new lesson)
+];
+
+function validatePrematureTransition(
+  response: AIStructuredResponse,
+  lessonContext: string
+): void {
+  // ── Parse STUDENT_STATE ──────────────────────────────────────────────────
+  const stateMatch = lessonContext.match(/STUDENT_STATE:\s*([^\n]+)/);
+  const stateStr   = stateMatch?.[1] ?? "";
+
+  // No STUDENT_STATE in context → no active teaching phase → skip
+  if (!stateStr) return;
+
+  const nodeStageMatch = stateStr.match(/node_stage=(\w+)/);
+  const nodeStage      = nodeStageMatch?.[1] ?? null;
+
+  // No node_stage → lesson has no nodes or we're in phase 1/3 → skip
+  if (!nodeStage) return;
+
+  const attemptsMatch = stateStr.match(/node_attempts=(\d+)/);
+  const nodeAttempts  = attemptsMatch ? parseInt(attemptsMatch[1], 10) : 0;
+
+  // ── Parse CURRENT_NODE title for logging ─────────────────────────────────
+  const currentNodeMatch = lessonContext.match(/CURRENT_NODE:\s*«([^»]+)»/);
+  const currentNodeTitle = currentNodeMatch?.[1]?.trim() ?? "(unknown)";
+
+  // ── Determine whether transition is already permitted ────────────────────
+  const isVerified  = nodeStage === "VERIFIED";
+
+  // No-exercise early-complete path: MICRO_CHECK stage + 2+ attempts + no exercises
+  const hasExercisesInContext = lessonContext.includes("CLASS_EXERCISES");
+  const noExerciseEarlyComplete =
+    nodeStage === "MICRO_CHECK" && nodeAttempts >= 2 && !hasExercisesInContext;
+
+  const transitionAllowed = isVerified || noExerciseEarlyComplete;
+  if (transitionAllowed) return;
+
+  // ── (A) Text-based check: forbidden phrases in student_message ───────────
+  const msgLower    = response.student_message.toLowerCase();
+  const foundPhrase = PREMATURE_TRANSITION_PHRASES.find((p) => msgLower.includes(p));
+
+  if (foundPhrase) {
+    logger.warn(
+      {
+        currentNode:        currentNodeTitle,
+        foundPhrase,
+        nodeStage,
+        nodeAttempts,
+        nodeDecisionAction: response.node_decision.action,
+        msgPreview:         response.student_message.slice(0, 150),
+      },
+      "validatePrematureTransition: transition phrase found while node is incomplete"
+    );
+    throw new Error(
+      `Premature transition: phrase found in student_message while «${currentNodeTitle}» is not complete (node_stage=${nodeStage})`
+    );
+  }
+
+  // ── (B) Decision-based check: COMPLETE_NODE against stage ────────────────
+  if (response.node_decision.action === "COMPLETE_NODE") {
+    if (nodeStage === "THEORY") {
+      logger.warn(
+        { currentNode: currentNodeTitle, nodeStage, nodeAttempts },
+        "validatePrematureTransition: COMPLETE_NODE during THEORY — must teach and check first"
+      );
+      throw new Error(
+        `Premature COMPLETE_NODE: node_stage is THEORY for «${currentNodeTitle}» — must present content and ask MICRO_CHECK first`
+      );
+    }
+    // Has exercises but AI skips to COMPLETE_NODE from MICRO_CHECK stage (before EXERCISE stage)
+    if (nodeStage === "MICRO_CHECK" && hasExercisesInContext) {
+      logger.warn(
+        { currentNode: currentNodeTitle, nodeStage, nodeAttempts, hasExercisesInContext },
+        "validatePrematureTransition: COMPLETE_NODE skips EXERCISE stage when exercises exist"
+      );
+      throw new Error(
+        `Premature COMPLETE_NODE: «${currentNodeTitle}» has class exercises but node_stage=${nodeStage} — must go through EXERCISE stage first`
+      );
     }
   }
 }
@@ -608,13 +745,38 @@ function validateTeachingCycle(
 
   // ── Rule 5: COMPLETE_NODE requires STRONG or CONCLUSIVE evidence ───────────
   if (action === "COMPLETE_NODE" && quality !== "STRONG" && quality !== "CONCLUSIVE") {
-    logger.warn(
-      { action, evidence_quality: quality },
-      "validateTeachingCycle [R5]: COMPLETE_NODE with insufficient evidence"
-    );
-    throw new Error(
-      `Teaching cycle violation [R5]: COMPLETE_NODE requires evidence_quality STRONG/CONCLUSIVE — got "${quality}"`
-    );
+    // Exception: no-exercise path allows MODERATE (validated more precisely in validatePrematureTransition)
+    const hasExercisesR5 = lessonContext.includes("CLASS_EXERCISES");
+    const stateR5 = lessonContext.match(/STUDENT_STATE:\s*([^\n]+)/)?.[1] ?? "";
+    const nodeStageR5 = stateR5.match(/node_stage=(\w+)/)?.[1] ?? null;
+    const attemptsR5 = parseInt(stateR5.match(/node_attempts=(\d+)/)?.[1] ?? "0", 10);
+    const noExerciseEarlyOk = !hasExercisesR5 && nodeStageR5 === "MICRO_CHECK" && attemptsR5 >= 2 && quality === "MODERATE";
+    if (!noExerciseEarlyOk) {
+      logger.warn(
+        { action, evidence_quality: quality },
+        "validateTeachingCycle [R5]: COMPLETE_NODE with insufficient evidence"
+      );
+      throw new Error(
+        `Teaching cycle violation [R5]: COMPLETE_NODE requires evidence_quality STRONG/CONCLUSIVE — got "${quality}"`
+      );
+    }
+  }
+
+  // ── Rule 6: COMPLETE_NODE is blocked in THEORY stage ─────────────────────
+  // Full stage-gate is enforced by validatePrematureTransition; R6 provides a
+  // cheap early fail specifically for THEORY (the most common incorrect case).
+  if (action === "COMPLETE_NODE") {
+    const stateR6   = lessonContext.match(/STUDENT_STATE:\s*([^\n]+)/)?.[1] ?? "";
+    const stageR6   = stateR6.match(/node_stage=(\w+)/)?.[1] ?? null;
+    if (stageR6 === "THEORY") {
+      logger.warn(
+        { action, nodeStage: stageR6 },
+        "validateTeachingCycle [R6]: COMPLETE_NODE during THEORY stage"
+      );
+      throw new Error(
+        "Teaching cycle violation [R6]: COMPLETE_NODE during THEORY stage — must present content and ask MICRO_CHECK first"
+      );
+    }
   }
 }
 
@@ -691,6 +853,7 @@ async function _attemptStructured(
   validateStructuredResponse(validated);
   validateNodeLock(validated, lessonContext);
   validateTeachingCycle(validated, messages, lessonContext);
+  validatePrematureTransition(validated, lessonContext);
   return validated;
 }
 
