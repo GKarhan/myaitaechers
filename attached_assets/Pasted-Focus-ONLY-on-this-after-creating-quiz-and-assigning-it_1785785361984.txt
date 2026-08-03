@@ -1,0 +1,44 @@
+Focus ONLY on this: after creating quiz and assigning it to a class, it does
+not appear (a) in the teacher's "📝 Թեստեր (0)" block on the subject page, or
+(b) in the student's "Իմ թեստերը" section or dashboard. The quiz itself is
+correctly generated and assigned (verified via the review page). This is
+purely a listing/fetch bug on both sides. Do not touch any Armenian text in
+this pass — only fix the data flow.
+
+Do this in strict order, with real evidence pasted at each step — no
+summaries, no "should work now":
+
+## Step 1 — Confirm the newest quiz's data
+Run and paste the raw output:
+  SELECT id, teacher_id, subject_id, class_id, status FROM quizzes
+    ORDER BY id DESC LIMIT 3;
+  SELECT id, quiz_id, student_id, status FROM quiz_assignments
+    ORDER BY id DESC LIMIT 3;
+
+## Step 2 — Teacher side: trace the actual live request
+With the teacher dashboard open on the Մաթեմատիկա 5 course page, check the
+server log (or add a temporary logger.info in the GET /api/quizzes route
+printing req.query.subjectId and req.userId) and paste what it actually
+receives on a real page load — do NOT guess from code, show the real captured
+value. Compare it directly against the subject_id and teacher_id from Step 1's
+newest quiz row. If they don't match, that's the bug — explain exactly why
+(wrong course selected? wrong id type? teacherId mismatch?).
+If the request is never even fired (route never hit), say so — check the
+Vite/browser network tab or add a log at the top of the useEffect that's
+supposed to trigger it.
+
+## Step 3 — Student side: trace the actual live request
+Same approach for GET /api/quizzes/assigned: log req.userId when the student
+loads dashboard/quizzes page, paste the real captured value, and compare
+against student_id from Step 1's newest assignment row. If they don't match,
+explain why (wrong user logged in? query filtering on wrong column?).
+If the endpoint returns correct data (test it directly with curl + a real
+token) but the UI still shows nothing, the bug is in the frontend render —
+paste the exact current rendering code (the .map() or filter over the fetched
+array) so we can see if it's silently filtering everything out or checking a
+wrong field name.
+
+## Step 4 — Only after Steps 1-3 show hard evidence, fix the specific bug found
+Do not apply another speculative fix — fix exactly what the evidence points to.
+
+Paste back the evidence from each step before doing anything else.

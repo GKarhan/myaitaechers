@@ -353,7 +353,7 @@ export default function TeacherDashboard() {
       queryKey: getGetClassStudentsQueryKey(selectedClass?.id ?? 0),
     },
   });
-  const { data: classCourses = [] } = useGetClassCourses(
+  const { data: classCourses = [], isLoading: classCoursesLoading } = useGetClassCourses(
     selectedClass?.id ?? 0,
     {
       query: {
@@ -1997,18 +1997,23 @@ export default function TeacherDashboard() {
                           )}
                           <button
                             onClick={() => {
+                              // Resolve subjectId first — more reliable than name-matching
+                              const subjectItem = subjectsList.find((s) => s.name === subject);
+                              if (!subjectItem) {
+                                setCourseError("Subject not found in list — please refresh");
+                                return;
+                              }
+                              // Match course by subjectId, not by name (avoids name-mismatch bugs)
                               const match = classCourses.find(
-                                (c) => c.name === subject,
+                                (c) => c.subjectId === subjectItem.id,
                               );
                               if (match) {
+                                setCourseError(null);
                                 setSelectedCourse(match);
                                 setMainView("course");
-                              } else {
-                                const subjectItem = subjectsList.find((s) => s.name === subject);
-                                if (!subjectItem) {
-                                  setCourseError("Subject not found in list — please refresh");
-                                  return;
-                                }
+                              } else if (!classCoursesLoading) {
+                                // Only create a new course once classCourses has finished loading
+                                // (prevents duplicate courses from a loading race)
                                 setCourseError(null);
                                 createCourse.mutate(
                                   {

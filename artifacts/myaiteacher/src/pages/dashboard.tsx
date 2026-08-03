@@ -128,7 +128,7 @@ export default function Dashboard() {
       .then((data: AssignedQuiz[]) => { if (!cancelled) setAssignedQuizzes(data); })
       .catch(() => { if (!cancelled) setAssignedQuizzes([]); });
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, section]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
