@@ -495,6 +495,25 @@ export async function callAIStructured(
 ): Promise<AIStructuredResponse> {
   const baseSystem = `${STRUCTURED_SYSTEM_PROMPT}\n\n══════════════════\n${lessonContext}\n══════════════════`;
 
+  // ── Debug: lesson context diagnostics ────────────────────────────────────
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+  logger.debug(
+    {
+      contextLength:    lessonContext.length,
+      contextHead:      lessonContext.slice(0, 500),
+      contextTail:      lessonContext.slice(-500),
+      hasCurrentNode:   lessonContext.includes("CURRENT_NODE"),
+      hasAllowedNodes:  lessonContext.includes("ALLOWED_NODES"),
+      hasLesson:        lessonContext.includes("LESSON"),
+      hasNode:          lessonContext.includes("NODE"),
+      hasExercise:      lessonContext.includes("exercise"),
+      hasEssentialQ:    lessonContext.includes("essentialQuestion"),
+      messageCount:     messages.length,
+      lastUserPreview:  lastUserMsg?.content.slice(0, 200) ?? "(none)",
+    },
+    "callAIStructured: context diagnostics"
+  );
+
   // ── Attempt 1 ────────────────────────────────────────────────────────────
   let firstError: Error;
   try {
