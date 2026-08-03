@@ -223,7 +223,7 @@ export default function QuizReview() {
                 onClick={() => setShowAssignModal(true)}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity"
               >
-                📤 Ուղarel дасaranin
+                📤 Ուղարկել դասարանին
               </button>
             )}
           </div>
@@ -235,7 +235,7 @@ export default function QuizReview() {
         <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-2">
           <span>{quiz.questions.length} հարց</span>
           <span>·</span>
-          <span>Դժվarость: {quiz.difficultyMode}</span>
+          <span>Դժվարություն՝ {quiz.difficultyMode}</span>
         </div>
 
         {/* Questions */}
@@ -247,7 +247,7 @@ export default function QuizReview() {
             {editingId === q.id ? (
               /* ── Edit mode ── */
               <div className="space-y-4">
-                <label className="block text-xs text-muted-foreground mb-1">Հarс</label>
+                <label className="block text-xs text-muted-foreground mb-1">Հարց</label>
                 <textarea
                   value={editText}
                   onChange={(e) => setEditText(e.target.value)}
@@ -255,7 +255,7 @@ export default function QuizReview() {
                   className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary/60 resize-none"
                 />
                 <div className="space-y-2">
-                  <label className="block text-xs text-muted-foreground">Տarбerankнер (ux uneqi ճшtе)</label>
+                  <label className="block text-xs text-muted-foreground">Տարբերակներ (ընտրեք ճիշտը)</label>
                   {editOptions.map((opt, i) => (
                     <div key={i} className="flex items-center gap-3">
                       <input
@@ -278,15 +278,15 @@ export default function QuizReview() {
                   ))}
                 </div>
                 <div className="flex items-center gap-4">
-                  <label className="text-xs text-muted-foreground">Ддживarость</label>
+                  <label className="text-xs text-muted-foreground">Դժվարություն</label>
                   <select
                     value={editDifficulty}
                     onChange={(e) => setEditDifficulty(e.target.value)}
                     className="bg-background/60 border border-white/15 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
                   >
-                    <option value="LOW">Хеshт</option>
-                    <option value="MEDIUM">Мджин</option>
-                    <option value="HIGH">Бarд</option>
+                    <option value="LOW">Հեշտ</option>
+                    <option value="MEDIUM">Միջին</option>
+                    <option value="HIGH">Բարդ</option>
                   </select>
                 </div>
                 <div className="flex gap-3">
@@ -295,13 +295,13 @@ export default function QuizReview() {
                     disabled={saving}
                     className="px-4 py-2 rounded-xl bg-primary/80 hover:bg-primary text-white text-sm font-semibold transition-colors disabled:opacity-50"
                   >
-                    {saving ? "Paхрanum е..." : "Паxраnel"}
+                    {saving ? "Պահպանվում է..." : "Պահպանել"}
                   </button>
                   <button
                     onClick={cancelEdit}
                     className="px-4 py-2 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors"
                   >
-                    Matел
+                    Չեղարկել
                   </button>
                 </div>
               </div>
@@ -329,7 +329,7 @@ export default function QuizReview() {
                       onClick={() => startEdit(q)}
                       className="text-xs text-muted-foreground hover:text-white px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 transition-colors"
                     >
-                      ✏️ Xuмбagrel
+                      ✏️ Խմբագրել
                     </button>
                   </div>
                 </div>
@@ -366,24 +366,24 @@ export default function QuizReview() {
           onClick={(e) => { if (e.target === e.currentTarget) setShowAssignModal(false); }}
         >
           <div className="bg-card border border-white/15 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <h2 className="text-xl font-bold mb-1">Uurarkel дасaranin</h2>
+            <h2 className="text-xl font-bold mb-1">Ուղարկել դասարանին</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Ондартez дасарanнy — bolor ujanakерnerин կooтarkvumn е mек testi htarmaраrarumе:
+              Ընտրեք դասարանը — բոլոր աշակերտներին կուղարկվում է մեկ թեստի հանձնարարություն:
             </p>
 
             {assignedSuccess ? (
               <div className="text-center py-6">
                 <div className="text-4xl mb-3">✅</div>
-                <p className="text-teal-400 font-semibold">Тesty uurarvazd е!</p>
+                <p className="text-teal-400 font-semibold">Թեստն ուղարկված է!</p>
               </div>
             ) : (
               <>
                 <label className="block text-sm text-muted-foreground mb-2">
-                  Оndartez дасaран *
+                  Ընտրեք դասարան *
                 </label>
                 {classes.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4">
-                    Дасаранер chi gтnvum...
+                    Դասարաններ չեն գտնվում...
                   </p>
                 ) : (
                   <div className="space-y-2 mb-6">
@@ -406,7 +406,7 @@ export default function QuizReview() {
                         <span className="font-medium text-sm">{cls.name}</span>
                         {cls.grade && (
                           <span className="text-xs text-muted-foreground ml-auto">
-                            {cls.grade} կarг
+                            {cls.grade} կարգ
                           </span>
                         )}
                       </label>
@@ -424,13 +424,13 @@ export default function QuizReview() {
                     disabled={assigning || !selectedClassId}
                     className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40"
                   >
-                    {assigning ? "Uurarkvum е..." : "📤 Uurarkel"}
+                    {assigning ? "Ուղարկվում է..." : "📤 Ուղարկել"}
                   </button>
                   <button
                     onClick={() => setShowAssignModal(false)}
                     className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors"
                   >
-                    Matarel
+                    Չեղարկել
                   </button>
                 </div>
               </>
