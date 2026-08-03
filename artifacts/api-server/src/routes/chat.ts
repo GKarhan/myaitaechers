@@ -281,6 +281,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const completedNodeTitles = allNodes
         .filter((n) => n.sequence < currentNodeSeq)
         .map((n) => n.title);
+      const futureNodeTitles = allNodes
+        .filter((n) => n.sequence > currentNodeSeq)
+        .map((n) => n.title);
 
       if (session?.currentNodeId) {
         const [nodeRow] = await db
@@ -428,8 +431,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             `╔══ ABSOLUTE NODE LOCK — NEVER VIOLATE ══╗`,
             `You are teaching EXCLUSIVELY node: «${currentNodeRecord.title}»`,
             `Lesson: «${lesson.title}»`,
-            `ALLOWED_NODES (full list): ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`,
-            `FORBIDDEN: mention/suggest any topic NOT in ALLOWED_NODES`,
+            `CURRENT_NODE:     «${currentNodeRecord.title}»`,
+            completedNodeTitles.length > 0
+              ? `COMPLETED_NODES:  ${completedNodeTitles.map((t) => `«${t}»`).join(", ")}  ← finished; do not reteach`
+              : `COMPLETED_NODES:  (none)`,
+            futureNodeTitles.length > 0
+              ? `FUTURE_NODES:     ${futureNodeTitles.map((t) => `«${t}»`).join(", ")}  ← not yet started; do not teach`
+              : `FUTURE_NODES:     (none)`,
+            `FORBIDDEN: reteach any COMPLETED_NODE`,
+            `FORBIDDEN: jump ahead to any FUTURE_NODE`,
             `FORBIDDEN: declare lesson/node complete (backend decides mastery, not you)`,
             `FORBIDDEN: agree with student if they ask to skip/change topic — instead set redirect_needed:true and warmly redirect back`,
             `╚════════════════════════════════════════╝`,
@@ -553,9 +563,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         _nodeObjective
           ? `NODE_OBJECTIVE:   ${_nodeObjective}`
           : `NODE_OBJECTIVE:   (not set for this node)`,
-        allNodeTitles.length > 0
-          ? `ALLOWED_NODES:    ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`
-          : `ALLOWED_NODES:    (no nodes defined for this lesson)`,
+        futureNodeTitles.length > 0
+          ? `FUTURE_NODES (not yet started — do NOT teach these yet):\n${futureNodeTitles.map((t) => `  - «${t}»`).join("\n")}`
+          : `FUTURE_NODES: (none — current node is the last)`,
         `EXPECTED_TEACHING_STEP: ${_expectedStep}`,
         _prevMicroCheck
           ? `PREVIOUS_MICRO_CHECK: ${_prevMicroCheck.slice(0, 200)}`
