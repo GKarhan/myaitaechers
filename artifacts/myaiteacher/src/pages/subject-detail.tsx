@@ -186,6 +186,14 @@ export default function SubjectDetail() {
               myaiteacher
             </div>
           </div>
+          {isTeacher && (
+            <button
+              onClick={() => { setQuizModalOpen(true); setQuizError(null); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
+            >
+              ✦ Ստeğel test
+            </button>
+          )}
         </div>
       </header>
 
@@ -428,25 +436,6 @@ export default function SubjectDetail() {
             </div>
           )}
         </div>
-
-        {/* ── ՍՏԵՂԾԵԼ ԹEST (teacher only) ── */}
-        {isTeacher && (
-          <div className="mb-12 pt-8 border-t border-white/10">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-bold">📝 Թestater</h2>
-              <button
-                onClick={() => { setQuizModalOpen(true); setQuizError(null); }}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
-              >
-                ✦ Sts'el test
-              </button>
-            </div>
-            <div className="p-6 rounded-2xl bg-card/30 border border-white/10 text-center text-muted-foreground text-sm">
-              <div className="text-3xl mb-2">🧪</div>
-              <p>Arangayin testy storagetsnel karogh es veri "Sts'el test" selpakow</p>
-            </div>
-          </div>
-        )}
 
         {/* Book section */}
         <div className="pt-8 border-t border-white/10">
