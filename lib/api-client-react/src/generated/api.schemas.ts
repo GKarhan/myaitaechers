@@ -36,6 +36,7 @@ export interface ClassItem {
   teacherId: number;
   teacherName?: string;
   createdAt: string;
+  assignedSubjects?: string[];
 }
 
 export interface ClassTeacherInfo {
@@ -78,6 +79,7 @@ export interface CreateClassInput {
   name: string;
   grade?: string;
   teacherId: number;
+  subjectIds?: number[];
 }
 
 export interface CreateStudentInput {
@@ -112,6 +114,7 @@ export interface UpdateClassInput {
   name?: string;
   grade?: string;
   teacherId?: number;
+  subjectIds?: number[];
 }
 
 export interface ScheduleItem {

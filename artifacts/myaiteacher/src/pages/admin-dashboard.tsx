@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -31,7 +31,7 @@ import {
   getGetAdminScheduleQueryKey,
   getGetSubjectsQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 type Tab =
   | "home"
@@ -240,7 +240,7 @@ export default function AdminDashboard() {
   };
 
   // ── class form ────────────────────────────────────────────────────────────
-  const emptyClass = { classNum: "7", classLetter: "Ա", teacherId: "" };
+  const emptyClass = { classNum: "7", classLetter: "Ա", teacherId: "", subjectIds: [] as number[] };
   const [cForm, setCForm] = useState(emptyClass);
   const [cError, setCError] = useState("");
   const [showCForm, setShowCForm] = useState(false);
@@ -251,7 +251,27 @@ export default function AdminDashboard() {
     classLetter: string;
     grade: string;
     teacherId: number;
+    subjectIds: number[];
   } | null>(null);
+
+  // Fetch already-assigned subject ids when the edit form is open
+  const { data: editClassSubjects } = useQuery<{ subjectIds: number[] }>({
+    queryKey: ["admin-class-teacher-subjects", editClass?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/classes/${editClass!.id}/teacher-subjects`, { credentials: "include" });
+      if (!res.ok) throw new Error("fetch failed");
+      return res.json();
+    },
+    enabled: !!editClass,
+  });
+
+  // Sync fetched subjectIds into editClass state once the query resolves
+  useEffect(() => {
+    if (editClassSubjects) {
+      setEditClass((c) => c && { ...c, subjectIds: editClassSubjects.subjectIds });
+    }
+  }, [editClassSubjects]);
+
   const [assignClassId, setAssignClassId] = useState<number | null>(null);
   const [assignStudentId, setAssignStudentId] = useState<string>("");
 
@@ -268,6 +288,7 @@ export default function AdminDashboard() {
           name: `${cForm.classNum}${cForm.classLetter ? " " + cForm.classLetter : ""}`,
           grade: cForm.classNum,
           teacherId: parseInt(cForm.teacherId),
+          subjectIds: cForm.subjectIds,
         },
       },
       {
@@ -291,6 +312,7 @@ export default function AdminDashboard() {
           name: `${editClass.classNum}${editClass.classLetter ? " " + editClass.classLetter : ""}`,
           grade: editClass.classNum,
           teacherId: editClass.teacherId,
+          subjectIds: editClass.subjectIds,
         },
       },
       {
@@ -1044,7 +1066,7 @@ export default function AdminDashboard() {
                     <select
                       value={cForm.teacherId}
                       onChange={(e) =>
-                        setCForm((f) => ({ ...f, teacherId: e.target.value }))
+                        setCForm((f) => ({ ...f, teacherId: e.target.value, subjectIds: [] }))
                       }
                       className={inputCls}
                     >
@@ -1059,6 +1081,45 @@ export default function AdminDashboard() {
                       ))}
                     </select>
                   </div>
+                  {cForm.teacherId && (() => {
+                    const selectedTeacher = teachers.find((t) => t.id === parseInt(cForm.teacherId));
+                    const teacherSubjects = selectedTeacher?.subjects ?? [];
+                    return (
+                      <div className="col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Ինչ առարկա(ներ) կդասավանդի այս դասարանում
+                        </label>
+                        {teacherSubjects.length === 0 ? (
+                          <p className="text-xs text-amber-400">Այս ուսուցիչը որակավորության առարկա նշված չունի</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {teacherSubjects.map((subName) => {
+                              const subjectItem = subjectsList.find((s) => s.name === subName);
+                              if (!subjectItem) return null;
+                              return (
+                                <label key={subjectItem.id} className="flex items-center gap-2 text-sm cursor-pointer select-none rounded-lg px-3 py-2 border border-white/10 hover:border-primary/40 transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={cForm.subjectIds.includes(subjectItem.id)}
+                                    onChange={(e) =>
+                                      setCForm((f) => ({
+                                        ...f,
+                                        subjectIds: e.target.checked
+                                          ? [...f.subjectIds, subjectItem.id]
+                                          : f.subjectIds.filter((id) => id !== subjectItem.id),
+                                      }))
+                                    }
+                                    className="accent-indigo-500"
+                                  />
+                                  {subName}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button
@@ -1149,7 +1210,7 @@ export default function AdminDashboard() {
                       onChange={(e) =>
                         setEditClass(
                           (c) =>
-                            c && { ...c, teacherId: parseInt(e.target.value) },
+                            c && { ...c, teacherId: parseInt(e.target.value), subjectIds: [] },
                         )
                       }
                       className={inputCls}
@@ -1161,6 +1222,7 @@ export default function AdminDashboard() {
                       ))}
                     </select>
                   </div>
+
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" className={btnPrimary}>
@@ -1234,6 +1296,7 @@ export default function AdminDashboard() {
                               classLetter: cl,
                               grade: c.grade,
                               teacherId: c.teacherId,
+                              subjectIds: [],
                             });
                             setAssignClassId(null);
                           }}

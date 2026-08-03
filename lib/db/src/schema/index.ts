@@ -18,6 +18,7 @@ export * from "./evidence-events";
 export * from "./knowledge-nodes";
 export * from "./knowledge-edges";
 export * from "./review-schedule";
+export * from "./teacher-class-subjects";
 export * from "./student-profile";
 export * from "./lesson-nodes";
 export * from "./lesson-exercises";

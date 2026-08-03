@@ -10,4 +10,5 @@ export interface UpdateClassInput {
   name?: string;
   grade?: string;
   teacherId?: number;
+  subjectIds?: number[];
 }

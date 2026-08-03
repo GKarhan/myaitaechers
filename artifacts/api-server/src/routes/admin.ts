@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, subjectsTable } from "@workspace/db";
-import { eq, count, sql } from "drizzle-orm";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, scheduleTable, subjectsTable, teacherClassSubjectsTable } from "@workspace/db";
+import { eq, count, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -113,22 +113,46 @@ router.get("/admin/classes", requireAdmin, async (_req, res) => {
 });
 
 router.post("/admin/classes", requireAdmin, async (req, res) => {
-  const { name, grade, teacherId } = req.body as { name: string; grade?: string; teacherId: number };
+  const { name, grade, teacherId, subjectIds } = req.body as { name: string; grade?: string; teacherId: number; subjectIds?: number[] };
   if (!name || !teacherId) { res.status(400).json({ error: "name, teacherId պարտադիր են" }); return; }
   const [cls] = await db.insert(classesTable).values({ name, grade: grade ?? "", teacherId }).returning();
+  if (subjectIds && subjectIds.length > 0) {
+    await db.insert(teacherClassSubjectsTable).values(
+      subjectIds.map((subjectId) => ({ classId: cls.id, teacherId, subjectId }))
+    ).onConflictDoNothing();
+  }
   res.status(201).json({ ...cls, studentCount: 0 });
 });
 
 router.put("/admin/classes/:id", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { name, grade, teacherId } = req.body as { name?: string; grade?: string; teacherId?: number };
+  const { name, grade, teacherId, subjectIds } = req.body as { name?: string; grade?: string; teacherId?: number; subjectIds?: number[] };
   const updated = await db.update(classesTable)
     .set({ ...(name && { name }), ...(grade !== undefined && { grade }), ...(teacherId && { teacherId }) })
     .where(eq(classesTable.id, id))
     .returning();
   if (updated.length === 0) { res.status(404).json({ error: "Դasarany չi gtнvel" }); return; }
+  if (subjectIds !== undefined) {
+    await db.delete(teacherClassSubjectsTable).where(eq(teacherClassSubjectsTable.classId, id));
+    if (subjectIds.length > 0) {
+      const resolvedTeacherId = teacherId ?? updated[0].teacherId;
+      await db.insert(teacherClassSubjectsTable).values(
+        subjectIds.map((subjectId) => ({ classId: id, teacherId: resolvedTeacherId, subjectId }))
+      ).onConflictDoNothing();
+    }
+  }
   res.json({ message: "Դасараны ти tarmaцvец" });
+});
+
+router.get("/admin/classes/:id/teacher-subjects", requireAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const rows = await db
+    .select({ subjectId: teacherClassSubjectsTable.subjectId })
+    .from(teacherClassSubjectsTable)
+    .where(eq(teacherClassSubjectsTable.classId, id));
+  res.json({ subjectIds: rows.map((r) => r.subjectId) });
 });
 
 router.get("/admin/classes/:id/detail", requireAdmin, async (req, res) => {

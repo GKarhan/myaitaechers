@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable } from "@workspace/db";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable, teacherClassSubjectsTable, subjectsTable } from "@workspace/db";
 import { eq, and, inArray, avg, count } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 
@@ -70,13 +70,28 @@ router.get("/teacher/classes", requireTeacher, async (req: AuthRequest, res) => 
 
   const classes = await db.select().from(classesTable).where(eq(classesTable.teacherId, teacher.id));
 
-  // Attach student counts
   if (classes.length === 0) { res.json([]); return; }
   const classIds = classes.map((c) => c.id);
+
+  // Attach student counts
   const counts = await db.select({ classId: classStudentsTable.classId, cnt: count() }).from(classStudentsTable).where(inArray(classStudentsTable.classId, classIds)).groupBy(classStudentsTable.classId);
   const countMap = Object.fromEntries(counts.map((c) => [c.classId, Number(c.cnt)]));
 
-  res.json(classes.map((c) => ({ ...c, studentCount: countMap[c.id] ?? 0 })));
+  // Attach assigned subjects per class (only for this teacher)
+  const tcsRows = await db
+    .select({ classId: teacherClassSubjectsTable.classId, subjectName: subjectsTable.name })
+    .from(teacherClassSubjectsTable)
+    .innerJoin(subjectsTable, eq(teacherClassSubjectsTable.subjectId, subjectsTable.id))
+    .where(
+      inArray(teacherClassSubjectsTable.classId, classIds)
+    );
+  const subjectsMap: Record<number, string[]> = {};
+  for (const row of tcsRows) {
+    if (!subjectsMap[row.classId]) subjectsMap[row.classId] = [];
+    subjectsMap[row.classId].push(row.subjectName);
+  }
+
+  res.json(classes.map((c) => ({ ...c, studentCount: countMap[c.id] ?? 0, assignedSubjects: subjectsMap[c.id] ?? [] })));
 });
 
 // ─── STUDENTS ────────────────────────────────────────────────────────────────

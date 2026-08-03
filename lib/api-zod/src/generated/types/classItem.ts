@@ -13,4 +13,5 @@ export interface ClassItem {
   teacherId: number;
   teacherName?: string;
   createdAt: Date;
+  assignedSubjects?: string[];
 }
