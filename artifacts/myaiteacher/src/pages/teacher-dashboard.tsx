@@ -1605,6 +1605,166 @@ export default function TeacherDashboard() {
             })()}
           </section>
         </div>
+
+      {/* ── Create Quiz Modal ── */}
+      {quizModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setQuizModalOpen(false); }}
+        >
+          <div className="bg-card border border-white/15 rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-1">Ստեղծել թեստ</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              AI-ն կստեղծի հարցեր ընտրված դասերի node-երից
+            </p>
+
+            {/* Title */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Թեստի անվանումը (կամընտիր)
+              </label>
+              <input
+                value={quizTitle}
+                onChange={(e) => setQuizTitle(e.target.value)}
+                placeholder={`Թեստ — ${selectedCourse?.name ?? ""}`}
+                className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+              />
+            </div>
+
+            {/* Book select */}
+            {quizBooks.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm text-muted-foreground mb-1.5">
+                  Դասագիրք (կամընտիր)
+                </label>
+                <select
+                  value={quizBookId ?? ""}
+                  onChange={(e) => setQuizBookId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+                >
+                  <option value="">— Չընտրել —</option>
+                  {quizBooks.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Lesson multi-select */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Դասեր (նշել մինչև 1) *
+              </label>
+              {courseLessons.length === 0 ? (
+                <p className="text-sm text-muted-foreground/60 italic">
+                  Դասացուցակում դասեր չկա
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {(courseLessons as any[]).map((l) => (
+                    <label
+                      key={l.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                        quizLessonIds.includes(l.id)
+                          ? "border-primary/60 bg-primary/10"
+                          : "border-white/8 hover:border-white/20 hover:bg-white/5"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={quizLessonIds.includes(l.id)}
+                        onChange={() => toggleLesson(l.id)}
+                        className="accent-primary shrink-0"
+                      />
+                      <span className="text-sm text-white truncate">{l.title}</span>
+                      {l.pagesFrom && (
+                        <span className="text-xs text-muted-foreground shrink-0 ml-auto">
+                          {l.pagesFrom}–{l.pagesTo}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Question count */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Հարցերի քանակը (1–50)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={quizCount}
+                onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
+                className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+              />
+            </div>
+
+            {/* Difficulty mode */}
+            <div className="mb-6">
+              <label className="block text-sm text-muted-foreground mb-2">
+                Դժվարության մակարդակ
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {([["SIMPLE","Պարզ"],["MEDIUM","Միջին"],["HARD","Բարդ"],["MIXED","Խառը"]] as const).map(([val, label]) => (
+                  <label
+                    key={val}
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      quizMode === val
+                        ? "border-primary/60 bg-primary/10 text-white"
+                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="quizMode"
+                      value={val}
+                      checked={quizMode === val}
+                      onChange={() => setQuizMode(val)}
+                      className="accent-primary shrink-0"
+                    />
+                    <span className="text-sm font-medium">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {quizError && (
+              <p className="text-sm text-red-400 mb-4 bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">
+                {quizError}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleCreateQuiz}
+                disabled={quizCreating || quizLessonIds.length === 0}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {quizCreating ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    AI-ն ստեղծում է...
+                  </>
+                ) : (
+                  "✦ Ստեղծել թեստ"
+                )}
+              </button>
+              <button
+                onClick={() => setQuizModalOpen(false)}
+                disabled={quizCreating}
+                className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                Մատarel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
     );
   }
@@ -2253,165 +2413,7 @@ export default function TeacherDashboard() {
           </div>
         )}
       </div>
-
-      {/* ── Create Quiz Modal ── */}
-      {quizModalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setQuizModalOpen(false); }}
-        >
-          <div className="bg-card border border-white/15 rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-1">Ստեղծել թեստ</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              AI-ն կստեղծի հարցեր ընտրված դասերի node-երից
-            </p>
-
-            {/* Title */}
-            <div className="mb-4">
-              <label className="block text-sm text-muted-foreground mb-1.5">
-                Թեստի անվանումը (կամընտիր)
-              </label>
-              <input
-                value={quizTitle}
-                onChange={(e) => setQuizTitle(e.target.value)}
-                placeholder={`Թեստ — ${selectedCourse?.name ?? ""}`}
-                className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-              />
-            </div>
-
-            {/* Book select */}
-            {quizBooks.length > 0 && (
-              <div className="mb-4">
-                <label className="block text-sm text-muted-foreground mb-1.5">
-                  Դասագիրք (կամընտիր)
-                </label>
-                <select
-                  value={quizBookId ?? ""}
-                  onChange={(e) => setQuizBookId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-                >
-                  <option value="">— Չընտրել —</option>
-                  {quizBooks.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Lesson multi-select */}
-            <div className="mb-4">
-              <label className="block text-sm text-muted-foreground mb-1.5">
-                Դասեր (նշել մինչև 1) *
-              </label>
-              {courseLessons.length === 0 ? (
-                <p className="text-sm text-muted-foreground/60 italic">
-                  Դասացուցակում դասեր չկա
-                </p>
-              ) : (
-                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                  {(courseLessons as any[]).map((l) => (
-                    <label
-                      key={l.id}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                        quizLessonIds.includes(l.id)
-                          ? "border-primary/60 bg-primary/10"
-                          : "border-white/8 hover:border-white/20 hover:bg-white/5"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={quizLessonIds.includes(l.id)}
-                        onChange={() => toggleLesson(l.id)}
-                        className="accent-primary shrink-0"
-                      />
-                      <span className="text-sm text-white truncate">{l.title}</span>
-                      {l.pagesFrom && (
-                        <span className="text-xs text-muted-foreground shrink-0 ml-auto">
-                          {l.pagesFrom}–{l.pagesTo}
-                        </span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Question count */}
-            <div className="mb-4">
-              <label className="block text-sm text-muted-foreground mb-1.5">
-                Հարցերի քանակը (1–50)
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={quizCount}
-                onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
-                className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-              />
-            </div>
-
-            {/* Difficulty mode */}
-            <div className="mb-6">
-              <label className="block text-sm text-muted-foreground mb-2">
-                Դժվարության մակարդակ
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {([["SIMPLE","Պարզ"],["MEDIUM","Միջին"],["HARD","Բարդ"],["MIXED","Խառը"]] as const).map(([val, label]) => (
-                  <label
-                    key={val}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                      quizMode === val
-                        ? "border-primary/60 bg-primary/10 text-white"
-                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="quizMode"
-                      value={val}
-                      checked={quizMode === val}
-                      onChange={() => setQuizMode(val)}
-                      className="accent-primary shrink-0"
-                    />
-                    <span className="text-sm font-medium">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {quizError && (
-              <p className="text-sm text-red-400 mb-4 bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">
-                {quizError}
-              </p>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleCreateQuiz}
-                disabled={quizCreating || quizLessonIds.length === 0}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {quizCreating ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    AI-ն ստեղծում է...
-                  </>
-                ) : (
-                  "✦ Ստեղծել թեստ"
-                )}
-              </button>
-              <button
-                onClick={() => setQuizModalOpen(false)}
-                disabled={quizCreating}
-                className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors disabled:opacity-40"
-              >
-                Մատarel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
