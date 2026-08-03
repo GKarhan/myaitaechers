@@ -1836,7 +1836,7 @@ export default function TeacherDashboard() {
                 disabled={quizCreating}
                 className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors disabled:opacity-40"
               >
-                Մատarel
+                Չեղարկել
               </button>
             </div>
           </div>

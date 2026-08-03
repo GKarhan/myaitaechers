@@ -1,0 +1,40 @@
+Three things are broken after creating and assigning a quiz. Investigate with
+REAL evidence before fixing anything — I need actual query results and actual
+code, not a summary.
+
+## 1. Verify the data actually exists
+Run a query against the live DB and paste the raw result:
+  SELECT id, teacher_id, subject_id, class_id, status, title FROM quizzes
+    ORDER BY id DESC LIMIT 5;
+  SELECT id, quiz_id, student_id, status FROM quiz_assignments
+    ORDER BY id DESC LIMIT 5;
+This tells us whether the assign step actually wrote correct rows (right
+subjectId, right teacherId, right classId, right studentId) or whether the bug
+is earlier, at creation/assignment time.
+
+## 2. Teacher list showing 0
+Paste the exact current code of GET /api/quizzes?subjectId=X in
+routes/quizzes.ts, and the exact frontend code in teacher-dashboard.tsx that
+calls it (the fetch call and how subjectId is passed). Compare the subjectId
+type/value being sent vs what the query filters on — check for a string vs
+number mismatch or wrong variable.
+
+## 3. Student "Իմ թեստերը" page
+Paste the exact current code of GET /api/quizzes/assigned in routes/quizzes.ts,
+and the exact frontend fetch call in dashboard.tsx's quizzes section. Also
+paste the exact empty-state string currently shown when no quizzes are
+returned — I saw garbled text there ("Ֆունկց...ionalut'un chi" or similar) that
+needs to be corrected to proper Armenian, e.g. "Հանձնարարված թեստեր չկան" —
+but don't guess, show me the current string first and I'll confirm the exact
+replacement.
+
+## 4. Dashboard home view
+Confirm whether Step 3d (showing assigned quizzes on the "home" section
+alongside lessons) was actually implemented — paste the relevant JSX block. If
+it was skipped or only partially done, implement it now using the same
+GET /api/quizzes/assigned data.
+
+Do not fix anything until you've pasted back all of the above — the actual
+bug might be in the DB rows (wrong classId at assign time), in one specific
+query, or in more than one place, and I want to see the evidence before you
+change code.
