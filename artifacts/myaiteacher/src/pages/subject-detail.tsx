@@ -191,7 +191,7 @@ export default function SubjectDetail() {
               onClick={() => { setQuizModalOpen(true); setQuizError(null); }}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
             >
-              ✦ Ստeğel test
+              ✦ Ստեղծել թեստ
             </button>
           )}
         </div>
