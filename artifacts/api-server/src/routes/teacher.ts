@@ -83,7 +83,10 @@ router.get("/teacher/classes", requireTeacher, async (req: AuthRequest, res) => 
     .from(teacherClassSubjectsTable)
     .innerJoin(subjectsTable, eq(teacherClassSubjectsTable.subjectId, subjectsTable.id))
     .where(
-      inArray(teacherClassSubjectsTable.classId, classIds)
+      and(
+        inArray(teacherClassSubjectsTable.classId, classIds),
+        eq(teacherClassSubjectsTable.teacherId, teacher.id)
+      )
     );
   const subjectsMap: Record<number, string[]> = {};
   for (const row of tcsRows) {
