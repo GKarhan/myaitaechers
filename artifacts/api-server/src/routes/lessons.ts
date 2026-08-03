@@ -167,6 +167,18 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
 
   if (existing.length > 0) {
     const s = existing[0];
+    logger.info(
+      {
+        sessionId:            s.id,
+        existingSession:      true,
+        previousLessonExists: null,   // not computed on reuse path — session already existed
+        reviewTargetsCount:   null,   // not computed on reuse path — session already existed
+        selectedPhase:        s.currentPhase,
+        lessonId,
+        userId:               req.userId!,
+      },
+      "lessons/start: returning existing session (phase selection skipped)"
+    );
     res.status(201).json({
       id: s.id,
       lessonId: s.lessonId,
@@ -207,18 +219,6 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
   const previousLessonExists = priorEvidence.length > 0;
   const selectedInitialPhase = reviewTargetsCount > 0 ? 1 : 2;
 
-  logger.info(
-    {
-      userId:               req.userId!,
-      lessonId,
-      previousLessonExists,
-      reviewTargetsCount,
-      selectedInitialPhase,
-      firstNodeId: firstNode?.id ?? null,
-    },
-    "lessons/start: initial phase selection"
-  );
-
   const now = new Date();
 
   const [session] = await db
@@ -232,6 +232,20 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
       nodeStartedAt: firstNode ? now : null,
     })
     .returning();
+
+  logger.info(
+    {
+      sessionId:            session.id,
+      existingSession:      false,
+      previousLessonExists,
+      reviewTargetsCount,
+      selectedPhase:        selectedInitialPhase,
+      firstNodeId:          firstNode?.id ?? null,
+      lessonId,
+      userId:               req.userId!,
+    },
+    "lessons/start: new session created"
+  );
 
   res.status(201).json({
     id: session.id,
