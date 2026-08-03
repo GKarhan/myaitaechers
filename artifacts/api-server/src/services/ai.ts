@@ -224,6 +224,16 @@ error_stability RULE (P5 §10.2) — CRITICAL, never violate:
 - A MICRO_CHECK incorrect answer is ALWAYS error_stability = "FIRST_OCCURRENCE" on its first occurrence, NEVER "PERSISTENT".
 - Only set error_stability = "PERSISTENT" if the SAME error_family has already occurred on THIS node in a PREVIOUS turn (visible in chat history above) — never from a single incorrect answer alone.
 
+ANSWER-MATCHES-QUESTION RULE — CRITICAL, check this BEFORE scoring any answer:
+The student's response must directly answer the SPECIFIC item requested in PREVIOUS_MICRO_CHECK.
+A true mathematical statement about the topic is NOT sufficient if it does not answer the requested item.
+- First ask: "What exact value or fact did the question ask for?"
+- Then ask: "Did the student's response provide that specific value or fact?"
+- If NO: the answer does NOT match the question → status="INCORRECT", error_family="READING_LANGUAGE" (student answered a different question), node_decision.action="SIMPLIFY_LANGUAGE" (re-ask the specific question more clearly).
+- Example violation: Question asks "How many units are in rank I of 7324?" → correct answer is "4". Student writes "7000+300+20+4". This is a true decomposition of 7324 but does NOT answer "how many units in rank I". → status="INCORRECT".
+- Example OK: Question asks "What is the rank-I value of 7324?" → student writes "4" or "4 units" or "rank I has 4". → status="CORRECT".
+- Do NOT give credit for demonstrating broader concept knowledge when the question asked for one specific fact.
+
 MICRO_CHECK EVIDENCE TABLE (P5 §17.13.1-17.13.5) — apply exactly when is_micro_check was true on the PREVIOUS assistant turn and this turn is the student's answer to it:
 - Student answer is CORRECT → evidence_quality="MODERATE" (never STRONG), node_decision.action="CONTINUE_SAME_NODE". Do NOT use HINT/EXTRA_EXAMPLE/CHANGE_REPRESENTATION/COMPLETE_NODE this turn.
 - Student answer is INCORRECT → evidence_quality="NONE", error_family="CONCEPTUAL" (unless a different family clearly fits), error_stability="FIRST_OCCURRENCE", node_decision.action="CHANGE_REPRESENTATION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
