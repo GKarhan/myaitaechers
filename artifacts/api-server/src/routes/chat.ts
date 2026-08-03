@@ -591,6 +591,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
         phase1ProgressLine,
         stageDirectiveLine,
+        phase === 2 && currentNodeRecord
+          ? [
+              `TEACHING_SEQUENCE_RULE:`,
+              `Before asking any questions:`,
+              `1. Explain the concept using NODE_THEORY.`,
+              `2. Use APPROVED_EXPLANATION for child-friendly explanation.`,
+              `3. Show examples from BASIC_EXAMPLES.`,
+              `4. Check understanding only after explanation.`,
+              `5. Do not skip directly to questions.`,
+            ].join("\n")
+          : "",
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
         cfeBlock,
         verbatimAnchorBlock,
