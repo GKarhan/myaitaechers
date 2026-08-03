@@ -662,6 +662,16 @@ async function _attemptStructured(
     throw new Error(`AI structured response failed schema validation: ${String(err)}`);
   }
 
+  logger.info(
+    {
+      teaching_mode:   validated.teaching_mode,
+      is_micro_check:  validated.is_micro_check,
+      student_message: validated.student_message.slice(0, 200),
+      node_decision:   validated.node_decision.action,
+    },
+    "AI STRUCTURED RESULT DEBUG"
+  );
+
   validateStructuredResponse(validated);
   validateNodeLock(validated, lessonContext);
   validateTeachingCycle(validated, messages, lessonContext);
