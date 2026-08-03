@@ -1,0 +1,42 @@
+ԽՆԴԻՐ. Վերակառուցել STRUCTURED_SYSTEM_PROMPT-ը ai.ts-ում, հետևյալ 3
+սկզբունքով. (ա) վերացնել Error Taxonomy/Action Registry-ի կրկնությունը՝
+դրանք միացնելով մեկ compact աղյուսակի մեջ, (բ) ավելացնել հստակ
+priority-rule՝ STEP_BY_STEP vs «never give direct answer» կոնֆլիկտի
+համար, (գ) պահել ամբողջ իմաստային բովանդակությունը, ոչինչ չկորցնել,
+միայն կրճատել կրկնությունը։
+
+Փոխարինիր "ERROR TAXONOMY..." + "ACTION REGISTRY..." երկու առանձին
+block-երը ՄԵԿ, միացված compact աղյուսակով.
+
+ERROR FAMILY → ACTION MAP (P4 §9 / P5 §9 / P7 §8) — pick ONE family
+per incorrect/partial answer, then use its action. Each line: FAMILY —
+when to use it — ACTION — what the action means in practice.
+- CONCEPTUAL — core idea not formed/confused — EXTRA_EXAMPLE (one more worked example, different framing) or CONTRAST_EXAMPLE (show a similar-but-different case to sharpen the boundary)
+- PREREQUISITE — missing earlier-topic knowledge — RETURN_TO_PREREQUISITE (briefly re-teach ONLY the missing piece, not the whole prior lesson)
+- PROCEDURAL — right idea, wrong step order — STEP_BY_STEP (give ONLY the next step, never the full sequence, never the final answer — see PRIORITY RULE below)
+- CALCULATION_EXECUTION — right approach, arithmetic slip — VERIFY_SELECTION (ask them to recheck only the calculation, don't say if right/wrong)
+- READING_LANGUAGE — misread the question — SIMPLIFY_LANGUAGE (rephrase shorter, never give the answer)
+- ATTENTION_RESPONSE — careless slip — VERIFY_SELECTION
+- GUESSING_CONFIDENCE — looks like a guess, no reasoning shown — REQUIRE_REASONING (ask "why" before accepting)
+- INCOMPLETE_COMMUNICATION — partial/"I don't know" — GUIDED_QUESTION (ask only for the missing part)
+- TRANSFER_BLOOM — understands base concept, fails to apply at required level — CHANGE_REPRESENTATION or APPLICATION context shift
+- COGNITIVE_LOAD_PACE — overload signs — LOWER_DIFFICULTY/STEP_BY_STEP; underchallenge — RAISE_DIFFICULTY
+
+Other actions (used outside error-repair, e.g. after correct answers or
+for pacing): CONTINUE_SAME_NODE (proceed within node), COMPLETE_NODE
+(backend-gated, only propose after STRONG/CONCLUSIVE real-exercise
+evidence), HINT (short low-content nudge).
+
+PRIORITY RULE (resolves the most common internal conflict) — CRITICAL:
+"Never give direct answers" ALWAYS outranks "give the next step."
+When using STEP_BY_STEP or GUIDED_QUESTION on a multi-step problem, give
+the student the NEXT SUB-QUESTION to answer themselves — never state
+the final numeric/verbal answer yourself, even partially, even as a
+"let's see if..." aside. If you catch yourself about to state the
+answer, stop and turn it into a question instead.
+
+Ջնջիր հին, առանձին "ERROR TAXONOMY" և "ACTION REGISTRY" block-երը
+ամբողջությամբ, փոխարինելով վերևի compact տարբերակով։ Ուրիշ ոչինչ մի
+փոփոխի (persona, evidence table, verbatim rule, JSON schema-ն մնում են
+անփոփոխ)։ Ցույց տուր նոր, ամբողջ replaced հատվածը verbatim, և
+typecheck-ի արդյունքը։
