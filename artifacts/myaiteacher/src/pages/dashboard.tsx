@@ -354,6 +354,36 @@ export default function Dashboard() {
         )}
       </div>
 
+
+      {/* Assigned quizzes */}
+      {(assignedQuizzes ?? []).filter((q) => q.status !== "COMPLETED").length > 0 && (
+        <div>
+          <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
+            📋 թեստերը
+          </h2>
+          <div className="space-y-3">
+            {(assignedQuizzes ?? [])
+              .filter((q) => q.status !== "COMPLETED")
+              .map((qz) => (
+                <div
+                  key={qz.assignmentId}
+                  className="rounded-2xl border border-primary/20 bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-white/20 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-base leading-snug">{qz.title}</h3>
+                  </div>
+                  <Link
+                    href={`/quiz/${qz.quizId}/take`}
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
+                  >
+                    ▶ ՍԿՍԵԼ ԹԵՍՏԵՐ
+                  </Link>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div>
         <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
@@ -762,7 +792,7 @@ export default function Dashboard() {
         ) : quizzes.length === 0 ? (
           <div className="text-center py-24 text-muted-foreground">
             <div className="text-5xl mb-4">📋</div>
-            <p>Հانձнарарараrutʼun chi</p>
+            <p>Հանձնարարված չկա</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -793,7 +823,7 @@ export default function Dashboard() {
                         href={`/quiz/${qz.quizId}/take`}
                         className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
                       >
-                        ▶ КАТАРЕЛЬ
+                        ▶ ՍԿՍԵԼ ԹԵՍՏԵՐ
                       </Link>
                     </div>
                   ))}

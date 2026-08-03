@@ -462,6 +462,7 @@ export default function TeacherDashboard() {
     questionCount: number; classId: number | null; createdAt: string;
   }[]>([]);
   const [courseQuizzesLoading, setCourseQuizzesLoading] = useState(false);
+  const [quizRefetchTick, setQuizRefetchTick]           = useState(0);
 
   useEffect(() => {
     if (mainView !== "course" || !selectedCourse?.subjectId) {
@@ -478,7 +479,7 @@ export default function TeacherDashboard() {
       .catch(() => {})
       .finally(() => { if (!cancelled) setCourseQuizzesLoading(false); });
     return () => { cancelled = true; };
-  }, [mainView, selectedCourse?.subjectId]);
+  }, [mainView, selectedCourse?.subjectId, quizRefetchTick]);
 
   useEffect(() => {
     if (!quizModalOpen) return;
@@ -516,6 +517,7 @@ export default function TeacherDashboard() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error ?? "Ձախողվեց");
       setQuizModalOpen(false);
+      setQuizRefetchTick((t) => t + 1);
       setLocation(`/quiz/${data.id}/review`);
     } catch (e) {
       setQuizError(e instanceof Error ? e.message : "Թեստը ստեղծել չհաջողվեց");
