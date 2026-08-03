@@ -421,11 +421,97 @@ function validateStructuredResponse(response: AIStructuredResponse): void {
   // D) redirect_needed — allowed through without modification (no-op check)
 }
 
+// ── Node Lock consistency check ──────────────────────────────────────────────
+//
+// Parses CURRENT_NODE and ALLOWED_NODES from lessonContext (both injected by
+// the route layer as structured text) and verifies the response is consistent.
+//
+// Checks performed (keyword-based, no extra API call):
+//   1. progress_indicator.current_node_name must appear in the ALLOWED_NODES list.
+//   2. progress_indicator.current_node_name must loosely match CURRENT_NODE.
+//   3. student_message must contain ≥1 keyword (≥4 chars) from CURRENT_NODE title
+//      or the student_message is ≤80 chars (trivially short messages are skipped).
+//      Violation here → warn only (too noisy to throw on free Armenian text).
+
+function validateNodeLock(
+  response: AIStructuredResponse,
+  lessonContext: string
+): void {
+  // ── Parse CURRENT_NODE ───────────────────────────────────────────────────
+  const currentNodeMatch = lessonContext.match(/CURRENT_NODE:\s*«([^»]+)»/);
+  const currentNodeTitle = currentNodeMatch?.[1]?.trim() ?? null;
+
+  // ── Parse ALLOWED_NODES list ─────────────────────────────────────────────
+  const allowedNodesLine = lessonContext.match(/ALLOWED_NODES \(full list\):\s*([^\n]+)/);
+  const allowedNodeTitles: string[] = allowedNodesLine
+    ? [...allowedNodesLine[1].matchAll(/«([^»]+)»/g)].map((m) => m[1].trim())
+    : [];
+
+  // If context carries no node data skip all checks (no-node lesson).
+  if (!currentNodeTitle && allowedNodeTitles.length === 0) {
+    logger.debug("validateNodeLock: no node data in context — skipping");
+    return;
+  }
+
+  const reportedNode = response.progress_indicator.current_node_name.trim();
+
+  // ── Check 1: reported node must be in ALLOWED_NODES ─────────────────────
+  if (allowedNodeTitles.length > 0) {
+    const inAllowed = allowedNodeTitles.some(
+      (t) => t.toLowerCase() === reportedNode.toLowerCase()
+    );
+    if (!inAllowed) {
+      logger.warn(
+        { reportedNode, allowedNodeTitles },
+        "validateNodeLock: progress_indicator.current_node_name not in ALLOWED_NODES"
+      );
+      throw new Error(
+        `Node lock violation: reported node «${reportedNode}» is not in ALLOWED_NODES`
+      );
+    }
+  }
+
+  // ── Check 2: reported node must match CURRENT_NODE ───────────────────────
+  if (currentNodeTitle) {
+    const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+    if (normalise(reportedNode) !== normalise(currentNodeTitle)) {
+      logger.warn(
+        { reportedNode, currentNodeTitle },
+        "validateNodeLock: progress_indicator.current_node_name does not match CURRENT_NODE"
+      );
+      throw new Error(
+        `Node lock violation: reported node «${reportedNode}» ≠ CURRENT_NODE «${currentNodeTitle}»`
+      );
+    }
+  }
+
+  // ── Check 3: student_message should reference CURRENT_NODE keywords ──────
+  // Warn-only — free Armenian text is too noisy for a hard throw.
+  if (currentNodeTitle) {
+    const keywords = currentNodeTitle
+      .split(/[\s,;:«»()]+/)
+      .map((w) => w.trim().toLowerCase())
+      .filter((w) => w.length >= 4);
+
+    const msgLower = response.student_message.toLowerCase();
+    const hasKeyword = keywords.some((kw) => msgLower.includes(kw));
+
+    if (!hasKeyword && response.student_message.length > 80) {
+      logger.warn(
+        { currentNodeTitle, keywords, msgPreview: response.student_message.slice(0, 120) },
+        "validateNodeLock: student_message contains no keyword from CURRENT_NODE title (possible topic drift)"
+      );
+      // warn only — do not throw (Armenian morphology causes false positives)
+    }
+  }
+}
+
 // ── callAIStructured inner attempt (single API call + parse + validate) ───────
 
 async function _attemptStructured(
   systemPrompt: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  lessonContext: string
 ): Promise<AIStructuredResponse> {
   const response = await openrouter.chat.completions.create({
     model: MODEL,
@@ -481,6 +567,7 @@ async function _attemptStructured(
   }
 
   validateStructuredResponse(validated);
+  validateNodeLock(validated, lessonContext);
   return validated;
 }
 
@@ -517,7 +604,7 @@ export async function callAIStructured(
   // ── Attempt 1 ────────────────────────────────────────────────────────────
   let firstError: Error;
   try {
-    const result = await _attemptStructured(baseSystem, messages);
+    const result = await _attemptStructured(baseSystem, messages, lessonContext);
     logger.debug("callAIStructured: attempt 1 succeeded");
     return result;
   } catch (err) {
@@ -532,7 +619,7 @@ export async function callAIStructured(
   logger.info("callAIStructured: retrying (attempt 2/2)");
   const retrySystem = baseSystem + RETRY_CORRECTION;
   try {
-    const result = await _attemptStructured(retrySystem, messages);
+    const result = await _attemptStructured(retrySystem, messages, lessonContext);
     logger.info("callAIStructured: retry (attempt 2) succeeded");
     return result;
   } catch (err) {
