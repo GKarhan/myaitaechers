@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -444,6 +444,67 @@ export default function TeacherDashboard() {
 
   const [courseForm, setCourseForm] = useState({ name: "", description: "", subjectId: null as number | null });
   const [showCourseForm, setShowCourseForm] = useState(false);
+
+  // ── Quiz creation state ──────────────────────────────────────────────────
+  const [quizModalOpen, setQuizModalOpen]   = useState(false);
+  const [quizTitle,     setQuizTitle]       = useState("");
+  const [quizLessonIds, setQuizLessonIds]   = useState<number[]>([]);
+  const [quizBookId,    setQuizBookId]      = useState<number | null>(null);
+  const [quizCount,     setQuizCount]       = useState(10);
+  const [quizMode,      setQuizMode]        = useState<"SIMPLE"|"MEDIUM"|"HARD"|"MIXED">("MIXED");
+  const [quizBooks,     setQuizBooks]       = useState<{id:number;name:string}[]>([]);
+  const [quizCreating,  setQuizCreating]    = useState(false);
+  const [quizError,     setQuizError]       = useState<string|null>(null);
+
+  useEffect(() => {
+    if (!quizModalOpen) return;
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    fetch(`/api/books`, { headers: { Authorization: `Bearer ${tok}` } })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setQuizBooks(data.filter((b: { subjectId?: number }) =>
+            b.subjectId === selectedCourse?.subjectId || !b.subjectId
+          ));
+        }
+      })
+      .catch(() => {});
+  }, [quizModalOpen, selectedCourse?.subjectId]);
+
+  async function handleCreateQuiz() {
+    if (quizLessonIds.length === 0) return;
+    setQuizCreating(true);
+    setQuizError(null);
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    try {
+      const resp = await fetch(`/api/quizzes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({
+          subjectId:      selectedCourse?.subjectId ?? undefined,
+          sourceBookId:   quizBookId ?? undefined,
+          lessonIds:      quizLessonIds,
+          questionCount:  quizCount,
+          difficultyMode: quizMode,
+          title:          quizTitle.trim() || undefined,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error ?? "Ձախողվեց");
+      setQuizModalOpen(false);
+      setLocation(`/quiz/${data.id}/review`);
+    } catch (e) {
+      setQuizError(e instanceof Error ? e.message : "Թեստը ստեղծել չհաջողվեց");
+    } finally {
+      setQuizCreating(false);
+    }
+  }
+
+  function toggleLesson(lid: number) {
+    setQuizLessonIds((prev) =>
+      prev.includes(lid) ? prev.filter((x) => x !== lid) : [...prev, lid]
+    );
+  }
 
   const handleCreateCourse = (e: React.FormEvent) => {
     e.preventDefault();
@@ -900,6 +961,16 @@ export default function TeacherDashboard() {
                 );
               })}
             </div>
+          </section>
+
+          {/* ── CREATE QUIZ ── */}
+          <section>
+            <button
+              onClick={() => { setQuizModalOpen(true); setQuizError(null); setQuizLessonIds([]); setQuizTitle(""); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
+            >
+              ✦ Ստեղծել թեստ
+            </button>
           </section>
 
           {/* ── LESSONS ── */}
@@ -2182,6 +2253,165 @@ export default function TeacherDashboard() {
           </div>
         )}
       </div>
+
+      {/* ── Create Quiz Modal ── */}
+      {quizModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setQuizModalOpen(false); }}
+        >
+          <div className="bg-card border border-white/15 rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-1">Ստեղծել թեստ</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              AI-ն կստեղծի հարցեր ընտրված դասերի node-երից
+            </p>
+
+            {/* Title */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Թեստի անվանումը (կամընտիր)
+              </label>
+              <input
+                value={quizTitle}
+                onChange={(e) => setQuizTitle(e.target.value)}
+                placeholder={`Թեստ — ${selectedCourse?.name ?? ""}`}
+                className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+              />
+            </div>
+
+            {/* Book select */}
+            {quizBooks.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm text-muted-foreground mb-1.5">
+                  Դասագիրք (կամընտիր)
+                </label>
+                <select
+                  value={quizBookId ?? ""}
+                  onChange={(e) => setQuizBookId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+                >
+                  <option value="">— Չընտրել —</option>
+                  {quizBooks.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Lesson multi-select */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Դասեր (նշել մինչև 1) *
+              </label>
+              {courseLessons.length === 0 ? (
+                <p className="text-sm text-muted-foreground/60 italic">
+                  Դասացուցակում դասեր չկա
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {(courseLessons as any[]).map((l) => (
+                    <label
+                      key={l.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                        quizLessonIds.includes(l.id)
+                          ? "border-primary/60 bg-primary/10"
+                          : "border-white/8 hover:border-white/20 hover:bg-white/5"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={quizLessonIds.includes(l.id)}
+                        onChange={() => toggleLesson(l.id)}
+                        className="accent-primary shrink-0"
+                      />
+                      <span className="text-sm text-white truncate">{l.title}</span>
+                      {l.pagesFrom && (
+                        <span className="text-xs text-muted-foreground shrink-0 ml-auto">
+                          {l.pagesFrom}–{l.pagesTo}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Question count */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Հարցերի քանակը (1–50)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={quizCount}
+                onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
+                className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+              />
+            </div>
+
+            {/* Difficulty mode */}
+            <div className="mb-6">
+              <label className="block text-sm text-muted-foreground mb-2">
+                Դժվարության մակարդակ
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {([["SIMPLE","Պարզ"],["MEDIUM","Միջին"],["HARD","Բարդ"],["MIXED","Խառը"]] as const).map(([val, label]) => (
+                  <label
+                    key={val}
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      quizMode === val
+                        ? "border-primary/60 bg-primary/10 text-white"
+                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="quizMode"
+                      value={val}
+                      checked={quizMode === val}
+                      onChange={() => setQuizMode(val)}
+                      className="accent-primary shrink-0"
+                    />
+                    <span className="text-sm font-medium">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {quizError && (
+              <p className="text-sm text-red-400 mb-4 bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">
+                {quizError}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleCreateQuiz}
+                disabled={quizCreating || quizLessonIds.length === 0}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {quizCreating ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    AI-ն ստեղծում է...
+                  </>
+                ) : (
+                  "✦ Ստեղծել թեստ"
+                )}
+              </button>
+              <button
+                onClick={() => setQuizModalOpen(false)}
+                disabled={quizCreating}
+                className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                Մատarel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
