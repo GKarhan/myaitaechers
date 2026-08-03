@@ -276,6 +276,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const currentNodeEntry = allNodes.find((n) => n.id === session?.currentNodeId);
       const currentNodeSeq   = currentNodeEntry?.sequence ?? (totalNodes + 1);
       const completedNodes   = session?.currentNodeId != null ? currentNodeSeq - 1 : totalNodes;
+      // Titles of all nodes whose sequence comes before the current node — used in
+      // the structured context header to explicitly forbid the AI from reteaching them.
+      const completedNodeTitles = allNodes
+        .filter((n) => n.sequence < currentNodeSeq)
+        .map((n) => n.title);
 
       if (session?.currentNodeId) {
         const [nodeRow] = await db
@@ -533,12 +538,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         );
       }
 
+      const completedNodesBlock = completedNodeTitles.length > 0
+        ? `COMPLETED_NODES (already mastered — do NOT reteach; only brief prerequisite references allowed):\n${completedNodeTitles.map((t) => `  - «${t}»`).join("\n")}`
+        : `COMPLETED_NODES: (none — this is the first node)`;
+
       const structuredHeader = [
         `╔══ STRUCTURED CONTEXT (read this first — highest priority) ══╗`,
         `CURRENT_LESSON:   «${lesson.title}» | Subject: ${subjectName}`,
+        completedNodesBlock,
         currentNodeRecord
-          ? `CURRENT_NODE:     «${currentNodeRecord.title}»`
+          ? `CURRENT_NODE:     «${currentNodeRecord.title}»  ← the ONLY node you are teaching right now`
           : `CURRENT_NODE:     (none — all nodes completed or phase=${phase})`,
+        `INSTRUCTION: Completed nodes are already mastered. Do not reteach them. Do not restart explanations from completed nodes. Only refer to them briefly as prerequisites if needed.`,
         _nodeObjective
           ? `NODE_OBJECTIVE:   ${_nodeObjective}`
           : `NODE_OBJECTIVE:   (not set for this node)`,
