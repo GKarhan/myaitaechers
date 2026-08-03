@@ -403,17 +403,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const deepDiveIdx = session?.deepDiveExerciseIndex ?? 0;
       const exBlock = phase === 3 && classExercises.length > 0
-        ? `\nDEEP_DIVE_EXERCISES (all lesson exercises, start presenting from index ${deepDiveIdx}):\n` +
+        ? `\nDEEP_DIVE_EXERCISES (MANDATORY — present these textbook exercises in order; do NOT replace with AI-generated tasks; start from index ${deepDiveIdx}):\n` +
           classExercises.map((e, i) =>
             `[idx=${i}] [${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-            `  VERBATIM: ${e.exerciseTextVerbatim || "(none — AI may invent)"}\n` +
+            `  VERBATIM: ${e.exerciseTextVerbatim?.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
             `  successCriteria: ${e.successCriteria ?? ""}`
           ).join("\n")
         : phase === 2 && classExercises.length > 0
         ? `\nCLASS_EXERCISES (use verbatim when exerciseTextVerbatim is non-empty):\n` +
           classExercises.map((e) =>
             `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-            `  VERBATIM: ${e.exerciseTextVerbatim || "(none — AI may invent)"}\n` +
+            `  VERBATIM: ${e.exerciseTextVerbatim?.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
             `  successCriteria: ${e.successCriteria ?? ""}`
           ).join("\n")
         : "";
