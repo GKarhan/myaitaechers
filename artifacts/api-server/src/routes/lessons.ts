@@ -166,19 +166,80 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     .limit(1);
 
   if (existing.length > 0) {
-    const s = existing[0];
-    logger.info(
-      {
-        sessionId:            s.id,
-        existingSession:      true,
-        previousLessonExists: null,   // not computed on reuse path — session already existed
-        reviewTargetsCount:   null,   // not computed on reuse path — session already existed
-        selectedPhase:        s.currentPhase,
-        lessonId,
-        userId:               req.userId!,
-      },
-      "lessons/start: returning existing session (phase selection skipped)"
-    );
+    let s = existing[0];
+
+    // ── Stale-phase correction ────────────────────────────────────────────
+    // A session may have been created with currentPhase=1 (REVIEW) because
+    // review_schedule had entries but evidence_events was empty (stale data).
+    // Detect that case now and correct it before returning.
+    const [dueTopicsReuse, priorEvidenceReuse] = await Promise.all([
+      getDueReviewTopics(req.userId!),
+      db
+        .select({ id: evidenceEventsTable.id })
+        .from(evidenceEventsTable)
+        .where(eq(evidenceEventsTable.userId, req.userId!))
+        .limit(1),
+    ]);
+    const prevExistsReuse = priorEvidenceReuse.length > 0;
+    const shouldCorrect   = s.currentPhase === 1 && !prevExistsReuse;
+
+    if (shouldCorrect) {
+      // Find first node so we can restore a clean teaching start
+      const [firstNodeReuse] = await db
+        .select({ id: lessonNodesTable.id })
+        .from(lessonNodesTable)
+        .where(eq(lessonNodesTable.lessonId, lessonId))
+        .orderBy(asc(lessonNodesTable.sequence))
+        .limit(1);
+
+      const correctedPhase = (dueTopicsReuse.length > 0 && prevExistsReuse) ? 1 : 2;
+      await db
+        .update(lessonSessionsTable)
+        .set({
+          currentPhase:    correctedPhase,
+          nodeAttemptCount: 0,
+          currentNodeId:   firstNodeReuse?.id ?? s.currentNodeId,
+          nodeStartedAt:   firstNodeReuse ? new Date() : s.nodeStartedAt,
+        })
+        .where(eq(lessonSessionsTable.id, s.id));
+
+      // Reload corrected row
+      const [corrected] = await db
+        .select()
+        .from(lessonSessionsTable)
+        .where(eq(lessonSessionsTable.id, s.id))
+        .limit(1);
+      s = corrected;
+
+      logger.info(
+        {
+          sessionId:            s.id,
+          existingSession:      true,
+          previousLessonExists: prevExistsReuse,
+          reviewTargetsCount:   dueTopicsReuse.length,
+          selectedPhase:        correctedPhase,
+          corrected:            true,
+          lessonId,
+          userId:               req.userId!,
+        },
+        "lessons/start: existing session phase corrected (was REVIEW, no evidence)"
+      );
+    } else {
+      logger.info(
+        {
+          sessionId:            s.id,
+          existingSession:      true,
+          previousLessonExists: prevExistsReuse,
+          reviewTargetsCount:   dueTopicsReuse.length,
+          selectedPhase:        s.currentPhase,
+          corrected:            false,
+          lessonId,
+          userId:               req.userId!,
+        },
+        "lessons/start: returning existing session"
+      );
+    }
+
     res.status(201).json({
       id: s.id,
       lessonId: s.lessonId,
@@ -217,7 +278,10 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
 
   const reviewTargetsCount   = dueTopics.length;
   const previousLessonExists = priorEvidence.length > 0;
-  const selectedInitialPhase = reviewTargetsCount > 0 ? 1 : 2;
+  const selectedInitialPhase =
+    (reviewTargetsCount > 0 && previousLessonExists)
+      ? 1
+      : 2;
 
   const now = new Date();
 
