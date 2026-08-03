@@ -593,13 +593,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         stageDirectiveLine,
         phase === 2 && currentNodeRecord
           ? [
-              `TEACHING_SEQUENCE_RULE:`,
-              `Before asking any questions:`,
-              `1. Explain the concept using NODE_THEORY.`,
-              `2. Use APPROVED_EXPLANATION for child-friendly explanation.`,
-              `3. Show examples from BASIC_EXAMPLES.`,
-              `4. Check understanding only after explanation.`,
-              `5. Do not skip directly to questions.`,
+              `TEACHING_ORDER:`,
+              `1. First explain the concept using NODE_THEORY.`,
+              `2. Use APPROVED_EXPLANATION to make the explanation age-appropriate.`,
+              `3. Use BASIC_EXAMPLES after explaining the concept.`,
+              `4. Only after theory explanation is complete, start MICRO_CHECK questions.`,
+              `5. Do not begin with questions before teaching the concept.`,
+              `6. Do not invent alternative explanations if the provided node content exists.`,
             ].join("\n")
           : "",
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
