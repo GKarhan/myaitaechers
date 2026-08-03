@@ -64,11 +64,13 @@ NO-EXERCISE COMPLETION RULE:
 - If CLASS_EXERCISES is ABSENT from this context (the node has no exercises) AND you have already asked 2+ MICRO_CHECK questions showing the student understands → set node_decision.action = "COMPLETE_NODE" to advance. Do NOT keep inventing more questions.`;
 
     case 3:
-      return `DEEP STUDY PHASE — apply concepts to complex scenarios:
-Use REAL_LIFE_EXAMPLES (if provided above) to frame exercises in real-world context.
-Present CLASS EXERCISES (higher difficulty levels preferred).
-Challenge the student with Bloom level 3-4 tasks (Apply, Analyze).
-Socratic method: ask questions that lead the student to discover answers themselves.`;
+      return `LESSON WRAP-UP PHASE — all lesson nodes have been taught.
+STRICT BOUNDARY: Work ONLY with the concepts from COMPLETED_NODES listed above. Do NOT introduce any new mathematical concept, topic, definition, or skill from outside this lesson's node list. Do NOT start a new chapter or curriculum section.
+Step 1. Give a warm, concise summary (3-5 sentences) of what was learned in this lesson, referencing the node topics by name.
+Step 2. If DEEP_DIVE_EXERCISES are listed above, present them ONE AT A TIME (starting from the given index) verbatim. Ask the student to attempt each before moving on. Evaluate answers using the same MICRO_CHECK/FEEDBACK cycle. Do NOT invent exercises that are not listed.
+Step 3. If HOMEWORK_TASKS are listed above, present them warmly and verbatim after exercises are done. Briefly explain why each task matters.
+Step 4. When exercises and homework are presented, close the session with encouragement.
+If neither DEEP_DIVE_EXERCISES nor HOMEWORK_TASKS are available, proceed directly to a warm closing summary.`;
 
     case 4:
       return `HOMEWORK PRESENTATION PHASE:
@@ -351,7 +353,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       let homeworkExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
-      if (phase === 4) {
+      if (phase >= 3) {
         homeworkExercises = await db
           .select()
           .from(lessonExercisesTable)
@@ -434,6 +436,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             `You are teaching EXCLUSIVELY node: «${currentNodeRecord.title}»`,
             `Lesson: «${lesson.title}»`,
             `CURRENT_NODE:     «${currentNodeRecord.title}»`,
+            `ALLOWED_NODES (full list): ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`,
             completedNodeTitles.length > 0
               ? `COMPLETED_NODES:  ${completedNodeTitles.map((t) => `«${t}»`).join(", ")}  ← finished; do not reteach`
               : `COMPLETED_NODES:  (none)`,
@@ -442,9 +445,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               : `FUTURE_NODES:     (none)`,
             `FORBIDDEN: reteach any COMPLETED_NODE`,
             `FORBIDDEN: jump ahead to any FUTURE_NODE`,
+            `FORBIDDEN: introduce any concept, definition, or skill not in ALLOWED_NODES`,
             `FORBIDDEN: declare lesson/node complete (backend decides mastery, not you)`,
             `FORBIDDEN: agree with student if they ask to skip/change topic — instead set redirect_needed:true and warmly redirect back`,
             `╚════════════════════════════════════════╝`,
+          ].join("\n")
+        : allNodeTitles.length > 0
+        ? [
+            `╔══ LESSON BOUNDARY — ALL NODES COMPLETED ══╗`,
+            `All nodes for lesson «${lesson.title}» have been taught and mastered.`,
+            `COMPLETED_NODES (full list): ${allNodeTitles.map((t) => `«${t}»`).join(", ")}`,
+            `FORBIDDEN: introduce ANY new mathematical concept, definition, skill, or topic not in COMPLETED_NODES.`,
+            `FORBIDDEN: start a new chapter, lesson, or curriculum section.`,
+            `FORBIDDEN: invent exercises — use ONLY the DEEP_DIVE_EXERCISES or HOMEWORK_TASKS provided below.`,
+            `REQUIRED ACTION: (1) Summarize what was learned using ONLY the COMPLETED_NODES. (2) Present any remaining DEEP_DIVE_EXERCISES or HOMEWORK_TASKS verbatim. (3) Close the session warmly.`,
+            `╚══════════════════════════════════════════╝`,
           ].join("\n")
         : "";
 
