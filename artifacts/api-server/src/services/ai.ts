@@ -506,6 +506,102 @@ function validateNodeLock(
   }
 }
 
+// ── Teaching cycle enforcement ────────────────────────────────────────────────
+//
+// Validates that the AI's response is consistent with the expected teaching
+// cycle (P4 §11).  All violations throw so the existing retry wrapper fires.
+//
+// Rule 1 — After a MICRO_CHECK turn the response MUST be FEEDBACK, not TEACH.
+//   Detection: lessonContext contains "PREVIOUS_MICRO_CHECK: <text>" (not "(none)").
+//   (Messages are plain text; is_micro_check cannot be extracted from them.)
+//
+// Rule 2 — TEACH must have is_micro_check=true (concept + check in one turn).
+//
+// Rule 3 — MICRO_CHECK student_message must contain a question (? or ՞).
+//
+// Rule 4 — FEEDBACK must reflect the student's answer
+//   (answer_evaluation.status ≠ NOT_APPLICABLE), unless redirect_needed=true.
+//
+// Rule 5 — COMPLETE_NODE requires evidence_quality STRONG or CONCLUSIVE.
+
+function validateTeachingCycle(
+  response: AIStructuredResponse,
+  _messages: ChatMessage[],
+  lessonContext: string
+): void {
+  const mode   = response.teaching_mode;
+  const action = response.node_decision.action;
+  const quality = response.answer_evaluation.evidence_quality;
+  const status  = response.answer_evaluation.status;
+  const msg     = response.student_message;
+
+  // ── Rule 1: after MICRO_CHECK → must be FEEDBACK, not TEACH ───────────────
+  // PREVIOUS_MICRO_CHECK is "(none)" when no prior micro_check exists.
+  const prevMicroCheckLine = lessonContext.match(/PREVIOUS_MICRO_CHECK:\s*(.+)/);
+  const prevMicroCheckText = prevMicroCheckLine?.[1]?.trim() ?? "";
+  const hadMicroCheck =
+    prevMicroCheckText.length > 0 && prevMicroCheckText !== "(none)";
+
+  if (hadMicroCheck && mode === "TEACH") {
+    logger.warn(
+      { prevMicroCheckPreview: prevMicroCheckText.slice(0, 80), teaching_mode: mode },
+      "validateTeachingCycle [R1]: TEACH after MICRO_CHECK — must be FEEDBACK"
+    );
+    throw new Error(
+      "Teaching cycle violation [R1]: previous turn had MICRO_CHECK but response is TEACH — must be FEEDBACK"
+    );
+  }
+
+  // ── Rule 2: TEACH must have is_micro_check=true ────────────────────────────
+  if (mode === "TEACH" && response.is_micro_check !== true) {
+    logger.warn(
+      { teaching_mode: mode, is_micro_check: response.is_micro_check },
+      "validateTeachingCycle [R2]: TEACH response missing is_micro_check=true"
+    );
+    throw new Error(
+      "Teaching cycle violation [R2]: teaching_mode=TEACH but is_micro_check is not true"
+    );
+  }
+
+  // ── Rule 3: MICRO_CHECK student_message must contain a question ───────────
+  // Accepts standard "?" or Armenian question mark "՞" (U+055E).
+  if (mode === "MICRO_CHECK") {
+    const hasQuestion = /[?՞]/u.test(msg);
+    if (!hasQuestion) {
+      logger.warn(
+        { msgPreview: msg.slice(0, 120) },
+        "validateTeachingCycle [R3]: MICRO_CHECK student_message contains no question mark"
+      );
+      throw new Error(
+        "Teaching cycle violation [R3]: teaching_mode=MICRO_CHECK but student_message has no question"
+      );
+    }
+  }
+
+  // ── Rule 4: FEEDBACK must reflect student answer ───────────────────────────
+  // status=NOT_APPLICABLE is only valid when redirect_needed=true.
+  if (mode === "FEEDBACK" && status === "NOT_APPLICABLE" && !response.redirect_needed) {
+    logger.warn(
+      { teaching_mode: mode, status, redirect_needed: response.redirect_needed },
+      "validateTeachingCycle [R4]: FEEDBACK with NOT_APPLICABLE status and no redirect"
+    );
+    throw new Error(
+      "Teaching cycle violation [R4]: teaching_mode=FEEDBACK but answer_evaluation.status=NOT_APPLICABLE without redirect_needed"
+    );
+  }
+
+  // ── Rule 5: COMPLETE_NODE requires STRONG or CONCLUSIVE evidence ───────────
+  if (action === "COMPLETE_NODE" && quality !== "STRONG" && quality !== "CONCLUSIVE") {
+    logger.warn(
+      { action, evidence_quality: quality },
+      "validateTeachingCycle [R5]: COMPLETE_NODE with insufficient evidence"
+    );
+    throw new Error(
+      `Teaching cycle violation [R5]: COMPLETE_NODE requires evidence_quality STRONG/CONCLUSIVE — got "${quality}"`
+    );
+  }
+}
+
 // ── callAIStructured inner attempt (single API call + parse + validate) ───────
 
 async function _attemptStructured(
@@ -568,6 +664,7 @@ async function _attemptStructured(
 
   validateStructuredResponse(validated);
   validateNodeLock(validated, lessonContext);
+  validateTeachingCycle(validated, messages, lessonContext);
   return validated;
 }
 
