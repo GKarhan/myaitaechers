@@ -1,0 +1,158 @@
+We have reviewed the latest implementation of validatePrematureTransition() and the new PARTIALLY_CORRECT support.
+
+Before making any changes, perform a READ-ONLY audit and report your findings first.
+
+=========================
+PART 1 — Transition detection audit
+=========================
+
+Inspect validatePrematureTransition(), validateNodeLock(), validateTeachingCycle(), and the structured response schema.
+
+Determine:
+
+1. Is transition currently detected primarily by matching Armenian phrases such as:
+   - "անցնենք հաջորդ թեմային"
+   - "հաջորդ դաս"
+   - "շարունակենք հաջորդ բաժինը"
+   etc. ?
+
+2. Can transition instead be determined from structured state already available?
+
+Specifically inspect whether any of these already exist:
+
+- node_decision.action
+- progress_indicator.current_node_name
+- progress_indicator.next_node_name
+- current_node
+- reported node
+- CURRENT_NODE
+- ALLOWED_NODES
+- lessonContext state
+
+Report which structured fields are sufficient to determine a transition without relying on natural-language phrase matching.
+
+If phrase matching is still required, explain exactly why.
+
+Do NOT change anything until this audit is complete.
+
+
+=========================
+PART 2 — Improve transition validator
+=========================
+
+If structured state is sufficient:
+
+Replace phrase-first detection with state-first detection.
+
+Desired priority:
+
+1.
+Structured transition attempt
+(current node → different node)
+
+↓
+
+validate
+
+2.
+Only if structured information is missing,
+use phrase detection as a fallback.
+
+Phrase detection must never be the primary mechanism.
+
+
+=========================
+PART 3 — PARTIALLY_CORRECT scoring audit
+=========================
+
+Audit every place where PARTIALLY_CORRECT is used.
+
+Trace it through:
+
+- answerEvaluationSchema
+- wasCorrect
+- evidenceEventsTable
+- computeProvisionalMastery()
+- updateTopicScoring()
+- consecutive-correct logic
+- confidenceScore
+- masteryScore
+
+Produce a table:
+
+Location
+Current behaviour
+Effect on scoring
+
+Determine whether the current implementation causes this inconsistency:
+
+PARTIALLY_CORRECT
+↓
+
+counts as correct for consecutive-success
+
+BUT
+
+does not contribute to mastery.
+
+If this inconsistency exists, explain exactly where.
+
+
+=========================
+PART 4 — Partial mastery proposal
+=========================
+
+Do NOT implement immediately.
+
+Instead propose the safest architecture.
+
+Possible options:
+
+Option A
+
+CORRECT = 1.0
+PARTIALLY_CORRECT = 0.5
+INCORRECT = 0.0
+
+Option B
+
+Keep wasCorrect boolean,
+add separate partialCredit field.
+
+Option C
+
+Another design if you believe it is safer.
+
+For each option describe:
+
+- DB impact
+- schema changes
+- scoring changes
+- backward compatibility
+- migration complexity
+
+
+=========================
+PART 5 — Recommendation
+=========================
+
+At the end provide:
+
+1.
+Which transition approach is best:
+- phrase-based
+- state-based
+- hybrid
+
+Explain why.
+
+2.
+Which partial-credit design is safest.
+
+3.
+Which changes should be implemented now,
+and which should be postponed.
+
+Do NOT modify any code until this audit is complete.
+
+Return only the audit, reasoning, and recommended implementation plan.
