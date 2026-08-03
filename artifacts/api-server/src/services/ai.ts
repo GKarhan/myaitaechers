@@ -368,10 +368,26 @@ function validateStructuredResponse(response: AIStructuredResponse): void {
   const latinWord = /[A-Za-z]{2,}/u;   // two or more consecutive Latin letters
   const cyrillic  = /[\u0400-\u04FF]/u; // any Cyrillic character
 
+  // Roman numeral exemption (uppercase only, case-sensitive).
+  // Pattern matches well-formed values I–XXXIX and the same family beyond
+  // (e.g. XLII is NOT matched, which is intentional: the spec pattern covers
+  // only the X{0,3} + ones sub-pattern, rejecting malformed runs like IIII).
+  const ROMAN_NUMERAL = /^(X{0,3})(IX|IV|V?I{0,3})$/;   // e.g. I II III IV IX XI XIV XXXIX
+
   if (latinWord.test(msg)) {
-    const words = msg.match(/[A-Za-z]{2,}/gu) ?? [];
-    throw new Error(
-      `validateStructuredResponse: student_message contains Latin word(s): ${words.slice(0, 5).join(", ")}`
+    const allMatches = msg.match(/[A-Za-z]{2,}/gu) ?? [];
+    const nonRoman   = allMatches.filter((w) => !ROMAN_NUMERAL.test(w));
+
+    if (nonRoman.length > 0) {
+      throw new Error(
+        `validateStructuredResponse: student_message contains Latin word(s): ${nonRoman.slice(0, 5).join(", ")}`
+      );
+    }
+
+    // All multi-letter Latin sequences are valid Roman numerals — allow through.
+    logger.debug(
+      { romanNumerals: allMatches },
+      "validateStructuredResponse: allowed Roman numeral(s)"
     );
   }
   if (cyrillic.test(msg)) {
@@ -611,7 +627,7 @@ async function _attemptStructured(
 ): Promise<AIStructuredResponse> {
   const response = await openrouter.chat.completions.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 2200,
     temperature: 0.5,
     frequency_penalty: 0.3,
     response_format: { type: "json_object" } as { type: "json_object" },

@@ -1,0 +1,36 @@
+Open artifacts/api-server/src/services/ai.ts and find validateStructuredResponse
+(the function throwing "student_message contains Latin word(s): X"). Paste back
+its full current code first.
+
+Fix the Latin-word check so it does NOT flag a matched sequence if it fully
+matches this Roman-numeral grammar (case-sensitive, uppercase only):
+  /^(X{0,3})(IX|IV|V?I{0,3})$/
+This validates well-formed Roman numerals (I, II, III, IV, ..., up to XXXIX and
+beyond in the same pattern family) while still rejecting malformed runs like
+"IIII" or "XIXIX", and continues to reject any other Latin/English/Russian text
+as before.
+
+When a Roman numeral is detected and allowed through, log it at DEBUG level
+(not WARN), e.g.:
+  logger.debug({ romanNumerals: matches }, "validateStructuredResponse: allowed Roman numeral(s)");
+
+Separately, in callAIStructured (same file), raise max_tokens from 1500 to 2200 —
+this is an independent fix for the truncated-JSON failure seen in logs
+("Unterminated string in JSON", hit right at the token limit).
+
+Also — do NOT change anything else. Specifically, do NOT add a validator that
+throws when teaching_mode === "FEEDBACK" and is_micro_check === true — that
+combination is explicitly sanctioned by the existing TEACHING CYCLE spec in this
+same file ("FEEDBACK: evaluate → ask next MICRO_CHECK or proceed"). Adding such
+a check would create a new false-positive rejection loop of the same kind as the
+Roman-numeral bug just fixed.
+
+Finally, investigate ONLY (do not change yet) and report back: trace the call
+order after callAIStructured succeeds in chat.ts — confirm whether validation
+happens, THEN conversation state (chat message) is saved, THEN the scoring
+engine runs, in that order, with no state being written before validation
+passes. Report the actual order you find with file:line references. I'll decide
+separately whether anything there needs to change.
+
+After the two code changes (Roman-numeral fix + max_tokens), paste back the
+exact modified validateStructuredResponse function and the changed max_tokens line.
