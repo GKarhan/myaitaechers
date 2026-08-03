@@ -1,0 +1,64 @@
+Read the full current content of these files first (paste back before changing
+anything):
+- artifacts/api-server/src/routes/quizzes.ts
+- artifacts/myaiteacher/src/pages/dashboard.tsx
+- artifacts/myaiteacher/src/pages/teacher-dashboard.tsx (the course-view section
+  with the Դասեր list and quiz button)
+- artifacts/myaiteacher/src/App.tsx
+
+Do these four steps IN ORDER, confirming each with real pasted code before
+moving to the next.
+
+## Step 1 — Backend: new endpoints in routes/quizzes.ts
+
+a) GET /api/quizzes?subjectId=X (requireTeacher) — list all quizzes for that
+   subjectId owned by req.userId, most recent first. Return
+   [{ id, title, status, questionCount, classId, createdAt }].
+
+b) GET /api/quizzes/assigned (requireAuth, student) — join
+   quizAssignmentsTable + quizzesTable for req.userId, return
+   [{ assignmentId, quizId, title, subjectId, status, assignedAt, dueAt }],
+   most recent first.
+
+c) GET /api/quizzes/:id/take (requireAuth) — verify a quizAssignmentsTable row
+   exists for (quizId, req.userId). Return the quiz's questions WITHOUT
+   correctOptionIndex (strip it before sending): [{ id, questionText, options,
+   difficultyLevel, sequence }]. If assignment.status === "ASSIGNED", update it
+   to "IN_PROGRESS".
+
+d) POST /api/quizzes/:id/submit (requireAuth) — body: { answers: [{questionId,
+   selectedOptionIndex}] }. Verify the assignment belongs to req.userId and
+   isn't already COMPLETED (return 409 if so). For each answer, look up the
+   question's correctOptionIndex, compute isCorrect. Insert one
+   quizAttemptsTable row (quizAssignmentId, totalCorrect, totalQuestions,
+   scorePercent) and one quizAnswersTable row per answer (include the
+   question's nodeId, denormalized). Set assignment.status = "COMPLETED".
+   Return { totalCorrect, totalQuestions, scorePercent }.
+
+Paste back the full updated routes/quizzes.ts.
+
+## Step 2 — Teacher UI: quiz list in teacher-dashboard.tsx
+
+In the course view (same place the Դասեր (N) section and the "Ստեղծել թեստ"
+button live), add a new section "📝 Թեստեր (N)" listing quizzes for the current
+subjectId (call the new GET /api/quizzes?subjectId=X). Each row: title,
+question count, status badge (translate DRAFT/GENERATED/ASSIGNED/CLOSED to
+Armenian: Ստեղծված/Պատրաստ/Ուղարկված/Փակված), and a "Դիտել" button navigating
+to /quiz/:id/review (the existing review page already supports editing +
+re-assigning, so no new page needed here).
+
+Paste back the new JSX block and confirm where exactly it was placed (line
+numbers), the same way you confirmed the button placement last time.
+
+## Step 3 — Student UI: rename nav + add "Իմ թեստերը"
+
+In dashboard.tsx:
+a) Change NAV_ITEMS' "tasks" entry label from "Իմ անելիքները" to "Իմ դասերը"
+   (this key already lists assigned lessons — just the label changes). Also
+   update the matching in-page headers at every place that currently renders
+   the string "Իմ անելիքները" as a section title inside the "tasks" view (grep
+   for it — you already know there are a few occurrences).
+b) Add the Section union type a new member "quizzes", and a new NAV_ITEMS
+   entry { key: "quizzes", emoji: "📋", label: "Իմ թեստերը" }.
+c) Implement the "quizzes" view: fetch GET /api/quizzes/assigned, render each
+   assigned quiz as a stacked card (same visual style as the lesson cards in

@@ -4,10 +4,12 @@ import {
   quizzesTable,
   quizQuestionsTable,
   quizAssignmentsTable,
+  quizAttemptsTable,
+  quizAnswersTable,
   classStudentsTable,
   lessonNodesTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, desc } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
@@ -141,6 +143,64 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
       error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
     });
   }
+});
+
+// ── GET /api/quizzes ──────────────────────────────────────────────────────────
+// List quizzes for a subject (teacher-owned). Query: ?subjectId=X
+// Returns [{ id, title, status, questionCount, classId, createdAt }], newest first.
+router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
+  const subjectId = parseInt(String(req.query.subjectId), 10);
+  if (isNaN(subjectId)) {
+    res.status(400).json({ error: "subjectId query param is required" });
+    return;
+  }
+
+  const quizzes = await db
+    .select({
+      id:            quizzesTable.id,
+      title:         quizzesTable.title,
+      status:        quizzesTable.status,
+      questionCount: quizzesTable.questionCount,
+      classId:       quizzesTable.classId,
+      createdAt:     quizzesTable.createdAt,
+    })
+    .from(quizzesTable)
+    .where(and(
+      eq(quizzesTable.subjectId, subjectId),
+      eq(quizzesTable.teacherId, req.userId!)
+    ))
+    .orderBy(desc(quizzesTable.createdAt));
+
+  res.json(quizzes.map((q) => ({
+    ...q,
+    createdAt: q.createdAt.toISOString(),
+  })));
+});
+
+// ── GET /api/quizzes/assigned ─────────────────────────────────────────────────
+// Student: list all quiz assignments for the current user. Newest first.
+// MUST be declared before /quizzes/:id to avoid "assigned" matching as an id.
+router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
+  const rows = await db
+    .select({
+      assignmentId: quizAssignmentsTable.id,
+      quizId:       quizzesTable.id,
+      title:        quizzesTable.title,
+      subjectId:    quizzesTable.subjectId,
+      status:       quizAssignmentsTable.status,
+      assignedAt:   quizAssignmentsTable.assignedAt,
+      dueAt:        quizAssignmentsTable.dueAt,
+    })
+    .from(quizAssignmentsTable)
+    .innerJoin(quizzesTable, eq(quizzesTable.id, quizAssignmentsTable.quizId))
+    .where(eq(quizAssignmentsTable.studentId, req.userId!))
+    .orderBy(desc(quizAssignmentsTable.assignedAt));
+
+  res.json(rows.map((r) => ({
+    ...r,
+    assignedAt: r.assignedAt.toISOString(),
+    dueAt:      r.dueAt?.toISOString() ?? null,
+  })));
 });
 
 // ── GET /api/quizzes/:id ──────────────────────────────────────────────────────
@@ -328,6 +388,149 @@ router.post("/quizzes/:id/assign", requireTeacher, async (req: AuthRequest, res)
     assignedCount: newMembers.length,
     alreadyAssigned: alreadyAssigned.size,
   });
+});
+
+// ── GET /api/quizzes/:id/take ─────────────────────────────────────────────────
+// Student: get questions for a quiz they are assigned to.
+// Strips correctOptionIndex. Sets assignment status to IN_PROGRESS.
+router.get("/quizzes/:id/take", requireAuth, async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+
+  // Verify assignment
+  const [assignment] = await db
+    .select()
+    .from(quizAssignmentsTable)
+    .where(and(
+      eq(quizAssignmentsTable.quizId,    quizId),
+      eq(quizAssignmentsTable.studentId, req.userId!)
+    ))
+    .limit(1);
+
+  if (!assignment) {
+    res.status(403).json({ error: "No assignment found for this quiz" });
+    return;
+  }
+
+  // Get questions WITHOUT correctOptionIndex
+  const questions = await db
+    .select({
+      id:             quizQuestionsTable.id,
+      questionText:   quizQuestionsTable.questionText,
+      options:        quizQuestionsTable.options,
+      difficultyLevel: quizQuestionsTable.difficultyLevel,
+      sequence:       quizQuestionsTable.sequence,
+    })
+    .from(quizQuestionsTable)
+    .where(eq(quizQuestionsTable.quizId, quizId))
+    .orderBy(asc(quizQuestionsTable.sequence));
+
+  // Advance status ASSIGNED → IN_PROGRESS
+  if (assignment.status === "ASSIGNED") {
+    await db
+      .update(quizAssignmentsTable)
+      .set({ status: "IN_PROGRESS" })
+      .where(eq(quizAssignmentsTable.id, assignment.id));
+  }
+
+  res.json({
+    assignmentId:     assignment.id,
+    assignmentStatus: assignment.status === "ASSIGNED" ? "IN_PROGRESS" : assignment.status,
+    questions,
+  });
+});
+
+// ── POST /api/quizzes/:id/submit ──────────────────────────────────────────────
+// Student: submit answers for a quiz. Returns score.
+// Body: { answers: [{ questionId, selectedOptionIndex }] }
+router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+
+  const { answers } = req.body as {
+    answers: { questionId: number; selectedOptionIndex: number }[];
+  };
+
+  if (!Array.isArray(answers) || answers.length === 0) {
+    res.status(400).json({ error: "answers array is required" });
+    return;
+  }
+
+  // Verify assignment belongs to req.userId
+  const [assignment] = await db
+    .select()
+    .from(quizAssignmentsTable)
+    .where(and(
+      eq(quizAssignmentsTable.quizId,    quizId),
+      eq(quizAssignmentsTable.studentId, req.userId!)
+    ))
+    .limit(1);
+
+  if (!assignment) {
+    res.status(403).json({ error: "No assignment found for this quiz" });
+    return;
+  }
+  if (assignment.status === "COMPLETED") {
+    res.status(409).json({ error: "Quiz already completed" });
+    return;
+  }
+
+  // Get all questions for scoring
+  const questions = await db
+    .select()
+    .from(quizQuestionsTable)
+    .where(eq(quizQuestionsTable.quizId, quizId));
+
+  const questionMap = new Map(questions.map((q) => [q.id, q]));
+
+  let totalCorrect = 0;
+  const answerRows = answers.map((a) => {
+    const q        = questionMap.get(a.questionId);
+    const isCorrect = q ? a.selectedOptionIndex === q.correctOptionIndex : false;
+    if (isCorrect) totalCorrect++;
+    return {
+      questionId:          a.questionId,
+      selectedOptionIndex: a.selectedOptionIndex,
+      isCorrect,
+      nodeId:              q?.nodeId ?? null,
+    };
+  });
+
+  const totalQuestions = answers.length;
+  const scorePercent   = totalQuestions > 0
+    ? Math.round((totalCorrect / totalQuestions) * 100)
+    : 0;
+
+  // Insert attempt (one per assignment, enforced by unique constraint)
+  const [attempt] = await db
+    .insert(quizAttemptsTable)
+    .values({
+      quizAssignmentId: assignment.id,
+      completedAt:      new Date(),
+      totalCorrect,
+      totalQuestions,
+      scorePercent,
+    })
+    .returning();
+
+  // Insert per-answer rows
+  await db.insert(quizAnswersTable).values(
+    answerRows.map((a) => ({
+      attemptId:           attempt.id,
+      questionId:          a.questionId,
+      selectedOptionIndex: a.selectedOptionIndex,
+      isCorrect:           a.isCorrect,
+      nodeId:              a.nodeId,
+    }))
+  );
+
+  // Mark assignment COMPLETED
+  await db
+    .update(quizAssignmentsTable)
+    .set({ status: "COMPLETED" })
+    .where(eq(quizAssignmentsTable.id, assignment.id));
+
+  res.json({ totalCorrect, totalQuestions, scorePercent });
 });
 
 export default router;

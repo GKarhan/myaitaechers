@@ -13,7 +13,7 @@ import {
 
 type Section =
   | "ai-teacher" | "home" | "tasks" | "subjects" | "homework"
-  | "schedule" | "progress" | "library" | "profile";
+  | "schedule" | "progress" | "library" | "profile" | "quizzes";
 
 type AssignedLesson = {
   id: number; subject: string; teacherName: string; title: string;
@@ -24,12 +24,19 @@ type AssignedLesson = {
   assignedAt?: string | null;
 };
 
+type AssignedQuiz = {
+  assignmentId: number; quizId: number; title: string;
+  subjectId: number; status: string;
+  assignedAt: string; dueAt: string | null;
+};
+
 const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
   { key: "ai-teacher", emoji: "🤖", label: "ԱԲ ուսուցիչ" },
   { key: "home",       emoji: "🏠", label: "Գլխավոր" },
-  { key: "tasks",      emoji: "📝", label: "Իմ անելիքները" },
+  { key: "tasks",      emoji: "📝", label: "Իմ դասերը" },
   { key: "subjects",   emoji: "📚", label: "Իմ առարկաները" },
   { key: "homework",   emoji: "📋", label: "Իմ տնայինները" },
+  { key: "quizzes",   emoji: "📋", label: "Իմ թեստերը" },
   { key: "schedule",   emoji: "📅", label: "Դասացուցակ" },
   { key: "progress",   emoji: "📈", label: "Իմ առաջընթացը" },
   { key: "library",    emoji: "📖", label: "Գրադարան" },
@@ -50,6 +57,7 @@ export default function Dashboard() {
   const [section, setSection] = useState<Section>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [allLessons, setAllLessons] = useState<AssignedLesson[] | undefined>(undefined);
+  const [assignedQuizzes, setAssignedQuizzes] = useState<AssignedQuiz[] | undefined>(undefined);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -108,6 +116,19 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, [token, dashboard]);
+
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetch("/api/quizzes/assigned", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: AssignedQuiz[]) => { if (!cancelled) setAssignedQuizzes(data); })
+      .catch(() => { if (!cancelled) setAssignedQuizzes([]); });
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -186,7 +207,7 @@ export default function Dashboard() {
         <div className="space-y-6">
           {assignedLessons.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-3">Իմ անելիքները</h3>
+              <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-3">Իմ դասերը</h3>
               <div className="space-y-3">
                 {assignedLessons.map((lesson) => (
                   <div
@@ -288,7 +309,7 @@ export default function Dashboard() {
       {/* Active lesson hero */}
       <div>
         <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
-          📝 Իմ անելիքները
+          📝 Իմ դասերը
         </h2>
         {allLessons === undefined ? (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 flex items-center justify-center gap-3 text-muted-foreground text-sm">
@@ -364,7 +385,7 @@ export default function Dashboard() {
   const SectionTasks = () => (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-bold">📝 Իմ անելիքները</h2>
+        <h2 className="text-lg font-bold">📝 Իմ դասերը</h2>
         <span className="text-xs text-muted-foreground bg-white/5 px-2.5 py-1 rounded-full">
           {assignedLessons.length}
         </span>
@@ -716,6 +737,97 @@ export default function Dashboard() {
     </div>
   );
 
+  /* ── QUIZZES ── */
+  const SectionQuizzes = () => {
+    const QUIZ_STATUS_LABEL: Record<string, string> = {
+      ASSIGNED:    "Ուղարկված",
+      IN_PROGRESS: "Ուղարկված",
+      COMPLETED:   "✅",
+    };
+    const QUIZ_STATUS_CLS: Record<string, string> = {
+      ASSIGNED:    "bg-primary/15 text-primary border-primary/15",
+      IN_PROGRESS: "bg-amber-400/15 text-amber-400 border-amber-400/20",
+      COMPLETED:   "bg-teal-400/15 text-teal-400 border-teal-400/20",
+    };
+    const quizzes = assignedQuizzes ?? [];
+    const pending   = quizzes.filter((q) => q.status !== "COMPLETED");
+    const completed = quizzes.filter((q) => q.status === "COMPLETED");
+    return (
+      <div>
+        <h2 className="text-lg font-bold mb-6">📋 Իմ թեստերը</h2>
+        {assignedQuizzes === undefined ? (
+          <div className="flex items-center justify-center py-24 gap-3 text-muted-foreground">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : quizzes.length === 0 ? (
+          <div className="text-center py-24 text-muted-foreground">
+            <div className="text-5xl mb-4">📋</div>
+            <p>Հانձнарарараrutʼun chi</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {pending.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-primary" />
+                  Кataрel
+                </h3>
+                <div className="space-y-3">
+                  {pending.map((qz) => (
+                    <div
+                      key={qz.assignmentId}
+                      className="rounded-2xl border border-white/10 bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-white/20 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full border ${QUIZ_STATUS_CLS[qz.status] ?? QUIZ_STATUS_CLS.ASSIGNED}`}>
+                            {QUIZ_STATUS_LABEL[qz.status] ?? qz.status}
+                          </span>
+                        </div>
+                        <h3 className="font-semibold text-base leading-snug">{qz.title}</h3>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(qz.assignedAt).toLocaleDateString("hy-AM", { day: "numeric", month: "long" })}
+                        </div>
+                      </div>
+                      <Link
+                        href={`/quiz/${qz.quizId}/take`}
+                        className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
+                      >
+                        ▶ КАТАРЕЛЬ
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {completed.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-teal-400" />
+                  Авартред
+                </h3>
+                <div className="space-y-3">
+                  {completed.map((qz) => (
+                    <div
+                      key={qz.assignmentId}
+                      className="rounded-2xl border border-teal-400/20 bg-teal-400/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 opacity-80"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-sm">{qz.title}</h3>
+                      </div>
+                      <span className="text-xs text-teal-400 font-semibold shrink-0">✅</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
   const SECTIONS = {
     "ai-teacher": SectionAI,
     home:         SectionHome,
@@ -726,6 +838,7 @@ export default function Dashboard() {
     progress:     SectionProgress,
     library:      SectionLibrary,
     profile:      SectionProfile,
+    quizzes:      SectionQuizzes,
   };
   const ActiveSection = SECTIONS[section] ?? SectionHome;
 

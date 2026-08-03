@@ -456,6 +456,30 @@ export default function TeacherDashboard() {
   const [quizCreating,  setQuizCreating]    = useState(false);
   const [quizError,     setQuizError]       = useState<string|null>(null);
 
+  // ── Quiz list (course view) ─────────────────────────────────────────────────
+  const [courseQuizzes, setCourseQuizzes] = useState<{
+    id: number; title: string; status: string;
+    questionCount: number; classId: number | null; createdAt: string;
+  }[]>([]);
+  const [courseQuizzesLoading, setCourseQuizzesLoading] = useState(false);
+
+  useEffect(() => {
+    if (mainView !== "course" || !selectedCourse?.subjectId) {
+      setCourseQuizzes([]); return;
+    }
+    let cancelled = false;
+    setCourseQuizzesLoading(true);
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    fetch(`/api/quizzes?subjectId=${selectedCourse.subjectId}`, {
+      headers: { Authorization: `Bearer ${tok}` },
+    })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && Array.isArray(data)) setCourseQuizzes(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setCourseQuizzesLoading(false); });
+    return () => { cancelled = true; };
+  }, [mainView, selectedCourse?.subjectId]);
+
   useEffect(() => {
     if (!quizModalOpen) return;
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
@@ -972,6 +996,60 @@ export default function TeacherDashboard() {
               ✦ Ստեղծել թեստ
             </button>
           </section>
+
+          {/* ── QUIZ LIST ── */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-white/90">
+                📝 Թեստեր ({courseQuizzes.length})
+              </h2>
+            </div>
+            {courseQuizzesLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm py-3">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : courseQuizzes.length === 0 ? (
+              <p className="text-xs text-muted-foreground/50 py-2">—</p>
+            ) : (
+              <div className="space-y-2">
+                {courseQuizzes.map((qz) => {
+                  const STATUS_LABEL: Record<string, string> = {
+                    DRAFT:     "Ստեղծված",
+                    GENERATED: "Պատրաստ",
+                    ASSIGNED:  "Ուղարկված",
+                    CLOSED:    "Փակված",
+                  };
+                  const STATUS_CLS: Record<string, string> = {
+                    DRAFT:     "text-muted-foreground border-white/10 bg-white/5",
+                    GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10",
+                    ASSIGNED:  "text-teal-400 border-teal-400/30 bg-teal-400/10",
+                    CLOSED:    "text-red-400/70 border-red-400/20 bg-red-400/5",
+                  };
+                  return (
+                    <div
+                      key={qz.id}
+                      className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3 hover:border-white/20 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{qz.title}</div>
+                        <div className="text-xs text-muted-foreground">{qz.questionCount} հarts</div>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
+                        {STATUS_LABEL[qz.status] ?? qz.status}
+                      </span>
+                      <button
+                        onClick={() => setLocation(`/quiz/${qz.id}/review`)}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                      >
+                        Դիտել
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
 
           {/* ── LESSONS ── */}
           <section>
