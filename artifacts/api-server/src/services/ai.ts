@@ -344,12 +344,12 @@ export async function callAI(
   }
 }
 
-export async function callAIStructured(
-  messages: ChatMessage[],
-  lessonContext: string
-): Promise<AIStructuredResponse> {
-  const systemWithContext = `${STRUCTURED_SYSTEM_PROMPT}\n\n══════════════════\n${lessonContext}\n══════════════════`;
+// ── callAIStructured inner attempt (single API call + parse + validate) ───────
 
+async function _attemptStructured(
+  systemPrompt: string,
+  messages: ChatMessage[]
+): Promise<AIStructuredResponse> {
   const response = await openrouter.chat.completions.create({
     model: MODEL,
     max_tokens: 1500,
@@ -357,7 +357,7 @@ export async function callAIStructured(
     frequency_penalty: 0.3,
     response_format: { type: "json_object" } as { type: "json_object" },
     messages: [
-      { role: "system", content: systemWithContext },
+      { role: "system", content: systemPrompt },
       ...messages,
     ],
   });
@@ -369,10 +369,15 @@ export async function callAIStructured(
     );
     throw new Error("AI API returned no choices");
   }
-  const raw = response.choices[0]?.message?.content ?? "{}";
 
+  const raw = response.choices[0]?.message?.content ?? "{}";
   const trimmedRaw = raw.trim();
-  if (trimmedRaw.length > 0 && !trimmedRaw.startsWith("{")) {
+
+  if (trimmedRaw.length === 0) {
+    throw new Error("AI structured response was empty");
+  }
+
+  if (!trimmedRaw.startsWith("{")) {
     logger.warn(
       { rawPreview: trimmedRaw.slice(0, 200), rawLength: trimmedRaw.length },
       "callAIStructured: model returned non-JSON-object response (likely a bare array/list) — failing fast"
@@ -395,6 +400,48 @@ export async function callAIStructured(
   } catch (err) {
     logger.error({ err, parsed }, "callAIStructured: Zod validation failed");
     throw new Error(`AI structured response failed schema validation: ${String(err)}`);
+  }
+}
+
+// ── callAIStructured (max 2 attempts, 1 retry on schema/parse/empty/deviation) ─
+
+const RETRY_CORRECTION =
+  "\n\nPrevious response failed schema validation. Return ONLY valid JSON matching the required schema.";
+
+export async function callAIStructured(
+  messages: ChatMessage[],
+  lessonContext: string
+): Promise<AIStructuredResponse> {
+  const baseSystem = `${STRUCTURED_SYSTEM_PROMPT}\n\n══════════════════\n${lessonContext}\n══════════════════`;
+
+  // ── Attempt 1 ────────────────────────────────────────────────────────────
+  let firstError: Error;
+  try {
+    const result = await _attemptStructured(baseSystem, messages);
+    logger.debug("callAIStructured: attempt 1 succeeded");
+    return result;
+  } catch (err) {
+    firstError = err instanceof Error ? err : new Error(String(err));
+    logger.warn(
+      { err: firstError.message },
+      "callAIStructured: attempt 1 failed — will retry once"
+    );
+  }
+
+  // ── Attempt 2 (retry) ─────────────────────────────────────────────────────
+  logger.info("callAIStructured: retrying (attempt 2/2)");
+  const retrySystem = baseSystem + RETRY_CORRECTION;
+  try {
+    const result = await _attemptStructured(retrySystem, messages);
+    logger.info("callAIStructured: retry (attempt 2) succeeded");
+    return result;
+  } catch (err) {
+    const retryError = err instanceof Error ? err : new Error(String(err));
+    logger.error(
+      { firstError: firstError.message, retryError: retryError.message },
+      "callAIStructured: retry (attempt 2) also failed — throwing final error"
+    );
+    throw retryError;
   }
 }
 
