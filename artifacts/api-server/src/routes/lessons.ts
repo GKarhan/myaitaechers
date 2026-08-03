@@ -1,11 +1,12 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable } from "@workspace/db";
 import { eq, and, asc, max } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, topologicalSortNodes } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
+import { getDueReviewTopics } from "../services/review-schedule";
 
 const router = Router();
 
@@ -189,6 +190,35 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     .orderBy(asc(lessonNodesTable.sequence))
     .limit(1);
 
+  // ── Phase selection: skip Phase 1 (Review) if no due review targets exist ──
+  // Phase 1 only has value when there is prior lesson evidence to review.
+  // A brand-new student or a student with no due topics goes straight to
+  // Phase 2 (Teaching) on the first node.
+  const [dueTopics, priorEvidence] = await Promise.all([
+    getDueReviewTopics(req.userId!),
+    db
+      .select({ id: evidenceEventsTable.id })
+      .from(evidenceEventsTable)
+      .where(eq(evidenceEventsTable.userId, req.userId!))
+      .limit(1),
+  ]);
+
+  const reviewTargetsCount   = dueTopics.length;
+  const previousLessonExists = priorEvidence.length > 0;
+  const selectedInitialPhase = reviewTargetsCount > 0 ? 1 : 2;
+
+  logger.info(
+    {
+      userId:               req.userId!,
+      lessonId,
+      previousLessonExists,
+      reviewTargetsCount,
+      selectedInitialPhase,
+      firstNodeId: firstNode?.id ?? null,
+    },
+    "lessons/start: initial phase selection"
+  );
+
   const now = new Date();
 
   const [session] = await db
@@ -196,7 +226,7 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     .values({
       userId: req.userId!,
       lessonId,
-      currentPhase: 1,
+      currentPhase: selectedInitialPhase,
       status: "active",
       currentNodeId: firstNode?.id ?? null,
       nodeStartedAt: firstNode ? now : null,

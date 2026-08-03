@@ -168,6 +168,7 @@ async function advanceNodeInSession(
       nodeStartedAt: newNodeId ? new Date() : null,
       nodeAttemptCount: 0,
       currentPhase: newPhase,
+      lastQuestionAsked: null,
     })
     .where(eq(lessonSessionsTable.id, sessionId));
 
