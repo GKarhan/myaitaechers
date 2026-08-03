@@ -617,7 +617,9 @@ function validatePrematureTransition(
   const isVerified  = nodeStage === "VERIFIED";
 
   // No-exercise early-complete path: MICRO_CHECK stage + 2+ attempts + no exercises
-  const hasExercisesInContext = lessonContext.includes("CLASS_EXERCISES");
+  // Use the injected block header ("CLASS_EXERCISES (use verbatim") not the bare token —
+  // the phase-2 guidance prose contains "CLASS_EXERCISES" even when no exercises are present.
+  const hasExercisesInContext = lessonContext.includes("CLASS_EXERCISES (use verbatim");
   const noExerciseEarlyComplete =
     nodeStage === "MICRO_CHECK" && nodeAttempts >= 2 && !hasExercisesInContext;
 
@@ -756,7 +758,9 @@ function validateTeachingCycle(
   // ── Rule 5: COMPLETE_NODE requires STRONG or CONCLUSIVE evidence ───────────
   if (action === "COMPLETE_NODE" && quality !== "STRONG" && quality !== "CONCLUSIVE") {
     // Exception: no-exercise path allows MODERATE (validated more precisely in validatePrematureTransition)
-    const hasExercisesR5 = lessonContext.includes("CLASS_EXERCISES");
+    // Use the injected block header — the phase-2 guidance prose also contains "CLASS_EXERCISES"
+    // so a bare includes() always returns true in phase 2, killing the exemption.
+    const hasExercisesR5 = lessonContext.includes("CLASS_EXERCISES (use verbatim");
     const stateR5 = lessonContext.match(/STUDENT_STATE:\s*([^\n]+)/)?.[1] ?? "";
     const nodeStageR5 = stateR5.match(/node_stage=(\w+)/)?.[1] ?? null;
     const attemptsR5 = parseInt(stateR5.match(/node_attempts=(\d+)/)?.[1] ?? "0", 10);
