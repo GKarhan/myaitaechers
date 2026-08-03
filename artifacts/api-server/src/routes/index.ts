@@ -12,6 +12,7 @@ import progressRouter from "./progress";
 import adminRouter from "./admin";
 import teacherRouter from "./teacher";
 import studentRouter from "./student";
+import quizzesRouter from "./quizzes";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(progressRouter);
 router.use(adminRouter);
 router.use(teacherRouter);
 router.use(studentRouter);
+router.use(quizzesRouter);
 
 export default router;

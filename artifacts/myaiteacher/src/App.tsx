@@ -21,6 +21,7 @@ import SubjectProgress from "@/pages/subject-progress";
 import AdminDashboard from "@/pages/admin-dashboard";
 import ClassDetail from "@/pages/class-detail";
 import TeacherDashboard from "@/pages/teacher-dashboard";
+import QuizReview from "@/pages/quiz-review";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/homework" component={Homework} />
       <Route path="/progress" component={Progress} />
       <Route path="/progress/subject/:id" component={SubjectProgress} />
+      <Route path="/quiz/:id/review" component={QuizReview} />
       <Route component={NotFound} />
     </Switch>
   );

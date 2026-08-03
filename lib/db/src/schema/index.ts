@@ -23,3 +23,4 @@ export * from "./student-profile";
 export * from "./lesson-nodes";
 export * from "./lesson-exercises";
 export * from "./lesson-node-dependencies";
+export * from "./quizzes";

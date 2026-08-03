@@ -1,0 +1,79 @@
+Read the FULL current content of these files before making any change (paste
+back their content first, don't summarize):
+- lib/db/src/schema/lessons.ts (or wherever lessonNodesTable/lessonExercisesTable
+  are defined)
+- artifacts/api-server/src/services/lesson-mapping.ts
+- artifacts/api-server/src/routes/lessons.ts
+- artifacts/myaiteacher/src/pages/subject-detail.tsx (the teacher subject page
+  with "Կցված նյութեր"/"Դասեր" blocks — confirm exact filename)
+
+## Step 1 — Schema
+Add 5 new Drizzle tables, following the existing naming/style conventions used
+by lessonNodesTable and lessonExercisesTable:
+
+quizzesTable: id, teacherId (FK users), subjectId (FK subjects), classId (FK
+classes, nullable until assigned), sourceBookId (FK books, nullable),
+nodeIds (jsonb, array of lessonNode ids), title (text), questionCount (int),
+difficultyMode (text enum: SIMPLE|MEDIUM|HARD|MIXED), status (text enum:
+DRAFT|GENERATED|PUBLISHED|ASSIGNED|CLOSED), createdAt, updatedAt.
+
+quizQuestionsTable: id, quizId (FK quizzesTable, cascade delete), nodeId (FK
+lessonNodesTable, nullable), questionText (text), options (jsonb, array of
+exactly 4 strings), correctOptionIndex (int, 0-3), difficultyLevel (text enum:
+LOW|MEDIUM|HIGH), sequence (int).
+
+quizAssignmentsTable: id, quizId (FK), studentId (FK users), assignedAt,
+dueAt (nullable), status (text enum: ASSIGNED|IN_PROGRESS|COMPLETED).
+
+quizAttemptsTable: id, quizAssignmentId (FK, unique — one attempt per
+assignment for now), startedAt, completedAt (nullable), totalCorrect (int),
+totalQuestions (int), scorePercent (int, nullable until completed).
+
+quizAnswersTable: id, attemptId (FK), questionId (FK), nodeId (denormalized
+copy of the question's nodeId — kept for future scoring-engine integration,
+not used yet), selectedOptionIndex (int), isCorrect (boolean).
+
+Generate and run the migration. Paste back the exact schema file diff.
+
+## Step 2 — Quiz generation service
+Create artifacts/api-server/src/services/quiz-generation.ts, modeled on
+lesson-mapping.ts's structure (same AI-call pattern, same Zod-validated
+structured output approach as ai.ts). Input: nodeIds (which nodes' theory/
+exercises to draw from), questionCount, difficultyMode. For difficultyMode ===
+"MIXED", compute the split as questionCount * 0.2 (LOW), * 0.6 (MEDIUM),
+* 0.2 (HIGH), rounding so the three add up exactly to questionCount. Pull each
+node's theoryContent/childFriendlyExplanation/basicExamples as source
+material — do NOT invent content outside what's in the node's own data (same
+TEXTBOOK FIDELITY principle you already enforce in ai.ts). Output: an array of
+{ nodeId, questionText, options (4 strings), correctOptionIndex, difficultyLevel }.
+Paste back the full new file.
+
+## Step 3 — Teacher-facing routes
+Add routes (in a new artifacts/api-server/src/routes/quizzes.ts, following the
+auth/style patterns in routes/lessons.ts):
+- POST /api/quizzes — create a DRAFT quiz record (subjectId, sourceBookId,
+  nodeIds, questionCount, difficultyMode), then call quiz-generation.ts to
+  populate quizQuestionsTable, then set status = GENERATED.
+- GET /api/quizzes/:id — full quiz + questions, for the teacher review/edit UI.
+- PATCH /api/quizzes/:id/questions/:questionId — edit a single question
+  (teacher edit capability).
+- POST /api/quizzes/:id/assign — body: classId. Creates one quizAssignmentsTable
+  row per student in that class, sets quiz status = ASSIGNED.
+Paste back the full new file.
+
+## Step 4 — Teacher UI
+On the subject-detail page (confirm exact file from your read above), between
+the "Կցված նյութեր" and "Դասեր" blocks, add a "Ստեղծել թեստ" button opening a
+modal styled consistently with the existing "Ավելացնել դաս" modal. Fields:
+book select (existing uploaded books for this subject), multi-select of
+existing lessons/nodes for this subject, question count (number input),
+difficulty (radio: Պարզ/Միջին/Բարդ/Խառը). On submit, POST /api/quizzes, then
+navigate to a review screen (reuse the lesson-mapping review/edit component
+pattern if one exists) showing generated questions with edit-in-place, and an
+"Ուղարկել դասարանին" button (class picker) calling POST /api/quizzes/:id/assign.
+
+Paste back each modified/new frontend file after this step.
+
+Stop here — do NOT touch student-facing dashboard, quiz-taking page, or
+results page yet. That's a separate follow-up prompt once this part is
+verified working.
