@@ -659,12 +659,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let wasCorrect: boolean | null = null;
 
   try {
-    try {
-      aiResult = await callAIStructured(chatHistory, lessonContext);
-    } catch (firstErr) {
-      logger.warn({ err: firstErr }, "callAIStructured failed once — retrying before fallback");
-      aiResult = await callAIStructured(chatHistory, lessonContext);
-    }
+    aiResult = await callAIStructured(chatHistory, lessonContext);
 
 
     {
