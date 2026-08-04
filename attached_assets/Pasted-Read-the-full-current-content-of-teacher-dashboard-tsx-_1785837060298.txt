@@ -1,0 +1,57 @@
+Read the full current content of teacher-dashboard.tsx first, paste it back
+before changing anything. Also check the Դասեր list and Թեստեր list rendering
+logic (the per-course-view lists), to compare their filtering against what
+the Գլխավոր home page uses.
+
+## Bug 1 — Home page shows deleted/inactive lessons and quizzes as if active
+Screenshot evidence: Գլխավոր's "Հանձնարարված դասերը" block shows 4 lessons
+all badged "Aktiv" (garbled — should read "Ակտիվ"), but the actual Դասեր list
+for this course only shows 1 real lesson (Դասեր (1)). The other 3 are
+apparently deleted lessons still being counted/shown on the home page.
+Similarly for "Հանձնարարված թեստերը" — should only reflect the real 1 active
+quiz.
+
+Find the actual query/filter used for the home page's lesson and quiz counts
+and compare it against the query used by the per-course Դասեր/Թեստեր lists
+(which correctly show only 1 each). The home page's query is likely missing a
+"not deleted" / status filter, or is counting from a stale/different table
+than the course-view lists use. Fix it to use the same filtering logic (only
+genuinely active, non-deleted lessons/quizzes) as the per-course lists.
+
+Also fix the garbled "Aktiv" badge text to read exactly: Ակտիվ (copy-paste
+this exact word, do not retype).
+
+## Bug 2 — Sidebar missing on the subject/course-view page
+Screenshot evidence (Image 3): when viewing a specific subject's course page
+(Մաթեմատիկա, showing Կցված նյութեր/Թեստեր/Դասեր blocks), the left sidebar is
+completely absent — same class of bug as the earlier class-detail-page
+sidebar issue. Every page in this app must render inside the persistent
+sidebar layout without exception. Find why this specific view escapes the
+shared sidebar wrapper and fix it the same way the class-detail page was
+fixed earlier.
+
+## Bug 3 — "Իմ դասարանները" sidebar link doesn't reset to the class list
+Repro: click Իմ դասարանները → see the class list → click Դիտել on a class →
+see that class's detail page → click Իմ դասարանները in the sidebar again →
+BUG: stays on the same class detail page instead of returning to the class
+list.
+
+Fix: clicking the Իմ դասարանները sidebar item must always reset the view
+state back to the class list (clear whatever "selected class" state is
+currently driving the detail view), regardless of what sub-view was
+previously active within that section.
+
+## Bug 4 — Remove "+ Ստեղծել Course" button from the class detail page
+Screenshot evidence (Image 4): the class detail page's Առարկաներ block has a
+"+ Ստեղծել Course 📖" button in the top-right. This creates new courses/
+subjects for a class, which is an admin-only action — teachers should not
+have this capability. Remove the button and its associated modal/handler
+entirely from this page. Do not remove course-creation functionality from
+anywhere that's actually admin-facing (search for "Create Course" elsewhere
+in the codebase before deleting shared logic — only remove the button/entry
+point on the TEACHER-facing class detail page).
+
+Paste back all changed code, confirm typecheck passes, then manually verify
+all four fixes by clicking through: home page shows correct counts, subject
+page has sidebar, Իմ դասարանները always resets to the class list, and no
+"Ստեղծել Course" button appears on the teacher's class detail page.

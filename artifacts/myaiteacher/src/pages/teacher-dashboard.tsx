@@ -928,1154 +928,6 @@ export default function TeacherDashboard() {
     );
   }
 
-  // ── COURSE PAGE ───────────────────────────────────────────────────────────
-  if (mainView === "course" && selectedCourse) {
-    const grouped = Object.fromEntries(
-      RESOURCE_TYPES.map((t) => [
-        t.key,
-        courseResources.filter((r) => r.type === t.key),
-      ]),
-    );
-
-    return (
-      <div className="min-h-[100dvh] bg-background text-white">
-        <QuickSwitch />
-        <header className="border-b border-white/10 px-6 py-4 flex items-center gap-3">
-          <button
-            onClick={() => setMainView("class")}
-            className="text-muted-foreground hover:text-white text-sm transition-colors"
-          >
-            ← {selectedClass?.name}
-          </button>
-          <div>
-            <h1 className="text-lg font-bold">📖 {selectedCourse.name}</h1>
-          </div>
-          <span className="ml-auto text-sm text-muted-foreground">
-            {user?.fullName}
-          </span>
-        </header>
-
-        <div className="max-w-4xl mx-auto px-6 py-8 space-y-10">
-          {/* ── RESOURCES ── */}
-          <section>
-            <h2 className="text-base font-semibold mb-5 text-white/90">
-              📎 Կցված նյութեր
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {RESOURCE_TYPES.map(({ key, icon, label }) => {
-                const docs = grouped[key] ?? [];
-                const isOpen = showResForm === key;
-                return (
-                  <div
-                    key={key}
-                    className="bg-card/50 border border-white/10 rounded-2xl p-4"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-semibold text-xs tracking-wide text-white/80">
-                        {icon} {label}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setShowResForm(isOpen ? null : key); setResError(null);
-                          setResForm({ ...emptyResForm, type: key });
-                          if (fileRef.current) fileRef.current.value = "";
-                        }}
-                        className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
-                      >
-                        {isOpen ? "Փակել" : "+ ԿՑԵԼ ՆՅՈՒԹ"}
-                      </button>
-                    </div>
-
-                    {isOpen && (
-                      <form
-                        onSubmit={handleAddResource}
-                        className="mb-3 space-y-2 border-t border-white/10 pt-3"
-                      >
-                        <input
-                          value={resForm.title}
-                          onChange={(e) =>
-                            setResForm((f) => ({ ...f, title: e.target.value }))
-                          }
-                          required
-                          className={inputCls}
-                          placeholder="Անվանումը *"
-                        />
-                        {resForm.type === "textbook" && (
-                          <input
-                            value={resForm.author}
-                            onChange={(e) =>
-                              setResForm((f) => ({ ...f, author: e.target.value }))
-                            }
-                            className={inputCls}
-                            placeholder="Հեղինակ (ըստ ցանկության)"
-                          />
-                        )}
-                        <input
-                          value={resForm.description}
-                          onChange={(e) =>
-                            setResForm((f) => ({
-                              ...f,
-                              description: e.target.value,
-                            }))
-                          }
-                          className={inputCls}
-                          placeholder="Նկարագրություն (ըստ ցանկության)"
-                        />
-                        <input
-                          ref={fileRef}
-                          type="file"
-                          accept=".pdf,.doc,.docx,.ppt,.pptx,.mp4,.mov"
-                          onChange={(e) =>
-                            setResForm((f) => ({
-                              ...f,
-                              file: e.target.files?.[0] ?? null,
-                            }))
-                          }
-                          className="w-full text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-primary/20 file:text-primary hover:file:bg-primary/30 cursor-pointer"
-                        />
-                        {resError && (
-                          <p className="text-xs text-red-400">{resError}</p>
-                        )}
-                        <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            disabled={resUploading}
-                            className={btnPrimary + " text-xs py-1"}
-                          >
-                            {resUploading ? "Բեռնվում..." : "Ավելացնել"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowResForm(null);
-                              if (fileRef.current) fileRef.current.value = "";
-                            }}
-                            className={btnOutline + " text-xs py-1"}
-                          >
-                            Չեղարկել
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    {docs.length === 0 && !isOpen && (
-                      <p className="text-xs text-muted-foreground/60">
-                        Կցված նյութ դեռ չկա
-                      </p>
-                    )}
-                    <div className="space-y-1.5">
-                      {docs.map((d) => (
-                        <div
-                          key={d.id}
-                          className="flex items-center gap-2 bg-background/40 rounded-lg px-2 py-1.5"
-                        >
-                          <span className="text-xs flex-1 truncate">
-                            {d.title}
-                            {(d as { author?: string | null }).author && (
-                              <span className="text-muted-foreground ml-1">{"— "}{(d as { author?: string | null }).author}</span>
-                            )}
-                          </span>
-                          {d.fileUrl && (
-                            <a
-                              href={d.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-teal-400 hover:underline shrink-0"
-                            >
-                              ⬇
-                            </a>
-                          )}
-                          <button
-                            onClick={() => {
-                              if (!selectedCourse || !confirm("Ջնջե՞լ?"))
-                                return;
-                              deleteResource.mutate(
-                                {
-                                  courseId: selectedCourse.id,
-                                  resourceId: d.id,
-                                },
-                                {
-                                  onSuccess: () =>
-                                    qc.invalidateQueries({
-                                      queryKey: getGetCourseResourcesQueryKey(
-                                        selectedCourse.id,
-                                      ),
-                                    }),
-                                },
-                              );
-                            }}
-                            className="text-xs text-muted-foreground hover:text-destructive shrink-0"
-                          >
-                            🗑
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── QUIZ LIST ── */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-white/90">
-                📝 Թեստեր ({courseQuizzes.length})
-              </h2>
-              <button
-                onClick={() => { setQuizModalOpen(true); setQuizError(null); setQuizLessonIds([]); setQuizTitle(""); }}
-                className={btnPrimary}
-              >
-                ✶ Ստեղծել թեստ
-              </button>
-            </div>
-            {courseQuizzesLoading ? (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm py-3">
-                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : courseQuizzes.length === 0 ? (
-              <p className="text-xs text-muted-foreground/50 py-2">—</p>
-            ) : (
-              <div className="space-y-2">
-                {courseQuizzes.map((qz) => {
-                  const STATUS_LABEL: Record<string, string> = {
-                    DRAFT:     "Ստեղծված",
-                    GENERATED: "Պատրաստ",
-                    ASSIGNED:  "Ուղարկված",
-                    CLOSED:    "Փակված",
-                  };
-                  const STATUS_CLS: Record<string, string> = {
-                    DRAFT:     "text-muted-foreground border-white/10 bg-white/5",
-                    GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10",
-                    ASSIGNED:  "text-teal-400 border-teal-400/30 bg-teal-400/10",
-                    CLOSED:    "text-red-400/70 border-red-400/20 bg-red-400/5",
-                  };
-                  return (
-                    <div
-                      key={qz.id}
-                      className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3 hover:border-white/20 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="shrink-0 text-xs font-mono px-1.5 py-0.5 rounded bg-white/8 border border-white/12 text-white/50">
-                            #{qz.sequenceNumber}
-                          </span>
-                          <span className="font-medium text-sm truncate">{qz.title}</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{qz.questionCount} հարց</div>
-                      </div>
-                      {(qz.status === "ASSIGNED" || qz.classId === null) && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
-                          {STATUS_LABEL[qz.status] ?? qz.status}
-                        </span>
-                      )}
-                      {qz.totalAssigned > 0 && (
-                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                          {qz.completedCount}/{qz.totalAssigned} ավարտել են{qz.completedCount > 0 && qz.averageScorePercent !== null && (<> · Միջին՝ {qz.averageScorePercent}%</>)}
-                        </span>
-                      )}
-                      {qz.status !== "ASSIGNED" && qz.classId !== null && (
-                        <button
-                          onClick={async () => {
-                            const tok = localStorage.getItem("myaiteacher_token") ?? "";
-                            const r = await fetch(`/api/quizzes/${qz.id}/assign`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-                              body: JSON.stringify({ classId: qz.classId }),
-                            });
-                            if (r.ok) {
-                              setCourseQuizzes((prev) =>
-                                prev.map((q) => q.id === qz.id ? { ...q, status: "ASSIGNED" } : q)
-                              );
-                            }
-                          }}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
-                        >
-                          Ողարկել
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setLocation(`/quiz/${qz.id}/review?classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`)}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
-                      >
-                        Դիտել
-                      </button>
-                      {qz.completedCount > 0 && (
-                        <button
-                          onClick={() => setResultsQuizId(qz.id)}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20 whitespace-nowrap shrink-0"
-                        >
-                          Արդյունքներ
-                        </button>
-                      )}
-                      <button
-                        onClick={async () => {
-                          if (!confirm("ծնդլել թեստը?")) return;
-                          const tok = localStorage.getItem("myaiteacher_token") ?? "";
-                          const r = await fetch(`/api/quizzes/${qz.id}`, {
-                            method: "DELETE",
-                            headers: { Authorization: `Bearer ${tok}` },
-                          });
-                          if (r.ok || r.status === 204) {
-                            setCourseQuizzes((prev) => prev.filter((q) => q.id !== qz.id));
-                          }
-                        }}
-                        className={btnDanger}
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-
-          {/* ── LESSONS ── */}
-          <section>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-white/90">
-                📝 Դասեր ({courseLessons.length})
-              </h2>
-              <button
-                onClick={() => {
-                  setShowLessonForm((f) => !f);
-                  setEditLesson(null);
-                }}
-                className={btnPrimary}
-              >
-                + Ավելացնել դաս
-              </button>
-            </div>
-
-            {showLessonForm && (
-              <form
-                onSubmit={handleCreateLesson}
-                className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-4"
-              >
-                <h3 className="font-semibold text-sm text-white/90">Նոր դաս</h3>
-                {lessonError && (
-                  <p className="text-xs text-red-400">{lessonError}</p>
-                )}
-                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
-                  Ա. ԴԱՍԱԳԻՐՔ
-                </p>
-                <div>
-                  <select
-                    value={lessonForm.textbookResourceId}
-                    onChange={(e) =>
-                      setLessonForm((f) => ({
-                        ...f,
-                        textbookResourceId: e.target.value,
-                      }))
-                    }
-                    className={inputCls}
-                  >
-                    <option value="">— ընտրել —</option>
-                    {courseResources
-                      .filter((r) => r.type === "textbook")
-                      .map((r) => (
-                        <option key={r.id} value={String(r.id)}>
-                          {r.title}
-                        </option>
-                      ))}
-                  </select>
-                  {courseResources.filter((r) => r.type === "textbook").length === 0 && (
-                    <p className="text-xs text-muted-foreground/50 mt-1">
-                      Դasagrk dere verbernvac ce subject-i ejum
-                    </p>
-                  )}
-                </div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
-                  Բ. Բովանդակություն
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Թեմա (ըստ ծանկություն)
-                    </label>
-                    <input
-                      value={lessonForm.chapterTitle}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({
-                          ...f,
-                          chapterTitle: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                      placeholder="«Դասի թեման»"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դասի համարը
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={lessonForm.lessonNumber}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({
-                          ...f,
-                          lessonNumber: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                      placeholder="1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Պարագրաֆ
-                    </label>
-                    <input
-                      value={lessonForm.paragraphNumber}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({
-                          ...f,
-                          paragraphNumber: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                      placeholder="1.1"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դասի վերնագիրը *
-                    </label>
-                    <input
-                      value={lessonForm.title}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({ ...f, title: e.target.value }))
-                      }
-                      required
-                      className={inputCls}
-                      placeholder="«Դասի վերնագիրը»"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Էջի սկիզբը
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={lessonForm.pagesFrom}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({
-                          ...f,
-                          pagesFrom: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                      placeholder="5"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Էջի վերջը
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={lessonForm.pagesTo}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({
-                          ...f,
-                          pagesTo: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                      placeholder="15"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
-                  Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)
-                </p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)
-                    </label>
-                    <textarea
-                      value={lessonForm.lessonGoal}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({ ...f, lessonGoal: e.target.value }))
-                      }
-                      className={`${inputCls} min-h-[72px] resize-y`}
-                      placeholder=""
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Վերջնարդյունքների սևագիր (մեկական տողում)
-                    </label>
-                    <textarea
-                      value={lessonForm.lessonOutcomes}
-                      onChange={(e) =>
-                        setLessonForm((f) => ({ ...f, lessonOutcomes: e.target.value }))
-                      }
-                      className={`${inputCls} min-h-[72px] resize-y`}
-                      placeholder=""
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="submit"
-                    disabled={createLesson.isPending}
-                    className={btnPrimary}
-                  >
-                    {createLesson.isPending ? "..." : "Պահպանել"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowLessonForm(false)}
-                    className={btnOutline}
-                  >
-                    Չեղարկել
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {editLesson && (
-              <form
-                onSubmit={handleUpdateLesson}
-                className="mb-5 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-4"
-              >
-                <h3 className="font-semibold text-sm text-white/90">
-                  Խմբագրել դասը
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դasagrkci faylr
-                    </label>
-                    <select
-                      value={editLesson.textbookResourceId}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, textbookResourceId: e.target.value },
-                        )
-                      }
-                      className={inputCls}
-                    >
-                      <option value="">— ընтrel —</option>
-                      {courseResources
-                        .filter((r) => r.type === "textbook")
-                        .map((r) => (
-                          <option key={r.id} value={String(r.id)}>
-                            {r.title}
-                          </option>
-                        ))}
-                    </select>
-                    {courseResources.filter((r) => r.type === "textbook").length === 0 && (
-                      <p className="text-xs text-muted-foreground/50 mt-1">
-                        դասագիրք դևռ վևրբևռնված չև subject-ի ևիգում
-                      </p>
-                    )}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Թեմա (ըստ ծանկություն)
-                    </label>
-                    <input
-                      value={editLesson.chapterTitle}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, chapterTitle: e.target.value },
-                        )
-                      }
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դասի համարը
-                    </label>
-                    <input
-                      type="number"
-                      value={editLesson.lessonNumber}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, lessonNumber: e.target.value },
-                        )
-                      }
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Պարագրաֆ
-                    </label>
-                    <input
-                      value={editLesson.paragraphNumber}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, paragraphNumber: e.target.value },
-                        )
-                      }
-                      className={inputCls}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դասի վերնագիրը *
-                    </label>
-                    <input
-                      value={editLesson.title}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, title: e.target.value },
-                        )
-                      }
-                      required
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Էջի սկիզբը
-                    </label>
-                    <input
-                      type="number"
-                      value={editLesson.pagesFrom}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, pagesFrom: e.target.value },
-                        )
-                      }
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Էջի վևրիը
-                    </label>
-                    <input
-                      type="number"
-                      value={editLesson.pagesTo}
-                      onChange={(e) =>
-                        setEditLesson(
-                          (l) => l && { ...l, pagesTo: e.target.value },
-                        )
-                      }
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
-                  Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)
-                </p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)
-                    </label>
-                    <textarea
-                      value={editLesson.lessonGoal}
-                      onChange={(e) =>
-                        setEditLesson((l) => l && ({ ...l, lessonGoal: e.target.value }))
-                      }
-                      className={`${inputCls} min-h-[72px] resize-y`}
-                      placeholder=""
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Վերջնարդյունքների սևագիր (մեկական տողում)
-                    </label>
-                    <textarea
-                      value={editLesson.lessonOutcomes}
-                      onChange={(e) =>
-                        setEditLesson((l) => l && ({ ...l, lessonOutcomes: e.target.value }))
-                      }
-                      className={`${inputCls} min-h-[72px] resize-y`}
-                      placeholder=""
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="submit"
-                    disabled={updateLesson.isPending}
-                    className={btnPrimary}
-                  >
-                    {updateLesson.isPending ? "..." : "ՊԱՀՊԱՆԵԼ"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditLesson(null)}
-                    className={btnOutline}
-                  >
-                    ՉԵՂԱՐԿԵԼ
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {courseLessons.length === 0 && !showLessonForm && (
-              <div className="text-center py-10 text-muted-foreground">
-                <div className="text-4xl mb-3">📝</div>
-                <p className="text-sm">Դաս չկա · Ստեղծեք առաջին դասը</p>
-              </div>
-            )}
-
-            {/* Hierarchical: textbook → chapter → lessons */}
-            {(() => {
-              const statusMeta = (s: string) => {
-                if (s === "active")
-                  return {
-                    label: "Aysorvada das",
-                    cls: "bg-primary/20 text-primary border-primary/30",
-                    dot: "bg-primary",
-                  };
-                if (s === "assigned")
-                  return {
-                    label: "Handznaravats",
-                    cls: "bg-amber-400/15 text-amber-400 border-amber-400/30",
-                    dot: "bg-amber-400",
-                  };
-                if (s === "completed")
-                  return {
-                    label: "Ավարտված",
-                    cls: "bg-teal-400/15 text-teal-400 border-teal-400/30",
-                    dot: "bg-teal-400",
-                  };
-                return {
-                  label: " Ընթացքի մեջ",
-                  cls: "bg-white/5 text-muted-foreground border-white/10",
-                  dot: "bg-white/30",
-                };
-              };
-              // Sort globally by lessonNumber — single source of truth for render order
-              const sorted = [...courseLessons].sort((a, b) => {
-                const la =
-                  ((a as any).lessonNumber ?? 9999) -
-                  ((b as any).lessonNumber ?? 9999);
-                if (la !== 0) return la;
-                return ((a as any).paragraphNumber ?? "").localeCompare(
-                  (b as any).paragraphNumber ?? ""
-                );
-              });
-
-              // Single top-to-bottom pass — no group buckets, rendering order
-              // is driven entirely by the sorted list.
-              type PassItem = {
-                tbHeader: { tbTitle: string | null; tbAuthor: string | null } | null;
-                topicHeader: string | null;
-                lesson: (typeof sorted)[0];
-                isFirstLesson: boolean;
-              };
-              let _currentTbKey: string | null = null;
-              let _currentTopic: string | null = null;
-              const passItems: PassItem[] = [];
-              for (const l of sorted) {
-                const resId = (l as any).textbookResourceId;
-                const tbKey =
-                  resId != null
-                    ? String(resId)
-                    : ((l as any).textbookTitle as string | null) ?? "";
-                const resource =
-                  resId != null
-                    ? courseResources.find((r) => r.id === resId) ?? null
-                    : null;
-                const tbTitle =
-                  resource?.title ?? ((l as any).textbookTitle as string | null) ?? null;
-                const tbAuthor = (resource as any)?.author ?? null;
-                const ct = ((l as any).chapterTitle as string | null) ?? "";
-
-                let tbHeader: PassItem["tbHeader"] = null;
-                if (tbKey !== _currentTbKey) {
-                  tbHeader = { tbTitle, tbAuthor };
-                  _currentTbKey = tbKey;
-                  _currentTopic = null; // reset topic on textbook change
-                }
-
-                let topicHeader: string | null = null;
-                if (ct && ct !== _currentTopic) {
-                  topicHeader = ct;
-                  _currentTopic = ct;
-                }
-
-                passItems.push({
-                  tbHeader,
-                  topicHeader,
-                  lesson: l,
-                  isFirstLesson: passItems.length === 0,
-                });
-              }
-
-              return (
-                <div className="space-y-2">
-                  {passItems.map(({ tbHeader, topicHeader, lesson: l, isFirstLesson }, _idx) => {
-                    const isCompleted = (l as any).status === "completed";
-                    const isActive    = (l as any).status === "active";
-                    const isMapped    = Boolean((l as any).coreIdea);
-                    return (
-                      <div key={l.id}>
-                        {tbHeader && (
-                          <div className={`${!isFirstLesson ? "mt-6 " : ""}mb-3 px-1 pb-2 border-b border-white/10`}>
-                            <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-0.5">
-                              ԴԱՍԱԳԻՐՔ
-                            </div>
-                            <div className="font-semibold text-base text-white">
-                              {tbHeader.tbTitle || "(դասագիրք նշված չի)"}
-                            </div>
-                            {tbHeader.tbAuthor && (
-                              <div className="text-xs text-muted-foreground mt-0.5">
-                                Հեղինակ · {tbHeader.tbAuthor}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {topicHeader && (
-                          <div className="text-xs font-semibold text-secondary/80 uppercase tracking-wide mb-2 mt-3 first:mt-0 px-1">
-                            Թեմա · {topicHeader}
-                          </div>
-                        )}
-                        <div
-                          className={`rounded-xl overflow-hidden border transition-colors ${
-                            isActive
-                              ? "border-primary/40 bg-primary/5"
-                              : "border-white/8 bg-background/40"
-                          }`}
-                        >
-                          <div className="px-4 py-3 flex items-start gap-3">
-                            <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
-                              {(l as any).lessonNumber ?? "—"}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm">{l.title}</div>
-                              <div className="flex flex-wrap gap-2 mt-1 items-center">
-                                {(l as any).paragraphNumber && (
-                                  <span className="text-xs text-muted-foreground">
-                                    §{(l as any).paragraphNumber}
-                                  </span>
-                                )}
-                                {(l as any).paragraphNumber &&
-                                  ((l as any).pagesFrom || (l as any).pagesTo) && (
-                                  <span className="text-xs text-muted-foreground/40"> · </span>
-                                )}
-                                {((l as any).pagesFrom || (l as any).pagesTo) && (
-                                  <span className="text-xs text-muted-foreground">
-                                    Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
-                              {isCompleted ? (
-                                <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
-                                  Ավարտված
-                                </span>
-                              ) : isActive ? (
-                                <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
-                                  Ընթացքի մեջ
-                                </span>
-                              ) : isMapped ? (
-                                <button
-                                  onClick={() => handleStatusChange(l.id, "active")}
-                                  disabled={updateStatus.isPending}
-                                  className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
-                                >
-                                  Հանձնարարել սովորողին
-                                </button>
-                              ) : (
-                                <span
-                                  title="Նախ քարտևզագրիր"
-                                  className="px-2 py-1 rounded-lg text-xs text-muted-foreground/40 border border-white/5 select-none cursor-default"
-                                >
-                                  Հանձնարարել սովորողին
-                                </span>
-                              )}
-                              <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
-                              <button
-                                onClick={() => {
-                                  setEditLesson({
-                                    id: l.id,
-                                    title: l.title,
-                                    lessonNumber: String((l as any).lessonNumber ?? ""),
-                                    pagesFrom: String((l as any).pagesFrom ?? ""),
-                                    pagesTo: String((l as any).pagesTo ?? ""),
-                                    chapterTitle: (l as any).chapterTitle ?? "",
-                                    paragraphNumber: (l as any).paragraphNumber ?? "",
-                                    textbookResourceId: String((l as any).textbookResourceId ?? ""),
-                                    lessonGoal: (l as any).lessonGoal ?? "",
-                                    lessonOutcomes: Array.isArray((l as any).lessonOutcomes)
-                                      ? (l as any).lessonOutcomes.join("\n")
-                                      : "",
-                                  });
-                                  setShowLessonForm(false);
-                                }}
-                                className={btnGhost}
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (!selectedCourse || !confirm("Ծնջել " + l.title + "?")) return;
-                                  deleteLesson.mutate(
-                                    { id: l.id },
-                                    {
-                                      onSuccess: () =>
-                                        qc.invalidateQueries({
-                                          queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
-                                        }),
-                                    },
-                                  );
-                                }}
-                                className={btnDanger}
-                              >
-                                🗑
-                              </button>
-                            </div>
-                          </div>
-                          {(l as any).lessonGoal && (
-                            <LessonGoalOutcomesPanel
-                              lessonGoal={(l as any).lessonGoal}
-                              lessonOutcomes={
-                                Array.isArray((l as any).lessonOutcomes)
-                                  ? (l as any).lessonOutcomes
-                                  : []
-                              }
-                            />
-                          )}
-                          <LessonNodesPanel
-                            lessonId={l.id}
-                            coreProblem={(l as any).coreProblem ?? null}
-                            coreIdea={(l as any).coreIdea ?? null}
-                            practicalTasks={
-                              Array.isArray((l as any).practicalTasks)
-                                ? (l as any).practicalTasks
-                                : []
-                            }
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </section>
-        </div>
-
-      {/* ── Results Modal ── */}
-      {resultsQuizId !== null && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-background border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h2 className="text-base font-semibold">Արդյունքներ</h2>
-              <button onClick={() => setResultsQuizId(null)} className={btnGhost}>✕</button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {resultsLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : !resultsData || resultsData.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">—</p>
-              ) : (
-                <div className="space-y-2">
-                  {resultsData.map((row) => (
-                    <div key={row.assignmentId} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/40 border border-white/8">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{row.studentName}</div>
-                      </div>
-                      {row.status === "COMPLETED" ? (
-                        <>
-                          <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
-                            {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
-                          </span>
-                          <button
-                            onClick={() => { setResultsQuizId(null); setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`); }}
-                            className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
-                          >
-                            Դիտել
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
-                          դեռ չի ավարտել
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Create Quiz Modal ── */}
-      {quizModalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setQuizModalOpen(false); }}
-        >
-          <div className="bg-card border border-white/15 rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-1">Ստեղծել թեստ</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              AI-ն կստեղծի հարցեր ընտրված դասերի node-երից
-            </p>
-
-            {/* Title */}
-            <div className="mb-4">
-              <label className="block text-sm text-muted-foreground mb-1.5">
-                Թեստի անվանումը (կամընտիր)
-              </label>
-              <input
-                value={quizTitle}
-                onChange={(e) => setQuizTitle(e.target.value)}
-                placeholder={`Թեստ — ${selectedCourse?.name ?? ""}`}
-                className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-              />
-            </div>
-
-            {/* Book select */}
-            {quizBooks.length > 0 && (
-              <div className="mb-4">
-                <label className="block text-sm text-muted-foreground mb-1.5">
-                  Դասագիրք (կամընտիր)
-                </label>
-                <select
-                  value={quizBookId ?? ""}
-                  onChange={(e) => setQuizBookId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-                >
-                  <option value="">— Չընտրել —</option>
-                  {quizBooks.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Lesson multi-select */}
-            <div className="mb-4">
-              <label className="block text-sm text-muted-foreground mb-1.5">
-                Դասեր (նշել մինչև 1) *
-              </label>
-              {courseLessons.length === 0 ? (
-                <p className="text-sm text-muted-foreground/60 italic">
-                  Դասացուցակում դասեր չկա
-                </p>
-              ) : (
-                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                  {(courseLessons as any[]).map((l) => (
-                    <label
-                      key={l.id}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                        quizLessonIds.includes(l.id)
-                          ? "border-primary/60 bg-primary/10"
-                          : "border-white/8 hover:border-white/20 hover:bg-white/5"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={quizLessonIds.includes(l.id)}
-                        onChange={() => toggleLesson(l.id)}
-                        className="accent-primary shrink-0"
-                      />
-                      <span className="text-sm text-white truncate">{l.title}</span>
-                      {l.pagesFrom && (
-                        <span className="text-xs text-muted-foreground shrink-0 ml-auto">
-                          {l.pagesFrom}–{l.pagesTo}
-                        </span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Question count */}
-            <div className="mb-4">
-              <label className="block text-sm text-muted-foreground mb-1.5">
-                Հարցերի քանակը (1–50)
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={quizCount}
-                onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
-                className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-              />
-            </div>
-
-            {/* Difficulty mode */}
-            <div className="mb-6">
-              <label className="block text-sm text-muted-foreground mb-2">
-                Դժվարության մակարդակ
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {([["SIMPLE","Պարզ"],["MEDIUM","Միջին"],["HARD","Բարդ"],["MIXED","Խառը"]] as const).map(([val, label]) => (
-                  <label
-                    key={val}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                      quizMode === val
-                        ? "border-primary/60 bg-primary/10 text-white"
-                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="quizMode"
-                      value={val}
-                      checked={quizMode === val}
-                      onChange={() => setQuizMode(val)}
-                      className="accent-primary shrink-0"
-                    />
-                    <span className="text-sm font-medium">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {quizError && (
-              <p className="text-sm text-red-400 mb-4 bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">
-                {quizError}
-              </p>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleCreateQuiz}
-                disabled={quizCreating || quizLessonIds.length === 0}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {quizCreating ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    AI-ն ստեղծում է...
-                  </>
-                ) : (
-                  "✦ Ստեղծել թեստ"
-                )}
-              </button>
-              <button
-                onClick={() => setQuizModalOpen(false)}
-                disabled={quizCreating}
-                className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors disabled:opacity-40"
-              >
-                Չեղարկել
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      </div>
-    );
-  }
 
   // ── MAIN DASHBOARD ───────────────────────────────────────────────────────────────────────
   const SCHOOL_DAYS_HY = [
@@ -2093,6 +945,13 @@ export default function TeacherDashboard() {
   const classSubjects: string[] = (classData as any)?.assignedSubjects ?? [];
   const classScheduleEntries = selectedClass ? schedule.filter((s) => s.classId === selectedClass.id) : [];
 
+  const grouped = Object.fromEntries(
+    RESOURCE_TYPES.map((t) => [
+      t.key,
+      courseResources.filter((r) => r.type === t.key),
+    ]),
+  );
+
   const TEACHER_NAV: { key: TeacherSection; emoji: string; label: string }[] = [
     { key: "home",     emoji: "🏠",    label: "Գլխավոր" },
     { key: "classes",  emoji: "🏫",  label: "Իմ դասարանները" },
@@ -2104,7 +963,7 @@ export default function TeacherDashboard() {
 
   const NavBtn = ({ item }: { item: (typeof TEACHER_NAV)[0] }) => (
     <button
-      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+      onClick={() => { setSection(item.key); setMainView("dashboard"); setSidebarOpen(false); }}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
         section === item.key
           ? "bg-primary/20 text-primary border border-primary/20"
@@ -2199,7 +1058,7 @@ export default function TeacherDashboard() {
                   ) : (
                     <div className="space-y-2">
                       {assignedLessons.map((ls) => {
-                        const SL: Record<string,string> = { draft: "Սևagir", assigned: "Հandznararvats", active: "Aktiv", completed: "Avartvel" };
+                        const SL: Record<string,string> = { draft: "Սևagir", assigned: "Հandznararvats", active: "Ակտիվ", completed: "Avartvel" };
                         const SC: Record<string,string> = { draft: "text-muted-foreground border-white/10 bg-white/5", assigned: "text-amber-400 border-amber-400/30 bg-amber-400/10", active: "text-teal-400 border-teal-400/30 bg-teal-400/10", completed: "text-green-400 border-green-400/30 bg-green-400/10" };
                         return (
                           <div key={ls.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -2256,7 +1115,7 @@ export default function TeacherDashboard() {
                 <section>
                   <h2 className="text-base font-semibold text-white/90 mb-4">📅 Դասացուցակ</h2>
                   {schedule.length === 0 ? (
-                    <p className="text-sm text-muted-foreground/60 py-3">դասացուցակ դեր սահմանված չէ</p>
+                    <p className="text-sm text-muted-foreground/60 py-3">Դասացուցակ դեր սահմանված չէ</p>
                   ) : (
                     <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
                       <div className="overflow-x-auto">
@@ -2308,7 +1167,7 @@ export default function TeacherDashboard() {
             )}
 
             {/* Իմ դասարանները */}
-            {section === "classes" && mainView !== "class" && (
+            {section === "classes" && mainView === "dashboard" && (
 
           <div>
             {classes.length === 0 ? (
@@ -2395,44 +1254,8 @@ export default function TeacherDashboard() {
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-base">📖 Առարկաներ</h2>
-              <button
-                onClick={() => { setShowCourseForm((f) => !f); setCourseError(null); }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-semibold"
-              >
-                {showCourseForm ? "Cancel" : "+ Ստեխզել Course"}
-              </button>
             </div>
             {courseError && <p className="text-sm text-red-400 mb-3">{courseError}</p>}
-            {showCourseForm && (
-              <form onSubmit={handleCreateCourse} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-semibold text-sm text-white/90">New Course</h3>
-                <select
-                  required
-                  value={courseForm.subjectId ?? ""}
-                  onChange={(e) => {
-                    const id = e.target.value ? parseInt(e.target.value) : null;
-                    const sub = subjectsList.find((s) => s.id === id);
-                    setCourseForm((f) => ({ ...f, subjectId: id, name: sub?.name ?? f.name }));
-                  }}
-                  className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-                >
-                  <option value="">Select subject *</option>
-                  {subjectsList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <input
-                  required
-                  value={courseForm.name}
-                  onChange={(e) => setCourseForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Course name *"
-                  className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-                />
-                {courseError && <p className="text-xs text-red-400">{courseError}</p>}
-                <div className="flex gap-2">
-                  <button type="submit" className="px-4 py-1.5 rounded-xl bg-primary text-black text-xs font-bold hover:opacity-90 transition-opacity">Save</button>
-                  <button type="button" onClick={() => setShowCourseForm(false)} className="px-4 py-1.5 rounded-xl border border-white/20 text-muted-foreground text-xs hover:text-white transition-colors">Cancel</button>
-                </div>
-              </form>
-            )}
             {classSubjects.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <div className="text-5xl mb-4">📖</div>
@@ -2507,7 +1330,9 @@ export default function TeacherDashboard() {
                     <div className="font-medium">{s.fullName}</div>
                     <div className="text-xs text-muted-foreground">{(s as any).email || s.username}</div>
                   </div>
-                  <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2519,7 +1344,7 @@ export default function TeacherDashboard() {
             {classScheduleEntries.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">
                 <div className="text-5xl mb-3">📅</div>
-                <p className="text-sm">դասացուցակ դեր սահմանված չէ</p>
+                <p className="text-sm">Դասացուցակ դեր սահմանված չէ</p>
               </div>
             ) : (
               <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
@@ -2550,6 +1375,931 @@ export default function TeacherDashboard() {
           </section>
 
                 </div>
+            )}
+
+            {/* ── Course view — rendered inside sidebar layout ── */}
+            {section === "classes" && mainView === "course" && selectedCourse && (
+              <div className="space-y-10">
+                {/* Breadcrumb */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMainView("class")}
+                    className="text-muted-foreground hover:text-white text-sm transition-colors"
+                  >
+                    ← {selectedClass?.name}
+                  </button>
+                  <span className="text-muted-foreground/40">/</span>
+                  <span className="font-bold text-white">📖 {selectedCourse.name}</span>
+                </div>
+              {/* ── RESOURCES ── */}
+              <section>
+                <h2 className="text-base font-semibold mb-5 text-white/90">
+                  📎 Կցված նյութեր
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {RESOURCE_TYPES.map(({ key, icon, label }) => {
+                    const docs = grouped[key] ?? [];
+                    const isOpen = showResForm === key;
+                    return (
+                      <div
+                        key={key}
+                        className="bg-card/50 border border-white/10 rounded-2xl p-4"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="font-semibold text-xs tracking-wide text-white/80">
+                            {icon} {label}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setShowResForm(isOpen ? null : key); setResError(null);
+                              setResForm({ ...emptyResForm, type: key });
+                              if (fileRef.current) fileRef.current.value = "";
+                            }}
+                            className="text-xs px-2 py-1 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                          >
+                            {isOpen ? "Փակել" : "+ ԿՑԵԼ ՆՅՈՒԹ"}
+                          </button>
+                        </div>
+
+                        {isOpen && (
+                          <form
+                            onSubmit={handleAddResource}
+                            className="mb-3 space-y-2 border-t border-white/10 pt-3"
+                          >
+                            <input
+                              value={resForm.title}
+                              onChange={(e) =>
+                                setResForm((f) => ({ ...f, title: e.target.value }))
+                              }
+                              required
+                              className={inputCls}
+                              placeholder="Անվանումը *"
+                            />
+                            {resForm.type === "textbook" && (
+                              <input
+                                value={resForm.author}
+                                onChange={(e) =>
+                                  setResForm((f) => ({ ...f, author: e.target.value }))
+                                }
+                                className={inputCls}
+                                placeholder="Հեղինակ (ըստ ցանկության)"
+                              />
+                            )}
+                            <input
+                              value={resForm.description}
+                              onChange={(e) =>
+                                setResForm((f) => ({
+                                  ...f,
+                                  description: e.target.value,
+                                }))
+                              }
+                              className={inputCls}
+                              placeholder="Նկարագրություն (ըստ ցանկության)"
+                            />
+                            <input
+                              ref={fileRef}
+                              type="file"
+                              accept=".pdf,.doc,.docx,.ppt,.pptx,.mp4,.mov"
+                              onChange={(e) =>
+                                setResForm((f) => ({
+                                  ...f,
+                                  file: e.target.files?.[0] ?? null,
+                                }))
+                              }
+                              className="w-full text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-primary/20 file:text-primary hover:file:bg-primary/30 cursor-pointer"
+                            />
+                            {resError && (
+                              <p className="text-xs text-red-400">{resError}</p>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                disabled={resUploading}
+                                className={btnPrimary + " text-xs py-1"}
+                              >
+                                {resUploading ? "Բեռնվում..." : "Ավելացնել"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowResForm(null);
+                                  if (fileRef.current) fileRef.current.value = "";
+                                }}
+                                className={btnOutline + " text-xs py-1"}
+                              >
+                                Չեղարկել
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {docs.length === 0 && !isOpen && (
+                          <p className="text-xs text-muted-foreground/60">
+                            Կցված նյութ դեռ չկա
+                          </p>
+                        )}
+                        <div className="space-y-1.5">
+                          {docs.map((d) => (
+                            <div
+                              key={d.id}
+                              className="flex items-center gap-2 bg-background/40 rounded-lg px-2 py-1.5"
+                            >
+                              <span className="text-xs flex-1 truncate">
+                                {d.title}
+                                {(d as { author?: string | null }).author && (
+                                  <span className="text-muted-foreground ml-1">{"— "}{(d as { author?: string | null }).author}</span>
+                                )}
+                              </span>
+                              {d.fileUrl && (
+                                <a
+                                  href={d.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-teal-400 hover:underline shrink-0"
+                                >
+                                  ⬇
+                                </a>
+                              )}
+                              <button
+                                onClick={() => {
+                                  if (!selectedCourse || !confirm("Ջնջե՞լ?"))
+                                    return;
+                                  deleteResource.mutate(
+                                    {
+                                      courseId: selectedCourse.id,
+                                      resourceId: d.id,
+                                    },
+                                    {
+                                      onSuccess: () =>
+                                        qc.invalidateQueries({
+                                          queryKey: getGetCourseResourcesQueryKey(
+                                            selectedCourse.id,
+                                          ),
+                                        }),
+                                    },
+                                  );
+                                }}
+                                className="text-xs text-muted-foreground hover:text-destructive shrink-0"
+                              >
+                                🗑
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* ── QUIZ LIST ── */}
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-white/90">
+                    📝 Թեստեր ({courseQuizzes.length})
+                  </h2>
+                  <button
+                    onClick={() => { setQuizModalOpen(true); setQuizError(null); setQuizLessonIds([]); setQuizTitle(""); }}
+                    className={btnPrimary}
+                  >
+                    ✶ Ստեղծել թեստ
+                  </button>
+                </div>
+                {courseQuizzesLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-3">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : courseQuizzes.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/50 py-2">—</p>
+                ) : (
+                  <div className="space-y-2">
+                    {courseQuizzes.map((qz) => {
+                      const STATUS_LABEL: Record<string, string> = {
+                        DRAFT:     "Ստեղծված",
+                        GENERATED: "Պատրաստ",
+                        ASSIGNED:  "Ուղարկված",
+                        CLOSED:    "Փակված",
+                      };
+                      const STATUS_CLS: Record<string, string> = {
+                        DRAFT:     "text-muted-foreground border-white/10 bg-white/5",
+                        GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10",
+                        ASSIGNED:  "text-teal-400 border-teal-400/30 bg-teal-400/10",
+                        CLOSED:    "text-red-400/70 border-red-400/20 bg-red-400/5",
+                      };
+                      return (
+                        <div
+                          key={qz.id}
+                          className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3 hover:border-white/20 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="shrink-0 text-xs font-mono px-1.5 py-0.5 rounded bg-white/8 border border-white/12 text-white/50">
+                                #{qz.sequenceNumber}
+                              </span>
+                              <span className="font-medium text-sm truncate">{qz.title}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{qz.questionCount} հարց</div>
+                          </div>
+                          {(qz.status === "ASSIGNED" || qz.classId === null) && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
+                              {STATUS_LABEL[qz.status] ?? qz.status}
+                            </span>
+                          )}
+                          {qz.totalAssigned > 0 && (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                              {qz.completedCount}/{qz.totalAssigned} ավարտել են{qz.completedCount > 0 && qz.averageScorePercent !== null && (<> · Միջին՝ {qz.averageScorePercent}%</>)}
+                            </span>
+                          )}
+                          {qz.status !== "ASSIGNED" && qz.classId !== null && (
+                            <button
+                              onClick={async () => {
+                                const tok = localStorage.getItem("myaiteacher_token") ?? "";
+                                const r = await fetch(`/api/quizzes/${qz.id}/assign`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+                                  body: JSON.stringify({ classId: qz.classId }),
+                                });
+                                if (r.ok) {
+                                  setCourseQuizzes((prev) =>
+                                    prev.map((q) => q.id === qz.id ? { ...q, status: "ASSIGNED" } : q)
+                                  );
+                                }
+                              }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
+                            >
+                              Ողարկել
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setLocation(`/quiz/${qz.id}/review?classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                          >
+                            Դիտել
+                          </button>
+                          {qz.completedCount > 0 && (
+                            <button
+                              onClick={() => setResultsQuizId(qz.id)}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20 whitespace-nowrap shrink-0"
+                            >
+                              Արդյունքներ
+                            </button>
+                          )}
+                          <button
+                            onClick={async () => {
+                              if (!confirm("ծնդլել թեստը?")) return;
+                              const tok = localStorage.getItem("myaiteacher_token") ?? "";
+                              const r = await fetch(`/api/quizzes/${qz.id}`, {
+                                method: "DELETE",
+                                headers: { Authorization: `Bearer ${tok}` },
+                              });
+                              if (r.ok || r.status === 204) {
+                                setCourseQuizzes((prev) => prev.filter((q) => q.id !== qz.id));
+                              }
+                            }}
+                            className={btnDanger}
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+
+              {/* ── LESSONS ── */}
+              <section>
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white/90">
+                    📝 Դասեր ({courseLessons.length})
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setShowLessonForm((f) => !f);
+                      setEditLesson(null);
+                    }}
+                    className={btnPrimary}
+                  >
+                    + Ավելացնել դաս
+                  </button>
+                </div>
+
+                {showLessonForm && (
+                  <form
+                    onSubmit={handleCreateLesson}
+                    className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-4"
+                  >
+                    <h3 className="font-semibold text-sm text-white/90">Նոր դաս</h3>
+                    {lessonError && (
+                      <p className="text-xs text-red-400">{lessonError}</p>
+                    )}
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
+                      Ա. ԴԱՍԱԳԻՐՔ
+                    </p>
+                    <div>
+                      <select
+                        value={lessonForm.textbookResourceId}
+                        onChange={(e) =>
+                          setLessonForm((f) => ({
+                            ...f,
+                            textbookResourceId: e.target.value,
+                          }))
+                        }
+                        className={inputCls}
+                      >
+                        <option value="">— ընտրել —</option>
+                        {courseResources
+                          .filter((r) => r.type === "textbook")
+                          .map((r) => (
+                            <option key={r.id} value={String(r.id)}>
+                              {r.title}
+                            </option>
+                          ))}
+                      </select>
+                      {courseResources.filter((r) => r.type === "textbook").length === 0 && (
+                        <p className="text-xs text-muted-foreground/50 mt-1">
+                          Դasagrk dere verbernvac ce subject-i ejum
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
+                      Բ. Բովանդակություն
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Թեմա (ըստ ծանկություն)
+                        </label>
+                        <input
+                          value={lessonForm.chapterTitle}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({
+                              ...f,
+                              chapterTitle: e.target.value,
+                            }))
+                          }
+                          className={inputCls}
+                          placeholder="«Դասի թեման»"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դասի համարը
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={lessonForm.lessonNumber}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({
+                              ...f,
+                              lessonNumber: e.target.value,
+                            }))
+                          }
+                          className={inputCls}
+                          placeholder="1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Պարագրաֆ
+                        </label>
+                        <input
+                          value={lessonForm.paragraphNumber}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({
+                              ...f,
+                              paragraphNumber: e.target.value,
+                            }))
+                          }
+                          className={inputCls}
+                          placeholder="1.1"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դասի վերնագիրը *
+                        </label>
+                        <input
+                          value={lessonForm.title}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({ ...f, title: e.target.value }))
+                          }
+                          required
+                          className={inputCls}
+                          placeholder="«Դասի վերնագիրը»"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Էջի սկիզբը
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={lessonForm.pagesFrom}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({
+                              ...f,
+                              pagesFrom: e.target.value,
+                            }))
+                          }
+                          className={inputCls}
+                          placeholder="5"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Էջի վերջը
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={lessonForm.pagesTo}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({
+                              ...f,
+                              pagesTo: e.target.value,
+                            }))
+                          }
+                          className={inputCls}
+                          placeholder="15"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
+                      Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)
+                    </p>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)
+                        </label>
+                        <textarea
+                          value={lessonForm.lessonGoal}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({ ...f, lessonGoal: e.target.value }))
+                          }
+                          className={`${inputCls} min-h-[72px] resize-y`}
+                          placeholder=""
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Վերջնարդյունքների սևագիր (մեկական տողում)
+                        </label>
+                        <textarea
+                          value={lessonForm.lessonOutcomes}
+                          onChange={(e) =>
+                            setLessonForm((f) => ({ ...f, lessonOutcomes: e.target.value }))
+                          }
+                          className={`${inputCls} min-h-[72px] resize-y`}
+                          placeholder=""
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={createLesson.isPending}
+                        className={btnPrimary}
+                      >
+                        {createLesson.isPending ? "..." : "Պահպանել"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowLessonForm(false)}
+                        className={btnOutline}
+                      >
+                        Չեղարկել
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {editLesson && (
+                  <form
+                    onSubmit={handleUpdateLesson}
+                    className="mb-5 bg-primary/5 border border-primary/20 rounded-2xl p-5 space-y-4"
+                  >
+                    <h3 className="font-semibold text-sm text-white/90">
+                      Խմբագրել դասը
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դasagrkci faylr
+                        </label>
+                        <select
+                          value={editLesson.textbookResourceId}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, textbookResourceId: e.target.value },
+                            )
+                          }
+                          className={inputCls}
+                        >
+                          <option value="">— ընтrel —</option>
+                          {courseResources
+                            .filter((r) => r.type === "textbook")
+                            .map((r) => (
+                              <option key={r.id} value={String(r.id)}>
+                                {r.title}
+                              </option>
+                            ))}
+                        </select>
+                        {courseResources.filter((r) => r.type === "textbook").length === 0 && (
+                          <p className="text-xs text-muted-foreground/50 mt-1">
+                            դասագիրք դևռ վևրբևռնված չև subject-ի ևիգում
+                          </p>
+                        )}
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Թեմա (ըստ ծանկություն)
+                        </label>
+                        <input
+                          value={editLesson.chapterTitle}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, chapterTitle: e.target.value },
+                            )
+                          }
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դասի համարը
+                        </label>
+                        <input
+                          type="number"
+                          value={editLesson.lessonNumber}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, lessonNumber: e.target.value },
+                            )
+                          }
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Պարագրաֆ
+                        </label>
+                        <input
+                          value={editLesson.paragraphNumber}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, paragraphNumber: e.target.value },
+                            )
+                          }
+                          className={inputCls}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դասի վերնագիրը *
+                        </label>
+                        <input
+                          value={editLesson.title}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, title: e.target.value },
+                            )
+                          }
+                          required
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Էջի սկիզբը
+                        </label>
+                        <input
+                          type="number"
+                          value={editLesson.pagesFrom}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, pagesFrom: e.target.value },
+                            )
+                          }
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Էջի վևրիը
+                        </label>
+                        <input
+                          type="number"
+                          value={editLesson.pagesTo}
+                          onChange={(e) =>
+                            setEditLesson(
+                              (l) => l && { ...l, pagesTo: e.target.value },
+                            )
+                          }
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold pt-1">
+                      Գ. ԴԱՍԻ ՆՊԱՏԱԿ ԵՎ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ (ըստ ցանկության)
+                    </p>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Դասի նպատակի սևագիր (AI-ն կկատարելագործի սա քարտեզագրելիս)
+                        </label>
+                        <textarea
+                          value={editLesson.lessonGoal}
+                          onChange={(e) =>
+                            setEditLesson((l) => l && ({ ...l, lessonGoal: e.target.value }))
+                          }
+                          className={`${inputCls} min-h-[72px] resize-y`}
+                          placeholder=""
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Վերջնարդյունքների սևագիր (մեկական տողում)
+                        </label>
+                        <textarea
+                          value={editLesson.lessonOutcomes}
+                          onChange={(e) =>
+                            setEditLesson((l) => l && ({ ...l, lessonOutcomes: e.target.value }))
+                          }
+                          className={`${inputCls} min-h-[72px] resize-y`}
+                          placeholder=""
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={updateLesson.isPending}
+                        className={btnPrimary}
+                      >
+                        {updateLesson.isPending ? "..." : "ՊԱՀՊԱՆԵԼ"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditLesson(null)}
+                        className={btnOutline}
+                      >
+                        ՉԵՂԱՐԿԵԼ
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {courseLessons.length === 0 && !showLessonForm && (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <div className="text-4xl mb-3">📝</div>
+                    <p className="text-sm">Դաս չկա · Ստեղծեք առաջին դասը</p>
+                  </div>
+                )}
+
+                {/* Hierarchical: textbook → chapter → lessons */}
+                {(() => {
+                  const statusMeta = (s: string) => {
+                    if (s === "active")
+                      return {
+                        label: "Aysorvada das",
+                        cls: "bg-primary/20 text-primary border-primary/30",
+                        dot: "bg-primary",
+                      };
+                    if (s === "assigned")
+                      return {
+                        label: "Handznaravats",
+                        cls: "bg-amber-400/15 text-amber-400 border-amber-400/30",
+                        dot: "bg-amber-400",
+                      };
+                    if (s === "completed")
+                      return {
+                        label: "Ավարտված",
+                        cls: "bg-teal-400/15 text-teal-400 border-teal-400/30",
+                        dot: "bg-teal-400",
+                      };
+                    return {
+                      label: " Ընթացքի մեջ",
+                      cls: "bg-white/5 text-muted-foreground border-white/10",
+                      dot: "bg-white/30",
+                    };
+                  };
+                  // Sort globally by lessonNumber — single source of truth for render order
+                  const sorted = [...courseLessons].sort((a, b) => {
+                    const la =
+                      ((a as any).lessonNumber ?? 9999) -
+                      ((b as any).lessonNumber ?? 9999);
+                    if (la !== 0) return la;
+                    return ((a as any).paragraphNumber ?? "").localeCompare(
+                      (b as any).paragraphNumber ?? ""
+                    );
+                  });
+
+                  // Single top-to-bottom pass — no group buckets, rendering order
+                  // is driven entirely by the sorted list.
+                  type PassItem = {
+                    tbHeader: { tbTitle: string | null; tbAuthor: string | null } | null;
+                    topicHeader: string | null;
+                    lesson: (typeof sorted)[0];
+                    isFirstLesson: boolean;
+                  };
+                  let _currentTbKey: string | null = null;
+                  let _currentTopic: string | null = null;
+                  const passItems: PassItem[] = [];
+                  for (const l of sorted) {
+                    const resId = (l as any).textbookResourceId;
+                    const tbKey =
+                      resId != null
+                        ? String(resId)
+                        : ((l as any).textbookTitle as string | null) ?? "";
+                    const resource =
+                      resId != null
+                        ? courseResources.find((r) => r.id === resId) ?? null
+                        : null;
+                    const tbTitle =
+                      resource?.title ?? ((l as any).textbookTitle as string | null) ?? null;
+                    const tbAuthor = (resource as any)?.author ?? null;
+                    const ct = ((l as any).chapterTitle as string | null) ?? "";
+
+                    let tbHeader: PassItem["tbHeader"] = null;
+                    if (tbKey !== _currentTbKey) {
+                      tbHeader = { tbTitle, tbAuthor };
+                      _currentTbKey = tbKey;
+                      _currentTopic = null; // reset topic on textbook change
+                    }
+
+                    let topicHeader: string | null = null;
+                    if (ct && ct !== _currentTopic) {
+                      topicHeader = ct;
+                      _currentTopic = ct;
+                    }
+
+                    passItems.push({
+                      tbHeader,
+                      topicHeader,
+                      lesson: l,
+                      isFirstLesson: passItems.length === 0,
+                    });
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      {passItems.map(({ tbHeader, topicHeader, lesson: l, isFirstLesson }, _idx) => {
+                        const isCompleted = (l as any).status === "completed";
+                        const isActive    = (l as any).status === "active";
+                        const isMapped    = Boolean((l as any).coreIdea);
+                        return (
+                          <div key={l.id}>
+                            {tbHeader && (
+                              <div className={`${!isFirstLesson ? "mt-6 " : ""}mb-3 px-1 pb-2 border-b border-white/10`}>
+                                <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-0.5">
+                                  ԴԱՍԱԳԻՐՔ
+                                </div>
+                                <div className="font-semibold text-base text-white">
+                                  {tbHeader.tbTitle || "(դասագիրք նշված չի)"}
+                                </div>
+                                {tbHeader.tbAuthor && (
+                                  <div className="text-xs text-muted-foreground mt-0.5">
+                                    Հեղինակ · {tbHeader.tbAuthor}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {topicHeader && (
+                              <div className="text-xs font-semibold text-secondary/80 uppercase tracking-wide mb-2 mt-3 first:mt-0 px-1">
+                                Թեմա · {topicHeader}
+                              </div>
+                            )}
+                            <div
+                              className={`rounded-xl overflow-hidden border transition-colors ${
+                                isActive
+                                  ? "border-primary/40 bg-primary/5"
+                                  : "border-white/8 bg-background/40"
+                              }`}
+                            >
+                              <div className="px-4 py-3 flex items-start gap-3">
+                                <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
+                                  {(l as any).lessonNumber ?? "—"}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm">{l.title}</div>
+                                  <div className="flex flex-wrap gap-2 mt-1 items-center">
+                                    {(l as any).paragraphNumber && (
+                                      <span className="text-xs text-muted-foreground">
+                                        §{(l as any).paragraphNumber}
+                                      </span>
+                                    )}
+                                    {(l as any).paragraphNumber &&
+                                      ((l as any).pagesFrom || (l as any).pagesTo) && (
+                                      <span className="text-xs text-muted-foreground/40"> · </span>
+                                    )}
+                                    {((l as any).pagesFrom || (l as any).pagesTo) && (
+                                      <span className="text-xs text-muted-foreground">
+                                        Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
+                                  {isCompleted ? (
+                                    <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
+                                      Ավարտված
+                                    </span>
+                                  ) : isActive ? (
+                                    <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
+                                      Ընթացքի մեջ
+                                    </span>
+                                  ) : isMapped ? (
+                                    <button
+                                      onClick={() => handleStatusChange(l.id, "active")}
+                                      disabled={updateStatus.isPending}
+                                      className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
+                                    >
+                                      Հանձնարարել սովորողին
+                                    </button>
+                                  ) : (
+                                    <span
+                                      title="Նախ քարտևզագրիր"
+                                      className="px-2 py-1 rounded-lg text-xs text-muted-foreground/40 border border-white/5 select-none cursor-default"
+                                    >
+                                      Հանձնարարել սովորողին
+                                    </span>
+                                  )}
+                                  <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
+                                  <button
+                                    onClick={() => {
+                                      setEditLesson({
+                                        id: l.id,
+                                        title: l.title,
+                                        lessonNumber: String((l as any).lessonNumber ?? ""),
+                                        pagesFrom: String((l as any).pagesFrom ?? ""),
+                                        pagesTo: String((l as any).pagesTo ?? ""),
+                                        chapterTitle: (l as any).chapterTitle ?? "",
+                                        paragraphNumber: (l as any).paragraphNumber ?? "",
+                                        textbookResourceId: String((l as any).textbookResourceId ?? ""),
+                                        lessonGoal: (l as any).lessonGoal ?? "",
+                                        lessonOutcomes: Array.isArray((l as any).lessonOutcomes)
+                                          ? (l as any).lessonOutcomes.join("\n")
+                                          : "",
+                                      });
+                                      setShowLessonForm(false);
+                                    }}
+                                    className={btnGhost}
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (!selectedCourse || !confirm("Ծնջել " + l.title + "?")) return;
+                                      deleteLesson.mutate(
+                                        { id: l.id },
+                                        {
+                                          onSuccess: () =>
+                                            qc.invalidateQueries({
+                                              queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
+                                            }),
+                                        },
+                                      );
+                                    }}
+                                    className={btnDanger}
+                                  >
+                                    🗑
+                                  </button>
+                                </div>
+                              </div>
+                              {(l as any).lessonGoal && (
+                                <LessonGoalOutcomesPanel
+                                  lessonGoal={(l as any).lessonGoal}
+                                  lessonOutcomes={
+                                    Array.isArray((l as any).lessonOutcomes)
+                                      ? (l as any).lessonOutcomes
+                                      : []
+                                  }
+                                />
+                              )}
+                              <LessonNodesPanel
+                                lessonId={l.id}
+                                coreProblem={(l as any).coreProblem ?? null}
+                                coreIdea={(l as any).coreIdea ?? null}
+                                practicalTasks={
+                                  Array.isArray((l as any).practicalTasks)
+                                    ? (l as any).practicalTasks
+                                    : []
+                                }
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </section>
+              </div>
             )}
 
             {section === "quizzes" && (
@@ -2625,37 +2375,6 @@ export default function TeacherDashboard() {
                   </div>
                 )}
 
-                {resultsQuizId !== null && (
-                  <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setResultsQuizId(null)}>
-                    <div className="bg-card border border-white/15 rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold">Արդյունքներ</h3>
-                        <button onClick={() => setResultsQuizId(null)} className="text-muted-foreground hover:text-white text-lg leading-none">×</button>
-                      </div>
-                      {resultsLoading ? (
-                        <div className="flex justify-center py-6"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
-                      ) : !resultsData || resultsData.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-6">Արդյունք չկա</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {resultsData.map((r) => (
-                            <div key={r.assignmentId} className="flex items-center justify-between gap-3 bg-card/50 border border-white/10 rounded-xl px-4 py-3">
-                              <div>
-                                <div className="font-medium text-sm">{r.studentName}</div>
-                                <div className="text-xs text-muted-foreground">{r.status === "COMPLETED" ? "Ավարտվել ե" : "Ավարտված չէ"}</div>
-                              </div>
-                              {r.scorePercent !== null && (
-                                <div className={`text-lg font-bold ${r.scorePercent >= 80 ? "text-teal-400" : r.scorePercent >= 50 ? "text-amber-400" : "text-red-400"}`}>
-                                  {r.scorePercent}%
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -2891,6 +2610,215 @@ export default function TeacherDashboard() {
 
           </div>
         </main>
+
+      {/* ── Results Modal ── */}
+      {resultsQuizId !== null && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+              <h2 className="text-base font-semibold">Արդյունքներ</h2>
+              <button onClick={() => setResultsQuizId(null)} className={btnGhost}>✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {resultsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : !resultsData || resultsData.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">—</p>
+              ) : (
+                <div className="space-y-2">
+                  {resultsData.map((row) => (
+                    <div key={row.assignmentId} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/40 border border-white/8">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{row.studentName}</div>
+                      </div>
+                      {row.status === "COMPLETED" ? (
+                        <>
+                          <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
+                            {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
+                          </span>
+                          <button
+                            onClick={() => { setResultsQuizId(null); setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`); }}
+                            className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                          >
+                            Դիտել
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+                          դեռ չի ավարտել
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Quiz Modal ── */}
+      {quizModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setQuizModalOpen(false); }}
+        >
+          <div className="bg-card border border-white/15 rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-1">Ստեղծել թեստ</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              AI-ն կստեղծի հարցեր ընտրված դասերի node-երից
+            </p>
+
+            {/* Title */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Թեստի անվանումը (կամընտիր)
+              </label>
+              <input
+                value={quizTitle}
+                onChange={(e) => setQuizTitle(e.target.value)}
+                placeholder={`Թեստ — ${selectedCourse?.name ?? ""}`}
+                className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+              />
+            </div>
+
+            {/* Book select */}
+            {quizBooks.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm text-muted-foreground mb-1.5">
+                  Դասագիրք (կամընտիր)
+                </label>
+                <select
+                  value={quizBookId ?? ""}
+                  onChange={(e) => setQuizBookId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+                >
+                  <option value="">— Չընտրել —</option>
+                  {quizBooks.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Lesson multi-select */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Դասեր (նշել մինչև 1) *
+              </label>
+              {courseLessons.length === 0 ? (
+                <p className="text-sm text-muted-foreground/60 italic">
+                  Դասացուցակում դասեր չկա
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {(courseLessons as any[]).map((l) => (
+                    <label
+                      key={l.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                        quizLessonIds.includes(l.id)
+                          ? "border-primary/60 bg-primary/10"
+                          : "border-white/8 hover:border-white/20 hover:bg-white/5"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={quizLessonIds.includes(l.id)}
+                        onChange={() => toggleLesson(l.id)}
+                        className="accent-primary shrink-0"
+                      />
+                      <span className="text-sm text-white truncate">{l.title}</span>
+                      {l.pagesFrom && (
+                        <span className="text-xs text-muted-foreground shrink-0 ml-auto">
+                          {l.pagesFrom}–{l.pagesTo}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Question count */}
+            <div className="mb-4">
+              <label className="block text-sm text-muted-foreground mb-1.5">
+                Հարցերի քանակը (1–50)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={quizCount}
+                onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
+                className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+              />
+            </div>
+
+            {/* Difficulty mode */}
+            <div className="mb-6">
+              <label className="block text-sm text-muted-foreground mb-2">
+                Դժվարության մակարդակ
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {([["SIMPLE","Պարզ"],["MEDIUM","Միջին"],["HARD","Բարդ"],["MIXED","Խառը"]] as const).map(([val, label]) => (
+                  <label
+                    key={val}
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      quizMode === val
+                        ? "border-primary/60 bg-primary/10 text-white"
+                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="quizMode"
+                      value={val}
+                      checked={quizMode === val}
+                      onChange={() => setQuizMode(val)}
+                      className="accent-primary shrink-0"
+                    />
+                    <span className="text-sm font-medium">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {quizError && (
+              <p className="text-sm text-red-400 mb-4 bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">
+                {quizError}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleCreateQuiz}
+                disabled={quizCreating || quizLessonIds.length === 0}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {quizCreating ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    AI-ն ստեղծում է...
+                  </>
+                ) : (
+                  "✦ Ստեղծել թեստ"
+                )}
+              </button>
+              <button
+                onClick={() => setQuizModalOpen(false)}
+                disabled={quizCreating}
+                className="px-5 py-3 rounded-xl border border-white/10 text-sm hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                Չեղարկել
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       </div>
     </div>
   );

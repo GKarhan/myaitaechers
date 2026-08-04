@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable, teacherClassSubjectsTable, subjectsTable } from "@workspace/db";
-import { eq, and, inArray, avg, count, desc } from "drizzle-orm";
+import { eq, and, inArray, avg, count, desc, ne } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -157,11 +157,6 @@ router.get("/teacher/classes/:classId/lessons", requireTeacher, async (req: Auth
   if (isNaN(classId)) { res.status(400).json({ error: "Invalid classId" }); return; }
   const rows = await db.select().from(lessonsTable).where(eq(lessonsTable.classId, classId));
   res.json(rows);
-});
-
-router.get("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => {
-  const lessons = await db.select().from(lessonsTable).where(eq(lessonsTable.teacherId, req.userId!));
-  res.json(lessons);
 });
 
 router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => {
@@ -404,9 +399,9 @@ router.get("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => 
       assignedAt: lessonsTable.assignedAt,
     })
     .from(lessonsTable)
-    .leftJoin(coursesTable, eq(coursesTable.id, lessonsTable.courseId))
+    .innerJoin(coursesTable, eq(coursesTable.id, lessonsTable.courseId))
     .leftJoin(classesTable, eq(classesTable.id, coursesTable.classId))
-    .where(eq(lessonsTable.teacherId, req.userId!))
+    .where(and(eq(lessonsTable.teacherId, req.userId!), ne(lessonsTable.status, "draft")))
     .orderBy(desc(lessonsTable.createdAt));
 
   res.json(rows.map((r) => ({
