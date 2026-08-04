@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
-  evidenceEventsTable, lessonNodesTable, lessonExercisesTable,
+  lessonNodesTable, lessonExercisesTable,
   lessonNodeDependenciesTable, usersTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, gte } from "drizzle-orm";
@@ -110,17 +110,6 @@ async function advanceNodeInSession(
     )
     .limit(1);
 
-  await db
-    .update(lessonNodesTable)
-    .set({
-      masteryEvidenceCount: 0,
-      consecutiveCorrect:   0,
-      consecutiveIncorrect: 0,
-      lastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
-      teachingStage:        "THEORY",   // reset for next session
-    })
-    .where(eq(lessonNodesTable.id, currentNodeId));
-
   if (nextNode) {
     try {
       const criticalDeps = await db
@@ -170,6 +159,12 @@ async function advanceNodeInSession(
       nodeAttemptCount: 0,
       currentPhase: newPhase,
       lastQuestionAsked: null,
+      // Reset per-node progress counters for the incoming node
+      nodeMasteryEvidenceCount: 0,
+      nodeConsecutiveCorrect:   0,
+      nodeConsecutiveIncorrect: 0,
+      nodeLastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
+      nodeTeachingStage:        "THEORY",
     })
     .where(eq(lessonSessionsTable.id, sessionId));
 
@@ -204,6 +199,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     lastQuestionAsked: string | null; askedQuestionTemplates: string[]; nodeAttemptCount: number;
     reviewQuestionCount: number; deepDiveExerciseIndex: number;
     nodeStartedAt: Date | null;
+    // Per-session node-progress counters (relocated from lessonNodesTable)
+    nodeMasteryEvidenceCount: number;
+    nodeConsecutiveCorrect: number;
+    nodeConsecutiveIncorrect: number;
+    nodeLastEvidenceQuality: string | null;
+    nodeTeachingStage: string;
+    phase1ConsecutiveCorrect: number;
   };
   let session: SessionRef | null = null;
 
@@ -250,6 +252,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           reviewQuestionCount: sessionRow.reviewQuestionCount ?? 0,
           deepDiveExerciseIndex: sessionRow.deepDiveExerciseIndex ?? 0,
           nodeStartedAt: sessionRow.nodeStartedAt ?? null,
+          nodeMasteryEvidenceCount: sessionRow.nodeMasteryEvidenceCount ?? 0,
+          nodeConsecutiveCorrect: sessionRow.nodeConsecutiveCorrect ?? 0,
+          nodeConsecutiveIncorrect: sessionRow.nodeConsecutiveIncorrect ?? 0,
+          nodeLastEvidenceQuality: sessionRow.nodeLastEvidenceQuality ?? null,
+          nodeTeachingStage: sessionRow.nodeTeachingStage ?? "THEORY",
+          phase1ConsecutiveCorrect: sessionRow.phase1ConsecutiveCorrect ?? 0,
         };
         sessionId = sessionRow.id;
       }
@@ -473,7 +481,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         : "";
 
       // ── Stage-driven DIRECTIVE (spec-4) + safety override ────────────────
-      const teachingStage = phase === 2 ? (currentNodeRecord?.teachingStage ?? "THEORY") : "THEORY";
+      const teachingStage = phase === 2 ? (session?.nodeTeachingStage ?? "THEORY") : "THEORY";
       const stageDirectiveLine: string = (() => {
         if (phase !== 2) return "";
         if (teachingStage === "THEORY") {
@@ -527,7 +535,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const _expectedStep: string = (() => {
         if (phase !== 2 || !currentNodeRecord) return `PHASE_${phase}`;
-        const stage = currentNodeRecord.teachingStage ?? "THEORY";
+        const stage = teachingStage;
         const attempts = session?.nodeAttemptCount ?? 0;
         if (stage === "THEORY")     return `THEORY — present APPROVED_EXPLANATION then ask first MICRO_CHECK`;
         if (stage === "MICRO_CHECK") {
@@ -544,7 +552,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       const _studentState = [
         `phase=${phase}`,
-        currentNodeRecord ? `node_stage=${currentNodeRecord.teachingStage ?? "THEORY"}` : null,
+        currentNodeRecord ? `node_stage=${teachingStage}` : null,
         `node_attempts=${session?.nodeAttemptCount ?? 0}`,
         `nodes_done=${completedNodes}/${totalNodes}`,
         phase === 1 ? `review_q=${session?.reviewQuestionCount ?? 0}` : null,
@@ -765,13 +773,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // On the NEXT turn (student's actual answer), the directive would then
     // wrongly say "give THEORY again" instead of "evaluate the answer".
     // This block pushes the stage forward immediately, independent of wasEval.
-    if (!wasEval && currentNodeRecord?.teachingStage === "THEORY" && aiResult.is_micro_check) {
+    if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "THEORY" && aiResult.is_micro_check) {
       await db
-        .update(lessonNodesTable)
-        .set({ teachingStage: "MICRO_CHECK" })
-        .where(eq(lessonNodesTable.id, session.currentNodeId));
+        .update(lessonSessionsTable)
+        .set({ nodeTeachingStage: "MICRO_CHECK" })
+        .where(eq(lessonSessionsTable.id, session.id));
       logger.info(
-        { nodeId: session.currentNodeId },
+        { sessionId: session.id, nodeId: session.currentNodeId },
         "teachingStage anticipatory advance: THEORY -> MICRO_CHECK"
       );
     }
@@ -781,15 +789,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // filled exercise_id) before the student has answered anything (wasEval=false),
     // push the stage forward immediately so the NEXT turn directive correctly
     // says "evaluate the answer" instead of "present the exercise again".
-    if (!wasEval && currentNodeRecord?.teachingStage === "MICRO_CHECK" &&
+    if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
         aiResult.teaching_mode === "TRANSITION" &&
         aiResult.source_fidelity.exercise_id) {
       await db
-        .update(lessonNodesTable)
-        .set({ teachingStage: "EXERCISE" })
-        .where(eq(lessonNodesTable.id, session.currentNodeId));
+        .update(lessonSessionsTable)
+        .set({ nodeTeachingStage: "EXERCISE" })
+        .where(eq(lessonSessionsTable.id, session.id));
       logger.info(
-        { nodeId: session.currentNodeId, exerciseId: aiResult.source_fidelity.exercise_id },
+        { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: aiResult.source_fidelity.exercise_id },
         "teachingStage anticipatory advance: MICRO_CHECK -> EXERCISE"
       );
     }
@@ -806,45 +814,25 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         },
         "P5/P7 decision snapshot"
       );
-      const [nodeStats] = await db
-        .select({
-          masteryEvidenceCount: lessonNodesTable.masteryEvidenceCount,
-          consecutiveCorrect:   lessonNodesTable.consecutiveCorrect,
-          consecutiveIncorrect: lessonNodesTable.consecutiveIncorrect,
-        })
-        .from(lessonNodesTable)
-        .where(eq(lessonNodesTable.id, session.currentNodeId))
-        .limit(1);
-
-      const prevMastery  = nodeStats?.masteryEvidenceCount ?? 0;
-      const prevCC       = nodeStats?.consecutiveCorrect   ?? 0;
-      const prevCI       = nodeStats?.consecutiveIncorrect ?? 0;
+      // Read per-node progress from session (relocated from lessonNodesTable)
+      const prevMastery  = session.nodeMasteryEvidenceCount;
+      const prevCC       = session.nodeConsecutiveCorrect;
+      const prevCI       = session.nodeConsecutiveIncorrect;
 
       const newMasteryCount    = prevMastery + (quality !== "NONE" ? 1 : 0);
       const newConsecCorrect   = isCorrect   ? prevCC + 1 : isIncorrect ? 0 : prevCC;
       const newConsecIncorrect = isIncorrect ? prevCI + 1 : isCorrect   ? 0 : prevCI;
-
-      await db
-        .update(lessonNodesTable)
-        .set({
-          masteryEvidenceCount: newMasteryCount,
-          lastEvidenceQuality:  quality,
-          consecutiveCorrect:   newConsecCorrect,
-          consecutiveIncorrect: newConsecIncorrect,
-        })
-        .where(eq(lessonNodesTable.id, session.currentNodeId));
-
-      const [sessionStats] = await db
-        .select({ nodeAttemptCount: lessonSessionsTable.nodeAttemptCount })
-        .from(lessonSessionsTable)
-        .where(eq(lessonSessionsTable.id, session.id))
-        .limit(1);
-
-      const newAttemptCount = (sessionStats?.nodeAttemptCount ?? 0) + 1;
+      const newAttemptCount    = session.nodeAttemptCount + 1;
 
       await db
         .update(lessonSessionsTable)
-        .set({ nodeAttemptCount: newAttemptCount })
+        .set({
+          nodeMasteryEvidenceCount: newMasteryCount,
+          nodeLastEvidenceQuality:  quality,
+          nodeConsecutiveCorrect:   newConsecCorrect,
+          nodeConsecutiveIncorrect: newConsecIncorrect,
+          nodeAttemptCount:         newAttemptCount,
+        })
         .where(eq(lessonSessionsTable.id, session.id));
 
       if (aiResult?.is_micro_check) {
@@ -863,7 +851,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       // ── Stage machine: compute and push newTeachingStage (spec-4) ──────────
-      const currentStage = currentNodeRecord?.teachingStage ?? "THEORY";
+      // currentStage now reads from the session (per-student), not the shared lesson_node row.
+      const currentStage = session.nodeTeachingStage;
       let newTeachingStage: string | null = null;
 
       if (currentStage === "THEORY") {
@@ -880,10 +869,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       if (newTeachingStage) {
         await db
-          .update(lessonNodesTable)
-          .set({ teachingStage: newTeachingStage })
-          .where(eq(lessonNodesTable.id, session.currentNodeId));
-        logger.info({ nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
+          .update(lessonSessionsTable)
+          .set({ nodeTeachingStage: newTeachingStage })
+          .where(eq(lessonSessionsTable.id, session.id));
+        logger.info({ sessionId: session.id, nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
       }
 
       // ── Mastery gate check ───────────────────────────────────────────────
@@ -950,17 +939,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const PHASE1_CAP = 5;
     const newReviewCount = (session.reviewQuestionCount ?? 0) + 1;
 
-    let earlyExit = false;
-    if (newReviewCount > 3 && wasCorrect === true) {
-      const [prevEvent] = await db
-        .select({ wasCorrect: evidenceEventsTable.wasCorrect })
-        .from(evidenceEventsTable)
-        .where(eq(evidenceEventsTable.lessonSessionId, session.id))
-        .orderBy(asc(evidenceEventsTable.id))
-        .offset(Math.max(0, newReviewCount - 2))
-        .limit(1);
-      earlyExit = prevEvent?.wasCorrect === true;
-    }
+    // Phase 1 early-exit: track consecutive correct review answers in the session.
+    // Replaces the old evidenceEventsTable query (which depended on rows chat.ts
+    // was creating for itself — now removed).
+    const prevPhase1CC = session.phase1ConsecutiveCorrect;
+    const newPhase1CC  = wasCorrect === true ? prevPhase1CC + 1 : 0;
+    const earlyExit    = newPhase1CC >= 2;
 
     if (newReviewCount >= PHASE1_CAP || earlyExit) {
       const [firstNode] = await db
@@ -978,16 +962,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           askedQuestionTemplates: [],
           currentNodeId: firstNode?.id ?? null,
           nodeStartedAt: firstNode ? new Date() : null,
+          phase1ConsecutiveCorrect: 0,   // reset on Phase 1 exit
+          nodeTeachingStage: "THEORY",   // prepare for the first teaching node
         })
         .where(eq(lessonSessionsTable.id, session.id));
       logger.info(
-        { lessonId, sessionId: session.id, reason: earlyExit ? "early_exit" : "cap" },
+        { lessonId, sessionId: session.id, reason: earlyExit ? "early_exit" : "cap", newPhase1CC },
         "P8: Phase 1 complete — auto-advanced to Phase 2"
       );
     } else {
       await db
         .update(lessonSessionsTable)
-        .set({ reviewQuestionCount: newReviewCount })
+        .set({ reviewQuestionCount: newReviewCount, phase1ConsecutiveCorrect: newPhase1CC })
         .where(eq(lessonSessionsTable.id, session.id));
     }
   }

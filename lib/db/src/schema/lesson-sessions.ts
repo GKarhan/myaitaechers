@@ -33,6 +33,15 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   reviewQuestionCount: integer("review_question_count").notNull().default(0),
   // P8 Phase 3: index of next exercise to present in deep-dive phase
   deepDiveExerciseIndex: integer("deep_dive_exercise_index").notNull().default(0),
+  // Per-session node-progress counters (moved from lessonNodesTable so each student
+  // has their own progress state instead of a shared row on the curriculum node).
+  nodeMasteryEvidenceCount: integer("node_mastery_evidence_count").notNull().default(0),
+  nodeConsecutiveCorrect: integer("node_consecutive_correct").notNull().default(0),
+  nodeConsecutiveIncorrect: integer("node_consecutive_incorrect").notNull().default(0),
+  nodeLastEvidenceQuality: text("node_last_evidence_quality"),
+  nodeTeachingStage: text("node_teaching_stage").notNull().default("THEORY"),
+  // Phase 1 early-exit: consecutive correct review answers in the current Phase 1 run
+  phase1ConsecutiveCorrect: integer("phase1_consecutive_correct").notNull().default(0),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });

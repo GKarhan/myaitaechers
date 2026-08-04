@@ -1,0 +1,93 @@
+Read the full current content of artifacts/api-server/src/routes/chat.ts and
+the lesson_sessions schema file before changing anything (I already have
+both from a recent paste, but confirm nothing changed since).
+
+## Goal
+Move 5 fields — masteryEvidenceCount, consecutiveCorrect, consecutiveIncorrect,
+lastEvidenceQuality, teachingStage — from lessonNodesTable (shared, wrong)
+to lessonSessionsTable (per-student, correct), WITHOUT changing any
+threshold, gate condition, or logic. Same mastery-gate math
+(newMasteryCount>=2 + STRONG/CONCLUSIVE + consecutiveIncorrect<2), same
+safety cap (attempt>6), same no-exercise early-complete rule, same stage
+machine (THEORY→MICRO_CHECK→EXERCISE→VERIFIED) — just relocated storage.
+
+## Step 1 — Schema change
+Add these 5 columns to lessonSessionsTable (same types/defaults as their
+lessonNodesTable counterparts):
+- nodeMasteryEvidenceCount: integer, default 0
+- nodeConsecutiveCorrect: integer, default 0
+- nodeConsecutiveIncorrect: integer, default 0
+- nodeLastEvidenceQuality: text, nullable
+- nodeTeachingStage: text, default "THEORY"
+(Prefixed with "node" to avoid clashing with any existing lesson_sessions
+column names — check for collisions first.)
+Also add:
+- phase1ConsecutiveCorrect: integer, default 0 (for the Phase 1 early-exit
+  fix in Step 4 below)
+Push via drizzle-kit, paste the migration result.
+
+Do NOT drop or modify the 5 existing columns on lessonNodesTable yet —
+leave them in place, just stop writing to them from chat.ts.
+
+## Step 2 — Rewire every read/write in chat.ts
+Go through chat.ts and replace every read/write of these on
+lessonNodesTable with the new lessonSessionsTable columns, scoped to
+session.id:
+
+1. `advanceNodeInSession` — currently resets these 5 fields on
+   lessonNodesTable (keyed by currentNodeId) inside the function. Change
+   to reset the new lessonSessionsTable columns instead (this update
+   already happens in the same function alongside currentNodeId/
+   nodeAttemptCount reset — just add the 5 new fields to that same
+   `.update(lessonSessionsTable).set({...})` call instead of the separate
+   lessonNodesTable update).
+2. The two "anticipatory stage advance" blocks (THEORY→MICRO_CHECK and
+   MICRO_CHECK→EXERCISE) — currently `.update(lessonNodesTable).set({
+   teachingStage: ... })`. Change to update
+   lessonSessionsTable.nodeTeachingStage instead, and read
+   currentNodeRecord?.teachingStage references elsewhere for these checks
+   from session state instead (you'll need to fetch/carry the session's
+   current nodeTeachingStage value into scope where currentNodeRecord.
+   teachingStage is currently read, e.g. the `teachingStage` const around
+   the stageDirectiveLine computation, and `_expectedStep`).
+3. The nodeStats read (`masteryEvidenceCount`, `consecutiveCorrect`,
+   `consecutiveIncorrect` selected FROM lessonNodesTable) — change to
+   select these from lessonSessionsTable instead.
+4. The `.update(lessonNodesTable).set({ masteryEvidenceCount:
+   newMasteryCount, lastEvidenceQuality: quality, consecutiveCorrect:
+   newConsecCorrect, consecutiveIncorrect: newConsecIncorrect })` block —
+   change to update lessonSessionsTable instead.
+5. The stage machine block (`currentStage = currentNodeRecord?.
+   teachingStage ?? "THEORY"`, computing `newTeachingStage`, then
+   `.update(lessonNodesTable).set({ teachingStage: newTeachingStage })`)
+   — change currentStage to read from the session's nodeTeachingStage,
+   and the update to target lessonSessionsTable.
+
+Everywhere currentNodeRecord.teachingStage is read for logic (not just
+display), replace with the session-scoped value. currentNodeRecord itself
+(the lesson_nodes row lookup) stays as-is for the actual lesson content
+(title, theoryContent, examples, etc.) — only the runtime progress fields
+move.
+
+## Step 3 — Fix the Phase 1 early-exit regression
+Replace the block that reads evidenceEventsTable to detect two consecutive
+correct review answers (the `prevEvent` lookup around the Phase 1 section)
+with simple logic using the new phase1ConsecutiveCorrect column: increment
+it when wasCorrect===true, reset to 0 on wasCorrect===false, and early-exit
+(same as before: advance to Phase 2) when it reaches 2. Remove the
+evidenceEventsTable read entirely from this block. If evidenceEventsTable
+import becomes unused elsewhere in the file, remove it too.
+
+## Step 4 — Verify
+Typecheck, restart. Drive a real multi-turn chat session on lesson 62
+through at least one full node (theory → micro_check → exercise →
+verified/advance), pasting the lesson_sessions row's relevant columns
+after each turn so I can see nodeTeachingStage/nodeConsecutiveCorrect/etc.
+actually progressing correctly — and confirm lessonNodesTable's old 5
+columns for that node stay frozen at whatever they were before (proving
+nothing writes there anymore). Also confirm knowledge_nodes/evidence_events
+are still completely untouched (same check as before). Confirm Phase 1
+early-exit fires on two consecutive correct review answers using the new
+phase1ConsecutiveCorrect column.
+
+Do not touch quizzes.ts or knowledge-tree.ts in this step.
