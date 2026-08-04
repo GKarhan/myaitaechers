@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
+import StudentLessonCard from "@/components/StudentLessonCard";
+import StudentQuizCard from "@/components/StudentQuizCard";
 import {
   useGetDashboard,
   useGetStudentSchedule,
@@ -11,9 +13,7 @@ import {
   getGetStudentHomeworkSummaryQueryKey,
 } from "@workspace/api-client-react";
 
-type Section =
-  | "ai-teacher" | "home" | "tasks" | "subjects" | "homework"
-  | "schedule" | "progress" | "library" | "profile" | "quizzes";
+import { NAV_ITEMS, NavKey as Section, lessonStatusBadge } from "@/lib/student-nav";
 
 type AssignedLesson = {
   id: number; subject: string; teacherName: string; title: string;
@@ -32,31 +32,14 @@ type AssignedQuiz = {
   scorePercent: number | null;
 };
 
-const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
-  { key: "ai-teacher", emoji: "🤖", label: "ԱԲ ուսուցիչ" },
-  { key: "home",       emoji: "🏠", label: "Գլխավոր" },
-  { key: "tasks",      emoji: "📝", label: "Իմ դասերը" },
-  { key: "subjects",   emoji: "📚", label: "Իմ առարկաները" },
-  { key: "homework",   emoji: "📋", label: "Իմ տնայինները" },
-  { key: "quizzes",   emoji: "📋", label: "Իմ թեստերը" },
-  { key: "schedule",   emoji: "📅", label: "Դասացուցակ" },
-  { key: "progress",   emoji: "📈", label: "Իմ առաջընթացը" },
-  { key: "library",    emoji: "📖", label: "Գրադարան" },
-  { key: "profile",    emoji: "👤", label: "Իմ պրոֆիլը" },
-];
-
-function lessonStatusBadge(mySessionStatus: string | null | undefined): { text: string; cls: string } {
-  if (mySessionStatus === "completed")
-    return { text: "✅ Ավարտված", cls: "bg-teal-400/15 text-teal-400 border-teal-400/20" };
-  if (mySessionStatus === "active")
-    return { text: "🟢 Ընթացքի մեջ", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
-  return { text: "🟡 Սպասում է", cls: "bg-amber-400/15 text-amber-400 border-amber-400/20" };
-}
-
 export default function Dashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
-  const [section, setSection] = useState<Section>("home");
+  const search = useSearch();
+  const [section, setSection] = useState<Section>(() => {
+    const s = new URLSearchParams(search).get("section") as Section | null;
+    return (s && NAV_ITEMS.some((n) => n.key === s)) ? s : "home";
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [allLessons, setAllLessons] = useState<AssignedLesson[] | undefined>(undefined);
   const [assignedQuizzes, setAssignedQuizzes] = useState<AssignedQuiz[] | undefined>(undefined);
@@ -450,44 +433,9 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="space-y-4">
-          {assignedLessons.map((lesson) => {
-            const badge = lessonStatusBadge(lesson.mySessionStatus);
-            return (
-              <div
-                key={`${lesson.subject}-${lesson.id}`}
-                className="rounded-2xl border border-white/10 bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-white/20 transition-colors"
-              >
-                <div className="flex-1 min-w-0 space-y-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/15">
-                      {lesson.subject}
-                    </span>
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full border ${badge.cls}`}>
-                      {badge.text}
-                    </span>
-                    <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full">
-                      🏫 Դասարանում
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-base leading-snug">{lesson.title}</h3>
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                    <span>👨‍🏫 {lesson.teacherName}</span>
-                    {lesson.chapterTitle && <span>📂 {lesson.chapterTitle}</span>}
-                    {lesson.paragraphNumber && <span>§{lesson.paragraphNumber}</span>}
-                    {(lesson.pagesFrom || lesson.pagesTo) && (
-                      <span>Էջեր {lesson.pagesFrom ?? "?"}–{lesson.pagesTo ?? "?"}</span>
-                    )}
-                  </div>
-                </div>
-                <Link
-                  href={`/lessons/${lesson.id}`}
-                  className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
-                >
-                  ▶ ՍԿՍԵԼ ԴԱՍԸ
-                </Link>
-              </div>
-            );
-          })}
+          {assignedLessons.map((lesson) => (
+            <StudentLessonCard key={`task-${lesson.id}`} lesson={lesson} />
+          ))}
         </div>
       )}
     </div>
@@ -787,16 +735,6 @@ export default function Dashboard() {
 
   /* ── QUIZZES ── */
   const SectionQuizzes = () => {
-    const QUIZ_STATUS_LABEL: Record<string, string> = {
-      ASSIGNED:    "Ուղարկված",
-      IN_PROGRESS: "Ուղարկված",
-      COMPLETED:   "✅",
-    };
-    const QUIZ_STATUS_CLS: Record<string, string> = {
-      ASSIGNED:    "bg-primary/15 text-primary border-primary/15",
-      IN_PROGRESS: "bg-amber-400/15 text-amber-400 border-amber-400/20",
-      COMPLETED:   "bg-teal-400/15 text-teal-400 border-teal-400/20",
-    };
     const quizzes = assignedQuizzes ?? [];
     const pending   = quizzes.filter((q) => q.status !== "COMPLETED");
     const completed = quizzes.filter((q) => q.status === "COMPLETED");
@@ -822,28 +760,7 @@ export default function Dashboard() {
                 </h3>
                 <div className="space-y-3">
                   {pending.map((qz) => (
-                    <div
-                      key={qz.assignmentId}
-                      className="rounded-2xl border border-white/10 bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-white/20 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`text-xs px-2.5 py-0.5 rounded-full border ${QUIZ_STATUS_CLS[qz.status] ?? QUIZ_STATUS_CLS.ASSIGNED}`}>
-                            {QUIZ_STATUS_LABEL[qz.status] ?? qz.status}
-                          </span>
-                        </div>
-                        <h3 className="font-semibold text-base leading-snug">{qz.title}</h3>
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(qz.assignedAt).toLocaleDateString("hy-AM", { day: "numeric", month: "long" })}
-                        </div>
-                      </div>
-                      <Link
-                        href={`/quiz/${qz.quizId}/take`}
-                        className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
-                      >
-                        ▶ ՍԿՍԵԼ ԹԵՍՏԵՐ
-                      </Link>
-                    </div>
+                    <StudentQuizCard key={qz.assignmentId} quiz={qz} />
                   ))}
                 </div>
               </div>
@@ -856,25 +773,7 @@ export default function Dashboard() {
                 </h3>
                 <div className="space-y-3">
                   {completed.map((qz) => (
-                    <div
-                      key={qz.assignmentId}
-                      className="rounded-2xl border border-teal-400/20 bg-teal-400/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-teal-400/30 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-sm">{qz.title}</h3>
-                        {qz.totalCorrect !== null && (
-                          <p className="text-xs text-teal-400/80 mt-0.5">
-                            {qz.totalCorrect}/{qz.totalQuestions} ({qz.scorePercent}%)
-                          </p>
-                        )}
-                      </div>
-                      <Link
-                        href={`/quiz/${qz.quizId}/result`}
-                        className="text-xs px-4 py-2 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold hover:bg-teal-400/25 transition-all whitespace-nowrap shrink-0"
-                      >
-                        Տեսնել արդյունք
-                      </Link>
-                    </div>
+                    <StudentQuizCard key={qz.assignmentId} quiz={qz} />
                   ))}
                 </div>
               </div>

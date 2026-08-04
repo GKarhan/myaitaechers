@@ -1,0 +1,50 @@
+Read the full current content of subject-detail.tsx, and the card/list-item
+components already used in the Իմ դասերը and Իմ թեստերը sidebar sections in
+dashboard.tsx, before changing anything. Paste back all three.
+
+## Bug 1 — Sidebar missing on /subjects/:id
+Same class of bug fixed before on teacher pages: this page is rendering
+outside the persistent sidebar layout wrapper. Find why (likely its own
+top-level return/layout instead of being nested inside the shared sidebar
+shell) and fix it the same way those earlier fixes worked, so the sidebar is
+always present here too.
+
+## Bug 2 — Wrong grade shown ("9-րդ դասարան" instead of the real class, e.g. "5 Ա")
+Find where this grade/class label is computed on this page (likely from
+subject.grade or similar) and trace why it doesn't match the student's actual
+class. Query the DB directly to find the correct value for this student's
+actual class and compare against what the page currently computes — paste
+both. Fix the data source/query, don't just relabel.
+
+## Bug 3 — "Ընթացիկ թեստը" block doesn't show an assigned quiz that exists
+Repro: a quiz is assigned to this student for this subject (confirm via
+GET /api/quizzes/assigned or a direct DB query — find a real example), but
+subject-detail.tsx's "Ընթացիկ թեստը" section shows empty/no quiz, unlike
+"Այսօրվա դասը" which correctly shows the active lesson.
+
+Investigate with real evidence: find the exact fetch/query this page uses (or
+should use) for the current quiz — check whether it's calling the right
+endpoint at all, filtering by the wrong subjectId, filtering by the wrong
+status, or simply never wired up. Compare against how the sidebar's Իմ
+թեստերը section successfully fetches and filters quizzes — reuse that same
+data source/logic here, scoped to just this subjectId, the same way Այսօրվա
+դասը is scoped. Paste the real API response you get for this student+subject
+before and after the fix.
+
+## Consistency — reuse the same card components everywhere
+The subject-detail page currently renders its own ad-hoc card markup for
+"Այսօրվա դասը" and "Ընթացիկ թեստը" (and the sidebar's Իմ դասերը / Իմ թեստերը
+sections likely have their own separate card markup too, possibly also
+differing from how the teacher-side renders similar cards). Extract a shared
+lesson-card component and a shared quiz-card component (if they don't already
+exist as reusable pieces) and use the SAME one in all three places: Իմ դասերը
+sidebar section, Իմ թեստերը sidebar section, and subject-detail.tsx's
+Այսօրվա դասը / Ընթացիկ թեստը blocks. Same visual style, same badge treatment,
+same spacing — one card design used everywhere a lesson or quiz is shown to a
+student, instead of three different hand-rolled versions.
+
+Paste back the exact new shared component(s) and every place they're now used,
+confirm typecheck passes, then manually verify: sidebar visible on
+/subjects/:id, grade shows correctly, the assigned quiz now appears in
+Ընթացիկ թեստը, and lesson/quiz cards look visually identical across Իմ
+դասերը, Իմ թեստերը, and the subject page.

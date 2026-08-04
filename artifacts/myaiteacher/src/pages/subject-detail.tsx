@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
+import StudentLayout from "@/components/StudentLayout";
+import StudentLessonCard from "@/components/StudentLessonCard";
+import StudentQuizCard, { type StudentQuizCardQuiz } from "@/components/StudentQuizCard";
 import {
   useGetSubjectDetail,
   getGetSubjectDetailQueryKey,
   useGetStudentCourseLessons,
   getGetStudentCourseLessonsQueryKey,
+  useGetStudentSchedule,
+  getGetStudentScheduleQueryKey,
 } from "@workspace/api-client-react";
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 type StudentLesson = {
   id: number;
@@ -26,6 +29,19 @@ type StudentLesson = {
   mySessionStatus?: string | null;
   assignedAt?: string | null;
   completedAt?: string | null;
+};
+
+type AssignedQuiz = {
+  assignmentId: number;
+  quizId: number;
+  title: string;
+  subjectId: number;
+  status: string;
+  assignedAt: string;
+  dueAt: string | null;
+  totalCorrect?: number | null;
+  totalQuestions?: number | null;
+  scorePercent?: number | null;
 };
 
 export default function SubjectDetail() {
@@ -45,7 +61,16 @@ export default function SubjectDetail() {
     },
   });
 
-  // Fetch teacher-created course lessons for this subject
+  // Student's real class name from schedule
+  const { data: schedule = [] } = useGetStudentSchedule({
+    query: {
+      queryKey: getGetStudentScheduleQueryKey(),
+      enabled: !!token,
+    },
+  });
+  const className = (schedule as any[])[0]?.className ?? "";
+
+  // Teacher-created lessons for this subject
   const subjectName = subject?.name ?? "";
   const { data: teacherLessons = [], isLoading: lessonsLoading } = useGetStudentCourseLessons(
     { subject: subjectName },
@@ -59,31 +84,30 @@ export default function SubjectDetail() {
 
   const isTeacher = (user as { role?: string })?.role === "teacher";
 
-  // ── Assigned quizzes for "Ընթացիկ թեստը" ────────────────────────────────────
-  type AssignedQuiz = {
-    assignmentId: number;
-    quizId: number;
-    title: string;
-    subjectId: number;
-    status: string;
-    assignedAt: string;
-    dueAt: string | null;
-  };
+  // Assigned quizzes — include token in queryKey so it refetches after auth loads
   const { data: assignedQuizzes = [] } = useQuery<AssignedQuiz[]>({
-    queryKey: ["quizzes", "assigned"],
+    queryKey: ["quizzes", "assigned", token],
     queryFn: async () => {
-      const r = await fetch(`${BASE}/api/quizzes/assigned`, {
+      const r = await fetch("/api/quizzes/assigned", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!r.ok) return [];
       return r.json();
     },
     enabled: !!token,
   });
-  const currentQuiz = (assignedQuizzes as AssignedQuiz[]).find(
+
+  // Show the most relevant quiz for this subject:
+  // prefer pending (ASSIGNED / IN_PROGRESS) → fall back to latest COMPLETED
+  const pendingQuiz = (assignedQuizzes as AssignedQuiz[]).find(
     (q) => q.subjectId === subjectId && q.status !== "COMPLETED"
   ) ?? null;
+  const completedQuiz = (assignedQuizzes as AssignedQuiz[]).find(
+    (q) => q.subjectId === subjectId && q.status === "COMPLETED"
+  ) ?? null;
+  const displayQuiz = pendingQuiz ?? completedQuiz;
 
-  // ── Quiz creation state ──────────────────────────────────────────────────
+  // ── Quiz creation state (teacher-only) ─────────────────────────────────────
   const [quizModalOpen, setQuizModalOpen]     = useState(false);
   const [quizTitle,     setQuizTitle]         = useState("");
   const [quizLessonIds, setQuizLessonIds]     = useState<number[]>([]);
@@ -97,7 +121,7 @@ export default function SubjectDetail() {
   // Load books when modal opens
   useEffect(() => {
     if (!quizModalOpen || !token) return;
-    fetch(`${BASE}/api/books`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/books`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -113,7 +137,7 @@ export default function SubjectDetail() {
     setQuizCreating(true);
     setQuizError(null);
     try {
-      const resp = await fetch(`${BASE}/api/quizzes`, {
+      const resp = await fetch(`/api/quizzes`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -136,9 +160,9 @@ export default function SubjectDetail() {
     }
   }
 
-  function toggleLesson(id: number) {
+  function toggleLesson(lessonId: number) {
     setQuizLessonIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(lessonId) ? prev.filter((x) => x !== lessonId) : [...prev, lessonId]
     );
   }
 
@@ -167,21 +191,10 @@ export default function SubjectDetail() {
   if (!user || !subject) return null;
 
   const completed = subject.completedLessons ?? 0;
-  const total = subject.totalLessons ?? 0;
-  const pct = subject.progressPercent ?? 0;
+  const total     = subject.totalLessons ?? 0;
 
-  // Active lesson (from teacher) for "ԱՅՍՕՐՎԱ ԴԱՍԸ" section
   const activeLesson = (teacherLessons as StudentLesson[]).find((l) => l.status === "active");
 
-  // Status display helpers — completed uses per-student session status, not global lesson status
-  const statusLabel = (l: StudentLesson) => {
-    if (l.mySessionStatus === "completed") return { text: "Ավարտված",       cls: "text-teal-400 border-teal-400/30 bg-teal-400/10" };
-    if (l.status === "active")             return { text: "Այսօրվա դասը",   cls: "text-primary border-primary/30 bg-primary/10" };
-    if (l.status === "assigned")           return { text: "Հանձնարարված",   cls: "text-amber-400 border-amber-400/30 bg-amber-400/10" };
-    return                                        { text: "Նախապատրաստված",cls: "text-muted-foreground border-white/10 bg-white/5" };
-  };
-
-  // Hierarchical grouping for the "all lessons" section
   const sortedLessons = [...(teacherLessons as StudentLesson[])].sort((a, b) => {
     const ta = (a.textbookTitle ?? "").localeCompare(b.textbookTitle ?? "", "hy");
     if (ta !== 0) return ta;
@@ -192,49 +205,29 @@ export default function SubjectDetail() {
     return (a.paragraphNumber ?? "").localeCompare(b.paragraphNumber ?? "");
   });
 
-  const textbookGroups: Map<string, StudentLesson[]> = new Map();
-  for (const l of sortedLessons) {
-    const tb = l.textbookTitle ?? "";
-    if (!textbookGroups.has(tb)) textbookGroups.set(tb, []);
-    textbookGroups.get(tb)!.push(l);
-  }
-
   return (
-    <div className="min-h-[100dvh] w-full bg-background text-white pb-20">
-      <header className="border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-muted-foreground hover:text-white transition-colors">
-              ← Հետ
-            </Link>
-            <div className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-              myaiteacher
-            </div>
-          </div>
+    <StudentLayout>
+      {/* Subject header */}
+      <div className="mb-10">
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <h1 className="text-3xl font-bold">{subject.name}</h1>
+          {className && (
+            <span className="px-3 py-1 bg-card border border-white/10 rounded-full text-sm text-secondary">
+              {className}
+            </span>
+          )}
           {isTeacher && (
             <button
               onClick={() => { setQuizModalOpen(true); setQuizError(null); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
+              className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
             >
-              ✦ Ստեղծել թեստ
+              ✦ Sts'el test
             </button>
           )}
         </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-6 pt-10">
-
-        {/* Subject header */}
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">{subject.name}</h1>
-            <span className="px-3 py-1 bg-card border border-white/10 rounded-full text-sm text-secondary">
-              {subject.grade}
-            </span>
-          </div>
-          {subject.description && (
-            <p className="text-muted-foreground mb-3">{subject.description}</p>
-          )}
+        {subject.description && (
+          <p className="text-muted-foreground mb-3">{subject.description}</p>
+        )}
           <Link
             href={`/knowledge-tree/${subjectId}`}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-secondary hover:bg-white/10 transition-colors"
@@ -243,97 +236,37 @@ export default function SubjectDetail() {
           </Link>
         </div>
 
-
-        {/* ── ԱՅՍՕՐՎԱ ԴԱՍԸ (active lesson) ── */}
-        {activeLesson && (
-          <div className="mb-12">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              ԱՅՍՕՐՎԱ ԴԱՍԸ
-            </h2>
-            <div className="rounded-2xl border border-primary/40 bg-primary/5 p-6 shadow-lg shadow-primary/10">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
-                <div className="space-y-1">
-                  {activeLesson.textbookTitle && (
-                    <div className="text-xs text-muted-foreground">
-                      Դասագիրք· {activeLesson.textbookTitle}
-                      {activeLesson.textbookAuthor && ` (${activeLesson.textbookAuthor})`}
-                    </div>
-                  )}
-                  {activeLesson.chapterTitle && (
-                    <div className="text-xs text-secondary/80">Թեմա · {activeLesson.chapterTitle}</div>
-                  )}
-                  <div className="flex items-center gap-2 mt-1">
-                    {activeLesson.lessonNumber && (
-                      <span className="text-xs font-mono text-primary/70">Դաս #{activeLesson.lessonNumber}</span>
-                    )}
-                    {activeLesson.paragraphNumber && (
-                      <span className="text-xs text-muted-foreground">§{activeLesson.paragraphNumber}</span>
-                    )}
-                  </div>
-                  <h3 className="text-lg font-bold text-white mt-1">{activeLesson.title}</h3>
-                  {(activeLesson.pagesFrom || activeLesson.pagesTo) && (
-                    <div className="text-sm text-muted-foreground">
-                      Էջ' {activeLesson.pagesFrom ?? "?"}–{activeLesson.pagesTo ?? "?"}
-                    </div>
-                  )}
-                </div>
-                <span className="shrink-0 self-start px-3 py-1 rounded-full text-xs font-semibold bg-primary/20 text-primary border border-primary/30">
-                  Այսօրվա դասը
-                </span>
-              </div>
-              <Link
-                href={`/lessons/${activeLesson.id}`}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity shadow-lg shadow-primary/30"
-              >
-                🚀 ՍԿՍԵԼ ՍՈՎՈՐԵԼ AI ՈՒՍՈՒՑՉԻ ՀԵՏ
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* ── ԸՆԹԱՑԻԿ ԹԵՍՏԸ ── */}
+      {/* ── ԱՅՍՕՐՎԱ ԴԱՍԸ ── */}
+      {activeLesson && (
         <div className="mb-12">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-secondary" />
-            ԸՆԹԱՑԻԿ ԹԵՍՏԸ
+            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            ԱՅՍՕՐՎԱ ԴԱՍԸ
           </h2>
-          {currentQuiz ? (
-            <div className="rounded-2xl border border-secondary/30 bg-secondary/5 p-6 shadow-lg shadow-secondary/10">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-bold text-white">{currentQuiz.title}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${
-                      currentQuiz.status === "IN_PROGRESS"
-                        ? "text-amber-400 border-amber-400/30 bg-amber-400/10"
-                        : "text-primary border-primary/30 bg-primary/10"
-                    }`}>
-                      {currentQuiz.status === "IN_PROGRESS" ? "Ընթացքի մեջ" : "Հանձնարարված"}
-                    </span>
-                    {currentQuiz.dueAt && (
-                      <span className="text-xs text-muted-foreground">
-                        Վերջնաժամ· {new Date(currentQuiz.dueAt).toLocaleDateString("hy-AM")}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <Link
-                  href={`/quiz/${currentQuiz.quizId}/start`}
-                  className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-secondary to-primary text-white font-bold text-sm hover:opacity-90 transition-opacity shadow-lg shadow-secondary/20"
-                >
-                  ✏️ Սկսել թեստը
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-white/10 bg-card/30 p-6 text-center">
-              <div className="text-2xl mb-2 text-muted-foreground">📋</div>
-              <p className="text-sm text-muted-foreground">Ընթացիկ թեստ չկա</p>
-            </div>
-          )}
+          <StudentLessonCard lesson={{
+            ...activeLesson,
+            subject: subjectName,
+          }} showSubject={false} />
         </div>
+      )}
 
+      {/* ── ԸՆԹԱՑԻԿ ԹԵՍՏԸ ── */}
+      <div className="mb-12">
+        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-secondary" />
+          ԸՆԹԱՑԻԿ ԹԵՍՏԸ
+        </h2>
+        {displayQuiz ? (
+          <StudentQuizCard quiz={displayQuiz as StudentQuizCardQuiz} />
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-card/30 p-6 text-center">
+            <div className="text-2xl mb-2 text-muted-foreground">📋</div>
+            <p className="text-sm text-muted-foreground">Ընթացիկ թեստ չկա</p>
+          </div>
+        )}
+      </div>
+
+      {/* Book section */}
         {/* Book section */}
         <div className="pt-8 border-t border-white/10">
           <h2 className="text-xl font-bold mb-5">📚 Գիրքը</h2>
@@ -369,8 +302,7 @@ export default function SubjectDetail() {
           )}
         </div>
 
-      </main>
-
+      {/* ── Create Quiz Modal ── */}
       {/* ── Create Quiz Modal ── */}
       {quizModalOpen && (
         <div
@@ -529,6 +461,6 @@ export default function SubjectDetail() {
           </div>
         </div>
       )}
-    </div>
+    </StudentLayout>
   );
 }

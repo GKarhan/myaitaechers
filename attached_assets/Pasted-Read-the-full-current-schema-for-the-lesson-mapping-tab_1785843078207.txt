@@ -1,0 +1,45 @@
+Read the full current schema for the lesson-mapping tables (lessons, lesson_nodes,
+knowledgeNodesTable, and any table storing prerequisiteNodes/practicalTasks) and the
+current lesson-deletion route/handler before changing anything. Paste back the schema
+and the current delete handler code.
+
+## Bug — Knowledge Tree shows orphaned nodes from deleted lessons
+
+Confirmed evidence: for Մաթեմատիկա 5, exactly ONE lesson is currently mapped
+("Թվերի համեմատում", with exactly 3 knowledge nodes under it — visible on
+Դասեր(1) in the teacher UI). But /knowledge-tree/:subjectId for this subject
+shows 20+ node cards (e.g. "Բնական թվերի կազմումը", "Գումարման տեղափոխական
+օրենքի ձևակերպում", "Կարգային միավորների աշուգակցություն") that have nothing
+to do with the currently mapped lesson — leftovers from previously deleted
+lesson mappings that were never cleaned up.
+
+Investigate and report back with real evidence before fixing:
+1. Does deleting a lesson currently cascade-delete its lesson_nodes rows?
+   Does it cascade-delete the corresponding knowledgeNodesTable rows (via
+   lessonNodeId FK)? Query the DB directly — find a deleted lesson's ID and
+   check whether lesson_nodes/knowledgeNodesTable still have rows referencing
+   it (or referencing lessonNodeId values that no longer exist).
+2. Paste the exact query knowledge-tree.ts uses to fetch nodes for a subject —
+   does it filter by "lessonNodeId IS NOT NULL AND that lesson_node's parent
+   lesson still exists / is not deleted", or does it just pull all
+   knowledgeNodesTable rows for the subjectId regardless of whether the
+   source lesson still exists?
+
+Fix:
+1. Add real cascade deletion: when a lesson is deleted, delete its
+   lesson_nodes rows AND the knowledgeNodesTable rows that reference them
+   (via lessonNodeId), not just mark something inactive.
+2. As a defensive second layer, also make the knowledge-tree.ts query itself
+   filter out any node whose lessonNodeId no longer resolves to an existing,
+   non-deleted lesson_node/lesson (covers any future orphans from other code
+   paths).
+3. One-time cleanup: write and run a script that deletes all currently
+   orphaned knowledgeNodesTable rows (lessonNodeId pointing to a lesson_node
+   that no longer exists, or lessonNodeId that maps to a deleted lesson) for
+   this subject specifically, then verify manually that /knowledge-tree/15
+   now shows only the 3 real nodes from Թվերի համեմատում.
+
+Paste back: the before/after row counts for knowledgeNodesTable on this
+subject, the updated delete handler code, the updated knowledge-tree.ts
+query, and a screenshot confirming the Knowledge Tree page now shows only
+the 3 correct nodes.
