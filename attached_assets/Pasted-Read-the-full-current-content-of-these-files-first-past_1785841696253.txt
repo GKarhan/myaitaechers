@@ -1,0 +1,56 @@
+Read the full current content of these files first, paste back before
+changing anything:
+- artifacts/myaiteacher/src/pages/subject-detail.tsx (student-facing page)
+- artifacts/api-server/src/routes/subjects.ts (GET /subjects/:id)
+- The lesson delete button/handler in teacher-dashboard.tsx (the Դասեր list's
+  trash icon)
+- routes/lessons.ts and routes/teacher.ts's lesson DELETE handlers
+
+## Bug — deleted lesson still shows on student's subject page
+Repro: a lesson was deleted by the teacher, but it still appears in the
+student's /subjects/:id page under "Բոլոր դասերը".
+
+Investigate with real evidence before fixing:
+1. Confirm the teacher's delete button in teacher-dashboard.tsx actually
+   calls a DELETE /api/lessons/:id (or /api/teacher/lessons/:id) request —
+   check the network call, not just the UI removing the row locally. Paste
+   the actual fetch/mutation code.
+2. Query the DB directly to confirm whether the lesson row genuinely no
+   longer exists in lessonsTable, or still exists (meaning the delete never
+   actually persisted):
+     SELECT id, title, status FROM lessons WHERE id = <the specific lesson
+     Garegin saw reappear>;
+   If you don't know the exact id, list recent lessons for this subject and
+   identify by title, then check.
+3. Based on what you find: if the row is genuinely gone from the DB but
+   still renders on the student page, the bug is client-side caching (stale
+   React Query cache, or the page not refetching) — fix the cache
+   invalidation. If the row still exists in the DB, the delete action itself
+   is broken (e.g. failed silently, wrong id, or only removed local UI state
+   without calling the API) — fix that instead.
+
+Paste back the real evidence from steps 1-2 before applying any fix.
+
+## Redesign — subject-detail.tsx becomes a today-focused page
+Once the bug above is fixed, restructure this page to show only:
+a) Header: subject name, class.
+b) "Այսօրվա դասը" — the currently active/most relevant lesson for today
+   (reuse whatever "active" lesson logic already exists here — the file
+   already has an `activeLesson` concept, confirm and reuse it). If none,
+   show a simple "Այսօրվա դաս չկա" state.
+c) "Ընթացիկ թեստը" — any quiz for this subject currently ASSIGNED/IN_PROGRESS
+   for this student (not yet completed) — reuse the same data source already
+   powering the "Իմ թեստերը" sidebar section, filtered to this subjectId. If
+   none, "Ընթացիկ թեստ չկա".
+d) "Դասագիրք" — the textbook download/view link, unchanged from current
+   behavior.
+
+Remove the full "Բոլոր դասերը" historical list entirely from this page — that
+full cross-time list already lives in the "Իմ դասերը" sidebar section, and
+duplicating it here is what caused the stale-data bug to surface visibly.
+Do NOT touch "Իմ դասերը" or "Իմ թեստերը" sections — they remain the
+authoritative full-history views.
+
+Paste back the exact new page structure, confirm typecheck passes, and
+manually verify: the previously-reappearing deleted lesson is now gone
+everywhere, and the page shows only today's lesson / current quiz / textbook.
