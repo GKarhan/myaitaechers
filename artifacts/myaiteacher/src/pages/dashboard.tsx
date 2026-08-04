@@ -28,6 +28,8 @@ type AssignedQuiz = {
   assignmentId: number; quizId: number; title: string;
   subjectId: number; status: string;
   assignedAt: string; dueAt: string | null;
+  totalCorrect: number | null; totalQuestions: number | null;
+  scorePercent: number | null;
 };
 
 const NAV_ITEMS: { key: Section; emoji: string; label: string }[] = [
@@ -356,30 +358,46 @@ export default function Dashboard() {
 
 
       {/* Assigned quizzes */}
-      {(assignedQuizzes ?? []).filter((q) => q.status !== "COMPLETED").length > 0 && (
+      {(assignedQuizzes ?? []).length > 0 && (
         <div>
           <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
             📋 թեստերը
           </h2>
           <div className="space-y-3">
-            {(assignedQuizzes ?? [])
-              .filter((q) => q.status !== "COMPLETED")
-              .map((qz) => (
-                <div
-                  key={qz.assignmentId}
-                  className="rounded-2xl border border-primary/20 bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 hover:border-white/20 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-base leading-snug">{qz.title}</h3>
-                  </div>
+            {(assignedQuizzes ?? []).map((qz) => (
+              <div
+                key={qz.assignmentId}
+                className={`rounded-2xl border bg-card/60 p-5 flex flex-col sm:flex-row sm:items-center gap-5 transition-colors ${
+                  qz.status === "COMPLETED"
+                    ? "border-teal-400/20 hover:border-teal-400/30"
+                    : "border-primary/20 hover:border-white/20"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-base leading-snug">{qz.title}</h3>
+                  {qz.status === "COMPLETED" && qz.totalCorrect !== null && (
+                    <p className="text-xs text-teal-400 mt-1">
+                      Ավարտված · {qz.totalCorrect}/{qz.totalQuestions} ({qz.scorePercent}%)
+                    </p>
+                  )}
+                </div>
+                {qz.status === "COMPLETED" ? (
+                  <Link
+                    href={`/quiz/${qz.quizId}/result`}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold text-sm hover:bg-teal-400/25 transition-all whitespace-nowrap shrink-0"
+                  >
+                    Տեսնել արդյունք
+                  </Link>
+                ) : (
                   <Link
                     href={`/quiz/${qz.quizId}/take`}
                     className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
                   >
                     ▶ ՍԿՍԵԼ ԹԵՍՏԵՐ
                   </Link>
-                </div>
-              ))}
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -800,7 +818,7 @@ export default function Dashboard() {
               <div>
                 <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
                   <span className="inline-block w-2 h-2 rounded-full bg-primary" />
-                  Кataрel
+                  Թեստեր
                 </h3>
                 <div className="space-y-3">
                   {pending.map((qz) => (
@@ -834,18 +852,28 @@ export default function Dashboard() {
               <div>
                 <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4 flex items-center gap-2">
                   <span className="inline-block w-2 h-2 rounded-full bg-teal-400" />
-                  Авартред
+                  Ավարտված
                 </h3>
                 <div className="space-y-3">
                   {completed.map((qz) => (
                     <div
                       key={qz.assignmentId}
-                      className="rounded-2xl border border-teal-400/20 bg-teal-400/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 opacity-80"
+                      className="rounded-2xl border border-teal-400/20 bg-teal-400/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-teal-400/30 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-sm">{qz.title}</h3>
+                        {qz.totalCorrect !== null && (
+                          <p className="text-xs text-teal-400/80 mt-0.5">
+                            {qz.totalCorrect}/{qz.totalQuestions} ({qz.scorePercent}%)
+                          </p>
+                        )}
                       </div>
-                      <span className="text-xs text-teal-400 font-semibold shrink-0">✅</span>
+                      <Link
+                        href={`/quiz/${qz.quizId}/result`}
+                        className="text-xs px-4 py-2 rounded-xl bg-teal-400/15 text-teal-400 border border-teal-400/20 font-semibold hover:bg-teal-400/25 transition-all whitespace-nowrap shrink-0"
+                      >
+                        Տեսնել արդյունք
+                      </Link>
                     </div>
                   ))}
                 </div>

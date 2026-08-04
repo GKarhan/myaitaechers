@@ -461,9 +461,18 @@ export default function TeacherDashboard() {
     id: number; title: string; status: string;
     questionCount: number; classId: number | null; createdAt: string;
     sequenceNumber: number;
+    completedCount: number; totalAssigned: number;
+    averageScorePercent: number | null;
   }[]>([]);
   const [courseQuizzesLoading, setCourseQuizzesLoading] = useState(false);
   const [quizRefetchTick, setQuizRefetchTick]           = useState(0);
+  const [resultsQuizId,   setResultsQuizId]             = useState<number | null>(null);
+  const [resultsData,     setResultsData]               = useState<{
+    assignmentId: number; studentId: number; studentName: string;
+    status: string; totalCorrect: number | null; totalQuestions: number | null;
+    scorePercent: number | null; completedAt: string | null;
+  }[] | null>(null);
+  const [resultsLoading,  setResultsLoading]            = useState(false);
 
   useEffect(() => {
     if (mainView !== "course" || !selectedCourse?.subjectId) {
@@ -496,6 +505,18 @@ export default function TeacherDashboard() {
       })
       .catch(() => {});
   }, [quizModalOpen, selectedCourse?.subjectId]);
+  useEffect(() => {
+    if (resultsQuizId === null) { setResultsData(null); return; }
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    setResultsLoading(true);
+    fetch(`/api/quizzes/${resultsQuizId}/results`, {
+      headers: { Authorization: `Bearer ${tok}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setResultsData(data))
+      .catch(() => setResultsData([]))
+      .finally(() => setResultsLoading(false));
+  }, [resultsQuizId]);
 
   async function handleCreateQuiz() {
     if (quizLessonIds.length === 0) return;
@@ -1041,12 +1062,25 @@ export default function TeacherDashboard() {
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
                         {STATUS_LABEL[qz.status] ?? qz.status}
                       </span>
+                      {qz.totalAssigned > 0 && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                          {qz.completedCount}/{qz.totalAssigned} ավարտել են{qz.completedCount > 0 && qz.averageScorePercent !== null && (<> · Միջին՝ {qz.averageScorePercent}%</>)}
+                        </span>
+                      )}
                       <button
                         onClick={() => setLocation(`/quiz/${qz.id}/review`)}
                         className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                       >
                         Դիտել
                       </button>
+                      {qz.completedCount > 0 && (
+                        <button
+                          onClick={() => setResultsQuizId(qz.id)}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20 whitespace-nowrap shrink-0"
+                        >
+                          Արդյունքներ
+                        </button>
+                      )}
                       <button
                         onClick={async () => {
                           if (!confirm("ծնդլել թեստը?")) return;
@@ -1703,6 +1737,46 @@ export default function TeacherDashboard() {
             })()}
           </section>
         </div>
+
+      {/* ── Results Modal ── */}
+      {resultsQuizId !== null && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+              <h2 className="text-base font-semibold">Արդյունքներ</h2>
+              <button onClick={() => setResultsQuizId(null)} className={btnGhost}>✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {resultsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : !resultsData || resultsData.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">—</p>
+              ) : (
+                <div className="space-y-2">
+                  {resultsData.map((row) => (
+                    <div key={row.assignmentId} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/40 border border-white/8">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{row.studentName}</div>
+                      </div>
+                      {row.status === "COMPLETED" ? (
+                        <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
+                          {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+                          դեռ չի ավարտել
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Create Quiz Modal ── */}
       {quizModalOpen && (

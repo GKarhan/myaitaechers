@@ -8,8 +8,9 @@ import {
   quizAnswersTable,
   classStudentsTable,
   lessonNodesTable,
+  usersTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, desc } from "drizzle-orm";
+import { eq, and, asc, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
@@ -147,9 +148,9 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
 
 // ── GET /api/quizzes ──────────────────────────────────────────────────────────
 // List quizzes for a subject (teacher-owned). Query: ?subjectId=X
-// Returns [{ id, title, status, questionCount, classId, createdAt, sequenceNumber }],
-// newest first. sequenceNumber is stable: earliest-created quiz = 1, next = 2, …
-// (ranked by id ASC within teacherId+subjectId; never changes once assigned).
+// Returns [{ id, title, status, questionCount, classId, createdAt, sequenceNumber,
+//            completedCount, totalAssigned, averageScorePercent }], newest first.
+// sequenceNumber is stable: earliest-created quiz = 1, next = 2, …
 router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
   const subjectId = parseInt(String(req.query.subjectId), 10);
   if (isNaN(subjectId)) {
@@ -178,36 +179,196 @@ router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
   const ranked = quizzes.map((q, i) => ({ ...q, sequenceNumber: i + 1 }));
   ranked.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
+  if (ranked.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const quizIds = ranked.map((q) => q.id);
+
+  // Assignment stats: totalAssigned + completedCount per quizId
+  const assignStats = await db
+    .select({
+      quizId:         quizAssignmentsTable.quizId,
+      totalAssigned:  sql<number>`cast(count(*) as integer)`,
+      completedCount: sql<number>`cast(count(*) filter (where ${quizAssignmentsTable.status} = 'COMPLETED') as integer)`,
+    })
+    .from(quizAssignmentsTable)
+    .where(inArray(quizAssignmentsTable.quizId, quizIds))
+    .groupBy(quizAssignmentsTable.quizId);
+
+  // Average score per quizId (only for completed attempts)
+  const scoreStats = await db
+    .select({
+      quizId:              quizAssignmentsTable.quizId,
+      averageScorePercent: sql<number | null>`round(avg(${quizAttemptsTable.scorePercent}))`,
+    })
+    .from(quizAttemptsTable)
+    .innerJoin(quizAssignmentsTable, eq(quizAssignmentsTable.id, quizAttemptsTable.quizAssignmentId))
+    .where(inArray(quizAssignmentsTable.quizId, quizIds))
+    .groupBy(quizAssignmentsTable.quizId);
+
+  const assignMap = new Map(assignStats.map((s) => [s.quizId, s]));
+  const scoreMap  = new Map(scoreStats.map((s) => [s.quizId, s]));
+
   res.json(ranked.map((q) => ({
     ...q,
-    createdAt: q.createdAt.toISOString(),
+    createdAt:           q.createdAt.toISOString(),
+    totalAssigned:       assignMap.get(q.id)?.totalAssigned       ?? 0,
+    completedCount:      assignMap.get(q.id)?.completedCount      ?? 0,
+    averageScorePercent: scoreMap.get(q.id)?.averageScorePercent  ?? null,
   })));
 });
 
 // ── GET /api/quizzes/assigned ─────────────────────────────────────────────────
 // Student: list all quiz assignments for the current user. Newest first.
+// Now includes attempt data (totalCorrect, totalQuestions, scorePercent) for
+// COMPLETED assignments via a LEFT JOIN on quiz_attempts.
 // MUST be declared before /quizzes/:id to avoid "assigned" matching as an id.
 router.get("/quizzes/assigned", requireAuth, async (req: AuthRequest, res) => {
   const rows = await db
     .select({
-      assignmentId: quizAssignmentsTable.id,
-      quizId:       quizzesTable.id,
-      title:        quizzesTable.title,
-      subjectId:    quizzesTable.subjectId,
-      status:       quizAssignmentsTable.status,
-      assignedAt:   quizAssignmentsTable.assignedAt,
-      dueAt:        quizAssignmentsTable.dueAt,
+      assignmentId:   quizAssignmentsTable.id,
+      quizId:         quizzesTable.id,
+      title:          quizzesTable.title,
+      subjectId:      quizzesTable.subjectId,
+      status:         quizAssignmentsTable.status,
+      assignedAt:     quizAssignmentsTable.assignedAt,
+      dueAt:          quizAssignmentsTable.dueAt,
+      totalCorrect:   quizAttemptsTable.totalCorrect,
+      totalQuestions: quizAttemptsTable.totalQuestions,
+      scorePercent:   quizAttemptsTable.scorePercent,
     })
     .from(quizAssignmentsTable)
     .innerJoin(quizzesTable, eq(quizzesTable.id, quizAssignmentsTable.quizId))
+    .leftJoin(quizAttemptsTable, eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id))
     .where(eq(quizAssignmentsTable.studentId, req.userId!))
     .orderBy(desc(quizAssignmentsTable.assignedAt));
 
   res.json(rows.map((r) => ({
     ...r,
-    assignedAt: r.assignedAt.toISOString(),
-    dueAt:      r.dueAt?.toISOString() ?? null,
+    assignedAt:     r.assignedAt.toISOString(),
+    dueAt:          r.dueAt?.toISOString() ?? null,
+    totalCorrect:   r.totalCorrect   ?? null,
+    totalQuestions: r.totalQuestions ?? null,
+    scorePercent:   r.scorePercent   ?? null,
   })));
+});
+
+// ── GET /api/quizzes/:id/results ──────────────────────────────────────────────
+// Teacher: per-student results for a quiz. Completed ones sorted worst-score-first;
+// not-completed ones at the bottom.
+router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+
+  // Verify ownership
+  const [quiz] = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
+    .limit(1);
+  if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
+
+  const rows = await db
+    .select({
+      assignmentId:     quizAssignmentsTable.id,
+      studentId:        usersTable.id,
+      studentName:      usersTable.fullName,
+      assignmentStatus: quizAssignmentsTable.status,
+      totalCorrect:     quizAttemptsTable.totalCorrect,
+      totalQuestions:   quizAttemptsTable.totalQuestions,
+      scorePercent:     quizAttemptsTable.scorePercent,
+      completedAt:      quizAttemptsTable.completedAt,
+    })
+    .from(quizAssignmentsTable)
+    .innerJoin(usersTable,        eq(usersTable.id,        quizAssignmentsTable.studentId))
+    .leftJoin(quizAttemptsTable,  eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id))
+    .where(eq(quizAssignmentsTable.quizId, quizId));
+
+  // Sort: completed worst-score-first; non-completed at the bottom
+  rows.sort((a, b) => {
+    const aComp = a.assignmentStatus === "COMPLETED";
+    const bComp = b.assignmentStatus === "COMPLETED";
+    if (aComp && !bComp) return -1;
+    if (!aComp && bComp) return 1;
+    if (aComp && bComp) return (a.scorePercent ?? 100) - (b.scorePercent ?? 100);
+    return 0;
+  });
+
+  res.json(rows.map((r) => ({
+    assignmentId:   r.assignmentId,
+    studentId:      r.studentId,
+    studentName:    r.studentName,
+    status:         r.assignmentStatus,
+    totalCorrect:   r.totalCorrect   ?? null,
+    totalQuestions: r.totalQuestions ?? null,
+    scorePercent:   r.scorePercent   ?? null,
+    completedAt:    r.completedAt?.toISOString() ?? null,
+  })));
+});
+
+// ── GET /api/quizzes/:id/my-result ────────────────────────────────────────────
+// Student: full per-question result for their completed attempt on a quiz.
+router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+
+  // Find the student's completed assignment
+  const [assignment] = await db
+    .select()
+    .from(quizAssignmentsTable)
+    .where(and(
+      eq(quizAssignmentsTable.quizId,    quizId),
+      eq(quizAssignmentsTable.studentId, req.userId!),
+      eq(quizAssignmentsTable.status,    "COMPLETED")
+    ))
+    .limit(1);
+  if (!assignment) {
+    res.status(404).json({ error: "No completed attempt found for this quiz" });
+    return;
+  }
+
+  const [attempt] = await db
+    .select()
+    .from(quizAttemptsTable)
+    .where(eq(quizAttemptsTable.quizAssignmentId, assignment.id))
+    .limit(1);
+  if (!attempt) {
+    res.status(404).json({ error: "Attempt record not found" });
+    return;
+  }
+
+  // Per-question detail: join quiz_answers + quiz_questions
+  const answers = await db
+    .select({
+      questionId:          quizQuestionsTable.id,
+      questionText:        quizQuestionsTable.questionText,
+      options:             quizQuestionsTable.options,
+      correctOptionIndex:  quizQuestionsTable.correctOptionIndex,
+      selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
+      isCorrect:           quizAnswersTable.isCorrect,
+      sequence:            quizQuestionsTable.sequence,
+    })
+    .from(quizAnswersTable)
+    .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
+    .where(eq(quizAnswersTable.attemptId, attempt.id))
+    .orderBy(asc(quizQuestionsTable.sequence));
+
+  res.json({
+    totalCorrect:   attempt.totalCorrect,
+    totalQuestions: attempt.totalQuestions,
+    scorePercent:   attempt.scorePercent,
+    questions:      answers.map((a) => ({
+      questionId:          a.questionId,
+      questionText:        a.questionText,
+      options:             a.options,
+      correctOptionIndex:  a.correctOptionIndex,
+      selectedOptionIndex: a.selectedOptionIndex,
+      isCorrect:           a.isCorrect,
+      sequence:            a.sequence,
+    })),
+  });
 });
 
 // ── GET /api/quizzes/:id ──────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ import ClassDetail from "@/pages/class-detail";
 import TeacherDashboard from "@/pages/teacher-dashboard";
 import QuizReview from "@/pages/quiz-review";
 import QuizTake from "@/pages/quiz-take";
+import QuizResult from "@/pages/quiz-result";
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/progress/subject/:id" component={SubjectProgress} />
       <Route path="/quiz/:id/review" component={QuizReview} />
       <Route path="/quiz/:id/take" component={QuizTake} />
+      <Route path="/quiz/:id/result" component={QuizResult} />
       <Route component={NotFound} />
     </Switch>
   );
