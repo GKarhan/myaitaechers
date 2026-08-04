@@ -233,8 +233,14 @@ export default function SubjectDetail() {
             </span>
           </div>
           {subject.description && (
-            <p className="text-muted-foreground">{subject.description}</p>
+            <p className="text-muted-foreground mb-3">{subject.description}</p>
           )}
+          <Link
+            href={`/knowledge-tree/${subjectId}`}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-secondary hover:bg-white/10 transition-colors"
+          >
+            🌳 Գիտելիքի ծառ →
+          </Link>
         </div>
 
 
