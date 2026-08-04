@@ -1,0 +1,74 @@
+Read the full current content of lib/db/src/schema/knowledge-nodes.ts before
+changing anything, paste it back.
+
+## Step 1 — Schema: add stable FK link
+Add a nullable column to knowledgeNodesTable:
+  lessonNodeId: integer("lesson_node_id")
+    .references(() => lessonNodesTable.id, { onDelete: "set null" }),
+(import lessonNodesTable from "./lesson-nodes" — check for circular import
+issues between these two schema files and resolve if any arise). Generate and
+run the migration. Paste back the exact schema diff and migration confirmation
+(the actual drizzle-kit push output).
+
+## Step 2 — Backfill existing rows
+Write a one-time script (place it in scripts/, following the pattern of the
+existing scripts/src/migrate-knowledge-topics-to-nodes.ts if useful as a
+reference) that, for every existing knowledge_nodes row with lessonNodeId
+still null, tries to find a lesson_nodes row with matching subjectId (via
+lesson_nodes.lessonId → lessons.subjectId) and title === topicName, and sets
+lessonNodeId accordingly. Log every row it could NOT match (don't silently
+skip) with enough detail (topicName, subjectId, userId) that we could
+investigate later — but do not block on unmatched rows, they stay null and
+existing chat.ts behavior for them is unaffected. Run it, paste back the
+summary of matched vs unmatched counts.
+
+## Step 3 — Quiz submit: write evidence_events per answer, reuse scoring engine
+In routes/quizzes.ts's POST /:id/submit handler, after computing answerRows
+(which already includes each answer's nodeId from the question), add this
+BEFORE sending the response (fire-and-forget, same non-blocking pattern chat.ts
+uses — .then()/.catch(), do not await, do not delay the response):
+
+For each DISTINCT nodeId present in answerRows (skip null nodeIds — some
+questions may not have one), in a small in-memory cache keyed by nodeId to
+avoid duplicate work when multiple questions share a node:
+
+1. Fetch the quiz's subjectId (query quizzesTable by quizId — you'll need to
+   select this earlier in the handler since it's not currently fetched).
+2. Fetch the lesson_nodes row for this nodeId to get its `title` (needed for
+   topicName) and confirm it exists.
+3. Find-or-create the knowledge_nodes row using lessonNodeId as the primary
+   match key (NOT topicName-only, unlike chat.ts's older pattern — this is
+   the whole point of Step 1's FK):
+     SELECT ... WHERE subjectId = X AND userId = studentId AND lessonNodeId = nodeId
+   If not found, INSERT with { subjectId, userId: studentId, topicName: <node
+   title>, lessonNodeId: nodeId, status: "not_started", isProvisional: true,
+   bloomLevel: <node's targetBloomLevel ?? 1> } — mirror chat.ts's existing
+   insert shape exactly, just add lessonNodeId.
+4. For EACH answer belonging to this nodeId, insert one evidenceEventsTable
+   row: { userId: studentId, lessonSessionId: null, topicId: <the knowledge_node
+   id from step 3>, eventType: "answer", wasCorrect: answer.isCorrect,
+   responseTimeMs: null, hintUsed: false, metadata: { source: "quiz", quizId,
+   questionId: answer.questionId } }.
+5. After all evidence_events for this nodeId are inserted, call
+   updateTopicScoring(topicId, studentId) exactly as chat.ts does (import it
+   from "../services/scoring", fire-and-forget with .catch(logger.error)).
+
+Do not let any failure in this block affect the quiz submit response — wrap
+appropriately so the student still gets their score back even if this
+integration has an error (log it, don't throw).
+
+## Step 4 — Live verification (required, do not skip)
+Pick a real node that a student has prior AI-lesson evidence for (check
+knowledge_nodes for an existing row with masteryScore/confidenceScore set).
+Note its current masteryScore/confidenceScore. Have that same student submit
+a quiz containing a question mapped to that same lesson node (create one if
+needed). After submit, query knowledge_nodes for that row again and paste the
+BEFORE and AFTER masteryScore/confidenceScore/updatedAt values side by side,
+proving the quiz answer actually changed the score. Also confirm via query
+that the new evidence_events row has metadata.source = "quiz" and the correct
+topicId, and that lessonNodeId on the knowledge_nodes row matches the node's id
+(not just topicName matching).
+
+Paste back all changed code from Steps 1 and 3, plus the real before/after
+evidence from Step 4. Do not mark this done based on "should work" — only on
+that live before/after proof.

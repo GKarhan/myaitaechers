@@ -6,10 +6,12 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "migrate-knowledge-nodes": "tsx ./src/migrate-knowledge-topics-to-nodes.ts",
+    "backfill-knowledge-node-ids": "tsx ./src/backfill-knowledge-node-ids.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@workspace/db": "workspace:*"
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

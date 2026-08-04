@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { subjectsTable } from "./subjects";
 import { usersTable } from "./users";
+import { lessonNodesTable } from "./lesson-nodes";
 
 export const knowledgeNodesTable = pgTable("knowledge_nodes", {
   id: serial("id").primaryKey(),
@@ -13,6 +14,8 @@ export const knowledgeNodesTable = pgTable("knowledge_nodes", {
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
   topicName: text("topic_name").notNull(),
+  lessonNodeId: integer("lesson_node_id")
+    .references(() => lessonNodesTable.id, { onDelete: "set null" }),
   masteryScore: integer("mastery_score"),
   confidenceScore: integer("confidence_score"),
   retentionScore: integer("retention_score"),

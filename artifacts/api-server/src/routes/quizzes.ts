@@ -8,8 +8,11 @@ import {
   quizAnswersTable,
   classStudentsTable,
   lessonNodesTable,
+  knowledgeNodesTable,
+  evidenceEventsTable,
   usersTable,
 } from "@workspace/db";
+import { updateTopicScoring } from "../services/scoring";
 import { eq, and, asc, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
@@ -837,6 +840,110 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     .where(eq(quizAssignmentsTable.id, assignment.id));
 
   res.json({ totalCorrect, totalQuestions, scorePercent });
+
+  // ── Fire-and-forget: write evidence_events per answer, update scoring ─────
+  // Same non-blocking pattern as chat.ts. Any failure here is logged but must
+  // never affect the student's score (already sent above).
+  const _studentId = req.userId!;
+  const _answerRows = answerRows; // capture before request scope expires
+  const _quizId = quizId;
+  (async () => {
+    // 1. Fetch the quiz's subjectId (not available in the handler above)
+    const [quizRow] = await db
+      .select({ subjectId: quizzesTable.subjectId })
+      .from(quizzesTable)
+      .where(eq(quizzesTable.id, _quizId))
+      .limit(1);
+    if (!quizRow?.subjectId) return;
+    const quizSubjectId = quizRow.subjectId;
+
+    // Collect distinct nodeIds (skip null — some questions may lack a node)
+    const distinctNodeIds = [
+      ...new Set(
+        _answerRows
+          .map((a) => a.nodeId)
+          .filter((id): id is number => id !== null)
+      ),
+    ];
+
+    for (const nodeId of distinctNodeIds) {
+      try {
+        // 2. Fetch the lesson_nodes row to get title + targetBloomLevel
+        const [lessonNode] = await db
+          .select({
+            title:            lessonNodesTable.title,
+            targetBloomLevel: lessonNodesTable.targetBloomLevel,
+          })
+          .from(lessonNodesTable)
+          .where(eq(lessonNodesTable.id, nodeId))
+          .limit(1);
+        if (!lessonNode) {
+          logger.warn({ nodeId }, "quiz evidence: lesson_nodes row not found, skipping");
+          continue;
+        }
+
+        // 3. Find-or-create knowledge_nodes using lessonNodeId as primary key
+        //    (NOT topicName-only — lessonNodeId is the stable FK from Step 1)
+        let topicId: number | null = null;
+        const [existingKN] = await db
+          .select({ id: knowledgeNodesTable.id })
+          .from(knowledgeNodesTable)
+          .where(
+            and(
+              eq(knowledgeNodesTable.subjectId,    quizSubjectId),
+              eq(knowledgeNodesTable.userId,        _studentId),
+              eq(knowledgeNodesTable.lessonNodeId,  nodeId),
+            )
+          )
+          .limit(1);
+
+        if (existingKN) {
+          topicId = existingKN.id;
+        } else {
+          const [newKN] = await db
+            .insert(knowledgeNodesTable)
+            .values({
+              subjectId:    quizSubjectId,
+              userId:       _studentId,
+              topicName:    lessonNode.title,
+              lessonNodeId: nodeId,
+              status:       "not_started",
+              isProvisional: true,
+              bloomLevel:   lessonNode.targetBloomLevel ?? 1,
+            })
+            .returning({ id: knowledgeNodesTable.id });
+          topicId = newKN?.id ?? null;
+        }
+        if (!topicId) continue;
+
+        // 4. Insert one evidence_events row per answer belonging to this nodeId
+        const nodeAnswers = _answerRows.filter((a) => a.nodeId === nodeId);
+        await db.insert(evidenceEventsTable).values(
+          nodeAnswers.map((a) => ({
+            userId:          _studentId,
+            lessonSessionId: null,
+            topicId,
+            eventType:       "answer",
+            wasCorrect:      a.isCorrect,
+            responseTimeMs:  null,
+            hintUsed:        false,
+            metadata:        { source: "quiz", quizId: _quizId, questionId: a.questionId },
+          }))
+        );
+
+        // 5. Recompute mastery/confidence for this topic (fire-and-forget within
+        //    fire-and-forget — matches the pattern in chat.ts exactly)
+        updateTopicScoring(topicId, _studentId).catch((err) =>
+          logger.error({ err, topicId, userId: _studentId }, "quiz evidence: scoring failed")
+        );
+
+      } catch (err) {
+        logger.error({ err, nodeId, quizId: _quizId }, "quiz evidence: per-node block failed");
+      }
+    }
+  })().catch((err) =>
+    logger.error({ err, quizId: _quizId }, "quiz evidence: fire-and-forget wrapper failed")
+  );
 });
 
 // ── DELETE /api/quizzes/:id ───────────────────────────────────────────────────
