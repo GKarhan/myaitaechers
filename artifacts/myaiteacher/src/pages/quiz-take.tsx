@@ -135,10 +135,10 @@ export default function QuizTake() {
           {result.totalCorrect} / {result.totalQuestions}
         </div>
         <button
-          onClick={() => setLocation("/dashboard")}
+          onClick={() => setLocation(`/quiz/${id}/result`)}
           className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold hover:opacity-90 transition-opacity"
         >
-          Հետ
+          Դիտել մանրամասները
         </button>
       </div>
     );

@@ -473,6 +473,9 @@ export default function TeacherDashboard() {
     scorePercent: number | null; completedAt: string | null;
   }[] | null>(null);
   const [resultsLoading,  setResultsLoading]            = useState(false);
+  // URL-based course-view restoration after back-nav from quiz-review/result
+  const [restoreClassId,   setRestoreClassId]   = useState<number | null>(null);
+  const [restoreSubjectId, setRestoreSubjectId] = useState<number | null>(null);
 
   useEffect(() => {
     if (mainView !== "course" || !selectedCourse?.subjectId) {
@@ -517,6 +520,39 @@ export default function TeacherDashboard() {
       .catch(() => setResultsData([]))
       .finally(() => setResultsLoading(false));
   }, [resultsQuizId]);
+
+  // Restore course view from URL params (e.g. after back-nav from quiz-review/result)
+  useEffect(() => {
+    const qs = window.location.search;
+    const c = qs.match(/classId=(\d+)/);
+    const s = qs.match(/subjectId=(\d+)/);
+    if (c && s) {
+      setRestoreClassId(parseInt(c[1], 10));
+      setRestoreSubjectId(parseInt(s[1], 10));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!restoreClassId || (classes as any[]).length === 0) return;
+    const cls = (classes as any[]).find((c: any) => c.id === restoreClassId);
+    if (cls) {
+      setSelectedClass({ id: cls.id, name: cls.name, grade: cls.grade });
+      setMainView("class");
+      setClassTab("subjects");
+    }
+  }, [classes, restoreClassId]);
+
+  useEffect(() => {
+    if (!restoreSubjectId || classCourses.length === 0) return;
+    const course = classCourses.find((c) => c.subjectId === restoreSubjectId);
+    if (course) {
+      setSelectedCourse(course);
+      setMainView("course");
+      setRestoreClassId(null);
+      setRestoreSubjectId(null);
+    }
+  }, [classCourses, restoreSubjectId]);
 
   async function handleCreateQuiz() {
     if (quizLessonIds.length === 0) return;
@@ -1060,9 +1096,11 @@ export default function TeacherDashboard() {
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">{qz.questionCount} հարց</div>
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
-                        {STATUS_LABEL[qz.status] ?? qz.status}
-                      </span>
+                      {(qz.status === "ASSIGNED" || qz.classId === null) && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
+                          {STATUS_LABEL[qz.status] ?? qz.status}
+                        </span>
+                      )}
                       {qz.totalAssigned > 0 && (
                         <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                           {qz.completedCount}/{qz.totalAssigned} ավարտել են{qz.completedCount > 0 && qz.averageScorePercent !== null && (<> · Միջին՝ {qz.averageScorePercent}%</>)}
@@ -1089,7 +1127,7 @@ export default function TeacherDashboard() {
                         </button>
                       )}
                       <button
-                        onClick={() => setLocation(`/quiz/${qz.id}/review`)}
+                        onClick={() => setLocation(`/quiz/${qz.id}/review?classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`)}
                         className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                       >
                         Դիտել
@@ -1787,7 +1825,7 @@ export default function TeacherDashboard() {
                             {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
                           </span>
                           <button
-                            onClick={() => { setResultsQuizId(null); setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}`); }}
+                            onClick={() => { setResultsQuizId(null); setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`); }}
                             className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                           >
                             Դիտել

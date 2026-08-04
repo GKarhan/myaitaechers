@@ -43,6 +43,14 @@ export default function QuizReview() {
   const [, setLocation] = useLocation();
   const quizId = parseInt(id || "", 10);
 
+  // Back URL: restore the course view the teacher came from (passed as URL params)
+  const backUrl = (() => {
+    const qs = typeof window !== "undefined" ? window.location.search : "";
+    const c = qs.match(/classId=(\d+)/);
+    const s = qs.match(/subjectId=(\d+)/);
+    return c && s ? `/?classId=${c[1]}&subjectId=${s[1]}` : "/";
+  })();
+
   const [quiz, setQuiz]           = useState<QuizDetail | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
@@ -186,7 +194,7 @@ export default function QuizReview() {
           <div className="text-4xl mb-3">⚠️</div>
           <p className="text-muted-foreground">{error ?? "Թեստը չի գտնվել"}</p>
           <button
-            onClick={() => history.back()}
+            onClick={() => setLocation(backUrl)}
             className="mt-4 px-4 py-2 rounded-xl border border-white/10 text-sm hover:bg-white/5"
           >
             ← Հետ
@@ -203,7 +211,7 @@ export default function QuizReview() {
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <button
-              onClick={() => history.back()}
+              onClick={() => setLocation(backUrl)}
               className="text-muted-foreground hover:text-white transition-colors shrink-0"
             >
               ← Հետ

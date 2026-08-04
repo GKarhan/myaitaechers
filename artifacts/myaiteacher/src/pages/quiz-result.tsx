@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useParams, useLocation as useWouterLocation } from "wouter";
+import { Link, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
 
 type QuestionResult = {
@@ -22,16 +22,26 @@ type MyResult = {
 export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
   const { token, user } = useAuth();
-  const [wLocation] = useWouterLocation();
 
-  // Parse ?studentId=X from the query string
-  const studentId = (() => {
+  // Parse query params — studentId triggers teacher view; classId+subjectId for back nav
+  const { studentId, classId: backClassId, subjectId: backSubjectId } = (() => {
     const qs = typeof window !== "undefined" ? window.location.search : "";
-    const m  = qs.match(/[?&]studentId=(\d+)/);
-    return m ? parseInt(m[1], 10) : null;
+    const sid  = qs.match(/[?&]studentId=(\d+)/);
+    const cid  = qs.match(/[?&]classId=(\d+)/);
+    const spid = qs.match(/[?&]subjectId=(\d+)/);
+    return {
+      studentId:  sid  ? parseInt(sid[1],  10) : null,
+      classId:    cid  ? cid[1]  : null,
+      subjectId:  spid ? spid[1] : null,
+    };
   })();
 
   const isTeacherView = studentId !== null && user?.role === "TEACHER";
+
+  const backHref = isTeacherView
+    ? (backClassId && backSubjectId ? `/?classId=${backClassId}&subjectId=${backSubjectId}` : "/")
+    : "/dashboard";
+  const backLabel = "\u2190 \u0540\u0565\u057f";  // ← Հet
 
   const [result, setResult] = useState<MyResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +49,8 @@ export default function QuizResult() {
 
   useEffect(() => {
     if (!token || !id) return;
+    // Wait for user to load before deciding which endpoint to hit
+    if (user === undefined) return;
     setLoading(true);
     setResult(null);
     setError(null);
@@ -55,11 +67,7 @@ export default function QuizResult() {
       .then((data: MyResult) => setResult(data))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, id, studentId]);
-
-  const backHref = isTeacherView ? "/" : "/dashboard";
-  const backLabel = isTeacherView ? "\u2190 \u0540\u0565\u057f" : "\u2190 \u0540\u0565\u057f";
+  }, [token, id, studentId, user?.role]);
 
   if (loading) {
     return (

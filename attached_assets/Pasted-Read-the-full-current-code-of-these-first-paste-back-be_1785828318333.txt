@@ -1,0 +1,46 @@
+Read the full current code of these first, paste back before changing:
+- quiz-take.tsx's post-submit result screen (the "Հետ" button + score display)
+- quiz-result.tsx's teacher-view branch (studentId param handling, the fetch
+  to /api/quizzes/:id/results/:studentId, and the "Ավարտված արդյունքներ չկա"
+  empty-state condition)
+- teacher-dashboard.tsx's quiz row (the badge/button rendering that currently
+  shows both "Պատրաստ" and "Ուղարկել") and any back-navigation logic in
+  quiz-review.tsx / quiz-result.tsx that currently points to a class list page
+
+## Fix 1 — quiz-take.tsx: "Հետ" button should go to full result breakdown
+After a student submits, the immediate score screen currently has a button
+that just navigates back. Change it to navigate to the full per-question
+result page instead: setLocation(`/quiz/${id}/result`) — the same page/route
+already built for "Տեսնել արդյունքը" elsewhere. Relabel the button to
+"Դիտել մանրամասները".
+
+## Fix 2 — Teacher-view result page shows empty despite data existing
+GET /api/quizzes/:id/results/:studentId (or the frontend's handling of its
+response) is returning/rendering as if no completed attempt exists, even
+though the same student's score (30%, 3/10) is correctly shown in the
+"Արդյունքներ" modal on teacher-dashboard.tsx. Find the actual mismatch — check
+whether the route param name, the query condition (matching studentId against
+the right column), or the frontend's studentId parsing from the URL
+(?studentId=X) doesn't line up. Paste back the real evidence (a direct curl
+test of the endpoint with a real token, showing what it actually returns for
+this quiz+student) before fixing, then fix it.
+
+## Fix 3 — Back navigation from quiz-review/quiz-result should return to the
+subject page, not an intermediate class list
+When a teacher opens a quiz they created (quiz-review.tsx) or a student's
+result (quiz-result.tsx) and clicks back, it currently lands on a class list
+page instead of going straight back to the specific class+subject view
+(teacher-dashboard.tsx's course view) they came from. Fix the back link/
+navigation in both pages to return directly to that course view — pass the
+classId and subjectId (or whatever teacher-dashboard.tsx needs to restore the
+right course view) via the URL or navigation state when navigating into these
+pages, and use that to construct the correct back destination.
+
+## Fix 4 — Remove the redundant "Պատրաստ" badge next to "Ուղարկել"
+In teacher-dashboard.tsx's quiz row: currently both a "Պատրաստ" badge AND an
+active "Ուղարկել" button show side by side for an unassigned quiz. Remove the
+"Պատրաստ" badge entirely — show only the "Ուղարկել" button. On successful
+assign, it should switch to a green "Ուղարկված" badge (confirm this already
+happens per the earlier fix — if the badge color isn't green, make it green).
+
+Paste back all changed code, then confirm typecheck passes.
