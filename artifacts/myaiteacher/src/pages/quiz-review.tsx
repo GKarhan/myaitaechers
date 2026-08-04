@@ -48,7 +48,7 @@ export default function QuizReview() {
     const qs = typeof window !== "undefined" ? window.location.search : "";
     const c = qs.match(/classId=(\d+)/);
     const s = qs.match(/subjectId=(\d+)/);
-    return c && s ? `/?classId=${c[1]}&subjectId=${s[1]}` : "/";
+    return c && s ? `/teacher?classId=${c[1]}&subjectId=${s[1]}` : "/teacher";
   })();
 
   const [quiz, setQuiz]           = useState<QuizDetail | null>(null);

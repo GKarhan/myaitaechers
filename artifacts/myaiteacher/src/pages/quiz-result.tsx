@@ -39,7 +39,7 @@ export default function QuizResult() {
   const isTeacherView = studentId !== null && user?.role === "TEACHER";
 
   const backHref = isTeacherView
-    ? (backClassId && backSubjectId ? `/?classId=${backClassId}&subjectId=${backSubjectId}` : "/")
+    ? (backClassId && backSubjectId ? `/teacher?classId=${backClassId}&subjectId=${backSubjectId}` : "/teacher")
     : "/dashboard";
   const backLabel = "\u2190 \u0540\u0565\u057f";  // ← Հet
 
@@ -49,8 +49,9 @@ export default function QuizResult() {
 
   useEffect(() => {
     if (!token || !id) return;
-    // Wait for user to load before deciding which endpoint to hit
-    if (user === undefined) return;
+    // Wait for user profile to fully load (auth.tsx maps loading-state undefined → null,
+    // so guard against both null and undefined to avoid fetching with wrong isTeacherView)
+    if (!user) return;
     setLoading(true);
     setResult(null);
     setError(null);

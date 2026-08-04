@@ -1,0 +1,34 @@
+Two bugs found via real screenshots — fix both with real evidence, not
+speculation.
+
+## Bug 1 — Back navigation from quiz-review/quiz-result lands on the public
+landing page instead of teacher dashboard
+The fallback route used when classId/subjectId aren't present (or the base
+route these pages navigate to) is "/" — but "/" is the public marketing
+landing page, NOT the teacher dashboard. The teacher dashboard's actual route
+is "/teacher" (confirm this by checking App.tsx's route definitions). Fix
+every backUrl/backHref construction in quiz-review.tsx and quiz-result.tsx
+that currently uses "/" as the destination or fallback — change it to
+"/teacher" (preserving the ?classId=X&subjectId=Y query params where already
+implemented). Paste back the exact corrected navigation code.
+
+## Bug 2 — "Ավարտված արդյունքներ չկա" shows even when a completed result
+exists with a score of 0
+This is the SECOND time this "no results" empty-state has incorrectly
+appeared for real, completed data — this time specifically for a student who
+scored 0/10 (0%). This strongly suggests a falsy-value bug: somewhere the code
+checks something like `if (!scorePercent)` or `if (!data.totalCorrect)` to
+decide whether a result exists, and 0 is falsy in JavaScript, so a genuine
+completed-but-zero-score result gets misread as "no data."
+
+Find the exact condition (in quiz-result.tsx and/or the backend endpoints
+GET /api/quizzes/:id/results/:studentId and /my-result) that decides whether
+to show the empty state vs the real result. Paste that exact code. If it's
+checking truthiness of a score field, fix it to explicitly check for
+presence/existence instead — e.g. check assignment.status === "COMPLETED" or
+attempt !== null / !== undefined, never the numeric score value itself.
+
+Test with the real student+quiz that has the 0/10 result (find it via the DB
+query you ran before) and confirm the fix actually shows the result now — paste
+the real API response and a description of what the page now renders, don't
+just say "should work now."
