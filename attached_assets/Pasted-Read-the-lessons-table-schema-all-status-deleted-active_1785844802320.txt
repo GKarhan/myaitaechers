@@ -1,0 +1,44 @@
+Read the lessons table schema (all status/deleted/active fields), the
+current query behind the teacher's Դասեր list, and the knowledge-tree
+query, before changing anything. Paste all three.
+
+## Investigate: knowledge-tree shows nodes from lessons the teacher UI
+## doesn't count as active
+
+Evidence: /knowledge-tree/15 shows 9 nodes, tracing back to 3 lesson_ids
+(62, 60, 51) via lessonNodeId. But the teacher's Դասեր list for this same
+course shows only 1 active lesson (Դասեր(1)) with 3 real nodes.
+
+1. Query the lessons table directly for lesson ids 62, 60, 51 (or whatever
+   the actual ids are for this course/subject). Paste their full rows,
+   including any status/isDeleted/isActive-type field.
+2. Paste the exact WHERE clause the teacher's Դասեր list query uses to
+   decide "active" vs not.
+3. Compare: do lessons 60/51 have a status that SHOULD exclude them (e.g.
+   isDeleted=true, status='archived') but the knowledge-tree query isn't
+   checking that field at all — it's only checking that the lesson_node
+   row physically still exists (which it does, since they weren't
+   hard-deleted)?
+
+## Fix
+Make the knowledge-tree query join through to the lessons table and apply
+the SAME "active" filter the Դասեր list uses — a node should only appear
+in the Knowledge Tree if its parent lesson is currently active by that
+same definition. Also check whether the lesson-delete flow being used for
+60/51 was a hard delete (should have cascaded, per the earlier CASCADE fix)
+or a soft delete/status-change (which the earlier fix never covered) —
+this determines whether this is a data problem (fix by deleting 60/51's
+knowledge_nodes now) or a code problem (fix the query going forward) or
+both.
+
+## Separately, confirm current status display is correct
+For subject 15's 3 real nodes (from the 1 truly active lesson), confirm
+via a DB query what evidence_events/scoring data exists for this student —
+the student clicked "start lesson" but hasn't done any teaching interaction
+yet, so these 3 nodes should show whatever status corresponds to
+zero-evidence (likely not_started). Paste the query result and compare
+against what the Knowledge Tree UI currently displays for these 3 nodes.
+
+Paste back the fix, before/after node counts, and a fresh authenticated
+screenshot of /knowledge-tree/15 showing only the nodes from truly active
+lessons.

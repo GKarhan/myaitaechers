@@ -4,6 +4,8 @@ import {
   subjectsTable,
   knowledgeNodesTable,
   lessonNodesTable,
+  lessonsTable,
+  coursesTable,
   teachersTable,
   classesTable,
   classStudentsTable,
@@ -108,10 +110,15 @@ router.get(
     }
 
     // ── Fetch knowledge nodes for targetUser + subject ───────────────────────
-    // INNER JOIN with lessonNodesTable to filter out orphaned nodes:
-    //   • nodes with lessonNodeId IS NULL (source lesson was deleted, set-null fired)
-    //   • nodes whose lessonNodeId references a lesson_node that no longer exists
-    // This is a defensive second layer on top of the cascade-delete in the handler.
+    // Join chain: knowledge_nodes → lesson_nodes → lessons → courses → class_students
+    //
+    // Three layers of filtering:
+    //  1. isNotNull(lessonNodeId)        — drop orphans whose source lesson was deleted
+    //  2. INNER JOIN lesson_nodes/lessons — drop dangling lessonNodeId references
+    //  3. INNER JOIN courses + class_students
+    //       → only nodes from lessons in a course that THIS student's class is enrolled
+    //         in for this subject (same filter the teacher's Դaseri list uses).
+    //       → prevents nodes from other teachers' courses leaking into this tree.
     const topics = await db
       .select({
         id:              knowledgeNodesTable.id,
@@ -122,15 +129,17 @@ router.get(
         status:          knowledgeNodesTable.status,
       })
       .from(knowledgeNodesTable)
-      .innerJoin(
-        lessonNodesTable,
-        eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id)
-      )
+      .innerJoin(lessonNodesTable, eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id))
+      .innerJoin(lessonsTable,     eq(lessonNodesTable.lessonId, lessonsTable.id))
+      .innerJoin(coursesTable,     eq(lessonsTable.courseId, coursesTable.id))
+      .innerJoin(classStudentsTable, eq(coursesTable.classId, classStudentsTable.classId))
       .where(
         and(
           eq(knowledgeNodesTable.subjectId, subjectId),
-          eq(knowledgeNodesTable.userId, targetUserId),
-          isNotNull(knowledgeNodesTable.lessonNodeId)
+          eq(knowledgeNodesTable.userId,    targetUserId),
+          isNotNull(knowledgeNodesTable.lessonNodeId),
+          eq(classStudentsTable.studentId,  targetUserId),
+          eq(coursesTable.subjectId,        subjectId),
         )
       )
       .orderBy(knowledgeNodesTable.id);
