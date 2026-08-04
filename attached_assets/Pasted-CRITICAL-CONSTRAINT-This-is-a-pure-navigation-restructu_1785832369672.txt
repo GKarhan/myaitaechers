@@ -1,0 +1,57 @@
+CRITICAL CONSTRAINT: This is a pure navigation restructure. Do NOT modify,
+remove, or rewrite any existing business logic, API calls, or component
+behavior. Every feature that currently works must continue working exactly as
+before — you are only changing HOW the teacher navigates to it, not WHAT it
+does. If you're unsure whether a change counts as "just moving," stop and ask
+rather than guessing.
+
+Read the full current content of teacher-dashboard.tsx first, paste it back.
+Also read dashboard.tsx (the student page) to see the exact sidebar
+pattern/styling already used there (NAV_ITEMS array, section-switching logic,
+sidebar JSX) — mirror that same visual style and mechanism, don't invent a new
+pattern.
+
+## Goal
+Restructure teacher-dashboard.tsx's navigation from its current top-tab
+structure (Իմ դասարանները / Իմ Դասագուցակը / Անձնական տվյալներ tabs) into a
+left sidebar with 8 items, exactly like dashboard.tsx's sidebar:
+
+1. Գլխավոր
+2. Իմ դասարանները
+3. Իմ առարկաները
+4. Իմ թեստերը
+5. Իմ աշակերտները
+6. Դասացուցակ
+7. Գրադարան
+8. Իմ պրոֆիլը
+
+## What to do for each section
+- Գլխավոր: if teacher-dashboard.tsx currently has any kind of overview/
+  summary view, move it here unchanged. If nothing like that currently
+  exists, this can be a simple placeholder for now ("Շուտով") — do NOT
+  invent new statistics or content.
+- Իմ դասարանները: move the ENTIRE existing class → subject → course-view flow
+  here exactly as it currently works (class list, subject cards, Դասեր/Թեստեր/
+  Կցված նյութեր blocks, all buttons and modals) — zero behavior changes, just
+  relocated under this sidebar item instead of a top tab.
+- Իմ պրոֆիլը: move whatever the current "Անձնական տվյալներ" tab shows, unchanged.
+- Իմ առարկաները, Իմ թեստերը, Իմ աշակերտները, Դասացուցակ, Գրադարան: these are
+  NEW sections with no existing equivalent yet. For this pass, make each one a
+  simple placeholder screen (e.g. a centered "Շուտով" message with the
+  section's own icon/title) — do NOT build their real functionality yet, we'll
+  do that in a separate follow-up prompt per section. The goal of this pass is
+  only to get the navigation shell in place.
+
+## Constraints
+- Do not touch quiz-review.tsx, quiz-result.tsx, or any backend route in this
+  pass.
+- Do not change any URL/query-param based navigation logic that currently
+  exists for entering/leaving the course view — just make sure it still works
+  identically once wrapped in the new sidebar structure.
+- Preserve the QuickSwitch role-switcher and top-right pills exactly as they
+  are now.
+
+Paste back the full modified teacher-dashboard.tsx, then confirm typecheck
+passes, then do a manual click-through of every one of the 8 sidebar items and
+confirm each renders without error (placeholders are fine for the 5 new ones,
+but they must not crash).

@@ -41,6 +41,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 type MainView = "dashboard" | "class" | "course" | "student";
 type ClassTab = "subjects" | "students";
+type TeacherSection = "home" | "classes" | "subjects" | "quizzes" | "students" | "schedule" | "library" | "profile";
 
 const RESOURCE_TYPES = [
   { key: "textbook", icon: "📚", label: "ԴԱՍԱԳԻՐՔ" },
@@ -318,9 +319,9 @@ export default function TeacherDashboard() {
   const qc = useQueryClient();
 
   const [mainView, setMainView] = useState<MainView>("dashboard");
-  const [activeTab, setActiveTab] = useState<
-    "classes" | "schedule" | "profile"
-  >("classes");
+  const [section, setSection] = useState<TeacherSection>("classes");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const [classTab, setClassTab] = useState<ClassTab>("subjects");
 
   const [selectedClass, setSelectedClass] = useState<{
@@ -553,6 +554,15 @@ export default function TeacherDashboard() {
       setRestoreSubjectId(null);
     }
   }, [classCourses, restoreSubjectId]);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (sidebarOpen && sidebarRef.current && !sidebarRef.current.contains(e.target as Node))
+        setSidebarOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [sidebarOpen]);
 
   async function handleCreateQuiz() {
     if (quizLessonIds.length === 0) return;
@@ -2361,7 +2371,7 @@ export default function TeacherDashboard() {
     );
   }
 
-  // ── MAIN DASHBOARD ───────────────────────────────────────────────────────
+  // ── MAIN DASHBOARD ───────────────────────────────────────────────────────────────────────
   const SCHOOL_DAYS_HY = [
     "Երկուշաբթի",
     "Երեքշաբթի",
@@ -2373,54 +2383,112 @@ export default function TeacherDashboard() {
     a.name.localeCompare(b.name, "hy"),
   );
 
+  const TEACHER_NAV: { key: TeacherSection; emoji: string; label: string }[] = [
+    { key: "home",     emoji: "🏠",    label: "Գլխավոր" },
+    { key: "classes",  emoji: "🏫",  label: "Իմ դասարանները" },
+    { key: "subjects", emoji: "📚",   label: "Իմ առարկաները" },
+    { key: "quizzes",  emoji: "📝",  label: "Իմ թեստերը" },
+    { key: "students", emoji: "👨‍🎓", label: "Իմ աշակերտները" },
+    { key: "schedule", emoji: "📅",     label: "Դասացուցակ" },
+    { key: "library",  emoji: "📖",    label: "Գրադարան" },
+    { key: "profile",  emoji: "👤",  label: "Իմ պրոֆիլը" },
+  ];
+
+  const NavBtn = ({ item }: { item: (typeof TEACHER_NAV)[0] }) => (
+    <button
+      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
+        section === item.key
+          ? "bg-primary/20 text-primary border border-primary/20"
+          : "text-muted-foreground hover:text-white hover:bg-white/5"
+      }`}
+    >
+      <span className="text-lg leading-none shrink-0">{item.emoji}</span>
+      <span>{item.label}</span>
+    </button>
+  );
+
   return (
-    <div className="min-h-[100dvh] bg-background text-white">
+    <div className="min-h-[100dvh] bg-background text-white flex">
       <QuickSwitch />
 
-      {/* Header */}
-      <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground mb-0.5">
-            Karhanyan School · myaiteacher
-          </p>
-          <h1 className="text-xl font-bold">
-            Բարի գալուստ, {user?.fullName ?? "…"}
-          </h1>
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        ref={sidebarRef}
+        className={`fixed top-0 left-0 h-full z-50 w-60 bg-card/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0 lg:static lg:z-auto`}
+      >
+        <div className="px-5 py-5 border-b border-white/10">
+          <div className="font-bold text-base bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+            myaiteacher
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5 truncate">{user?.fullName}</div>
         </div>
-        <div className="flex items-center gap-4">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {TEACHER_NAV.map((item) => (
+            <NavBtn key={item.key} item={item} />
+          ))}
+        </nav>
+        <div className="px-3 py-4 border-t border-white/10">
           <button
             onClick={logout}
-            className="text-sm text-destructive hover:text-white transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-muted-foreground hover:text-white hover:bg-white/5 transition-all text-left"
           >
-            Ելք
+            <span className="text-lg">🚪</span>
+            <span>Ելք</span>
           </button>
         </div>
-      </header>
+      </aside>
 
-      <div className="max-w-6xl mx-auto px-6 py-6">
-        {/* Tab bar */}
-        <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto">
-          {(["classes", "schedule", "profile"] as const).map((t) => (
+      {/* Main */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="lg:hidden border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
+          <div className="px-4 py-3.5 flex items-center gap-3">
             <button
-              key={t}
-              onClick={() => setActiveTab(t)}
-              className={`px-5 py-2.5 text-sm font-semibold tracking-widest whitespace-nowrap border-b-2 -mb-px transition-colors ${
-                activeTab === t
-                  ? "border-primary text-white"
-                  : "border-transparent text-muted-foreground hover:text-white"
-              }`}
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Menu"
             >
-              {t === "classes"
-                ? "Իմ դասարանները"
-                : t === "schedule"
-                  ? "Իմ Դասացուցակը"
-                  : "Անձնական տվյալներ"}
+              <div className="space-y-1.5 w-5">
+                <span className="block w-full h-0.5 bg-white rounded" />
+                <span className="block w-full h-0.5 bg-white rounded" />
+                <span className="block w-full h-0.5 bg-white rounded" />
+              </div>
             </button>
-          ))}
-        </div>
+            <div className="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+              myaiteacher
+            </div>
+            <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">
+              {user?.fullName}
+            </div>
+          </div>
+        </header>
 
-        {/* ── CLASSES TAB ── */}
-        {activeTab === "classes" && (
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-5xl mx-auto px-5 sm:px-8 py-8">
+
+            {section === "home" && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
+                <div className="text-8xl">🏠</div>
+                <h2 className="text-2xl font-bold">Գլխավոր</h2>
+                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
+                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
+                  ՇՈՒՏՈՎ
+                </span>
+              </div>
+            )}
+
+            {/* Իմ դասարանները */}
+            {section === "classes" && (
+
           <div>
             {classes.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
@@ -2465,10 +2533,44 @@ export default function TeacherDashboard() {
               </div>
             )}
           </div>
-        )}
+            )}
 
-        {/* ── SCHEDULE TAB ── */}
-        {activeTab === "schedule" && (
+            {section === "subjects" && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
+                <div className="text-8xl">📚</div>
+                <h2 className="text-2xl font-bold">Իմ առարկաները</h2>
+                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
+                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
+                  ՇՈՒՏՈՎ
+                </span>
+              </div>
+            )}
+
+            {section === "quizzes" && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
+                <div className="text-8xl">📝</div>
+                <h2 className="text-2xl font-bold">Իմ թեստերը</h2>
+                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
+                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
+                  ՇՈՒՏՈՎ
+                </span>
+              </div>
+            )}
+
+            {section === "students" && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
+                <div className="text-8xl">👨‍🎓</div>
+                <h2 className="text-2xl font-bold">Իմ աշակերտները</h2>
+                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
+                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
+                  ՇՈՒՏՈՎ
+                </span>
+              </div>
+            )}
+
+            {/* Դասացուցակ */}
+            {section === "schedule" && (
+
           <div>
             {schedule.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
@@ -2551,10 +2653,22 @@ export default function TeacherDashboard() {
               </div>
             )}
           </div>
-        )}
+            )}
 
-        {/* ── PROFILE TAB ── */}
-        {activeTab === "profile" && (
+            {section === "library" && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
+                <div className="text-8xl">📖</div>
+                <h2 className="text-2xl font-bold">Գրադարան</h2>
+                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
+                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
+                  ՇՈՒՏՈՎ
+                </span>
+              </div>
+            )}
+
+            {/* Իմ պրոֆիլը */}
+            {section === "profile" && (
+
           <div className="max-w-xl">
             {!teacherProfile ? (
               <div className="text-center py-16 text-muted-foreground">
@@ -2655,9 +2769,11 @@ export default function TeacherDashboard() {
               </div>
             )}
           </div>
-        )}
+            )}
+
+          </div>
+        </main>
       </div>
     </div>
   );
 }
-
