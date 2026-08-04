@@ -1,0 +1,53 @@
+Read the full current content of artifacts/api-server/src/routes/knowledge-tree.ts
+and the review_schedule schema before changing anything.
+
+## Goal
+Surface a 5th status category, "needs_review" (Մոռացված), in the Knowledge
+Tree, driven by the existing review_schedule.dueAt data — without changing
+any of the existing 4 categories' logic (not_started/in_progress/weak/
+mastered).
+
+## Rule
+A node that is currently "mastered" (masteryScore >= 80, confidenceScore
+>= 50) but whose review_schedule row has dueAt in the past (overdue for
+spaced-repetition review) should be reported as "needs_review" instead of
+"mastered". All other categories are unchanged. A node with no
+review_schedule row at all (never scored, or scored but scheduleReview
+was never called) keeps its current category as-is.
+
+## Step 1 — Extend the query
+Add a LEFT JOIN from knowledgeNodesTable to reviewScheduleTable (on
+knowledgeNodesTable.id = reviewScheduleTable.topicId AND
+reviewScheduleTable.userId = targetUserId), selecting reviewScheduleTable.dueAt.
+Use LEFT JOIN (not inner) since not every node will have a review_schedule
+row yet.
+
+## Step 2 — Update getMasteryLevel
+Change the function signature to also accept `dueAt: Date | null`, and add
+the check: if the node would otherwise be "mastered" AND dueAt is not null
+AND dueAt <= now, return "needs_review" instead. Keep every other branch
+identical to the current logic — paste the current function first, then
+show the diff.
+
+## Step 3 — Update the response shape and recommendations
+Add "needs_review" as a valid masteryLevel value in the mapped response.
+Add a new recommendation type "needs_review" (alongside the existing
+start/review/repeat) — if any needs_review nodes exist, push a
+recommendation like: message: `«${node.topicName}» կարիք ունի կրկնության`
+(use this exact Armenian text, copy-paste it, do not retype).
+
+## Step 4 — Verify with real data
+Query review_schedule for student 93 directly — is there a row with
+dueAt in the past for any of their 3 knowledge_nodes? If not (likely,
+since scoreReview only fires after a quiz and none has been taken on this
+lesson yet), report that clearly, and instead demonstrate the new logic
+by manually inserting a test review_schedule row with a past dueAt for
+one of their mastered-or-not nodes (temporarily, for verification purposes
+only — tell me clearly if you do this so I can decide whether to keep or
+revert it), then hit GET /api/knowledge-tree/15 and paste the response
+showing that node correctly reporting "needs_review".
+
+Clean up any test data you inserted for verification once confirmed,
+unless I tell you to keep it.
+
+Do not touch chat.ts, quizzes.ts, or lessons.ts in this step.
