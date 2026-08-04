@@ -147,7 +147,9 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
 
 // ── GET /api/quizzes ──────────────────────────────────────────────────────────
 // List quizzes for a subject (teacher-owned). Query: ?subjectId=X
-// Returns [{ id, title, status, questionCount, classId, createdAt }], newest first.
+// Returns [{ id, title, status, questionCount, classId, createdAt, sequenceNumber }],
+// newest first. sequenceNumber is stable: earliest-created quiz = 1, next = 2, …
+// (ranked by id ASC within teacherId+subjectId; never changes once assigned).
 router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
   const subjectId = parseInt(String(req.query.subjectId), 10);
   if (isNaN(subjectId)) {
@@ -155,6 +157,7 @@ router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     return;
   }
 
+  // Fetch id-ASC so we can assign stable 1-based sequence numbers.
   const quizzes = await db
     .select({
       id:            quizzesTable.id,
@@ -169,9 +172,13 @@ router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
       eq(quizzesTable.subjectId, subjectId),
       eq(quizzesTable.teacherId, req.userId!)
     ))
-    .orderBy(desc(quizzesTable.createdAt));
+    .orderBy(asc(quizzesTable.id));   // id ASC = creation order for ranking
 
-  res.json(quizzes.map((q) => ({
+  // Assign sequenceNumber (1-based, stable), then re-sort newest-first for display.
+  const ranked = quizzes.map((q, i) => ({ ...q, sequenceNumber: i + 1 }));
+  ranked.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  res.json(ranked.map((q) => ({
     ...q,
     createdAt: q.createdAt.toISOString(),
   })));

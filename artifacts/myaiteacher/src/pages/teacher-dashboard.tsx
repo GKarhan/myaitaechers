@@ -460,6 +460,7 @@ export default function TeacherDashboard() {
   const [courseQuizzes, setCourseQuizzes] = useState<{
     id: number; title: string; status: string;
     questionCount: number; classId: number | null; createdAt: string;
+    sequenceNumber: number;
   }[]>([]);
   const [courseQuizzesLoading, setCourseQuizzesLoading] = useState(false);
   const [quizRefetchTick, setQuizRefetchTick]           = useState(0);
@@ -1029,8 +1030,13 @@ export default function TeacherDashboard() {
                       className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3 hover:border-white/20 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{qz.title}</div>
-                        <div className="text-xs text-muted-foreground">{qz.questionCount} հարց</div>
+                        <div className="flex items-center gap-2">
+                          <span className="shrink-0 text-xs font-mono px-1.5 py-0.5 rounded bg-white/8 border border-white/12 text-white/50">
+                            #{qz.sequenceNumber}
+                          </span>
+                          <span className="font-medium text-sm truncate">{qz.title}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{qz.questionCount} հարց</div>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
                         {STATUS_LABEL[qz.status] ?? qz.status}
