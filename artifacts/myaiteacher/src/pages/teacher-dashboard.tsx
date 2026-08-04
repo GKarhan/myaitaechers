@@ -2391,64 +2391,6 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          {/* Ուսանողներ */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-base">👨‍🎓 Ուսանողներ ({students.length})</h2>
-              <button onClick={() => setShowStudentForm((f) => !f)} className={btnPrimary}>Ավելացնել</button>
-            </div>
-            {showStudentForm && (
-              <form onSubmit={handleAddStudent} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                <h3 className="font-medium text-sm">Նոր Աշակերտ</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="text-xs text-muted-foreground">Անուն Ազգանուն</label>
-                    <input value={studentForm.fullName} onChange={(e) => setStudentForm((f) => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Ashakerty anunny" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Մեյլ</label>
-                    <input type="email" value={(studentForm as any).email} onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value }) as any)} className={inputCls} placeholder="example@mail.com" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Tariq</label>
-                    <input type="number" min="5" max="25" value={(studentForm as any).age} onChange={(e) => setStudentForm((f) => ({ ...f, age: e.target.value }) as any)} className={inputCls} placeholder="14" />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground/60">Նախնային Գաղտնաբառը "student123" կլինի</p>
-                <div className="flex gap-2">
-                  <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>{addStudent.isPending ? "..." : "Պահպանել"}</button>
-                  <button type="button" onClick={() => setShowStudentForm(false)} className={btnOutline}>Չեղարկնել</button>
-                </div>
-              </form>
-            )}
-            <div className="space-y-2">
-              {students.length === 0 && (
-                <p className="text-muted-foreground text-sm py-6 text-center">Աշակերտ Չկա</p>
-              )}
-              {students.map((s) => (
-                <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">{s.fullName}</div>
-                    <div className="text-xs text-muted-foreground">{(s as any).email || s.username}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
-                    <button
-                      onClick={() => {
-                        if (!confirm("Heracel dasaranits?")) return;
-                        removeStudent.mutate(
-                          { classId: selectedClass.id, studentId: s.id },
-                          { onSuccess: () => qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }) }
-                        );
-                      }}
-                      className={btnDanger}
-                    >Հեռացնել</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
           {/* Առարկաներ */}
           <section>
             <div className="flex items-center justify-between mb-4">
@@ -2548,6 +2490,27 @@ export default function TeacherDashboard() {
                 })}
               </div>
             )}
+          </section>
+
+          {/* Ուսանողներ */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-base">👨‍🎓 Ուսանողներ ({students.length})</h2>
+            </div>
+            <div className="space-y-2">
+              {students.length === 0 && (
+                <p className="text-muted-foreground text-sm py-6 text-center">Աշակերտ Չկա</p>
+              )}
+              {students.map((s) => (
+                <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{s.fullName}</div>
+                    <div className="text-xs text-muted-foreground">{(s as any).email || s.username}</div>
+                  </div>
+                  <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* դասացուցակ */}
