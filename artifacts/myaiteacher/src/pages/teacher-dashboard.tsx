@@ -468,6 +468,7 @@ export default function TeacherDashboard() {
   const [courseQuizzesLoading, setCourseQuizzesLoading] = useState(false);
   const [quizRefetchTick, setQuizRefetchTick]           = useState(0);
   const [resultsQuizId,   setResultsQuizId]             = useState<number | null>(null);
+  const [resultsFrom,     setResultsFrom]               = useState<"subject" | "allQuizzes">("subject");
   const [resultsData,     setResultsData]               = useState<{
     assignmentId: number; studentId: number; studentName: string;
     status: string; totalCorrect: number | null; totalQuestions: number | null;
@@ -542,12 +543,16 @@ export default function TeacherDashboard() {
       .finally(() => setResultsLoading(false));
   }, [resultsQuizId]);
 
-  // Restore course view from URL params (e.g. after back-nav from quiz-review/result)
+  // Restore course view or sidebar section from URL params (e.g. after back-nav from quiz-review/result)
   useEffect(() => {
-    const qs = window.location.search;
-    const c = qs.match(/classId=(\d+)/);
-    const s = qs.match(/subjectId=(\d+)/);
-    if (c && s) {
+    const qs  = window.location.search;
+    const c   = qs.match(/classId=(\d+)/);
+    const s   = qs.match(/subjectId=(\d+)/);
+    const sec = qs.match(/[?&]section=([a-zA-Z]+)/);
+    if (sec && sec[1] === "quizzes") {
+      setSection("quizzes");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (c && s) {
       setRestoreClassId(parseInt(c[1], 10));
       setRestoreSubjectId(parseInt(s[1], 10));
       window.history.replaceState({}, "", window.location.pathname);
@@ -1638,7 +1643,7 @@ export default function TeacherDashboard() {
                           </button>
                           {qz.completedCount > 0 && (
                             <button
-                              onClick={() => setResultsQuizId(qz.id)}
+                              onClick={() => { setResultsFrom("subject"); setResultsQuizId(qz.id); }}
                               className="text-xs px-3 py-1.5 rounded-lg bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20 whitespace-nowrap shrink-0"
                             >
                               Արդյունքներ
@@ -2363,7 +2368,7 @@ export default function TeacherDashboard() {
                           </button>
                           {qz.completedCount > 0 && (
                             <button
-                              onClick={() => setResultsQuizId(qz.id)}
+                              onClick={() => { setResultsFrom("allQuizzes"); setResultsQuizId(qz.id); }}
                               className="text-xs px-3 py-1.5 rounded-lg bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20 whitespace-nowrap shrink-0"
                             >
                               Արդյունքներ
@@ -2639,7 +2644,13 @@ export default function TeacherDashboard() {
                             {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
                           </span>
                           <button
-                            onClick={() => { setResultsQuizId(null); setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`); }}
+                            onClick={() => {
+                              const quizEntry = resultsFrom === "allQuizzes" ? allQuizzes.find((q) => q.id === resultsQuizId) : null;
+                              const cId = resultsFrom === "allQuizzes" ? (quizEntry?.classId ?? "") : (selectedClass?.id ?? "");
+                              const sId = resultsFrom === "allQuizzes" ? (quizEntry?.subjectId ?? "") : (selectedCourse?.subjectId ?? "");
+                              setResultsQuizId(null);
+                              setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${cId}&subjectId=${sId}&from=${resultsFrom}`);
+                            }}
                             className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                           >
                             Դիտել

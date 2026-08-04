@@ -23,23 +23,28 @@ export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
   const { token, user } = useAuth();
 
-  // Parse query params — studentId triggers teacher view; classId+subjectId for back nav
-  const { studentId, classId: backClassId, subjectId: backSubjectId } = (() => {
+  // Parse query params — studentId triggers teacher view; classId+subjectId for back nav;
+  // from=subject → back to course view; from=allQuizzes → back to "Իմ թeстеря" section
+  const { studentId, classId: backClassId, subjectId: backSubjectId, backFrom } = (() => {
     const qs = typeof window !== "undefined" ? window.location.search : "";
     const sid  = qs.match(/[?&]studentId=(\d+)/);
     const cid  = qs.match(/[?&]classId=(\d+)/);
     const spid = qs.match(/[?&]subjectId=(\d+)/);
+    const frm  = qs.match(/[?&]from=([a-zA-Z]+)/);
     return {
       studentId:  sid  ? parseInt(sid[1],  10) : null,
       classId:    cid  ? cid[1]  : null,
       subjectId:  spid ? spid[1] : null,
+      backFrom:   frm  ? frm[1]  : null,
     };
   })();
 
   const isTeacherView = studentId !== null && user?.role === "teacher";
 
   const backHref = isTeacherView
-    ? (backClassId && backSubjectId ? `/teacher?classId=${backClassId}&subjectId=${backSubjectId}` : "/teacher")
+    ? (backFrom === "allQuizzes"
+        ? "/teacher?section=quizzes"
+        : (backClassId && backSubjectId ? `/teacher?classId=${backClassId}&subjectId=${backSubjectId}` : "/teacher"))
     : "/dashboard";
   const backLabel = "\u2190 \u0540\u0565\u057f";  // ← Հet
 
