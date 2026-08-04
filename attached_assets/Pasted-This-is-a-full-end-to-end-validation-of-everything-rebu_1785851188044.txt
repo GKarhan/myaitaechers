@@ -1,0 +1,58 @@
+This is a full end-to-end validation of everything rebuilt in Steps 1-5.
+Run each part in order, report results clearly at each stage, and stop
+immediately if anything doesn't match expectations rather than pushing
+through.
+
+## Part A — Delete and recreate a lesson, confirm the tree stays correct
+1. Delete the current lesson (62) for Մաթեմատիկա/course 11/class 26.
+   Query knowledge_nodes for subject 15/student 93 immediately after —
+   should be 0 rows. Hit GET /api/knowledge-tree/15 as student 93 —
+   should show 0 topics.
+2. Create a new lesson for the same course, map it with different real
+   textbook content (pick any section). Query lesson_nodes and
+   knowledge_nodes immediately after mapping — knowledge_nodes should be
+   auto-created (Step 2's eager creation) for student 93, status=
+   not_started, correct lessonNodeId links, no manual intervention.
+   Hit GET /api/knowledge-tree/15 — should show exactly the new lesson's
+   nodes, correct Armenian topicNames, all not_started.
+
+## Part B — Confirm AI lesson does NOT change the tree
+1. Query knowledge_nodes for student 93/subject 15 — record current
+   state (should still be all not_started, no scores).
+2. Drive several real chat turns with student 93 through this new
+   lesson's first node (theory → micro_check → exercise → advance),
+   confirming via lesson_sessions that nodeTeachingStage/
+   nodeConsecutiveCorrect/etc. progress correctly (same as Step 4's
+   verification).
+3. Re-query knowledge_nodes for student 93/subject 15 — must be
+   BYTE-FOR-BYTE IDENTICAL to before the chat turns (still not_started,
+   null scores). Hit GET /api/knowledge-tree/15 again — still all
+   not_started. If anything changed here, STOP and report — it means
+   something still writes to knowledge_nodes from chat.ts.
+
+## Part C — Confirm quiz submission DOES change the tree
+1. Create a quiz from this new lesson's nodes (teacher flow), assign it
+   to student 93.
+2. Submit the quiz as student 93 with a mix of correct/incorrect answers.
+3. Query knowledge_nodes for student 93/subject 15 immediately after —
+   scores/status should now be updated for the nodes covered by the quiz,
+   evidence_events should have new rows. Hit GET /api/knowledge-tree/15 —
+   should reflect the new scores/statuses correctly.
+
+## Part D — Add a second lesson, confirm both show correctly together
+1. Create and map one more lesson for the same course (different content
+   again), without touching the first one from Part A/C.
+2. Query knowledge_nodes for subject 15/student 93 — should now include
+   BOTH lessons' nodes (first lesson's post-quiz state preserved
+   unchanged, second lesson's nodes freshly not_started).
+3. Hit GET /api/knowledge-tree/15 — should show all nodes from both
+   lessons together, correct statuses each, nothing missing, nothing
+   duplicated.
+
+## Final report
+For each of Parts A-D, state clearly: PASS or FAIL, with the real
+query/API evidence supporting it. If everything passes, this confirms
+Steps 1-5 work correctly together as a complete system. If anything
+fails, stop there and report exactly what broke — don't attempt to fix
+it in this same prompt, just report with full evidence so we can decide
+the next step together.
