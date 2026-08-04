@@ -483,12 +483,13 @@ export default function TeacherDashboard() {
     completedCount: number; totalAssigned: number; averageScorePercent: number | null;
   }[]>([]);
   const [allQuizzesLoading, setAllQuizzesLoading] = useState(false);
-  const [homework, setHomework] = useState<{
-    id: number; lessonId: number; lessonTitle: string; studentId: number;
-    studentName: string; title: string; task: string; status: string;
-    score: number | null; answer: string | null; submittedAt: string | null; createdAt: string;
+  const [assignedLessons, setAssignedLessons] = useState<{
+    id: number; title: string; status: string;
+    courseId: number; courseName: string | null;
+    classId: number | null; className: string | null;
+    subjectId: number | null; createdAt: string; assignedAt: string | null;
   }[]>([]);
-  const [homeworkLoading, setHomeworkLoading] = useState(false);
+  const [assignedLessonsLoading, setAssignedLessonsLoading] = useState(false);
   const [books, setBooks] = useState<{
     id: number; name: string; subjectId: number | null; fileSize: number; mimeType: string; uploadedAt: string;
   }[]>([]);
@@ -599,13 +600,13 @@ export default function TeacherDashboard() {
   useEffect(() => {
     if (section !== "home") return;
     let cancelled = false;
-    setHomeworkLoading(true);
+    setAssignedLessonsLoading(true);
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
-    fetch("/api/teacher/homework", { headers: { Authorization: `Bearer ${tok}` } })
+    fetch("/api/teacher/lessons", { headers: { Authorization: `Bearer ${tok}` } })
       .then((r) => r.json())
-      .then((data) => { if (!cancelled && Array.isArray(data)) setHomework(data); })
+      .then((data) => { if (!cancelled && Array.isArray(data)) setAssignedLessons(data); })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setHomeworkLoading(false); });
+      .finally(() => { if (!cancelled) setAssignedLessonsLoading(false); });
     return () => { cancelled = true; };
   }, [section]);
 
@@ -2076,32 +2077,298 @@ export default function TeacherDashboard() {
     );
   }
 
-  // ── CLASS PAGE ──────────────────────────────────────────────────────────────
-  if (mainView === "class" && selectedClass) {
-    const classData = classes.find((c) => c.id === selectedClass.id);
-    const classSubjects: string[] = classData?.assignedSubjects ?? [];
-    const classScheduleEntries = schedule.filter((s) => s.classId === selectedClass.id);
+  // ── MAIN DASHBOARD ───────────────────────────────────────────────────────────────────────
+  const SCHOOL_DAYS_HY = [
+    "Երկուշաբթի",
+    "Երեքշաբթի",
+    "Չորեքշաբթի",
+    "Հինգշաբթի",
+    "Ուրբաթ",
+  ];
+  const sortedTeacherClasses = [...classes].sort((a, b) =>
+    a.name.localeCompare(b.name, "hy"),
+  );
 
-    return (
-      <div className="min-h-[100dvh] bg-background text-white">
-        <QuickSwitch />
-        <header className="border-b border-white/10 px-6 py-4 flex items-center gap-3">
-          <button
-            onClick={() => setMainView("dashboard")}
-            className="text-muted-foreground hover:text-white text-sm transition-colors"
-          >
-            ← Վահանակ
-          </button>
-          <div>
-            <h1 className="text-lg font-bold">{selectedClass.name}</h1>
-            {selectedClass.grade && (
-              <p className="text-xs text-muted-foreground">{selectedClass.grade}</p>
-            )}
+  const classData = selectedClass ? classes.find((c) => c.id === selectedClass.id) : null;
+  const classSubjects: string[] = (classData as any)?.assignedSubjects ?? [];
+  const classScheduleEntries = selectedClass ? schedule.filter((s) => s.classId === selectedClass.id) : [];
+
+  const TEACHER_NAV: { key: TeacherSection; emoji: string; label: string }[] = [
+    { key: "home",     emoji: "🏠",    label: "Գլխավոր" },
+    { key: "classes",  emoji: "🏫",  label: "Իմ դասարանները" },
+    { key: "quizzes",  emoji: "📝",  label: "Իմ թեստերը" },
+    { key: "schedule", emoji: "📅",     label: "Դասացուցակ" },
+    { key: "library",  emoji: "📖",    label: "Գրադարան" },
+    { key: "profile",  emoji: "👤",  label: "Իմ պրոֆիլը" },
+  ];
+
+  const NavBtn = ({ item }: { item: (typeof TEACHER_NAV)[0] }) => (
+    <button
+      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
+        section === item.key
+          ? "bg-primary/20 text-primary border border-primary/20"
+          : "text-muted-foreground hover:text-white hover:bg-white/5"
+      }`}
+    >
+      <span className="text-lg leading-none shrink-0">{item.emoji}</span>
+      <span>{item.label}</span>
+    </button>
+  );
+
+  return (
+    <div className="min-h-[100dvh] bg-background text-white flex">
+      <QuickSwitch />
+
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        ref={sidebarRef}
+        className={`fixed top-0 left-0 h-full z-50 w-60 bg-card/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0 lg:static lg:z-auto`}
+      >
+        <div className="px-5 py-5 border-b border-white/10">
+          <div className="font-bold text-base bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+            myaiteacher
           </div>
-          <span className="ml-auto text-sm text-muted-foreground">{user?.fullName}</span>
+          <div className="text-xs text-muted-foreground mt-0.5 truncate">{user?.fullName}</div>
+        </div>
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {TEACHER_NAV.map((item) => (
+            <NavBtn key={item.key} item={item} />
+          ))}
+        </nav>
+        <div className="px-3 py-4 border-t border-white/10">
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-muted-foreground hover:text-white hover:bg-white/5 transition-all text-left"
+          >
+            <span className="text-lg">🚪</span>
+            <span>Ելք</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="lg:hidden border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
+          <div className="px-4 py-3.5 flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Menu"
+            >
+              <div className="space-y-1.5 w-5">
+                <span className="block w-full h-0.5 bg-white rounded" />
+                <span className="block w-full h-0.5 bg-white rounded" />
+                <span className="block w-full h-0.5 bg-white rounded" />
+              </div>
+            </button>
+            <div className="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+              myaiteacher
+            </div>
+            <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">
+              {user?.fullName}
+            </div>
+          </div>
         </header>
 
-        <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-5xl mx-auto px-5 sm:px-8 py-8">
+
+            {section === "home" && (
+              <div className="space-y-8">
+                <h1 className="text-xl font-bold">Գլխավոր</h1>
+
+                {/* Հանձնարարված դասերը */}
+                <section>
+                  <h2 className="text-base font-semibold text-white/90 mb-4">📋 Հանձնարարված դասերը</h2>
+                  {assignedLessonsLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : assignedLessons.length === 0 ? (
+                    <p className="text-sm text-muted-foreground/60 py-3">Դաս չկա</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {assignedLessons.map((ls) => {
+                        const SL: Record<string,string> = { draft: "Սևagir", assigned: "Հandznararvats", active: "Aktiv", completed: "Avartvel" };
+                        const SC: Record<string,string> = { draft: "text-muted-foreground border-white/10 bg-white/5", assigned: "text-amber-400 border-amber-400/30 bg-amber-400/10", active: "text-teal-400 border-teal-400/30 bg-teal-400/10", completed: "text-green-400 border-green-400/30 bg-green-400/10" };
+                        return (
+                          <div key={ls.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{ls.title}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5">{ls.courseName ?? "—"}{ls.className ? ` · ${ls.className}` : ""}</div>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${SC[ls.status] ?? "text-muted-foreground border-white/10 bg-white/5"}`}>
+                              {SL[ls.status] ?? ls.status}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* Հանձնարարված թեստերը */}
+                <section>
+                  <h2 className="text-base font-semibold text-white/90 mb-4">📝 Հանձնարարված թեստերը</h2>
+                  {allQuizzesLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : allQuizzes.filter((q) => q.status !== "DRAFT").length === 0 ? (
+                    <p className="text-sm text-muted-foreground/60 py-3">Ուղարկված թեստ չկա</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {allQuizzes.filter((q) => q.status !== "DRAFT").slice(0, 10).map((qz) => {
+                        const SL: Record<string, string> = { GENERATED: "Պատրաստ", ASSIGNED: "Ուղարկված", CLOSED: "Փակված" };
+                        const SC: Record<string, string> = { GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10", ASSIGNED: "text-teal-400 border-teal-400/30 bg-teal-400/10", CLOSED: "text-red-400/70 border-red-400/20 bg-red-400/5" };
+                        return (
+                          <div key={qz.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{qz.title}</div>
+                              {qz.className && <div className="text-xs text-muted-foreground mt-0.5">{qz.className}</div>}
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${SC[qz.status] ?? "text-muted-foreground border-white/10 bg-white/5"}`}>
+                              {SL[qz.status] ?? qz.status}
+                            </span>
+                            {qz.totalAssigned > 0 && (
+                              <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                                {qz.completedCount}/{qz.totalAssigned}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* դասացուցակ */}
+                <section>
+                  <h2 className="text-base font-semibold text-white/90 mb-4">📅 Դասացուցակ</h2>
+                  {schedule.length === 0 ? (
+                    <p className="text-sm text-muted-foreground/60 py-3">դասացուցակ դեր սահմանված չէ</p>
+                  ) : (
+                    <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-white/5 border-b border-white/10">
+                              <th className="text-left px-4 py-3 text-muted-foreground font-medium min-w-[130px]">Or</th>
+                              {sortedTeacherClasses.map((c) => (
+                                <th key={c.id} className="text-left px-3 py-3 text-muted-foreground font-medium min-w-[140px] border-l border-white/5">{c.name}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {SCHOOL_DAYS_HY.map((day, di) => (
+                              <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
+                                <td className="px-4 py-3 font-medium text-white/80 align-top whitespace-nowrap">{day}</td>
+                                {sortedTeacherClasses.map((c) => {
+                                  const entries = schedule
+                                    .filter((s) => s.day === day && s.classId === c.id)
+                                    .sort((a, b) => ((a as any).startTime || a.time).localeCompare((b as any).startTime || b.time));
+                                  return (
+                                    <td key={c.id} className="px-3 py-2 align-top border-l border-white/5">
+                                      {entries.length === 0 ? <span className="text-white/15">—</span> : (
+                                        <div className="flex flex-col gap-1">
+                                          {entries.map((e) => (
+                                            <div key={e.id} className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#14B8A6]/10 border border-[#14B8A6]/20">
+                                              <span className="text-white/85 truncate font-medium">{e.subject}</span>
+                                              <span className="text-[#14B8A6] font-mono text-[10px] shrink-0">
+                                                {(e as any).startTime && (e as any).endTime
+                                                  ? `${(e as any).startTime}–${(e as any).endTime}`
+                                                  : e.time}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
+
+            {/* Իմ դասարանները */}
+            {section === "classes" && mainView !== "class" && (
+
+          <div>
+            {classes.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                <div className="text-5xl mb-4">📚</div>
+                <p className="text-sm">Դասարանի ադմինի կողմից նշանակված չի</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {classes.map((c) => (
+                  <div
+                    key={c.id}
+                    className="bg-card/60 border border-white/10 rounded-2xl p-6 flex flex-col gap-4 hover:border-white/20 hover:bg-card/80 transition-all"
+                  >
+                    <div className="text-4xl">📚</div>
+                    <div className="flex-1">
+                      <div className="font-bold text-xl mb-1">{c.name}</div>
+                      {c.grade && (
+                        <div className="text-sm text-muted-foreground mb-2">
+                          {c.grade}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        👨‍🎓 {(c as any).studentCount ?? 0} Աշակերտ
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedClass({
+                          id: c.id,
+                          name: c.name,
+                          grade: c.grade,
+                        });
+                        setClassTab("subjects");
+                        setMainView("class");
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
+                    >
+                      ԴԻՏԵԼ
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+            )}
+
+            {section === "classes" && mainView === "class" && selectedClass && (
+                <div className="space-y-8">
+                  {/* Back breadcrumb */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setMainView("dashboard")}
+                      className="text-muted-foreground hover:text-white text-sm transition-colors"
+                    >
+                      ← Իմ դասարանները
+                    </button>
+                    <span className="text-muted-foreground/40">/</span>
+                    <span className="font-medium text-white">{selectedClass.name}</span>
+                  </div>
 
           {/* Ակնադրություն */}
           <div className="bg-card/60 border border-white/10 rounded-2xl p-5 flex flex-wrap items-center gap-6">
@@ -2285,7 +2552,7 @@ export default function TeacherDashboard() {
 
           {/* դասացուցակ */}
           <section>
-            <h2 className="font-semibold text-base mb-4">📅 դասացուցակ</h2>
+            <h2 className="font-semibold text-base mb-4">📅 Դասացուցակ</h2>
             {classScheduleEntries.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">
                 <div className="text-5xl mb-3">📅</div>
@@ -2319,289 +2586,12 @@ export default function TeacherDashboard() {
             )}
           </section>
 
-        </div>
-      </div>
-    );
-  }
-
-  // ── MAIN DASHBOARD ───────────────────────────────────────────────────────────────────────
-  const SCHOOL_DAYS_HY = [
-    "Երկուշաբթի",
-    "Երեքշաբթի",
-    "Չորեքշաբթի",
-    "Հինգշաբթի",
-    "Ուրբաթ",
-  ];
-  const sortedTeacherClasses = [...classes].sort((a, b) =>
-    a.name.localeCompare(b.name, "hy"),
-  );
-
-  const TEACHER_NAV: { key: TeacherSection; emoji: string; label: string }[] = [
-    { key: "home",     emoji: "🏠",    label: "Գլխավոր" },
-    { key: "classes",  emoji: "🏫",  label: "Իմ դասարանները" },
-    { key: "quizzes",  emoji: "📝",  label: "Իմ թեստերը" },
-    { key: "schedule", emoji: "📅",     label: "Դասացուցակ" },
-    { key: "library",  emoji: "📖",    label: "Գրադարան" },
-    { key: "profile",  emoji: "👤",  label: "Իմ պրոֆիլը" },
-  ];
-
-  const NavBtn = ({ item }: { item: (typeof TEACHER_NAV)[0] }) => (
-    <button
-      onClick={() => { setSection(item.key); setSidebarOpen(false); }}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
-        section === item.key
-          ? "bg-primary/20 text-primary border border-primary/20"
-          : "text-muted-foreground hover:text-white hover:bg-white/5"
-      }`}
-    >
-      <span className="text-lg leading-none shrink-0">{item.emoji}</span>
-      <span>{item.label}</span>
-    </button>
-  );
-
-  return (
-    <div className="min-h-[100dvh] bg-background text-white flex">
-      <QuickSwitch />
-
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        ref={sidebarRef}
-        className={`fixed top-0 left-0 h-full z-50 w-60 bg-card/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-transform duration-200 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 lg:static lg:z-auto`}
-      >
-        <div className="px-5 py-5 border-b border-white/10">
-          <div className="font-bold text-base bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-            myaiteacher
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5 truncate">{user?.fullName}</div>
-        </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {TEACHER_NAV.map((item) => (
-            <NavBtn key={item.key} item={item} />
-          ))}
-        </nav>
-        <div className="px-3 py-4 border-t border-white/10">
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-muted-foreground hover:text-white hover:bg-white/5 transition-all text-left"
-          >
-            <span className="text-lg">🚪</span>
-            <span>Ելք</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="lg:hidden border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
-          <div className="px-4 py-3.5 flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-              aria-label="Menu"
-            >
-              <div className="space-y-1.5 w-5">
-                <span className="block w-full h-0.5 bg-white rounded" />
-                <span className="block w-full h-0.5 bg-white rounded" />
-                <span className="block w-full h-0.5 bg-white rounded" />
-              </div>
-            </button>
-            <div className="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-              myaiteacher
-            </div>
-            <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">
-              {user?.fullName}
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-5xl mx-auto px-5 sm:px-8 py-8">
-
-            {section === "home" && (
-              <div className="space-y-8">
-                <h1 className="text-xl font-bold">Գլխավոր</h1>
-
-                {/* Հանգնարատված դասերը */}
-                <section>
-                  <h2 className="text-base font-semibold text-white/90 mb-4">📋 Հանգնարատված դասերը</h2>
-                  {homeworkLoading ? (
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : homework.length === 0 ? (
-                    <p className="text-sm text-muted-foreground/60 py-3">Հանգնարատված դաս չկա</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {homework.map((hw) => (
-                        <div key={hw.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">{hw.title}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">{hw.lessonTitle} · {hw.studentName}</div>
-                          </div>
-                          <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                            hw.status === "COMPLETED" ? "text-teal-400 border-teal-400/30 bg-teal-400/10"
-                            : hw.status === "SUBMITTED" ? "text-amber-400 border-amber-400/30 bg-amber-400/10"
-                            : "text-muted-foreground border-white/10 bg-white/5"
-                          }`}>
-                            {hw.status === "COMPLETED" ? "Ավարտվել ե" : hw.status === "SUBMITTED" ? "Ներկայված ե" : "Սկիզբ"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                {/* Հանգնարատված թեստերը */}
-                <section>
-                  <h2 className="text-base font-semibold text-white/90 mb-4">📝 Հանգնարատված թեստերը</h2>
-                  {allQuizzesLoading ? (
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : allQuizzes.filter((q) => q.status !== "DRAFT").length === 0 ? (
-                    <p className="text-sm text-muted-foreground/60 py-3">Ուղարկված թեստ չկա</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {allQuizzes.filter((q) => q.status !== "DRAFT").slice(0, 10).map((qz) => {
-                        const SL: Record<string, string> = { GENERATED: "Պատրաստ", ASSIGNED: "Ուղարկված", CLOSED: "Փակված" };
-                        const SC: Record<string, string> = { GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10", ASSIGNED: "text-teal-400 border-teal-400/30 bg-teal-400/10", CLOSED: "text-red-400/70 border-red-400/20 bg-red-400/5" };
-                        return (
-                          <div key={qz.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate">{qz.title}</div>
-                              {qz.className && <div className="text-xs text-muted-foreground mt-0.5">{qz.className}</div>}
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${SC[qz.status] ?? "text-muted-foreground border-white/10 bg-white/5"}`}>
-                              {SL[qz.status] ?? qz.status}
-                            </span>
-                            {qz.totalAssigned > 0 && (
-                              <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                                {qz.completedCount}/{qz.totalAssigned}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
-                {/* դասացուցակ */}
-                <section>
-                  <h2 className="text-base font-semibold text-white/90 mb-4">📅 դասացուցակ</h2>
-                  {schedule.length === 0 ? (
-                    <p className="text-sm text-muted-foreground/60 py-3">դասացուցակ դեր սահմանված չէ</p>
-                  ) : (
-                    <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-white/5 border-b border-white/10">
-                              <th className="text-left px-4 py-3 text-muted-foreground font-medium min-w-[130px]">Or</th>
-                              {sortedTeacherClasses.map((c) => (
-                                <th key={c.id} className="text-left px-3 py-3 text-muted-foreground font-medium min-w-[140px] border-l border-white/5">{c.name}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {SCHOOL_DAYS_HY.map((day, di) => (
-                              <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
-                                <td className="px-4 py-3 font-medium text-white/80 align-top whitespace-nowrap">{day}</td>
-                                {sortedTeacherClasses.map((c) => {
-                                  const entries = schedule
-                                    .filter((s) => s.day === day && s.classId === c.id)
-                                    .sort((a, b) => ((a as any).startTime || a.time).localeCompare((b as any).startTime || b.time));
-                                  return (
-                                    <td key={c.id} className="px-3 py-2 align-top border-l border-white/5">
-                                      {entries.length === 0 ? <span className="text-white/15">—</span> : (
-                                        <div className="flex flex-col gap-1">
-                                          {entries.map((e) => (
-                                            <div key={e.id} className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#14B8A6]/10 border border-[#14B8A6]/20">
-                                              <span className="text-white/85 truncate font-medium">{e.subject}</span>
-                                              <span className="text-[#14B8A6] font-mono text-[10px] shrink-0">
-                                                {(e as any).startTime && (e as any).endTime
-                                                  ? `${(e as any).startTime}–${(e as any).endTime}`
-                                                  : e.time}
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </section>
-              </div>
-            )}
-
-            {/* Իմ դասարանները */}
-            {section === "classes" && (
-
-          <div>
-            {classes.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <div className="text-5xl mb-4">📚</div>
-                <p className="text-sm">Դասարանի ադմինի կողմից նշանակված չի</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {classes.map((c) => (
-                  <div
-                    key={c.id}
-                    className="bg-card/60 border border-white/10 rounded-2xl p-6 flex flex-col gap-4 hover:border-white/20 hover:bg-card/80 transition-all"
-                  >
-                    <div className="text-4xl">📚</div>
-                    <div className="flex-1">
-                      <div className="font-bold text-xl mb-1">{c.name}</div>
-                      {c.grade && (
-                        <div className="text-sm text-muted-foreground mb-2">
-                          {c.grade}
-                        </div>
-                      )}
-                      <div className="text-xs text-muted-foreground">
-                        👨‍🎓 {(c as any).studentCount ?? 0} Աշակերտ
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setSelectedClass({
-                          id: c.id,
-                          name: c.name,
-                          grade: c.grade,
-                        });
-                        setClassTab("subjects");
-                        setMainView("class");
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
-                    >
-                      ԴԻՏԵԼ
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
             )}
 
             {section === "quizzes" && (
               <div>
-                <h1 className="text-xl font-bold mb-6">իմ թեստերը</h1>
+                <h1 className="text-xl font-bold mb-6">Իմ թեստերը</h1>
                 {allQuizzesLoading ? (
                   <div className="flex items-center gap-2 text-muted-foreground text-sm py-6">
                     <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />

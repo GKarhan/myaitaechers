@@ -1,0 +1,55 @@
+Read the full current content of teacher-dashboard.tsx first, paste it back
+before changing anything.
+
+## Bug 1 — Sidebar disappears on the class detail page
+Screenshot evidence: when a teacher clicks "Դիտել" on a class (from Իմ
+դասարանները) and lands on the class detail page (showing Ուսանողներ/
+Առարկաներ/Դասացուցակ), the left sidebar is completely gone — the page takes
+full width with just a back arrow at the top. Every other section (Գլխավոր,
+Իմ դասարանները's class list, Իմ թեստերը, etc.) correctly keeps the sidebar
+visible.
+
+Fix: the class detail view must render INSIDE the same persistent sidebar
+layout as every other section — it should be a state/view within "Իմ
+դասարանները", not a separate full-page navigation that escapes the sidebar
+wrapper. Find why this specific view was structured differently (likely it's
+using its own top-level layout/return instead of being nested inside the
+shared sidebar shell component) and fix it so the sidebar is always present,
+on every section without exception.
+
+## Bug 2 — Գլխավոր (home) shows empty despite real assigned lessons/quizzes
+existing
+Screenshot evidence: "Հանձնարարված դասեր" shows "Հանձնարարված դաս չկա" and
+"Հանձնարարված թեստերը" shows "Ուղարկված թեստ չկա" — but we know for a fact
+a quiz was created and assigned (visible working correctly in Իմ թեստերը),
+and the teacher has assigned lessons in at least one class.
+
+Requirements for the home page:
+a) Հանձնարարված դասերը — show lessons assigned TODAY (or however "assigned
+   today" is best determined from existing lesson-assignment data) across ALL
+   of this teacher's classes, not just one. Find the actual data source
+   (whatever endpoint the per-class Դասեր list already successfully uses) and
+   aggregate across classes — check why the home page's fetch currently
+   returns nothing when real data exists; likely it's calling the wrong
+   endpoint, wrong teacherId, or filtering by a subjectId/classId that isn't
+   set at the home-page level (since home is meant to be cross-class).
+b) Հանձնարարված թեստերը — show how many quizzes are currently assigned
+   (status = ASSIGNED, not DRAFT) across all classes, reusing the GET
+   /api/quizzes/all endpoint already built for Իմ թեստերը (Step 4 from the
+   previous prompt) — confirm it's actually being called here and debug why
+   it currently shows empty if it is.
+c) Դասացուցակ — same investigation: if a real schedule exists for any class,
+   it should show here (today's schedule across all classes, or general
+   summary); if genuinely no schedule data exists anywhere in the system yet,
+   confirm that with real evidence (query the schedule table/endpoint and
+   show it's actually empty) before leaving the placeholder as "դասացուցակ
+   դեռ սահմանված չէ" — don't assume it's empty without checking.
+
+For each of a/b/c, paste back: the actual API call being made, its real
+response (via a live test, not assumption), and the fix if the response was
+correct but the rendering was wrong, or if the wrong endpoint/filter was being
+used.
+
+Paste back all changed code, confirm typecheck passes, then manually verify:
+sidebar is visible on the class detail page, and Գլխավոր shows the real
+assigned lesson/quiz/schedule counts that we know exist.

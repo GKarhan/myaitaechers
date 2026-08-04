@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable, teacherClassSubjectsTable, subjectsTable } from "@workspace/db";
-import { eq, and, inArray, avg, count } from "drizzle-orm";
+import { eq, and, inArray, avg, count, desc } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -383,6 +383,39 @@ router.get("/teacher/classes/:classId/homework", requireTeacher, async (req: Aut
     .where(inArray(homeworkTable.lessonId, lessonIds));
 
   res.json(hw);
+});
+
+
+// ── GET /api/teacher/lessons ─────────────────────────────────────────────────
+// Returns all lessons created by this teacher across all courses/classes,
+// joined with course name and class name, ordered newest first.
+router.get("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) => {
+  const rows = await db
+    .select({
+      id:         lessonsTable.id,
+      title:      lessonsTable.title,
+      status:     lessonsTable.status,
+      courseId:   lessonsTable.courseId,
+      courseName: coursesTable.name,
+      classId:    classesTable.id,
+      className:  classesTable.name,
+      subjectId:  lessonsTable.subjectId,
+      createdAt:  lessonsTable.createdAt,
+      assignedAt: lessonsTable.assignedAt,
+    })
+    .from(lessonsTable)
+    .leftJoin(coursesTable, eq(coursesTable.id, lessonsTable.courseId))
+    .leftJoin(classesTable, eq(classesTable.id, coursesTable.classId))
+    .where(eq(lessonsTable.teacherId, req.userId!))
+    .orderBy(desc(lessonsTable.createdAt));
+
+  res.json(rows.map((r) => ({
+    ...r,
+    courseName: r.courseName ?? null,
+    className:  r.className  ?? null,
+    createdAt:  r.createdAt.toISOString(),
+    assignedAt: r.assignedAt ? r.assignedAt.toISOString() : null,
+  })));
 });
 
 router.get("/teacher/homework", requireTeacher, async (req: AuthRequest, res) => {
