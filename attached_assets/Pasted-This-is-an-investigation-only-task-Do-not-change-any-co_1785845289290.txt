@@ -1,0 +1,52 @@
+This is an investigation-only task. Do not change any code yet. I need a
+complete, evidence-based picture of how a "knowledge node" is created and
+stored, end to end.
+
+## 1. Full schema dump
+Paste the complete Drizzle schema definitions (every column, type,
+nullable/not-null, default, FK, onDelete behavior) for:
+- lessonNodesTable
+- knowledgeNodesTable
+- lesson_node_dependencies (or whatever the actual dependency table is
+  called)
+- Any other table that references either of the above (search the whole
+  schema file for "lessonNodeId", "lessonId", "knowledgeNodeId")
+
+## 2. Where nodes get created — trace the real code path
+Find and paste the exact code (not a description) for:
+- The lesson-mapping flow (lesson-mapping.ts or wherever it lives) that
+  creates lessonNodesTable rows when a teacher maps a lesson — show what
+  fields it sets and where the values come from (AI-generated? teacher
+  input? computed?)
+- Whatever code creates the corresponding knowledgeNodesTable row(s) for
+  each lessonNodesTable row — is this done in the same request/transaction
+  as the lesson mapping, or a separate step/trigger/cron? Paste the exact
+  function.
+
+## 3. Real example, live data
+Pick the one truly active lesson for subject 15 (the one with 3 real
+nodes). Query and paste:
+- The full lessonNodesTable rows for its 3 nodes (every column, real
+  values)
+- The full knowledgeNodesTable rows linked to those 3 (every column, real
+  values, including masteryScore/confidenceScore/status/isProvisional/
+  retentionScore/lessonNodeId/topicName/subjectId/userId — whatever exists)
+- If knowledgeNodesTable rows are per-student (one row per student per
+  node) or shared/template (one row per node regardless of student) —
+  show evidence either way (e.g. does a row have a userId/studentId
+  column? if so, are there multiple rows for the same lessonNodeId, one
+  per student?)
+
+## 4. What connects a node to evidence
+Paste the evidence_events table schema, and show a real example of an
+evidence_events row (if any exist yet for this lesson/student) and exactly
+which knowledgeNodesTable row it updates and how (the actual scoring.ts
+function that does this update — paste it).
+
+## 5. Summary table
+End with a plain markdown table, one row per node-related concept
+(lesson_node, knowledge_node, evidence_event, dependency), columns: table
+name, one-line purpose, key fields, what creates it, what reads/updates it.
+
+No fixes, no opinions — just the real schema, real code, and real current
+data, so we have solid ground before deciding what to change next.
