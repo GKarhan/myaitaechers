@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation as useWouterLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 
 type QuestionResult = {
@@ -21,7 +21,18 @@ type MyResult = {
 
 export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const [wLocation] = useWouterLocation();
+
+  // Parse ?studentId=X from the query string
+  const studentId = (() => {
+    const qs = typeof window !== "undefined" ? window.location.search : "";
+    const m  = qs.match(/[?&]studentId=(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  })();
+
+  const isTeacherView = studentId !== null && user?.role === "TEACHER";
+
   const [result, setResult] = useState<MyResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState<string | null>(null);
@@ -29,9 +40,14 @@ export default function QuizResult() {
   useEffect(() => {
     if (!token || !id) return;
     setLoading(true);
-    fetch(`/api/quizzes/${id}/my-result`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    setResult(null);
+    setError(null);
+
+    const url = isTeacherView
+      ? `/api/quizzes/${id}/results/${studentId}`
+      : `/api/quizzes/${id}/my-result`;
+
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
         if (!r.ok) throw new Error("result_not_found");
         return r.json();
@@ -39,7 +55,11 @@ export default function QuizResult() {
       .then((data: MyResult) => setResult(data))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [token, id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, id, studentId]);
+
+  const backHref = isTeacherView ? "/" : "/dashboard";
+  const backLabel = isTeacherView ? "\u2190 \u0540\u0565\u057f" : "\u2190 \u0540\u0565\u057f";
 
   if (loading) {
     return (
@@ -54,7 +74,7 @@ export default function QuizResult() {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
         <div className="text-5xl">📋</div>
         <p className="text-muted-foreground text-sm">Ավարտված արդյունքներ չկա</p>
-        <Link href="/dashboard" className="text-primary hover:underline text-sm">← Հետ</Link>
+        <Link href={backHref} className="text-primary hover:underline text-sm">{backLabel}</Link>
       </div>
     );
   }
@@ -71,10 +91,10 @@ export default function QuizResult() {
       {/* Header */}
       <div className="sticky top-0 z-10 border-b border-white/10 bg-background/90 backdrop-blur-sm px-4 py-3 flex items-center gap-4">
         <Link
-          href="/dashboard"
+          href={backHref}
           className="text-sm text-muted-foreground hover:text-white transition-colors"
         >
-          ← Հետ
+          {backLabel}
         </Link>
         <div className="flex-1 min-w-0 text-center">
           <h1 className="text-sm font-semibold truncate">Արդյունքներ</h1>

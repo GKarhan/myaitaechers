@@ -23,6 +23,7 @@ const router = Router();
 router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
   const {
     subjectId,
+    classId,
     sourceBookId,
     lessonIds,   // array of lesson ids — route maps to nodeIds internally
     nodeIds: explicitNodeIds,
@@ -31,6 +32,7 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     title,
   } = req.body as {
     subjectId?: number;
+    classId?: number;
     sourceBookId?: number;
     lessonIds?: number[];
     nodeIds?: number[];
@@ -74,6 +76,7 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     .values({
       teacherId:    req.userId!,
       subjectId,
+      classId:      classId ?? null,
       sourceBookId: sourceBookId ?? null,
       nodeIds:      resolvedNodeIds,
       title:        quizTitle,
@@ -306,6 +309,79 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
     scorePercent:   r.scorePercent   ?? null,
     completedAt:    r.completedAt?.toISOString() ?? null,
   })));
+});
+
+// ── GET /api/quizzes/:id/results/:studentId ───────────────────────────────────
+// Teacher: full per-question result for a specific student's completed attempt.
+// Same shape as /my-result but scoped to the given studentId.
+router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRequest, res) => {
+  const quizId    = parseInt(String(req.params.id),        10);
+  const studentId = parseInt(String(req.params.studentId), 10);
+  if (isNaN(quizId) || isNaN(studentId)) {
+    res.status(400).json({ error: "Invalid id" }); return;
+  }
+
+  // Verify teacher owns this quiz
+  const [quiz] = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
+    .limit(1);
+  if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
+
+  // Find the student's completed assignment
+  const [assignment] = await db
+    .select()
+    .from(quizAssignmentsTable)
+    .where(and(
+      eq(quizAssignmentsTable.quizId,     quizId),
+      eq(quizAssignmentsTable.studentId,  studentId),
+      eq(quizAssignmentsTable.status,     "COMPLETED")
+    ))
+    .limit(1);
+  if (!assignment) {
+    res.status(404).json({ error: "No completed attempt found for this student" }); return;
+  }
+
+  const [attempt] = await db
+    .select()
+    .from(quizAttemptsTable)
+    .where(eq(quizAttemptsTable.quizAssignmentId, assignment.id))
+    .limit(1);
+  if (!attempt) {
+    res.status(404).json({ error: "Attempt record not found" }); return;
+  }
+
+  const answers = await db
+    .select({
+      questionId:          quizQuestionsTable.id,
+      questionText:        quizQuestionsTable.questionText,
+      options:             quizQuestionsTable.options,
+      correctOptionIndex:  quizQuestionsTable.correctOptionIndex,
+      selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
+      isCorrect:           quizAnswersTable.isCorrect,
+      sequence:            quizQuestionsTable.sequence,
+    })
+    .from(quizAnswersTable)
+    .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
+    .where(eq(quizAnswersTable.attemptId, attempt.id))
+    .orderBy(asc(quizQuestionsTable.sequence));
+
+  res.json({
+    studentId,
+    totalCorrect:   attempt.totalCorrect,
+    totalQuestions: attempt.totalQuestions,
+    scorePercent:   attempt.scorePercent,
+    questions:      answers.map((a) => ({
+      questionId:          a.questionId,
+      questionText:        a.questionText,
+      options:             a.options,
+      correctOptionIndex:  a.correctOptionIndex,
+      selectedOptionIndex: a.selectedOptionIndex,
+      isCorrect:           a.isCorrect,
+      sequence:            a.sequence,
+    })),
+  });
 });
 
 // ── GET /api/quizzes/:id/my-result ────────────────────────────────────────────

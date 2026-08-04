@@ -1,0 +1,51 @@
+Read the full current code of these first, paste back before changing:
+- teacher-dashboard.tsx's Թեստեր list row (button/badge rendering) and its
+  handleCreateQuiz function
+- routes/quizzes.ts's POST /:id/assign endpoint
+- quiz-review.tsx's assign-to-class modal
+- quiz-result.tsx (the student result page)
+
+## Fix 1 — Add working "Ուղարկել" button to the Թեստեր list row
+This was requested before but is missing. In teacher-dashboard.tsx: when a
+quiz's status is NOT "ASSIGNED" (shown as "Պատրաստ" badge), add a clickable
+"Ուղարկել" button next to it. Since the quiz already has a classId set at
+creation (see Fix 2 below — it's the class the teacher was viewing when they
+created it), clicking "Ուղարկել" should call POST /api/quizzes/:id/assign with
+that already-known classId directly — no class-picker popup needed here (there
+is only ever one correct class in this context). On success, update the row's
+status to "ASSIGNED" locally so the badge changes to "Ուղարկված" and the
+button disappears, same as the rest of the row already does after other
+actions.
+
+## Fix 2 — Confirm classId is set correctly at quiz creation
+Verify that when a quiz is created from within a specific class's subject
+page, quizzesTable.classId is populated with that class's id at creation time
+(check handleCreateQuiz's POST /api/quizzes body — does it include classId?
+If not, add it). This is what Fix 1 relies on.
+
+Separately: quiz-review.tsx's assign modal (the one that pops up asking
+"ընտրեք դասարանը") should remain as-is for cases where the teacher opens the
+full review page and wants to assign/reassign to a possibly different class —
+that flow is still useful there. Fix 1 just adds a faster shortcut directly
+from the list row using the already-known class, it doesn't remove the
+existing modal flow.
+
+## Fix 3 — Teacher can view a specific student's actual answers
+Add GET /api/quizzes/:id/results/:studentId (requireTeacher, verify the quiz
+belongs to req.userId and the studentId has a completed attempt for it).
+Return the same per-question shape as GET /api/quizzes/:id/my-result
+(questionText, options, correctOptionIndex, selectedOptionIndex, isCorrect),
+scoped to that student's attempt.
+
+In the "Արդյունքներ" modal (teacher-dashboard.tsx or wherever it's rendered),
+make each completed student's row clickable/add a small "Դիտել" link that
+navigates to a teacher-facing view of quiz-result.tsx showing that student's
+actual answers — reuse the existing quiz-result.tsx component's rendering
+(the same green/red highlighted-options layout from the student view), just
+sourced from this new endpoint instead of /my-result. Simplest approach: add
+an optional studentId param support to quiz-result.tsx's route (e.g.
+/quiz/:id/result?studentId=X for teacher view vs /quiz/:id/result for the
+student's own), fetching from the appropriate endpoint based on whether
+studentId is present and req role is teacher.
+
+Paste back all changed/new code, then confirm typecheck passes.

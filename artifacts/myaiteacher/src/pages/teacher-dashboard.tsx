@@ -529,6 +529,7 @@ export default function TeacherDashboard() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
         body: JSON.stringify({
           subjectId:      selectedCourse?.subjectId ?? undefined,
+          classId:        selectedClass?.id ?? undefined,
           sourceBookId:   quizBookId ?? undefined,
           lessonIds:      quizLessonIds,
           questionCount:  quizCount,
@@ -1066,6 +1067,26 @@ export default function TeacherDashboard() {
                         <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                           {qz.completedCount}/{qz.totalAssigned} ավարտել են{qz.completedCount > 0 && qz.averageScorePercent !== null && (<> · Միջին՝ {qz.averageScorePercent}%</>)}
                         </span>
+                      )}
+                      {qz.status !== "ASSIGNED" && qz.classId !== null && (
+                        <button
+                          onClick={async () => {
+                            const tok = localStorage.getItem("myaiteacher_token") ?? "";
+                            const r = await fetch(`/api/quizzes/${qz.id}/assign`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+                              body: JSON.stringify({ classId: qz.classId }),
+                            });
+                            if (r.ok) {
+                              setCourseQuizzes((prev) =>
+                                prev.map((q) => q.id === qz.id ? { ...q, status: "ASSIGNED" } : q)
+                              );
+                            }
+                          }}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
+                        >
+                          Ողարկել
+                        </button>
                       )}
                       <button
                         onClick={() => setLocation(`/quiz/${qz.id}/review`)}
@@ -1761,9 +1782,17 @@ export default function TeacherDashboard() {
                         <div className="text-sm font-medium truncate">{row.studentName}</div>
                       </div>
                       {row.status === "COMPLETED" ? (
-                        <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
-                          {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
-                        </span>
+                        <>
+                          <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
+                            {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
+                          </span>
+                          <button
+                            onClick={() => { setResultsQuizId(null); setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}`); }}
+                            className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                          >
+                            Դիտել
+                          </button>
+                        </>
                       ) : (
                         <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
                           դեռ չի ավարտել
