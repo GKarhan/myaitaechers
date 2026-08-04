@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
 import { eq, and, asc, max, inArray } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, topologicalSortNodes } from "../services/lesson-mapping";
@@ -887,14 +887,80 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       );
     }
 
+    // ── Eager knowledge_nodes creation for all enrolled students ────────────
+    // Immediately after lesson_nodes are inserted, create per-student
+    // knowledge_nodes rows (status="not_started", no scores) for every student
+    // currently enrolled in the class this lesson's course belongs to.
+    //
+    // Idempotent: the unique index on (userId, lessonNodeId) means
+    // .onConflictDoNothing() silently skips any pair that already exists
+    // (e.g. from a prior re-map or a quiz submission).  NULL lessonNodeId rows
+    // created by chat.ts are unaffected because PostgreSQL treats NULLs as
+    // distinct in unique indexes.
+    let knowledgeNodesCreated = 0;
+    let knowledgeNodesSkipped = 0;
+
+    if (lesson.courseId && insertedNodes.length > 0) {
+      const [course] = await db
+        .select({ classId: coursesTable.classId })
+        .from(coursesTable)
+        .where(eq(coursesTable.id, lesson.courseId))
+        .limit(1);
+
+      if (course) {
+        const enrolledStudents = await db
+          .select({ studentId: classStudentsTable.studentId })
+          .from(classStudentsTable)
+          .where(eq(classStudentsTable.classId, course.classId));
+
+        if (enrolledStudents.length > 0) {
+          const knRows = enrolledStudents.flatMap((s) =>
+            insertedNodes.map((n) => ({
+              subjectId:    lesson.subjectId,
+              userId:       s.studentId,
+              topicName:    n.title,
+              lessonNodeId: n.id,
+              status:       "not_started" as const,
+              isProvisional: true,
+              bloomLevel:   n.targetBloomLevel ?? 1,
+            }))
+          );
+
+          const inserted = await db
+            .insert(knowledgeNodesTable)
+            .values(knRows)
+            .onConflictDoNothing()
+            .returning({ id: knowledgeNodesTable.id });
+
+          knowledgeNodesCreated = inserted.length;
+          knowledgeNodesSkipped = knRows.length - inserted.length;
+
+          logger.info(
+            {
+              lessonId,
+              courseId:          lesson.courseId,
+              classId:           course.classId,
+              enrolledStudents:  enrolledStudents.length,
+              nodesCount:        insertedNodes.length,
+              knowledgeNodesCreated,
+              knowledgeNodesSkipped,
+            },
+            "lesson-mapping: eager knowledge_nodes creation complete"
+          );
+        }
+      }
+    }
+
     res.json({
-      nodesCreated:     insertedNodes.length,
-      exercisesCreated: mapping.practicalTasks.length,
-      lessonGoal:       mapping.lessonGoal,
-      lessonOutcomes:   mapping.lessonOutcomes,
-      coreProblem:      mapping.coreProblem,
-      coreIdea:         mapping.coreIdea,
-      practicalTasks:   mapping.practicalTasks,
+      nodesCreated:          insertedNodes.length,
+      exercisesCreated:      mapping.practicalTasks.length,
+      knowledgeNodesCreated,
+      knowledgeNodesSkipped,
+      lessonGoal:            mapping.lessonGoal,
+      lessonOutcomes:        mapping.lessonOutcomes,
+      coreProblem:           mapping.coreProblem,
+      coreIdea:              mapping.coreIdea,
+      practicalTasks:        mapping.practicalTasks,
     });
   } catch (err) {
     logger.error({ err, lessonId }, "lesson mapping failed");

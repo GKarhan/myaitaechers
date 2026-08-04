@@ -1,30 +1,39 @@
-import { pgTable, serial, integer, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, boolean, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { subjectsTable } from "./subjects";
 import { usersTable } from "./users";
 import { lessonNodesTable } from "./lesson-nodes";
 
-export const knowledgeNodesTable = pgTable("knowledge_nodes", {
-  id: serial("id").primaryKey(),
-  subjectId: integer("subject_id")
-    .notNull()
-    .references(() => subjectsTable.id, { onDelete: "cascade" }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => usersTable.id, { onDelete: "cascade" }),
-  topicName: text("topic_name").notNull(),
-  lessonNodeId: integer("lesson_node_id")
-    .references(() => lessonNodesTable.id, { onDelete: "cascade" }),
-  masteryScore: integer("mastery_score"),
-  confidenceScore: integer("confidence_score"),
-  retentionScore: integer("retention_score"),
-  bloomLevel: integer("bloom_level").notNull().default(1),
-  isProvisional: boolean("is_provisional").notNull().default(true),
-  status: text("status").notNull().default("not_started"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const knowledgeNodesTable = pgTable(
+  "knowledge_nodes",
+  {
+    id: serial("id").primaryKey(),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => subjectsTable.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    topicName: text("topic_name").notNull(),
+    lessonNodeId: integer("lesson_node_id")
+      .references(() => lessonNodesTable.id, { onDelete: "cascade" }),
+    masteryScore: integer("mastery_score"),
+    confidenceScore: integer("confidence_score"),
+    retentionScore: integer("retention_score"),
+    bloomLevel: integer("bloom_level").notNull().default(1),
+    isProvisional: boolean("is_provisional").notNull().default(true),
+    status: text("status").notNull().default("not_started"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One knowledge_node row per (student, lesson_node). NULLs are treated as
+    // distinct by PostgreSQL unique indexes, so chat.ts rows with lessonNodeId=NULL
+    // are unaffected — only non-null pairs are de-duplicated.
+    uniqueIndex("knowledge_nodes_user_lesson_node_uidx").on(t.userId, t.lessonNodeId),
+  ]
+);
 
 export const insertKnowledgeNodeSchema = createInsertSchema(knowledgeNodesTable).omit({
   id: true,

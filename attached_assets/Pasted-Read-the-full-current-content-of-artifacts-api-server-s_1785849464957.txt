@@ -1,0 +1,56 @@
+Read the full current content of artifacts/api-server/src/routes/lessons.ts's
+map handler (POST /lessons/:lessonId/map), the lessons/courses/classStudents
+schema files, and knowledge-tree.ts's getMasteryLevel function before
+changing anything. Paste all relevant parts.
+
+## Goal
+After a lesson is mapped (lesson_nodes created), automatically create
+knowledge_nodes rows (status="not_started", no scores) for every student
+currently enrolled in the class this lesson's course belongs to — so the
+Knowledge Tree shows the full node map immediately, before any quiz is
+taken.
+
+## Step 1 — Find the enrolled-students chain
+Confirm: lessons.courseId → coursesTable.id, then coursesTable.classId →
+classStudentsTable.classId → classStudentsTable.studentId. Paste a real
+query proving this resolves correctly for the current live lesson
+(lesson 62, course 11, class 26, student 93) — should return exactly
+student 93 (or however many students are actually in class 26).
+
+## Step 2 — Implement eager creation at the end of the map handler
+Right after lesson_nodes (and lesson_node_dependencies) are inserted in
+POST /lessons/:lessonId/map, add a step that:
+1. Resolves the lesson's courseId → the course's classId → all
+   classStudentsTable.studentId for that class
+2. For each (student, lesson_node) pair, insert a knowledge_nodes row:
+   subjectId = lesson.subjectId, userId = student, topicName =
+   lessonNode.title, lessonNodeId = lessonNode.id, status = "not_started",
+   isProvisional = true, bloomLevel = lessonNode.targetBloomLevel,
+   masteryScore/confidenceScore/retentionScore = null
+3. Must be idempotent — if a knowledge_nodes row for that
+   (userId, lessonNodeId) pair already exists (e.g. from a re-map or a
+   prior quiz submission), skip it, don't create a duplicate or overwrite
+   existing scores. Use an existence check or ON CONFLICT DO NOTHING if a
+   unique constraint on (userId, lessonNodeId) exists — check the schema
+   first; if no such unique constraint exists, add one via drizzle-kit
+   push before relying on ON CONFLICT.
+4. Wrap this in the same request as the node-mapping insert (or a
+   follow-up transaction) so it can't silently fail separately — log
+   clearly how many knowledge_nodes rows were created vs skipped as
+   already-existing.
+
+## Step 3 — Backfill for the current live case
+Run this same logic once now for lesson 62 (already mapped) to confirm it
+behaves correctly on an already-existing lesson, not just newly-mapped
+ones going forward.
+
+## Step 4 — Verify
+Paste before/after knowledge_nodes row counts for class 26 / lesson 62.
+Then hit GET /api/knowledge-tree/15 as student 93 again — should still
+show exactly the same 3 nodes (since they already existed), confirming
+idempotency. Then, if there's a second student in class 26, confirm they
+now ALSO have their own 3 knowledge_nodes rows (proving it's not
+accidentally creating a single shared row).
+
+Do not touch chat.ts or quizzes.ts in this step — scope is limited to the
+map handler's eager-creation logic only.
