@@ -1,0 +1,49 @@
+Read the CURRENT, live content of artifacts/api-server/src/routes/knowledge-tree.ts
+in full and paste it back before changing anything.
+
+## Context
+An earlier session reported fixing this route's query to join through
+lessonNodeId → lessonsTable → coursesTable → classStudentsTable, so that a
+student only sees knowledge_nodes belonging to lessons whose course is in
+a class they're actually enrolled in (not other classes' courses for the
+same subject). I need to verify whether that fix is still actually present
+in the live code right now, or whether it regressed back to the simpler
+subjectId+userId-only filter.
+
+## Step 1 — Report current state
+Does the main topics query in this file currently join coursesTable and
+classStudentsTable, or does it only filter by subjectId + userId +
+isNotNull(lessonNodeId)? Paste the exact current query. Don't guess —
+show me the real code.
+
+## Step 2 — If the course/class join is MISSING, re-apply it
+Rewrite the main topics query to:
+1. Join knowledgeNodesTable → lessonNodesTable (existing orphan guard,
+   keep it)
+2. Join lessonNodesTable → lessonsTable (on lessonNodesTable.lessonId =
+   lessonsTable.id)
+3. Join lessonsTable → coursesTable (on lessonsTable.courseId =
+   coursesTable.id)
+4. Join coursesTable → classStudentsTable (on coursesTable.classId =
+   classStudentsTable.classId)
+5. Add a WHERE condition: classStudentsTable.studentId = targetUserId
+   (the same targetUserId variable already used for the userId filter —
+   don't introduce a second variable)
+6. Keep the existing subjectId filter as well (course.subjectId should
+   also match, same as before)
+
+## Step 3 — If the join is ALREADY present and correct
+Just confirm that clearly, quote the relevant lines, and don't touch
+anything else in the file.
+
+## Step 4 — Verify with real data
+Query the DB directly: for student 93 (or whichever student is the
+current real test case), subject 15, run the OLD (broken) filter logic
+and the NEW (fixed) filter logic side by side, and paste both result sets
+so I can see exactly what changed. Then hit the real endpoint
+(GET /api/knowledge-tree/15 as that student, or with ?studentId=93 as
+their teacher) and paste the actual JSON response.
+
+Do not touch any other file. Do not start on eager knowledge_nodes
+creation or anything else — this step is scoped to knowledge-tree.ts's
+query correctness only.
