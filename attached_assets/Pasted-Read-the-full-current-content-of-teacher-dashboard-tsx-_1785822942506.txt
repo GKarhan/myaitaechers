@@ -1,0 +1,37 @@
+Read the full current content of teacher-dashboard.tsx's course-view section
+first (the part rendering "📝 Դասեր" header + list + "Ավելացնել դաս" button,
+and the "📝 Թեստեր" header + list + "Ստեղծել թեստ" button), paste it back
+before changing anything.
+
+## Change 1 — Move "Ստեղծել թեստ" button next to the "📝 Թեստեր" header
+Currently the button sits below/separate from the "📝 Թեստեր (N)" heading.
+Move it into the same header row as "📝 Թեստեր (N)", right-aligned — mirror
+exactly how "Ավելացնել դաս" is positioned relative to the "📝 Դասեր (N)"
+heading (same flex/justify-between pattern, same button styling class if one
+already exists for that role).
+
+## Change 2 — Add a delete button to each quiz row
+Each row in the Թեստեր list currently shows "Ուղարկված" / "Դիտել". Add a
+delete action next to them, mirroring exactly how lesson deletion already
+works in the Դասեր list (same icon/button style, same confirm-before-delete
+behavior if the lesson delete has one, same DELETE endpoint pattern).
+
+Backend: add DELETE /api/quizzes/:id (requireTeacher) in routes/quizzes.ts if
+it doesn't already exist — verify the quiz belongs to req.userId before
+deleting, cascade-delete will handle quiz_questions/quiz_assignments/
+quiz_attempts/quiz_answers automatically since those FKs already have
+onDelete: "cascade" in the schema. Confirm this by checking
+lib/db/src/schema/quizzes.ts (which already has cascade set on quizId FKs —
+just verify, don't change the schema).
+
+Frontend: wire the delete button to call this endpoint, then remove the quiz
+from the local list (or refetch) so the UI updates immediately.
+
+## Change 3 — fix garbled text
+In the same quiz list, each row shows a question count as "10 harts" — this is
+garbled. Find that string and replace it with exactly: 10 հարց (or the
+equivalent for the actual question count with the word հարց — copy this exact
+Armenian word, do not retype it: հարց).
+
+Paste back all changed code (teacher-dashboard.tsx quiz section, and
+routes/quizzes.ts DELETE route if newly added), then confirm typecheck passes.

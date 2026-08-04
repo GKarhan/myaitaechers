@@ -533,4 +533,26 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   res.json({ totalCorrect, totalQuestions, scorePercent });
 });
 
+// ── DELETE /api/quizzes/:id ───────────────────────────────────────────────────
+// Remove a teacher-owned quiz. The schema already cascades to quiz_questions,
+// quiz_assignments, quiz_attempts, and quiz_answers automatically.
+router.delete("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+
+  const [quiz] = await db
+    .select({ id: quizzesTable.id, teacherId: quizzesTable.teacherId })
+    .from(quizzesTable)
+    .where(eq(quizzesTable.id, quizId))
+    .limit(1);
+
+  if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
+  if (quiz.teacherId !== req.userId) {
+    res.status(403).json({ error: "Not your quiz" }); return;
+  }
+
+  await db.delete(quizzesTable).where(eq(quizzesTable.id, quizId));
+  res.status(204).send();
+});
+
 export default router;

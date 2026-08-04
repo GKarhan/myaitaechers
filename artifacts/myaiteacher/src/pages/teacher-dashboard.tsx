@@ -989,22 +989,18 @@ export default function TeacherDashboard() {
             </div>
           </section>
 
-          {/* ── CREATE QUIZ ── */}
-          <section>
-            <button
-              onClick={() => { setQuizModalOpen(true); setQuizError(null); setQuizLessonIds([]); setQuizTitle(""); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
-            >
-              ✦ Ստեղծել թեստ
-            </button>
-          </section>
-
           {/* ── QUIZ LIST ── */}
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-white/90">
                 📝 Թեստեր ({courseQuizzes.length})
               </h2>
+              <button
+                onClick={() => { setQuizModalOpen(true); setQuizError(null); setQuizLessonIds([]); setQuizTitle(""); }}
+                className={btnPrimary}
+              >
+                ✶ Ստեղծել թեստ
+              </button>
             </div>
             {courseQuizzesLoading ? (
               <div className="flex items-center gap-2 text-muted-foreground text-sm py-3">
@@ -1034,7 +1030,7 @@ export default function TeacherDashboard() {
                     >
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm truncate">{qz.title}</div>
-                        <div className="text-xs text-muted-foreground">{qz.questionCount} հarts</div>
+                        <div className="text-xs text-muted-foreground">{qz.questionCount} հարց</div>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
                         {STATUS_LABEL[qz.status] ?? qz.status}
@@ -1044,6 +1040,22 @@ export default function TeacherDashboard() {
                         className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                       >
                         Դիտել
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm("ծնդլել թեստը?")) return;
+                          const tok = localStorage.getItem("myaiteacher_token") ?? "";
+                          const r = await fetch(`/api/quizzes/${qz.id}`, {
+                            method: "DELETE",
+                            headers: { Authorization: `Bearer ${tok}` },
+                          });
+                          if (r.ok || r.status === 204) {
+                            setCourseQuizzes((prev) => prev.filter((q) => q.id !== qz.id));
+                          }
+                        }}
+                        className={btnDanger}
+                      >
+                        🗑
                       </button>
                     </div>
                   );
