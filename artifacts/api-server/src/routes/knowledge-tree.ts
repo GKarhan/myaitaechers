@@ -3,11 +3,12 @@ import {
   db,
   subjectsTable,
   knowledgeNodesTable,
+  lessonNodesTable,
   teachersTable,
   classesTable,
   classStudentsTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 
 function getMasteryLevel(
@@ -107,13 +108,29 @@ router.get(
     }
 
     // ── Fetch knowledge nodes for targetUser + subject ───────────────────────
+    // INNER JOIN with lessonNodesTable to filter out orphaned nodes:
+    //   • nodes with lessonNodeId IS NULL (source lesson was deleted, set-null fired)
+    //   • nodes whose lessonNodeId references a lesson_node that no longer exists
+    // This is a defensive second layer on top of the cascade-delete in the handler.
     const topics = await db
-      .select()
+      .select({
+        id:              knowledgeNodesTable.id,
+        topicName:       knowledgeNodesTable.topicName,
+        lessonNodeId:    knowledgeNodesTable.lessonNodeId,
+        masteryScore:    knowledgeNodesTable.masteryScore,
+        confidenceScore: knowledgeNodesTable.confidenceScore,
+        status:          knowledgeNodesTable.status,
+      })
       .from(knowledgeNodesTable)
+      .innerJoin(
+        lessonNodesTable,
+        eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id)
+      )
       .where(
         and(
           eq(knowledgeNodesTable.subjectId, subjectId),
-          eq(knowledgeNodesTable.userId, targetUserId)
+          eq(knowledgeNodesTable.userId, targetUserId),
+          isNotNull(knowledgeNodesTable.lessonNodeId)
         )
       )
       .orderBy(knowledgeNodesTable.id);

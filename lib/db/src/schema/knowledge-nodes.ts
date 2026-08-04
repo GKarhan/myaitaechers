@@ -15,7 +15,7 @@ export const knowledgeNodesTable = pgTable("knowledge_nodes", {
     .references(() => usersTable.id, { onDelete: "cascade" }),
   topicName: text("topic_name").notNull(),
   lessonNodeId: integer("lesson_node_id")
-    .references(() => lessonNodesTable.id, { onDelete: "set null" }),
+    .references(() => lessonNodesTable.id, { onDelete: "cascade" }),
   masteryScore: integer("mastery_score"),
   confidenceScore: integer("confidence_score"),
   retentionScore: integer("retention_score"),

@@ -2,7 +2,7 @@ import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable } from "@workspace/db";
-import { eq, and, asc, max } from "drizzle-orm";
+import { eq, and, asc, max, inArray } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, topologicalSortNodes } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
@@ -70,6 +70,18 @@ router.post("/lessons/:lessonId/delete", requireAuth, async (req: AuthRequest, r
   if (!lesson) {
     res.status(404).json({ error: "Lesson not found" });
     return;
+  }
+
+  // Explicitly delete knowledge_nodes whose lessonNodeId maps to this lesson's nodes
+  // (belt-and-suspenders on top of the DB-level cascade)
+  const lessonNodeIds = await db
+    .select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId));
+  if (lessonNodeIds.length > 0) {
+    await db
+      .delete(knowledgeNodesTable)
+      .where(inArray(knowledgeNodesTable.lessonNodeId, lessonNodeIds.map(n => n.id)));
   }
 
   await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId));
