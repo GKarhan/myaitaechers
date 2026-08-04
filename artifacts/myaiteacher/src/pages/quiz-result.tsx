@@ -36,7 +36,7 @@ export default function QuizResult() {
     };
   })();
 
-  const isTeacherView = studentId !== null && user?.role === "TEACHER";
+  const isTeacherView = studentId !== null && user?.role === "teacher";
 
   const backHref = isTeacherView
     ? (backClassId && backSubjectId ? `/teacher?classId=${backClassId}&subjectId=${backSubjectId}` : "/teacher")
