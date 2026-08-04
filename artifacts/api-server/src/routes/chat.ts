@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
-  evidenceEventsTable, knowledgeNodesTable, lessonNodesTable, lessonExercisesTable,
+  evidenceEventsTable, lessonNodesTable, lessonExercisesTable,
   lessonNodeDependenciesTable, usersTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, gte } from "drizzle-orm";
@@ -10,7 +10,6 @@ import {
   callAI, callAIStructured,
   type ChatMessage, type AIStructuredResponse, type ProgressIndicator,
 } from "../services/ai";
-import { updateTopicScoring } from "../services/scoring";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
 
@@ -187,7 +186,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
   const userMessageAt = Date.now();
   let sessionId: number | null = null;
-  let topicId: number | null = null;
   let teachingMode = "TEACH";
 
   let lessonContext = "";
@@ -643,36 +641,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         };
       }
 
-      try {
-        const [existingKN] = await db
-          .select()
-          .from(knowledgeNodesTable)
-          .where(and(
-            eq(knowledgeNodesTable.subjectId, lesson.subjectId),
-            eq(knowledgeNodesTable.userId, req.userId!),
-            eq(knowledgeNodesTable.topicName, topicName),
-          ))
-          .limit(1);
-
-        if (existingKN) {
-          topicId = existingKN.id;
-        } else {
-          const [newKN] = await db
-            .insert(knowledgeNodesTable)
-            .values({
-              subjectId: lesson.subjectId,
-              userId: req.userId!,
-              topicName,
-              status: "not_started",
-              isProvisional: true,
-              bloomLevel: currentNodeRecord?.targetBloomLevel ?? 1,
-            })
-            .returning({ id: knowledgeNodesTable.id });
-          topicId = newKN?.id ?? null;
-        }
-      } catch (err) {
-        logger.error({ err }, "knowledge_nodes lookup/create failed");
-      }
     }
   }
 
@@ -1023,26 +991,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .where(eq(lessonSessionsTable.id, session.id));
     }
   }
-
-  db.insert(evidenceEventsTable)
-    .values({
-      userId: req.userId!,
-      lessonSessionId: sessionId,
-      topicId,
-      eventType: "answer",
-      wasCorrect,
-      responseTimeMs,
-      hintUsed: false,
-      metadata: {},
-    })
-    .then(() => {
-      if (topicId !== null) {
-        updateTopicScoring(topicId, req.userId!).catch((err: unknown) =>
-          logger.error({ err }, "scoring engine update failed")
-        );
-      }
-    })
-    .catch((err: unknown) => logger.error({ err }, "evidence event insert failed"));
 
   const [assistantMsg] = await db
     .insert(chatMessagesTable)

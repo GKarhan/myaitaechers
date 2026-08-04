@@ -1,0 +1,56 @@
+Read the full current content of artifacts/api-server/src/routes/chat.ts
+before changing anything. Paste the relevant sections (the knowledge_nodes
+find-or-create block, and the evidence_events insert + updateTopicScoring
+call) so I can see exactly what's being removed.
+
+## Goal
+chat.ts must stop writing to knowledge_nodes, evidence_events, and
+scoring entirely. Under the agreed architecture, only the Quiz submission
+path (quizzes.ts) updates the official Knowledge Tree. The AI-teacher
+lesson session manages its own progression internally (this will be
+rebuilt properly in the next step) and must not touch these tables at all.
+
+## Step 1 — Remove the knowledge_nodes find-or-create block
+Find the block (~line 647-675) that does:
+  find-or-create knowledge_nodes keyed on (subjectId, userId, topicName)
+Remove it entirely. Any `topicId` variable that depended on this lookup
+should become unused/removed — trace through the function to see what
+else referenced `topicId` and clean those references up too (don't leave
+dead variables or broken references).
+
+## Step 2 — Remove the evidence_events insert + scoring call
+Find the block (~line 1027-1041) that does:
+  db.insert(evidenceEventsTable).values({...}).then(() => {
+    if (topicId !== null) { updateTopicScoring(topicId, req.userId!)... }
+  })
+Remove this entirely — chat.ts should not insert evidence_events or call
+updateTopicScoring at all anymore.
+
+## Step 3 — Check for anything else depending on what you removed
+Search the rest of chat.ts for any other reference to `topicId`,
+`knowledgeNodesTable`, `evidenceEventsTable`, or `updateTopicScoring`.
+Some of the wasCorrect-tracking logic (e.g. the Phase 1 early-exit check
+around line 980-995 that reads recent evidence_events) may currently
+depend on evidence_events rows chat.ts itself created — if so, flag this
+clearly and tell me what it was using it for BEFORE changing it further;
+don't silently rewire it to something else without telling me. If it's
+independent (e.g. it can use chat_messages or lesson_sessions state
+instead), propose that but don't implement it yet — that's Step 4's job
+(rebuilding node-lock as proper session state).
+
+## Step 4 — Typecheck and confirm
+Remove now-unused imports (knowledgeNodesTable, evidenceEventsTable,
+updateTopicScoring) if nothing else in the file uses them. Typecheck,
+restart, and paste the final diff of everything changed.
+
+## Step 5 — Verify nothing broke
+Drive one real chat turn with a student on the current live lesson (62).
+Confirm: (a) the AI still responds normally and teaching still works,
+(b) query evidence_events and knowledge_nodes for that student/lesson
+right after — confirm NO new rows were created by this interaction
+(the 3 eager-created rows from Step 2 should be untouched, still
+status=not_started).
+
+Do not touch quizzes.ts, knowledge-tree.ts, or lessons.ts in this step.
+Do not start rebuilding the node-lock logic yet — that's the next step,
+after this removal is confirmed clean.
