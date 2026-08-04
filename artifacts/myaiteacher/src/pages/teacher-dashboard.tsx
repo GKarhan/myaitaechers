@@ -498,6 +498,7 @@ export default function TeacherDashboard() {
   // URL-based course-view restoration after back-nav from quiz-review/result
   const [restoreClassId,   setRestoreClassId]   = useState<number | null>(null);
   const [restoreSubjectId, setRestoreSubjectId] = useState<number | null>(null);
+  const [treePickerStudentId, setTreePickerStudentId] = useState<number | null>(null);
 
   useEffect(() => {
     if (mainView !== "course" || !selectedCourse?.subjectId) {
@@ -1337,6 +1338,13 @@ export default function TeacherDashboard() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
+                    <button
+                      onClick={() => setTreePickerStudentId(s.id)}
+                      className={btnGhost}
+                      title="Բացել գիտելիքի ծառը"
+                    >
+                      🌳 Գիտելիքի ծառ
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2615,6 +2623,49 @@ export default function TeacherDashboard() {
 
           </div>
         </main>
+
+      {/* ── Knowledge Tree Subject Picker ── */}
+      {treePickerStudentId !== null && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setTreePickerStudentId(null)}
+        >
+          <div
+            className="bg-card border border-white/15 rounded-2xl w-full max-w-xs p-6 shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-bold text-base mb-1">Ընտրեք առարկա</h3>
+            {classSubjects.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-4 text-center">Առարկաներ չկան</p>
+            ) : (
+              classSubjects.map((subjectName) => {
+                const subjectItem = subjectsList.find((s) => s.name === subjectName);
+                if (!subjectItem) return null;
+                return (
+                  <button
+                    key={subjectItem.id}
+                    onClick={() => {
+                      setLocation(
+                        `/knowledge-tree/${subjectItem.id}?studentId=${treePickerStudentId}&classId=${selectedClass?.id ?? ""}`
+                      );
+                      setTreePickerStudentId(null);
+                    }}
+                    className="w-full py-2.5 px-4 bg-card/60 border border-white/10 hover:border-primary/40 hover:bg-primary/10 rounded-xl text-sm font-medium text-left transition-colors"
+                  >
+                    📖 {subjectName}
+                  </button>
+                );
+              })
+            )}
+            <button
+              onClick={() => setTreePickerStudentId(null)}
+              className="w-full py-2 text-sm text-muted-foreground hover:text-white transition-colors"
+            >
+              Չեղարկել
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Results Modal ── */}
       {resultsQuizId !== null && (

@@ -1,0 +1,86 @@
+Read the full current content of these files first, paste back before
+changing anything:
+- artifacts/api-server/src/routes/knowledge-tree.ts
+- artifacts/myaiteacher/src/pages/knowledge-tree.tsx
+- teacher-dashboard.tsx's class detail page (the Ուսանողներ list section)
+
+## Step 1 — Backend: 4-category status + teacher view support
+In routes/knowledge-tree.ts:
+
+a) Replace getMasteryLevel's 3-category logic with 4 categories, using
+   confidenceScore (already computed by scoring.ts) in addition to
+   masteryScore:
+     if no knowledge_nodes row exists for this node → "not_started"
+     else if confidenceScore < 50 → "in_progress"
+     else if masteryScore < 50 → "weak"
+     else if masteryScore >= 80 → "mastered"
+     else → "weak"  (masteryScore 50-79 with sufficient confidence)
+   Update the type signature and the mapped response accordingly (rename or
+   add to the existing "not_started"|"weak"|"mastered" union → add
+   "in_progress"). Update the recommendations logic to also consider
+   in_progress topics sensibly if useful (don't over-engineer this — the
+   existing start/review/repeat recommendation types are fine, just make sure
+   in_progress topics don't crash or get miscategorized).
+
+b) This route currently only returns the CALLING user's own tree
+   (req.userId!). Add optional teacher access: accept an optional
+   ?studentId=X query param. If present, verify req.userId is a teacher who
+   actually teaches this student (check via existing class_students /
+   classes ownership logic used elsewhere in the app — find the right
+   existing helper/pattern rather than inventing new authorization logic).
+   If authorized, query knowledge_nodes for studentId instead of req.userId.
+   If not authorized, 403. If studentId is absent, keep current behavior
+   (student viewing their own tree).
+
+c) Also join in lessonNodeId from knowledge_nodes (now populated from Phase 2)
+   so the frontend can show node identity cleanly, and confirm the response
+   still includes everything the current frontend needs.
+
+Paste back the exact modified route.
+
+## Step 2 — Frontend: support teacher-viewing-student mode
+In knowledge-tree.tsx:
+a) Read an optional ?studentId=X from the URL (mirror the pattern already
+   used in quiz-result.tsx this session for teacher-view detection —
+   check user role + presence of studentId param).
+b) When studentId is present and the viewer is a teacher, call the API with
+   that studentId (extend the generated API client call or construct the
+   fetch directly with the query param — check how useGetKnowledgeTree is
+   generated and whether it already supports extra params; if not, add a
+   direct fetch fallback for this case, don't regenerate the whole API client
+   unless necessary).
+c) Add a 4th filter tab for "in_progress" (Armenian label: "Ընթացքի մեջ")
+   alongside the existing three (Բոլորը/Ամրապնդված/Թույլ/Չսկսված — confirm
+   these existing Armenian labels by reading the file, don't retype them).
+d) Fix the back link: currently hardcoded to `/subjects/${subjectId}`. When
+   in teacher-view mode (studentId present), it should return to the correct
+   teacher class/student context instead — thread through classId (and
+   whatever else is needed) the same way quiz-result.tsx's back-navigation
+   was fixed earlier this session, OR simplest: if studentId is present,
+   use window.history.back() instead of a hardcoded link, since we'll always
+   navigate in from a known teacher page. Pick whichever is more robust and
+   explain your choice.
+
+## Step 3 — Teacher entry point
+In teacher-dashboard.tsx's class detail page, in the Ուսանողներ list, add a
+"Գիտելիքի ծառ" button next to each student's existing "Դիտել" button. Since
+the tree is per-subject, clicking it should first show a small subject picker
+(reuse the Առարկաներ list already available on this same class detail page —
+just present it as a quick picker, e.g. a small dropdown/modal listing this
+class's subjects) then navigate to
+/knowledge-tree/:subjectId?studentId=X&classId=Y (include classId if useful
+for the back-navigation approach chosen in Step 2d).
+
+Paste back the exact new button/picker code.
+
+## Step 4 — Verification
+Manually verify: as a teacher, open a student's knowledge tree for a subject
+where Phase 2's quiz-evidence integration already populated real data (use
+the same student/subject from Phase 2's live verification). Confirm the tree
+shows the correct 4-category status matching the real masteryScore/
+confidenceScore values in the DB (paste the DB values alongside a screenshot-
+equivalent description of what rendered). Also confirm a student viewing
+their OWN tree (no studentId param) still works exactly as before — no
+regression.
+
+Paste back all changed/new code, confirm typecheck passes.
