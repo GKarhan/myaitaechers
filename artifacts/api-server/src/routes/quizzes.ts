@@ -223,6 +223,68 @@ router.get("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
   })));
 });
 
+// ── GET /api/quizzes/all ──────────────────────────────────────────────────────
+// Teacher: every quiz created by this teacher, across all subjects/classes.
+// Returns same shape as GET /quizzes but adds subjectId, className.
+// MUST be declared before /quizzes/:id to avoid "all" matching as an id.
+router.get("/quizzes/all", requireTeacher, async (req: AuthRequest, res) => {
+  const { classesTable } = await import("@workspace/db");
+
+  const quizzes = await db
+    .select({
+      id:            quizzesTable.id,
+      title:         quizzesTable.title,
+      status:        quizzesTable.status,
+      questionCount: quizzesTable.questionCount,
+      classId:       quizzesTable.classId,
+      subjectId:     quizzesTable.subjectId,
+      createdAt:     quizzesTable.createdAt,
+      className:     classesTable.name,
+    })
+    .from(quizzesTable)
+    .leftJoin(classesTable, eq(classesTable.id, quizzesTable.classId))
+    .where(eq(quizzesTable.teacherId, req.userId!))
+    .orderBy(asc(quizzesTable.id));
+
+  const ranked = quizzes.map((q, i) => ({ ...q, sequenceNumber: i + 1 }));
+  ranked.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  if (ranked.length === 0) { res.json([]); return; }
+
+  const quizIds = ranked.map((q) => q.id);
+
+  const assignStats = await db
+    .select({
+      quizId:         quizAssignmentsTable.quizId,
+      totalAssigned:  sql<number>`cast(count(*) as integer)`,
+      completedCount: sql<number>`cast(count(*) filter (where ${quizAssignmentsTable.status} = 'COMPLETED') as integer)`,
+    })
+    .from(quizAssignmentsTable)
+    .where(inArray(quizAssignmentsTable.quizId, quizIds))
+    .groupBy(quizAssignmentsTable.quizId);
+
+  const scoreStats = await db
+    .select({
+      quizId:              quizAssignmentsTable.quizId,
+      averageScorePercent: sql<number | null>`round(avg(${quizAttemptsTable.scorePercent}))`,
+    })
+    .from(quizAttemptsTable)
+    .innerJoin(quizAssignmentsTable, eq(quizAssignmentsTable.id, quizAttemptsTable.quizAssignmentId))
+    .where(inArray(quizAssignmentsTable.quizId, quizIds))
+    .groupBy(quizAssignmentsTable.quizId);
+
+  const assignMap = new Map(assignStats.map((s) => [s.quizId, s]));
+  const scoreMap  = new Map(scoreStats.map((s) => [s.quizId, s]));
+
+  res.json(ranked.map((q) => ({
+    ...q,
+    createdAt:           q.createdAt.toISOString(),
+    totalAssigned:       assignMap.get(q.id)?.totalAssigned       ?? 0,
+    completedCount:      assignMap.get(q.id)?.completedCount      ?? 0,
+    averageScorePercent: scoreMap.get(q.id)?.averageScorePercent  ?? null,
+  })));
+});
+
 // ── GET /api/quizzes/assigned ─────────────────────────────────────────────────
 // Student: list all quiz assignments for the current user. Newest first.
 // Now includes attempt data (totalCorrect, totalQuestions, scorePercent) for

@@ -1,0 +1,66 @@
+Read the full current content of teacher-dashboard.tsx first, paste it back
+before changing anything. Also check what backend endpoints already exist for
+books (GET /api/books or similar), class schedule, and quiz listing — search
+routes/ for "schedule", "books", "quizzes" and report what's already
+available versus what needs to be built new.
+
+## Step 1 — Remove "Իմ առարկաները" and "Իմ աշակերտները" from the sidebar
+Delete these two sidebar items and their placeholder sections entirely. The
+sidebar goes from 8 items down to 6: Գլխավոր, Իմ դասարանները, Իմ թեստերը,
+Դասացուցակ, Գրադարան, Իմ պրոֆիլը.
+
+## Step 2 — Class detail page (accessed via "Դիտել" on a class in Իմ դասարանները)
+Currently clicking "Դիտել" on a class shows tabs for Աշակերտներ/Առարկաներ
+(seen in the course-picker view). Restructure this into a proper class detail
+page with:
+- A header/overview block: class name, grade, student count (whatever basic
+  info is already available from the class record — don't invent new fields).
+- Ուսանողներ section: the existing student list for this class (reuse
+  existing logic).
+- Առարկաներ section: list of subjects/courses taught in this class (reuse
+  existing logic) — clicking one still navigates to the existing course-view
+  (Դասեր/Թեստեր/Կցված նյութեր), unchanged.
+- Դասացուցակ section: this class's schedule specifically. If no schedule data
+  model/endpoint exists yet, make this a "Դասացուցակ դեռ սահմանված չէ"
+  placeholder — do not invent a schedule feature from scratch in this pass,
+  just wire the display slot for it.
+Paste back the exact new page structure.
+
+## Step 3 — Գլխավոր (home) section
+Populate with three blocks:
+a) Հանձնարարված դասերը — list of lessons this teacher has assigned to
+   students/classes that are still active/pending (check what data is
+   available — likely via existing lesson-assignment endpoints already used
+   elsewhere in the app; reuse, don't rebuild).
+b) Հանձնարարված թեստերը — list of assigned (non-DRAFT) quizzes across all
+   classes, using the existing GET /api/quizzes-style data (you may need a
+   new endpoint that aggregates across all of the teacher's classes/subjects
+   rather than one subjectId at a time — check if one exists, build if not).
+c) Դասացուցակ — same schedule data as Step 2, but the teacher's full schedule
+   across all classes, or a placeholder if no schedule system exists yet.
+Paste back the exact new section code.
+
+## Step 4 — Իմ թեստերը (cross-class quiz list)
+New endpoint if needed: GET /api/quizzes/all (requireTeacher) — return every
+quiz created by req.userId across all classes/subjects, with the same fields
+already used in the per-subject list (title, status, questionCount,
+completedCount, totalAssigned, averageScorePercent, classId, subjectId) plus
+enough info to display which class/subject each belongs to. Reuse the
+existing row rendering (badges, Ուղարկել/Դիտել/Արդյունքներ/delete buttons)
+from the per-subject Թեստեր list — same component/logic, just fed a broader
+dataset and showing class+subject as extra context per row.
+
+## Step 5 — Դասացուցակ (full schedule) and Գրադարան (books list)
+For Դասացուցակ: same as Step 2/3c — if no schedule data model exists, this is
+a placeholder screen ("Դասացուցակ դեռ սահմանված չէ") for now; report whether
+building the real schedule feature should be a separate follow-up.
+For Գրադարան: list all books available via the existing books endpoint
+(the same one already used in the quiz-creation modal's book dropdown) —
+simple list view, book title/subject, no upload/edit capability needed yet
+unless that already exists elsewhere and can be reused as-is.
+
+After each step, paste back the exact changed/new code. At the end, confirm
+typecheck passes and do a manual click-through of all 6 sidebar items plus
+the class detail page, confirming nothing crashes and no placeholder is left
+where real data should now show (except schedule, which may remain a
+placeholder per Step 2/5 if no data model exists).

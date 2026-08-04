@@ -41,7 +41,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 type MainView = "dashboard" | "class" | "course" | "student";
 type ClassTab = "subjects" | "students";
-type TeacherSection = "home" | "classes" | "subjects" | "quizzes" | "students" | "schedule" | "library" | "profile";
+type TeacherSection = "home" | "classes" | "quizzes" | "schedule" | "library" | "profile";
 
 const RESOURCE_TYPES = [
   { key: "textbook", icon: "📚", label: "ԴԱՍԱԳԻՐՔ" },
@@ -474,6 +474,25 @@ export default function TeacherDashboard() {
     scorePercent: number | null; completedAt: string | null;
   }[] | null>(null);
   const [resultsLoading,  setResultsLoading]            = useState(false);
+
+  // ── Cross-section fetch state ────────────────────────────────────────────
+  const [allQuizzes, setAllQuizzes] = useState<{
+    id: number; title: string; status: string; questionCount: number;
+    classId: number | null; subjectId: number | null; className: string | null;
+    createdAt: string; sequenceNumber: number;
+    completedCount: number; totalAssigned: number; averageScorePercent: number | null;
+  }[]>([]);
+  const [allQuizzesLoading, setAllQuizzesLoading] = useState(false);
+  const [homework, setHomework] = useState<{
+    id: number; lessonId: number; lessonTitle: string; studentId: number;
+    studentName: string; title: string; task: string; status: string;
+    score: number | null; answer: string | null; submittedAt: string | null; createdAt: string;
+  }[]>([]);
+  const [homeworkLoading, setHomeworkLoading] = useState(false);
+  const [books, setBooks] = useState<{
+    id: number; name: string; subjectId: number | null; fileSize: number; mimeType: string; uploadedAt: string;
+  }[]>([]);
+  const [booksLoading, setBooksLoading] = useState(false);
   // URL-based course-view restoration after back-nav from quiz-review/result
   const [restoreClassId,   setRestoreClassId]   = useState<number | null>(null);
   const [restoreSubjectId, setRestoreSubjectId] = useState<number | null>(null);
@@ -563,6 +582,45 @@ export default function TeacherDashboard() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (section !== "quizzes" && section !== "home") return;
+    let cancelled = false;
+    setAllQuizzesLoading(true);
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    fetch("/api/quizzes/all", { headers: { Authorization: `Bearer ${tok}` } })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && Array.isArray(data)) setAllQuizzes(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setAllQuizzesLoading(false); });
+    return () => { cancelled = true; };
+  }, [section]);
+
+  useEffect(() => {
+    if (section !== "home") return;
+    let cancelled = false;
+    setHomeworkLoading(true);
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    fetch("/api/teacher/homework", { headers: { Authorization: `Bearer ${tok}` } })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && Array.isArray(data)) setHomework(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setHomeworkLoading(false); });
+    return () => { cancelled = true; };
+  }, [section]);
+
+  useEffect(() => {
+    if (section !== "library") return;
+    let cancelled = false;
+    setBooksLoading(true);
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    fetch("/api/books", { headers: { Authorization: `Bearer ${tok}` } })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && Array.isArray(data)) setBooks(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setBooksLoading(false); });
+    return () => { cancelled = true; };
+  }, [section]);
 
   async function handleCreateQuiz() {
     if (quizLessonIds.length === 0) return;
@@ -2022,9 +2080,7 @@ export default function TeacherDashboard() {
   if (mainView === "class" && selectedClass) {
     const classData = classes.find((c) => c.id === selectedClass.id);
     const classSubjects: string[] = classData?.assignedSubjects ?? [];
-    const classScheduleEntries = schedule.filter(
-      (s) => s.classId === selectedClass.id,
-    );
+    const classScheduleEntries = schedule.filter((s) => s.classId === selectedClass.id);
 
     return (
       <div className="min-h-[100dvh] bg-background text-white">
@@ -2039,333 +2095,230 @@ export default function TeacherDashboard() {
           <div>
             <h1 className="text-lg font-bold">{selectedClass.name}</h1>
             {selectedClass.grade && (
-              <p className="text-xs text-muted-foreground">
-                {selectedClass.grade}
-              </p>
+              <p className="text-xs text-muted-foreground">{selectedClass.grade}</p>
             )}
           </div>
-          <span className="ml-auto text-sm text-muted-foreground">
-            {user?.fullName}
-          </span>
+          <span className="ml-auto text-sm text-muted-foreground">{user?.fullName}</span>
         </header>
 
-        <div className="max-w-5xl mx-auto px-6 py-6">
-          <div className="flex gap-1 mb-6 border-b border-white/10">
-            {(["subjects", "students"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setClassTab(t)}
-                className={`px-5 py-2.5 text-sm font-semibold tracking-widest whitespace-nowrap border-b-2 -mb-px transition-colors ${
-                  classTab === t
-                    ? "border-primary text-white"
-                    : "border-transparent text-muted-foreground hover:text-white"
-                }`}
-              >
-                {t === "subjects" ? "Առարկաներ" : "Աշակերտներ"}
-              </button>
-            ))}
+        <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+
+          {/* Ակնադրություն */}
+          <div className="bg-card/60 border border-white/10 rounded-2xl p-5 flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-2xl">🏫</div>
+              <div>
+                <div className="font-bold text-lg">{selectedClass.name}</div>
+                {selectedClass.grade && <div className="text-xs text-muted-foreground">{selectedClass.grade}</div>}
+              </div>
+            </div>
+            <div className="ml-auto flex items-center gap-6">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{students.length}</div>
+                <div className="text-xs text-muted-foreground">Աշակերտ</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{classSubjects.length}</div>
+                <div className="text-xs text-muted-foreground">Առարկա</div>
+              </div>
+            </div>
           </div>
 
-          {/* ── SUBJECTS TAB ── */}
-          {classTab === "subjects" && (
-            <div>
-              {/* Course error display */}
-              {courseError && (
-                <p className="text-sm text-red-400 mb-3">{courseError}</p>
-              )}
-
-              {/* Manual course creation form */}
-              <div className="flex justify-end mb-4">
-                <button
-                  onClick={() => { setShowCourseForm((f) => !f); setCourseError(null); }}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-semibold"
-                >
-                  {showCourseForm ? "Cancel" : "+ Create Course"}
-                </button>
-              </div>
-              {showCourseForm && (
-                <form
-                  onSubmit={handleCreateCourse}
-                  className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3"
-                >
-                  <h3 className="font-semibold text-sm text-white/90">New Course</h3>
-                  <select
-                    required
-                    value={courseForm.subjectId ?? ""}
-                    onChange={(e) => {
-                      const id = e.target.value ? parseInt(e.target.value) : null;
-                      const sub = subjectsList.find((s) => s.id === id);
-                      setCourseForm((f) => ({ ...f, subjectId: id, name: sub?.name ?? f.name }));
-                    }}
-                    className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-                  >
-                    <option value="">Select subject *</option>
-                    {subjectsList.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                  <input
-                    required
-                    value={courseForm.name}
-                    onChange={(e) => setCourseForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Course name *"
-                    className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-                  />
-                  {courseError && <p className="text-xs text-red-400">{courseError}</p>}
-                  <div className="flex gap-2">
-                    <button type="submit" className="px-4 py-1.5 rounded-xl bg-primary text-black text-xs font-bold hover:opacity-90 transition-opacity">
-                      Save
-                    </button>
-                    <button type="button" onClick={() => setShowCourseForm(false)} className="px-4 py-1.5 rounded-xl border border-white/20 text-muted-foreground text-xs hover:text-white transition-colors">
-                      Cancel
-                    </button>
+          {/* Ուսանողներ */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-base">👨‍🎓 Ուսանողներ ({students.length})</h2>
+              <button onClick={() => setShowStudentForm((f) => !f)} className={btnPrimary}>Ավելացնել</button>
+            </div>
+            {showStudentForm && (
+              <form onSubmit={handleAddStudent} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
+                <h3 className="font-medium text-sm">Նոր Աշակերտ</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted-foreground">Անուն Ազգանուն</label>
+                    <input value={studentForm.fullName} onChange={(e) => setStudentForm((f) => ({ ...f, fullName: e.target.value }))} required className={inputCls} placeholder="Ashakerty anunny" />
                   </div>
-                </form>
-              )}
-
-              {classSubjects.length === 0 ? (
-                <div className="text-center py-16 text-muted-foreground">
-                  <div className="text-5xl mb-4">📖</div>
-                  <p className="text-sm">
-                    Առաջարկներ դեռ չկան: Ադմինի կողմից չի նշանակվել
-                  </p>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Մեյլ</label>
+                    <input type="email" value={(studentForm as any).email} onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value }) as any)} className={inputCls} placeholder="example@mail.com" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Tariq</label>
+                    <input type="number" min="5" max="25" value={(studentForm as any).age} onChange={(e) => setStudentForm((f) => ({ ...f, age: e.target.value }) as any)} className={inputCls} placeholder="14" />
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {classSubjects.map((subject) => {
-                      const entries = classScheduleEntries.filter(
-                        (s) => s.subject === subject,
-                      );
-                      return (
-                        <div
-                          key={subject}
-                          className="bg-card/60 border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all flex flex-col gap-3"
-                        >
-                          <div className="text-2xl">📖</div>
-                          <div className="font-semibold text-base">
-                            {subject}
-                          </div>
-                          {entries.length > 0 && (
-                            <div className="space-y-1.5">
-                              {entries.map((e) => (
-                                <div
-                                  key={e.id}
-                                  className="flex items-center gap-2 text-xs"
-                                >
-                                  <span className="w-2 h-2 rounded-full bg-[#14B8A6] shrink-0" />
-                                  <span className="text-muted-foreground">
-                                    {e.day}
-                                  </span>
-                                  <span className="text-[#14B8A6] font-mono ml-auto">
-                                    {e.time}
-                                  </span>
-                                </div>
-                              ))}
+                <p className="text-xs text-muted-foreground/60">Նախնային Գաղտնաբառը "student123" կլինի</p>
+                <div className="flex gap-2">
+                  <button type="submit" disabled={addStudent.isPending} className={btnPrimary}>{addStudent.isPending ? "..." : "Պահպանել"}</button>
+                  <button type="button" onClick={() => setShowStudentForm(false)} className={btnOutline}>Չեղարկնել</button>
+                </div>
+              </form>
+            )}
+            <div className="space-y-2">
+              {students.length === 0 && (
+                <p className="text-muted-foreground text-sm py-6 text-center">Աշակերտ Չկա</p>
+              )}
+              {students.map((s) => (
+                <div key={s.id} className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{s.fullName}</div>
+                    <div className="text-xs text-muted-foreground">{(s as any).email || s.username}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
+                    <button
+                      onClick={() => {
+                        if (!confirm("Heracel dasaranits?")) return;
+                        removeStudent.mutate(
+                          { classId: selectedClass.id, studentId: s.id },
+                          { onSuccess: () => qc.invalidateQueries({ queryKey: getGetClassStudentsQueryKey(selectedClass.id) }) }
+                        );
+                      }}
+                      className={btnDanger}
+                    >Հեռացնել</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Առարկաներ */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-base">📖 Առարկաներ</h2>
+              <button
+                onClick={() => { setShowCourseForm((f) => !f); setCourseError(null); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-semibold"
+              >
+                {showCourseForm ? "Cancel" : "+ Ստեխզել Course"}
+              </button>
+            </div>
+            {courseError && <p className="text-sm text-red-400 mb-3">{courseError}</p>}
+            {showCourseForm && (
+              <form onSubmit={handleCreateCourse} className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3">
+                <h3 className="font-semibold text-sm text-white/90">New Course</h3>
+                <select
+                  required
+                  value={courseForm.subjectId ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value ? parseInt(e.target.value) : null;
+                    const sub = subjectsList.find((s) => s.id === id);
+                    setCourseForm((f) => ({ ...f, subjectId: id, name: sub?.name ?? f.name }));
+                  }}
+                  className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <option value="">Select subject *</option>
+                  {subjectsList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <input
+                  required
+                  value={courseForm.name}
+                  onChange={(e) => setCourseForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Course name *"
+                  className="w-full bg-background border border-white/15 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+                {courseError && <p className="text-xs text-red-400">{courseError}</p>}
+                <div className="flex gap-2">
+                  <button type="submit" className="px-4 py-1.5 rounded-xl bg-primary text-black text-xs font-bold hover:opacity-90 transition-opacity">Save</button>
+                  <button type="button" onClick={() => setShowCourseForm(false)} className="px-4 py-1.5 rounded-xl border border-white/20 text-muted-foreground text-xs hover:text-white transition-colors">Cancel</button>
+                </div>
+              </form>
+            )}
+            {classSubjects.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <div className="text-5xl mb-4">📖</div>
+                <p className="text-sm">Առարկաներ դեր չկան։ Ադմինի կողմից չի նշանակվել</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {classSubjects.map((subject) => {
+                  const entries = classScheduleEntries.filter((s) => s.subject === subject);
+                  return (
+                    <div key={subject} className="bg-card/60 border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all flex flex-col gap-3">
+                      <div className="text-2xl">📖</div>
+                      <div className="font-semibold text-base">{subject}</div>
+                      {entries.length > 0 && (
+                        <div className="space-y-1.5">
+                          {entries.map((e) => (
+                            <div key={e.id} className="flex items-center gap-2 text-xs">
+                              <span className="w-2 h-2 rounded-full bg-[#14B8A6] shrink-0" />
+                              <span className="text-muted-foreground">{e.day}</span>
+                              <span className="text-[#14B8A6] font-mono ml-auto">{e.time}</span>
                             </div>
-                          )}
-                          <button
-                            onClick={() => {
-                              // Resolve subjectId first — more reliable than name-matching
-                              const subjectItem = subjectsList.find((s) => s.name === subject);
-                              if (!subjectItem) {
-                                setCourseError("Subject not found in list — please refresh");
-                                return;
-                              }
-                              // Match course by subjectId, not by name (avoids name-mismatch bugs)
-                              const match = classCourses.find(
-                                (c) => c.subjectId === subjectItem.id,
-                              );
-                              if (match) {
-                                setCourseError(null);
-                                setSelectedCourse(match);
-                                setMainView("course");
-                              } else if (!classCoursesLoading) {
-                                // Only create a new course once classCourses has finished loading
-                                // (prevents duplicate courses from a loading race)
-                                setCourseError(null);
-                                createCourse.mutate(
-                                  {
-                                    classId: selectedClass!.id,
-                                    data: { name: subject, description: "", subjectId: subjectItem.id },
-                                  },
-                                  {
-                                    onSuccess: (created) => {
-                                      qc.invalidateQueries({
-                                        queryKey: getGetClassCoursesQueryKey(
-                                          selectedClass!.id,
-                                        ),
-                                      });
-                                      setSelectedCourse(created);
-                                      setMainView("course");
-                                    },
-                                    onError: (err: unknown) => {
-                                      const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
-                                      setCourseError(d?.error ?? "Course creation failed");
-                                    },
-                                  },
-                                );
-                              }
-                            }}
-                            className="mt-auto w-full py-2 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
-                          >
-                            Դիտել
-                          </button>
+                          ))}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                      )}
+                      <button
+                        onClick={() => {
+                          const subjectItem = subjectsList.find((s) => s.name === subject);
+                          if (!subjectItem) { setCourseError("Subject not found — please refresh"); return; }
+                          const match = classCourses.find((c) => c.subjectId === subjectItem.id);
+                          if (match) {
+                            setCourseError(null); setSelectedCourse(match); setMainView("course");
+                          } else if (!classCoursesLoading) {
+                            setCourseError(null);
+                            createCourse.mutate(
+                              { classId: selectedClass!.id, data: { name: subject, description: "", subjectId: subjectItem.id } },
+                              {
+                                onSuccess: (created) => {
+                                  qc.invalidateQueries({ queryKey: getGetClassCoursesQueryKey(selectedClass!.id) });
+                                  setSelectedCourse(created); setMainView("course");
+                                },
+                                onError: (err: unknown) => {
+                                  const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
+                                  setCourseError(d?.error ?? "Course creation failed");
+                                },
+                              }
+                            );
+                          }
+                        }}
+                        className="mt-auto w-full py-2 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
+                      >
+                        դիտել
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
-          {/* ── STUDENTS TAB ── */}
-          {classTab === "students" && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold">
-                  Աշակերտներ ({students.length})
-                </h2>
-                <button
-                  onClick={() => setShowStudentForm((f) => !f)}
-                  className={btnPrimary}
-                >
-                  Ավելացնել
-                </button>
+          {/* դասացուցակ */}
+          <section>
+            <h2 className="font-semibold text-base mb-4">📅 դասացուցակ</h2>
+            {classScheduleEntries.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <div className="text-5xl mb-3">📅</div>
+                <p className="text-sm">դասացուցակ դեր սահմանված չէ</p>
               </div>
-              {showStudentForm && (
-                <form
-                  onSubmit={handleAddStudent}
-                  className="mb-5 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3"
-                >
-                  <h3 className="font-medium text-sm">Նոր Աշակերտ</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <label className="text-xs text-muted-foreground">
-                        Անուն Ազգանուն
-                      </label>
-                      <input
-                        value={studentForm.fullName}
-                        onChange={(e) =>
-                          setStudentForm((f) => ({
-                            ...f,
-                            fullName: e.target.value,
-                          }))
-                        }
-                        required
-                        className={inputCls}
-                        placeholder="Ashakerty anunny"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">
-                        Մեյլ
-                      </label>
-                      <input
-                        type="email"
-                        value={(studentForm as any).email}
-                        onChange={(e) =>
-                          setStudentForm(
-                            (f) => ({ ...f, email: e.target.value }) as any,
-                          )
-                        }
-                        className={inputCls}
-                        placeholder="example@mail.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">
-                        Tariq
-                      </label>
-                      <input
-                        type="number"
-                        min="5"
-                        max="25"
-                        value={(studentForm as any).age}
-                        onChange={(e) =>
-                          setStudentForm(
-                            (f) => ({ ...f, age: e.target.value }) as any,
-                          )
-                        }
-                        className={inputCls}
-                        placeholder="14"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground/60">
-                    Նախնական Գաղտնաբառը "student123" klini
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={addStudent.isPending}
-                      className={btnPrimary}
-                    >
-                      {addStudent.isPending ? "..." : "Pahpanel"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowStudentForm(false)}
-                      className={btnOutline}
-                    >
-                      Չեղարկել
-                    </button>
-                  </div>
-                </form>
-              )}
-              <div className="space-y-2">
-                {students.length === 0 && (
-                  <p className="text-muted-foreground text-sm py-6 text-center">
-                    Աշակերտ Չկա
-                  </p>
-                )}
-                {students.map((s) => (
-                  <div
-                    key={s.id}
-                    className="bg-card/50 border border-white/10 rounded-xl px-4 py-3 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-medium">{s.fullName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {(s as any).email || s.username}
+            ) : (
+              <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
+                <div className="divide-y divide-white/5">
+                  {classScheduleEntries
+                    .slice()
+                    .sort((a, b) => {
+                      const DAY_ORDER = ["Երկ", "Երեք", "Չոր", "Հինգ", "Ուր"];
+                      const di = (d: string) => { const i = DAY_ORDER.findIndex((x) => d.startsWith(x)); return i < 0 ? 99 : i; };
+                      const dd = di(a.day) - di(b.day);
+                      if (dd !== 0) return dd;
+                      return ((a as any).startTime || a.time).localeCompare((b as any).startTime || b.time);
+                    })
+                    .map((e) => (
+                      <div key={e.id} className="px-5 py-3 flex items-center gap-4">
+                        <span className="text-sm text-muted-foreground w-36 shrink-0">{e.day}</span>
+                        <span className="font-medium text-sm flex-1">{e.subject}</span>
+                        <span className="text-[#14B8A6] font-mono text-xs shrink-0">
+                          {(e as any).startTime && (e as any).endTime
+                            ? `${(e as any).startTime}–${(e as any).endTime}`
+                            : e.time}
+                        </span>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedStudentId(s.id);
-                          setMainView("student");
-                        }}
-                        className={btnGhost}
-                      >
-                        Դիտել
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (!confirm("Heracel dasaranits?")) return;
-                          removeStudent.mutate(
-                            { classId: selectedClass.id, studentId: s.id },
-                            {
-                              onSuccess: () =>
-                                qc.invalidateQueries({
-                                  queryKey: getGetClassStudentsQueryKey(
-                                    selectedClass.id,
-                                  ),
-                                }),
-                            },
-                          );
-                        }}
-                        className={btnDanger}
-                      >
-                        Հեռացնել
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                    ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </section>
+
         </div>
       </div>
     );
@@ -2386,9 +2339,7 @@ export default function TeacherDashboard() {
   const TEACHER_NAV: { key: TeacherSection; emoji: string; label: string }[] = [
     { key: "home",     emoji: "🏠",    label: "Գլխավոր" },
     { key: "classes",  emoji: "🏫",  label: "Իմ դասարանները" },
-    { key: "subjects", emoji: "📚",   label: "Իմ առարկաները" },
     { key: "quizzes",  emoji: "📝",  label: "Իմ թեստերը" },
-    { key: "students", emoji: "👨‍🎓", label: "Իմ աշակերտները" },
     { key: "schedule", emoji: "📅",     label: "Դասացուցակ" },
     { key: "library",  emoji: "📖",    label: "Գրադարան" },
     { key: "profile",  emoji: "👤",  label: "Իմ պրոֆիլը" },
@@ -2476,13 +2427,126 @@ export default function TeacherDashboard() {
           <div className="max-w-5xl mx-auto px-5 sm:px-8 py-8">
 
             {section === "home" && (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
-                <div className="text-8xl">🏠</div>
-                <h2 className="text-2xl font-bold">Գլխավոր</h2>
-                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
-                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-                  ՇՈՒՏՈՎ
-                </span>
+              <div className="space-y-8">
+                <h1 className="text-xl font-bold">Գլխավոր</h1>
+
+                {/* Հանգնարատված դասերը */}
+                <section>
+                  <h2 className="text-base font-semibold text-white/90 mb-4">📋 Հանգնարատված դասերը</h2>
+                  {homeworkLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : homework.length === 0 ? (
+                    <p className="text-sm text-muted-foreground/60 py-3">Հանգնարատված դաս չկա</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {homework.map((hw) => (
+                        <div key={hw.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{hw.title}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{hw.lessonTitle} · {hw.studentName}</div>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                            hw.status === "COMPLETED" ? "text-teal-400 border-teal-400/30 bg-teal-400/10"
+                            : hw.status === "SUBMITTED" ? "text-amber-400 border-amber-400/30 bg-amber-400/10"
+                            : "text-muted-foreground border-white/10 bg-white/5"
+                          }`}>
+                            {hw.status === "COMPLETED" ? "Ավարտվել ե" : hw.status === "SUBMITTED" ? "Ներկայված ե" : "Սկիզբ"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Հանգնարատված թեստերը */}
+                <section>
+                  <h2 className="text-base font-semibold text-white/90 mb-4">📝 Հանգնարատված թեստերը</h2>
+                  {allQuizzesLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : allQuizzes.filter((q) => q.status !== "DRAFT").length === 0 ? (
+                    <p className="text-sm text-muted-foreground/60 py-3">Ուղարկված թեստ չկա</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {allQuizzes.filter((q) => q.status !== "DRAFT").slice(0, 10).map((qz) => {
+                        const SL: Record<string, string> = { GENERATED: "Պատրաստ", ASSIGNED: "Ուղարկված", CLOSED: "Փակված" };
+                        const SC: Record<string, string> = { GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10", ASSIGNED: "text-teal-400 border-teal-400/30 bg-teal-400/10", CLOSED: "text-red-400/70 border-red-400/20 bg-red-400/5" };
+                        return (
+                          <div key={qz.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{qz.title}</div>
+                              {qz.className && <div className="text-xs text-muted-foreground mt-0.5">{qz.className}</div>}
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${SC[qz.status] ?? "text-muted-foreground border-white/10 bg-white/5"}`}>
+                              {SL[qz.status] ?? qz.status}
+                            </span>
+                            {qz.totalAssigned > 0 && (
+                              <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                                {qz.completedCount}/{qz.totalAssigned}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* դասացուցակ */}
+                <section>
+                  <h2 className="text-base font-semibold text-white/90 mb-4">📅 դասացուցակ</h2>
+                  {schedule.length === 0 ? (
+                    <p className="text-sm text-muted-foreground/60 py-3">դասացուցակ դեր սահմանված չէ</p>
+                  ) : (
+                    <div className="bg-card/40 border border-white/10 rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-white/5 border-b border-white/10">
+                              <th className="text-left px-4 py-3 text-muted-foreground font-medium min-w-[130px]">Or</th>
+                              {sortedTeacherClasses.map((c) => (
+                                <th key={c.id} className="text-left px-3 py-3 text-muted-foreground font-medium min-w-[140px] border-l border-white/5">{c.name}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {SCHOOL_DAYS_HY.map((day, di) => (
+                              <tr key={day} className={`border-b border-white/5 ${di % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
+                                <td className="px-4 py-3 font-medium text-white/80 align-top whitespace-nowrap">{day}</td>
+                                {sortedTeacherClasses.map((c) => {
+                                  const entries = schedule
+                                    .filter((s) => s.day === day && s.classId === c.id)
+                                    .sort((a, b) => ((a as any).startTime || a.time).localeCompare((b as any).startTime || b.time));
+                                  return (
+                                    <td key={c.id} className="px-3 py-2 align-top border-l border-white/5">
+                                      {entries.length === 0 ? <span className="text-white/15">—</span> : (
+                                        <div className="flex flex-col gap-1">
+                                          {entries.map((e) => (
+                                            <div key={e.id} className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#14B8A6]/10 border border-[#14B8A6]/20">
+                                              <span className="text-white/85 truncate font-medium">{e.subject}</span>
+                                              <span className="text-[#14B8A6] font-mono text-[10px] shrink-0">
+                                                {(e as any).startTime && (e as any).endTime
+                                                  ? `${(e as any).startTime}–${(e as any).endTime}`
+                                                  : e.time}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </section>
               </div>
             )}
 
@@ -2535,36 +2599,110 @@ export default function TeacherDashboard() {
           </div>
             )}
 
-            {section === "subjects" && (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
-                <div className="text-8xl">📚</div>
-                <h2 className="text-2xl font-bold">Իմ առարկաները</h2>
-                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
-                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-                  ՇՈՒՏՈՎ
-                </span>
-              </div>
-            )}
-
             {section === "quizzes" && (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
-                <div className="text-8xl">📝</div>
-                <h2 className="text-2xl font-bold">Իմ թեստերը</h2>
-                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
-                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-                  ՇՈՒՏՈՎ
-                </span>
-              </div>
-            )}
+              <div>
+                <h1 className="text-xl font-bold mb-6">իմ թեստերը</h1>
+                {allQuizzesLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-6">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : allQuizzes.length === 0 ? (
+                  <div className="text-center py-16 text-muted-foreground">
+                    <div className="text-5xl mb-4">📝</div>
+                    <p className="text-sm">Ռեստ չկա։ Ստեխզել թեստ դասերի եխում</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {allQuizzes.map((qz) => {
+                      const STATUS_LABEL: Record<string, string> = { DRAFT: "Ստեխխված", GENERATED: "Պատրաստ", ASSIGNED: "Ուղարկված", CLOSED: "Փակված" };
+                      const STATUS_CLS: Record<string, string> = { DRAFT: "text-muted-foreground border-white/10 bg-white/5", GENERATED: "text-amber-400 border-amber-400/30 bg-amber-400/10", ASSIGNED: "text-teal-400 border-teal-400/30 bg-teal-400/10", CLOSED: "text-red-400/70 border-red-400/20 bg-red-400/5" };
+                      return (
+                        <div key={qz.id} className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3 hover:border-white/20 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="shrink-0 text-xs font-mono px-1.5 py-0.5 rounded bg-white/8 border border-white/12 text-white/50">#{qz.sequenceNumber}</span>
+                              <span className="font-medium text-sm truncate">{qz.title}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                              <span>{qz.questionCount} հարծ</span>
+                              {qz.className && <><span className="text-white/20">·</span><span>{qz.className}</span></>}
+                            </div>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLS[qz.status] ?? STATUS_CLS.DRAFT}`}>
+                            {STATUS_LABEL[qz.status] ?? qz.status}
+                          </span>
+                          {qz.totalAssigned > 0 && (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                              {qz.completedCount}/{qz.totalAssigned} ավարտել են{qz.completedCount > 0 && qz.averageScorePercent !== null && (<> · Միին։ {qz.averageScorePercent}%</>)}
+                            </span>
+                          )}
+                          {qz.status !== "ASSIGNED" && qz.classId !== null && (
+                            <button
+                              onClick={async () => {
+                                const tok = localStorage.getItem("myaiteacher_token") ?? "";
+                                const r = await fetch(`/api/quizzes/${qz.id}/assign`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+                                  body: JSON.stringify({ classId: qz.classId }),
+                                });
+                                if (r.ok) setAllQuizzes((prev) => prev.map((q) => q.id === qz.id ? { ...q, status: "ASSIGNED" } : q));
+                              }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
+                            >
+                              Ողարկել
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setLocation(`/quiz/${qz.id}/review?classId=${qz.classId ?? ""}&subjectId=${qz.subjectId ?? ""}`)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                          >
+                            դիտել
+                          </button>
+                          {qz.completedCount > 0 && (
+                            <button
+                              onClick={() => setResultsQuizId(qz.id)}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-teal-400/15 text-teal-400 hover:bg-teal-400/25 transition-colors border border-teal-400/20 whitespace-nowrap shrink-0"
+                            >
+                              Արդյունքներ
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-            {section === "students" && (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
-                <div className="text-8xl">👨‍🎓</div>
-                <h2 className="text-2xl font-bold">Իմ աշակերտները</h2>
-                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
-                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-                  ՇՈՒՏՈՎ
-                </span>
+                {resultsQuizId !== null && (
+                  <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setResultsQuizId(null)}>
+                    <div className="bg-card border border-white/15 rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold">Արդյունքներ</h3>
+                        <button onClick={() => setResultsQuizId(null)} className="text-muted-foreground hover:text-white text-lg leading-none">×</button>
+                      </div>
+                      {resultsLoading ? (
+                        <div className="flex justify-center py-6"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                      ) : !resultsData || resultsData.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">Արդյունք չկա</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {resultsData.map((r) => (
+                            <div key={r.assignmentId} className="flex items-center justify-between gap-3 bg-card/50 border border-white/10 rounded-xl px-4 py-3">
+                              <div>
+                                <div className="font-medium text-sm">{r.studentName}</div>
+                                <div className="text-xs text-muted-foreground">{r.status === "COMPLETED" ? "Ավարտվել ե" : "Ավարտված չէ"}</div>
+                              </div>
+                              {r.scorePercent !== null && (
+                                <div className={`text-lg font-bold ${r.scorePercent >= 80 ? "text-teal-400" : r.scorePercent >= 50 ? "text-amber-400" : "text-red-400"}`}>
+                                  {r.scorePercent}%
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2656,13 +2794,40 @@ export default function TeacherDashboard() {
             )}
 
             {section === "library" && (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-6 py-16">
-                <div className="text-8xl">📖</div>
-                <h2 className="text-2xl font-bold">Գրադարան</h2>
-                <p className="text-muted-foreground max-w-xs leading-relaxed">Նյութերի գրադարանը հասանելի կլինի շուտով։</p>
-                <span className="text-sm text-primary bg-primary/10 border border-primary/20 px-5 py-2 rounded-full">
-                  ՇՈՒՏՈՎ
-                </span>
+              <div>
+                <h1 className="text-xl font-bold mb-6">Գրադարան</h1>
+                {booksLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-6">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : books.length === 0 ? (
+                  <div className="text-center py-16 text-muted-foreground">
+                    <div className="text-5xl mb-4">📖</div>
+                    <p className="text-sm">Գրադարանը դերկը չկա։ կցեկեկ գրքեր դասերի եխում</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {books.map((b) => (
+                      <div key={b.id} className="flex items-center gap-3 bg-card/40 border border-white/10 rounded-xl px-4 py-3 hover:border-white/20 transition-colors">
+                        <div className="text-2xl shrink-0">
+                          {b.mimeType?.includes("pdf") ? "📄" : b.mimeType?.includes("word") || b.mimeType?.includes("docx") ? "📝" : "📎"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{b.name}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {(b.fileSize / (1024 * 1024)).toFixed(1)} MB
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                          {(() => {
+                            const d = new Date(b.uploadedAt);
+                            return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
