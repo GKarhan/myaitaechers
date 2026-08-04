@@ -577,7 +577,7 @@ export default function TeacherDashboard() {
       if (!resp.ok) throw new Error(data.error ?? "Ձախողվեց");
       setQuizModalOpen(false);
       setQuizRefetchTick((t) => t + 1);
-      setLocation(`/quiz/${data.id}/review`);
+      setLocation(`/quiz/${data.id}/review?classId=${selectedClass?.id ?? ""}&subjectId=${selectedCourse?.subjectId ?? ""}`);
     } catch (e) {
       setQuizError(e instanceof Error ? e.message : "Թեստը ստեղծել չհաջողվեց");
     } finally {

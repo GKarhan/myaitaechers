@@ -1,0 +1,37 @@
+Two back-navigation cases are broken, and they share the same root cause —
+fix both together, verify both with a real click-through.
+
+## Case A — Regression: quiz-review.tsx back button
+This was supposedly fixed earlier (changing "/" fallback to "/teacher"), but
+it's now landing on the generic teacher classes list again after creating/
+viewing a quiz. Re-check the exact current code of quiz-review.tsx's back
+navigation (both the header back link and any error-state back link). Confirm
+whether classId/subjectId are actually being passed INTO this page when the
+teacher navigates here after creating a quiz (from handleCreateQuiz's
+post-creation redirect in teacher-dashboard.tsx) — if that redirect doesn't
+include ?classId=X&subjectId=Y, the back button has nothing to restore to and
+falls back to the bare classes list. Fix the redirect to include those params
+if missing, and confirm the back button correctly uses them.
+
+## Case B — quiz-result.tsx teacher+studentId view back button
+When a teacher opens a specific student's result via
+/quiz/:id/result?studentId=X (from the "Արդյունքներ" modal's per-student
+"Դիտել" button in teacher-dashboard.tsx), clicking back lands on the generic
+classes list instead of the specific course view. Check whether that "Դիտել"
+button's navigation includes classId/subjectId alongside studentId — if not,
+add them (the modal already knows the quiz's classId/subjectId, same as used
+in Case A). Confirm quiz-result.tsx's backHref for this studentId branch
+correctly reads and uses classId/subjectId from the URL, exactly mirroring how
+the non-studentId branch already does it correctly.
+
+## Both cases — same destination
+In both cases, "back" should land the teacher on their own course view for
+that class+subject (the same /teacher?classId=X&subjectId=Y destination
+that's already confirmed working for the non-studentId quiz-result case) —
+not the bare classes list, not the marketing page.
+
+Paste back the exact modified code for: teacher-dashboard.tsx's
+post-quiz-creation redirect, teacher-dashboard.tsx's per-student "Դիտել"
+button URL construction, quiz-review.tsx's back navigation, and quiz-
+result.tsx's backHref for both branches. Then manually verify by clicking
+through both flows end to end and confirm the actual landing page each time.
