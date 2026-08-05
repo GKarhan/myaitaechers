@@ -612,8 +612,11 @@ export default function AdminDashboard() {
 
         {/* ── HOME: stats + schedule ── */}
         {tab === "home" && (
-          <div className="space-y-8">
-            <h2 className="font-semibold text-lg">Գլխավոր</h2>
+          <div>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-semibold text-lg">Գլխավոր</h2>
+            </div>
+            <div className="space-y-8">
             {/* Stats cards */}
             <div className="grid grid-cols-4 gap-6">
               {[
@@ -761,6 +764,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+            </div>
             </div>
           </div>
         )}
