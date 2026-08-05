@@ -408,7 +408,7 @@ function LessonNodesPanel({
                     {/* Exercises under this node */}
                     {nodeExercises.length > 0 && (
                       <div className="border-t border-white/6 px-3 py-2 space-y-2">
-                        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Վarjutyunner</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Վարժություններ</p>
                         {nodeExercises.map((ex) => {
                           const isEditingEx = editingExerciseId === ex.id;
                           return (
@@ -448,7 +448,7 @@ function LessonNodesPanel({
                                   </div>
                                   <div className="flex gap-1">
                                     <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Enty"}</button>
-                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Ancel</button>
+                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                                   </div>
                                 </div>
                               ) : (
@@ -461,11 +461,11 @@ function LessonNodesPanel({
                                       )}
                                       {ex.assignment && (
                                         <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
-                                          {ex.assignment === "HOMEWORK" ? "🏠 Տnayinn" : "📋 Dasaran"}
+                                          {ex.assignment === "HOMEWORK" ? "🏠 Տնային" : "📋 Դասարանում"}
                                         </span>
                                       )}
                                       {ex.sourcePage && (
-                                        <span className="text-[10px] text-muted-foreground/40">էjj {ex.sourcePage}</span>
+                                        <span className="text-[10px] text-muted-foreground/40">եժ {ex.sourcePage}</span>
                                       )}
                                     </div>
                                   </div>
@@ -516,15 +516,15 @@ function LessonNodesPanel({
                                 );
                               }}
                               className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                            >{createEx.isPending ? "..." : "+ Avelacel"}</button>
-                            <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Ancel</button>
+                            >{createEx.isPending ? "..." : "+ Ավելացել"}</button>
+                            <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                           </div>
                         </div>
                       ) : (
                         <button
                           onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }}
                           className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5"
-                        >+ Avelacel varjutyun</button>
+                        >+ Ավելացել վարժություն</button>
                       )}
                     </div>
                   </div>
@@ -537,17 +537,17 @@ function LessonNodesPanel({
           <div className="pt-1">
             {addNodeOpen ? (
               <div className="bg-background/30 border border-white/10 rounded-xl px-3 py-2 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground">Nor node</p>
+                <p className="text-xs font-semibold text-muted-foreground">Նոր հանգույց</p>
                 <input
                   className={fieldCls}
-                  placeholder="Vaganak *"
+                  placeholder="Վերնագիր *"
                   value={addNodeForm.title}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, title: e.target.value }))}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Teorakan bovanndakutyun"
+                  placeholder="Տեորական Բովանդակություն"
                   value={addNodeForm.theoryContent}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, theoryContent: e.target.value }))}
                 />
@@ -568,15 +568,15 @@ function LessonNodesPanel({
                       );
                     }}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                  >{createNode.isPending ? "..." : "Avelacel"}</button>
-                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Ancel</button>
+                  >{createNode.isPending ? "..." : "Ավելացել"}</button>
+                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                 </div>
               </div>
             ) : (
               <button
                 onClick={() => setAddNodeOpen(true)}
                 className="w-full text-xs text-muted-foreground/50 hover:text-primary/70 border border-dashed border-white/10 hover:border-primary/30 rounded-xl py-2 transition-colors"
-              >+ Avelacel node</button>
+              >+ Ավելացել հանգույց</button>
             )}
           </div>
         </div>
