@@ -771,7 +771,7 @@ export default function AdminDashboard() {
 
         {/* ── TEACHERS ── */}
         {tab === "teachers" && (
-          <div>
+          <div className="pt-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-semibold text-lg">Ուսուցիչներ</h2>
               <button
@@ -1050,7 +1050,7 @@ export default function AdminDashboard() {
 
         {/* ── CLASSES ── */}
         {tab === "classes" && (
-          <div>
+          <div className="pt-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-semibold text-lg">Դասարաններ</h2>
               <button
@@ -1474,7 +1474,7 @@ export default function AdminDashboard() {
 
         {/* ── SCHEDULE ── */}
         {tab === "schedule" && (
-          <div>
+          <div className="pt-6">
             <div className="mb-5">
               <h2 className="font-semibold text-lg tracking-widest">
                 ԴԱՍԱՑՈՒՑԱԿ
@@ -1812,7 +1812,7 @@ export default function AdminDashboard() {
         )}
 
         {tab === "students" && (
-          <div>
+          <div className="pt-6">
             <div className="flex flex-wrap items-center gap-4 mb-5">
               <h2 className="font-semibold text-lg">Աշակերտներ</h2>
               <select
