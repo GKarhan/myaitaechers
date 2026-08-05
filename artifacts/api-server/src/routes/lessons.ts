@@ -4,7 +4,7 @@ import { Router } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
 import { eq, and, asc, max, inArray } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, mapLessonWithVision, isGarbledText, rasterizePdfPages, topologicalSortNodes, type LessonMappingResult } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, type Pass1Result } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 
@@ -963,199 +963,73 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         : null,
     };
 
-    let mapping: LessonMappingResult;
+    // ── Pass 1: Pure verbatim block extraction ──────────────────────────────
+    // The model only COPIES text blocks from the page — no interpretation,
+    // no examples, no structure beyond block classification.
+    // Pass 2 (not yet implemented) will organise these blocks into nodes/topics.
+    let pass1: Pass1Result;
     if (isGarbledText(lessonText)) {
       logger.info(
         { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
-        "lesson mapping: garbled text detected — falling back to vision-based mapping"
+        "lesson mapping: garbled text — using vision-based Pass 1 extraction"
       );
       const pageImages = await rasterizePdfPages(filePath, lesson.pagesFrom, lesson.pagesTo);
-      logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages, calling vision model");
-      mapping = await mapLessonWithVision(baseInput, pageImages);
+      logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages for Pass 1");
+      pass1 = await extractBlocksWithVision(baseInput, pageImages);
     } else {
-      mapping = await mapLessonWithAI({ ...baseInput, lessonText });
+      pass1 = await extractBlocksWithAI({ ...baseInput, lessonText });
     }
 
-    await db
-      .update(lessonsTable)
-      .set({
-        lessonGoal: mapping.lessonGoal,
-        lessonOutcomes: mapping.lessonOutcomes,
-        coreProblem: mapping.coreProblem,
-        coreIdea: mapping.coreIdea,
-        essentialQuestion: mapping.essentialQuestion ?? null,
-        practicalTasks: mapping.practicalTasks,
-        knowledgeBoundaries: mapping.knowledgeBoundaries ?? [],
-        // Save textbook metadata extracted from page content when teacher left these blank
-        ...(mapping.textbookAuthor && !lesson.textbookAuthor
-          ? { textbookAuthor: mapping.textbookAuthor } : {}),
-        ...(mapping.textbookTitle && !lesson.textbookTitle
-          ? { textbookTitle: mapping.textbookTitle } : {}),
-        ...(mapping.chapterTitle && !lesson.chapterTitle
-          ? { chapterTitle: mapping.chapterTitle } : {}),
-      })
-      .where(eq(lessonsTable.id, lessonId));
-
-    // ── Replace this lesson's node set with the freshly mapped one ──
+    // ── Clear old lesson data — blocks, exercises, dependencies ────────────
     await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
-
-    // Topological sort: assign sequence by real pedagogical dependency, not model array order
-    const sortedTitles = topologicalSortNodes(
-      mapping.nodes.map((n) => n.title),
-      mapping.nodeDependencies ?? []
-    );
-    const titleToSeq = new Map<string, number>(sortedTitles.map((t, i) => [t, i + 1]));
-
-    const insertedNodes = await db
-      .insert(lessonNodesTable)
-      .values(
-        mapping.nodes.map((n) => ({
-          lessonId,
-          sequence: titleToSeq.get(n.title) ?? 999,
-          title: n.title,
-          theoryContent: n.theoryContent,
-          targetBloomLevel: n.targetBloomLevel,
-          estimatedMinutes: n.estimatedMinutes,
-          childFriendlyExplanation: n.childFriendlyExplanation,
-          basicExamples: n.basicExamples,
-          realLifeExamples: n.realLifeExamples,
-          commonMisconception: n.commonMisconception,
-          prerequisiteNodes: n.prerequisiteNodes,
-          verbatimTheoryAnchor: (n as { verbatimTheoryAnchor?: string }).verbatimTheoryAnchor ?? null,
-          nonExamples: (n as { nonExamples?: unknown[] }).nonExamples ?? [],
-        }))
-      )
-      .returning();
-
-    // ── Persist authoring-time dependency graph ──────────────────────────────
+    await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
     await db.delete(lessonNodeDependenciesTable).where(
       eq(lessonNodeDependenciesTable.lessonId, lessonId)
     );
-    if ((mapping.nodeDependencies ?? []).length > 0) {
-      const nodeTitleToIdMap = new Map<string, number>(insertedNodes.map((n) => [n.title, n.id]));
-      const depRows = (mapping.nodeDependencies ?? [])
-        .map((dep) => {
-          const fromId = nodeTitleToIdMap.get(dep.fromNodeTitle);
-          const toId   = nodeTitleToIdMap.get(dep.toNodeTitle);
-          if (!fromId || !toId) {
-            logger.warn({ dep, lessonId }, "lesson-mapping: dependency title not found in inserted nodes — skipped");
-            return null;
-          }
-          return {
-            lessonId,
-            fromNodeId: fromId,
-            toNodeId: toId,
-            dependencyType: dep.dependencyType,
-            requiredLevel: dep.requiredLevel,
-            reason: dep.reason ?? null,
-          };
-        })
-        .filter(Boolean) as {
-          lessonId: number; fromNodeId: number; toNodeId: number;
-          dependencyType: string; requiredLevel: string; reason: string | null;
-        }[];
-      if (depRows.length > 0) {
-        await db.insert(lessonNodeDependenciesTable).values(depRows);
-      }
-    }
 
-    // P1 STEP 17: Populate lesson_exercises with structured, queryable exercise data
-    await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
-
-    if (mapping.practicalTasks.length > 0) {
-      const nodeTitleToId = new Map<string, number>(
-        insertedNodes.map((n) => [n.title, n.id])
-      );
-      await db.insert(lessonExercisesTable).values(
-        mapping.practicalTasks.map((t, i) => ({
-          lessonId,
-          exerciseId:           `EX-${lessonId}-${i + 1}`,
-          sourcePage:           t.sourcePage ?? null,
-          exerciseTextVerbatim: t.exerciseTextVerbatim || t.task,
-          exercisePurpose:      t.exercisePurpose || "AI_ADAPTED",
-          relatedNodeId:        nodeTitleToId.get(t.relatedNodeTitle) ?? null,
-          successCriteria:      t.successCriteria || null,
-          difficultyLevel:      t.difficultyLevel || null,
-          assignment:           t.assignment || "CLASS",
-          sequence:             i + 1,
-        }))
-      );
-    }
-
-    // ── Eager knowledge_nodes creation for all enrolled students ────────────
-    // Immediately after lesson_nodes are inserted, create per-student
-    // knowledge_nodes rows (status="not_started", no scores) for every student
-    // currently enrolled in the class this lesson's course belongs to.
-    //
-    // Idempotent: the unique index on (userId, lessonNodeId) means
-    // .onConflictDoNothing() silently skips any pair that already exists
-    // (e.g. from a prior re-map or a quiz submission).  NULL lessonNodeId rows
-    // created by chat.ts are unaffected because PostgreSQL treats NULLs as
-    // distinct in unique indexes.
-    let knowledgeNodesCreated = 0;
-    let knowledgeNodesSkipped = 0;
-
-    if (lesson.courseId && insertedNodes.length > 0) {
-      const [course] = await db
-        .select({ classId: coursesTable.classId })
-        .from(coursesTable)
-        .where(eq(coursesTable.id, lesson.courseId))
-        .limit(1);
-
-      if (course) {
-        const enrolledStudents = await db
-          .select({ studentId: classStudentsTable.studentId })
-          .from(classStudentsTable)
-          .where(eq(classStudentsTable.classId, course.classId));
-
-        if (enrolledStudents.length > 0) {
-          const knRows = enrolledStudents.flatMap((s) =>
-            insertedNodes.map((n) => ({
-              subjectId:    lesson.subjectId,
-              userId:       s.studentId,
-              topicName:    n.title,
-              lessonNodeId: n.id,
-              status:       "not_started" as const,
-              isProvisional: true,
-              bloomLevel:   n.targetBloomLevel ?? 1,
-            }))
-          );
-
-          const inserted = await db
-            .insert(knowledgeNodesTable)
-            .values(knRows)
-            .onConflictDoNothing()
-            .returning({ id: knowledgeNodesTable.id });
-
-          knowledgeNodesCreated = inserted.length;
-          knowledgeNodesSkipped = knRows.length - inserted.length;
-
-          logger.info(
-            {
+    // ── Store each block as one lesson_nodes row ────────────────────────────
+    // This is the temporary Pass 1 landing spot.  Pass 2 will promote these
+    // raw blocks into proper nodes with topicId, theory, explanations, etc.
+    // Non-block fields (targetBloomLevel, estimatedMinutes, theoryContent …)
+    // carry placeholder defaults until Pass 2 fills them in.
+    const insertedBlocks = pass1.blocks.length > 0
+      ? await db
+          .insert(lessonNodesTable)
+          .values(
+            pass1.blocks.map((block, i) => ({
               lessonId,
-              courseId:          lesson.courseId,
-              classId:           course.classId,
-              enrolledStudents:  enrolledStudents.length,
-              nodesCount:        insertedNodes.length,
-              knowledgeNodesCreated,
-              knowledgeNodesSkipped,
-            },
-            "lesson-mapping: eager knowledge_nodes creation complete"
-          );
-        }
-      }
-    }
+              sequence:          i + 1,
+              title:             block.sourceText.slice(0, 50).trim() || `Block ${i + 1}`,
+              blockType:         block.blockType,
+              sourceText:        block.sourceText,
+              sourcePage:        block.sourcePage || null,
+              sourceParagraph:   block.sourceParagraph ?? null,
+              sourceBoundingBox: block.sourceBoundingBox ?? null,
+              status:            "draft"  as const,
+              createdBy:         "ai"     as const,
+              topicId:           null,
+              // Pass-2 fields — placeholder defaults
+              targetBloomLevel:  1,
+              estimatedMinutes:  5,
+            }))
+          )
+          .returning()
+      : [];
+
+    logger.info(
+      { lessonId, blockCount: insertedBlocks.length },
+      "lesson mapping Pass 1: blocks saved to lesson_nodes"
+    );
 
     res.json({
-      nodesCreated:          insertedNodes.length,
-      exercisesCreated:      mapping.practicalTasks.length,
-      knowledgeNodesCreated,
-      knowledgeNodesSkipped,
-      lessonGoal:            mapping.lessonGoal,
-      lessonOutcomes:        mapping.lessonOutcomes,
-      coreProblem:           mapping.coreProblem,
-      coreIdea:              mapping.coreIdea,
-      practicalTasks:        mapping.practicalTasks,
+      blocksExtracted: insertedBlocks.length,
+      blocks: insertedBlocks.map((b) => ({
+        id:          b.id,
+        sequence:    b.sequence,
+        blockType:   b.blockType,
+        sourceText:  b.sourceText,
+        sourcePage:  b.sourcePage,
+      })),
     });
   } catch (err) {
     logger.error({ err, lessonId }, "lesson mapping failed");

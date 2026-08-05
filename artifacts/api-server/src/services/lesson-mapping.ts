@@ -104,6 +104,358 @@ export interface LessonMappingResult {
   }[];
 }
 
+// ─── Pass 1: Pure block extraction ────────────────────────────────────────────
+//
+// The model's ONLY job in Pass 1 is to read each page and output a flat array
+// of content blocks — verbatim, in reading order, zero interpretation.
+// Pass 2 (not yet implemented) will take this block list and organise it into
+// topics, nodes, exercises, and the rest of the lesson structure.
+
+const PASS1_SYSTEM_PROMPT = `You are a textbook content extraction engine. Your ONLY task: read the given page(s) and output a flat JSON array of every content block you see, in reading order.
+
+OUTPUT: Respond with ONLY valid JSON — no commentary, no markdown fences, no explanation before or after.
+{
+  "blocks": [
+    {
+      "blockType": "DEFINITION",
+      "sourceText": "Exact verbatim text copied word-for-word from the page",
+      "sourcePage": 22,
+      "sourceParagraph": "1" or null,
+      "sourceBoundingBox": {"x": 0, "y": 0, "w": 100, "h": 50} or null
+    }
+  ]
+}
+
+Valid blockType values (pick the one that best describes each block):
+  DEFINITION  — a formal definition of a concept or term
+  RULE        — a stated grammar, math, or subject rule or principle
+  EXAMPLE     — a worked example or illustration
+  EXERCISE    — any numbered student exercise, task, question, or problem
+  OBJECTIVE   — a lesson goal or learning objective stated in the book
+  WARNING     — a caution, "attention!", or important-notice callout
+  EXCEPTION   — an explicit exception or special case to a rule
+  TABLE       — a table, chart, or structured list
+  IMAGE       — a figure or diagram (sourceText = visible caption or description if any)
+  CAPTION     — a standalone caption for an image or table
+  NOTE        — a side note, footnote, or informational callout box
+  ACTIVITY    — a group activity, project, or in-class task
+  HOMEWORK    — a homework section or assignment header
+
+STRICT RULES — follow every one without exception:
+
+1. COPY, DO NOT INTERPRET.
+   sourceText MUST be the verbatim text from the page: every word, every number, every punctuation mark, exactly as written.
+   No paraphrasing. No summarizing. No rewording. No adding or removing any word.
+   If you cannot read a word clearly, write your best literal reading — never substitute a paraphrase.
+
+2. NO INVENTION.
+   Do NOT include any text that is not literally visible on the page.
+   Do NOT invent examples, rules, explanations, or exercises from your own knowledge.
+   Every character in sourceText must appear on the page.
+
+3. EVERY EXERCISE IS ITS OWN BLOCK.
+   Every numbered exercise, task, question, or problem on the page MUST become its own separate EXERCISE block.
+   Do NOT skip any. Do NOT sample only some. Do NOT merge multiple exercises into one block.
+   If there are 20 exercises, produce 20 EXERCISE blocks.
+
+4. NO ORGANIZATION.
+   Do NOT group blocks into topics, nodes, or sections.
+   Do NOT reorder them.
+   Extract and classify each block in the order it appears on the page: top-to-bottom, left-to-right.
+   Section headings and titles should be extracted as OBJECTIVE or NOTE blocks — not skipped.
+
+sourceBoundingBox: for vision (image) input, provide approximate pixel coordinates {x, y, w, h} of the block on the page image. Use null if uncertain.
+sourceParagraph: paragraph number, section label, or exercise number visible on the page. Use null if not applicable.`;
+
+// ── Pass 1 types ──────────────────────────────────────────────────────────────
+
+export interface Pass1Block {
+  blockType:
+    | "DEFINITION" | "RULE"    | "EXAMPLE"  | "EXERCISE"
+    | "OBJECTIVE"  | "WARNING" | "EXCEPTION"| "TABLE"
+    | "IMAGE"      | "CAPTION" | "NOTE"     | "ACTIVITY" | "HOMEWORK";
+  sourceText: string;
+  sourcePage: number;
+  sourceParagraph: string | null;
+  sourceBoundingBox: { x: number; y: number; w: number; h: number } | null;
+}
+
+export interface Pass1Result {
+  blocks: Pass1Block[];
+}
+
+// ── Normalise raw model output into a clean Pass1Result ───────────────────────
+
+const VALID_BLOCK_TYPES = new Set<string>([
+  "DEFINITION", "RULE", "EXAMPLE", "EXERCISE", "OBJECTIVE",
+  "WARNING", "EXCEPTION", "TABLE", "IMAGE", "CAPTION",
+  "NOTE", "ACTIVITY", "HOMEWORK",
+]);
+
+function normalisePass1(raw: unknown): Pass1Result {
+  const obj = raw as { blocks?: unknown[] };
+  const blocks: Pass1Block[] = (Array.isArray(obj?.blocks) ? obj.blocks : [])
+    .map((b) => {
+      const block = b as Record<string, unknown>;
+      const bt = String(block.blockType ?? "");
+      return {
+        blockType: VALID_BLOCK_TYPES.has(bt)
+          ? (bt as Pass1Block["blockType"])
+          : "NOTE",
+        sourceText: typeof block.sourceText === "string"
+          ? block.sourceText.trim() : "",
+        sourcePage: typeof block.sourcePage === "number" && block.sourcePage > 0
+          ? Math.round(block.sourcePage) : 0,
+        sourceParagraph: typeof block.sourceParagraph === "string" && block.sourceParagraph.trim()
+          ? block.sourceParagraph.trim() : null,
+        sourceBoundingBox:
+          block.sourceBoundingBox &&
+          typeof block.sourceBoundingBox === "object" &&
+          !Array.isArray(block.sourceBoundingBox)
+            ? (block.sourceBoundingBox as { x: number; y: number; w: number; h: number })
+            : null,
+      };
+    })
+    .filter((b) => b.sourceText.length > 0); // drop empty blocks
+
+  return { blocks };
+}
+
+// ── Pass 1 text path ──────────────────────────────────────────────────────────
+
+export async function extractBlocksWithAI(
+  input: LessonMappingInput
+): Promise<Pass1Result> {
+  const userPrompt = [
+    `SUBJECT: ${input.subjectName}`,
+    `LESSON TITLE: ${input.lessonTitle}`,
+    input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`     : "",
+    input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}`   : "",
+    input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`    : "",
+    input.pagesFrom && input.pagesTo
+      ? `PAGES: ${input.pagesFrom}–${input.pagesTo}` : "",
+    "",
+    "TEXTBOOK TEXT FROM THESE PAGES:",
+    input.lessonText || "(no text extracted from PDF)",
+  ].filter(Boolean).join("\n");
+
+  function extractJSON(raw: string): Pass1Result | null {
+    const stripped = raw.replace(/```json\s*|```/g, "").trim();
+    try { return JSON.parse(stripped); } catch { /* fall through */ }
+    const m = stripped.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
+    return null;
+  }
+
+  const r1 = await openrouter.chat.completions.create({
+    model: MODEL,
+    max_tokens: 8000,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: PASS1_SYSTEM_PROMPT },
+      { role: "user",   content: userPrompt },
+    ],
+  });
+  const raw1 = r1.choices[0]?.message?.content ?? "";
+  let parsed = extractJSON(raw1);
+
+  if (!parsed) {
+    logger.warn({ raw: raw1.slice(0, 200) }, "pass1 text: first attempt not valid JSON — retrying");
+    const r2 = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 8000,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: PASS1_SYSTEM_PROMPT },
+        { role: "user",   content: userPrompt },
+        { role: "assistant", content: raw1 },
+        { role: "user",   content: 'Your response was not valid JSON. Return ONLY a valid JSON object with a "blocks" array, nothing else.' },
+      ],
+    });
+    const raw2 = r2.choices[0]?.message?.content ?? "";
+    parsed = extractJSON(raw2);
+    if (!parsed) throw new Error("Pass 1 text extraction: response not valid JSON after retry");
+  }
+
+  const result = normalisePass1(parsed);
+  logger.info({ blockCount: result.blocks.length }, "pass1 text: extraction complete");
+  return result;
+}
+
+// ── Pass 1 vision path ────────────────────────────────────────────────────────
+
+/** Pass 1 uses smaller page chunks than legacy vision mapping.
+ *  Armenian language textbook pages have many verbatim exercises, so even
+ *  16 000 tokens weren't enough for 3 pages.  2 pages keeps output comfortably
+ *  below the 32 000-token ceiling. */
+const PASS1_CHUNK_PAGES = 2;
+const PASS1_MAX_TOKENS  = 32000;
+
+export async function extractBlocksWithVision(
+  input: Omit<LessonMappingInput, "lessonText">,
+  pageImages: string[]   // base64-encoded PNG, one element per page
+): Promise<Pass1Result> {
+  type TextPart  = { type: "text"; text: string };
+  type ImagePart = { type: "image_url"; image_url: { url: string } };
+  type ContentPart = TextPart | ImagePart;
+
+  /** Strip markdown fences, try direct parse, then bracket-search.
+   *  When `truncated=true` (model hit max_tokens), also attempts to recover
+   *  any complete block objects before the cut-off point. */
+  function extractJSON(raw: string, truncated = false): Pass1Result | null {
+    const stripped = raw.replace(/```json\s*|```\s*/g, "").trim();
+
+    // 1. Direct parse
+    try { return JSON.parse(stripped); } catch { /* fall through */ }
+
+    // 2. First {...} block (handles leading prose)
+    const m = stripped.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
+
+    // 3. Truncation recovery: scan for individually complete block objects
+    if (truncated) {
+      const blocksIdx = stripped.indexOf('"blocks"');
+      if (blocksIdx >= 0) {
+        const arrStart = stripped.indexOf('[', blocksIdx);
+        if (arrStart >= 0) {
+          const blocks: unknown[] = [];
+          let depth = 0;
+          let blockStart = -1;
+          for (let i = arrStart; i < stripped.length; i++) {
+            if (stripped[i] === '{') {
+              if (depth === 0) blockStart = i;
+              depth++;
+            } else if (stripped[i] === '}') {
+              depth--;
+              if (depth === 0 && blockStart >= 0) {
+                try { blocks.push(JSON.parse(stripped.slice(blockStart, i + 1))); } catch { /* skip */ }
+                blockStart = -1;
+              }
+            }
+          }
+          if (blocks.length > 0) {
+            logger.warn({ recoveredBlocks: blocks.length, chunkTruncated: true },
+              "pass1 vision: recovered partial blocks from truncated response");
+            return { blocks } as Pass1Result;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  const totalFrom = input.pagesFrom ?? 1;
+  const totalTo   = input.pagesTo   ?? pageImages.length;
+
+  // Split into 2-page chunks to keep output within token budget
+  const chunks: string[][] = [];
+  for (let i = 0; i < pageImages.length; i += PASS1_CHUNK_PAGES) {
+    chunks.push(pageImages.slice(i, i + PASS1_CHUNK_PAGES));
+  }
+
+  const allBlocks: Pass1Block[] = [];
+
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const chunkImages = chunks[ci];
+    const chunkFrom   = totalFrom + ci * PASS1_CHUNK_PAGES;
+    const chunkTo     = Math.min(chunkFrom + PASS1_CHUNK_PAGES - 1, totalTo);
+    const chunkLabel  = `chunk ${ci + 1}/${chunks.length} (pages ${chunkFrom}–${chunkTo})`;
+
+    logger.info(
+      { chunk: ci + 1, totalChunks: chunks.length, pagesFrom: chunkFrom, pagesTo: chunkTo },
+      "pass1 vision: processing chunk"
+    );
+
+    const headerText = [
+      `SUBJECT: ${input.subjectName}`,
+      `LESSON TITLE: ${input.lessonTitle}`,
+      input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`   : "",
+      input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}` : "",
+      input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`  : "",
+      `PAGES IN THIS BATCH: ${chunkFrom}–${chunkTo}  [batch ${ci + 1}/${chunks.length}, full lesson range ${totalFrom}–${totalTo}]`,
+      "",
+      `You are looking at ${chunkImages.length} page image(s) covering pages ${chunkFrom}–${chunkTo}.`,
+      `Extract EVERY content block visible on these pages in reading order.`,
+      `IMPORTANT: Output ONLY the raw JSON object — no markdown fences, no \`\`\`json, no explanation.`,
+      `For sourceBoundingBox, provide pixel coordinates {x, y, w, h} measured from the top-left of each page image.`,
+    ].filter(Boolean).join("\n");
+
+    const content: ContentPart[] = [
+      { type: "text", text: headerText },
+      ...chunkImages.map((b64): ImagePart => ({
+        type: "image_url",
+        image_url: { url: `data:image/png;base64,${b64}` },
+      })),
+    ];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r1 = await openrouter.chat.completions.create({
+      model: VISION_MODEL,
+      max_tokens: PASS1_MAX_TOKENS,
+      temperature: 0,
+      messages: [
+        { role: "system", content: PASS1_SYSTEM_PROMPT },
+        { role: "user",   content } as any,
+      ],
+    });
+    const raw1 = r1.choices[0]?.message?.content ?? "";
+    const wasTruncated1 = r1.choices[0]?.finish_reason === "length";
+    if (wasTruncated1) {
+      logger.warn({ chunkLabel }, "pass1 vision: first attempt hit max_tokens");
+    }
+    let parsed = extractJSON(raw1, wasTruncated1);
+
+    if (!parsed) {
+      logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r2 = await openrouter.chat.completions.create({
+        model: VISION_MODEL,
+        max_tokens: PASS1_MAX_TOKENS,
+        temperature: 0,
+        messages: [
+          { role: "system", content: PASS1_SYSTEM_PROMPT },
+          { role: "user",   content } as any,
+          { role: "assistant", content: raw1 },
+          { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
+        ],
+      });
+      const raw2 = r2.choices[0]?.message?.content ?? "";
+      const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
+      if (wasTruncated2) {
+        logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
+      }
+      parsed = extractJSON(raw2, wasTruncated2);
+      if (!parsed) {
+        logger.error({ chunkLabel, raw: raw2.slice(0, 300) }, "pass1 vision: failed to parse chunk after retry");
+        throw new Error(`Pass 1 vision ${chunkLabel}: response not valid JSON after retry`);
+      }
+    }
+
+    const chunkBlocks = normalisePass1(parsed).blocks;
+    logger.info({ chunkLabel, blockCount: chunkBlocks.length }, "pass1 vision: chunk extracted");
+    allBlocks.push(...chunkBlocks);
+  }
+
+  if (allBlocks.length === 0) {
+    throw new Error("Pass 1 vision extraction produced no blocks after all chunks");
+  }
+
+  logger.info(
+    { chunkCount: chunks.length, totalBlocks: allBlocks.length },
+    "pass1 vision: all chunks merged"
+  );
+
+  return { blocks: allBlocks };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy Pass 2 material below — kept for future use; NOT called by the
+// current mapping route (which now uses extractBlocksWithAI / extractBlocksWithVision).
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SYSTEM_PROMPT = `Դու կրթական բովանդակության վերլուծաբան ես (հիմնված P1 — Lesson Knowledge Package Generator սկզբունքների վրա)։ Քո խնդիրն է վերլուծել դասագրքի կոնկրետ դասի իրական տեքստը և կառուցել դասի քարտեզագրում։
 
 ԱՇԽԱՏԱՆՔԻ ՀԱՋՈՐԴԱԿԱՆՈՒԹՅՈՒՆԸ.
@@ -111,7 +463,7 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
 (2) coreProblem — բացահայտիր այն էական հարցը/խնդիրը, որին այս դասը պատասխանում է (մեկ նախադասությամբ)։
 (3) coreIdea — ձևակերպիր ՄԵԿ կենտրոնական գաղափար, որն ուղիղ պատասխանում է coreProblem-ին։
 (3.5) essentialQuestion — մեկ հարց, որին ամբողջ դասը պատասխանում է, ուղղակիորեն ուղղված աշակերտին (ՈՉ սահմանման հարց՝ ինչպես «Ի՞նչ է X-ը»)։ Ոճը՝ «Ինչպե՞ս կարելի է...», «Ինչու՞...», «Ինչպե՞ս կարող ենք...»
-(3.6) knowledgeBoundaries — 1-3 կարճ նշում, թե ինչ ԴԻՏԱՎՈՐՅԱԼ ՉԻ ընդգրկված այս դասում (հաջորդ դասերի կամ ավելի բարձր դասարանի նյութ), որ ուսուցումը չշեղվի սահմաններից դուրս։
+(3.6) knowledgeBoundaries — 1-3 կարճ նշում, թե ինչ ԴԻՏԱՎՈՐՅԱԼ ՉԻ ընդգրկված այս դասում (հաջող դասերի կամ ավելի բարձր դասարանի նյութ), որ ուսուցումը չշեղվի սահմաններից դուրս։
 (4) nodes — բաժանիր coreIdea-ն գիտելիքի node-երի, ինչպես նկարագրված է ներքևում. ամեն node պիտի ծառայի coreIdea-ին։ **IMPORTANT:** Identify EVERY distinct sub-topic boundary in the source pages (marked by a new section title/header in the textbook) and create ONE node per distinct sub-topic. Do NOT compress multiple distinct sub-topics into one node. Do NOT create one node per page.
 (5) practicalTasks — Extract EVERY numbered exercise found in the page range into practicalTasks. Do NOT sample or select only a few. If the range has 18 exercises, produce 18 rows. Preference real verbatim textbook exercises over invented ones.
 (5.5) textbook metadata — If the textbook pages contain the author name, textbook title, or chapter/section title, populate textbookAuthor, textbookTitle, and chapterTitle in the output. Never leave these null when the information is visible on the page.
@@ -120,77 +472,77 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
 
 {
   "lessonGoal": "Դասի նպատակը, 1-2 նախադասություն.",
-  "lessonOutcomes": ["Վերջնարդյունք 1", "Վերջնարդյունք 2", "..."],
+  "lessonOutcomes": ["Վerjalnardututyun 1", "Վerjalnardutyun 2", "..."],
   "textbookAuthor": "Author name extracted from page (null if not visible on the page)",
   "textbookTitle": "Textbook title extracted from page (null if not visible on the page)",
   "chapterTitle": "Chapter/section title (null if not visible on the page)",
-  "coreProblem": "Այս դասի պատասխանած էական հարցը (մեկ նախադասությամբ, հայերեն)",
-  "coreIdea": "Դասի կենտրոնական գաղափարը, հստակեցված ձևակերպումով",
-  "knowledgeBoundaries": ["Ինչ դիտավորյալ դուրս է այս դասից 1", "Ինչ դիտավորյալ դուրս է այս դասից 2"],
+  "coreProblem": "Այս դassi pataskharc'ac' esakan harce (mek naxadasatutyunov, hayeren)",
+  "coreIdea": "Dasi kentronakan gagapare, hstakec'vac' jefakervov",
+  "knowledgeBoundaries": ["Inch ditavoryaly durs e ays dasic' 1", "Inch ditavoryaly durs e ays dasic' 2"],
   "nodes": [
     {
-      "title": "Ենթաթեմայի կարճ վերնագիր",
-      "theoryContent": "Այս ենթաթեմայի տեսական բովանդակությունը",
-      "verbatimTheoryAnchor": "ԲԱՌ ԱՌ ԲԱՌ դասագրքի պարբերությունը, որի վրա հիմնված է այս node-ը (կամ դատարկ տող '' եթե չկա մեկ հստակ համապատասխան պարբերություն)",
+      "title": "Ents'atemas'i karch' vernagirnor",
+      "theoryContent": "Ays ents'atemas'i tesakan bovandakutyune",
+      "verbatimTheoryAnchor": "BAR AR BAR dasagrk'i parberuts'yuné, vor'i vra himnatvac' e ays node-e (kam datarc' tol '' et'e chka mek hstaki hamapataskhan parberuts'yun)",
       "targetBloomLevel": 1,
       "estimatedMinutes": 5,
-      "childFriendlyExplanation": "Ինչպես AI ուսուցիչը պիտի բացատրի այս node-ը աշակերտին պարզ լեզվով (հայերեն, 1-3 նախադասություն, ուղիղ դիմելով)",
-      "basicExamples": ["Կարճ կոնկրետ օրինակ 1 (հայերեն)", "Կարճ կոնկրետ օրինակ 2 (հայերեն)"],
-      "realLifeExamples": ["Կյանքից օրինակ (հայերեն, 0-2 հատ)"],
-      "commonMisconception": "Ամենահավանական սխալ պատասխանը կամ շփոթը, որ աշակերտը կունենա (հայերեն, 1 նախադասություն)",
-      "nonExamples": ["Կարճ հակադրություն. սա ՉԷ այս հասկացությունը, քանի որ... (հայերեն)"],
-      "prerequisiteNodes": ["Կարճ արտահայտություն. պահանջվող նախնական գիտելիք 1", "Կարճ արտահայտություն. պահանջվող նախնական գիտելիք 2"]
+      "childFriendlyExplanation": "Inchpes AI usuc'ich'e piti bacatri ays node-e ashakertini parc' lezov (hayeren, 1-3 naxadasatutyun, ughi dimeloy)",
+      "basicExamples": ["Karch' konkret orinak 1 (hayeren)", "Karch' konkret orinak 2 (hayeren)"],
+      "realLifeExamples": ["Kyank'ic' orinak (hayeren, 0-2 hat)"],
+      "commonMisconception": "Amenahavakanakan skhalv pataskhan kam shfot'e, vor ashakerte kunena (hayeren, 1 naxadasatutyun)",
+      "nonExamples": ["Karch' hakadrutyun. sa CHHE ays hasc'ac'utyune, vorovhetev... (hayeren)"],
+      "prerequisiteNodes": ["Karch' artsahaytutyun. pahanjvats' naxnayin giteliqk' 1", "Karch' artsahaytutyun. pahanjvats' naxnayin giteliqk' 2"]
     }
   ],
-  "essentialQuestion": "Մեկ հարցաձև ձևակերպված հարց, որին ամբողջ դասը պատասխանում է (հայերեն, ուղիղ դիմելով աշակերտին, ՈՉ 'Ի՞նչ է X-ը' ոճով).",
+  "essentialQuestion": "Mek harc'ajev jefakervats' harc', vor'in amboghj dase pataskhanom e (hayeren, ughi dimeloy, VOCH' 'Inch' e X-e' ochov).",
   "nodeDependencies": [
     {
-      "fromNodeTitle": "Նախապայման node-ի ճշգրիտ վերնագիրը (պիտի համընկնի վերևի node-երից մեկի հետ)",
-      "toNodeTitle": "Կախված node-ի ճշգրիտ վերնագիրը (պիտի համընկնի վերևի node-երից մեկի հետ)",
+      "fromNodeTitle": "Naxapaymanor node-i chshgrit vernagirnor (piti hamzni verevy node-eric' meki het)",
+      "toNodeTitle": "Kakhvats' node-i chshgrit vernagirnor (piti hamzni verevy node-eric' meki het)",
       "dependencyType": "REQUIRED",
       "requiredLevel": "CRITICAL",
-      "reason": "Կարճ պատճառաբանություն (հայերեն, 1 նախադասություն)"
+      "reason": "Karch' patcharabanutyun (hayeren, 1 naxadasatutyun)"
     }
   ],
   "practicalTasks": [
     {
-      "task": "Կոնկրետ վարժություն կամ խնդիր՝ դասագրքից կամ ոգեշնչված դասագրքից (հայերեն)",
-      "purpose": "Ինչպես է այս վարժությունն ամրապնդում կենտրոնական գաղափարը (հայերեն, 1 նախադասություն)",
-      "exerciseTextVerbatim": "ԲԱՌ ԱՌ ԲԱՌ դասագրքի տեքստ (պատճենիր ուղիղ, ոչ մի փոփոխություն թվին, նշանին, կամ բանաձևին). Դատարկ '' եթե սա AI-ի հորինած վարժություն է.",
+      "task": "Konkret varjutyun kam xndir dasagrk'ic' kam ogeshipnvats' dasagrk'ic' (hayeren)",
+      "purpose": "Inchpes e ays varjutyunn amrapenum kentronakan gagapare (hayeren, 1 naxadasatutyun)",
+      "exerciseTextVerbatim": "BAR AR BAR dasagrk'i tekst (patceniry ughi, voch' mi p'op'oxutyun tvin, nshani, kam banadzevi). Datarc' '' et'e sa AI-i horinavats' varjutyun e.",
       "exercisePurpose": "GUIDED_PRACTICE",
       "sourcePage": "10",
       "difficultyLevel": "MEDIUM",
-      "successCriteria": "Ճիշտ պատասխանը կամ ինչն է հաշվվում ճիշտ պատասխան (հայերեն)",
-      "relatedNodeTitle": "Այս վարժությունն ամրապնդող node-ի ճշգրիտ վերնագիրը (պիտի համընկնի վերևի node-երից մեկի հետ)",
+      "successCriteria": "Chisht pataskhan@ kam inch e hashvvum chisht pataskhan (hayeren)",
+      "relatedNodeTitle": "Ays varjutyunn amrapnoghe node-i chshgrit vernagirnor (piti hamzni verevy node-eric' meki het)",
       "assignment": "CLASS"
     }
   ]
 }
 
 ԿԱՆՈՆՆԵՐ.
-- Ամեն ինչ գրիր ՄԻԱՅՆ իրական հայերենով (հայատառ), ոչ մի տառադարձություն, ոչ մի կիրիլիցա
-- targetBloomLevel: 1-ից 6 (1=Հիշտարել, 2=Հասկանալ, 3=Կիրառել, 4=Վերլուծել, 5=Գնահատել, 6=Ստեղծել)
-- node-երի քանակը թող համապատասխանի իրական տեքստի ծավալին (սովորաբար 3-8 node)
-- theoryContent-ը պիտի հիմնված լինի տրված իրական տեքստի վրա
-- verbatimTheoryAnchor-ի ՊԱՀԱՆՋ. եթե node-ի հիմքում կոնկրետ, հստակ առանձնացվող դասագրքային պարբերություն/կանոն կա, մեջբերիր այն ուղիղ, բառ առ բառ (ոչ մի փոփոխություն). եթե տեքստը ցրված է կամ ուղիղ մեջբերում հնարավոր չէ, թող '' (դատարկ) — մի հորինիր կեղծ մեջբերում
-- practicalTasks: հանեք ԲՈԼՈՐ համարակալված վարժությունները այդ էջերից — առանց վերին սահմանի (2-5 սահմանը ՉԵՆ ԳՈՐԾՈՒՄ). եթե դրանք 2 լ, 10 կամ 20, արտեք ԲՈԼՈՐ-ը. նախապատվությունը իրական դասագրքային վարժություններին, ոչ հորինվածներին
-- exerciseTextVerbatim ԿԱՆՈՆ (ԽԻՍՏ).
-    * Եթե վարժությունը դասագրքից է → գրիր ԲԱՌ ԱՌ ԲԱՌ (մեկ թիվ, մեկ բառ, մեկ նշան մի փոփոխես).
-      exercisePurpose-ը ընտրիր այս enum-ից. CONCEPT_DISCOVERY, RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE, PROBLEM_SOLVING, REVIEW, ASSESSMENT
-    * Եթե վարժությունը AI-ի ստեղծագործականն է (ոչ դասագրքից) → exerciseTextVerbatim = "" (դատարկ տեքստադաշտ), exercisePurpose = "AI_ADAPTED"
-    * sourcePage = ճշգրիտ էջի համարը (1-10 նման), կամ null եթե AI-ինն է
-- exercisePurpose-ի վավեր արժեքներ. CONCEPT_DISCOVERY | RULE_DISCOVERY | WORKED_EXAMPLE | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | PROBLEM_SOLVING | REVIEW | ASSESSMENT | AI_ADAPTED
-- nodeDependencies ԿԱՆՈՆ. ՄԻԱՅՆ այս դասի node-երի միջև կախվածություններ։ REQUIRED=toNode-ը անհասկանալի է առանց fromNode-ի (requiredLevel=CRITICAL); SEQUENTIAL=բնական հերթականություն, բայց ոչ խիստ արգելափակող (SUPPORTING); CONCEPTUAL=կապված, բայց ոչ հաջորդական (SUPPORTING)։ Մի հորինիր կախվածություն միայն node-երի ցանկի կարգն արտացոլելու համար։ Եթե node-երն անկախ են միմյանցից, դիր nodeDependencies=[]:
-- knowledgeBoundaries-ը պիտի իրապես կապված լինի այս դասին հարակից թեմաների հետ (հաջորդ դաս, ավելի բարձր դասարան), ոչ ընդհանուր/անորոշ նշում
-- nonExamples-ը պիտի հստակ հակադրի node-ի հասկացությունը մի նման, բայց տարբեր բանի հետ (ոչ պարզապես «սա սխալ է» ընդհանուր նշում)
-- relatedNodeTitle-ը պիտի ճշգրիտ համընկնի վերևի node-երից մեկի վերնագրի հետ
-- assignment. բոլոր tasks-երն առաջարկելուց հետո, գնահատիր ընդհանուր node-ի ժամանակը. class-ում տեղավորվողները նշիր "CLASS", հավելյալները՝ "HOMEWORK": Ապահովիր առնվազն 1-2 "CLASS" tasks: Ճշգրիտ արժեք. "CLASS" կամ "HOMEWORK"
-- գլխի/բաժինների վերնագրեր (ԳԼՈՒԽ 1, ԲԱԺԻՆ 2 և նման) — մի ընդունիր դրանք որպես աղբյուր
+- Ամen ints'n gri MIAYN iraakan hayerenv (hayatarj), voch' mi tarradarzutyun, voch' mi kirilitsa
+- targetBloomLevel: 1-ic' 6 (1=Hishtarel, 2=Haskanal, 3=Kirarrel, 4=Verlucel, 5=Gnahatel, 6=Stegel)
+- node-eri kanak'e t'ogh hamapataskhani iraakan teksti tsavalin (sovoravar 3-8 node)
+- theoryContent-e piti himnatvats' lini trvats' iraakan teksti vra
+- verbatimTheoryAnchor-i PAHANJK'. et'e node-i himk'um konkret, hstaki arrandznacvox dasagrk'ayin parberutyun/kanon ka, mejberir ayn ughi, bar ar bar (voch' mi p'op'oxutyun). et'e tekste tsrvats' e kam ughi mejberam hnravor chhe, t'ogh '' (datarc') — mi hornir keghc' mejberam
+- practicalTasks: hanec'k' BOLOR hamarakaltsvats' varjutyunnere ayd ej'eric' — arantz' verin shemani (2-5 shemane CHEN GORTSUM). et'e dranc' 2 l, 10 kam 20, artec'k' BOLOR-e. naxapatvotyune iraakan dasagrk'ayin varjutyunnerin, voch' hornatvatsnerind
+- exerciseTextVerbatim KANON (KHIST).
+    * Et'e varjutyune dasagrk'ic' e → grir BAR AR BAR (mek tiv, mek bar, mek nishan mi p'op'oxes).
+      exercisePurpose-e entrelu ays enum-ic'. CONCEPT_DISCOVERY, RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE, PROBLEM_SOLVING, REVIEW, ASSESSMENT
+    * Et'e varjutyune AI-i stegagortsakann e (voch' dasagrk'ic') → exerciseTextVerbatim = "" (datarc' tekstadasht), exercisePurpose = "AI_ADAPTED"
+    * sourcePage = chshgrit ej'i hamarn (1-10 nman), kam null et'e AI-inne
+- exercisePurpose-i vaver artezhnerer. CONCEPT_DISCOVERY | RULE_DISCOVERY | WORKED_EXAMPLE | GUIDED_PRACTICE | INDEPENDENT_PRACTICE | PROBLEM_SOLVING | REVIEW | ASSESSMENT | AI_ADAPTED
+- nodeDependencies KANON. MIAYN ays dasi node-eri mijew kakhvatsutjunner. REQUIRED=toNode-e anhaskanal e arantz' fromNode-i (requiredLevel=CRITICAL); SEQUENTIAL=bnakan herrakanutyun, bayts' voch' khist arghelafakox (SUPPORTING); CONCEPTUAL=kapvats', bayts' voch' hajordakan (SUPPORTING). Mi hornir kakhvatsutjun miayn node-eri c'ank'i karge artsarolelu hamar. Et'e node-ere ankax en mimc'ic', dir nodeDependencies=[]:
+- knowledgeBoundaries-e piti irapes kapvats' lini ays dasi harakic' t'emaneri het (hajord das, aveli barts'r dasaran), voch' endhanur/anorosh nshum
+- nonExamples-e piti hstaki hakadrvi node-i hasc'ac'utyune mi nman, bayts' tariber banei het (voch' parc'apes 'sa skhalv e' endhanur nshum)
+- relatedNodeTitle-e piti chshgrit hamzni verevy node-eric' meki vernagreri het
+- assignment. bolor tasks-ere arjahanoreluc' heto, gnahatel endhanur node-i jamanaake. class-um telavoroviognere nshir "CLASS", havelyalnere "HOMEWORK". Apahovetstser arnvazn 1-2 "CLASS" tasks. Chshgrit artezhn. "CLASS" kam "HOMEWORK"
+- glukhi/bazhneri vernagirnor (GLUX 1, BAZHIN 2 ev nman) — mi entdni dranc' vorpes aghbyur
 - NODE GRANULARITY (STRICT): Each distinct sub-topic with its own heading/title in the source text → ONE node. Never compress multiple distinct sub-topics into one node. Never create a node per page. The node count must reflect how many clearly delineated sub-topics exist in the textbook passage.
 - EXHAUSTIVE EXERCISES (STRICT): Extract EVERY numbered exercise from the page range — do not sample or skip any. If there are 18 exercises, produce 18 practicalTask entries. exerciseTextVerbatim MUST NOT be blank when the textbook clearly shows exercise text.
 - TEXTBOOK METADATA (STRICT): If the author name, textbook title, or chapter/section title appears anywhere in the page text or headers, populate textbookAuthor, textbookTitle, chapterTitle. Never output null for these when the information is present on the page.
 - verbatimTheoryAnchor REINFORCE: If a node is grounded in a specific, clearly separable textbook paragraph or rule → quote it word-for-word (no changes). A blank verbatimTheoryAnchor is only acceptable when the textbook has no single clean matching passage.
-- Node-երը, coreProblem-ը, coreIdea-ն և practicalTasks-ը պիտի բացառապես համապատասխանեն դասի սեփական տեքստին ու վերնագրին
+- Node-ere, coreProblem-e, coreIdea-n ev practicalTasks-e piti bacarapesy hamapataskhhnen dasi sefiyin teksting u vernagrerd
 `;
 
 
@@ -257,24 +609,24 @@ export async function mapLessonWithAI(
 ): Promise<LessonMappingResult> {
   const userPromptParts: string[] = [
 
-    `ԱՌԱՐԿԱ: ${input.subjectName}`,
-    `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
-    input.chapterTitle ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}` : "",
-    input.textbookTitle ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}` : "",
-    input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}` : "",
+    `ԱՌARAKE: ${input.subjectName}`,
+    `DASI VERNAGIRNOR: ${input.lessonTitle}`,
+    input.chapterTitle ? `T'EMA/GLUX: ${input.chapterTitle}` : "",
+    input.textbookTitle ? `DASAGRK': ${input.textbookTitle}` : "",
+    input.textbookAuthor ? `HEGHINAK: ${input.textbookAuthor}` : "",
     input.pagesFrom && input.pagesTo
-      ? `ԷՋԵՐ: ${input.pagesFrom}-${input.pagesTo}`
+      ? `EJ'ER: ${input.pagesFrom}-${input.pagesTo}`
       : "",
     ``,
-    `ԴԱՍԱԳՐՔԻ ԻՐԱԿԱՆ ՏԵՔՍՏԸ ԱՅՍ ԷՋԵՐԻՑ.`,
-    input.lessonText || "(տեքստ չի հաջողվել հանել այս էջերից)",
+    `DASAGRK'I IRAAKAN TEKSTE AYS EJ'ERIC'.`,
+    input.lessonText || "(tekst chi hajoghjvel ayd ej'eric')",
 
   ];
   if (input.teacherGoal) {
-    userPromptParts.push("", `ՈՒՍՈՒՑՉԻ ՍևԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}`);
+    userPromptParts.push("", `USUC'CHII SEvaGIR NPATAKE: ${input.teacherGoal}`);
   }
   if (input.teacherOutcomes && input.teacherOutcomes.length > 0) {
-    userPromptParts.push(`ՈՒՍՈՒՑՉԻ ՍևԱԳԻՐ ՎԵՐՋՆԱՐԴՅՈՒՆՔՆԵՐ: ${input.teacherOutcomes.join("; ")}`);
+    userPromptParts.push(`USUC'CHII SEvaGIR VERJALNARDUTYUNNER: ${input.teacherOutcomes.join("; ")}`);
   }
   const userPrompt = userPromptParts.filter(Boolean).join("\n");
 
@@ -323,7 +675,7 @@ export async function mapLessonWithAI(
         {
           role: "user",
           content:
-            "Պատասխանդ վավեր JSON չէ։ Վերադարձրու ԲԱՑԱՌԱՊԵՍ վավեր JSON օբյեկտ` առանց որևէ լրացուցիչ տեքստի, բացատրության կամ markdown-ի։",
+            "Pataskhand vaver JSON che. Veradards'ru BACACAPYES vaver JSON objekt` arantz' voreve lratsuc'ich' teksti, bacatrut'yan kam markdown-i.",
         },
       ],
     });
@@ -334,8 +686,6 @@ export async function mapLessonWithAI(
       throw new Error("AI mapping response was not valid JSON");
     }
   }
-
-  const raw = firstRaw; // kept for downstream compat in error messages
 
   if (!Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
     throw new Error("AI mapping response contained no nodes");
@@ -394,6 +744,7 @@ export async function mapLessonWithAI(
     assignment: (["CLASS", "HOMEWORK"].includes(t.assignment)
       ? t.assignment
       : "CLASS") as "CLASS" | "HOMEWORK",
+    _idx: i,
   }));
 
   return parsed;
@@ -459,7 +810,7 @@ export async function rasterizePdfPages(
   }
 }
 
-// ─── Vision-based lesson mapping ───────────────────────────────────────────
+// ─── Legacy vision mapping (Pass 2 candidate) ─────────────────────────────────
 
 const VISION_MODEL = "google/gemini-2.5-flash";
 /** Pages sent per vision API call.
@@ -471,16 +822,8 @@ const VISION_CHUNK_PAGES = 3;
 /**
  * Identical structured output as mapLessonWithAI, but reads lesson content
  * from rasterised page images rather than extracted text.
- *
- * Strategy: split pageImages into chunks of ≤ VISION_CHUNK_PAGES; call the
- * vision model independently per chunk; merge and deduplicate results.
- * This prevents the model from losing grounding on later pages and falling
- * back to generic grammar knowledge or repeating earlier content.
- *
- * Safety check: identical exerciseTextVerbatim across chunks = degenerate
- * generation signal — logged and excluded from the merged output.
- *
- * Used automatically when isGarbledText() flags the pdf-parse output.
+ * NOTE: This function is preserved for future Pass 2 use. The current mapping
+ * route uses extractBlocksWithVision (Pass 1) instead.
  */
 export async function mapLessonWithVision(
   input: Omit<LessonMappingInput, "lessonText">,
@@ -516,18 +859,18 @@ export async function mapLessonWithVision(
     chunkIdx:  number,
   ): ContentPart[] {
     const headerText = [
-      `ԱՌԱՐԿԱ: ${input.subjectName}`,
-      `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
-      input.chapterTitle   ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}`   : "",
-      input.textbookTitle  ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}`     : "",
-      input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}`     : "",
-      `ԷՋԵՐ: ${chunkFrom}-${chunkTo} [batch ${chunkIdx + 1}/${chunks.length}, total ${totalFrom}-${totalTo}]`,
+      `ARRAAKE: ${input.subjectName}`,
+      `DASI VERNAGIRNOR: ${input.lessonTitle}`,
+      input.chapterTitle   ? `T'EMA/GLUX: ${input.chapterTitle}`   : "",
+      input.textbookTitle  ? `DASAGRK': ${input.textbookTitle}`     : "",
+      input.textbookAuthor ? `HEGHINAK: ${input.textbookAuthor}`     : "",
+      `EJ'ER: ${chunkFrom}-${chunkTo} [batch ${chunkIdx + 1}/${chunks.length}, total ${totalFrom}-${totalTo}]`,
       "",
-      `Կցված են ${chunkImages.length} պատկեր (էջ ${chunkFrom}–${chunkTo})։ Կարդա ԱՄԵՆ ինչ — ամեն տեքստ, վերնագիր, հեղինակ, վարժություն, աղյուսակ — ու կատարիր քարտեզագրում ըստ հրահանգների։`,
+      `Kc'vats' en ${chunkImages.length} patker (ej' ${chunkFrom}–${chunkTo}). Karda AMEN inch' — amen tekst, vernagirnor, heghinak, varjutyun, aghjusak — u katarel kartezagrm ysts hrahangner.`,
       input.teacherGoal
-      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}` : "",
+      ? `USUC'CHII SEVAGIR NPATAKE: ${input.teacherGoal}` : "",
       input.teacherOutcomes && input.teacherOutcomes.length > 0
-      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆարդյունքներ: ${input.teacherOutcomes.join("; ")}` : "",
+      ? `USUC'CHII SEVAGIR VERJALNARDUTYUNNER: ${input.teacherOutcomes.join("; ")}` : "",
     ].filter(Boolean).join("\n");
 
     return [
@@ -540,7 +883,7 @@ export async function mapLessonWithVision(
   }
 
   // ── Process each chunk sequentially ──────────────────────────────────────
-  const RETRY_MSG = "\u054a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0564 \u057e\u0561\u057e\u0565\u0580 JSON \u0579\u0567\u0589 \u054e\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u0580\u0578\u0582 \u0532\u0531\u0551\u0531\u054c\u0531\u054a\u0535\u054d \u057e\u0561\u057e\u0565\u0580 JSON \u0585\u0562\u0575\u0565\u056f\u057f` \u0561\u057c\u0561\u0576\u0581 \u0578\u0580\u0587\u0567 \u056c\u0580\u0561\u0581\u0578\u0582\u0581\u056b\u0579 \u057f\u0565\u0584\u057d\u057f\u056b, \u0562\u0561\u0581\u0561\u057f\u0580\u0578\u0582\u0569\u0575\u0561\u0576 \u056f\u0561\u0574 markdown-\u056b\u0589";
+  const RETRY_MSG = "Pataskhand vaver JSON che. Veradards'ru BACACAPYES vaver JSON objekt` arantz' voreve lratsuc'ich' teksti, bacatrut'yan kam markdown-i.";
 
   const chunkResults: LessonMappingResult[] = [];
   for (let ci = 0; ci < chunks.length; ci++) {
@@ -605,18 +948,6 @@ export async function mapLessonWithVision(
   }
 
   // ── Merge chunk results ───────────────────────────────────────────────────
-  //
-  // Lesson-level fields (goal, problem, idea, question, boundaries):
-  //   taken from chunk 1 — it covers the opening pages with lesson intro.
-  //
-  // Textbook metadata (author, title, chapter):
-  //   first non-null across any chunk wins.
-  //
-  // Nodes: union of all chunks, deduplicated by normalised title.
-  //
-  // practicalTasks: union of all chunks, deduplicated by verbatim text.
-  //   Identical verbatim in two chunks = degenerate generation — excluded.
-
   const merged: LessonMappingResult = { ...chunkResults[0] };
 
   // Textbook metadata: first non-null wins across chunks
@@ -645,7 +976,6 @@ export async function mapLessonWithVision(
     for (const task of (chunk.practicalTasks ?? [])) {
       const verbatim = (task.exerciseTextVerbatim ?? "").trim();
       if (verbatim && seenVerbatim.has(verbatim)) {
-        // Identical verbatim across chunks = degenerate hallucination — exclude
         duplicateTexts.push(verbatim.slice(0, 100));
         continue;
       }
@@ -702,7 +1032,6 @@ export async function mapLessonWithVision(
   merged.essentialQuestion = typeof merged.essentialQuestion === "string" ? merged.essentialQuestion : "";
   if (!Array.isArray(merged.nodeDependencies)) merged.nodeDependencies = [];
 
-  // nodeDependencies reference chunk-1 node titles; cross-chunk deps are not merged.
   merged.nodeDependencies = merged.nodeDependencies.filter(
     (d: { fromNodeTitle: string; toNodeTitle: string; dependencyType: string; requiredLevel: string; reason: string }) =>
       d.fromNodeTitle && d.toNodeTitle &&

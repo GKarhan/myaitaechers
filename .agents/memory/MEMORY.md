@@ -6,3 +6,4 @@
 - [Knowledge tree 4-category](knowledge-tree-4-category.md) — getMasteryLevel uses masteryScore+confidenceScore; teacher view requires ?studentId=X + teacher owns a class containing that student; generated hook doesn't support extra params so teacher-view uses raw useQuery.
 - [Lesson exercise CRUD](lesson-exercise-crud.md) — exercise routes added to lessons.ts; API client hooks added manually to api.ts (not generated); new types in api.schemas.ts must stay in sync.
 - [Chunked vision mapping](chunked-vision-mapping.md) — 3 pages/chunk, 32k tokens/chunk; retry still needed on chunk 2; output diverse but verbatim diverges from ground truth (ArmSCII font OCR limit).
+- [Pass 1 vision token budget](pass1-vision-token-budget.md) — pages 22-23 and 26-27 exceed 32k tokens at 2 pages/chunk; truncation recovery works but misses mid-page exercises; 1-page fallback needed for dense pages.

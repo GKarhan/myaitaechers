@@ -1,0 +1,70 @@
+Investigation first, then implementation. Do not touch Pass 2 or any
+existing Node-organization logic yet — scope is Pass 1 extraction only.
+
+## Goal
+Rewrite the extraction step (both mapLessonWithAI's text path and
+mapLessonWithVision's vision path — they share SYSTEM_PROMPT) so it
+produces PURE, DETERMINISTIC, TYPED BLOCKS instead of the current
+node/exercise-organized output. This is the core fix for the confirmed
+hallucination bug.
+
+## Step 1 — Read current state
+Paste the current SYSTEM_PROMPT in full, and the current output schema
+(the JSON structure mapLessonWithAI/mapLessonWithVision currently
+produce and parse).
+
+## Step 2 — New Pass 1 output format
+Replace the current "produce nodes+exercises directly" instruction with
+this instead — the model's ONLY job in this call is to output a flat
+array of blocks:
+
+  {
+    blocks: [
+      {
+        blockType: "DEFINITION" | "RULE" | "EXAMPLE" | "EXERCISE" |
+                   "OBJECTIVE" | "WARNING" | "EXCEPTION" | "TABLE" |
+                   "IMAGE" | "CAPTION" | "NOTE" | "ACTIVITY" | "HOMEWORK",
+        sourceText: string,      // EXACT verbatim quote, word-for-word,
+                                  // no paraphrasing, no summarizing
+        sourcePage: number,
+        sourceParagraph: string | null,
+        sourceBoundingBox: {x, y, w, h} | null   // vision path only
+      },
+      ...
+    ]
+  }
+
+## Step 3 — Explicit rules to add to the prompt (word these clearly)
+- ALLOWED: classify each visible block by type; copy its text exactly
+  as written; note its page/paragraph/location.
+- NOT ALLOWED: inventing new examples, new rules, new explanations, new
+  exercises, or any text not literally visible on the page. If the model
+  is unsure of a block's exact wording, it must still copy what's there
+  — never approximate or paraphrase.
+- Every numbered exercise on the page MUST produce its own EXERCISE
+  block — no sampling, no skipping, no summarizing multiple exercises
+  into one.
+- Do NOT organize blocks into topics/nodes/lessons at this stage — that
+  is a separate step. Just extract and classify, in the order blocks
+  appear on the page.
+
+## Step 4 — Wire the output to storage
+Save each returned block as one lessonNodesTable row for now (temporary
+— Pass 2 will reorganize these), with: blockType, sourceText, sourcePage,
+sourceParagraph, sourceBoundingBox filled in, title = first ~50 chars of
+sourceText (placeholder, Pass 2 will replace), status='draft',
+createdBy='ai', topicId=NULL (not yet grouped). Confirm this is a
+reasonable temporary landing spot before Step 3 (Pass 2) reorganizes them
+— flag if you see a better temporary approach.
+
+## Step 5 — Test
+Create a NEW lesson for Հայոց լեզու 7, pages 22-29 (same textbook,
+"Գոյական անուն" topic — the original lesson 67 was deleted). Run this
+new Pass 1 extraction on it (via the vision path, since this PDF is
+garbled). Paste the COMPLETE raw block list it produces — every block,
+in order, with type/text/page. Do not summarize the output, paste all of
+it.
+
+Then answer directly: does the block list look like faithful, complete,
+un-interpreted extraction (matching what's really on pages 22-29), or do
+you see any sign of summarization/invention already at this stage?
