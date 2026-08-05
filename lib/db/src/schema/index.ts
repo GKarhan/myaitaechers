@@ -20,6 +20,7 @@ export * from "./knowledge-edges";
 export * from "./review-schedule";
 export * from "./teacher-class-subjects";
 export * from "./student-profile";
+export * from "./lesson-topics";
 export * from "./lesson-nodes";
 export * from "./lesson-exercises";
 export * from "./lesson-node-dependencies";

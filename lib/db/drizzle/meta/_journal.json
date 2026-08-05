@@ -15,6 +15,20 @@
       "when": 1785740174654,
       "tag": "0001_chubby_beyonder",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785959677138,
+      "tag": "0002_tiresome_celestials",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785959902047,
+      "tag": "0003_condemned_firestar",
+      "breakpoints": true
     }
   ]
 }

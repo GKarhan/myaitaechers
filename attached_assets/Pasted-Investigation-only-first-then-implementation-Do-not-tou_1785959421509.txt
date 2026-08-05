@@ -1,0 +1,50 @@
+Investigation-only first, then implementation. Do not touch mapping logic
+(lesson-mapping.ts's prompts or Pass structure) in this step — scope is
+schema only.
+
+## Step 1a — Read current schema
+Read and paste the full current schema for lessonNodesTable,
+lessonExercisesTable, knowledgeNodesTable, and lessonNodeDependenciesTable
+(lib/db/src/schema/).
+
+## Step 1b — Add new fields
+Add the following NEW columns. Group them clearly by table, and confirm
+each one doesn't conflict with an existing column name.
+
+### On lessonNodesTable (or wherever "Node" content lives) AND on a new
+### table for MicroNodes if lessonNodesTable currently represents what
+### will become a MicroNode — investigate first which mapping makes more
+### sense given the current structure, then implement:
+- learningObjective: text, NOT NULL for MicroNodes (e.g. "Student can
+  differentiate proper and common nouns")
+- microNodeType: text, "knowledge" | "skill"
+- sourceText: text — verbatim quoted passage this node/microNode is
+  based on
+- sourcePage: integer
+- sourceParagraph: text (nullable — paragraph number or description)
+- sourceOffsetStart / sourceOffsetEnd: integer, nullable (or
+  sourceBoundingBox: jsonb, nullable, if working from image coordinates
+  instead of text offsets)
+- blockType: text — one of DEFINITION | RULE | EXAMPLE | EXERCISE |
+  OBJECTIVE | WARNING | EXCEPTION | TABLE | IMAGE | CAPTION | NOTE |
+  ACTIVITY | HOMEWORK
+- confidenceScore: integer 0-100, nullable
+- createdBy: text — "ai" | "teacher"
+- reviewedBy: integer, nullable — FK to teacher/user id
+- status: text — "draft" | "reviewed" | "approved", default "draft"
+- version: integer, default 1
+- validFrom: timestamptz, nullable
+- validTo: timestamptz, nullable
+- changeReason: text, nullable
+
+### On lessonExercisesTable:
+- sourceType: text — "textbook" | "ai_generated", default "textbook"
+- (reuse sourceText/sourcePage/confidenceScore/status pattern above if
+  not already present)
+
+## Step 1c — Verify
+Push the schema changes via drizzle-kit, confirm no existing data breaks
+(all new columns nullable or have sensible defaults so existing rows
+remain valid), paste the final applied schema for all affected tables.
+
+Do not touch lesson-mapping.ts, chat.ts, or any route logic in this step.

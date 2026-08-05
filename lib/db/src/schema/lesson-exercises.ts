@@ -23,6 +23,17 @@ export const lessonExercisesTable = pgTable("lesson_exercises", {
   assignment: text("assignment"),                        // CLASS | HOMEWORK
   sequence: integer("sequence").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+  // ── Authoring provenance & review fields (mirrors lesson_nodes pattern) ─
+  // Origin of this exercise: "textbook" (extracted) | "ai_generated" (created by AI).
+  sourceType: text("source_type").notNull().default("textbook"),
+  // Verbatim passage from the textbook this exercise is based on
+  // (distinct from exerciseTextVerbatim which is the exercise itself).
+  sourceText: text("source_text"),
+  // AI confidence 0–100 in the extraction/classification (nullable).
+  confidenceScore: integer("confidence_score"),
+  // Authoring lifecycle: "draft" → "reviewed" → "approved"
+  status: text("status").notNull().default("draft"),
 });
 
 export const insertLessonExerciseSchema = createInsertSchema(lessonExercisesTable).omit({
