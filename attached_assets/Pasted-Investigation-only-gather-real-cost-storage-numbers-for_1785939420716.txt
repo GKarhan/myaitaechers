@@ -1,0 +1,42 @@
+Investigation-only — gather real cost/storage numbers for capacity
+planning, no code changes.
+
+## Part 1 — Token usage & cost per lesson mapping
+For the most recent real mapping calls (lesson 62/63/64 via text path,
+lesson 67 via vision path), report:
+1. Exact input tokens and output tokens used (check API response usage
+   stats or logs — OpenRouter responses include usage.prompt_tokens/
+   completion_tokens)
+2. Exact dollar cost per call, using the actual per-token/per-image
+   pricing for whichever model was used
+3. Average and range across these examples (text path vs vision path
+   separately, since costs differ significantly)
+
+## Part 2 — DB storage per lesson (one-time, independent of student count)
+For lesson 67 (5 nodes, 24 exercises — a realistically thorough example):
+1. Query real row sizes: use pg_column_size() or similar to get actual
+   byte size for its lesson_nodes rows, lesson_exercises rows, and
+   lesson_node_dependencies rows
+2. Report total bytes for this one lesson's authoring content
+
+## Part 3 — DB storage per student per lesson (scales with enrollment)
+1. Query the real byte size of a single knowledge_nodes row
+2. Multiply by (nodes per lesson × students per class) to show how this
+   scales — e.g. "5 nodes × 30 students = 150 rows × X bytes = Y total"
+3. Also check evidence_events — how many rows get created per student
+   per quiz (already know this from earlier: 1 row per question per
+   quiz), and their average row size, since this also grows over time
+   per student
+
+## Part 4 — Extrapolated estimate
+Using the real numbers above, produce a simple formula/table:
+- Cost to map N lessons (one-time)
+- Storage for N lessons' authoring content (one-time)
+- Storage growth per (lesson × student) for knowledge_nodes (ongoing,
+  scales with enrollment)
+- Storage growth per (quiz question × student × attempt) for
+  evidence_events (ongoing, scales with usage)
+
+Report all of this with real measured numbers, not estimates from
+memory — pull actual bytes and actual token counts from the database and
+logs.
