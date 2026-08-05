@@ -398,3 +398,212 @@ export async function mapLessonWithAI(
 
   return parsed;
 }
+// ─── Garbled text detection ────────────────────────────────────────────────
+
+/**
+ * Returns true when extracted PDF text has a suspiciously low proportion of
+ * Armenian Unicode chars — which signals a font-encoding mismatch (ArmSCII /
+ * custom-font PDFs where pdf-parse returns garbled Latin codepoints).
+ *
+ * Threshold: Armenian chars make up < 15 % of all alphabetic chars.
+ * Empty / very short text is NOT flagged (handled upstream as missing text).
+ */
+export function isGarbledText(text: string): boolean {
+  if (!text || text.trim().length < 30) return false;
+  const alphaChars    = (text.match(/[a-zA-Z\u0531-\u058F\u0559-\u055F]/g) ?? []).length;
+  if (alphaChars === 0) return false;
+  const armenianChars = (text.match(/[\u0531-\u058F\u0559-\u055F]/g) ?? []).length;
+  return armenianChars / alphaChars < 0.15;
+}
+
+// ─── PDF rasterisation (vision fallback path) ──────────────────────────────
+
+import { execFile } from "child_process";
+import { promisify } from "util";
+import os from "os";
+
+const _execFileAsync = promisify(execFile);
+
+/**
+ * Rasterises a page range of a PDF using pdftoppm and returns each page as a
+ * base64-encoded PNG string.
+ * 150 DPI provides sufficient resolution for a vision model without excessive
+ * image token cost.
+ */
+export async function rasterizePdfPages(
+  filePath: string,
+  pagesFrom: number,
+  pagesTo:   number,
+  dpi = 150
+): Promise<string[]> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-raster-"));
+  try {
+    await _execFileAsync("pdftoppm", [
+      "-r", String(dpi),
+      "-png",
+      "-f", String(pagesFrom),
+      "-l", String(pagesTo),
+      filePath,
+      path.join(tmpDir, "page"),
+    ]);
+    // pdftoppm names output files page-00001.png, page-00002.png, …
+    // Lexicographic sort == page order.
+    const files = fs.readdirSync(tmpDir)
+      .filter((f) => f.endsWith(".png"))
+      .sort();
+    return files.map((f) =>
+      fs.readFileSync(path.join(tmpDir, f)).toString("base64")
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+// ─── Vision-based lesson mapping ───────────────────────────────────────────
+
+const VISION_MODEL = "google/gemini-2.5-flash";
+
+/**
+ * Identical structured output as mapLessonWithAI, but reads lesson content
+ * from rasterised page images rather than extracted text.
+ *
+ * Used automatically when isGarbledText() flags the pdf-parse output as
+ * unreliable (e.g. ArmSCII-encoded PDFs).
+ *
+ * The same SYSTEM_PROMPT and JSON schema are reused — only the user-message
+ * format changes (multimodal content array instead of a plain text string).
+ */
+export async function mapLessonWithVision(
+  input: Omit<LessonMappingInput, "lessonText">,
+  pageImages: string[]   // base64-encoded PNG, one element per page
+): Promise<LessonMappingResult> {
+
+  type TextPart  = { type: "text";      text: string };
+  type ImagePart = { type: "image_url"; image_url: { url: string } };
+  type ContentPart = TextPart | ImagePart;
+
+  const headerText = [
+    `ԱՌԱՐԿԱ: ${input.subjectName}`,
+    `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
+    input.chapterTitle   ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}`   : "",
+    input.textbookTitle  ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}`     : "",
+    input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}`     : "",
+    input.pagesFrom && input.pagesTo
+      ? `ԷՋԵՐ: ${input.pagesFrom}-${input.pagesTo}` : "",
+    "",
+    `Կցված են ${pageImages.length} պատկեր (էջ ${input.pagesFrom}–${input.pagesTo})։ Կարդա ԱՄԵՆ ինչ — ամեն տեքստ, վերնագիր, հեղինակ, վարժություն, աղյուսակ — ու կատարիր քարտեզագրում ըստ հրահանգների։`,
+    input.teacherGoal
+      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}` : "",
+    input.teacherOutcomes && input.teacherOutcomes.length > 0
+      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆարդյունքներ: ${input.teacherOutcomes.join("; ")}` : "",
+  ].filter(Boolean).join("\n");
+
+  const content: ContentPart[] = [
+    { type: "text", text: headerText },
+    ...pageImages.map((b64): ImagePart => ({
+      type: "image_url",
+      image_url: { url: `data:image/png;base64,${b64}` },
+    })),
+  ];
+
+  // ── Helper: attempt to extract valid JSON from raw model output ─────────
+  function extractJSON(raw: string): LessonMappingResult | null {
+    const stripped = raw.replace(/```json\s*|```/g, "").trim();
+    try { return JSON.parse(stripped); } catch { /* fall through */ }
+    const match = stripped.match(/\{[\s\S]*\}/);
+    if (match) { try { return JSON.parse(match[0]); } catch { /* fall through */ } }
+    return null;
+  }
+
+  const firstResponse = await openrouter.chat.completions.create({
+    model: VISION_MODEL,
+    max_tokens: 10000,
+    temperature: 0.3,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content } as any,
+    ],
+  });
+
+  const firstRaw = firstResponse.choices[0]?.message?.content ?? "";
+  let parsed: LessonMappingResult | null = extractJSON(firstRaw);
+
+  if (!parsed) {
+    logger.warn({ raw: firstRaw.slice(0, 200) }, "vision mapping: first attempt not valid JSON — retrying");
+    const retryResponse = await openrouter.chat.completions.create({
+      model: VISION_MODEL,
+      max_tokens: 10000,
+      temperature: 0.1,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: [
+        { role: "system",    content: SYSTEM_PROMPT },
+        { role: "user",      content } as any,
+        { role: "assistant", content: firstRaw },
+        {
+          role: "user",
+          content: "Պատասխանդ վավեր JSON չէ։ Վերադարձրու ԲԱՑԱՌԱՊԵՍ վավեր JSON օբյեկտ` առանց որևէ լրացուցիչ տեքստի, բացատրության կամ markdown-ի։",
+        },
+      ],
+    });
+    const retryRaw = retryResponse.choices[0]?.message?.content ?? "";
+    parsed = extractJSON(retryRaw);
+    if (!parsed) {
+      logger.error({ raw: retryRaw.slice(0, 300) }, "vision mapping: failed to parse AI JSON after retry");
+      throw new Error("Vision AI mapping response was not valid JSON");
+    }
+  }
+
+  if (!Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
+    throw new Error("Vision AI mapping response contained no nodes");
+  }
+
+  // Apply same defensive defaults as mapLessonWithAI
+  parsed.nodes = parsed.nodes.map((n) => ({
+    ...n,
+    verbatimTheoryAnchor:     typeof n.verbatimTheoryAnchor === "string" ? n.verbatimTheoryAnchor : "",
+    childFriendlyExplanation: n.childFriendlyExplanation ?? "",
+    basicExamples:            Array.isArray(n.basicExamples)    ? n.basicExamples    : [],
+    realLifeExamples:         Array.isArray(n.realLifeExamples) ? n.realLifeExamples : [],
+    commonMisconception:      n.commonMisconception ?? "",
+    nonExamples:              Array.isArray(n.nonExamples)       ? n.nonExamples       : [],
+    prerequisiteNodes:        Array.isArray(n.prerequisiteNodes) ? n.prerequisiteNodes : [],
+  }));
+
+  parsed.knowledgeBoundaries = Array.isArray(parsed.knowledgeBoundaries) ? parsed.knowledgeBoundaries : [];
+
+  parsed.textbookAuthor = typeof parsed.textbookAuthor === "string" && parsed.textbookAuthor.trim()
+    ? parsed.textbookAuthor.trim() : null;
+  parsed.textbookTitle  = typeof parsed.textbookTitle  === "string" && parsed.textbookTitle.trim()
+    ? parsed.textbookTitle.trim()  : null;
+  parsed.chapterTitle   = typeof parsed.chapterTitle   === "string" && parsed.chapterTitle.trim()
+    ? parsed.chapterTitle.trim()   : null;
+
+  if (!Array.isArray(parsed.practicalTasks)) parsed.practicalTasks = [];
+  parsed.essentialQuestion = typeof parsed.essentialQuestion === "string" ? parsed.essentialQuestion : "";
+  if (!Array.isArray(parsed.nodeDependencies)) parsed.nodeDependencies = [];
+
+  parsed.nodeDependencies = parsed.nodeDependencies.filter(
+    (d: { fromNodeTitle: string; toNodeTitle: string; dependencyType: string; requiredLevel: string; reason: string }) =>
+      d.fromNodeTitle && d.toNodeTitle &&
+      ["REQUIRED", "SEQUENTIAL", "CONCEPTUAL"].includes(d.dependencyType) &&
+      ["CRITICAL", "SUPPORTING"].includes(d.requiredLevel)
+  );
+
+  parsed.practicalTasks = parsed.practicalTasks.map((t) => ({
+    ...t,
+    task:                 t.task ?? "",
+    purpose:              t.purpose ?? "",
+    exerciseTextVerbatim: typeof t.exerciseTextVerbatim === "string" ? t.exerciseTextVerbatim : "",
+    exercisePurpose:      typeof t.exercisePurpose === "string"      ? t.exercisePurpose      : "AI_ADAPTED",
+    sourcePage:           t.sourcePage ?? null,
+    difficultyLevel:      (["LOW", "MEDIUM", "HIGH"].includes(t.difficultyLevel)
+      ? t.difficultyLevel : "MEDIUM") as "LOW" | "MEDIUM" | "HIGH",
+    successCriteria:      t.successCriteria ?? "",
+    relatedNodeTitle:     t.relatedNodeTitle ?? "",
+    assignment:           (["CLASS", "HOMEWORK"].includes(t.assignment)
+      ? t.assignment : "CLASS") as "CLASS" | "HOMEWORK",
+  }));
+
+  return parsed;
+}

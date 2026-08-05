@@ -4,7 +4,7 @@ import { Router } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
 import { eq, and, asc, max, inArray } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, topologicalSortNodes } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, mapLessonWithAI, mapLessonWithVision, isGarbledText, rasterizePdfPages, topologicalSortNodes, type LessonMappingResult } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 
@@ -949,7 +949,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       lesson.pagesTo
     );
 
-    const mapping = await mapLessonWithAI({
+    const baseInput = {
       subjectName: subject?.name ?? "",
       lessonTitle: lesson.title,
       chapterTitle: lesson.chapterTitle ?? null,
@@ -957,12 +957,24 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       textbookAuthor: lesson.textbookAuthor ?? null,
       pagesFrom: lesson.pagesFrom,
       pagesTo: lesson.pagesTo,
-      lessonText,
       teacherGoal: lesson.lessonGoal ?? null,
       teacherOutcomes: Array.isArray(lesson.lessonOutcomes)
         ? (lesson.lessonOutcomes as string[])
         : null,
-    });
+    };
+
+    let mapping: LessonMappingResult;
+    if (isGarbledText(lessonText)) {
+      logger.info(
+        { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
+        "lesson mapping: garbled text detected — falling back to vision-based mapping"
+      );
+      const pageImages = await rasterizePdfPages(filePath, lesson.pagesFrom, lesson.pagesTo);
+      logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages, calling vision model");
+      mapping = await mapLessonWithVision(baseInput, pageImages);
+    } else {
+      mapping = await mapLessonWithAI({ ...baseInput, lessonText });
+    }
 
     await db
       .update(lessonsTable)
