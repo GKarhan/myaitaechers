@@ -1,0 +1,37 @@
+## Part 2 — Teacher review/edit UI for mapped content
+
+### Step 1 — Investigate what already exists
+The teacher's lesson page (Դասեր tab, e.g. lesson 66/62) already shows
+pencil (✏️) and trash (🗑) icons next to Գիտելիքի միավորներ (nodes) and
+exercises. Read the actual frontend component for this page and report:
+does clicking the pencil icon currently open an edit form for that node
+(title, theoryContent, examples, etc.) or exercise (exerciseTextVerbatim,
+successCriteria, etc.)? Does anything currently let the teacher ADD a new
+node or exercise to an already-mapped lesson (not just edit/delete
+existing ones)? Report exactly what's wired up vs what's just a
+non-functional icon.
+
+### Step 2 — Fill the gaps
+Based on Step 1's findings, implement whatever is missing so that, after
+mapping, the teacher can on this same page:
+1. Edit any node's fields (title, theoryContent, verbatimTheoryAnchor,
+   basicExamples, commonMisconception, etc.) inline or via a modal
+2. Edit any exercise's fields (exerciseTextVerbatim, successCriteria,
+   difficultyLevel, assignment CLASS/HOMEWORK)
+3. Add a new node to the lesson (manually, without re-running AI mapping)
+4. Add a new exercise to a specific node (manually)
+5. See exactly the same structured breakdown demonstrated earlier in this
+   conversation — each node as its own block, with its exercises listed
+   under it, textbook metadata (author/title/chapter) visible at the top
+   of the page
+
+Reuse existing edit/save patterns already in the codebase (e.g. how
+lesson editing or quiz-question editing already works elsewhere) rather
+than inventing a new pattern from scratch — check for one first.
+
+### Step 3 — Verify
+Take real authenticated screenshots showing: editing an existing node's
+theoryContent and saving it (confirm the DB value actually changed),
+adding a new manual node to an already-mapped lesson, and adding a new
+manual exercise to a node. Confirm typecheck is clean and nothing else on
+the page broke.

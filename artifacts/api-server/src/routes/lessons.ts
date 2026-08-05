@@ -798,6 +798,13 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         essentialQuestion: mapping.essentialQuestion ?? null,
         practicalTasks: mapping.practicalTasks,
         knowledgeBoundaries: mapping.knowledgeBoundaries ?? [],
+        // Save textbook metadata extracted from page content when teacher left these blank
+        ...(mapping.textbookAuthor && !lesson.textbookAuthor
+          ? { textbookAuthor: mapping.textbookAuthor } : {}),
+        ...(mapping.textbookTitle && !lesson.textbookTitle
+          ? { textbookTitle: mapping.textbookTitle } : {}),
+        ...(mapping.chapterTitle && !lesson.chapterTitle
+          ? { chapterTitle: mapping.chapterTitle } : {}),
       })
       .where(eq(lessonsTable.id, lessonId));
 
