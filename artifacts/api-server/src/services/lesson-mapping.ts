@@ -173,7 +173,7 @@ const SYSTEM_PROMPT = `Դու կրթական բովանդակության վեր
 - node-երի քանակը թող համապատասխանի իրական տեքստի ծավալին (սովորաբար 3-8 node)
 - theoryContent-ը պիտի հիմնված լինի տրված իրական տեքստի վրա
 - verbatimTheoryAnchor-ի ՊԱՀԱՆՋ. եթե node-ի հիմքում կոնկրետ, հստակ առանձնացվող դասագրքային պարբերություն/կանոն կա, մեջբերիր այն ուղիղ, բառ առ բառ (ոչ մի փոփոխություն). եթե տեքստը ցրված է կամ ուղիղ մեջբերում հնարավոր չէ, թող '' (դատարկ) — մի հորինիր կեղծ մեջբերում
-- practicalTasks: 2-5 վարժություն; նախապատվությունը իրական դասագրքային վարժություններին/օրինակներին, ոչ հորինվածներին
+- practicalTasks: հանեք ԲՈԼՈՐ համարակալված վարժությունները այդ էջերից — առանց վերին սահմանի (2-5 սահմանը ՉԵՆ ԳՈՐԾՈՒՄ). եթե դրանք 2 լ, 10 կամ 20, արտեք ԲՈԼՈՐ-ը. նախապատվությունը իրական դասագրքային վարժություններին, ոչ հորինվածներին
 - exerciseTextVerbatim ԿԱՆՈՆ (ԽԻՍՏ).
     * Եթե վարժությունը դասագրքից է → գրիր ԲԱՌ ԱՌ ԲԱՌ (մեկ թիվ, մեկ բառ, մեկ նշան մի փոփոխես).
       exercisePurpose-ը ընտրիր այս enum-ից. CONCEPT_DISCOVERY, RULE_DISCOVERY, WORKED_EXAMPLE, GUIDED_PRACTICE, INDEPENDENT_PRACTICE, PROBLEM_SOLVING, REVIEW, ASSESSMENT
@@ -517,7 +517,7 @@ export async function mapLessonWithVision(
 
   const firstResponse = await openrouter.chat.completions.create({
     model: VISION_MODEL,
-    max_tokens: 10000,
+    max_tokens: 32000,
     temperature: 0.3,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     messages: [
@@ -533,7 +533,7 @@ export async function mapLessonWithVision(
     logger.warn({ raw: firstRaw.slice(0, 200) }, "vision mapping: first attempt not valid JSON — retrying");
     const retryResponse = await openrouter.chat.completions.create({
       model: VISION_MODEL,
-      max_tokens: 10000,
+      max_tokens: 32000,
       temperature: 0.1,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages: [
