@@ -293,7 +293,7 @@ export default function Dashboard() {
 
       {/* Active lesson hero */}
       <div>
-        <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
+        <h2 className="text-xs font-semibold tracking-widest text-muted-foreground mb-4">
           📝 Իմ դասերը
         </h2>
         {allLessons === undefined ? (
@@ -343,7 +343,7 @@ export default function Dashboard() {
       {/* Assigned quizzes */}
       {(assignedQuizzes ?? []).length > 0 && (
         <div>
-          <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
+          <h2 className="text-xs font-semibold tracking-widest text-muted-foreground mb-4">
             📋 թեստերը
           </h2>
           <div className="space-y-3">
@@ -387,7 +387,7 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div>
-        <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
+        <h2 className="text-xs font-semibold tracking-widest text-muted-foreground mb-4">
           📊 Իմ առաջընթացը
         </h2>
         <div className="grid grid-cols-3 gap-3">

@@ -2003,7 +2003,7 @@ export default function AdminDashboard() {
               onSubmit={handleCreateSubject}
               className="mb-6 bg-card/50 border border-white/10 rounded-2xl p-5 space-y-3"
             >
-              <h3 className="font-medium">ԱՎԵԼԱՑՆԵԼ ԱՌԱՐԿԱՆԵՐ</h3>
+              <h3 className="font-medium">Ավելացնել առարկաներ</h3>
               {subError && (
                 <p className="text-destructive text-xs">{subError}</p>
               )}
@@ -2011,7 +2011,7 @@ export default function AdminDashboard() {
                 <input
                   value={subName}
                   onChange={(e) => setSubName(e.target.value)}
-                  placeholder="ԱՌԱՐԿԱՆԵՐ ԱՆՈՒՆ"
+                  placeholder="Առարկայի անունը"
                   className="flex-1 bg-background/50 border border-input rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
                 <button
@@ -2019,7 +2019,7 @@ export default function AdminDashboard() {
                   disabled={createSubject.isPending}
                   className={btnPrimary}
                 >
-                  {createSubject.isPending ? "..." : "ԱՎԵԼԱՑՆԵԼ"}
+                  {createSubject.isPending ? "..." : "+ Ավելացնել առարկա"}
                 </button>
               </div>
             </form>
@@ -2029,8 +2029,8 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-white/10 text-muted-foreground text-left">
                     <th className="pb-3 pr-4 pl-1">#</th>
-                    <th className="pb-3 pr-4">ԱՌԱՐԿԱՆԵՐ ԱՆՈՒՆ</th>
-                    <th className="pb-3 text-right">ԳՈՐԾՈՂՈՒԹՅՈՒՆՆԵՐ</th>
+                    <th className="pb-3 pr-4">Առարկայի անունը</th>
+                    <th className="pb-3 text-right">Գործողություններ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">

@@ -1524,7 +1524,7 @@ export default function TeacherDashboard() {
                       }}
                       className="w-full py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
                     >
-                      ԴԻՏԵԼ
+                      Դիտել
                     </button>
                   </div>
                 ))}
@@ -1624,7 +1624,7 @@ export default function TeacherDashboard() {
                         }}
                         className="mt-auto w-full py-2 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-bold tracking-widest hover:bg-primary/30 transition-colors"
                       >
-                        դիտել
+                        Դիտել
                       </button>
                     </div>
                   );
@@ -1649,7 +1649,7 @@ export default function TeacherDashboard() {
                     <div className="text-xs text-muted-foreground">{(s as any).email || s.username}</div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>դիտել</button>
+                    <button onClick={() => { setSelectedStudentId(s.id); setMainView("student"); }} className={btnGhost}>Դիտել</button>
                     <button
                       onClick={() => setTreePickerStudentId(s.id)}
                       className={btnGhost}
@@ -2054,7 +2054,7 @@ export default function TeacherDashboard() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="sm:col-span-2">
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Թեմա (ըստ ծանկություն)
+                          Թեմա (ըստ ցանկության)
                         </label>
                         <input
                           value={lessonForm.chapterTitle}
@@ -2242,7 +2242,7 @@ export default function TeacherDashboard() {
                       </div>
                       <div className="sm:col-span-2">
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Թեմա (ըստ ծանկություն)
+                          Թեմա (ըստ ցանկության)
                         </label>
                         <input
                           value={editLesson.chapterTitle}
@@ -2682,7 +2682,7 @@ export default function TeacherDashboard() {
                             onClick={() => setLocation(`/quiz/${qz.id}/review?classId=${qz.classId ?? ""}&subjectId=${qz.subjectId ?? ""}`)}
                             className="text-xs px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                           >
-                            դիտել
+                            Դիտել
                           </button>
                           {qz.completedCount > 0 && (
                             <button
