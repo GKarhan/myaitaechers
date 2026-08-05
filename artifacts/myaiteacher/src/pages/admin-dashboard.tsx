@@ -613,6 +613,7 @@ export default function AdminDashboard() {
         {/* ── HOME: stats + schedule ── */}
         {tab === "home" && (
           <div className="space-y-8">
+            <h2 className="font-semibold text-lg">Գլխավոր</h2>
             {/* Stats cards */}
             <div className="grid grid-cols-4 gap-6">
               {[
