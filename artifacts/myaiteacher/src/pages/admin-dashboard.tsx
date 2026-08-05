@@ -669,7 +669,7 @@ export default function AdminDashboard() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold text-lg tracking-widest">
-                  ԴԱՍԱՑՈՒՑԱԿ
+                  Դասացուցակ
                 </h2>
                 <button
                   onClick={() => setTab("schedule")}
@@ -1477,7 +1477,7 @@ export default function AdminDashboard() {
           <div className="pt-10">
             <div className="mb-5">
               <h2 className="font-semibold text-lg tracking-widest">
-                ԴԱՍԱՑՈՒՑԱԿ
+               Դասացուցակ 
               </h2>
             </div>
 
