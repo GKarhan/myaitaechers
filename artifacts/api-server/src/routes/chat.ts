@@ -186,6 +186,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let lessonContext = "";
   let topicName = "";
   let _allNodeTitles: string[] = [];
+  // Hoisted so the intro gate (below) can read them outside the lessonId block
+  let lesson: (typeof lessonsTable.$inferSelect) | null = null;
+  let studentName: string | null = null;
   let progressIndicator: ProgressIndicator = {
     current_node_name: "",
     step: 0,
@@ -206,6 +209,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     nodeLastEvidenceQuality: string | null;
     nodeTeachingStage: string;
     phase1ConsecutiveCorrect: number;
+    introConfirmed: boolean;
   };
   let session: SessionRef | null = null;
 
@@ -225,11 +229,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let classExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
 
   if (lessonId) {
-    const [lesson] = await db
+    const [lessonRow] = await db
       .select()
       .from(lessonsTable)
       .where(eq(lessonsTable.id, lessonId))
       .limit(1);
+    lesson = lessonRow ?? null;
 
     if (lesson) {
       const [sessionRow] = await db
@@ -258,6 +263,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeLastEvidenceQuality: sessionRow.nodeLastEvidenceQuality ?? null,
           nodeTeachingStage: sessionRow.nodeTeachingStage ?? "THEORY",
           phase1ConsecutiveCorrect: sessionRow.phase1ConsecutiveCorrect ?? 0,
+          introConfirmed: sessionRow.introConfirmed ?? false,
         };
         sessionId = sessionRow.id;
       }
@@ -274,7 +280,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .from(usersTable)
         .where(eq(usersTable.id, req.userId!))
         .limit(1);
-      const studentName = studentRow?.fullName ?? null;
+      studentName = studentRow?.fullName ?? null;
 
       const allNodes = await db
         .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence, title: lessonNodesTable.title })
@@ -684,6 +690,86 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     { role: "user", content: message },
   ];
+
+
+  // ── Deterministic lesson intro gate ──────────────────────────────────────────
+  // Fires on every turn while session.introConfirmed is false.
+  // Returns a canned response WITHOUT calling any AI.
+  if (lessonId && lesson && session && !session.introConfirmed) {
+    // Normalise script-lookalike "ok" before matching:
+    // Armenian Oh (U+0555/0585), Cyrillic O/o (U+041E/043E) → Latin o
+    // Armenian keh (U+056F), Cyrillic k (U+043A) → Latin k
+    const _normalizeOk = (s: string) =>
+      s.replace(/[\u0585\u0555\u041e\u043e]/g, "o")
+       .replace(/[\u056f\u043a]/g, "k");
+    const trimmedLower = message.trim().toLowerCase();
+    const isAffirmative =
+      _normalizeOk(trimmedLower) === "ok" ||
+      new Set([
+        "\u056c\u0561\u057e",                              // լավ (good)
+        "\u057a\u0561\u057f\u0580\u0561\u057d\u057f",      // պատրաստ
+        "\u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u0574", // patrast em
+      ]).has(trimmedLower);
+    const prevAssistant = history.find((m) => m.role === "assistant");
+
+    if (!prevAssistant) {
+      // First turn — return the deterministic intro; no AI call
+      const outcomes = Array.isArray(lesson.lessonOutcomes)
+        ? (lesson.lessonOutcomes as string[]).filter((x): x is string => typeof x === "string")
+        : [];
+      const outcomesBlock = outcomes.length > 0
+        ? outcomes.map((o) => `\u2022 ${o}`).join("\n")
+        : "(not specified)"; // placeholder
+      const goalBlock = lesson.lessonGoal?.trim() || "(not specified)";
+      const greetLine = studentName
+        ? `\u0532\u0561\u0580\u0587, ${studentName}: \ud83d\udc4b`
+        : `\u0532\u0561\u0580\u0587: \ud83d\udc4b`;
+
+      const introText = [
+        greetLine,
+        "",
+        `\u0531\u0575\u057d\u0585\u0580\u057e\u0561 \u0564\u0561\u057d\u056b \u0569\u0565\u0574\u0561\u0576 \u0567. \u00ab${lesson.title}\u00bb`,
+        "",
+        "\u0531\u0575\u057d \u0564\u0561\u057d\u056b \u0576\u057a\u0561\u057f\u0561\u056f\u0576\u0565\u0580\u0576 \u0565\u0576.",
+        goalBlock,
+        "",
+        "\u0531\u0575\u057d \u0564\u0561\u057d\u056b \u0561\u057e\u0561\u0580\u057f\u056b\u0576 \u0564\u0578\u0582 \u056f\u057d\u0578\u057e\u0578\u0580\u0565\u057d.",
+        outcomesBlock,
+        "",
+        "\u0535\u0569\u0565 \u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u057d \u057d\u056f\u057d\u0565\u056c\u0578\u0582, \u0563\u0580\u056b\u0580\u055d \u0555\u056f",
+      ].join("\n");
+
+      const [introMsg] = await db
+        .insert(chatMessagesTable)
+        .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: introText })
+        .returning();
+
+      logger.info({ lessonId, sessionId: session.id }, "intro-gate: returned deterministic intro, no AI call");
+      res.json({ response: introText, messageId: introMsg.id, progressIndicator, teachingMode: "TEACH" });
+      return;
+    }
+
+    // Subsequent turn while still un-confirmed — check for affirmative
+    if (!isAffirmative) {
+      const reminder = "\u0535\u0580\u0562 \u057a\u0561\u057f\u0580\u0561\u057d\u057f \u0565\u057d, \u0563\u0580\u056b\u0580\u055d \u0555\u056f \ud83d\ude42";
+      const [reminderMsg] = await db
+        .insert(chatMessagesTable)
+        .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: reminder })
+        .returning();
+
+      logger.info({ lessonId, sessionId: session.id, input: message.slice(0, 40) }, "intro-gate: non-affirmative, returned reminder");
+      res.json({ response: reminder, messageId: reminderMsg.id, progressIndicator, teachingMode: "TEACH" });
+      return;
+    }
+
+    // Affirmative received — flip introConfirmed and fall through to normal AI flow
+    await db
+      .update(lessonSessionsTable)
+      .set({ introConfirmed: true })
+      .where(eq(lessonSessionsTable.id, session.id));
+    logger.info({ lessonId, sessionId: session.id }, "intro-gate: confirmed, proceeding to normal AI flow");
+  }
+  // ── End intro gate ────────────────────────────────────────────────────────────
 
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;

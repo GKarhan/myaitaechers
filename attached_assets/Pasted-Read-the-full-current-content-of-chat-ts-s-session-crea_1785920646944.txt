@@ -1,0 +1,88 @@
+Read the full current content of chat.ts's session-creation/first-message
+logic (where a lesson_sessions row is created and the very first AI
+response for a session gets generated), the lessons schema (confirm
+lessonGoal/lessonOutcomes/coreIdea field names and types — lessonOutcomes
+may be an array), and lesson_sessions schema, before changing anything.
+Paste all of it.
+
+## Goal
+Replace the AI-generated free-text lesson opening with a fully
+deterministic, code-built sequence. The AI must NOT be called at all for
+this opening — it's template text built from already-mapped lesson data.
+
+## Step 1 — Schema change
+Add a new column to lessonSessionsTable: introConfirmed, boolean, default
+false. Push via drizzle-kit.
+
+Backfill: set introConfirmed = true for every EXISTING lesson_sessions
+row that already has currentNodeId set or currentPhase > 1 (i.e. sessions
+already mid-lesson) — so no one currently teaching gets unexpectedly
+interrupted by this new intro. Paste the backfill query and how many rows
+it affected.
+
+## Step 2 — Build the deterministic intro
+In the POST /chat handler, when a session exists and introConfirmed is
+false (or a new session is being created), do NOT call callAIStructured/
+callAI. Instead, build and return this exact template, filling in real
+data from the lesson row (studentName if available):
+
+  Բարև, {studentName}: 👋
+
+  Այսօրվա դասի թեման է. «{lesson.title}»
+
+  Այս դասի նպատակներն են.
+  {lessonGoal, formatted as bullet points if it's an array, else as one
+   line}
+
+  Այս դասի ավարտին դու կսովորես.
+  {lessonOutcomes, formatted as bullet points — this is likely an array,
+   join with newlines and a bullet character}
+
+  Եթե պատրաստ ես սկսելու, գրիր՝ Օկ
+
+Use exactly this Armenian wording — extract/verify each phrase against
+already-correct Armenian text elsewhere in the codebase (e.g. existing
+teacher/student dashboard strings) to avoid retyping errors, or paste it
+from this prompt directly.
+
+Do not send this to the AI at all — build this string directly in
+TypeScript, insert it as an assistant chat_messages row exactly like a
+normal AI response would be, and return it in the API response the same
+shape the frontend already expects (response, messageId, progressIndicator,
+teachingMode).
+
+## Step 3 — Wait for confirmation
+On the student's NEXT message (while introConfirmed is still false), check
+if their reply is an affirmative confirmation. Keep this simple and
+non-AI: case-insensitive match against a small accepted set — "օկ", "ok",
+"լավ", "պատրաստ եմ" (add a couple of obvious variants, but keep the list
+short and exact-ish, not fuzzy AI interpretation).
+
+- If it matches: set introConfirmed = true on the session, then proceed
+  into the EXISTING normal flow (Phase 1 review or Phase 2 teaching,
+  whichever currently runs first) exactly as it does today — no other
+  behavior change.
+- If it does NOT match: respond (still deterministically, no AI call)
+  with a short reminder like: "Երբ պատրաստ ես, գրիր՝ Օկ 🙂" — and do not
+  advance introConfirmed.
+
+## Step 4 — Verify
+Typecheck, restart. Drive a real new session (a lesson/student combo that
+has never had a session before) and paste:
+1. The exact first response — confirm it matches the template exactly,
+   with real lesson.title/lessonGoal/lessonOutcomes data filled in, and
+   confirm NO AI API call was made for this turn (check logs — there
+   should be no "AI STRUCTURED RESULT DEBUG" or callAI-related log for
+   this specific turn).
+2. Reply with something random/off-topic (e.g. "ինչու՞") — confirm the
+   reminder message fires, introConfirmed stays false, still no AI call.
+3. Reply with "Օկ" — confirm introConfirmed flips to true in the DB, and
+   the NEXT response is a real AI-generated teaching message (normal
+   flow resumes exactly as before).
+
+Also confirm: an EXISTING in-progress session (introConfirmed backfilled
+to true) is completely unaffected — driving a turn on it skips the intro
+entirely and behaves exactly as it did before this change.
+
+Do not touch quizzes.ts, knowledge-tree.ts, or lessons.ts's map handler
+in this step.

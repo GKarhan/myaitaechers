@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -42,6 +42,8 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   nodeTeachingStage: text("node_teaching_stage").notNull().default("THEORY"),
   // Phase 1 early-exit: consecutive correct review answers in the current Phase 1 run
   phase1ConsecutiveCorrect: integer("phase1_consecutive_correct").notNull().default(0),
+  // Deterministic lesson intro gate: false = intro not yet confirmed by student
+  introConfirmed: boolean("intro_confirmed").notNull().default(false),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
