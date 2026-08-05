@@ -746,7 +746,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const st = aiResult.answer_evaluation.status;
     wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
   } catch (err) {
-    logger.error({ err }, "callAIStructured failed twice — falling back to callAI");
+    logger.error(
+      {
+        event:     "ai_structured_fallback",
+        userId:    req.userId,
+        lessonId,
+        sessionId: session?.id ?? null,
+        firstError: err instanceof Error ? err.message : String(err),
+      },
+      "callAIStructured failed twice — falling back to callAI"
+    );
     try {
       studentMessage = await callAI(chatHistory, lessonContext || undefined);
       const evalMatch = studentMessage.match(/\s*###EVAL:(CORRECT|INCORRECT|NONE)###\s*$/);

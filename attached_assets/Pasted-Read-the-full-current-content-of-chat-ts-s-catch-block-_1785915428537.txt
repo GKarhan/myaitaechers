@@ -1,0 +1,41 @@
+Read the full current content of chat.ts's catch block (where callAIStructured
+fails and falls back to callAI), and callAIStructured/​_attemptStructured in
+ai.ts, before changing anything.
+
+## Part 1 — Measure real fallback frequency (investigation only)
+Search the server logs for the log lines this code already emits:
+- "callAIStructured: attempt 1 failed — will retry once"
+- "callAIStructured: retry (attempt 2) also failed — throwing final error"
+- "callAIStructured failed twice — falling back to callAI" (chat.ts's catch)
+Count occurrences over whatever log retention window is available (however
+far back logs go). Also count total successful callAIStructured calls in
+the same window, so we get a real fallback RATE, not just a raw count.
+Report: total chat turns, how many hit attempt-1 failure, how many hit
+full fallback-to-callAI, and — if the failed attempts' error messages are
+logged — a breakdown of WHICH validator/reason caused the failures most
+often (e.g. language check vs length vs node-lock vs schema).
+
+## Part 2 — Add structured logging for future monitoring
+In chat.ts's catch block (the fallback-to-callAI path), add a clear,
+consistently-tagged log line BEFORE calling callAI that includes:
+- userId, lessonId, sessionId (if available)
+- the first error message (from the failed callAIStructured attempt)
+- a fixed tag like event: "ai_structured_fallback" so it's greppable later
+This should not change behavior at all — purely additive logging, so we
+can track fallback rate going forward without re-doing this manual log
+search each time.
+
+## Part 3 — Clean up dangling .agents/memory references
+.agents/memory/MEMORY.md references three files that don't exist:
+ai-validator-chain.md, armenian-label-insertion.md, courses-subject-link.md.
+Remove those three lines from MEMORY.md's index (don't recreate the
+missing files — if their content is still relevant, it likely already
+lives in the actual code/comments; just stop pointing at files that
+aren't there).
+
+## Report back
+Part 1's real numbers are the most important part — I need to know
+whether this fallback is a rare edge case or a frequent, meaningful
+degradation before deciding whether it's worth fixing the validator
+strictness or the fallback behavior itself. Don't propose a fix yet,
+just bring the evidence.
