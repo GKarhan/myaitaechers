@@ -465,7 +465,7 @@ function LessonNodesPanel({
                                         </span>
                                       )}
                                       {ex.sourcePage && (
-                                        <span className="text-[10px] text-muted-foreground/40">եժ {ex.sourcePage}</span>
+                                        <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
                                       )}
                                     </div>
                                   </div>
@@ -516,7 +516,7 @@ function LessonNodesPanel({
                                 );
                               }}
                               className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                            >{createEx.isPending ? "..." : "+ Ավելացել"}</button>
+                            >{createEx.isPending ? "..." : "+ Ավելացնել"}</button>
                             <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                           </div>
                         </div>
@@ -524,7 +524,7 @@ function LessonNodesPanel({
                         <button
                           onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }}
                           className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5"
-                        >+ Ավելացել վարժություն</button>
+                        >+ Ավելացնել վարժություն</button>
                       )}
                     </div>
                   </div>
@@ -547,7 +547,7 @@ function LessonNodesPanel({
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Տեորական Բովանդակություն"
+                  placeholder="Տեսական Բովանդակություն"
                   value={addNodeForm.theoryContent}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, theoryContent: e.target.value }))}
                 />
@@ -568,7 +568,7 @@ function LessonNodesPanel({
                       );
                     }}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                  >{createNode.isPending ? "..." : "Ավելացել"}</button>
+                  >{createNode.isPending ? "..." : "Ավելացնել"}</button>
                   <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                 </div>
               </div>
@@ -576,7 +576,7 @@ function LessonNodesPanel({
               <button
                 onClick={() => setAddNodeOpen(true)}
                 className="w-full text-xs text-muted-foreground/50 hover:text-primary/70 border border-dashed border-white/10 hover:border-primary/30 rounded-xl py-2 transition-colors"
-              >+ Ավելացել հանգույց</button>
+              >+ Ավելացնել հանգույց</button>
             )}
           </div>
         </div>

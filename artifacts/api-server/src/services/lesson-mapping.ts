@@ -462,16 +462,25 @@ export async function rasterizePdfPages(
 // ─── Vision-based lesson mapping ───────────────────────────────────────────
 
 const VISION_MODEL = "google/gemini-2.5-flash";
+/** Pages sent per vision API call.
+ *  Sending all pages at once causes model hallucination on later pages
+ *  (confirmed: independent runs produced degenerate/repeated content).
+ *  3 pages keeps the model grounded on real visible content. */
+const VISION_CHUNK_PAGES = 3;
 
 /**
  * Identical structured output as mapLessonWithAI, but reads lesson content
  * from rasterised page images rather than extracted text.
  *
- * Used automatically when isGarbledText() flags the pdf-parse output as
- * unreliable (e.g. ArmSCII-encoded PDFs).
+ * Strategy: split pageImages into chunks of ≤ VISION_CHUNK_PAGES; call the
+ * vision model independently per chunk; merge and deduplicate results.
+ * This prevents the model from losing grounding on later pages and falling
+ * back to generic grammar knowledge or repeating earlier content.
  *
- * The same SYSTEM_PROMPT and JSON schema are reused — only the user-message
- * format changes (multimodal content array instead of a plain text string).
+ * Safety check: identical exerciseTextVerbatim across chunks = degenerate
+ * generation signal — logged and excluded from the merged output.
+ *
+ * Used automatically when isGarbledText() flags the pdf-parse output.
  */
 export async function mapLessonWithVision(
   input: Omit<LessonMappingInput, "lessonText">,
@@ -482,84 +491,194 @@ export async function mapLessonWithVision(
   type ImagePart = { type: "image_url"; image_url: { url: string } };
   type ContentPart = TextPart | ImagePart;
 
-  const headerText = [
-    `ԱՌԱՐԿԱ: ${input.subjectName}`,
-    `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
-    input.chapterTitle   ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}`   : "",
-    input.textbookTitle  ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}`     : "",
-    input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}`     : "",
-    input.pagesFrom && input.pagesTo
-      ? `ԷՋԵՐ: ${input.pagesFrom}-${input.pagesTo}` : "",
-    "",
-    `Կցված են ${pageImages.length} պատկեր (էջ ${input.pagesFrom}–${input.pagesTo})։ Կարդա ԱՄԵՆ ինչ — ամեն տեքստ, վերնագիր, հեղինակ, վարժություն, աղյուսակ — ու կատարիր քարտեզագրում ըստ հրահանգների։`,
-    input.teacherGoal
-      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}` : "",
-    input.teacherOutcomes && input.teacherOutcomes.length > 0
-      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆարդյունքներ: ${input.teacherOutcomes.join("; ")}` : "",
-  ].filter(Boolean).join("\n");
-
-  const content: ContentPart[] = [
-    { type: "text", text: headerText },
-    ...pageImages.map((b64): ImagePart => ({
-      type: "image_url",
-      image_url: { url: `data:image/png;base64,${b64}` },
-    })),
-  ];
-
-  // ── Helper: attempt to extract valid JSON from raw model output ─────────
+  // ── Helper: strip markdown fences and parse JSON ─────────────────────────
   function extractJSON(raw: string): LessonMappingResult | null {
     const stripped = raw.replace(/```json\s*|```/g, "").trim();
     try { return JSON.parse(stripped); } catch { /* fall through */ }
-    const match = stripped.match(/\{[\s\S]*\}/);
-    if (match) { try { return JSON.parse(match[0]); } catch { /* fall through */ } }
+    const m = stripped.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
     return null;
   }
 
-  const firstResponse = await openrouter.chat.completions.create({
-    model: VISION_MODEL,
-    max_tokens: 32000,
-    temperature: 0.3,
+  // ── Split page images into chunks of VISION_CHUNK_PAGES ──────────────────
+  const totalFrom = input.pagesFrom ?? 1;
+  const totalTo   = input.pagesTo   ?? pageImages.length;
+  const chunks: string[][] = [];
+  for (let i = 0; i < pageImages.length; i += VISION_CHUNK_PAGES) {
+    chunks.push(pageImages.slice(i, i + VISION_CHUNK_PAGES));
+  }
+
+  // ── Build multimodal content array for one chunk ─────────────────────────
+  function buildChunkContent(
+    chunkImages: string[],
+    chunkFrom: number,
+    chunkTo:   number,
+    chunkIdx:  number,
+  ): ContentPart[] {
+    const headerText = [
+      `ԱՌԱՐԿԱ: ${input.subjectName}`,
+      `ԴԱՍԻ ՎԵՐՆԱԳԻՐ: ${input.lessonTitle}`,
+      input.chapterTitle   ? `ԹԵՄԱ/ԳԼՈՒԽ: ${input.chapterTitle}`   : "",
+      input.textbookTitle  ? `ԴԱՍԱԳԻՐՔ: ${input.textbookTitle}`     : "",
+      input.textbookAuthor ? `ՀԵՂԻՆԱԿ: ${input.textbookAuthor}`     : "",
+      `ԷՋԵՐ: ${chunkFrom}-${chunkTo} [batch ${chunkIdx + 1}/${chunks.length}, total ${totalFrom}-${totalTo}]`,
+      "",
+      `Կցված են ${chunkImages.length} պատկեր (էջ ${chunkFrom}–${chunkTo})։ Կարդա ԱՄԵՆ ինչ — ամեն տեքստ, վերնագիր, հեղինակ, վարժություն, աղյուսակ — ու կատարիր քարտեզագրում ըստ հրահանգների։`,
+      input.teacherGoal
+      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՆՊԱՏԱԿ: ${input.teacherGoal}` : "",
+      input.teacherOutcomes && input.teacherOutcomes.length > 0
+      ? `ՈՒՍՈՒՑՉԻ ՍԵՎԱԳԻՐ ՎԵՐՋՆարդյունքներ: ${input.teacherOutcomes.join("; ")}` : "",
+    ].filter(Boolean).join("\n");
+
+    return [
+      { type: "text" as const, text: headerText },
+      ...chunkImages.map((b64): ImagePart => ({
+        type: "image_url",
+        image_url: { url: `data:image/png;base64,${b64}` },
+      })),
+    ];
+  }
+
+  // ── Process each chunk sequentially ──────────────────────────────────────
+  const RETRY_MSG = "\u054a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0564 \u057e\u0561\u057e\u0565\u0580 JSON \u0579\u0567\u0589 \u054e\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u0580\u0578\u0582 \u0532\u0531\u0551\u0531\u054c\u0531\u054a\u0535\u054d \u057e\u0561\u057e\u0565\u0580 JSON \u0585\u0562\u0575\u0565\u056f\u057f` \u0561\u057c\u0561\u0576\u0581 \u0578\u0580\u0587\u0567 \u056c\u0580\u0561\u0581\u0578\u0582\u0581\u056b\u0579 \u057f\u0565\u0584\u057d\u057f\u056b, \u0562\u0561\u0581\u0561\u057f\u0580\u0578\u0582\u0569\u0575\u0561\u0576 \u056f\u0561\u0574 markdown-\u056b\u0589";
+
+  const chunkResults: LessonMappingResult[] = [];
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const chunkImages = chunks[ci];
+    const chunkFrom   = totalFrom + ci * VISION_CHUNK_PAGES;
+    const chunkTo     = Math.min(chunkFrom + VISION_CHUNK_PAGES - 1, totalTo);
+    const chunkLabel  = `chunk ${ci + 1}/${chunks.length} (pages ${chunkFrom}-${chunkTo})`;
+
+    logger.info(
+      { chunk: ci + 1, totalChunks: chunks.length, pagesFrom: chunkFrom, pagesTo: chunkTo },
+      "vision mapping: processing chunk"
+    );
+
+    const content = buildChunkContent(chunkImages, chunkFrom, chunkTo, ci);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content } as any,
-    ],
-  });
-
-  const firstRaw = firstResponse.choices[0]?.message?.content ?? "";
-  let parsed: LessonMappingResult | null = extractJSON(firstRaw);
-
-  if (!parsed) {
-    logger.warn({ raw: firstRaw.slice(0, 200) }, "vision mapping: first attempt not valid JSON — retrying");
-    const retryResponse = await openrouter.chat.completions.create({
+    const r1 = await openrouter.chat.completions.create({
       model: VISION_MODEL,
       max_tokens: 32000,
-      temperature: 0.1,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      temperature: 0.3,
       messages: [
-        { role: "system",    content: SYSTEM_PROMPT },
-        { role: "user",      content } as any,
-        { role: "assistant", content: firstRaw },
-        {
-          role: "user",
-          content: "Պատասխանդ վավեր JSON չէ։ Վերադարձրու ԲԱՑԱՌԱՊԵՍ վավեր JSON օբյեկտ` առանց որևէ լրացուցիչ տեքստի, բացատրության կամ markdown-ի։",
-        },
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content } as any,
       ],
     });
-    const retryRaw = retryResponse.choices[0]?.message?.content ?? "";
-    parsed = extractJSON(retryRaw);
+    const raw1 = r1.choices[0]?.message?.content ?? "";
+    let parsed = extractJSON(raw1);
+
     if (!parsed) {
-      logger.error({ raw: retryRaw.slice(0, 300) }, "vision mapping: failed to parse AI JSON after retry");
-      throw new Error("Vision AI mapping response was not valid JSON");
+      logger.warn(
+        { chunkLabel, raw: raw1.slice(0, 200) },
+        "vision mapping: chunk not valid JSON — retrying"
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r2 = await openrouter.chat.completions.create({
+        model: VISION_MODEL,
+        max_tokens: 32000,
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content } as any,
+          { role: "assistant", content: raw1 },
+          { role: "user", content: RETRY_MSG },
+        ],
+      });
+      const raw2 = r2.choices[0]?.message?.content ?? "";
+      parsed = extractJSON(raw2);
+      if (!parsed) {
+        logger.error(
+          { chunkLabel, raw: raw2.slice(0, 300) },
+          "vision mapping: failed to parse chunk JSON after retry"
+        );
+        throw new Error(`Vision mapping ${chunkLabel}: response was not valid JSON`);
+      }
+    }
+
+    logger.info(
+      { chunkLabel, nodeCount: parsed.nodes?.length ?? 0, taskCount: parsed.practicalTasks?.length ?? 0 },
+      "vision mapping: chunk extracted"
+    );
+    chunkResults.push(parsed);
+  }
+
+  // ── Merge chunk results ───────────────────────────────────────────────────
+  //
+  // Lesson-level fields (goal, problem, idea, question, boundaries):
+  //   taken from chunk 1 — it covers the opening pages with lesson intro.
+  //
+  // Textbook metadata (author, title, chapter):
+  //   first non-null across any chunk wins.
+  //
+  // Nodes: union of all chunks, deduplicated by normalised title.
+  //
+  // practicalTasks: union of all chunks, deduplicated by verbatim text.
+  //   Identical verbatim in two chunks = degenerate generation — excluded.
+
+  const merged: LessonMappingResult = { ...chunkResults[0] };
+
+  // Textbook metadata: first non-null wins across chunks
+  for (const chunk of chunkResults.slice(1)) {
+    if (!merged.textbookAuthor && chunk.textbookAuthor) merged.textbookAuthor = chunk.textbookAuthor;
+    if (!merged.textbookTitle  && chunk.textbookTitle)  merged.textbookTitle  = chunk.textbookTitle;
+    if (!merged.chapterTitle   && chunk.chapterTitle)   merged.chapterTitle   = chunk.chapterTitle;
+  }
+
+  // Nodes: union, deduplicate by normalised title (keep first occurrence)
+  const nodeMap = new Map<string, (typeof merged.nodes)[0]>();
+  for (const chunk of chunkResults) {
+    for (const node of (chunk.nodes ?? [])) {
+      const key = node.title.trim().toLowerCase();
+      if (!nodeMap.has(key)) nodeMap.set(key, node);
+    }
+  }
+  merged.nodes = [...nodeMap.values()];
+
+  // practicalTasks: union, deduplicate by verbatim text (safety check)
+  const seenVerbatim = new Set<string>();
+  const dedupedTasks: typeof merged.practicalTasks = [];
+  const duplicateTexts: string[] = [];
+
+  for (const chunk of chunkResults) {
+    for (const task of (chunk.practicalTasks ?? [])) {
+      const verbatim = (task.exerciseTextVerbatim ?? "").trim();
+      if (verbatim && seenVerbatim.has(verbatim)) {
+        // Identical verbatim across chunks = degenerate hallucination — exclude
+        duplicateTexts.push(verbatim.slice(0, 100));
+        continue;
+      }
+      if (verbatim) seenVerbatim.add(verbatim);
+      dedupedTasks.push(task);
     }
   }
 
-  if (!Array.isArray(parsed.nodes) || parsed.nodes.length === 0) {
-    throw new Error("Vision AI mapping response contained no nodes");
+  if (duplicateTexts.length > 0) {
+    logger.warn(
+      { duplicateCount: duplicateTexts.length, examples: duplicateTexts.slice(0, 3) },
+      "vision mapping: duplicate exerciseTextVerbatim detected — degenerate generation excluded"
+    );
+  }
+  merged.practicalTasks = dedupedTasks;
+
+  logger.info(
+    {
+      chunkCount:         chunks.length,
+      nodeCount:          merged.nodes.length,
+      taskCount:          merged.practicalTasks.length,
+      duplicatesExcluded: duplicateTexts.length,
+    },
+    "vision mapping: merge complete"
+  );
+
+  // ── Validate ─────────────────────────────────────────────────────────────
+  if (!Array.isArray(merged.nodes) || merged.nodes.length === 0) {
+    throw new Error("Vision AI mapping produced no nodes after chunk merge");
   }
 
-  // Apply same defensive defaults as mapLessonWithAI
-  parsed.nodes = parsed.nodes.map((n) => ({
+  // ── Defensive defaults (identical to mapLessonWithAI) ────────────────────
+  merged.nodes = merged.nodes.map((n) => ({
     ...n,
     verbatimTheoryAnchor:     typeof n.verbatimTheoryAnchor === "string" ? n.verbatimTheoryAnchor : "",
     childFriendlyExplanation: n.childFriendlyExplanation ?? "",
@@ -570,27 +689,28 @@ export async function mapLessonWithVision(
     prerequisiteNodes:        Array.isArray(n.prerequisiteNodes) ? n.prerequisiteNodes : [],
   }));
 
-  parsed.knowledgeBoundaries = Array.isArray(parsed.knowledgeBoundaries) ? parsed.knowledgeBoundaries : [];
+  merged.knowledgeBoundaries = Array.isArray(merged.knowledgeBoundaries) ? merged.knowledgeBoundaries : [];
 
-  parsed.textbookAuthor = typeof parsed.textbookAuthor === "string" && parsed.textbookAuthor.trim()
-    ? parsed.textbookAuthor.trim() : null;
-  parsed.textbookTitle  = typeof parsed.textbookTitle  === "string" && parsed.textbookTitle.trim()
-    ? parsed.textbookTitle.trim()  : null;
-  parsed.chapterTitle   = typeof parsed.chapterTitle   === "string" && parsed.chapterTitle.trim()
-    ? parsed.chapterTitle.trim()   : null;
+  merged.textbookAuthor = typeof merged.textbookAuthor === "string" && merged.textbookAuthor.trim()
+    ? merged.textbookAuthor.trim() : null;
+  merged.textbookTitle  = typeof merged.textbookTitle  === "string" && merged.textbookTitle.trim()
+    ? merged.textbookTitle.trim()  : null;
+  merged.chapterTitle   = typeof merged.chapterTitle   === "string" && merged.chapterTitle.trim()
+    ? merged.chapterTitle.trim()   : null;
 
-  if (!Array.isArray(parsed.practicalTasks)) parsed.practicalTasks = [];
-  parsed.essentialQuestion = typeof parsed.essentialQuestion === "string" ? parsed.essentialQuestion : "";
-  if (!Array.isArray(parsed.nodeDependencies)) parsed.nodeDependencies = [];
+  if (!Array.isArray(merged.practicalTasks)) merged.practicalTasks = [];
+  merged.essentialQuestion = typeof merged.essentialQuestion === "string" ? merged.essentialQuestion : "";
+  if (!Array.isArray(merged.nodeDependencies)) merged.nodeDependencies = [];
 
-  parsed.nodeDependencies = parsed.nodeDependencies.filter(
+  // nodeDependencies reference chunk-1 node titles; cross-chunk deps are not merged.
+  merged.nodeDependencies = merged.nodeDependencies.filter(
     (d: { fromNodeTitle: string; toNodeTitle: string; dependencyType: string; requiredLevel: string; reason: string }) =>
       d.fromNodeTitle && d.toNodeTitle &&
       ["REQUIRED", "SEQUENTIAL", "CONCEPTUAL"].includes(d.dependencyType) &&
       ["CRITICAL", "SUPPORTING"].includes(d.requiredLevel)
   );
 
-  parsed.practicalTasks = parsed.practicalTasks.map((t) => ({
+  merged.practicalTasks = merged.practicalTasks.map((t) => ({
     ...t,
     task:                 t.task ?? "",
     purpose:              t.purpose ?? "",
@@ -605,5 +725,5 @@ export async function mapLessonWithVision(
       ? t.assignment : "CLASS") as "CLASS" | "HOMEWORK",
   }));
 
-  return parsed;
+  return merged;
 }

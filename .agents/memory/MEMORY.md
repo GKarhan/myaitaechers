@@ -5,3 +5,4 @@
 - [DB declaration stale cache](db-declaration-stale.md) — lib/db uses composite:true + emitDeclarationOnly; api-server reads dist/*.d.ts not source; after schema changes run `cd lib/db && pnpm exec tsc --build` before typechecking api-server.
 - [Knowledge tree 4-category](knowledge-tree-4-category.md) — getMasteryLevel uses masteryScore+confidenceScore; teacher view requires ?studentId=X + teacher owns a class containing that student; generated hook doesn't support extra params so teacher-view uses raw useQuery.
 - [Lesson exercise CRUD](lesson-exercise-crud.md) — exercise routes added to lessons.ts; API client hooks added manually to api.ts (not generated); new types in api.schemas.ts must stay in sync.
+- [Chunked vision mapping](chunked-vision-mapping.md) — 3 pages/chunk, 32k tokens/chunk; retry still needed on chunk 2; output diverse but verbatim diverges from ground truth (ArmSCII font OCR limit).
