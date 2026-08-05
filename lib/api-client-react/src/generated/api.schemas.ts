@@ -839,6 +839,10 @@ export interface LessonNode {
   theoryContent?: string | null;
   targetBloomLevel?: number | null;
   estimatedMinutes?: number | null;
+  verbatimTheoryAnchor?: string | null;
+  commonMisconception?: string | null;
+  childFriendlyExplanation?: string | null;
+  basicExamples?: string[];
 }
 
 export interface CreateLessonNodeInput {
@@ -853,5 +857,43 @@ export interface UpdateLessonNodeInput {
   theoryContent?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
+  verbatimTheoryAnchor?: string;
+  commonMisconception?: string;
+  childFriendlyExplanation?: string;
+  basicExamples?: string[];
+}
+
+export interface LessonExercise {
+  id: number;
+  lessonId: number;
+  exerciseId: string;
+  sequence: number;
+  sourcePage?: string | null;
+  exerciseTextVerbatim: string;
+  exercisePurpose?: string | null;
+  relatedNodeId?: number | null;
+  successCriteria?: string | null;
+  difficultyLevel?: string | null;
+  assignment?: string | null;
+}
+
+export interface CreateLessonExerciseInput {
+  exerciseTextVerbatim: string;
+  relatedNodeId?: number | null;
+  sourcePage?: string;
+  successCriteria?: string;
+  difficultyLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  assignment?: 'CLASS' | 'HOMEWORK';
+  exercisePurpose?: string;
+}
+
+export interface UpdateLessonExerciseInput {
+  exerciseTextVerbatim?: string;
+  relatedNodeId?: number | null;
+  sourcePage?: string;
+  successCriteria?: string;
+  difficultyLevel?: string;
+  assignment?: string;
+  exercisePurpose?: string;
 }
 

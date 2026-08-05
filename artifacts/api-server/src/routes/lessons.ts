@@ -582,6 +582,10 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
       theoryContent: n.theoryContent ?? null,
       targetBloomLevel: n.targetBloomLevel ?? null,
       estimatedMinutes: n.estimatedMinutes ?? null,
+      verbatimTheoryAnchor: n.verbatimTheoryAnchor ?? null,
+      commonMisconception: n.commonMisconception ?? null,
+      childFriendlyExplanation: n.childFriendlyExplanation ?? null,
+      basicExamples: Array.isArray(n.basicExamples) ? n.basicExamples : [],
     }))
   );
 });
@@ -656,11 +660,15 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
     estimatedMinutes?: number;
+    verbatimTheoryAnchor?: string;
+    commonMisconception?: string;
+    childFriendlyExplanation?: string;
+    basicExamples?: string[];
   };
 
   const patch: Partial<typeof existing> = {};
@@ -668,6 +676,10 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
   if (theoryContent !== undefined) patch.theoryContent = theoryContent.trim() || null;
   if (targetBloomLevel !== undefined) patch.targetBloomLevel = targetBloomLevel;
   if (estimatedMinutes !== undefined) patch.estimatedMinutes = estimatedMinutes;
+  if (verbatimTheoryAnchor !== undefined) patch.verbatimTheoryAnchor = verbatimTheoryAnchor.trim() || null;
+  if (commonMisconception !== undefined) patch.commonMisconception = commonMisconception.trim() || null;
+  if (childFriendlyExplanation !== undefined) patch.childFriendlyExplanation = childFriendlyExplanation.trim() || null;
+  if (basicExamples !== undefined) patch.basicExamples = Array.isArray(basicExamples) ? basicExamples : [];
 
   const [updated] = await db
     .update(lessonNodesTable)
@@ -683,6 +695,10 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     theoryContent: updated.theoryContent ?? null,
     targetBloomLevel: updated.targetBloomLevel ?? null,
     estimatedMinutes: updated.estimatedMinutes ?? null,
+    verbatimTheoryAnchor: updated.verbatimTheoryAnchor ?? null,
+    commonMisconception: updated.commonMisconception ?? null,
+    childFriendlyExplanation: updated.childFriendlyExplanation ?? null,
+    basicExamples: Array.isArray(updated.basicExamples) ? updated.basicExamples : [],
   });
 });
 
@@ -710,6 +726,166 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
   await db.delete(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId));
   res.json({ message: "Node deleted" });
 });
+
+// ── LESSON EXERCISES CRUD ─────────────────────────────────────────────────────
+
+// GET /lessons/:lessonId/exercises — list all exercises for this lesson
+router.get("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const exercises = await db
+    .select()
+    .from(lessonExercisesTable)
+    .where(eq(lessonExercisesTable.lessonId, lessonId))
+    .orderBy(asc(lessonExercisesTable.sequence));
+
+  res.json(exercises.map((e) => ({
+    id: e.id,
+    lessonId: e.lessonId,
+    exerciseId: e.exerciseId,
+    sequence: e.sequence,
+    sourcePage: e.sourcePage ?? null,
+    exerciseTextVerbatim: e.exerciseTextVerbatim,
+    exercisePurpose: e.exercisePurpose ?? null,
+    relatedNodeId: e.relatedNodeId ?? null,
+    successCriteria: e.successCriteria ?? null,
+    difficultyLevel: e.difficultyLevel ?? null,
+    assignment: e.assignment ?? null,
+  })));
+});
+
+// POST /lessons/:lessonId/exercises — create a new exercise
+router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, difficultyLevel, assignment, exercisePurpose } = req.body as {
+    exerciseTextVerbatim?: string;
+    relatedNodeId?: number | null;
+    sourcePage?: string;
+    successCriteria?: string;
+    difficultyLevel?: string;
+    assignment?: string;
+    exercisePurpose?: string;
+  };
+
+  if (!exerciseTextVerbatim?.trim()) {
+    res.status(400).json({ error: "exerciseTextVerbatim is required" });
+    return;
+  }
+
+  const [maxRow] = await db
+    .select({ maxSeq: max(lessonExercisesTable.sequence) })
+    .from(lessonExercisesTable)
+    .where(eq(lessonExercisesTable.lessonId, lessonId));
+
+  const nextSeq = (maxRow?.maxSeq ?? 0) + 1;
+  const exerciseId = `EX-${lessonId}-${nextSeq}`;
+
+  const [ex] = await db
+    .insert(lessonExercisesTable)
+    .values({
+      lessonId,
+      exerciseId,
+      sequence: nextSeq,
+      exerciseTextVerbatim: exerciseTextVerbatim.trim(),
+      relatedNodeId: relatedNodeId ?? null,
+      sourcePage: sourcePage ?? null,
+      successCriteria: successCriteria ?? null,
+      difficultyLevel: difficultyLevel ?? "MEDIUM",
+      assignment: assignment ?? "CLASS",
+      exercisePurpose: exercisePurpose ?? "INDEPENDENT_PRACTICE",
+    })
+    .returning();
+
+  res.status(201).json({
+    id: ex.id,
+    lessonId: ex.lessonId,
+    exerciseId: ex.exerciseId,
+    sequence: ex.sequence,
+    sourcePage: ex.sourcePage ?? null,
+    exerciseTextVerbatim: ex.exerciseTextVerbatim,
+    exercisePurpose: ex.exercisePurpose ?? null,
+    relatedNodeId: ex.relatedNodeId ?? null,
+    successCriteria: ex.successCriteria ?? null,
+    difficultyLevel: ex.difficultyLevel ?? null,
+    assignment: ex.assignment ?? null,
+  });
+});
+
+// POST /lessons/:lessonId/exercises/:exerciseId/update — partial update
+router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const exerciseId = parseInt(String(req.params.exerciseId), 10);
+  if (isNaN(lessonId) || isNaN(exerciseId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [existing] = await db
+    .select()
+    .from(lessonExercisesTable)
+    .where(and(eq(lessonExercisesTable.id, exerciseId), eq(lessonExercisesTable.lessonId, lessonId)))
+    .limit(1);
+
+  if (!existing) { res.status(404).json({ error: "Exercise not found" }); return; }
+
+  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, difficultyLevel, assignment, exercisePurpose } = req.body as {
+    exerciseTextVerbatim?: string;
+    relatedNodeId?: number | null;
+    sourcePage?: string;
+    successCriteria?: string;
+    difficultyLevel?: string;
+    assignment?: string;
+    exercisePurpose?: string;
+  };
+
+  const patch: Partial<typeof existing> = {};
+  if (exerciseTextVerbatim !== undefined) patch.exerciseTextVerbatim = exerciseTextVerbatim.trim();
+  if (relatedNodeId !== undefined) patch.relatedNodeId = relatedNodeId;
+  if (sourcePage !== undefined) patch.sourcePage = sourcePage;
+  if (successCriteria !== undefined) patch.successCriteria = successCriteria.trim() || null;
+  if (difficultyLevel !== undefined) patch.difficultyLevel = difficultyLevel;
+  if (assignment !== undefined) patch.assignment = assignment;
+  if (exercisePurpose !== undefined) patch.exercisePurpose = exercisePurpose;
+
+  const [updated] = await db
+    .update(lessonExercisesTable)
+    .set(patch)
+    .where(eq(lessonExercisesTable.id, exerciseId))
+    .returning();
+
+  res.json({
+    id: updated.id,
+    lessonId: updated.lessonId,
+    exerciseId: updated.exerciseId,
+    sequence: updated.sequence,
+    sourcePage: updated.sourcePage ?? null,
+    exerciseTextVerbatim: updated.exerciseTextVerbatim,
+    exercisePurpose: updated.exercisePurpose ?? null,
+    relatedNodeId: updated.relatedNodeId ?? null,
+    successCriteria: updated.successCriteria ?? null,
+    difficultyLevel: updated.difficultyLevel ?? null,
+    assignment: updated.assignment ?? null,
+  });
+});
+
+// POST /lessons/:lessonId/exercises/:exerciseId/delete
+router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const exerciseId = parseInt(String(req.params.exerciseId), 10);
+  if (isNaN(lessonId) || isNaN(exerciseId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [existing] = await db
+    .select()
+    .from(lessonExercisesTable)
+    .where(and(eq(lessonExercisesTable.id, exerciseId), eq(lessonExercisesTable.lessonId, lessonId)))
+    .limit(1);
+
+  if (!existing) { res.status(404).json({ error: "Exercise not found" }); return; }
+
+  await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.id, exerciseId));
+  res.json({ message: "Exercise deleted" });
+});
+
 // ── LESSON MAPPING (P1-lite) ────────────────────────────────────────────────
 
 // POST /lessons/:lessonId/map — extract the real textbook text for this

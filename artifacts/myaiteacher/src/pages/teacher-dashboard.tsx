@@ -23,6 +23,12 @@ import {
   useGetStudentDetail,
   useGetLessonNodes,
   useDeleteLessonNode,
+  useCreateLessonNode,
+  useUpdateLessonNode,
+  useGetLessonExercises,
+  useCreateLessonExercise,
+  useUpdateLessonExercise,
+  useDeleteLessonExercise,
   useMapLessonWithAI,
   getGetTeacherClassesQueryKey,
   getGetClassStudentsQueryKey,
@@ -34,6 +40,7 @@ import {
   getGetTeacherProfileQueryKey,
   getGetStudentDetailQueryKey,
   getGetLessonNodesQueryKey,
+  getGetLessonExercisesQueryKey,
   useGetSubjects,
   getGetSubjectsQueryKey,
 } from "@workspace/api-client-react";
@@ -145,27 +152,108 @@ function LessonNodesPanel({
   lessonId,
   coreProblem = null,
   coreIdea = null,
-  practicalTasks = [],
+  textbookAuthor = null,
+  textbookTitle = null,
+  chapterTitle = null,
 }: {
   lessonId: number;
   coreProblem?: string | null;
   coreIdea?: string | null;
-  practicalTasks?: { task: string; sourcePage?: string | null; assignment?: "CLASS" | "HOMEWORK" }[];
+  textbookAuthor?: string | null;
+  textbookTitle?: string | null;
+  chapterTitle?: string | null;
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  const { data: nodes = [], isFetching } = useGetLessonNodes(lessonId, {
-    query: {
-      enabled: open,
-      queryKey: getGetLessonNodesQueryKey(lessonId),
-    },
+  // Node edit/add state
+  const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
+  const [editNodeForm, setEditNodeForm] = useState<{
+    title: string; theoryContent: string; verbatimTheoryAnchor: string;
+    commonMisconception: string; targetBloomLevel: string; estimatedMinutes: string;
+  } | null>(null);
+  const [addNodeOpen, setAddNodeOpen] = useState(false);
+  const [addNodeForm, setAddNodeForm] = useState({ title: "", theoryContent: "", targetBloomLevel: "1" });
+
+  // Exercise edit/add state
+  const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
+  const [editExForm, setEditExForm] = useState<{
+    exerciseTextVerbatim: string; successCriteria: string;
+    difficultyLevel: string; assignment: string;
+  } | null>(null);
+  const [addExForNodeId, setAddExForNodeId] = useState<number | null>(null);
+  const [addExForm, setAddExForm] = useState({
+    exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
+  });
+
+  const { data: nodes = [], isFetching: nodesFetching } = useGetLessonNodes(lessonId, {
+    query: { enabled: open, queryKey: getGetLessonNodesQueryKey(lessonId) },
+  });
+  const { data: exercises = [], isFetching: exFetching } = useGetLessonExercises(lessonId, {
+    query: { enabled: open, queryKey: getGetLessonExercisesQueryKey(lessonId) },
   });
 
   const deleteNode = useDeleteLessonNode();
+  const createNode = useCreateLessonNode();
+  const updateNode = useUpdateLessonNode();
+  const createEx = useCreateLessonExercise();
+  const updateEx = useUpdateLessonExercise();
+  const deleteEx = useDeleteLessonExercise();
 
-  const refresh = () =>
-    qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+  const refreshNodes = () => qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+  const refreshEx = () => qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+
+  const startEditNode = (n: (typeof nodes)[0]) => {
+    setEditingNodeId(n.id);
+    setEditNodeForm({
+      title: n.title,
+      theoryContent: n.theoryContent ?? "",
+      verbatimTheoryAnchor: (n as any).verbatimTheoryAnchor ?? "",
+      commonMisconception: (n as any).commonMisconception ?? "",
+      targetBloomLevel: String(n.targetBloomLevel ?? 1),
+      estimatedMinutes: String(n.estimatedMinutes ?? 5),
+    });
+  };
+
+  const saveNode = (nodeId: number) => {
+    if (!editNodeForm) return;
+    updateNode.mutate(
+      {
+        lessonId, nodeId,
+        data: {
+          title: editNodeForm.title,
+          theoryContent: editNodeForm.theoryContent,
+          verbatimTheoryAnchor: editNodeForm.verbatimTheoryAnchor,
+          commonMisconception: editNodeForm.commonMisconception,
+          targetBloomLevel: parseInt(editNodeForm.targetBloomLevel) || 1,
+          estimatedMinutes: parseInt(editNodeForm.estimatedMinutes) || 5,
+        },
+      },
+      { onSuccess: () => { setEditingNodeId(null); setEditNodeForm(null); refreshNodes(); } }
+    );
+  };
+
+  const startEditEx = (ex: (typeof exercises)[0]) => {
+    setEditingExerciseId(ex.id);
+    setEditExForm({
+      exerciseTextVerbatim: ex.exerciseTextVerbatim,
+      successCriteria: ex.successCriteria ?? "",
+      difficultyLevel: ex.difficultyLevel ?? "MEDIUM",
+      assignment: ex.assignment ?? "CLASS",
+    });
+  };
+
+  const saveEx = (exId: number) => {
+    if (!editExForm) return;
+    updateEx.mutate(
+      { lessonId, exerciseId: exId, data: { ...editExForm } },
+      { onSuccess: () => { setEditingExerciseId(null); setEditExForm(null); refreshEx(); } }
+    );
+  };
+
+  const isBusy = nodesFetching || exFetching;
+  const fieldCls = "w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50";
+  const btnSm = "px-2 py-0.5 rounded text-xs font-medium transition-colors";
 
   return (
     <div className="border-t border-white/8">
@@ -174,13 +262,32 @@ function LessonNodesPanel({
         className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
       >
         <span className="font-medium tracking-wide">
-          🗺️ Քարտեզագրված դաս
+          {(nodes.length > 0 || exercises.length > 0)
+            ? `🗺️ Քարտեզագրված դաս (${nodes.length} լուկ · ${exercises.length} վարժ.)`
+            : "🗺️ Քարտեզագրված դաս"}
         </span>
         <span>{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
         <div className="px-4 pb-4 space-y-3">
+          {/* Textbook metadata */}
+          {(textbookTitle || textbookAuthor || chapterTitle) && (
+            <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-0.5">
+              {textbookTitle && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-white/50">📚</span>{" "}
+                  <span className="font-medium text-white/80">{textbookTitle}</span>
+                  {textbookAuthor && <span className="text-muted-foreground/60"> · {textbookAuthor}</span>}
+                </p>
+              )}
+              {chapterTitle && (
+                <p className="text-xs text-muted-foreground/70">📖 {chapterTitle}</p>
+              )}
+            </div>
+          )}
+
+          {/* Core problem / idea */}
           {coreProblem && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-0.5">🎯 Հիմնահարց</p>
@@ -193,80 +300,285 @@ function LessonNodesPanel({
               <p className="text-xs text-white leading-relaxed">{coreIdea}</p>
             </div>
           )}
-          {/* Node list — generated by AI mapping (🗺️), not manually added */}
-          {isFetching && nodes.length === 0 ? (
+
+          {isBusy && nodes.length === 0 ? (
             <p className="text-xs text-muted-foreground">Բեռնվում...</p>
           ) : nodes.length === 0 ? (
             <p className="text-xs text-muted-foreground/60">
-              Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը՝ AI-ով քարտեզագրելու համար
+              Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը
             </p>
           ) : (
-            <>
-              <p className="text-xs font-semibold text-muted-foreground mb-0.5">📋 Գիտելիքի միավորներ</p>
-              <div className="space-y-1">
-                {nodes.map((n) => (
-                <div
-                  key={n.id}
-                  className="flex items-center gap-2 bg-background/40 rounded-lg px-3 py-2"
-                >
-                  <span className="text-xs font-mono text-primary/60 w-5 shrink-0">{n.sequence}.</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-medium truncate block">{n.title}</span>
-                    <span className="text-xs text-muted-foreground/70">
-                      {n.targetBloomLevel != null ? `Bloom ${n.targetBloomLevel}` : ""}
-                    </span>
+            <div className="space-y-3">
+              {nodes.map((n) => {
+                const nodeExercises = exercises.filter((e) => e.relatedNodeId === n.id);
+                const isEditingNode = editingNodeId === n.id;
+                return (
+                  <div key={n.id} className="bg-background/40 border border-white/8 rounded-xl overflow-hidden">
+                    {/* Node header row */}
+                    <div className="flex items-start gap-2 px-3 py-2">
+                      <span className="text-xs font-mono text-primary/60 w-5 shrink-0 pt-0.5">{n.sequence}.</span>
+                      <div className="flex-1 min-w-0">
+                        {isEditingNode && editNodeForm ? (
+                          <div className="space-y-1.5">
+                            <input
+                              className={fieldCls}
+                              placeholder="Վաղանակ"
+                              value={editNodeForm.title}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, title: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={3}
+                              placeholder="Թեորիական բովանդակություն"
+                              value={editNodeForm.theoryContent}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, theoryContent: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={2}
+                              placeholder="Դասագրքային մեջբերություն (առառ կap)"
+                              value={editNodeForm.verbatimTheoryAnchor}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, verbatimTheoryAnchor: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={2}
+                              placeholder="Տարածված սխալ"
+                              value={editNodeForm.commonMisconception}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, commonMisconception: e.target.value })}
+                            />
+                            <div className="flex gap-2">
+                              <input
+                                className={fieldCls}
+                                placeholder="Bloom 1-6"
+                                type="number" min={1} max={6}
+                                value={editNodeForm.targetBloomLevel}
+                                onChange={(e) => setEditNodeForm((f) => f && { ...f, targetBloomLevel: e.target.value })}
+                              />
+                              <input
+                                className={fieldCls}
+                                placeholder="Ժամ (րոփ)"
+                                type="number" min={1}
+                                value={editNodeForm.estimatedMinutes}
+                                onChange={(e) => setEditNodeForm((f) => f && { ...f, estimatedMinutes: e.target.value })}
+                              />
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => saveNode(n.id)}
+                                disabled={updateNode.isPending}
+                                className={btnSm + " bg-primary text-black disabled:opacity-40"}
+                              >{updateNode.isPending ? "..." : "Ընthel"}</button>
+                              <button
+                                onClick={() => { setEditingNodeId(null); setEditNodeForm(null); }}
+                                className={btnSm + " bg-white/10 text-muted-foreground"}
+                              >Անcel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-xs font-semibold text-white block">{n.title}</span>
+                            {n.theoryContent && (
+                              <p className="text-xs text-muted-foreground/80 mt-0.5 line-clamp-2 leading-relaxed">{n.theoryContent}</p>
+                            )}
+                            {n.targetBloomLevel != null && (
+                              <span className="text-[10px] text-primary/50">Bloom {n.targetBloomLevel}</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {!isEditingNode && (
+                        <div className="flex gap-1 shrink-0 pt-0.5">
+                          <button
+                            onClick={() => startEditNode(n)}
+                            title="Խmbagrel"
+                            className="text-xs text-muted-foreground hover:text-white transition-colors"
+                          >✏️</button>
+                          <button
+                            onClick={() => {
+                              if (!confirm(`Ջنجel «${n.title}»`)) return;
+                              deleteNode.mutate({ lessonId, nodeId: n.id }, { onSuccess: () => { refreshNodes(); refreshEx(); } });
+                            }}
+                            className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                          >🗑️</button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Exercises under this node */}
+                    {nodeExercises.length > 0 && (
+                      <div className="border-t border-white/6 px-3 py-2 space-y-2">
+                        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Վarjutyunner</p>
+                        {nodeExercises.map((ex) => {
+                          const isEditingEx = editingExerciseId === ex.id;
+                          return (
+                            <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
+                              {isEditingEx && editExForm ? (
+                                <div className="space-y-1.5">
+                                  <textarea
+                                    className={fieldCls + " resize-none"}
+                                    rows={3}
+                                    value={editExForm.exerciseTextVerbatim}
+                                    onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextVerbatim: e.target.value })}
+                                  />
+                                  <input
+                                    className={fieldCls}
+                                    placeholder="Հaghoghutyyan banalich"
+                                    value={editExForm.successCriteria}
+                                    onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })}
+                                  />
+                                  <div className="flex gap-2">
+                                    <select
+                                      className={fieldCls + " cursor-pointer"}
+                                      value={editExForm.difficultyLevel}
+                                      onChange={(e) => setEditExForm((f) => f && { ...f, difficultyLevel: e.target.value })}
+                                    >
+                                      <option value="LOW">LOW</option>
+                                      <option value="MEDIUM">MEDIUM</option>
+                                      <option value="HIGH">HIGH</option>
+                                    </select>
+                                    <select
+                                      className={fieldCls + " cursor-pointer"}
+                                      value={editExForm.assignment}
+                                      onChange={(e) => setEditExForm((f) => f && { ...f, assignment: e.target.value })}
+                                    >
+                                      <option value="CLASS">CLASS</option>
+                                      <option value="HOMEWORK">HOMEWORK</option>
+                                    </select>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Enty"}</button>
+                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Ancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-white/90 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                      {ex.difficultyLevel && (
+                                        <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>
+                                      )}
+                                      {ex.assignment && (
+                                        <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
+                                          {ex.assignment === "HOMEWORK" ? "🏠 Տnayinn" : "📋 Dasaran"}
+                                        </span>
+                                      )}
+                                      {ex.sourcePage && (
+                                        <span className="text-[10px] text-muted-foreground/40">էjj {ex.sourcePage}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1 shrink-0">
+                                    <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors">✏️</button>
+                                    <button
+                                      onClick={() => {
+                                        if (!confirm("Jnjel varjutyune?")) return;
+                                        deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx });
+                                      }}
+                                      className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                                    >🗑️</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Add exercise to this node */}
+                    <div className="border-t border-white/6 px-3 py-1.5">
+                      {addExForNodeId === n.id ? (
+                        <div className="space-y-1.5 py-1">
+                          <textarea
+                            className={fieldCls + " resize-none"}
+                            rows={2}
+                            placeholder="Varjutyutyan bnagir *"
+                            value={addExForm.exerciseTextVerbatim}
+                            onChange={(e) => setAddExForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))}
+                          />
+                          <div className="flex gap-2">
+                            <select className={fieldCls + " cursor-pointer"} value={addExForm.difficultyLevel} onChange={(e) => setAddExForm((f) => ({ ...f, difficultyLevel: e.target.value }))}>
+                              <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
+                            </select>
+                            <select className={fieldCls + " cursor-pointer"} value={addExForm.assignment} onChange={(e) => setAddExForm((f) => ({ ...f, assignment: e.target.value }))}>
+                              <option value="CLASS">CLASS</option><option value="HOMEWORK">HOMEWORK</option>
+                            </select>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()}
+                              onClick={() => {
+                                createEx.mutate(
+                                  { lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } },
+                                  { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }
+                                );
+                              }}
+                              className={btnSm + " bg-primary text-black disabled:opacity-40"}
+                            >{createEx.isPending ? "..." : "+ Avelacel"}</button>
+                            <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Ancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }}
+                          className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5"
+                        >+ Avelacel varjutyun</button>
+                      )}
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add node button/form */}
+          <div className="pt-1">
+            {addNodeOpen ? (
+              <div className="bg-background/30 border border-white/10 rounded-xl px-3 py-2 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">Nor node</p>
+                <input
+                  className={fieldCls}
+                  placeholder="Vaganak *"
+                  value={addNodeForm.title}
+                  onChange={(e) => setAddNodeForm((f) => ({ ...f, title: e.target.value }))}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Teorakan bovanndakutyun"
+                  value={addNodeForm.theoryContent}
+                  onChange={(e) => setAddNodeForm((f) => ({ ...f, theoryContent: e.target.value }))}
+                />
+                <input
+                  className={fieldCls}
+                  placeholder="Bloom 1-6"
+                  type="number" min={1} max={6}
+                  value={addNodeForm.targetBloomLevel}
+                  onChange={(e) => setAddNodeForm((f) => ({ ...f, targetBloomLevel: e.target.value }))}
+                />
+                <div className="flex gap-1">
                   <button
+                    disabled={createNode.isPending || !addNodeForm.title.trim()}
                     onClick={() => {
-                      if (!confirm(`Ջնջե՞լ «${n.title}»`)) return;
-                      deleteNode.mutate(
-                        { lessonId, nodeId: n.id },
-                        { onSuccess: refresh },
+                      createNode.mutate(
+                        { lessonId, data: { title: addNodeForm.title.trim(), theoryContent: addNodeForm.theoryContent || undefined, targetBloomLevel: parseInt(addNodeForm.targetBloomLevel) || 1 } },
+                        { onSuccess: () => { setAddNodeOpen(false); setAddNodeForm({ title: "", theoryContent: "", targetBloomLevel: "1" }); refreshNodes(); } }
                       );
                     }}
-                    className="text-xs text-muted-foreground hover:text-destructive shrink-0 transition-colors"
-                  >
-                    🗑
-                  </button>
+                    className={btnSm + " bg-primary text-black disabled:opacity-40"}
+                  >{createNode.isPending ? "..." : "Avelacel"}</button>
+                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Ancel</button>
                 </div>
-              ))}
-            </div>
-            </>
-          )}
-          {practicalTasks.some((pt: any) => pt.assignment !== "HOMEWORK") && (
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1">✏️ Գործնական աշխատանք</p>
-              <div className="space-y-1">
-                {practicalTasks
-                  .filter((pt: any) => pt.assignment !== "HOMEWORK")
-                  .map((pt, idx) => (
-                  <div key={idx} className="text-xs leading-relaxed flex flex-wrap gap-x-1">
-                    <span className="text-white">{pt.task}</span>
-                    {pt.sourcePage != null && (
-                      <span className="text-xs text-muted-foreground/50 shrink-0">(էջ {pt.sourcePage})</span>
-                    )}
-                  </div>
-                ))}
               </div>
-            </div>
-          )}
-          {practicalTasks.some((pt: any) => pt.assignment === "HOMEWORK") && (
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1">🏠 Տնային աշխատանք</p>
-              <div className="space-y-1">
-                {practicalTasks
-                  .filter((pt: any) => pt.assignment === "HOMEWORK")
-                  .map((pt, idx) => (
-                  <div key={idx} className="text-xs leading-relaxed flex flex-wrap gap-x-1">
-                    <span className="text-white">{pt.task}</span>
-                    {pt.sourcePage != null && (
-                      <span className="text-xs text-muted-foreground/50 shrink-0">(էջ {pt.sourcePage})</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            ) : (
+              <button
+                onClick={() => setAddNodeOpen(true)}
+                className="w-full text-xs text-muted-foreground/50 hover:text-primary/70 border border-dashed border-white/10 hover:border-primary/30 rounded-xl py-2 transition-colors"
+              >+ Avelacel node</button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -2298,11 +2610,9 @@ export default function TeacherDashboard() {
                                 lessonId={l.id}
                                 coreProblem={(l as any).coreProblem ?? null}
                                 coreIdea={(l as any).coreIdea ?? null}
-                                practicalTasks={
-                                  Array.isArray((l as any).practicalTasks)
-                                    ? (l as any).practicalTasks
-                                    : []
-                                }
+                                textbookAuthor={(l as any).textbookAuthor ?? null}
+                                textbookTitle={(l as any).textbookTitle ?? null}
+                                chapterTitle={(l as any).chapterTitle ?? null}
                               />
                             </div>
                           </div>
