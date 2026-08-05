@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -77,6 +77,18 @@ export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("home");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Close sidebar when clicking outside (mobile)
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (sidebarOpen && sidebarRef.current && !sidebarRef.current.contains(e.target as Node))
+        setSidebarOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [sidebarOpen]);
 
   // ── data ──────────────────────────────────────────────────────────────────
   const { data: stats } = useGetAdminStats({
@@ -518,42 +530,85 @@ export default function AdminDashboard() {
     "px-3 py-1 rounded-lg text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors";
 
   return (
-    <div className="min-h-[100dvh] bg-background text-white">
+    <div className="min-h-[100dvh] bg-background text-white flex">
       <QuickSwitch />
-      {/* Header */}
-      <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">👑 Ադմին Վահանակ </h1>
-          <p className="text-xs text-muted-foreground">
-            Karhanyan School · myaiteacher
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">
-            ֆ{user.fullName}
-          </span>
-          <button
-            onClick={logout}
-            className="text-sm text-destructive hover:text-white transition-colors"
-          >
-            Ելք
-          </button>
-        </div>
-      </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-6">
-        {/* Main nav (always visible) */}
-        <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto">
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        ref={sidebarRef}
+        className={`fixed top-0 left-0 h-full z-50 w-60 bg-card/95 backdrop-blur-xl border-r border-white/10 flex flex-col transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0 lg:static lg:z-auto`}
+      >
+        <div className="px-5 py-5 border-b border-white/10">
+          <div className="font-bold text-base bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+            myaiteacher
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5 truncate">
+            👑 Admin · {user.fullName}
+          </div>
+        </div>
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {subTabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${tab === t.key ? "border-primary text-white" : "border-transparent text-muted-foreground hover:text-white"}`}
+              onClick={() => { setTab(t.key); setSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all text-left ${
+                tab === t.key
+                  ? "bg-primary/20 text-white font-medium"
+                  : "text-muted-foreground hover:text-white hover:bg-white/5"
+              }`}
             >
               {t.label}
             </button>
           ))}
+        </nav>
+        <div className="px-3 py-4 border-t border-white/10">
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-muted-foreground hover:text-white hover:bg-white/5 transition-all text-left"
+          >
+            <span className="text-lg">🚪</span>
+            <span>Ելք</span>
+          </button>
         </div>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile header with hamburger */}
+        <header className="lg:hidden border-b border-white/10 bg-card/50 backdrop-blur-lg sticky top-0 z-30">
+          <div className="px-4 py-3.5 flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Menu"
+            >
+              <div className="space-y-1.5 w-5">
+                <span className="block w-full h-0.5 bg-white rounded" />
+                <span className="block w-full h-0.5 bg-white rounded" />
+                <span className="block w-full h-0.5 bg-white rounded" />
+              </div>
+            </button>
+            <div className="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+              myaiteacher
+            </div>
+            <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">
+              {user.fullName}
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-5xl mx-auto px-5 sm:px-8 py-8">
 
         {/* ── HOME: stats + schedule ── */}
         {tab === "home" && (
@@ -2008,6 +2063,8 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+          </div>
+        </main>
       </div>
     </div>
   );

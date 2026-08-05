@@ -1,0 +1,44 @@
+Read the full current content of artifacts/myaiteacher/src/pages/admin-dashboard.tsx
+(the top tab-nav and its section-switching logic) and
+artifacts/myaiteacher/src/pages/teacher-dashboard.tsx (the left sidebar
+component/layout) before changing anything. Paste both relevant sections.
+
+## Goal
+Pure visual/layout change only — convert admin-dashboard's top horizontal
+tab-nav into a LEFT sidebar, matching the exact visual style, width, and
+layout pattern already used in teacher-dashboard.tsx (and student
+dashboard.tsx). No new features, no logic change, no routing change, no
+data/query change — only where the navigation renders and how it looks.
+
+## Step 1 — Extract the exact current tab labels
+List every tab in admin-dashboard's current top nav (Armenian text) by
+reading them directly from the source file — do not retype them from
+memory or from a screenshot. Copy the exact strings as they appear in the
+JSX.
+
+## Step 2 — Reuse the existing sidebar pattern
+Move the same section-switching state (whatever drives which tab's content
+shows — likely a `useState<Section>` the same as teacher-dashboard.tsx
+already uses) so the tab buttons render as a vertical list on the left,
+using the same sidebar container styling (width, background, spacing,
+active/hover states) as teacher-dashboard.tsx's sidebar. If
+teacher-dashboard.tsx has a shared sidebar component already extracted,
+reuse it directly. If not, copy the same Tailwind classes/structure so the
+visual result matches exactly (same w-60 width, same desktop/mobile
+responsive behavior with hamburger toggle if that's how teacher/student
+dashboards handle mobile).
+
+## Step 3 — Keep every label exactly as-is
+Every tab label's Armenian text must be byte-identical to what Step 1
+extracted — copy-paste from the source, never retype.
+
+## Step 4 — Verify
+Typecheck, restart. Take a real screenshot of /admin showing the new left
+sidebar with all tabs, and confirm clicking each tab still shows the exact
+same content section as before (Գլխավոր/cards, Առարկաներ, Ուսուցիչներ,
+Աշակերտներ, Դասարաններ, Դասացուցակ — whatever the real extracted labels
+are). Confirm no data, query, or routing behavior changed — only the
+navigation's position and layout.
+
+Do not touch chat.ts, quizzes.ts, or any backend route in this step —
+scope is limited to admin-dashboard.tsx's layout only.
