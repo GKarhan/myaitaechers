@@ -1,0 +1,59 @@
+Investigation first (confirm the 83 blocks are as expected), then
+implementation.
+
+## Goal
+Organize the 83 Pass-1 blocks (lesson 68) into a proper Node→MicroNode
+hierarchy. This step receives ONLY the block list as input — do NOT
+re-read the PDF or page images. If a topic doesn't trace back to one or
+more of these 83 blocks, it must not appear in the output.
+
+## Step 1 — Read the current 83 blocks
+Pull all 83 rows for lesson 68, ordered by sequence. Paste the full list
+(id, blockType, sourcePage, sourceText) so we both have the same
+reference before organizing.
+
+## Step 2 — Group into Topics (Node) and MicroNodes
+Send these 83 blocks (as data, not by re-showing images) to the AI with
+instructions to:
+1. Identify distinct topic boundaries among the blocks (e.g. "noun as a
+   part of speech" vs "proper vs common nouns" vs "compound proper noun
+   spelling") — create one lessonTopicsTable row per topic
+2. For each topic, group its related blocks into one or more MicroNodes
+   — each MicroNode = one single learning objective. A MicroNode must
+   list which block IDs it's built from (traceability — required, not
+   optional)
+3. For each MicroNode, set: title, learningObjective (explicit "student
+   can..." statement), microNodeType ("knowledge" or "skill"), topicId,
+   theoryContent (built ONLY from that MicroNode's DEFINITION/RULE/NOTE
+   blocks — quote or closely paraphrase, cite which block IDs), status
+   defaults to 'draft', createdBy='ai'
+4. EXERCISE/ACTIVITY/HOMEWORK-type blocks become lessonExercisesTable
+   rows, linked via relatedNodeId to the correct MicroNode, sourceType
+   defaults to 'textbook' since they're all real exercises from Pass 1
+5. IMAGE/CAPTION/TABLE-type blocks: decide sensibly whether they attach
+   to a MicroNode's supporting material or stay unattached — explain
+   your choice
+
+## Step 3 — Hard constraint (the whole point of this step)
+The output's set of topics/MicroNodes must be fully explainable by the
+83 input blocks. Before finalizing, self-check: for every MicroNode,
+list the block IDs it came from. If any MicroNode has zero traceable
+block IDs, that is a bug — remove it or fix the mapping, do not let it
+through.
+
+## Step 4 — Storage
+Decide and explain: do you update the existing 83 lessonNodesTable rows
+in place (consolidating into fewer, richer MicroNode rows and deleting
+the leftover raw-block rows), or create new rows and archive/delete the
+old ones? Either is fine — just be clean about it, don't leave orphaned
+half-block, half-MicroNode rows.
+
+## Step 5 — Report
+Paste the final structure: every Topic, every MicroNode under it (with
+learningObjective, microNodeType, and its source block IDs), every
+exercise and which MicroNode it's linked to. Then answer directly: does
+every single topic/MicroNode in this output trace back to real blocks
+from Step 1, or is there anything that looks introduced/invented? Cross-
+check specifically against pages 26-27's content (the pages that
+previously produced the fabricated "singular/plural" node) to confirm
+that topic does NOT appear here.
