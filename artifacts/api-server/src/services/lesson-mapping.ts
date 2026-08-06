@@ -111,7 +111,7 @@ export interface LessonMappingResult {
 // Pass 2 (not yet implemented) will take this block list and organise it into
 // topics, nodes, exercises, and the rest of the lesson structure.
 
-const PASS1_SYSTEM_PROMPT = `You are a textbook content extraction engine. Your ONLY task: read the given page(s) and output a flat JSON array of every content block you see, in reading order.
+export const PASS1_SYSTEM_PROMPT = `You are a textbook content extraction engine. Your ONLY task: read the given page(s) and output a flat JSON array of every content block you see, in reading order.
 
 OUTPUT: Respond with ONLY valid JSON — no commentary, no markdown fences, no explanation before or after.
 {
@@ -403,34 +403,99 @@ export async function extractBlocksWithVision(
     });
     const raw1 = r1.choices[0]?.message?.content ?? "";
     const wasTruncated1 = r1.choices[0]?.finish_reason === "length";
-    if (wasTruncated1) {
-      logger.warn({ chunkLabel }, "pass1 vision: first attempt hit max_tokens");
-    }
-    let parsed = extractJSON(raw1, wasTruncated1);
+    let parsed: Pass1Result | null = null;
 
-    if (!parsed) {
-      logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r2 = await openrouter.chat.completions.create({
-        model: VISION_MODEL,
-        max_tokens: PASS1_MAX_TOKENS,
-        temperature: 0,
-        messages: [
-          { role: "system", content: PASS1_SYSTEM_PROMPT },
-          { role: "user",   content } as any,
-          { role: "assistant", content: raw1 },
-          { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
-        ],
-      });
-      const raw2 = r2.choices[0]?.message?.content ?? "";
-      const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
-      if (wasTruncated2) {
-        logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
+    if (wasTruncated1) {
+      // ── 1-page fallback: discard the truncated 2-page result and retry each
+      // page individually.  This costs one extra API call per page but guarantees
+      // every block is captured on dense pages (pages 22-23 and 26-27 of
+      // Հայoц Lex 7 reliably exceed 32k tokens when combined). ──────────────
+      logger.warn({ chunkLabel }, "pass1 vision: truncated — falling back to 1-page sub-chunks");
+      const subBlocks: Pass1Block[] = [];
+
+      for (let pi = 0; pi < chunkImages.length; pi++) {
+        const subPage  = chunkFrom + pi;
+        const subLabel = `page ${subPage} (1-page sub-chunk of ${chunkLabel})`;
+        logger.info({ subLabel }, "pass1 vision: extracting 1-page sub-chunk");
+
+        const subHeader = [
+          `SUBJECT: ${input.subjectName}`,
+          `LESSON TITLE: ${input.lessonTitle}`,
+          input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`   : "",
+          input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}` : "",
+          input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`  : "",
+          `PAGE: ${subPage}  [1-page extraction, full lesson range ${totalFrom}–${totalTo}]`,
+          "",
+          `You are looking at 1 page image (page ${subPage}).`,
+          `Extract EVERY content block visible on this page in reading order.`,
+          `IMPORTANT: Output ONLY the raw JSON object — no markdown fences, no \`\`\`json, no explanation.`,
+          `For sourceBoundingBox, provide pixel coordinates {x, y, w, h} measured from the top-left.`,
+        ].filter(Boolean).join("\n");
+
+        const subContent: ContentPart[] = [
+          { type: "text", text: subHeader },
+          { type: "image_url", image_url: { url: `data:image/png;base64,${chunkImages[pi]}` } },
+        ];
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rSub = await openrouter.chat.completions.create({
+          model: VISION_MODEL,
+          max_tokens: PASS1_MAX_TOKENS,
+          temperature: 0,
+          messages: [
+            { role: "system", content: PASS1_SYSTEM_PROMPT },
+            { role: "user",   content: subContent } as any,
+          ],
+        });
+        const rawSub      = rSub.choices[0]?.message?.content ?? "";
+        const subTruncated = rSub.choices[0]?.finish_reason === "length";
+        if (subTruncated) {
+          logger.warn({ subLabel }, "pass1 vision: 1-page sub-chunk also truncated (very dense page)");
+        }
+        const subParsed = extractJSON(rawSub, subTruncated);
+        if (subParsed) {
+          const subNorm = normalisePass1(subParsed);
+          logger.info({ subLabel, blockCount: subNorm.blocks.length }, "pass1 vision: 1-page sub-chunk extracted");
+          subBlocks.push(...subNorm.blocks);
+        } else {
+          logger.error({ subLabel, raw: rawSub.slice(0, 200) }, "pass1 vision: 1-page sub-chunk failed — skipping page");
+        }
       }
-      parsed = extractJSON(raw2, wasTruncated2);
+
+      if (subBlocks.length === 0) {
+        throw new Error(`Pass 1 vision ${chunkLabel}: 1-page fallback produced no blocks`);
+      }
+      parsed = { blocks: subBlocks };
+
+    } else {
+      // ── Normal path: try direct JSON parse ──────────────────────────────
+      parsed = extractJSON(raw1, false);
+
       if (!parsed) {
-        logger.error({ chunkLabel, raw: raw2.slice(0, 300) }, "pass1 vision: failed to parse chunk after retry");
-        throw new Error(`Pass 1 vision ${chunkLabel}: response not valid JSON after retry`);
+        // Not truncated but invalid JSON — use existing retry prompt
+        logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r2 = await openrouter.chat.completions.create({
+          model: VISION_MODEL,
+          max_tokens: PASS1_MAX_TOKENS,
+          temperature: 0,
+          messages: [
+            { role: "system", content: PASS1_SYSTEM_PROMPT },
+            { role: "user",   content } as any,
+            { role: "assistant", content: raw1 },
+            { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
+          ],
+        });
+        const raw2        = r2.choices[0]?.message?.content ?? "";
+        const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
+        if (wasTruncated2) {
+          logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
+        }
+        parsed = extractJSON(raw2, wasTruncated2);
+        if (!parsed) {
+          logger.error({ chunkLabel, raw: raw2.slice(0, 300) }, "pass1 vision: failed to parse chunk after retry");
+          throw new Error(`Pass 1 vision ${chunkLabel}: response not valid JSON after retry`);
+        }
       }
     }
 
