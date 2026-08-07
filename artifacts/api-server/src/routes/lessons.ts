@@ -2,7 +2,7 @@ import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
-import { eq, and, asc, max, inArray } from "drizzle-orm";
+import { eq, and, asc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, type Pass1Result } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
@@ -577,6 +577,7 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
     nodes.map((n) => ({
       id: n.id,
       lessonId: n.lessonId,
+      topicId: n.topicId ?? null,
       sequence: n.sequence,
       title: n.title,
       theoryContent: n.theoryContent ?? null,
@@ -886,6 +887,86 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireAuth, asyn
   res.json({ message: "Exercise deleted" });
 });
 
+// ── TOPICS & MAPPING REPORT ───────────────────────────────────────────────────
+
+// GET /lessons/:lessonId/topics — ordered list of topics for the lesson
+router.get("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const topics = await db
+    .select()
+    .from(lessonTopicsTable)
+    .where(eq(lessonTopicsTable.lessonId, lessonId))
+    .orderBy(asc(lessonTopicsTable.sequence));
+
+  res.json(topics.map((t) => ({
+    id:          t.id,
+    lessonId:    t.lessonId,
+    sequence:    t.sequence,
+    title:       t.title,
+    description: t.description ?? null,
+  })));
+});
+
+// GET /lessons/:lessonId/mapping-report — quality report from the last /map run
+//   If stored metadata exists (from a fresh /map run), returns it directly.
+//   Otherwise computes a best-effort report from current DB state.
+router.get("/lessons/:lessonId/mapping-report", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  // Stored at /map time → return immediately (exact pass1 count + coverage available)
+  if (lesson.mappingMetadata) {
+    res.json(lesson.mappingMetadata);
+    return;
+  }
+
+  // Compute from current DB state (historical lessons mapped before this report was added)
+  const topicsResult = await db.select().from(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, lessonId));
+  const nodes        = await db.select().from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+  const exercises    = await db.select().from(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
+
+  const nodesWithContent = nodes.filter((n) => n.theoryContent && n.theoryContent.length >= 20);
+  const reviewItems = nodes
+    .filter((n) => !n.theoryContent || n.theoryContent.length < 20 || !n.learningObjective)
+    .map((n) => ({
+      nodeId:    n.id,
+      nodeTitle: n.title,
+      reason:    !n.learningObjective ? "Missing learning objective" : "Missing or very short theory content",
+    }));
+
+  res.json({
+    lessonId,
+    lessonTitle:  lesson.title,
+    pagesFrom:    lesson.pagesFrom  ?? null,
+    pagesTo:      lesson.pagesTo    ?? null,
+    generatedAt:  new Date().toISOString(),
+    counts: {
+      pass1BlocksExtracted: null,    // only available when stored at /map time
+      topicsCreated:        topicsResult.length,
+      microNodesCreated:    nodes.length,
+      exercisesCreated:     exercises.length,
+      unmappedBlocks:       null,    // only available when stored at /map time
+    },
+    content: {
+      aiGeneratedFields:        nodes.length * 2,   // title + learningObjective per MicroNode
+      textbookSourcedExercises: exercises.filter((e) => e.sourceType === "textbook").length,
+      textbookSourcedNodes:     nodesWithContent.length,
+    },
+    quality: {
+      coveragePercent:          null,               // requires pass1BlocksExtracted
+      overallConfidencePercent: nodes.length > 0
+        ? Math.round((nodesWithContent.length / nodes.length) * 100) : 0,
+      teacherReviewRequired:    reviewItems.length,
+      reviewItems,
+    },
+  });
+});
+
 // ── LESSON MAPPING (Pass 1 + Pass 2) ──────────────────────────────────────────
 
 // POST /lessons/:lessonId/map — full two-pass pipeline:
@@ -1000,6 +1081,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     let totalNodes = 0;
     let totalExercises = 0;
     let exerciseCounter = 0;
+    let nodesWithFullContent = 0;
+    const reviewItems: { nodeId: number; nodeTitle: string; reason: string }[] = [];
 
     const topicRows: { id: number; sequence: number; title: string }[] = [];
     const nodeRows:  { id: number; topicId: number; title: string; sequence: number }[] = [];
@@ -1056,6 +1139,17 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           sequence: mnSeq,
         });
         totalNodes += 1;
+        const hasContent = (theoryContent || "").length >= 20;
+        if (hasContent) nodesWithFullContent++;
+        if (!hasContent || !mn.learningObjective) {
+          reviewItems.push({
+            nodeId:    insertedNode.id,
+            nodeTitle: mn.title,
+            reason:    !mn.learningObjective
+              ? "Missing learning objective"
+              : "Missing or very short theory content",
+          });
+        }
 
         // 3. Insert exercises linked to this MicroNode
         for (const ex of mn.exercises) {
@@ -1078,6 +1172,43 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       }
     }
 
+    // ── Build, store, and return the structured mapping report ────────────────
+    const coveragePercent = pass1.blocks.length > 0
+      ? Math.round(((pass1.blocks.length - pass2.unmappedBlockIndices.length) / pass1.blocks.length) * 100)
+      : 100;
+
+    const mappingReport = {
+      lessonId,
+      lessonTitle:  lesson.title,
+      pagesFrom:    lesson.pagesFrom  ?? null,
+      pagesTo:      lesson.pagesTo    ?? null,
+      generatedAt:  new Date().toISOString(),
+      counts: {
+        pass1BlocksExtracted: pass1.blocks.length,
+        topicsCreated:        pass2.topics.length,
+        microNodesCreated:    totalNodes,
+        exercisesCreated:     totalExercises,
+        unmappedBlocks:       pass2.unmappedBlockIndices.length,
+      },
+      content: {
+        aiGeneratedFields:        totalNodes * 2,   // title + learningObjective per MicroNode
+        textbookSourcedExercises: totalExercises,   // all exercises are textbook-verbatim
+        textbookSourcedNodes:     nodesWithFullContent,
+      },
+      quality: {
+        coveragePercent,
+        overallConfidencePercent: totalNodes > 0
+          ? Math.round((nodesWithFullContent / totalNodes) * 100) : 0,
+        teacherReviewRequired: reviewItems.length,
+        reviewItems,
+      },
+    };
+
+    // Persist so GET /mapping-report can return it without recomputing
+    await db.update(lessonsTable)
+      .set({ mappingMetadata: mappingReport as any })
+      .where(eq(lessonsTable.id, lessonId));
+
     logger.info(
       {
         lessonId,
@@ -1086,6 +1217,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         microNodes:      totalNodes,
         exercises:       totalExercises,
         unmapped:        pass2.unmappedBlockIndices.length,
+        coveragePercent,
+        reviewRequired:  reviewItems.length,
       },
       "lesson mapping Pass 1 + Pass 2 complete"
     );
@@ -1096,6 +1229,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       microNodesCreated:    totalNodes,
       exercisesCreated:     totalExercises,
       unmappedBlocks:       pass2.unmappedBlockIndices.length,
+      mappingReport,
       topics: topicRows.map((t) => ({
         id:       t.id,
         sequence: t.sequence,

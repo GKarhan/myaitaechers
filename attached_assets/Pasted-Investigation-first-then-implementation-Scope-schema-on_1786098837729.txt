@@ -1,0 +1,45 @@
+Investigation first, then implementation. Scope: schema only, no
+mapping-logic changes yet.
+
+## Goal
+Add the Phase 2 (Teaching/Practice/Assessment layer) fields to
+lessonNodesTable (MicroNodes), so each MicroNode can carry pre-authored
+teaching material instead of chat.ts generating it live.
+
+## Step 1 — Read current schema
+Paste lessonNodesTable's current full column list (post-Phase-1) so we
+both confirm the starting point before adding anything.
+
+## Step 2 — Add new columns
+- explanationSteps: jsonb, default '[]' — ordered array of strings, each
+  one step of a guided explanation (built from real Pass-1 sourceText
+  where possible, not invented from scratch)
+- beginnerExplanation: text, nullable — simpler variant
+- advancedExplanation: text, nullable — richer variant
+- analogy: text, nullable
+- visualReferenceNote: text, nullable — a short note on what a
+  supporting image/diagram should show (not the image itself yet)
+- commonErrors: jsonb, default '[]' — array of {mistake, reason,
+  fixStrategy, relatedExerciseId} objects (the Error Model from our
+  earlier planning, not just a flat mistake list)
+- misconceptionQuestions: jsonb, default '[]'
+- recallQuestions / understandingQuestions / applicationQuestions: jsonb,
+  default '[]' each
+- faqEntries: jsonb, default '[]' — array of {question, answer}
+- contentSourceType: text, default 'textbook' — "textbook" |
+  "ai_generated" — tracks whether THIS teaching content (not the
+  original MicroNode extraction, which is already always textbook-
+  sourced) was built from real exercises/text or synthesized by AI
+- teachingContentConfidence: integer, nullable, 0-100 — separate from
+  the existing Pass-1/Pass-2 confidenceScore, since this measures
+  confidence in the SYNTHESIZED teaching material specifically
+
+## Step 3 — Verify
+Push via drizzle-kit, generate a proper migration file (not direct
+psql this time — confirm drizzle-kit migrate works now, or explain if
+it's still timing out and needs the psql workaround again). Confirm
+existing MicroNode rows for lesson 68/60 are unaffected (all new columns
+default to empty/null, nothing breaks). Paste the final schema.
+
+Do not touch lesson-mapping.ts, chat.ts, or any route in this step —
+schema only.

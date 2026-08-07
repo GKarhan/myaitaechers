@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -44,7 +44,7 @@ import {
   useGetSubjects,
   getGetSubjectsQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 type MainView = "dashboard" | "class" | "course" | "student";
 type ClassTab = "subjects" | "students";
@@ -118,6 +118,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
           qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+          qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
         },
         onError: (err: unknown) => {
           const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
@@ -252,6 +253,22 @@ function LessonNodesPanel({
   };
 
   const isBusy = nodesFetching || exFetching;
+  const { token } = useAuth();
+  const [collapsedTopics, setCollapsedTopics] = useState<Set<number>>(new Set());
+  const toggleTopic = (id: number) => setCollapsedTopics((prev) => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
+  });
+  const TOPIC_ACCENTS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316'];
+  const { data: topics = [] } = useQuery<{ id: number; sequence: number; title: string }[]>({
+    queryKey: ['lesson-topics', lessonId],
+    queryFn: async () => {
+      const r = await fetch(`/api/lessons/${lessonId}/topics`, {
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+      });
+      return r.ok ? r.json() : [];
+    },
+    enabled: open && !!token,
+  });
   const fieldCls = "w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50";
   const btnSm = "px-2 py-0.5 rounded text-xs font-medium transition-colors";
 
@@ -308,12 +325,35 @@ function LessonNodesPanel({
               Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը
             </p>
           ) : (
-            <div className="space-y-3">
-              {nodes.map((n) => {
+            <div className="space-y-2">
+              {nodes.map((n, nodeIdx) => {
                 const nodeExercises = exercises.filter((e) => e.relatedNodeId === n.id);
                 const isEditingNode = editingNodeId === n.id;
+                const nTopicId = (n as any).topicId as number | null ?? null;
+                const prevTopicId = nodeIdx > 0 ? ((nodes[nodeIdx - 1] as any).topicId as number | null ?? null) : ("start" as const);
+                const isTopicStart = nTopicId !== prevTopicId;
+                const topic = nTopicId != null ? topics.find((t) => t.id === nTopicId) : undefined;
+                const tIdx = topic ? topics.indexOf(topic) : -1;
+                const accent = tIdx >= 0 ? TOPIC_ACCENTS[tIdx % TOPIC_ACCENTS.length] : undefined;
+                const isHidden = nTopicId != null && collapsedTopics.has(nTopicId);
                 return (
-                  <div key={n.id} className="bg-background/40 border border-white/8 rounded-xl overflow-hidden">
+                  <Fragment key={n.id}>
+                    {isTopicStart && topic && (
+                      <button
+                        onClick={() => toggleTopic(topic.id)}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:brightness-105 transition-all mt-1"
+                        style={{ background: `${accent}18`, borderLeft: `3px solid ${accent}` }}
+                      >
+                        <span className="text-[10px] font-mono text-white/40 w-5 shrink-0">{topic.sequence}.</span>
+                        <span className="text-xs font-bold text-white flex-1 text-left leading-snug">{topic.title}</span>
+                        <span className="text-[10px] text-white/40 shrink-0">{nodes.filter((x) => (x as any).topicId === topic!.id).length} ՄՆ</span>
+                        <span className="text-[10px] text-white/30 ml-1">{collapsedTopics.has(topic.id) ? "▶" : "▼"}</span>
+                      </button>
+                    )}
+                  {!isHidden && (
+                  <div className="bg-background/40 border border-white/8 rounded-xl overflow-hidden"
+                    style={accent ? { marginLeft: "8px", borderLeft: `2px solid ${accent}35` } : {}}
+                  >
                     {/* Node header row */}
                     <div className="flex items-start gap-2 px-3 py-2">
                       <span className="text-xs font-mono text-primary/60 w-5 shrink-0 pt-0.5">{n.sequence}.</span>
@@ -528,6 +568,8 @@ function LessonNodesPanel({
                       )}
                     </div>
                   </div>
+                  )}
+                  </Fragment>
                 );
               })}
             </div>

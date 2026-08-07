@@ -42,6 +42,7 @@ export const lessonsTable = pgTable("lessons", {
   essentialQuestion: text("essential_question"),
   practicalTasks: jsonb("practical_tasks").notNull().default([]),
   knowledgeBoundaries: jsonb("knowledge_boundaries").notNull().default(sql`'[]'::jsonb`),
+  mappingMetadata: jsonb("mapping_metadata"),
   status: text("status").notNull().default("draft"),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
