@@ -756,6 +756,10 @@ ABSOLUTE RULES:
 3. If a block is an EXERCISE/ACTIVITY/HOMEWORK, add it to an existing theory MicroNode's
    exercises array — never isolate it in its own standalone MicroNode.
 4. Do not invent content not present in the blocks.
+5. LANGUAGE: All MicroNode titles and learningObjective fields MUST be written in Armenian.
+   Never use English for titles, even for internal or organisational categories such as
+   "Exercises and Activities" or "Introduction". Write "Վարժություններ" not "Exercises",
+   "Ներածություն" not "Introduction", etc.
 
 OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary before or after.
 {
