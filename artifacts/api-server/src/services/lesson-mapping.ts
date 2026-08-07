@@ -360,194 +360,199 @@ export async function extractBlocksWithVision(
     chunks.push(pageImages.slice(i, i + PASS1_CHUNK_PAGES));
   }
 
-  const allBlocks: Pass1Block[] = [];
-  // Ranges that failed extraction even after 1-page fallback — never throw mid-loop;
-  // instead collect these and surface them in the mapping report.
-  const skippedPageRanges: { from: number; to: number; reason: string }[] = [];
+  type ChunkOutcome = { blocks: Pass1Block[]; skipped: { from: number; to: number; reason: string }[] };
 
-  for (let ci = 0; ci < chunks.length; ci++) {
-    const chunkImages = chunks[ci];
-    const chunkFrom   = totalFrom + ci * PASS1_CHUNK_PAGES;
-    const chunkTo     = Math.min(chunkFrom + PASS1_CHUNK_PAGES - 1, totalTo);
-    const chunkLabel  = `chunk ${ci + 1}/${chunks.length} (pages ${chunkFrom}–${chunkTo})`;
+  // ── Process all chunks in parallel ─────────────────────────────────────────
+  // All vision calls fire simultaneously (same pattern as Pass 2 Step 2).
+  // Promise.all preserves index order, so block ordering by page is maintained.
+  // Each chunk processor owns its own `skipped` array — no shared mutable state.
+  logger.info({ chunkCount: chunks.length }, "pass1 vision: firing all chunks in parallel");
 
-    logger.info(
-      { chunk: ci + 1, totalChunks: chunks.length, pagesFrom: chunkFrom, pagesTo: chunkTo },
-      "pass1 vision: processing chunk"
-    );
+  const chunkResults: ChunkOutcome[] = await Promise.all(
+    chunks.map(async (chunkImages, ci): Promise<ChunkOutcome> => {
+      const chunkFrom  = totalFrom + ci * PASS1_CHUNK_PAGES;
+      const chunkTo    = Math.min(chunkFrom + PASS1_CHUNK_PAGES - 1, totalTo);
+      const chunkLabel = `chunk ${ci + 1}/${chunks.length} (pages ${chunkFrom}–${chunkTo})`;
+      const skipped: { from: number; to: number; reason: string }[] = [];
 
-    const headerText = [
-      `SUBJECT: ${input.subjectName}`,
-      `LESSON TITLE: ${input.lessonTitle}`,
-      input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`   : "",
-      input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}` : "",
-      input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`  : "",
-      `PAGES IN THIS BATCH: ${chunkFrom}–${chunkTo}  [batch ${ci + 1}/${chunks.length}, full lesson range ${totalFrom}–${totalTo}]`,
-      "",
-      `You are looking at ${chunkImages.length} page image(s) covering pages ${chunkFrom}–${chunkTo}.`,
-      `Extract EVERY content block visible on these pages in reading order.`,
-      `IMPORTANT: Output ONLY the raw JSON object — no markdown fences, no \`\`\`json, no explanation.`,
-      `For sourceBoundingBox, provide pixel coordinates {x, y, w, h} measured from the top-left of each page image.`,
-    ].filter(Boolean).join("\n");
+      logger.info(
+        { chunk: ci + 1, totalChunks: chunks.length, pagesFrom: chunkFrom, pagesTo: chunkTo },
+        "pass1 vision: processing chunk"
+      );
 
-    const content: ContentPart[] = [
-      { type: "text", text: headerText },
-      ...chunkImages.map((b64): ImagePart => ({
-        type: "image_url",
-        image_url: { url: `data:image/png;base64,${b64}` },
-      })),
-    ];
+      const headerText = [
+        `SUBJECT: ${input.subjectName}`,
+        `LESSON TITLE: ${input.lessonTitle}`,
+        input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`   : "",
+        input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}` : "",
+        input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`  : "",
+        `PAGES IN THIS BATCH: ${chunkFrom}–${chunkTo}  [batch ${ci + 1}/${chunks.length}, full lesson range ${totalFrom}–${totalTo}]`,
+        "",
+        `You are looking at ${chunkImages.length} page image(s) covering pages ${chunkFrom}–${chunkTo}.`,
+        `Extract EVERY content block visible on these pages in reading order.`,
+        `IMPORTANT: Output ONLY the raw JSON object — no markdown fences, no \`\`\`json, no explanation.`,
+        `For sourceBoundingBox, provide pixel coordinates {x, y, w, h} measured from the top-left of each page image.`,
+      ].filter(Boolean).join("\n");
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r1 = await openrouter.chat.completions.create({
-      model: VISION_MODEL,
-      max_tokens: PASS1_MAX_TOKENS,
-      temperature: 0,
-      messages: [
-        { role: "system", content: PASS1_SYSTEM_PROMPT },
-        { role: "user",   content } as any,
-      ],
-    });
-    const raw1 = r1.choices[0]?.message?.content ?? "";
-    const wasTruncated1 = r1.choices[0]?.finish_reason === "length";
-    let parsed: Pass1Result | null = null;
+      const content: ContentPart[] = [
+        { type: "text", text: headerText },
+        ...chunkImages.map((b64): ImagePart => ({
+          type: "image_url",
+          image_url: { url: `data:image/png;base64,${b64}` },
+        })),
+      ];
 
-    // ── Shared 1-page fallback helper ─────────────────────────────────────────
-    // Retries each page in this chunk individually.  Returns the collected
-    // blocks; per-page failures are added to skippedPageRanges (no throw).
-    const run1PageFallback = async (triggerReason: string): Promise<Pass1Block[]> => {
-      const subBlocks: Pass1Block[] = [];
-      for (let pi = 0; pi < chunkImages.length; pi++) {
-        const subPage  = chunkFrom + pi;
-        const subLabel = `page ${subPage} (1-page fallback of ${chunkLabel})`;
-        logger.info({ subLabel }, "pass1 vision: extracting 1-page sub-chunk");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r1 = await openrouter.chat.completions.create({
+        model: VISION_MODEL,
+        max_tokens: PASS1_MAX_TOKENS,
+        temperature: 0,
+        messages: [
+          { role: "system", content: PASS1_SYSTEM_PROMPT },
+          { role: "user",   content } as any,
+        ],
+      });
+      const raw1          = r1.choices[0]?.message?.content ?? "";
+      const wasTruncated1 = r1.choices[0]?.finish_reason === "length";
+      let parsed: Pass1Result | null = null;
 
-        const subHeader = [
-          `SUBJECT: ${input.subjectName}`,
-          `LESSON TITLE: ${input.lessonTitle}`,
-          input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`   : "",
-          input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}` : "",
-          input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`  : "",
-          `PAGE: ${subPage}  [1-page extraction, full lesson range ${totalFrom}–${totalTo}]`,
-          "",
-          `You are looking at 1 page image (page ${subPage}).`,
-          `Extract EVERY content block visible on this page in reading order.`,
-          `IMPORTANT: Output ONLY the raw JSON object — no markdown fences, no \`\`\`json, no explanation.`,
-          `For sourceBoundingBox, provide pixel coordinates {x, y, w, h} measured from the top-left.`,
-        ].filter(Boolean).join("\n");
+      // ── 1-page fallback helper (scoped to this chunk) ───────────────────────
+      // Retries each page individually.  Pushes failures to this chunk's own
+      // `skipped` array — no shared mutable state with sibling chunks.
+      const run1PageFallback = async (triggerReason: string): Promise<Pass1Block[]> => {
+        const subBlocks: Pass1Block[] = [];
+        for (let pi = 0; pi < chunkImages.length; pi++) {
+          const subPage  = chunkFrom + pi;
+          const subLabel = `page ${subPage} (1-page fallback of ${chunkLabel})`;
+          logger.info({ subLabel }, "pass1 vision: extracting 1-page sub-chunk");
 
-        const subContent: ContentPart[] = [
-          { type: "text", text: subHeader },
-          { type: "image_url", image_url: { url: `data:image/png;base64,${chunkImages[pi]}` } },
-        ];
+          const subHeader = [
+            `SUBJECT: ${input.subjectName}`,
+            `LESSON TITLE: ${input.lessonTitle}`,
+            input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`   : "",
+            input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}` : "",
+            input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`  : "",
+            `PAGE: ${subPage}  [1-page extraction, full lesson range ${totalFrom}–${totalTo}]`,
+            "",
+            `You are looking at 1 page image (page ${subPage}).`,
+            `Extract EVERY content block visible on this page in reading order.`,
+            `IMPORTANT: Output ONLY the raw JSON object — no markdown fences, no \`\`\`json, no explanation.`,
+            `For sourceBoundingBox, provide pixel coordinates {x, y, w, h} measured from the top-left.`,
+          ].filter(Boolean).join("\n");
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rSub = await openrouter.chat.completions.create({
-          model: VISION_MODEL,
-          max_tokens: PASS1_MAX_TOKENS,
-          temperature: 0,
-          messages: [
-            { role: "system", content: PASS1_SYSTEM_PROMPT },
-            { role: "user",   content: subContent } as any,
-          ],
-        });
-        const rawSub       = rSub.choices[0]?.message?.content ?? "";
-        const subTruncated = rSub.choices[0]?.finish_reason === "length";
-        if (subTruncated) {
-          logger.warn({ subLabel }, "pass1 vision: 1-page sub-chunk also truncated (very dense page)");
-        }
-        const subParsed = extractJSON(rawSub, subTruncated);
-        if (subParsed) {
-          const subNorm = normalisePass1(subParsed);
-          logger.info({ subLabel, blockCount: subNorm.blocks.length }, "pass1 vision: 1-page sub-chunk extracted");
-          subBlocks.push(...subNorm.blocks);
-        } else {
-          // One page failed — record it, never write error text as a block
-          logger.error(
-            { subPage, chunkLabel, raw: rawSub.slice(0, 200) },
-            "pass1 vision: 1-page sub-chunk failed — skipping page"
-          );
-          skippedPageRanges.push({
-            from:   subPage,
-            to:     subPage,
-            reason: `Page ${subPage} failed extraction (${triggerReason}) — needs manual review or re-run`,
+          const subContent: ContentPart[] = [
+            { type: "text", text: subHeader },
+            { type: "image_url", image_url: { url: `data:image/png;base64,${chunkImages[pi]}` } },
+          ];
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rSub = await openrouter.chat.completions.create({
+            model: VISION_MODEL,
+            max_tokens: PASS1_MAX_TOKENS,
+            temperature: 0,
+            messages: [
+              { role: "system", content: PASS1_SYSTEM_PROMPT },
+              { role: "user",   content: subContent } as any,
+            ],
           });
+          const rawSub       = rSub.choices[0]?.message?.content ?? "";
+          const subTruncated = rSub.choices[0]?.finish_reason === "length";
+          if (subTruncated) {
+            logger.warn({ subLabel }, "pass1 vision: 1-page sub-chunk also truncated (very dense page)");
+          }
+          const subParsed = extractJSON(rawSub, subTruncated);
+          if (subParsed) {
+            const subNorm = normalisePass1(subParsed);
+            logger.info({ subLabel, blockCount: subNorm.blocks.length }, "pass1 vision: 1-page sub-chunk extracted");
+            subBlocks.push(...subNorm.blocks);
+          } else {
+            // One page failed — record it; NEVER write error text as a block
+            logger.error(
+              { subPage, chunkLabel, raw: rawSub.slice(0, 200) },
+              "pass1 vision: 1-page sub-chunk failed — skipping page"
+            );
+            skipped.push({
+              from:   subPage,
+              to:     subPage,
+              reason: `Page ${subPage} failed extraction (${triggerReason}) — needs manual review or re-run`,
+            });
+          }
         }
-      }
-      return subBlocks;
-    };
+        return subBlocks;
+      };
 
-    if (wasTruncated1) {
-      // ── Truncation: discard 2-page result, retry each page individually ─────
-      logger.warn({ chunkLabel }, "pass1 vision: truncated — falling back to 1-page sub-chunks");
-      const subBlocks = await run1PageFallback("truncated response");
-      if (subBlocks.length === 0) {
-        // All pages in this chunk failed — skip the whole chunk, don't throw
-        logger.error({ chunkLabel }, "pass1 vision: truncation 1-page fallback produced no blocks — skipping chunk");
-        skippedPageRanges.push({
-          from:   chunkFrom,
-          to:     chunkTo,
-          reason: `Pages ${chunkFrom}–${chunkTo} failed extraction even at 1-page granularity (truncated) — needs manual review or re-run`,
-        });
-        continue;
-      }
-      parsed = { blocks: subBlocks };
-
-    } else {
-      // ── Normal path: try direct JSON parse ──────────────────────────────────
-      parsed = extractJSON(raw1, false);
-
-      if (!parsed) {
-        // Not truncated but invalid JSON — retry once with correction prompt
-        logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const r2 = await openrouter.chat.completions.create({
-          model: VISION_MODEL,
-          max_tokens: PASS1_MAX_TOKENS,
-          temperature: 0,
-          messages: [
-            { role: "system", content: PASS1_SYSTEM_PROMPT },
-            { role: "user",   content } as any,
-            { role: "assistant", content: raw1 },
-            { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
-          ],
-        });
-        const raw2          = r2.choices[0]?.message?.content ?? "";
-        const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
-        if (wasTruncated2) {
-          logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
+      if (wasTruncated1) {
+        // ── Truncation: discard 2-page result, retry each page individually ───
+        logger.warn({ chunkLabel }, "pass1 vision: truncated — falling back to 1-page sub-chunks");
+        const subBlocks = await run1PageFallback("truncated response");
+        if (subBlocks.length === 0) {
+          logger.error({ chunkLabel }, "pass1 vision: truncation 1-page fallback produced no blocks — skipping chunk");
+          skipped.push({
+            from:   chunkFrom,
+            to:     chunkTo,
+            reason: `Pages ${chunkFrom}–${chunkTo} failed extraction even at 1-page granularity (truncated) — needs manual review or re-run`,
+          });
+          return { blocks: [], skipped };   // ← return instead of continue
         }
-        parsed = extractJSON(raw2, wasTruncated2);
+        parsed = { blocks: subBlocks };
+
+      } else {
+        // ── Normal path: try direct JSON parse ────────────────────────────────
+        parsed = extractJSON(raw1, false);
 
         if (!parsed) {
-          // Both attempts failed — apply 1-page fallback instead of throwing.
-          // CRITICAL: never write the error string as block content or a node title.
-          logger.warn(
-            { chunkLabel, raw: raw2.slice(0, 300) },
-            "pass1 vision: chunk failed after retry — applying 1-page fallback to avoid output corruption"
-          );
-          const subBlocks = await run1PageFallback("JSON parse failed after retry");
-          if (subBlocks.length > 0) {
-            // At least some pages recovered — include them
-            parsed = { blocks: subBlocks };
-          } else {
-            // Every page in this chunk failed even at 1-page granularity —
-            // skip the chunk entirely; a review item was added per failed page
-            logger.error(
-              { chunkLabel },
-              "pass1 vision: chunk completely skipped — all 1-page fallbacks failed"
+          // Not truncated but invalid JSON — retry once with correction prompt
+          logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const r2 = await openrouter.chat.completions.create({
+            model: VISION_MODEL,
+            max_tokens: PASS1_MAX_TOKENS,
+            temperature: 0,
+            messages: [
+              { role: "system", content: PASS1_SYSTEM_PROMPT },
+              { role: "user",   content } as any,
+              { role: "assistant", content: raw1 },
+              { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
+            ],
+          });
+          const raw2          = r2.choices[0]?.message?.content ?? "";
+          const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
+          if (wasTruncated2) {
+            logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
+          }
+          parsed = extractJSON(raw2, wasTruncated2);
+
+          if (!parsed) {
+            // Both attempts failed — 1-page fallback as last resort.
+            // CRITICAL: never store error text as block content or a node title.
+            logger.warn(
+              { chunkLabel, raw: raw2.slice(0, 300) },
+              "pass1 vision: chunk failed after retry — applying 1-page fallback to avoid output corruption"
             );
-            // Consolidate per-page items already added into one chunk-level item
-            // (per-page ones were already pushed by run1PageFallback above)
-            continue;
+            const subBlocks = await run1PageFallback("JSON parse failed after retry");
+            if (subBlocks.length > 0) {
+              parsed = { blocks: subBlocks };
+            } else {
+              // Every page in this chunk failed — skip it entirely
+              logger.error({ chunkLabel }, "pass1 vision: chunk completely skipped — all 1-page fallbacks failed");
+              return { blocks: [], skipped };   // ← return instead of continue
+            }
           }
         }
       }
-    }
 
-    const chunkBlocks = normalisePass1(parsed).blocks;
-    logger.info({ chunkLabel, blockCount: chunkBlocks.length }, "pass1 vision: chunk extracted");
-    allBlocks.push(...chunkBlocks);
+      const chunkBlocks = normalisePass1(parsed).blocks;
+      logger.info({ chunkLabel, blockCount: chunkBlocks.length }, "pass1 vision: chunk extracted");
+      return { blocks: chunkBlocks, skipped };
+    })
+  );
+
+  // Merge chunk results in page order (Promise.all preserves index → chunk order)
+  const allBlocks: Pass1Block[] = [];
+  const skippedPageRanges: { from: number; to: number; reason: string }[] = [];
+  for (const r of chunkResults) {
+    allBlocks.push(...r.blocks);
+    skippedPageRanges.push(...r.skipped);
   }
 
   if (allBlocks.length === 0) {

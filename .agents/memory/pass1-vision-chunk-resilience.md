@@ -32,3 +32,11 @@ The `skippedPageRanges` array flows into `Pass1Result` and is turned into `revie
 - Chunk 5/8 (pages 66–67) failed JSON parse → 1-page fallback recovered 26 blocks
 - Final result: 159 blocks, 6 topics, 13 nodes, 49 exercises, 97% coverage
 - 0 error-string nodes in DB; all review items were legitimate quality flags
+
+## Chunk parallelization (Promise.all)
+Sequential → parallel (same lesson 71, 8 vision chunks, 3 hit truncation fallback):
+- Pass 1 before: ~10m35s (sum of all 8 chunks sequentially)
+- Pass 1 after:  ~3m30s (wall time = slowest fallback chunk ≈ 2m50s + overhead)
+- Total pipeline before: ~13m23s | after: ~4m27s
+- Speedup: ~3x overall; ~8x for lessons with no fallback (clean chunks fire at ~30s)
+- 1-page fallback within a chunk remains sequential (2 sub-pages); only the outer chunk loop is parallelized
