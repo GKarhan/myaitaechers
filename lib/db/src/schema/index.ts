@@ -26,3 +26,5 @@ export * from "./lesson-exercises";
 export * from "./lesson-node-dependencies";
 export * from "./quizzes";
 export * from "./mapping-jobs";
+export * from "./mapping-import-log";
+export * from "./mapping-review-items";

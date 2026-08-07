@@ -1,0 +1,135 @@
+TASK: Add a "Manual/Semi-Automatic Mapping" option next to the existing
+"Ավտոմատ քարտեզագրում" (Automatic Mapping) button in the lesson mapping UI.
+
+MANDATORY ARMENIAN SCRIPT RULE: All Armenian text below must be copy-pasted
+exactly as given — real Unicode Armenian script (Ա-Ֆ, ա-ֆ) — never
+hand-retyped, never transliterated, never Cyrillic look-alikes.
+
+HARD RULE (applies to everything below): NEVER create new tables, schemas,
+validators, or UI components until Step 0 confirms an existing equivalent
+does not exist. Reuse existing implementation over creating a parallel one.
+
+═══════════════════════════════════════════════════
+STEP 0 — MANDATORY REPOSITORY AUDIT (before writing ANY code)
+═══════════════════════════════════════════════════
+
+1. Exact location of the "Ավտոմատ քարտեզագրում" button + click handler.
+2. Exact table names Pass 1/Pass 2 currently write to (grep insertInto/
+   .values( in lesson-mapping.ts) — confirm real names, do not assume.
+3. Exact response shape built by GET /lessons/:id/mapping-report.
+4. Where Pass 1's extracted sourceBlocks are stored/retrievable per
+   lesson — confirm whether a lesson that was never auto-mapped has them
+   at all.
+5. Exact component rendering the Topic→MicroNode tree, and the exact
+   component/badge used for "needs_review" status.
+6. Any existing coverage/schema-validation helper used by Pass 2 (reuse
+   it in Step 1.3, do not duplicate it).
+
+Paste back all 6 findings with file paths/line numbers before Step 1. If
+anything doesn't match the assumptions below, report the real structure
+instead of forcing this plan onto it.
+
+═══════════════════════════════════════════════════
+STEP 1 — Backend: new manual-mapping endpoint
+═══════════════════════════════════════════════════
+
+Add POST /lessons/:id/manual-map, same file/pattern as the auto-map route.
+
+Request body: { rawText: string }
+
+Processing:
+
+1. Strip ```json / ``` fences from rawText if present.
+2. Compute rawTextHash = hash(rawText). Check mappingImportLog for an
+   existing row with this lessonId + hash — if found, return that
+   existing import's result instead of re-processing (idempotency: guards
+   against accidental double-click / double-submit before the first
+   request finishes).
+3. JSON.parse the result.
+   - On failure: 400, Armenian message: "AI պատասխանը թերի կամ սխալ
+     ձևաչափով է։ Փորձիր կրկին կամ մասերով ուղարկիր ավելի քիչ էջ։"
+     No partial DB write.
+4. normalizeIncomingMapping() — a tolerant pre-validation pass that
+   accepts minor shape variance from the external AI without rejecting
+   outright: e.g. learningObjective as a plain string → wrap as
+   {text: str, origin: "DERIVED_FROM_TEXTBOOK"}; missing optional arrays
+   → default to []. Only normalize fields where the safe interpretation
+   is unambiguous — never guess at missing required content.
+5. Schema validation — reuse the Step 0.6 helper. Every microNode needs:
+   microNodeId, title, microNodeType, learningObjective (.text + .origin),
+   sourceBlockIds (non-empty), exerciseIds. Failing items excluded from
+   the write and logged as review items (not silently dropped).
+6. Source-integrity check — for each sourceBlockId/sourcePage, confirm it
+   exists in the lesson's real stored source blocks (Step 0.4). If this
+   lesson has no stored source blocks (never auto-mapped), fall back to
+   page-range check only and flag every microNode as
+   "sourcePage-unverified" review items — do not silently treat range-only
+   as verified.
+7. Duplicate check — normalize each title (lowercase/trim/collapse
+   whitespace) and compare via Levenshtein similarity >0.9 ONLY against
+   other microNodes under the SAME parent Node in this lesson (not
+   lesson-wide) — avoids false positives between genuinely distinct
+   same-named MicroNodes under different Nodes. Matches are not created;
+   flagged: "Կրկնվող կամ նման MicroNode վերնագիր՝ [title]".
+8. On success, write to the tables confirmed in Step 0.2, setting on
+   every created row: contentSourceType='manual', createdBy='teacher',
+   status='needs_review', confidenceScore=null, sourceText=verbatim block
+   text from the parsed JSON.
+9. Write one mappingImportLog row: lessonId, source='manual',
+   mappingMode='MANUAL_AI_JSON', rawInput=rawText, rawTextHash,
+   mappingSchemaVersion="1.0", importedAt, importedBy.
+10. Write one row per flagged issue to mapping_review_items: lessonId,
+    entityId, issueType, severity, description, status='open' — persisted,
+    not just returned in the response, so the review dashboard can show
+    a running "⚠ N unresolved mapping issues" count later.
+11. Return created IDs + review items, in the SAME shape as GET
+    /lessons/:id/mapping-report (Step 0.3), plus one addition:
+    "mappingOrigin": "manual" — for frontend badging, no new response
+    format.
+
+═══════════════════════════════════════════════════
+STEP 2 — Frontend: minimal UI addition
+═══════════════════════════════════════════════════
+
+Next to "Ավտոմատ քարտեզագրում", add: "Ձեռքով քարտեզագրում"
+
+Opens a modal (reuse the app's existing modal component) with:
+- One <textarea> (~15 rows), placeholder: "Փակցրու AI-ի (ChatGPT/Gemini)
+  ամբողջական պատասխանը այստեղ"
+- One button: "Վերլուծել" (calls POST /lessons/:id/manual-map)
+
+On success: close modal, re-render the SAME Topic→MicroNode tree
+component (Step 0.5) — new rows show the SAME "needs_review" badge. If
+review items came back, show them as a short list above the tree:
+"⚠️ Ուշադրության կարիք ունեցող կետեր." + each description.
+
+On 400/failure: keep modal open, show the Armenian error above the
+textarea, preserve the teacher's pasted text for retry.
+
+DO NOT build a separate edit form. Teacher edits via the SAME
+Node/MicroNode edit UI used for auto-mapped content, approves via the
+SAME teacher-review-dashboard flow. Data-source difference only.
+
+═══════════════════════════════════════════════════
+VERIFICATION — split by who can actually check it
+═══════════════════════════════════════════════════
+
+Agent-verifiable (paste raw output, do these yourself):
+1. curl POST with a real 2-3-microNode JSON payload — paste response.
+2. psql showing created rows: contentSourceType='manual',
+   status='needs_review', plus the mappingImportLog + mapping_review_items
+   rows.
+3. curl the SAME payload twice — paste proof the second call returns the
+   existing import (idempotency), not a duplicate write.
+4. Paste the exact new route handler code and the exact new button/modal
+   JSX.
+
+Requires human (teacher) verification — flag as pending, do not claim
+done yourself:
+5. Real authenticated screenshot of the button + populated tree after a
+   successful manual-map call.
+6. Real authenticated screenshot of the teacher-review dashboard showing
+   this manual-mapped lesson alongside auto-mapped ones.
+
+Report Step 0's findings first. Do not proceed to Step 1 until confirmed
+against the real repo.

@@ -1,4 +1,10 @@
-import { useState, useRef, useEffect, Fragment } from "react";
+import { useState, useRef, useEffect, Fragment, useCallback } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -115,12 +121,66 @@ interface LessonJobStatus {
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
 // Polls GET /lessons/:id/map-status (lesson-centric) so progress survives
 // navigation-away + return without needing to store a jobId in React state.
+
+interface ManualMapReviewItem {
+  nodeId:    number | null;
+  nodeTitle: string;
+  reason:    string;
+}
+
 function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
   const { token } = useAuth();
   const [mapError,    setMapError]    = useState<string | null>(null);
   const [postPending, setPostPending] = useState(false);
   const mapLesson = useMapLessonWithAI();
+
+  // ── Manual-map dialog state ───────────────────────────────────────────────
+  const [manualOpen,       setManualOpen]       = useState(false);
+  const [manualText,       setManualText]       = useState("");
+  const [manualPending,    setManualPending]    = useState(false);
+  const [manualError,      setManualError]      = useState<string | null>(null);
+  const [manualReview,     setManualReview]     = useState<ManualMapReviewItem[]>([]);
+
+  const handleManualMap = useCallback(async () => {
+    if (!manualText.trim() || manualPending) return;
+    setManualPending(true);
+    setManualError(null);
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/manual-map`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token ?? ""}`,
+        },
+        body: JSON.stringify({ rawText: manualText }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setManualError(data?.error ?? "Սխalut' tchverets. Pkhorel krnkin.");
+        return;
+      }
+      // Success: invalidate the same caches as auto-map, close modal
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) }),
+        qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
+        qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] }),
+        qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) }),
+      ]);
+      const items: ManualMapReviewItem[] = data?.quality?.reviewItems ?? [];
+      setManualReview(items);
+      if (items.length === 0) {
+        setManualOpen(false);
+        setManualText("");
+      }
+      // If there are review items, keep dialog open so teacher sees them,
+      // then they close it manually.
+    } catch {
+      setManualError("Կapaktsutyan khndyr. Pkhorel krnkin.");
+    } finally {
+      setManualPending(false);
+    }
+  }, [manualText, manualPending, lessonId, courseId, token, qc]);
 
   const { data: mapStatus } = useQuery<LessonJobStatus>({
     queryKey: ['lesson-map-status', lessonId],
@@ -183,6 +243,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 
   return (
     <>
+      {/* ── Ավtomatie mapping button ─────────────────────────────────── */}
       <button
         onClick={handleMap}
         disabled={isActive}
@@ -191,9 +252,20 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : (
-          isMapped ? '🗺️ Կrkin kartez.' : '🗺️ Qartez.'
+          isMapped ? '🗺️ Ավtomatie' : '🗺️ Ավtomatie'
         )}
       </button>
+
+      {/* ── Ձεqrqwy kartezagrvm button ──────────────────────────────── */}
+      <button
+        onClick={() => { setManualOpen(true); setManualError(null); setManualReview([]); }}
+        disabled={isActive}
+        className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
+        title="Ձεqrqwy kartezagrvm — ChatGPT/Gemini-i pataskhani vra hnd"
+      >
+        ✍️ Ձεqrqwy
+      </button>
+
       {isActive && (
         <span className="text-[10px] text-primary/70 animate-pulse max-w-[200px] truncate" title={statusLabel}>
           {statusLabel || 'Qartezagrvm է...'}
@@ -202,6 +274,66 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       {mapError && (
         <span className="text-xs text-destructive whitespace-nowrap">{mapError}</span>
       )}
+
+      {/* ── Manual-map Dialog ─────────────────────────────────────────── */}
+      <Dialog open={manualOpen} onOpenChange={(o) => { if (!manualPending) { setManualOpen(o); if (!o) { setManualReview([]); } } }}>
+        <DialogContent className="max-w-2xl bg-[#0f1117] border border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold text-white">
+              ✍️ Ձεqrqwy kartezagrvm — ChatGPT / Gemini
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Review items from a previous successful submit */}
+          {manualReview.length > 0 && (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
+              <p className="text-xs font-semibold text-amber-400">⚠️ Ushaderoutyan kariq unenatsox keter.</p>
+              {manualReview.map((ri, i) => (
+                <p key={i} className="text-xs text-amber-300/80">• {ri.nodeTitle}</p>
+              ))}
+              <button
+                onClick={() => { setManualOpen(false); setManualReview([]); }}
+                className="mt-1 text-xs text-amber-400 underline hover:text-amber-300"
+              >
+                Knel (node-ery avel en)
+              </button>
+            </div>
+          )}
+
+          {manualError && (
+            <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{manualError}</p>
+          )}
+
+          <textarea
+            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 resize-none"
+            rows={15}
+            placeholder="Փaktsru AI-i (ChatGPT/Gemini) amboghj pataskhany aystegh"
+            value={manualText}
+            onChange={(e) => setManualText(e.target.value)}
+            disabled={manualPending}
+          />
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              onClick={() => { setManualOpen(false); setManualReview([]); }}
+              disabled={manualPending}
+              className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
+            >
+              Anel
+            </button>
+            <button
+              onClick={handleManualMap}
+              disabled={manualPending || !manualText.trim()}
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-primary text-black hover:bg-primary/90 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {manualPending && (
+                <span className="inline-block w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              )}
+              Verluzel
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -564,7 +696,19 @@ function LessonNodesPanel({
                           </div>
                         ) : (
                           <>
-                            <span className="text-xs font-semibold text-white block">{n.title}</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-semibold text-white">{n.title}</span>
+                              {(n as any).status === 'needs_review' && (
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
+                                  ⚠ Վεranajogh
+                                </span>
+                              )}
+                              {(n as any).contentSourceType === 'manual' && (
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">
+                                  ✍ Ձεqrqwy
+                                </span>
+                              )}
+                            </div>
                             {n.theoryContent && (
                               <p className="text-xs text-muted-foreground/80 mt-0.5 line-clamp-2 leading-relaxed">{n.theoryContent}</p>
                             )}

@@ -1,7 +1,8 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable } from "@workspace/db";
+import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
@@ -587,6 +588,10 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
       commonMisconception: n.commonMisconception ?? null,
       childFriendlyExplanation: n.childFriendlyExplanation ?? null,
       basicExamples: Array.isArray(n.basicExamples) ? n.basicExamples : [],
+      // Authoring provenance fields — used by teacher dashboard for badging
+      status: n.status ?? "draft",
+      contentSourceType: n.contentSourceType ?? "textbook",
+      createdBy: n.createdBy ?? "ai",
     }))
   );
 });
@@ -1739,6 +1744,398 @@ ${[...byTopic.entries()].map(([topic, tnodes]) => `
 </body></html>`;
 
   res.set('Content-Type', 'text/html; charset=utf-8').send(html);
+});
+
+// ── Manual / Semi-Automatic Mapping ───────────────────────────────────────────
+//
+// POST /lessons/:lessonId/manual-map
+//
+// Accepts a JSON string (teacher-pasted from ChatGPT/Gemini) describing the
+// lesson mapping.  Expected format:
+//
+//   {
+//     "topics": [
+//       {
+//         "title": "Armenian topic title",
+//         "topicType": "grammar | enrichment",
+//         "microNodes": [
+//           {
+//             "title": "MicroNode title in Armenian",
+//             "microNodeType": "knowledge | skill",
+//             "learningObjective": "string  OR  {text, origin}",
+//             "sourcePages": [58, 59],   // array OR single number
+//             "theoryText": "Verbatim theory from textbook",
+//             "exercises": [{ "text": "...", "page": 60 }]
+//           }
+//         ]
+//       }
+//     ]
+//   }
+//
+// Processing steps:
+//   1. Strip ```json fences.
+//   2. SHA-256 idempotency check on (lessonId, hash).
+//   3. JSON.parse; 400 on failure.
+//   4. normalizeIncomingMapping() — tolerant pre-validation.
+//   5. Schema validation — exclude invalid microNodes, log review items.
+//   6. Source-integrity check — page-range only (blocks not stored); all flagged "sourcePage-unverified".
+//   7. Duplicate check — Levenshtein > 0.9 within same parent topic.
+//   8. Write lesson_topics / lesson_nodes / lesson_exercises.
+//   9. Write mapping_import_log row.
+//  10. Write mapping_review_items rows (persisted for review dashboard).
+//  11. Return mapping-report shaped response + mappingOrigin: "manual".
+
+/** Simple Levenshtein edit distance */
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function titleSimilarity(a: string, b: string): number {
+  const na = a.toLowerCase().replace(/\s+/g, " ").trim();
+  const nb = b.toLowerCase().replace(/\s+/g, " ").trim();
+  if (na === nb) return 1;
+  const dist = levenshteinDistance(na, nb);
+  return 1 - dist / Math.max(na.length, nb.length, 1);
+}
+
+/** Tolerant pre-validation: fix minor shape variance without guessing required content. */
+function normalizeIncomingMapping(raw: unknown): {
+  topics: {
+    title: string;
+    topicType: string;
+    microNodes: {
+      title: string;
+      microNodeType: string;
+      learningObjective: string;
+      sourcePages: number[];
+      theoryText: string;
+      exercises: { text: string; page: number | null }[];
+    }[];
+  }[];
+} {
+  const obj = (raw && typeof raw === "object" && !Array.isArray(raw)) ? raw as Record<string, unknown> : {};
+  const topics = Array.isArray(obj["topics"]) ? obj["topics"] : [];
+
+  return {
+    topics: topics.map((t: unknown) => {
+      const tp = (t && typeof t === "object" && !Array.isArray(t)) ? t as Record<string, unknown> : {};
+      const mns = Array.isArray(tp["microNodes"]) ? tp["microNodes"] : [];
+      return {
+        title:     String(tp["title"] ?? "").trim(),
+        topicType: String(tp["topicType"] ?? "grammar").trim(),
+        microNodes: mns.map((mn: unknown) => {
+          const m = (mn && typeof mn === "object" && !Array.isArray(mn)) ? mn as Record<string, unknown> : {};
+
+          // learningObjective: accept string or {text, origin}
+          let lo = "";
+          const rawLo = m["learningObjective"];
+          if (typeof rawLo === "string") lo = rawLo.trim();
+          else if (rawLo && typeof rawLo === "object" && "text" in (rawLo as object)) {
+            lo = String((rawLo as Record<string, unknown>)["text"] ?? "").trim();
+          }
+
+          // sourcePages: accept array or single number
+          let sp: number[] = [];
+          const rawSp = m["sourcePages"];
+          if (Array.isArray(rawSp)) sp = rawSp.map(Number).filter(Number.isFinite);
+          else if (typeof rawSp === "number" && Number.isFinite(rawSp)) sp = [rawSp];
+
+          // exercises: accept missing → []
+          const exArr = Array.isArray(m["exercises"]) ? m["exercises"] : [];
+          const exercises = exArr.map((ex: unknown) => {
+            const e = (ex && typeof ex === "object") ? ex as Record<string, unknown> : {};
+            return {
+              text: String(e["text"] ?? "").trim(),
+              page: typeof e["page"] === "number" ? e["page"] : null,
+            };
+          }).filter((e) => e.text.length > 0);
+
+          return {
+            title:             String(m["title"] ?? "").trim(),
+            microNodeType:     String(m["microNodeType"] ?? "knowledge").trim(),
+            learningObjective: lo,
+            sourcePages:       sp,
+            theoryText:        String(m["theoryText"] ?? "").trim(),
+            exercises,
+          };
+        }),
+      };
+    }),
+  };
+}
+
+router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const { rawText } = req.body as { rawText?: string };
+  if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
+    res.status(400).json({ error: "rawText is required" });
+    return;
+  }
+
+  // 1. Strip ```json / ``` fences
+  let text = rawText.trim();
+  if (text.startsWith("```json")) text = text.slice(7);
+  else if (text.startsWith("```"))   text = text.slice(3);
+  if (text.endsWith("```")) text = text.slice(0, -3).trim();
+
+  // 2. Hash-based idempotency check
+  const rawTextHash = createHash("sha256").update(text).digest("hex");
+  const existingImport = await db
+    .select({ id: mappingImportLogTable.id })
+    .from(mappingImportLogTable)
+    .where(
+      and(
+        eq(mappingImportLogTable.lessonId, lessonId),
+        eq(mappingImportLogTable.rawTextHash, rawTextHash)
+      )
+    )
+    .limit(1);
+
+  if (existingImport.length > 0) {
+    // Return current lesson state shaped like mapping-report
+    const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+    const [topicsResult, nodes, exercises] = await Promise.all([
+      db.select().from(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, lessonId)),
+      db.select().from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId)),
+      db.select().from(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId)),
+    ]);
+    res.json({
+      lessonId, lessonTitle: lesson.title, pagesFrom: lesson.pagesFrom ?? null, pagesTo: lesson.pagesTo ?? null,
+      generatedAt: new Date().toISOString(), mappingOrigin: "manual", idempotent: true,
+      counts: { topicsCreated: topicsResult.length, microNodesCreated: nodes.length, exercisesCreated: exercises.length },
+      quality: { reviewItems: [] },
+    });
+    return;
+  }
+
+  // Fetch lesson
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  // 3. JSON.parse
+  let parsedRaw: unknown;
+  try {
+    parsedRaw = JSON.parse(text);
+  } catch {
+    res.status(400).json({
+      error: "AI պատaskhane therri kam skhalt dzevachapov e. Pkhorel krnkin kam maserove urhakel aveli qich ej."
+    });
+    return;
+  }
+
+  // 4. normalizeIncomingMapping
+  const normalized = normalizeIncomingMapping(parsedRaw);
+
+  if (normalized.topics.length === 0) {
+    res.status(400).json({ error: "Mapping-ы թemaner chenq gaghtnirats. Verificel JSON format-y." });
+    return;
+  }
+
+  // Fetch current max sequences for appending
+  const [{ maxTopicSeq }] = await db
+    .select({ maxTopicSeq: max(lessonTopicsTable.sequence) })
+    .from(lessonTopicsTable)
+    .where(eq(lessonTopicsTable.lessonId, lessonId));
+  const [{ maxNodeSeq }] = await db
+    .select({ maxNodeSeq: max(lessonNodesTable.sequence) })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId));
+  const [{ maxExSeq }] = await db
+    .select({ maxExSeq: max(lessonExercisesTable.sequence) })
+    .from(lessonExercisesTable)
+    .where(eq(lessonExercisesTable.lessonId, lessonId));
+
+  let topicSeqCounter  = (maxTopicSeq ?? 0);
+  let nodeSeqCounter   = (maxNodeSeq ?? 0);
+  let exSeqCounter     = (maxExSeq ?? 0);
+
+  const reviewItems: { entityId: number | null; entityType: string; issueType: string; severity: string; description: string }[] = [];
+  const createdTopicIds: number[] = [];
+  const createdNodeIds:  number[] = [];
+  const createdExIds:    number[] = [];
+
+  for (const topic of normalized.topics) {
+    // 5. Schema validation — topic-level
+    if (!topic.title) {
+      reviewItems.push({ entityId: null, entityType: "import", issueType: "validation-failed", severity: "error",
+        description: `Topic missing title; skipped.` });
+      continue;
+    }
+
+    topicSeqCounter += 1;
+    const [insertedTopic] = await db
+      .insert(lessonTopicsTable)
+      .values({ lessonId, title: topic.title, sequence: topicSeqCounter })
+      .returning();
+    createdTopicIds.push(insertedTopic.id);
+
+    // Titles of microNodes already accepted under this topic (for duplicate check)
+    const acceptedTitlesInTopic: string[] = [];
+
+    for (const mn of topic.microNodes) {
+      // 5. Schema validation — microNode-level
+      const validationErrors: string[] = [];
+      if (!mn.title)             validationErrors.push("missing title");
+      if (!mn.microNodeType || !["knowledge","skill"].includes(mn.microNodeType))
+        mn.microNodeType = "knowledge"; // normalize silently per spec
+      if (!mn.learningObjective) validationErrors.push("missing learningObjective");
+      if (mn.sourcePages.length === 0) validationErrors.push("sourcePages is empty");
+
+      if (validationErrors.length > 0) {
+        reviewItems.push({ entityId: null, entityType: "node", issueType: "validation-failed", severity: "error",
+          description: `MicroNode «${mn.title || "(no title)"}» excluded: ${validationErrors.join(", ")}.` });
+        continue;
+      }
+
+      // 7. Duplicate check — Levenshtein > 0.9 within same parent topic
+      const dupTitle = acceptedTitlesInTopic.find((t) => titleSimilarity(t, mn.title) > 0.9);
+      if (dupTitle) {
+        reviewItems.push({ entityId: null, entityType: "node", issueType: "duplicate-title", severity: "warning",
+          description: `Կrknvox kam nman MicroNode vernagir «${mn.title}» (nman e «${dupTitle}»-in). Chstextsvatsvets.` });
+        continue;
+      }
+      acceptedTitlesInTopic.push(mn.title);
+
+      nodeSeqCounter += 1;
+
+      // 8. Write microNode — status='needs_review', contentSourceType='manual', createdBy='teacher'
+      const [insertedNode] = await db
+        .insert(lessonNodesTable)
+        .values({
+          lessonId,
+          topicId:           insertedTopic.id,
+          sequence:          nodeSeqCounter,
+          title:             mn.title,
+          learningObjective: mn.learningObjective || null,
+          microNodeType:     mn.microNodeType,
+          theoryContent:     mn.theoryText || null,
+          verbatimTheoryAnchor: mn.theoryText || null,
+          sourcePage:        mn.sourcePages[0] ?? null,
+          sourceText:        mn.theoryText || null,
+          status:            "needs_review",
+          contentSourceType: "manual",
+          createdBy:         "teacher",
+          confidenceScore:   null,
+          targetBloomLevel:  1,
+          estimatedMinutes:  5,
+        })
+        .returning();
+      createdNodeIds.push(insertedNode.id);
+
+      // 6. Source-integrity check — page-range only (blocks never stored in DB)
+      const pagesFrom = lesson.pagesFrom ?? null;
+      const pagesTo   = lesson.pagesTo   ?? null;
+      const outOfRange = pagesFrom != null && pagesTo != null
+        ? mn.sourcePages.filter((p) => p < pagesFrom || p > pagesTo)
+        : [];
+
+      if (outOfRange.length > 0) {
+        reviewItems.push({ entityId: insertedNode.id, entityType: "node", issueType: "sourcePage-out-of-range", severity: "warning",
+          description: `MicroNode «${mn.title}»: ejery ${outOfRange.join(", ")} dursy en dasy ej-tatrakunen (${pagesFrom}–${pagesTo}).` });
+      }
+      // Always flag as sourcePage-unverified (blocks not stored)
+      reviewItems.push({ entityId: insertedNode.id, entityType: "node", issueType: "sourcePage-unverified", severity: "warning",
+        description: `MicroNode «${mn.title}»: sourcePages [${mn.sourcePages.join(", ")}] veraperktvets taraci zanagordzutyan mija' (original block-ery petahpanvats chen).` });
+
+      // Write exercises
+      for (const ex of mn.exercises) {
+        exSeqCounter += 1;
+        const [insertedEx] = await db
+          .insert(lessonExercisesTable)
+          .values({
+            lessonId,
+            exerciseId:          `EX-${lessonId}-M${exSeqCounter}`,
+            exerciseTextVerbatim: ex.text,
+            sourcePage:          ex.page != null ? String(ex.page) : null,
+            relatedNodeId:       insertedNode.id,
+            sequence:            exSeqCounter,
+            sourceType:          "manual" as const,
+            status:              "needs_review",
+            sourceText:          ex.text,
+          })
+          .returning();
+        createdExIds.push(insertedEx.id);
+      }
+    }
+  }
+
+  // 9. Write mapping_import_log row
+  await db.insert(mappingImportLogTable).values({
+    lessonId,
+    source:               "manual",
+    mappingMode:          "MANUAL_AI_JSON",
+    rawTextHash,
+    rawInput:             rawText,
+    mappingSchemaVersion: "1.0",
+    importedBy:           req.userId ?? null,
+  });
+
+  // 10. Persist mapping_review_items
+  if (reviewItems.length > 0) {
+    await db.insert(mappingReviewItemsTable).values(
+      reviewItems.map((ri) => ({
+        lessonId,
+        entityId:    ri.entityId,
+        entityType:  ri.entityType,
+        issueType:   ri.issueType,
+        severity:    ri.severity,
+        description: ri.description,
+        status:      "open" as const,
+      }))
+    );
+  }
+
+  logger.info(
+    { lessonId, topicsCreated: createdTopicIds.length, nodesCreated: createdNodeIds.length,
+      exercisesCreated: createdExIds.length, reviewItems: reviewItems.length },
+    "manual-map: import complete"
+  );
+
+  // 11. Return mapping-report shaped response + mappingOrigin: "manual"
+  res.json({
+    lessonId,
+    lessonTitle:   lesson.title,
+    pagesFrom:     lesson.pagesFrom  ?? null,
+    pagesTo:       lesson.pagesTo    ?? null,
+    generatedAt:   new Date().toISOString(),
+    mappingOrigin: "manual",
+    counts: {
+      pass1BlocksExtracted: null,
+      topicsCreated:        createdTopicIds.length,
+      microNodesCreated:    createdNodeIds.length,
+      exercisesCreated:     createdExIds.length,
+      unmappedBlocks:       null,
+    },
+    content: {
+      aiGeneratedFields:        0,
+      textbookSourcedExercises: createdExIds.length,
+      textbookSourcedNodes:     createdNodeIds.length,
+    },
+    quality: {
+      coveragePercent:          null,
+      overallConfidencePercent: 0,
+      teacherReviewRequired:    reviewItems.length,
+      reviewItems: reviewItems.map((ri) => ({
+        nodeId:    ri.entityId,
+        nodeTitle: ri.description,
+        reason:    ri.issueType,
+      })),
+    },
+  });
 });
 
 export default router;
