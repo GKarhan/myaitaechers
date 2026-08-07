@@ -864,14 +864,99 @@ export async function runPass2Pipeline(
   }
   logger.info({ groupCount: cappedGroups.length }, "pass2 step1b: groups after size-cap");
 
+  // Step 1c: hasRealTheory merge-pass ──────────────────────────────────────
+  // A group is "hollow" when it contains zero DEFINITION/RULE/NOTE/EXAMPLE/
+  // OBJECTIVE blocks whose sourceText is > 50 chars. These are pure exercise
+  // dumps (e.g. 18 EXERCISE blocks with only a URL header), or stray task-
+  // prompt groups. They cannot anchor a real MicroNode, so we merge them into
+  // the nearest theory-bearing neighbour (prefer the preceding group so that
+  // exercises that follow a theory section land in it; fall back to the next).
+  // If NO neighbour has real theory the hollow group stays put — the Step 2
+  // model's "never create standalone exercise MicroNode" rule handles it.
+
+  const THEORY_TYPES = new Set(["DEFINITION", "RULE", "NOTE", "EXAMPLE", "OBJECTIVE"]);
+  const MIN_THEORY_LEN = 50;
+
+  function groupHasRealTheory(
+    indices: number[],
+    blocks: Pass1Block[]
+  ): boolean {
+    return indices.some((i) => {
+      const b = blocks[i];
+      return b && THEORY_TYPES.has(b.blockType) && b.sourceText.trim().length > MIN_THEORY_LEN;
+    });
+  }
+
+  const mergedGroups: typeof cappedGroups = [];
+  const mergeLog: { hollow: string; mergedInto: string; blocksMoved: number }[] = [];
+
+  for (let gi = 0; gi < cappedGroups.length; gi++) {
+    const g = cappedGroups[gi];
+    if (groupHasRealTheory(g.indices, blocks)) {
+      mergedGroups.push({ ...g });
+      continue;
+    }
+
+    // Hollow group — find nearest real-theory neighbour
+    // Search backwards through mergedGroups (already-committed groups)
+    let merged = false;
+    for (let bi = mergedGroups.length - 1; bi >= 0; bi--) {
+      if (groupHasRealTheory(mergedGroups[bi].indices, blocks)) {
+        mergeLog.push({
+          hollow:      g.title,
+          mergedInto:  mergedGroups[bi].title,
+          blocksMoved: g.indices.length,
+        });
+        mergedGroups[bi] = {
+          ...mergedGroups[bi],
+          indices: [...mergedGroups[bi].indices, ...g.indices],
+        };
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      // Try forward lookahead in the remaining cappedGroups
+      for (let fi = gi + 1; fi < cappedGroups.length; fi++) {
+        if (groupHasRealTheory(cappedGroups[fi].indices, blocks)) {
+          // Prepend the hollow group's indices into the future real group
+          cappedGroups[fi] = {
+            ...cappedGroups[fi],
+            indices: [...g.indices, ...cappedGroups[fi].indices],
+          };
+          mergeLog.push({
+            hollow:      g.title,
+            mergedInto:  cappedGroups[fi].title,
+            blocksMoved: g.indices.length,
+          });
+          merged = true;
+          break;
+        }
+      }
+    }
+    if (!merged) {
+      // No theory-bearing neighbour found at all — keep as-is, Step 2 handles it
+      logger.warn(
+        { group: g.title, blockCount: g.indices.length },
+        "pass2 step1c: hollow group has no theory-bearing neighbour — keeping"
+      );
+      mergedGroups.push({ ...g });
+    }
+  }
+
+  if (mergeLog.length > 0) {
+    logger.info({ mergeLog }, "pass2 step1c: hollow groups merged");
+  }
+  logger.info({ groupCount: mergedGroups.length }, "pass2 step1c: groups after hasRealTheory merge");
+
   // Step 2: organise each topic into MicroNodes (all groups in parallel)
   const topicResults = await Promise.all(
-    cappedGroups.map((g, i) =>
+    mergedGroups.map((g, i) =>
       organizeTopicMicroNodes(g.title, g.indices, blocks, i + 1)
     )
   );
 
-  const topics: Pass2TopicResult[] = cappedGroups.map((g, i) => ({
+  const topics: Pass2TopicResult[] = mergedGroups.map((g, i) => ({
     sequence:              i + 1,
     title:                 g.title,
     topicType:             g.topicType,
