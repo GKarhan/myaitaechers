@@ -1,0 +1,43 @@
+Pilot only — ONE MicroNode, not the whole lesson. Investigation +
+implementation.
+
+## Goal
+Generate Phase 2 teaching content for a single MicroNode from lesson 68,
+grounded strictly in that MicroNode's own sourceText/theoryContent
+(already extracted in Phase 1) — not invented from general knowledge.
+
+## Step 1 — Pick and paste the target
+Pick the MicroNode with the richest theoryContent from lesson 68 (paste
+its id, title, learningObjective, theoryContent, and any linked
+exercises' exerciseTextVerbatim).
+
+## Step 2 — Generate, with strict grounding rules
+Call the AI with ONLY that MicroNode's own data as input (not the whole
+lesson, not other MicroNodes) to fill:
+- explanationSteps: break the existing theoryContent into an ordered
+  sequence of 2-4 teaching steps — rephrasing/sequencing what's already
+  there, not adding new facts
+- beginnerExplanation / advancedExplanation: two phrasings of the SAME
+  content, simpler vs richer — no new information in either
+- analogy: allowed to be freely generated (this is explicitly creative,
+  mark contentSourceType='ai_generated' for this MicroNode)
+- commonErrors: build from the MicroNode's actual linked exercises where
+  possible (what a wrong answer to exercise X would look like) — if no
+  exercise gives a natural error pattern, mark that entry
+  sourceType:'ai_generated' explicitly
+- recall/understanding/applicationQuestions: base recall questions
+  directly on theoryContent sentences; application questions should
+  reference the MicroNode's real linked exercises where possible
+
+Set teachingContentConfidence and contentSourceType per field/section as
+appropriate (some fields legitimately 'ai_generated', that's fine and
+expected for Phase 2 — just must be labeled honestly).
+
+## Step 3 — Report
+Paste the full before/after for this one MicroNode — its original
+sourceText/theoryContent side by side with the generated
+explanationSteps/questions/etc. I need to check each generated piece
+traces back to real content, not fabricated facts about the topic.
+
+Do not run this on any other MicroNode yet — one pilot, then we review
+quality together before scaling to the rest of lesson 68.
