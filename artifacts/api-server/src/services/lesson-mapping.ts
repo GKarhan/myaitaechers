@@ -918,6 +918,207 @@ export async function runPass2Pipeline(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Phase 2: Teaching content generation (per MicroNode)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PHASE2_MODEL = "deepseek/deepseek-v4-flash";
+
+export interface Phase2LinkedExercise {
+  exerciseId:          string;
+  exerciseTextVerbatim: string;
+}
+
+export interface Phase2Input {
+  nodeId:            number;
+  title:             string;
+  learningObjective: string | null;
+  theoryContent:     string | null;
+  blockType:         string | null;
+}
+
+export interface Phase2GenerationResult {
+  nodeId:                     number;
+  skipped:                    boolean;
+  skipReason?:                string;
+  explanationSteps:           object[];
+  beginnerExplanation:        string;
+  advancedExplanation:        string;
+  analogy:                    string;
+  commonErrors:               object[];
+  recallQuestions:            object[];
+  understandingQuestions:     object[];
+  applicationQuestions:       object[];
+  faqEntries:                 object[];
+  contentSourceType:          "textbook" | "mixed" | "ai_generated";
+  teachingContentConfidence:  number;
+}
+
+const WEAK_SOURCE_PATTERNS = [
+  /^https?:\/\//i,                          // bare URL
+  /www\.[a-z0-9-]+\.[a-z]{2,}/i,           // domain reference
+];
+
+/**
+ * Returns true when theoryContent is too thin to ground real teaching content.
+ * Triggers: null, empty, < 50 chars, or matches a URL/domain pattern.
+ */
+export function isWeakSource(theoryContent: string | null | undefined): boolean {
+  if (!theoryContent || theoryContent.trim().length < 50) return true;
+  return WEAK_SOURCE_PATTERNS.some((re) => re.test(theoryContent.trim()));
+}
+
+const PHASE2_SYSTEM = `You are an expert Armenian language curriculum designer generating structured teaching content for a grade-7 Armenian textbook app.
+
+STRICT GROUNDING RULES — violating these is worse than leaving a field empty:
+1. explanationSteps, beginnerExplanation, advancedExplanation, recallQuestions, understandingQuestions: derived ONLY from the provided theoryContent — rephrase, sequence, or simplify what is already there; do NOT add facts not in the source.
+2. commonErrors: build from linked exercises (what wrong answers to those exercises look like). Stay grounded in the theory.
+3. applicationQuestions: reference actual linked exercises where possible.
+4. analogy: the ONE field allowed to be freely creative.
+5. teachingContentConfidence (0–100): 85–100 = grounded in verbatim text; 60–84 = inferred; <60 = AI-generated.
+
+Keep each text field concise (2 sentences max). Return ONLY valid JSON. No markdown fences. No trailing commas.`;
+
+function buildPhase2Prompt(
+  input: Phase2Input,
+  exercises: Phase2LinkedExercise[]
+): string {
+  const exList = exercises.length
+    ? exercises.map((e) => `[${e.exerciseId}] ${e.exerciseTextVerbatim}`).join("\n")
+    : "(none)";
+  return `MicroNode id=${input.nodeId}, title="${input.title}"
+learningObjective: ${input.learningObjective ?? "(none)"}
+
+theoryContent:
+${input.theoryContent}
+
+Linked Exercises (${exercises.length}):
+${exList}
+
+Return JSON:
+{
+  "explanationSteps": [{"step":1,"heading":"Armenian","body":"Armenian (1 sentence)"},{"step":2,"heading":"Armenian","body":"Armenian (1 sentence)"}],
+  "beginnerExplanation": "Armenian (2 sentences max)",
+  "advancedExplanation": "Armenian (2 sentences max)",
+  "analogy": "Armenian (1 sentence, creative)",
+  "commonErrors": [{"error":"Armenian","correction":"Armenian","sourceType":"exercise_based|ai_generated","relatedExerciseId":"EX-XX-N or null"}],
+  "recallQuestions": [{"question":"Armenian","expectedAnswer":"Armenian (1 sentence)"},{"question":"Armenian","expectedAnswer":"Armenian (1 sentence)"}],
+  "understandingQuestions": [{"question":"Armenian","expectedAnswer":"Armenian (1 sentence)"}],
+  "applicationQuestions": [{"question":"Armenian","relatedExerciseId":"EX-XX-N or null","hint":"Armenian or null"}],
+  "faqEntries": [],
+  "contentSourceType": "textbook",
+  "teachingContentConfidence": 85
+}`;
+}
+
+function applyPhase2Adjustments(parsed: Record<string, unknown>): void {
+  // A1: analogy present → mixed
+  if (typeof parsed.analogy === "string" && parsed.analogy.trim().length > 0) {
+    parsed.contentSourceType = "mixed";
+  }
+  // A2: mixed → cap confidence at 90
+  if (parsed.contentSourceType === "mixed") {
+    const conf = typeof parsed.teachingContentConfidence === "number"
+      ? parsed.teachingContentConfidence : 100;
+    parsed.teachingContentConfidence = Math.min(conf, 90);
+  }
+}
+
+/**
+ * Generates Phase 2 teaching content for a single MicroNode.
+ * Returns a skipped result (no AI call) if theoryContent is too thin.
+ * Caller is responsible for writing the result to the DB.
+ */
+export async function generatePhase2Content(
+  input: Phase2Input,
+  exercises: Phase2LinkedExercise[]
+): Promise<Phase2GenerationResult> {
+  // Weak-source guard — do not generate placeholder content
+  if (isWeakSource(input.theoryContent)) {
+    return {
+      nodeId:                    input.nodeId,
+      skipped:                   true,
+      skipReason:                "insufficient source content for teaching material",
+      explanationSteps:          [],
+      beginnerExplanation:       "",
+      advancedExplanation:       "",
+      analogy:                   "",
+      commonErrors:              [],
+      recallQuestions:           [],
+      understandingQuestions:    [],
+      applicationQuestions:      [],
+      faqEntries:                [],
+      contentSourceType:         "textbook",
+      teachingContentConfidence: 0,
+    };
+  }
+
+  async function callModel(): Promise<string> {
+    const r = await openrouter.chat.completions.create({
+      model:      PHASE2_MODEL,
+      max_tokens: 4096,
+      temperature: 0,
+      messages: [
+        { role: "system", content: PHASE2_SYSTEM },
+        { role: "user",   content: buildPhase2Prompt(input, exercises) },
+      ],
+    });
+    return r.choices[0]?.message?.content ?? "";
+  }
+
+  function tryParse(raw: string): Record<string, unknown> | null {
+    let clean = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    clean = clean.replace(/,(\s*[}\]])/g, "$1");
+    try { return JSON.parse(clean); } catch { return null; }
+  }
+
+  let parsed: Record<string, unknown> | null = tryParse(await callModel());
+
+  // One retry on parse failure — model occasionally truncates or returns empty
+  if (!parsed) {
+    logger.warn({ nodeId: input.nodeId }, "phase2: JSON parse failed, retrying once");
+    parsed = tryParse(await callModel());
+  }
+
+  if (!parsed) {
+    logger.warn({ nodeId: input.nodeId }, "phase2: JSON parse failed after retry");
+    return {
+      nodeId:                    input.nodeId,
+      skipped:                   true,
+      skipReason:                "AI returned unparseable JSON after retry — re-run this node",
+      explanationSteps:          [],
+      beginnerExplanation:       "",
+      advancedExplanation:       "",
+      analogy:                   "",
+      commonErrors:              [],
+      recallQuestions:           [],
+      understandingQuestions:    [],
+      applicationQuestions:      [],
+      faqEntries:                [],
+      contentSourceType:         "textbook",
+      teachingContentConfidence: 0,
+    };
+  }
+
+  applyPhase2Adjustments(parsed);
+
+  return {
+    nodeId:                    input.nodeId,
+    skipped:                   false,
+    explanationSteps:          Array.isArray(parsed.explanationSteps) ? parsed.explanationSteps : [],
+    beginnerExplanation:       typeof parsed.beginnerExplanation === "string" ? parsed.beginnerExplanation : "",
+    advancedExplanation:       typeof parsed.advancedExplanation === "string" ? parsed.advancedExplanation : "",
+    analogy:                   typeof parsed.analogy === "string" ? parsed.analogy : "",
+    commonErrors:              Array.isArray(parsed.commonErrors) ? parsed.commonErrors : [],
+    recallQuestions:           Array.isArray(parsed.recallQuestions) ? parsed.recallQuestions : [],
+    understandingQuestions:    Array.isArray(parsed.understandingQuestions) ? parsed.understandingQuestions : [],
+    applicationQuestions:      Array.isArray(parsed.applicationQuestions) ? parsed.applicationQuestions : [],
+    faqEntries:                Array.isArray(parsed.faqEntries) ? parsed.faqEntries : [],
+    contentSourceType:         (parsed.contentSourceType as "textbook" | "mixed" | "ai_generated") ?? "textbook",
+    teachingContentConfidence: typeof parsed.teachingContentConfidence === "number" ? parsed.teachingContentConfidence : 80,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Legacy Pass 2 material below — kept for future use; NOT called by the
 // current mapping route (which now uses extractBlocksWithAI / extractBlocksWithVision).
 // ─────────────────────────────────────────────────────────────────────────────

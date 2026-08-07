@@ -1,0 +1,46 @@
+Port the validated Phase 2 pilot logic (from the ad-hoc script, node 994
+and the 8-node batch) into the real committed codebase, wired into
+production mapping.
+
+## Step 1 — Decide the trigger point
+Investigate and decide: should Phase 2 content generation run
+AUTOMATICALLY as part of POST /lessons/:lessonId/map (right after Pass 2
+creates the MicroNodes, in the same request), or as a SEPARATE endpoint
+(e.g. POST /lessons/:lessonId/generate-teaching-content) that the teacher
+triggers after reviewing the Pass 1+2 structure first? 
+
+Recommend: separate endpoint. Reasoning to validate or challenge: Phase 2
+generation is slower/costlier (per-MicroNode AI calls) and the pilot
+showed some nodes need flagging (995/1000-style weak-source cases) —
+better for the teacher to review the Topic/MicroNode structure first,
+then explicitly trigger "generate teaching content" once they're happy
+with the structure, rather than always paying for Phase 2 generation
+immediately. Confirm or push back on this with your own reasoning.
+
+## Step 2 — Port the generation logic
+Move the validated per-MicroNode generation logic (explanationSteps,
+beginnerExplanation, advancedExplanation, analogy, commonErrors,
+recall/understanding/applicationQuestions, faqEntries) from the ad-hoc
+script into lesson-mapping.ts as a real exported function, e.g.
+generatePhase2Content(microNode, linkedExercises). Apply the same
+quality rules already agreed: contentSourceType='mixed' when any field
+is ai_generated, teachingContentConfidence computed server-side and
+capped at 90 when mixed.
+
+## Step 3 — Add the weak-source guard from the 995/1000 finding
+Before generating, check: does this MicroNode have real
+theoryContent/sourceText of reasonable length and type (DEFINITION/RULE/
+NOTE-derived), or is its source just a URL/task-prompt (like 995/1000)?
+If weak-source, skip generation and instead mark status='needs_review'
+with a clear reason ("insufficient source content for teaching
+material") — do NOT generate placeholder AI content for these.
+
+## Step 4 — Wire the endpoint and test end-to-end
+Implement the endpoint from Step 1's decision. Test on lesson 68 (should
+reuse/regenerate matching the already-approved pilot quality) AND on a
+GENUINELY NEW lesson you map from scratch (different textbook pages) to
+confirm the full pipeline — PDF → Pass 1 → Pass 2 → Phase 2 content —
+works end-to-end automatically via real HTTP calls, no scripts.
+
+Report back with the new lesson's full mapping-report plus its Phase 2
+content summary (same compact per-node table format as the pilot batch).

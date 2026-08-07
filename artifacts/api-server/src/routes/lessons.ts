@@ -4,7 +4,7 @@ import { Router } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
 import { eq, and, asc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, type Pass1Result } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 
@@ -1263,6 +1263,145 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       error: err instanceof Error ? err.message : "Lesson mapping failed, please retry",
     });
   }
+});
+
+// ── Phase 2: Generate teaching content for all MicroNodes in a lesson ─────────
+// POST /lessons/:lessonId/generate-teaching-content
+// Teacher-triggered after reviewing Pass 1+2 structure. Runs generatePhase2Content
+// per MicroNode (in parallel batches of 3), writes results to DB.
+router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  // Fetch all MicroNodes for this lesson
+  const nodes = await db
+    .select({
+      id:                lessonNodesTable.id,
+      title:             lessonNodesTable.title,
+      learningObjective: lessonNodesTable.learningObjective,
+      theoryContent:     lessonNodesTable.theoryContent,
+      blockType:         lessonNodesTable.blockType,
+    })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId))
+    .orderBy(asc(lessonNodesTable.sequence));
+
+  if (nodes.length === 0) {
+    res.status(400).json({ error: "No MicroNodes found — run /map first" });
+    return;
+  }
+
+  // Fetch all exercises for this lesson, grouped by relatedNodeId
+  const allExercises = await db
+    .select({
+      relatedNodeId:        lessonExercisesTable.relatedNodeId,
+      exerciseId:           lessonExercisesTable.exerciseId,
+      exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim,
+    })
+    .from(lessonExercisesTable)
+    .where(eq(lessonExercisesTable.lessonId, lessonId))
+    .orderBy(asc(lessonExercisesTable.sequence));
+
+  const exercisesByNode = new Map<number, Phase2LinkedExercise[]>();
+  for (const ex of allExercises) {
+    if (ex.relatedNodeId == null) continue;
+    const arr = exercisesByNode.get(ex.relatedNodeId) ?? [];
+    arr.push({ exerciseId: ex.exerciseId, exerciseTextVerbatim: ex.exerciseTextVerbatim });
+    exercisesByNode.set(ex.relatedNodeId, arr);
+  }
+
+  // Process in batches of 3 to avoid rate-limit bursts
+  const BATCH_SIZE = 3;
+  const summaryRows: {
+    nodeId:      number;
+    title:       string;
+    status:      string;
+    confidence:  number | null;
+    sourceType:  string;
+    skipReason?: string;
+  }[] = [];
+
+  for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
+    const batch = nodes.slice(i, i + BATCH_SIZE);
+
+    const batchResults = await Promise.all(batch.map(async (node) => {
+      const input: Phase2Input = {
+        nodeId:            node.id,
+        title:             node.title,
+        learningObjective: node.learningObjective ?? null,
+        theoryContent:     node.theoryContent ?? null,
+        blockType:         node.blockType ?? null,
+      };
+      const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
+      return generatePhase2Content(input, exercises);
+    }));
+
+    // Write each result to DB
+    for (const result of batchResults) {
+      if (result.skipped) {
+        // Weak-source or parse failure — mark status only, leave Phase 2 fields empty
+        await db
+          .update(lessonNodesTable)
+          .set({ status: "needs_source_content" })
+          .where(eq(lessonNodesTable.id, result.nodeId));
+
+        summaryRows.push({
+          nodeId:     result.nodeId,
+          title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
+          status:     "needs_source_content",
+          confidence: null,
+          sourceType: "—",
+          skipReason: result.skipReason,
+        });
+      } else {
+        await db
+          .update(lessonNodesTable)
+          .set({
+            explanationSteps:         result.explanationSteps          as any,
+            beginnerExplanation:      result.beginnerExplanation       || null,
+            advancedExplanation:      result.advancedExplanation       || null,
+            analogy:                  result.analogy                   || null,
+            commonErrors:             result.commonErrors              as any,
+            recallQuestions:          result.recallQuestions           as any,
+            understandingQuestions:   result.understandingQuestions    as any,
+            applicationQuestions:     result.applicationQuestions      as any,
+            faqEntries:               result.faqEntries                as any,
+            contentSourceType:        result.contentSourceType,
+            teachingContentConfidence: result.teachingContentConfidence,
+            status:                   "approved",
+          })
+          .where(eq(lessonNodesTable.id, result.nodeId));
+
+        summaryRows.push({
+          nodeId:     result.nodeId,
+          title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
+          status:     "approved",
+          confidence: result.teachingContentConfidence,
+          sourceType: result.contentSourceType,
+        });
+      }
+    }
+  }
+
+  const approved         = summaryRows.filter((r) => r.status === "approved").length;
+  const needsSourceCount = summaryRows.filter((r) => r.status === "needs_source_content").length;
+
+  logger.info(
+    { lessonId, total: nodes.length, approved, needsSource: needsSourceCount },
+    "phase2 teaching content generation complete"
+  );
+
+  res.json({
+    lessonId,
+    lessonTitle:      lesson.title,
+    totalNodes:       nodes.length,
+    approved,
+    needsSourceContent: needsSourceCount,
+    summary: summaryRows,
+  });
 });
 
 // ── P6: One-time lesson completion summary + homework presentation ─────────────
