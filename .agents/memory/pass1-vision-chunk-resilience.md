@@ -40,3 +40,8 @@ Sequential → parallel (same lesson 71, 8 vision chunks, 3 hit truncation fallb
 - Total pipeline before: ~13m23s | after: ~4m27s
 - Speedup: ~3x overall; ~8x for lessons with no fallback (clean chunks fire at ~30s)
 - 1-page fallback within a chunk remains sequential (2 sub-pages); only the outer chunk loop is parallelized
+
+## Pass 2 prompt/token issues discovered
+- Step 1 system prompt needs Armenian language rule (same wording as Step 2); also raise max_tokens 2000→4000 (Armenian titles are longer and push output over the old cap for 150+ block lessons)
+- Step 1b subdivide prompt also needs Armenian language rule; raise max_tokens 1000→2000
+- Step 2 organizeTopicMicroNodes: Gemini 2.5 Flash occasionally returns finish_reason "error" with empty body — add one retry when raw.trim() is empty or finish === "error"

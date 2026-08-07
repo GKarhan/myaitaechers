@@ -662,7 +662,10 @@ Rules:
   or clear changes in content.
 - Any cultural reading / enrichment passage (usually final pages) → topicType "enrichment".
 - Aim for 4-6 groups totalling all provided block indices.
-- Do NOT create MicroNodes yet — only groups of block indices per topic.`;
+- Do NOT create MicroNodes yet — only groups of block indices per topic.
+- LANGUAGE: All topicTitle values MUST be written in Armenian. Never use English for titles,
+  even for internal or organisational categories such as "Introduction" or "Exercises".
+  Write "Ներածություն" not "Introduction", "Վարժություններ" not "Exercises", etc.`;
 
 async function detectTopicGroups(
   blocks: Pass1Block[],
@@ -684,7 +687,7 @@ Group every block index above into topics. Output JSON now.`;
 
   const r = await openrouter.chat.completions.create({
     model: PASS2_STEP1_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4000,
     temperature: 0,
     messages: [
       { role: "system", content: PASS2_STEP1_SYSTEM },
@@ -721,7 +724,9 @@ Output ONLY valid JSON, no markdown fences:
 Rules:
 - Split into 2-4 sub-topics of at most ${PASS2_MAX_GROUP_SIZE} blocks each.
 - Every input block index must appear in exactly one sub-group. None may be omitted.
-- Split at natural content boundaries (new rules, exercise blocks, section transitions).`;
+- Split at natural content boundaries (new rules, exercise blocks, section transitions).
+- LANGUAGE: All topicTitle values MUST be written in Armenian. Never use English for titles,
+  even for internal or organisational categories. Write "Ներածություն" not "Introduction", etc.`;
 
 async function subdivideGroup(
   group: { title: string; topicType: string; indices: number[] },
@@ -740,7 +745,7 @@ Output JSON now.`;
 
   const r = await openrouter.chat.completions.create({
     model: PASS2_STEP1_MODEL,
-    max_tokens: 1000,
+    max_tokens: 2000,
     temperature: 0,
     messages: [
       { role: "system", content: PASS2_SUBDIVIDE_SYSTEM },
@@ -841,17 +846,33 @@ ${blockLines}
 Organize these ${topicIndices.length} blocks into 1-3 MicroNodes now.
 Remember: exercises attach to theory MicroNodes — no standalone exercise MicroNodes.`;
 
-  const r = await openrouter.chat.completions.create({
+  const messages: Parameters<typeof openrouter.chat.completions.create>[0]["messages"] = [
+    { role: "system", content: PASS2_STEP2_SYSTEM },
+    { role: "user",   content: userPrompt },
+  ];
+
+  let r = await openrouter.chat.completions.create({
     model: PASS2_STEP2_MODEL,
     max_tokens: 4000,
     temperature: 0,
-    messages: [
-      { role: "system", content: PASS2_STEP2_SYSTEM },
-      { role: "user",   content: userPrompt },
-    ],
+    messages,
   });
-  const raw    = r.choices[0]?.message?.content ?? "";
-  const finish = r.choices[0]?.finish_reason;
+  let raw    = r.choices[0]?.message?.content ?? "";
+  let finish = r.choices[0]?.finish_reason;
+
+  // Retry once on API error or empty response (Gemini occasionally returns finish_reason "error")
+  if (!raw.trim() || finish === "error") {
+    logger.warn({ topicTitle, topicSeq, finish }, "pass2 step2: empty/error response — retrying");
+    r      = await openrouter.chat.completions.create({
+      model: PASS2_STEP2_MODEL,
+      max_tokens: 4000,
+      temperature: 0,
+      messages,
+    });
+    raw    = r.choices[0]?.message?.content ?? "";
+    finish = r.choices[0]?.finish_reason;
+  }
+
   logger.info({ topicTitle, topicSeq, finish }, "pass2 step2: MicroNode org complete");
 
   const parsed = parsePass2JSON(raw) as {
