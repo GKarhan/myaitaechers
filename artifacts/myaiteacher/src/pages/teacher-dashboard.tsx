@@ -252,7 +252,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : (
-          isMapped ? '🗺️ Ավtomatie' : '🗺️ Ավtomatie'
+          '🗺️ Ավտոմատ'
         )}
       </button>
 
@@ -261,9 +261,9 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         onClick={() => { setManualOpen(true); setManualError(null); setManualReview([]); }}
         disabled={isActive}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
-        title="Ձεqrqwy kartezagrvm — ChatGPT/Gemini-i pataskhani vra hnd"
+        title="Ձեռքով քարտեզագրում — ChatGPT/Gemini-ի պատaskhani vra hnd"
       >
-        ✍️ Ձεqrqwy
+        ✍️ Ձեռքով
       </button>
 
       {isActive && (
