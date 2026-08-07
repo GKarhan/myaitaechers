@@ -8,3 +8,4 @@
 - [Chunked vision mapping](chunked-vision-mapping.md) — 3 pages/chunk, 32k tokens/chunk; retry still needed on chunk 2; output diverse but verbatim diverges from ground truth (ArmSCII font OCR limit).
 - [Pass 1 vision token budget](pass1-vision-token-budget.md) — pages 22-23 and 26-27 exceed 32k tokens at 2 pages/chunk; truncation recovery works but misses mid-page exercises; 1-page fallback needed for dense pages.
 - [Phase 2 pipeline](phase2-pipeline.md) — Pass1/Pass2/Phase2 full pipeline; hasRealTheory merge-pass; background job arch (mapping_jobs table, setImmediate, poll GET /lessons/jobs/:jobId); frontend polling pattern in LessonMapButton.
+- [Pass1 vision chunk resilience](pass1-vision-chunk-resilience.md) — never throw inside the chunk loop; JSON-parse failures after retry must use 1-page fallback; zero blocks on fallback → skippedPageRanges (not throw). Only throw when ALL chunks produce zero blocks.

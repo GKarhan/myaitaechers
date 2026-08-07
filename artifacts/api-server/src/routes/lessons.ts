@@ -1200,6 +1200,19 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       ? Math.round(((pass1.blocks.length - pass2.unmappedBlockIndices.length) / pass1.blocks.length) * 100)
       : 100;
 
+    // ── Review items for pages that failed extraction entirely ───────────────
+    // These are pages where Pass 1 could not parse the AI's response even after
+    // retry + 1-page fallback.  We surface them as review items rather than
+    // throwing — so the teacher knows which pages need a manual re-run, and
+    // NO error string ever leaks into a node or exercise title.
+    for (const skipped of (pass1.skippedPageRanges ?? [])) {
+      reviewItems.push({
+        nodeId:    null as unknown as number,
+        nodeTitle: `Pages ${skipped.from}–${skipped.to}`,
+        reason:    skipped.reason,
+      });
+    }
+
     // ── Review flags for coverage gaps ──────────────────────────────────────
     // Informational: any blocks the AI explicitly excluded as headers.
     if (pass2.unmappedBlockIndices.length > 0) {

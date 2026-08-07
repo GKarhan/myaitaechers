@@ -182,6 +182,10 @@ export interface Pass1Block {
 
 export interface Pass1Result {
   blocks: Pass1Block[];
+  /** Page ranges that failed to extract (even after 1-page fallback) and were
+   *  skipped rather than thrown.  Propagated into mappingReport.reviewItems so
+   *  the teacher knows which pages need manual review or a re-run. */
+  skippedPageRanges?: { from: number; to: number; reason: string }[];
 }
 
 // ── Normalise raw model output into a clean Pass1Result ───────────────────────
@@ -357,6 +361,9 @@ export async function extractBlocksWithVision(
   }
 
   const allBlocks: Pass1Block[] = [];
+  // Ranges that failed extraction even after 1-page fallback — never throw mid-loop;
+  // instead collect these and surface them in the mapping report.
+  const skippedPageRanges: { from: number; to: number; reason: string }[] = [];
 
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunkImages = chunks[ci];
@@ -405,17 +412,14 @@ export async function extractBlocksWithVision(
     const wasTruncated1 = r1.choices[0]?.finish_reason === "length";
     let parsed: Pass1Result | null = null;
 
-    if (wasTruncated1) {
-      // ── 1-page fallback: discard the truncated 2-page result and retry each
-      // page individually.  This costs one extra API call per page but guarantees
-      // every block is captured on dense pages (pages 22-23 and 26-27 of
-      // Հայoц Lex 7 reliably exceed 32k tokens when combined). ──────────────
-      logger.warn({ chunkLabel }, "pass1 vision: truncated — falling back to 1-page sub-chunks");
+    // ── Shared 1-page fallback helper ─────────────────────────────────────────
+    // Retries each page in this chunk individually.  Returns the collected
+    // blocks; per-page failures are added to skippedPageRanges (no throw).
+    const run1PageFallback = async (triggerReason: string): Promise<Pass1Block[]> => {
       const subBlocks: Pass1Block[] = [];
-
       for (let pi = 0; pi < chunkImages.length; pi++) {
         const subPage  = chunkFrom + pi;
-        const subLabel = `page ${subPage} (1-page sub-chunk of ${chunkLabel})`;
+        const subLabel = `page ${subPage} (1-page fallback of ${chunkLabel})`;
         logger.info({ subLabel }, "pass1 vision: extracting 1-page sub-chunk");
 
         const subHeader = [
@@ -447,7 +451,7 @@ export async function extractBlocksWithVision(
             { role: "user",   content: subContent } as any,
           ],
         });
-        const rawSub      = rSub.choices[0]?.message?.content ?? "";
+        const rawSub       = rSub.choices[0]?.message?.content ?? "";
         const subTruncated = rSub.choices[0]?.finish_reason === "length";
         if (subTruncated) {
           logger.warn({ subLabel }, "pass1 vision: 1-page sub-chunk also truncated (very dense page)");
@@ -458,21 +462,43 @@ export async function extractBlocksWithVision(
           logger.info({ subLabel, blockCount: subNorm.blocks.length }, "pass1 vision: 1-page sub-chunk extracted");
           subBlocks.push(...subNorm.blocks);
         } else {
-          logger.error({ subLabel, raw: rawSub.slice(0, 200) }, "pass1 vision: 1-page sub-chunk failed — skipping page");
+          // One page failed — record it, never write error text as a block
+          logger.error(
+            { subPage, chunkLabel, raw: rawSub.slice(0, 200) },
+            "pass1 vision: 1-page sub-chunk failed — skipping page"
+          );
+          skippedPageRanges.push({
+            from:   subPage,
+            to:     subPage,
+            reason: `Page ${subPage} failed extraction (${triggerReason}) — needs manual review or re-run`,
+          });
         }
       }
+      return subBlocks;
+    };
 
+    if (wasTruncated1) {
+      // ── Truncation: discard 2-page result, retry each page individually ─────
+      logger.warn({ chunkLabel }, "pass1 vision: truncated — falling back to 1-page sub-chunks");
+      const subBlocks = await run1PageFallback("truncated response");
       if (subBlocks.length === 0) {
-        throw new Error(`Pass 1 vision ${chunkLabel}: 1-page fallback produced no blocks`);
+        // All pages in this chunk failed — skip the whole chunk, don't throw
+        logger.error({ chunkLabel }, "pass1 vision: truncation 1-page fallback produced no blocks — skipping chunk");
+        skippedPageRanges.push({
+          from:   chunkFrom,
+          to:     chunkTo,
+          reason: `Pages ${chunkFrom}–${chunkTo} failed extraction even at 1-page granularity (truncated) — needs manual review or re-run`,
+        });
+        continue;
       }
       parsed = { blocks: subBlocks };
 
     } else {
-      // ── Normal path: try direct JSON parse ──────────────────────────────
+      // ── Normal path: try direct JSON parse ──────────────────────────────────
       parsed = extractJSON(raw1, false);
 
       if (!parsed) {
-        // Not truncated but invalid JSON — use existing retry prompt
+        // Not truncated but invalid JSON — retry once with correction prompt
         logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const r2 = await openrouter.chat.completions.create({
@@ -486,15 +512,35 @@ export async function extractBlocksWithVision(
             { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
           ],
         });
-        const raw2        = r2.choices[0]?.message?.content ?? "";
+        const raw2          = r2.choices[0]?.message?.content ?? "";
         const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
         if (wasTruncated2) {
           logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
         }
         parsed = extractJSON(raw2, wasTruncated2);
+
         if (!parsed) {
-          logger.error({ chunkLabel, raw: raw2.slice(0, 300) }, "pass1 vision: failed to parse chunk after retry");
-          throw new Error(`Pass 1 vision ${chunkLabel}: response not valid JSON after retry`);
+          // Both attempts failed — apply 1-page fallback instead of throwing.
+          // CRITICAL: never write the error string as block content or a node title.
+          logger.warn(
+            { chunkLabel, raw: raw2.slice(0, 300) },
+            "pass1 vision: chunk failed after retry — applying 1-page fallback to avoid output corruption"
+          );
+          const subBlocks = await run1PageFallback("JSON parse failed after retry");
+          if (subBlocks.length > 0) {
+            // At least some pages recovered — include them
+            parsed = { blocks: subBlocks };
+          } else {
+            // Every page in this chunk failed even at 1-page granularity —
+            // skip the chunk entirely; a review item was added per failed page
+            logger.error(
+              { chunkLabel },
+              "pass1 vision: chunk completely skipped — all 1-page fallbacks failed"
+            );
+            // Consolidate per-page items already added into one chunk-level item
+            // (per-page ones were already pushed by run1PageFallback above)
+            continue;
+          }
         }
       }
     }
@@ -505,15 +551,20 @@ export async function extractBlocksWithVision(
   }
 
   if (allBlocks.length === 0) {
-    throw new Error("Pass 1 vision extraction produced no blocks after all chunks");
+    throw new Error(
+      "Pass 1 vision extraction produced no blocks after all chunks" +
+      (skippedPageRanges.length > 0
+        ? ` (${skippedPageRanges.length} page range(s) skipped: ${skippedPageRanges.map(r => `${r.from}–${r.to}`).join(", ")})`
+        : "")
+    );
   }
 
   logger.info(
-    { chunkCount: chunks.length, totalBlocks: allBlocks.length },
+    { chunkCount: chunks.length, totalBlocks: allBlocks.length, skippedRanges: skippedPageRanges.length },
     "pass1 vision: all chunks merged"
   );
 
-  return { blocks: allBlocks };
+  return { blocks: allBlocks, skippedPageRanges };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
