@@ -104,81 +104,100 @@ async function uploadResource(
   return res.json();
 }
 
+// ── Shared type for lesson-centric job status poll ────────────────────────────
+interface LessonJobStatus {
+  jobId:    number | null;
+  status:   string;   // 'none' | 'pending' | 'running' | 'completed' | 'failed'
+  progress: string | null;
+  error:    string | null;
+}
+
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
+// Polls GET /lessons/:id/map-status (lesson-centric) so progress survives
+// navigation-away + return without needing to store a jobId in React state.
 function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
   const { token } = useAuth();
-  const [mapError, setMapError] = useState<string | null>(null);
-  const [jobId, setJobId]   = useState<number | null>(null);
+  const [mapError,    setMapError]    = useState<string | null>(null);
+  const [postPending, setPostPending] = useState(false);
   const mapLesson = useMapLessonWithAI();
 
-  // Poll the background job until completed or failed
-  const { data: jobStatus } = useQuery<{ status: string; error?: string | null }>({
-    queryKey: ['mapping-job', jobId],
+  const { data: mapStatus } = useQuery<LessonJobStatus>({
+    queryKey: ['lesson-map-status', lessonId],
     queryFn: async () => {
-      const r = await fetch(`/api/lessons/jobs/${jobId}`, {
+      const r = await fetch(`/api/lessons/${lessonId}/map-status`, {
         headers: { Authorization: `Bearer ${token ?? ''}` },
       });
-      if (!r.ok) throw new Error('Job status fetch failed');
+      if (!r.ok) return { jobId: null, status: 'none', progress: null, error: null };
       return r.json();
     },
-    enabled: !!jobId && !!token,
+    enabled: !!token,
+    staleTime: 0,
     refetchInterval: (query) => {
-      const s = (query.state.data as { status?: string } | undefined)?.status;
-      if (!s || s === 'pending' || s === 'running') return 3000;
-      return false;
+      const s = (query.state.data as LessonJobStatus | undefined)?.status;
+      return (s === 'pending' || s === 'running') ? 3000 : false;
     },
   });
 
+  const prevMapStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!jobStatus) return;
-    if (jobStatus.status === 'completed') {
-      setJobId(null);
+    if (!mapStatus || mapStatus.status === prevMapStatus.current) return;
+    prevMapStatus.current = mapStatus.status;
+    if (mapStatus.status === 'completed') {
+      setPostPending(false);
       qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
       qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
       qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
       qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
-    } else if (jobStatus.status === 'failed') {
-      setJobId(null);
-      setMapError(jobStatus.error ?? 'Քartezeagrume dzaxolvets, pkhorel krnkin');
+    } else if (mapStatus.status === 'failed') {
+      setPostPending(false);
+      setMapError(mapStatus.error ?? 'Qartezagrume djaxolvets, pkhorel krnkin');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobStatus?.status]);
+  }, [mapStatus?.status]);
 
   const handleMap = () => {
     setMapError(null);
+    setPostPending(true);
     mapLesson.mutate(
       { lessonId },
       {
-        onSuccess: (data) => {
-          setJobId((data as { jobId: number }).jobId);
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ['lesson-map-status', lessonId] });
         },
         onError: (err: unknown) => {
+          setPostPending(false);
           const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
-          setMapError(responseData?.error ?? "Քartezeagrume dzaxolvets, pkhorel krnkin");
+          setMapError(responseData?.error ?? 'Qartezagrume djaxolvets, pkhorel krnkin');
         },
       },
     );
   };
 
-  const isRunning = mapLesson.isPending || (!!jobId && jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed');
-  const pollingLabel = jobStatus?.status === 'running' ? 'Մараработкایум...' : 'Սпасума...';
+  const isActive = postPending || mapLesson.isPending
+    || mapStatus?.status === 'pending' || mapStatus?.status === 'running';
+
+  const statusLabel = mapStatus?.progress
+    ?? (mapStatus?.status === 'running'  ? 'Qartezagrvm...'
+      : mapStatus?.status === 'pending' ? 'Spasuma...' : '');
 
   return (
     <>
       <button
         onClick={handleMap}
-        disabled={isRunning}
+        disabled={isActive}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
-        {isRunning ? (
+        {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : (
-          isMapped ? "🗺️ Կրկին քartezeagrel" : "🗺️ Qartez."
+          isMapped ? '🗺️ Կrkin kartez.' : '🗺️ Qartez.'
         )}
       </button>
-      {isRunning && !!jobId && (
-        <span className="text-xs text-primary/60 animate-pulse">{pollingLabel}</span>
+      {isActive && (
+        <span className="text-[10px] text-primary/70 animate-pulse max-w-[200px] truncate" title={statusLabel}>
+          {statusLabel || 'Qartezagrvm է...'}
+        </span>
       )}
       {mapError && (
         <span className="text-xs text-destructive whitespace-nowrap">{mapError}</span>
@@ -188,64 +207,70 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 }
 
 // ── Generate Teaching Content Button sub-component ────────────────────────────
-// Fires POST /lessons/:id/generate-teaching-content (returns jobId immediately),
-// then polls GET /lessons/jobs/:jobId every 3 s until completed or failed.
+// Polls GET /lessons/:id/generate-status (lesson-centric) with per-batch
+// progress labels ("Processing 3/9 MicroNodes...") read from the job record.
 function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: number; hasNodes: boolean }) {
   const qc = useQueryClient();
   const { token } = useAuth();
-  const [genError, setGenError] = useState<string | null>(null);
-  const [genDone,  setGenDone]  = useState(false);
-  const [jobId,    setJobId]    = useState<number | null>(null);
+  const [genError,    setGenError]    = useState<string | null>(null);
+  const [genDone,     setGenDone]     = useState(false);
+  const [postPending, setPostPending] = useState(false);
 
-  const { data: jobStatus } = useQuery<{ status: string; error?: string | null }>({
-    queryKey: ['phase2-job', jobId],
+  const { data: genStatus } = useQuery<LessonJobStatus>({
+    queryKey: ['lesson-generate-status', lessonId],
     queryFn: async () => {
-      const r = await fetch(`/api/lessons/jobs/${jobId}`, {
+      const r = await fetch(`/api/lessons/${lessonId}/generate-status`, {
         headers: { Authorization: `Bearer ${token ?? ''}` },
       });
-      if (!r.ok) throw new Error('Job status fetch failed');
+      if (!r.ok) return { jobId: null, status: 'none', progress: null, error: null };
       return r.json();
     },
-    enabled: !!jobId && !!token,
+    enabled: !!token && hasNodes,
+    staleTime: 0,
     refetchInterval: (query) => {
-      const s = (query.state.data as { status?: string } | undefined)?.status;
-      if (!s || s === 'pending' || s === 'running') return 3000;
-      return false;
+      const s = (query.state.data as LessonJobStatus | undefined)?.status;
+      return (s === 'pending' || s === 'running') ? 3000 : false;
     },
   });
 
+  const prevGenStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!jobStatus) return;
-    if (jobStatus.status === 'completed') {
-      setJobId(null);
+    if (!genStatus || genStatus.status === prevGenStatus.current) return;
+    prevGenStatus.current = genStatus.status;
+    if (genStatus.status === 'completed') {
+      setPostPending(false);
       setGenDone(true);
       qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
       setTimeout(() => setGenDone(false), 5000);
-    } else if (jobStatus.status === 'failed') {
-      setJobId(null);
-      setGenError(jobStatus.error ?? 'Բovandakutyune djaxolvets');
+    } else if (genStatus.status === 'failed') {
+      setPostPending(false);
+      setGenError(genStatus.error ?? 'Babandakutyune djaxolvets');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobStatus?.status]);
+  }, [genStatus?.status]);
 
   const handleGenerate = async () => {
     setGenError(null);
     setGenDone(false);
+    setPostPending(true);
     try {
-      const tok = token ?? localStorage.getItem('myaiteacher_token') ?? '';
       const r = await fetch(`/api/lessons/${lessonId}/generate-teaching-content`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${tok}` },
+        headers: { Authorization: `Bearer ${token ?? ''}` },
       });
       const data = await r.json();
-      if (!r.ok) { setGenError(data.error ?? 'Xndiru chexavets'); return; }
-      setJobId((data as { jobId: number }).jobId);
+      if (!r.ok) { setPostPending(false); setGenError(data.error ?? 'Xndiru chexavets'); return; }
+      qc.invalidateQueries({ queryKey: ['lesson-generate-status', lessonId] });
     } catch {
+      setPostPending(false);
       setGenError('Xmbagumutyun sxal');
     }
   };
 
-  const isRunning = !!jobId && jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed';
+  const isActive = postPending || genStatus?.status === 'pending' || genStatus?.status === 'running';
+  const progressLabel = genStatus?.progress
+    ?? (genStatus?.status === 'running'  ? 'Arabatk...'
+      : genStatus?.status === 'pending' ? 'Spasuma...' : '');
 
   if (!hasNodes) return null;
 
@@ -253,16 +278,16 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
     <>
       <button
         onClick={handleGenerate}
-        disabled={isRunning}
+        disabled={isActive}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
-        {isRunning ? (
+        {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : genDone ? '✅ Arvest' : '🧠 Arvest parelatstnel'}
       </button>
-      {isRunning && (
-        <span className="text-xs text-indigo-400/60 animate-pulse">
-          {jobStatus?.status === 'running' ? 'Arabatk...' : 'Spasuma...'}
+      {isActive && (
+        <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
+          {progressLabel || 'Arabatk է...'}
         </span>
       )}
       {genError && <span className="text-xs text-destructive whitespace-nowrap">{genError}</span>}

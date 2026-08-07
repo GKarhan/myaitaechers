@@ -2,7 +2,7 @@ import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable } from "@workspace/db";
-import { eq, and, asc, max, inArray, count } from "drizzle-orm";
+import { eq, and, asc, desc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
@@ -1042,7 +1042,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
   setImmediate(async () => {
   try {
     await db.update(mappingJobsTable)
-      .set({ status: "running", updatedAt: new Date() })
+      .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
       .where(eq(mappingJobsTable.id, job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
@@ -1076,6 +1076,9 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       pass1 = await extractBlocksWithAI({ ...baseInput, lessonText });
     }
     logger.info({ lessonId, blockCount: pass1.blocks.length }, "lesson mapping Pass 1 complete");
+    await db.update(mappingJobsTable)
+      .set({ progress: `Pass 2: Organising ${pass1.blocks.length} blocks into topics and MicroNodes...`, updatedAt: new Date() })
+      .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
 
     // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
     const pass2 = await runPass2Pipeline(pass1.blocks, {
@@ -1083,6 +1086,10 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       pagesFrom:   lesson.pagesFrom,
       pagesTo:     lesson.pagesTo,
     });
+
+    await db.update(mappingJobsTable)
+      .set({ progress: "Saving results to database...", updatedAt: new Date() })
+      .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
 
     // ── Clear ALL prior mapping data for this lesson ───────────────────────
     // Order matters: FK constraints → delete nodes before topics.
@@ -1393,7 +1400,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
   setImmediate(async () => {
   try {
     await db.update(mappingJobsTable)
-      .set({ status: "running", updatedAt: new Date() })
+      .set({ status: "running", progress: `Generating teaching content for ${nodes.length} MicroNodes...`, updatedAt: new Date() })
       .where(eq(mappingJobsTable.id, job.id));
 
     const BATCH_SIZE = 3;
@@ -1420,6 +1427,12 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
         return generatePhase2Content(input, exercises);
       }));
+
+      // Update progress: show how many nodes have been processed so far
+      const processed = Math.min(i + BATCH_SIZE, nodes.length);
+      await db.update(mappingJobsTable)
+        .set({ progress: `Generating teaching content... (${processed}/${nodes.length} MicroNodes)`, updatedAt: new Date() })
+        .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
 
       for (const result of batchResults) {
         if (result.skipped) {
@@ -1500,6 +1513,57 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       .catch(() => {});
   }
   }); // end setImmediate
+});
+
+// ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
+// Lesson-centric poll endpoint: returns the most recent 'map' job for this
+// lesson so the teacher UI can resume progress display after navigation-away.
+router.get("/lessons/:lessonId/map-status", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [job] = await db
+    .select()
+    .from(mappingJobsTable)
+    .where(and(eq(mappingJobsTable.lessonId, lessonId), eq(mappingJobsTable.jobType, "map")))
+    .orderBy(desc(mappingJobsTable.id))
+    .limit(1);
+
+  if (!job) {
+    res.json({ jobId: null, status: "none", progress: null, error: null });
+    return;
+  }
+  res.json({
+    jobId: job.id, lessonId: job.lessonId, jobType: job.jobType,
+    status: job.status, progress: job.progress ?? null,
+    result: job.result ?? null, error: job.error ?? null,
+    createdAt: job.createdAt, updatedAt: job.updatedAt,
+  });
+});
+
+// ── GET /lessons/:lessonId/generate-status ────────────────────────────────────
+// Same pattern for Phase 2 (generate_teaching_content jobs).
+router.get("/lessons/:lessonId/generate-status", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [job] = await db
+    .select()
+    .from(mappingJobsTable)
+    .where(and(eq(mappingJobsTable.lessonId, lessonId), eq(mappingJobsTable.jobType, "generate_teaching_content")))
+    .orderBy(desc(mappingJobsTable.id))
+    .limit(1);
+
+  if (!job) {
+    res.json({ jobId: null, status: "none", progress: null, error: null });
+    return;
+  }
+  res.json({
+    jobId: job.id, lessonId: job.lessonId, jobType: job.jobType,
+    status: job.status, progress: job.progress ?? null,
+    result: job.result ?? null, error: job.error ?? null,
+    createdAt: job.createdAt, updatedAt: job.updatedAt,
+  });
 });
 
 // ── P6: One-time lesson completion summary + homework presentation ─────────────
