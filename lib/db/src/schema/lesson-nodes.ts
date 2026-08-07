@@ -71,6 +71,34 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   validTo: timestamp("valid_to", { withTimezone: true }),
   // Free-text reason for the last edit (audit trail).
   changeReason: text("change_reason"),
+
+  // ── Phase 2: Teaching / Practice / Assessment layer ─────────────────────
+  // Ordered array of strings — each one step of a guided explanation,
+  // built from real Pass-1 sourceText where available.
+  explanationSteps: jsonb("explanation_steps").notNull().default(sql`'[]'::jsonb`),
+  // Differentiation variants of the core explanation.
+  beginnerExplanation: text("beginner_explanation"),
+  advancedExplanation: text("advanced_explanation"),
+  // Conceptual bridge to a familiar idea.
+  analogy: text("analogy"),
+  // Short note on what a supporting diagram/image should depict (no image yet).
+  visualReferenceNote: text("visual_reference_note"),
+  // Array of {mistake, reason, fixStrategy, relatedExerciseId} — Error Model.
+  commonErrors: jsonb("common_errors").notNull().default(sql`'[]'::jsonb`),
+  // Questions that surface likely misconceptions before they solidify.
+  misconceptionQuestions: jsonb("misconception_questions").notNull().default(sql`'[]'::jsonb`),
+  // Bloom taxonomy-aligned question banks.
+  recallQuestions: jsonb("recall_questions").notNull().default(sql`'[]'::jsonb`),
+  understandingQuestions: jsonb("understanding_questions").notNull().default(sql`'[]'::jsonb`),
+  applicationQuestions: jsonb("application_questions").notNull().default(sql`'[]'::jsonb`),
+  // Array of {question, answer} pairs.
+  faqEntries: jsonb("faq_entries").notNull().default(sql`'[]'::jsonb`),
+  // "textbook" | "ai_generated" — tracks provenance of THIS teaching content
+  // (separate from the Pass-1/Pass-2 extraction, which is always textbook-sourced).
+  contentSourceType: text("content_source_type").notNull().default("textbook"),
+  // 0-100 confidence in the synthesised teaching material specifically
+  // (distinct from confidenceScore which measures the Pass-1 extraction).
+  teachingContentConfidence: integer("teaching_content_confidence"),
 });
 
 export const insertLessonNodeSchema = createInsertSchema(lessonNodesTable).omit({
