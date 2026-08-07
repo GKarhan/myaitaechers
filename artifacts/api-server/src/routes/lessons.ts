@@ -1941,7 +1941,7 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
     logger.warn(`[manual-map] JSON.parse failed — length=${text.length} parseErr=${parseMsg} | head=${JSON.stringify(text.slice(0, 200))}`);
     res.status(400).json({
-      error: "AI-ի պատaskhane θerri kam skhalt dzevachapov e. Pkhorel krnkin kam maserove urhakel aveli qich ej.",
+      error: "AI-ի պատասխանը ճիշտ JSON ձևաչափով չէ։ Համոզվիր, որ տեղադրել ես միայն { ... }-ով սկսվող և համապատասխան }-ով ավարտվող JSON-ը։",
       _debug_parseError: parseMsg,
       _debug_textLength: text.length,
       _debug_textHead: text.slice(0, 200),

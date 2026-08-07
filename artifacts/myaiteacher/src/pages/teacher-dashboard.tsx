@@ -157,7 +157,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       });
       const data = await r.json();
       if (!r.ok) {
-        setManualError(data?.error ?? "AI-ի պատասխանը թերի կամ սխալ ձևաչափով է։ Փորձիր կրկին կամ ուղարկիր ավելի քիչ էջ։");
+        setManualError(data?.error ?? "AI-ի պատասխանը ճիշտ JSON ձևաչափով չէ։ Համոզվիր, որ տեղադրել ես միայն { ... }-ով սկսվող և համապատասխան }-ով ավարտվող JSON-ը։");
         return;
       }
       // Success: invalidate the same caches as auto-map, close modal
@@ -176,7 +176,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       // If there are review items, keep dialog open so teacher sees them,
       // then they close it manually.
     } catch {
-      setManualError("AI-ի պատասխանը թերի կամ սխալ ձևաչափով է։ Փորձիր կրկին կամ ուղարկիր ավելի քիչ էջ։");
+      setManualError("AI-ի պատասխանը ճիշտ JSON ձևաչափով չէ։ Համոզվիր, որ տեղադրել ես միայն { ... }-ով սկսվող և համապատասխան }-ով ավարտվող JSON-ը։");
     } finally {
       setManualPending(false);
     }
@@ -261,7 +261,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         onClick={() => { setManualOpen(true); setManualError(null); setManualReview([]); }}
         disabled={isActive}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
-        title="Ձեռքով քարտեզագրում — ChatGPT / Gemini"
+        title="Ձեռքով քարտեզագրում — AI JSON"
       >
         ✍️ Ձեռքով
       </button>
@@ -280,9 +280,15 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         <DialogContent className="max-w-2xl bg-[#0f1117] border border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold text-white">
-              ✍️ Ձեռքով քարտեզագրում — ChatGPT / Gemini
+              
+              ✍️ Ձեռքով քարտեզագրում — AI JSON
             </DialogTitle>
           </DialogHeader>
+
+          <p className="text-xs text-muted-foreground/60 px-1 -mt-1 leading-relaxed">
+            AI-ի պատասխանից այստեղ տեղադրիր միայն ամբողջական JSON-ը՝ {'{ ... }'}։<br />
+            Չտեղադրես Output, բացատրություն, chat-ի պատմություն կամ այլ տեքստ։
+          </p>
 
           {/* Review items from a previous successful submit */}
           {manualReview.length > 0 && (
@@ -307,7 +313,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
           <textarea
             className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 resize-none"
             rows={15}
-            placeholder="Փaktsru AI-i (ChatGPT/Gemini)-ի ամboljy պatashkhany aystegh"
+            placeholder={'{ "lesson": {...}, "nodes": [...], "sourceBlocks": [...], ... }'}
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
             disabled={manualPending}
