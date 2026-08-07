@@ -1,0 +1,91 @@
+UI-TEXT-ONLY task. Do NOT touch backend parsing logic, JSON parsing behavior, validator, database logic, or schema. Do NOT add silent `{` extraction or any new functionality.
+
+This task is ONLY about frontend/user-facing text in the manual-mapping feature.
+
+MANDATORY ARMENIAN SCRIPT RULE: copy-paste the Armenian text below exactly as given — real Unicode Armenian script — never hand-retype, never transliterate.
+
+### 1. Modal title
+
+Change the existing manual-mapping modal title to exactly:
+
+✍️ Ձեռքով քարտեզագրում — AI JSON
+
+### 2. Add instruction text
+
+Add one small/muted instruction line directly under the title, using the existing modal's typography/style:
+
+AI-ի պատասխանից այստեղ տեղադրիր միայն ամբողջական JSON-ը՝ { ... }։
+Չտեղադրես Output, բացատրություն, chat-ի պատմություն կամ այլ տեքստ։
+
+Do not change its wording.
+
+### 3. Textarea placeholder
+
+Change the textarea placeholder to exactly:
+
+{ "lesson": {...}, "nodes": [...], "sourceBlocks": [...], ... }
+
+Do not add or remove text from this placeholder.
+
+### 4. JSON parsing error message
+
+Find every existing location in the manual-map feature where the JSON.parse failure error is displayed to the user.
+
+Change ONLY the user-facing Armenian error text to:
+
+AI-ի պատասխանը ճիշտ JSON ձևաչափով չէ։ Համոզվիր, որ տեղադրել ես
+միայն { ... }-ով սկսվող և համապատասխան }-ով ավարտվող JSON-ը։
+
+IMPORTANT:
+
+* Do NOT change JSON.parse logic.
+* Do NOT change error detection.
+* Do NOT change HTTP status handling.
+* Do NOT change the backend response structure.
+* Do NOT change validator behavior.
+* Do NOT add automatic extraction of `{ ... }`.
+* Do NOT add normalization or recovery logic.
+* Only change the displayed error text.
+
+### 5. COMPLETE Armenian-string sweep
+
+After making the text changes, inspect BOTH:
+
+* the entire manual-mapping modal component
+* the manual-map route/error-handling code
+
+Search for every hardcoded Armenian-looking/user-facing string related to this feature.
+
+For EACH discovered hardcoded Armenian string, report:
+
+1. File path
+2. Line number
+3. Exact current string
+4. Whether it is real Unicode Armenian or transliterated/corrupted text
+5. Whether it was changed
+
+Do NOT modify unrelated strings or application logic.
+
+We previously found multiple transliterated/corrupted strings in this feature, so perform a COMPLETE sweep rather than checking only the four strings above.
+
+### 6. Verification
+
+After the changes:
+
+* Confirm the application still starts successfully.
+* Confirm no TypeScript/JS syntax errors were introduced.
+* Confirm the manual-mapping modal opens.
+* Confirm the title, instruction line, and placeholder are visible.
+* Confirm the existing JSON parsing behavior is unchanged.
+
+Finally, provide:
+
+A. A concise list of changed UI strings.
+B. The complete Armenian-string sweep results.
+C. A real screenshot of the manual-mapping modal showing:
+
+* the new title
+* the instruction line
+* the new textarea placeholder
+
+Do NOT make any other code or functionality changes.

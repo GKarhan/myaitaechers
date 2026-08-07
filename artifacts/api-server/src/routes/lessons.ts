@@ -1953,7 +1953,7 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
   const normalized = normalizeIncomingMapping(parsedRaw);
 
   if (normalized.topics.length === 0) {
-    res.status(400).json({ error: "Mapping-ы թemaner chenq gaghtnirats. Verificel JSON format-y." });
+    res.status(400).json({ error: "Mapping-ի թemaner chenq gaghtnirats. Verificel JSON format-ը." });
     return;
   }
 
