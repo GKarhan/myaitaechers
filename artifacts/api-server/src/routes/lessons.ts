@@ -1177,6 +1177,24 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       ? Math.round(((pass1.blocks.length - pass2.unmappedBlockIndices.length) / pass1.blocks.length) * 100)
       : 100;
 
+    // ── Review flags for coverage gaps ──────────────────────────────────────
+    // Informational: any blocks the AI explicitly excluded as headers.
+    if (pass2.unmappedBlockIndices.length > 0) {
+      reviewItems.push({
+        nodeId:    null as unknown as number,
+        nodeTitle: "—",
+        reason:    `${pass2.unmappedBlockIndices.length} block(s) explicitly excluded as headers by pipeline — verify no real exercises or definitions were skipped`,
+      });
+    }
+    // High-severity: coverage below 90% indicates a potentially serious gap.
+    if (coveragePercent < 90) {
+      reviewItems.push({
+        nodeId:    null as unknown as number,
+        nodeTitle: "—",
+        reason:    `Coverage is only ${coveragePercent}% — ${pass1.blocks.length - (pass1.blocks.length - pass2.unmappedBlockIndices.length)} of ${pass1.blocks.length} blocks were not placed in any MicroNode. Significant content may be missing.`,
+      });
+    }
+
     const mappingReport = {
       lessonId,
       lessonTitle:  lesson.title,
