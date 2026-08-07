@@ -238,7 +238,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
     || mapStatus?.status === 'pending' || mapStatus?.status === 'running';
 
   const statusLabel = mapStatus?.progress
-    ?? (mapStatus?.status === 'running'  ? 'Քartezeagrvm է...'
+    ?? (mapStatus?.status === 'running'  ? 'Քարտեզագրում է...'
       : mapStatus?.status === 'pending' ? 'Spasuma...' : '');
 
   return (
@@ -268,7 +268,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 
       {isActive && (
         <span className="text-[10px] text-primary/70 animate-pulse max-w-[200px] truncate" title={statusLabel}>
-          {statusLabel || 'Քartezeagrvm է...'}
+          {statusLabel || 'Քարտեզագրում է...'}
         </span>
       )}
       {mapError && (
@@ -293,7 +293,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
           {/* Review items from a previous successful submit */}
           {manualReview.length > 0 && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
-              <p className="text-xs font-semibold text-amber-400">⚠️ Ուshaderoutyan kariq unenatsox keter.</p>
+              <p className="text-xs font-semibold text-amber-400">⚠️ Ուշադրության կարիք ունենացող կետեր։</p>
               {manualReview.map((ri, i) => (
                 <p key={i} className="text-xs text-amber-300/80">• {ri.nodeTitle}</p>
               ))}
@@ -301,7 +301,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
                 onClick={() => { setManualOpen(false); setManualReview([]); }}
                 className="mt-1 text-xs text-amber-400 underline hover:text-amber-300"
               >
-                Կnqel
+                Փակտել
               </button>
             </div>
           )}
