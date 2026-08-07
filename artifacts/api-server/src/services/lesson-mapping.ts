@@ -517,6 +517,403 @@ export async function extractBlocksWithVision(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pass 2: Topic grouping → MicroNode organisation
+//
+// Two-step pipeline validated against lesson 68 (83 blocks, 5 topics, 6 nodes):
+//   Step 1 — one call detects topic boundaries, outputs {title, blockIndices[]}
+//   Step 1b — size-cap: any group >MAX_GROUP_SIZE blocks is subdivided
+//   Step 2 — one call per topic (parallel) organises blocks into MicroNodes
+//
+// Key design decisions vs failed v1/v2 prompts:
+//   • sourceBlockIndices ≠ "theory only"; it means "all owned non-exercise,
+//     non-image blocks". This prevents the model creating exercise-only MicroNodes.
+//   • Explicit CORRECT/WRONG few-shot example in the Step 2 prompt.
+//   • "Exercises on X" MicroNode named as an anti-pattern by name.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PASS2_STEP1_MODEL   = "deepseek/deepseek-chat";   // topic boundary detection
+const PASS2_STEP2_MODEL   = "google/gemini-2.5-flash";  // per-topic MicroNode org
+const PASS2_MAX_GROUP_SIZE = 20;                          // size-cap before subdividing
+
+// ── Pass 2 output types ───────────────────────────────────────────────────────
+
+export interface Pass2Exercise {
+  /** 0-based index into the Pass1Block array passed to runPass2Pipeline. */
+  blockIndex: number;
+  sourceParagraph: string | null;
+}
+
+export interface Pass2MicroNode {
+  title: string;
+  learningObjective: string;
+  microNodeType: "knowledge" | "skill";
+  /** Indices of all "owned" blocks (DEFINITION/RULE/NOTE/EXAMPLE/OBJECTIVE-with-body).
+   *  Must be non-empty — an empty list here is a pipeline error. */
+  sourceBlockIndices: number[];
+  exercises: Pass2Exercise[];
+  supportingMaterialIndices: number[];
+}
+
+export interface Pass2TopicResult {
+  sequence: number;
+  title: string;
+  topicType: string;   // "grammar" | "enrichment" | …
+  microNodes: Pass2MicroNode[];
+  unmappedBlockIndices: number[];
+}
+
+export interface Pass2Result {
+  topics: Pass2TopicResult[];
+  /** Block indices that were not placed in any MicroNode (page headers, etc.). */
+  unmappedBlockIndices: number[];
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function fmtPass2Block(idx: number, b: Pass1Block): string {
+  const para = b.sourceParagraph ? ` §${b.sourceParagraph}` : "";
+  const text = (b.sourceText ?? "").replace(/\n/g, " ").slice(0, 200).trim();
+  return `[${idx}] ${b.blockType} p${b.sourcePage}${para}: ${text}`;
+}
+
+function parsePass2JSON(raw: string): unknown {
+  let s = raw.trim();
+  if (s.startsWith("```json")) s = s.slice(7);
+  else if (s.startsWith("```"))  s = s.slice(3);
+  if (s.endsWith("```")) s = s.slice(0, -3).trim();
+  return JSON.parse(s);
+}
+
+// ── Step 1: detect topic boundaries ──────────────────────────────────────────
+
+const PASS2_STEP1_SYSTEM = `You are a curriculum analyst. Given a flat list of textbook content blocks,
+identify where topic boundaries occur and group the block indices into topics.
+
+Output ONLY valid JSON, no markdown fences, no commentary:
+{
+  "groups": [
+    {
+      "topicTitle": "brief title",
+      "topicType": "grammar | enrichment",
+      "blockIndices": [0, 1, 2, ...]
+    }
+  ]
+}
+
+Rules:
+- Every block index in the input must appear in exactly one group. None may be omitted.
+- Identify boundaries by subject-matter shift, new section headings (OBJECTIVE blocks),
+  or clear changes in content.
+- Any cultural reading / enrichment passage (usually final pages) → topicType "enrichment".
+- Aim for 4-6 groups totalling all provided block indices.
+- Do NOT create MicroNodes yet — only groups of block indices per topic.`;
+
+async function detectTopicGroups(
+  blocks: Pass1Block[],
+  lessonTitle: string,
+  pagesFrom: number,
+  pagesTo: number
+): Promise<{ title: string; topicType: string; indices: number[] }[]> {
+  const allIndices = blocks.map((_, i) => i);
+  const blockLines = blocks.map((b, i) => fmtPass2Block(i, b)).join("\n");
+
+  const userPrompt = `Lesson: «${lessonTitle}», pages ${pagesFrom}–${pagesTo}.
+These ${blocks.length} blocks must be grouped into topics.
+ALL indices that must appear: [${allIndices.join(", ")}]
+
+BLOCKS:
+${blockLines}
+
+Group every block index above into topics. Output JSON now.`;
+
+  const r = await openrouter.chat.completions.create({
+    model: PASS2_STEP1_MODEL,
+    max_tokens: 2000,
+    temperature: 0,
+    messages: [
+      { role: "system", content: PASS2_STEP1_SYSTEM },
+      { role: "user",   content: userPrompt },
+    ],
+  });
+  const raw = r.choices[0]?.message?.content ?? "";
+  logger.info(
+    { finish: r.choices[0]?.finish_reason },
+    "pass2 step1: topic grouping complete"
+  );
+
+  const parsed = parsePass2JSON(raw) as {
+    groups: { topicTitle: string; topicType: string; blockIndices: number[] }[]
+  };
+  return (parsed.groups ?? []).map((g) => ({
+    title:     g.topicTitle,
+    topicType: g.topicType ?? "grammar",
+    indices:   Array.isArray(g.blockIndices) ? g.blockIndices : [],
+  }));
+}
+
+// ── Step 1b: subdivide any group > PASS2_MAX_GROUP_SIZE ──────────────────────
+
+const PASS2_SUBDIVIDE_SYSTEM = `You are a curriculum analyst. A topic group is too large and must be split into smaller sub-topics.
+
+Output ONLY valid JSON, no markdown fences:
+{
+  "groups": [
+    { "topicTitle": "...", "topicType": "grammar | enrichment", "blockIndices": [...] }
+  ]
+}
+
+Rules:
+- Split into 2-4 sub-topics of at most ${PASS2_MAX_GROUP_SIZE} blocks each.
+- Every input block index must appear in exactly one sub-group. None may be omitted.
+- Split at natural content boundaries (new rules, exercise blocks, section transitions).`;
+
+async function subdivideGroup(
+  group: { title: string; topicType: string; indices: number[] },
+  blocks: Pass1Block[]
+): Promise<{ title: string; topicType: string; indices: number[] }[]> {
+  const blockLines = group.indices.map((i) => fmtPass2Block(i, blocks[i])).join("\n");
+
+  const userPrompt = `The following ${group.indices.length} blocks all belong to «${group.title}» but the group is too large (>${PASS2_MAX_GROUP_SIZE} blocks).
+Split them into 2-4 sub-topics of ≤${PASS2_MAX_GROUP_SIZE} blocks each.
+Block indices to distribute: [${group.indices.join(", ")}]
+
+BLOCKS:
+${blockLines}
+
+Output JSON now.`;
+
+  const r = await openrouter.chat.completions.create({
+    model: PASS2_STEP1_MODEL,
+    max_tokens: 1000,
+    temperature: 0,
+    messages: [
+      { role: "system", content: PASS2_SUBDIVIDE_SYSTEM },
+      { role: "user",   content: userPrompt },
+    ],
+  });
+  const raw = r.choices[0]?.message?.content ?? "";
+  logger.info(
+    { originalGroup: group.title, finish: r.choices[0]?.finish_reason },
+    "pass2 step1b: subdivision complete"
+  );
+
+  const parsed = parsePass2JSON(raw) as {
+    groups: { topicTitle: string; topicType: string; blockIndices: number[] }[]
+  };
+  return (parsed.groups ?? []).map((g) => ({
+    title:     g.topicTitle,
+    topicType: g.topicType ?? group.topicType,
+    indices:   Array.isArray(g.blockIndices) ? g.blockIndices : [],
+  }));
+}
+
+// ── Step 2: organise one topic's blocks into MicroNodes ───────────────────────
+
+const PASS2_STEP2_SYSTEM = `You are a curriculum architect for a grade-7 Armenian-language textbook.
+You receive a list of content blocks belonging to ONE topic and must organize them into
+1–3 MicroNodes with strict block-index traceability.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CORRECT STRUCTURE — a MicroNode contains BOTH theory AND exercises:
+
+{
+  "title": "What is a Noun",
+  "learningObjective": "Student can define a noun and identify nouns in text",
+  "microNodeType": "knowledge",
+  "sourceBlockIndices": [0, 1, 2],
+  "exercises": [
+    {"blockIndex": 3, "sourceParagraph": "7"},
+    {"blockIndex": 4, "sourceParagraph": "8"}
+  ],
+  "supportingMaterialIndices": []
+}
+
+ILLEGAL ANTI-PATTERN — never create this:
+{
+  "title": "Exercises on Nouns",
+  "sourceBlockIndices": [],          ← ZERO source indices = INVALID
+  "exercises": [{"blockIndex": 3}, ...]
+}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FIELD DEFINITIONS:
+• sourceBlockIndices  — block indices this MicroNode "owns": every DEFINITION, RULE, NOTE,
+                        EXAMPLE, or OBJECTIVE-with-body-text block. Also EXERCISE blocks that
+                        form a theoretical list/enumeration rather than a student practice task.
+                        MUST be non-empty. If you cannot find a non-exercise block to put here,
+                        merge with an adjacent MicroNode instead.
+• exercises           — EXERCISE, ACTIVITY, HOMEWORK blocks that are student practice tasks.
+                        Add to the nearest theory MicroNode's exercises array — never create
+                        a standalone exercise-only MicroNode.
+• supportingMaterialIndices — IMAGE, CAPTION, TABLE blocks that illustrate the MicroNode.
+• unmappedBlocks      — ONLY for pure page/textbook headers (e.g. "ՀAYOC LEZU - 7") with
+                        no body text. OBJECTIVE blocks with real content go into sourceBlockIndices.
+
+ABSOLUTE RULES:
+1. Every block index provided must appear exactly once across sourceBlockIndices, exercises,
+   supportingMaterialIndices, or unmappedBlocks.
+2. Every MicroNode MUST have at least one entry in sourceBlockIndices.
+3. If a block is an EXERCISE/ACTIVITY/HOMEWORK, add it to an existing theory MicroNode's
+   exercises array — never isolate it in its own standalone MicroNode.
+4. Do not invent content not present in the blocks.
+
+OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary before or after.
+{
+  "microNodes": [ <MicroNode objects as shown above> ],
+  "unmappedBlocks": [ {"blockIndex": 0, "reason": "page header"} ]
+}`;
+
+async function organizeTopicMicroNodes(
+  topicTitle: string,
+  topicIndices: number[],
+  blocks: Pass1Block[],
+  topicSeq: number
+): Promise<{ microNodes: Pass2MicroNode[]; unmappedIndices: number[] }> {
+  const blockLines = topicIndices.map((i) => fmtPass2Block(i, blocks[i])).join("\n");
+
+  const userPrompt = `Topic ${topicSeq}: «${topicTitle}»
+Block indices to account for: [${topicIndices.join(", ")}]
+(Every index above must appear in your output.)
+
+BLOCKS:
+${blockLines}
+
+Organize these ${topicIndices.length} blocks into 1-3 MicroNodes now.
+Remember: exercises attach to theory MicroNodes — no standalone exercise MicroNodes.`;
+
+  const r = await openrouter.chat.completions.create({
+    model: PASS2_STEP2_MODEL,
+    max_tokens: 4000,
+    temperature: 0,
+    messages: [
+      { role: "system", content: PASS2_STEP2_SYSTEM },
+      { role: "user",   content: userPrompt },
+    ],
+  });
+  const raw    = r.choices[0]?.message?.content ?? "";
+  const finish = r.choices[0]?.finish_reason;
+  logger.info({ topicTitle, topicSeq, finish }, "pass2 step2: MicroNode org complete");
+
+  const parsed = parsePass2JSON(raw) as {
+    microNodes: {
+      title: string;
+      learningObjective: string;
+      microNodeType: string;
+      sourceBlockIndices: number[];
+      exercises: { blockIndex: number; sourceParagraph?: string | null }[];
+      supportingMaterialIndices: number[];
+    }[];
+    unmappedBlocks: { blockIndex: number; reason: string }[];
+  };
+
+  const microNodes: Pass2MicroNode[] = (parsed.microNodes ?? []).map((mn) => ({
+    title:                   mn.title ?? "",
+    learningObjective:       mn.learningObjective ?? "",
+    microNodeType:           mn.microNodeType === "skill" ? "skill" : "knowledge",
+    sourceBlockIndices:      Array.isArray(mn.sourceBlockIndices) ? mn.sourceBlockIndices : [],
+    exercises:               (mn.exercises ?? []).map((e) => ({
+      blockIndex:     e.blockIndex,
+      sourceParagraph: e.sourceParagraph ?? null,
+    })),
+    supportingMaterialIndices: Array.isArray(mn.supportingMaterialIndices)
+      ? mn.supportingMaterialIndices : [],
+  }));
+
+  const unmappedIndices = (parsed.unmappedBlocks ?? []).map((u) => u.blockIndex);
+  return { microNodes, unmappedIndices };
+}
+
+// ── Main exported Pass 2 function ─────────────────────────────────────────────
+
+/**
+ * Runs the full two-step Pass 2 pipeline on an in-memory block list.
+ * Block indices are 0-based positions in the `blocks` array.
+ * No DB interaction — purely AI orchestration. The caller stores the result.
+ *
+ * Validated on lesson 68 (83 blocks): 83/83 coverage, 0 empty sourceBlockIndices.
+ */
+export async function runPass2Pipeline(
+  blocks: Pass1Block[],
+  lessonInfo: { lessonTitle: string; pagesFrom: number; pagesTo: number }
+): Promise<Pass2Result> {
+  logger.info({ blockCount: blocks.length }, "pass2: starting pipeline");
+
+  // Step 1: topic boundary detection
+  let groups = await detectTopicGroups(
+    blocks, lessonInfo.lessonTitle, lessonInfo.pagesFrom, lessonInfo.pagesTo
+  );
+  logger.info({ groupCount: groups.length }, "pass2 step1: initial topic groups");
+
+  // Step 1b: size-cap guard — subdivide any group > PASS2_MAX_GROUP_SIZE
+  const cappedGroups: typeof groups = [];
+  for (const g of groups) {
+    if (g.indices.length > PASS2_MAX_GROUP_SIZE) {
+      logger.info(
+        { group: g.title, size: g.indices.length },
+        "pass2 step1b: group exceeds size cap, subdividing"
+      );
+      const subs = await subdivideGroup(g, blocks);
+      cappedGroups.push(...subs);
+    } else {
+      cappedGroups.push(g);
+    }
+  }
+  logger.info({ groupCount: cappedGroups.length }, "pass2 step1b: groups after size-cap");
+
+  // Step 2: organise each topic into MicroNodes (all groups in parallel)
+  const topicResults = await Promise.all(
+    cappedGroups.map((g, i) =>
+      organizeTopicMicroNodes(g.title, g.indices, blocks, i + 1)
+    )
+  );
+
+  const topics: Pass2TopicResult[] = cappedGroups.map((g, i) => ({
+    sequence:              i + 1,
+    title:                 g.title,
+    topicType:             g.topicType,
+    microNodes:            topicResults[i].microNodes,
+    unmappedBlockIndices:  topicResults[i].unmappedIndices,
+  }));
+
+  const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
+
+  // Coverage validation (logged — caller may choose to error or warn)
+  const seen = new Set<number>();
+  for (const t of topics) {
+    for (const mn of t.microNodes) {
+      mn.sourceBlockIndices.forEach((i) => seen.add(i));
+      mn.exercises.forEach((e) => seen.add(e.blockIndex));
+      mn.supportingMaterialIndices.forEach((i) => seen.add(i));
+    }
+    t.unmappedBlockIndices.forEach((i) => seen.add(i));
+  }
+  const missing       = blocks.map((_, i) => i).filter((i) => !seen.has(i));
+  const emptySourceMNs = topics.flatMap((t) =>
+    t.microNodes.filter((mn) => mn.sourceBlockIndices.length === 0).map((mn) => mn.title)
+  );
+
+  logger.info(
+    {
+      coverage:      `${seen.size}/${blocks.length}`,
+      missing,
+      emptySourceMNs,
+      topicsCreated: topics.length,
+      microNodes:    topics.reduce((s, t) => s + t.microNodes.length, 0),
+    },
+    "pass2: pipeline complete"
+  );
+
+  if (missing.length > 0) {
+    logger.warn({ missing }, "pass2: blocks not placed by pipeline");
+  }
+  if (emptySourceMNs.length > 0) {
+    logger.warn({ emptySourceMNs }, "pass2: MicroNodes with empty sourceBlockIndices");
+  }
+
+  return { topics, unmappedBlockIndices: allUnmapped };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Legacy Pass 2 material below — kept for future use; NOT called by the
 // current mapping route (which now uses extractBlocksWithAI / extractBlocksWithVision).
 // ─────────────────────────────────────────────────────────────────────────────

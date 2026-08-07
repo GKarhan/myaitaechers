@@ -1,10 +1,10 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
 import { eq, and, asc, max, inArray } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, type Pass1Result } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, type Pass1Result } from "../services/lesson-mapping";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 
@@ -886,12 +886,18 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireAuth, asyn
   res.json({ message: "Exercise deleted" });
 });
 
-// ── LESSON MAPPING (P1-lite) ────────────────────────────────────────────────
+// ── LESSON MAPPING (Pass 1 + Pass 2) ──────────────────────────────────────────
 
-// POST /lessons/:lessonId/map — extract the real textbook text for this
-// lesson's page range from its linked textbook resource, call the AI to
-// produce a lesson goal/outcomes/core idea plus structured knowledge nodes,
-// then replace this lesson's existing lesson_nodes with the new ones.
+// POST /lessons/:lessonId/map — full two-pass pipeline:
+//   Pass 1: vision extraction of verbatim content blocks from the textbook PDF.
+//   Pass 2: two-step AI pipeline that groups blocks into topics, then organises
+//           each topic into MicroNodes with exercises. Results are stored as:
+//             lesson_topics   (one row per topic)
+//             lesson_nodes    (one row per MicroNode, FK → topic)
+//             lesson_exercises (one row per exercise, FK → MicroNode)
+//
+//   Old functions extractBlocksWithAI / extractBlocksWithVision are preserved
+//   below for reference but are no longer called from this route.
 router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
@@ -942,102 +948,167 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     .limit(1);
 
   try {
-    const filePath = resolveUploadedFilePath(resource.fileUrl);
-    const lessonText = await extractPdfPageRange(
-      filePath,
-      lesson.pagesFrom,
-      lesson.pagesTo
-    );
+    const filePath  = resolveUploadedFilePath(resource.fileUrl);
+    const lessonText = await extractPdfPageRange(filePath, lesson.pagesFrom, lesson.pagesTo);
 
     const baseInput = {
-      subjectName: subject?.name ?? "",
-      lessonTitle: lesson.title,
-      chapterTitle: lesson.chapterTitle ?? null,
+      subjectName:   subject?.name ?? "",
+      lessonTitle:   lesson.title,
+      chapterTitle:  lesson.chapterTitle  ?? null,
       textbookTitle: lesson.textbookTitle ?? null,
       textbookAuthor: lesson.textbookAuthor ?? null,
-      pagesFrom: lesson.pagesFrom,
-      pagesTo: lesson.pagesTo,
-      teacherGoal: lesson.lessonGoal ?? null,
+      pagesFrom:     lesson.pagesFrom,
+      pagesTo:       lesson.pagesTo,
+      teacherGoal:   lesson.lessonGoal ?? null,
       teacherOutcomes: Array.isArray(lesson.lessonOutcomes)
         ? (lesson.lessonOutcomes as string[])
         : null,
     };
 
-    // ── Pass 1: Pure verbatim block extraction ──────────────────────────────
-    // The model only COPIES text blocks from the page — no interpretation,
-    // no examples, no structure beyond block classification.
-    // Pass 2 (not yet implemented) will organise these blocks into nodes/topics.
+    // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
     let pass1: Pass1Result;
     if (isGarbledText(lessonText)) {
       logger.info(
         { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
-        "lesson mapping: garbled text — using vision-based Pass 1 extraction"
+        "lesson mapping: garbled text — using vision-based Pass 1"
       );
       const pageImages = await rasterizePdfPages(filePath, lesson.pagesFrom, lesson.pagesTo);
-      logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages for Pass 1");
+      logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages");
       pass1 = await extractBlocksWithVision(baseInput, pageImages);
     } else {
       pass1 = await extractBlocksWithAI({ ...baseInput, lessonText });
     }
+    logger.info({ lessonId, blockCount: pass1.blocks.length }, "lesson mapping Pass 1 complete");
 
-    // ── Clear old lesson data — blocks, exercises, dependencies ────────────
-    await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
-    await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
+    // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
+    const pass2 = await runPass2Pipeline(pass1.blocks, {
+      lessonTitle: lesson.title,
+      pagesFrom:   lesson.pagesFrom,
+      pagesTo:     lesson.pagesTo,
+    });
+
+    // ── Clear ALL prior mapping data for this lesson ───────────────────────
+    // Order matters: FK constraints → delete nodes before topics.
     await db.delete(lessonNodeDependenciesTable).where(
       eq(lessonNodeDependenciesTable.lessonId, lessonId)
     );
+    await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
+    await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+    await db.delete(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, lessonId));
 
-    // ── Store each block as one lesson_nodes row ────────────────────────────
-    // This is the temporary Pass 1 landing spot.  Pass 2 will promote these
-    // raw blocks into proper nodes with topicId, theory, explanations, etc.
-    // Non-block fields (targetBloomLevel, estimatedMinutes, theoryContent …)
-    // carry placeholder defaults until Pass 2 fills them in.
-    const insertedBlocks = pass1.blocks.length > 0
-      ? await db
+    // ── Store Pass 2 results ──────────────────────────────────────────────
+    let totalNodes = 0;
+    let totalExercises = 0;
+    let exerciseCounter = 0;
+
+    const topicRows: { id: number; sequence: number; title: string }[] = [];
+    const nodeRows:  { id: number; topicId: number; title: string; sequence: number }[] = [];
+
+    for (const topic of pass2.topics) {
+      // 1. Insert the topic
+      const [insertedTopic] = await db
+        .insert(lessonTopicsTable)
+        .values({
+          lessonId,
+          title:    topic.title,
+          sequence: topic.sequence,
+        })
+        .returning();
+
+      topicRows.push({ id: insertedTopic.id, sequence: topic.sequence, title: topic.title });
+      let mnSeq = 0;
+
+      for (const mn of topic.microNodes) {
+        mnSeq += 1;
+
+        // Combine source-block texts as theoryContent / verbatimTheoryAnchor
+        const sourceBlocks = mn.sourceBlockIndices.map((i) => pass1.blocks[i]).filter(Boolean);
+        const theoryContent = sourceBlocks
+          .map((b) => b.sourceText.trim())
+          .filter(Boolean)
+          .join("\n\n");
+        const firstSourcePage = sourceBlocks.find((b) => b.sourcePage)?.sourcePage ?? null;
+
+        // 2. Insert the MicroNode
+        const [insertedNode] = await db
           .insert(lessonNodesTable)
-          .values(
-            pass1.blocks.map((block, i) => ({
-              lessonId,
-              sequence:          i + 1,
-              title:             block.sourceText.slice(0, 50).trim() || `Block ${i + 1}`,
-              blockType:         block.blockType,
-              sourceText:        block.sourceText,
-              sourcePage:        block.sourcePage || null,
-              sourceParagraph:   block.sourceParagraph ?? null,
-              sourceBoundingBox: block.sourceBoundingBox ?? null,
-              status:            "draft"  as const,
-              createdBy:         "ai"     as const,
-              topicId:           null,
-              // Pass-2 fields — placeholder defaults
-              targetBloomLevel:  1,
-              estimatedMinutes:  5,
-            }))
-          )
-          .returning()
-      : [];
+          .values({
+            lessonId,
+            topicId:           insertedTopic.id,
+            sequence:          mnSeq,
+            title:             mn.title,
+            learningObjective: mn.learningObjective || null,
+            microNodeType:     mn.microNodeType,
+            theoryContent:     theoryContent || null,
+            verbatimTheoryAnchor: theoryContent || null,
+            sourcePage:        firstSourcePage,
+            status:            "draft" as const,
+            createdBy:         "ai"   as const,
+            targetBloomLevel:  1,
+            estimatedMinutes:  5,
+          })
+          .returning();
+
+        nodeRows.push({
+          id:       insertedNode.id,
+          topicId:  insertedTopic.id,
+          title:    mn.title,
+          sequence: mnSeq,
+        });
+        totalNodes += 1;
+
+        // 3. Insert exercises linked to this MicroNode
+        for (const ex of mn.exercises) {
+          const block = pass1.blocks[ex.blockIndex];
+          if (!block) continue;
+          exerciseCounter += 1;
+
+          await db.insert(lessonExercisesTable).values({
+            lessonId,
+            exerciseId:          `EX-${lessonId}-${exerciseCounter}`,
+            exerciseTextVerbatim: block.sourceText.trim(),
+            sourcePage:          block.sourcePage ? String(block.sourcePage) : null,
+            relatedNodeId:       insertedNode.id,
+            sequence:            exerciseCounter,
+            sourceType:          "textbook" as const,
+            status:              "draft"    as const,
+          });
+          totalExercises += 1;
+        }
+      }
+    }
 
     logger.info(
-      { lessonId, blockCount: insertedBlocks.length },
-      "lesson mapping Pass 1: blocks saved to lesson_nodes"
+      {
+        lessonId,
+        pass1Blocks:     pass1.blocks.length,
+        topicsCreated:   pass2.topics.length,
+        microNodes:      totalNodes,
+        exercises:       totalExercises,
+        unmapped:        pass2.unmappedBlockIndices.length,
+      },
+      "lesson mapping Pass 1 + Pass 2 complete"
     );
 
     res.json({
-      blocksExtracted: insertedBlocks.length,
-      blocks: insertedBlocks.map((b) => ({
-        id:          b.id,
-        sequence:    b.sequence,
-        blockType:   b.blockType,
-        sourceText:  b.sourceText,
-        sourcePage:  b.sourcePage,
+      pass1BlocksExtracted: pass1.blocks.length,
+      topicsCreated:        pass2.topics.length,
+      microNodesCreated:    totalNodes,
+      exercisesCreated:     totalExercises,
+      unmappedBlocks:       pass2.unmappedBlockIndices.length,
+      topics: topicRows.map((t) => ({
+        id:       t.id,
+        sequence: t.sequence,
+        title:    t.title,
+        nodes:    nodeRows
+          .filter((n) => n.topicId === t.id)
+          .map((n) => ({ id: n.id, sequence: n.sequence, title: n.title })),
       })),
     });
   } catch (err) {
     logger.error({ err, lessonId }, "lesson mapping failed");
     res.status(500).json({
-      error:
-        err instanceof Error
-          ? err.message
-          : "Lesson mapping failed, please retry",
+      error: err instanceof Error ? err.message : "Lesson mapping failed, please retry",
     });
   }
 });
