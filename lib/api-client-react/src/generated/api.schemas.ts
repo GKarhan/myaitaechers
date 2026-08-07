@@ -226,8 +226,24 @@ export interface TeacherLessonItem {
   practicalTasks?: string[] | null;
 }
 
+// Returned immediately by POST /lessons/:id/map and /generate-teaching-content.
+// The actual work runs in the background; poll GET /lessons/jobs/:jobId for progress.
 export interface MapLessonResult {
-  nodesCreated: number;
+  jobId:  number;
+  status: 'pending';
+}
+
+export type MappingJobStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface MappingJobResponse {
+  jobId:     number;
+  lessonId:  number;
+  jobType:   string;
+  status:    MappingJobStatus;
+  result:    unknown | null;
+  error:     string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateTeacherLessonInput {

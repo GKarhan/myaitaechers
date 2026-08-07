@@ -7,4 +7,4 @@
 - [Lesson exercise CRUD](lesson-exercise-crud.md) — exercise routes added to lessons.ts; API client hooks added manually to api.ts (not generated); new types in api.schemas.ts must stay in sync.
 - [Chunked vision mapping](chunked-vision-mapping.md) — 3 pages/chunk, 32k tokens/chunk; retry still needed on chunk 2; output diverse but verbatim diverges from ground truth (ArmSCII font OCR limit).
 - [Pass 1 vision token budget](pass1-vision-token-budget.md) — pages 22-23 and 26-27 exceed 32k tokens at 2 pages/chunk; truncation recovery works but misses mid-page exercises; 1-page fallback needed for dense pages.
-- [Pass 2 pipeline](pass2-pipeline.md) — two-step AI pipeline (topics → MicroNodes); size-cap 20 blocks/group; "sourceBlockIndices" must NOT be called "theory blocks" or model creates exercise-only MicroNodes; ported to lesson-mapping.ts + /map route.
+- [Phase 2 pipeline](phase2-pipeline.md) — Pass1/Pass2/Phase2 full pipeline; hasRealTheory merge-pass; background job arch (mapping_jobs table, setImmediate, poll GET /lessons/jobs/:jobId); frontend polling pattern in LessonMapButton.

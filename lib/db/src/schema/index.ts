@@ -25,3 +25,4 @@ export * from "./lesson-nodes";
 export * from "./lesson-exercises";
 export * from "./lesson-node-dependencies";
 export * from "./quizzes";
+export * from "./mapping-jobs";

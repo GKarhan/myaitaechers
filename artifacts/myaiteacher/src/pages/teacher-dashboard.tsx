@@ -107,43 +107,165 @@ async function uploadResource(
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
 function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
+  const { token } = useAuth();
   const [mapError, setMapError] = useState<string | null>(null);
+  const [jobId, setJobId]   = useState<number | null>(null);
   const mapLesson = useMapLessonWithAI();
+
+  // Poll the background job until completed or failed
+  const { data: jobStatus } = useQuery<{ status: string; error?: string | null }>({
+    queryKey: ['mapping-job', jobId],
+    queryFn: async () => {
+      const r = await fetch(`/api/lessons/jobs/${jobId}`, {
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+      });
+      if (!r.ok) throw new Error('Job status fetch failed');
+      return r.json();
+    },
+    enabled: !!jobId && !!token,
+    refetchInterval: (query) => {
+      const s = (query.state.data as { status?: string } | undefined)?.status;
+      if (!s || s === 'pending' || s === 'running') return 3000;
+      return false;
+    },
+  });
+
+  useEffect(() => {
+    if (!jobStatus) return;
+    if (jobStatus.status === 'completed') {
+      setJobId(null);
+      qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+      qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+      qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
+      qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+    } else if (jobStatus.status === 'failed') {
+      setJobId(null);
+      setMapError(jobStatus.error ?? 'Քartezeagrume dzaxolvets, pkhorel krnkin');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus?.status]);
 
   const handleMap = () => {
     setMapError(null);
     mapLesson.mutate(
       { lessonId },
       {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
-          qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
-          qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
+        onSuccess: (data) => {
+          setJobId((data as { jobId: number }).jobId);
         },
         onError: (err: unknown) => {
           const responseData = (err as { response?: { data?: { error?: string } } })?.response?.data;
-          setMapError(responseData?.error ?? "Քարտեզագրումը ձախողվեց, փորձիր կրկին");
+          setMapError(responseData?.error ?? "Քartezeagrume dzaxolvets, pkhorel krnkin");
         },
       },
     );
   };
 
+  const isRunning = mapLesson.isPending || (!!jobId && jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed');
+  const pollingLabel = jobStatus?.status === 'running' ? 'Մараработкایум...' : 'Սпасума...';
+
   return (
     <>
       <button
         onClick={handleMap}
-        disabled={mapLesson.isPending}
+        disabled={isRunning}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
-        {mapLesson.isPending ? (
+        {isRunning ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : (
-          isMapped ? "🗺️ Կրկին քարտեզագրել" : "🗺️ Քարտեզագրել"
+          isMapped ? "🗺️ Կրկին քartezeagrel" : "🗺️ Qartez."
         )}
       </button>
+      {isRunning && !!jobId && (
+        <span className="text-xs text-primary/60 animate-pulse">{pollingLabel}</span>
+      )}
       {mapError && (
         <span className="text-xs text-destructive whitespace-nowrap">{mapError}</span>
       )}
+    </>
+  );
+}
+
+// ── Generate Teaching Content Button sub-component ────────────────────────────
+// Fires POST /lessons/:id/generate-teaching-content (returns jobId immediately),
+// then polls GET /lessons/jobs/:jobId every 3 s until completed or failed.
+function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: number; hasNodes: boolean }) {
+  const qc = useQueryClient();
+  const { token } = useAuth();
+  const [genError, setGenError] = useState<string | null>(null);
+  const [genDone,  setGenDone]  = useState(false);
+  const [jobId,    setJobId]    = useState<number | null>(null);
+
+  const { data: jobStatus } = useQuery<{ status: string; error?: string | null }>({
+    queryKey: ['phase2-job', jobId],
+    queryFn: async () => {
+      const r = await fetch(`/api/lessons/jobs/${jobId}`, {
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+      });
+      if (!r.ok) throw new Error('Job status fetch failed');
+      return r.json();
+    },
+    enabled: !!jobId && !!token,
+    refetchInterval: (query) => {
+      const s = (query.state.data as { status?: string } | undefined)?.status;
+      if (!s || s === 'pending' || s === 'running') return 3000;
+      return false;
+    },
+  });
+
+  useEffect(() => {
+    if (!jobStatus) return;
+    if (jobStatus.status === 'completed') {
+      setJobId(null);
+      setGenDone(true);
+      qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+      setTimeout(() => setGenDone(false), 5000);
+    } else if (jobStatus.status === 'failed') {
+      setJobId(null);
+      setGenError(jobStatus.error ?? 'Բovandakutyune djaxolvets');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus?.status]);
+
+  const handleGenerate = async () => {
+    setGenError(null);
+    setGenDone(false);
+    try {
+      const tok = token ?? localStorage.getItem('myaiteacher_token') ?? '';
+      const r = await fetch(`/api/lessons/${lessonId}/generate-teaching-content`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      const data = await r.json();
+      if (!r.ok) { setGenError(data.error ?? 'Xndiru chexavets'); return; }
+      setJobId((data as { jobId: number }).jobId);
+    } catch {
+      setGenError('Xmbagumutyun sxal');
+    }
+  };
+
+  const isRunning = !!jobId && jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed';
+
+  if (!hasNodes) return null;
+
+  return (
+    <>
+      <button
+        onClick={handleGenerate}
+        disabled={isRunning}
+        className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
+      >
+        {isRunning ? (
+          <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        ) : genDone ? '✅ Arvest' : '🧠 Arvest parelatstnel'}
+      </button>
+      {isRunning && (
+        <span className="text-xs text-indigo-400/60 animate-pulse">
+          {jobStatus?.status === 'running' ? 'Arabatk...' : 'Spasuma...'}
+        </span>
+      )}
+      {genError && <span className="text-xs text-destructive whitespace-nowrap">{genError}</span>}
     </>
   );
 }
@@ -2597,6 +2719,7 @@ export default function TeacherDashboard() {
                                     </span>
                                   )}
                                   <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
+                                  <GenerateTeachingContentButton lessonId={l.id} hasNodes={isMapped} />
                                   <button
                                     onClick={() => {
                                       setEditLesson({

@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable } from "@workspace/db";
 import { eq, and, asc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
@@ -1028,8 +1028,24 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     .where(eq(subjectsTable.id, lesson.subjectId))
     .limit(1);
 
+  // ── Create background job and respond immediately ─────────────────────────
+  // All slow work (AI calls, DB writes) runs inside setImmediate so the HTTP
+  // connection is released without waiting 5+ minutes.
+  const [job] = await db
+    .insert(mappingJobsTable)
+    .values({ lessonId, jobType: "map", status: "pending" })
+    .returning();
+
+  res.json({ jobId: job.id, status: "pending" as const });
+
+  // ── Process asynchronously after HTTP response is sent ────────────────────
+  setImmediate(async () => {
   try {
-    const filePath  = resolveUploadedFilePath(resource.fileUrl);
+    await db.update(mappingJobsTable)
+      .set({ status: "running", updatedAt: new Date() })
+      .where(eq(mappingJobsTable.id, job.id));
+
+    const filePath  = resolveUploadedFilePath(resource.fileUrl!);
     const lessonText = await extractPdfPageRange(filePath, lesson.pagesFrom, lesson.pagesTo);
 
     const baseInput = {
@@ -1241,34 +1257,86 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       "lesson mapping Pass 1 + Pass 2 complete"
     );
 
-    res.json({
-      pass1BlocksExtracted: pass1.blocks.length,
-      topicsCreated:        pass2.topics.length,
-      microNodesCreated:    totalNodes,
-      exercisesCreated:     totalExercises,
-      unmappedBlocks:       pass2.unmappedBlockIndices.length,
-      mappingReport,
-      topics: topicRows.map((t) => ({
-        id:       t.id,
-        sequence: t.sequence,
-        title:    t.title,
-        nodes:    nodeRows
-          .filter((n) => n.topicId === t.id)
-          .map((n) => ({ id: n.id, sequence: n.sequence, title: n.title })),
-      })),
-    });
+    await db.update(mappingJobsTable)
+      .set({
+        status: "completed",
+        result: {
+          pass1BlocksExtracted: pass1.blocks.length,
+          topicsCreated:        pass2.topics.length,
+          microNodesCreated:    totalNodes,
+          exercisesCreated:     totalExercises,
+          unmappedBlocks:       pass2.unmappedBlockIndices.length,
+          mappingReport,
+          topics: topicRows.map((t) => ({
+            id:       t.id,
+            sequence: t.sequence,
+            title:    t.title,
+            nodes:    nodeRows
+              .filter((n) => n.topicId === t.id)
+              .map((n) => ({ id: n.id, sequence: n.sequence, title: n.title })),
+          })),
+        } as any,
+        updatedAt: new Date(),
+      })
+      .where(eq(mappingJobsTable.id, job.id));
+
+    logger.info(
+      {
+        jobId:           job.id,
+        lessonId,
+        pass1Blocks:     pass1.blocks.length,
+        topicsCreated:   pass2.topics.length,
+        microNodes:      totalNodes,
+        exercises:       totalExercises,
+        unmapped:        pass2.unmappedBlockIndices.length,
+        coveragePercent,
+        reviewRequired:  reviewItems.length,
+      },
+      "lesson mapping job completed"
+    );
   } catch (err) {
-    logger.error({ err, lessonId }, "lesson mapping failed");
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Lesson mapping failed, please retry",
-    });
+    logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
+    await db.update(mappingJobsTable)
+      .set({
+        status: "failed",
+        error: err instanceof Error ? err.message : "Lesson mapping failed, please retry",
+        updatedAt: new Date(),
+      })
+      .where(eq(mappingJobsTable.id, job.id))
+      .catch(() => {});
   }
+  }); // end setImmediate
+});
+
+// ── GET /lessons/jobs/:jobId — poll background job status ─────────────────────
+router.get("/lessons/jobs/:jobId", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const jobId = parseInt(String(req.params.jobId), 10);
+  if (isNaN(jobId)) { res.status(400).json({ error: "Invalid job id" }); return; }
+
+  const [job] = await db
+    .select()
+    .from(mappingJobsTable)
+    .where(eq(mappingJobsTable.id, jobId))
+    .limit(1);
+
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+
+  res.json({
+    jobId:     job.id,
+    lessonId:  job.lessonId,
+    jobType:   job.jobType,
+    status:    job.status,
+    result:    job.result ?? null,
+    error:     job.error  ?? null,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  });
 });
 
 // ── Phase 2: Generate teaching content for all MicroNodes in a lesson ─────────
 // POST /lessons/:lessonId/generate-teaching-content
-// Teacher-triggered after reviewing Pass 1+2 structure. Runs generatePhase2Content
-// per MicroNode (in parallel batches of 3), writes results to DB.
+// Teacher-triggered after reviewing Pass 1+2 structure. Responds immediately
+// with { jobId } and processes AI calls inside setImmediate.
 router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -1276,7 +1344,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
-  // Fetch all MicroNodes for this lesson
+  // Fetch all MicroNodes (fast DB read — done synchronously before responding)
   const nodes = await db
     .select({
       id:                lessonNodesTable.id,
@@ -1294,7 +1362,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     return;
   }
 
-  // Fetch all exercises for this lesson, grouped by relatedNodeId
+  // Fetch all exercises (fast DB read)
   const allExercises = await db
     .select({
       relatedNodeId:        lessonExercisesTable.relatedNodeId,
@@ -1313,95 +1381,125 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     exercisesByNode.set(ex.relatedNodeId, arr);
   }
 
-  // Process in batches of 3 to avoid rate-limit bursts
-  const BATCH_SIZE = 3;
-  const summaryRows: {
-    nodeId:      number;
-    title:       string;
-    status:      string;
-    confidence:  number | null;
-    sourceType:  string;
-    skipReason?: string;
-  }[] = [];
+  // ── Create job, respond immediately ──────────────────────────────────────
+  const [job] = await db
+    .insert(mappingJobsTable)
+    .values({ lessonId, jobType: "generate_teaching_content", status: "pending" })
+    .returning();
 
-  for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
-    const batch = nodes.slice(i, i + BATCH_SIZE);
+  res.json({ jobId: job.id, status: "pending" as const });
 
-    const batchResults = await Promise.all(batch.map(async (node) => {
-      const input: Phase2Input = {
-        nodeId:            node.id,
-        title:             node.title,
-        learningObjective: node.learningObjective ?? null,
-        theoryContent:     node.theoryContent ?? null,
-        blockType:         node.blockType ?? null,
-      };
-      const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
-      return generatePhase2Content(input, exercises);
-    }));
+  // ── AI processing runs in background after HTTP response is sent ──────────
+  setImmediate(async () => {
+  try {
+    await db.update(mappingJobsTable)
+      .set({ status: "running", updatedAt: new Date() })
+      .where(eq(mappingJobsTable.id, job.id));
 
-    // Write each result to DB
-    for (const result of batchResults) {
-      if (result.skipped) {
-        // Weak-source or parse failure — mark status only, leave Phase 2 fields empty
-        await db
-          .update(lessonNodesTable)
-          .set({ status: "needs_source_content" })
-          .where(eq(lessonNodesTable.id, result.nodeId));
+    const BATCH_SIZE = 3;
+    const summaryRows: {
+      nodeId:      number;
+      title:       string;
+      status:      string;
+      confidence:  number | null;
+      sourceType:  string;
+      skipReason?: string;
+    }[] = [];
 
-        summaryRows.push({
-          nodeId:     result.nodeId,
-          title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
-          status:     "needs_source_content",
-          confidence: null,
-          sourceType: "—",
-          skipReason: result.skipReason,
-        });
-      } else {
-        await db
-          .update(lessonNodesTable)
-          .set({
-            explanationSteps:         result.explanationSteps          as any,
-            beginnerExplanation:      result.beginnerExplanation       || null,
-            advancedExplanation:      result.advancedExplanation       || null,
-            analogy:                  result.analogy                   || null,
-            commonErrors:             result.commonErrors              as any,
-            recallQuestions:          result.recallQuestions           as any,
-            understandingQuestions:   result.understandingQuestions    as any,
-            applicationQuestions:     result.applicationQuestions      as any,
-            faqEntries:               result.faqEntries                as any,
-            contentSourceType:        result.contentSourceType,
-            teachingContentConfidence: result.teachingContentConfidence,
-            status:                   "approved",
-          })
-          .where(eq(lessonNodesTable.id, result.nodeId));
+    for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
+      const batch = nodes.slice(i, i + BATCH_SIZE);
 
-        summaryRows.push({
-          nodeId:     result.nodeId,
-          title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
-          status:     "approved",
-          confidence: result.teachingContentConfidence,
-          sourceType: result.contentSourceType,
-        });
+      const batchResults = await Promise.all(batch.map(async (node) => {
+        const input: Phase2Input = {
+          nodeId:            node.id,
+          title:             node.title,
+          learningObjective: node.learningObjective ?? null,
+          theoryContent:     node.theoryContent ?? null,
+          blockType:         node.blockType ?? null,
+        };
+        const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
+        return generatePhase2Content(input, exercises);
+      }));
+
+      for (const result of batchResults) {
+        if (result.skipped) {
+          await db
+            .update(lessonNodesTable)
+            .set({ status: "needs_source_content" })
+            .where(eq(lessonNodesTable.id, result.nodeId));
+
+          summaryRows.push({
+            nodeId:     result.nodeId,
+            title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
+            status:     "needs_source_content",
+            confidence: null,
+            sourceType: "—",
+            skipReason: result.skipReason,
+          });
+        } else {
+          await db
+            .update(lessonNodesTable)
+            .set({
+              explanationSteps:          result.explanationSteps          as any,
+              beginnerExplanation:       result.beginnerExplanation       || null,
+              advancedExplanation:       result.advancedExplanation       || null,
+              analogy:                   result.analogy                   || null,
+              commonErrors:              result.commonErrors              as any,
+              recallQuestions:           result.recallQuestions           as any,
+              understandingQuestions:    result.understandingQuestions    as any,
+              applicationQuestions:      result.applicationQuestions      as any,
+              faqEntries:                result.faqEntries                as any,
+              contentSourceType:         result.contentSourceType,
+              teachingContentConfidence: result.teachingContentConfidence,
+              status:                    "approved",
+            })
+            .where(eq(lessonNodesTable.id, result.nodeId));
+
+          summaryRows.push({
+            nodeId:     result.nodeId,
+            title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
+            status:     "approved",
+            confidence: result.teachingContentConfidence,
+            sourceType: result.contentSourceType,
+          });
+        }
       }
     }
+
+    const approved         = summaryRows.filter((r) => r.status === "approved").length;
+    const needsSourceCount = summaryRows.filter((r) => r.status === "needs_source_content").length;
+
+    await db.update(mappingJobsTable)
+      .set({
+        status: "completed",
+        result: {
+          lessonId,
+          lessonTitle:        lesson.title,
+          totalNodes:         nodes.length,
+          approved,
+          needsSourceContent: needsSourceCount,
+          summary:            summaryRows,
+        } as any,
+        updatedAt: new Date(),
+      })
+      .where(eq(mappingJobsTable.id, job.id));
+
+    logger.info(
+      { jobId: job.id, lessonId, total: nodes.length, approved, needsSource: needsSourceCount },
+      "phase2 teaching content generation job completed"
+    );
+  } catch (err) {
+    logger.error({ err, lessonId, jobId: job.id }, "phase2 teaching content generation job failed");
+    await db.update(mappingJobsTable)
+      .set({
+        status: "failed",
+        error: err instanceof Error ? err.message : "Teaching content generation failed",
+        updatedAt: new Date(),
+      })
+      .where(eq(mappingJobsTable.id, job.id))
+      .catch(() => {});
   }
-
-  const approved         = summaryRows.filter((r) => r.status === "approved").length;
-  const needsSourceCount = summaryRows.filter((r) => r.status === "needs_source_content").length;
-
-  logger.info(
-    { lessonId, total: nodes.length, approved, needsSource: needsSourceCount },
-    "phase2 teaching content generation complete"
-  );
-
-  res.json({
-    lessonId,
-    lessonTitle:      lesson.title,
-    totalNodes:       nodes.length,
-    approved,
-    needsSourceContent: needsSourceCount,
-    summary: summaryRows,
-  });
+  }); // end setImmediate
 });
 
 // ── P6: One-time lesson completion summary + homework presentation ─────────────
@@ -1464,6 +1562,106 @@ router.post("/lessons/:lessonId/p6-summary", requireAuth, async (req: AuthReques
     logger.error({ err, lessonId }, "P6 summary call failed");
     res.status(500).json({ error: "P6 summary generation failed" });
   }
+});
+
+// ── GET /lessons/debug-nodes-preview — server-rendered Armenian node viewer ───
+// No auth required. Returns styled HTML for nodes 1002-1011 (lessons 68 & 69).
+// Used for screenshot verification; can be removed after screenshots are taken.
+router.get("/lessons/debug-nodes-preview", async (_req, res) => {
+  const rows = await db
+    .select({
+      nodeId:     lessonNodesTable.id,
+      nodeTitle:  lessonNodesTable.title,
+      status:     lessonNodesTable.status,
+      confidence: lessonNodesTable.teachingContentConfidence,
+      theory:     lessonNodesTable.theoryContent,
+      topicTitle: lessonTopicsTable.title,
+      lessonId:   lessonNodesTable.lessonId,
+    })
+    .from(lessonNodesTable)
+    .leftJoin(lessonTopicsTable, eq(lessonTopicsTable.id, lessonNodesTable.topicId))
+    .where(and(
+      // nodes 1002–1011 (lessons 68 & 69)
+      ...[],
+    ))
+    .orderBy(asc(lessonNodesTable.lessonId), asc(lessonNodesTable.id));
+
+  // Filter to 1002–1011
+  const nodes = rows.filter((r) => r.nodeId >= 1002 && r.nodeId <= 1011);
+
+  const STATUS_COLOR: Record<string, string> = {
+    approved:             '#10b981',
+    needs_source_content: '#f59e0b',
+    draft:                '#6b7280',
+  };
+
+  const html = `<!DOCTYPE html>
+<html lang="hy">
+<head>
+<meta charset="utf-8"/>
+<title>Lesson Nodes · Armenian</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0d0f17;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;padding:24px;min-height:100vh}
+  h1{font-size:1.1rem;font-weight:700;color:#a78bfa;margin-bottom:4px}
+  .subtitle{font-size:.75rem;color:#64748b;margin-bottom:20px}
+  .lesson{margin-bottom:28px}
+  .lesson-title{font-size:.9rem;font-weight:700;color:#94a3b8;padding:6px 12px;background:#1e2235;border-radius:8px;margin-bottom:10px;border-left:3px solid #6366f1}
+  .topic{margin-bottom:4px}
+  .topic-label{font-size:.65rem;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:.08em;margin:10px 0 4px 0;padding-left:4px}
+  .node{background:#131625;border:1px solid #1e2235;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+  .node-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .node-id{font-size:.65rem;font-family:monospace;color:#4b5563;background:#1e2235;padding:2px 6px;border-radius:4px}
+  .node-title{font-size:.95rem;font-weight:600;color:#f1f5f9;flex:1}
+  .badge{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:100px;border:1px solid;white-space:nowrap}
+  .conf{font-size:.65rem;color:#94a3b8;margin-top:2px}
+  .theory{font-size:.72rem;color:#64748b;margin-top:6px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .topic-label{display:flex;align-items:center;gap:6px}
+  .topic-label::before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;background:#6366f1;flex-shrink:0}
+</style>
+</head>
+<body>
+<h1>🗺️ Lesson MicroNodes — Armenian Script Verification</h1>
+<p class="subtitle">Nodes 1002–1011 · Lessons 68 (Հatuk Anun) & 69 (Bay) · ${new Date().toISOString()}</p>
+${(() => {
+  const byLesson = new Map<number, typeof nodes>();
+  for (const n of nodes) {
+    const arr = byLesson.get(n.lessonId!) ?? [];
+    arr.push(n);
+    byLesson.set(n.lessonId!, arr);
+  }
+  return [...byLesson.entries()].map(([lid, ns]) => {
+    const byTopic = new Map<string, typeof nodes>();
+    for (const n of ns) {
+      const key = n.topicTitle ?? '(no topic)';
+      const arr = byTopic.get(key) ?? [];
+      arr.push(n);
+      byTopic.set(key, arr);
+    }
+    return `<div class="lesson">
+<div class="lesson-title">Lesson ${lid}</div>
+${[...byTopic.entries()].map(([topic, tnodes]) => `
+<div class="topic">
+  <div class="topic-label">${topic}</div>
+  ${tnodes.map((n) => {
+    const col = STATUS_COLOR[n.status ?? 'draft'] ?? '#6b7280';
+    return `<div class="node">
+  <div class="node-header">
+    <span class="node-id">#${n.nodeId}</span>
+    <span class="node-title">${n.nodeTitle}</span>
+    <span class="badge" style="color:${col};border-color:${col}40">${n.status ?? 'draft'}</span>
+    ${n.confidence != null ? `<span class="conf">${n.confidence}%</span>` : ''}
+  </div>
+  ${n.theory ? `<div class="theory">${n.theory.replace(/</g,'&lt;').replace(/>/g,'&gt;').slice(0, 200)}…</div>` : ''}
+</div>`;
+  }).join('')}
+</div>`).join('')}
+</div>`;
+  }).join('');
+})()}
+</body></html>`;
+
+  res.set('Content-Type', 'text/html; charset=utf-8').send(html);
 });
 
 export default router;
