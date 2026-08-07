@@ -1885,6 +1885,13 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     return;
   }
 
+  // DIAGNOSTIC: log body length + head/tail so we can spot truncation/corruption
+  logger.info(
+    `[manual-map] body received — length=${rawText.length}` +
+    ` | head=${JSON.stringify(rawText.slice(0, 100))}` +
+    ` | tail=${JSON.stringify(rawText.slice(-100))}`
+  );
+
   // 1. Strip ```json / ``` fences
   let text = rawText.trim();
   if (text.startsWith("```json")) text = text.slice(7);
@@ -1930,9 +1937,14 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
   let parsedRaw: unknown;
   try {
     parsedRaw = JSON.parse(text);
-  } catch {
+  } catch (parseErr) {
+    const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    logger.warn(`[manual-map] JSON.parse failed — length=${text.length} parseErr=${parseMsg} | head=${JSON.stringify(text.slice(0, 200))}`);
     res.status(400).json({
-      error: "AI պատaskhane therri kam skhalt dzevachapov e. Pkhorel krnkin kam maserove urhakel aveli qich ej."
+      error: "AI-ի պատaskhane θerri kam skhalt dzevachapov e. Pkhorel krnkin kam maserove urhakel aveli qich ej.",
+      _debug_parseError: parseMsg,
+      _debug_textLength: text.length,
+      _debug_textHead: text.slice(0, 200),
     });
     return;
   }

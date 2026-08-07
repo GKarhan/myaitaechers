@@ -1,0 +1,51 @@
+Two real bugs found via live screenshot testing, fix both:
+
+═══════════════════════════════════════════════════
+BUG 1 — Hardcoded corrupted Armenian text in the manual-map modal
+═══════════════════════════════════════════════════
+
+This is NOT a font issue — the rest of the page (lesson list, "Դասեր
+(1)", "Հայոց Լեզու 7") renders Armenian correctly in the same font.
+The NEW modal you built has actual wrong characters hardcoded in the
+source (transliterated Latin instead of real Armenian Unicode). Find
+the exact JSX/strings for:
+- The modal title
+- The Cancel button label
+- The Analyze/submit button label
+- The parse-failure error message
+
+Replace ALL of them with copy-pasted (not hand-typed) real Armenian:
+
+Modal title: Ձեռքով քարտեզագրում — ChatGPT / Gemini
+Cancel button: Չեղարկել
+Submit button: Վերլուծել
+Error message (on JSON.parse failure): AI-ի պատասխանը թերի կամ սխալ
+ձևաչափով է։ Փորձիր կրկին կամ ուղարկիր ավելի քիչ էջ։
+
+Paste back a screenshot after the fix — do not just claim it's done.
+
+═══════════════════════════════════════════════════
+BUG 2 — Valid JSON payload triggers the parse-failure error
+═══════════════════════════════════════════════════
+
+I pasted a real, valid JSON payload (verified valid via python json.load
+before pasting) into the manual-mapping textarea and got the parse-
+failure error. This means either:
+(a) the textarea/paste is truncating or mangling the input before submit,
+(b) the request body encoding is stripping/corrupting content, or
+(c) there's an actual bug in the JSON.parse or normalizeIncomingMapping
+    logic
+
+Diagnose with real evidence:
+1. Add a temporary server-side log of the raw request body length and
+   the first/last 100 characters received by POST /lessons/:id/manual-map
+2. Try submitting the payload via curl directly (bypassing the browser
+   textarea entirely) with the exact same JSON, and confirm whether it
+   succeeds or fails the same way
+3. If curl succeeds but the browser textarea fails — the bug is in the
+   frontend (paste handling, textarea size limit, or fetch body encoding)
+4. If curl ALSO fails — paste the exact JSON.parse error message (not
+   the generic Armenian user-facing one) so we can see what's actually
+   wrong
+
+Paste the raw findings from steps 1-4, not a summary.

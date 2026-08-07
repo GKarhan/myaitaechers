@@ -157,7 +157,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       });
       const data = await r.json();
       if (!r.ok) {
-        setManualError(data?.error ?? "Սխalut' tchverets. Pkhorel krnkin.");
+        setManualError(data?.error ?? "AI-ի պատասխանը թերի կամ սխալ ձևաչափով է։ Փորձիր կրկին կամ ուղարկիր ավելի քիչ էջ։");
         return;
       }
       // Success: invalidate the same caches as auto-map, close modal
@@ -176,7 +176,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       // If there are review items, keep dialog open so teacher sees them,
       // then they close it manually.
     } catch {
-      setManualError("Կapaktsutyan khndyr. Pkhorel krnkin.");
+      setManualError("AI-ի պատասխանը թերի կամ սխալ ձևաչափով է։ Փորձիր կրկին կամ ուղարկիր ավելի քիչ էջ։");
     } finally {
       setManualPending(false);
     }
@@ -238,7 +238,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
     || mapStatus?.status === 'pending' || mapStatus?.status === 'running';
 
   const statusLabel = mapStatus?.progress
-    ?? (mapStatus?.status === 'running'  ? 'Qartezagrvm...'
+    ?? (mapStatus?.status === 'running'  ? 'Քartezeagrvm է...'
       : mapStatus?.status === 'pending' ? 'Spasuma...' : '');
 
   return (
@@ -256,19 +256,19 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         )}
       </button>
 
-      {/* ── Ձεqrqwy kartezagrvm button ──────────────────────────────── */}
+      {/* ── Ձεqrqwy քartezeagrvm button ──────────────────────────────── */}
       <button
         onClick={() => { setManualOpen(true); setManualError(null); setManualReview([]); }}
         disabled={isActive}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
-        title="Ձեռքով քարտեզագրում — ChatGPT/Gemini-ի պատaskhani vra hnd"
+        title="Ձեռքով քարտեզագրում — ChatGPT / Gemini"
       >
         ✍️ Ձեռքով
       </button>
 
       {isActive && (
         <span className="text-[10px] text-primary/70 animate-pulse max-w-[200px] truncate" title={statusLabel}>
-          {statusLabel || 'Qartezagrvm է...'}
+          {statusLabel || 'Քartezeagrvm է...'}
         </span>
       )}
       {mapError && (
@@ -280,14 +280,14 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         <DialogContent className="max-w-2xl bg-[#0f1117] border border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold text-white">
-              ✍️ Ձεqrqwy kartezagrvm — ChatGPT / Gemini
+              ✍️ Ձեռքով քարտեզագրում — ChatGPT / Gemini
             </DialogTitle>
           </DialogHeader>
 
           {/* Review items from a previous successful submit */}
           {manualReview.length > 0 && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1">
-              <p className="text-xs font-semibold text-amber-400">⚠️ Ushaderoutyan kariq unenatsox keter.</p>
+              <p className="text-xs font-semibold text-amber-400">⚠️ Ուshaderoutyan kariq unenatsox keter.</p>
               {manualReview.map((ri, i) => (
                 <p key={i} className="text-xs text-amber-300/80">• {ri.nodeTitle}</p>
               ))}
@@ -295,7 +295,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
                 onClick={() => { setManualOpen(false); setManualReview([]); }}
                 className="mt-1 text-xs text-amber-400 underline hover:text-amber-300"
               >
-                Knel (node-ery avel en)
+                Կnqel
               </button>
             </div>
           )}
@@ -307,7 +307,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
           <textarea
             className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 resize-none"
             rows={15}
-            placeholder="Փaktsru AI-i (ChatGPT/Gemini) amboghj pataskhany aystegh"
+            placeholder="Փaktsru AI-i (ChatGPT/Gemini)-ի ամboljy պatashkhany aystegh"
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
             disabled={manualPending}
@@ -319,7 +319,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
               disabled={manualPending}
               className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
             >
-              Anel
+              Չեղարկել
             </button>
             <button
               onClick={handleManualMap}
@@ -329,7 +329,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
               {manualPending && (
                 <span className="inline-block w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
               )}
-              Verluzel
+              Վերլուծել
             </button>
           </div>
         </DialogContent>
