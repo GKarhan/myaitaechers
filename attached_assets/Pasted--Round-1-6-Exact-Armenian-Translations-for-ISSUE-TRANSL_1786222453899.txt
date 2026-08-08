@@ -1,0 +1,169 @@
+# Round 1.6 — Exact Armenian Translations for ISSUE_TRANSLATIONS
+
+Instructions for Agent: replace each `[EN-PLACEHOLDER] ${issue.description}`
+stub body with the exact Armenian template below. Copy-paste verbatim —
+do not retype any Armenian character. Keep {paramName} placeholders exactly
+as shown, substituting with the actual structured param at that position
+(same params Agent already listed for each issueType). NODE/MICRONODE/
+SOURCE BLOCK/EXERCISE/DEPENDENCY keywords stay in English (they are the
+literal Contract syntax keywords the teacher sees in their pasted TEXT).
+IDs (N1, MN-1.1, B1, EX-1, D1) stay as-is.
+
+## Errors (severity: error)
+
+1. lesson-missing
+«ԴԱՍ» բաժինը բացակայում է։
+
+2. lesson-title-empty
+ԴԱՍ. վերնագիրը դատարկ է։
+
+3. lesson-subject-empty
+ԴԱՍ. առարկան դատարկ է։
+
+4. lesson-grade-invalid ({grade})
+ԴԱՍ. դասարանը պետք է լինի դրական ամբողջ թիվ (ստացվեց՝ {grade})։
+
+5. lesson-textbook-empty
+ԴԱՍ. դասագիրքը դատարկ է։
+
+6. lesson-pages-invalid ({from}, {to})
+ԴԱՍ. էջերը պետք է կազմեն վավեր միջակայք՝ սկիզբը ≤ վերջը (ստացվեց՝ {from}–{to})։
+
+7. node-id-invalid ({id})
+NODE-ի id-ն «{id}» պետք է համապատասխանի N\d+ ձևաչափին (օր.՝ N1, N2)։
+
+8. micronode-id-invalid ({id})
+MICRONODE-ի id-ն «{id}» պետք է համապատասխանի MN-\d+.\d+ ձևաչափին (օր.՝ MN-1.1)։
+
+9. sourceblock-id-invalid ({id})
+SOURCE BLOCK-ի id-ն «{id}» պետք է համապատասխանի B\d+ ձևաչափին։
+
+10. exercise-id-invalid ({id})
+EXERCISE-ի id-ն «{id}» պետք է համապատասխանի EX-\d+ ձևաչափին։
+
+11. dependency-id-invalid ({id})
+DEPENDENCY-ի id-ն «{id}» պետք է համապատասխանի D\d+ ձևաչափին։
+
+12. duplicate-node-id ({id})
+Կրկնվող NODE id. {id}։
+
+13. duplicate-micronode-id ({id})
+Կրկնվող MICRONODE id. {id}։
+
+14. duplicate-sourceblock-id ({id})
+Կրկնվող SOURCE BLOCK id. {id}։
+
+15. duplicate-exercise-id ({id})
+Կրկնվող EXERCISE id. {id}։
+
+16. duplicate-dependency-id ({id})
+Կրկնվող DEPENDENCY id. {id}։
+
+17. orphan-micronode ({id}, {parentNodeId})
+MICRONODE {id}. ծնող NODE {parentNodeId}-ը սահմանված չէ։
+
+18. mn-title-empty ({id})
+MICRONODE {id}. վերնագիրը դատարկ է։
+
+19. mn-type-invalid ({id}, {received}, {expected})
+MICRONODE {id}. microNodeType-ը «{received}» անվավեր է։ Ընդունելի են՝ {expected}։
+
+20. mn-learning-objective-empty ({id})
+MICRONODE {id}. learningObjective-ը դատարկ է։
+
+21. mn-confidence-missing ({id})
+MICRONODE {id}. confidenceScore-ը պարտադիր է։
+
+22. mn-confidence-range ({id}, {value})
+MICRONODE {id}. confidenceScore-ը ({value}) դուրս է 0–100 միջակայքից։
+
+23. mn-coverage-invalid ({id}, {received}, {expected})
+MICRONODE {id}. sourceCoverage-ը «{received}» անվավեր է։ Ընդունելի են՝ {expected}։
+
+24. mn-status-invalid ({id}, {received}, {expected})
+MICRONODE {id}. status-ը «{received}» անվավեր է։ Ընդունելի են՝ {expected}։
+
+25. sb-text-empty ({id})
+SOURCE BLOCK {id}. sourceText-ը դատարկ է։
+
+26. sb-page-missing ({id})
+SOURCE BLOCK {id}. sourcePage-ը պարտադիր է։
+
+27. sb-blocktype-invalid ({id}, {received}, {expected})
+SOURCE BLOCK {id}. blockType-ը «{received}» անվավեր է։ Ընդունելի են՝ {expected}։
+
+28. sb-status-invalid ({id}, {received}, {expected})
+SOURCE BLOCK {id}. status-ը «{received}» անվավեր է։ Ընդունելի են՝ {expected}։
+
+29. ref-sourceblock-unknown ({id}, {refId}) — both variants use the same Armenian text
+MICRONODE {id}. հղվում է գոյություն չունեցող SOURCE BLOCK-ին՝ «{refId}»։
+
+30. ref-sourcequote-mismatch ({id}, {quote}, {sbId})
+MICRONODE {id}. sourceRef-ի մեջբերումը՝ «{quote}...», չի հայտնաբերվել SOURCE BLOCK {sbId}-ի sourceText-ում։
+
+31. ref-exercise-unknown ({id}, {exId})
+MICRONODE {id}. հղվում է գոյություն չունեցող EXERCISE-ին՝ «{exId}»։
+
+32. ref-prerequisite-unknown ({id}, {prereqId})
+MICRONODE {id}. prerequisite MN «{prereqId}»-ը գոյություն չունի։
+
+33. ref-related-mn-unknown ({id}, {relId}) — used for both MICRONODE and EXERCISE entities
+{id}. relatedMicroNode «{relId}»-ը գոյություն չունի։
+
+34. ref-dep-from-unknown ({id}, {from})
+DEPENDENCY {id}. from «{from}»-ը հայտնի MICRONODE id չէ։
+
+35. ref-dep-to-unknown ({id}, {to})
+DEPENDENCY {id}. to «{to}»-ը հայտնի MICRONODE id չէ։
+
+36. unreadable-block-referenced ({id}, {sbId}) — both variants use the same Armenian text
+MICRONODE {id}. հղվում է SOURCE BLOCK {sbId}-ին, որի կարգավիճակը UNREADABLE է — արգելված է §8 կանոնով։
+
+37. ex-text-empty ({id})
+EXERCISE {id}. տեքստը դատարկ է։
+
+38. ex-type-invalid ({id}, {received})
+EXERCISE {id}. exerciseType-ը «{received}» անվավեր է։
+
+39. ex-difficulty-invalid ({id}, {received}, {expected})
+EXERCISE {id}. difficulty-ը «{received}» անվավեր է։ Ընդունելի են՝ {expected}։
+
+40. dep-type-invalid ({id}, {received})
+DEPENDENCY {id}. dependencyType-ը «{received}» պետք է լինի PREREQUISITE։
+
+## Warnings (severity: warning)
+
+41. warn-sb-needs-review-referenced ({id}, {sbId})
+MICRONODE {id}. հղվում է SOURCE BLOCK {sbId}-ին, որի կարգավիճակը NEEDS_REVIEW է — անհրաժեշտ է վերանայում մինչև հաստատումը։
+
+42. warn-sb-orphan ({id})
+SOURCE BLOCK {id}-ը որևէ MICRONODE-ի կողմից հղված չէ — չի մասնակցի ոչ մի հանգույցի կազմությանը։
+
+43. warn-ex-orphan ({id})
+EXERCISE {id}-ը որևէ MICRONODE-ի exerciseIds-ում նշված չէ — կարող է անկապ մնալ։
+
+44. warn-mn-no-sources ({id})
+MICRONODE {id}. չկան sourceBlockIds կամ sourceRef տողեր — աղբյուրը չստուգված է։
+
+45. warn-related-mn-extra ({id}, {count}, {firstId})
+MICRONODE {id}. {count} relatedMicroNode կա — միայն առաջինը ({firstId}) կպահպանվի, մնացածին անհրաժեշտ է join table (ապագա migration)։
+
+46. warn-ex-multi-related ({id}, {count}, {firstId})
+EXERCISE {id}. {count} relatedMicroNode կա — միայն առաջինը ({firstId}) կպահպանվի որպես relatedNodeId։
+
+47. sb-page-out-of-range ({id}, {page}, {pFrom}, {pTo})
+SOURCE BLOCK {id}. sourcePage-ը ({page}) դասի էջերի միջակայքից ({pFrom}–{pTo}) դուրս է։
+
+48. related-mn-deferred ({mnId}, {relatedMnId})
+MicroNode {mnId}. relatedMicroNode «{relatedMnId}»-ին անհրաժեշտ է join table — հետաձգված է ապագա migration-ի համար։
+
+49. ex-multi-related-deferred ({exId}, {relatedMnId})
+EXERCISE {exId}. լրացուցիչ relatedMicroNode «{relatedMnId}»-ին անհրաժեշտ է join table — հետաձգված է ապագա migration-ի համար։
+
+## UI chrome labels (also currently English, fix in the same pass)
+
+Error count label ("❌ {count} error(s)"):
+❌ {count} սխալ
+
+Warning count label ("⚠️ {count} warning(s)"):
+⚠️ {count} զգուշացում

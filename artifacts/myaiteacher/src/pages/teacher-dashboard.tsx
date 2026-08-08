@@ -395,7 +395,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
                 {manualPreview.warnings.length > 0 && (
                   <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
                     <p className="text-xs font-semibold text-amber-400">
-                      ⚠️ {manualPreview.warnings.length} warning(s)
+                      ⚠️ {manualPreview.warnings.length} զգուշացում
                     </p>
                     {manualPreview.warnings.map((w, i) => (
                       <p key={i} className="text-[11px] text-amber-300/80">• {translateIssue(w)}</p>
@@ -442,7 +442,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
             <>
               <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1 max-h-60 overflow-y-auto">
                 <p className="text-xs font-semibold text-destructive">
-                  ❌ {manualPreview ? `${manualPreview.errors.length} error(s)` : "Սխալ — validation error"}
+                  ❌ {manualPreview ? `${manualPreview.errors.length} սխալ` : "Սխալ — validation error"}
                 </p>
                 {manualPreview?.errors.map((e, i) => (
                   <p key={i} className="text-[11px] text-destructive/80">
