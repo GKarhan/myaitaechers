@@ -736,6 +736,80 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
   res.json({ message: "Node deleted" });
 });
 
+// DELETE /lessons/:lessonId/mapping — delete entire lesson mapping (nodes, topics, exercises, deps)
+// Lesson row itself is NOT deleted — only the mapping data.
+router.delete("/lessons/:lessonId/mapping", requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid lesson id" });
+    return;
+  }
+
+  const [lesson] = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  // Single transaction — deletion order respects FK constraints:
+  //   1. lesson_node_dependencies  (FK → lesson_nodes CASCADE — must precede nodes)
+  //   2. lesson_exercises          (FK → lesson_nodes SET NULL — delete before nodes to avoid orphan rows)
+  //   3. mapping_review_items      (FK → lessons CASCADE)
+  //   4. mapping_import_log        (FK → lessons CASCADE)
+  //   5. lesson_nodes              (FK → lesson_topics SET NULL — must precede topics)
+  //   6. lesson_topics             (FK → lessons CASCADE)
+  //
+  // lesson row is preserved — only mapping data is cleared.
+  const deleted = await db.transaction(async (tx) => {
+    const deps = await tx
+      .delete(lessonNodeDependenciesTable)
+      .where(eq(lessonNodeDependenciesTable.lessonId, lessonId))
+      .returning({ id: lessonNodeDependenciesTable.id });
+
+    const exercises = await tx
+      .delete(lessonExercisesTable)
+      .where(eq(lessonExercisesTable.lessonId, lessonId))
+      .returning({ id: lessonExercisesTable.id });
+
+    const reviewItems = await tx
+      .delete(mappingReviewItemsTable)
+      .where(eq(mappingReviewItemsTable.lessonId, lessonId))
+      .returning({ id: mappingReviewItemsTable.id });
+
+    const importLog = await tx
+      .delete(mappingImportLogTable)
+      .where(eq(mappingImportLogTable.lessonId, lessonId))
+      .returning({ id: mappingImportLogTable.id });
+
+    const nodes = await tx
+      .delete(lessonNodesTable)
+      .where(eq(lessonNodesTable.lessonId, lessonId))
+      .returning({ id: lessonNodesTable.id });
+
+    const topics = await tx
+      .delete(lessonTopicsTable)
+      .where(eq(lessonTopicsTable.lessonId, lessonId))
+      .returning({ id: lessonTopicsTable.id });
+
+    return {
+      topics:       topics.length,
+      nodes:        nodes.length,
+      exercises:    exercises.length,
+      dependencies: deps.length,
+      reviewItems:  reviewItems.length,
+      importLog:    importLog.length,
+    };
+  });
+
+  logger.info({ lessonId, deleted }, "lesson mapping deleted");
+  res.json({ message: "Mapping deleted", deleted });
+});
+
 // ── LESSON EXERCISES CRUD ─────────────────────────────────────────────────────
 
 // GET /lessons/:lessonId/exercises — list all exercises for this lesson

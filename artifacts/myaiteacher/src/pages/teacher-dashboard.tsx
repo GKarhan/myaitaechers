@@ -6,6 +6,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -568,6 +578,7 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
 // ── Lesson Nodes sub-component ────────────────────────────────────────────────
 function LessonNodesPanel({
   lessonId,
+  courseId,
   coreProblem = null,
   coreIdea = null,
   textbookAuthor = null,
@@ -575,6 +586,7 @@ function LessonNodesPanel({
   chapterTitle = null,
 }: {
   lessonId: number;
+  courseId: number;
   coreProblem?: string | null;
   coreIdea?: string | null;
   textbookAuthor?: string | null;
@@ -583,6 +595,8 @@ function LessonNodesPanel({
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen]       = useState(false);
+  const [deleteAllPending, setDeleteAllPending] = useState(false);
 
   // Node edit/add state
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
@@ -671,6 +685,32 @@ function LessonNodesPanel({
 
   const isBusy = nodesFetching || exFetching;
   const { token } = useAuth();
+
+  // ── Delete entire mapping ─────────────────────────────────────────────────
+  const handleDeleteAllMapping = useCallback(async () => {
+    setDeleteAllPending(true);
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/mapping`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token ?? ""}` },
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => null);
+        console.error("Delete mapping failed:", data?.error ?? r.status);
+        return;
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) }),
+        qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) }),
+        qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] }),
+        qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
+      ]);
+    } finally {
+      setDeleteAllPending(false);
+      setDeleteAllOpen(false);
+    }
+  }, [lessonId, courseId, token, qc]);
+
   const [collapsedTopics, setCollapsedTopics] = useState<Set<number>>(new Set());
   const toggleTopic = (id: number) => setCollapsedTopics((prev) => {
     const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
@@ -691,17 +731,73 @@ function LessonNodesPanel({
 
   return (
     <div className="border-t border-white/8">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
-      >
-        <span className="font-medium tracking-wide">
-          {(nodes.length > 0 || exercises.length > 0)
-            ? `🗺️ Քարտեզագրված դաս (${nodes.length} լուկ · ${exercises.length} վարժ.)`
-            : "🗺️ Քարտեզագրված դաս"}
-        </span>
-        <span>{open ? "▲" : "▼"}</span>
-      </button>
+      {/* ── Panel header row ──────────────────────────────────────────────── */}
+      <div className="flex items-center">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex-1 flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <span className="font-medium tracking-wide">
+            {(nodes.length > 0 || exercises.length > 0)
+              ? `🗺️ Քարտեզագրված դաս (${nodes.length} լուկ · ${exercises.length} վարժ.)`
+              : "🗺️ Քարտեզագրված դաս"}
+          </span>
+          <span>{open ? "▲" : "▼"}</span>
+        </button>
+
+        {/* ── Ջնջել ամբողջ քարտեզագրումը — only when nodes exist ──────────── */}
+        {nodes.length > 0 && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); setDeleteAllOpen(true); }}
+              disabled={deleteAllPending}
+              title="Ջնջել ամբողջ քարտեզագրումը"
+              className="px-3 py-2 text-xs text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-40 shrink-0"
+            >
+              {deleteAllPending ? (
+                <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : "🗑️"}
+            </button>
+
+            <AlertDialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
+              <AlertDialogContent className="bg-[#0f1117] border border-white/10 text-white">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-sm font-semibold text-white">
+                    Ջնջե՞լ ամբողջ քարտեզագրումը
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed space-y-2">
+                    <span className="block">
+                      Ամբողջ ընթացիկ քարտեզագրումը կջնջվի։
+                      Node-ները, MicroNode-ները, Source Block-ները, վարժությունները և դրանց կապերը կհեռացվեն։
+                    </span>
+                    <span className="block">
+                      Lesson-ը և նրա հիմնական տվյալները չեն ջնջվի։
+                    </span>
+                    <span className="block font-semibold text-destructive/80">
+                      Այս գործողությունը հնարավոր չէ հետարկել։
+                    </span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel
+                    className="bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white text-xs"
+                    disabled={deleteAllPending}
+                  >
+                    Չեղարկել
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(e) => { e.preventDefault(); handleDeleteAllMapping(); }}
+                    disabled={deleteAllPending}
+                    className="bg-destructive text-white hover:bg-destructive/90 text-xs"
+                  >
+                    {deleteAllPending ? "Ջnjvum e..." : "Ջնջել ամբողջ քարտեզագրումը"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )}
+      </div>
 
       {open && (
         <div className="px-4 pb-4 space-y-3">
@@ -3080,6 +3176,7 @@ export default function TeacherDashboard() {
                               )}
                               <LessonNodesPanel
                                 lessonId={l.id}
+                                courseId={selectedCourse!.id}
                                 coreProblem={(l as any).coreProblem ?? null}
                                 coreIdea={(l as any).coreIdea ?? null}
                                 textbookAuthor={(l as any).textbookAuthor ?? null}
