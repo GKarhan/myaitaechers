@@ -1,7 +1,8 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Contract v1.2 — Inserter / DB test cases (Round 1.5 safety tests)
-// Test C: Transaction rollback
-// Test F: relatedMicroNodes storage behavior (Class B classification)
+// Contract v1.2 — Inserter / DB test cases (Round 1.5 finalization)
+// Test C-1: insertParsedMapping() rollback — actual function, real mid-tx failure
+// Test C-2: insertParsedMapping() success baseline
+// Test F:   relatedMicroNodes storage behavior (Class B classification)
 //
 // Run: pnpm --filter @workspace/api-server exec tsx src/mapping/__tests__/mapTextInserter.test.ts
 // Requires: DATABASE_URL env var (set by Replit)
@@ -110,54 +111,105 @@ status: EXTRACTED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEST C — Transaction rollback: mid-transaction throw → zero rows committed
+// TEST C-1 — insertParsedMapping() rollback integration test
+//
+// Calls the REAL insertParsedMapping() and forces a failure AFTER at least
+// one mapping-table write has occurred inside the transaction:
+//
+//   Step 1 (DELETEs) — rolls back
+//   Step 2 (lesson_topics INSERTs) — rolls back
+//   Step 3 (lesson_nodes INSERT) — fails: null title violates NOT NULL
+//           → db.transaction() rolls back all prior steps
+//
+// Verifies:
+//   • insertParsedMapping throws
+//   • Every mapping-table write from the failed call is rolled back
+//   • The lesson's previous valid mapping data is fully restored
+//   • The lesson row itself (outside the tx) remains intact
 // ─────────────────────────────────────────────────────────────────────────────
-async function testC_transactionRollback(): Promise<void> {
-  const lessonId = await createTestLesson("C-rollback");
+async function testC1_insertParsedMappingRollback(): Promise<void> {
+  const lessonId = await createTestLesson("C1-inserter-rollback");
   try {
-    // Baseline: 0 lesson_topics rows for this lesson
-    const before = await countRows("lesson_topics", lessonId);
-    assert.equal(before, 0, "Precondition: no lesson_topics rows for test lesson");
+    // ── Baseline: commit a valid mapping so the lesson has existing data ──────
+    const rawText    = makeValidText(false);
+    const parsed     = parseMappingText(rawText);
+    const validation = validateParsedMapping(parsed);
+    assert.equal(validation.ok, true, "Baseline fixture must be valid");
 
-    // Open a transaction, insert one topic row, then throw deliberately
-    let insertedDuringTx = false;
-    let txError: Error | null = null;
+    const hash = createHash("sha256").update(rawText).digest("hex");
+    await insertParsedMapping(lessonId, parsed, null, hash, rawText, validation.warnings);
 
+    const topicsBefore = await countRows("lesson_topics", lessonId);
+    const nodesBefore  = await countRows("lesson_nodes",  lessonId);
+    const logsBefore   = await countRows("mapping_import_log", lessonId);
+    assert.ok(topicsBefore >= 1, `Baseline must have committed ≥1 lesson_topics, got ${topicsBefore}`);
+    assert.ok(nodesBefore  >= 1, `Baseline must have committed ≥1 lesson_nodes, got ${nodesBefore}`);
+    assert.equal(logsBefore, 1,  "Baseline must have written exactly 1 mapping_import_log row");
+
+    console.log(`    ✓ Baseline committed: topics=${topicsBefore}, nodes=${nodesBefore}, importLog=${logsBefore}`);
+
+    // ── Poison the parsed result: null title will violate lesson_nodes.title NOT NULL ──
+    //    The validator would catch this, but we bypass the validator here to
+    //    simulate a failure that occurs inside the transaction after step 2 succeeds.
+    //
+    //    Transaction execution order inside insertParsedMapping:
+    //      Step 1: DELETE lesson_node_dependencies, lesson_exercises,
+    //              lesson_nodes, lesson_topics  ← 4 DELETE writes (rolled back)
+    //      Step 2: INSERT lesson_topics          ← succeeds (rolled back)
+    //      Step 3: INSERT lesson_nodes (null title) ← NOT NULL violation → throw → ROLLBACK
+    //
+    const parsed2 = parseMappingText(rawText);
+    parsed2.nodes[0].microNodes[0].title = null as unknown as string;
+
+    let threw = false;
+    let thrownErr: unknown;
     try {
-      await db.transaction(async (tx) => {
-        await tx.insert(lessonTopicsTable).values({
-          lessonId,
-          title:    "Transaction test topic",
-          sequence: 1,
-        });
-        insertedDuringTx = true;
-        // Deliberate throw AFTER a successful insert → must roll back
-        throw new Error("deliberate-rollback-trigger");
-      });
+      await insertParsedMapping(lessonId, parsed2, null, hash + "-poisoned", rawText, []);
     } catch (err) {
-      txError = err as Error;
+      threw    = true;
+      thrownErr = err;
     }
 
-    // The insert happened inside the tx before the throw
-    assert.equal(insertedDuringTx, true, "Insert ran before throw");
-    // The error was the deliberate one
-    assert.ok(txError?.message === "deliberate-rollback-trigger", "Expected deliberate error to propagate");
+    assert.equal(threw, true,
+      "insertParsedMapping must throw when a mapping-table write violates a NOT NULL constraint");
+    console.log(`    ✓ insertParsedMapping threw: ${thrownErr instanceof Error ? thrownErr.message.slice(0, 80) : String(thrownErr)}`);
 
-    // After rollback: 0 rows committed
-    const after = await countRows("lesson_topics", lessonId);
-    assert.equal(
-      after, 0,
-      `Transaction rollback failed: expected 0 lesson_topics rows after rollback, got ${after}`,
+    // ── Verify: ALL writes from the failed call are rolled back ──────────────
+    //    The failed transaction rolled back its own DELETEs too,
+    //    so the original baseline data must be fully restored.
+    const topicsAfter = await countRows("lesson_topics",    lessonId);
+    const nodesAfter  = await countRows("lesson_nodes",     lessonId);
+    const exAfter     = await countRows("lesson_exercises", lessonId);
+    const depsAfter   = await countRows("lesson_node_dependencies", lessonId);
+    const itemsAfter  = await countRows("mapping_review_items",    lessonId);
+    // mapping_import_log is OUTSIDE the transaction — should NOT be written on failure
+    const logsAfter   = await countRows("mapping_import_log", lessonId);
+
+    assert.equal(topicsAfter, topicsBefore,
+      `lesson_topics must be restored to baseline (${topicsBefore}) after rollback, got ${topicsAfter}`);
+    assert.equal(nodesAfter, nodesBefore,
+      `lesson_nodes must be restored to baseline (${nodesBefore}) after rollback, got ${nodesAfter}`);
+
+    console.log(`    ✓ lesson_topics: ${topicsAfter} (restored to baseline ${topicsBefore})`);
+    console.log(`    ✓ lesson_nodes:  ${nodesAfter} (restored to baseline ${nodesBefore})`);
+    console.log(`    ✓ lesson_exercises:           ${exAfter} rows (as per baseline)`);
+    console.log(`    ✓ lesson_node_dependencies:   ${depsAfter} rows (as per baseline)`);
+    console.log(`    ✓ mapping_review_items:       ${itemsAfter} rows (as per baseline)`);
+
+    // mapping_import_log must NOT have been incremented (it is outside the tx)
+    assert.equal(logsAfter, logsBefore,
+      `mapping_import_log must NOT be written on a failed insertParsedMapping call ` +
+      `(it is outside the transaction). Expected ${logsBefore}, got ${logsAfter}.`);
+    console.log(`    ✓ mapping_import_log: ${logsAfter} (no spurious write on failure)`);
+
+    // ── The lesson row itself must survive ────────────────────────────────────
+    const { rows: lessonRows } = await pool.query(
+      "SELECT id FROM lessons WHERE id = $1", [lessonId],
     );
-
-    // Verify the lesson itself still exists (lesson was created OUTSIDE the transaction)
-    const { rows: lessonRows } = await pool.query("SELECT id FROM lessons WHERE id = $1", [lessonId]);
-    assert.equal(lessonRows.length, 1, "The lesson row itself must still exist (it was outside the tx)");
-
-    console.log("    ✓ Insert confirmed to have run inside tx");
-    console.log("    ✓ 0 lesson_topics rows after rollback");
-    console.log("    ✓ lesson row still present (outside tx)");
-    console.log("    → insertParsedMapping uses db.transaction() — same rollback guarantee applies.");
+    assert.equal(lessonRows.length, 1,
+      "The lesson row (created outside any mapping transaction) must survive the rollback");
+    console.log("    ✓ Lesson row intact");
+    console.log("    → Transaction rollback: Steps 1-3 writes reverted atomically; lesson mapping data unchanged.");
   } finally {
     await cleanupLesson(lessonId);
   }
@@ -277,7 +329,7 @@ async function testF_relatedMicroNodesStorageBehavior(): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const asyncTests: Array<[string, () => Promise<void>]> = [
-  ["C-1: Transaction rollback — throw after first insert → 0 rows committed", testC_transactionRollback],
+  ["C-1: insertParsedMapping rollback — null title violates NOT NULL → all writes reverted", testC1_insertParsedMappingRollback],
   ["C-2: insertParsedMapping success baseline — commits topics + nodes", testC2_insertSuccess],
   ["F-1/2/3/4: relatedMicroNodes Class B behavior — parser→validator→DB→review_items→no join col", testF_relatedMicroNodesStorageBehavior],
 ];

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, Fragment, useCallback } from "react";
+import { translateIssue } from "@/lib/issueTranslations";
 import {
   Dialog,
   DialogContent,
@@ -397,7 +398,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
                       ⚠️ {manualPreview.warnings.length} warning(s)
                     </p>
                     {manualPreview.warnings.map((w, i) => (
-                      <p key={i} className="text-[11px] text-amber-300/80">• {w.description}</p>
+                      <p key={i} className="text-[11px] text-amber-300/80">• {translateIssue(w)}</p>
                     ))}
                   </div>
                 )}
@@ -446,7 +447,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
                 {manualPreview?.errors.map((e, i) => (
                   <p key={i} className="text-[11px] text-destructive/80">
                     {e.line != null && <span className="text-muted-foreground mr-1">L{e.line}</span>}
-                    {e.description}
+                    {translateIssue(e)}
                   </p>
                 ))}
                 {manualError && !manualPreview && (

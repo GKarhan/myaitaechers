@@ -1,0 +1,250 @@
+ROUND 1.5 FINALIZATION — TRANSLATION ARCHITECTURE + TRANSACTION TEST
+
+Do NOT start Round 2.
+Do NOT implement the relatedMicroNodes join table.
+Do NOT write or compose any Armenian user-facing text in this round.
+
+The goal of this round is to close the remaining technical gaps without
+introducing another Armenian-text generation/corruption round.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ARMENIAN USER-FACING ERRORS — ARCHITECTURE ONLY
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Do NOT write, translate, paraphrase, or compose any Armenian text yourself
+in this round.
+
+Instead:
+
+A. Design and implement a dedicated translation/mapping layer at the
+UI/API boundary.
+
+Use a lookup table keyed by the exact internal `issueType`.
+
+Each entry must be a template FUNCTION that accepts the structured
+parameters required by that error, such as:
+
+* entity ID
+* line number
+* page number
+* field name
+* received value
+* expected values
+* referenced ID
+* source block ID
+* dependency type
+* etc.
+
+B. For this round, every template must contain only the CURRENT ENGLISH
+description as an explicit placeholder.
+
+Prefix every placeholder with:
+
+[EN-PLACEHOLDER]
+
+This makes untranslated strings immediately detectable.
+
+C. Keep all internal validator issue codes / issueType values unchanged.
+
+Do NOT rename them.
+
+D. Produce a COMPLETE inventory of every issueType that can currently be
+emitted by the validator.
+
+For EVERY issueType report:
+
+* exact issueType constant/value
+* validator file
+* validator location
+* exact structured parameters available
+* current English description/template
+* whether it is ERROR or WARNING
+* whether it can contain dynamic values
+
+Do not omit rarely triggered or edge-case issueTypes.
+
+E. Verify that the frontend no longer renders:
+
+`e.description`
+
+directly.
+
+The rendering path must be:
+
+structured error
+→ issueType
+→ translation lookup
+→ template(params)
+→ user-facing description
+
+For this round the final text will still be
+`[EN-PLACEHOLDER] ...`
+
+because the Armenian strings will be supplied manually in the next round.
+
+F. Add a test that proves every currently emitted issueType has a
+translation-layer entry.
+
+If a validator issueType has no mapping entry, the test must fail.
+
+G. Add a test that proves the frontend/API presentation path uses the
+translation layer rather than the raw validator description.
+
+Do NOT perform Armenian-language verification yet.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. PRESERVE STRUCTURED ERROR DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Do not reduce errors to plain strings.
+
+The structured error object must retain, where applicable:
+
+* issueType
+* severity
+* entity ID
+* line
+* field
+* received value
+* expected values
+* source block ID
+* referenced ID
+* other dynamic parameters required by the translation template
+
+The translation layer must consume these structured values.
+
+Do NOT destroy structured information merely to create a display string.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. TRANSACTION TEST — TEST THE REAL INSERTER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Strengthen the existing rollback test.
+
+Do NOT merely test `db.transaction()` in isolation again.
+
+Add one integration-level test that actually calls:
+
+`insertParsedMapping()`
+
+and deliberately causes a failure AFTER at least one mapping-table write
+has occurred inside its transaction.
+
+Verify:
+
+* `insertParsedMapping()` fails/throws;
+* every mapping-table write made by that invocation is rolled back;
+* no partial lesson mapping remains;
+* lesson row itself remains intact if it existed before the transaction;
+* review items/import-log writes, if reached, are also rolled back.
+
+Do not change the transaction architecture just to make the test pass.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. RELATEDMICRONODES — NO JOIN TABLE YET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Do NOT implement a join table in this round.
+
+Keep the currently verified behavior:
+
+relatedMicroNodes
+→ preserved in mapping_review_items
+→ Class B
+→ not queryable as an MN↔MN relationship.
+
+Keep this as an explicit OPEN ARCHITECTURAL DECISION.
+
+Do not silently change this behavior.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. SCREENSHOT INFRASTRUCTURE — TECHNICAL VERIFICATION ONLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Capture fresh screenshots from the live authenticated application after
+the translation-layer architecture is implemented.
+
+Capture:
+
+A. Input state
+
+B. Invalid preview state
+
+C. Valid preview state
+
+The screenshots should prove:
+
+* the new translation lookup path is active;
+* errors/warnings render through the lookup layer;
+* no direct `e.description` rendering remains.
+
+IMPORTANT:
+
+Do NOT require or evaluate Armenian wording in this round.
+
+The visible text is expected to contain `[EN-PLACEHOLDER]`.
+
+The Armenian-language screenshot verification belongs to Round 1.6,
+after exact Armenian strings are manually supplied.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. TEST SUITE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Run:
+
+`pnpm --filter @workspace/api-server run test:all`
+
+Return the COMPLETE terminal output.
+
+Report:
+
+* total tests
+* passed
+* failed
+* skipped
+* newly added tests
+* exact files changed
+
+All previously passing tests must remain passing.
+
+In addition, explicitly verify that the following remain covered:
+
+* parser
+* validator
+* UNREADABLE → ERROR
+* dryRun → zero DB writes
+* backend ERROR → commit blocked
+* format validation
+* transaction rollback
+* relatedMicroNodes Class B behavior
+* translation-layer completeness
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. FINAL STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Return:
+
+ROUND 1.5 STATUS:
+READY / NOT READY
+
+Do NOT say READY unless:
+
+1. Every validator issueType has a translation-layer mapping.
+2. The frontend/API presentation path uses that mapping.
+3. Structured error data remains intact.
+4. Actual `insertParsedMapping()` rollback is tested.
+5. All previous safety tests still pass.
+6. No relatedMicroNodes architecture has been silently changed.
+
+Do NOT start Round 2.
+
+Do NOT begin real textbook mapping.
+
+Do NOT write Armenian translations yet.
+
+At the end, provide the COMPLETE issueType inventory because that
+inventory will be used to manually supply the exact Armenian strings
+in Round 1.6.
