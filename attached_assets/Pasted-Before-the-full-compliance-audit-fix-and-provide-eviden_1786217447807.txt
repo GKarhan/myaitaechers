@@ -1,0 +1,48 @@
+Before the full compliance audit, fix and provide evidence for these
+5 items first. No other code changes.
+
+1. FORMAT FIELD — MUST FIX NOW
+Replace the content-based auto-detection ("starts with LESSON" → text;
+else → legacy JSON) with an EXPLICIT required `format` field, exactly
+as Contract v1.2 Section 2 mandates:
+- body.format === "json" → legacy handler
+- body.format === "text" → new handler
+- format missing/invalid → 400 error
+The new frontend must always send format: "text" explicitly. No
+content-sniffing anywhere in the routing logic.
+
+2. relatedMicroNodes (MicroNode-to-MicroNode) — PERSISTENCE EVIDENCE
+This is DISTINCT from the already-approved Exercise relatedMicroNodes
+compromise. Trace one concrete example end-to-end:
+  MN-1.1 has relatedMicroNodes: [MN-1.2, MN-2.1]
+Show exactly what happens at each stage: parser → validator →
+normalized object → inserter → final DB state. Classify the outcome:
+A. Fully preserved in DB (queryable relationship)
+B. Preserved only in import/audit metadata (not queryable)
+C. Preserved only temporarily in memory during the request
+D. Data loss
+Do not propose a fix yet — just show the evidence and classification.
+
+3. RAW TEST OUTPUT
+Paste the actual terminal output of the test run (not "22 pass").
+Also list what each of the 22 tests actually covers — specifically
+confirm whether these are covered: parser correctness, validator
+correctness, UNREADABLE sourceBlock → ERROR, dry-run zero-write,
+transaction rollback, backend rejects commit when ERROR present,
+format field validation, relatedMicroNodes behavior.
+
+4. REAL SCREENSHOTS — ALL 3 STATES
+   a. Input state (textarea + Ստուգել button)
+   b. Valid preview state (counts, warnings, Ներմուծել button ENABLED)
+   c. Invalid preview state (errors shown, Ներմուծել button DISABLED)
+All from the live authenticated app, not mockups.
+
+5. CONFIRM RE-VALIDATION PROOF
+Show the exact code path for confirm (dryRun=false). Confirm it
+re-parses and re-validates the ORIGINAL TEXT server-side — not trusting
+any client-sent preview/summary data. If the client could theoretically
+send tampered preview data with the original text, prove the backend
+would still catch it via re-validation, not by trusting the preview.
+
+Report back with evidence for all 5 before we proceed to the full
+compliance audit.

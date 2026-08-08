@@ -2219,15 +2219,15 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     return;
   }
 
-  // Determine format: explicit "text"/"json" or auto-detect for backward compat
-  const effectiveFormat = format === "text" ? "text"
-    : format === "json" ? "json"
-    : rawText.trim().startsWith("LESSON") ? "text"
-    : "json";
+  // format is REQUIRED — no content-sniffing (Contract v1.2 §2)
+  if (format !== "text" && format !== "json") {
+    res.status(400).json({ error: 'format is required: must be "text" or "json"' });
+    return;
+  }
 
-  logger.info(`[manual-map] format=${effectiveFormat} dryRun=${dryRun ?? false} length=${rawText.length}`);
+  logger.info(`[manual-map] format=${format} dryRun=${dryRun ?? false} length=${rawText.length}`);
 
-  if (effectiveFormat === "text") {
+  if (format === "text") {
     await handleTextImport(req, res, lessonId, rawText, dryRun === true);
     return;
   }
