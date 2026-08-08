@@ -58,8 +58,8 @@ router.get("/student/schedule", requireAuth, async (req: AuthRequest, res) => {
     })
     .from(scheduleTable)
     .innerJoin(classesTable, eq(scheduleTable.classId, classesTable.id))
-    .innerJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
-    .innerJoin(usersTable, eq(teachersTable.userId, usersTable.id))
+    .leftJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
+    .leftJoin(usersTable, eq(teachersTable.userId, usersTable.id))
     .where(inArray(scheduleTable.classId, classIds));
 
   res.json(rows);
@@ -125,8 +125,8 @@ router.get("/student/today-lessons", requireAuth, async (req: AuthRequest, res) 
     })
     .from(scheduleTable)
     .innerJoin(classesTable, eq(scheduleTable.classId, classesTable.id))
-    .innerJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
-    .innerJoin(usersTable, eq(teachersTable.userId, usersTable.id))
+    .leftJoin(teachersTable, eq(classesTable.teacherId, teachersTable.id))
+    .leftJoin(usersTable, eq(teachersTable.userId, usersTable.id))
     .where(inArray(scheduleTable.classId, classIds));
 
   const todayEntries = allSchedule.filter(
