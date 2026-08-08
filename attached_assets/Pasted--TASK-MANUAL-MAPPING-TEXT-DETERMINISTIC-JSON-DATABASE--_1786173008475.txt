@@ -1,0 +1,946 @@
+# ՊԱՐՏԱԴԻՐ TASK — MANUAL MAPPING TEXT → DETERMINISTIC JSON → DATABASE
+
+Դու աշխատում ես արդեն գոյություն ունեցող կրթական հարթակի վրա։
+
+Հարթակում կա դասագրքերի քարտեզագրման համակարգ՝
+
+* 🗺️ Ավտոմատ քարտեզագրում
+* ✍️ Ձեռքով քարտեզագրում
+
+Այս task-ի նպատակն է **փոխել միայն ✍️ Ձեռքով քարտեզագրման ներմուծման մեխանիզմը**։
+
+## ԳԼԽԱՎՈՐ ԳԱՂԱՓԱՐԸ
+
+Ուսուցիչը ցանկացած AI chat-ում օգտագործում է մեր առանձին հաստատված KNOWLEDGE BASE MAPPER prompt-ը։
+
+AI chat-ը դասագրքի էջերից ստեղծում է **ստանդարտ TEXT քարտեզագրում**։
+
+Ուսուցիչը այդ TEXT-ը copy-paste է անում այս հարթակի.
+
+**✍️ Ձեռքով քարտեզագրում**
+
+դաշտում։
+
+Հարթակը պետք է այդ TEXT-ը վերածի գործող համակարգի JSON/object structure-ի և պահի database-ում։
+
+Վերջնական flow-ը պետք է լինի.
+
+```text
+AI CHAT
+   ↓
+STANDARD MAPPING TEXT
+   ↓
+✍️ MANUAL MAPPING INPUT
+   ↓
+DETERMINISTIC CODE PARSER
+   ↓
+DETERMINISTIC VALIDATOR
+   ↓
+STRUCTURED OBJECT / JSON
+   ↓
+PREVIEW
+   ↓
+TEACHER CONFIRMATION
+   ↓
+DATABASE TRANSACTION
+   ↓
+KNOWLEDGE BASE
+   ↓
+AI TEACHER
+```
+
+## ՇԱՏ ԿԱՐԵՎՈՐ
+
+Այս flow-ի ընթացքում **ՈՉ ՄԻ AI ՉՊԵՏՔ Է ՄԱՍՆԱԿՑԻ**։
+
+Parser-ը և Validator-ը պետք է լինեն 100% deterministic code։
+
+Չօգտագործել.
+
+* OpenAI
+* OpenRouter
+* callAI
+* callAIStructured
+* LLM
+* AI parsing
+* AI correction
+* AI validation
+* AI-generated fallback
+* որևէ արտաքին AI API
+
+Նույն input TEXT-ը պետք է ամեն անգամ տա նույն structured output-ը։
+
+---
+
+# ՄԱՍ 1 — ՍԿԶԲՈՒՄ ՄԻԱՅՆ ՈՒՍՈՒՄՆԱՍԻՐԻՐ CODEBASE-Ը
+
+Մինչև որևէ code փոփոխելը՝ գտիր և ուսումնասիրիր ամբողջ գործող manual mapping flow-ը։
+
+Գտիր.
+
+1. Teacher Dashboard-ի manual mapping UI-ն
+2. `✍️ Ձեռքով քարտեզագրում` կոճակը
+3. modal/form-ը
+4. textarea/input-ը
+5. submit handler-ը
+6. frontend API request-ը
+7. backend endpoint-ը
+8. գործող mapping parser-ը, եթե կա
+9. գործող validation-ը
+10. DB insert/update logic-ը
+11. համապատասխան DB tables-ը
+12. mapping-ի TypeScript types/schema-ները
+13. Auto Mapping-ի flow-ը
+
+Հատկապես գտիր այն իրական code-ը, որը հիմա ստեղծում է.
+
+* lessons
+* knowledge nodes
+* lesson nodes
+* exercises
+* dependencies
+* mapping review items
+* source blocks
+
+### ՊԱՐՏԱԴԻՐ
+
+Մի ստեղծիր նոր database schema, եթե գործող schema-ն արդեն կարող է պահել այս տվյալները։
+
+Օգտագործիր գործող architecture-ը և existing DB tables-ը։
+
+Եթե adapter է պետք՝ ստեղծիր adapter։
+
+---
+
+# ՄԱՍ 2 — ՉՓՈԽԵԼ AUTO MAPPING-Ը
+
+🗺️ Ավտոմատ քարտեզագրումը չպետք է կոտրվի։
+
+Այս task-ը վերաբերում է միայն.
+
+**✍️ Ձեռքով քարտեզագրում**
+
+flow-ին։
+
+Մի փոխիր Auto Mapping-ի AI logic-ը, եթե դա անհրաժեշտ չէ այս task-ի համար։
+
+---
+
+# ՄԱՍ 3 — MANUAL MAPPING INPUT
+
+Գործող manual mapping modal-ը պետք է ընդունի plain TEXT mapping։
+
+Ուսուցիչը պետք է կարողանա copy-paste անել երկար քարտեզագրում։
+
+Չպետք է պահանջվի, որ ուսուցիչը ձեռքով JSON գրի։
+
+Input-ը plain text է։
+
+Օրինակային կառուցվածքը կարող է լինել.
+
+```text
+ԴԱՍ
+Դասագիրք: Հայոց Լեզու 7
+Հեղինակ: Փ. Մեյթիխանյան
+Դասարան: 7
+Առարկա: Հայոց լեզու
+Թեմա: Ձևաբանություն
+Դասի վերնագիր: Գոյական անուն
+Բաժին / §: §1.1
+Էջեր: 22–24
+
+NODE 1
+Վերնագիր: Գոյական անվան ներածություն
+
+MICRONODE 1.1
+Վերնագիր: Գոյականի սահմանումը
+Տեսակ: KNOWLEDGE
+Նպատակ: Սովորողը կարող է սահմանել գոյական անունը։
+...
+```
+
+### ՇԱՏ ԿԱՐԵՎՈՐ
+
+Վերևի օրինակը միայն structural example է։
+
+Parser-ը չպետք է սահմանափակվի այդ կոնկրետ դասով։
+
+Այն պետք է աշխատի մեր հաստատված ընդհանուր mapping TEXT FORMAT-ի համար։
+
+---
+
+# ՄԱՍ 4 — ՍՏԵՂԾԵԼ ՄԵԿ ՊԱՇՏՈՆԱԿԱՆ TEXT FORMAT
+
+Parser-ի համար սահմանիր **մեկ canonical TEXT FORMAT**։
+
+Format-ը պետք է ունենա հստակ section markers և field names։
+
+Օրինակ.
+
+```text
+LESSON
+Դասագիրք: ...
+Հեղինակ: ...
+Դասարան: ...
+Առարկա: ...
+Թեմա: ...
+Դասի վերնագիր: ...
+Բաժին / §: ...
+Էջեր: ...
+
+NODE N1
+Վերնագիր: ...
+
+MICRONODE MN-1.1
+Վերնագիր: ...
+Տեսակ: ...
+Նպատակ: ...
+Աղբյուրներ: ...
+Վարժություններ: ...
+Նախապայմաններ: ...
+Կապեր: ...
+Վստահություն: ...
+Կարգավիճակ: ...
+
+SOURCE BLOCK B1
+Տեսակ: ...
+Կարգավիճակ: ...
+Էջ: ...
+Պարբերություն: ...
+Դիրք: ...
+Տեքստ: ...
+
+EXERCISE EX-1
+Էջ: ...
+Հերթականություն: ...
+Տեքստ: ...
+Տեսակ: ...
+Բարդություն: ...
+Կոգնիտիվ բեռ: ...
+Վստահություն: ...
+Կապված MicroNode-ներ: ...
+
+DEPENDENCY
+From: ...
+To: ...
+Տեսակ: ...
+Պատճառ: ...
+Վստահություն: ...
+```
+
+### ՊԱՐՏԱԴԻՐ
+
+Canonical format-ը պետք է լինի deterministic և machine-parseable։
+
+Չօգտագործել fuzzy natural-language parsing։
+
+Չփորձել «հասկանալ» ինչ է նկատի ունեցել ուսուցիչը։
+
+Եթե format-ը սխալ է՝ ցույց տալ error։
+
+---
+
+# ՄԱՍ 5 — PARSER
+
+Ստեղծիր առանձին deterministic parser։
+
+Օրինակ.
+
+```text
+mapTextParser.ts
+```
+
+կամ repository-ի architecture-ին համապատասխան անվանում։
+
+Parser-ի հիմնական API-ն պետք է մոտավորապես լինի.
+
+```ts
+parseMappingText(text: string): ParsedMappingResult
+```
+
+Parser-ը պետք է կատարի միայն syntax parsing։
+
+Այն պետք է վերածի TEXT-ը structured object-ի։
+
+Parser-ը չպետք է.
+
+* լրացնի բաց թողնված տվյալներ
+* գուշակի
+* վերաձևակերպի բովանդակությունը
+* ստեղծի նոր MicroNode
+* ստեղծի նոր exercise
+* ստեղծի source block
+* փոխի sourceQuote
+* փոխի textbook text-ը
+* օգտագործի AI
+
+---
+
+# ՄԱՍ 6 — JSON STRUCTURE
+
+Parser-ի output-ը պետք է համապատասխանի այս hierarchy-ին.
+
+```text
+lesson
+nodes[]
+    microNodes[]
+sourceBlocks[]
+exercises[]
+dependencies[]
+fidelityAudit
+coverageAudit
+```
+
+MicroNode-ը պետք է լինի իր Node-ի ներսում։
+
+Չստեղծել.
+
+```text
+microNodes[]
+```
+
+որպես առանձին top-level array։
+
+---
+
+# ՄԱՍ 7 — ID RULES
+
+Թույլատրելի ID format-ները.
+
+```text
+Nodes:
+N1
+N2
+N3
+
+MicroNodes:
+MN-1.1
+MN-1.2
+MN-2.1
+
+Source Blocks:
+B1
+B2
+B3
+
+Exercises:
+EX-1
+EX-2
+EX-3
+```
+
+Parser/validator-ը պետք է ստուգի.
+
+* duplicate IDs
+* malformed IDs
+* missing IDs
+* invalid references
+
+Եթե `MN-2.1` կա՝ այն պետք է գտնվի `N2`-ի ներսում։
+
+---
+
+# ՄԱՍ 8 — REFERENCE INTEGRITY
+
+Ստուգել բոլոր references-ը։
+
+Օրինակ.
+
+```text
+sourceBlockIds
+exerciseIds
+prerequisites
+relatedMicroNodes
+dependencies.from
+dependencies.to
+```
+
+Յուրաքանչյուր ID պետք է գոյություն ունենա։
+
+Եթե կա.
+
+```text
+sourceBlockIds: B99
+```
+
+իսկ B99 գոյություն չունի՝
+
+```text
+ERROR: Unknown sourceBlockId B99
+```
+
+Չստեղծել B99։
+
+---
+
+# ՄԱՍ 9 — SOURCE REFERENCES
+
+Յուրաքանչյուր sourceReference պետք է ունենա.
+
+```text
+sourceBlockId
+sourcePage
+sourceQuote
+```
+
+Validator-ը պետք է ստուգի, որ.
+
+```text
+sourceReference.sourceBlockId
+```
+
+գոյություն ունի։
+
+Եվ.
+
+```text
+sourceQuote
+```
+
+պետք է լինի համապատասխան sourceBlock-ի `sourceText`-ի իրական substring։
+
+Եթե quote-ը sourceText-ի մեջ չկա՝ validation error։
+
+Չուղղել quote-ը AI-ով կամ fuzzy matching-ով։
+
+---
+
+# ՄԱՍ 10 — ENUM VALIDATION
+
+Ստուգել բոլոր թույլատրելի enum արժեքները։
+
+MicroNode type.
+
+```text
+KNOWLEDGE
+SKILL
+KNOWLEDGE_AND_SKILL
+```
+
+Source coverage.
+
+```text
+FULL
+PARTIAL
+UNCERTAIN
+```
+
+Difficulty.
+
+```text
+EASY
+MEDIUM
+HARD
+```
+
+Exercise types.
+
+```text
+RECOGNITION
+RECALL
+CLASSIFICATION
+COMPARISON
+APPLICATION
+ERROR_DETECTION
+TRANSFORMATION
+WRITING
+SPEAKING
+READING
+PROJECT
+OTHER
+```
+
+Եթե արժեքը թույլատրելի չէ՝ reject։
+
+Չփոխել ավտոմատ։
+
+---
+
+# ՄԱՍ 11 — CONFIDENCE VALIDATION
+
+Բոլոր confidence values-ը պետք է լինեն.
+
+```text
+0–100
+```
+
+Եթե confidence = 120 → ERROR։
+
+Եթե confidence = -5 → ERROR։
+
+Չnormalize անել։
+
+---
+
+# ՄԱՍ 12 — COVERAGE
+
+`coverageAudit`-ը պետք է հաշվարկվի code-ով։
+
+Հաշվել.
+
+```text
+totalSourceBlocks
+mappedSourceBlocks
+unmappedSourceBlocks
+totalExercises
+mappedExercises
+unmappedExercises
+sourceCoveragePercent
+exerciseCoveragePercent
+```
+
+AI-ի կողմից փոխանցված coverage numbers-ին մի վստահիր։
+
+Եթե pasted text-ում կա coverageAudit՝ համեմատիր calculated value-ի հետ։
+
+Mismatch-ը ցույց տուր որպես validation warning/error ըստ architecture-ի։
+
+---
+
+# ՄԱՍ 13 — VALIDATION BEFORE DATABASE
+
+Սա պարտադիր է։
+
+Flow-ը պետք է լինի.
+
+```text
+TEXT
+ ↓
+PARSE
+ ↓
+VALIDATE EVERYTHING
+ ↓
+ERROR?
+ ├── YES → STOP
+ │         NO DATABASE WRITE
+ │
+ └── NO
+      ↓
+    PREVIEW
+      ↓
+    TEACHER CONFIRM
+      ↓
+    DB TRANSACTION
+```
+
+### ՈՉ ՄԻ ԴԵՊՔՈՒՄ
+
+Validation failure-ի դեպքում partial database insert չպետք է լինի։
+
+---
+
+# ՄԱՍ 14 — DATABASE TRANSACTION
+
+Միայն validation success-ից և teacher confirmation-ից հետո։
+
+Database write-ը կատարել transaction-ով։
+
+Եթե transaction-ի ընթացքում որևէ insert/update ձախողվեց՝ rollback։
+
+Չպետք է ստացվի.
+
+```text
+Lesson inserted
+Node 1 inserted
+Node 2 inserted
+Exercise 1 failed
+```
+
+և մնա կիսատ data։
+
+Կամ ամբողջ mapping-ը մտնում է, կամ ոչինչ չի մտնում։
+
+---
+
+# ՄԱՍ 15 — PREVIEW
+
+Validation success-ից հետո ցույց տալ preview։
+
+Օրինակ.
+
+```text
+Քարտեզագրումը պատրաստ է ներմուծման։
+
+Դաս՝ Գոյական անուն
+Էջեր՝ 22–24
+
+Nodes՝ 3
+MicroNodes՝ 6
+Source Blocks՝ 16
+Exercises՝ 7
+Dependencies՝ 2
+
+Source Coverage՝ 100%
+Exercise Coverage՝ 100%
+
+[Չեղարկել]
+[Ներմուծել բազա]
+```
+
+Preview-ի թվերը պետք է հաշվարկվեն parsed object-ից։
+
+---
+
+# ՄԱՍ 16 — ERROR UI
+
+Սխալների դեպքում ցույց տալ կոնկրետ errors։
+
+Օրինակ.
+
+```text
+❌ Քարտեզագրումը չի կարող ներմուծվել։
+
+Գտնվել է 3 սխալ.
+
+1. MN-2.3 — MicroNode-ը սխալ Node-ի ներսում է։
+2. B17 — sourceBlock-ը գոյություն չունի։
+3. EX-8 — difficulty-ի արժեքը թույլատրելի չէ։
+```
+
+Յուրաքանչյուր error-ի համար, հնարավորության դեպքում, ցույց տալ.
+
+* entity ID
+* field
+* error type
+* line number
+* կարճ բացատրություն
+
+Չցուցադրել միայն ընդհանուր.
+
+```text
+Invalid mapping
+```
+
+---
+
+# ՄԱՍ 17 — LINE NUMBERS
+
+Parser-ը պետք է հնարավորության դեպքում պահի input line number-ը։
+
+Այսպես error-ը կարող է լինել.
+
+```text
+Line 42:
+Unknown sourceBlockId: B99
+```
+
+Սա շատ կարևոր է ուսուցչի համար, որպեսզի կարողանա արագ ուղղել TEXT-ը AI chat-ում կամ input-ում։
+
+---
+
+# ՄԱՍ 18 — STRICT NO GUESSING
+
+Parser-ը չպետք է փորձի «փրկել» սխալ input-ը։
+
+Օրինակ եթե input-ում գրված է.
+
+```text
+Վստահություն: բարձր
+```
+
+իսկ սպասվում է integer՝
+
+չփորձել դարձնել 90։
+
+Պետք է տալ error։
+
+Եթե բացակայում է required field՝ error։
+
+Եթե section marker-ը սխալ է՝ error։
+
+Եթե ID-ը սխալ է՝ error։
+
+Եթե reference-ը գոյություն չունի՝ error։
+
+Մեր սկզբունքն է.
+
+**FAIL LOUD, NEVER GUESS.**
+
+---
+
+# ՄԱՍ 19 — BACKWARD COMPATIBILITY
+
+Ստուգիր ներկայիս manual mapping-ի input format-ը։
+
+Եթե գործող համակարգը հիմա ընդունում է JSON, մի՛ ջնջիր այդ հնարավորությունը առանց անհրաժեշտության։
+
+Եթե հնարավոր է անվտանգ պահպանել legacy JSON import-ը, պահիր այն։
+
+Բայց նոր հիմնական workflow-ը պետք է լինի.
+
+```text
+TEXT → PARSER → VALIDATOR → JSON OBJECT → DB
+```
+
+---
+
+# ՄԱՍ 20 — UI LABEL
+
+Գործող կոճակը պետք է շարունակի հասանելի լինել։
+
+Կարելի է փոխել label-ը, օրինակ.
+
+```text
+✍️ Ներմուծել քարտեզագրում
+```
+
+կամ.
+
+```text
+✍️ Ձեռքով / Text Import
+```
+
+Բայց functionality-ն պետք է մնա manual mapping-ի նույն տեղում։
+
+---
+
+# ՄԱՍ 21 — SECURITY
+
+Pasted text-ը երբեք չուղարկել external API։
+
+Parser-ը պետք է աշխատի server-side deterministic code-ով։
+
+Validate արա input length-ը, որպեսզի չափազանց մեծ payload-ները չխափանեն server-ը։
+
+Օգտագործիր existing authentication/authorization middleware-ը։
+
+Teacher-ը պետք է կարողանա import անել միայն այն lesson-ը, որի նկատմամբ ունի համապատասխան permission։
+
+---
+
+# ՄԱՍ 22 — TESTS
+
+Գրել tests առնվազն այս դեպքերի համար։
+
+### TEST 1
+
+Valid mapping → SUCCESS
+
+### TEST 2
+
+Duplicate B3 → ERROR
+
+### TEST 3
+
+Unknown B99 reference → ERROR
+
+### TEST 4
+
+Unknown MN-9.1 reference → ERROR
+
+### TEST 5
+
+Invalid difficulty → ERROR
+
+### TEST 6
+
+Confidence 150 → ERROR
+
+### TEST 7
+
+Malformed MicroNode ID → ERROR
+
+### TEST 8
+
+sourceQuote-ը sourceText-ում չկա → ERROR
+
+### TEST 9
+
+Missing required field → ERROR
+
+### TEST 10
+
+Coverage mismatch → WARNING/ERROR ըստ սահմանված policy-ի
+
+### TEST 11
+
+Validation failure → ZERO DB WRITES
+
+### TEST 12
+
+Same TEXT twice → identical parsed result
+
+### TEST 13
+
+Successful transaction → all expected DB records exist
+
+### TEST 14
+
+Transaction failure → rollback
+
+---
+
+# ՄԱՍ 23 — CODE QUALITY
+
+Parser-ը և validator-ը պահիր առանձին modules-ում։
+
+Առաջարկվող architecture.
+
+```text
+mapping/
+  mapTextParser.ts
+  mapTextValidator.ts
+  mapTextTypes.ts
+  mapTextErrors.ts
+```
+
+Եթե repository-ի existing architecture-ն այլ է՝ օգտագործիր դրա համապատասխան structure-ը։
+
+Մի՛ ստեղծիր duplicate schemas։
+
+Օգտագործիր existing types/schemas, որտեղ հնարավոր է։
+
+---
+
+# ՄԱՍ 24 — ԱՐԴՅՈՒՆՔԸ ՊԵՏՔ Է ՀԱՄԱՏԵՂԵԼ ԳՈՐԾՈՂ MAPPING MODEL-Ի ՀԵՏ
+
+Ամենակարևոր պահանջներից մեկը.
+
+**TEXT mapping-ը և platform-ում ձեռքով ստեղծվող mapping-ը պետք է ունենան նույն վերջնական բովանդակային structure-ը։**
+
+Այսինքն՝
+
+```text
+AI-generated mapping TEXT
+        ↓
+deterministic parser
+        ↓
+same structured mapping
+        ↓
+same DB tables
+        ↓
+same Knowledge Base
+```
+
+Չպետք է լինի.
+
+```text
+Auto Mapping → մեկ schema
+Manual Mapping → ուրիշ schema
+```
+
+Manual Text Import-ը պետք է օգտագործի նույն վերջնական mapping model-ը, որը օգտագործում է platform-ի մնացած համակարգը։
+
+---
+
+# ՄԱՍ 25 — ՉՓՈԽԵԼ ԿՐԹԱԿԱՆ ԲՈՎԱՆԴԱԿՈՒԹՅՈՒՆԸ
+
+Parser-ը չի կարող որոշել.
+
+* ինչ MicroNode պետք է ստեղծվի
+* ինչ learning objective պետք է լինի
+* որ exercise-ը որ node-ին է պատկանում
+* ինչ source quote պետք է օգտագործվի
+* ինչ confidence պետք է դրվի
+
+Այդ որոշումները գալիս են TEXT mapping-ից։
+
+Code-ի դերը միայն.
+
+```text
+PARSE
+VALIDATE
+STRUCTURE
+STORE
+```
+
+է։
+
+---
+
+# ՄԱՍ 26 — FINAL ACCEPTANCE CRITERIA
+
+Task-ը համարվում է ավարտված միայն այն դեպքում, երբ.
+
+### A
+
+Ուսուցիչը կարող է բացել.
+
+**✍️ Ձեռքով քարտեզագրում**
+
+### B
+
+Paste անել մեր canonical TEXT mapping-ը։
+
+### C
+
+Սեղմել Validate/Continue։
+
+### D
+
+System-ը deterministic code-ով parse է անում։
+
+### E
+
+System-ը deterministic code-ով validate է անում։
+
+### F
+
+Եթե սխալ կա՝ database ոչինչ չի գրվում։
+
+### G
+
+Եթե ամեն ինչ ճիշտ է՝ preview է ցուցադրվում։
+
+### H
+
+Ուսուցիչը հաստատում է։
+
+### I
+
+Mapping-ը transaction-ով մտնում է գործող DB schema։
+
+### J
+
+Արդյունքում platform-ում նույն lesson/node/microNode/exercise structure-ն է ստացվում, որը պահանջում է գործող Knowledge Base-ը։
+
+### K
+
+Auto Mapping-ը շարունակում է աշխատել։
+
+### L
+
+Parser-ի աշխատանքի ընթացքում ոչ մի AI API չի կանչվում։
+
+---
+
+# ՎԵՐՋՆԱԿԱՆ ԿԱՐԵՎՈՐ ՊԱՀԱՆՋ
+
+Մի՛ սկսիր անմիջապես code գրել։
+
+Սկզբում repository-ի ուսումնասիրությունից հետո ինձ ցույց տուր.
+
+```text
+1. Manual Mapping UI file
+2. Manual Mapping frontend function
+3. Manual Mapping backend endpoint
+4. Existing mapping schema/types
+5. Existing DB tables
+6. Existing DB insertion logic
+7. Auto Mapping flow
+8. Proposed parser location
+9. Proposed validator location
+10. Exact files you intend to modify
+11. Exact files you intend to create
+12. Any compatibility risks
+```
+
+**Մինչև ես չհաստատեմ այս architecture-ը, code փոփոխություններ մի՛ կատարիր։**
+
+Հաստատումից հետո միայն իրականացրու ամբողջ task-ը։
+
+# ԳԼԽԱՎՈՐ ՍԿԶԲՈՒՆՔ
+
+**AI ստեղծում է քարտեզագրման TEXT։**
+
+**CODE-ը որոշում է structure-ը և validation-ը։**
+
+**DATABASE-ը պահում է վերջնական Knowledge Base-ը։**
+
+**AI-ն parser չէ։**
+
+**Parser-ը չի գուշակում։**
+
+**Validation failure = ZERO database writes։**
+
+**MAP ONCE → STORE ONCE → USE MANY TIMES։**
