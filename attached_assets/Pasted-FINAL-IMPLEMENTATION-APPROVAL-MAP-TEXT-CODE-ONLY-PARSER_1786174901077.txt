@@ -1,0 +1,830 @@
+FINAL IMPLEMENTATION APPROVAL — MAP TEXT → CODE-ONLY PARSER + VALIDATOR
+
+CONTRACT v1.2 IS NOW LOCKED.
+
+Implement the TEXT mapping import system exactly according to the locked contract below.
+
+This is a CODE-ONLY parsing and validation system.
+
+ABSOLUTE RULE:
+
+There must be ZERO AI involvement in:
+
+* parsing
+* field extraction
+* section detection
+* ID generation
+* validation
+* reference resolution
+* sourceQuote validation
+* coverage calculation
+* fidelity calculation
+* preview generation
+* DB insertion
+
+Do NOT call any AI model from the TEXT import path.
+
+The teacher/AI chat produces the canonical TEXT mapping externally.
+The platform only parses, validates, previews and imports that TEXT deterministically.
+
+==================================================
+
+1. CANONICAL INPUT
+   ==================================================
+
+The canonical manual mapping input is TEXT.
+
+The platform must accept the canonical TEXT format defined by Contract v1.2.
+
+The TEXT is the source of truth.
+
+Do NOT require the teacher to manually create JSON.
+
+The platform must convert:
+
+TEXT
+→ deterministic parser
+→ normalized object
+→ deterministic validator
+→ preview
+→ teacher confirmation
+→ DB transaction
+
+==================================================
+2. LEGACY JSON
+==============
+
+Legacy JSON must NOT be part of the new TEXT architecture.
+
+If the existing system must retain legacy JSON for backward compatibility:
+
+* isolate it behind an explicitly separate legacy branch
+* do not mix JSON parsing logic with TEXT parsing logic
+* do not allow TEXT parsing to depend on JSON
+* do not modify the canonical TEXT grammar to accommodate legacy JSON
+* clearly mark the JSON path as LEGACY
+* do not create a second competing canonical import format
+
+The new manual mapping UI must use TEXT.
+
+==================================================
+3. FILE ARCHITECTURE
+====================
+
+Create/use:
+
+artifacts/api-server/src/mapping/mapTextTypes.ts
+
+artifacts/api-server/src/mapping/mapTextParser.ts
+
+artifacts/api-server/src/mapping/mapTextValidator.ts
+
+artifacts/api-server/src/mapping/mapTextErrors.ts
+
+artifacts/api-server/src/mapping/mapTextInserter.ts
+
+Tests under:
+
+artifacts/api-server/src/mapping/**tests**/
+
+Keep parser, validator and DB insertion responsibilities strictly separated.
+
+Parser must NEVER write to DB.
+
+Validator must NEVER write to DB.
+
+Only the inserter may perform DB writes.
+
+==================================================
+4. PARSER
+=========
+
+Implement:
+
+parseMappingText(text: string): ParsedMappingResult
+
+Parser responsibilities ONLY:
+
+* detect canonical section markers
+* parse field/value pairs
+* parse multiline sourceText
+* parse repeated sourceRef fields
+* parse IDs
+* parse arrays
+* parse numbers
+* preserve Unicode exactly
+* preserve original Armenian text exactly
+* track source line numbers
+* produce normalized in-memory objects
+
+Parser MUST NOT:
+
+* guess missing values
+* invent values
+* repair OCR
+* correct Armenian
+* normalize textbook wording
+* resolve semantic ambiguity
+* call AI
+* write DB
+
+If something is invalid, preserve the raw value where possible and let the validator report the error.
+
+==================================================
+5. CANONICAL ID RULES
+=====================
+
+Node:
+
+N1
+N2
+N3
+
+MicroNode:
+
+MN-1.1
+MN-1.2
+MN-2.1
+
+Source Block:
+
+B1
+B2
+B3
+
+Exercise:
+
+EX-1
+EX-2
+
+Dependency:
+
+D1
+D2
+
+Reject invalid IDs.
+
+Reject duplicate IDs.
+
+MicroNode parent must be derived from its ID.
+
+Example:
+
+MN-2.3 → parent N2
+
+Do not determine parent from visual position alone.
+
+==================================================
+6. SOURCE BLOCK STATUS — LOCKED
+===============================
+
+Allowed values:
+
+EXTRACTED
+UNREADABLE
+NEEDS_REVIEW
+
+These have different meanings from MicroNode.sourceCoverage.
+
+SOURCE BLOCK:
+
+EXTRACTED
+→ reliable extraction
+
+UNREADABLE
+→ source text cannot be trusted
+
+NEEDS_REVIEW
+→ extraction partially succeeded but requires human verification
+
+==================================================
+7. CRITICAL UNREADABLE RULE — ERROR
+
+THIS RULE IS ABSOLUTE.
+
+If:
+
+sourceBlock.status = UNREADABLE
+
+and any MicroNode references that block through:
+
+sourceBlockIds
+or
+sourceRefs
+
+then validation MUST FAIL.
+
+This is:
+
+ERROR
+
+NOT WARNING.
+
+The error must identify:
+
+* MicroNode ID
+* Source Block ID
+* relevant field
+* reason
+
+An UNREADABLE source block must never become trusted Knowledge Base content.
+
+NEEDS_REVIEW may be referenced, but the review state must remain visible and must not silently become approved content.
+
+==================================================
+8. MICRO NODE SOURCE COVERAGE
+=============================
+
+Allowed values:
+
+FULL
+PARTIAL
+UNCERTAIN
+
+This is independent from sourceBlock.status.
+
+Do not reuse enums across these semantic domains.
+
+==================================================
+9. MICRO NODE TYPE
+==================
+
+Allowed:
+
+KNOWLEDGE
+SKILL
+KNOWLEDGE_AND_SKILL
+
+==================================================
+10. MICRO NODE STATUS
+=====================
+
+Allowed lifecycle values:
+
+draft
+reviewed
+approved
+
+Default:
+
+draft
+
+Do not confuse this with sourceBlock.status.
+
+==================================================
+11. SOURCE BLOCK TYPE — LOCKED ENUM
+===================================
+
+`blockType` MUST be one of:
+
+DEFINITION
+RULE
+EXPLANATION
+EXAMPLE
+NON_EXAMPLE
+CLASSIFICATION
+TABLE
+FACT
+TERM
+NOTE
+EXERCISE
+QUESTION
+ACTIVITY
+PROJECT
+HOMEWORK
+INSTRUCTION
+OTHER
+
+Unknown value:
+
+VALIDATION ERROR.
+
+Do NOT guess or silently convert unknown block types.
+
+==================================================
+12. SOURCE REFERENCES
+=====================
+
+Canonical source reference:
+
+sourceRef: B1 | exact textbook quote
+
+A MicroNode may contain multiple sourceRefs.
+
+Each sourceQuote MUST be an exact substring of the referenced sourceBlock.sourceText.
+
+Use exact deterministic string comparison.
+
+NO fuzzy matching.
+
+NO semantic similarity.
+
+NO AI.
+
+NO automatic correction.
+
+If sourceQuote is not an exact substring:
+
+VALIDATION ERROR.
+
+Do not duplicate sourcePage inside sourceRef.
+
+sourcePage is derived from the referenced sourceBlock.
+
+==================================================
+13. SOURCE PAGE
+===============
+
+sourcePage is:
+
+number | null
+
+For Source Blocks:
+
+required.
+
+null:
+
+VALIDATION ERROR.
+
+For Exercises:
+
+optional.
+
+null:
+
+allowed.
+
+Parsing must use deterministic numeric parsing.
+
+Invalid numeric values must not be guessed.
+
+==================================================
+14. EXERCISES
+=============
+
+Each textbook exercise is preserved as its own EXERCISE entity.
+
+Allowed exerciseType:
+
+RECOGNITION
+RECALL
+CLASSIFICATION
+COMPARISON
+APPLICATION
+ERROR_DETECTION
+TRANSFORMATION
+WRITING
+SPEAKING
+READING
+PROJECT
+OTHER
+
+difficulty:
+
+EASY
+MEDIUM
+HARD
+
+confidence:
+
+0–100
+
+cognitiveLoad:
+
+0–100 or null
+
+Do NOT create exercises that are not present in the TEXT mapping.
+
+==================================================
+15. MULTI-NODE EXERCISE RELATIONSHIPS
+=====================================
+
+The normalized parser object MUST preserve the complete:
+
+relatedMicroNodes[]
+
+Example:
+
+relatedMicroNodes:
+[
+"MN-1.1",
+"MN-1.2",
+"MN-1.3"
+]
+
+Do NOT silently discard any IDs.
+
+Current DB limitation:
+
+lesson_exercises.related_node_id
+
+is singular.
+
+Until a future schema migration:
+
+* first MicroNode → existing related_node_id
+* additional MicroNodes → mapping_review_items WARNING
+* normalized in-memory representation retains ALL IDs
+* preview explicitly reports multi-node relationships
+* raw input remains stored in mapping_import_log
+
+Do NOT create a new join table in this task.
+
+Do NOT create a migration.
+
+==================================================
+16. DEPENDENCIES
+================
+
+Canonical TEXT dependencyType:
+
+PREREQUISITE
+
+ONLY.
+
+No:
+
+REQUIRED
+SEQUENTIAL
+CONCEPTUAL
+
+unless separately approved in a future task.
+
+Validate:
+
+from
+to
+dependencyType
+reason
+confidence
+
+All referenced MicroNode IDs must exist.
+
+==================================================
+17. COVERAGE AUDIT
+==================
+
+Never trust coverage numbers supplied by TEXT.
+
+Validator must calculate them.
+
+Calculate:
+
+totalSourceBlocks
+mappedSourceBlocks
+unmappedSourceBlocks
+totalExercises
+mappedExercises
+unmappedExercises
+sourceCoveragePercent
+exerciseCoveragePercent
+
+Coverage must be based on actual parsed references.
+
+Do not allow user/AI supplied coverage values to override calculated values.
+
+==================================================
+18. FIDELITY AUDIT
+==================
+
+Validator must detect at minimum:
+
+* missing required fields
+* duplicate IDs
+* invalid IDs
+* invalid references
+* nonexistent source blocks
+* nonexistent exercises
+* invalid source quotes
+* wrong source pages
+* invalid enum values
+* invalid confidence values
+* UNREADABLE source references
+* malformed sections
+* malformed numbers
+* missing source blocks
+* unmapped exercises
+
+Every issue must include:
+
+issueType
+severity
+entityId
+description
+sourceReference when available
+
+No silent correction.
+
+==================================================
+19. VALIDATION SEVERITY
+=======================
+
+ERROR:
+
+Import cannot proceed.
+
+WARNING:
+
+Import may proceed only after being visible in preview and retained in the mapping review system.
+
+Examples of ERROR:
+
+* invalid ID
+* duplicate ID
+* missing required field
+* nonexistent reference
+* invalid enum
+* invalid sourceQuote
+* UNREADABLE source reference
+* invalid source page
+
+Examples of WARNING:
+
+* NEEDS_REVIEW source block
+* additional related MicroNode IDs that cannot be represented by current DB schema
+* other explicitly defined non-fatal review conditions
+
+==================================================
+20. DRY RUN
+===========
+
+POST:
+
+/api/lessons/:lessonId/manual-map
+
+must support:
+
+dryRun=true
+
+Dry run:
+
+* parse
+* validate
+* calculate preview
+* return errors
+* return warnings
+* return counts
+* return normalized preview data where appropriate
+
+DRY RUN MUST WRITE ZERO DATABASE DATA.
+
+No:
+
+lesson_topics
+lesson_nodes
+lesson_exercises
+lesson_node_dependencies
+mapping_import_log
+
+writes during dry run.
+
+==================================================
+21. PREVIEW
+===========
+
+Teacher flow:
+
+INPUT
+↓
+VALIDATE
+↓
+PREVIEW
+↓
+CONFIRM
+↓
+IMPORT
+
+Preview must show at minimum:
+
+* number of Nodes
+* number of MicroNodes
+* number of Source Blocks
+* number of Exercises
+* number of Dependencies
+* source coverage
+* exercise coverage
+* warnings
+* errors
+
+If ANY ERROR exists:
+
+CONFIRM/IMPORT must be disabled.
+
+Teacher must fix the TEXT and validate again.
+
+==================================================
+22. CONFIRM
+===========
+
+On confirmation:
+
+* re-parse
+* re-validate
+* do NOT trust previous dry-run result
+* if errors exist → abort
+* if valid → insert
+
+This prevents stale preview data from being committed.
+
+==================================================
+23. DATABASE TRANSACTION
+========================
+
+All final DB writes must occur inside ONE transaction.
+
+Either:
+
+everything succeeds
+
+OR
+
+everything rolls back.
+
+Never leave partially imported mapping data.
+
+Reuse the existing DB insertion patterns wherever possible.
+
+Do not create a second competing persistence architecture unnecessarily.
+
+==================================================
+24. AUTO MAPPING
+================
+
+DO NOT MODIFY the existing Auto Mapping pipeline.
+
+Auto Mapping remains:
+
+PDF
+→ vision extraction
+→ AI mapping
+→ existing persistence
+
+TEXT mapping is a separate deterministic import path.
+
+Both paths must ultimately produce the same DB-level lesson structure.
+
+==================================================
+25. MANUAL MAPPING UI
+=====================
+
+File:
+
+artifacts/myaiteacher/src/pages/teacher-dashboard.tsx
+
+Change the manual mapping modal from:
+
+paste → immediate DB write
+
+to:
+
+paste
+→ validate
+→ preview
+→ confirm
+→ DB write
+
+Keep the existing manual mapping entry point.
+
+Do not create a second manual mapping UI.
+
+Show clear Armenian user-facing errors/warnings.
+
+Do not use transliterated Armenian.
+
+Preserve Unicode Armenian correctly.
+
+==================================================
+26. ERROR HANDLING
+==================
+
+Do not return:
+
+"check JSON format"
+
+for TEXT parsing errors.
+
+Return deterministic, actionable errors such as:
+
+* Section not recognized
+* Missing required field
+* Invalid ID
+* Duplicate ID
+* Unknown blockType
+* Invalid source reference
+* Source quote not found
+* Source block is UNREADABLE
+* Invalid page number
+* Invalid confidence
+* Invalid dependency
+
+Include line number whenever available.
+
+==================================================
+27. TESTING — REQUIRED BEFORE COMPLETION
+========================================
+
+Create deterministic tests for at least:
+
+1. Valid minimal mapping
+2. Valid multi-node mapping
+3. Duplicate Node ID
+4. Duplicate MicroNode ID
+5. Invalid MicroNode parent
+6. Missing source block
+7. Invalid source quote
+8. UNREADABLE source reference → ERROR
+9. NEEDS_REVIEW source reference → WARNING
+10. Unknown blockType → ERROR
+11. Invalid dependencyType
+12. Invalid confidence
+13. Invalid page
+14. Missing required field
+15. Coverage calculation
+16. Exercise mapping
+17. Multi-node exercise warning
+18. Malformed section
+19. Unicode Armenian text preservation
+20. Dry-run produces zero DB writes
+21. Confirm performs transactional import
+22. Transaction rollback on insertion failure
+
+Tests must contain valid Unicode Armenian where Armenian behavior is being tested.
+
+Do NOT generate corrupted/transliterated Armenian test strings.
+
+==================================================
+28. SECURITY / DATA INTEGRITY
+=============================
+
+Never execute input as code.
+
+Never evaluate input dynamically.
+
+Never use AI to repair malformed input.
+
+Never silently drop fields.
+
+Never silently invent missing values.
+
+Never silently change textbook sourceText.
+
+Never silently change sourceQuote.
+
+Never silently convert UNREADABLE content into trusted content.
+
+==================================================
+29. IMPLEMENTATION BOUNDARY
+===========================
+
+Do NOT:
+
+* create new DB tables
+* create migrations
+* change Auto Mapping
+* redesign the Knowledge Base schema
+* introduce AI into parser/validator
+* create a second parser
+* create duplicate validation logic
+* remove existing functionality unrelated to this task
+
+Reuse existing insertion logic where practical.
+
+==================================================
+30. REQUIRED IMPLEMENTATION REPORT
+==================================
+
+After implementation, report:
+
+1. Exact files created
+2. Exact files modified
+3. Parser behavior
+4. Validator behavior
+5. UI flow
+6. DB transaction behavior
+7. Legacy JSON isolation
+8. Test results
+9. Any deviations from this contract
+10. Any remaining known limitations
+
+If any requirement cannot be implemented exactly as written:
+
+STOP before making a workaround and report the conflict.
+
+Do not silently reinterpret the contract.
+
+==================================================
+
+FINAL EXECUTION RULE
+
+You are now authorized to IMPLEMENT this locked Contract v1.2.
+
+Before writing code, briefly confirm:
+
+`CONTRACT v1.2 LOCKED — IMPLEMENTATION STARTING`
+
+Then implement.
+
+Do not ask for another architecture approval unless you discover a genuine contradiction in the existing codebase that makes a locked requirement impossible.
+
+If such contradiction exists, STOP and report it instead of inventing a workaround.

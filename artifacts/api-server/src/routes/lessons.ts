@@ -1,7 +1,10 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable } from "@workspace/db";
+import { parseMappingText } from "../mapping/mapTextParser.js";
+import { validateParsedMapping } from "../mapping/mapTextValidator.js";
+import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
@@ -1875,44 +1878,122 @@ function normalizeIncomingMapping(raw: unknown): {
   };
 }
 
-router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthRequest, res) => {
-  const lessonId = parseInt(String(req.params.lessonId), 10);
-  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+// ── TEXT import handler (Contract v1.2) ──────────────────────────────────────
 
-  const { rawText } = req.body as { rawText?: string };
-  if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
-    res.status(400).json({ error: "rawText is required" });
+async function handleTextImport(
+  req: AuthRequest, res: Response, lessonId: number, rawText: string, dryRun: boolean,
+): Promise<void> {
+  const parsed = parseMappingText(rawText);
+
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  const validation = validateParsedMapping(parsed, lesson.pagesFrom ?? null, lesson.pagesTo ?? null);
+
+  if (dryRun) {
+    const totalMicroNodes = parsed.nodes.reduce((s, n) => s + n.microNodes.length, 0);
+    res.json({
+      preview: {
+        lessonTitle:   parsed.lesson?.title ?? lesson.title,
+        pagesFrom:     parsed.lesson?.pagesFrom ?? lesson.pagesFrom ?? 0,
+        pagesTo:       parsed.lesson?.pagesTo   ?? lesson.pagesTo   ?? 0,
+        counts: {
+          nodes:        parsed.nodes.length,
+          microNodes:   totalMicroNodes,
+          sourceBlocks: parsed.sourceBlocks.length,
+          exercises:    parsed.exercises.length,
+          dependencies: parsed.dependencies.length,
+        },
+        coverageAudit: validation.coverageAudit,
+        errors:        validation.errors,
+        warnings:      validation.warnings,
+        hasErrors:     !validation.ok,
+      },
+      errors:    validation.errors,
+      warnings:  validation.warnings,
+      hasErrors: !validation.ok,
+    });
     return;
   }
 
-  // DIAGNOSTIC: log body length + head/tail so we can spot truncation/corruption
+  if (!validation.ok) {
+    res.status(422).json({
+      error:    "Validation failed — resolve errors before importing.",
+      errors:   validation.errors,
+      warnings: validation.warnings,
+    });
+    return;
+  }
+
+  // Re-parse + re-validate: stale preview cannot be committed (contract §dryRun)
+  const parsed2     = parseMappingText(rawText);
+  const validation2 = validateParsedMapping(parsed2, lesson.pagesFrom ?? null, lesson.pagesTo ?? null);
+  if (!validation2.ok) {
+    res.status(422).json({
+      error:    "Re-validation failed during commit — please retry.",
+      errors:   validation2.errors,
+      warnings: validation2.warnings,
+    });
+    return;
+  }
+
+  const rawTextHash = createHash("sha256").update(rawText).digest("hex");
+
+  try {
+    const result = await insertParsedMapping(
+      lessonId, parsed2, req.userId ?? null, rawTextHash, rawText, validation2.warnings,
+    );
+    res.json({
+      lessonId,
+      lessonTitle:   lesson.title,
+      mappingOrigin: "manual_text",
+      counts: {
+        topicsCreated:       result.topicsCreated,
+        microNodesCreated:   result.microNodesCreated,
+        exercisesCreated:    result.exercisesCreated,
+        dependenciesCreated: result.dependenciesCreated,
+      },
+      quality: {
+        reviewItems: result.reviewItemsCreated,
+        warnings:    validation2.warnings.length,
+      },
+    });
+  } catch (err) {
+    logger.error({ err, lessonId }, "manual-map TEXT: insert failed");
+    res.status(500).json({ error: "Import failed — database error." });
+  }
+}
+
+// ── LEGACY JSON import handler ────────────────────────────────────────────────
+// LEGACY — do not add features to this function
+
+async function handleLegacyJsonImport(
+  req: AuthRequest, res: Response, lessonId: number, rawText: string,
+): Promise<void> {
+  // DIAGNOSTIC
   logger.info(
-    `[manual-map] body received — length=${rawText.length}` +
+    `[manual-map LEGACY] body received — length=${rawText.length}` +
     ` | head=${JSON.stringify(rawText.slice(0, 100))}` +
     ` | tail=${JSON.stringify(rawText.slice(-100))}`
   );
 
-  // 1. Strip ```json / ``` fences
+  // Strip ```json / ``` fences
   let text = rawText.trim();
   if (text.startsWith("```json")) text = text.slice(7);
   else if (text.startsWith("```"))   text = text.slice(3);
   if (text.endsWith("```")) text = text.slice(0, -3).trim();
 
-  // 2. Hash-based idempotency check
   const rawTextHash = createHash("sha256").update(text).digest("hex");
   const existingImport = await db
     .select({ id: mappingImportLogTable.id })
     .from(mappingImportLogTable)
-    .where(
-      and(
-        eq(mappingImportLogTable.lessonId, lessonId),
-        eq(mappingImportLogTable.rawTextHash, rawTextHash)
-      )
-    )
+    .where(and(
+      eq(mappingImportLogTable.lessonId, lessonId),
+      eq(mappingImportLogTable.rawTextHash, rawTextHash),
+    ))
     .limit(1);
 
   if (existingImport.length > 0) {
-    // Return current lesson state shaped like mapping-report
     const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
     if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
     const [topicsResult, nodes, exercises] = await Promise.all([
@@ -1929,19 +2010,16 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     return;
   }
 
-  // Fetch lesson
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
-  // 3. JSON.parse
   let parsedRaw: unknown;
   try {
     parsedRaw = JSON.parse(text);
   } catch (parseErr) {
     const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-    logger.warn(`[manual-map] JSON.parse failed — length=${text.length} parseErr=${parseMsg} | head=${JSON.stringify(text.slice(0, 200))}`);
     res.status(400).json({
-      error: "AI-ի պատասխանը ճիշտ JSON ձևաչափով չէ։ Համոզվիր, որ տեղադրել ես միայն { ... }-ով սկսվող և համապատասխան }-ով ավարտվող JSON-ը։",
+      error: "AI-\u056b \u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0568 \u0579\u056b \u0570\u0561\u0563\u0565\u056c JSON \u0571\u0587\u057e\u0561\u0579\u0561\u0583\u0578\u057e\u0589",
       _debug_parseError: parseMsg,
       _debug_textLength: text.length,
       _debug_textHead: text.slice(0, 200),
@@ -1949,15 +2027,12 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     return;
   }
 
-  // 4. normalizeIncomingMapping
   const normalized = normalizeIncomingMapping(parsedRaw);
-
   if (normalized.topics.length === 0) {
-    res.status(400).json({ error: "Քարտեզագրման դաշտերը չեն գտնվել։ Ստուգիր JSON ձևաչափը։" });
+    res.status(400).json({ error: "\u0584\u0561\u0580\u057f\u0587\u0566\u0561\u0563\u0580\u0574\u0561\u0576 \u0564\u0561\u0577\u057f\u0587\u0580\u0568 \u0579\u056b \u0563\u057f\u0576\u057e\u0565\u056c\u0589" });
     return;
   }
 
-  // Fetch current max sequences for appending
   const [{ maxTopicSeq }] = await db
     .select({ maxTopicSeq: max(lessonTopicsTable.sequence) })
     .from(lessonTopicsTable)
@@ -1971,9 +2046,9 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     .from(lessonExercisesTable)
     .where(eq(lessonExercisesTable.lessonId, lessonId));
 
-  let topicSeqCounter  = (maxTopicSeq ?? 0);
-  let nodeSeqCounter   = (maxNodeSeq ?? 0);
-  let exSeqCounter     = (maxExSeq ?? 0);
+  let topicSeqCounter = (maxTopicSeq ?? 0);
+  let nodeSeqCounter  = (maxNodeSeq  ?? 0);
+  let exSeqCounter    = (maxExSeq    ?? 0);
 
   const reviewItems: { entityId: number | null; entityType: string; issueType: string; severity: string; description: string }[] = [];
   const createdTopicIds: number[] = [];
@@ -1981,7 +2056,6 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
   const createdExIds:    number[] = [];
 
   for (const topic of normalized.topics) {
-    // 5. Schema validation — topic-level
     if (!topic.title) {
       reviewItems.push({ entityId: null, entityType: "import", issueType: "validation-failed", severity: "error",
         description: `Topic missing title; skipped.` });
@@ -1995,36 +2069,31 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
       .returning();
     createdTopicIds.push(insertedTopic.id);
 
-    // Titles of microNodes already accepted under this topic (for duplicate check)
     const acceptedTitlesInTopic: string[] = [];
 
     for (const mn of topic.microNodes) {
-      // 5. Schema validation — microNode-level
       const validationErrors: string[] = [];
       if (!mn.title)             validationErrors.push("missing title");
       if (!mn.microNodeType || !["knowledge","skill"].includes(mn.microNodeType))
-        mn.microNodeType = "knowledge"; // normalize silently per spec
+        mn.microNodeType = "knowledge";
       if (!mn.learningObjective) validationErrors.push("missing learningObjective");
       if (mn.sourcePages.length === 0) validationErrors.push("sourcePages is empty");
 
       if (validationErrors.length > 0) {
         reviewItems.push({ entityId: null, entityType: "node", issueType: "validation-failed", severity: "error",
-          description: `MicroNode «${mn.title || "(no title)"}» excluded: ${validationErrors.join(", ")}.` });
+          description: `MicroNode \u00ab${mn.title || "(no title)"}\u00bb excluded: ${validationErrors.join(", ")}.` });
         continue;
       }
 
-      // 7. Duplicate check — Levenshtein > 0.9 within same parent topic
       const dupTitle = acceptedTitlesInTopic.find((t) => titleSimilarity(t, mn.title) > 0.9);
       if (dupTitle) {
         reviewItems.push({ entityId: null, entityType: "node", issueType: "duplicate-title", severity: "warning",
-          description: `Կrknvox kam nman MicroNode vernagir «${mn.title}» (nman e «${dupTitle}»-in). Chstextsvatsvets.` });
+          description: `Duplicate or similar MicroNode title \u00ab${mn.title}\u00bb (similar to \u00ab${dupTitle}\u00bb). Skipped.` });
         continue;
       }
       acceptedTitlesInTopic.push(mn.title);
 
       nodeSeqCounter += 1;
-
-      // 8. Write microNode — status='needs_review', contentSourceType='manual', createdBy='teacher'
       const [insertedNode] = await db
         .insert(lessonNodesTable)
         .values({
@@ -2048,7 +2117,6 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
         .returning();
       createdNodeIds.push(insertedNode.id);
 
-      // 6. Source-integrity check — page-range only (blocks never stored in DB)
       const pagesFrom = lesson.pagesFrom ?? null;
       const pagesTo   = lesson.pagesTo   ?? null;
       const outOfRange = pagesFrom != null && pagesTo != null
@@ -2057,27 +2125,25 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
 
       if (outOfRange.length > 0) {
         reviewItems.push({ entityId: insertedNode.id, entityType: "node", issueType: "sourcePage-out-of-range", severity: "warning",
-          description: `MicroNode «${mn.title}»: ejery ${outOfRange.join(", ")} dursy en dasy ej-tatrakunen (${pagesFrom}–${pagesTo}).` });
+          description: `MicroNode \u00ab${mn.title}\u00bb: pages ${outOfRange.join(", ")} are outside lesson page range (${pagesFrom}\u2013${pagesTo}).` });
       }
-      // Always flag as sourcePage-unverified (blocks not stored)
       reviewItems.push({ entityId: insertedNode.id, entityType: "node", issueType: "sourcePage-unverified", severity: "warning",
-        description: `MicroNode «${mn.title}»: sourcePages [${mn.sourcePages.join(", ")}] veraperktvets taraci zanagordzutyan mija' (original block-ery petahpanvats chen).` });
+        description: `MicroNode \u00ab${mn.title}\u00bb: sourcePages [${mn.sourcePages.join(", ")}] unverified (original blocks not stored).` });
 
-      // Write exercises
       for (const ex of mn.exercises) {
         exSeqCounter += 1;
         const [insertedEx] = await db
           .insert(lessonExercisesTable)
           .values({
             lessonId,
-            exerciseId:          `EX-${lessonId}-M${exSeqCounter}`,
+            exerciseId:           `EX-${lessonId}-M${exSeqCounter}`,
             exerciseTextVerbatim: ex.text,
-            sourcePage:          ex.page != null ? String(ex.page) : null,
-            relatedNodeId:       insertedNode.id,
-            sequence:            exSeqCounter,
-            sourceType:          "manual" as const,
-            status:              "needs_review",
-            sourceText:          ex.text,
+            sourcePage:           ex.page != null ? String(ex.page) : null,
+            relatedNodeId:        insertedNode.id,
+            sequence:             exSeqCounter,
+            sourceType:           "manual" as const,
+            status:               "needs_review",
+            sourceText:           ex.text,
           })
           .returning();
         createdExIds.push(insertedEx.id);
@@ -2085,7 +2151,6 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     }
   }
 
-  // 9. Write mapping_import_log row
   await db.insert(mappingImportLogTable).values({
     lessonId,
     source:               "manual",
@@ -2096,7 +2161,6 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     importedBy:           req.userId ?? null,
   });
 
-  // 10. Persist mapping_review_items
   if (reviewItems.length > 0) {
     await db.insert(mappingReviewItemsTable).values(
       reviewItems.map((ri) => ({
@@ -2111,13 +2175,6 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
     );
   }
 
-  logger.info(
-    { lessonId, topicsCreated: createdTopicIds.length, nodesCreated: createdNodeIds.length,
-      exercisesCreated: createdExIds.length, reviewItems: reviewItems.length },
-    "manual-map: import complete"
-  );
-
-  // 11. Return mapping-report shaped response + mappingOrigin: "manual"
   res.json({
     lessonId,
     lessonTitle:   lesson.title,
@@ -2148,6 +2205,35 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
       })),
     },
   });
+}
+
+// ── Route: POST /lessons/:lessonId/manual-map ─────────────────────────────────
+
+router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const { rawText, format, dryRun } = req.body as { rawText?: string; format?: string; dryRun?: boolean };
+  if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
+    res.status(400).json({ error: "rawText is required" });
+    return;
+  }
+
+  // Determine format: explicit "text"/"json" or auto-detect for backward compat
+  const effectiveFormat = format === "text" ? "text"
+    : format === "json" ? "json"
+    : rawText.trim().startsWith("LESSON") ? "text"
+    : "json";
+
+  logger.info(`[manual-map] format=${effectiveFormat} dryRun=${dryRun ?? false} length=${rawText.length}`);
+
+  if (effectiveFormat === "text") {
+    await handleTextImport(req, res, lessonId, rawText, dryRun === true);
+    return;
+  }
+
+  // LEGACY JSON PATH — do not add features
+  await handleLegacyJsonImport(req, res, lessonId, rawText);
 });
 
 export default router;
