@@ -3043,7 +3043,7 @@ export default function TeacherDashboard() {
                       {passItems.map(({ tbHeader, topicHeader, lesson: l, isFirstLesson }, _idx) => {
                         const isCompleted = (l as any).status === "completed";
                         const isActive    = (l as any).status === "active";
-                        const isMapped    = Boolean((l as any).coreIdea);
+                        const isMapped    = Boolean((l as any).coreIdea) || ((l as any).nodeCount ?? 0) > 0;
                         return (
                           <div key={l.id}>
                             {tbHeader && (

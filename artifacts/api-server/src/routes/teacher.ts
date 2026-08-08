@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable, teacherClassSubjectsTable, subjectsTable } from "@workspace/db";
-import { eq, and, inArray, avg, count, desc, ne } from "drizzle-orm";
+import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, lessonNodesTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable, teacherClassSubjectsTable, subjectsTable } from "@workspace/db";
+import { eq, and, inArray, avg, count, desc, ne, sql } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -577,8 +577,24 @@ router.post("/teacher/courses/:courseId/resources/:resourceId/delete", requireTe
 router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: AuthRequest, res) => {
   const courseId = parseInt(String(req.params.courseId));
   if (isNaN(courseId)) { res.status(400).json({ error: "Invalid courseId" }); return; }
-  const lessons = await db.select().from(lessonsTable).where(eq(lessonsTable.courseId, courseId));
-  res.json(lessons);
+
+  const [lessons, nodeCounts] = await Promise.all([
+    db.select().from(lessonsTable).where(eq(lessonsTable.courseId, courseId)),
+    db
+      .select({ lessonId: lessonNodesTable.lessonId, cnt: count() })
+      .from(lessonNodesTable)
+      .where(
+        sql`${lessonNodesTable.lessonId} in (
+          select id from lessons where course_id = ${courseId}
+        )`
+      )
+      .groupBy(lessonNodesTable.lessonId),
+  ]);
+
+  const nodeCountMap = new Map(nodeCounts.map((r) => [r.lessonId, r.cnt]));
+  // Include nodeCount so the frontend can tell a lesson is mapped even when
+  // coreIdea is null (manual TEXT-format imports don't set coreIdea on the row)
+  res.json(lessons.map((l) => ({ ...l, nodeCount: nodeCountMap.get(l.id) ?? 0 })));
 });
 
 router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: AuthRequest, res) => {
