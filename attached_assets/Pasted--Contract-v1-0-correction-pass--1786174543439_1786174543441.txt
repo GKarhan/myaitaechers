@@ -1,0 +1,157 @@
+Կատարիր Contract v1.0-ի վերջին correction pass-ը։
+
+ԴԵՌ ՈՉ ՄԻ ԿՈԴ ՉԳՐԵՍ։
+
+Միայն ուղղիր ստորև նշված 4 կետերը։ Այլ architecture decision մի փոխիր։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. CRITICAL — SOURCE BLOCK STATUS
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Վերականգնիր նախկին locked semantic distinction-ը։
+
+`sourceBlock.status` և `sourceCoverage` տարբեր դաշտեր են և ՉԵՆ կարող նույն enum-ը օգտագործել։
+
+Պարտադիր.
+
+sourceBlock.status =
+
+* EXTRACTED
+* UNREADABLE
+* NEEDS_REVIEW
+
+sourceCoverage =
+
+* FULL
+* PARTIAL
+* UNCERTAIN
+
+Բացատրիր contract-ում յուրաքանչյուրի իմաստը։
+
+Հատկապես.
+
+Եթե textbook page-ի OCR/text extraction-ը անընթեռնելի է կամ վստահելի չէ՝ sourceBlock-ը պետք է կարողանա ունենալ.
+
+`status: UNREADABLE`
+
+կամ
+
+`status: NEEDS_REVIEW`
+
+Սա մեր anti-hallucination/fidelity մեխանիզմներից մեկն է և չի կարելի կորցնել։
+
+MicroNode-ի `status`-ը նույնպես պահիր իր առանձին semantic domain-ում։
+
+Չի թույլատրվում sourceBlock.status-ը դարձնել sourceCoverage-ի alias։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. DEPENDENCY TYPE — ՉԸՆԴԼԱՅՆԵԼ ԱՌԱՆՑ ՀԱՍՏԱՏՄԱՆ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Նախկին locked decision-ը եղել է.
+
+`dependencyType = PREREQUISITE`
+
+Այս փուլում վերադարձիր հենց այդ մեկ արժեքին։
+
+Չավելացնես.
+
+* REQUIRED
+* SEQUENTIAL
+* CONCEPTUAL
+
+Մենք դրանք չենք հաստատել որպես canonical contract-ի մաս։
+
+Եթե DB-ում գոյություն ունի այլ enum/value, ցույց տուր deterministic mapping-ը դեպի canonical `PREREQUISITE`։
+
+Եթե DB-ն իրականում պահանջում է այլ value, ցույց տուր այդ փաստը և առաջարկիր mapping, բայց TEXT contract-ի canonical value-ը թող մնա.
+
+`PREREQUISITE`
+
+Մի ընդլայնիր semantic model-ը առանց առանձին հաստատման։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. WORKED EXAMPLES — ՄԱՔՈՒՐ ՀԱՅԵՐԵՆ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Contract-ի worked examples-ում և parser/validator test examples-ում ՉԻ թույլատրվում օգտագործել ինքնուրույն գեներացված կամ transliterated/mixed Armenian։
+
+Հեռացրու օրինակները նման ձևերով.
+
+"Բայն արտahaydum е gorchoghutуun..."
+"Goyakaн anunnery..."
+
+Դրանց փոխարեն օգտագործիր միայն.
+
+* այս conversation-ում արդեն տրված իրական հայերեն textbook text,
+* կամ կարճ, պարզ հայերեն test text, որը ամբողջությամբ մաքուր Unicode Armenian է։
+
+Test examples-ը պետք է լինեն deterministic և readable։
+
+Եթե իրական textbook quote օգտագործելը անհրաժեշտ չէ, օգտագործիր պարզ test strings, օրինակ՝ միայն մաքուր հայերեն բառեր/նախադասություններ։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. sourcePage TYPE CONSISTENCY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Ստուգիր բոլոր Parsed* structures-ը։
+
+`sourcePage`-ը նույն semantic field-ն է և պետք է ունենա նույն type-ը բոլոր համապատասխան entity-ներում։
+
+Նախընտրելի canonical type-ը.
+
+`number | null`
+
+Այսինքն.
+
+* ParsedSourceBlock.sourcePage → number | null
+* ParsedMicroNode sourceReference.sourcePage → number | null
+* ParsedExercise.sourcePage → number | null
+* այլ sourcePage fields → նույն type-ը
+
+Եթե contract-ում կա տեխնիկական պատճառ այլ type օգտագործելու համար, բացատրիր, բայց մի թող նույն field-ը տարբեր entity-ներում տարբեր primitive type-երով։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. IMPORTANT — NO OTHER CHANGES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Վերոհիշյալ 4 correction-ից բացի.
+
+Չփոխես.
+
+* canonical TEXT syntax
+* section names
+* field names
+* ID formats
+* parser architecture
+* validator architecture
+* Preview → Confirm flow
+* deterministic-only requirement
+* zero AI parser requirement
+* zero silent data loss requirement
+* coverage philosophy
+* fidelity philosophy
+* DB architecture
+
+Այս փուլում նոր feature կամ նոր semantic field մի ավելացրու։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. FINAL REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Վերադարձիր.
+
+A. Revised Contract v1.0 summary
+B. Exact changes made for points 1–4
+C. Final enum/value table
+D. Final field/type table
+E. Final canonical TEXT section order
+F. Final parser/validator rules
+G. Remaining unresolved decisions
+
+Եթե որևէ unresolved decision մնացել է՝ կանգ առ և նշիր այն։
+
+Դեռ ոչ մի կոդ մի գրիր։
+
+Սպասիր իմ հաստատմանը։
