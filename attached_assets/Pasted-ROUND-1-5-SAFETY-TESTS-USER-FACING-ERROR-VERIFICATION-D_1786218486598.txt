@@ -1,0 +1,201 @@
+ROUND 1.5 — SAFETY TESTS + USER-FACING ERROR VERIFICATION
+
+Do NOT start the full compliance audit yet.
+
+Do NOT create a join-table migration for relatedMicroNodes yet.
+
+Do NOT change the Contract.
+
+We need to close the evidence gaps discovered in Round 1 before Round 2.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ADD AUTOMATED SAFETY TESTS
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add deterministic automated tests for the following six behaviors.
+
+A. UNREADABLE → ERROR
+
+Create a validator test proving that when a MicroNode references a
+sourceBlock whose status is UNREADABLE:
+
+→ validation.ok === false
+→ the result contains an ERROR, not a warning.
+
+Show the test and its actual output.
+
+B. DRY-RUN = ZERO DATABASE WRITES
+
+Create a test proving that:
+
+dryRun=true
+
+performs parsing + validation + preview only and produces ZERO database
+mutations.
+
+Verify inserts, updates, deletes, logging writes, metadata writes, etc.
+
+Show the test and actual output.
+
+C. TRANSACTION ROLLBACK
+
+Create a test that intentionally causes an insert failure after at
+least one earlier DB mutation in the import transaction.
+
+Prove that after failure:
+
+→ all import-related writes are rolled back
+→ no partial mapping remains.
+
+Show the test and actual output.
+
+D. BACKEND ERROR BLOCKING
+
+Create an HTTP/integration test proving:
+
+valid TEXT structure containing a validation ERROR
++
+dryRun=false
+
+→ returns the validation error
+→ performs ZERO DB import writes.
+
+Do not rely only on frontend button disabling.
+
+Show the test and actual output.
+
+E. FORMAT VALIDATION
+
+Create an HTTP/integration test proving:
+
+format missing → 400
+format="auto" → 400
+format="text" → TEXT path
+format="json" → legacy JSON path
+
+Show the test and actual output.
+
+F. relatedMicroNodes STORAGE BEHAVIOR
+
+Create a test documenting the CURRENT behavior:
+
+MN-1.1
+relatedMicroNodes=[MN-1.2,MN-2.1]
+
+Prove that:
+
+→ both IDs survive parser/validator/normalized object
+→ both produce mapping_review_items
+→ no actual lesson_nodes-to-lesson_nodes relationship exists.
+
+This test should document the current Class B behavior.
+
+Do NOT create a join table in this task.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. TEST SUITE SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After adding the tests, run the complete test suite.
+
+Provide:
+
+* exact command
+* complete terminal output
+* total tests
+* passed
+* failed
+* skipped
+
+Separate the results into:
+
+PARSER
+VALIDATOR
+INSERTER
+HTTP/ROUTE
+TRANSACTION/DB
+
+Do not summarize as simply "all tests pass".
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. USER-FACING ARMENIAN ERROR VERIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Trace one real validation error from:
+
+validator
+→ API response
+→ frontend
+→ teacher-visible UI.
+
+Use the actual existing UI.
+
+Determine whether the teacher ultimately sees Armenian or English.
+
+Test at least these two errors:
+
+1. missing confidenceScore
+2. invalid sourceBlock status
+
+If the final teacher-visible text is English, this is a Contract violation
+because Section 25 requires clear Armenian user-facing
+errors/warnings.
+
+If the validator/API uses English internally but the frontend correctly
+translates it into Armenian, document that exact translation path and
+show the final Armenian UI text.
+
+Do NOT change the error-language implementation yet unless it is clearly
+necessary to fix an actual Contract violation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. SCREENSHOT EVIDENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Provide the actual screenshot files for:
+
+A. Input state
+B. Invalid preview with errors
+C. Valid preview with warnings
+
+Do not provide only descriptions.
+
+If the environment cannot attach screenshots directly, provide the exact
+saved file paths and confirm that the files exist and can be opened.
+
+For the invalid state, explicitly verify whether the final
+teacher-visible errors are Armenian.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. relatedMicroNodes — NO ARCHITECTURAL CHANGE YET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Do NOT implement a join table.
+
+For now classify the current behavior as:
+
+CLASS B — preserved in mapping_review_items but not queryable as a
+MicroNode-to-MicroNode relationship.
+
+State clearly that this remains an OPEN ARCHITECTURAL DECISION for the
+full compliance audit.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Return only:
+
+A. Tests added
+B. Complete test output
+C. Transaction/rollback evidence
+D. HTTP evidence
+E. Armenian UI error evidence
+F. Screenshot file evidence
+G. relatedMicroNodes current-state confirmation
+H. Remaining blockers before Round 2
+
+Do not start Round 2.
+Do not create a join table.
+Do not make unrelated changes.

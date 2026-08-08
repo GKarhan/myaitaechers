@@ -8,7 +8,11 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/mapping/__tests__/mapTextParser.test.ts"
+    "test": "tsx src/mapping/__tests__/mapTextParser.test.ts",
+    "test:validator": "tsx src/mapping/__tests__/mapTextValidator.test.ts",
+    "test:inserter": "tsx src/mapping/__tests__/mapTextInserter.test.ts",
+    "test:http": "tsx src/mapping/__tests__/mapTextHttp.test.ts",
+    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
