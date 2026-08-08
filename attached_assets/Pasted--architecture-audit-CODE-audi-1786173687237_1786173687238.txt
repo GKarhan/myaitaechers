@@ -1,0 +1,301 @@
+Շնորհակալություն architecture audit-ի համար։
+
+Դեռ ՈՉ ՄԻ CODE ՉԳՐԵՍ և ՈՉ ՄԻ ՖԱՅԼ ՉՓՈԽԵՍ։
+
+Քո audit-ը ընդհանուր առմամբ ճիշտ է, բայց մինչև implementation-ը պետք է վերջնականացնենք Canonical MAP TEXT Contract-ը։
+
+Մեր նպատակն է ունենալ միայն մեկ նոր հիմնական flow.
+
+TEACHER MANUAL MAPPING TEXT
+        ↓
+DETERMINISTIC TEXT PARSER
+        ↓
+DETERMINISTIC VALIDATOR
+        ↓
+NORMALIZED MAPPING OBJECT
+        ↓
+PREVIEW
+        ↓
+TEACHER CONFIRM
+        ↓
+DB TRANSACTION
+
+ԿԱՐԵՎՈՐ.
+AI ՉԻ ՄԱՍՆԱԿՑՈՒՄ այս ամբողջ backend flow-ին։
+Parser-ը և Validator-ը պետք է լինեն 100% deterministic code։
+Չի թույլատրվում AI call, LLM fallback կամ semantic guessing։
+
+Մինչև code գրելը կատարիր միայն հետևյալը.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. CANONICAL DATA MODEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Հաստատիր, որ normalized mapping object-ի canonical logical structure-ը սա է.
+
+LESSON
+├── nodes[]
+│   └── microNodes[]
+├── sourceBlocks[]
+├── exercises[]
+├── dependencies[]
+├── fidelityAudit
+└── coverageAudit
+
+Այս logical model-ը պետք է լինի source of truth։
+
+DB schema-ն չի կարող փոխել այս canonical model-ը։
+
+Եթե DB-ում sourceBlocks-ի առանձին table չկա, sourceBlocks-ը պետք է մնա parser/validator-ի normalized object-ում և insertion-ի ժամանակ deterministic ձևով map արվի գոյություն ունեցող DB schema-ին։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. ONE CANONICAL TEXT SYNTAX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Նախքան implementation-ը առաջարկիր ՄԻԱՅՆ ՄԵԿ canonical TEXT syntax։
+
+Չի թույլատրվում միաժամանակ աջակցել երեք տարբեր syntax-ի.
+
+- === SECTION ===
+- [SECTION]
+- NODE 1 / MICRONODE 1.1
+
+Ընտրիր մեկը և ամբողջ contract-ը կառուցիր միայն դրա վրա։
+
+TEXT syntax-ը պետք է ունենա հստակ section markers և հստակ field rules։
+
+Պետք է կարողանա unambiguously parse անել.
+
+LESSON
+SOURCE BLOCKS
+NODES
+MICRONODES
+EXERCISES
+DEPENDENCIES
+FIDELITY AUDIT
+
+COVERAGE-ը AI-generated input չպետք է լինի source of truth։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. FIELD NAMES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Canonical field names-ը պետք է լինեն ՄԻԱՅՆ անգլերեն և snake/camel convention-ը պետք է լինի մեկ ամբողջական ձևով։
+
+Օրինակ՝
+
+title
+subject
+grade
+textbook
+author
+section
+pages
+blockType
+status
+sourceText
+sourcePage
+sourceParagraph
+sourcePosition
+microNodeType
+learningObjective
+sourceBlockIds
+sourceReferences
+sourceCoverage
+exerciseIds
+prerequisites
+relatedMicroNodes
+confidenceScore
+exerciseType
+difficulty
+cognitiveLoad
+
+Չի թույլատրվում canonical parser-ում ունենալ հայերեն field aliases։
+
+Հայերենը թույլատրելի է միայն field VALUES-ի մեջ։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. EMPTY VALUE RULE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Սահմանիր մեկ կանոն։
+
+Չօգտագործել NONE որպես հատուկ sentinel։
+
+Պետք է տարբերակել.
+
+required field missing → VALIDATION ERROR
+
+optional string → ""
+
+optional array → []
+
+optional object → {}
+
+Սա պետք է լինի deterministic և documented։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. COVERAGE AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COVERAGE_AUDIT-ի թվերը չպետք է վստահվեն որպես AI input։
+
+Backend validator-ը ինքն է հաշվարկում.
+
+totalSourceBlocks
+mappedSourceBlocks
+unmappedSourceBlocks
+totalExercises
+mappedExercises
+unmappedExercises
+sourceCoveragePercent
+exerciseCoveragePercent
+
+Եթե TEXT-ում COVERAGE section լինի, այն չպետք է օգտագործվի որպես authoritative value։
+
+Նախընտրելի է այն ընդհանրապես չպահանջել canonical TEXT-ում և ամբողջությամբ հաշվարկել code-ով։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. FIDELITY AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AI-generated TEXT-ը կարող է պարունակել fidelity issues։
+
+Բայց backend validator-ը նույնպես պարտադիր ստուգում է structural integrity-ը։
+
+Validator-ը պետք է հայտնաբերի առնվազն.
+
+- duplicate IDs
+- invalid IDs
+- missing required fields
+- nonexistent references
+- invalid enum values
+- invalid confidence
+- invalid node/micronode relationship
+- invalid exercise references
+- invalid dependency references
+- sourceQuote not being exact substring of sourceText
+- sourcePage inconsistencies
+- orphan source blocks
+- orphan exercises
+
+Այս deterministic errors-ը պետք է տարբերակվեն AI-ի կողմից նշված fidelity issues-ից։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. SOURCE PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Մի ստեղծիր duplicate source of truth։
+
+Եթե sourceReference-ը հղում է անում B1-ին, B1-ի sourcePage-ը authoritative է։
+
+Եթե sourceReference-ում sourcePage նույնպես պահվում է, validator-ը պարտադիր ստուգում է դրա համապատասխանությունը B1-ի sourcePage-ին։
+
+Առաջարկիր՝ որն է ավելի անվտանգ՝
+
+A) sourceReference-ում sourcePage ընդհանրապես չպահել
+
+կամ
+
+B) պահել և deterministic consistency check անել։
+
+Ընտրիր մեկը և հիմնավորիր։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. RELATED MICRONODES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Չի թույլատրվում պարզապես վերցնել առաջին relatedMicroNode ID-ն և լռելյայն կորցնել մնացածը։
+
+Եթե canonical model-ը պահում է.
+
+relatedMicroNodes: [MN-1.1, MN-1.2]
+
+ապա parser/normalized object-ը պետք է պահպանի ամբողջ array-ը։
+
+DB mapping-ի ժամանակ եթե տվյալ DB schema-ն ունի միայն singular FK, ցույց տուր deterministic mapping strategy-ն՝ առանց տվյալների կորուստի։
+
+Չի թույլատրվում silently discard անել արժեքները։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. LEGACY JSON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Նոր Teacher Manual Mapping UI-ի հիմնական flow-ը պետք է ընդունի ՄԻԱՅՆ canonical TEXT։
+
+Legacy JSON import-ը կարող է ժամանակավորապես գոյություն ունենալ compatibility/migration նպատակով, բայց.
+
+- չպետք է օգտագործվի նոր Manual Mapping UI-ում,
+- չպետք է խառնվի նոր parser-ի logic-ի հետ,
+- չպետք է ստեղծվի երկրորդ զուգահեռ canonical mapping system։
+
+Առաջարկիր ինչպես isolate անել legacy JSON path-ը։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. PREVIEW / CONFIRM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Manual Mapping UI-ի վերջնական flow-ը պետք է լինի.
+
+INPUT
+↓
+VALIDATE / DRY RUN
+↓
+PREVIEW
+↓
+CONFIRM
+↓
+TRANSACTION
+↓
+SUCCESS
+
+Dry-run փուլում.
+
+- ոչ մի DB mutation
+- ոչ մի delete
+- ոչ մի insert
+- ոչ մի update
+
+Confirm-ից հետո միայն transaction։
+
+Եթե transaction-ի որևէ քայլ ձախողվի → ամբողջ rollback։
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. IMPORTANT — DO NOT IMPLEMENT YET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Այս պահին code չգրես։
+
+Վերադարձիր միայն.
+
+A. Final Canonical MAP TEXT syntax
+
+B. Final normalized data model
+
+C. Final field list
+
+D. Final validation rules
+
+E. Final TEXT → normalized object mapping rules
+
+F. Legacy JSON isolation strategy
+
+G. Preview → Confirm flow
+
+H. Exact files that will be created/modified
+
+I. Test plan
+
+J. 3 օրինակ.
+
+Օրինակ 1 — valid minimal mapping
+
+Օրինակ 2 — valid realistic mapping
+
+Օրինակ 3 — intentionally invalid mapping showing deterministic validation errors
+
+Հատկապես ստուգիր, որ քո առաջարկած contract-ը չունենա նախորդ architecture documents-ի հակասությունները։
+
+Միայն այս contract-ը հաստատելուց հետո կստանաս implementation-ի թույլտվություն։
+
+ՈՉ ՄԻ CODE CHANGE ՀԻՄԱ։
