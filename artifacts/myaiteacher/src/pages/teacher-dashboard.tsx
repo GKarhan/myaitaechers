@@ -3122,7 +3122,6 @@ export default function TeacherDashboard() {
                                     </span>
                                   )}
                                   <LessonMapButton lessonId={l.id} courseId={selectedCourse!.id} isMapped={isMapped} />
-                                  <GenerateTeachingContentButton lessonId={l.id} hasNodes={isMapped} />
                                   <button
                                     onClick={() => {
                                       setEditLesson({
