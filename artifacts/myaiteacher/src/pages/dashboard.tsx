@@ -581,47 +581,110 @@ export default function Dashboard() {
   };
 
   /* ── SCHEDULE ── */
-  const SectionSchedule = () => (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-bold">📅 Դասացուցակ</h2>
-        <span className="text-xs text-muted-foreground">{todayDate}</span>
+  const SectionSchedule = () => {
+    // Day order for sorting (Armenian weekday names as returned by hy-AM locale)
+    const DAY_ORDER: Record<string, number> = {
+      "երկուշաբթի": 0,
+      "երեքշաբթի":  1,
+      "չորեքշաբթի": 2,
+      "հինգշաբթի":  3,
+      "ուրբաթ":     4,
+      "շաբաթ":      5,
+      "կիրակի":     6,
+    };
+    const norm = (s: string) => s.toLowerCase().replace(/\./g, "");
+
+    // Group all schedule rows by day, sorted by time within each day
+    const byDay = (schedule as any[]).reduce<Record<string, any[]>>((acc, sc) => {
+      const key = norm(sc.day);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(sc);
+      return acc;
+    }, {});
+    const sortedDays = Object.keys(byDay).sort(
+      (a, b) => (DAY_ORDER[a] ?? 9) - (DAY_ORDER[b] ?? 9)
+    );
+    sortedDays.forEach((d) => byDay[d].sort((a: any, b: any) => a.time.localeCompare(b.time)));
+
+    const todayKey = norm(todayArm);
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-bold">📅 Դասացուցակ</h2>
+          <span className="text-xs text-muted-foreground">{todayDate}</span>
+        </div>
+        {schedule.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="text-4xl mb-3">📅</div>
+            <p className="text-sm">դասացուցակ դեռ չկա։</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {sortedDays.map((dayKey) => {
+              const isToday = dayKey === todayKey;
+              const dayItems = byDay[dayKey];
+              // Display name: use the original casing from the first item
+              const dayLabel = dayItems[0].day;
+              return (
+                <div
+                  key={dayKey}
+                  className={`rounded-2xl border overflow-hidden ${
+                    isToday
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-white/10 bg-card/60"
+                  }`}
+                >
+                  <div className={`px-5 py-2.5 flex items-center gap-2 border-b ${
+                    isToday ? "border-primary/20 bg-primary/10" : "border-white/8"
+                  }`}>
+                    <span className={`text-xs font-semibold uppercase tracking-wide ${
+                      isToday ? "text-primary" : "text-muted-foreground"
+                    }`}>
+                      {dayLabel}
+                    </span>
+                    {isToday && (
+                      <span className="text-[10px] bg-primary text-black font-bold px-1.5 py-0.5 rounded-full">
+                        ★
+                      </span>
+                    )}
+                  </div>
+                  <div className="divide-y divide-white/8">
+                    {dayItems.map((sc: any, i: number) => {
+                      const sub = subjects.find(
+                        (x) => x.subject.toLowerCase() === sc.subject.toLowerCase()
+                      );
+                      return (
+                        <div
+                          key={sc.id}
+                          className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/5 transition-colors"
+                        >
+                          <span className="text-xs text-muted-foreground w-5 shrink-0 text-center">{i + 1}</span>
+                          <span className="text-primary font-mono font-bold w-14 shrink-0">{sc.time}</span>
+                          <span className="flex-1 font-medium">{sc.subject}</span>
+                          {sc.teacherName && (
+                            <span className="text-xs text-muted-foreground hidden sm:block">👨‍🏫 {sc.teacherName}</span>
+                          )}
+                          {sub && (
+                            <Link
+                              href={`/subjects/${sub.id}`}
+                              className="text-primary text-sm ml-2 shrink-0 hover:underline"
+                            >
+                              →
+                            </Link>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-      {todayItems.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <div className="text-4xl mb-3">📅</div>
-          <p className="text-sm">Այսօրվա դասացուցակ չկա։</p>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-white/10 bg-card/60 overflow-hidden divide-y divide-white/8">
-          {todayItems.map((sc, i) => {
-            const sub = subjects.find(
-              (x) => x.subject.toLowerCase() === sc.subject.toLowerCase()
-            );
-            return (
-              <div
-                key={sc.id}
-                className="flex items-center gap-4 px-5 py-4 hover:bg-white/5 transition-colors"
-              >
-                <span className="text-xs text-muted-foreground w-5 shrink-0 text-center">{i + 1}</span>
-                <span className="text-primary font-mono font-bold w-14 shrink-0">{sc.time}</span>
-                <span className="flex-1 font-medium">{sc.subject}</span>
-                <span className="text-xs text-muted-foreground hidden sm:block">👨‍🏫 {sc.teacherName}</span>
-                {sub && (
-                  <Link
-                    href={`/subjects/${sub.id}`}
-                    className="text-primary text-sm ml-2 shrink-0 hover:underline"
-                  >
-                    →
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   /* ── PROGRESS ── */
   const SectionProgress = () => (
