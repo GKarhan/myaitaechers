@@ -1,0 +1,811 @@
+# PART 3.5 IMPLEMENTATION — QUESTION-SPECIFIC FEEDBACK
+
+Մենք հաստատել ենք PART 3.5 Audit-ի արդյունքները և ընտրել ենք **Model C — `option_explanations TEXT[]`**։
+
+Հիմա իրականացրու **միայն Question-Specific Feedback-ի implementation-ը**։
+
+## Գլխավոր նպատակ
+
+Յուրաքանչյուր quiz question պետք է ունենա **իր սեփական բացատրությունը յուրաքանչյուր answer option-ի համար**։
+
+Այսինքն՝ եթե հարցն ունի 4 տարբերակ՝
+
+```text
+A → ինչու է A-ն ճիշտ/սխալ
+B → ինչու է B-ն ճիշտ/սխալ
+C → ինչու է C-ն ճիշտ/սխալ
+D → ինչու է D-ն ճիշտ/սխալ
+```
+
+Ու եթե սովորողը ընտրել է B՝
+
+```text
+correct = false
+
+whyWrong = option_explanations[B]
+whyCorrect = option_explanations[correctOptionIndex]
+```
+
+Եթե ընտրել է ճիշտ տարբերակը՝
+
+```text
+correct = true
+
+whyCorrect = option_explanations[correctOptionIndex]
+whyWrong = null
+```
+
+---
+
+# ABSOLUTE SCOPE
+
+Այս փուլում փոխիր միայն այն, ինչ անհրաժեշտ է Question-Specific Feedback-ի համար։
+
+### Թույլատրվում է
+
+* `quiz_questions` schema-ի փոփոխություն
+* migration
+* quiz generation logic
+* quiz generation prompt/schema
+* quiz result API-ի feedback source
+* quiz result frontend-ի անհրաժեշտ փոփոխություններ
+* անհրաժեշտ validation
+* tests
+
+### Չի թույլատրվում
+
+* չփոխել `chat.ts`
+* չփոխել Teaching Mode
+* չփոխել Node Lock
+* չփոխել lesson mapping
+* չփոխել Knowledge Tree scoring logic-ը
+* չփոխել `mastery.ts` scoring formulas
+* չփոխել Student Analysis-ի recommendation logic-ը
+* չիրականացնել PART 4
+* չիրականացնել Personalization Engine
+* չփոխել MicroNode architecture-ը
+* չփոխել գործող quiz result-ի ընդհանուր կառուցվածքը, եթե դրա կարիքը չկա
+
+Այս task-ի միակ նպատակը՝
+
+**Question → Option → Explanation**
+
+---
+
+# 1. SCHEMA
+
+Նախ ուսումնասիրիր իրական `quiz_questions` schema-ն։
+
+Ավելացրու nullable field՝
+
+```text
+option_explanations TEXT[]
+```
+
+Պահպանիր option index-ի համապատասխանությունը։
+
+Օրինակ՝
+
+```json
+[
+  "A-ի բացատրությունը",
+  "B-ի բացատրությունը",
+  "C-ի բացատրությունը",
+  "D-ի բացատրությունը"
+]
+```
+
+Index-ը պետք է համապատասխանի `options[]`-ի index-ին։
+
+Այսինքն՝
+
+```text
+options[0] ↔ option_explanations[0]
+options[1] ↔ option_explanations[1]
+options[2] ↔ option_explanations[2]
+options[3] ↔ option_explanations[3]
+```
+
+### Կարևոր
+
+Մի ենթադրիր, որ բոլոր հարցերը 4 տարբերակ ունեն։
+
+Ստուգիր գործող schema-ն և generation logic-ը։
+
+Եթե համակարգը երաշխավորում է 4 option, validation-ը դա հաստատի։
+
+Եթե variable option count է թույլատրվում, `option_explanations.length`-ը պետք է համապատասխանի `options.length`-ին։
+
+---
+
+# 2. MIGRATION
+
+Ստեղծիր համապատասխան DB migration։
+
+Migration-ը պետք է լինի անվտանգ existing data-ի համար։
+
+Existing questions-ի համար՝
+
+```text
+option_explanations = NULL
+```
+
+Մի գեներացրու fake explanations existing questions-ի համար։
+
+Մի լրացրու DB-ն հորինված text-ով։
+
+---
+
+# 3. QUIZ GENERATION
+
+Գտիր իրական quiz generation pipeline-ը։
+
+Հատկապես ուսումնասիրիր՝
+
+```text
+artifacts/api-server/src/services/quiz-generation.ts
+```
+
+և այն schema/prompt-ը, որով AI-ն ստեղծում է question։
+
+Ներկայիս output-ը մոտավորապես՝
+
+```json
+{
+  "nodeId": 123,
+  "questionText": "...",
+  "options": ["...", "...", "...", "..."],
+  "correctOptionIndex": 1,
+  "difficultyLevel": "MEDIUM"
+}
+```
+
+Այժմ այն պետք է դառնա՝
+
+```json
+{
+  "nodeId": 123,
+  "questionText": "...",
+  "options": ["...", "...", "...", "..."],
+  "correctOptionIndex": 1,
+  "optionExplanations": [
+    "...",
+    "...",
+    "...",
+    "..."
+  ],
+  "difficultyLevel": "MEDIUM"
+}
+```
+
+---
+
+# 4. AI GENERATION RULES
+
+AI-ին հստակ պարտադրիր հետևյալը.
+
+Յուրաքանչյուր option-ի համար ստեղծել առանձին explanation։
+
+### Correct option
+
+Պետք է բացատրի՝
+
+**ինչու է այս պատասխանը ճիշտ՝ հիմնվելով textbook/source material-ի վրա։**
+
+### Wrong option
+
+Պետք է բացատրի՝
+
+**ինչու է հենց այդ տարբերակը սխալ և ինչ սխալ պատկերացում/կանոն է այն արտացոլում**, եթե դա հնարավոր է որոշել source-ից։
+
+Չի կարելի generic տեքստ գրել։
+
+Օրինակ՝ վատ է.
+
+```text
+"Այս պատասխանը սխալ է։"
+```
+
+Պետք է լինի իմաստային բացատրություն։
+
+Օրինակային կառուցվածք՝
+
+```text
+"Այս տարբերակը սխալ է, որովհետև ...։ Ճիշտ կանոնը ... է։"
+```
+
+Բայց մի ստեղծիր textbook-ում չեղած կանոն։
+
+---
+
+# 5. TEXTBOOK FIDELITY
+
+Explanation-ները պետք է ունենան նույն source fidelity-ը, ինչ quiz questions-ը։
+
+AI-ին հստակ գրիր.
+
+* օգտագործել միայն տրամադրված textbook/node source-ը,
+* չհորինել կանոններ,
+* չավելացնել արտաքին փաստեր,
+* չօգտագործել ընդհանուր գիտելիք, եթե source-ը բավարար չէ,
+* եթե source-ը բավարար չէ վստահելի explanation ստեղծելու համար՝ վերադարձնել `null` տվյալ option-ի համար։
+
+Այս կանոնը շատ կարևոր է։
+
+**Never fabricate an explanation.**
+
+---
+
+# 6. OPTION-SPECIFICITY
+
+Պարտադիր ստուգիր, որ explanation-ը կապված է հենց տվյալ option-ի հետ։
+
+Օրինակ՝
+
+```text
+Question:
+Քանի՞ կարգ է կազմում մեկ դասը։
+
+A = 1
+B = 2
+C = 3
+D = 4
+```
+
+Չի կարելի բոլոր սխալ option-ների համար նույն explanation-ը գրել։
+
+Պետք է տարբերակել՝
+
+```text
+A → ինչու 1-ը սխալ է
+B → ինչու 2-ը սխալ է
+C → ինչու 3-ը ճիշտ է
+D → ինչու 4-ը սխալ է
+```
+
+---
+
+# 7. GENERATION VALIDATION
+
+Ավելացրու validation։
+
+Պետք է ստուգվի՝
+
+```text
+options.length === optionExplanations.length
+```
+
+եթե explanations-ը non-null է։
+
+Եթե explanation-ի քանակը սխալ է՝
+
+* մի պահիր կոտրված question,
+* մի shift արա indexes-ը,
+* մի ենթադրիր missing explanation-ը,
+* օգտագործիր անվտանգ validation/fallback։
+
+Եթե կոնկրետ option-ի explanation-ը վստահելի չէ՝ այդ slot-ը կարող է լինել `null`։
+
+Օրինակ՝
+
+```json
+[
+  "A explanation",
+  null,
+  "C explanation",
+  "D explanation"
+]
+```
+
+Սա թույլատրելի է։
+
+---
+
+# 8. DATABASE WRITE
+
+Գտիր այն հատվածը, որտեղ generated question-ը պահվում է `quiz_questions` table-ում։
+
+Պահպանիր՝
+
+```text
+option_explanations
+```
+
+ճիշտ index order-ով։
+
+Համոզվիր, որ generation → DB write ժամանակ data-ն չի կորում։
+
+---
+
+# 9. API FEEDBACK
+
+Փոփոխիր `buildStudentResultAnalysis()`-ը։
+
+Ներկայիս logic-ը մոտավորապես օգտագործում է՝
+
+```text
+lesson_nodes.childFriendlyExplanation
+lesson_nodes.commonMisconception
+```
+
+Այժմ primary source-ը պետք է լինի՝
+
+```text
+quiz_questions.option_explanations
+```
+
+API contract-ը պահիր նույնը՝
+
+```json
+"feedback": {
+  "whyCorrect": "...",
+  "whyWrong": "..."
+}
+```
+
+Mapping-ը պետք է լինի.
+
+### Correct answer
+
+```text
+whyCorrect =
+option_explanations[correctOptionIndex] ?? null
+
+whyWrong = null
+```
+
+### Wrong answer
+
+```text
+whyCorrect =
+option_explanations[correctOptionIndex] ?? null
+
+whyWrong =
+option_explanations[selectedOptionIndex] ?? null
+```
+
+### Missing data
+
+Եթե array-ը null է կամ տվյալ index-ում explanation չկա՝
+
+```text
+null
+```
+
+Մի fallback արա generic AI-generated explanation-ի։
+
+---
+
+# 10. NODE-LEVEL FALLBACK
+
+Audit-ում մենք ունենք նախկին node-level fields՝
+
+```text
+child_friendly_explanation
+common_misconception
+```
+
+Չօգտագործես դրանք որպես question-specific explanation-ի substitute, եթե դա կստեղծի misleading feedback։
+
+Եթե որոշես պահպանել fallback՝
+
+* միայն այն դեպքում, երբ semantic meaning-ը անվտանգ է,
+* clearly distinguish question-specific vs node-level data,
+* չպնդել, որ node-level explanation-ը հենց տվյալ option-ի սխալի բացատրությունն է։
+
+Նախընտրելի behavior-ը՝
+
+```text
+question-specific explanation exists
+→ use it
+
+otherwise
+→ null
+```
+
+No fabrication.
+
+---
+
+# 11. FRONTEND
+
+`quiz-result.tsx`-ում պահիր արդեն ստեղծված feedback UI-ն։
+
+Այն պետք է աշխատի հետևյալ կերպ։
+
+### Correct
+
+Ցույց տալ՝
+
+```text
+Ինչու է ճիշտ
+[question-specific explanation]
+```
+
+### Wrong
+
+Ցույց տալ՝
+
+```text
+Քո պատասխանը
+[B. ...]
+
+
+Ինչու է քո պատասխանը սխալ
+[explanation for B]
+
+
+Ճիշտ պատասխանը
+[C. ...]
+
+
+Ինչու է ճիշտ
+[explanation for C]
+```
+
+Կարևոր է, որ `whyWrong`-ը լինի հենց student's selected option-ի explanation-ը։
+
+---
+
+# 12. NULL BEHAVIOR
+
+Եթե չկա explanation՝ UI-ն չպետք է ցուցադրի դատարկ block։
+
+Case A:
+
+```text
+whyCorrect = null
+whyWrong = null
+```
+
+→ feedback block չցուցադրել։
+
+Case B:
+
+```text
+whyCorrect = explanation
+whyWrong = null
+```
+
+→ ցույց տալ միայն whyCorrect։
+
+Case C:
+
+```text
+whyCorrect = null
+whyWrong = explanation
+```
+
+→ ցույց տալ only whyWrong։
+
+No empty containers.
+
+---
+
+# 13. TEACHER RESULT
+
+Հաստատիր, որ՝
+
+```text
+GET /quizzes/:id/results/:studentId
+```
+
+նույն feedback mapping-ն է օգտագործում։
+
+Teacher view-ում նույնպես պետք է ստանա question-specific feedback։
+
+Մի ստեղծիր երկրորդ, առանձին implementation։
+
+Օգտագործիր նույն helper-ը։
+
+---
+
+# 14. EXISTING DATA
+
+Existing quiz questions-ի համար `option_explanations` կլինի NULL։
+
+Դրանք պետք է շարունակեն աշխատել։
+
+Մի կոտրիր existing quizzes։
+
+Result-ը պետք է պարզապես ցույց տա՝
+
+```text
+no feedback available
+```
+
+և չպետք է error առաջանա։
+
+---
+
+# 15. TESTING
+
+Պարտադիր ստեղծիր/կատարիր հետևյալ test cases-ը։
+
+### Test A — Correct
+
+Question ունի՝
+
+```text
+options = [A, B, C, D]
+correct = C
+```
+
+Student ընտրում է C։
+
+Պետք է ստացվի՝
+
+```json
+{
+  "whyCorrect": "C explanation",
+  "whyWrong": null
+}
+```
+
+---
+
+### Test B — Wrong B
+
+Correct = C
+
+Student = B
+
+Պետք է ստացվի՝
+
+```json
+{
+  "whyCorrect": "C explanation",
+  "whyWrong": "B explanation"
+}
+```
+
+---
+
+### Test C — Wrong D
+
+Correct = C
+
+Student = D
+
+Պետք է ստացվի՝
+
+```json
+{
+  "whyCorrect": "C explanation",
+  "whyWrong": "D explanation"
+}
+```
+
+Հատկապես հաստատիր, որ B և D-ի explanations-ը իրար չեն խառնվում։
+
+---
+
+### Test D — Same Node / Different Questions
+
+Նույն Node-ի տակ ստեղծիր/գտիր առնվազն 2 question։
+
+Օրինակ՝
+
+```text
+Q1 → option explanations A1/B1/C1/D1
+Q2 → option explanations A2/B2/C2/D2
+```
+
+Հաստատիր՝
+
+```text
+Q1 feedback ≠ Q2 feedback
+```
+
+երբ source explanation-ները տարբեր են։
+
+Սա հիմնական acceptance criterion է։
+
+---
+
+### Test E — NULL
+
+```text
+option_explanations = NULL
+```
+
+Result API-ն չպետք է crash անի։
+
+UI-ն չպետք է ցույց տա դատարկ feedback block։
+
+---
+
+### Test F — Partial NULL
+
+```json
+[
+  "A explanation",
+  null,
+  "C explanation",
+  "D explanation"
+]
+```
+
+Եթե student ընտրում է B՝
+
+```text
+whyWrong = null
+whyCorrect = C explanation
+```
+
+UI-ն պետք է ցույց տա միայն available explanation-ը։
+
+---
+
+### Test G — Teacher result
+
+Հաստատիր, որ teacher endpoint-ը վերադարձնում է նույն feedback-ը։
+
+---
+
+# 16. DO NOT CHANGE KNOWLEDGE STATE
+
+Այս implementation-ը **չպետք է փոխի**՝
+
+```text
+mastery_score
+confidence_score
+retention_score
+status
+bloom_level
+is_provisional
+```
+
+Չպետք է նոր evidence event ստեղծվի։
+
+Չպետք է փոխվի scoring-ը։
+
+Feedback-ը միայն explanatory data է։
+
+---
+
+# 17. IMPORTANT ARCHITECTURAL RULE
+
+Այս փուլից հետո յուրաքանչյուր question պետք է ունենա երկու անկախ կապ.
+
+```text
+Question
+   ↓
+node_id
+   ↓
+lesson_node / MicroNode
+```
+
+և
+
+```text
+Question
+   ↓
+option_explanations[]
+   ↓
+specific option reasoning
+```
+
+Այսպիսով կունենանք՝
+
+```text
+Question
+   ↓
+MicroNode
+   ↓
+Student answer
+   ↓
+Specific option explanation
+```
+
+Սա պետք է հիմք հանդիսանա հետագա Student Analysis-ի համար։
+
+---
+
+# 18. FINAL VERIFICATION REPORT
+
+Implementation-ից հետո report արա այս ձևով.
+
+## PART 3.5 — IMPLEMENTATION REPORT
+
+### A. Files Changed
+
+Յուրաքանչյուր ֆայլի համար գրիր՝
+
+```text
+file
+what changed
+why
+```
+
+### B. Schema
+
+Ցույց տուր՝
+
+```text
+quiz_questions.option_explanations
+```
+
+ինչ type ունի և nullable է, թե ոչ։
+
+### C. Generation
+
+Ցույց տուր generated question-ի իրական օրինակ։
+
+### D. Stored Data
+
+Ցույց տուր DB-ում պահպանված իրական example։
+
+### E. API
+
+Ցույց տուր իրական response.
+
+Correct:
+
+```json
+feedback: {
+  whyCorrect: "...",
+  whyWrong: null
+}
+```
+
+Wrong:
+
+```json
+feedback: {
+  whyCorrect: "...",
+  whyWrong: "..."
+}
+```
+
+### F. UI
+
+Հաստատիր՝ correct/wrong cases-ը ճիշտ են render լինում։
+
+### G. Tests
+
+Տուր A–G test results։
+
+### H. Regression
+
+Հաստատիր, որ untouched են՝
+
+```text
+chat.ts
+lesson-mapping.ts
+mastery.ts
+scoring.ts
+Knowledge Tree logic
+Teaching Mode
+Node Lock
+Student Analysis
+Personalization Engine
+```
+
+### I. Remaining Limitations
+
+Միայն իրականում մնացած խնդիրները։
+
+### J. STOP
+
+Այս implementation-ից հետո **մի անցիր PART 4-ին ինքնուրույն**։
+
+Կանգ առ և սպասիր իմ հաստատմանը։
+
+## ABSOLUTE RULE
+
+Մի հորինիր explanation։
+
+Եթե source-ը բավարար չէ՝
+
+```text
+null
+```
+
+ավելի ճիշտ է, քան սխալ կամ հորինված explanation-ը։
+
+Հիմնական acceptance criterion-ը սա է.
+
+> **Սովորողը պետք է ստանա բացատրություն ոչ միայն այն մասին, թե ինչու է ճիշտ պատասխանը ճիշտ, այլ նաև՝ հենց իր ընտրած սխալ տարբերակը ինչու է սխալ։**
+
+Եվ նույն Node-ի տակ գտնվող տարբեր հարցերը պետք է կարողանան ունենալ **տարբեր, question-specific explanations**։

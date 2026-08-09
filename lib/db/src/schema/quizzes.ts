@@ -47,6 +47,11 @@ export const quizQuestionsTable = pgTable("quiz_questions", {
   // LOW | MEDIUM | HIGH
   difficultyLevel: text("difficulty_level").notNull().default("MEDIUM"),
   sequence: integer("sequence").notNull(),
+  // Nullable TEXT[] — one explanation per option, index-aligned with options[].
+  // null = no explanations available for this question (existing questions, or
+  // generation produced insufficient source material).
+  // Individual slots may also be null (partial — that slot has no reliable explanation).
+  optionExplanations: text("option_explanations").array(),
 });
 
 export type QuizQuestion = typeof quizQuestionsTable.$inferSelect;

@@ -47,6 +47,7 @@ async function buildStudentResultAnalysis(
       isCorrect:           quizAnswersTable.isCorrect,
       sequence:            quizQuestionsTable.sequence,
       nodeId:              quizQuestionsTable.nodeId,
+      optionExplanations:  quizQuestionsTable.optionExplanations,
     })
     .from(quizAnswersTable)
     .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
@@ -106,15 +107,17 @@ async function buildStudentResultAnalysis(
       sequence:            a.sequence,
       nodeId:              a.nodeId ?? null,
       nodeTitle:           ln?.title ?? null,
-      // feedback: split by purpose (spec Section 6 priority order)
-      // Priority 1 (question-specific explanation) — pending quiz_questions.explanation schema addition
-      // Priority 2 → childFriendlyExplanation used as whyCorrect
-      // Priority 3 → commonMisconception used as whyWrong (only meaningful when isCorrect=false)
-      // No fabrication: both null → frontend shows nothing
-      feedback: {
-        whyCorrect: ln?.childFriendlyExplanation ?? null,
-        whyWrong:   ln?.commonMisconception ?? null,
-      },
+      // feedback: question-specific, option-specific (PART 3.5 Model C)
+      // Primary source: quiz_questions.option_explanations[] (index-aligned with options[])
+      //   whyCorrect = option_explanations[correctOptionIndex]
+      //   whyWrong   = option_explanations[selectedOptionIndex]  (null when isCorrect=true)
+      // No fallback to node-level fields — null means null, never fabricate.
+      feedback: (() => {
+        const expl = Array.isArray(a.optionExplanations) ? a.optionExplanations as (string | null)[] : null;
+        const whyCorrect = expl?.[a.correctOptionIndex] ?? null;
+        const whyWrong   = (!a.isCorrect && expl != null) ? (expl[a.selectedOptionIndex] ?? null) : null;
+        return { whyCorrect, whyWrong };
+      })(),
       errorState:          a.isCorrect ? ("correct" as const) : ("wrong" as const),
     };
   });
@@ -268,13 +271,14 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     if (generated.length > 0) {
       await db.insert(quizQuestionsTable).values(
         generated.map((q, i) => ({
-          quizId:             quiz.id,
-          nodeId:             q.nodeId,
-          questionText:       q.questionText,
-          options:            q.options,
-          correctOptionIndex: q.correctOptionIndex,
-          difficultyLevel:    q.difficultyLevel,
-          sequence:           i + 1,
+          quizId:              quiz.id,
+          nodeId:              q.nodeId,
+          questionText:        q.questionText,
+          options:             q.options,
+          correctOptionIndex:  q.correctOptionIndex,
+          difficultyLevel:     q.difficultyLevel,
+          sequence:            i + 1,
+          optionExplanations:  q.optionExplanations ?? null,
         }))
       );
     }
