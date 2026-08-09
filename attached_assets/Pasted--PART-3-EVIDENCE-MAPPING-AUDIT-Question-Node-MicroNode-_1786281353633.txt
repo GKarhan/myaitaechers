@@ -1,0 +1,507 @@
+# PART 3 — EVIDENCE MAPPING AUDIT
+
+## Question → Node → MicroNode → Student Knowledge State
+
+### Նպատակ
+
+Հիմա կատարիր **միայն audit**, ոչ մի code/schema/UI փոփոխություն մի կատարիր։
+
+Մենք կառուցում ենք անհատականացված ուսուցման համակարգ, և դրա հիմքում պետք է լինի վստահելի կապը՝
+
+**Test Question → Node/MicroNode → Student Answer → Evidence → Knowledge State**
+
+Քայլ 2-ում արդեն իրականացվել է Question Feedback-ի կառուցվածքը։
+
+Հիմա պետք է պարզենք՝ արդյոք յուրաքանչյուր թեստային հարցի գիտելիքային աղբյուրը ճիշտ և վստահելի կերպով կապված է կոնկրետ **Node/MicroNode-ի** հետ։
+
+---
+
+## 1. Audit-ի սահմանները
+
+Ուսումնասիրիր ամբողջ համապատասխան chain-ը՝
+
+* quiz generation
+* `quiz_questions`
+* `quiz_answers`
+* `node_id`
+* `lesson_nodes`
+* `knowledge_nodes`
+* `evidence_events`
+* scoring/mastery logic
+* Knowledge Tree
+* lesson mapping / MicroNode structure
+
+Հատկապես ստուգիր՝ արդյոք համակարգում իրականում գոյություն ունի **MicroNode-ի հասկացություն**, և եթե այո՝ որտեղ և ինչպես է այն ներկայացված։
+
+Մի փոխիր ոչ մի ֆայլ։
+
+Մի ավելացրու migration։
+
+Մի փոխիր schema։
+
+Մի փոխիր prompt։
+
+Մի փոխիր UI։
+
+Մի «շտկիր» հայտնաբերված խնդիրները։
+
+Միայն ուսումնասիրիր և report արա։
+
+---
+
+# 2. Question → Node կապ
+
+Պարզիր՝
+
+### A. Ինչպե՞ս է quiz question-ը ստանում `node_id`
+
+Գտիր ամբողջ ճանապարհը.
+
+```text
+Quiz creation
+→ selected nodes
+→ question generation
+→ quiz_questions.node_id
+```
+
+Պարզիր՝
+
+1. `node_id`-ը պարտադի՞ր է։
+2. Կարո՞ղ է question ստեղծվել առանց `node_id`։
+3. AI generation-ը կարո՞ղ է սխալ Node ընտրել։
+4. Question-ի `node_id`-ը user/teacher-ի ընտրած Node-ի՞ց է գալիս, թե AI-ն ինքն է որոշում։
+5. Արդյոք question generation-ի ժամանակ պահպանվում է սկզբնական source Node-ը։
+6. Եթե question-ը վերաբերում է ավելի փոքր գիտելիքային միավորի, այդ կապը պահպանվո՞ւմ է։
+
+Տուր կոնկրետ code locations։
+
+---
+
+# 3. Node vs MicroNode
+
+Սա հատկապես կարևոր է։
+
+Պարզիր՝ մեր համակարգում կա՞ արդյոք իրական hierarchy՝
+
+```text
+Node
+   ├── MicroNode
+   ├── MicroNode
+   └── MicroNode
+```
+
+կամ ներկայում համակարգը աշխատում է միայն՝
+
+```text
+Node
+```
+
+մակարդակով։
+
+Ստուգիր՝
+
+* database schema
+* lesson mapping
+* mapping output
+* `lesson_nodes`
+* knowledge tree
+* quiz generation
+* evidence events
+
+### Հատկապես պարզիր
+
+Եթե lesson mapping-ում կա MicroNode, արդյոք quiz question-ը կարող է կապվել **MicroNode-ին**, թե այն վերջում վերածվում/կապվում է միայն parent Node-ին։
+
+Եթե MicroNode չկա տեխնիկական մակարդակում, դա հստակ գրիր։
+
+---
+
+# 4. Question granularity audit
+
+Ստուգիր իրական quiz-ը։
+
+Վերցրու առնվազն մեկ իրական quiz և ցույց տուր օրինակ՝
+
+```text
+Question 1
+→ node_id = ?
+→ Node title = ?
+→ actual learning objective = ?
+
+Question 2
+→ node_id = ?
+→ Node title = ?
+→ actual learning objective = ?
+```
+
+Պարզիր՝ արդյոք մեկ Node-ի տակ կարող են լինել տարբեր գիտելիքներ։
+
+Օրինակ՝
+
+```text
+Node = «Թվերի կարդալու կանոններ»
+
+Question 1 → միլիոնների կարդալ
+Question 2 → կարգային միավորների կարդալ
+Question 3 → թվի խմբերի տարբերակում
+```
+
+Եթե այդպիսի իրավիճակ կա, ապա պարզիր՝ համակարգը բոլոր երեք հարցերի սխալը վերագրո՞ւմ է նույն Node-ին։
+
+---
+
+# 5. Evidence chain audit
+
+Հաստատիր ամբողջ chain-ը.
+
+```text
+quiz_question.node_id
+        ↓
+quiz_answer.node_id
+        ↓
+evidence_events.topic_id
+        ↓
+knowledge_nodes.lesson_node_id
+        ↓
+scoring
+        ↓
+masteryScore
+confidenceScore
+        ↓
+Knowledge Tree state
+```
+
+Յուրաքանչյուր անցման համար գրիր՝
+
+* որտեղ է իրականացվում,
+* ինչ ID է օգտագործվում,
+* ինչ կարող է կոտրվել,
+* արդյոք կապը lossless է։
+
+---
+
+# 6. Critical question — answer → knowledge mapping
+
+Պարզիր՝ արդյոք համակարգը կարող է ասել.
+
+> «Այս կոնկրետ սխալ պատասխանը ցույց է տալիս, որ սովորողը չի տիրապետում այս կոնկրետ MicroNode-ին»։
+
+Թե իրականում կարող է ասել միայն.
+
+> «Այս հարցը պատկանում է այս Node-ին, հետևաբար սխալը վերագրում ենք ամբողջ Node-ին»։
+
+Սա շատ կարևոր տարբերություն է։
+
+Գրիր հստակ՝
+
+### Level A
+
+Question → Node
+
+### Level B
+
+Question → MicroNode
+
+### Level C
+
+Question → specific learning objective
+
+և ասա՝ ներկայում համակարգը որ մակարդակն է իրականում ապահովում։
+
+---
+
+# 7. Multiple questions → same Node
+
+Ստուգիր՝ ինչ է տեղի ունենում, երբ նույն Node-ի համար կա օրինակ՝
+
+```text
+7 questions
+
+5 correct
+2 wrong
+```
+
+Պարզիր՝ scoring-ը հաշվարկում է ամբողջ Node-ի ընդհանուր արդյունքը՞։
+
+Թե՞ կարող է տարբերակել՝
+
+```text
+MicroNode A → 100%
+MicroNode B → 33%
+MicroNode C → 0%
+```
+
+Եթե չի կարող, գրիր՝ ինչ տվյալ է կորում։
+
+---
+
+# 8. Multiple Nodes → one question
+
+Ստուգիր նաև հակառակ դեպքը։
+
+Կարո՞ղ է մեկ question իրականում ստուգել երկու կամ ավելի Nodes։
+
+Օրինակ՝
+
+```text
+Question:
+«Գտիր 345 678 թվի կարգային միավորները և կարդա թիվը»
+```
+
+Այստեղ հարցը կարող է ստուգել միաժամանակ՝
+
+* կարգային միավորներ
+* թվի կարդալ
+* թվի կառուցվածք
+
+Պարզիր՝ համակարգը դա թույլատրո՞ւմ է։
+
+Եթե ոչ՝ արդյոք այդ դեպքում attribution-ը չափազանց կոպիտ է։
+
+---
+
+# 9. Null / invalid mapping
+
+Ստուգիր բոլոր failure cases-ը։
+
+### Case A
+
+`quiz_questions.node_id = NULL`
+
+Ինչ է տեղի ունենում։
+
+### Case B
+
+Node-ը գոյություն չունի։
+
+### Case C
+
+Node-ը ջնջվել է quiz-ից հետո։
+
+### Case D
+
+Question-ը կա, բայց lesson mapping-ի հետ կապ չկա։
+
+### Case E
+
+MicroNode-ը գոյություն ունի mapping-ում, բայց quiz question-ը միայն parent Node-ին է կապված։
+
+Յուրաքանչյուրի համար գրիր՝
+
+```text
+Question
+→ Evidence
+→ Scoring
+→ Knowledge Tree
+```
+
+ինչ է տեղի ունենում։
+
+---
+
+# 10. Historical integrity
+
+Ստուգիր՝ եթե հետո lesson/node structure-ը փոխվի՝
+
+* question-ի historical mapping-ը պահպանվո՞ւմ է,
+* quiz answer-ը պահպանվո՞ւմ է,
+* evidence-ը պահպանվո՞ւմ է,
+* նախկին test-ի արդյունքը կարող է փոխվե՞լ նոր mapping-ից։
+
+Հատկապես ստուգիր արդեն հայտնաբերված փաստը, որ `quiz_answers.node_id`-ը denormalized է, իսկ `quiz_questions.node_id`-ը nullable։
+
+Պարզիր՝ սա բավարար historical integrity ապահովո՞ւմ է։
+
+---
+
+# 11. Personalized Learning-ի համար բավարար տվյալ կա՞
+
+Վերջում պատասխանիր ամենակարևոր հարցին.
+
+Եթե մենք ուզում ենք հետո ունենալ այս տրամաբանությունը՝
+
+```text
+Student
+   ↓
+Question results
+   ↓
+MicroNode mastery
+   ↓
+Knowledge state
+
+Գիտի
+→ Կրկնել
+
+Մասնակի գիտի
+→ Թիրախային սովորել
+→ խորությունը կախված է mastery %-ից
+
+Չգիտի
+→ Լիարժեք սովորել
+
+Չի ուսումնասիրել
+→ Սկզբում ուսումնասիրել
+→ հետո սովորել
+```
+
+ապա ներկայիս data model-ը կարո՞ղ է դա ապահովել։
+
+Պատասխանը տուր երեք մակարդակով.
+
+### GREEN
+
+Արդեն լիարժեք ապահովվում է։
+
+### YELLOW
+
+Տվյալները կան, բայց logic-ը դեռ չկա։
+
+### RED
+
+Տվյալները ընդհանրապես չեն պահպանվում և պետք է ավելացնել։
+
+---
+
+# 12. Պարտադիր իրական օրինակ
+
+Օգտագործիր առնվազն մեկ իրական quiz-ի իրական տվյալներ և ցույց տուր ամբողջ ճանապարհը։
+
+Օրինակ՝
+
+```text
+Quiz
+↓
+Question #X
+↓
+quiz_questions.node_id = ...
+↓
+Node = ...
+↓
+Student selected = ...
+↓
+Correct = true/false
+↓
+quiz_answers.node_id = ...
+↓
+evidence_event.topic_id = ...
+↓
+knowledge_node = ...
+↓
+mastery = ...
+↓
+confidence = ...
+↓
+Knowledge Tree block = ...
+```
+
+Եթե MicroNode մակարդակ չկա, այդտեղ բացահայտ նշիր.
+
+```text
+MicroNode = NOT AVAILABLE
+```
+
+---
+
+# 13. Ամենակարևոր եզրակացությունը
+
+Վերջում պարտադիր տուր այս 5 պատասխանները.
+
+### 1.
+
+**Question → Node կապը հիմա վստահելի՞ է։**
+
+### 2.
+
+**Question → MicroNode կապը հիմա գոյություն ունի՞։**
+
+### 3.
+
+**Կարո՞ղ ենք կոնկրետ սխալը վերագրել կոնկրետ learning objective-ի։**
+
+### 4.
+
+**Ներկայիս evidence-ը բավարար է անհատականացված ուսուցման համար, թե՞ ոչ։**
+
+### 5.
+
+**Քայլ 4 — Student Analysis սկսելուց առաջ ի՞նչ բան պետք է անպայման լուծենք։**
+
+---
+
+# 14. OUTPUT FORMAT
+
+Report-ը կառուցիր այս ձևով.
+
+## PART 3 — EVIDENCE MAPPING AUDIT
+
+### A. Current Architecture
+
+...
+
+### B. Question → Node
+
+...
+
+### C. Node → MicroNode
+
+...
+
+### D. Evidence Chain
+
+...
+
+### E. Granularity Problems
+
+...
+
+### F. Real Quiz Example
+
+...
+
+### G. Failure Cases
+
+...
+
+### H. Historical Integrity
+
+...
+
+### I. Personalization Readiness
+
+| Capability                 | Status           | Explanation |
+| -------------------------- | ---------------- | ----------- |
+| Question → Node            | GREEN/YELLOW/RED |             |
+| Question → MicroNode       | GREEN/YELLOW/RED |             |
+| Error → learning objective | GREEN/YELLOW/RED |             |
+| Student → knowledge state  | GREEN/YELLOW/RED |             |
+| Personalized next step     | GREEN/YELLOW/RED |             |
+
+### J. Critical Findings
+
+Միայն ամենակարևոր խնդիրները։
+
+### K. Recommendation Before PART 4
+
+Գրիր՝ ինչ պետք է որոշենք/շտկենք **մինչև Student Analysis-ին անցնելը**։
+
+---
+
+## ABSOLUTE RULE
+
+**Այս փուլում ոչ մի փոփոխություն չանել։**
+
+Ոչ code։
+
+Ոչ schema։
+
+Ոչ migration։
+
+Ոչ UI։
+
+Ոչ prompt։
+
+Ոչ database data փոփոխություն։
+
+Միայն audit + իրական տվյալներով ապացույցներ։
+
+Վերջում կանգ առ և սպասիր հաստատման։
