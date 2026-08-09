@@ -2119,6 +2119,7 @@ export default function AdminDashboard() {
                     },
                     onError: (err: any) => {
                       const msg =
+                        err?.data?.error ||
                         err?.response?.data?.error ||
                         "Ջնջումը չհաջողվեց։ Կրկին փորձեք։";
                       setDeleteTeacherError(msg);
@@ -2171,6 +2172,7 @@ export default function AdminDashboard() {
                     },
                     onError: (err: any) => {
                       const msg =
+                        err?.data?.error ||
                         err?.response?.data?.error ||
                         "Ջնջումը չհաջողվեց։ Կրկին փորձեք։";
                       setDeleteStudentError(msg);
