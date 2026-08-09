@@ -3665,7 +3665,7 @@ export default function TeacherDashboard() {
                     : "text-muted-foreground hover:text-white"
                 }`}
               >
-                [TEACHER_RECOMMENDATIONS]
+                Առաջարկություններ ուսուցչին
               </button>
             </div>
 

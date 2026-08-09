@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PersonalizedAction = "REVIEW" | "LEARN_TARGETED" | "Լիարժեք սովորել" | "STUDY_FIRST";
+type PersonalizedAction = "REVIEW" | "LEARN_TARGETED" | "LEARN_FULL" | "STUDY_FIRST";
 type MasteryLevel = "mastered" | "weak" | "in_progress" | "not_started";
 
 interface PersonalizedNextAction {

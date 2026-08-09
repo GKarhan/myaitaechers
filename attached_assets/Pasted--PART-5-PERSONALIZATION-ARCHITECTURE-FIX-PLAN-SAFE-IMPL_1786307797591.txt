@@ -1,0 +1,336 @@
+# PART 5 — PERSONALIZATION ARCHITECTURE FIX PLAN + SAFE IMPLEMENTATION
+
+PART 4 audit-ը ավարտված է և հաստատված։
+
+Հիմա անցնում ենք PART 5-ին։
+
+Քո խնդիրը այս փուլում **ոչ թե ամբողջ personalization համակարգը վերագրելն է**, այլ PART 4-ում հայտնաբերված խնդիրները համակարգված ձևով վերլուծել, առանձնացնել MUST-FIX / SHOULD-FIX / FUTURE և միայն հաստատված մասերը իրականացնել։
+
+## PART 5-ի հիմնական նպատակ
+
+Ապահովել, որ Quiz → Evidence → Mastery → Recommendation pipeline-ը համապատասխանի վերջնական AI Tutor ճարտարապետությանը։
+
+PART 4-ում հաստատված են հետևյալ փաստերը.
+
+### GREEN — չփոխել
+
+1. quiz_answers → evidence_events կապը ճիշտ է
+2. evidence_events → knowledge_nodes կապը ճիշտ է
+3. mastery calculation-ը մաթեմատիկորեն ճիշտ է
+4. per-question option feedback-ը ճիշտ է
+5. recommendation priority calculation-ը ճիշտ է
+6. 0/N confidence clamp-ը աշխատում է
+7. API → frontend հիմնական data flow-ը աշխատում է
+
+Այս հատվածները չվերագրել և չկոտրել։
+
+---
+
+# PART 5 — Քայլ 1. Նախ՝ codebase audit
+
+Մինչև որևէ code change անելը ուսումնասիրիր՝
+
+* `mastery.ts`
+* `scoring.ts`
+* `quizzes.ts`
+* `quiz-result.tsx`
+* `lesson_node_dependencies` schema և բոլոր օգտագործումները
+* `knowledge_nodes`
+* `evidence_events`
+* `review_schedule`-ին վերաբերող schema/code
+* `is_provisional`
+* `retention_score`
+* `status`
+* `getMasteryLevelFromScores`
+* `getPersonalizedNextAction`
+* `recommendationPriority`
+* `computeR`
+* բոլոր այն տեղերը, որտեղ recommendation կամ mastery state է օգտագործվում
+
+Պետք է կազմես dependency map.
+
+Պետք է հստակ ցույց տաս.
+
+`Quiz answer`
+→ `evidence_event`
+→ `knowledge_node`
+→ `scoring`
+→ `mastery/confidence`
+→ `mastery level`
+→ `recommendation`
+→ `AI Tutor next learning action`
+
+---
+
+# PART 5 — Քայլ 2. Խնդիրները դասակարգիր
+
+Ստեղծիր երեք կատեգորիա.
+
+## MUST FIX NOW
+
+Միայն այն խնդիրները, որոնք կարող են սխալ ուսուցողական որոշում առաջացնել արդեն գործող համակարգում։
+
+Առնվազն ուսումնասիրիր.
+
+### A. Frontend type mismatch
+
+`PersonalizedAction` union-ում պետք է լինի իրական արժեքը.
+
+`LEARN_FULL`
+
+և ոչ garbage Unicode string-ը։
+
+Սա 1-line type safety fix է։
+
+### B. Prerequisite-aware recommendation
+
+`lesson_node_dependencies` արդեն գոյություն ունի։
+
+Չստեղծել նոր dependency համակարգ։
+
+Պետք է ուսումնասիրել առկա schema-ն և առաջարկել՝ ինչպես recommendation engine-ը կարող է հաշվի առնել.
+
+`from_node_id → to_node_id`
+
+կապերը։
+
+ԿԱՐԵՎՈՐ.
+
+Մի ենթադրիր, թե `from_node_id`-ը prerequisite է կամ dependent է։
+
+Ստուգիր իրական data model-ը, օգտագործումները և առկա 5 rows-ը։
+
+Նախ փաստացի հաստատիր direction-ը։
+
+Recommendation-ը պետք է չուղարկի աշակերտին advanced node-ի վրա, եթե դրա անհրաժեշտ prerequisite-ը դեռ չի յուրացվել։
+
+Բայց մի փոխիր scoring-ը։
+
+Dependency logic-ը պետք է ազդի **recommendation ordering / eligibility**-ի վրա, ոչ թե raw mastery score-ի վրա։
+
+---
+
+# PART 5 — Քայլ 3. Provisional mastery
+
+PART 4-ը ցույց տվեց.
+
+`2/2 correct → mastery=100 → mastered`
+
+Սա ներկայիս scoring-ի տրամաբանությամբ տեխնիկապես հնարավոր է, բայց pedagogically չափազանց ուժեղ եզրակացություն է։
+
+Ուստի ուսումնասիրիր՝ ինչպես կարելի է օգտագործել արդեն գոյություն ունեցող.
+
+`is_provisional`
+
+դաշտը՝ առանց ամբողջ mastery համակարգը վերակառուցելու։
+
+Առաջարկիր հստակ rule set, օրինակ՝
+
+* initial quiz evidence → provisional
+* repeated evidence / later validation → verified
+* verified mastery → իրական mastered state
+
+Բայց **ինքնուրույն մի ընտրիր threshold-ը**։
+
+Նախ ցույց տուր.
+
+1. ներկայիս behavior-ը
+2. առաջարկվող behavior-ը
+3. ինչ database/code changes են անհրաժեշտ
+4. ինչ regressions կարող են առաջանալ
+
+---
+
+# PART 5 — Քայլ 4. Retention
+
+Ուսումնասիրիր `review_schedule` և `computeR()`։
+
+Պարզիր՝
+
+* ինչ schema արդեն կա
+* ինչ fields կան
+* ինչ code արդեն նախատեսված է
+* ինչն է բացակայում
+* արդյոք կարելի է սկսել retention-ը առանց նոր մեծ subsystem ստեղծելու
+
+ԿԱՐԵՎՈՐ.
+
+Այս փուլում **չիրականացնել full spaced-repetition system**, եթե codebase-ում դրա համար բավարար contract չկա։
+
+Պետք է նախ ներկայացնել implementation design։
+
+---
+
+# PART 5 — Քայլ 5. Status field
+
+PART 4-ում հայտնաբերվել է, որ.
+
+`knowledge_nodes.status`
+
+գրվում է, բայց personalization pipeline-ը փաստացի օգտագործում է.
+
+`masteryScore + confidenceScore`
+
+Պետք է որոշել՝
+
+### Option A
+
+`status` դարձնել իրական canonical field
+
+կամ
+
+### Option B
+
+status-ը թողնել որպես derived/display field
+
+Բայց չպահել երկու հակասող truth source։
+
+Հատկապես պետք է վերացնել իրավիճակը, երբ DB-ում կա.
+
+`status = not_started`
+
+բայց նույն node-ը API/UI-ում հաշվարկվում է որպես.
+
+`weak`
+
+Նախ առաջարկիր architecture-ը, հետո միայն փոփոխիր։
+
+---
+
+# PART 5 — Քայլ 6. API contract
+
+Ուսումնասիրիր՝ արդյոք պետք է ավելացնել result API-ին.
+
+* `isProvisional`
+* `retentionScore`
+* `confidenceScore` recommendations-ում
+* historical trend
+
+Բայց այստեղ նույնպես.
+
+Չավելացնել դաշտ պարզապես որովհետև audit-ում նշված է։
+
+Յուրաքանչյուր նոր field-ի համար ցույց տուր.
+
+`DB → service → API → frontend → user-visible purpose`
+
+Եթե field-ը տվյալ պահին ոչ մի իրական ուսուցողական որոշման չի ծառայում, նշիր որպես FUTURE և մի ավելացրու։
+
+---
+
+# PART 5 — Քայլ 7. Granularity
+
+PART 4-ում հաստատվել է node 1161-ի խնդիրը.
+
+մեկ node-ը ներառում է մի քանի տարբեր sub-concept։
+
+Սա պետք է կապել մեր արդեն հաստատված Knowledge Base Mapping կանոնի հետ.
+
+**Մեկ MicroNode = մեկ հստակ learning objective։**
+
+Ուսումնասիրիր՝ արդյոք սա պետք է լուծվի.
+
+* mapping layer-ում
+* lesson node creation-ում
+* quiz question attribution-ում
+* կամ personalization layer-ում
+
+Չփորձես personalization-ում «կռահել» sub-concept-ը, եթե mapping layer-ը չի տրամադրում այդ granular attribution-ը։
+
+---
+
+# PART 5 — Քայլ 8. DO NOT CHANGE YET
+
+Այս փուլում ՉՓՈԽԵՍ.
+
+* `chat.ts`
+* Teaching Mode
+* Node Lock
+* AI Tutor teaching cycle
+* lesson mapping algorithm
+* scoring formula
+* option explanations
+* existing quiz behavior
+
+Մինչև audit/design-ը ամբողջությամբ ներկայացված չլինի։
+
+---
+
+# PART 5-ի OUTPUT FORMAT
+
+Վերջում ներկայացրու.
+
+## A. Current Architecture
+
+diagram/text flow.
+
+## B. Confirmed Bugs
+
+Միայն իրական bugs։
+
+## C. Architectural Gaps
+
+Ոչ թե bugs, այլ missing capabilities։
+
+## D. MUST FIX
+
+Հստակ code-level changes։
+
+Յուրաքանչյուրի համար.
+
+* file
+* function
+* current behavior
+* target behavior
+* exact change
+* regression risk
+
+## E. SHOULD FIX
+
+Նույն ձևաչափով։
+
+## F. FUTURE
+
+Retention / historical trend / advanced personalization և այլն։
+
+## G. Recommended Implementation Order
+
+Օրինակ.
+
+1. type mismatch
+2. prerequisite-aware recommendation
+3. provisional mastery handling
+4. canonical mastery/status model
+5. retention design
+6. API/UI exposure
+
+## H. TEST PLAN
+
+Յուրաքանչյուր փոփոխության համար գրիր concrete test։
+
+Օրինակ.
+
+* prerequisite A not_started, B weak → A must be recommended before B
+* prerequisite A mastered, B weak → B eligible
+* 2/2 first quiz → provisional, NOT verified mastered
+* repeated successful validation → verified mastery
+* existing NULL option explanations → no crash
+* existing quizzes → regression-free
+
+## I. STOP
+
+PART 5-ում եթե architecture/design-ի հարց կա, նախ կանգ առ և ներկայացրու այն։
+
+**Մի սկսիր մեծ code changes մինչև PART 5-ի design-ը ամբողջությամբ ներկայացված և հաստատված չլինի։**
+
+Հատկապես ինքնուրույն մի իրականացրու.
+
+* retention subsystem
+* spaced repetition
+* նոր mastery formula
+* նոր database tables
+* dependency semantics
+
+եթե դրանց անհրաժեշտությունը միայն ենթադրվում է։
+
+Նպատակը՝ նախ ստանալ ճիշտ architecture, հետո կատարել փոքր, վերահսկվող փոփոխություններ։
