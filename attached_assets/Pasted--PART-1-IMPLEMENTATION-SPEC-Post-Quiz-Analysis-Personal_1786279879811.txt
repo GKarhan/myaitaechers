@@ -1,0 +1,844 @@
+# PART 1 — IMPLEMENTATION SPEC
+
+## Post-Quiz Analysis → Personalized Learning
+
+Դու արդեն կատարել ես PART 0 audit-ը և հաստատել ներկայիս quiz → evidence → scoring → Knowledge Tree շղթան։
+
+Հիմա իրականացրու միայն այս specification-ը։
+
+**ԿԱՐԵՎՈՐ.**
+Մի փոխիր արդեն աշխատող Knowledge Tree-ի 4-state logic-ը, quiz-taking flow-ը, manual/auto mapping-ը կամ chat.ts-ը, եթե դա ուղղակիորեն անհրաժեշտ չէ այս specification-ի համար։
+
+Սա պետք է կառուցվի գոյություն ունեցող համակարգի վրա, ոչ թե նոր scoring համակարգ ստեղծվի։
+
+---
+
+# 1. ՀԻՄՆԱԿԱՆ ՆՊԱՏԱԿԸ
+
+Թեստի ավարտից հետո համակարգը չպետք է պարզապես ասի երեխային՝
+
+> «Դու ստացել ես 70%»
+
+Այն պետք է հասկանա.
+
+1. Ո՞ր հարցերում է երեխան սխալվել։
+2. Ո՞ր Node/MicroNode-ի հետ է կապված այդ հարցը։
+3. Ինչպիսի՞ սխալ է արել երեխան։
+4. Ի՞նչ պետք է հասկանա երեխան այդ հարցից։
+5. Այդ արդյունքի հիման վրա Knowledge Tree-ի ո՞ր 4 վիճակում է տվյալ թեման։
+6. Այդ վիճակից ելնելով՝ **ինչ պետք է անի երեխան հաջորդը**։
+
+Այսինքն՝
+
+**Quiz → Answer Analysis → Evidence → Knowledge Tree → Personalized Next Action**
+
+---
+
+# 2. ԱՆՀԱՏԱԿԱՆԱՑՎԱԾ ՈՒՍՈՒՑՄԱՆ 4 ՀԻՄՆԱԿԱՆ ՎԻՃԱԿՆԵՐԸ
+
+Օգտագործիր արդեն գոյություն ունեցող Knowledge Tree-ի 4 վիճակները.
+
+### Գիտի
+
+Երեխան բավարար չափով տիրապետում է թեմային։
+
+Հաջորդ գործողությունը՝
+
+**Կրկնել**
+
+Այս դեպքում երեխային նորից ամբողջությամբ դասավանդելու կարիք չկա։
+
+Հետագա personalized flow-ը պետք է տանի դեպի **կրկնություն / retrieval practice / review**, ըստ արդեն սահմանված սցենարի։
+
+---
+
+### Մասնակի գիտի
+
+Երեխան թեմայի մի մասը հասկանում է, բայց ունի բացեր։
+
+Հաջորդ գործողությունը՝
+
+**Սովորել**
+
+Բայց սա չպետք է լինի ամբողջ թեմայի նույնական կրկնուսուցում։
+
+Սովորելու ծավալը պետք է որոշվի նրա իրական արդյունքից։
+
+Օրինակ՝
+
+* 2/3 → ավելի փոքր / թիրախավորված ուսուցում
+* 1/3 → ավելի լայն ուսուցում
+* այլ տոկոսներ → համապատասխան խորությամբ ուսուցում
+
+Այսինքն՝
+
+**Partial mastery → percentage-aware learning**
+
+Ոչ մի դեպքում պարզապես մի ցուցադրիր «Սովորել» կոճակ և մի տար բոլոր երեխաներին նույն դասով։
+
+---
+
+### Չգիտի
+
+Երեխան չի տիրապետում թեմային։
+
+Հաջորդ գործողությունը՝
+
+**Լիարժեք սովորել**
+
+Այս դեպքում personalized flow-ը պետք է սկսի թեմայի ամբողջական ուսուցում՝ տվյալ Node/MicroNode-ի համապատասխան ուսումնական բովանդակությունից։
+
+---
+
+### Դեռ չի ուսումնասիրել
+
+Երեխան տվյալ թեման դեռ չի ուսումնասիրել։
+
+Հաջորդ գործողությունը՝
+
+**Ուսումնասիրել → սովորել**
+
+Այստեղ համակարգը չպետք է երեխային վերաբերվի որպես սխալ պատասխանած երեխայի։
+
+Սա պետք է լինի առանձին semantic state.
+
+---
+
+# 3. ՇԱՏ ԿԱՐԵՎՈՐ — 4 BLOCK-Ը ՄԻԱՅՆ UI ՉԵՆ
+
+Knowledge Tree-ի 4 block-երը չպետք է լինեն պարզապես գունավոր պիտակներ։
+
+Դրանք պետք է լինեն **decision states**։
+
+Այսինքն.
+
+```text
+Գիտի
+   ↓
+Կրկնել
+
+Մասնակի գիտի
+   ↓
+Percentage-aware learning
+
+Չգիտի
+   ↓
+Full learning
+
+Դեռ չի ուսումնասիրել
+   ↓
+Study → Learn
+```
+
+Հետագայում այս decision tree-ի վրա կառուցվելու է personalized teaching scenario-ն։
+
+Ուստի implementation-ը գրիր այնպես, որ հաջորդ փուլում հեշտ լինի յուրաքանչյուր state-ին կապել համապատասխան Teaching Mode / learning scenario։
+
+---
+
+# 4. POST-QUIZ RESULT PAGE — ՀԱՐՑԵՐԻ ՎԵՐԼՈՒԾՈՒԹՅՈՒՆ
+
+Ուսանողը թեստից հետո պետք է տեսնի յուրաքանչյուր հարցի արդյունքը։
+
+Ներկայիս UI-ն արդեն ցույց է տալիս.
+
+* հարցը
+* բոլոր պատասխանների տարբերակները
+* իր ընտրությունը
+* ճիշտ պատասխանը
+
+Հիմա ավելացրու **կարճ բացատրություն**։
+
+Յուրաքանչյուր հարցի համար պետք է հնարավոր լինի ցույց տալ.
+
+### Եթե ճիշտ է պատասխանել
+
+**Ինչու է ճիշտը ճիշտ**
+
+Կարճ, երեխային հասկանալի բացատրություն։
+
+Նպատակը պարզապես «ճիշտ է» ասելը չէ։
+
+Երեխան պետք է տեսնի՝
+
+> ինչ մտածողությամբ է ստացվում ճիշտ պատասխանը։
+
+---
+
+### Եթե սխալ է պատասխանել
+
+Պետք է տեսնի երկու բան.
+
+**Ինչու է իմ ընտրած պատասխանը սխալ**
+
+և
+
+**Ինչու է ճիշտ պատասխանը ճիշտ**
+
+Այս երկու բացատրությունները պետք է լինեն առանձին։
+
+Օրինակային կառուցվածք.
+
+```text
+❌ Քո պատասխանը
+[ընտրված տարբերակը]
+
+Ինչու է սա սխալ
+Կարճ բացատրություն...
+
+✅ Ճիշտ պատասխանը
+[ճիշտ տարբերակը]
+
+Ինչու է սա ճիշտ
+Կարճ բացատրություն...
+```
+
+Եթե պատասխանը ճիշտ է.
+
+```text
+✅ Ճիշտ պատասխան
+
+Ինչու է սա ճիշտ
+Կարճ բացատրություն...
+```
+
+---
+
+# 5. EXPLANATION CONTENT — ՉՀՆԱՐԵԼ
+
+Բացատրությունները չպետք է ստեղծվեն frontend-ում hardcoded ձևով։
+
+Պետք է որոշել գոյություն ունեցող data model-ի մեջ ամենահարմար source-ը։
+
+Audit-ում հայտնաբերել ես.
+
+* `quiz_questions`
+* `lesson_nodes.theory_content`
+* `lesson_nodes.common_misconception`
+* `lesson_nodes.child_friendly_explanation`
+
+Առաջնահերթությունը պետք է լինի.
+
+1. Question-specific explanation, եթե այն գոյություն ունի։
+2. Node-specific explanation / misconception, եթե հասանելի է։
+3. Եթե համապատասխան explanation չկա՝ **չհորինել տվյալներ**։
+
+Եթե implementation-ի համար անհրաժեշտ է նոր field, նախ ներկայացրու դա որպես schema change և բացատրիր ինչու է անհրաժեշտ։
+
+Մի ստեղծիր schema change պարզապես convenience-ի համար։
+
+---
+
+# 6. ՅՈՒՐԱՔԱՆՉՅՈՒՐ ՀԱՐՑԻ NODE/MICRONODE ԿԱՊԸ
+
+Յուրաքանչյուր quiz question պետք է հնարավոր լինի կապել իր source learning unit-ի հետ։
+
+Օգտագործիր արդեն գոյություն ունեցող.
+
+```text
+quiz_questions.node_id
+        ↓
+lesson_nodes.id
+```
+
+Եթե node_id = NULL է՝
+
+* չփորձել գուշակել Node-ը
+* չստեղծել fake mapping
+* չփոխել mapping logic-ը այս task-ի շրջանակում
+
+Այդ հարցը կարող է ունենալ result explanation, բայց չի կարող օգտագործվել Node-level personalized recommendation-ի համար։
+
+---
+
+# 7. INDIVIDUAL STUDENT ANALYSIS
+
+Յուրաքանչյուր երեխայի համար quiz-ի ավարտից հետո հաշվարկիր.
+
+### Per question
+
+* question
+* selected answer
+* correct answer
+* isCorrect
+* nodeId
+* explanation
+* error state
+
+### Per Node/MicroNode
+
+* total questions
+* correct answers
+* incorrect answers
+* percentage
+* current Knowledge Tree state
+* recommended next action
+
+Օրինակ.
+
+```text
+Node: Միլիոնների դասի ներածություն
+3 հարց
+2 ճիշտ
+1 սխալ
+67%
+
+Knowledge state:
+Մասնակի գիտի
+
+Next action:
+Սովորել
+Learning intensity:
+Partial / targeted
+```
+
+---
+
+# 8. CLASS-LEVEL COMMON ERRORS
+
+Թեստի արդյունքից հետո պետք է լինի նաև **դասարանի ընդհանուր վերլուծություն**։
+
+Սա առանձին է individual analysis-ից։
+
+Համակարգը պետք է հայտնաբերի այն սխալները, որոնք կրկնվում են մեծ թվով աշակերտների մոտ։
+
+Օգտագործիր այս rule-ը.
+
+> Common error = նույն սխալը կատարել է դասարանի առնվազն 50%-ը։
+
+Կարևոր է՝
+
+**50%-ը հաշվիր այն աշակերտների նկատմամբ, որոնք իրականում մասնակցել են տվյալ հարցին/թեստին**, ոչ թե ամբողջ դասարանի nominal roster-ի նկատմամբ, եթե տվյալների մոդելը դա ավելի ճիշտ է ապահովում։
+
+---
+
+# 9. COMMON ERROR-Ի ՄԵՋ ԻՆՉ ՊԵՏՔ Է ՀԱՅՏՆԱԲԵՐՎԻ
+
+Յուրաքանչյուր common error-ի համար անհրաժեշտ է հասկանալ.
+
+* որ հարցն է
+* որ Node/MicroNode-ին է պատկանում
+* որ սխալ պատասխանն է ամենաշատը ընտրվել
+* քանի աշակերտ է ընտրել
+* քանի տոկոսն է ընտրել
+* ճիշտ պատասխանն որն է
+* ինչ misconception կամ knowledge gap կարող է ցույց տալ դա
+
+Օրինակ.
+
+```text
+Դասարանի ընդհանուր սխալ
+
+«Թվերի կարդալու կանոններ»
+
+10 աշակերտից 6-ը ընտրել են նույն սխալ պատասխանը։
+
+60% → Common Error
+
+Առաջարկություն.
+Դասարանում կրկին բացատրել այս ենթաթեման։
+```
+
+---
+
+# 10. INDIVIDUAL ERROR VS COMMON ERROR
+
+Այս երկու վերլուծությունները երբեք մի խառնիր։
+
+## Common Error
+
+Դասարանի համար.
+
+> «Այս թեմայում դասարանի մեծ մասը նույն սխալն է արել»։
+
+Դրա հիման վրա կարող է առաջանալ **teacher recommendation**։
+
+## Individual Error
+
+Կոնկրետ երեխայի համար.
+
+> «Դու դժվարություն ունես այս ենթաթեմայում»։
+
+Դրա հիման վրա առաջանում է **student personalized recommendation**։
+
+---
+
+# 11. TEACHER RECOMMENDATION BLOCK
+
+Յուրաքանչյուր completed quiz-ի արդյունքների մեջ ուսուցիչը պետք է ունենա առանձին **Առաջարկություններ** բաժին։
+
+Այստեղ պետք է տեսնի.
+
+### Դասարանի ընդհանուր խնդիրները
+
+* որ Node/MicroNode-ներում կան common errors
+* սխալների տոկոսը
+* ինչ թեմա/ենթաթեմա է պետք կրկնել դասարանով
+
+### Անհատական խնդիրները
+
+Ուսուցիչը պետք է կարողանա հասկանալ.
+
+* որ երեխան ինչ թեմայում է թույլ
+* ինչ վիճակում է Knowledge Tree-ում
+* ինչ պետք է սովորի հաջորդը
+
+Օրինակ.
+
+```text
+Առաջարկություններ
+
+Դասարանի համար
+• Թվերի կարդալու կանոններ — 62% common error
+  → խորհուրդ է տրվում կրկնել թեման։
+
+Գարեգին
+• Կարգային միավորներ — Դեռ չի ուսումնասիրել
+  → ուսումնասիրել և սովորել։
+
+Անի
+• Միլիոնների դասի ներածություն — Մասնակի գիտի, 67%
+  → թիրախավորված ուսուցում։
+```
+
+---
+
+# 12. STUDENT RECOMMENDATION BLOCK
+
+Ուսանողի quiz result page-ում նույնպես պետք է լինի personalized recommendation։
+
+Այն պետք է հիմնվի ոչ թե ընդհանուր quiz score-ի, այլ **Node/MicroNode-level results-ի վրա**։
+
+Օրինակ.
+
+```text
+Քո հաջորդ քայլերը
+
+1. Թվերի կարդալու կանոններ
+   Չգիտես → սովորիր ամբողջ թեման։
+
+2. Միլիոնների դասի ներածություն
+   Մասնակի գիտես → աշխատիր հիմնական բացերի վրա։
+
+3. Թվերի տրոհում աջից ձախ
+   Գիտես → կրկնիր՝ հիշողությունը ամրապնդելու համար։
+```
+
+---
+
+# 13. RECOMMENDATION PRIORITY
+
+Եթե մեկ թեստում կան բազմաթիվ խնդիրներ, recommendation-ները պետք է ունենան priority։
+
+Առաջնահերթությունը.
+
+```text
+1. Չգիտի
+2. Մասնակի գիտի — ցածր %
+3. Դեռ չի ուսումնասիրել
+4. Մասնակի գիտի — բարձր %
+5. Գիտի → կրկնություն
+```
+
+Սա պետք է լինի deterministic և հասկանալի։
+
+Մի օգտագործիր ընդհանուր quiz score-ը որպես միակ չափանիշ։
+
+---
+
+# 14. PARTIAL MASTERY — ՏՈԿՈՍԱՅԻՆ ՏԱՐԲԵՐԱԿՈՒՄ
+
+Սա հատկապես կարևոր է։
+
+Չի կարելի.
+
+```text
+1/3 = Մասնակի
+2/3 = Մասնակի
+→ նույն ուսուցումը
+```
+
+Թեև երկուսն էլ կարող են լինել նույն Knowledge Tree block-ում, personalized teaching-ը պետք է օգտագործի պահպանված score-ները։
+
+Օրինակ.
+
+```text
+2/3 = 67%
+→ targeted / lighter remediation
+
+1/3 = 33%
+→ deeper remediation
+```
+
+Այս փուլում դեռ **չսահմանել կոնկրետ teaching script-ը**, եթե այն դեռ առանձին specification-ով չենք տվել։
+
+Պարզապես պահպանել այդ granular data-ն և recommendation engine-ը կառուցել այնպես, որ հետագայում կարողանա օգտագործել այն։
+
+---
+
+# 15. KNOWLEDGE TREE → NEXT ACTION
+
+Knowledge Tree-ի block-ը պետք է կարողանա որոշել next action-ը։
+
+Սկզբնական mapping-ը.
+
+| Knowledge Tree       | Next Action             |
+| -------------------- | ----------------------- |
+| Գիտի                 | Կրկնել                  |
+| Մասնակի գիտի         | Սովորել՝ ըստ mastery %  |
+| Չգիտի                | Լիարժեք սովորել         |
+| Դեռ չի ուսումնասիրել | Ուսումնասիրել → սովորել |
+
+Սա պետք է լինի մեկ կենտրոնացված decision function/service, ոչ թե տարբեր UI component-ներում կրկնված պայմաններ։
+
+Օրինակ conceptual structure.
+
+```ts
+getPersonalizedNextAction({
+  masteryLevel,
+  masteryScore,
+  confidenceScore,
+  lessonNodeId
+})
+```
+
+Այն պետք է վերադարձնի semantic action, ոչ թե անմիջապես UI text։
+
+Օրինակ.
+
+```ts
+{
+  state: "partial",
+  action: "LEARN_TARGETED",
+  masteryScore: 67
+}
+```
+
+UI-ն հետո այդ action-ը կցուցադրի համապատասխան text/button-ով։
+
+---
+
+# 16. FUTURE TEACHING SCENARIO COMPATIBILITY
+
+Հետագայում այս action-ները պետք է միանան ԱԲ ուսուցչի արդեն նախատեսվող teaching scenario-ին։
+
+Ուստի հիմա **չպետք է hardcode անել AI teacher-ի ամբողջ ուսուցման սցենարը**։
+
+Պահպանիր abstraction.
+
+```text
+Knowledge State
+      ↓
+Personalized Action
+      ↓
+Teaching Scenario
+```
+
+Հետագայում մենք կսահմանենք.
+
+* ինչ է անում LEARN_TARGETED
+* ինչ է անում LEARN_FULL
+* ինչ է անում REVIEW
+* ինչ է անում STUDY_FIRST
+
+---
+
+# 17. DATA INTEGRITY
+
+Չփոխել.
+
+* `chat.ts`
+* manual mapping
+* automatic mapping
+* student quiz-taking behavior
+* existing Knowledge Tree scoring thresholds
+* existing 4-state semantics
+
+Չավելացնել նոր DB table, եթե նույն արդյունքը կարելի է ստանալ գոյություն ունեցող տվյալներից։
+
+Schema change անել միայն այն դեպքում, եթե explanation կամ analytics-ը տեխնիկապես հնարավոր չէ իրականացնել existing data model-ով։
+
+---
+
+# 18. IMPORTANT — DO NOT USE TOTAL QUIZ SCORE AS MASTERY
+
+Սա critical rule է։
+
+Օրինակ.
+
+10 հարցանոց quiz = 70%
+
+Դա ինքնին չի նշանակում, որ բոլոր թեմաները 70% գիտի։
+
+Պետք է հաշվարկել.
+
+```text
+Quiz
+ ↓
+Questions
+ ↓
+Node/MicroNode
+ ↓
+Per-node score
+ ↓
+Knowledge state
+ ↓
+Personalized action
+```
+
+---
+
+# 19. IMPLEMENTATION ORDER
+
+Աշխատիր հետևյալ հերթականությամբ.
+
+### Step 1
+
+Implement per-question explanation data flow.
+
+### Step 2
+
+Implement per-question result UI.
+
+### Step 3
+
+Implement Node/MicroNode aggregation for the completed attempt.
+
+### Step 4
+
+Map each affected Node to existing Knowledge Tree state.
+
+### Step 5
+
+Implement centralized personalized next-action decision.
+
+### Step 6
+
+Implement student recommendation block.
+
+### Step 7
+
+Implement class-level common-error aggregation.
+
+### Step 8
+
+Implement teacher recommendation block.
+
+### Step 9
+
+Add links/actions from recommendation → relevant learning content / Knowledge Tree.
+
+### Step 10
+
+Run end-to-end verification.
+
+---
+
+# 20. VERIFICATION REQUIREMENTS
+
+Implementation-ից հետո պարտադիր ցույց տուր իրական verification։
+
+Պետք է ունենանք առնվազն այս cases-ը.
+
+### Case A
+
+Student answers all questions correctly.
+
+Expected:
+
+```text
+Node → Գիտի
+Action → Կրկնել
+```
+
+### Case B
+
+Student answers 2/3 correctly.
+
+Expected:
+
+```text
+Node → Մասնակի գիտի
+Mastery → 67%
+Action → targeted learning
+```
+
+### Case C
+
+Student answers 1/3 correctly.
+
+Expected:
+
+```text
+Node → Մասնակի գիտի
+Mastery → 33%
+Action → deeper targeted learning
+```
+
+### Case D
+
+Student answers 0/3.
+
+Expected:
+
+```text
+Node → Չգիտի
+Action → full learning
+```
+
+### Case E
+
+Student has never attempted the Node.
+
+Expected:
+
+```text
+Node → Դեռ չի ուսումնասիրել
+Action → Study → Learn
+```
+
+### Case F
+
+At least 50% of participating students choose the same wrong answer.
+
+Expected:
+
+```text
+Common Error = true
+Teacher recommendation = generated
+```
+
+### Case G
+
+One student has an error that nobody else has.
+
+Expected:
+
+```text
+Individual Error = true
+Common Error = false
+Student recommendation = generated
+```
+
+---
+
+# 21. UI TEXT
+
+Հայերեն վերջնական strings-ը հիմա **չհորինել և չփոխել**։
+
+Եթե անհրաժեշտ է նոր text, օգտագործիր temporary placeholders.
+
+Օրինակ.
+
+```text
+[QUIZ_EXPLANATION]
+[WHY_CORRECT]
+[WHY_WRONG]
+[STUDENT_RECOMMENDATIONS]
+[TEACHER_RECOMMENDATIONS]
+[COMMON_ERROR]
+[INDIVIDUAL_ERROR]
+[REVIEW]
+[LEARN_TARGETED]
+[LEARN_FULL]
+[STUDY_FIRST]
+```
+
+Հետագայում ես կտամ exact Armenian strings-ը։
+
+---
+
+# 22. FINAL REPORT
+
+Implementation-ից հետո մի գրիր միայն «done»։
+
+Տուր.
+
+1. Modified files
+2. Why each file changed
+3. DB/schema changes, եթե եղել են
+4. New API endpoints, եթե ստեղծվել են
+5. New data flow
+6. Personalized decision logic
+7. Student UI changes
+8. Teacher UI changes
+9. Common-error calculation
+10. Individual-error calculation
+11. Verification results for A–G cases
+12. Git diff summary
+
+Հատկապես ցույց տուր, որ.
+
+```text
+chat.ts → unchanged
+lesson-mapping.ts → unchanged
+quiz-take.tsx → unchanged
+manual/auto mapping → unchanged
+```
+
+Եթե որևէ մեկը պետք է փոխվի, նախ բացատրիր ինչու։
+
+---
+
+# 23. STOP CONDITIONS
+
+Եթե implementation-ի ընթացքում հայտնաբերես, որ.
+
+* explanation-ի համար schema change է պարտադիր,
+* existing scoring logic-ը պետք է փոխել,
+* Knowledge Tree-ի 4-state logic-ը պետք է փոխել,
+* quiz-taking flow-ը պետք է փոխել,
+* mapping logic-ը պետք է փոխել,
+
+**մի արա ինքնուրույն։**
+
+Կանգ առ և ներկայացրու.
+
+1. ինչ ես հայտնաբերել,
+2. ինչու է անհրաժեշտ փոփոխությունը,
+3. ինչ file/schema է պետք փոխել,
+4. ինչ ազդեցություն կունենա existing system-ի վրա։
+
+Մնացած implementation-ը շարունակիր միայն այն հատվածներում, որոնք չեն պահանջում այդ փոփոխությունը։
+
+---
+
+## CORE PRINCIPLE
+
+Այս ամբողջ feature-ի հիմքում պետք է լինի.
+
+**Թեստի արդյունքը ≠ պարզապես գնահատական։**
+
+Այն պետք է դառնա երեխայի հաջորդ ուսուցման որոշման հիմքը։
+
+```text
+QUESTION RESULT
+      ↓
+ERROR / SUCCESS ANALYSIS
+      ↓
+NODE / MICRONODE
+      ↓
+MASTERY %
+      ↓
+KNOWLEDGE TREE STATE
+      ↓
+PERSONALIZED NEXT ACTION
+      ↓
+PERSONALIZED LEARNING
+```
+
+Եվ զուգահեռ.
+
+```text
+ALL STUDENTS
+      ↓
+COMMON ERROR DETECTION
+      ↓
+CLASS-LEVEL RECOMMENDATIONS
+      ↓
+TEACHER ACTION
+```
+
+Այս փուլում քո խնդիրը **ճիշտ data + decision architecture + UI հիմքը կառուցելն է**։
+
+Teaching scenario-ի կոնկրետ քայլերը հաջորդ փուլում կտանք առանձին specification-ով։

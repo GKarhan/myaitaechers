@@ -2,7 +2,19 @@ import { useState, useEffect } from "react";
 import { Link, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
 
-type QuestionResult = {
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type PersonalizedAction = "REVIEW" | "LEARN_TARGETED" | "LEARN_FULL" | "STUDY_FIRST";
+type MasteryLevel = "mastered" | "weak" | "in_progress" | "not_started";
+
+interface PersonalizedNextAction {
+  state: "mastered" | "partial" | "in_progress" | "not_started";
+  action: PersonalizedAction;
+  masteryScore: number | null;
+  intensity?: "light" | "deep";
+}
+
+interface QuestionResult {
   questionId: number;
   questionText: string;
   options: string[];
@@ -10,21 +22,73 @@ type QuestionResult = {
   selectedOptionIndex: number;
   isCorrect: boolean;
   sequence: number;
-};
+  nodeId: number | null;
+  nodeTitle: string | null;
+  explanationText: string | null;
+  errorState: "correct" | "wrong";
+}
 
-type MyResult = {
+interface NodeBreakdown {
+  nodeId: number;
+  nodeTitle: string;
+  total: number;
+  correct: number;
+  incorrect: number;
+  percent: number;
+  masteryLevel: MasteryLevel;
+  masteryScore: number | null;
+  confidenceScore: number | null;
+  nextAction: PersonalizedNextAction;
+}
+
+interface Recommendation {
+  priority: number;
+  nodeId: number;
+  nodeTitle: string;
+  masteryLevel: MasteryLevel;
+  masteryScore: number | null;
+  nextAction: PersonalizedNextAction;
+}
+
+interface MyResult {
   totalCorrect: number;
   totalQuestions: number;
   scorePercent: number;
   questions: QuestionResult[];
+  nodeBreakdown?: NodeBreakdown[];
+  recommendations?: Recommendation[];
+}
+
+// ── Display helpers ───────────────────────────────────────────────────────────
+
+const MASTERY_LABEL: Record<MasteryLevel, string> = {
+  mastered:    "Գիտի",
+  weak:        "Մասնակի գիտի",
+  in_progress: "Չգիտի",
+  not_started: "Դեռ չի ուսումնասիրել",
 };
+
+const ACTION_LABEL: Record<PersonalizedAction, string> = {
+  REVIEW:          "[REVIEW]",
+  LEARN_TARGETED:  "[LEARN_TARGETED]",
+  LEARN_FULL:      "[LEARN_FULL]",
+  STUDY_FIRST:     "[STUDY_FIRST]",
+};
+
+const MASTERY_BADGE: Record<MasteryLevel, string> = {
+  mastered:    "border-teal-400/40 bg-teal-400/10 text-teal-400",
+  weak:        "border-amber-400/40 bg-amber-400/10 text-amber-400",
+  in_progress: "border-red-400/40 bg-red-400/10 text-red-400",
+  not_started: "border-white/20 bg-white/5 text-muted-foreground",
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
   const { token, user } = useAuth();
 
-  // Parse query params — studentId triggers teacher view; classId+subjectId for back nav;
-  // from=subject → back to course view; from=allQuizzes → back to "Իմ թeстеря" section
+  // Parse query params
   const { studentId, classId: backClassId, subjectId: backSubjectId, backFrom } = (() => {
     const qs = typeof window !== "undefined" ? window.location.search : "";
     const sid  = qs.match(/[?&]studentId=(\d+)/);
@@ -46,17 +110,14 @@ export default function QuizResult() {
         ? "/teacher?section=quizzes"
         : (backClassId && backSubjectId ? `/teacher?classId=${backClassId}&subjectId=${backSubjectId}` : "/teacher"))
     : "/dashboard";
-  const backLabel = "\u2190 \u0540\u0565\u057f";  // ← Հet
+  const backLabel = "\u2190 \u0540\u0565\u057f"; // ← Հet
 
   const [result, setResult] = useState<MyResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token || !id) return;
-    // Wait for user profile to fully load (auth.tsx maps loading-state undefined → null,
-    // so guard against both null and undefined to avoid fetching with wrong isTeacherView)
-    if (!user) return;
+    if (!token || !id || !user) return;
     setLoading(true);
     setResult(null);
     setError(null);
@@ -87,7 +148,7 @@ export default function QuizResult() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
         <div className="text-5xl">📋</div>
-        <p className="text-muted-foreground text-sm">Ավարտված արդյունքներ չկա</p>
+        <p className="text-muted-foreground text-sm">Ավартված արдյunqner чека</p>
         <Link href={backHref} className="text-primary hover:underline text-sm">{backLabel}</Link>
       </div>
     );
@@ -100,6 +161,11 @@ export default function QuizResult() {
       ? "text-amber-400"
       : "text-red-400";
 
+  const hasNodeData =
+    result.nodeBreakdown && result.nodeBreakdown.length > 0;
+  const hasRecommendations =
+    result.recommendations && result.recommendations.length > 0;
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -111,18 +177,19 @@ export default function QuizResult() {
           {backLabel}
         </Link>
         <div className="flex-1 min-w-0 text-center">
-          <h1 className="text-sm font-semibold truncate">Արդյունքներ</h1>
+          <h1 className="text-sm font-semibold truncate">Արдյunqner</h1>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
-        {/* Score summary */}
+
+        {/* ── Score summary ── */}
         <div className="rounded-2xl border border-white/10 bg-card/60 p-8 text-center">
           <div className={`text-5xl font-black mb-2 ${scoreColor}`}>
             {result.scorePercent}%
           </div>
           <div className="text-lg font-semibold mb-1">
-            {result.totalCorrect}/{result.totalQuestions} ճիշտ
+            {result.totalCorrect}/{result.totalQuestions} ճिшт
           </div>
           <div
             className={`inline-block mt-3 text-xs px-3 py-1 rounded-full border ${
@@ -138,8 +205,84 @@ export default function QuizResult() {
           </div>
         </div>
 
-        {/* Per-question breakdown */}
+        {/* ── Personalized recommendations ── */}
+        {hasRecommendations && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wide">
+              [STUDENT_RECOMMENDATIONS]
+            </h2>
+            <div className="space-y-2">
+              {result.recommendations!.map((rec, i) => (
+                <div
+                  key={rec.nodeId}
+                  className="flex items-start gap-3 px-4 py-3 rounded-xl border border-white/8 bg-card/30"
+                >
+                  <span className="text-xs font-mono text-primary/50 w-4 shrink-0 mt-0.5">
+                    {i + 1}.
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{rec.nodeTitle}</div>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full border ${MASTERY_BADGE[rec.masteryLevel]}`}
+                      >
+                        {MASTERY_LABEL[rec.masteryLevel]}
+                      </span>
+                      <span className="text-xs text-muted-foreground/70">
+                        → {ACTION_LABEL[rec.nextAction.action]}
+                        {rec.nextAction.intensity === "light"
+                          ? " (targeted)"
+                          : rec.nextAction.intensity === "deep"
+                          ? " (deeper)"
+                          : ""}
+                      </span>
+                    </div>
+                  </div>
+                  {rec.masteryScore != null && (
+                    <span className="text-xs font-semibold text-muted-foreground shrink-0">
+                      {rec.masteryScore}%
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Node / topic breakdown ── */}
+        {hasNodeData && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wide">
+              [TOPIC_BREAKDOWN]
+            </h2>
+            <div className="space-y-2">
+              {result.nodeBreakdown!.map((node) => (
+                <div
+                  key={node.nodeId}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/8 bg-card/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{node.nodeTitle}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {node.correct}/{node.total} ճишт · {node.percent}%
+                    </div>
+                  </div>
+                  <span
+                    className={`text-xs px-2.5 py-1 rounded-full border shrink-0 ${MASTERY_BADGE[node.masteryLevel]}`}
+                  >
+                    {MASTERY_LABEL[node.masteryLevel]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Per-question breakdown ── */}
         <div className="space-y-4">
+          <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wide">
+            Հарцеry мансраматучum
+          </h2>
           {result.questions.map((q) => (
             <div
               key={q.questionId}
@@ -149,10 +292,20 @@ export default function QuizResult() {
                   : "border-red-400/20 bg-red-400/5"
               }`}
             >
+              {/* Question header */}
               <div className="flex items-start gap-3 mb-4">
                 <span className="shrink-0 text-sm">{q.isCorrect ? "✅" : "❌"}</span>
-                <p className="text-sm font-medium leading-snug">{q.questionText}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium leading-snug">{q.questionText}</p>
+                  {q.nodeTitle && (
+                    <p className="text-xs text-muted-foreground/60 mt-1 truncate">
+                      📌 {q.nodeTitle}
+                    </p>
+                  )}
+                </div>
               </div>
+
+              {/* Answer options */}
               <div className="space-y-2 pl-7">
                 {q.options.map((opt, i) => {
                   const isSelected = i === q.selectedOptionIndex;
@@ -179,6 +332,21 @@ export default function QuizResult() {
                   );
                 })}
               </div>
+
+              {/* Explanation block — shown only when content exists (no fabrication).
+                  Source: lesson_nodes.childFriendlyExplanation || commonMisconception (spec priority #2).
+                  Question-level [WHY_WRONG] requires quiz_questions.explanation field (pending schema addition).
+                  Until then, node-level explanation always serves as "why the correct answer is correct." */}
+              {q.explanationText && (
+                <div className="mt-4 pl-7 space-y-1.5">
+                  <div className="text-xs font-semibold text-teal-400/80 uppercase tracking-wide">
+                    [WHY_CORRECT]
+                  </div>
+                  <div className="text-xs rounded-xl px-3 py-2.5 border border-teal-400/20 bg-teal-400/5 text-teal-300/80 leading-relaxed">
+                    {q.explanationText}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

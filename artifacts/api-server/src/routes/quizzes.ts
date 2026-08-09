@@ -17,8 +17,168 @@ import { eq, and, asc, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
+import {
+  getMasteryLevelFromScores,
+  getPersonalizedNextAction,
+  recommendationPriority,
+  type MasteryLevel,
+  type PersonalizedNextAction,
+} from "../lib/mastery";
 
 const router = Router();
+
+// ── Shared helper: build per-question + node breakdown + recommendations ──────
+// Used by both /my-result (student) and /results/:studentId (teacher view).
+// Fetches lesson_nodes for explanation fallback and knowledge_nodes for current
+// KT state. If KN row not yet written (fire-and-forget still in flight), falls
+// back to a direct approximation from the quiz answers.
+async function buildStudentResultAnalysis(
+  attemptId: number,
+  studentId: number,
+) {
+  // Per-question answers joined to question content
+  const rawAnswers = await db
+    .select({
+      questionId:          quizQuestionsTable.id,
+      questionText:        quizQuestionsTable.questionText,
+      options:             quizQuestionsTable.options,
+      correctOptionIndex:  quizQuestionsTable.correctOptionIndex,
+      selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
+      isCorrect:           quizAnswersTable.isCorrect,
+      sequence:            quizQuestionsTable.sequence,
+      nodeId:              quizQuestionsTable.nodeId,
+    })
+    .from(quizAnswersTable)
+    .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
+    .where(eq(quizAnswersTable.attemptId, attemptId))
+    .orderBy(asc(quizQuestionsTable.sequence));
+
+  // Distinct nodeIds (skip nulls — questions without a node mapping)
+  const nodeIds = [
+    ...new Set(rawAnswers.map((a) => a.nodeId).filter((id): id is number => id !== null)),
+  ];
+
+  // lesson_nodes — for title + explanation fallback (spec priority #2)
+  // Priority: childFriendlyExplanation → commonMisconception → null (no fabrication)
+  const lessonNodeRows =
+    nodeIds.length > 0
+      ? await db
+          .select({
+            id:                       lessonNodesTable.id,
+            title:                    lessonNodesTable.title,
+            childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+            commonMisconception:      lessonNodesTable.commonMisconception,
+          })
+          .from(lessonNodesTable)
+          .where(inArray(lessonNodesTable.id, nodeIds))
+      : [];
+  const lnMap = new Map(lessonNodeRows.map((n) => [n.id, n]));
+
+  // knowledge_nodes — for current KT mastery state
+  const knRows =
+    nodeIds.length > 0
+      ? await db
+          .select({
+            lessonNodeId:   knowledgeNodesTable.lessonNodeId,
+            masteryScore:   knowledgeNodesTable.masteryScore,
+            confidenceScore: knowledgeNodesTable.confidenceScore,
+          })
+          .from(knowledgeNodesTable)
+          .where(
+            and(
+              eq(knowledgeNodesTable.userId, studentId),
+              inArray(knowledgeNodesTable.lessonNodeId, nodeIds),
+            )
+          )
+      : [];
+  const knMap = new Map(knRows.map((r) => [r.lessonNodeId!, r]));
+
+  // Build enriched question list
+  const questions = rawAnswers.map((a) => {
+    const ln = a.nodeId != null ? lnMap.get(a.nodeId) : null;
+    return {
+      questionId:          a.questionId,
+      questionText:        a.questionText,
+      options:             a.options,
+      correctOptionIndex:  a.correctOptionIndex,
+      selectedOptionIndex: a.selectedOptionIndex,
+      isCorrect:           a.isCorrect,
+      sequence:            a.sequence,
+      nodeId:              a.nodeId ?? null,
+      nodeTitle:           ln?.title ?? null,
+      // Explanation: node-level fallback only (question-level field pending schema addition)
+      explanationText:     ln?.childFriendlyExplanation ?? ln?.commonMisconception ?? null,
+      errorState:          a.isCorrect ? ("correct" as const) : ("wrong" as const),
+    };
+  });
+
+  // Per-node answer aggregation
+  const nodeAgg = new Map<number, { total: number; correct: number; nodeTitle: string }>();
+  for (const a of rawAnswers) {
+    if (a.nodeId == null) continue;
+    if (!nodeAgg.has(a.nodeId)) {
+      const ln = lnMap.get(a.nodeId);
+      nodeAgg.set(a.nodeId, { total: 0, correct: 0, nodeTitle: ln?.title ?? `Node ${a.nodeId}` });
+    }
+    const agg = nodeAgg.get(a.nodeId)!;
+    agg.total++;
+    if (a.isCorrect) agg.correct++;
+  }
+
+  // Node breakdown: KT state + personalized next action
+  const nodeBreakdown = [...nodeAgg.entries()].map(([nodeId, agg]) => {
+    const kn = knMap.get(nodeId);
+    let masteryScore: number | null;
+    let confidenceScore: number | null;
+    let masteryLevel: MasteryLevel;
+
+    if (kn) {
+      masteryScore    = kn.masteryScore;
+      confidenceScore = kn.confidenceScore;
+      masteryLevel    = getMasteryLevelFromScores(masteryScore, confidenceScore);
+    } else {
+      // KN row not yet written — approximate from quiz answers (fire-and-forget race)
+      const correctRate = agg.total > 0 ? agg.correct / agg.total : 0;
+      if (correctRate === 0)       { masteryLevel = "in_progress"; masteryScore = 0;                                    confidenceScore = 10; }
+      else if (correctRate >= 0.8) { masteryLevel = "mastered";    masteryScore = Math.round(correctRate * 100);        confidenceScore = 90; }
+      else                         { masteryLevel = "weak";         masteryScore = Math.round(correctRate * 100);        confidenceScore = 70; }
+    }
+
+    const percent    = agg.total > 0 ? Math.round((agg.correct / agg.total) * 100) : 0;
+    const nextAction = getPersonalizedNextAction({ masteryLevel, masteryScore });
+
+    return {
+      nodeId,
+      nodeTitle:      agg.nodeTitle,
+      total:          agg.total,
+      correct:        agg.correct,
+      incorrect:      agg.total - agg.correct,
+      percent,
+      masteryLevel,
+      masteryScore,
+      confidenceScore: kn?.confidenceScore ?? confidenceScore,
+      nextAction,
+    };
+  });
+
+  // Recommendations: sorted by priority
+  const recommendations = [...nodeBreakdown]
+    .sort((a, b) => {
+      const pa = recommendationPriority(a.masteryLevel, a.masteryScore);
+      const pb = recommendationPriority(b.masteryLevel, b.masteryScore);
+      return pa !== pb ? pa - pb : a.nodeId - b.nodeId;
+    })
+    .map((n, i) => ({
+      priority:     i + 1,
+      nodeId:       n.nodeId,
+      nodeTitle:    n.nodeTitle,
+      masteryLevel: n.masteryLevel,
+      masteryScore: n.masteryScore,
+      nextAction:   n.nextAction,
+    }));
+
+  return { questions, nodeBreakdown, recommendations };
+}
 
 // ── POST /api/quizzes ─────────────────────────────────────────────────────────
 // Create a DRAFT quiz, generate questions from the given lesson nodes, persist,
@@ -377,8 +537,7 @@ router.get("/quizzes/:id/results", requireTeacher, async (req: AuthRequest, res)
 });
 
 // ── GET /api/quizzes/:id/results/:studentId ───────────────────────────────────
-// Teacher: full per-question result for a specific student's completed attempt.
-// Same shape as /my-result but scoped to the given studentId.
+// Teacher: full per-question result + node breakdown + recommendations for a student.
 router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRequest, res) => {
   const quizId    = parseInt(String(req.params.id),        10);
   const studentId = parseInt(String(req.params.studentId), 10);
@@ -386,7 +545,6 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     res.status(400).json({ error: "Invalid id" }); return;
   }
 
-  // Verify teacher owns this quiz
   const [quiz] = await db
     .select({ id: quizzesTable.id })
     .from(quizzesTable)
@@ -394,7 +552,6 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     .limit(1);
   if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
 
-  // Find the student's completed assignment
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
@@ -417,45 +574,26 @@ router.get("/quizzes/:id/results/:studentId", requireTeacher, async (req: AuthRe
     res.status(404).json({ error: "Attempt record not found" }); return;
   }
 
-  const answers = await db
-    .select({
-      questionId:          quizQuestionsTable.id,
-      questionText:        quizQuestionsTable.questionText,
-      options:             quizQuestionsTable.options,
-      correctOptionIndex:  quizQuestionsTable.correctOptionIndex,
-      selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
-      isCorrect:           quizAnswersTable.isCorrect,
-      sequence:            quizQuestionsTable.sequence,
-    })
-    .from(quizAnswersTable)
-    .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
-    .where(eq(quizAnswersTable.attemptId, attempt.id))
-    .orderBy(asc(quizQuestionsTable.sequence));
+  const { questions, nodeBreakdown, recommendations } =
+    await buildStudentResultAnalysis(attempt.id, studentId);
 
   res.json({
     studentId,
     totalCorrect:   attempt.totalCorrect,
     totalQuestions: attempt.totalQuestions,
     scorePercent:   attempt.scorePercent,
-    questions:      answers.map((a) => ({
-      questionId:          a.questionId,
-      questionText:        a.questionText,
-      options:             a.options,
-      correctOptionIndex:  a.correctOptionIndex,
-      selectedOptionIndex: a.selectedOptionIndex,
-      isCorrect:           a.isCorrect,
-      sequence:            a.sequence,
-    })),
+    questions,
+    nodeBreakdown,
+    recommendations,
   });
 });
 
 // ── GET /api/quizzes/:id/my-result ────────────────────────────────────────────
-// Student: full per-question result for their completed attempt on a quiz.
+// Student: full per-question result + node breakdown + personalized recommendations.
 router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) => {
   const quizId = parseInt(String(req.params.id), 10);
   if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
 
-  // Find the student's completed assignment
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
@@ -480,35 +618,16 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
     return;
   }
 
-  // Per-question detail: join quiz_answers + quiz_questions
-  const answers = await db
-    .select({
-      questionId:          quizQuestionsTable.id,
-      questionText:        quizQuestionsTable.questionText,
-      options:             quizQuestionsTable.options,
-      correctOptionIndex:  quizQuestionsTable.correctOptionIndex,
-      selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
-      isCorrect:           quizAnswersTable.isCorrect,
-      sequence:            quizQuestionsTable.sequence,
-    })
-    .from(quizAnswersTable)
-    .innerJoin(quizQuestionsTable, eq(quizQuestionsTable.id, quizAnswersTable.questionId))
-    .where(eq(quizAnswersTable.attemptId, attempt.id))
-    .orderBy(asc(quizQuestionsTable.sequence));
+  const { questions, nodeBreakdown, recommendations } =
+    await buildStudentResultAnalysis(attempt.id, req.userId!);
 
   res.json({
     totalCorrect:   attempt.totalCorrect,
     totalQuestions: attempt.totalQuestions,
     scorePercent:   attempt.scorePercent,
-    questions:      answers.map((a) => ({
-      questionId:          a.questionId,
-      questionText:        a.questionText,
-      options:             a.options,
-      correctOptionIndex:  a.correctOptionIndex,
-      selectedOptionIndex: a.selectedOptionIndex,
-      isCorrect:           a.isCorrect,
-      sequence:            a.sequence,
-    })),
+    questions,
+    nodeBreakdown,
+    recommendations,
   });
 });
 
@@ -944,6 +1063,238 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   })().catch((err) =>
     logger.error({ err, quizId: _quizId }, "quiz evidence: fire-and-forget wrapper failed")
   );
+});
+
+// ── GET /api/quizzes/:id/analysis ────────────────────────────────────────────
+// Teacher: class-level common-error analysis + per-student weak-node breakdown.
+// Common error = same wrong option chosen by ≥50% of participants on a question.
+// MUST be declared before /quizzes/:id (DELETE) to avoid route ambiguity.
+router.get("/quizzes/:id/analysis", requireTeacher, async (req: AuthRequest, res) => {
+  const quizId = parseInt(String(req.params.id), 10);
+  if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
+
+  // Verify ownership
+  const [quiz] = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
+    .limit(1);
+  if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
+
+  // All completed assignments + their attempt IDs + student names
+  const completedRows = await db
+    .select({
+      studentId:   quizAssignmentsTable.studentId,
+      studentName: usersTable.fullName,
+      attemptId:   quizAttemptsTable.id,
+    })
+    .from(quizAssignmentsTable)
+    .innerJoin(usersTable,       eq(usersTable.id,       quizAssignmentsTable.studentId))
+    .innerJoin(quizAttemptsTable, eq(quizAttemptsTable.quizAssignmentId, quizAssignmentsTable.id))
+    .where(eq(quizAssignmentsTable.quizId, quizId));
+
+  const participantCount = completedRows.length;
+  if (participantCount === 0) {
+    res.json({ quizId, participantCount: 0, commonErrors: [],
+      teacherRecommendations: { classLevel: [], individual: [] } });
+    return;
+  }
+
+  const attemptIds = completedRows.map((r) => r.attemptId);
+  const studentIds = [...new Set(completedRows.map((r) => r.studentId))];
+  const attemptToStudent = new Map(completedRows.map((r) => [r.attemptId, r.studentId]));
+  const studentInfo      = new Map(completedRows.map((r) => [r.studentId, r.studentName]));
+
+  // All answers for completed attempts
+  const allAnswers = await db
+    .select({
+      attemptId:           quizAnswersTable.attemptId,
+      questionId:          quizAnswersTable.questionId,
+      nodeId:              quizAnswersTable.nodeId,
+      selectedOptionIndex: quizAnswersTable.selectedOptionIndex,
+      isCorrect:           quizAnswersTable.isCorrect,
+    })
+    .from(quizAnswersTable)
+    .where(inArray(quizAnswersTable.attemptId, attemptIds));
+
+  // All questions for this quiz
+  const questions = await db
+    .select()
+    .from(quizQuestionsTable)
+    .where(eq(quizQuestionsTable.quizId, quizId))
+    .orderBy(asc(quizQuestionsTable.sequence));
+  const questionMap = new Map(questions.map((q) => [q.id, q]));
+
+  // Distinct nodeIds across questions + answers
+  const nodeIds = [
+    ...new Set([
+      ...questions.map((q) => q.nodeId).filter((id): id is number => id !== null),
+      ...allAnswers.map((a) => a.nodeId).filter((id): id is number => id !== null),
+    ]),
+  ];
+
+  const lessonNodeRows = nodeIds.length > 0
+    ? await db
+        .select({ id: lessonNodesTable.id, title: lessonNodesTable.title,
+                  commonMisconception: lessonNodesTable.commonMisconception })
+        .from(lessonNodesTable)
+        .where(inArray(lessonNodesTable.id, nodeIds))
+    : [];
+  const lnMap = new Map(lessonNodeRows.map((n) => [n.id, n]));
+
+  const knRows = nodeIds.length > 0 && studentIds.length > 0
+    ? await db
+        .select({
+          userId:         knowledgeNodesTable.userId,
+          lessonNodeId:   knowledgeNodesTable.lessonNodeId,
+          masteryScore:   knowledgeNodesTable.masteryScore,
+          confidenceScore: knowledgeNodesTable.confidenceScore,
+        })
+        .from(knowledgeNodesTable)
+        .where(and(
+          inArray(knowledgeNodesTable.userId,        studentIds),
+          inArray(knowledgeNodesTable.lessonNodeId,  nodeIds),
+        ))
+    : [];
+  const knMap = new Map(knRows.map((r) => [`${r.userId}_${r.lessonNodeId}`, r]));
+
+  // ── Common Error Detection ─────────────────────────────────────────────────
+  // Group answers by questionId
+  const answersByQuestion = new Map<number, {
+    selectedOptionIndex: number; isCorrect: boolean;
+  }[]>();
+  for (const a of allAnswers) {
+    if (!answersByQuestion.has(a.questionId)) answersByQuestion.set(a.questionId, []);
+    answersByQuestion.get(a.questionId)!.push({
+      selectedOptionIndex: a.selectedOptionIndex,
+      isCorrect: a.isCorrect,
+    });
+  }
+
+  type CommonError = {
+    questionId: number; questionText: string;
+    nodeId: number | null; nodeTitle: string | null;
+    wrongOptionIndex: number; wrongOptionText: string;
+    wrongCount: number; wrongPercent: number;
+    correctOptionIndex: number; correctOptionText: string;
+    misconception: string | null;
+  };
+  const commonErrors: CommonError[] = [];
+
+  for (const [questionId, ans] of answersByQuestion) {
+    const q = questionMap.get(questionId);
+    if (!q) continue;
+    const participants = ans.length;
+    // Tally wrong-option counts
+    const wrongTally = new Map<number, number>();
+    for (const a of ans) {
+      if (!a.isCorrect) wrongTally.set(a.selectedOptionIndex, (wrongTally.get(a.selectedOptionIndex) ?? 0) + 1);
+    }
+    // Find dominant wrong option ≥50%
+    let bestOpt = -1, bestCount = 0;
+    for (const [opt, count] of wrongTally) {
+      if (count > bestCount) { bestOpt = opt; bestCount = count; }
+    }
+    if (bestOpt >= 0 && (bestCount / participants) * 100 >= 50) {
+      const opts = q.options as string[];
+      const ln   = q.nodeId != null ? lnMap.get(q.nodeId) : null;
+      commonErrors.push({
+        questionId,
+        questionText:       q.questionText,
+        nodeId:             q.nodeId ?? null,
+        nodeTitle:          ln?.title ?? null,
+        wrongOptionIndex:   bestOpt,
+        wrongOptionText:    opts[bestOpt] ?? "",
+        wrongCount:         bestCount,
+        wrongPercent:       Math.round((bestCount / participants) * 100),
+        correctOptionIndex: q.correctOptionIndex,
+        correctOptionText:  opts[q.correctOptionIndex] ?? "",
+        misconception:      ln?.commonMisconception ?? null,
+      });
+    }
+  }
+
+  // ── Per-Student Weak Node Breakdown ───────────────────────────────────────
+  // Aggregate (studentId, nodeId) → correct/total counts from answers
+  const perStudentNode = new Map<string, { studentId: number; nodeId: number; correct: number; total: number }>();
+  for (const a of allAnswers) {
+    if (a.nodeId == null) continue;
+    const sid = attemptToStudent.get(a.attemptId);
+    if (sid == null) continue;
+    const key = `${sid}_${a.nodeId}`;
+    if (!perStudentNode.has(key)) perStudentNode.set(key, { studentId: sid, nodeId: a.nodeId, correct: 0, total: 0 });
+    const agg = perStudentNode.get(key)!;
+    agg.total++;
+    if (a.isCorrect) agg.correct++;
+  }
+
+  const individualMap = new Map<number, { studentId: number; studentName: string; weakNodes: {
+    nodeId: number; nodeTitle: string; masteryLevel: MasteryLevel;
+    masteryScore: number | null; nextAction: PersonalizedNextAction;
+  }[] }>();
+
+  for (const agg of perStudentNode.values()) {
+    const kn = knMap.get(`${agg.studentId}_${agg.nodeId}`);
+    const ln = lnMap.get(agg.nodeId);
+    let masteryLevel: MasteryLevel;
+    let masteryScore: number | null;
+
+    if (kn) {
+      masteryScore  = kn.masteryScore;
+      masteryLevel  = getMasteryLevelFromScores(kn.masteryScore, kn.confidenceScore);
+    } else {
+      const rate = agg.total > 0 ? agg.correct / agg.total : 0;
+      if (rate === 0)      { masteryLevel = "in_progress"; masteryScore = 0; }
+      else if (rate >= 0.8){ masteryLevel = "mastered";    masteryScore = Math.round(rate * 100); }
+      else                 { masteryLevel = "weak";         masteryScore = Math.round(rate * 100); }
+    }
+
+    if (masteryLevel === "mastered") continue; // only surface nodes needing attention
+
+    if (!individualMap.has(agg.studentId)) {
+      individualMap.set(agg.studentId, {
+        studentId:   agg.studentId,
+        studentName: studentInfo.get(agg.studentId) ?? `Student ${agg.studentId}`,
+        weakNodes:   [],
+      });
+    }
+    individualMap.get(agg.studentId)!.weakNodes.push({
+      nodeId:       agg.nodeId,
+      nodeTitle:    ln?.title ?? `Node ${agg.nodeId}`,
+      masteryLevel,
+      masteryScore,
+      nextAction:   getPersonalizedNextAction({ masteryLevel, masteryScore }),
+    });
+  }
+
+  // Sort each student's nodes by priority
+  const individual = [...individualMap.values()].map((s) => ({
+    ...s,
+    weakNodes: s.weakNodes.sort((a, b) =>
+      recommendationPriority(a.masteryLevel, a.masteryScore) -
+      recommendationPriority(b.masteryLevel, b.masteryScore)
+    ),
+  })).sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+  // Class-level: max error % per node across common errors
+  const classLevelMap = new Map<number, { nodeTitle: string; commonErrorPercent: number }>();
+  for (const ce of commonErrors) {
+    if (ce.nodeId == null) continue;
+    const prev = classLevelMap.get(ce.nodeId);
+    if (!prev || ce.wrongPercent > prev.commonErrorPercent) {
+      classLevelMap.set(ce.nodeId, { nodeTitle: ce.nodeTitle ?? `Node ${ce.nodeId}`, commonErrorPercent: ce.wrongPercent });
+    }
+  }
+  const classLevel = [...classLevelMap.entries()]
+    .map(([nodeId, v]) => ({ nodeId, nodeTitle: v.nodeTitle, commonErrorPercent: v.commonErrorPercent }))
+    .sort((a, b) => b.commonErrorPercent - a.commonErrorPercent);
+
+  res.json({
+    quizId,
+    participantCount,
+    commonErrors,
+    teacherRecommendations: { classLevel, individual },
+  });
 });
 
 // ── DELETE /api/quizzes/:id ───────────────────────────────────────────────────

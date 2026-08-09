@@ -1359,6 +1359,31 @@ export default function TeacherDashboard() {
     scorePercent: number | null; completedAt: string | null;
   }[] | null>(null);
   const [resultsLoading,  setResultsLoading]            = useState(false);
+  const [resultsActiveTab, setResultsActiveTab]         = useState<"students" | "analysis">("students");
+  const [analysisLoading, setAnalysisLoading]           = useState(false);
+  const [analysisData,    setAnalysisData]              = useState<{
+    quizId: number;
+    participantCount: number;
+    commonErrors: {
+      questionId: number; questionText: string;
+      nodeId: number | null; nodeTitle: string | null;
+      wrongOptionIndex: number; wrongOptionText: string;
+      wrongCount: number; wrongPercent: number;
+      correctOptionIndex: number; correctOptionText: string;
+      misconception: string | null;
+    }[];
+    teacherRecommendations: {
+      classLevel: { nodeId: number; nodeTitle: string; commonErrorPercent: number }[];
+      individual: {
+        studentId: number; studentName: string;
+        weakNodes: {
+          nodeId: number; nodeTitle: string;
+          masteryLevel: string; masteryScore: number | null;
+          nextAction: { action: string; masteryScore: number | null; intensity?: string };
+        }[];
+      }[];
+    };
+  } | null>(null);
 
   // ── Cross-section fetch state ────────────────────────────────────────────
   const [allQuizzes, setAllQuizzes] = useState<{
@@ -1416,7 +1441,7 @@ export default function TeacherDashboard() {
       .catch(() => {});
   }, [quizModalOpen, selectedCourse?.subjectId]);
   useEffect(() => {
-    if (resultsQuizId === null) { setResultsData(null); return; }
+    if (resultsQuizId === null) { setResultsData(null); setAnalysisData(null); setResultsActiveTab("students"); return; }
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
     setResultsLoading(true);
     fetch(`/api/quizzes/${resultsQuizId}/results`, {
@@ -1426,6 +1451,19 @@ export default function TeacherDashboard() {
       .then((data) => setResultsData(data))
       .catch(() => setResultsData([]))
       .finally(() => setResultsLoading(false));
+  }, [resultsQuizId]);
+
+  useEffect(() => {
+    if (resultsQuizId === null) { setAnalysisData(null); return; }
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    setAnalysisLoading(true);
+    fetch(`/api/quizzes/${resultsQuizId}/analysis`, {
+      headers: { Authorization: `Bearer ${tok}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setAnalysisData(data))
+      .catch(() => setAnalysisData(null))
+      .finally(() => setAnalysisLoading(false));
   }, [resultsQuizId]);
 
   // Restore course view or sidebar section from URL params (e.g. after back-nav from quiz-review/result)
@@ -3603,52 +3641,195 @@ export default function TeacherDashboard() {
       {resultsQuizId !== null && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-background border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            {/* Header + tabs */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h2 className="text-base font-semibold">Արդյունքներ</h2>
+              <h2 className="text-base font-semibold">Արդயunqner</h2>
               <button onClick={() => setResultsQuizId(null)} className={btnGhost}>✕</button>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {resultsLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : !resultsData || resultsData.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">—</p>
-              ) : (
-                <div className="space-y-2">
-                  {resultsData.map((row) => (
-                    <div key={row.assignmentId} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/40 border border-white/8">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{row.studentName}</div>
-                      </div>
-                      {row.status === "COMPLETED" ? (
-                        <>
-                          <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
-                            {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
-                          </span>
-                          <button
-                            onClick={() => {
-                              const quizEntry = resultsFrom === "allQuizzes" ? allQuizzes.find((q) => q.id === resultsQuizId) : null;
-                              const cId = resultsFrom === "allQuizzes" ? (quizEntry?.classId ?? "") : (selectedClass?.id ?? "");
-                              const sId = resultsFrom === "allQuizzes" ? (quizEntry?.subjectId ?? "") : (selectedCourse?.subjectId ?? "");
-                              setResultsQuizId(null);
-                              setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${cId}&subjectId=${sId}&from=${resultsFrom}`);
-                            }}
-                            className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
-                          >
-                            Դիտել
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
-                          դեռ չի ավարտել
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="flex border-b border-white/10">
+              <button
+                onClick={() => setResultsActiveTab("students")}
+                className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+                  resultsActiveTab === "students"
+                    ? "text-white border-b-2 border-primary"
+                    : "text-muted-foreground hover:text-white"
+                }`}
+              >
+                Աшакеrтner
+              </button>
+              <button
+                onClick={() => setResultsActiveTab("analysis")}
+                className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+                  resultsActiveTab === "analysis"
+                    ? "text-white border-b-2 border-primary"
+                    : "text-muted-foreground hover:text-white"
+                }`}
+              >
+                [TEACHER_RECOMMENDATIONS]
+              </button>
             </div>
+
+            {/* ── Students tab ── */}
+            {resultsActiveTab === "students" && (
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                {resultsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : !resultsData || resultsData.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">—</p>
+                ) : (
+                  <div className="space-y-2">
+                    {resultsData.map((row) => (
+                      <div key={row.assignmentId} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/40 border border-white/8">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{row.studentName}</div>
+                        </div>
+                        {row.status === "COMPLETED" ? (
+                          <>
+                            <span className="text-xs font-semibold text-teal-400 whitespace-nowrap">
+                              {row.totalCorrect}/{row.totalQuestions} ({row.scorePercent}%)
+                            </span>
+                            <button
+                              onClick={() => {
+                                const quizEntry = resultsFrom === "allQuizzes" ? allQuizzes.find((q) => q.id === resultsQuizId) : null;
+                                const cId = resultsFrom === "allQuizzes" ? (quizEntry?.classId ?? "") : (selectedClass?.id ?? "");
+                                const sId = resultsFrom === "allQuizzes" ? (quizEntry?.subjectId ?? "") : (selectedCourse?.subjectId ?? "");
+                                setResultsQuizId(null);
+                                setLocation(`/quiz/${resultsQuizId}/result?studentId=${row.studentId}&classId=${cId}&subjectId=${sId}&from=${resultsFrom}`);
+                              }}
+                              className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                            >
+                              Диtел
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+                            Деrrчи аварtел
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Class analysis tab ── */}
+            {resultsActiveTab === "analysis" && (
+              <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
+                {analysisLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : !analysisData ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">—</p>
+                ) : (
+                  <>
+                    {/* Common errors */}
+                    {analysisData.commonErrors.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold text-white/70 uppercase tracking-wide">
+                          [COMMON_ERROR] · {analysisData.participantCount} Маснаkitсоch
+                        </h3>
+                        {analysisData.commonErrors.map((ce) => (
+                          <div key={ce.questionId} className="rounded-xl border border-red-400/20 bg-red-400/5 p-4">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <p className="text-sm font-medium leading-snug flex-1">{ce.questionText}</p>
+                              <span className="text-xs font-bold text-red-400 shrink-0">{ce.wrongPercent}%</span>
+                            </div>
+                            {ce.nodeTitle && (
+                              <p className="text-xs text-muted-foreground/60 mb-2">📌 {ce.nodeTitle}</p>
+                            )}
+                            <div className="text-xs space-y-1">
+                              <div className="flex gap-2 items-center">
+                                <span className="text-red-400">❌</span>
+                                <span className="text-red-300/80">{ce.wrongOptionText}</span>
+                                <span className="text-muted-foreground/50 ml-auto">{ce.wrongCount} Ашаk.</span>
+                              </div>
+                              <div className="flex gap-2 items-center">
+                                <span className="text-teal-400">✓</span>
+                                <span className="text-teal-300/80">{ce.correctOptionText}</span>
+                              </div>
+                              {ce.misconception && (
+                                <p className="mt-2 text-muted-foreground/70 italic border-l border-white/10 pl-2">
+                                  {ce.misconception}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Class-level node summary */}
+                    {analysisData.teacherRecommendations.classLevel.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-semibold text-white/70 uppercase tracking-wide">
+                          Дасарани хndиrнер
+                        </h3>
+                        {analysisData.teacherRecommendations.classLevel.map((cl) => (
+                          <div key={cl.nodeId} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/8 bg-card/20">
+                            <div className="flex-1 min-w-0 text-sm truncate">{cl.nodeTitle}</div>
+                            <span className="text-xs font-semibold text-amber-400 shrink-0">
+                              {cl.commonErrorPercent}% [COMMON_ERROR]
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* No issues */}
+                    {analysisData.commonErrors.length === 0 &&
+                      analysisData.teacherRecommendations.classLevel.length === 0 && (
+                        <p className="text-sm text-teal-400/80 text-center py-4">
+                          ✅ Дасарани կоghмич ountеррен ченka
+                        </p>
+                      )
+                    }
+
+                    {/* Per-student weak nodes */}
+                    {analysisData.teacherRecommendations.individual.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold text-white/70 uppercase tracking-wide">
+                          [INDIVIDUAL_ERROR]
+                        </h3>
+                        {analysisData.teacherRecommendations.individual.map((s) => (
+                          <div key={s.studentId} className="rounded-xl border border-white/8 bg-card/20 p-3">
+                            <div className="text-sm font-medium mb-2">{s.studentName}</div>
+                            <div className="space-y-1.5 pl-2">
+                              {s.weakNodes.map((n) => (
+                                <div key={n.nodeId} className="flex items-center gap-2 text-xs">
+                                  <span className={`px-1.5 py-0.5 rounded border text-xs ${
+                                    n.masteryLevel === "in_progress"
+                                      ? "border-red-400/40 text-red-400"
+                                      : n.masteryLevel === "not_started"
+                                      ? "border-white/20 text-muted-foreground"
+                                      : "border-amber-400/40 text-amber-400"
+                                  }`}>
+                                    {n.masteryLevel === "mastered" ? "Гиtи"
+                                      : n.masteryLevel === "weak" ? "Маснакi"
+                                      : n.masteryLevel === "in_progress" ? "Чγаtи"
+                                      : "Деrrчи"}
+                                  </span>
+                                  <span className="truncate text-muted-foreground">{n.nodeTitle}</span>
+                                  <span className="ml-auto shrink-0 text-muted-foreground/50">
+                                    → {n.nextAction.action === "LEARN_FULL" ? "[LEARN_FULL]"
+                                        : n.nextAction.action === "LEARN_TARGETED" ? "[LEARN_TARGETED]"
+                                        : n.nextAction.action === "STUDY_FIRST" ? "[STUDY_FIRST]"
+                                        : "[REVIEW]"}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
