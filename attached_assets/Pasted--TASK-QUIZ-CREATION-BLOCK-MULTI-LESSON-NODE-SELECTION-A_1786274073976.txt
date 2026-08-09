@@ -1,0 +1,94 @@
+ՊԱՐՏԱԴԻՐ TASK — QUIZ CREATION BLOCK — MULTI-LESSON/NODE SELECTION + AUTO-SUGGESTED QUESTION COUNT + GRANULAR SCORING
+
+Սա 2 կապակցված, բայց առանձին փոփոխություն է Test-ստեղծման (Quiz Creation) բլոկում։ Chat.ts-ը, mapping-feature-ը (manual-map/auto-map), և quiz-taking flow-ը (student-side) այս task-ի մասը ՉԵՆ և չպետք է փոփոխվեն։
+
+═══════════════════════════════════════════════════
+ՄԱՍ 0 — ՆԱԽ ՈՒՍՈՒՄՆԱՍԻՐԻՐ, ՈՉԻՆՉ ՄԻ ՓՈՓՈԽԻՐ
+═══════════════════════════════════════════════════
+
+Մինչև որևէ կոդ գրելը, գտիր և ինձ ցույց տուր.
+
+1. Quiz-ստեղծման UI-ի ներկայիս ֆայլը (frontend component), որտեղ ուսուցիչն ընտրում է դասը quiz-ի համար։
+2. Backend endpoint(ներ)-ը, որ ստանում է lesson selection-ը և generate է անում quiz-ը։
+3. Ինչպես է հիմա structured lesson→node/microNode selection-ի տվյալների մոդելը (lesson_topics/lesson_nodes schema-ն, hierarchy-ն)։
+4. scoring.ts-ի ներկայիս logic-ը՝ evidence_events-ից knowledge_nodes-ի status update-ին հասնող ամբողջ chain-ը։
+5. Knowledge Tree-ի 4 status block-երի ներկայիս enum/column-ը DB-ում (Գիտի/Չգիտի/Դեռ չի ուսումնասիրել/Մասնակի գիտի) և ինչ threshold-ով են հիմա որոշվում։
+6. Ինչպես է հիմա որոշվում quiz-ի հարցերի քանակը (կա՞ արդեն որևէ suggested-count logic, թե ուսուցիչը ազատ է մուտքագրում)։
+
+Սա report արա ինձ՝ ֆայլերի ուղիներով և կոդի հատվածներով, ՄԻՆՉԵՎ որևէ փոփոխություն։
+
+═══════════════════════════════════════════════════
+ՄԱՍ 1 — MULTI-LESSON / NODE-LEVEL SELECTION
+═══════════════════════════════════════════════════
+
+Ներկայիս վիճակ. ուսուցիչը կարող է ընտրել միայն մեկ ամբողջ դաս quiz-ի համար։
+
+Նոր վարքագիծ.
+
+A. Ուսուցիչը կարող է ընտրել **մեկ կամ մի քանի դաս**։
+
+B. Եթե ընտրված է **ուղիղ 1 դաս**.
+   - UI-ն ցույց է տալիս drill-down տարբերակ՝ ընտրելու այդ դասի կոնկրետ Node(եր)/MicroNode(եր), ոչ ամբողջ դասը պարտադիր
+   - Ուսուցիչը կարող է ընտրել 1 կամ մի քանի Node/MicroNode combination
+
+C. Եթե ընտրված է **2 կամ ավելի դաս**.
+   - Node-level drill-down ՉԻ ցուցադրվում
+   - Quiz-ը generate է արվում ընտրված դասերի ամբողջության հիման վրա (ինչպես հիմա արդեն աշխատում է single-lesson-ի համար)
+
+D. Selection state-ը (ընտրված lesson ID-ները + եթե single-lesson mode է, ընտրված node ID-ները) պետք է հստակ փոխանցվի backend-ի quiz-generation endpoint-ին։
+
+═══════════════════════════════════════════════════
+ՄԱՍ 2 — AUTO-SUGGESTED QUESTION COUNT
+═══════════════════════════════════════════════════
+
+Ընտրված scope-ի (single-lesson node-selection կամ multi-lesson) հիման վրա, հաշվիր leaf-level Node/MicroNode-երի ընդհանուր քանակը։
+
+minimumQuestions = leafCount × 1
+idealQuestions   = leafCount × 3
+
+Օրինակ. 5 Node × 2 MicroNode = 10 leaf → minimum 10, ideal 30։
+
+UI-ում.
+- Ցույց տուր երկու թիվն էլ որպես suggestion (օր. "Նվազագույնը՝ 10, առաջարկվող՝ 30")
+- Ուսուցիչը կարող է ազատ փոխել իրական թիվը, suggestion-ը միայն ուղղորդող է, ոչ hard-enforced սահման
+- Եթե ուսուցիչն ընտրում է թիվ, որ ցածր է minimumQuestions-ից, ցույց տուր informational warning (ոչ blocking error) — "Որոշ Node-երից հարց չի ընդգրկվի"
+
+═══════════════════════════════════════════════════
+ՄԱՍ 3 — PER-NODE 3-ՀԱՐՑ SCORING → 4 BLOCK
+═══════════════════════════════════════════════════
+
+Սա փոփոխում է scoring.ts-ի logic-ը, ոչ ամբողջությամբ, այլ ավելացնում նոր tier-ային որոշման կանոն, երբ տվյալ Node-ի համար quiz-ում եղել է ուղիղ 3 հարց.
+
+3/3 ճիշտ → Գիտի
+2/3 ճիշտ → Մասնակի գիտի (ավելի բարձր վստահության tier)
+1/3 ճիշտ → Մասնակի գիտի (ավելի ցածր վստահության/ռիսկային tier)
+0/3 ճիշտ → Չգիտի
+
+ԿԱՐԵՎՈՐ.
+- Հստակեցրու ինձ՝ արդյո՞ք "Մասնակի գիտի" block-ը DB-ում արդեն ունի underlying confidence/percentage դաշտ, թե սա նոր դաշտ է պահանջում։ Ինձ report արա՝ նախքան այն ավելացնելը, եթե նոր column է պահանջվում։
+- Եթե Node-ի համար quiz-ում եղել է ԱՅԼ քան 3 հարց (օրինակ՝ 1, 2, 4, 5), ինձ report արա, թե ինչպիսի fallback-scoring-ի logic կա հիմա, և առաջարկիր proportional scaling (օր. threshold-երը scale-ել ըստ questionCount-ի), բայց ՄԻ ԻՐԱԿԱՆԱՑՐՈՒ ինքնուրույն այս fallback-ը՝ առանց իմ հաստատման։
+
+═══════════════════════════════════════════════════
+ՍԱՀՄԱՆԱՓԱԿՈՒՄՆԵՐ
+═══════════════════════════════════════════════════
+
+Մի փոփոխիր.
+- chat.ts / teaching-session logic
+- manual-mapping / auto-mapping feature-ը
+- quiz-taking (student-side) UI-ն
+- Knowledge Tree-ի 4 block-երի անունները/enum-արժեքները (միայն դրանց determination-logic-ն ես ընդլայնում, ոչ իրենք)
+- ցանկացած այլ, չնշված functionality
+
+Եթե որևէ հայերեն UI text պետք է ավելացնես (labels, suggestion-text, warning), ՄԻ գրիր ինքդ ձեռքով։ Ինձ տուր ամբողջական ցանկը անգլերեն placeholder-ով, ես կտամ exact Armenian string-երը, դու copy-paste կանես (հենց այն pattern-ը, որ արդեն հաստատված է myaiteacher-ի մյուս feature-ներում)։
+
+═══════════════════════════════════════════════════
+VERIFICATION
+═══════════════════════════════════════════════════
+
+Report-ի մեջ ինձ տուր.
+1. Ինչ ֆայլեր ես փոփոխել/ստեղծել
+2. Real screenshot-ներ. single-lesson node-drill-down UI, multi-lesson (առանց drill-down) UI, suggested-count-ի ցուցադրում
+3. Real DB query, ցույց տալով node-scoring-ի արդյունքը 3-հարց-quiz-ից հետո (psql dump)
+4. Confirm — chat.ts-ը/mapping-feature-ը անփոփոխ են մնացել (git diff կամ ֆայլերի ցուցակ)
+
+Report Մաս 0-ի ուսումնասիրության արդյունքները ինձ ՆԱԽ, մինչև Մաս 1-3-ի implementation-ին անցնելը։
