@@ -106,8 +106,15 @@ async function buildStudentResultAnalysis(
       sequence:            a.sequence,
       nodeId:              a.nodeId ?? null,
       nodeTitle:           ln?.title ?? null,
-      // Explanation: node-level fallback only (question-level field pending schema addition)
-      explanationText:     ln?.childFriendlyExplanation ?? ln?.commonMisconception ?? null,
+      // feedback: split by purpose (spec Section 6 priority order)
+      // Priority 1 (question-specific explanation) — pending quiz_questions.explanation schema addition
+      // Priority 2 → childFriendlyExplanation used as whyCorrect
+      // Priority 3 → commonMisconception used as whyWrong (only meaningful when isCorrect=false)
+      // No fabrication: both null → frontend shows nothing
+      feedback: {
+        whyCorrect: ln?.childFriendlyExplanation ?? null,
+        whyWrong:   ln?.commonMisconception ?? null,
+      },
       errorState:          a.isCorrect ? ("correct" as const) : ("wrong" as const),
     };
   });

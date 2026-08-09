@@ -1,0 +1,596 @@
+# PART 2 — QUESTION FEEDBACK
+
+## Post-Quiz Per-Question Explanation
+
+Մենք անցնում ենք միայն **Քայլ 2 — Question Feedback** փուլին։
+
+PART 1-ի implementation-ը արդեն կա։ Հիմա դրա վրա պետք է կառուցել **յուրաքանչյուր հարցի հասկանալի ուսումնական feedback**։
+
+## ԿԱՐԵՎՈՐ ՍԱՀՄԱՆԱՓԱԿՈՒՄ
+
+Այս փուլում **ՉԻ ԹՈՒՅԼԱՏՐՎՈՒՄ** իրականացնել կամ փոխել՝
+
+* Evidence Mapping
+* Student Analysis
+* Class Analysis
+* Common Error detection
+* Knowledge Tree logic
+* Personalized Learning Engine
+* Recommendation Engine
+* `chat.ts`
+* manual/auto mapping
+* student quiz-taking flow
+
+Այս փուլում աշխատում ենք **միայն մեկ հարցի feedback-ի վրա**։
+
+Եթե implementation-ի ընթացքում հայտնաբերես, որ հաջորդ փուլերից որևէ մեկը անհրաժեշտ է, կանգ առ և report արա։ Ինքնուրույն մի իրականացրու։
+
+---
+
+# 1. ՆՊԱՏԱԿ
+
+Թեստի ավարտից հետո սովորողը պետք է ոչ միայն տեսնի՝
+
+* իր ընտրած պատասխանը
+* ճիշտ պատասխանը
+
+այլ նաև հասկանա.
+
+### Եթե ճիշտ է պատասխանել
+
+**Ինչու է ճիշտ պատասխանը ճիշտ։**
+
+### Եթե սխալ է պատասխանել
+
+**Ինչու է իր ընտրած պատասխանը սխալ։**
+
+և
+
+**Ինչու է ճիշտ պատասխանը ճիշտ։**
+
+Այս feedback-ի հիմնական նպատակը **սովորեցնելն է**, ոչ թե պարզապես սխալը նշելն է։
+
+---
+
+# 2. UI-Ի ՃԻՇՏ ԿԱՌՈՒՑՎԱԾՔԸ
+
+Յուրաքանչյուր հարցի result card-ում պետք է պահպանվի ներկայիս հիմնական կառուցվածքը.
+
+```text
+Հարց
+↓
+Պատասխանների տարբերակներ
+↓
+Սովորողի ընտրությունը
+↓
+Ճիշտ պատասխանը
+↓
+Բացատրություն
+```
+
+## Եթե ճիշտ է
+
+Օրինակային semantic structure.
+
+```text
+✓ Ճիշտ պատասխան
+
+[ճիշտ տարբերակը]
+
+Ինչու է սա ճիշտ
+
+[կարճ ուսուցողական բացատրություն]
+```
+
+## Եթե սխալ է
+
+```text
+✗ Քո պատասխանը
+
+[սովորողի ընտրած տարբերակը]
+
+Ինչու է սա սխալ
+
+[կարճ բացատրություն]
+
+✓ Ճիշտ պատասխանը
+
+[ճիշտ տարբերակը]
+
+Ինչու է սա ճիշտ
+
+[կարճ ուսուցողական բացատրություն]
+```
+
+Սա պետք է լինի տեսանելի հենց տվյալ հարցի տակ։
+
+---
+
+# 3. FEEDBACK-Ի ԲՈՎԱՆԴԱԿՈՒԹՅՈՒՆԸ
+
+Feedback-ը պետք է պատասխանի ոչ թե միայն.
+
+> «Ո՞րն է ճիշտ պատասխանը»
+
+այլ.
+
+> «Ինչո՞ւ է դա ճիշտ»։
+
+Եվ սխալ պատասխանի դեպքում.
+
+> «Ի՞նչն էր սխալ իմ մտածողության մեջ»։
+
+Ուստի բացատրությունը պետք է լինի **կարճ, կոնկրետ և ուսուցողական**։
+
+Չպետք է լինի պարզապես.
+
+> «Ճիշտ պատասխանը B-ն է»։
+
+Դա feedback չէ։
+
+---
+
+# 4. WRONG ANSWER FEEDBACK
+
+Սխալ պատասխանելու դեպքում համակարգը պետք է տարանջատի երկու տարբեր բացատրություն.
+
+### A. Ինչու է սովորողի ընտրությունը սխալ
+
+Պետք է բացատրվի կոնկրետ ընտրված տարբերակի խնդիրը։
+
+Ոչ թե ընդհանուր թեման։
+
+Օրինակ՝ semantic կառուցվածքով.
+
+```text
+Քո ընտրած պատասխանը սխալ է, որովհետև ...
+
+Այստեղ պետք էր հաշվի առնել ...
+```
+
+### B. Ինչու է ճիշտ պատասխանը ճիշտ
+
+Պետք է բացատրվի այն կանոնը, փաստը կամ reasoning-ը, որի հիման վրա ճիշտ պատասխանը ճիշտ է։
+
+```text
+Ճիշտ պատասխանն է ...
+
+Այն ճիշտ է, որովհետև ...
+```
+
+---
+
+# 5. CORRECT ANSWER FEEDBACK
+
+Եթե սովորողը ճիշտ է պատասխանել, չպետք է նրան ցույց տալ սխալի explanation։
+
+Պետք է ցույց տալ միայն.
+
+```text
+✓ Ճիշտ պատասխան
+
+Ինչու է սա ճիշտ
+[կարճ բացատրություն]
+```
+
+Նպատակն է ամրապնդել ճիշտ reasoning-ը։
+
+---
+
+# 6. EXPLANATION SOURCE PRIORITY
+
+Նախ ուսումնասիրիր գոյություն ունեցող տվյալները և օգտագործիր դրանք՝ այս առաջնահերթությամբ.
+
+### Priority 1
+
+Question-specific explanation, եթե արդեն գոյություն ունի։
+
+### Priority 2
+
+Node/MicroNode-specific child-friendly explanation։
+
+### Priority 3
+
+Node/MicroNode common misconception, երբ տվյալ feedback-ը վերաբերում է սխալ պատասխանին։
+
+### Priority 4
+
+Գոյություն ունեցող source/theory content-ից անվտանգ բացատրություն, եթե այն հնարավոր է ստանալ առանց նոր տվյալ հորինելու։
+
+Եթե վստահելի explanation չկա՝
+
+**մի հորինիր։**
+
+Այդ դեպքում feedback-ը կարող է ցուցադրել համապատասխան placeholder կամ դատարկ state՝ մինչև content-ը լրացվի։
+
+---
+
+# 7. QUESTION-SPECIFIC VS NODE-SPECIFIC
+
+Շատ կարևոր է տարբերակել.
+
+### Question-specific explanation
+
+Բացատրում է հենց այդ հարցի պատասխանը։
+
+### Node-specific explanation
+
+Բացատրում է ամբողջ թեման կամ learning unit-ը։
+
+Node-level explanation-ը չպետք է կուրորեն կրկնվի բոլոր հարցերի համար, եթե այն չի բացատրում տվյալ հարցի կոնկրետ reasoning-ը։
+
+Օրինակ՝ նույն Node-ի 3 հարց կարող են ունենալ 3 տարբեր reasoning։
+
+Ուստի.
+
+```text
+Question explanation
+>
+Node explanation
+```
+
+երբ question-level տվյալը գոյություն ունի։
+
+---
+
+# 8. DATA MODEL
+
+Նախ ուսումնասիրիր՝ արդյոք ներկայիս schema-ում արդեն կա համապատասխան explanation field։
+
+Audit-ում հայտնաբերվել էր, որ `quiz_questions`-ում question-specific explanation field չկա։
+
+**Այս փուլում նոր schema field մի ավելացրու առանց նախնական approval-ի։**
+
+Եթե առանց schema change հնարավոր է օգտագործել գոյություն ունեցող տվյալները՝ արա դա։
+
+Եթե հարցի իրական explanation-ը հնարավոր չէ ապահովել առանց նոր column-ի՝
+
+1. կանգ առ,
+2. ցույց տուր կոնկրետ schema gap-ը,
+3. առաջարկիր field-ի անունը,
+4. ցույց տուր ինչ data պետք է պահվի,
+5. բայց migration-ը մի իրականացրու։
+
+---
+
+# 9. API CONTRACT
+
+Ուսանողի result endpoint-ը պետք է կարողանա վերադարձնել յուրաքանչյուր հարցի համար անհրաժեշտ feedback data։
+
+Conceptual structure.
+
+```ts
+{
+  questionId,
+  questionText,
+  options,
+  correctOptionIndex,
+  selectedOptionIndex,
+  isCorrect,
+
+  feedback: {
+    whyCorrect: string | null,
+    whyWrong: string | null
+  }
+}
+```
+
+Եթե իրական codebase-ում արդեն կա `explanationText`, մի ստեղծիր duplicate field առանց անհրաժեշտության։
+
+Կարող ես վերակազմավորել response-ը միայն այն դեպքում, եթե դա չի խախտում existing consumers-ը։
+
+---
+
+# 10. TEACHER VIEW
+
+Այս փուլում teacher result view-ում նույնպես կարելի է ցուցադրել նույն question feedback-ը, որպեսզի ուսուցիչը տեսնի՝ ինչ explanation է ստացել երեխան։
+
+Բայց **չիրականացնել teacher analytics կամ class-level analysis**։
+
+Ուսուցիչը պարզապես պետք է տեսնի տվյալ սովորողի հարցի feedback-ը։
+
+---
+
+# 11. NO PERSONALIZATION YET
+
+Այս փուլում **չպետք է** անել.
+
+```text
+wrong answer
+↓
+weak node
+↓
+learn
+```
+
+Սա հաջորդ փուլերի գործն է։
+
+Այս փուլում միայն.
+
+```text
+wrong answer
+↓
+explain the mistake
+```
+
+և
+
+```text
+correct answer
+↓
+reinforce why correct
+```
+
+---
+
+# 12. NO KNOWLEDGE TREE CHANGES
+
+Knowledge Tree-ի վրա որևէ նոր logic չավելացնել։
+
+Չփոխել.
+
+* mastery thresholds
+* 4 states
+* confidence calculation
+* scoring
+* `getMasteryLevel()`
+* `nextAction`
+* existing recommendation logic
+
+Եթե PART 1-ում արդեն կա recommendation code, այս փուլում այն չվերափոխել։
+
+---
+
+# 13. VISUAL REQUIREMENTS
+
+Feedback-ը պետք է տեսանելի լինի հենց question card-ի մեջ։
+
+Չպետք է ստիպել սովորողին բացել առանձին էջ՝ բացատրությունը տեսնելու համար։
+
+Կարող է լինել collapsible UI, եթե ներկայիս design-ը դա պահանջում է, բայց default behavior-ը պետք է լինի հասկանալի և հեշտ տեսանելի։
+
+Յուրաքանչյուր հարցի feedback-ը պետք է տեսողականորեն տարբերակի.
+
+* սովորողի սխալ պատասխանը
+* ճիշտ պատասխանը
+* սխալի բացատրությունը
+* ճիշտ պատասխանի բացատրությունը
+
+---
+
+# 14. CHILD-FRIENDLY LANGUAGE
+
+Բացատրությունը պետք է լինի սովորողի համար հասկանալի։
+
+Խուսափել.
+
+* չափազանց տեխնիկական լեզվից
+* երկար ակադեմիական բացատրություններից
+* unnecessary jargon-ից
+* պատասխանը պարզապես կրկնելուց
+
+Feedback-ը պետք է օգնի երեխային հասկանալ գաղափարը։
+
+---
+
+# 15. DO NOT GENERATE RANDOM EXPLANATIONS
+
+Եթե AI generation է օգտագործվելու explanation ստեղծելու համար, այն պետք է հիմնված լինի տվյալ հարցի և source content-ի վրա։
+
+Չի կարելի պարզապես prompt տալ.
+
+> «Explain this answer»
+
+առանց source/context սահմանափակման։
+
+Explanation-ը պետք է համապատասխանի.
+
+* հարցին
+* ճիշտ պատասխանին
+* թեմային
+* դասագրքային/source content-ին
+
+Եթե source evidence չկա, explanation չհորինել։
+
+---
+
+# 16. EDGE CASES
+
+Պարտադիր հաշվի առնել.
+
+### Case A — correct answer
+
+```text
+selected = correct
+
+→ show whyCorrect
+→ do not show whyWrong
+```
+
+### Case B — wrong answer
+
+```text
+selected != correct
+
+→ show whyWrong
+→ show whyCorrect
+```
+
+### Case C — explanation unavailable
+
+```text
+whyCorrect = null
+whyWrong = null
+
+→ don't show fake explanation
+```
+
+### Case D — node_id = null
+
+Question feedback-ը դեռ պետք է աշխատի, եթե question-level explanation կա։
+
+Node mapping-ի վրա այս փուլում ոչ մի բան չանել։
+
+---
+
+# 17. TEST CASES
+
+Implementation-ից հետո պարտադիր ստուգիր առնվազն.
+
+### Test 1 — Correct answer
+
+Պետք է տեսնել.
+
+```text
+✓ Correct
+Why correct → visible
+Why wrong → hidden
+```
+
+### Test 2 — Wrong answer
+
+Պետք է տեսնել.
+
+```text
+✗ Your answer
+Why wrong → visible
+
+✓ Correct answer
+Why correct → visible
+```
+
+### Test 3 — Multiple questions
+
+Յուրաքանչյուր հարց պետք է ունենա իր feedback-ը։
+
+Մի հարցի explanation-ը չպետք է հայտնվի մյուս հարցի տակ։
+
+### Test 4 — Same Node, different questions
+
+Եթե նույն Node-ին պատկանում են 2–3 հարցեր, feedback-ը պետք է մնա question-specific։
+
+### Test 5 — Missing explanation
+
+Չպետք է ցուցադրվի հորինված կամ սխալ explanation։
+
+### Test 6 — Teacher view
+
+Ուսուցիչը պետք է կարողանա նույն result-ում տեսնել question feedback-ը։
+
+---
+
+# 18. VERIFICATION
+
+Implementation-ից հետո ցույց տուր իրական result JSON-ը առնվազն մեկ ճիշտ և մեկ սխալ հարցի համար։
+
+Օրինակ.
+
+```json
+{
+  "questionId": 123,
+  "selectedOptionIndex": 1,
+  "correctOptionIndex": 2,
+  "isCorrect": false,
+  "feedback": {
+    "whyCorrect": "...",
+    "whyWrong": "..."
+  }
+}
+```
+
+և ճիշտ պատասխանի case-ը.
+
+```json
+{
+  "questionId": 124,
+  "selectedOptionIndex": 2,
+  "correctOptionIndex": 2,
+  "isCorrect": true,
+  "feedback": {
+    "whyCorrect": "...",
+    "whyWrong": null
+  }
+}
+```
+
+---
+
+# 19. GIT SCOPE
+
+Final report-ում պարտադիր ցույց տուր.
+
+### Modified files
+
+Յուրաքանչյուր ֆայլի համար՝ ինչու է փոխվել։
+
+### Unchanged
+
+Պարտադիր հաստատիր.
+
+```text
+chat.ts → unchanged
+lesson-mapping.ts → unchanged
+quiz-take.tsx → unchanged
+Knowledge Tree scoring → unchanged
+manual mapping → unchanged
+automatic mapping → unchanged
+```
+
+Եթե որևէ մեկը փոխվել է՝ բացատրիր կոնկրետ պատճառը։
+
+---
+
+# 20. ARMENIAN STRINGS
+
+Այս փուլում վերջնական Armenian UI strings-ը մի հորինիր։
+
+Օգտագործիր placeholders.
+
+```text
+[WHY_CORRECT]
+[WHY_WRONG]
+[YOUR_ANSWER]
+[CORRECT_ANSWER]
+```
+
+Ես հետո կտամ exact Armenian strings-ը։
+
+---
+
+# 21. STOP CONDITION
+
+Եթե պարզվի, որ իրական question-specific explanation ստանալու համար անհրաժեշտ է.
+
+* schema migration
+* quiz generation փոփոխություն
+* scoring փոփոխություն
+* mapping փոփոխություն
+* Knowledge Tree փոփոխություն
+
+**կանգ առ և ինձ ներկայացրու խնդիրը։**
+
+Մի իրականացրու այդ փոփոխությունը ինքնուրույն։
+
+---
+
+# FINAL GOAL
+
+Այս փուլից հետո Test Result-ի յուրաքանչյուր հարց պետք է լինի ոչ միայն գնահատման արդյունք, այլ փոքր ուսումնական feedback.
+
+```text
+Question
+   ↓
+Student Answer
+   ↓
+Correct / Wrong
+   ↓
+Why is my answer wrong?   ← if wrong
+   ↓
+Why is the correct answer correct?
+   ↓
+Student understands the reasoning
+```
+
+**Մի անցիր PART 3 — Evidence Mapping-ին։**
+
+PART 2-ի սահմաններում ավարտիր միայն Question Feedback-ը և վերադարձիր verification report-ով։

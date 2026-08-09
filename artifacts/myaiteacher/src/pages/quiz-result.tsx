@@ -14,6 +14,11 @@ interface PersonalizedNextAction {
   intensity?: "light" | "deep";
 }
 
+interface QuestionFeedback {
+  whyCorrect: string | null;  // Priority 2: childFriendlyExplanation; Priority 1 pending schema
+  whyWrong:   string | null;  // Priority 3: commonMisconception; only shown when isCorrect=false
+}
+
 interface QuestionResult {
   questionId: number;
   questionText: string;
@@ -24,7 +29,7 @@ interface QuestionResult {
   sequence: number;
   nodeId: number | null;
   nodeTitle: string | null;
-  explanationText: string | null;
+  feedback: QuestionFeedback;
   errorState: "correct" | "wrong";
 }
 
@@ -333,18 +338,46 @@ export default function QuizResult() {
                 })}
               </div>
 
-              {/* Explanation block — shown only when content exists (no fabrication).
-                  Source: lesson_nodes.childFriendlyExplanation || commonMisconception (spec priority #2).
-                  Question-level [WHY_WRONG] requires quiz_questions.explanation field (pending schema addition).
-                  Until then, node-level explanation always serves as "why the correct answer is correct." */}
-              {q.explanationText && (
-                <div className="mt-4 pl-7 space-y-1.5">
-                  <div className="text-xs font-semibold text-teal-400/80 uppercase tracking-wide">
-                    [WHY_CORRECT]
-                  </div>
-                  <div className="text-xs rounded-xl px-3 py-2.5 border border-teal-400/20 bg-teal-400/5 text-teal-300/80 leading-relaxed">
-                    {q.explanationText}
-                  </div>
+              {/* ── Feedback block ──────────────────────────────────────────
+                  Source priority (spec §6):
+                    P1: quiz_questions.explanation (pending schema addition — null today)
+                    P2: lesson_nodes.childFriendlyExplanation → whyCorrect
+                    P3: lesson_nodes.commonMisconception      → whyWrong
+                  No fabrication: both null → nothing shown (Case C).
+                  Case A (correct):   whyCorrect only, no whyWrong shown.
+                  Case B (wrong):     whyWrong block (if non-null) + whyCorrect block (if non-null).
+                  ──────────────────────────────────────────────────────── */}
+              {(q.feedback.whyCorrect || (!q.isCorrect && q.feedback.whyWrong)) && (
+                <div className="mt-4 pl-7 space-y-3">
+
+                  {/* Wrong answer explanation — only when isCorrect=false */}
+                  {!q.isCorrect && q.feedback.whyWrong && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400/80 uppercase tracking-wide">
+                        <span>✗</span>
+                        <span>[YOUR_ANSWER]</span>
+                      </div>
+                      <div className="text-xs rounded-xl px-3 py-2.5 border border-red-400/20 bg-red-400/5 text-red-300/80 leading-relaxed">
+                        <span className="font-medium text-red-400/70 block mb-1">[WHY_WRONG]</span>
+                        {q.feedback.whyWrong}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Correct answer explanation — shown for both correct and wrong cases */}
+                  {q.feedback.whyCorrect && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-teal-400/80 uppercase tracking-wide">
+                        <span>✓</span>
+                        <span>[CORRECT_ANSWER]</span>
+                      </div>
+                      <div className="text-xs rounded-xl px-3 py-2.5 border border-teal-400/20 bg-teal-400/5 text-teal-300/80 leading-relaxed">
+                        <span className="font-medium text-teal-400/70 block mb-1">[WHY_CORRECT]</span>
+                        {q.feedback.whyCorrect}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               )}
             </div>
