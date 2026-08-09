@@ -3810,7 +3810,7 @@ export default function TeacherDashboard() {
                   min={1}
                   max={50}
                   value={quizCount}
-                  onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
+                  onChange={(e) => setQuizCount(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
                 />
                 {quizLeafCount > 0 && (() => {
@@ -3820,7 +3820,7 @@ export default function TeacherDashboard() {
                     ? quizNodeIds.length
                     : quizLeafCount;
                   const minQEff = effectiveLeaf;
-                  const idealQEff = Math.min(50, effectiveLeaf * 3);
+                  const idealQEff = effectiveLeaf * 3;
                   void minQ; void idealQ;
                   return (
                     <span className="text-xs text-muted-foreground/80">

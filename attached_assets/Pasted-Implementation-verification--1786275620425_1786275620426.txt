@@ -1,0 +1,43 @@
+Implementation-ը ընդհանուր ուղղությամբ ճիշտ է, բայց verification-ը դեռ չեմ ընդունում։ Նախ ուղղիր/ստուգիր հետևյալները.
+
+1. **Remove the 50-question cap.**
+   Իմ specification-ը հստակ է՝
+   `minimumQuestions = leafCount × 1`
+   `idealQuestions = leafCount × 3`
+   Չկա `min(50, ...)` սահմանափակում։
+   Օրինակ՝ 20 leaf → minimum 20, ideal 60։
+
+2. **Prove that `quizLeafCount` is actually leaf-level Node/MicroNode count.**
+   Տուր `GET /api/lessons/:lessonId/nodes`-ի իրական response structure-ը և ցույց տուր, թե ինչպես ես տարբերակում parent Node-ը leaf Node/MicroNode-ից։
+   Իմ պահանջը leaf count-ն է, ոչ թե պարզապես fetched node array-ի length-ը։
+   Օրինակ՝ 5 Node × 2 MicroNode = 10 leaf։
+
+3. **Complete real 3-question DB verification.**
+   Քո report-ում գրված `(0 rows)` նշանակում է, որ իրական 3-question case դեռ չի verified։
+   Ստեղծիր/օգտագործիր իրական 3-question quiz, կատարիր attempt և ցույց տուր DB query/result-ը տվյալ Node-ի համար՝
+
+   * 3 evidence events
+   * correct count = 3/3, 2/3, 1/3 կամ 0/3
+   * mastery
+   * confidenceScore
+   * resulting Knowledge Tree level/status
+
+   Պետք է լինի իրական DB evidence, ոչ միայն code inspection։
+
+4. **Show the complete determination chain for the 4 blocks.**
+   Տուր `getMasteryLevel()`-ի և դրա caller-ի relevant code-ը և բացատրիր՝ ինչպես են
+   `mastered / weak / in_progress / not_started`
+   արժեքները վերածվում գոյություն ունեցող 4 Knowledge Tree blocks-ի։
+
+5. **Verify the 1/3 and 2/3 confidence tiers.**
+   Ցույց տուր, որ 2/3-ը և 1/3-ը երկուսն էլ Partial են, բայց confidence-ը համապատասխանաբար higher/lower tier է, և որ սա չի խախտում existing `confidenceScore` semantics-ը։
+
+6. **Give me the actual git diff/name-only output**, not only a verbal statement, proving:
+
+   * `chat.ts` unchanged
+   * manual/auto mapping unchanged
+   * student-side quiz-taking unchanged
+
+7. Armenian strings-ը դեռ մի փոխարինիր։ Պահպանիր placeholders-ը մինչև ես exact Armenian strings-ը տամ։
+
+Մնացած implementation-ը մի վերափոխիր, մինչև այս verification points-ը փակված չլինեն։
