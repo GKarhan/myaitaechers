@@ -1,0 +1,704 @@
+# PART 3.5 — QUESTION-SPECIFIC FEEDBACK AUDIT & DESIGN
+
+## Նպատակ
+
+Մենք ուզում ենք, որ ավարտված թեստից հետո սովորողը **յուրաքանչյուր հարցի համար** տեսնի ոչ միայն՝ իր պատասխանը ճիշտ է, թե սխալ, այլ նաև՝
+
+### Եթե պատասխանը ճիշտ է
+
+**Ինչու՞ է ճիշտ։**
+
+Կարճ, հստակ, երեխային հասկանալի բացատրություն, որը վերաբերում է հենց այդ կոնկրետ հարցին և ճիշտ պատասխանին։
+
+### Եթե պատասխանը սխալ է
+
+**Ինչու՞ է քո պատասխանը սխալ։**
+
+Բացատրել՝ ինչն է սխալ սովորողի ընտրած կոնկրետ տարբերակում։
+
+**Ինչու՞ է ճիշտ պատասխանը ճիշտ։**
+
+Բացատրել՝ ինչ կանոնի, փաստի կամ տրամաբանության պատճառով է ճիշտ տարբերակը ճիշտ։
+
+---
+
+# ABSOLUTE RULE
+
+Այս փուլում **ոչ մի code/schema/UI/database փոփոխություն չանել**։
+
+Մի արա migration։
+
+Մի ավելացրու column։
+
+Մի փոխիր prompt։
+
+Մի փոխիր API։
+
+Մի փոխիր frontend։
+
+Մի փոխիր quiz generation-ը։
+
+Մի փոխիր existing feedback logic-ը։
+
+Մի փոխիր Knowledge Tree-ը։
+
+Միայն **audit + architecture/design report**։
+
+Վերջում կանգ առ և սպասիր հաստատման։
+
+---
+
+# 1. Audit-ի սահմանները
+
+Ուսումնասիրիր ամբողջ chain-ը, որը կապված է question-specific feedback-ի հետ.
+
+```text
+Quiz generation
+↓
+quiz_questions
+↓
+question text
+↓
+options
+↓
+correct_option_index
+↓
+student selected_option_index
+↓
+quiz_answers
+↓
+quiz result API
+↓
+quiz-result.tsx
+```
+
+Ու պարզիր՝ ներկայում որտեղ կարող է պահպանվել կամ ստեղծվել տվյալ հարցի բացատրությունը։
+
+---
+
+# 2. Ներկայիս տվյալների audit
+
+Ստուգիր `quiz_questions` schema-ն։
+
+Պարզիր՝ ներկայում կա՞ն.
+
+* question text
+* options
+* correct option
+* explanation
+* correct answer explanation
+* wrong answer explanation
+* option-specific explanation
+* misconception
+* learning objective
+* source/reference
+* node_id
+
+Յուրաքանչյուրի համար գրիր.
+
+```text
+Field
+Current existence
+Where stored
+Question-specific?
+Can explain why correct?
+Can explain why wrong?
+```
+
+---
+
+# 3. Ամենակարևոր տարբերությունը
+
+Պարզիր՝ ներկայիս համակարգը կարո՞ղ է տարբերել.
+
+```text
+Question A
+Node = X
+
+Question B
+Node = X
+```
+
+և տալ տարբեր բացատրություններ։
+
+Օրինակ.
+
+```text
+Node X
+ ├── Question 1
+ ├── Question 2
+ ├── Question 3
+```
+
+Եթե բոլոր երեք հարցերը օգտագործում են նույն
+
+```text
+lesson_nodes.child_friendly_explanation
+lesson_nodes.common_misconception
+```
+
+ապա պարզիր՝ արդյոք դա հանգեցնում է նույն բացատրության օգտագործմանը տարբեր հարցերի համար։
+
+---
+
+# 4. Option-specific feedback
+
+Սա պարտադիր audit է։
+
+Պարզիր՝ համակարգը կարող է պահպանել յուրաքանչյուր տարբերակի համար առանձին բացատրություն, օրինակ.
+
+```text
+Question:
+Ո՞րն է ճիշտ տարբերակը։
+
+A → սխալ է, որովհետև ...
+B → ճիշտ է, որովհետև ...
+C → սխալ է, որովհետև ...
+D → սխալ է, որովհետև ...
+```
+
+Ստուգիր՝ ներկայիս schema-ում կա՞ նման հնարավորություն։
+
+Եթե չկա՝ գրիր հստակ.
+
+```text
+OPTION-SPECIFIC FEEDBACK = NOT CURRENTLY STORED
+```
+
+---
+
+# 5. Ինչ պետք է տեսնի սովորողը
+
+Սահմանիր վերջնական desired data contract-ը։
+
+Յուրաքանչյուր question result-ի համար մեզ պետք է տրամաբանորեն ստացվի.
+
+```text
+question
+options
+correctAnswer
+studentAnswer
+isCorrect
+
+feedback:
+  whyCorrect
+  whyWrong
+```
+
+Բայց եթե անհրաժեշտ է ավելի ճշգրիտ architecture, առաջարկիր նաև.
+
+```text
+optionFeedback:
+  A: ...
+  B: ...
+  C: ...
+  D: ...
+```
+
+և բացատրիր՝ որն է ավելի ճիշտ մեր համակարգի համար։
+
+---
+
+# 6. Correct answer feedback
+
+Ստուգիր՝ ինչպես պետք է աշխատի ճիշտ պատասխանի դեպքում։
+
+Օրինակ.
+
+```text
+Student answer = B
+Correct answer = B
+```
+
+Պետք է վերադարձվի.
+
+```text
+whyCorrect = "..."
+```
+
+իսկ
+
+```text
+whyWrong = null
+```
+
+UI-ում չպետք է երևա «ինչու է սխալ» հատվածը։
+
+---
+
+# 7. Wrong answer feedback
+
+Ստուգիր՝ ինչպես պետք է աշխատի սխալ պատասխանի դեպքում։
+
+Օրինակ.
+
+```text
+Student answer = A
+Correct answer = C
+```
+
+Պետք է հնարավոր լինի ստանալ.
+
+```text
+whyWrong:
+Ինչու է A-ն սխալ։
+
+whyCorrect:
+Ինչու է C-ն ճիշտ։
+```
+
+Այս երկու բացատրությունները պետք է լինեն **կոնկրետ այդ հարցի և այդ ընտրության մասին**։
+
+---
+
+# 8. Same Node / Different Questions
+
+Սա critical test է։
+
+Վերցրու նույն Node-ին պատկանող առնվազն 3 իրական հարց։
+
+Օրինակ.
+
+```text
+Node X
+
+Question 1
+Question 2
+Question 3
+```
+
+Պարզիր՝ ներկայիս architecture-ը թույլ տալի՞ս է ունենալ.
+
+```text
+Question 1 → Explanation 1
+Question 2 → Explanation 2
+Question 3 → Explanation 3
+```
+
+թե բոլորի համար օգտագործվում է նույն Node-level explanation-ը։
+
+Եթե երկրորդն է՝ նշիր որպես schema/data-model limitation։
+
+---
+
+# 9. Wrong option specificity
+
+Պարզիր՝ կարելի՞ է տարբերել սխալ տարբերակները։
+
+Օրինակ.
+
+```text
+Question:
+Ո՞րն է ճիշտ։
+
+Student A → ընտրել է B
+Student B → ընտրել է C
+Student C → ընտրել է D
+```
+
+Կարո՞ղ է համակարգը յուրաքանչյուրին տալ.
+
+```text
+B → ինչու B-ն սխալ է
+C → ինչու C-ն սխալ է
+D → ինչու D-ն սխալ է
+```
+
+թե բոլորին կտա նույն ընդհանուր.
+
+> «Ճիշտ պատասխանը A-ն է»։
+
+Եթե երկրորդն է՝ դա գրիր որպես կարևոր սահմանափակում։
+
+---
+
+# 10. AI generation audit
+
+Գտիր quiz generation-ի իրական code-ը։
+
+Պարզիր՝ AI-ն quiz question ստեղծելիս ներկայում ստանում է բավարար context, որպեսզի ստեղծի.
+
+```text
+question
+options
+correct answer
+why correct
+why each wrong option is wrong
+```
+
+թե ներկայում generation prompt/schema-ն վերադարձնում է միայն.
+
+```text
+question
+options
+correct_option_index
+difficulty
+node_id
+```
+
+Տուր կոնկրետ code locations։
+
+---
+
+# 11. Source fidelity
+
+Սա շատ կարևոր է։
+
+Բացատրությունը չպետք է լինի AI-ի ազատ հորինած ընդհանուր բացատրություն։
+
+Պարզիր՝ ինչպես կարող ենք ապահովել.
+
+```text
+Question
+↓
+Source Node / MicroNode
+↓
+Theory / learning objective
+↓
+Explanation
+```
+
+և բացատրությունը համապատասխանի դասագրքի/Knowledge Base-ի բովանդակությանը։
+
+Պարզիր՝ ներկայիս համակարգում կա՞ բավարար source context։
+
+---
+
+# 12. Hallucination / fabrication protection
+
+Պարզիր՝ ինչ է տեղի ունենում, եթե AI-ն վստահելի բացատրություն չունի։
+
+Desired behavior:
+
+```text
+Reliable explanation exists
+→ show explanation
+
+No reliable explanation
+→ do NOT invent
+→ return null
+```
+
+Ստուգիր՝ ներկայիս համակարգը սա ապահովո՞ւմ է։
+
+---
+
+# 13. Existing implementation audit
+
+Քանի որ PART 2-ում արդեն իրականացվել է.
+
+```text
+feedback:
+  whyCorrect
+  whyWrong
+```
+
+ստուգիր ներկայիս implementation-ը։
+
+Պարզիր.
+
+1. Որտեղ է կառուցվում `feedback` object-ը։
+2. Որտեղից է վերցվում `whyCorrect`։
+3. Որտեղից է վերցվում `whyWrong`։
+4. Արդյոք դրանք question-specific են։
+5. Արդյոք դրանք option-specific են։
+6. Արդյոք null fallback-ը ճիշտ է աշխատում։
+7. Արդյոք teacher result-ը նույն feedback-ն է ստանում։
+
+---
+
+# 14. Real Quiz Verification
+
+Օգտագործիր առնվազն մեկ իրական ավարտված quiz։
+
+Ցույց տուր առնվազն.
+
+### Case A — Correct
+
+```text
+Question ID
+Student answer
+Correct answer
+Current feedback source
+whyCorrect
+whyWrong
+```
+
+### Case B — Wrong
+
+```text
+Question ID
+Student answer
+Correct answer
+Current feedback source
+whyCorrect
+whyWrong
+```
+
+### Case C — Same Node / Different Questions
+
+Առնվազն 2–3 հարց նույն Node-ից։
+
+Պարզիր՝ բացատրությունները տարբերակելի՞ են։
+
+### Case D — Different wrong options
+
+Եթե տվյալներում կա հնարավորություն, ցույց տուր երկու տարբեր սխալ ընտրություններ և դրանց feedback-ը։
+
+---
+
+# 15. Desired Architecture
+
+Առաջարկիր՝ մեր համակարգի համար որն է լավագույն model-ը։
+
+Համեմատիր առնվազն.
+
+### Model A
+
+```text
+quiz_questions.explanation
+```
+
+մեկ ընդհանուր բացատրություն հարցի համար։
+
+### Model B
+
+```text
+quiz_questions.why_correct
+quiz_questions.why_wrong
+```
+
+### Model C
+
+```text
+quiz_questions.option_explanations[]
+```
+
+որտեղ յուրաքանչյուր option ունի իր բացատրությունը։
+
+### Model D
+
+Hybrid
+
+```text
+question explanation
++
+option-specific explanations
+```
+
+Գնահատիր ըստ.
+
+* accuracy
+* personalization
+* storage
+* generation complexity
+* teacher editing
+* future analytics
+* maintainability
+
+Եվ ընտրիր՝ **որ model-ն է լավագույնը մեր համակարգի համար և ինչու**։
+
+---
+
+# 16. Connection to MicroNode
+
+Չխառնել այս երկու մակարդակները։
+
+Պետք է լինի.
+
+```text
+QUESTION FEEDBACK
+
+Question
+↓
+Why correct?
+Why wrong?
+```
+
+իսկ առանձին.
+
+```text
+KNOWLEDGE EVIDENCE
+
+Question
+↓
+MicroNode
+↓
+Student mastery
+```
+
+Պարզիր՝ proposed feedback architecture-ը կարող է աշխատել անկախ MicroNode granularity-ից։
+
+---
+
+# 17. Personalized Learning requirement
+
+Հետագայում մենք ուզում ենք.
+
+```text
+Student
+↓
+Question 1 ❌
+↓
+Why wrong
+↓
+MicroNode
+↓
+Mastery
+↓
+Recommendation
+```
+
+Այսինքն question-specific explanation-ը պետք է լինի ոչ միայն UI feature, այլ նաև ուսուցման գործընթացի մաս։
+
+Պարզիր՝ ներկայիս տվյալային model-ը թույլ տալի՞ս է հետագայում կապել.
+
+```text
+wrong option
+→ misconception
+→ MicroNode
+→ student knowledge state
+```
+
+---
+
+# 18. GREEN / YELLOW / RED
+
+Վերջում գնահատիր.
+
+| Capability                                     | Status           | Explanation |
+| ---------------------------------------------- | ---------------- | ----------- |
+| Question-specific whyCorrect                   | GREEN/YELLOW/RED |             |
+| Question-specific whyWrong                     | GREEN/YELLOW/RED |             |
+| Option-specific explanations                   | GREEN/YELLOW/RED |             |
+| Different explanations for same-node questions | GREEN/YELLOW/RED |             |
+| Different feedback for different wrong options | GREEN/YELLOW/RED |             |
+| Source-grounded explanation                    | GREEN/YELLOW/RED |             |
+| No-fabrication fallback                        | GREEN/YELLOW/RED |             |
+| Teacher visibility                             | GREEN/YELLOW/RED |             |
+| Student visibility                             | GREEN/YELLOW/RED |             |
+| Future MicroNode linkage                       | GREEN/YELLOW/RED |             |
+
+---
+
+# 19. Critical Findings
+
+Տուր միայն ամենակարևոր խնդիրները։
+
+Հատկապես առանձնացրու.
+
+* schema gaps
+* generation gaps
+* source fidelity gaps
+* option-specific feedback gaps
+* current implementation limitations
+
+---
+
+# 20. Final Recommendation
+
+Վերջում պատասխանիր.
+
+### 1.
+
+Կարո՞ղ ենք ներկայիս architecture-ով ապահովել յուրաքանչյուր հարցի համար իրական «Ինչու՞ է ճիշտ / Ինչու՞ է սխալ»։
+
+### 2.
+
+Եթե ոչ՝ կոնկրետ ինչ տվյալ է պակասում։
+
+### 3.
+
+Ո՞ր schema model-ն ես առաջարկում՝ A/B/C/D։
+
+### 4.
+
+Այդ տվյալը պետք է ստեղծվի՞ quiz generation-ի ժամանակ, թե result-ի պահին։
+
+### 5.
+
+Ինչպե՞ս պետք է կապվի explanation-ը source Node/MicroNode-ի հետ։
+
+### 6.
+
+PART 4 — Student Analysis-ին անցնելուց առաջ այս հարցում ի՞նչը պարտադիր պետք է լուծենք։
+
+---
+
+# OUTPUT FORMAT
+
+## PART 3.5 — QUESTION-SPECIFIC FEEDBACK AUDIT
+
+### A. Current Feedback Architecture
+
+...
+
+### B. Current Data Model
+
+...
+
+### C. Current API Contract
+
+...
+
+### D. AI Generation Capability
+
+...
+
+### E. Question-Specific Feedback
+
+...
+
+### F. Option-Specific Feedback
+
+...
+
+### G. Source Fidelity
+
+...
+
+### H. Real Quiz Examples
+
+...
+
+### I. Current Implementation Gaps
+
+...
+
+### J. GREEN / YELLOW / RED
+
+...
+
+### K. Critical Findings
+
+...
+
+### L. Recommended Architecture
+
+...
+
+### M. Decision Before PART 4
+
+...
+
+---
+
+## ABSOLUTE RULE
+
+**Այս փուլում ոչ մի փոփոխություն չանել։**
+
+Ոչ code։
+
+Ոչ schema։
+
+Ոչ migration։
+
+Ոչ UI։
+
+Ոչ prompt։
+
+Ոչ database data։
+
+Միայն audit + իրական տվյալներով ապացույցներ։
+
+Վերջում կանգ առ և սպասիր հաստատման։
