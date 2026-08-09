@@ -11,6 +11,8 @@ import {
   knowledgeNodesTable,
   evidenceEventsTable,
   usersTable,
+  reviewScheduleTable,
+  lessonNodeDependenciesTable,
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
 import { eq, and, asc, inArray, desc, sql } from "drizzle-orm";
@@ -75,21 +77,32 @@ async function buildStudentResultAnalysis(
       : [];
   const lnMap = new Map(lessonNodeRows.map((n) => [n.id, n]));
 
-  // knowledge_nodes — for current KT mastery state
+  // knowledge_nodes + review_schedule — for current KT mastery state, needs_review
+  // detection (dueAt), and provisional flag (isProvisional).
   const knRows =
     nodeIds.length > 0
       ? await db
           .select({
-            lessonNodeId:   knowledgeNodesTable.lessonNodeId,
-            masteryScore:   knowledgeNodesTable.masteryScore,
+            id:              knowledgeNodesTable.id,
+            lessonNodeId:    knowledgeNodesTable.lessonNodeId,
+            masteryScore:    knowledgeNodesTable.masteryScore,
             confidenceScore: knowledgeNodesTable.confidenceScore,
+            isProvisional:   knowledgeNodesTable.isProvisional,
+            dueAt:           reviewScheduleTable.dueAt,
           })
           .from(knowledgeNodesTable)
+          .leftJoin(
+            reviewScheduleTable,
+            and(
+              eq(reviewScheduleTable.topicId, knowledgeNodesTable.id),
+              eq(reviewScheduleTable.userId, studentId),
+            ),
+          )
           .where(
             and(
               eq(knowledgeNodesTable.userId, studentId),
               inArray(knowledgeNodesTable.lessonNodeId, nodeIds),
-            )
+            ),
           )
       : [];
   const knMap = new Map(knRows.map((r) => [r.lessonNodeId!, r]));
@@ -135,23 +148,26 @@ async function buildStudentResultAnalysis(
     if (a.isCorrect) agg.correct++;
   }
 
-  // Node breakdown: KT state + personalized next action
+  // Node breakdown: KT state (incl. needs_review via dueAt) + provisional + personalized action
   const nodeBreakdown = [...nodeAgg.entries()].map(([nodeId, agg]) => {
     const kn = knMap.get(nodeId);
     let masteryScore: number | null;
     let confidenceScore: number | null;
     let masteryLevel: MasteryLevel;
+    let isProvisional = true; // safe default when KN row not yet written
 
     if (kn) {
       masteryScore    = kn.masteryScore;
       confidenceScore = kn.confidenceScore;
-      masteryLevel    = getMasteryLevelFromScores(masteryScore, confidenceScore);
+      isProvisional   = kn.isProvisional;
+      // Pass dueAt so mastered+overdue nodes surface as needs_review
+      masteryLevel    = getMasteryLevelFromScores(masteryScore, confidenceScore, kn.dueAt ?? null);
     } else {
       // KN row not yet written — approximate from quiz answers (fire-and-forget race)
       const correctRate = agg.total > 0 ? agg.correct / agg.total : 0;
-      if (correctRate === 0)       { masteryLevel = "in_progress"; masteryScore = 0;                                    confidenceScore = 10; }
-      else if (correctRate >= 0.8) { masteryLevel = "mastered";    masteryScore = Math.round(correctRate * 100);        confidenceScore = 90; }
-      else                         { masteryLevel = "weak";         masteryScore = Math.round(correctRate * 100);        confidenceScore = 70; }
+      if (correctRate === 0)       { masteryLevel = "in_progress"; masteryScore = 0;                             confidenceScore = 10; }
+      else if (correctRate >= 0.8) { masteryLevel = "mastered";    masteryScore = Math.round(correctRate * 100); confidenceScore = 90; }
+      else                         { masteryLevel = "weak";         masteryScore = Math.round(correctRate * 100); confidenceScore = 70; }
     }
 
     const percent    = agg.total > 0 ? Math.round((agg.correct / agg.total) * 100) : 0;
@@ -159,32 +175,139 @@ async function buildStudentResultAnalysis(
 
     return {
       nodeId,
-      nodeTitle:      agg.nodeTitle,
-      total:          agg.total,
-      correct:        agg.correct,
-      incorrect:      agg.total - agg.correct,
+      nodeTitle:       agg.nodeTitle,
+      total:           agg.total,
+      correct:         agg.correct,
+      incorrect:       agg.total - agg.correct,
       percent,
       masteryLevel,
       masteryScore,
       confidenceScore: kn?.confidenceScore ?? confidenceScore,
+      isProvisional,
       nextAction,
     };
   });
 
-  // Recommendations: sorted by priority
+  // ── Transitive prerequisite blocking ────────────────────────────────────────
+  // Fetch ALL dependency rows (tiny table — safe to load completely).
+  const allDeps = await db
+    .select({
+      fromNodeId: lessonNodeDependenciesTable.fromNodeId,
+      toNodeId:   lessonNodeDependenciesTable.toNodeId,
+    })
+    .from(lessonNodeDependenciesTable);
+
+  // Reverse adjacency: dependent lessonNodeId → [prereq lessonNodeId, ...]
+  const prereqsOf = new Map<number, number[]>();
+  for (const dep of allDeps) {
+    if (!prereqsOf.has(dep.toNodeId)) prereqsOf.set(dep.toNodeId, []);
+    prereqsOf.get(dep.toNodeId)!.push(dep.fromNodeId);
+  }
+
+  // BFS to find ALL transitive prerequisites for each quiz node
+  const nodeTransitivePrereqs = new Map<number, Set<number>>();
+  for (const nodeId of nodeAgg.keys()) {
+    const visited = new Set<number>();
+    const queue: number[] = [...(prereqsOf.get(nodeId) ?? [])];
+    while (queue.length > 0) {
+      const p = queue.shift()!;
+      if (visited.has(p)) continue;
+      visited.add(p);
+      for (const pp of prereqsOf.get(p) ?? []) {
+        if (!visited.has(pp)) queue.push(pp);
+      }
+    }
+    nodeTransitivePrereqs.set(nodeId, visited);
+  }
+
+  // Collect prereq nodeIds not present in the current quiz — fetch their KN state
+  const externalPrereqIds = new Set<number>();
+  for (const prereqs of nodeTransitivePrereqs.values()) {
+    for (const p of prereqs) {
+      if (!knMap.has(p)) externalPrereqIds.add(p);
+    }
+  }
+
+  type ExtPrereqData = { masteryScore: number | null; confidenceScore: number | null; dueAt: Date | null };
+  const externalPrereqMap = new Map<number, ExtPrereqData>();
+  if (externalPrereqIds.size > 0) {
+    const extRows = await db
+      .select({
+        lessonNodeId:    knowledgeNodesTable.lessonNodeId,
+        masteryScore:    knowledgeNodesTable.masteryScore,
+        confidenceScore: knowledgeNodesTable.confidenceScore,
+        dueAt:           reviewScheduleTable.dueAt,
+      })
+      .from(knowledgeNodesTable)
+      .leftJoin(
+        reviewScheduleTable,
+        and(
+          eq(reviewScheduleTable.topicId, knowledgeNodesTable.id),
+          eq(reviewScheduleTable.userId, studentId),
+        ),
+      )
+      .where(
+        and(
+          eq(knowledgeNodesTable.userId, studentId),
+          inArray(knowledgeNodesTable.lessonNodeId, [...externalPrereqIds]),
+        ),
+      );
+    for (const r of extRows) {
+      if (r.lessonNodeId != null)
+        externalPrereqMap.set(r.lessonNodeId, {
+          masteryScore:    r.masteryScore,
+          confidenceScore: r.confidenceScore,
+          dueAt:           r.dueAt ?? null,
+        });
+    }
+  }
+
+  // A prereq is "unblocking" only when its mastery level is exactly "mastered".
+  // needs_review (overdue) also blocks — the student's retention is at risk.
+  function isPrereqMastered(prereqNodeId: number): boolean {
+    const knEntry = knMap.get(prereqNodeId);
+    if (knEntry) {
+      return getMasteryLevelFromScores(knEntry.masteryScore, knEntry.confidenceScore, knEntry.dueAt ?? null) === "mastered";
+    }
+    const ext = externalPrereqMap.get(prereqNodeId);
+    if (ext) {
+      return getMasteryLevelFromScores(ext.masteryScore, ext.confidenceScore, ext.dueAt) === "mastered";
+    }
+    return false; // Not found → treat as not_started → blocks the dependent
+  }
+
+  // Determine which unmastered prereqs are blocking each quiz node
+  const blockingPrereqs = new Map<number, number[]>(); // nodeId → [unmastered prereq IDs]
+  for (const nodeId of nodeAgg.keys()) {
+    const prereqs = nodeTransitivePrereqs.get(nodeId) ?? new Set<number>();
+    const blocking = [...prereqs].filter(p => !isPrereqMastered(p));
+    blockingPrereqs.set(nodeId, blocking);
+  }
+  // ── End transitive prerequisite blocking ────────────────────────────────────
+
+  // Recommendations: unblocked first (by urgency priority), then blocked (by urgency)
   const recommendations = [...nodeBreakdown]
     .sort((a, b) => {
+      const aBlocked = (blockingPrereqs.get(a.nodeId)?.length ?? 0) > 0;
+      const bBlocked = (blockingPrereqs.get(b.nodeId)?.length ?? 0) > 0;
+      if (!aBlocked && bBlocked) return -1; // unblocked before blocked
+      if (aBlocked && !bBlocked) return 1;
+      // Within same group: priority then nodeId (deterministic tie-break)
       const pa = recommendationPriority(a.masteryLevel, a.masteryScore);
       const pb = recommendationPriority(b.masteryLevel, b.masteryScore);
       return pa !== pb ? pa - pb : a.nodeId - b.nodeId;
     })
     .map((n, i) => ({
-      priority:     i + 1,
-      nodeId:       n.nodeId,
-      nodeTitle:    n.nodeTitle,
-      masteryLevel: n.masteryLevel,
-      masteryScore: n.masteryScore,
-      nextAction:   n.nextAction,
+      priority:            i + 1,
+      nodeId:              n.nodeId,
+      nodeTitle:           n.nodeTitle,
+      masteryLevel:        n.masteryLevel,
+      masteryScore:        n.masteryScore,
+      confidenceScore:     n.confidenceScore,
+      nextAction:          n.nextAction,
+      isProvisional:       n.isProvisional,
+      prerequisiteBlocked: (blockingPrereqs.get(n.nodeId)?.length ?? 0) > 0,
+      blockedBy:           blockingPrereqs.get(n.nodeId) ?? [],
     }));
 
   return { questions, nodeBreakdown, recommendations };

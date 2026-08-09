@@ -2611,7 +2611,7 @@ export default function TeacherDashboard() {
                               }}
                               className="text-xs px-3 py-1.5 rounded-lg bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
                             >
-                              Ողարկել
+                              Ուղարկել
                             </button>
                           )}
                           <button
@@ -2703,7 +2703,7 @@ export default function TeacherDashboard() {
                       </select>
                       {courseResources.filter((r) => r.type === "textbook").length === 0 && (
                         <p className="text-xs text-muted-foreground/50 mt-1">
-                          Դasagrk dere verbernvac ce subject-i ejum
+                          Դասագիրքը դեռ վերբեռնված չէ subject-ի էջում
                         </p>
                       )}
                     </div>
@@ -2974,7 +2974,7 @@ export default function TeacherDashboard() {
                       </div>
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Էջի վևրիը
+                          Էջի վերջը
                         </label>
                         <input
                           type="number"
@@ -3643,7 +3643,7 @@ export default function TeacherDashboard() {
           <div className="bg-background border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
             {/* Header + tabs */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h2 className="text-base font-semibold">Արդயunqner</h2>
+              <h2 className="text-base font-semibold">Արդյունքներ</h2>
               <button onClick={() => setResultsQuizId(null)} className={btnGhost}>✕</button>
             </div>
             <div className="flex border-b border-white/10">
@@ -3655,7 +3655,7 @@ export default function TeacherDashboard() {
                     : "text-muted-foreground hover:text-white"
                 }`}
               >
-                Աшакеrтner
+                Աշակերտներ
               </button>
               <button
                 onClick={() => setResultsActiveTab("analysis")}
@@ -3700,7 +3700,7 @@ export default function TeacherDashboard() {
                               }}
                               className="text-xs px-2.5 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
                             >
-                              Диtел
+                              Դիտել
                             </button>
                           </>
                         ) : (
@@ -3766,7 +3766,7 @@ export default function TeacherDashboard() {
                     {analysisData.teacherRecommendations.classLevel.length > 0 && (
                       <div className="space-y-2">
                         <h3 className="text-xs font-semibold text-white/70 uppercase tracking-wide">
-                          Дасарани хndиrнер
+                          Դասարանի խնդիրներ
                         </h3>
                         {analysisData.teacherRecommendations.classLevel.map((cl) => (
                           <div key={cl.nodeId} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/8 bg-card/20">
@@ -3783,7 +3783,7 @@ export default function TeacherDashboard() {
                     {analysisData.commonErrors.length === 0 &&
                       analysisData.teacherRecommendations.classLevel.length === 0 && (
                         <p className="text-sm text-teal-400/80 text-center py-4">
-                          ✅ Дасарани կоghмич ountеррен ченka
+                          ✅ Դասարանի կողմից ountеррен ченka
                         </p>
                       )
                     }

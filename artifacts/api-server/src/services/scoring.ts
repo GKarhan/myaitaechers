@@ -205,8 +205,8 @@ function computeConfidence(events: EvidenceRow[]): number {
 const THREE_Q_TIERS: Record<number, { masteryScore: number; confidenceScore: number; status: string }> = {
   3: { masteryScore: 100, confidenceScore: 100, status: "mastered"    },
   2: { masteryScore: 67,  confidenceScore: 75,  status: "weak"        },
-  1: { masteryScore: 33,  confidenceScore: 55,  status: "not_started" },
-  0: { masteryScore: 0,   confidenceScore: 10,  status: "not_started" },
+  1: { masteryScore: 33,  confidenceScore: 55,  status: "weak"        }, // conf≥50,mastery<80→weak (was "not_started")
+  0: { masteryScore: 0,   confidenceScore: 10,  status: "in_progress" }, // conf<50→in_progress    (was "not_started")
 };
 
 export async function updateTopicScoring(
@@ -235,6 +235,19 @@ export async function updateTopicScoring(
 
     if (events.length === 0) return;
 
+    // ── Provisional flag: clear once ≥ 2 distinct quiz sessions on this node ─
+    // We count distinct quizIds from evidence_events metadata (set at insert time
+    // in the quiz submit fire-and-forget). review_schedule.review_count tracks
+    // total submissions, not distinct sessions, so we derive it directly here
+    // without an extra DB round-trip.
+    const distinctQuizSessions = new Set(
+      events
+        .map(e => (e.metadata as Record<string, unknown>)?.quizId)
+        .filter((id): id is number | string => id != null)
+    );
+    const isProvisional = distinctQuizSessions.size < 2;
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── 3-question special-case (Mas 3) ─────────────────────────────────────
     if (options?.quizId != null) {
       const quizEvents = events.filter(
@@ -245,7 +258,7 @@ export async function updateTopicScoring(
         const tier = THREE_Q_TIERS[correct] ?? THREE_Q_TIERS[0];
         await db
           .update(knowledgeNodesTable)
-          .set({ ...tier, retentionScore: null, isProvisional: true, updatedAt: new Date() })
+          .set({ ...tier, retentionScore: null, isProvisional, updatedAt: new Date() })
           .where(eq(knowledgeNodesTable.id, topicId));
         logger.info(
           { topicId, userId, quizId: options.quizId, correct, ...tier },
@@ -290,8 +303,13 @@ export async function updateTopicScoring(
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    const status =
-      masteryScore >= 80 ? "mastered" : masteryScore >= 50 ? "weak" : "not_started";
+    // status must mirror getMasteryLevelFromScores so student-profile.ts counts are correct.
+    // confidence is the primary gate (same as getMasteryLevelFromScores Rule 2).
+    // "not_started" only when both scores are null — but the general path always has values.
+    const status: string =
+      confidenceScore < 50 ? "in_progress"
+      : masteryScore >= 80  ? "mastered"
+      : "weak";
 
     await db
       .update(knowledgeNodesTable)
@@ -300,7 +318,7 @@ export async function updateTopicScoring(
         confidenceScore,
         retentionScore: r, // stays null until Phase B (review_schedule)
         status,
-        isProvisional: true, // Retention factor still missing from Mastery — see file header
+        isProvisional,     // false once ≥ 2 distinct quiz sessions; true until then
         updatedAt: new Date(),
       })
       .where(eq(knowledgeNodesTable.id, topicId));

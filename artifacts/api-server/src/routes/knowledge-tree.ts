@@ -13,38 +13,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-
-// ── Before change (for reference) ───────────────────────────────────────────
-// function getMasteryLevel(
-//   masteryScore: number | null,
-//   confidenceScore: number | null,
-// ): "mastered" | "weak" | "in_progress" | "not_started" {
-//   if (masteryScore === null && confidenceScore === null) return "not_started";
-//   if ((confidenceScore ?? 0) < 50) return "in_progress";
-//   if ((masteryScore ?? 0) >= 80) return "mastered";
-//   return "weak";
-// }
-// ── After change ─────────────────────────────────────────────────────────────
-// Added `dueAt` parameter. If the node would otherwise be "mastered" AND it
-// has a review_schedule row with dueAt in the past, return "needs_review"
-// instead. Every other branch is identical to the original.
-function getMasteryLevel(
-  masteryScore: number | null,
-  confidenceScore: number | null,
-  dueAt: Date | null,
-): "mastered" | "needs_review" | "weak" | "in_progress" | "not_started" {
-  // Never scored → not yet engaged with this topic
-  if (masteryScore === null && confidenceScore === null) return "not_started";
-  // Low confidence → still actively learning / uncertain
-  if ((confidenceScore ?? 0) < 50) return "in_progress";
-  // Sufficient confidence — evaluate mastery
-  if ((masteryScore ?? 0) >= 80) {
-    // Overdue for spaced-repetition review → demote from mastered to needs_review
-    if (dueAt !== null && dueAt <= new Date()) return "needs_review";
-    return "mastered";
-  }
-  return "weak"; // masteryScore 0–79 with confidence ≥ 50
-}
+import { getMasteryLevelFromScores } from "../lib/mastery";
 
 const router = Router();
 
@@ -190,7 +159,7 @@ router.get(
       .orderBy(lessonNodesTable.id);
 
     const mappedTopics = topics.map((t) => {
-      const rawLevel = getMasteryLevel(t.masteryScore, t.confidenceScore, t.dueAt ?? null);
+      const rawLevel = getMasteryLevelFromScores(t.masteryScore, t.confidenceScore, t.dueAt ?? null);
       // needs_review folds into mastered — Knowledge Tree shows only 4 visible blocks:
       //   mastered (Գիտի) | weak (Մասնակի գիտի) | in_progress (Չգիտի) | not_started (Դեռ չի ուսումնասիրել)
       const masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" =

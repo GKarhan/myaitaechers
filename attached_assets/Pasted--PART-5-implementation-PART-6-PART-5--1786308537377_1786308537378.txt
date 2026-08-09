@@ -1,0 +1,96 @@
+Շարունակիր PART 5 implementation-ը՝ առանց PART 6 անցնելու։
+
+PART 5-ի երեք բաց որոշումները հաստատում եմ հետևյալ կերպ.
+
+1. **Prerequisites (D3)**
+
+   * Ավելացրու `prerequisiteBlocked: true/false` API response-ում։
+   * Իրականացրու **transitive/full prerequisite check**, ոչ միայն direct one-hop։
+   * Եթե A → B → C և A-ն չգիտի, ապա B-ն և C-ն պետք է համարվեն prerequisite-blocked։
+   * Blocked node-ը չթաքցնել. պարզապես demote անել prerequisite-ներից հետո։
+   * Եթե prerequisite-ը տվյալ quiz-ի nodeBreakdown-ում չկա, ստուգիր տվյալ աշակերտի `knowledge_nodes` mastery state-ը։
+   * Եթե prerequisite-ը mastered չէ (`not_started`, `in_progress`, `weak` կամ `needs_review`), dependent node-ը համարվում է blocked։
+   * API-ում հնարավորության դեպքում վերադարձնել նաև այն prerequisite node ID-ները, որոնց պատճառով node-ը blocked է, որպեսզի հետագայում UI-ն կարողանա բացատրություն ցույց տալ։
+   * Existing recommendation priority logic-ը պահել որպես հիմք, պարզապես prerequisite blocking-ը կիրառել դրա վրա։
+
+2. **Provisional mastery (E1)**
+
+   * Ընտրում ենք Option A։
+   * `is_provisional = true` մինչև նույն node-ի համար առնվազն **2 առանձին quiz session** չլինի։
+   * Օգտագործիր արդեն գոյություն ունեցող `review_schedule.review_count`-ը, եթե դա իրականում ճիշտ է հաշվում առանձին review/quiz sessions-ը։
+   * Եթե review_count-ը տվյալ պահին չի արտացոլում այդ իմաստը, մի հորինիր նոր semantic. նախ document արա խնդիրը։
+   * `isProvisional` ավելացրու API-ի `nodeBreakdown[]` և անհրաժեշտության դեպքում `recommendations[]` տվյալներին։
+   * Frontend-ում ցույց տուր, որ mastery-ն provisional է։
+   * Կարևոր է՝ provisional-ը չպետք է փոխարինի retention համակարգին. սա միայն interim evidence threshold է։
+
+3. **needs_review priority (E3)**
+
+   * `needs_review`-ը դիր **priority 2**։
+   * Առաջնահերթությունը լինի մոտավորապես.
+
+     1. `in_progress`
+     2. `needs_review`
+     3. `weak + deep`
+     4. `not_started / weak + light`
+     5. `mastered`
+   * Պահպանիր deterministic tie-break-ը։
+
+4. **D2 — status alignment**
+
+   * `knowledge_nodes.status`-ը պետք է համապատասխանի իրական `getMasteryLevelFromScores()` classification-ին։
+   * Հանիր այն divergence-ը, որի պատճառով DB status-ը կարող է լինել `not_started`, իսկ իրական state-ը՝ `weak` կամ `in_progress`։
+   * Հատկապես ստուգիր THREE_Q_TIER-ը և general scoring path-ը։
+   * Մի ստեղծիր երկրորդ mastery logic։
+
+5. **E2 — confidenceScore**
+
+   * Ավելացրու `confidenceScore`-ը recommendations API output-ում։
+   * Մի փոխիր confidence-ի հաշվարկը այս փուլում։
+
+6. **Mastery logic**
+
+   * Միավորիր `mastery.ts` և `knowledge-tree.ts` mastery classification logic-ը։
+   * Պետք է լինի մեկ source of truth։
+   * `needs_review`-ը հաշվի առ review_schedule/dueAt-ը։
+   * Quiz result-ը և Knowledge Tree-ը նույն node-ի համար չպետք է տարբեր state ցույց տան։
+
+7. **Շատ կարևոր**
+
+   * Մի փոխիր գործող quiz scoring-ի մաթեմատիկան առանց անհրաժեշտության։
+   * Մի փոխիր mapping-ը։
+   * Մի սկսիր retention `computeR()`-ի իրական implementation-ը. դա թող մնա PART 6։
+   * Մի փոխիր AI Teacher-ի teaching cycle-ը այս փուլում։
+
+8. **Implementation-ից հետո պարտադիր regression audit**
+
+   Ստուգիր առնվազն՝
+
+   * 0/3 → in_progress
+   * 1/3 → weak
+   * 2/3 → weak
+   * 3/3 → mastered/provisional ըստ threshold-ի
+   * prerequisite not_started → dependent node blocked
+   * prerequisite mastered → dependent node unblocked
+   * A→B→C full chain → եթե A-ն չգիտի, B և C blocked
+   * prerequisite-ը quiz-ում չկա → student knowledge_nodes-ից ճիշտ lookup
+   * mastered + overdue → needs_review, priority 2
+   * mastered + not overdue → mastered, lowest priority
+   * no dependency rows → recommendation behavior unchanged
+   * `isProvisional` ճիշտ է API-ում և UI-ում
+   * `confidenceScore` ճիշտ է recommendations-ում
+   * student-profile-ի aggregate mastery counts-ը այլևս չի հակասում իրական mastery classification-ին
+   * Knowledge Tree և Quiz Result նույն node-ի համար նույն mastery state են տալիս։
+
+**Աշխատանքը ավարտելուց հետո ինձ տուր PART 5 IMPLEMENTATION + REGRESSION AUDIT REPORT**, ոչ թե պարզապես «done»։
+
+Report-ում պարտադիր նշիր՝
+
+* որ ֆայլերն ես փոխել,
+* կոնկրետ ինչ ես փոխել,
+* ինչ test cases ես արել,
+* որոնք անցել են,
+* որոնք չեն անցել,
+* որևէ նոր architectural issue հայտնաբերե՞լ ես,
+* և վերջնական verdict-ը։
+
+**Մինչև այդ PART 6-ին չանցնես։**

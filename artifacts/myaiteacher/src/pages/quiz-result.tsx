@@ -5,10 +5,10 @@ import { useAuth } from "@/lib/auth";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type PersonalizedAction = "REVIEW" | "LEARN_TARGETED" | "LEARN_FULL" | "STUDY_FIRST";
-type MasteryLevel = "mastered" | "weak" | "in_progress" | "not_started";
+type MasteryLevel = "mastered" | "needs_review" | "weak" | "in_progress" | "not_started";
 
 interface PersonalizedNextAction {
-  state: "mastered" | "partial" | "in_progress" | "not_started";
+  state: "mastered" | "needs_review" | "partial" | "in_progress" | "not_started";
   action: PersonalizedAction;
   masteryScore: number | null;
   intensity?: "light" | "deep";
@@ -43,6 +43,7 @@ interface NodeBreakdown {
   masteryLevel: MasteryLevel;
   masteryScore: number | null;
   confidenceScore: number | null;
+  isProvisional: boolean;
   nextAction: PersonalizedNextAction;
 }
 
@@ -52,7 +53,11 @@ interface Recommendation {
   nodeTitle: string;
   masteryLevel: MasteryLevel;
   masteryScore: number | null;
+  confidenceScore: number | null;
   nextAction: PersonalizedNextAction;
+  isProvisional: boolean;
+  prerequisiteBlocked: boolean;
+  blockedBy: number[];
 }
 
 interface MyResult {
@@ -71,6 +76,7 @@ const MASTERY_LABEL: Record<MasteryLevel, string> = {
   weak:        "Մասնակի գիտի",
   in_progress: "Չգիտի",
   not_started: "Դեռ չի ուսումնասիրել",
+  needs_review: "Գիտի (Կրկնել)",
 };
 
 const ACTION_LABEL: Record<PersonalizedAction, string> = {
@@ -85,6 +91,7 @@ const MASTERY_BADGE: Record<MasteryLevel, string> = {
   weak:        "border-amber-400/40 bg-amber-400/10 text-amber-400",
   in_progress: "border-red-400/40 bg-red-400/10 text-red-400",
   not_started: "border-white/20 bg-white/5 text-muted-foreground",
+  needs_review: "border-violet-400/40 bg-violet-400/10 text-violet-400",
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -220,27 +227,47 @@ export default function QuizResult() {
               {result.recommendations!.map((rec, i) => (
                 <div
                   key={rec.nodeId}
-                  className="flex items-start gap-3 px-4 py-3 rounded-xl border border-white/8 bg-card/30"
+                  className={`flex items-start gap-3 px-4 py-3 rounded-xl border bg-card/30 ${
+                    rec.prerequisiteBlocked
+                      ? "border-white/5 opacity-60"
+                      : "border-white/8"
+                  }`}
                 >
                   <span className="text-xs font-mono text-primary/50 w-4 shrink-0 mt-0.5">
                     {i + 1}.
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{rec.nodeTitle}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="text-sm font-medium truncate">{rec.nodeTitle}</div>
+                      {rec.isProvisional && (
+                        <span
+                          title="Provisional — based on one quiz session only"
+                          className="text-[10px] px-1.5 py-0 rounded border border-yellow-400/30 bg-yellow-400/10 text-yellow-300/80 shrink-0"
+                        >
+                          ⚡ Prov
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full border ${MASTERY_BADGE[rec.masteryLevel]}`}
                       >
                         {MASTERY_LABEL[rec.masteryLevel]}
                       </span>
-                      <span className="text-xs text-muted-foreground/70">
-                        → {ACTION_LABEL[rec.nextAction.action]}
-                        {rec.nextAction.intensity === "light"
-                          ? " (թիրախային)"
-                          : rec.nextAction.intensity === "deep"
-                          ? " (խորածվատ)"
-                          : ""}
-                      </span>
+                      {rec.prerequisiteBlocked ? (
+                        <span className="text-xs text-orange-400/70">
+                          🔒 Prerequisite not mastered
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/70">
+                          → {ACTION_LABEL[rec.nextAction.action]}
+                          {rec.nextAction.intensity === "light"
+                            ? " (թիրախային)"
+                            : rec.nextAction.intensity === "deep"
+                            ? " (խoradzv)" 
+                            : ""}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {rec.masteryScore != null && (
@@ -272,11 +299,21 @@ export default function QuizResult() {
                       {node.correct}/{node.total} ճիշտ · {node.percent}%
                     </div>
                   </div>
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full border shrink-0 ${MASTERY_BADGE[node.masteryLevel]}`}
-                  >
-                    {MASTERY_LABEL[node.masteryLevel]}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {node.isProvisional && (
+                      <span
+                        title="Provisional — based on one quiz session only"
+                        className="text-[10px] px-1.5 py-0.5 rounded border border-yellow-400/30 bg-yellow-400/10 text-yellow-300/80"
+                      >
+                        ⚡
+                      </span>
+                    )}
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-full border ${MASTERY_BADGE[node.masteryLevel]}`}
+                    >
+                      {MASTERY_LABEL[node.masteryLevel]}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
