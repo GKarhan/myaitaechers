@@ -77,12 +77,17 @@ router.put("/admin/teachers/:id", requireAdmin, async (req, res) => {
 router.post("/admin/teachers/:id/delete", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [teacher] = await db.select().from(teachersTable).where(eq(teachersTable.id, id)).limit(1);
-  if (!teacher) { res.status(404).json({ error: "Ուսուցիչը չի գտնվել" }); return; }
-  const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, teacher.userId)).limit(1);
-  if (user?.username === "teacher1") { res.status(403).json({ error: "Demo հաշիվը հնարավոր չէ ջնջել" }); return; }
-  await db.delete(usersTable).where(eq(usersTable.id, teacher.userId));
-  res.json({ message: "Ուսուցիչը հաջողությամբ ջնջվեց" });
+  try {
+    const [teacher] = await db.select().from(teachersTable).where(eq(teachersTable.id, id)).limit(1);
+    if (!teacher) { res.status(404).json({ error: "Ուսուցիչը չի գտնվել" }); return; }
+    const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, teacher.userId)).limit(1);
+    if (user?.username === "teacher1") { res.status(403).json({ error: "Demo հաշիվը հնարավոր չէ ջնջել" }); return; }
+    await db.delete(usersTable).where(eq(usersTable.id, teacher.userId));
+    res.json({ message: "Ուսուցիչը հաջողությամբ ջնջվեց" });
+  } catch (err) {
+    req.log?.error({ err }, "Failed to delete teacher");
+    res.status(500).json({ error: "Ուսուցչի ջնջումը չհաջողվեց: Կրկին փորձեք" });
+  }
 });
 
 // ─── CLASSES ─────────────────────────────────────────────────────────────────
@@ -343,10 +348,16 @@ router.post("/admin/students", requireAdmin, async (req, res) => {
 router.post("/admin/students/:id/delete", requireAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
-  if (user?.username === "student1") { res.status(403).json({ error: "Demo հաշիվը հնարավոր չէ ջնջել" }); return; }
-  await db.delete(usersTable).where(eq(usersTable.id, id));
-  res.json({ message: "Աշակերտը ջնջվեց" });
+  try {
+    const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+    if (!user) { res.status(404).json({ error: "Աշակերտը չի գտնվել" }); return; }
+    if (user?.username === "student1") { res.status(403).json({ error: "Demo հաշիվը հնարավոր չէ ջնջել" }); return; }
+    await db.delete(usersTable).where(eq(usersTable.id, id));
+    res.json({ message: "Աշակերտը ջնջվեց" });
+  } catch (err) {
+    req.log?.error({ err }, "Failed to delete student");
+    res.status(500).json({ error: "Աշակերտի ջնջումը չհաջողվեց: Կրկին փորձեք" });
+  }
 });
 
 router.post("/admin/students/:id/remove-class", requireAdmin, async (req, res) => {

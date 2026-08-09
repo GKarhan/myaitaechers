@@ -1,4 +1,14 @@
 import { useState, useEffect, useRef } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -79,6 +89,12 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // ── delete confirmation dialogs ────────────────────────────────────────────
+  const [deleteTeacherTarget, setDeleteTeacherTarget] = useState<{ id: number; fullName: string } | null>(null);
+  const [deleteTeacherError, setDeleteTeacherError] = useState<string | null>(null);
+  const [deleteStudentTarget, setDeleteStudentTarget] = useState<{ id: number; fullName: string } | null>(null);
+  const [deleteStudentError, setDeleteStudentError] = useState<string | null>(null);
 
   // Close sidebar when clicking outside (mobile)
   useEffect(() => {
@@ -1025,14 +1041,10 @@ export default function AdminDashboard() {
                             </button>
                             <button
                               onClick={() => {
-                                if (confirm("Ջնջե՞լ ուսուցիչին?"))
-                                  deleteTeacher.mutate(
-                                    { id: t.id },
-                                    {
-                                      onSuccess: () => inv("teachers", "stats"),
-                                    },
-                                  );
+                                setDeleteTeacherError(null);
+                                setDeleteTeacherTarget({ id: t.id, fullName: t.fullName });
                               }}
+                              disabled={deleteTeacher.isPending}
                               className={btnDanger}
                             >
                               🗑 Ջնջել
@@ -1975,12 +1987,10 @@ export default function AdminDashboard() {
                     )}
                     <button
                       onClick={() => {
-                        if (confirm(`Ջնջել ${s.fullName}?`))
-                          deleteStudent.mutate(
-                            { id: s.id },
-                            { onSuccess: () => inv("students", "stats") },
-                          );
+                        setDeleteStudentError(null);
+                        setDeleteStudentTarget({ id: s.id, fullName: s.fullName });
                       }}
+                      disabled={deleteStudent.isPending}
                       className={btnDanger}
                     >
                       🗑 Ջնջել
@@ -2071,6 +2081,110 @@ export default function AdminDashboard() {
           </div>
         </main>
       </div>
+
+      {/* ── Delete Teacher AlertDialog ────────────────────────────────────── */}
+      <AlertDialog
+        open={!!deleteTeacherTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTeacherTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ջնջե՞լ ուսուցչին</AlertDialogTitle>
+            <AlertDialogDescription>
+              Վստա՞հ եք, որ ցանկանում եք ջնջել{" "}
+              <strong>{deleteTeacherTarget?.fullName}</strong>-ին։ Կապված
+              դասարանները, դասացուցակը և բոլոր կապված տվյալները նույնպես կհեռացվեն։
+              Այս գործողությունը հնարավոր չէ հետ վերադարձնել։
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteTeacherError && (
+            <p className="text-destructive text-sm px-1">{deleteTeacherError}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteTeacher.isPending}>
+              Չեղարկել
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteTeacher.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (!deleteTeacherTarget) return;
+                setDeleteTeacherError(null);
+                deleteTeacher.mutate(
+                  { id: deleteTeacherTarget.id },
+                  {
+                    onSuccess: () => {
+                      setDeleteTeacherTarget(null);
+                      inv("teachers", "stats");
+                    },
+                    onError: (err: any) => {
+                      const msg =
+                        err?.response?.data?.error ||
+                        "Ջնջումը չհաջողվեց։ Կրկին փորձեք։";
+                      setDeleteTeacherError(msg);
+                    },
+                  },
+                );
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteTeacher.isPending ? "Ջնջվում է..." : "Այո, ջնջել"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Delete Student AlertDialog ────────────────────────────────────── */}
+      <AlertDialog
+        open={!!deleteStudentTarget}
+        onOpenChange={(open) => { if (!open) setDeleteStudentTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ջնջե՞լ աշակերտին</AlertDialogTitle>
+            <AlertDialogDescription>
+              Վստա՞հ եք, որ ցանկանում եք ջնջել{" "}
+              <strong>{deleteStudentTarget?.fullName}</strong>-ին։ Կապված
+              տվյալները նույնպես կարող են հեռացվել։ Այս գործողությունը
+              հնարավոր չէ հետ վերադարձնել։
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteStudentError && (
+            <p className="text-destructive text-sm px-1">{deleteStudentError}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteStudent.isPending}>
+              Չեղարկել
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteStudent.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (!deleteStudentTarget) return;
+                setDeleteStudentError(null);
+                deleteStudent.mutate(
+                  { id: deleteStudentTarget.id },
+                  {
+                    onSuccess: () => {
+                      setDeleteStudentTarget(null);
+                      inv("students", "stats");
+                    },
+                    onError: (err: any) => {
+                      const msg =
+                        err?.response?.data?.error ||
+                        "Ջնջումը չհաջողվեց։ Կրկին փորձեք։";
+                      setDeleteStudentError(msg);
+                    },
+                  },
+                );
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteStudent.isPending ? "Ջնջվում է..." : "Այո, ջնջել"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
