@@ -74,10 +74,10 @@ const MASTERY_LABEL: Record<MasteryLevel, string> = {
 };
 
 const ACTION_LABEL: Record<PersonalizedAction, string> = {
-  REVIEW:          "[REVIEW]",
-  LEARN_TARGETED:  "[LEARN_TARGETED]",
-  LEARN_FULL:      "[LEARN_FULL]",
-  STUDY_FIRST:     "[STUDY_FIRST]",
+  REVIEW:         "Կրկնել",
+  LEARN_TARGETED: "Թիրախային ուսուցում",
+  LEARN_FULL:     "Ամբողջական ուսուցում",
+  STUDY_FIRST:    "Սկսել ուսումնասիրել",
 };
 
 const MASTERY_BADGE: Record<MasteryLevel, string> = {
@@ -236,9 +236,9 @@ export default function QuizResult() {
                       <span className="text-xs text-muted-foreground/70">
                         → {ACTION_LABEL[rec.nextAction.action]}
                         {rec.nextAction.intensity === "light"
-                          ? " (targeted)"
+                          ? " (թիрахаyin)"
                           : rec.nextAction.intensity === "deep"
-                          ? " (deeper)"
+                          ? " (кhoratsvatс)"
                           : ""}
                       </span>
                     </div>
@@ -258,7 +258,7 @@ export default function QuizResult() {
         {hasNodeData && (
           <div className="space-y-3">
             <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wide">
-              [TOPIC_BREAKDOWN]
+              Թեմաների ամփոփում
             </h2>
             <div className="space-y-2">
               {result.nodeBreakdown!.map((node) => (
@@ -286,7 +286,7 @@ export default function QuizResult() {
         {/* ── Per-question breakdown ── */}
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wide">
-            Հарцеry мансраматучum
+            Հարցերի արդյունքներ
           </h2>
           {result.questions.map((q) => (
             <div
@@ -360,8 +360,10 @@ export default function QuizResult() {
 
                   {/* ① Student's answer — shown in both correct and wrong cases */}
                   <div className={`text-xs ${q.isCorrect ? "text-teal-400/80" : "text-red-400/80"}`}>
-                    <span className="font-semibold">Qо պататасшана: </span>
-                    <span className="text-foreground/75">{q.options[q.selectedOptionIndex]}</span>
+                    <span className="font-semibold">Քո պատасшана: </span>
+                    <span className="text-foreground/75">
+                      {String.fromCharCode(65 + q.selectedOptionIndex)}. {(q.options as string[])[q.selectedOptionIndex]}
+                    </span>
                   </div>
 
                   {/* ② Why wrong — only when isCorrect=false and whyWrong non-null */}
@@ -375,8 +377,10 @@ export default function QuizResult() {
                   {/* ③ Correct answer text — only in wrong case (factual, not fabricated) */}
                   {!q.isCorrect && (
                     <div className="text-xs text-teal-400/80">
-                      <span className="font-semibold">Ճiшт пататасшана: </span>
-                      <span className="text-foreground/75">{q.options[q.correctOptionIndex]}</span>
+                      <span className="font-semibold">✅ Ճишт пататасwана: </span>
+                      <span className="text-foreground/75">
+                        {String.fromCharCode(65 + q.correctOptionIndex)}. {(q.options as string[])[q.correctOptionIndex]}
+                      </span>
                     </div>
                   )}
 
