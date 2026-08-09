@@ -1,0 +1,53 @@
+Knowledge Tree-ի էջը հիմա բացեցի և տեսա, որ Armenian localization-ը ամբողջությամբ ճիշտ չէ։
+
+Օրինակ՝ էջում հիմա երևում են.
+
+* `[BLOCK_GITI]`
+* `[BLOCK_MASNAKI_GITI]`
+* `[BLOCK_CHGITI]`
+* `[BLOCK_DERR_CHI]`
+* «Կркнець»
+* «гнахатаканը»
+* «амрапндець»
+* և այլ խառնված/լատինատառ կամ սխալ encoded Armenian text։
+
+### Խնդրում եմ ուղղել ամբողջ Knowledge Tree էջի Armenian UI text-ը։
+
+Բայց կարևոր սահմանափակումներ.
+
+1. **Knowledge Tree-ի logic-ը ՉՓՈԽԵՍ։**
+2. `mastery/scoring` logic-ը ՉՓՈԽԵՍ։
+3. 4-state classification-ը ՉՓՈԽԵՍ։
+4. `chat.ts`, mapping-ը, quiz creation-ը և student quiz-taking-ը ՉՓՈԽԵՍ։
+5. Միայն UI/localization text-երն ուղղիր։
+6. Բոլոր placeholder-ները պետք է ամբողջությամբ վերանան UI-ից։
+7. Ստուգիր ոչ միայն 4 block label-ները, այլ ամբողջ `knowledge-tree.tsx` էջը և դրա հետ կապված Knowledge Tree UI text-ը։
+8. Հատկապես ստուգիր **AI-ի Առաջարկություններ** բաժինը։
+9. Եթե որևէ text արդեն հայերեն է, մի վերագրիր անտեղի։
+10. Բոլոր լատինատառ հայերենը, խառնված encoding-ը, typo-ները և սխալ localization-ը ուղղիր բնական, մաքուր հայերեն UI text-ի։
+
+### Այս 4 block label-երը օգտագործիր հենց այս ձևով.
+
+* `[BLOCK_GITI]` → **Գիտի**
+* `[BLOCK_MASNAKI_GITI]` → **Մասնակի գիտի**
+* `[BLOCK_CHGITI]` → **Չգիտի**
+* `[BLOCK_DERR_CHI]` → **Դեռ չի ուսումնասիրել**
+
+### Կարևոր
+
+Ես այս message-ում տվել եմ միայն 4 block label-ի exact strings-ը։
+
+Մնացած նոր/սխալ UI text-ի համար **ինքնուրույն նոր բովանդակություն մի հորինի**, եթե դա պարզապես localization replacement չէ։ Եթե որևէ text-ի ճիշտ հայերեն ձևը պարզ չէ existing code/context-ից, կանգ առ և ցույց տուր ինձ այդ կոնկրետ string-ը՝ առաջարկվող տարբերակով։
+
+### Verification
+
+Փոփոխությունից հետո ցույց տուր.
+
+* Knowledge Tree էջի screenshot
+* 4 block-երի ճիշտ հայերեն անունները
+* AI-ի Առաջարկություններ բաժինը՝ առանց լատինատառ/խառնված հայերենի
+* grep/search result, որ `[BLOCK_` placeholder-ներ այլևս UI-ում չեն մնացել
+* modified file list
+* confirm, որ scoring/Knowledge Tree logic-ը չի փոխվել, միայն UI text/localization-ն է փոփոխվել։
+
+Մի գրիր պարզապես «fixed»։ Տուր իրական verification evidence։

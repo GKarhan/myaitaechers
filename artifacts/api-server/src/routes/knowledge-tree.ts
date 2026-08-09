@@ -192,7 +192,7 @@ router.get(
     const mappedTopics = topics.map((t) => {
       const rawLevel = getMasteryLevel(t.masteryScore, t.confidenceScore, t.dueAt ?? null);
       // needs_review folds into mastered — Knowledge Tree shows only 4 visible blocks:
-      //   mastered (Գиtи) | weak (Мasnak'i giti) | in_progress (Чгиtи) | not_started (Дерр чи)
+      //   mastered (Գիտի) | weak (Մասնակի գիտի) | in_progress (Չգիտի) | not_started (Դեռ չի ուսումնասիրել)
       const masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" =
         rawLevel === "needs_review" ? "mastered" : rawLevel;
       return {
@@ -232,7 +232,7 @@ router.get(
       const weakest = toReview.reduce((a, b) => (a.score < b.score ? a : b));
       recommendations.push({
         type:      "review",
-        message:   `Կрկнець «${weakest.topicName}» թеман — գнахатаканը ${weakest.score}%`,
+        message:   `Կրկնեք «${weakest.topicName}» թեման — գնահատականը ${weakest.score}%`,
         topicName: weakest.topicName,
       });
     }
@@ -240,7 +240,7 @@ router.get(
     if (mastered.length > 0) {
       recommendations.push({
         type:      "repeat",
-        message:   `Կрկнець «${mastered[0].topicName}» — амрапндець гителиkы`,
+        message:   `Կրկնեք «${mastered[0].topicName}» — ամրապնդեք գիտելիքները`,
         topicName: mastered[0].topicName,
       });
     }

@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
 
-// 4 visible blocks: mastered=Գиtи | weak=Мasnak'i | in_progress=Чгиtи | not_started=Дерр чи
+// 4 visible blocks: mastered=Գիտի | weak=Մասնակի գիտի | in_progress=Չգիտի | not_started=Դեռ չի ուսումնասիրել
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
 
 export default function KnowledgeTree() {
@@ -122,28 +122,28 @@ export default function KnowledgeTree() {
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "mastered" ? "bg-secondary/20 text-secondary border-secondary/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-secondary"></span>
-            [BLOCK_GITI]
+            Գիտի
           </button>
           <button
             onClick={() => setActiveFilter("weak")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "weak" ? "bg-accent/20 text-accent border-accent/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-accent"></span>
-            [BLOCK_MASNAKI_GITI]
+            Մասնակի գիտի
           </button>
           <button
             onClick={() => setActiveFilter("in_progress")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "in_progress" ? "bg-primary/20 text-primary border-primary/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-primary"></span>
-            [BLOCK_CHGITI]
+            Չգիտի
           </button>
           <button
             onClick={() => setActiveFilter("not_started")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "not_started" ? "bg-destructive/20 text-destructive border-destructive/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-destructive"></span>
-            [BLOCK_DERR_CHI]
+            Դեռ չի ուսումնասիրել
           </button>
         </div>
 
@@ -164,23 +164,23 @@ export default function KnowledgeTree() {
             if (isMastered) {
               // Includes needs_review (folded into mastered — no 5th block)
               borderColorClass = "border-l-secondary";
-              badgeText        = "[BLOCK_GITI]";
+              badgeText        = "Գիտի";
               badgeColorClass  = "bg-secondary/10 text-secondary border-secondary/20";
               dotColorClass    = "bg-secondary";
             } else if (isWeak) {
               borderColorClass = "border-l-accent";
-              badgeText        = "[BLOCK_MASNAKI_GITI]";
+              badgeText        = "Մասնակի գիտի";
               badgeColorClass  = "bg-accent/10 text-accent border-accent/20";
               dotColorClass    = "bg-accent";
             } else if (isInProgress) {
               borderColorClass = "border-l-primary";
-              badgeText        = "[BLOCK_CHGITI]";
+              badgeText        = "Չգիտի";
               badgeColorClass  = "bg-primary/10 text-primary border-primary/20";
               dotColorClass    = "bg-primary";
             } else {
-              // not_started = no quiz evidence yet → «Дерр чи ousumnasirel»
+              // not_started = no quiz evidence yet → «Դեռ չի ուսումնասիրել»
               borderColorClass = "border-l-destructive";
-              badgeText        = "[BLOCK_DERR_CHI]";
+              badgeText        = "Դեռ չի ուսումնասիրել";
               badgeColorClass  = "bg-destructive/10 text-destructive border-destructive/20";
               dotColorClass    = "bg-destructive";
             }
