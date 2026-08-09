@@ -1,0 +1,533 @@
+# PART 4 — STUDENT ANALYSIS & PERSONALIZED LEARNING AUDIT
+
+## Նպատակ
+
+PART 3 և PART 3.5 փուլերում հաստատվել է, որ՝
+
+* Question → `lesson_node` կապը աշխատում է
+* `quiz_answers.node_id` snapshot-ը պահպանում է պատմական կապը
+* `evidence_events` ստեղծվում են per-answer
+* `knowledge_nodes` թարմացվում են
+* `option_explanations[]` արդեն ներդրված է
+* `whyCorrect / whyWrong` feedback-ը աշխատում է question/option level-ում
+* scoring/evidence pipeline-ը չի պետք վերափոխել
+
+Հիմա կատարիր միայն **PART 4 — Student Analysis & Personalized Learning** ամբողջական read-only audit։
+
+**Այս փուլում ոչ մի code change չանել։**
+
+Նպատակն է պարզել՝ quiz-ից ստացված evidence-ը արդյոք ճիշտ վերածվում է աշակերտի Knowledge State-ի և Personalized Learning Recommendation-ի։
+
+---
+
+# PART 4.1 — TRACE ONE REAL STUDENT END-TO-END
+
+Ընտրիր իրական արդեն գոյություն ունեցող quiz attempt, որտեղ կան՝
+
+* ճիշտ պատասխաններ
+* սխալ պատասխաններ
+* առնվազն 2 տարբեր lesson nodes
+* հնարավորության դեպքում նույն node-ի տակ մի քանի հարց
+
+Օրինակ կարող ես օգտագործել արդեն փորձարկված student/attempt-ը, եթե տվյալները դեռ կան։
+
+Trace արա ամբողջ ճանապարհը.
+
+`quiz_questions`
+
+↓
+
+`quiz_answers`
+
+↓
+
+`evidence_events`
+
+↓
+
+`knowledge_nodes`
+
+↓
+
+`buildStudentResultAnalysis()`
+
+↓
+
+`nodeBreakdown`
+
+↓
+
+`recommendations`
+
+↓
+
+`quiz-result.tsx`
+
+Յուրաքանչյուր փուլում ցույց տուր՝
+
+* input
+* transformation
+* output
+* հաջորդ փուլին փոխանցվող ID-ները
+
+---
+
+# PART 4.2 — QUESTION → LEARNING OBJECTIVE
+
+Սա այս փուլի ամենակարևոր audit-ն է։
+
+Յուրաքանչյուր հարցի համար պարզիր.
+
+`question`
+→ `node_id`
+→ `lesson_nodes.learning_objective`
+
+Ստուգիր՝ արդյոք տվյալ հարցը իրականում չափում է այդ learning objective-ը։
+
+Ստեղծիր աղյուսակ.
+
+| Question | Node | Learning Objective | Correct/Wrong | Attribution valid? |
+| -------- | ---- | ------------------ | ------------- | ------------------ |
+
+Եթե որևէ node-ի տակ տարբեր հարցեր չափում են տարբեր learning objectives, դա նշիր առանձին։
+
+Չփոխել schema-ն։
+
+Պարզապես արձանագրել՝ արդյոք current granularity-ը բավարար է personalized analysis-ի համար։
+
+---
+
+# PART 4.3 — WRONG ANSWER → KNOWLEDGE STATE
+
+Վերցրու առնվազն 3 սխալ պատասխան։
+
+Յուրաքանչյուրի համար հետևիր.
+
+`selected option`
+
+→ `option_explanations[selectedOptionIndex]`
+
+→ `question.node_id`
+
+→ `evidence_event`
+
+→ `knowledge_nodes`
+
+→ `mastery_score`
+
+→ `status`
+
+Ստուգիր՝ արդյոք սխալ պատասխանը իրականում ազդում է ճիշտ Knowledge Node-ի վրա։
+
+Հատկապես ստուգիր՝
+
+* սխալ option-ը ճիշտ node-ին է գնում
+* correct option-ը սխալ node չի ստեղծում
+* նույն node-ի evidence-ը կուտակվում է
+* տարբեր quiz-երի evidence-ը ճիշտ է կուտակվում
+* historical evidence-ը չի կորում
+
+---
+
+# PART 4.4 — MASTERY CLASSIFICATION
+
+Կարդա իրական scoring logic-ը և պարզիր՝ ինչպես են mastery score-ները վերածվում status/label-ի։
+
+Պետք է հստակ ցույց տալ.
+
+`mastery_score`
+
+→ `getMasteryLevel()`
+
+→ displayed status
+
+Օրինակ.
+
+* `0%`
+* `15%`
+* `44%`
+* `60%`
+* `100%`
+
+յուրաքանչյուրի համար ինչ classification է ստացվում։
+
+Ստուգիր՝
+
+* `Չգիտի`
+* `Մասնակի գիտի`
+* `Գիտի`
+
+սահմանումները արդյոք տրամաբանական են։
+
+Հատուկ ստուգիր boundary values-ը։
+
+Օրինակ՝
+
+* 0
+* 1
+* 49
+* 50
+* 51
+* 99
+* 100
+
+Եթե սահմանները կոդում այլ կերպ են, ցույց տուր իրական արժեքները։
+
+---
+
+# PART 4.5 — RECOMMENDATION ENGINE
+
+Audit արա `getPersonalizedNextAction()`-ը և recommendation sorting-ը։
+
+Պարզիր՝ ինչ պայմաններով է համակարգը վերադարձնում.
+
+* `Ամբողջական ուսուցում`
+* `Թիրախային ուսուցում`
+* `Կրկնել`
+
+և այլ գործողություններ, եթե կան։
+
+Ստեղծիր decision table.
+
+| Student state | Mastery | Current action | Is it correct? |
+| ------------- | ------: | -------------- | -------------- |
+| not started   |     ... | ...            | ...            |
+| weak          |     ... | ...            | ...            |
+| partial       |     ... | ...            | ...            |
+| mastered      |     ... | ...            | ...            |
+
+Մի ենթադրիր սահմանները։
+
+Կարդա իրական implementation-ը։
+
+---
+
+# PART 4.6 — RECOMMENDATION PRIORITY
+
+Ստուգիր recommendation sorting-ի իրական կանոնները։
+
+Պարզիր՝ ինչու է համակարգը, օրինակ, առաջին տեղում դնում.
+
+`Թվերի տրոհում աջից ձախ — Չգիտի`
+
+իսկ հետո.
+
+`Միլիոնների դասի ներածություն — Մասնակի գիտի`
+
+Ստուգիր՝ priority-ն հիմնված է միայն mastery-ի վրա, թե նաև՝
+
+* prerequisite
+* dependency
+* node order
+* lesson sequence
+* current lesson
+* previous mastery
+* evidence count
+* status
+
+Եթե dependency համակարգ կա, trace արա իրական տվյալով։
+
+---
+
+# PART 4.7 — PREREQUISITE / DEPENDENCY AUDIT
+
+Կարդա և audit արա.
+
+`lessonNodeDependencies`
+
+և դրա օգտագործումը Personalized Learning-ի մեջ։
+
+Հարցը.
+
+Եթե աշակերտը չի տիրապետում prerequisite Node A-ին, բայց B-ն ավելի բարձր priority ունի, համակարգը ստիպո՞ւմ է սովորել A-ն նախ։
+
+Ստեղծիր առնվազն մեկ իրական dependency chain.
+
+`A → B → C`
+
+և ցույց տուր՝
+
+* A weak → ինչ recommendation է
+* A mastered → B-ի հասանելիությունը
+* B weak → C-ի հասանելիությունը
+
+Եթե dependency-ն միայն DB-ում գոյություն ունի, բայց recommendation engine-ը չի օգտագործում, դա պետք է հստակ նշել։
+
+---
+
+# PART 4.8 — STUDENT RESULT API
+
+Audit արա.
+
+`GET /quizzes/:id/my-result`
+
+և համապատասխան teacher endpoint-ը։
+
+Պարզիր՝ API-ն վերադարձնո՞ւմ է բավարար տվյալ personalized learning-ի համար։
+
+Ստուգիր առնվազն.
+
+```text
+questions
+feedback
+nodeBreakdown
+recommendations
+mastery
+status
+action
+nodeId
+nodeTitle
+```
+
+Եթե որևէ տվյալ frontend-ին փոխանցվում է, բայց frontend-ը չի օգտագործում, նշիր։
+
+Եթե որևէ տվյալ անհրաժեշտ է personalization-ի համար, բայց API-ում չկա, նշիր որպես gap։
+
+---
+
+# PART 4.9 — FRONTEND DISPLAY AUDIT
+
+Audit արա `quiz-result.tsx`-ը։
+
+Պետք է պարզել՝ frontend-ը API-ի տվյալները ճիշտ է ներկայացնո՞ւմ։
+
+Ստուգիր.
+
+### Results
+
+* ընդհանուր score
+* correct / total
+* percentage
+
+### Recommendations
+
+* ճիշտ node
+* ճիշտ mastery
+* ճիշտ action
+* ճիշտ priority
+
+### Topic breakdown
+
+* correct / total
+* mastery
+* status
+
+### Question feedback
+
+* correct → `Ինչու է ճիշտ`
+* wrong → `Ինչու է սխալ`
+* correct answer
+* selected answer
+
+Հատկապես ստուգիր, որ question feedback-ը և node recommendation-ը իրար չխառնվեն։
+
+---
+
+# PART 4.10 — REAL PERSONALIZATION TEST
+
+Օգտագործիր իրական quiz data և կառուցիր առնվազն 3 scenario։
+
+## Scenario A — Weak student
+
+Աշակերտը հիմնականում սխալ է պատասխանում Node A-ի հարցերին։
+
+Ստուգիր՝
+
+`A → low mastery → weak/not_started → targeted/full teaching`
+
+արդյոք ճիշտ է։
+
+---
+
+## Scenario B — Mixed mastery
+
+Աշակերտը.
+
+* Node A = weak
+* Node B = partial
+* Node C = mastered
+
+Ստուգիր՝ recommendation order-ը տրամաբանական է։
+
+---
+
+## Scenario C — Same node, different questions
+
+Միևնույն node-ի տակ տարբեր հարցերի սխալներ։
+
+Ստուգիր՝
+
+* question-level feedback-ը տարբերակվո՞ւմ է
+* mastery-ն node-level aggregate է
+* համակարգը չի՞ պնդում, որ կոնկրետ sub-objective-ը չգիտի, եթե դրա համար առանձին evidence չկա
+
+Սա հատկապես կարևոր է PART 3-ի granularity finding-ի պատճառով։
+
+---
+
+# PART 4.11 — FALSE PERSONALIZATION CHECK
+
+Փնտրիր դեպքեր, որտեղ համակարգը կարող է տալ թվացյալ personalization, բայց իրականում evidence-ը բավարար չէ։
+
+Օրինակ.
+
+Աշակերտը սխալ է պատասխանել մեկ հարցի։
+
+Համակարգը չպետք է անպայման եզրակացնի.
+
+> «Դու չգիտես ամբողջ թեման»։
+
+Ստուգիր՝ current scoring model-ը confidence/evidence count-ը հաշվի առնո՞ւմ է։
+
+Հատկապես audit արա.
+
+`confidence_score`
+
+`is_provisional`
+
+`retention_score`
+
+`bloom_level`
+
+և պարզիր՝ recommendation engine-ը դրանցից որոնք է իրականում օգտագործում։
+
+---
+
+# PART 4.12 — PROVISIONAL STATE AUDIT
+
+Քանի որ PART 3-ում հաստատվել է.
+
+`retention_score = NULL`
+
+և
+
+`is_provisional = true`
+
+ստուգիր՝ Personalized Learning-ը արդյոք հաշվի առնո՞ւմ է այդ սահմանափակումը։
+
+Եթե Knowledge State-ը provisional է, recommendation-ը պետք է մեկնաբանվի որպես current evidence-ի վրա հիմնված recommendation, ոչ թե վերջնական գիտելիքի դատողություն։
+
+Եթե UI-ում դա չի արտացոլվում, նշիր որպես UX/logic gap։
+
+---
+
+# PART 4.13 — CRITICAL ARCHITECTURAL QUESTION
+
+Վերջում պատասխանիր այս հարցին.
+
+## Արդյո՞ք current architecture-ը արդեն բավարար է Personalized Learning-ի համար։
+
+Պատասխանը բաժանիր.
+
+### GREEN — պատրաստ է
+
+Ինչն արդեն ճիշտ աշխատում է։
+
+### YELLOW — աշխատում է, բայց սահմանափակ է
+
+Օրինակ.
+
+* provisional mastery
+* retention absent
+* node granularity
+* limited evidence
+
+### RED — պարտադիր շտկում է պետք
+
+Միայն այն խնդիրները, որոնք իրականում խանգարում են personalized learning-ին։
+
+---
+
+# PART 4.14 — DO NOT MODIFY
+
+Այս audit-ի ընթացքում ՉՓՈԽԵԼ.
+
+* `lesson-mapping`
+* `chat.ts`
+* `ai.ts`
+* Teaching Mode
+* Node Lock
+* quiz scoring
+* evidence_events schema
+* knowledge_nodes schema
+* `option_explanations`
+* quiz generation
+* feedback architecture
+
+PART 4-ը այս փուլում **AUDIT ONLY** է։
+
+---
+
+# FINAL REPORT FORMAT
+
+Վերջնական պատասխանը տուր այս կառուցվածքով.
+
+## PART 4 — STUDENT ANALYSIS & PERSONALIZED LEARNING AUDIT
+
+### A. Architecture Trace
+
+`Quiz → Evidence → Knowledge State → Recommendation`
+
+### B. Real Student Trace
+
+Օգտագործված student / quiz / attempt IDs
+
+### C. Question → Learning Objective
+
+Աղյուսակ
+
+### D. Wrong Answer → Knowledge State
+
+Աղյուսակ
+
+### E. Mastery Classification
+
+Իրական thresholds
+
+### F. Recommendation Logic
+
+Decision table
+
+### G. Recommendation Priority
+
+Իրական priority rules
+
+### H. Dependency / Prerequisite
+
+Իրական chain-ի արդյունքը
+
+### I. API Audit
+
+Ինչ է վերադարձվում
+
+### J. Frontend Audit
+
+Ինչ է ցուցադրվում
+
+### K. Personalization Scenarios
+
+A / B / C
+
+### L. False Personalization Risks
+
+Ինչ եզրակացություններ կարող են սխալ լինել
+
+### M. GREEN / YELLOW / RED
+
+Միայն փաստերով
+
+### N. Critical Findings
+
+CF-01, CF-02, etc.
+
+### O. Recommendation Before PART 5
+
+Հստակ գրիր՝
+
+1. ինչն է արդեն պատրաստ
+2. ինչն է պետք շտկել
+3. ինչն է կարելի թողնել հաջորդ փուլերի համար
+
+**ՈՉ ՄԻ CODE CHANGE։**
+
+Վերջում սպասիր հաստատմանս։

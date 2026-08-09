@@ -1,0 +1,562 @@
+# UI LOCALIZATION CLEANUP — FINAL ARMENIAN TEXT
+
+## Նպատակ
+
+Իրական թեստը ֆունկցիոնալ առումով ճիշտ է աշխատում։
+
+**Չփոխել ոչ մի ֆունկցիոնալ logic։**
+
+Պետք է կատարել միայն quiz result էջի **UI text localization cleanup**՝ բոլոր խառը, ռոմանիզացված, սխալ encoding-ով կամ ոչ բնական հայերեն display string-երը դարձնելով գրագետ արևելահայերեն։
+
+---
+
+# ABSOLUTE RULE
+
+Մի փոխիր՝
+
+* quiz logic
+* question generation logic
+* answer evaluation
+* scoring
+* mastery calculation
+* confidence calculation
+* evidence events
+* Knowledge Tree
+* recommendations logic
+* API contract
+* database schema
+* database data
+* `option_explanations`
+* feedback generation logic
+* node mapping
+* MicroNode mapping
+
+**Միայն display/UI text localization։**
+
+---
+
+# 1. ԱՐԴՅՈՒՆՔՆԵՐ
+
+Գտնել բոլոր այս տարբերակները և փոխարինել.
+
+```text
+Ardyunqner
+Ardյունqner
+Արդյունqներ
+Աрдյունqner
+Արդյունքներ
+Արդյունքներ
+```
+
+Վերջնական տարբերակ՝
+
+```text
+Արդյունքներ
+```
+
+---
+
+# 2. ՃԻՇՏ
+
+Գտնել բոլոր ռոմանիզացված կամ սխալ encoding-ով տարբերակները.
+
+```text
+chisht
+Chisht
+chիշտ
+ճիշտ
+ճишт
+ճишшт
+Ճիշшт
+```
+
+UI-ում վերջնական տարբերակը՝
+
+```text
+ճիշտ
+```
+
+Եթե նախադասության սկզբում է՝
+
+```text
+Ճիշտ
+```
+
+---
+
+# 3. ՍԽԱԼ
+
+Գտնել.
+
+```text
+sxal
+Sxal
+սխալ
+схал
+```
+
+Վերջնական՝
+
+```text
+սխալ
+```
+
+կամ նախադասության սկզբում՝
+
+```text
+Սխալ
+```
+
+---
+
+# 4. ՔՈ ՊԱՏԱՍԽԱՆԸ
+
+Քո թեստում երևում է.
+
+```text
+Քո պատасшана:
+Քո պատասшана:
+Քո patasxany
+Qez patasxany
+Qez patasxany:
+```
+
+Բոլորը փոխարինել՝
+
+```text
+Քո պատասխանը՝
+```
+
+---
+
+# 5. ԻՆՉՈՒ Է ՃԻՇՏ
+
+Քո թեստում երևում է.
+
+```text
+Inchu e chisht
+Inchu e chisht
+💡 Inchu e chisht
+```
+
+Վերջնական UI label՝
+
+```text
+💡 Ինչու է ճիշտ
+```
+
+Եթե emoji-ն արդեն առանձին component-ով է ավելացվում, պահել միայն՝
+
+```text
+Ինչու է ճիշտ
+```
+
+և չկրկնապատկել emoji-ն։
+
+---
+
+# 6. ԻՆՉՈՒ Է ՍԽԱԼ
+
+Քո թեստում երևում է.
+
+```text
+Inchu e sxal
+💡 Inchu e sxal
+Inchu e схал
+```
+
+Վերջնական՝
+
+```text
+Ինչու է սխալ
+```
+
+Եթե emoji-ն component-ից է գալիս, emoji-ն չավելացնել string-ի մեջ։
+
+---
+
+# 7. ՃԻՇՏ ՊԱՏԱՍԽԱՆԸ
+
+Քո թեստում երևում է.
+
+```text
+Ճишт пататасwана:
+Ճիշт пататасwана:
+Chisht patasxany
+Chisht patasxany:
+```
+
+Բոլորը փոխարինել՝
+
+```text
+Ճիշտ պատասխանը՝
+```
+
+---
+
+# 8. ԱՇԱԿԵՐՏԻ ԱՌԱՋԱՐԿՈՒԹՅՈՒՆՆԵՐ
+
+Գտնել.
+
+```text
+Ashakerti arajarkutyunner
+Ashakerti arajarkutyunner
+```
+
+Վերջնական՝
+
+```text
+Աշակերտի առաջարկություններ
+```
+
+---
+
+# 9. ԹԵՄԱՆԵՐԻ ԱՄՓՈՓՈՒՄ
+
+Գտնել.
+
+```text
+Temaneri ampopum
+```
+
+Վերջնական՝
+
+```text
+Թեմաների ամփոփում
+```
+
+---
+
+# 10. ՀԱՐՑԵՐԻ ԱՐԴՅՈՒՆՔՆԵՐ
+
+Գտնել.
+
+```text
+Harceri ardyunqner
+Harceri ardyunqner
+Harceri ardюнqner
+```
+
+Վերջնական՝
+
+```text
+Հարցերի արդյունքներ
+```
+
+---
+
+# 11. ԱՄԲՈՂՋԱԿԱՆ ՈՒՍՈՒՑՈՒՄ
+
+Գտնել.
+
+```text
+Amboghjakan usucum
+Amboghjakan usucum
+```
+
+Վերջնական՝
+
+```text
+Ամբողջական ուսուցում
+```
+
+---
+
+# 12. ՄԱՍՆԱԿԻ ԳԻՏԻ
+
+Գտնել.
+
+```text
+Masnaki gitе
+Masnaki giti
+```
+
+Վերջնական՝
+
+```text
+Մասնակի գիտի
+```
+
+---
+
+# 13. ՉԳԻՏԻ
+
+Գտնել.
+
+```text
+Chgiti
+Chgiti
+```
+
+Վերջնական՝
+
+```text
+Չգիտի
+```
+
+---
+
+# 14. ԳԻՏԻ
+
+Գտնել.
+
+```text
+Giti
+Gitе
+```
+
+Վերջնական՝
+
+```text
+Գիտի
+```
+
+---
+
+# 15. ԿՐԿՆԵԼ
+
+Եթե UI-ում կա ռոմանիզացված տարբերակ՝
+
+```text
+Krknel
+Kրկնել
+```
+
+վերջնական՝
+
+```text
+Կրկնել
+```
+
+---
+
+# 16. ԹԻՐԱԽԱՅԻՆ ՈՒՍՈՒՑՈՒՄ
+
+Գտնել.
+
+```text
+Tirqaxayin usucum
+Tirqaxayin usucum (khoratsvat)
+```
+
+և բոլոր նման mixed-script variants։
+
+Վերջնական՝
+
+```text
+Թիրախային ուսուցում
+```
+
+---
+
+# 17. ԽՈՐԱՑՎԱԾ
+
+Քո թեստում երևում է.
+
+```text
+(кhoratsvatс)
+(khoratsvat)
+Khoracvat
+```
+
+Վերջնական՝
+
+```text
+(խորացված)
+```
+
+Այսինքն ամբողջ label-ը պետք է լինի.
+
+```text
+Թիրախային ուսուցում (խորացված)
+```
+
+---
+
+# 18. ԹԵՍՏԻ ՆՄՈՒՇՈՒՄ ԵՐԵՎԱՑՈՂ ՀԱՐՑԵՐ
+
+Քո ուղարկած վերջին թեստում հարցերի մեծ մասը արդեն ճիշտ հայերենով է։
+
+Օրինակները, որոնք **պետք է թողնել ինչպես կան**.
+
+```text
+Քանի՞ հաջորդական կարգ է կազմում մեկ դաս:
+
+Ինչպե՞ս է գրվում մեկ միլիոնը:
+
+Ի՞նչ է ցույց տալիս միլիոնների դասում գրված թիվը:
+
+402 533 526 թիվը քանի՞ դասից է բաղկացած:
+
+25 435 234 թիվը ի՞նչ դասի է պատկանում 435 մասը:
+
+Ինչպե՞ս են կարդում բազմանիշ թիվը:
+
+Ի՞նչ է ցույց տալիս թվի գրության յուրաքանչյուր թվանշան:
+
+3426 թվի III կարգում քանի՞ հատ 100 կա:
+
+Եթե թվի I դասում գրված է 789, ի՞նչ է սա նշանակում:
+
+Թիվը կարդալիս ի՞նչ հաջորդականությամբ են ավելացնում դասի անվանումը:
+```
+
+**Այս հարցերը չփոխել։**
+
+---
+
+# 19. ՊԱՏԱՍԽԱՆՆԵՐԻ ՏԵՔՍՏ
+
+Պատասխանների տեքստերը նույնպես պետք է լինեն բնական հայերեն։
+
+Օրինակ՝
+
+```text
+A. Միավորներ
+B. Հազարներ
+C. Միլիոններ
+D. Հարյուրավորների դաս
+```
+
+Չպետք է մնա՝
+
+```text
+A.Miavorner
+B.Hazarner
+C.Milionner
+D.Daser
+```
+
+---
+
+# 20. FEEDBACK TEXT
+
+Feedback-ի իրական բովանդակությունը **չփոխել ձեռքով**։
+
+Օրինակ՝
+
+```text
+Ճիշտ է, քանի որ յուրաքանչյուր երեք հաջորդական կարգ կազմում է մեկ դաս:
+```
+
+կամ
+
+```text
+Սխալ է, քանի որ միլիոնների դասում 25-ն է:
+```
+
+Սրանք պետք չէ hardcode անել կամ փոխարինել։
+
+Պետք է միայն համոզվել, որ **UI label-ը**, որը feedback-ի վերևում է, հայերեն է.
+
+```text
+Ինչու է ճիշտ
+```
+
+կամ
+
+```text
+Ինչու է սխալ
+```
+
+---
+
+# 21. SEARCH REQUIREMENT
+
+Մի փնտրիր միայն այս exact strings-ը։
+
+Ամբողջ result page-ի համապատասխան frontend/backend display code-ում փնտրիր՝
+
+* Armenian transliteration
+* mixed Armenian/Latin strings
+* Armenian/Cyrillic mixed strings
+* corrupted Unicode
+* սխալ encoding
+* UI labels, որոնք դեռ անգլերեն/ռուսերեն/ռոմանիզացված են
+
+Օրինակ՝
+
+```text
+Inchu
+chisht
+sxal
+patasxan
+ardyunq
+harcer
+temaner
+usucum
+gitе
+chgiti
+khoratsvat
+```
+
+և դրանց բոլոր code variants-ը։
+
+---
+
+# 22. IMPORTANT — DON'T TOUCH QUESTION CONTENT
+
+Եթե տեքստը գալիս է հենց `quiz_questions.question_text`-ից կամ AI-generated question content-ից և արդեն ճիշտ հայերեն է, **չփոխել**։
+
+Այս task-ը վերաբերում է UI labels-ին և static display strings-ին։
+
+---
+
+# 23. FINAL VERIFICATION
+
+Փոփոխություններից հետո ստուգել quiz result էջը և համոզվել, որ այլևս չկան նման տեքստեր.
+
+```text
+Inchu
+chisht
+sxal
+patasxan
+Ardyunqner
+Harceri
+Temaneri
+Ashakerti
+usucum
+gitе
+Chgiti
+khoratsvat
+ճишт
+схал
+пататасwана
+кhoratsvatс
+```
+
+Արդյունքի էջում օգտագործվող UI labels-ը պետք է ամբողջությամբ լինեն բնական արևելահայերենով։
+
+---
+
+# ABSOLUTE FINAL RULE
+
+Այս task-ի շրջանակում՝
+
+**ONLY localization/display text changes.**
+
+Չփոխել որևէ՝
+
+* business logic
+* quiz logic
+* scoring
+* mastery
+* confidence
+* evidence
+* Knowledge Tree
+* recommendation logic
+* feedback mapping
+* option explanations
+* API
+* DB schema
+* DB records
+* quiz generation
+
+Ավարտելուց հետո report արա՝
+
+1. որ ֆայլերն ես փոխել,
+2. որ strings-ն ես փոխել,
+3. ինչից → ինչ ես փոխել,
+4. համոզվիր, որ functional logic չի փոխվել։
+
+Հետո կանգ առ։

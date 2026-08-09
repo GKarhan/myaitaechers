@@ -153,7 +153,7 @@ export default function QuizResult() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
         <div className="text-5xl">📋</div>
-        <p className="text-muted-foreground text-sm">Ավартված արдյunqner чека</p>
+        <p className="text-muted-foreground text-sm">Ավարտված արդյունքներ չկան</p>
         <Link href={backHref} className="text-primary hover:underline text-sm">{backLabel}</Link>
       </div>
     );
@@ -182,7 +182,7 @@ export default function QuizResult() {
           {backLabel}
         </Link>
         <div className="flex-1 min-w-0 text-center">
-          <h1 className="text-sm font-semibold truncate">Արдյunqner</h1>
+          <h1 className="text-sm font-semibold truncate">Արդյունքներ</h1>
         </div>
       </div>
 
@@ -194,7 +194,7 @@ export default function QuizResult() {
             {result.scorePercent}%
           </div>
           <div className="text-lg font-semibold mb-1">
-            {result.totalCorrect}/{result.totalQuestions} ճिшт
+            {result.totalCorrect}/{result.totalQuestions} ճիշտ
           </div>
           <div
             className={`inline-block mt-3 text-xs px-3 py-1 rounded-full border ${
@@ -236,9 +236,9 @@ export default function QuizResult() {
                       <span className="text-xs text-muted-foreground/70">
                         → {ACTION_LABEL[rec.nextAction.action]}
                         {rec.nextAction.intensity === "light"
-                          ? " (թիрахаyin)"
+                          ? " (թիրախային)"
                           : rec.nextAction.intensity === "deep"
-                          ? " (кhoratsvatс)"
+                          ? " (խորածվատ)"
                           : ""}
                       </span>
                     </div>
@@ -269,7 +269,7 @@ export default function QuizResult() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{node.nodeTitle}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {node.correct}/{node.total} ճишт · {node.percent}%
+                      {node.correct}/{node.total} ճիշտ · {node.percent}%
                     </div>
                   </div>
                   <span
@@ -347,20 +347,20 @@ export default function QuizResult() {
 
                   CORRECT case (Case A):
                     • Student's answer text
-                    • 💡 Inchu е чишт + whyCorrect (if non-null)
+                    • 💡 Ինչոէ ճիշտ + whyCorrect (if non-null)
 
                   WRONG case (Case B):
                     • Student's wrong answer text
-                    • Inchu е схал + whyWrong (if non-null)
+                    • Ինչու է սխալ + whyWrong (if non-null)
                     • Correct answer text (factual — always shown when block visible)
-                    • 💡 Inchu е чишт + whyCorrect (if non-null)
+                    • 💡 Ինչու է ճիշտ + whyCorrect (if non-null)
                   ──────────────────────────────────────────────────────── */}
               {(q.feedback.whyCorrect || (!q.isCorrect && q.feedback.whyWrong)) && (
                 <div className="mt-4 pl-7 space-y-3">
 
                   {/* ① Student's answer — shown in both correct and wrong cases */}
                   <div className={`text-xs ${q.isCorrect ? "text-teal-400/80" : "text-red-400/80"}`}>
-                    <span className="font-semibold">Քո պատасшана: </span>
+                    <span className="font-semibold">Քո պատասխանը: </span>
                     <span className="text-foreground/75">
                       {String.fromCharCode(65 + q.selectedOptionIndex)}. {(q.options as string[])[q.selectedOptionIndex]}
                     </span>
@@ -369,7 +369,7 @@ export default function QuizResult() {
                   {/* ② Why wrong — only when isCorrect=false and whyWrong non-null */}
                   {!q.isCorrect && q.feedback.whyWrong && (
                     <div className="text-xs rounded-xl px-3 py-2.5 border border-red-400/20 bg-red-400/5 text-red-300/80 leading-relaxed">
-                      <span className="font-semibold text-red-400/70 block mb-1">Inchu е схал</span>
+                      <span className="font-semibold text-red-400/70 block mb-1">Ինչու է սխալ</span>
                       {q.feedback.whyWrong}
                     </div>
                   )}
@@ -377,7 +377,7 @@ export default function QuizResult() {
                   {/* ③ Correct answer text — only in wrong case (factual, not fabricated) */}
                   {!q.isCorrect && (
                     <div className="text-xs text-teal-400/80">
-                      <span className="font-semibold">✅ Ճишт пататасwана: </span>
+                      <span className="font-semibold">✅ Ճիշտ պատասխանը: </span>
                       <span className="text-foreground/75">
                         {String.fromCharCode(65 + q.correctOptionIndex)}. {(q.options as string[])[q.correctOptionIndex]}
                       </span>
@@ -387,7 +387,7 @@ export default function QuizResult() {
                   {/* ④ Why correct — shown for both correct and wrong cases */}
                   {q.feedback.whyCorrect && (
                     <div className="text-xs rounded-xl px-3 py-2.5 border border-teal-400/20 bg-teal-400/5 text-teal-300/80 leading-relaxed">
-                      <span className="font-semibold text-teal-400/70 block mb-1">💡 Inchu е чишт</span>
+                      <span className="font-semibold text-teal-400/70 block mb-1">💡 Ինչու է ճիշտ</span>
                       {q.feedback.whyCorrect}
                     </div>
                   )}

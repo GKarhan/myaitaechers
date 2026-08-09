@@ -1,0 +1,326 @@
+# PART 3.5 — FINAL ARMENIAN TEXT NORMALIZATION FIX
+
+## Նպատակ
+
+Փորձնական թեստի արդյունքները ցույց են տալիս, որ feedback-ի և scoring-ի տրամաբանությունը աշխատում է ճիշտ։
+
+**ՉՓՈԽԵԼ՝**
+
+* scoring logic
+* mastery calculation
+* evidence events
+* question → node mapping
+* option-specific feedback logic
+* `whyCorrect / whyWrong` API contract
+* PART 3.5 architecture
+
+Այս փուլում կատարել միայն **display text-ի լեզվական/Unicode normalization**։
+
+---
+
+# 1. Հիմնական խնդիր
+
+Թեստի UI-ում կան հայերեն նախադասություններ, որոնց մեջ որոշ տառեր կամ բառեր գրված են ոչ հայերեն Unicode տառերով կամ խառնված են այլ այբուբենի տառերի հետ։
+
+Օրինակ՝
+
+* `ճիշт`
+* `պատասшана`
+* `Inchu е чишт`
+* `Inchu е схал`
+* `кhoratsvatс`
+
+Սրանք պետք է ամբողջությամբ վերածվեն բնական հայերեն տեքստի։
+
+---
+
+# 2. Պարտադիր փոխարինումներ
+
+Գտնել և փոխարինել բոլոր նման խառը display strings-ը։
+
+### Արդյունքներ
+
+`Արդյունքներ`
+
+ոչ թե՝
+
+`Արдյunqner`
+
+---
+
+### Ճիշտ
+
+`ճիշտ`
+
+ոչ թե՝
+
+`ճիշտ`
+
+եթե ներսում կան օտար Unicode տառեր։
+
+---
+
+### Պատասխան
+
+`պատասխան`
+
+ոչ թե՝
+
+`պատасшана`
+
+---
+
+### Ինչու է ճիշտ
+
+`Ինչու է ճիշտ`
+
+ոչ թե՝
+
+`Inchu е чишт`
+
+---
+
+### Ինչու է սխալ
+
+`Ինչու է սխալ`
+
+ոչ թե՝
+
+`Inchu е схал`
+
+---
+
+### Խորացված ուսուցում
+
+`Խորացված ուսուցում`
+
+ոչ թե՝
+
+`кhoratsvatс`
+
+---
+
+### Այլ ստանդարտ բառեր
+
+Եթե frontend-ում կամ API response-ում հանդիպում են նման mixed-script ձևեր, դրանք դարձնել բնական հայերեն.
+
+* `Թիրախային ուսուցում`
+* `Ամբողջական ուսուցում`
+* `Կրկնել`
+* `Գիտի`
+* `Մասնակի գիտի`
+* `Չգիտի`
+* `ճիշտ պատասխան`
+* `Քո պատասխանը`
+* `Թեմաների ամփոփում`
+* `Հարցերի արդյունքներ`
+* `Աշակերտի առաջարկություններ`
+
+---
+
+# 3. Կարևոր — չսահմանափակվել միայն այս բառերի որոնմամբ
+
+Կատարել repository-wide որոնում այնպիսի mixed-script strings-ի համար, որտեղ հայերեն բառի մեջ հայտնվում են՝
+
+* Latin characters
+* Cyrillic characters
+* այլ Unicode այբուբենների տառեր
+
+Օրինակ՝
+
+`А`, `В`, `С`, `Е`, `К`, `о`, `р`, `т`, `с`, `х`, `ш`, `н`, `а`
+
+և Latin տառեր՝
+
+`A-Z`, `a-z`
+
+Հայերեն display text-ի ներսում։
+
+Բայց **չփոխել իրական տեխնիկական identifiers-ը**, օրինակ՝
+
+* variable names
+* function names
+* database columns
+* API fields
+* TypeScript types
+* route names
+* English technical terminology
+
+Փոփոխել միայն այն text strings-ը, որոնք ցուցադրվում են օգտատիրոջը կամ օգտագործվում են որպես user-facing labels.
+
+---
+
+# 4. Frontend + Backend ստուգում
+
+Ստուգել ոչ միայն `quiz-result.tsx`-ը, այլ ամբողջ chain-ը.
+
+`quiz generation`
+→ `API response`
+→ `buildStudentResultAnalysis`
+→ `quiz-result.tsx`
+→ displayed labels
+
+Եթե mixed-script տեքստը գալիս է backend-ից, ուղղել backend source string-ը։
+
+Եթե գալիս է frontend-ից, ուղղել frontend string-ը։
+
+Չպետք է պարզապես UI-ում mask/replace անել ամբողջ response-ի վրա։
+
+---
+
+# 5. Feedback text-ի կարևոր կանոն
+
+PART 3.5-ում արդեն ներդրված է՝
+
+`option_explanations TEXT[]`
+
+և՝
+
+`whyCorrect = option_explanations[correctOptionIndex]`
+
+`whyWrong = option_explanations[selectedOptionIndex]`
+
+Այս logic-ը **ՉՓՈԽԵԼ**։
+
+Պետք է միայն համոզվել, որ AI-ի գեներացրած explanation text-ը նույնպես հայերեն է և չի պարունակում mixed-script բառեր։
+
+Օրինակ՝ սա պետք է լինի.
+
+`Ճիշտ է, քանի որ յուրաքանչյուր երեք հաջորդական կարգ կազմում է մեկ դաս։`
+
+ոչ թե mixed-script տարբերակ։
+
+---
+
+# 6. AI-generated text-ի համար
+
+Quiz generation prompt-ում ավելացնել/ուժեղացնել հետևյալ կանոնը.
+
+**LANGUAGE RULE**
+
+Բոլոր `questionText`, `options` և `optionExplanations` դաշտերը պետք է գրվեն բնական, գրագետ հայերենով։
+
+Արգելվում է հայերեն բառերի ներսում օգտագործել Latin, Cyrillic կամ այլ այբուբենի տառեր։
+
+Օրինակ՝
+
+❌ `Inchu е чisht`
+
+❌ `пատասшана`
+
+❌ `кhoratsvatс`
+
+❌ `Ճիշт`
+
+✅ `Ինչու է ճիշտ`
+
+✅ `պատասխան`
+
+✅ `Խորացված ուսուցում`
+
+Եթե աղբյուրում բառը սխալ/mixed-script ձևով է, AI-ն պետք է այն normalize անի դեպի ճիշտ հայերեն Unicode։
+
+---
+
+# 7. Միայն exact replacement-ներով չսահմանափակվել
+
+Չանել միայն static mapping.
+
+Օրինակ՝
+
+`"Inchu е чишт" → "Ինչու է ճիշտ"`
+
+քանի որ հետագայում կարող են հայտնվել այլ mixed-script տարբերակներ։
+
+Պետք է գտնել **աղբյուրը**, որտեղ այդ strings-ը ստեղծվում են, և ուղղել այնտեղ։
+
+Հատկապես ստուգել.
+
+* result labels
+* recommendation labels
+* mastery status labels
+* feedback labels
+* quiz generation prompt
+* API-generated Armenian text
+* frontend fallback strings
+
+---
+
+# 8. Regression test
+
+Fix-ից հետո նորից ստուգել նույն փորձնական quiz-ը։
+
+Պետք է արդյունքը լինի մոտավորապես այս կառուցվածքով.
+
+`Արդյունքներ`
+
+`60%`
+
+`6/10 ճիշտ`
+
+`Աշակերտի առաջարկություններ`
+
+`Թվերի տրոհում աջից ձախ`
+
+`Չգիտի → Ամբողջական ուսուցում`
+
+`Միլիոնների դասի ներածություն`
+
+`Մասնակի գիտի → Թիրախային ուսուցում (Խորացված)`
+
+---
+
+## Հարցի feedback
+
+Ճիշտ պատասխանի դեպքում.
+
+`💡 Ինչու է ճիշտ`
+
+Wrong answer-ի դեպքում.
+
+`Ինչու է սխալ`
+
+`Ճիշտ պատասխանը՝ ...`
+
+`💡 Ինչու է ճիշտ`
+
+Ոչ մի mixed-script տառ չպետք է մնա։
+
+---
+
+# 9. Acceptance Criteria
+
+Fix-ը համարել ավարտված միայն եթե՝
+
+1. `Արդյունքներ` → ամբողջությամբ հայերեն է։
+2. `ճիշտ` → ամբողջությամբ հայերեն Unicode է։
+3. `պատասխան` → ամբողջությամբ հայերեն Unicode է։
+4. `Ինչու է ճիշտ` → ամբողջությամբ հայերեն է։
+5. `Ինչու է սխալ` → ամբողջությամբ հայերեն է։
+6. `Խորացված ուսուցում` → ամբողջությամբ հայերեն է։
+7. Recommendation labels-ը ամբողջությամբ հայերեն են։
+8. Quiz question text-ը չի պարունակում mixed-script հայերեն։
+9. Option text-ը չի պարունակում mixed-script հայերեն։
+10. `optionExplanations[]`-ի generated text-ը չի պարունակում mixed-script հայերեն։
+11. Technical identifiers-ը չեն փոխվել։
+12. Scoring/mastery/evidence logic-ը չի փոխվել։
+13. `whyCorrect / whyWrong` logic-ը չի փոխվել։
+14. Existing quiz-ը շարունակում է աշխատել։
+15. New quiz generation-ը նույնպես վերադարձնում է մաքուր հայերեն։
+
+---
+
+# 10. Վերջնական ստուգում
+
+Fix-ից հետո repository-wide search կատարել mixed-script Armenian-ի համար և ցույց տալ.
+
+* ինչ files են գտնվել,
+* ինչ strings են ուղղվել,
+* քանի occurrence է ուղղվել,
+* ինչ tests են անցել։
+
+**Այս աշխատանքի ավարտից հետո այլևս չկատարել PART 3.5-ի architecture փոփոխություն։**
+
+Եթե բոլոր acceptance criteria-ները PASS են, գրել միայն՝
+
+`PART 3.5 COMPLETE — READY FOR PART 4`
