@@ -1,0 +1,277 @@
+Հիմա անցնում ենք **Knowledge Tree-ի կառուցվածքի և Test-ից հետո դրա թարմացման logic-ի փոփոխությանը**։
+
+Quiz Creation-ի նախորդ փոփոխությունները ընդունված են։ Այս task-ը հիմա վերաբերում է միայն Knowledge Tree-ին և դրա scoring/update behavior-ին։
+
+## 1. Knowledge Tree — պետք է լինի ուղիղ 4 block
+
+Knowledge Tree-ում սովորողի գիտելիքը պետք է բաժանված լինի միայն այս 4 block-ի.
+
+1. **Գիտի**
+2. **Չգիտի**
+3. **Դեռ չի ուսումնասիրել**
+4. **Մասնակի գիտի**
+
+**5-րդ block չպետք է լինի։**
+
+Եթե ներկայիս implementation-ում կա 5-րդ block, duplicate block կամ այլ անվանումներով նույն իմաստի block, ուսումնասիրիր և բեր այն ճիշտ այս 4-block կառուցվածքին։
+
+### «Դեռ չի ուսումնասիրել»
+
+Այս block-ում պետք է գտնվեն այն դասերի՝ Node/MicroNode-երը, որոնք տվյալ սովորողը դեռ չի ուսումնասիրել։
+
+Սա **նախնական state-ն է՝ մինչև տվյալ Node-ի վերաբերյալ որևէ համապատասխան Test/Quiz evidence ունենալը**։
+
+Այսինքն՝ նոր սովորողի համար Knowledge Tree-ում համապատասխան չուսումնասիրված content-ը պետք է լինի՝
+
+**Դեռ չի ուսումնասիրել**
+
+և ոչ թե «Չգիտի»։
+
+Շատ կարևոր տարբերակում.
+
+* **Դեռ չի ուսումնասիրել** = սովորողը դեռ չի անցել/չի ուսումնասիրվել այդ content-ը, և դրա վերաբերյալ դեռ չկա համապատասխան quiz evidence։
+* **Չգիտի** = սովորողը արդեն Test/Quiz-ով գնահատվել է այդ Node-ի վրա և արդյունքը ցույց է տալիս 0 ճիշտ։
+* **Մասնակի գիտի** = Test/Quiz evidence կա, բայց արդյունքը լրիվ mastery չէ։
+* **Գիտի** = Test/Quiz evidence կա և տվյալ Node-ի բոլոր գնահատված հարցերին ճիշտ է պատասխանել։
+
+---
+
+## 2. Test-ից հետո Node-ի տեղափոխումը
+
+Test/Quiz-ից հետո Knowledge Tree-ն պետք է թարմացվի՝ տվյալ Quiz-ի իրական evidence-ի հիման վրա։
+
+Եթե տվյալ Node-ի համար Quiz-ում եղել է **N հարց**, ապա տվյալ Node-ի արդյունքը պետք է հաշվվի հենց այդ Node-ին վերաբերող հարցերի հիման վրա։
+
+### Եթե բոլոր հարցերին ճիշտ է պատասխանել
+
+Օրինակ՝
+
+* 1/1
+* 2/2
+* 3/3
+* 5/5
+
+այսինքն՝ `correctAnswers === questionCount`
+
+→ **Գիտի**
+
+### Եթե 0 հարց ճիշտ է
+
+Օրինակ՝
+
+* 0/1
+* 0/2
+* 0/3
+* 0/5
+
+→ **Չգիտի**
+
+### Եթե որոշ հարցեր ճիշտ են, բայց ոչ բոլորը
+
+Օրինակ՝
+
+* 1/2
+* 1/3
+* 2/3
+* 2/5
+* 4/5
+
+→ **Մասնակի գիտի**
+
+Բայց **Մասնակի գիտի-ի ներսում պետք է պահպանվի արդյունքի granular տարբերությունը**։
+
+Առնվազն 3-question case-ում պետք է տարբերակվեն.
+
+* **1/3 → Մասնակի գիտի — lower confidence / higher learning need**
+* **2/3 → Մասնակի գիտի — higher confidence / lower learning need**
+
+Այս տարբերությունը չպետք է վերանա միայն այն պատճառով, որ UI-ում երկուսն էլ գտնվում են նույն՝ **«Մասնակի գիտի»** block-ում։
+
+Օգտագործիր արդեն առկա `confidenceScore` կամ գոյություն ունեցող համապատասխան field/metadata-ն, եթե այն բավարար է։ **Նոր DB column մի ստեղծիր առանց ինձ նախապես report անելու։**
+
+---
+
+## 3. Շատ կարևոր — «Չգիտի» և «Դեռ չի ուսումնասիրել» չխառնել
+
+Այս distinction-ը պետք է պահպանվի ամբողջ համակարգում։
+
+### «Դեռ չի ուսումնասիրել»
+
+Node-ի համար դեռ չկա համապատասխան learning/test evidence։
+
+Օրինակ՝
+
+```text
+Lesson A
+ ├─ Node 1 → Գիտի
+ ├─ Node 2 → Մասնակի գիտի
+ ├─ Node 3 → Չգիտի
+ └─ Node 4 → Դեռ չի ուսումնասիրել
+```
+
+Node 4-ը չպետք է ընկնի «Չգիտի» միայն այն պատճառով, որ սովորողը դեռ չի հասել դրան։
+
+---
+
+## 4. Node + MicroNode hierarchy
+
+Պահպանիր ներկայիս Knowledge Tree-ի hierarchy-ն։
+
+Եթե Node-ը ունի MicroNode-եր, scoring-ը պետք է կապվի **իրական evidence-ի համապատասխան granular level-ին**։
+
+Չստեղծես նոր parallel hierarchy։
+
+Օգտագործիր արդեն գոյություն ունեցող architecture-ը՝
+
+* knowledge nodes
+* lesson nodes
+* lesson topics / համապատասխան relationships
+* evidence events
+* quiz answers / quiz attempts
+
+Նախ ուսումնասիրիր դրանց իրական relationship-ը, հետո փոփոխիր միայն անհրաժեշտ logic-ը։
+
+---
+
+## 5. Knowledge Tree-ն պետք է թարմացվի ցանկացած Test-ից հետո
+
+Սա պարտադիր requirement է։
+
+**Յուրաքանչյուր Quiz/Test attempt-ից հետո Knowledge Tree-ն պետք է refresh/update արվի։**
+
+Սա չպետք է աշխատի միայն հատուկ 3-question quiz-ի դեպքում։
+
+Օրինակ՝ եթե սովորողը ցանկացած Test է հանձնում և այդ Test-ը վերաբերում է 4 Node-ի, ապա Test-ի ավարտից հետո այդ 4 Node-ի Knowledge Tree state-երը պետք է վերահաշվարկվեն և UI-ն պետք է ստանա թարմ վիճակը։
+
+Պետք է ստուգես՝ ներկայում refresh/update-ը որտեղ է կատարվում և եթե այն բացակայում է կամ մասնակի է, ավելացրու միայն անհրաժեշտ փոփոխությունը։
+
+**Student-side quiz-taking flow-ի behavior-ը մի վերափոխիր։** Պետք է միայն ապահովել, որ Test-ի ավարտից հետո Knowledge Tree-ի տվյալները թարմացվեն։
+
+---
+
+## 6. Existing scoring logic-ը չկոտրել
+
+Նախ ուսումնասիրիր ներկայիս `scoring.ts`-ը և ամբողջ chain-ը.
+
+```text
+Quiz attempt
+→ quiz answers
+→ evidence events
+→ node/topic scoring
+→ Knowledge Tree status
+→ Knowledge Tree UI refresh
+```
+
+Հետո ներկայացրու ինձ՝ ներկայում ինչ է կատարվում։
+
+Մի վերագրիր ամբողջ scoring system-ը, եթե դրա կարիքը չկա։
+
+Ավելացրու միայն այս 4-block determination logic-ը և անհրաժեշտ refresh/update-ը։
+
+---
+
+## 7. Մինչև implementation — նախ report
+
+Քանի որ սա Knowledge Tree-ի կառուցվածքի փոփոխություն է, **նախ մի փոխիր code-ը**։
+
+Սկզբում report արա.
+
+1. Knowledge Tree-ի ներկայիս UI component/file-ը։
+2. 4/5 block-երի ներկայիս implementation-ը։
+3. DB-ում դրանց underlying field/enum/status values-ը։
+4. Որտեղ է որոշվում Node-ի ներկայիս status-ը։
+5. `scoring.ts` → Knowledge Tree ամբողջ chain-ը։
+6. Ինչպես է ներկայում տարբերակվում՝
+
+   * studied/tested
+   * not studied
+   * mastered
+   * partial
+   * failed
+7. Որտեղ և ինչպես է Knowledge Tree-ն refresh արվում Quiz-ից հետո։
+8. Արդյոք `confidenceScore`-ը արդեն բավարար է 1/3 vs 2/3 տարբերակումը պահելու համար։
+9. Որ ֆայլերն են անհրաժեշտ փոփոխել։
+
+**Մինչև այդ report-ը ինձ չտաս՝ implementation մի սկսիր։**
+
+---
+
+## 8. Scope lock
+
+Այս task-ում չփոփոխես՝
+
+* Quiz Creation UI
+* quiz question generation logic
+* manual mapping
+* auto mapping
+* `chat.ts`
+* teaching-session logic
+* Knowledge Base mapping logic
+* student-side quiz-taking UI/flow-ի behavior-ը
+
+Փոխիր միայն այն code-ը, որն անհրաժեշտ է՝
+
+**Knowledge Tree 4-block structure + scoring determination + post-quiz Knowledge Tree refresh** իրականացնելու համար։
+
+Եթե որևէ նոր DB column կամ schema migration անհրաժեշտ է, **նախ կանգ առ և ինձ report արա՝ ինչու է պետք և ինչ տվյալ է պահելու**։ Առանց իմ հաստատման migration մի արա։
+
+---
+
+## 9. Acceptance criteria
+
+Վերջնական behavior-ը պետք է լինի.
+
+### Նախքան սովորելը
+
+```text
+Դեռ չի ուսումնասիրել
+```
+
+### Test-ից հետո
+
+Եթե տվյալ Node-ի բոլոր հարցերը ճիշտ են.
+
+```text
+Գիտի
+```
+
+Եթե տվյալ Node-ի ոչ մի հարց ճիշտ չէ.
+
+```text
+Չգիտի
+```
+
+Եթե որոշ հարցեր ճիշտ են, բայց ոչ բոլորը.
+
+```text
+Մասնակի գիտի
+```
+
+իսկ partial-ի ներսում պահպանվում է granular confidence/result-ը, օրինակ՝
+
+```text
+1/3 → lower confidence
+2/3 → higher confidence
+```
+
+### Յուրաքանչյուր Test-ից հետո
+
+```text
+Test completed
+      ↓
+Evidence recorded
+      ↓
+Affected Nodes rescored
+      ↓
+Knowledge Tree states updated
+      ↓
+Knowledge Tree refreshed
+```
+
+Եվ **«Դեռ չի ուսումնասիրել» երբեք չպետք է ավտոմատ վերածվի «Չգիտի» միայն այն պատճառով, որ Node-ը դեռ չի ուսումնասիրվել։**
+
+### Կարևոր
+
+Սա հիմա **միայն Part 0 audit է**։
+
+**Ոչ մի code change մի կատարիր, մինչև ես չստանամ և չհաստատեմ audit report-ը։**
