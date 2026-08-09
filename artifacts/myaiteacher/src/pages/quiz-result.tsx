@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PersonalizedAction = "REVIEW" | "LEARN_TARGETED" | "LEARN_FULL" | "STUDY_FIRST";
+type PersonalizedAction = "REVIEW" | "LEARN_TARGETED" | "Լիարժեք սովորել" | "STUDY_FIRST";
 type MasteryLevel = "mastered" | "weak" | "in_progress" | "not_started";
 
 interface PersonalizedNextAction {
@@ -214,7 +214,7 @@ export default function QuizResult() {
         {hasRecommendations && (
           <div className="space-y-3">
             <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wide">
-              [STUDENT_RECOMMENDATIONS]
+              Աշակերտի առաջարկություններ
             </h2>
             <div className="space-y-2">
               {result.recommendations!.map((rec, i) => (
@@ -338,43 +338,53 @@ export default function QuizResult() {
                 })}
               </div>
 
-              {/* ── Feedback block ──────────────────────────────────────────
-                  Source priority (spec §6):
-                    P1: quiz_questions.explanation (pending schema addition — null today)
+              {/* ── Feedback block (PART 4.1 spec §6) ────────────────────────
+                  Source priority:
+                    P1: quiz_questions.explanation (pending schema — null today)
                     P2: lesson_nodes.childFriendlyExplanation → whyCorrect
                     P3: lesson_nodes.commonMisconception      → whyWrong
                   No fabrication: both null → nothing shown (Case C).
-                  Case A (correct):   whyCorrect only, no whyWrong shown.
-                  Case B (wrong):     whyWrong block (if non-null) + whyCorrect block (if non-null).
+
+                  CORRECT case (Case A):
+                    • Student's answer text
+                    • 💡 Inchu е чишт + whyCorrect (if non-null)
+
+                  WRONG case (Case B):
+                    • Student's wrong answer text
+                    • Inchu е схал + whyWrong (if non-null)
+                    • Correct answer text (factual — always shown when block visible)
+                    • 💡 Inchu е чишт + whyCorrect (if non-null)
                   ──────────────────────────────────────────────────────── */}
               {(q.feedback.whyCorrect || (!q.isCorrect && q.feedback.whyWrong)) && (
                 <div className="mt-4 pl-7 space-y-3">
 
-                  {/* Wrong answer explanation — only when isCorrect=false */}
+                  {/* ① Student's answer — shown in both correct and wrong cases */}
+                  <div className={`text-xs ${q.isCorrect ? "text-teal-400/80" : "text-red-400/80"}`}>
+                    <span className="font-semibold">Qо պататасшана: </span>
+                    <span className="text-foreground/75">{q.options[q.selectedOptionIndex]}</span>
+                  </div>
+
+                  {/* ② Why wrong — only when isCorrect=false and whyWrong non-null */}
                   {!q.isCorrect && q.feedback.whyWrong && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400/80 uppercase tracking-wide">
-                        <span>✗</span>
-                        <span>[YOUR_ANSWER]</span>
-                      </div>
-                      <div className="text-xs rounded-xl px-3 py-2.5 border border-red-400/20 bg-red-400/5 text-red-300/80 leading-relaxed">
-                        <span className="font-medium text-red-400/70 block mb-1">[WHY_WRONG]</span>
-                        {q.feedback.whyWrong}
-                      </div>
+                    <div className="text-xs rounded-xl px-3 py-2.5 border border-red-400/20 bg-red-400/5 text-red-300/80 leading-relaxed">
+                      <span className="font-semibold text-red-400/70 block mb-1">Inchu е схал</span>
+                      {q.feedback.whyWrong}
                     </div>
                   )}
 
-                  {/* Correct answer explanation — shown for both correct and wrong cases */}
+                  {/* ③ Correct answer text — only in wrong case (factual, not fabricated) */}
+                  {!q.isCorrect && (
+                    <div className="text-xs text-teal-400/80">
+                      <span className="font-semibold">Ճiшт пататасшана: </span>
+                      <span className="text-foreground/75">{q.options[q.correctOptionIndex]}</span>
+                    </div>
+                  )}
+
+                  {/* ④ Why correct — shown for both correct and wrong cases */}
                   {q.feedback.whyCorrect && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-teal-400/80 uppercase tracking-wide">
-                        <span>✓</span>
-                        <span>[CORRECT_ANSWER]</span>
-                      </div>
-                      <div className="text-xs rounded-xl px-3 py-2.5 border border-teal-400/20 bg-teal-400/5 text-teal-300/80 leading-relaxed">
-                        <span className="font-medium text-teal-400/70 block mb-1">[WHY_CORRECT]</span>
-                        {q.feedback.whyCorrect}
-                      </div>
+                    <div className="text-xs rounded-xl px-3 py-2.5 border border-teal-400/20 bg-teal-400/5 text-teal-300/80 leading-relaxed">
+                      <span className="font-semibold text-teal-400/70 block mb-1">💡 Inchu е чишт</span>
+                      {q.feedback.whyCorrect}
                     </div>
                   )}
 
