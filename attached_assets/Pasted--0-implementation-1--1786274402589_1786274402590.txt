@@ -1,0 +1,61 @@
+Մաս 0-ի ուսումնասիրությունը ընդունում եմ։
+
+Շարունակի՛ր implementation-ը հետևյալ կանոններով.
+
+1. **Մաս 1 — Multi-lesson / Node selection**
+
+   * Implement արա single-lesson → node-level drill-down։
+   * Multi-lesson դեպքում node drill-down չցուցադրել։
+   * Backend-ում օգտագործիր արդեն առկա `nodeIds[]` support-ը։
+   * Single lesson + node selection դեպքում quiz generation-ին փոխանցիր միայն ընտրված node-երը։
+   * Single lesson + առանց node selection-ի դեպքում թող աշխատի ամբողջ lesson-ի վրա։
+   * Multi-lesson դեպքում աշխատի ընտրված ամբողջ lesson-երի վրա։
+
+2. **Մաս 2 — Suggested question count**
+
+   * Հաշվիր leaf Node/MicroNode-երի քանակը։
+   * `minimumQuestions = leafCount × 1`
+   * `idealQuestions = leafCount × 3`
+   * Suggestion-ը informational է, ոչ blocking։
+   * Եթե questionCount < minimumQuestions՝ warning ցույց տուր, բայց թույլ տուր շարունակել։
+   * Հայերեն տեքստերի համար օգտագործիր միայն իմ հաստատած exact strings-ը։ Եթե դեռ strings չունես, implementation-ում placeholder-ը մի փոխարինիր քո հայերենով։
+
+3. **Մաս 3 — 3-question scoring**
+
+   * Միայն այն դեպքում, երբ տվյալ Node-ի համար կա ուղիղ 3 հարց։
+   * 3/3 → Գիտի
+   * 2/3 → Մասնակի գիտի՝ բարձր confidence tier
+   * 1/3 → Մասնակի գիտի՝ ցածր confidence tier
+   * 0/3 → Չգիտի
+   * Օգտագործիր արդեն առկա `confidenceScore`-ը, նոր DB column մի ավելացրու։
+   * Knowledge Tree-ի գոյություն ունեցող enum/block անունները չփոխես։
+
+4. **Fallback scoring**
+
+   * Այլ questionCount-երի համար (1, 2, 4, 5 և այլն) proportional fallback-ը ՀԻՄԱ ՉՓՈԽԵՍ։
+   * Պահպանիր գործող scoring logic-ը։
+   * Միայն report արա՝ ինչ fallback է ներկայում գործում։
+
+5. **Scope lock**
+   Չփոփոխես՝
+
+   * `chat.ts`
+   * teaching-session logic
+   * manual mapping
+   * auto mapping
+   * student-side quiz-taking flow
+   * Knowledge Tree-ի enum/block names
+   * որևէ այլ unrelated functionality։
+
+6. **Verification-ը պարտադիր արա implementation-ից հետո**
+   Տուր՝
+
+   * փոփոխված ֆայլերի ամբողջական ցանկը
+   * single-lesson + node drill-down screenshot
+   * multi-lesson screenshot՝ առանց node drill-down
+   * suggested-count screenshot
+   * իրական 3-question quiz-ի DB evidence/scoring արդյունքը
+   * git diff կամ համապատասխան ապացույց, որ chat.ts և mapping files չեն փոխվել
+   * նշիր նաև, որ fallback scoring-ը չես փոխել։
+
+Մի գրիր «fixed/tested», եթե համապատասխան իրական verification evidence չունես։

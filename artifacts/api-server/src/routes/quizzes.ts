@@ -933,7 +933,7 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
 
         // 5. Recompute mastery/confidence for this topic (fire-and-forget within
         //    fire-and-forget — matches the pattern in chat.ts exactly)
-        updateTopicScoring(topicId, _studentId).catch((err) =>
+        updateTopicScoring(topicId, _studentId, { quizId: _quizId }).catch((err) =>
           logger.error({ err, topicId, userId: _studentId }, "quiz evidence: scoring failed")
         );
 

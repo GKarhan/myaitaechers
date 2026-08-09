@@ -1335,6 +1335,11 @@ export default function TeacherDashboard() {
   const [quizBooks,     setQuizBooks]       = useState<{id:number;name:string}[]>([]);
   const [quizCreating,  setQuizCreating]    = useState(false);
   const [quizError,     setQuizError]       = useState<string|null>(null);
+  // ── Node drill-down (single-lesson mode) ──────────────────────────────────
+  const [quizNodeIds,      setQuizNodeIds]      = useState<number[]>([]);
+  const [quizLessonNodes,  setQuizLessonNodes]  = useState<{id:number;title:string;sequence:number}[]>([]);
+  const [quizNodesLoading, setQuizNodesLoading] = useState(false);
+  const [quizLeafCount,    setQuizLeafCount]    = useState(0);
 
   // ── Quiz list (course view) ─────────────────────────────────────────────────
   const [courseQuizzes, setCourseQuizzes] = useState<{
@@ -1513,6 +1518,11 @@ export default function TeacherDashboard() {
     setQuizCreating(true);
     setQuizError(null);
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    // Single lesson + specific nodes selected → send only those nodeIds
+    // Single lesson + no nodes selected → send lessonIds (backend resolves all nodes)
+    // Multi-lesson → send lessonIds (no node-level drill-down)
+    const isSingleLesson = quizLessonIds.length === 1;
+    const sendNodeIds = isSingleLesson && quizNodeIds.length > 0 ? quizNodeIds : undefined;
     try {
       const resp = await fetch(`/api/quizzes`, {
         method: "POST",
@@ -1521,7 +1531,8 @@ export default function TeacherDashboard() {
           subjectId:      selectedCourse?.subjectId ?? undefined,
           classId:        selectedClass?.id ?? undefined,
           sourceBookId:   quizBookId ?? undefined,
-          lessonIds:      quizLessonIds,
+          lessonIds:      sendNodeIds ? undefined : quizLessonIds,
+          nodeIds:        sendNodeIds,
           questionCount:  quizCount,
           difficultyMode: quizMode,
           title:          quizTitle.trim() || undefined,
@@ -1544,6 +1555,41 @@ export default function TeacherDashboard() {
       prev.includes(lid) ? prev.filter((x) => x !== lid) : [...prev, lid]
     );
   }
+
+  // ── Fetch lesson nodes when single lesson is selected ─────────────────────
+  useEffect(() => {
+    const tok = localStorage.getItem("myaiteacher_token") ?? "";
+    if (quizLessonIds.length === 1) {
+      const lessonId = quizLessonIds[0];
+      setQuizNodesLoading(true);
+      setQuizNodeIds([]);
+      fetch(`/api/lessons/${lessonId}/nodes`, { headers: { Authorization: `Bearer ${tok}` } })
+        .then((r) => r.ok ? r.json() : [])
+        .then((data: {id:number;title:string;sequence:number}[]) => {
+          setQuizLessonNodes(data);
+          setQuizLeafCount(data.length);
+        })
+        .catch(() => {})
+        .finally(() => setQuizNodesLoading(false));
+    } else if (quizLessonIds.length > 1) {
+      setQuizLessonNodes([]);
+      setQuizNodeIds([]);
+      Promise.all(
+        quizLessonIds.map((lid) =>
+          fetch(`/api/lessons/${lid}/nodes`, { headers: { Authorization: `Bearer ${tok}` } })
+            .then((r) => r.ok ? r.json() : [])
+            .catch(() => [])
+        )
+      ).then((results) => {
+        const total = results.reduce((s, nodes) => s + (Array.isArray(nodes) ? nodes.length : 0), 0);
+        setQuizLeafCount(total);
+      });
+    } else {
+      setQuizLessonNodes([]);
+      setQuizNodeIds([]);
+      setQuizLeafCount(0);
+    }
+  }, [quizLessonIds]);
 
   const handleCreateCourse = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2451,7 +2497,15 @@ export default function TeacherDashboard() {
                     📝 Թեստեր ({courseQuizzes.length})
                   </h2>
                   <button
-                    onClick={() => { setQuizModalOpen(true); setQuizError(null); setQuizLessonIds([]); setQuizTitle(""); }}
+                    onClick={() => {
+                      setQuizModalOpen(true);
+                      setQuizError(null);
+                      setQuizLessonIds([]);
+                      setQuizTitle("");
+                      setQuizNodeIds([]);
+                      setQuizLessonNodes([]);
+                      setQuizLeafCount(0);
+                    }}
                     className={btnPrimary}
                   >
                     ✶ Ստեղծել թեստ
@@ -3646,7 +3700,7 @@ export default function TeacherDashboard() {
             {/* Lesson multi-select */}
             <div className="mb-4">
               <label className="block text-sm text-muted-foreground mb-1.5">
-                Դասեր (նշել մինչև 1) *
+                Դասեր *
               </label>
               {courseLessons.length === 0 ? (
                 <p className="text-sm text-muted-foreground/60 italic">
@@ -3681,19 +3735,117 @@ export default function TeacherDashboard() {
               )}
             </div>
 
-            {/* Question count */}
+            {/* Node drill-down — single lesson only */}
+            {quizLessonIds.length === 1 && (
+              <div className="mb-4">
+                <label className="block text-sm text-muted-foreground mb-1.5">
+                  [LABEL_NODES_SECTION]
+                </label>
+                {quizNodesLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
+                    <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    ...
+                  </div>
+                ) : quizLessonNodes.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/50 italic py-1">—</p>
+                ) : (
+                  <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                    {/* "All nodes" option */}
+                    <label className={`flex items-center gap-3 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                      quizNodeIds.length === 0
+                        ? "border-primary/60 bg-primary/10"
+                        : "border-white/8 hover:border-white/20 hover:bg-white/5"
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={quizNodeIds.length === 0}
+                        onChange={() => setQuizNodeIds([])}
+                        className="accent-primary shrink-0"
+                      />
+                      <span className="text-sm text-white font-medium">[LABEL_ALL_NODES]</span>
+                      <span className="text-xs text-muted-foreground ml-auto">{quizLessonNodes.length}</span>
+                    </label>
+                    {quizLessonNodes.map((n) => (
+                      <label
+                        key={n.id}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                          quizNodeIds.includes(n.id)
+                            ? "border-teal-500/60 bg-teal-500/10"
+                            : "border-white/8 hover:border-white/20 hover:bg-white/5"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={quizNodeIds.includes(n.id)}
+                          onChange={() =>
+                            setQuizNodeIds((prev) =>
+                              prev.includes(n.id)
+                                ? prev.filter((x) => x !== n.id)
+                                : [...prev, n.id]
+                            )
+                          }
+                          className="accent-primary shrink-0"
+                        />
+                        <span className="text-sm text-white/90 truncate">{n.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Multi-lesson note — no node drill-down */}
+            {quizLessonIds.length > 1 && (
+              <p className="text-xs text-muted-foreground/60 mb-4 px-1">[HINT_MULTILESSEN]</p>
+            )}
+
+            {/* Question count + suggestion */}
             <div className="mb-4">
               <label className="block text-sm text-muted-foreground mb-1.5">
                 Հարցերի քանակը (1–50)
               </label>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={quizCount}
-                onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
-                className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
-              />
+              <div className="flex items-center gap-3 flex-wrap">
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={quizCount}
+                  onChange={(e) => setQuizCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 10)))}
+                  className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
+                />
+                {quizLeafCount > 0 && (() => {
+                  const minQ = quizLeafCount;
+                  const idealQ = quizLeafCount * 3;
+                  const effectiveLeaf = quizLessonIds.length === 1 && quizNodeIds.length > 0
+                    ? quizNodeIds.length
+                    : quizLeafCount;
+                  const minQEff = effectiveLeaf;
+                  const idealQEff = Math.min(50, effectiveLeaf * 3);
+                  void minQ; void idealQ;
+                  return (
+                    <span className="text-xs text-muted-foreground/80">
+                      [LABEL_SUGGESTED_COUNT:{minQEff},{idealQEff}]
+                    </span>
+                  );
+                })()}
+              </div>
+              {/* Below-minimum warning */}
+              {quizLeafCount > 0 && (() => {
+                const effectiveLeaf = quizLessonIds.length === 1 && quizNodeIds.length > 0
+                  ? quizNodeIds.length
+                  : quizLeafCount;
+                return quizCount < effectiveLeaf ? (
+                  <p className="text-xs text-amber-400/80 mt-1.5 flex items-center gap-1">
+                    ⚠ [WARN_BELOW_MINIMUM]
+                  </p>
+                ) : null;
+              })()}
+              {/* Leaf count info */}
+              {quizLeafCount > 0 && (
+                <p className="text-xs text-muted-foreground/50 mt-1">
+                  [LABEL_LEAF_COUNT:{quizLessonIds.length === 1 && quizNodeIds.length > 0 ? quizNodeIds.length : quizLeafCount}]
+                </p>
+              )}
             </div>
 
             {/* Difficulty mode */}

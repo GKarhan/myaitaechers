@@ -57,6 +57,7 @@ interface EvidenceRow {
   responseTimeMs: number | null;
   hintUsed: boolean;
   createdAt: Date;
+  metadata: unknown;
 }
 
 /** P — Learner State and Performance Conditions (Section 24.3.1). */
@@ -191,7 +192,28 @@ function computeConfidence(events: EvidenceRow[]): number {
  * and writes the result back to that row. Fire-and-forget safe — never
  * throws; logs and returns on any failure.
  */
-export async function updateTopicScoring(topicId: number, userId: number): Promise<void> {
+/**
+ * 3-question deterministic tier scoring (Mas 3).
+ * Applied when a single quiz contributes exactly 3 evidence events for this node.
+ * Maps correct count → fixed masteryScore / confidenceScore so the Knowledge Tree
+ * displays the right block without adding new DB columns:
+ *   3/3 → mastered    (mastery=100, confidence=100)
+ *   2/3 → weak high   (mastery=67,  confidence=75  — confidence≥50 → "weak")
+ *   1/3 → weak low    (mastery=33,  confidence=55  — confidence≥50 → "weak", lower tier)
+ *   0/3 → not_started (mastery=0,   confidence=10  — confidence<50 → "in_progress" / Չγаtи)
+ */
+const THREE_Q_TIERS: Record<number, { masteryScore: number; confidenceScore: number; status: string }> = {
+  3: { masteryScore: 100, confidenceScore: 100, status: "mastered"    },
+  2: { masteryScore: 67,  confidenceScore: 75,  status: "weak"        },
+  1: { masteryScore: 33,  confidenceScore: 55,  status: "not_started" },
+  0: { masteryScore: 0,   confidenceScore: 10,  status: "not_started" },
+};
+
+export async function updateTopicScoring(
+  topicId: number,
+  userId: number,
+  options?: { quizId?: number }
+): Promise<void> {
   try {
     const events = await db
       .select({
@@ -199,6 +221,7 @@ export async function updateTopicScoring(topicId: number, userId: number): Promi
         responseTimeMs: evidenceEventsTable.responseTimeMs,
         hintUsed: evidenceEventsTable.hintUsed,
         createdAt: evidenceEventsTable.createdAt,
+        metadata: evidenceEventsTable.metadata,
       })
       .from(evidenceEventsTable)
       .where(
@@ -211,6 +234,28 @@ export async function updateTopicScoring(topicId: number, userId: number): Promi
       .orderBy(evidenceEventsTable.createdAt);
 
     if (events.length === 0) return;
+
+    // ── 3-question special-case (Mas 3) ─────────────────────────────────────
+    if (options?.quizId != null) {
+      const quizEvents = events.filter(
+        (e) => (e.metadata as Record<string, unknown>)?.quizId === options.quizId
+      );
+      if (quizEvents.length === 3) {
+        const correct = quizEvents.filter((e) => e.wasCorrect === true).length;
+        const tier = THREE_Q_TIERS[correct] ?? THREE_Q_TIERS[0];
+        await db
+          .update(knowledgeNodesTable)
+          .set({ ...tier, retentionScore: null, isProvisional: true, updatedAt: new Date() })
+          .where(eq(knowledgeNodesTable.id, topicId));
+        logger.info(
+          { topicId, userId, quizId: options.quizId, correct, ...tier },
+          "scoring engine: 3-question tier applied"
+        );
+        await scheduleReview(topicId, userId, tier.masteryScore);
+        return;
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const p = computeP(events);
     const l = computeL(events);
