@@ -129,34 +129,56 @@ router.get(
       return;
     }
 
-    // ── Fetch knowledge nodes for targetUser + subject ───────────────────────
-    // Join chain: knowledge_nodes → lesson_nodes → lessons → courses → class_students
+    // ── Fetch all lesson nodes for this student's enrolled courses ───────────
+    // Architecture: drive from lesson_nodes (not knowledge_nodes) so that nodes
+    // the student has never touched still appear as "Դеррр чи ousumnasirel"
+    // (not_started with NULL scores).
     //
-    // Three layers of filtering:
-    //  1. isNotNull(lessonNodeId)        — drop orphans whose source lesson was deleted
-    //  2. INNER JOIN lesson_nodes/lessons — drop dangling lessonNodeId references
-    //  3. INNER JOIN courses + class_students
-    //       → only nodes from lessons in a course that THIS student's class is enrolled
-    //         in for this subject (same filter the teacher's Դaseri list uses).
-    //       → prevents nodes from other teachers' courses leaking into this tree.
-    //  4. LEFT JOIN review_schedule (on topicId + userId)
-    //       → brings in dueAt so overdue mastered nodes can be flagged needs_review.
-    //         LEFT JOIN because not every node will have a review_schedule row yet.
+    // Step 1: resolve the set of courseIds this student is enrolled in for this
+    //         subject — avoids fan-out duplicates from the join below.
+    const enrolledCourses = await db
+      .select({ courseId: coursesTable.id })
+      .from(coursesTable)
+      .innerJoin(
+        classStudentsTable,
+        and(
+          eq(coursesTable.classId,           classStudentsTable.classId),
+          eq(classStudentsTable.studentId,   targetUserId),
+        )
+      )
+      .where(eq(coursesTable.subjectId, subjectId));
+
+    if (enrolledCourses.length === 0) {
+      res.json({ subjectId: subject.id, subjectName: subject.name, topics: [], recommendations: [] });
+      return;
+    }
+    const courseIds = enrolledCourses.map((c) => c.courseId);
+
+    // Step 2: all lesson_nodes for those courses, LEFT JOIN to knowledge_nodes.
+    //   • Untouched nodes → knowledge_nodes row is NULL → mastery/conf NULL
+    //   • Touched nodes   → scores from the knowledge_nodes row
+    //   • review_schedule LEFT JOIN → brings dueAt for spaced-rep (internal only)
     const topics = await db
       .select({
-        id:              knowledgeNodesTable.id,
+        lessonNodeId:    lessonNodesTable.id,
+        lessonNodeTitle: lessonNodesTable.title,
+        knId:            knowledgeNodesTable.id,
         topicName:       knowledgeNodesTable.topicName,
-        lessonNodeId:    knowledgeNodesTable.lessonNodeId,
         masteryScore:    knowledgeNodesTable.masteryScore,
         confidenceScore: knowledgeNodesTable.confidenceScore,
         status:          knowledgeNodesTable.status,
         dueAt:           reviewScheduleTable.dueAt,
       })
-      .from(knowledgeNodesTable)
-      .innerJoin(lessonNodesTable, eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id))
-      .innerJoin(lessonsTable,     eq(lessonNodesTable.lessonId, lessonsTable.id))
-      .innerJoin(coursesTable,     eq(lessonsTable.courseId, coursesTable.id))
-      .innerJoin(classStudentsTable, eq(coursesTable.classId, classStudentsTable.classId))
+      .from(lessonNodesTable)
+      .innerJoin(lessonsTable, eq(lessonNodesTable.lessonId, lessonsTable.id))
+      .leftJoin(
+        knowledgeNodesTable,
+        and(
+          eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id),
+          eq(knowledgeNodesTable.userId,       targetUserId),
+          eq(knowledgeNodesTable.subjectId,    subjectId),
+        )
+      )
       .leftJoin(
         reviewScheduleTable,
         and(
@@ -164,30 +186,29 @@ router.get(
           eq(reviewScheduleTable.userId,  targetUserId),
         )
       )
-      .where(
-        and(
-          eq(knowledgeNodesTable.subjectId, subjectId),
-          eq(knowledgeNodesTable.userId,    targetUserId),
-          isNotNull(knowledgeNodesTable.lessonNodeId),
-          eq(classStudentsTable.studentId,  targetUserId),
-          eq(coursesTable.subjectId,        subjectId),
-        )
-      )
-      .orderBy(knowledgeNodesTable.id);
+      .where(inArray(lessonsTable.courseId, courseIds))
+      .orderBy(lessonNodesTable.id);
 
-    const mappedTopics = topics.map((t) => ({
-      id:            t.id,
-      topicName:     t.topicName,
-      lessonNodeId:  t.lessonNodeId ?? null,
-      score:         t.masteryScore ?? 0,
-      confidenceScore: t.confidenceScore ?? null,
-      status:        t.status,
-      masteryLevel:  getMasteryLevel(t.masteryScore, t.confidenceScore, t.dueAt ?? null),
-    }));
+    const mappedTopics = topics.map((t) => {
+      const rawLevel = getMasteryLevel(t.masteryScore, t.confidenceScore, t.dueAt ?? null);
+      // needs_review folds into mastered — Knowledge Tree shows only 4 visible blocks:
+      //   mastered (Գиtи) | weak (Мasnak'i giti) | in_progress (Чгиtи) | not_started (Дерр чи)
+      const masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" =
+        rawLevel === "needs_review" ? "mastered" : rawLevel;
+      return {
+        id:              t.knId ?? t.lessonNodeId,
+        topicName:       t.topicName ?? t.lessonNodeTitle,
+        lessonNodeId:    t.lessonNodeId,
+        score:           t.masteryScore ?? 0,
+        confidenceScore: t.confidenceScore ?? null,
+        status:          t.status ?? "not_started",
+        masteryLevel,
+      };
+    });
 
     // ── Build AI recommendations ─────────────────────────────────────────────
     const recommendations: Array<{
-      type: "start" | "review" | "repeat" | "needs_review";
+      type: "start" | "review" | "repeat";
       message: string;
       topicName: string;
     }> = [];
@@ -196,15 +217,6 @@ router.get(
     const inProgress  = mappedTopics.filter((t) => t.masteryLevel === "in_progress");
     const weak        = mappedTopics.filter((t) => t.masteryLevel === "weak");
     const mastered    = mappedTopics.filter((t) => t.masteryLevel === "mastered");
-    const needsReview = mappedTopics.filter((t) => t.masteryLevel === "needs_review");
-
-    if (needsReview.length > 0) {
-      recommendations.push({
-        type:      "needs_review",
-        message:   `«${needsReview[0].topicName}» կարիք ունի կրկնության`,
-        topicName: needsReview[0].topicName,
-      });
-    }
 
     if (notStarted.length > 0) {
       recommendations.push({
@@ -214,13 +226,13 @@ router.get(
       });
     }
 
-    // in_progress nodes are treated like weak for the "review" recommendation
-    const toReview = weak.length > 0 ? weak : inProgress;
+    // Weakest node among weak or in_progress (Чгиtи / Мasnak'i giti) → suggest review
+    const toReview = [...weak, ...inProgress];
     if (toReview.length > 0) {
       const weakest = toReview.reduce((a, b) => (a.score < b.score ? a : b));
       recommendations.push({
         type:      "review",
-        message:   `Կրկնեք «${weakest.topicName}» թեման — գնահատականը ${weakest.score}%`,
+        message:   `Կрկнець «${weakest.topicName}» թеман — գнахатаканը ${weakest.score}%`,
         topicName: weakest.topicName,
       });
     }
@@ -228,7 +240,7 @@ router.get(
     if (mastered.length > 0) {
       recommendations.push({
         type:      "repeat",
-        message:   `Կրկնեք «${mastered[0].topicName}» — ամրապնդեք գիտելիքը`,
+        message:   `Կрկнець «${mastered[0].topicName}» — амрапндець гителиkы`,
         topicName: mastered[0].topicName,
       });
     }

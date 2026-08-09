@@ -1,0 +1,516 @@
+Հիմա անցնում ենք **Knowledge Tree-ի կառուցվածքի և Test-ից հետո դրա թարմացման logic-ի փոփոխությանը**։
+
+Quiz Creation-ի նախորդ task-ը ընդունված է և փակված է։ Այս task-ը վերաբերում է միայն **Knowledge Tree-ի 4-state structure-ին, Test-ից հետո Node/MicroNode classification-ին և Knowledge Tree refresh-ին**։
+
+---
+
+# 1. Knowledge Tree — պետք է լինի ուղիղ 4 block
+
+Knowledge Tree-ում սովորողի գիտելիքը պետք է բաժանված լինի միայն այս 4 visible block-ի.
+
+1. **Գիտի**
+2. **Չգիտի**
+3. **Դեռ չի ուսումնասիրել**
+4. **Մասնակի գիտի**
+
+**5-րդ visible block չպետք է լինի։**
+
+Եթե ներկայիս implementation-ում կա 5-րդ block, duplicate block կամ այլ անվանումով նույն իմաստի block, այն պետք է բերվի այս 4-state model-ին։
+
+Կարևոր է՝ ներքին/backend status կարող է մնալ, եթե այն անհրաժեշտ է այլ functionality-ի համար, բայց **Knowledge Tree-ի visible classification-ը պետք է ունենա միայն այս 4 block-ը**։
+
+---
+
+# 2. Այս 4 block-երը միայն UI category չեն
+
+Սա շատ կարևոր architectural requirement է։
+
+Այս 4 block-երը հանդիսանում են սովորողի հետագա **personalized learning / review flow-ի հիմքը**։
+
+Հետագայում նախատեսվում է.
+
+```text id="v1p8s4"
+Գիտի
+→ Կրկնություն
+
+Մասնակի գիտի
+→ Սովորել՝ ըստ իմացած մակարդակի / confidence-ի
+
+Չգիտի
+→ Լիարժեք սովորել
+
+Դեռ չի ուսումնասիրել
+→ Ուսումնասիրել / սովորել զրոյից
+```
+
+Օրինակ՝
+
+```text id="8y7s2d"
+3/3
+→ Գիտի
+→ հետագայում՝ Կրկնություն
+
+2/3
+→ Մասնակի գիտի
+→ հետագայում՝ ավելի թեթև/կրճատված ուսուցում
+
+1/3
+→ Մասնակի գիտի
+→ հետագայում՝ ավելի խոր ուսուցում
+
+0/3
+→ Չգիտի
+→ հետագայում՝ լիարժեք ուսուցում
+
+No evidence
+→ Դեռ չի ուսումնասիրել
+→ հետագայում՝ սովորել զրոյից
+```
+
+**Շատ կարևոր.**
+
+Այս task-ում մենք **ՉԵՆՔ իրականացնում այս հետագա գործողությունների logic-ը**։
+
+Այս փուլում միայն պետք է ճիշտ կառուցել և պահպանել 4 knowledge state-երը և այն granular evidence-ը, որն անհրաժեշտ կլինի հաջորդ փուլում այդ գործողությունները որոշելու համար։
+
+Այսինքն՝ հիմա կառուցում ենք **state/classification layer-ը**, իսկ հետագայում առանձին task-ով կսահմանենք՝ յուրաքանչյուր state-ի համար կոնկրետ ինչ ուսուցման/review սցենար է կատարվում։
+
+---
+
+# 3. «Դեռ չի ուսումնասիրել» — նախնական state
+
+**Դեռ չի ուսումնասիրել** նշանակում է.
+
+Տվյալ սովորողի համար տվյալ Node/MicroNode-ի վերաբերյալ դեռ չկա համապատասխան learning/test evidence։
+
+Եթե `knowledge_nodes` row դեռ գոյություն չունի, դա ինքն իրենով **Չգիտի չէ**։
+
+Այդ content-ը պետք է հայտնվի.
+
+**Դեռ չի ուսումնասիրել**
+
+Օրինակ.
+
+```text id="qv1k8r"
+Lesson A
+ ├─ Node 1 → Գիտի
+ ├─ Node 2 → Մասնակի գիտի
+ ├─ Node 3 → Չգիտի
+ └─ Node 4 → Դեռ չի ուսումնասիրել
+```
+
+Node 4-ը չպետք է հայտնվի «Չգիտի» block-ում միայն այն պատճառով, որ սովորողը դեռ չի հասել դրան։
+
+Շատ կարևոր distinction.
+
+* **Դեռ չի ուսումնասիրել** = դեռ չենք գնահատել/չկա համապատասխան evidence
+* **Չգիտի** = արդեն գնահատվել է, և արդյունքը ցույց է տվել 0 ճիշտ
+* **Մասնակի գիտի** = գնահատվել է, բայց ոչ բոլոր հարցերն են ճիշտ
+* **Գիտի** = գնահատվել է և բոլոր հարցերն են ճիշտ
+
+---
+
+# 4. Test-ից հետո Node/MicroNode classification
+
+Test/Quiz-ից հետո Knowledge Tree-ն պետք է թարմացվի տվյալ Quiz-ի իրական evidence-ի հիման վրա։
+
+Եթե տվյալ Node-ի համար Quiz-ում եղել է `N` հարց, ապա արդյունքը հաշվիր տվյալ Node-ին վերաբերող հարցերի հիման վրա։
+
+## Բոլոր հարցերը ճիշտ
+
+Օրինակ.
+
+```text id="0gdyz9"
+1/1
+2/2
+3/3
+5/5
+```
+
+եթե
+
+`correctAnswers === questionCount`
+
+→ **Գիտի**
+
+---
+
+## Ոչ մի հարց ճիշտ չէ
+
+Օրինակ.
+
+```text id="w1z6qf"
+0/1
+0/2
+0/3
+0/5
+```
+
+→ **Չգիտի**
+
+Սա վերաբերում է արդեն **գնահատված/tested** Node-ին։
+
+Չի կարելի 0 արդյունքը խառնել untouched/no-evidence state-ի հետ։
+
+---
+
+## Որոշ հարցեր ճիշտ են, բայց ոչ բոլորը
+
+Օրինակ.
+
+```text id="r6f1zn"
+1/2
+1/3
+2/3
+2/5
+4/5
+```
+
+→ **Մասնակի գիտի**
+
+---
+
+# 5. «Մասնակի գիտի» — granular distinction-ը պարտադիր պահել
+
+UI-ում պետք է լինի միայն մեկ block.
+
+**Մասնակի գիտի**
+
+Բայց դրա ներսում պետք է պահպանվի granular տարբերությունը, որովհետև դա անհրաժեշտ է հետագա personalized learning flow-ի համար։
+
+Առնվազն 3-question case-ում.
+
+```text id="x7w8p2"
+1/3
+→ Մասնակի գիտի
+→ lower confidence / higher learning need
+
+2/3
+→ Մասնակի գիտի
+→ higher confidence / lower learning need
+```
+
+Այս երկու վիճակները **չպետք է վերածվեն նույն underlying score-ի**։
+
+Օգտագործիր արդեն գոյություն ունեցող `confidenceScore` և/կամ համապատասխան existing mastery data-ն։
+
+**Նոր DB column մի ստեղծիր առանց ինձ նախապես report անելու։**
+
+---
+
+# 6. Node + MicroNode hierarchy
+
+Պահպանիր ներկայիս Knowledge Tree-ի hierarchy-ն։
+
+Եթե Node-ը ունի MicroNode-եր, evidence/scoring-ը պետք է կապվի համապատասխան granular level-ին։
+
+Չստեղծես նոր parallel hierarchy։
+
+Օգտագործիր արդեն գոյություն ունեցող architecture-ը, այդ թվում՝ եթե կիրառելի է.
+
+* `knowledge_nodes`
+* `lesson_nodes`
+* lesson/topic relationships
+* `evidence_events`
+* quiz answers
+* quiz attempts
+
+Նախ ուսումնասիրիր իրական relationship-ը և փոխիր միայն անհրաժեշտ logic-ը։
+
+---
+
+# 7. Knowledge Tree-ն պետք է թարմացվի ցանկացած Test-ից հետո
+
+Սա պարտադիր է։
+
+**Յուրաքանչյուր Quiz/Test attempt-ից հետո Knowledge Tree-ն պետք է ունենա թարմ state։**
+
+Սա չպետք է աշխատի միայն 3-question quiz-ի դեպքում։
+
+Օրինակ՝ եթե Test-ը վերաբերում է 4 Node-ի, Test-ի ավարտից հետո այդ 4 Node-ի state-երը պետք է վերահաշվարկվեն և Knowledge Tree-ն պետք է ցույց տա նոր վիճակը։
+
+Ցանկացած Test-ից հետո flow-ը պետք է conceptually լինի.
+
+```text id="j9n3qk"
+Test completed
+      ↓
+Evidence recorded
+      ↓
+Affected Nodes rescored
+      ↓
+Knowledge Tree states updated
+      ↓
+Knowledge Tree shows fresh state
+```
+
+---
+
+# 8. IMPORTANT — «Դեռ չի ուսումնասիրել» և «Չգիտի» երբեք չխառնել
+
+Սա acceptance-critical requirement է։
+
+Օրինակ.
+
+### Սովորողը դեռ չի ուսումնասիրել Node 5-ը
+
+→
+
+**Դեռ չի ուսումնասիրել**
+
+### Սովորողը հետո Test է հանձնել Node 5-ի վերաբերյալ և ստացել 0/3
+
+→
+
+**Չգիտի**
+
+Այսինքն՝ Test-ի արդյունքում 0 միավորը պետք է դառնա **Չգիտի**, բայց absence of evidence-ը պետք է մնա **Դեռ չի ուսումնասիրել**։
+
+---
+
+# 9. Existing scoring logic-ը չկոտրել
+
+Նախ ուսումնասիրած scoring chain-ը պետք է պահպանվի։
+
+Conceptual chain-ը.
+
+```text id="e0p2lm"
+Quiz attempt
+→ quiz answers
+→ evidence events
+→ node/topic scoring
+→ Knowledge Tree state
+→ Knowledge Tree refresh
+```
+
+Մի վերագրիր ամբողջ scoring system-ը, եթե դրա կարիքը չկա։
+
+Օգտագործիր արդեն իրականացված 3-question scoring-ը.
+
+```text id="7y2m6v"
+3/3 → mastery 100 → Գիտի
+
+2/3 → mastery 67 + higher confidence → Մասնակի գիտի
+
+1/3 → mastery 33 + lower confidence → Մասնակի գիտի
+
+0/3 → mastery 0 → Չգիտի
+```
+
+3-question case-ի logic-ը մի փոխիր, եթե audit-ը չի ցույց տալիս, որ դրա համար անհրաժեշտություն կա։
+
+---
+
+# 10. `needs_review` — 5-րդ visible block չստեղծել
+
+Եթե համակարգում գոյություն ունի ներքին `needs_review` state՝ spaced repetition-ի կամ այլ internal logic-ի համար, այն կարող է մնալ backend-ում, եթե անհրաժեշտ է։
+
+Բայց Knowledge Tree-ում այն **չպետք է դառնա 5-րդ visible block**։
+
+Knowledge Tree-ի visible classification-ում.
+
+```text id="s8y4jk"
+needs_review
+      ↓
+Գիտի
+```
+
+Այսինքն՝ `needs_review`-ը UI-ում պետք է ներկայացվի նույն **Գիտի** block-ում։
+
+Հետագա repetition logic-ը մենք առանձին task-ով կսահմանենք։
+
+---
+
+# 11. 4 visible blocks-ի վերջնական model
+
+Վերջնական Knowledge Tree UI-ում պետք է լինեն միայն.
+
+```text id="v0t8ae"
+1. Գիտի
+2. Չգիտի
+3. Մասնակի գիտի
+4. Դեռ չի ուսումնասիրել
+```
+
+Ոչ մի 5-րդ visible block։
+
+---
+
+# 12. Knowledge Tree refresh — scope restriction
+
+Student-side quiz-taking flow-ը **չվերափոխել**։
+
+Քո audit-ում նշել ես `quiz-take.tsx`-ում Knowledge Tree query invalidate անելու տարբերակը։
+
+**Այս task-ում դա ինքնուրույն մի արա։**
+
+Նախ փորձիր ապահովել fresh Knowledge Tree data-ը Knowledge Tree/data layer-ի կողմից՝ օգտագործելով արդեն գոյություն ունեցող query/refetch behavior-ը։
+
+Եթե պարզվի, որ Test-ից անմիջապես հետո fresh Knowledge Tree state ապահովելու համար **անպայման** պետք է փոփոխել `quiz-take.tsx` կամ student-side quiz-taking flow-ի այլ ֆայլ, կանգ առ և report արա ինձ.
+
+Պետք է ցույց տաս.
+
+* ինչու է այդ փոփոխությունը պարտադիր,
+* ինչ կոնկրետ փոփոխություն է պետք,
+* ինչ այլ տարբերակներ փորձեցիր։
+
+Առանց իմ հաստատման student-side quiz-taking flow-ը մի փոխիր։
+
+---
+
+# 13. DB/schema restriction
+
+Նոր DB column կամ migration **չստեղծել**։
+
+Եթե implementation-ի ընթացքում պարզվի, որ 4-state model-ը հնարավոր չէ ճիշտ իրականացնել առանց նոր schema field-ի, կանգ առ և report արա.
+
+Պետք է ներկայացնես.
+
+* ինչ field է պետք,
+* ինչ տվյալ է պահելու,
+* ինչու existing fields-ը բավարար չեն,
+* ինչ այլ տարբերակներ կան։
+
+Իմ հաստատումից առաջ migration մի կատարիր։
+
+---
+
+# 14. Implementation scope
+
+Այս task-ում չփոփոխես.
+
+* Quiz Creation UI
+* quiz generation logic
+* manual mapping
+* auto mapping
+* `chat.ts`
+* teaching-session logic
+* Knowledge Base mapping logic
+* student-side quiz-taking flow/behavior
+* որևէ unrelated functionality
+
+Փոխիր միայն այն code-ը, որն անհրաժեշտ է.
+
+**Knowledge Tree 4-state classification + scoring determination + untouched-node visibility + post-test Knowledge Tree refresh**
+
+համար։
+
+---
+
+# 15. Armenian UI strings
+
+Հայերեն UI text-ը դեռ մի հորինի և մի փոխարինիր։
+
+Օգտագործիր placeholders մինչև ես exact Armenian strings-ը տամ։
+
+Եթե արդեն կան placeholder patterns, պահպանիր նույն pattern-ը։
+
+---
+
+# 16. Verification — պարտադիր
+
+Implementation-ից հետո տուր ամբողջական verification report։
+
+Պետք է ապացուցես.
+
+### A. 4 visible blocks
+
+Knowledge Tree-ում իրականում երևում են միայն.
+
+* Գիտի
+* Չգիտի
+* Մասնակի գիտի
+* Դեռ չի ուսումնասիրել
+
+### B. Untouched Node
+
+Quiz/evidence չունեցող Node/MicroNode-ը հայտնվում է.
+
+**Դեռ չի ուսումնասիրել**
+
+### C. 3-question cases
+
+Իրական DB evidence-ով ցույց տուր.
+
+```text id="c4d8s1"
+3/3 → Գիտի
+
+2/3 → Մասնակի գիտի + higher confidence
+
+1/3 → Մասնակի գիտի + lower confidence
+
+0/3 → Չգիտի
+```
+
+### D. Non-3-question case
+
+Իրական evidence-ով ցույց տուր, որ օրինակ.
+
+```text id="q9w3n7"
+0/5 → Չգիտի
+```
+
+և չի ընկնում «Մասնակի գիտի»-ում։
+
+### E. Untouched ≠ Failed
+
+Ցույց տուր, որ.
+
+```text id="k3x6pm"
+No evidence → Դեռ չի ուսումնասիրել
+
+0/N tested → Չգիտի
+```
+
+### F. `needs_review`
+
+Ցույց տուր, որ այն չի ստեղծում 5-րդ visible block և Knowledge Tree-ում ընկնում է.
+
+**Գիտի**
+
+### G. Post-test refresh
+
+Ցույց տուր իրական flow/evidence, որ Test-ից հետո Knowledge Tree-ի state-ը թարմանում է։
+
+### H. 1/3 vs 2/3 granular data
+
+Ցույց տուր DB-ում, որ երկու վիճակները պահպանվում են տարբեր mastery/confidence արժեքներով, նույնիսկ եթե երկուսն էլ նույն **Մասնակի գիտի** block-ում են։
+
+### I. Git diff
+
+Տուր իրական modified-file list և `git diff --name-only` կամ համարժեք ապացույց։
+
+Պետք է հաստատվի, որ scope-ից դուրս ֆայլերը չեն փոփոխվել։
+
+---
+
+# 17. Վերջնական կարևոր սահման
+
+Այս task-ում **միայն կառուցիր ճիշտ 4-state Knowledge Tree foundation-ը**։
+
+Մենք ՀԻՄԱ ՉԵՆՔ իրականացնում հետևյալ գործողությունները.
+
+```text id="u2a5qs"
+Գիտի → կոնկրետ ինչ repetition անել
+Մասնակի գիտի → կոնկրետ ինչ teaching անել ըստ %
+Չգիտի → կոնկրետ ինչ full teaching sequence անել
+Դեռ չի ուսումնասիրել → կոնկրետ ինչ first-learning sequence անել
+```
+
+Դրանք լինելու են **հաջորդ task-ի personalized learning/review scenario-ն**։
+
+Այս task-ի նպատակն է միայն ապահովել, որ համակարգը կարողանա վստահորեն ասել.
+
+```text id="c6n4yh"
+Այս Node-ը հիմա
+→ Գիտի
+կամ
+→ Մասնակի գիտի
+կամ
+→ Չգիտի
+կամ
+→ Դեռ չի ուսումնասիրել
+```
+
+և պահպանել այն granular evidence-ը, որի հիման վրա հաջորդ փուլում կընտրվի համապատասխան ուսուցման/review գործողությունը։
+
+**Սկսիր implementation-ը միայն այս ամբողջ specification-ի համաձայն։**

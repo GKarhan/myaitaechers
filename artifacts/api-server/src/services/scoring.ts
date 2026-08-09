@@ -263,7 +263,32 @@ export async function updateTopicScoring(
     const k = computeK(p, l, r); // expected null until review_schedule exists — see file header
 
     const masteryScore = Math.round(computeProvisionalMastery(events));
-    const confidenceScore = Math.round(computeConfidence(events));
+    let confidenceScore = Math.round(computeConfidence(events));
+
+    // ── 0/N all-wrong fix ────────────────────────────────────────────────────
+    // computeConfidence ignores correctness (it measures hint-rate + response
+    // steadiness), so a 0/N quiz produces confidence≈75 → getMasteryLevel
+    // returns "weak" (Маsnаk'i giti) instead of "in_progress" (Чgiti).
+    //
+    // Fix: when the CURRENT quiz's events are all wrong, clamp confidence to 10
+    // (below the <50 threshold) so the block correctly becomes in_progress.
+    // We filter by quizId to avoid false-positives from older correct events on
+    // the same node. Without a quizId (chat-based scoring), fall back to
+    // checking the full cumulative event set.
+    {
+      const eventsToCheck = options?.quizId != null
+        ? events.filter(
+            (e) =>
+              (e.metadata as Record<string, unknown>)?.quizId === options.quizId &&
+              e.wasCorrect !== null
+          )
+        : events.filter((e) => e.wasCorrect !== null);
+
+      if (eventsToCheck.length > 0 && eventsToCheck.every((e) => e.wasCorrect === false)) {
+        confidenceScore = 10;
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const status =
       masteryScore >= 80 ? "mastered" : masteryScore >= 50 ? "weak" : "not_started";

@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
 
+// 4 visible blocks: mastered=Գиtи | weak=Мasnak'i | in_progress=Чгиtи | not_started=Дерр чи
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
 
 export default function KnowledgeTree() {
@@ -34,6 +35,8 @@ export default function KnowledgeTree() {
     query: {
       queryKey: getGetKnowledgeTreeQueryKey(subjectId),
       enabled: !!token && !isNaN(subjectId) && !isTeacherView,
+      staleTime: 0,        // always refetch on mount — ensures fresh state after any quiz
+      refetchOnMount: true,
     },
   });
 
@@ -55,6 +58,8 @@ export default function KnowledgeTree() {
       return resp.json();
     },
     enabled: !!token && !isNaN(subjectId) && isTeacherView,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   const treeData  = isTeacherView ? teacherTreeData  : ownTreeData;
@@ -117,28 +122,28 @@ export default function KnowledgeTree() {
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "mastered" ? "bg-secondary/20 text-secondary border-secondary/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-secondary"></span>
-            Յուրացված
+            [BLOCK_GITI]
           </button>
           <button
             onClick={() => setActiveFilter("weak")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "weak" ? "bg-accent/20 text-accent border-accent/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-accent"></span>
-            Թույլ
+            [BLOCK_MASNAKI_GITI]
           </button>
           <button
             onClick={() => setActiveFilter("in_progress")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "in_progress" ? "bg-primary/20 text-primary border-primary/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-primary"></span>
-            Ընթացքի մեջ
+            [BLOCK_CHGITI]
           </button>
           <button
             onClick={() => setActiveFilter("not_started")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "not_started" ? "bg-destructive/20 text-destructive border-destructive/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
           >
             <span className="w-2 h-2 rounded-full bg-destructive"></span>
-            Չսկսված
+            [BLOCK_DERR_CHI]
           </button>
         </div>
 
@@ -157,23 +162,25 @@ export default function KnowledgeTree() {
             let dotColorClass    = "";
 
             if (isMastered) {
+              // Includes needs_review (folded into mastered — no 5th block)
               borderColorClass = "border-l-secondary";
-              badgeText        = "Յուրացված";
+              badgeText        = "[BLOCK_GITI]";
               badgeColorClass  = "bg-secondary/10 text-secondary border-secondary/20";
               dotColorClass    = "bg-secondary";
             } else if (isWeak) {
               borderColorClass = "border-l-accent";
-              badgeText        = "Թույլ";
+              badgeText        = "[BLOCK_MASNAKI_GITI]";
               badgeColorClass  = "bg-accent/10 text-accent border-accent/20";
               dotColorClass    = "bg-accent";
             } else if (isInProgress) {
               borderColorClass = "border-l-primary";
-              badgeText        = "Ընթացքի մեջ";
+              badgeText        = "[BLOCK_CHGITI]";
               badgeColorClass  = "bg-primary/10 text-primary border-primary/20";
               dotColorClass    = "bg-primary";
             } else {
+              // not_started = no quiz evidence yet → «Дерр чи ousumnasirel»
               borderColorClass = "border-l-destructive";
-              badgeText        = "Չսկսված";
+              badgeText        = "[BLOCK_DERR_CHI]";
               badgeColorClass  = "bg-destructive/10 text-destructive border-destructive/20";
               dotColorClass    = "bg-destructive";
             }
