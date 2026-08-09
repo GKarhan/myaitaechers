@@ -1,0 +1,456 @@
+# TASK — POST-QUIZ ANALYSIS + PERSONALIZED LEARNING — PART 0 AUDIT ONLY
+
+Մենք սկսում ենք Test/Quiz համակարգի հաջորդ մեծ փուլը։
+
+Նպատակը հետագայում Test-ից հետո համակարգը դարձնելն է ոչ միայն գնահատող, այլ՝
+
+**Test → Evidence → Knowledge State → Personalization → Target Node/MicroNode → AI Teacher → Learning → New Evidence → Knowledge Tree**
+
+Սակայն **ՀԻՄԱ IMPLEMENTATION ՉԱՆԵՍ**։
+
+Սա միայն **PART 0 — AUDIT / DISCOVERY** փուլն է։
+
+Ոչ մի ֆայլ մի փոփոխիր, մի ստեղծիր, մի refactor արա և մի commit արա։
+
+---
+
+# ՄԵՐ ՎԵՐՋՆԱԿԱՆ ՆՊԱՏԱԿԸ
+
+Test-ից հետո սովորողը պետք է ստանա.
+
+### 1. Question-level feedback
+
+Յուրաքանչյուր հարցի համար՝
+
+* հարցը
+* սովորողի ընտրած պատասխանը
+* ճիշտ պատասխանը
+* ճիշտ/սխալ արդյունքը
+* եթե ճիշտ է՝ կարճ բացատրություն՝ **ինչու է ճիշտ պատասխանը ճիշտ**
+* եթե սխալ է՝
+
+  * ինչու է սովորողի ընտրած պատասխանը սխալ
+  * ինչու է ճիշտ պատասխանը ճիշտ
+
+Այս feedback-ը պետք է լինի ուսուցողական, ոչ միայն «Correct/Incorrect»։
+
+---
+
+### 2. Individual student analysis
+
+Test-ից հետո համակարգը պետք է կարողանա հասկանալ՝ տվյալ սովորողի մոտ.
+
+* ինչն է լավ յուրացված
+* ինչն է մասնակի յուրացված
+* ինչը չգիտի
+* ինչը դեռ չի ուսումնասիրել
+* կոնկրետ որ Node/MicroNode-ներում կա բաց
+
+Knowledge Tree-ի 4 վիճակներն են՝
+
+1. **Գիտի**
+2. **Մասնակի գիտի**
+3. **Չգիտի**
+4. **Դեռ չի ուսումնասիրել**
+
+Մասնակի գիտի վիճակը հետագայում պետք է պահպանի granular տարբերությունը, օրինակ՝
+
+* 1/3 → ավելի մեծ բաց
+* 2/3 → ավելի փոքր բաց
+
+Նոր DB column ինքնուրույն չավելացնել։
+
+---
+
+### 3. Class-wide analysis
+
+Ամբողջ դասարանի Test պատասխաններից համակարգը հետագայում պետք է կարողանա հայտնաբերել ընդհանուր սխալներ։
+
+Եթե նույն գիտելիքի/հարցի/Node-ի հետ կապված նույն սխալը կատարել է դասարանի **50% կամ ավելի** մասը, դա պետք է համարվի class-wide issue։
+
+Ուսուցչի համար հետագայում պետք է հնարավոր լինի ցույց տալ.
+
+* որ Node/MicroNode-ում կա ընդհանուր դժվարություն
+* քանի սովորող է սխալվել
+* տոկոսը
+* ինչ սխալ pattern է կրկնվում
+
+Բայց այս փուլում ոչինչ մի implement արա։
+
+---
+
+### 4. Individual recommendations
+
+Test-ից հետո տվյալ սովորողի համար հետագայում պետք է հնարավոր լինի ստեղծել recommendation՝
+
+**Գիտի**
+→ կրկնել
+
+**Մասնակի գիտի**
+→ նպատակային սովորել՝ ըստ բացի աստիճանի
+
+**Չգիտի**
+→ լիարժեք սովորել
+
+**Դեռ չի ուսումնասիրել**
+→ սկզբնական սովորել
+
+Կարևոր է՝ սա ապագայում պետք է դառնա **Personalization Engine-ի input**, ոչ թե պարզապես static recommendation text։
+
+---
+
+# PART 0 — ԻՆՉ ՊԵՏՔ Է ՈՒՍՈՒՄՆԱՍԻՐԵՍ
+
+## 1. Current Quiz Result UI
+
+Գտիր և ցույց տուր.
+
+* Test Result-ի frontend file-ը
+* component-ը
+* route-ը
+* տվյալները որտեղից են գալիս
+* ինչ է հիմա ցուցադրվում Test ավարտելուց հետո
+
+Տուր կոնկրետ file paths + relevant code հատվածներ։
+
+---
+
+## 2. Current Question-Level Result Data
+
+Ուսումնասիրիր՝ ինչպես են պահվում.
+
+* quiz questions
+* answer options
+* correct answer
+* student's selected answer
+* correctness
+* question metadata
+
+Հստակ ցույց տուր DB schema/table-ները և relations-ը։
+
+Պետք է պարզ լինի՝ կարող ենք արդյոք յուրաքանչյուր հարցի համար հետո ցույց տալ.
+
+**student answer + correct answer + explanation**
+
+առանց նոր schema-ի, թե ոչ։
+
+Եթե explanation-ի համար նոր field/schema է անհրաժեշտ՝ միայն report արա։ Մի ավելացրու։
+
+---
+
+## 3. Question → Node/MicroNode Mapping
+
+Սա ԿՐԻՏԻԿԱԿԱՆ է։
+
+Հստակ ուսումնասիրիր.
+
+**Quiz Question → Exercise/Question → Node → MicroNode**
+
+կապը։
+
+Պարզիր՝
+
+* question-ը ինչ ID ունի
+* exercise/question-ը որ Node-ին է կապված
+* MicroNode-ը ինչպես է ներկայացված
+* մեկ հարցը կարող է որքա՞ն Node/MicroNode-ին պատկանել
+* Test-ում տվյալ Node/MicroNode-ի համար քանի հարց է եղել
+
+Տուր իրական schema + code chain։
+
+---
+
+## 4. Quiz → Evidence → Knowledge Tree Chain
+
+Ամբողջ chain-ը ցույց տուր՝
+
+```text
+Quiz Submit
+↓
+Quiz Answer
+↓
+Evidence Event
+↓
+Node/MicroNode
+↓
+Scoring
+↓
+knowledge_nodes
+↓
+Knowledge Tree
+```
+
+Հստակ նշիր՝ որ ֆայլում է յուրաքանչյուր քայլը։
+
+---
+
+## 5. Current Knowledge State
+
+Հաստատիր ներկայիս logic-ը.
+
+### Գիտի
+
+### Մասնակի գիտի
+
+### Չգիտի
+
+### Դեռ չի ուսումնասիրել
+
+Պարզիր՝ ներկայում Test-ից հետո ինչպես է որոշվում յուրաքանչյուր state-ը։
+
+Հատկապես ուսումնասիրիր.
+
+* masteryScore
+* confidenceScore
+* status
+* masteryLevel
+* `getMasteryLevel()`
+* 3-question tier logic
+* fallback scoring
+
+Պետք է ցույց տաս՝ 1/3 և 2/3 տարբերությունը որտեղ է պահպանվում։
+
+---
+
+# 6. IMPORTANT — Question Explanation
+
+Ուսումնասիրիր՝ ներկայում quiz question-ի համար կա՞ որևէ field/data, որը կարող է օգտագործվել որպես explanation։
+
+Օրինակ՝
+
+* explanation
+* rationale
+* solution
+* feedback
+* correct-answer explanation
+* misconception
+* source explanation
+
+Ստուգիր և report արա՝
+
+### A.
+
+Արդեն կա և կարող ենք օգտագործել։
+
+### B.
+
+Կա այլ տվյալների մեջ և կարող ենք derive անել։
+
+### C.
+
+Չկա և պետք է նոր տվյալային դաշտ/գեներացիոն logic։
+
+**Մի ավելացրու ոչինչ։**
+
+---
+
+# 7. Individual Error Analysis
+
+Ուսումնասիրիր՝ տվյալ Test-ից հետո ինչ տվյալներ ունենք սովորողի սխալների մասին։
+
+Պետք է կարողանաս պատասխանել.
+
+* Կարո՞ղ ենք իմանալ՝ որ հարցն է սխալ։
+* Կարո՞ղ ենք իմանալ՝ ինչ պատասխան է ընտրել։
+* Կարո՞ղ ենք իմանալ՝ ճիշտ պատասխանը որն էր։
+* Կարո՞ղ ենք կապել սխալը Node/MicroNode-ին։
+* Կարո՞ղ ենք հաշվել Node-ի correct/incorrect ratio-ն։
+* Կարո՞ղ ենք տարբերել 1/3 և 2/3։
+* Կարո՞ղ ենք որոշել՝ ինչ knowledge gap ունի երեխան։
+
+Մի implement արա։
+
+---
+
+# 8. Class-Wide Error Analysis
+
+Ուսումնասիրիր՝ ներկայիս DB/data layer-ը թույլ տալի՞ս է մեկ Test-ի համար վերցնել ամբողջ դասարանի բոլոր պատասխանները։
+
+Պարզիր.
+
+* assignment structure
+* class/student relationship
+* quiz attempts
+* quiz answers
+* student IDs
+* question IDs
+* Node/MicroNode mapping
+
+Հետո պարզիր՝ հնարավոր է արդյոք հաշվել.
+
+```text
+students attempted
+students incorrect
+incorrect percentage
+same wrong option percentage
+Node/MicroNode error percentage
+```
+
+Հատկապես ստուգիր՝ կարող ենք արդյոք վստահորեն որոշել **50%+ class-wide error**։
+
+Եթե ոչ՝ բացատրիր կոնկրետ ինչ տվյալ է պակասում։
+
+---
+
+# 9. Current Teacher View
+
+Պարզիր՝ ուսուցիչը որտեղ է հիմա տեսնում Test-ի արդյունքները։
+
+Գտիր teacher-side quiz result/analytics UI-ն։
+
+Հետագայում այստեղ պետք է հնարավոր լինի ունենալ.
+
+### Class Analysis
+
+և
+
+### Recommendations
+
+Բայց հիմա միայն audit։
+
+---
+
+# 10. Current Student View
+
+Պարզիր՝ սովորողը որտեղ է տեսնում իր Test Result-ը։
+
+Հետագայում այստեղ պետք է ավելանան.
+
+### Question Feedback
+
+### My Difficulties
+
+### My Recommendations
+
+Բայց **student-side quiz-taking flow-ը հիմա չփոխես**։
+
+Այս audit-ը վերաբերում է Post-Quiz Result/Analysis-ին։
+
+---
+
+# 11. Knowledge Tree Refresh
+
+Ուսումնասիրիր՝ Test submit-ից հետո երբ և ինչպես է Knowledge Tree-ն թարմացվում։
+
+Պետք է հստակ պատասխանես.
+
+* scoring-ը async է, թե sync
+* frontend-ը invalidate/refetch անում է, թե ոչ
+* երբ սովորողը մտնում է Knowledge Tree՝ տվյալները fresh են, թե կարող են stale լինել
+
+---
+
+# 12. Personalization Readiness
+
+Վերջում գնահատիր՝ ներկայիս համակարգը որքանով է պատրաստ այս architecture-ին.
+
+```text
+Evidence
+↓
+Knowledge State
+↓
+Target Node/MicroNode
+↓
+Learning Recommendation
+↓
+AI Teacher
+```
+
+Հստակ բաժանիր.
+
+### Already exists
+
+### Can be reused
+
+### Needs modification
+
+### Missing
+
+Բայց **ոչ մի modification չանես**։
+
+---
+
+# STRICT SCOPE LOCK
+
+Այս audit-ի ընթացքում ՉՓՈՓՈԽԵՍ.
+
+* `chat.ts`
+* teaching-session logic
+* manual mapping
+* auto mapping
+* quiz creation flow
+* quiz-taking flow
+* Knowledge Tree logic
+* scoring logic
+* DB schema
+* unrelated functionality
+
+**ՈՉ ՄԻ ԿՈԴԻ ՓՈՓՈԽՈՒԹՅՈՒՆ։**
+
+---
+
+# REPORT FORMAT
+
+Տուր մեկ ամբողջական Audit Report՝ այս կառուցվածքով.
+
+## A. Current Quiz Result UI
+
+## B. Question/Answer Data Model
+
+## C. Question → Node/MicroNode Mapping
+
+## D. Quiz → Evidence → Knowledge Tree Chain
+
+## E. Current 4-State Knowledge Logic
+
+## F. Question Explanation Availability
+
+## G. Individual Error Analysis Readiness
+
+## H. Class-Wide Error Analysis Readiness
+
+## I. Teacher Result/Analytics UI
+
+## J. Student Result UI
+
+## K. Knowledge Tree Refresh
+
+## L. Personalization Readiness
+
+## M. Files That Would Need Changes
+
+## N. Data/schema gaps
+
+## O. Risks / ambiguities
+
+Յուրաքանչյուր բաժնում տուր.
+
+* exact file path
+* relevant code
+* DB table/column
+* current behavior
+* conclusion
+
+---
+
+# VERY IMPORTANT
+
+Այս փուլում ինձ պետք չէ «ես կարող եմ անել» տիպի ընդհանուր պատասխան։
+
+Ես ուզում եմ **իրական repository audit**։
+
+Միայն իրական code/schema evidence օգտագործիր։
+
+Եթե ինչ-որ բան չես կարող հաստատել՝ գրիր **NOT VERIFIED**։
+
+Եթե schema փոփոխություն է պետք՝ միայն report արա։
+
+Եթե նոր logic է պետք՝ միայն առաջարկիր։
+
+**Ոչ մի implementation մինչև ես չհաստատեմ Audit Report-ը։**
+
+Վերջում գրիր.
+
+> **PART 0 AUDIT COMPLETE — WAITING FOR APPROVAL**
+
+և կանգ առ։
