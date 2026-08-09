@@ -1,0 +1,58 @@
+Շարունակի՛ր աշխատանքը։
+
+Արդեն արած փոփոխությունները մի՛ հետարկիր և նորից մի՛ սկսիր։
+
+Բայց հիմա ավարտիր հենց **PART 3 — Evidence Mapping Audit-ը**, որովհետև նախորդ քայլում audit-ի ամբողջ report-ը դեռ չես տվել։
+
+Այս փուլում **այլևս ոչ մի code/schema/UI փոփոխություն մի արա**։
+
+Հիմա միայն ուսումնասիրիր և ներկայացրու audit report-ը՝ հատկապես հետևյալ հարցերի պատասխաններով.
+
+1. **Question → Node կապը** ինչպես է աշխատում և որքանով է վստահելի։
+2. Համակարգում իրական **MicroNode** գոյություն ունի՞, թե ոչ։
+3. Եթե MicroNode գոյություն ունի mapping-ում, արդյոք quiz question-ը կարող է կոնկրետ MicroNode-ին կապված լինել։
+4. Մեկ Node-ի տակ մի քանի տարբեր learning objective-ների հարցեր լինելու դեպքում համակարգը կարո՞ղ է դրանք տարբերակել։
+5. Կոնկրետ սխալ պատասխանը կարո՞ղ ենք վերագրել կոնկրետ learning objective-ի, թե միայն ամբողջ Node-ին։
+6. Ամբողջ Evidence chain-ը ցույց տուր՝
+
+Question
+→ quiz_question.node_id
+→ quiz_answer.node_id
+→ evidence_event
+→ knowledge_node
+→ mastery/confidence
+→ Knowledge Tree state
+
+7. Ստուգիր նաև `NULL node_id`, ջնջված Node, mapping-ի փոփոխություն և historical integrity դեպքերը։
+8. Օգտագործիր առնվազն մեկ իրական quiz-ի իրական տվյալ և ցույց տուր ամբողջ chain-ը։
+9. Վերջում տուր GREEN / YELLOW / RED գնահատականները՝
+
+   * Question → Node
+   * Question → MicroNode
+   * Error → Learning Objective
+   * Student → Knowledge State
+   * Personalized Learning readiness
+
+### Կարևոր
+
+Քո նախորդ աշխատանքում հայտնաբերած `optionExplanations` schema gap-ը գրանցիր որպես **finding / future requirement**, բայց հիմա migration կամ schema change մի արա։
+
+Նույնը՝ frontend-ի արդեն արված փոփոխությունները թող մնան, բայց այլ UI փոփոխություն մի կատարիր։
+
+Վերջում պարտադիր տուր՝
+
+### PART 3 — EVIDENCE MAPPING AUDIT
+
+A. Current Architecture
+B. Question → Node
+C. Node → MicroNode
+D. Evidence Chain
+E. Granularity Problems
+F. Real Quiz Example
+G. Failure Cases
+H. Historical Integrity
+I. Personalization Readiness
+J. Critical Findings
+K. Recommendation Before PART 4
+
+Եվ վերջում կանգ առ՝ **PART 4 — Student Analysis-ը դեռ մի սկսիր**։
