@@ -775,14 +775,31 @@ Output JSON now.`;
 
 const PASS2_STEP2_SYSTEM = `You are a curriculum architect for a grade-7 Armenian-language textbook.
 You receive a list of content blocks belonging to ONE topic and must organize them into
-1–3 MicroNodes with strict block-index traceability.
+MicroNodes with strict block-index traceability.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CORRECT STRUCTURE — a MicroNode contains BOTH theory AND exercises:
+MICRONODE COUNT — driven by content, never by a numeric cap
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Produce exactly ONE MicroNode for each coherent, independently teachable learning
+objective present in the source blocks.
+
+MicroNode count MUST NOT be determined by a fixed numeric cap.
+
+Procedure:
+  1. First identify the distinct teachable concepts/skills represented by the blocks.
+  2. Then group the blocks belonging to each concept/skill into one MicroNode.
+  3. Produce one MicroNode per identified objective.
+
+A MicroNode is the smallest independently teachable and independently assessable unit.
+Typical topics contain 1–6 MicroNodes, but this is guidance only, NOT a hard limit.
+Do NOT merge distinct learning objectives merely to reduce the MicroNode count.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CORRECT STRUCTURE — a MicroNode covers ONE objective and contains BOTH theory AND exercises:
 
 {
   "title": "What is a Noun",
-  "learningObjective": "Student can define a noun and identify nouns in text",
+  "learningObjective": "Student can define what a noun is.",
   "microNodeType": "knowledge",
   "sourceBlockIndices": [0, 1, 2],
   "exercises": [
@@ -792,26 +809,77 @@ CORRECT STRUCTURE — a MicroNode contains BOTH theory AND exercises:
   "supportingMaterialIndices": []
 }
 
-ILLEGAL ANTI-PATTERN — never create this:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ILLEGAL ANTI-PATTERN 1 — standalone exercise MicroNode — never create this:
 {
   "title": "Exercises on Nouns",
   "sourceBlockIndices": [],          ← ZERO source indices = INVALID
   "exercises": [{"blockIndex": 3}, ...]
 }
+
+ILLEGAL ANTI-PATTERN 2 — multiple independent objectives in one MicroNode:
+Do NOT create one MicroNode like this:
+{
+  "title": "Number classes and reading",
+  "learningObjective": "Student can decompose numbers AND read them aloud.",
+  ...
+}
+This contains two independently teachable skills. Instead create TWO MicroNodes:
+  MicroNode 1 — title: "Number class"
+                learningObjective: "Student can define what a number class is."
+  MicroNode 2 — title: "Reading multi-digit numbers"
+                learningObjective: "Student can read a multi-digit number aloud by naming its classes."
+
+Rule: if two skills can be taught and assessed independently, they MUST be separate
+MicroNodes even when their source blocks are adjacent or appear on the same page.
+Do NOT bundle multiple definitions, rules, procedures, or independently testable
+outcomes into one MicroNode.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FIELD DEFINITIONS:
 • sourceBlockIndices  — block indices this MicroNode "owns": every DEFINITION, RULE, NOTE,
-                        EXAMPLE, or OBJECTIVE-with-body-text block. Also EXERCISE blocks that
-                        form a theoretical list/enumeration rather than a student practice task.
+                        EXAMPLE, or OBJECTIVE block that contains an actual instructional
+                        sentence or learning content. Also EXERCISE blocks that form a
+                        theoretical list/enumeration rather than a student practice task.
                         MUST be non-empty. If you cannot find a non-exercise block to put here,
                         merge with an adjacent MicroNode instead.
 • exercises           — EXERCISE, ACTIVITY, HOMEWORK blocks that are student practice tasks.
-                        Add to the nearest theory MicroNode's exercises array — never create
-                        a standalone exercise-only MicroNode.
+                        Attach to the MicroNode whose learning objective the exercise practices
+                        — never create a standalone exercise-only MicroNode.
 • supportingMaterialIndices — IMAGE, CAPTION, TABLE blocks that illustrate the MicroNode.
-• unmappedBlocks      — ONLY for pure page/textbook headers (e.g. "ՀAYOC LEZU - 7") with
-                        no body text. OBJECTIVE blocks with real content go into sourceBlockIndices.
+• unmappedBlocks      — Place a block here when it is only a structural/header element and
+                        contributes no instructional content. Specifically:
+                        1. A block whose text is approximately ≤30 characters and contains no
+                           instructional predicate and introduces no teachable concept.
+                        2. An OBJECTIVE block that is only a section/chapter heading such as
+                           "ԴԱՍ: ՄԻԼԻՈՆՆԵՐԻ ԴԱՍ" — with no instructional sentence — goes here.
+                        3. A page/chapter/book label with no instructional sentence goes here.
+                        4. An OBJECTIVE block containing an actual instructional sentence or
+                           learning content stays in sourceBlockIndices.
+                        Do NOT place a block in unmappedBlocks merely because it is short, if
+                        it clearly states a concept, term, or rule. Do NOT put a section heading
+                        into sourceBlockIndices merely because it is non-empty.
+
+LEARNING OBJECTIVE CONTRACT:
+• Every MicroNode MUST have exactly one coherent learning objective.
+• The objective must be expressible as: "Student can [one action] [one concept or skill]."
+• The objective must describe ONE independently teachable and assessable outcome.
+• Avoid objectives containing multiple independent actions joined by: "and", "also",
+  "then", "as well as", or comma-separated independent actions.
+• If the source requires two independent skills, create two MicroNodes.
+• Before finalizing: compare all MicroNode learning objectives in this topic.
+  — No two MicroNodes may describe the same skill using different wording.
+  — If two MicroNodes have essentially the same objective, merge them.
+  — If one MicroNode contains multiple independent objectives, split it.
+
+VALID objective examples:
+  "Student can define what a number class is."
+  "Student can decompose a multi-digit number into classes from right to left."
+  "Student can read a multi-digit number aloud by naming each class."
+
+INVALID objective examples (must be split):
+  "Student can decompose numbers and read them aloud."
+  "Student can define classes, explain their meaning, and identify them."
 
 ABSOLUTE RULES:
 1. Every block index provided must appear exactly once across sourceBlockIndices, exercises,
@@ -846,8 +914,9 @@ Block indices to account for: [${topicIndices.join(", ")}]
 BLOCKS:
 ${blockLines}
 
-Organize these ${topicIndices.length} blocks into 1-3 MicroNodes now.
-Remember: exercises attach to theory MicroNodes — no standalone exercise MicroNodes.`;
+Identify the distinct teachable concepts/skills in the blocks above, then produce
+exactly one MicroNode per identified learning objective.
+Remember: exercises attach to the MicroNode whose objective they practice — no standalone exercise MicroNodes.`;
 
   const messages: Parameters<typeof openrouter.chat.completions.create>[0]["messages"] = [
     { role: "system", content: PASS2_STEP2_SYSTEM },

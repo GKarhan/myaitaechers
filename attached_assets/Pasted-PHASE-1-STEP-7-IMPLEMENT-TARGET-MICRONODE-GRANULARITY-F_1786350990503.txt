@@ -1,0 +1,218 @@
+PHASE 1 — STEP 7: IMPLEMENT TARGET MICRONODE GRANULARITY — FIRST SAFE INCREMENT
+
+Implement only the first safe increment of the Phase 1 Step 6 Target MicroNode Granularity Contract.
+
+IMPORTANT:
+Do NOT redesign the whole pipeline.
+Do NOT split Step2 into Step2a/Step2b yet.
+Do NOT add any semantic/LLM validator yet.
+Do NOT modify the database schema.
+Do NOT modify AI Tutor, UI, or student-facing code.
+
+Goal:
+Remove the structural causes of MicroNode over-merging while keeping the existing Pass2 architecture intact.
+
+### PART A — PASS2 PROMPT CHANGES
+
+File:
+`artifacts/api-server/src/services/lesson-mapping.ts`
+
+Modify `PASS2_STEP2_SYSTEM` and the corresponding Step2 user prompt.
+
+#### A1 — REMOVE THE 1–3 MICRONODE CAP
+
+Remove all wording that forces:
+
+`1–3 MicroNodes`
+
+and:
+
+`1-3 MicroNodes now`
+
+Replace it with:
+
+"Produce exactly one MicroNode for each coherent, independently teachable learning objective present in the source blocks.
+
+MicroNode count MUST NOT be determined by a fixed numeric cap.
+
+First identify the distinct teachable concepts/skills represented by the source blocks, then group the blocks belonging to each concept/skill into one MicroNode.
+
+A MicroNode is the smallest independently teachable and independently assessable unit.
+
+Typical topics may contain 1–6 MicroNodes, but this is guidance only, NOT a hard limit. Do not merge distinct learning objectives merely to reduce the number of MicroNodes."
+
+Do NOT introduce a maximum of 8 as a hard rule. It is fine to mention that unusually large counts may warrant review, but the mapper must never merge distinct objectives just to satisfy a count limit.
+
+#### A2 — ADD A MULTI-OBJECTIVE ANTI-PATTERN
+
+Immediately near the existing exercise-only anti-pattern, add this explicit example:
+
+`ILLEGAL ANTI-PATTERN — MULTIPLE INDEPENDENT OBJECTIVES IN ONE MICRONODE`
+
+Do NOT create one MicroNode like:
+
+Title:
+"Number classes and reading"
+
+Learning objective:
+"Student can decompose numbers AND read them aloud."
+
+This contains two independently teachable skills.
+
+Instead create two MicroNodes:
+
+MicroNode 1:
+Title: "Number class"
+Learning objective:
+"Student can define what a number class is."
+
+MicroNode 2:
+Title: "Reading multi-digit numbers"
+Learning objective:
+"Student can read a multi-digit number aloud by naming its classes."
+
+Rule:
+If two skills can be taught and assessed independently, they MUST be separate MicroNodes even when their source blocks are adjacent or appear on the same page.
+
+Also explicitly state:
+
+"Do not bundle multiple definitions, rules, procedures, or independently testable outcomes into one MicroNode."
+
+#### A3 — FIX NON-LEARNING BLOCK HANDLING
+
+Replace the current vague `unmappedBlocks` instruction:
+
+"unmappedBlocks — ONLY for pure page/textbook headers..."
+
+with a structural rule.
+
+Use:
+
+"Place a block in `unmappedBlocks` when it is only a structural/header element and contributes no instructional content.
+
+In particular:
+
+1. A very short block (approximately ≤30 characters) that contains no instructional predicate and introduces no teachable concept should be treated as non-learning.
+2. An OBJECTIVE block that is only a section/chapter heading, such as `ԴԱՍ: ՄԻԼԻՈՆՆԵՐԻ ԴԱՍ`, must go to `unmappedBlocks`.
+3. A page/chapter/book label with no instructional sentence goes to `unmappedBlocks`.
+4. An OBJECTIVE block containing an actual instructional sentence or learning content remains in `sourceBlockIndices`.
+
+Do NOT put a section heading into `sourceBlockIndices` merely because the extracted block is non-empty."
+
+IMPORTANT:
+Do not blindly classify every block under 30 characters as unmapped if it clearly contains a meaningful definition/rule/term. Structural meaning takes priority.
+
+#### A4 — STRENGTHEN LEARNING OBJECTIVE CONTRACT
+
+Add:
+
+"Every MicroNode MUST have exactly one coherent learning objective.
+
+The learning objective must be expressible as:
+
+`Student can [one action] [one concept or skill].`
+
+The objective must describe ONE independently teachable and assessable outcome.
+
+Avoid objectives containing multiple independent actions joined by:
+
+* and
+* also
+* then
+* as well as
+* comma-separated independent actions
+
+If the source requires two independent skills, create two MicroNodes.
+
+Before finalizing the topic, compare all MicroNode learning objectives:
+
+* No two MicroNodes may describe the same skill using different wording.
+* If two MicroNodes have essentially the same objective, merge them.
+* If one MicroNode contains multiple independent objectives, split it.
+
+Examples of VALID objectives:
+
+"Student can define what a number class is."
+
+"Student can decompose a multi-digit number into classes from right to left."
+
+"Student can read a multi-digit number aloud by naming each class."
+
+Examples of INVALID objectives:
+
+"Student can decompose numbers and read them aloud."
+
+"Student can define classes, explain their meaning, and identify them."
+
+These must be split into separate MicroNodes."
+
+### PART B — DO NOT CHANGE THESE YET
+
+Do NOT:
+
+* create `granularity-validator.ts`
+* create granularity unit tests
+* change `Pass2Result`
+* change `lessons.ts`
+* change `package.json`
+* change `hasRealTheory`
+* change `validateSourceCoverage`
+* add embeddings
+* add another AI call
+* split `organizeTopicMicroNodes()` into Step2a/Step2b
+* add database columns/migrations
+
+We will do those in subsequent steps after observing the actual mapper output.
+
+### PART C — TESTS
+
+After the prompt-only changes:
+
+1. Run the existing test suite.
+2. Confirm the existing 22 mapTextParser tests still pass.
+3. Typecheck.
+4. Confirm zero NEW TypeScript errors.
+5. Restart the API server if required.
+
+Then run ONE real mapping test using the same lesson 101 that produced job 19.
+
+Do NOT merely inspect the prompt. We need actual generated output.
+
+### PART D — FORENSIC COMPARISON
+
+Compare the new mapping against job 19.
+
+Report:
+
+1. Number of topics.
+2. Number of MicroNodes per topic.
+3. Each MicroNode title.
+4. Each learningObjective.
+5. sourceBlockIndices for every MicroNode.
+6. Exercise assignments.
+7. Whether the heading `ԴԱՍ: ՄԻԼԻՈՆՆԵՐԻ ԴԱՍ` is still incorrectly included as source content.
+8. Whether the decomposition skill and reading skill are now separate.
+9. Whether any MicroNode still contains multiple independent objectives.
+10. Whether any two MicroNodes have overlapping/near-identical learning objectives.
+11. Source coverage validator result.
+
+IMPORTANT:
+Do not claim the granularity problem is solved merely because the prompt changed.
+
+The real success criterion is the actual mapping output.
+
+At the end provide:
+
+`PASS / FAIL / PARTIAL`
+
+for each:
+
+* Fixed 1–3 cap
+* One objective per MicroNode
+* Multi-objective splitting
+* Non-learning heading handling
+* LO uniqueness
+* Exercise-to-node alignment
+* Source coverage
+
+If the result is still over-merged, STOP and report the evidence. Do not immediately redesign the pipeline.
