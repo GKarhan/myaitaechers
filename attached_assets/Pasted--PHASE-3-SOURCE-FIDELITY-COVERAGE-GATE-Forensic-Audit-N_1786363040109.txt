@@ -1,0 +1,764 @@
+# PHASE 3 — SOURCE FIDELITY / COVERAGE GATE
+
+## Forensic Audit — NO CODE CHANGES
+
+Մենք անցնում ենք **Phase 3 — Source Fidelity / Coverage Gate** փուլին։
+
+Այս փուլում **ոչ մի code փոփոխություն ՉԱՆԵՍ**։
+
+Նպատակը նախ ամբողջությամբ հասկանալն է, թե ներկայիս Mapper-ը ինչպես է ապահովում.
+
+**SOURCE → MAPPING**
+
+և արդյոք հնարավոր է, որ textbook-ի իրական content block-ը կորչի, չծածկվի կամ mapping-ը սխալմամբ համարվի `completed`։
+
+---
+
+# 0. HARD RULES
+
+Մինչև audit-ի ավարտը.
+
+* ❌ ոչ մի code change
+* ❌ ոչ մի prompt change
+* ❌ ոչ մի DB schema change
+* ❌ ոչ մի migration
+* ❌ ոչ մի refactor
+* ❌ ոչ մի behavior change
+* ❌ մի փորձիր «շտկել» հայտնաբերված խնդիրները
+* ❌ մի ստեղծիր նոր validation logic
+
+Միայն.
+
+**inspect → trace → test → report**
+
+Եթե խնդիր գտնես՝ պարզապես գրանցիր այն։
+
+Մենք code change-ի մասին որոշումը կկայացնենք audit-ից հետո։
+
+---
+
+# 1. TRACE THE COMPLETE SOURCE PIPELINE
+
+Գտիր և նկարագրիր ամբողջ pipeline-ը՝ սկսած textbook/PDF input-ից մինչև final DB mapping։
+
+Պետք է հստակ ցույց տաս.
+
+```text
+PDF / textbook pages
+        ↓
+Pass 1 extraction
+        ↓
+SOURCE BLOCKS
+        ↓
+Pass 1 result
+        ↓
+Pass 2
+        ↓
+Topic
+        ↓
+MicroNodes
+        ↓
+sourceBlockIndices
+        ↓
+Exercises / Activities
+        ↓
+Coverage Validation
+        ↓
+DB persistence
+        ↓
+Mapping Job status
+```
+
+Յուրաքանչյուր քայլի համար նշիր.
+
+* file
+* function
+* approximate line
+* input
+* output
+* ինչ է կատարվում source blocks-ի հետ
+
+Հատկապես գտիր.
+
+* source block creation
+* source block indexing
+* sourceBlockIndices
+* coverage validator
+* mapping completion status
+* failed/partial mapping handling
+
+---
+
+# 2. IDENTIFY THE CANONICAL SOURCE BLOCK
+
+Պետք է պարզենք.
+
+**Ո՞ր object/field-ն է հանդիսանում canonical SOURCE BLOCK-ը։**
+
+Գտիր դրա իրական interface/schema-ն։
+
+Օրինակ՝ եթե կա նման բան.
+
+```ts
+{
+  index,
+  blockType,
+  sourceText,
+  sourcePage,
+  sourceParagraph,
+  ...
+}
+```
+
+ցույց տուր իրական implementation-ը։
+
+Պարզիր՝ source block-ի `index`-ը.
+
+* unique է՞
+* lesson-scoped է՞
+* page-scoped է՞
+* zero-based է՞
+* one-based է՞
+* երբևէ վերագրվո՞ւմ է
+* sorting-ից հետո փոխվո՞ւմ է
+
+Սա հատկապես կարևոր է coverage-ի correctness-ի համար։
+
+---
+
+# 3. TRACE SOURCE BLOCK → MICRO NODE
+
+Գտիր այն exact code-ը, որը կապում է source block-ը MicroNode-ին։
+
+Պարզիր.
+
+```text
+SOURCE BLOCK #N
+        ↓
+MicroNode.sourceBlockIndices
+```
+
+և պատասխանիր.
+
+### A. Կարո՞ղ է մեկ source block լինել մի քանի MicroNode-ում։
+
+Եթե այո՝ դա intentional է՞։
+
+### B. Կարո՞ղ է source block-ը մնալ առանց MicroNode-ի։
+
+Եթե այո՝ որտե՞ղ է այն պահվում։
+
+### C. Կարո՞ղ է MicroNode ունենալ sourceBlockIndices = []։
+
+Մենք արդեն ունենք safety net, բայց ստուգիր ամբողջ pipeline-ը։
+
+### D. Կարո՞ղ է MicroNode-ը reference անել գոյություն չունեցող source block index։
+
+Օրինակ.
+
+```text
+source blocks = [0,1,2,3]
+microNode = [0,1,7]
+```
+
+Ինչ է տեղի ունենում։
+
+---
+
+# 4. COVERAGE VALIDATOR FORENSIC AUDIT
+
+Գտիր `coverageValidation`-ի ամբողջ implementation-ը։
+
+Չբավարարվես միայն function-ի անունը գտնելով։
+
+Կարդա ամբողջ logic-ը։
+
+Պետք է պարզես՝ ինչպես են հաշվարկվում.
+
+* `totalBlocks`
+* `coveredBlocks`
+* `coveragePercent`
+* `missingIndices`
+* `duplicateIndices`
+* `invalidIndices`
+* `emptyMicroNodeTitles`
+* `valid`
+* category counts
+
+Ցույց տուր validation formula-ն։
+
+Օրինակ՝ արդյոք սա է.
+
+```text
+covered = union(all sourceBlockIndices)
+missing = sourceBlocks - covered
+```
+
+թե ուրիշ մեխանիզմ է։
+
+---
+
+# 5. MOST IMPORTANT — WHAT COUNTS AS "COVERED"?
+
+Սա audit-ի ամենակարևոր հարցն է։
+
+Պարզիր՝ source block-ը համարվում է covered, եթե.
+
+### Case A
+
+այն կապված է MicroNode-ի հետ։
+
+### Case B
+
+այն կապված է Exercise-ի հետ։
+
+### Case C
+
+այն հայտնվել է Additional Exercise-ում։
+
+### Case D
+
+այն հայտնվել է Unmapped Blocks-ում։
+
+### Case E
+
+որևէ այլ պայման կա։
+
+Գրիր exact logic-ը։
+
+Հատկապես ստուգիր.
+
+**Additional Exercises-ը coverage են համարվո՞ւմ, թե՞ ոչ։**
+
+Եվ.
+
+**unmappedBlocks-ը coverage են համարվո՞ւմ, թե՞ ոչ։**
+
+Սա պետք է հստակ տարբերակվի.
+
+```text
+COVERED
+PARTIALLY HANDLED
+UNMAPPED
+MISSING
+```
+
+---
+
+# 6. SOURCE BLOCK TYPES
+
+Գտիր բոլոր իրական `blockType` արժեքները։
+
+Օրինակ՝
+
+```text
+RULE
+EXAMPLE
+EXERCISE
+QUESTION
+ACTIVITY
+TASK
+PRACTICE
+...
+```
+
+Պարզիր՝ coverage validator-ը բոլոր block types-ին վերաբերվո՞ւմ է նույն կերպ։
+
+Հատկապես ստուգիր.
+
+* theory
+* example
+* exercise
+* question
+* activity
+* task
+* practice
+* supporting material
+
+Չպետք է ենթադրենք, որ միայն theory blocks-ն են կարևոր։
+
+---
+
+# 7. REAL CONTENT LOSS TEST
+
+Օգտագործիր արդեն առկա mappings-ը և գտիր իրական օրինակներ։
+
+Առնվազն ուսումնասիրիր.
+
+* Lesson 101, եթե դեռ հասանելի է
+* Lesson 103
+* Lesson 104
+
+Եթե Lesson 101-ը DB-ում չկա՝ դա պարզապես գրանցիր և օգտագործիր հասանելի lesson։
+
+Յուրաքանչյուր lesson-ի համար ստացիր.
+
+```text
+total source blocks
+covered blocks
+missing blocks
+duplicate indices
+invalid indices
+MicroNodes
+Exercises
+Additional Exercises
+Unmapped blocks
+coverage.valid
+mapping job status
+```
+
+Հատուկ ուշադրություն դարձրու Lesson 103-ին, քանի որ նախկին audit-ում արձանագրվել էր.
+
+```text
+26 total blocks
+23 covered
+3 missing
+coverage = 88%
+valid = false
+```
+
+Ստուգիր այդ 3 missing block-երը կոնկրետ։
+
+Պարզիր.
+
+* ինչ content էին
+* ինչ blockType ունեին
+* ինչ source text ունեին
+* ինչու չեն հայտնվել mapping-ում
+* արդյոք հայտնվել էին `unmappedBlocks`-ում
+* արդյոք mapping-ը nevertheless persisted/completed էր
+
+**Մի փոխիր տվյալները։ Մի re-map արա։ Մի fix արա։**
+
+---
+
+# 8. MAPPING COMPLETION GATE
+
+Սա երկրորդ ամենակարևոր հատվածն է։
+
+Գտիր exact code-ը, որը որոշում է.
+
+```text
+mapping completed
+mapping failed
+mapping partial
+job success
+job failed
+```
+
+Պետք է պարզել.
+
+Եթե.
+
+```text
+coverageValidation.valid === false
+```
+
+ապա ինչ է լինում։
+
+Հնարավոր տարբերակները.
+
+```text
+A. job fails
+B. job remains pending
+C. mapping is persisted but marked incomplete
+D. mapping is persisted and marked completed
+E. warning only
+F. something else
+```
+
+Պետք է ցույց տաս իրական behavior-ը։
+
+Հատկապես ստուգիր՝
+
+**կարո՞ղ է 88% coverage mapping-ը UI-ում երևալ որպես «Քարտեզագրված դաս» / completed։**
+
+Եթե այո՝ դա գրանցիր որպես **CRITICAL GAP**։
+
+---
+
+# 9. SILENT LOSS ANALYSIS
+
+Ստուգիր բոլոր այն paths-ը, որտեղ source block-ը կարող է կորել։
+
+Օրինակ.
+
+```text
+Pass 1
+ ↓
+filter
+ ↓
+Pass 2 prompt
+ ↓
+JSON parse
+ ↓
+MicroNode validation
+ ↓
+sourceBlockIndices safety net
+ ↓
+exercise rescue
+ ↓
+DB insert
+```
+
+Յուրաքանչյուր փուլում հարցրու.
+
+**Կարո՞ղ է source block-ը անհետանալ առանց error-ի։**
+
+Պետք է ստեղծես matrix.
+
+| Stage       | Can block disappear? | Error? | Logged? | Counted by coverage? |
+| ----------- | -------------------- | ------ | ------- | -------------------- |
+| Pass 1      |                      |        |         |                      |
+| Pass 2      |                      |        |         |                      |
+| Validation  |                      |        |         |                      |
+| Persistence |                      |        |         |                      |
+
+---
+
+# 10. DUPLICATE / INVALID INDEX FORENSICS
+
+Ստուգիր.
+
+### Duplicate
+
+Եթե նույն source block-ը կապված է.
+
+```text
+MN1 → [1,2]
+MN2 → [2,3]
+```
+
+արդյոք սա.
+
+* valid shared coverage է՞
+* duplicate է՞
+* warning է՞
+* invalid է՞
+
+### Invalid
+
+Եթե model-ը վերադարձնում է.
+
+```text
+[0,1,99]
+```
+
+իսկ source blocks-ը միայն.
+
+```text
+0..25
+```
+
+ինչ է տեղի ունենում։
+
+Պարզիր.
+
+* invalid index-ը strip արվո՞ւմ է
+* mapping fail է՞
+* warning է՞
+* coverage valid մնո՞ւմ է
+
+---
+
+# 11. EXERCISE / ACTIVITY PRESERVATION
+
+Սա առանձին ստուգիր։
+
+Գտիր բոլոր իրական textbook learning activities-ի preservation path-ը։
+
+Պետք է տարբերակել.
+
+```text
+Theory
+Example
+Exercise
+Question
+Activity
+Task
+Practice
+```
+
+Յուրաքանչյուր իրական exercise/activity պետք է ունենա traceability։
+
+Օրինակ.
+
+```text
+SOURCE BLOCK #12
+       ↓
+Exercise #118
+       ↓
+MicroNode X
+```
+
+կամ.
+
+```text
+SOURCE BLOCK #13
+       ↓
+Additional Exercise
+       ↓
+relatedNodeId = NULL
+```
+
+Պարզիր՝ երկրորդ տարբերակը coverage-ում համարվո՞ւմ է պահպանված source content։
+
+---
+
+# 12. UNSUPPORTED CONTENT / HALLUCINATION CHECK
+
+Coverage-ը միայն missing content-ի մասին չէ։
+
+Պետք է նաև ստուգել opposite direction-ը.
+
+```text
+MAPPING → SOURCE
+```
+
+Գտիր՝ կա՞ validation, որը ստուգում է.
+
+**MicroNode sourceBlockIndices-ը հղում է անում իրական source blocks-ի։**
+
+Եվ արդյոք MicroNode-ի content-ը source-grounded է։
+
+Եթե MicroNode-ն ունի.
+
+```text
+title
+learningObjective
+```
+
+բայց դրանք source evidence չունեն՝ ինչ է անում pipeline-ը։
+
+Կա՞ gate, թե՞ prompt trust only։
+
+---
+
+# 13. CURRENT CONTRACT VS REQUIRED CONTRACT
+
+Համեմատիր ներկայիս behavior-ը մեր Phase 3 contract-ի հետ։
+
+Պահանջը սա է.
+
+### REQUIRED
+
+1. Every real SOURCE BLOCK must be accounted for.
+2. No source block may silently disappear.
+3. Every MicroNode must have source evidence.
+4. Every source reference must be valid.
+5. Exercises/Questions/Activities/Tasks must be preserved.
+6. Unmapped content must be explicitly reported.
+7. Coverage failure must prevent a mapping from being considered fully completed.
+8. Coverage must be measurable and auditable.
+9. `SOURCE → MAPPING` traceability must be inspectable.
+10. `MAPPING → SOURCE` references must be valid.
+
+Յուրաքանչյուրի համար գրիր.
+
+```text
+PASS
+PARTIAL
+FAIL
+```
+
+և հիմնավորիր կոնկրետ code evidence-ով։
+
+---
+
+# 14. DO NOT DESIGN THE FIX YET
+
+Այս փուլում **մի առաջարկիր ամբողջ implementation-ը**։
+
+Միայն վերջում առանձնացրու.
+
+### Existing strengths
+
+### Critical gaps
+
+### Medium gaps
+
+### Low-risk improvements
+
+Եվ միայն յուրաքանչյուր gap-ի համար գրիր շատ կարճ.
+
+```text
+Likely fix area:
+<file/function>
+```
+
+Բայց **code չփոխես**։
+
+---
+
+# 15. FINAL FORENSIC REPORT FORMAT
+
+Վերջնական պատասխանը պարտադիր կառուցիր այս ձևով.
+
+## PHASE 3 — SOURCE FIDELITY AUDIT
+
+### 1. Pipeline map
+
+```text
+PDF
+ ↓
+Pass 1
+ ↓
+Source Blocks
+ ↓
+Pass 2
+ ↓
+MicroNodes
+ ↓
+Coverage
+ ↓
+DB
+ ↓
+Completion
+```
+
+### 2. Canonical Source Block
+
+* interface:
+* file:
+* index semantics:
+* block types:
+
+### 3. Coverage Validator
+
+* file:
+* function:
+* totalBlocks:
+* coveredBlocks:
+* missingIndices:
+* duplicateIndices:
+* invalidIndices:
+* valid formula:
+
+### 4. What counts as covered?
+
+| Content             | Covered? | Evidence |
+| ------------------- | -------- | -------- |
+| MicroNode           |          |          |
+| Exercise            |          |          |
+| Additional Exercise |          |          |
+| Unmapped Block      |          |          |
+| Supporting Material |          |          |
+
+### 5. Completion Gate
+
+Պատասխանիր շատ հստակ.
+
+> Can `coverageValidation.valid === false` still result in a completed mapping?
+
+**YES / NO**
+
+և ցույց տուր exact code path։
+
+### 6. Real Lesson Evidence
+
+| Lesson | Source | Covered | Missing | Coverage | Valid | Completed |
+| ------ | -----: | ------: | ------: | -------: | ----- | --------- |
+| 103    |        |         |         |          |       |           |
+| 104    |        |         |         |          |       |           |
+
+### 7. Missing Block Forensics
+
+Յուրաքանչյուր missing block-ի համար.
+
+```text
+index:
+blockType:
+page:
+sourceText:
+where lost:
+logged?:
+persisted?:
+```
+
+### 8. Silent Loss Matrix
+
+| Stage       | Can disappear? | Error? | Logged? |
+| ----------- | -------------- | ------ | ------- |
+| Pass 1      |                |        |         |
+| Pass 2      |                |        |         |
+| Validation  |                |        |         |
+| Persistence |                |        |         |
+
+### 9. Exercise Preservation
+
+PASS / PARTIAL / FAIL
+
+with evidence.
+
+### 10. Mapping → Source Integrity
+
+PASS / PARTIAL / FAIL
+
+### 11. Contract Compliance
+
+| Requirement                        | Result | Evidence |
+| ---------------------------------- | ------ | -------- |
+| Every source block accounted for   |        |          |
+| No silent loss                     |        |          |
+| MicroNode source evidence          |        |          |
+| Valid source references            |        |          |
+| Exercises preserved                |        |          |
+| Unmapped content reported          |        |          |
+| Coverage failure blocks completion |        |          |
+| Auditable traceability             |        |          |
+
+### 12. Severity Summary
+
+```text
+CRITICAL:
+...
+
+HIGH:
+...
+
+MEDIUM:
+...
+
+LOW:
+...
+```
+
+### 13. Files / Functions Involved
+
+Միայն փաստացի հայտնաբերված file/function-ները։
+
+### 14. Final Verdict
+
+Վերջում գրիր միայն մեկը.
+
+```text
+PHASE 3 STATUS: PASS
+```
+
+կամ
+
+```text
+PHASE 3 STATUS: PASS WITH GAPS
+```
+
+կամ
+
+```text
+PHASE 3 STATUS: FAIL
+```
+
+և 2–5 նախադասությամբ բացատրիր ինչու։
+
+---
+
+## IMPORTANT
+
+Քո նախորդ Phase 1 և Phase 2 աշխատանքների փոփոխությունները **չվերադարձնես** և նորից չստուգես որպես code change task։
+
+Այս audit-ի նպատակը բացառապես հասկանալն է՝
+
+**արդյոք Mapper-ը կարող է երաշխավորել SOURCE → MAPPING fidelity և coverage։**
+
+Ավարտելուց հետո կանգ առ։
+
+**Ոչ մի code change մի արա մինչև ես չհաստատեմ audit-ի արդյունքը։**
