@@ -844,8 +844,18 @@ FIELD DEFINITIONS:
                         MUST be non-empty. If you cannot find a non-exercise block to put here,
                         merge with an adjacent MicroNode instead.
 • exercises           — EXERCISE, ACTIVITY, HOMEWORK blocks that are student practice tasks.
-                        Attach to the MicroNode whose learning objective the exercise practices
-                        — never create a standalone exercise-only MicroNode.
+                        Assignment priority:
+                        1. Identify what skill the exercise primarily tests.
+                        2. Find the existing MicroNode whose LO represents that skill or its
+                           closest prerequisite skill.
+                        3. Assign the exercise to that MicroNode.
+                        4. For an exercise that combines multiple skills, assign it to the
+                           MicroNode of the most advanced skill that has genuine source content.
+                        5. If NO existing MicroNode can reasonably own the exercise, place the
+                           block in unmappedBlocks — never create a new source-less MicroNode.
+                        Never create a standalone exercise-only MicroNode.
+                        EXERCISE blocks belong in exercises[] — they do NOT create a new
+                        MicroNode merely because the exercise implies a new skill.
 • supportingMaterialIndices — IMAGE, CAPTION, TABLE blocks that illustrate the MicroNode.
 • unmappedBlocks      — Place a block here when it is only a structural/header element and
                         contributes no instructional content. Specifically:
@@ -861,25 +871,57 @@ FIELD DEFINITIONS:
                         into sourceBlockIndices merely because it is non-empty.
 
 LEARNING OBJECTIVE CONTRACT:
-• Every MicroNode MUST have exactly one coherent learning objective.
+• Every MicroNode MUST have exactly ONE coherent learning objective.
 • The objective must be expressible as: "Student can [one action] [one concept or skill]."
 • The objective must describe ONE independently teachable and assessable outcome.
-• Avoid objectives containing multiple independent actions joined by: "and", "also",
-  "then", "as well as", or comma-separated independent actions.
-• If the source requires two independent skills, create two MicroNodes.
-• Before finalizing: compare all MicroNode learning objectives in this topic.
+
+ABSOLUTE RULE — ONE ACTION PER LEARNING OBJECTIVE:
+Every learningObjective MUST contain exactly ONE independently assessable action.
+If an objective contains two independent actions, concepts, or outcomes connected by:
+  • and / կամ / ու / եւ
+  • or / or
+  • then / after that
+  • also / as well as
+  • comma-separated independent actions
+the objective MUST be split into separate MicroNodes.
+
+ONE PROCEDURE WITH STEPS → ONE MicroNode (allowed):
+  A procedure may contain multiple steps when those steps form ONE inseparable procedure
+  with ONE final outcome. Example:
+  VALID: "Student can decompose a multi-digit number into classes by grouping digits
+          from right to left."
+  (Here "grouping from right to left" is the METHOD of ONE procedure — not a separate skill.)
+
+TWO INDEPENDENT OUTCOMES → TWO MicroNodes (required):
+  When two outcomes can each be assessed independently — a student could succeed at one
+  while failing the other — they are separate MicroNodes. Example:
+  INVALID: "Student can decompose a multi-digit number into classes and read it aloud."
+  (Decomposing and reading aloud are separately testable → must be split.)
+
+DIAGNOSTIC TEST — apply before finalizing every MicroNode:
+  Ask: "Could two separate test questions be written such that a student answers one
+  correctly while failing the other?"
+  If YES → split into two MicroNodes.
+  If NO → one procedure, one MicroNode is correct.
+
+Do NOT treat a prerequisite relationship as permission to combine two independently
+assessable skills. Even if skill B requires skill A, if they are separately testable,
+they MUST be separate MicroNodes.
+
+BEFORE FINALIZING — cross-check all MicroNode LOs in this topic:
   — No two MicroNodes may describe the same skill using different wording.
   — If two MicroNodes have essentially the same objective, merge them.
   — If one MicroNode contains multiple independent objectives, split it.
+  — Explicitly verify: does each LO have exactly one primary action and one concept?
 
 VALID objective examples:
   "Student can define what a number class is."
   "Student can decompose a multi-digit number into classes from right to left."
   "Student can read a multi-digit number aloud by naming each class."
 
-INVALID objective examples (must be split):
-  "Student can decompose numbers and read them aloud."
-  "Student can define classes, explain their meaning, and identify them."
+INVALID objective examples (MUST be split into separate MicroNodes):
+  "Student can decompose numbers and read them aloud."      ← two independent outcomes
+  "Student can define classes, explain their meaning, and identify them."  ← three actions
 
 ABSOLUTE RULES:
 1. Every block index provided must appear exactly once across sourceBlockIndices, exercises,

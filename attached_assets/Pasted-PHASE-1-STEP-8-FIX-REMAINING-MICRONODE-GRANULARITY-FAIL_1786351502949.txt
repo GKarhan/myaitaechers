@@ -1,0 +1,264 @@
+PHASE 1 — STEP 8: FIX REMAINING MICRONODE GRANULARITY FAILURES
+
+Use Job 20 as the baseline evidence.
+
+IMPORTANT:
+This is another controlled incremental change.
+
+Do NOT redesign the mapping architecture.
+Do NOT split Step2 into Step2a/Step2b yet.
+Do NOT add an LLM/semantic validator yet.
+Do NOT modify the database schema.
+Do NOT modify AI Tutor, UI, or student-facing code.
+Do NOT change `hasRealTheory`.
+Do NOT change `validateSourceCoverage()`.
+
+We are fixing exactly TWO confirmed failures from Job 20:
+
+1. Empty/source-less MicroNodes created for exercise-only content.
+2. Learning objectives containing multiple independent actions ("AND" problem).
+
+---
+
+# PART A — FIX EXERCISE-ONLY MICRONODES
+
+File:
+`artifacts/api-server/src/services/lesson-mapping.ts`
+
+Strengthen the existing MicroNode rule.
+
+Current failure:
+Job 20 created:
+
+* Node 1177 — "Student can use the word 'million' in a sentence" — sourceBlockIndices: []
+* Node 1178 — "Student can perform arithmetic operations with multi-digit numbers" — sourceBlockIndices: []
+* Node 1179 — "Student can compose numerical sequences according to a given pattern" — sourceBlockIndices: []
+
+These were created from exercises only.
+
+Add an explicit rule:
+
+### ABSOLUTE RULE — NO SOURCE-LESS MICRONODES
+
+"NEVER create a MicroNode whose `sourceBlockIndices` is empty.
+
+A MicroNode represents a source-grounded teachable unit. An exercise alone is NOT sufficient to create a MicroNode.
+
+If an EXERCISE/ACTIVITY/HOMEWORK block introduces or practices a skill for which there is NO corresponding instructional/theory source block in the current topic, DO NOT create a new MicroNode for that exercise.
+
+Instead:
+
+1. Assign the exercise to the closest existing theory MicroNode whose learning objective/prerequisite relationship best matches the exercise.
+2. If no existing MicroNode can reasonably own the exercise, place the block in `unmappedBlocks` rather than creating a source-less MicroNode.
+3. Never invent a theory MicroNode from an exercise alone.
+4. `sourceBlockIndices` MUST contain at least one genuine instructional source block for every MicroNode."
+
+Clarify:
+
+"EXERCISE blocks belong in `exercises[]` when they practice an existing MicroNode's skill. They do not create a new MicroNode merely because the exercise itself implies a new skill."
+
+Do NOT solve this by simply attaching every exercise to the previous MicroNode.
+Assignment must be based on the closest pedagogically appropriate existing MicroNode.
+
+---
+
+# PART B — MAKE THE LEARNING OBJECTIVE ATOMIC
+
+Strengthen the learningObjective contract.
+
+The existing prompt says one objective, but Job 20 proves that the model can still produce:
+
+"Student can decompose a multi-digit number into classes AND read it using class names."
+
+This is invalid.
+
+Add an explicit hard rule:
+
+### ABSOLUTE RULE — ONE ACTION PER LEARNING OBJECTIVE
+
+"Every `learningObjective` MUST contain exactly ONE independently assessable action.
+
+If an objective contains two independent actions, concepts, or outcomes connected by:
+
+* and
+* or
+* then
+* also
+* as well as
+* comma-separated independent actions
+* equivalent conjunctions in the target language
+
+the objective MUST be split into separate MicroNodes.
+
+For example:
+
+INVALID:
+'Student can decompose a multi-digit number into classes and read it using class names.'
+
+CORRECT:
+MicroNode A:
+'Student can decompose a multi-digit number into classes.'
+
+MicroNode B:
+'Student can read a multi-digit number using class names.'
+
+Do NOT treat a prerequisite relationship as permission to combine two independently assessable skills.
+
+A procedure may contain multiple STEPS, but those steps are allowed in one MicroNode only when they form one inseparable procedure with one final outcome.
+
+Diagnostic test:
+If two separate test questions can be written such that a student could answer one correctly while failing the other, they are separate learning objectives and MUST be separate MicroNodes."
+
+Also add:
+
+"Before finalizing each MicroNode, explicitly check:
+
+* Does this LO have exactly one primary action?
+* Does it describe exactly one concept/skill?
+* Could another MicroNode be assessed independently from this one?
+  If yes, split them."
+
+---
+
+# PART C — SPECIFIC CLARIFICATION FOR CONCEPT + APPLICATION
+
+Do NOT over-split a procedure simply because its wording contains multiple verbs.
+
+For example:
+
+VALID ONE-MICRONODE:
+"Student can decompose a multi-digit number into classes by grouping digits from right to left."
+
+Here "grouping digits from right to left" is the method/step of ONE procedure.
+
+INVALID:
+"Student can decompose a multi-digit number and read it aloud."
+
+These are two independently assessable outcomes.
+
+The distinction is:
+
+ONE PROCEDURE WITH STEPS → one MicroNode.
+
+TWO INDEPENDENT OUTCOMES → two MicroNodes.
+
+---
+
+# PART D — EXERCISE ASSIGNMENT RULE
+
+Strengthen the existing exercise assignment instructions.
+
+Use this priority:
+
+1. Identify what skill the exercise primarily tests.
+2. Find an existing MicroNode whose LO represents that skill or the closest prerequisite skill.
+3. Assign the exercise to that MicroNode.
+4. Never create a MicroNode solely because an exercise represents a skill not explicitly taught in the source.
+5. Never leave a MicroNode with `sourceBlockIndices: []`.
+
+For an exercise that combines multiple skills:
+
+Assign it to the MicroNode representing the most advanced skill, provided that MicroNode has genuine source content.
+
+Do not create an exercise-only MicroNode.
+
+---
+
+# PART E — IMPORTANT: DO NOT HIDE COVERAGE PROBLEMS
+
+Do NOT manipulate `unmappedBlocks` merely to make coverage validation pass.
+
+The goal is NOT:
+
+"Make coverageValidation = true."
+
+The goal is:
+
+"Produce a pedagogically correct mapping."
+
+Therefore:
+
+* genuine instructional blocks → sourceBlockIndices
+* exercises → exercises[]
+* supporting visual material → supportingMaterialIndices
+* pure structural/non-learning blocks → unmappedBlocks
+* exercise-only skill with no instructional source → exercise assigned to best existing MicroNode, OR unmapped if no reasonable owner exists
+* NEVER create a source-less MicroNode
+
+---
+
+# PART F — TESTS
+
+After implementing the prompt changes:
+
+1. Run existing tests.
+2. Confirm the 22 mapTextParser tests still pass.
+3. Typecheck.
+4. Confirm zero NEW TypeScript errors.
+5. Restart API server if needed.
+6. Run the SAME lesson 101 mapping again.
+
+Do not change the test lesson.
+
+---
+
+# PART G — FORENSIC COMPARISON
+
+Compare the new job against Job 20 and Job 19.
+
+Report:
+
+### MicroNode structure
+
+* topic count
+* MicroNode count per topic
+* every MicroNode title
+* every learningObjective
+* every sourceBlockIndices
+
+### Critical checks
+
+1. Are there ANY MicroNodes with `sourceBlockIndices: []`?
+2. Does any learningObjective contain multiple independent actions?
+3. Is decomposition separate from reading?
+4. Is "million definition" separate from decomposition?
+5. Is class significance appropriately separated?
+6. Are exercise-only skills creating fake MicroNodes?
+7. Where did exercises from the former nodes 1177–1179 go?
+8. Is the heading `ԴԱՍ: ՄԻԼԻՈՆՆԵՐԻ ԴԱՍ` still correctly unmapped?
+9. Are duplicate/near-identical LOs present?
+10. What is the source coverage validator result?
+
+### IMPORTANT SUCCESS CRITERIA
+
+The mapping is NOT considered successful merely because:
+
+* the number of MicroNodes looks reasonable, or
+* coverage is 100%.
+
+Success requires:
+
+* every MicroNode has genuine source content
+* every MicroNode has one atomic learning objective
+* independent skills are separated
+* exercises are attached to appropriate existing MicroNodes
+* no exercise-only MicroNodes
+* structural headings are not treated as instructional source
+* source coverage remains structurally valid
+
+At the end provide a table:
+
+| Criterion                 | Job 19 | Job 20 | New Job | Verdict |
+| ------------------------- | ------ | ------ | ------- | ------- |
+| Fixed 1–3 cap             |        |        |         |         |
+| One atomic LO             |        |        |         |         |
+| Multi-objective splitting |        |        |         |         |
+| No source-less MicroNodes |        |        |         |         |
+| Heading handling          |        |        |         |         |
+| Exercise assignment       |        |        |         |         |
+| LO uniqueness             |        |        |         |         |
+| Source coverage           |        |        |         |         |
+
+Do NOT proceed to Step2a/Step2b restructuring after this run.
+
+STOP after the forensic comparison and report the evidence.
