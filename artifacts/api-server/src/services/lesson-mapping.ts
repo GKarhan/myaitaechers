@@ -12,6 +12,7 @@ import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { logger } from "../lib/logger";
 import { validateSourceCoverage, type CoverageValidationResult } from "../lib/coverage-validator.js";
 import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
+import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
@@ -880,10 +881,30 @@ outcomes into one MicroNode.
 FIELD DEFINITIONS:
 • sourceBlockIndices  — block indices this MicroNode "owns": every DEFINITION, RULE, NOTE,
                         EXAMPLE, or OBJECTIVE block that contains an actual instructional
-                        sentence or learning content. Also EXERCISE blocks that form a
-                        theoretical list/enumeration rather than a student practice task.
-                        MUST be non-empty. If you cannot find a non-exercise block to put here,
+                        sentence or learning content.
+                        MUST be non-empty. If you cannot find a non-activity source block,
                         merge with an adjacent MicroNode instead.
+
+  STRICT RULE — EXERCISE blocks in sourceBlockIndices:
+  An EXERCISE / ACTIVITY / HOMEWORK block may appear in sourceBlockIndices ONLY when it
+  contains ZERO student-directed imperative verbs.
+  A student-directed imperative is any word that tells the student to perform an action.
+
+  Armenian imperatives (non-exhaustive): գտնել, հաշվել, լրացնել, բացատրել, համեմատել,
+    գրել, որոշել, լուծել, դasакargel, կazmel, ընдғծel, ընtrel, ápatsutsel,
+    Գtemʻ, Lutsʻ, Haшvarekʻ, Khosel, Kardalʻ, Nshagiremʻ, Veraprobelʻ.
+  English imperatives (non-exhaustive): Find, Calculate, Fill in, Explain, Compare,
+    Write, Determine, Solve, Classify, Compose, Underline, Circle, Choose, Prove,
+    Complete, Match, Identify, Answer, Describe, Evaluate.
+
+  If ANY such imperative is present in the block text → the block MUST go into
+  exercises[], NEVER into sourceBlockIndices.
+
+  PRODUCTION FAILURE TO AVOID — this was a confirmed real mistake:
+    Block: "115 Լratsrw̄ʻ nahadadowt'yownnerǝ ev drantsʻ meknabanerʻ orinaknerov."
+    ("115 Fill in the sentences and interpret them with examples.")
+    This block contains the imperative "Fill in" → it MUST be in exercises[],
+    NOT in sourceBlockIndices.  The MicroNode had exercise_count=0 as a result.
 • exercises           — EXERCISE, ACTIVITY, HOMEWORK blocks that are student practice tasks.
                         Assignment priority:
                         1. Identify what skill the exercise primarily tests.
@@ -898,8 +919,8 @@ FIELD DEFINITIONS:
                         EXERCISE blocks belong in exercises[] — they do NOT create a new
                         MicroNode merely because the exercise implies a new skill.
 • supportingMaterialIndices — IMAGE, CAPTION, TABLE blocks that illustrate the MicroNode.
-• unmappedBlocks      — Place a block here when it is only a structural/header element and
-                        contributes no instructional content. Specifically:
+• unmappedBlocks      — Place a block here ONLY when it is a pure structural/header element
+                        with no instructional content AND no student task. Specifically:
                         1. A block whose text is approximately ≤30 characters and contains no
                            instructional predicate and introduces no teachable concept.
                         2. An OBJECTIVE block that is only a section/chapter heading such as
@@ -910,6 +931,12 @@ FIELD DEFINITIONS:
                         Do NOT place a block in unmappedBlocks merely because it is short, if
                         it clearly states a concept, term, or rule. Do NOT put a section heading
                         into sourceBlockIndices merely because it is non-empty.
+
+  ABSOLUTE RULE — EXERCISE / ACTIVITY / HOMEWORK blocks MUST NEVER appear in unmappedBlocks.
+  If an EXERCISE/ACTIVITY/HOMEWORK block has no matching MicroNode, it goes to
+  additionalExercises[], NOT unmappedBlocks. Placing a student-facing task in unmappedBlocks
+  causes it to be permanently lost — it will never be inserted into lesson_exercises and
+  will never reach the AI Teacher.
 
 LEARNING OBJECTIVE CONTRACT:
 • Every MicroNode MUST have exactly ONE coherent learning objective.
@@ -1487,6 +1514,37 @@ export async function runPass2Pipeline(
     unmappedBlockIndices:  topicResults[i].unmappedIndices,
     additionalExercises:   topicResults[i].additionalExercises,
   }));
+
+  // P5.4 — Rescue EXERCISE / ACTIVITY / HOMEWORK blocks from unmappedBlockIndices.
+  //
+  // The Pass 2 AI occasionally places student-facing activity blocks in unmappedBlocks
+  // (treating them as structural headers).  These blocks would otherwise never be inserted
+  // into lesson_exercises and would be permanently invisible to the AI Teacher.
+  //
+  // Safe: rescued blocks are moved to additionalExercises (relatedNodeId = null) — they
+  // are never force-assigned to a MicroNode.  The coverage validator will count them under
+  // categoryCounts.additionalExercises rather than categoryCounts.unmapped — no change to
+  // coveragePercent or validity.
+  for (const topic of topics) {
+    const rescued:   number[] = [];
+    const remaining: number[] = [];
+    for (const idx of topic.unmappedBlockIndices) {
+      const block = blocks[idx];
+      if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType)) {
+        rescued.push(idx);
+        topic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
+      } else {
+        remaining.push(idx);
+      }
+    }
+    if (rescued.length > 0) {
+      logger.warn(
+        { topicTitle: topic.title, rescued },
+        "pass2 p5.4: rescued EXERCISE/ACTIVITY/HOMEWORK from unmappedBlocks → additionalExercises",
+      );
+      topic.unmappedBlockIndices = remaining;
+    }
+  }
 
   const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
 

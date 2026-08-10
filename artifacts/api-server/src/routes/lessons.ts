@@ -9,6 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
+import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 
@@ -1315,6 +1316,22 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       }
     }
 
+    // ── P5.1 — Activity placement validation ──────────────────────────────────
+    // Detects EXERCISE/ACTIVITY/HOMEWORK blocks that ended up in sourceBlockIndices
+    // (theory) or in unmappedBlockIndices instead of exercises[]/additionalExercises[].
+    // This is purely additive — never changes the mapping result.
+    // Note: P5.4 rescue already moved EXERCISE blocks from unmappedBlockIndices to
+    // additionalExercises inside runPass2Pipeline, so EXERCISE_IN_UNMAPPED findings
+    // here represent any that were missed by the rescue (e.g. added back post-rescue).
+    const activityFindings = validateActivityPlacement(pass1.blocks, pass2.topics);
+    const activityIssuesRaw = activityFindings.length;
+    if (activityIssuesRaw > 0) {
+      logger.warn(
+        { lessonId, activityIssues: activityIssuesRaw },
+        "lesson mapping: P5.1 activity placement issues detected",
+      );
+    }
+
     // ── Build, store, and return the structured mapping report ────────────────
     // P3.2: use the validator's canonical metric — coveredBlocks / totalBlocks — as the
     // single source of truth for coverage percent.  The old formula
@@ -1368,6 +1385,19 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     }
     const granularityIssues = pass2.granularityFindings.length;
 
+    // ── P5.1 + P5.4 — Activity placement findings → reviewItems ──────────────
+    // HIGH severity: advisory only, never blocks the mapping.
+    // activityIssues = P5.1 (EXERCISE in sourceBlockIndices) +
+    //                  P5.4 (EXERCISE in unmappedBlocks — detected post-rescue).
+    for (const af of activityFindings) {
+      reviewItems.push({
+        nodeId:    null as unknown as number,
+        nodeTitle: af.microNodeTitle,
+        reason:    formatActivityFinding(af),
+      });
+    }
+    const activityIssues = activityIssuesRaw;
+
     const mappingReport = {
       lessonId,
       lessonTitle:  lesson.title,
@@ -1394,6 +1424,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         // P4.12: separate Phase 3 (structural) vs Phase 4 (semantic) issue counts
         coverageIssues,
         granularityIssues,
+        activityIssues,
         reviewItems,
         coverageValidation: pass2.coverageValidation,
         granularityFindings: pass2.granularityFindings,

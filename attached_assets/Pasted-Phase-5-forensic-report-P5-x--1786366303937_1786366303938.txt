@@ -1,0 +1,91 @@
+Phase 5 forensic report-ը ընդունում եմ որպես հիմք։ Հիմա միանգամից բոլոր P5.x փոփոխությունները մի արա։
+
+Աշխատի՛ր առաջին հերթին միայն այս 3 կետերի վրա՝
+
+### P5.1 — EXERCISE/ACTIVITY/HOMEWORK → sourceBlockIndices detection
+
+Ստուգիր Pass 2-ի վերջնական արդյունքը և գտիր բոլոր դեպքերը, երբ իրական student-facing activity block-ը հայտնվում է `sourceBlockIndices`-ում, ոչ թե `exercises[]` / `additionalExercises[]`-ում։
+
+Flag արա առնվազն՝
+
+* EXERCISE
+* ACTIVITY
+* HOMEWORK
+
+Review item-ը պետք է ցույց տա՝
+
+* blockIndex
+* blockType
+* MicroNode
+* source text-ի կարճ preview
+* severity = HIGH
+
+Սա պետք է լինի additive validation և չփոխի mapping-ը։
+
+### P5.4 — unmappedBlocks-ում իրական exercise-ի detection
+
+`unmappedBlockIndices`-ի յուրաքանչյուր block-ի համար ստուգիր original Pass 1 block-ը։
+
+Եթե `blockType` = EXERCISE / ACTIVITY / HOMEWORK, դա պետք է HIGH review item առաջացնի։
+
+Ավելին՝ նման exercise-ը չպետք է silently disappear անի։
+
+Եթե անվտանգ է առանց սխալ node assignment-ի, պահպանիր այն որպես unassigned/additional exercise։ Բայց **չվերագրես պատահական MicroNode-ի**։
+
+Header/structural NOTE block-երը թող մնան unmapped։
+
+### P5.6 — EXERCISE → theory prompt hardening
+
+`PASS2_STEP2_SYSTEM`-ում հանիր/խստացրու այս ambiguous կանոնը՝
+
+> "EXERCISE blocks that form a theoretical list/enumeration"
+
+Սահմանիր հստակ կանոն.
+
+Եթե EXERCISE block-ը student-ից պահանջում է գործողություն՝ օրինակ՝
+
+* գտնել
+* հաշվել
+* լրացնել
+* բացատրել
+* համեմատել
+* գրել
+* որոշել
+* լուծել
+* դասակարգել
+* կազմել
+
+ապա այն **պարտադիր exercises[] է** և երբեք չի կարող հայտնվել `sourceBlockIndices`-ում։
+
+`sourceBlockIndices`-ում EXERCISE կարող է հայտնվել միայն այն դեպքում, եթե այն փաստացի student task չէ և պարունակում է միայն տեսական enumeration/information։
+
+### Շատ կարևոր
+
+Մի փոխիր հիմա՝
+
+* chat.ts-ի additionalExercises handoff-ը
+* OCR gate-ը
+* max_tokens-ը
+* learningObjective-ը
+* frontend-ը
+* DB schema-ն
+
+Սկզբում արա միայն P5.1 + P5.4 + P5.6։
+
+### Պարտադիր
+
+1. Նախ ուսումնասիրիր գործող code-ը։
+2. Ցույց տուր կոնկրետ ֆայլերը և հատվածները, որոնք փոխելու ես։
+3. Միայն հետո կատարիր փոփոխությունները։
+4. Ավելացրու tests։
+5. Existing behavior-ը մի կոտրիր։
+6. Վերջում գրիր՝
+
+   * ինչ ֆայլեր փոխվեցին,
+   * ինչ logic ավելացավ,
+   * ինչ tests անցան,
+   * ինչ խնդիրներ դեռ բաց մնացին։
+
+Եվ հատկապես ստուգիր L104-ի հաստատված դեպքը՝ `MN1196`, որտեղ EXERCISE block 12-ը հայտնվել էր `sourceBlockIndices`-ում և `exercise_count = 0` էր։
+
+Այդ production case-ը պետք է regression test դառնա։
