@@ -1,0 +1,325 @@
+## PHASE 2 — FINALIZE MAPPER CONTRACT
+
+Մենք ավարտել ենք Phase 1 — Low-risk proven fixes։
+
+Phase 1-ի արդյունքը՝
+
+* RC-3 source metadata persistence verified
+* topic sequence verified
+* lesson-wide MicroNode sequence verified
+* 22/22 tests pass
+* no new TypeScript errors
+* no unrelated changes
+
+Հիմա անցիր **միայն Phase 2 — Mapper Contract-ի վերջնականացմանը**։
+
+### Գլխավոր նպատակ
+
+Mapper-ը պետք է արտադրի ոչ միայն տեխնիկապես valid mapping, այլ հստակ pedagogical structure՝
+
+**Lesson → Topics → MicroNodes**
+
+և յուրաքանչյուր MicroNode պետք է ներկայացնի **մեկ հստակ learning objective**։
+
+### ԽԻՍՏ ՍԱՀՄԱՆԱՓԱԿՈՒՄՆԵՐ
+
+Այս փուլում՝
+
+* ❌ չփոխել Pass 1 extraction logic-ը
+* ❌ չփոխել source extraction prompt-ը
+* ❌ չփոխել Phase 2-ը
+* ❌ չփոխել AI Teacher-ը
+* ❌ չավելացնել dependencies
+* ❌ չավելացնել նոր DB schema, եթե դրա կարիքը բացարձակապես չկա
+* ❌ չվերաշարադրել ամբողջ mapper-ը
+* ❌ չփոխել արդեն աշխատող Additional Exercises logic-ը
+* ❌ չթուլացնել source coverage gate-ը
+* ❌ չփոխել RC-3 persistence-ը
+* ❌ չփոխել sequence logic-ը
+
+Սկզբում միայն ուսումնասիրիր ներկայիս Contract-ը և առաջարկվող փոփոխությունների scope-ը։
+**Միանգամից code չփոխես։**
+
+---
+
+# 1. LESSON-LEVEL CONTRACT
+
+Ստուգիր՝ ներկայիս Mapper output-ում կա՞ Lesson-level semantic framing։
+
+Պետք է հնարավորության դեպքում ունենալ.
+
+```text
+lessonGoal
+coreIdea
+coreProblem
+essentialQuestion
+lessonOutcomes
+```
+
+Բայց կարևոր է.
+
+Այս դաշտերը պետք է հիմնված լինեն **SOURCE-ի վրա**։
+
+AI-ն չպետք է հորինի դասի նպատակներ, որոնք textbook-ում որևէ հիմք չունեն։
+
+### Կանոն
+
+Եթե տվյալ դաշտը չի կարող վստահորեն ստացվել source-ից՝
+
+* թող լինի null / empty, եթե schema-ն դա թույլ է տալիս
+* կամ պահպանի ներկայիս behavior-ը
+
+**Մի հորինիր content միայն Contract-ը լրացնելու համար։**
+
+---
+
+# 2. TOPIC-LEVEL CONTRACT
+
+Յուրաքանչյուր Topic պետք է ներկայացնի մեկ հստակ ուսուցողական տարածք։
+
+Topic-ը չպետք է լինի պարզապես էջի heading-ի պատճեն։
+
+Ստուգիր՝ ներկայիս Topic structure-ը բավարար է՞, որպեսզի պարզ լինի.
+
+* ինչի մասին է Topic-ը
+* որտեղ է սկսվում
+* որտեղ է ավարտվում
+* ինչ source blocks են պատկանում Topic-ին
+
+Topic boundary-ն պետք է մնա source-grounded։
+
+Չստեղծել նոր Topic միայն այն պատճառով, որ ավելի գեղեցիկ structure է ստացվում։
+
+---
+
+# 3. MICRONODE CONTRACT — MAIN RULE
+
+Սա Phase 2-ի ամենակարևոր փոփոխությունն է։
+
+Յուրաքանչյուր MicroNode պետք է ունենա.
+
+```text
+title
+learningObjective
+sourceBlockIndices
+```
+
+և `learningObjective`-ը պետք է ներկայացնի.
+
+### ONE CLEAR LEARNING OBJECTIVE
+
+Օրինակ՝
+
+❌ Վատ.
+
+> «Սովորողը հասկանում է գոյականը, դրա տեսակները, հոլովումը և գործածությունը»։
+
+Սա մի քանի անկախ learning objectives է։
+
+Պետք է բաժանվի, եթե source-ը դա պահանջում է.
+
+> «Սովորողը կարող է սահմանել գոյականը»։
+
+> «Սովորողը կարող է տարբերակել գոյականի տեսակները»։
+
+> «Սովորողը կարող է որոշել գոյականի հոլովը»։
+
+> «Սովորողը կարող է ճիշտ կիրառել գոյականը նախադասության մեջ»։
+
+### Բայց
+
+Չանել blind over-splitting։
+
+Մի բաժանիր MicroNode-ը միայն այն պատճառով, որ sentence-ում կա «և»։
+
+Բաժանել միայն այն դեպքում, երբ կան **իրականում տարբեր ուսուցման նպատակներ / cognitive operations**։
+
+---
+
+# 4. ATOMICITY TEST
+
+Յուրաքանչյուր MicroNode-ի համար կիրառիր այս ստուգումը.
+
+### Question A
+
+Այս MicroNode-ը սովորեցնելիս սովորողը կատարո՞ւմ է մեկ հիմնական cognitive task։
+
+### Question B
+
+Կարո՞ղ է learning objective-ը բնական ձևով գրվել մեկ հստակ գործողությամբ։
+
+### Question C
+
+Եթե MicroNode-ի կեսը հեռացնենք, մնացած մասը դեռ առանձին սովորեցվող skill/concept կլինի՞։
+
+Եթե C-ի պատասխանը YES է և երկու մասերը իրականում անկախ են → հավանական split։
+
+Եթե ոչ → պահել նույն MicroNode-ում։
+
+---
+
+# 5. SOURCE EVIDENCE RULE
+
+Յուրաքանչյուր MicroNode պարտադիր պետք է ունենա իրական source evidence։
+
+```text
+sourceBlockIndices.length >= 1
+```
+
+Չստեղծել MicroNode միայն exercise-ի հիման վրա։
+
+Եթե textbook-ում կա exercise, բայց դրա համար համապատասխան instructional source չկա՝
+
+→ չստեղծել դատարկ MicroNode։
+
+Այդ exercise-ը պետք է մնա արդեն ներդրված.
+
+```text
+additionalExercises
+```
+
+logic-ի ներքո։
+
+**Այս Phase-ում այդ logic-ը չփոխել։**
+
+---
+
+# 6. DUPLICATE MICRO NODE RULE
+
+Ստուգիր, որ նույն learning objective-ը տարբեր MicroNode-ներում չկրկնվի տարբեր wording-ով։
+
+Օրինակ.
+
+> «Սովորողը կարող է գտնել անհայտ գումարելին»
+
+և
+
+> «Սովորողը կարող է որոշել անհայտ գումարելին»
+
+եթե source evidence-ը նույնն է և skill-ը նույնն է՝ պետք է լինի մեկ MicroNode։
+
+Բայց եթե source-ը ներկայացնում է իրականում տարբեր procedure/concept՝ պահել առանձին։
+
+---
+
+# 7. DO NOT FORCE 1–3 MICRO NODES
+
+Ներկայիս 1–3 cap-ը չվերացնես առանց ապացույցի։
+
+Եթե current contract-ում կա 1–3 սահմանափակում՝ պահիր այն։
+
+Եթե source material-ը ցույց է տալիս, որ ավելի շատ atomic MicroNodes են անհրաժեշտ, **նախ report արա**, մի փոխիր cap-ը ինքնուրույն։
+
+Այս Phase-ի նպատակն է Contract-ի հստակեցումը, ոչ թե granularity policy-ի ամբողջական վերագրումը։
+
+---
+
+# 8. EXERCISE PRESERVATION
+
+Պահպանիր արդեն հաստատված կանոնը.
+
+Եթե exercise-ը համապատասխանում է MicroNode-ի learning objective-ին՝
+
+→ կապել MicroNode-ին։
+
+Եթե համապատասխան MicroNode չկա՝
+
+→ **չստեղծել fake MicroNode**։
+
+→ պահպանել որպես `additionalExercise` / `additionalExercises`։
+
+Exercise-ը երբեք չպետք է կորչի միայն mapping-ի պատճառով։
+
+---
+
+# 9. VALIDATION
+
+Contract-ի փոփոխությունից հետո ավելացրու կամ ուժեղացրու code-level validation-ը միայն այնտեղ, որտեղ անհրաժեշտ է։
+
+Պետք է կարողանանք ստուգել.
+
+```text
+MicroNode:
+  title exists
+  learningObjective exists
+  sourceBlockIndices.length >= 1
+```
+
+և հնարավորության դեպքում.
+
+```text
+learningObjective is atomic
+```
+
+Բայց atomicity-ի semantic գնահատումը պետք չէ ամբողջությամբ փորձել hard-code անել։
+
+AI semantic judgment-ը կարող է մնալ prompt-level rule։
+
+Code-level validator-ը պետք է հիմնականում ստուգի structural invariants։
+
+---
+
+# 10. IMPORTANT — PRESERVE CURRENT GOOD BEHAVIOR
+
+Հատկապես չփչացնել վերջին հաջողված behavior-ը.
+
+* no source-less MicroNodes
+* no fake MicroNodes from exercises
+* exercises preserved
+* Additional Exercises preserved
+* source coverage validation
+* sequence behavior
+* RC-3 metadata persistence
+
+Job 24-ի behavior-ը պետք է մնա regression baseline։
+
+---
+
+# 11. BEFORE CODING
+
+Առաջին քայլով ինձ report տուր.
+
+### A. Current Contract
+
+Ցույց տուր՝ ներկայում ինչ fields է արտադրում.
+
+* Lesson
+* Topic
+* MicroNode
+* Exercise
+
+### B. Contract gaps
+
+Յուրաքանչյուր missing field-ի համար գրիր.
+
+```text
+field
+current location
+required?
+source available?
+DB already supports it?
+code change needed?
+```
+
+### C. Proposed minimal change
+
+Ցույց տուր կոնկրետ՝
+
+* որ file-երն են փոխվելու
+* որ interface/schema-ներն են փոխվելու
+* որ prompt section-ն է փոխվելու
+* ինչ validator է ավելանալու
+
+### D. Regression risk
+
+Հատկապես նշիր՝ արդյոք փոփոխությունը կարող է ազդել.
+
+* Job 24 behavior-ի վրա
+* Additional Exercises-ի վրա
+* source coverage-ի վրա
+* MicroNode count-ի վրա
+* Phase 2-ի input-ի վրա
+
+**Մի փոփոխիր code-ը, մինչև այս audit-ը չավարտես։**
+
+Audit-ից հետո սպասիր իմ հաստատմանը։
