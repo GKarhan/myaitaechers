@@ -1,0 +1,148 @@
+PHASE 1 — STEP 6: DESIGN THE TARGET MICRONODE GRANULARITY CONTRACT
+
+You are working on the Knowledge Base Mapper.
+
+IMPORTANT:
+This is a DESIGN/AUDIT task only.
+DO NOT modify any code, prompt, schema, migration, database, or tests.
+
+Use the existing forensic findings from Phase 1 Steps 1–5 as the baseline, especially the confirmed problems:
+- 1–3 MicroNodes per topic causes over-merging.
+- One MicroNode can contain multiple independent learning objectives.
+- learningObjective is free-text and has no semantic validation.
+- Different MicroNodes can receive overlapping/near-identical learning objectives.
+- hasRealTheory can merge groups before MicroNode generation.
+- Exercises can end up attached to a pedagogically wrong MicroNode.
+- Source coverage is now deterministically validated, but granularity is not.
+
+Your task is to DESIGN the target MicroNode granularity contract that the future mapper must follow.
+
+Analyze the existing:
+- PASS2_STEP2_SYSTEM
+- PASS2_SUBDIVIDE_SYSTEM
+- hasRealTheory merge logic
+- Pass2Result
+- sourceBlockIndices
+- exercise assignment logic
+- current coverage validator
+- lesson_nodes schema
+
+Then produce a precise design specification containing:
+
+1. TARGET DEFINITION
+Define exactly what a MicroNode is.
+
+Core requirement:
+ONE MicroNode = ONE coherent learning objective.
+
+Define what "one coherent learning objective" means operationally.
+
+2. SPLIT RULES
+Specify when source content MUST be split into separate MicroNodes.
+
+Cover cases such as:
+- multiple definitions
+- multiple rules
+- different procedures
+- different classifications
+- concept + independent application skill
+- multiple distinct "Student can..." outcomes
+- unrelated examples/practice
+
+3. MERGE RULES
+Specify when multiple source blocks SHOULD remain in the same MicroNode.
+
+Explain how to distinguish:
+- several blocks explaining one concept
+from
+- several blocks teaching different concepts.
+
+4. MICRO NODE COUNT
+Do NOT propose an arbitrary fixed cap such as "1–3".
+
+Define how MicroNode count should emerge from the number of coherent learning objectives in the source material.
+
+5. LEARNING OBJECTIVE CONTRACT
+Define the exact semantic requirements for learningObjective.
+
+It must represent ONE teachable outcome and be expressible as:
+
+"Student can [one action] [one concept/skill]."
+
+Define what should be considered a multi-objective learningObjective.
+
+6. EXERCISE ASSIGNMENT
+Define how exercises should be attached to MicroNodes.
+
+An exercise must be linked to the MicroNode whose learning objective it actually practices.
+
+Explain what should happen when an exercise practices more than one MicroNode.
+
+7. NON-LEARNING BLOCKS
+Define how section headings, labels, page headers, decorative text, etc. should be treated.
+
+Do not allow non-learning content to inflate a MicroNode's learning objective.
+
+8. LEARNING OBJECTIVE UNIQUENESS
+Define how the system should detect two MicroNodes whose learning objectives are semantically overlapping or duplicates.
+
+9. VALIDATION
+Design deterministic and/or semantic validation checks for:
+- multi-objective MicroNodes
+- duplicate/overlapping learning objectives
+- inappropriate MicroNode count
+- source-to-objective alignment
+- exercise-to-node alignment
+- non-learning source blocks
+- empty MicroNodes
+
+Clearly distinguish what can be deterministic and what requires AI/semantic judgment.
+
+10. HASREALTHEORY
+Evaluate whether the current hasRealTheory merge-pass is compatible with the target granularity contract.
+
+If not, explain exactly what should change conceptually.
+DO NOT implement it.
+
+11. TARGET PIPELINE
+Provide the target conceptual flow:
+
+Pass 1
+→ topic formation
+→ source analysis
+→ learning-objective identification
+→ MicroNode formation
+→ exercise assignment
+→ validation
+→ DB
+
+For every stage identify:
+- input
+- output
+- responsibility
+- validation
+
+12. IMPLEMENTATION PLAN
+Finally provide the smallest safe implementation sequence.
+
+Separate:
+A. Prompt changes
+B. Schema changes
+C. Mapper/code changes
+D. Validators
+E. Tests
+
+IMPORTANT:
+Do NOT write code.
+Do NOT edit files.
+Do NOT create migrations.
+Do NOT change the existing system.
+
+The output must be a concrete implementation-ready specification, not general advice.
+
+At the end give:
+- CONFIRMED existing problems
+- TARGET RULES
+- FILES likely requiring changes
+- implementation order
+- risks/open questions
