@@ -1,0 +1,510 @@
+# PHASE 5 — FORENSIC AUDIT — READ ONLY
+
+We are continuing the Knowledge Base Mapper audit.
+
+Phase 3 is already implemented and verified:
+
+* deterministic source coverage validation
+* canonical coverage percentage
+* `coverage_failed` job status when source coverage fails
+* full `pass1Blocks` persistence for forensic recovery
+* `sourceBlockIndex` persistence for exercises
+
+Phase 4 is already implemented and verified:
+
+* independent semantic MicroNode granularity review (`runGranularityReview`)
+* `MEGA_NODE`
+* `OVER_SPLIT`
+* `EXERCISE_MISMATCH`
+* deterministic heuristic signals for compound LOs and duplicate/overlapping LOs
+* granularity findings are review-only and do NOT change the Phase 3 hard coverage gate
+* 13 new Phase 4 tests + 22 existing tests pass
+* no DB migration was required
+* API server is healthy
+
+DO NOT modify any code.
+
+DO NOT implement fixes.
+
+DO NOT rewrite prompts.
+
+DO NOT create migrations.
+
+DO NOT change the database.
+
+This phase is READ-ONLY forensic investigation only.
+
+---
+
+## PHASE 5 OBJECTIVE
+
+Determine whether the Mapper's **source fidelity and pedagogical mapping output remain faithful after the MicroNode granularity stage**.
+
+The central question is:
+
+> After Pass 1 extraction → topic grouping → MicroNode generation → Phase 4 granularity review, does the final mapped knowledge base preserve the actual instructional meaning of the textbook?
+
+We are specifically looking for failures where the Mapper technically produces valid MicroNodes but the resulting knowledge base is pedagogically or semantically distorted.
+
+Do NOT assume that "source coverage = 100%" means source fidelity is correct.
+
+Do NOT assume that a valid MicroNode automatically means the source content was mapped correctly.
+
+---
+
+# 1. TRACE THE COMPLETE PIPELINE
+
+Read the actual code and document the real pipeline:
+
+Pass 1 extraction
+→ Pass 2 topic grouping
+→ Step 1b size guard
+→ Step 1c hollow-group handling
+→ Step 2 MicroNode generation
+→ Phase 4 granularity review
+→ coverage validation
+→ exercise assignment
+→ DB persistence
+→ mapping report
+→ AI Teacher lesson context
+
+Identify every point where information can be:
+
+* dropped
+* merged
+* split incorrectly
+* paraphrased incorrectly
+* assigned to the wrong topic
+* assigned to the wrong MicroNode
+* converted from theory into exercise incorrectly
+* converted from exercise into theory incorrectly
+* duplicated
+* reordered
+* detached from its source
+* silently discarded
+
+Give exact file/function/line references.
+
+---
+
+# 2. SOURCE FIDELITY AUDIT
+
+Inspect the actual Pass 1 → Pass 2 contract.
+
+Determine:
+
+### A. Does Pass 1 preserve enough source information?
+
+Check whether every source block preserves, where available:
+
+* source text
+* page
+* paragraph
+* block type
+* bounding box
+* ordering
+* section context
+* relationships between adjacent blocks
+
+Determine whether any information necessary for pedagogical mapping is lost before Pass 2.
+
+### B. Does Pass 2 actually use the available source information?
+
+Check whether MicroNode generation sees:
+
+* full source text
+* source block order
+* block types
+* page information
+* neighboring context
+* exercises
+* examples
+* definitions
+* rules
+* notes
+* objectives
+
+Identify anything extracted in Pass 1 but effectively ignored by Pass 2.
+
+---
+
+# 3. SOURCE BLOCK → MICRONODE TRACEABILITY
+
+Using real production mappings, trace:
+
+`source block → topic → MicroNode → learning objective → exercises → DB row`
+
+Use at least 3 real mapped lessons from the database.
+
+Prefer the same real lessons already examined in Phases 3–4 where possible.
+
+For each lesson calculate:
+
+* total source blocks
+* theory blocks
+* example blocks
+* exercise blocks
+* number of topics
+* number of MicroNodes
+* number of additional exercises
+* unmapped blocks
+* blocks assigned to multiple MicroNodes
+* blocks assigned to zero MicroNodes
+* source blocks whose meaning appears only indirectly in an LO
+* source blocks whose actual content is not represented in any LO
+
+Do NOT only inspect counts.
+
+Read the actual text.
+
+---
+
+# 4. SEMANTIC LOSS AUDIT
+
+Look specifically for source content that disappears even though structural coverage passes.
+
+Examples:
+
+* a definition reduced to a vague title
+* an exception omitted
+* an important condition omitted
+* a rule simplified incorrectly
+* a counterexample lost
+* a distinction between two concepts erased
+* an example carrying important meaning treated as disposable
+* a NOTE/IMPORTANT block not represented in any MicroNode
+* a prerequisite statement lost during grouping
+* a sequence/order relationship lost
+* "only if", "except", "unless", "not", etc. omitted
+* numerical constraints or conditions lost
+* terminology changed in a way that changes meaning
+
+For every finding provide:
+
+* lesson/job
+* source block index
+* source text summary
+* resulting MicroNode
+* resulting LO
+* exact semantic loss
+* severity: HIGH / MEDIUM / LOW
+
+---
+
+# 5. DEFINITIONS / RULES / EXAMPLES / NOTES
+
+Audit whether the Mapper correctly preserves the pedagogical role of each source type.
+
+Specifically determine:
+
+### DEFINITION
+
+Does it become part of a MicroNode's teachable content?
+
+### RULE
+
+Does it remain explicit enough to teach and assess?
+
+### EXAMPLE
+
+Is it preserved as an example of the correct concept rather than accidentally becoming the learning objective?
+
+### NOTE / IMPORTANT
+
+Is important contextual information retained?
+
+### OBJECTIVE
+
+Is it mapped to the correct learning objective rather than duplicated or discarded?
+
+### NON_EXAMPLE
+
+Is it preserved when pedagogically important?
+
+Identify any systematic failure.
+
+---
+
+# 6. TOPIC GROUPING AUDIT
+
+Phase 4 checks MicroNode granularity, but it does not independently validate whether the original topic grouping was correct.
+
+Audit Step 1 topic grouping.
+
+Look for:
+
+* unrelated source blocks grouped together
+* one concept split across multiple topics
+* prerequisite content separated from the concept it supports
+* examples attached to the wrong topic
+* exercises attached to the wrong topic
+* two textbook sections that should remain separate being merged
+* one textbook section incorrectly split into unrelated topics
+
+This is important:
+
+A perfect MicroNode inside a bad topic group is still a bad mapping.
+
+Determine whether Step 1 needs its own semantic validation layer.
+
+---
+
+# 7. ORDER / SEQUENCE FIDELITY
+
+Determine whether the Mapper preserves the pedagogical sequence of the textbook.
+
+Check:
+
+* source block ordering
+* topic ordering
+* MicroNode ordering
+* prerequisite relationships
+* whether definitions precede rules
+* whether explanation precedes application
+* whether examples appear in the correct conceptual context
+
+Identify whether sorting by database ID or other logic can destroy textbook sequence.
+
+Use real production evidence.
+
+---
+
+# 8. EXERCISE FIDELITY
+
+Do a separate audit of exercises.
+
+Determine whether each exercise is:
+
+1. preserved exactly enough,
+2. assigned to the correct MicroNode,
+3. assigned to the correct topic,
+4. correctly classified as exercise,
+5. incorrectly promoted to theory,
+6. incorrectly pushed into `additionalExercises`,
+7. lost completely.
+
+Pay special attention to the Phase 4 finding where exercises requiring multiplication/division were assigned to an addition/subtraction MicroNode.
+
+Determine the actual root cause from code.
+
+Do NOT merely repeat the previous finding.
+
+---
+
+# 9. TEXT / OCR FAILURE HANDLING
+
+Audit how OCR or malformed source text affects mapping.
+
+Check:
+
+* corrupted Armenian text
+* empty source blocks
+* garbled encoding
+* duplicated OCR
+* missing punctuation
+* broken words
+* mixed Armenian/Latin characters
+
+Determine whether the Mapper:
+
+* detects corruption,
+* preserves it,
+* silently maps it,
+* silently drops it,
+* or produces misleading MicroNodes from corrupted text.
+
+Use the real Job 5 / Lesson 69 case if still available.
+
+Determine whether OCR quality should be a mapping gate or only a review warning.
+
+---
+
+# 10. DUPLICATION / INFORMATION LOSS
+
+Look for both:
+
+### DUPLICATION
+
+The same source meaning appears in multiple MicroNodes without justification.
+
+### LOSS
+
+A source meaning appears in no MicroNode.
+
+These are different from Phase 4 OVER_SPLIT.
+
+A source concept can be duplicated even when each MicroNode individually has a valid one-clear-learning-objective LO.
+
+Identify examples from real DB data.
+
+---
+
+# 11. AI TEACHER HANDOFF
+
+Trace exactly what the AI Teacher receives from the Mapper.
+
+Inspect:
+
+* `lesson_nodes`
+* `learning_objective`
+* source content available to the teacher
+* exercise content
+* ordering
+* dependencies
+* lesson context construction in `chat.ts` / `ai.ts`
+
+Answer:
+
+> Does the AI Teacher receive enough information to teach what the textbook actually says, or does it receive only an abstraction of the textbook?
+
+This is critical.
+
+If Pass 2 correctly maps a rule but the AI Teacher never receives the rule text, then the Mapper may technically be correct while the overall educational system is still losing information.
+
+Document the exact handoff.
+
+---
+
+# 12. REAL PRODUCTION SAMPLE
+
+Use at least 3 real production mappings.
+
+For each one produce:
+
+### Lesson X
+
+* source blocks:
+* topics:
+* MicroNodes:
+* additional exercises:
+* unmapped blocks:
+* semantic loss:
+* semantic duplication:
+* sequence issues:
+* exercise issues:
+* OCR issues:
+* AI Teacher handoff issues:
+
+Then give an overall verdict.
+
+---
+
+# 13. CURRENT VALIDATORS — WHAT THEY STILL CANNOT SEE
+
+After Phases 3 and 4, list exactly what is now protected and what remains completely unprotected.
+
+Use a table:
+
+| Failure | Phase 3 | Phase 4 | Still unprotected |
+| ------- | ------- | ------- | ----------------- |
+
+Include at minimum:
+
+* source coverage
+* duplicate source assignment
+* missing source blocks
+* empty MicroNodes
+* mega-nodes
+* over-splitting
+* compound LOs
+* duplicate LOs
+* exercise mismatch
+* semantic source loss
+* topic grouping errors
+* sequence errors
+* definition/rule loss
+* example loss
+* note loss
+* OCR corruption
+* AI Teacher handoff loss
+
+---
+
+# 14. DO NOT PROPOSE IMPLEMENTATION YET
+
+This is extremely important.
+
+Do NOT jump directly to:
+
+* new code
+* new validators
+* new prompts
+* migrations
+* schema changes
+* AI calls
+
+First determine whether a real problem exists.
+
+If a problem exists, classify it:
+
+### MUST FIX
+
+Clearly causes incorrect educational behavior.
+
+### SHOULD FIX
+
+Meaningful quality issue but not catastrophic.
+
+### OPTIONAL
+
+Useful improvement but not necessary now.
+
+Also identify whether an existing Phase 3 or Phase 4 mechanism can already solve it.
+
+Avoid adding another AI review pass unless deterministic logic is genuinely insufficient.
+
+---
+
+# 15. FINAL REPORT FORMAT
+
+Return exactly:
+
+## PHASE 5 — FORENSIC REPORT
+
+### 1. Pipeline Trace
+
+### 2. Source Fidelity Findings
+
+### 3. Semantic Loss Findings
+
+### 4. Topic Grouping Findings
+
+### 5. Sequence Findings
+
+### 6. Exercise Fidelity Findings
+
+### 7. OCR / Source Quality Findings
+
+### 8. Duplication / Loss Findings
+
+### 9. AI Teacher Handoff Findings
+
+### 10. Validator Coverage Matrix
+
+### 11. Real Production Evidence
+
+### 12. Severity Summary
+
+### 13. Root Causes
+
+### 14. MUST FIX / SHOULD FIX / OPTIONAL
+
+### 15. Final Verdict
+
+Use:
+
+`PHASE 5 STATUS: PASS`
+
+or
+
+`PHASE 5 STATUS: FAIL`
+
+Do not implement anything.
+
+Do not modify files.
+
+Do not restart services.
+
+Do not create checkpoints containing code changes.
+
+This is a forensic audit only.

@@ -1,0 +1,728 @@
+# PHASE 5 — LEARNING ACTIVITIES PRESERVATION — FORENSIC AUDIT
+
+## READ-ONLY — NO CODE CHANGES
+
+You are now auditing **Phase 5 — Learning Activities Preservation** of the textbook mapping pipeline.
+
+Do NOT modify code, prompts, schemas, database records, or UI.
+Do NOT implement any fix.
+Do NOT create a migration.
+Do NOT change existing mappings.
+
+Your task is to perform a **forensic, evidence-based audit** of whether real textbook learning activities are reliably preserved from source textbook → extraction → mapping → MicroNode → database → AI Teacher.
+
+The core contract is:
+
+> If the textbook contains a real learning activity, it must not be silently lost merely because the AI interprets it as an example, explanation, note, or supporting text.
+
+The mapping pipeline must reliably distinguish and preserve:
+
+* EXPLANATION
+* EXAMPLE
+* EXERCISE
+* QUESTION
+* ACTIVITY
+* TASK
+* PRACTICE
+
+The goal is NOT to force every numbered sentence into an exercise.
+
+The goal is to ensure that a **real student-facing activity/question/task/practice item present in the textbook survives the mapping pipeline** and is attached to the correct MicroNode or preserved as an appropriate unmapped/additional activity when no valid MicroNode exists.
+
+---
+
+# 1. TRACE THE COMPLETE PIPELINE
+
+Trace the exact production path:
+
+SOURCE TEXTBOOK
+→ Pass 1 extraction / vision
+→ blocks[]
+→ blockType classification
+→ Pass 2 Step 1 topic grouping
+→ Step 1b size-cap subdivision
+→ Step 1c hollow-group merge
+→ Pass 2 Step 2 MicroNode organization
+→ exercise/activity extraction
+→ MicroNode assignment
+→ additionalExercises / unmappedActivities
+→ server safety nets
+→ coverage validator
+→ DB insertion
+→ lesson_exercises / lesson_nodes
+→ mappingReport
+→ AI Teacher lessonContext
+→ actual teaching/assessment behavior
+
+For every stage identify:
+
+1. Which code/file/function performs it.
+2. Which data structure carries the activity.
+3. Whether the original source text is preserved.
+4. Whether the original block type is preserved.
+5. Whether the activity can be discarded at that stage.
+6. Whether any AI is allowed to reinterpret the activity.
+7. Whether there is a deterministic safeguard against loss.
+
+Provide exact file and approximate line references.
+
+---
+
+# 2. DEFINE THE CONTRACT CURRENTLY IMPLEMENTED
+
+Find the actual prompt/schema/code rules governing:
+
+* EXERCISE
+* QUESTION
+* ACTIVITY
+* TASK
+* PRACTICE
+* EXAMPLE
+* DEFINITION
+* EXPLANATION
+* NOTE
+
+Do NOT assume the intended contract from previous phases.
+
+Read the actual current code.
+
+Determine:
+
+### A. Extraction contract
+
+Does Pass 1 explicitly require preservation of every real exercise/question/activity/task/practice?
+
+### B. Classification contract
+
+Can the model classify a block as EXERCISE/QUESTION/ACTIVITY/TASK/PRACTICE?
+
+### C. Preservation contract
+
+Does the system say that real activities must be preserved verbatim or semantically intact?
+
+### D. Assignment contract
+
+Must every activity be assigned to a MicroNode?
+
+Or can it remain as additional/unmapped content?
+
+### E. Loss contract
+
+Is there any explicit rule saying:
+
+> Never discard a real student-facing activity.
+
+If yes, quote the exact rule.
+
+If no, state that clearly.
+
+---
+
+# 3. BUILD THE ACTIVITY DATA FLOW
+
+Construct a table like:
+
+| Stage      | Input           | Activity representation | Can be lost? | Evidence  |
+| ---------- | --------------- | ----------------------- | ------------ | --------- |
+| Pass 1     | textbook page   | block                   | ?            | file/line |
+| Step 1     | blocks[]        | topic group             | ?            | file/line |
+| Step 2     | topic blocks    | MicroNode + exercises   | ?            | file/line |
+| Safety net | generated nodes | exercises               | ?            | file/line |
+| DB         | mapped result   | lesson_exercises        | ?            | file/line |
+| AI Teacher | lessonContext   | exercises/tasks         | ?            | file/line |
+
+Be especially careful about transformations where:
+
+`blockType = EXERCISE`
+
+becomes merely:
+
+`sourceText`
+
+or disappears completely.
+
+---
+
+# 4. FIND EVERY POSSIBLE LOSS POINT
+
+Search the code for all operations that can cause activity loss.
+
+Examples:
+
+* filtering blocks by blockType
+* only passing theory blocks to a model
+* `unmappedBlocks`
+* `additionalExercises`
+* `sourceBlockIndices`
+* empty exercise arrays
+* exercise deduplication
+* exercise assignment
+* "closest prerequisite"
+* merging groups
+* hollow-group merging
+* server safety-net stripping
+* truncation
+* max exercise limits
+* invalid exercise schema
+* failed structured output
+* fallback behavior
+* malformed JSON
+* block type conversion
+* title-only representations
+* source text not copied forward
+
+For every possible loss point classify:
+
+`SAFE`
+`POSSIBLE LOSS`
+`CONFIRMED LOSS`
+`UNKNOWN`
+
+Do not infer. Use code evidence.
+
+---
+
+# 5. CRITICAL DISTINCTION: EXAMPLE VS EXERCISE
+
+Audit whether the pipeline has a reliable semantic distinction between:
+
+### EXAMPLE
+
+Something demonstrated by the textbook/author.
+
+Example pattern:
+
+> "For example, 25 + 17 = 42."
+
+The student is not explicitly asked to perform the task.
+
+### EXERCISE
+
+A student-facing task requiring action.
+
+Example:
+
+> "Calculate 25 + 17."
+
+### QUESTION
+
+A student-facing question requiring an answer.
+
+### ACTIVITY
+
+An explicit student activity.
+
+### TASK
+
+An explicit student task.
+
+### PRACTICE
+
+Repeated student practice.
+
+Determine whether the current classifier/prompt gives the AI enough operational rules to distinguish these.
+
+Look specifically for dangerous cases such as:
+
+* numbered examples
+* numbered exercises
+* "Try yourself"
+* "Do the following"
+* "Answer the questions"
+* "Complete"
+* "Find"
+* "Calculate"
+* "Explain"
+* "Compare"
+* "Match"
+* "Underline"
+* "Circle"
+* "Fill in"
+* "Discuss"
+* "Work in pairs"
+* "Practice"
+
+---
+
+# 6. REAL PRODUCTION EVIDENCE
+
+Do NOT rely only on prompts.
+
+Inspect real completed mapping jobs from the database.
+
+Use at least:
+
+* 3 real lessons/jobs if available
+* preferably different subjects
+* preferably textbooks/pages containing actual exercises/questions
+
+For each inspected lesson:
+
+1. Identify source blocks classified as:
+
+   * EXERCISE
+   * QUESTION
+   * ACTIVITY
+   * TASK
+   * PRACTICE
+
+2. Count them.
+
+3. Trace each one forward.
+
+Create:
+
+| Source block | Source type | Source text summary | Final destination   | Preserved? |
+| ------------ | ----------- | ------------------- | ------------------- | ---------- |
+| 22           | EXERCISE    | ...                 | MN 1203             | YES        |
+| 23           | QUESTION    | ...                 | additionalExercises | YES        |
+| 24           | ACTIVITY    | ...                 | nowhere             | NO         |
+
+Do this from actual DB data.
+
+---
+
+# 7. SOURCE COVERAGE VS ACTIVITY COVERAGE
+
+This is critical.
+
+The existing Phase 3 coverage validator may confirm:
+
+> every source block is assigned exactly once.
+
+But that does NOT automatically mean the activity itself is preserved.
+
+For example:
+
+A source EXERCISE block could be assigned to a MicroNode as a sourceBlockIndex, while the actual exercise text is never inserted into `lesson_exercises`.
+
+That would be:
+
+`SOURCE COVERAGE = PASS`
+
+but
+
+`ACTIVITY PRESERVATION = FAIL`
+
+Explicitly determine whether this can happen.
+
+Audit both independently:
+
+### Source-block coverage
+
+Was the block assigned?
+
+### Activity preservation
+
+Was the student-facing activity itself preserved in usable form?
+
+These are separate dimensions.
+
+---
+
+# 8. ADDITIONAL EXERCISES
+
+Audit the exact meaning of:
+
+`additionalExercises`
+
+Determine:
+
+1. Why does an exercise go there?
+2. Is it considered preserved?
+3. Is its original text preserved?
+4. Is its sourceBlockIndex preserved?
+5. Can the AI Teacher access it?
+6. Can the teacher access it?
+7. Can it be accidentally discarded because it has no `related_node_id`?
+8. Does the UI distinguish it from mapped exercises?
+
+Also determine whether `additionalExercises` is a legitimate preservation mechanism or merely a fallback bucket hiding mapping failures.
+
+---
+
+# 9. MICRO-NODE ASSIGNMENT RULE
+
+Audit the rule:
+
+> Every real exercise should be attached to the MicroNode whose LO represents that skill.
+
+Determine whether this rule is safe.
+
+Specifically inspect the current "closest prerequisite" behavior.
+
+Question:
+
+If an exercise does not match any MicroNode, does the system:
+
+A. preserve it as additional exercise
+
+OR
+
+B. force it onto the nearest/last MicroNode
+
+OR
+
+C. discard it
+
+OR
+
+D. behave differently depending on the path?
+
+Find real evidence.
+
+The correct preservation contract should allow:
+
+> preserve without forcing a semantically incorrect MicroNode assignment.
+
+---
+
+# 10. EXERCISE TEXT FIDELITY
+
+Determine how much of the original exercise survives.
+
+For real exercises, compare:
+
+SOURCE:
+`"Calculate 37 + 28."`
+
+vs.
+
+DB:
+`"Calculate the expression."`
+
+vs.
+
+AI Teacher context:
+`"Practice addition."`
+
+Determine whether the pipeline preserves:
+
+* exact text
+* normalized text
+* paraphrased text
+* only metadata
+* only source block reference
+
+If exact text is intentionally not preserved, determine whether semantic fidelity is guaranteed.
+
+Flag any case where the student-facing task becomes impossible to reconstruct.
+
+---
+
+# 11. QUESTION / ACTIVITY / TASK / PRACTICE
+
+Do NOT assume only EXERCISE matters.
+
+Trace all five categories separately.
+
+For each determine:
+
+| Type     | Extracted? | Preserved? | Assigned? | DB representation | AI Teacher access |
+| -------- | ---------- | ---------- | --------- | ----------------- | ----------------- |
+| EXERCISE | ?          | ?          | ?         | ?                 | ?                 |
+| QUESTION | ?          | ?          | ?         | ?                 | ?                 |
+| ACTIVITY | ?          | ?          | ?         | ?                 | ?                 |
+| TASK     | ?          | ?          | ?         | ?                 | ?                 |
+| PRACTICE | ?          | ?          | ?         | ?                 | ?                 |
+
+A textbook question can be a real learning activity even if it is not labeled "EXERCISE".
+
+---
+
+# 12. NUMBERED ITEMS
+
+Audit a major edge case:
+
+A textbook may contain:
+
+`1. Calculate ...`
+`2. Compare ...`
+`3. Explain ...`
+
+The number alone must NOT determine whether something is an exercise.
+
+But explicit student-directed language should strongly indicate an activity.
+
+Determine how the current Pass 1 classifier handles this.
+
+Also inspect whether OCR/vision extraction loses:
+
+* numbering
+* bullet markers
+* imperative verbs
+* question marks
+* layout
+* "Exercise" headings
+* "Tasks" headings
+
+Any loss here can cause classification failure.
+
+---
+
+# 13. MULTI-ACTIVITY BLOCKS
+
+Audit blocks containing multiple activities.
+
+Example:
+
+> "Answer questions 1–4 and then complete the table."
+
+Determine whether the mapper:
+
+A. preserves the whole activity as one unit,
+B. splits it into separate activities,
+C. partially preserves it,
+D. loses part of it.
+
+The system must avoid both:
+
+* destructive over-splitting
+* destructive collapsing that loses individual student actions
+
+Document the current behavior.
+
+---
+
+# 14. ACTIVITY + THEORY IN SAME SOURCE BLOCK
+
+Audit cases like:
+
+> Explanation paragraph...
+> Example...
+> "Now solve the following: 3 + 4 = ?"
+
+If one source block contains both theory and an activity, determine whether the current architecture can preserve both.
+
+This is a high-risk edge case because source-block coverage alone can hide activity loss.
+
+---
+
+# 15. STRUCTURAL SAFETY NET
+
+Inspect all safety-net logic.
+
+Determine whether any safety net can remove a MicroNode or exercise because:
+
+* sourceBlockIndices empty
+* title empty
+* LO empty
+* exercise text empty
+* related node missing
+* schema mismatch
+* invalid block type
+
+If an activity is removed, is it rescued into another collection?
+
+Trace the exact behavior.
+
+---
+
+# 16. VALIDATOR AUDIT
+
+Audit whether the current validators detect:
+
+### A. Activity loss
+
+Source EXERCISE block exists but no corresponding exercise/activity exists downstream.
+
+### B. Activity duplication
+
+Same source exercise appears twice.
+
+### C. Activity mutation
+
+Source activity exists but its usable content disappears.
+
+### D. Wrong assignment
+
+Exercise exists but is attached to a MicroNode whose LO does not represent its skill.
+
+### E. Unmapped activity
+
+Real activity is sitting in `unmappedBlocks` without preservation.
+
+For each answer:
+
+`YES / NO / PARTIAL`
+
+with exact evidence.
+
+---
+
+# 17. AI TEACHER CONSUMPTION
+
+Inspect the AI Teacher's lessonContext construction.
+
+Determine exactly which activity representations reach the AI Teacher:
+
+* classExercises
+* deepDiveExercises
+* homeworkTasks
+* lesson_exercises
+* additionalExercises
+* source text
+* MicroNode data
+
+Determine whether a preserved textbook exercise can actually be used by the AI Teacher.
+
+Important distinction:
+
+> Stored in DB ≠ available to AI Teacher.
+
+Trace the full path.
+
+---
+
+# 18. PRODUCTION FAILURE CASES
+
+Look specifically for evidence of:
+
+* exercise count dropping between stages
+* source EXERCISE blocks with zero `lesson_exercises`
+* additionalExercises containing valid exercises that should have been mapped
+* exercises assigned to unrelated MicroNodes
+* exercises silently disappearing
+* questions classified as examples
+* activities stored only as source blocks but never exposed to teaching
+
+If found, classify severity:
+
+`LOW`
+`MEDIUM`
+`HIGH`
+`CRITICAL`
+
+---
+
+# 19. REQUIRED FINAL TABLE
+
+Produce this exact summary:
+
+| Contract                                    | Status            | Evidence |
+| ------------------------------------------- | ----------------- | -------- |
+| Every real EXERCISE preserved               | PASS/PARTIAL/FAIL |          |
+| Every real QUESTION preserved               | PASS/PARTIAL/FAIL |          |
+| Every real ACTIVITY preserved               | PASS/PARTIAL/FAIL |          |
+| Every real TASK preserved                   | PASS/PARTIAL/FAIL |          |
+| Every real PRACTICE preserved               | PASS/PARTIAL/FAIL |          |
+| EXAMPLE distinguished from EXERCISE         | PASS/PARTIAL/FAIL |          |
+| Activity text preserved                     | PASS/PARTIAL/FAIL |          |
+| Activities can remain unmapped without loss | PASS/PARTIAL/FAIL |          |
+| No forced incorrect MicroNode assignment    | PASS/PARTIAL/FAIL |          |
+| Activity coverage independently validated   | PASS/PARTIAL/FAIL |          |
+| AI Teacher receives preserved activities    | PASS/PARTIAL/FAIL |          |
+| Duplicate activity detection                | PASS/PARTIAL/FAIL |          |
+| Activity loss detection                     | PASS/PARTIAL/FAIL |          |
+
+---
+
+# 20. SEVERITY
+
+Use:
+
+### CRITICAL
+
+Real student activities are silently lost at scale or the AI Teacher cannot access them.
+
+### HIGH
+
+Activities are frequently misclassified, discarded, or assigned to unrelated MicroNodes.
+
+### MEDIUM
+
+Preservation works but important edge cases are unprotected.
+
+### LOW
+
+Only minor reporting/UI/diagnostic gaps.
+
+Do not inflate severity.
+
+---
+
+# 21. FIX PLAN — DO NOT IMPLEMENT
+
+If the audit finds failures, propose the smallest architecture that fixes them.
+
+Separate:
+
+### P5.1 — Prompt/contract fix
+
+### P5.2 — Deterministic preservation gate
+
+### P5.3 — Activity coverage validator
+
+### P5.4 — Activity-to-MicroNode assignment validation
+
+### P5.5 — AI Teacher consumption fix
+
+### P5.6 — Reporting/UI
+
+For every proposed fix specify:
+
+* exact file
+* approximate insertion point
+* current behavior
+* required behavior
+* whether hard fail or review warning
+* DB migration required? YES/NO
+* frontend change required? YES/NO
+* regression risk
+* tests required
+
+Do NOT implement any of these fixes.
+
+---
+
+# 22. IMPORTANT DESIGN PRINCIPLE
+
+The final recommendation must preserve this distinction:
+
+> **SOURCE COVERAGE ≠ LEARNING ACTIVITY PRESERVATION**
+
+A source block can be covered while the actual student task is lost.
+
+The Phase 5 gate must therefore independently answer:
+
+> "Did every real student-facing learning activity in the textbook survive the mapping pipeline in a usable form?"
+
+Do not recommend making every EXERCISE a MicroNode.
+
+Do not recommend forcing unmatched exercises onto the nearest MicroNode.
+
+Do not recommend treating every numbered example as an exercise.
+
+The goal is **lossless activity preservation with semantically correct assignment**, not maximum exercise-to-node assignment.
+
+---
+
+# FINAL OUTPUT
+
+Return only the forensic report with:
+
+1. Pipeline
+2. Current contract
+3. Enforcement analysis
+4. Real production evidence
+5. Loss points
+6. Example vs Exercise analysis
+7. AdditionalExercises analysis
+8. Validator analysis
+9. AI Teacher consumption
+10. Contract compliance table
+11. Severity
+12. Final verdict
+13. Minimal fix plan
+14. Files to change
+15. Tests required
+
+End with:
+
+`PHASE 5 STATUS: PASS / PARTIAL / FAIL`
+
+and:
+
+`Fix required: YES / NO`
+
+Do not modify anything.
