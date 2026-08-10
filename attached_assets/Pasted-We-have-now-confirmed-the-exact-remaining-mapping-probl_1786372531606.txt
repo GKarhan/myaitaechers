@@ -1,0 +1,82 @@
+We have now confirmed the exact remaining mapping problem in Lesson 104.
+
+DO NOT remap Lesson 104 yet.
+
+Current DB state:
+- 4 MicroNodes
+- 9 exercises
+- source coverage = valid
+- all exercises have assignment = CLASS
+- exercises 114–122 all exist
+- only 114 and 115 have relatedNodeId
+- exercises 116–122 have relatedNodeId = NULL
+- MicroNodes 1238, 1239, 1240 have zero linked exercises
+
+The current mapping is therefore technically source-complete but pedagogically under-linked.
+
+I need a READ-ONLY forensic audit of the Pass2 activity-to-MicroNode assignment logic.
+
+Investigate:
+
+1. Where Pass2 decides whether an exercise goes into:
+   - MicroNode.exercises[]
+   - topic.additionalExercises[]
+
+2. Identify the exact prompt/schema/rule that tells the AI how to associate an EXERCISE/ACTIVITY with a MicroNode.
+
+3. Determine why the AI assigned:
+   - block 9 / exercise 114 → MN 1237
+   - block 10 / exercise 115 → MN 1237
+   - blocks 11–17 → additionalExercises[]
+
+4. Check whether the mapper currently requires semantic alignment between an exercise and a MicroNode, or whether exercises are allowed to fall into additionalExercises whenever the AI is uncertain.
+
+5. For Lesson 104, produce a proposed ideal mapping WITHOUT changing the DB.
+
+Use the textbook content and the existing MicroNodes:
+
+MN 1237:
+«Անհայտ նվազելիի գտնելը»
+
+MN 1238:
+«Անհայտ հանելիի գտնելը»
+
+MN 1239:
+«Անհայտ գումարելիի գտնելը»
+
+MN 1240:
+«Գումարման և հանման բաղադրիչների փոխհարաբերությունները»
+
+Exercises:
+114 — find unknown components
+115 — complete statements about unknown components
+116 — explain subtraction/difference relationship
+117 — find an unknown number after increasing twice
+118 — explain multi-step solution
+119 — compare costs for different quantities
+120 — calculate price after quantity change
+121 — discussion questions about sum/difference relationships
+122 — class activity/presentation/reflection
+
+6. For each exercise 114–122, recommend:
+   - exact MicroNode owner, OR
+   - topic-level additionalExercises if genuinely cross-node/summary
+   and explain why.
+
+7. Most importantly, determine whether the mapper architecture should:
+   A) force every exercise to a MicroNode when semantic alignment is clear,
+   B) keep additionalExercises only for genuinely cross-node/lesson-level activities,
+   C) use a deterministic post-processing semantic assignment/safety-net,
+   or another approach.
+
+8. DO NOT modify code.
+9. DO NOT modify DB.
+10. DO NOT trigger another remap.
+
+Return:
+- exact root cause
+- exact relevant code/prompt locations
+- current decision logic
+- ideal Lesson 104 exercise→MicroNode mapping
+- recommended minimal architectural fix
+- risks/regressions
