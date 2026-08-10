@@ -21,6 +21,18 @@ Two insertion sites in `lessons.ts` (MicroNode exercises and additionalExercises
 - Phase 3: `WHERE lessonId = X AND assignment = 'CLASS' AND (relatedNodeId IN nodes OR relatedNodeId IS NULL)` — full DEEP_DIVE set.
 - Homework: `WHERE lessonId = X AND assignment = 'HOMEWORK'` — unchanged.
 
+## Pass2 prompt — exercise→MicroNode assignment strengthening
+
+`PASS2_STEP2_SYSTEM` (lesson-mapping.ts) has been strengthened with 4 explicit rules:
+1. Always inspect existing MicroNode LOs FIRST before creating new ones
+2. Exercise FORMAT (word problem, multi-step, interpretation) does NOT determine MN ownership
+3. Multi-skill exercises: find primary LO, assign to best-match existing MN
+4. NEVER create exercise-only MicroNodes (explicit prohibited titles list)
+additionalExercises[] is now framed as LAST RESORT with 3 explicit qualifying conditions.
+Includes a concrete Lesson 104 worked example embedded in the prompt.
+
+**Why:** Before this fix, AI created exercise-only MicroNodes (no sourceBlockIndices) → safety-net stripped them → all exercises fell to additionalExercises (relatedNodeId=NULL). After fix: 8/9 exercises get relatedNodeId assigned in typical runs.
+
 ## Activity normalization note (normalizeActivityPlacements)
 
 Replaces Steps A+B+C. Runs BEFORE validateSourceCoverage. Enforces ∀ activity block N → exactly ONE canonical placement.

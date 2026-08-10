@@ -1100,18 +1100,82 @@ FIELD DEFINITIONS:
     This block contains the imperative "Fill in" → it MUST be in exercises[],
     NOT in sourceBlockIndices.  The MicroNode had exercise_count=0 as a result.
 • exercises           — EXERCISE, ACTIVITY, HOMEWORK blocks that are student practice tasks.
-                        Assignment priority:
-                        1. Identify what skill the exercise primarily tests.
-                        2. Find the existing MicroNode whose LO represents that skill or its
-                           closest prerequisite skill.
-                        3. Assign the exercise to that MicroNode.
-                        4. For an exercise that combines multiple skills, assign it to the
-                           MicroNode of the most advanced skill that has genuine source content.
-                        5. If NO existing MicroNode can reasonably own the exercise, place the
-                           block in unmappedBlocks — never create a new source-less MicroNode.
-                        Never create a standalone exercise-only MicroNode.
-                        EXERCISE blocks belong in exercises[] — they do NOT create a new
-                        MicroNode merely because the exercise implies a new skill.
+
+  ── STEP 1 — ALWAYS inspect existing MicroNodes FIRST ────────────────────────
+  For EVERY exercise block, before doing anything else, read the LO of every
+  MicroNode you have already produced for this topic and ask:
+    "Which existing MicroNode has the closest Learning Objective to the skill
+     this exercise actually practices?"
+  If there is a reasonable semantic match, assign the block to that MicroNode's
+  exercises[]. Do NOT create a new MicroNode for it.
+
+  ── STEP 2 — Exercise FORMAT does not determine MicroNode ownership ───────────
+  Do NOT create a new MicroNode because an exercise is a word problem,
+  interpretation task, multi-step problem, fill-in-the-blank, discussion
+  question, computation drill, or real-world application.
+  These are exercise FORMATS, not different learning objectives.
+
+  Examples:
+  • An exercise asking a student to interpret what a difference means → belongs
+    to the existing MicroNode whose LO covers the subtraction relationship,
+    NOT to a new "difference interpretation" MicroNode.
+  • A word problem requiring the student to find an unknown component → belongs
+    to the corresponding existing unknown-component MicroNode even if it
+    involves several arithmetic operations.
+  • An exercise with a narrative context (shopping, comparing quantities) →
+    still belongs to the MicroNode whose LO matches the primary skill being
+    assessed, regardless of the real-world wrapper.
+
+  ── STEP 3 — Multi-skill exercises ───────────────────────────────────────────
+  When an exercise uses multiple skills:
+  1. Identify its PRIMARY learning objective — the one skill being primarily
+     assessed.
+  2. Assign it to the existing MicroNode whose LO best represents that primary
+     objective.
+  3. If several MicroNodes are relevant, choose the MicroNode representing
+     the most central or most advanced prerequisite skill actually assessed.
+  4. Do NOT create a new MicroNode solely because the exercise combines multiple
+     operations.
+
+  ── STEP 4 — NEVER create an exercise-type MicroNode ─────────────────────────
+  NEVER create a MicroNode whose purpose is to group exercises by exercise type.
+  NEVER create a MicroNode with empty sourceBlockIndices in order to house
+  exercises. The following are activity categories, NOT learning objectives,
+  and MUST NOT become MicroNode titles:
+    ✗ "Բառային խնդիրներ" / "Word problems"
+    ✗ "Մեկնաբանական վարժություններ" / "Interpretation exercises"
+    ✗ "Գործնական վարժություններ" / "Practice exercises"
+    ✗ "Դասարանային վարժություններ" / "Class exercises"
+    ✗ "Խառը վարժություններ" / "Mixed exercises"
+    ✗ "Կիրառական վարժություններ" / "Application exercises"
+  If an exercise does not justify a new THEORY MicroNode, assign it to the
+  closest existing MicroNode or, as a last resort, put it in additionalExercises[].
+
+  ── WORKED EXAMPLE — Lesson 104 (apply this reasoning to every lesson) ───────
+  Existing MicroNodes:
+    MN-A «Անhayт nvazeli gtnelǝ»  LO: find unknown minuend from minuend=subtrahend+difference
+    MN-B «Անhayт haneli gtnelǝ»   LO: find unknown subtrahend from subtrahend=minuend−difference
+    MN-C «Անhayт gumareli gtnelǝ» LO: find unknown addend from addend=sum−other_addend
+    MN-D «Gumarmani ev hanman baghаdrychknery» LO: reason about relationships among sum, difference and their components
+
+  Exercise assignments using semantic reasoning:
+    Ex 114 (computation drill — all three unknown types) → MN-A or the closest
+      component MicroNode. A mixed drill covering all unknowns belongs to the
+      primary/first concept MicroNode, NOT to a new "mixed drill" MicroNode.
+    Ex 116 ("explain what the difference shows") → MN-B or MN-D — the exercise
+      tests understanding of the subtrahend/minuend/difference relationship.
+      NOT a new "difference interpretation" MicroNode.
+    Ex 117 (find starting number after successive increases → reverse addend) →
+      MN-C — the core task is recovering an unknown addend using inverse
+      operations. NOT a new "reverse problem" MicroNode.
+    Ex 119–121 (word problems / discussion about sum-difference relationships)
+      → MN-D — if the primary skill is reasoning about sum/difference
+      relationships, assign to the existing relationship MicroNode.
+    Ex 122 (class presentation / cross-lesson reflection activity) →
+      additionalExercises[] — genuinely cross-node, not owned by any single LO.
+
+  These are demonstrations of the decision PRINCIPLE. Do not hardcode these
+  block indices — apply the same semantic reasoning to every lesson's blocks.
 • supportingMaterialIndices — IMAGE, CAPTION, TABLE blocks that illustrate the MicroNode.
 • unmappedBlocks      — Place a block here ONLY when it is a pure structural/header element
                         with no instructional content AND no student task. Specifically:
@@ -1197,22 +1261,41 @@ ABSOLUTE RULES:
    "Exercises and Activities" or "Introduction". Write "Վարժություններ" not "Exercises",
    "Ներածություն" not "Introduction", etc.
 
-WHEN AN EXERCISE HAS NO SOURCE-GROUNDED MICRONODE — use additionalExercises:
-If an exercise practices a skill for which NO instructional source block exists in this
-topic, AND no existing MicroNode's LO genuinely covers that skill:
-  → Place it in "additionalExercises" (see output format below).
+additionalExercises[] IS A LAST RESORT — not a default for uncertain ownership:
+Before placing any exercise in additionalExercises[], explicitly check EVERY existing
+MicroNode in the current topic and determine whether one has a defensible semantic match.
+
+additionalExercises[] is ONLY appropriate when ALL of the following apply:
+  1. The exercise is genuinely cross-node — it simultaneously practices the LOs of two
+     or more MicroNodes with equal weight, so no single MicroNode can reasonably own it.
+  OR
+  2. It is genuinely metacognitive / reflective / presentation-oriented (e.g. a class
+     activity comparing the lesson to something, or a group reflection task).
+  OR
+  3. It tests something entirely outside the learning objectives represented by the
+     current topic's MicroNodes.
+
+Uncertainty caused ONLY by the exercise format (word problem, multi-step, discussion
+question, etc.) is NOT sufficient justification for additionalExercises[].
+
   → DO NOT create a MicroNode with sourceBlockIndices: [] just to house the exercise.
   → DO NOT put real textbook exercises in unmappedBlocks.
-  → additionalExercises preserves the exercise as real textbook content without inventing
-    a source-less MicroNode.
+  → additionalExercises[] preserves the exercise as real textbook content without
+    inventing a source-less MicroNode — but it is the fallback of last resort.
 
 Decision tree for each EXERCISE/ACTIVITY/HOMEWORK block:
-  1. Does an existing MicroNode's LO genuinely cover what this exercise practices?
-     YES → assign it to that MicroNode's exercises[].
-  2. Does a genuine instructional source block exist for this skill in the current topic?
-     YES → create a MicroNode from that source, then assign the exercise.
-  3. Neither 1 nor 2 applies?
-     → Place in additionalExercises. Never create a source-less MicroNode.
+  1. Read every existing MicroNode's LO in this topic.
+     Does any of them reasonably cover the PRIMARY skill this exercise practices?
+     YES → assign it to that MicroNode's exercises[]. STOP.
+  2. Is there more than one MicroNode that partially covers this exercise's skills?
+     YES → identify the PRIMARY skill being assessed; assign to the MicroNode whose
+     LO best represents that primary skill. STOP.
+  3. Does a genuine instructional source block exist for a new, distinct skill not yet
+     covered by any MicroNode's LO?
+     YES → create a MicroNode from that source block, then assign the exercise. STOP.
+  4. None of the above applies (exercise is genuinely cross-node, reflective, or out
+     of scope for all existing MicroNode LOs)?
+     → Place in additionalExercises[]. Never create a source-less MicroNode.
 
 ABSOLUTE ACTIVITY PRESERVATION RULE:
 Every EXERCISE, ACTIVITY, or HOMEWORK block listed in the input MUST appear in your output
@@ -1233,8 +1316,10 @@ PRODUCTION FAILURE EXAMPLE:
   WRONG:    {"blockIndex": null}   ← causes the exercise to be permanently lost
   WRONG:    {"blockIndex": 117}    ← 117 is the exercise number, NOT the block index
   
-If you are uncertain which MicroNode owns an exercise → use additionalExercises[] with
-the correct blockIndex. Uncertainty about the owner is NEVER a reason to use null.
+If you are uncertain which MicroNode owns an exercise → re-read every existing MicroNode's
+LO and pick the closest semantic match. Only use additionalExercises[] if, after that
+re-check, no existing MicroNode provides a defensible owner.
+Uncertainty about the owner is NEVER a reason to use null for blockIndex.
 
 OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary before or after.
 {

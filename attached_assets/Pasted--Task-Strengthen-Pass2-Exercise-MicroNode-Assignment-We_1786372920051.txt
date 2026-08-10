@@ -1,0 +1,255 @@
+## Task — Strengthen Pass2 Exercise → MicroNode Assignment
+
+We have already fixed the `coverage_failed` / duplicate activity placement problem in `lesson-mapping.ts` with `normalizeActivityPlacements()` Phases 1–6.
+
+**Do NOT change that normalization architecture now.**
+**Do NOT add a second AI call / Phase 7 yet.**
+For this task, modify only the Pass2 exercise-to-MicroNode decision logic in `PASS2_STEP2_SYSTEM`.
+
+### Problem
+
+Current behavior is technically valid but pedagogically weak.
+
+The AI sometimes creates temporary exercise-only MicroNodes with empty `sourceBlockIndices`. The safety-net correctly strips those MicroNodes and moves their exercises to `additionalExercises`.
+
+This means exercises remain in the database, but they lose their MicroNode relationship.
+
+Example from Lesson 104:
+
+* MicroNode: `Անհայտ նվազելիի գտնելը` → exercises 114, 115
+* MicroNode: `Անհայտ հանելիի գտնելը` → 0 exercises
+* MicroNode: `Անհայտ գումարելիի գտնելը` → 0 exercises
+* MicroNode: `Գումարման և հանման բաղադրիչների փոխհարաբերությունները` → 0 exercises
+* exercises 116–121 → `additionalExercises`
+* only exercise 122 is genuinely defensible as lesson-level/cross-node activity
+
+The goal is to make Pass2 use the **existing theory MicroNodes much more effectively**.
+
+---
+
+# Required prompt change
+
+Find `PASS2_STEP2_SYSTEM` in:
+
+`artifacts/api-server/src/services/lesson-mapping.ts`
+
+Strengthen the rules governing EXERCISE / ACTIVITY / HOMEWORK placement.
+
+Add the following conceptual rules to the prompt.
+
+### 1. Existing MicroNode gets priority
+
+For EVERY EXERCISE / ACTIVITY / HOMEWORK block:
+
+First inspect all existing MicroNodes in the current topic.
+
+Ask:
+
+> Which existing MicroNode has the closest Learning Objective (LO) to the skill this activity actually practices?
+
+If there is a reasonable semantic match, **assign the block to that existing MicroNode's `exercises[]`**.
+
+Do NOT create another MicroNode merely because the exercise is phrased differently or requires a different problem format.
+
+The exercise does NOT need to look like the theory text.
+
+A MicroNode represents the underlying learning objective/skill, not a particular exercise format.
+
+---
+
+### 2. Exercise format must NOT determine MicroNode ownership
+
+Explicitly add:
+
+> Do not create a new MicroNode because an exercise is a word problem, interpretation task, multi-step problem, fill-in-the-blank, discussion question, computation drill, or real-world application.
+>
+> These are exercise formats, not necessarily different learning objectives.
+
+Example:
+
+An exercise asking a student to interpret what a difference means still belongs to the existing MicroNode whose LO teaches the meaning/relationship of subtraction.
+
+A word problem requiring the student to find an unknown component can belong to the corresponding existing unknown-component MicroNode even if the exercise itself contains several operations.
+
+---
+
+### 3. Multi-skill exercises
+
+Strengthen the existing multi-skill rule:
+
+> When an exercise uses multiple skills, identify its PRIMARY learning objective.
+>
+> Assign it to the existing MicroNode whose LO best represents that primary objective.
+>
+> If several MicroNodes are relevant, use the MicroNode representing the most central / most advanced prerequisite skill actually being assessed.
+>
+> Do not create a new MicroNode solely because the exercise combines multiple operations.
+
+Only use `additionalExercises[]` when no existing MicroNode provides a defensible owner.
+
+---
+
+### 4. Strong prohibition on exercise-only MicroNodes
+
+Add an explicit rule:
+
+> NEVER create a MicroNode whose only purpose is to group exercises by exercise type.
+>
+> NEVER create a MicroNode with empty `sourceBlockIndices` in order to give exercises a home.
+>
+> Examples of invalid MicroNode concepts:
+>
+> * "Word problems"
+> * "Interpretation exercises"
+> * "Practice exercises"
+> * "Class exercises"
+> * "Mixed exercises"
+> * "Application exercises"
+>
+> These are activity categories, not learning objectives.
+>
+> If an exercise does not justify a new theory/source MicroNode, assign it to the closest existing MicroNode or put it in `additionalExercises[]`.
+
+---
+
+# 5. Use this concrete Lesson 104 example in the prompt
+
+Add a compact worked example to `PASS2_STEP2_SYSTEM` so the model understands the intended behavior.
+
+Existing MicroNodes:
+
+1. `Անհայտ նվազելիի գտնելը`
+
+   * LO: find an unknown minuend using the relationship between minuend, subtrahend and difference.
+
+2. `Անհայտ հանելիի գտնելը`
+
+   * LO: find an unknown subtrahend using the relationship between minuend, subtrahend and difference.
+
+3. `Անհայտ գումարելիի գտնելը`
+
+   * LO: find an unknown addend using the relationship between addends and sum.
+
+4. `Գումարման և հանման բաղադրիչների փոխհարաբերությունները`
+
+   * LO: understand and reason about relationships among sum, difference and their components.
+
+Then give examples:
+
+* Exercise 114 → `Անհայտ նվազելիի գտնելը` or the closest existing component MicroNode, depending on the actual primary skill.
+* Exercise 116 ("Երկու թվերի տարբերությունը 453 է. որքանո՞վ է նվազելին մեծ հանելիից") → existing subtraction/component relationship MicroNode, NOT a new "difference interpretation" MicroNode.
+* Exercise 117 (unknown starting number after successive increases) → existing `Անհայտ գումարելիի գտնելը` because the core task is recovering an unknown addend/component using inverse addition.
+* Exercises 119–121 → prefer an existing component/relationship MicroNode when their primary skill matches it; do NOT create a "word problems" or "discussion questions" MicroNode.
+* Exercise 122 / a genuinely cross-node class presentation or reflection → `additionalExercises[]` is appropriate.
+
+Important:
+
+> These examples are demonstrations of the decision principle, not hardcoded block-index assignments. Apply the same semantic reasoning to every lesson.
+
+---
+
+# 6. Tighten the additionalExercises fallback
+
+Replace/strengthen the current uncertainty fallback with:
+
+> `additionalExercises[]` is a LAST RESORT.
+>
+> Before using it, explicitly check every existing MicroNode in the current topic and determine whether one has a defensible semantic match.
+>
+> If an existing MicroNode reasonably covers the exercise's primary learning objective, assign the exercise to that MicroNode.
+>
+> Use `additionalExercises[]` only when:
+>
+> 1. the exercise is genuinely cross-node and has no single defensible owner, OR
+> 2. it is genuinely metacognitive / reflective / presentation-oriented, OR
+> 3. it tests something outside the learning objectives represented by the current topic.
+>
+> Uncertainty caused only by the exercise format is NOT sufficient justification for `additionalExercises[]`.
+
+Do NOT remove `additionalExercises[]` as a valid destination. We still need it for genuinely unowned activities.
+
+---
+
+# 7. Preserve the existing architecture
+
+Do not modify:
+
+* `normalizeActivityPlacements()`
+* Phase 1
+* Phase 1b
+* Phase 2
+* Phase 3
+* Phase 4
+* Phase 5
+* Phase 6
+* `validateSourceCoverage()`
+* exercise DB insertion logic
+* `relatedNodeId` semantics
+* assignment semantics
+* P5.2 behavior
+
+The only intended change in this task is to improve the Pass2 AI's semantic assignment decision.
+
+---
+
+# 8. Validation after the prompt change
+
+After editing:
+
+1. TypeScript/build check.
+2. Run the existing test suites.
+3. Remap Lesson 104 at least **3 times**.
+4. Do NOT judge success only by `coverageValid = true`.
+
+For each run report:
+
+* Pass1 block count
+* number of topics
+* number of MicroNodes
+* every MicroNode title
+* every MicroNode's `sourceBlockIndices`
+* every MicroNode's exercise block indices
+* every `additionalExercises` block index
+* `duplicateIndices`
+* `missingIndices`
+* `emptyMicroNodes`
+* coverage
+* total exercises
+* exercises with `related_node_id = NULL`
+
+### Success criteria
+
+The desired result is:
+
+* `coverageValid = true`
+* `duplicateIndices = []`
+* `missingIndices = []`
+* `emptyMicroNodes = []`
+* all real exercises remain in DB
+* substantially fewer exercises fall into `additionalExercises`
+* existing MicroNodes receive exercises when their LO genuinely matches
+* no exercise-only MicroNodes are created
+* no new regression in the existing 71 tests
+
+For Lesson 104 specifically, a healthy result should look conceptually like:
+
+```text
+Անհայտ նվազելիի գտնելը
+  → relevant exercises
+
+Անհայտ հանելիի գտնելը
+  → relevant exercises
+
+Անհայտ գումարելիի գտնելը
+  → relevant exercises
+
+Գումարման և հանման բաղադրիչների փոխհարաբերությունները
+  → relevant relationship/application exercises
+
+additionalExercises
+  → only genuinely cross-node / reflective / unowned activities
+```
+
+Do not force every exercise into a MicroNode. The goal is **semantic correctness**, not maximizing the number of `relatedNodeId` values.
+
+After the 3 remaps, give me a short comparison showing whether the new prompt actually improved Exercise → MicroNode assignment compared with job 36.
