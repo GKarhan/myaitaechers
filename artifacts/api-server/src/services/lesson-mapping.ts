@@ -1058,15 +1058,28 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
     sourceParagraph: null,
   }));
 
-  // Server-side safety net: strip any MicroNode whose sourceBlockIndices is still empty
-  // (model violated ABSOLUTE RULE 2). Move its exercises to additionalExercises instead
-  // of persisting an invalid source-less node.
+  // Server-side safety net: strip any MicroNode that violates a structural invariant.
+  // Invariants (all three must hold):
+  //   1. sourceBlockIndices is non-empty  (ABSOLUTE RULE 2)
+  //   2. title is non-empty / non-whitespace
+  //   3. learningObjective is non-empty / non-whitespace
+  // Stripped MicroNode exercises are rescued into additionalExercises so no
+  // textbook content is lost. Coverage logic is unaffected.
   const microNodes: Pass2MicroNode[] = [];
   for (const mn of rawMicroNodes) {
-    if (mn.sourceBlockIndices.length === 0) {
+    const emptySourceBlocks  = mn.sourceBlockIndices.length === 0;
+    const emptyTitle         = !mn.title.trim();
+    const emptyLO            = !mn.learningObjective.trim();
+
+    if (emptySourceBlocks || emptyTitle || emptyLO) {
+      const violated = [
+        emptySourceBlocks  && "sourceBlockIndices",
+        emptyTitle         && "title",
+        emptyLO            && "learningObjective",
+      ].filter(Boolean);
       logger.warn(
-        { title: mn.title, exerciseCount: mn.exercises.length },
-        "pass2 step2: safety-net — source-less MicroNode stripped; exercises moved to additionalExercises"
+        { title: mn.title, exerciseCount: mn.exercises.length, violated },
+        "pass2 step2: safety-net — invalid MicroNode stripped; exercises moved to additionalExercises"
       );
       additionalExercises.push(...mn.exercises);
     } else {

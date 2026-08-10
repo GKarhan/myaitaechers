@@ -1,0 +1,84 @@
+Հաստատում եմ քո առաջարկած **Phase 2 — Mapper Contract** minimal change-ը։
+
+Կատարիր **միայն** հետևյալ փոփոխությունը.
+
+### 1. MicroNode safety gate
+
+Ֆայլ՝
+
+`artifacts/api-server/src/services/lesson-mapping.ts`
+
+Գտիր `runStep2ForTopic` ֆունկցիայի այն հատվածը, որտեղ արդեն կա `sourceBlockIndices.length === 0` safety-net-ը։
+
+Ընդլայնիր այդ նույն safety gate-ը, որպեսզի MicroNode-ը invalid համարվի նաև եթե՝
+
+* `title`-ը դատարկ է կամ միայն whitespace է
+* `learningObjective`-ը դատարկ է կամ միայն whitespace է
+* `sourceBlockIndices`-ը դատարկ է
+
+Այսինքն տրամաբանությունը պետք է լինի համարժեք՝
+
+```ts
+if (
+  mn.sourceBlockIndices.length === 0 ||
+  !mn.title.trim() ||
+  !mn.learningObjective.trim()
+) {
+  // existing warning / strip / exercise rescue logic
+}
+```
+
+Պահպանիր արդեն գոյություն ունեցող behavior-ը՝
+
+* invalid MicroNode-ը չպահել DB-ում
+* նրա exercises-ը տեղափոխել `additionalExercises`
+* չկորցնել exercise-ները
+* coverage logic-ը չփոխել
+
+Warning log-ում հստակ նշիր, թե որ invariant-ն է խախտվել՝
+
+* `sourceBlockIndices`
+* `title`
+* `learningObjective`
+
+### Խիստ սահմանափակումներ
+
+Այս փոփոխության շրջանակում **ՉՓՈԽԵՍ**՝
+
+* mapper prompt-ը
+* Pass 1 extraction logic-ը
+* Pass 2 mapping algorithm-ը
+* `LessonMappingResult` interface-ը
+* DB schema-ն
+* RC-3 source metadata persistence-ը
+* sequence logic-ը
+* Additional Exercises-ի ընդհանուր logic-ը
+* Phase 2 logic-ը
+* AI Teacher logic-ը
+* MicroNode granularity prompt-ը
+
+Նաև մի փորձիր հիմա ուղղել mapping-ի content quality-ը, topic descriptions-ը, core ideas-ը, incomplete descriptions-ը կամ այլ semantic խնդիրներ։ Դրանք հաջորդ փուլերի համար են։
+
+### Verification
+
+Փոփոխությունից հետո պարտադիր արա.
+
+1. TypeScript/typecheck
+2. համապատասխան automated tests
+3. եթե հնարավոր է՝ mapper-related tests
+4. ստուգիր, որ նոր code-ը չի առաջացնում նոր error
+5. կատարիր code diff review
+
+Եթե test-երը PASS են՝ տվիր կարճ forensic report՝
+
+* files changed
+* exact change
+* tests result
+* typecheck result
+* new errors՝ 0/N
+* regression check
+* Additional Exercises preservation check
+
+**Կարևոր․ այս քայլից հետո ԿԱՆԳ ԱՌ։**
+
+Մի անցիր Phase 3-ին, մի փոխիր source coverage logic-ը և մի կատարիր այլ բարելավումներ առանց իմ հաստատման։
