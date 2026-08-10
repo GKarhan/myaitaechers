@@ -14,6 +14,49 @@ import { validateSourceCoverage, type CoverageValidationResult } from "../lib/co
 import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
 import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
 
+// ── Activity preservation helpers ─────────────────────────────────────────────
+
+/**
+ * Returns true when blockIndex is a valid integer index into pass1 blocks[].
+ * Exported so tests can import it directly.
+ */
+export function isValidBlockIndex(
+  blockIndex: unknown,
+  blocks: readonly unknown[],
+): blockIndex is number {
+  return (
+    typeof blockIndex === "number" &&
+    Number.isInteger(blockIndex) &&
+    blockIndex >= 0 &&
+    blockIndex < blocks.length
+  );
+}
+
+/**
+ * Collects all block indices that already have a VALID activity destination
+ * (exercises[] or additionalExercises[] with a valid integer blockIndex).
+ *
+ * NOTE: sourceBlockIndices, unmappedBlockIndices, and supportingMaterialIndices
+ * are NOT valid activity destinations and are deliberately excluded.
+ */
+function collectValidActivityDestinations(
+  topics: Pass2TopicResult[],
+  blocks: Pass1Block[],
+): Set<number> {
+  const refs = new Set<number>();
+  for (const topic of topics) {
+    for (const mn of topic.microNodes) {
+      for (const ex of mn.exercises) {
+        if (isValidBlockIndex(ex.blockIndex, blocks)) refs.add(ex.blockIndex);
+      }
+    }
+    for (const ex of topic.additionalExercises) {
+      if (isValidBlockIndex(ex.blockIndex, blocks)) refs.add(ex.blockIndex);
+    }
+  }
+  return refs;
+}
+
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
 /**
@@ -1020,6 +1063,28 @@ Decision tree for each EXERCISE/ACTIVITY/HOMEWORK block:
   3. Neither 1 nor 2 applies?
      → Place in additionalExercises. Never create a source-less MicroNode.
 
+ABSOLUTE ACTIVITY PRESERVATION RULE:
+Every EXERCISE, ACTIVITY, or HOMEWORK block listed in the input MUST appear in your output
+in exactly one of:
+  1. microNode.exercises[]   — with the EXACT Pass1 blockIndex from the "Block N:" label
+  2. additionalExercises[]   — with the EXACT Pass1 blockIndex from the "Block N:" label
+
+CRITICAL — blockIndex must be the Pass1 array index, nothing else:
+  • NEVER output null, undefined, or omit blockIndex.
+  • NEVER use the exercise/problem number printed in the textbook as blockIndex.
+    (e.g. if the block text says "Exercise 117" and the label says "Block 12:", use 12, NOT 117)
+  • NEVER use 0 as a default blockIndex when you are unsure.
+  • blockIndex is the NUMBER after "Block" in the input label — copy it exactly.
+
+PRODUCTION FAILURE EXAMPLE:
+  Input: "Block 12: [EXERCISE, p39] 117 Mtapahel em mi tiv..."
+  CORRECT:  {"blockIndex": 12, "reason": "..."}
+  WRONG:    {"blockIndex": null}   ← causes the exercise to be permanently lost
+  WRONG:    {"blockIndex": 117}    ← 117 is the exercise number, NOT the block index
+  
+If you are uncertain which MicroNode owns an exercise → use additionalExercises[] with
+the correct blockIndex. Uncertainty about the owner is NEVER a reason to use null.
+
 OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary before or after.
 {
   "microNodes": [ <MicroNode objects as shown above> ],
@@ -1515,34 +1580,89 @@ export async function runPass2Pipeline(
     additionalExercises:   topicResults[i].additionalExercises,
   }));
 
-  // P5.4 — Rescue EXERCISE / ACTIVITY / HOMEWORK blocks from unmappedBlockIndices.
+  // ── Activity preservation: comprehensive rescue (Phase 5 invariant) ─────────
   //
-  // The Pass 2 AI occasionally places student-facing activity blocks in unmappedBlocks
-  // (treating them as structural headers).  These blocks would otherwise never be inserted
-  // into lesson_exercises and would be permanently invisible to the AI Teacher.
+  // INVARIANT: every EXERCISE / ACTIVITY / HOMEWORK block from Pass1 must appear
+  // in exactly one valid activity destination after Pass2:
+  //   1. microNode.exercises[]       — linked to a MicroNode (relatedNodeId set)
+  //   2. topic.additionalExercises[] — unassigned (relatedNodeId = null)
   //
-  // Safe: rescued blocks are moved to additionalExercises (relatedNodeId = null) — they
-  // are never force-assigned to a MicroNode.  The coverage validator will count them under
-  // categoryCounts.additionalExercises rather than categoryCounts.unmapped — no change to
-  // coveragePercent or validity.
-  for (const topic of topics) {
-    const rescued:   number[] = [];
-    const remaining: number[] = [];
-    for (const idx of topic.unmappedBlockIndices) {
-      const block = blocks[idx];
-      if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType)) {
-        rescued.push(idx);
-        topic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
-      } else {
-        remaining.push(idx);
+  // Valid activity destinations require a valid (integer, in-range) blockIndex.
+  // sourceBlockIndices, unmappedBlockIndices, and supportingMaterialIndices are
+  // NOT activity destinations — blocks in those categories are never inserted
+  // into lesson_exercises.
+  //
+  // Three-step rescue:
+  //   Step A: Collect all block indices already in valid activity destinations.
+  //   Step B: P5.4 rescue — EXERCISE/ACTIVITY/HOMEWORK from unmappedBlockIndices.
+  //           (AI sometimes treats exercises as structural headers.)
+  //   Step C: Deterministic missing-activity rescue.
+  //           Catches: AI returned null blockIndex, AI omitted block entirely,
+  //           AI used textbook exercise number instead of Pass1 block index,
+  //           any other AI output defect.
+
+  // Step A — current valid-destination set
+  let activityDestinations = collectValidActivityDestinations(topics, blocks);
+
+  // Step B — P5.4: rescue activity blocks from unmappedBlockIndices
+  {
+    const rescuedByTopic: Record<string, number[]> = {};
+    for (const topic of topics) {
+      const rescued: number[] = [];
+      const remaining: number[] = [];
+      for (const idx of topic.unmappedBlockIndices) {
+        const block = blocks[idx];
+        if (
+          block &&
+          ACTIVITY_BLOCK_TYPES.has(block.blockType) &&
+          !activityDestinations.has(idx)
+        ) {
+          rescued.push(idx);
+          topic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
+          activityDestinations.add(idx);
+        } else {
+          remaining.push(idx);
+        }
+      }
+      if (rescued.length > 0) {
+        rescuedByTopic[topic.title] = rescued;
+        topic.unmappedBlockIndices = remaining;
       }
     }
-    if (rescued.length > 0) {
+    if (Object.keys(rescuedByTopic).length > 0) {
       logger.warn(
-        { topicTitle: topic.title, rescued },
-        "pass2 p5.4: rescued EXERCISE/ACTIVITY/HOMEWORK from unmappedBlocks → additionalExercises",
+        { rescuedByTopic },
+        "pass2 p5.4b: rescued EXERCISE/ACTIVITY/HOMEWORK from unmappedBlocks → additionalExercises",
       );
-      topic.unmappedBlockIndices = remaining;
+    }
+  }
+
+  // Step C — deterministic missing-activity rescue
+  // Any Pass1 activity block with no valid destination is rescued to the last topic.
+  // This handles: null blockIndex from AI, completely omitted blocks, wrong blockIndex.
+  {
+    const missingActivityIndices: number[] = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType) && !activityDestinations.has(i)) {
+        missingActivityIndices.push(i);
+      }
+    }
+    if (missingActivityIndices.length > 0 && topics.length > 0) {
+      const rescueTarget = topics[topics.length - 1];
+      for (const idx of missingActivityIndices) {
+        const block = blocks[idx];
+        if (!block) continue;
+        rescueTarget.additionalExercises.push({
+          blockIndex:      idx,
+          sourceParagraph: block.sourceParagraph,
+        });
+        activityDestinations.add(idx);
+      }
+      logger.warn(
+        { missingActivityIndices, rescueTopicTitle: topics[topics.length - 1].title },
+        "pass2 p5.4c: deterministic rescue of missing activity blocks → additionalExercises",
+      );
     }
   }
 

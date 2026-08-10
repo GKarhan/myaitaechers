@@ -1,0 +1,680 @@
+# PHASE 5.4 — PRODUCTION FIX PROMPT
+
+## Lesson 104 / Job 27 — `additionalExercises.blockIndex = null` և missing EXERCISE blocks
+
+Դու աշխատում ես արդեն audited production codebase-ի վրա։ **Մի վերադարձրու ընդհանուր վերլուծություն և մի վերագրիր Phase 5 report-ը։** Պետք է ուղղես կոնկրետ production failure-ը, որը հաստատվել է Lesson 104 / Job 27 re-map-ով։
+
+### 1. Հաստատված production failure
+
+Lesson 104 / Job 27-ում Pass 1-ը տվել է 18 block.
+
+* `0` OBJECTIVE
+* `1–3` RULE
+* `4–6` EXAMPLE
+* `7` TABLE
+* `8` RULE
+* `9–16` EXERCISE
+* `17` ACTIVITY
+
+P5.6-ից հետո EXERCISE-ները այլևս սխալ կերպով `sourceBlockIndices` չեն գնացել։ Սա **ճիշտ է և չպետք է հետ վերադարձնել**։
+
+Սակայն AI Pass 2-ը blocks `9–16`-ի համար ստեղծել է `additionalExercises`, բայց տվել է.
+
+```text
+blockIndex: null
+```
+
+արդյունքում՝
+
+```text
+categoryCounts.additionalExercises = 8
+missingIndices = [9,10,11,12,13,14,15,16]
+```
+
+իսկ insertion-ում՝
+
+```ts
+const block = pass1Blocks[exercise.blockIndex];
+if (!block) continue;
+```
+
+քանի որ `blockIndex === null`, `block === undefined`, և այդ 8 իրական textbook exercise-ները **ընդհանրապես չեն մտել `lesson_exercises`**։
+
+Այսինքն՝ P5.1/P5.6-ը աշխատել են, բայց առաջացել է նոր HIGH-severity failure։
+
+---
+
+# 2. Գլխավոր նպատակ
+
+Ստեղծել **hard activity preservation invariant**.
+
+> Եթե Pass 1-ում կա `EXERCISE`, `ACTIVITY` կամ `HOMEWORK` block, ապա Pass 2-ից հետո այդ block-ը երբեք չպետք է անհետանա։
+
+Այն պետք է հայտնվի առնվազն մեկ անվտանգ destination-ում.
+
+1. MicroNode `exercises[]`
+2. `additionalExercises[]`՝ **ճիշտ `blockIndex`-ով**
+3. automated rescue-ի միջոցով `additionalExercises[]`
+4. եթե AI output-ը սխալ է կամ block-ը լրիվ բացակայում է՝ deterministic post-processing rescue
+
+Բայց **երբեք չպետք է silently drop լինի**։
+
+---
+
+# 3. FIX #1 — `additionalExercises.blockIndex` պարտադիր դարձնել
+
+Գտիր `PASS2_STEP2_SYSTEM` prompt-ը և `additionalExercises` schema/contract-ը։
+
+Փոխիր այնպես, որ `additionalExercises[].blockIndex`-ը լինի **պարտադիր integer**։
+
+Ավելացրու հստակ կանոն.
+
+```text
+ABSOLUTE ACTIVITY PRESERVATION RULE:
+
+Every EXERCISE, ACTIVITY, or HOMEWORK block from Pass 1 MUST be represented
+in exactly one of:
+
+1. microNode.exercises[]
+2. additionalExercises[]
+3. a deterministic rescue destination created by the server.
+
+Every such object MUST contain the exact original Pass 1 blockIndex.
+
+NEVER output null, missing, undefined, guessed, or synthetic blockIndex.
+
+The blockIndex MUST be copied exactly from the input block.
+Do not renumber blocks.
+Do not use exercise sequence numbers as blockIndex.
+Do not use null.
+Do not omit blockIndex.
+```
+
+Հատկապես ընդգծիր.
+
+```text
+Example:
+Pass1 block index 12 → additionalExercises item MUST have blockIndex: 12.
+
+"Exercise 117" does NOT mean blockIndex 117.
+The only valid blockIndex is the Pass1 array index.
+```
+
+---
+
+# 4. FIX #2 — Server-side validation of null/invalid blockIndex
+
+Մի վստահիր միայն LLM prompt-ին։
+
+`runPass2Pipeline()`-ում կամ Pass 2 result normalization layer-ում ավելացրու deterministic validation։
+
+Եթե ունենք.
+
+```ts
+additionalExercises: [
+  {
+    blockIndex: null,
+    ...
+  }
+]
+```
+
+ապա դա պետք է համարվի invalid AI output։
+
+Ստեղծիր/օգտագործիր helper, օրինակ՝
+
+```ts
+isValidBlockIndex(blockIndex, pass1Blocks)
+```
+
+պայմանները.
+
+* integer է
+* `>= 0`
+* `< pass1Blocks.length`
+* համապատասխան block-ը գոյություն ունի
+* եթե destination-ը activity destination է, block-ի type-ը պետք է լինի `EXERCISE | ACTIVITY | HOMEWORK`
+
+Invalid `blockIndex`-ը **երբեք չպետք է անցնի DB insertion**։
+
+---
+
+# 5. FIX #3 — Deterministic missing-activity rescue
+
+Սա ամենակարևոր fix-ն է։
+
+P5.4 rescue-ը հիմա աշխատում է միայն.
+
+```text
+unmappedBlockIndices
+```
+
+վրա։
+
+Դա բավարար չէ։
+
+Ավելացրու երկրորդ՝ վերջնական activity-preservation scan։
+
+### Scan-ը պետք է աշխատի Pass 2-ի ամբողջ result-ի վրա
+
+Ստեղծիր.
+
+```ts
+collectReferencedBlockIndices(pass2Result)
+```
+
+որը հավաքում է բոլոր block indices-ը՝ անկախ destination-ից.
+
+* `sourceBlockIndices`
+* `microNode.exercises[].blockIndex`
+* `microNode.additionalExercises[].blockIndex`
+* topic-level `additionalExercises[].blockIndex`
+* `unmappedBlockIndices`
+
+Հետո հաշվիր.
+
+```text
+allPass1ActivityBlocks
+    MINUS
+allReferencedBlockIndices
+```
+
+որտեղ `allPass1ActivityBlocks`-ը բոլոր այն Pass 1 blocks-ն են, որոնց type-ը.
+
+```text
+EXERCISE
+ACTIVITY
+HOMEWORK
+```
+
+### Եթե որևէ activity block չի գտնվել
+
+Այդ block-ը **automatically rescue արա** դեպի:
+
+```ts
+additionalExercises
+```
+
+ճիշտ index-ով.
+
+Օրինակ՝ եթե.
+
+```text
+Pass1:
+block 12 = EXERCISE
+```
+
+և Pass2-ում block 12-ը ոչ մի valid destination-ում չկա, server-ը պետք է ստեղծի.
+
+```ts
+additionalExercises.push({
+  blockIndex: 12,
+  ...
+});
+```
+
+և դրա `sourceText`-ը վերցնի **ուղիղ Pass1 block-ից**։
+
+Այս rescue-ը պետք է լինի deterministic և չպետք է կախված լինի AI-ի նոր որոշումից։
+
+---
+
+# 6. FIX #4 — Null blockIndex-ը նույնպես rescue անել
+
+Lesson 104-ի կոնկրետ failure-ը պետք է ավտոմատ recover լինի։
+
+Եթե AI-ն վերադարձնում է.
+
+```ts
+additionalExercises: [
+  { blockIndex: null },
+  { blockIndex: null },
+  ...
+]
+```
+
+միայն `null`-ը error flag անելով մի սահմանափակվիր։
+
+Քանի որ մենք ունենք Pass1 blocks և կարող ենք տեսնել, որ որոշ activity blocks ընդհանրապես չեն հայտնվել valid references-ում, վերջնական missing-activity scan-ը պետք է գտնի.
+
+```text
+9,10,11,12,13,14,15,16
+```
+
+և դրանք deterministic կերպով rescue անի։
+
+Այսպիսով Job 27-ի նման failure-ը պետք է վերականգնվի նույնիսկ եթե AI-ն տվել է 8 հատ `null`։
+
+---
+
+# 7. FIX #5 — Չթողնել duplicate activity placement
+
+Rescue-ից առաջ ստուգիր, որ block-ը արդեն valid destination-ում չկա։
+
+Օրինակ՝ եթե block 17 արդեն կա.
+
+```text
+microNode.exercises[]
+```
+
+ապա այն չպետք է երկրորդ անգամ ավելացվի `additionalExercises`։
+
+Invariant:
+
+```text
+Every EXERCISE / ACTIVITY / HOMEWORK block
+must have exactly ONE valid activity destination.
+```
+
+Կարևոր տարբերակում.
+
+`sourceBlockIndices`-ում հայտնվելը **activity destination չէ**։
+
+Եթե EXERCISE-ը հայտնվում է միայն `sourceBlockIndices`-ում, դա պետք է մնա P5.1-ի `ACTIVITY_IN_THEORY` finding։
+
+Այս fix-ը չպետք է թաքցնի P5.1 violation-ը։
+
+---
+
+# 8. FIX #6 — Coverage validator-ը պետք է հաշվի ճիշտ placement-ը
+
+Job 27-ում ստացվել է.
+
+```text
+additionalExercises = 8
+missingIndices = [9..16]
+```
+
+քանի որ null index-երը չեն կարող համարվել valid coverage։
+
+Սա ճիշտ behavior է։
+
+Պահիր այդ սկզբունքը։
+
+**Never record `null` as a block index.**
+
+Coverage validator-ում.
+
+```ts
+if (!Number.isInteger(blockIndex)) {
+   // invalid placement
+   // do NOT record null
+}
+```
+
+Instead՝ ստեղծիր review finding, օրինակ.
+
+```text
+INVALID_ACTIVITY_BLOCK_INDEX
+```
+
+severity:
+
+```text
+HIGH
+```
+
+message:
+
+```text
+AI returned an activity without a valid Pass1 blockIndex.
+The activity was deterministically rescued from the original Pass1 block.
+```
+
+Եթե rescue-ը հաջող է, դա կարող է լինել warning/review item, բայց coverage-ը պետք է վերջնական state-ով ճիշտ հաշվվի։
+
+---
+
+# 9. FIX #7 — `lessons.ts` insertion-ը չպետք է silently drop անի
+
+Գտիր նման logic.
+
+```ts
+const block = pass1Blocks[exercise.blockIndex];
+if (!block) continue;
+```
+
+Այս `continue`-ը production data loss է ստեղծում։
+
+Փոխիր այնպես, որ invalid reference-ի դեպքում.
+
+1. silent skip չանի
+2. review finding ստեղծի
+3. եթե հնարավոր է՝ Pass1-ից deterministic rescue անի
+4. եթե rescue-ն արդեն կատարվել է, valid block-ով insert անի
+
+Կարևոր է.
+
+> `if (!block) continue`-ի միջոցով textbook activity content-ը երբեք չպետք է լուռ կորցվի։
+
+---
+
+# 10. FIX #8 — `activity-validator.ts`-ը ընդլայնել
+
+Արդեն ստեղծված `activity-validator.ts`-ը մի ջնջիր։
+
+Այն ընդլայնիր նոր finding-ով.
+
+```text
+ACTIVITY_IN_THEORY
+EXERCISE_IN_UNMAPPED
+INVALID_ACTIVITY_BLOCK_INDEX
+MISSING_ACTIVITY_PLACEMENT
+DUPLICATE_ACTIVITY_PLACEMENT
+```
+
+Validator-ը պետք է կարողանա ստուգել.
+
+### A.
+
+EXERCISE in `sourceBlockIndices`
+
+→ `ACTIVITY_IN_THEORY`
+
+### B.
+
+EXERCISE in `unmappedBlockIndices`
+
+→ `EXERCISE_IN_UNMAPPED`
+
+### C.
+
+additionalExercise with `null` blockIndex
+
+→ `INVALID_ACTIVITY_BLOCK_INDEX`
+
+### D.
+
+Pass1 EXERCISE absent from every valid activity destination
+
+→ `MISSING_ACTIVITY_PLACEMENT`
+
+### E.
+
+same Pass1 activity block appears in 2 activity destinations
+
+→ `DUPLICATE_ACTIVITY_PLACEMENT`
+
+---
+
+# 11. FIX #9 — Final invariant before DB persistence
+
+DB insert-ից անմիջապես առաջ պետք է լինի final activity audit։
+
+Pseudo-logic.
+
+```ts
+const activityBlocks = pass1Blocks.filter(
+  b =>
+    b.blockType === "EXERCISE" ||
+    b.blockType === "ACTIVITY" ||
+    b.blockType === "HOMEWORK"
+);
+
+const placementMap = collectActivityPlacements(pass2Result);
+
+for (const block of activityBlocks) {
+  const placements = placementMap.get(block.index) ?? [];
+
+  if (placements.length === 0) {
+    rescueAsAdditionalExercise(block);
+  }
+
+  if (placements.length > 1) {
+    addDuplicateActivityFinding(block, placements);
+  }
+}
+```
+
+Հետո նոր.
+
+```text
+validateSourceCoverage()
+→ activity validation
+→ DB insertion
+```
+
+Այս հերթականությունը պահիր տրամաբանական և deterministic։
+
+---
+
+# 12. Lesson 104 regression test
+
+Ստեղծիր regression test, որը հենց Job 27 failure-ը կրկնում է։
+
+Input:
+
+```text
+18 Pass1 blocks
+9–16 = EXERCISE
+17 = ACTIVITY
+```
+
+AI output-ը deliberately սխալ լինի.
+
+```ts
+additionalExercises: [
+  { blockIndex: null },
+  { blockIndex: null },
+  ...
+]
+```
+
+Expected result:
+
+```text
+block 9  → rescued
+block 10 → rescued
+block 11 → rescued
+block 12 → rescued
+block 13 → rescued
+block 14 → rescued
+block 15 → rescued
+block 16 → rescued
+block 17 → existing activity placement
+```
+
+Expected:
+
+```text
+missingIndices = []
+```
+
+և.
+
+```text
+all 9 activity blocks have exactly one valid destination
+```
+
+և.
+
+```text
+no textbook activity is silently dropped
+```
+
+---
+
+# 13. Additional regression tests
+
+Պարտադիր գրիր tests հետևյալ դեպքերի համար.
+
+### Test 1
+
+EXERCISE correctly in `microNode.exercises[]`
+
+→ no finding
+
+### Test 2
+
+EXERCISE in `sourceBlockIndices`
+
+→ `ACTIVITY_IN_THEORY`
+
+### Test 3
+
+EXERCISE in `unmappedBlockIndices`
+
+→ rescued to additionalExercises
+
+### Test 4
+
+EXERCISE missing from all Pass2 destinations
+
+→ rescued to additionalExercises
+
+### Test 5
+
+additionalExercise has `blockIndex: null`
+
+→ invalid AI output detected
+→ original Pass1 activity rescued
+
+### Test 6
+
+additionalExercise has `blockIndex: 999`
+
+when Pass1 length = 18
+
+→ invalid
+→ original activity rescued
+
+### Test 7
+
+same block appears in exercises + additionalExercises
+
+→ duplicate finding
+
+### Test 8
+
+EXAMPLE block in sourceBlockIndices
+
+→ valid, no activity finding
+
+### Test 9
+
+worked EXAMPLE must NOT become student exercise
+
+→ no `lesson_exercises` activity placement
+
+### Test 10
+
+all 8 L104 exercises 9–16 survive final normalization
+
+→ exact `sourceBlockIndex` values preserved
+
+---
+
+# 14. Do NOT make these changes
+
+ძალიან կարևոր է.
+
+### DO NOT
+
+* վերադարձնել EXERCISE-ի `sourceBlockIndices` exception-ը
+* թույլ տալ `blockIndex: null`
+* օգտագործել exercise number-ը որպես blockIndex
+* փոխել Pass1 source text-ը
+* AI-ից նոր exercise text գեներացնել rescue-ի ժամանակ
+* silently discard invalid activities
+* համարել `sourceBlockIndices` activity placement
+* ստիպողաբար attach անել exercise-ը սխալ MicroNode-ին միայն coverage-ը 100% դարձնելու համար
+
+Եթե MicroNode owner չկա՝
+
+```text
+additionalExercises
+```
+
+է ճիշտ fallback-ը։
+
+---
+
+# 15. Success criteria
+
+Fix-ից հետո Lesson 104-ը նորից re-map արա։
+
+Պետք է ստանանք մոտավորապես.
+
+```text
+Pass1 blocks = 18
+
+EXERCISE/ACTIVITY/HOMEWORK blocks = 9
+
+MicroNode exercises + additionalExercises
+must contain all 9 activity block indices exactly once.
+
+Expected activity indices:
+
+9
+10
+11
+12
+13
+14
+15
+16
+17
+```
+
+Պետք է լինի.
+
+```text
+missing activity blocks = 0
+duplicate activity placements = 0
+null activity blockIndex = 0
+EXERCISE_IN_THEORY = 0
+EXERCISE_IN_UNMAPPED = 0
+```
+
+և ամենակարևորը.
+
+```text
+lesson_exercises
+```
+
+-ում պետք է պահպանված լինեն բոլոր իրական student-facing activities-ը՝
+
+```text
+exerciseTextVerbatim = original Pass1 sourceText
+sourceBlockIndex = exact Pass1 index
+```
+
+Եթե owner չկա՝
+
+```text
+relatedNodeId = null
+```
+
+թույլատրելի է։
+
+Դա **չի համարվում loss**, եթե AI Teacher delivery layer-ը հետագայում կարող է ստանալ դրանք։
+
+---
+
+# 16. Verification report
+
+Աշխատանքից հետո ինձ մի տուր ընդհանուր «fixed successfully» պատասխան։
+
+Տուր կոնկրետ report՝
+
+1. Փոխված ֆայլերը
+2. Յուրաքանչյուր ֆայլում ինչ logic փոխվեց
+3. Ինչպես է հիմա աշխատում missing-activity rescue-ը
+4. Ինչ է լինում `blockIndex:null` դեպքում
+5. Ինչ է լինում missing block-ի դեպքում
+6. Ինչ է լինում duplicate-ի դեպքում
+7. Tests-ի ամբողջ արդյունքը
+8. Typecheck-ի արդյունքը
+9. Lesson 104 re-map-ի արդյունքը
+10. Final `missingIndices`
+11. Final `activityIssues`
+12. Final number of `lesson_exercises`
+13. Blocks 9–16-ի յուրաքանչյուրի final destination-ը
+14. Հաստատել, որ block 12-ը այլևս ոչ `sourceBlockIndices`-ում է, ոչ էլ կորած է
+15. Հաստատել, որ `exerciseTextVerbatim`-ը գալիս է original Pass1 block-ից
+
+**Մի կանգնիր unit tests-ի վրա։ Պարտադիր կատարիր իրական Lesson 104 re-map և DB verification։**
+
+Գլխավոր acceptance criterion-ը սա է.
+
+> **Pass 1-ում հայտնված ոչ մի իրական EXERCISE / ACTIVITY / HOMEWORK block չի կարող լուռ անհետանալ Pass 2 → DB pipeline-ում, նույնիսկ եթե LLM-ը վերադարձնի սխալ կամ null `blockIndex`։**

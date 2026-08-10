@@ -1273,7 +1273,16 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         // 3. Insert exercises linked to this MicroNode
         for (const ex of mn.exercises) {
           const block = pass1.blocks[ex.blockIndex];
-          if (!block) continue;
+          if (!block) {
+            // After the deterministic rescue passes in runPass2Pipeline, this should
+            // not happen for valid activity blocks.  If it does, the AI returned an
+            // invalid blockIndex for a MicroNode exercise — log and skip.
+            logger.warn(
+              { lessonId, nodeTitle: mn.title, blockIndex: ex.blockIndex },
+              "lesson mapping: MicroNode exercise has invalid/out-of-range blockIndex after rescue — skipping",
+            );
+            continue;
+          }
           exerciseCounter += 1;
 
           await db.insert(lessonExercisesTable).values({
@@ -1295,9 +1304,19 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       // 4. Insert additional exercises — real textbook exercises with no dedicated MicroNode.
       //    relatedNodeId = null (schema already supports nullable FK).
       //    These are NOT fake MicroNodes; they are preserved as-is for platform access.
+      //    After the deterministic rescue passes (Step C in runPass2Pipeline), all
+      //    real activity blocks should have a valid blockIndex here.  Any remaining
+      //    null/invalid entries are AI-generated stubs that the rescue already handled
+      //    by inserting the real block separately — skip with a warning.
       for (const ex of topic.additionalExercises ?? []) {
         const block = pass1.blocks[ex.blockIndex];
-        if (!block) continue;
+        if (!block) {
+          logger.warn(
+            { lessonId, topicTitle: topic.title, blockIndex: ex.blockIndex },
+            "lesson mapping: additionalExercises entry has invalid blockIndex after rescue — skipping orphan stub",
+          );
+          continue;
+        }
         exerciseCounter += 1;
 
         await db.insert(lessonExercisesTable).values({
