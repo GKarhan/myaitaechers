@@ -1,0 +1,305 @@
+# PHASE 1 — LOW-RISK PROVEN FIXES ONLY
+
+We are now implementing **Phase 1 only** of the mapper roadmap.
+
+## HARD SCOPE LOCK
+
+Do NOT modify:
+
+* Pass 1 extraction logic
+* Pass 1 prompts
+* Pass 2 prompts
+* MicroNode granularity logic
+* Additional Exercises logic
+* Source Coverage logic
+* Phase 2
+* AI Teacher logic
+* DB schema, unless you discover an existing schema field is already intended for this data and only persistence wiring is missing
+* Any unrelated refactor
+
+Do not "improve" the mapper beyond the two fixes below.
+
+The goal is strictly:
+
+1. Persist existing source metadata.
+2. Fix sequence numbering.
+3. Verify the result with a fresh mapping and SQL/forensic checks.
+
+---
+
+# FIX 1 — RC-3 SOURCE METADATA PERSISTENCE
+
+Pass 1 already produces source metadata such as:
+
+* `sourceText`
+* `sourceParagraph`
+* `sourceBoundingBox`
+* `blockType`
+
+Trace the existing data flow from Pass 1 through the mapper to the final DB insert.
+
+The metadata already produced by Pass 1 must reach the appropriate DB insert object.
+
+### Important
+
+Do NOT change how these fields are extracted.
+
+Do NOT change their prompt.
+
+Do NOT regenerate or reinterpret them.
+
+Do NOT invent fallback values merely to make fields non-null.
+
+This is a **persistence-only fix**.
+
+First inspect:
+
+* Pass 1 result types/interfaces
+* source block structures
+* mapping pipeline
+* final insert objects
+* relevant DB table/schema definitions
+* existing consumers of these fields
+
+Then make the smallest possible code change that preserves the existing metadata into DB.
+
+If a field is already correctly persisted, do not modify it.
+
+---
+
+# FIX 2 — SEQUENCE NUMBERING
+
+Investigate the current sequence assignment carefully.
+
+We have observed that node sequence values can incorrectly become `1` repeatedly.
+
+Fix the sequence assignment so that ordering is deterministic and correct.
+
+Verify separately that these concepts are NOT mixed:
+
+### Topic sequence
+
+Within a lesson:
+
+`1, 2, 3, 4...`
+
+### MicroNode sequence
+
+Within its parent Topic:
+
+`1, 2, 3, 4...`
+
+### Node sequence
+
+If the DB has a separate node-level sequence, preserve its intended scope and make it deterministic.
+
+### Lesson-level ordering
+
+Do not accidentally use Topic sequence for MicroNode sequence or vice versa.
+
+Do not introduce a new sequence concept.
+
+Use the existing schema/model semantics.
+
+The important requirement is:
+
+> Every sequence must be sequential within its intended parent/scope and stable across repeated mapping runs.
+
+---
+
+# BEFORE MODIFYING CODE
+
+Inspect the relevant files and explain internally which exact lines/functions are responsible for:
+
+1. Pass 1 source metadata creation
+2. source metadata transport
+3. DB insertion
+4. Topic sequence assignment
+5. MicroNode sequence assignment
+6. Node sequence assignment
+
+Then implement only the minimal fixes.
+
+---
+
+# TESTS
+
+After changes:
+
+1. Run the existing relevant tests.
+2. Run TypeScript/typecheck.
+3. Confirm there are no NEW errors.
+4. Restart the API/server if required.
+
+Do not modify tests merely to hide failures.
+
+If a test needs updating because the corrected behavior is intentionally different, explain why before changing it.
+
+---
+
+# REQUIRED FRESH MAPPING
+
+After the code changes and successful tests:
+
+Run a NEW mapping on a real lesson.
+
+Prefer the same known test lesson used in the previous forensic comparisons so we can compare before/after.
+
+Do NOT use an old DB result as evidence.
+
+---
+
+# REQUIRED FORENSIC VERIFICATION
+
+After the fresh mapping, inspect the DB directly.
+
+Verify:
+
+## A. Source metadata
+
+For the mapped source blocks check:
+
+* `sourceText`
+* `sourceParagraph`
+* `sourceBoundingBox`
+* `blockType`
+
+Report:
+
+* how many source blocks exist
+* how many have each field populated
+* whether any metadata was lost between Pass 1 and DB
+* whether NULLs are expected from the existing extraction behavior
+
+Do NOT treat legitimately absent source metadata as a bug.
+
+---
+
+## B. Sequence verification
+
+Return actual DB rows showing:
+
+### Topics
+
+`topic title → sequence`
+
+Expected pattern:
+
+`1, 2, 3...`
+
+### MicroNodes
+
+`topic → microNode title → sequence`
+
+Expected pattern within each Topic:
+
+`1, 2, 3...`
+
+### Nodes
+
+If a separate node sequence exists:
+
+`parent → node → sequence`
+
+Verify its intended scope.
+
+### Ordering
+
+Confirm that database ordering produces the same pedagogical order as the source mapping.
+
+---
+
+## C. Regression checks
+
+Compare the fresh mapping against the previous known-good mapping.
+
+Verify:
+
+* Topic count
+* MicroNode count
+* Exercise count
+* Additional Exercise count
+* source block count
+* coverage result
+* empty MicroNodes
+* duplicate source indices
+* missing source indices
+* dependencies
+* existing mapped content
+
+The Phase 1 fixes must NOT change the actual mapping decisions.
+
+The expected result is:
+
+> Same mapping semantics, better persistence and correct ordering.
+
+If Topic/MicroNode/Exercise counts unexpectedly change because of these fixes, STOP and investigate rather than accepting the result.
+
+---
+
+# FINAL REPORT
+
+Return a concise forensic report with:
+
+### 1. Files changed
+
+Exact file names and what changed.
+
+### 2. RC-3 result
+
+Before → After:
+
+`Pass 1 metadata exists → DB persistence`
+
+### 3. Sequence result
+
+Before → After:
+
+`incorrect/repeated sequence → correct scoped sequence`
+
+### 4. Tests
+
+* tests passed
+* typecheck
+* new errors
+
+### 5. Fresh mapping
+
+* lesson/job ID
+* Topics
+* MicroNodes
+* Exercises
+* Additional Exercises
+
+### 6. DB verification
+
+Show representative rows for:
+
+* source metadata
+* Topic sequence
+* MicroNode sequence
+* Node sequence if applicable
+
+### 7. Regression
+
+Explicitly state whether mapping semantics changed.
+
+### 8. Decision
+
+Only if ALL of the following pass:
+
+* source metadata persistence verified
+* sequence verified
+* no new technical errors
+* mapping counts preserved
+* no existing mapped content lost
+
+then report:
+
+**PHASE 1 COMPLETE — READY FOR PHASE 2**
+
+Otherwise:
+
+**PHASE 1 BLOCKED — DO NOT PROCEED**
+
+Do not start Phase 2 automatically.
