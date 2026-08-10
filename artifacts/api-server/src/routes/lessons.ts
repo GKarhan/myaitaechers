@@ -1588,6 +1588,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       learningObjective: lessonNodesTable.learningObjective,
       theoryContent:     lessonNodesTable.theoryContent,
       blockType:         lessonNodesTable.blockType,
+      status:            lessonNodesTable.status,
     })
     .from(lessonNodesTable)
     .where(eq(lessonNodesTable.lessonId, lessonId))
@@ -1646,6 +1647,18 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const batch = nodes.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(batch.map(async (node) => {
+        // Teacher Review gate — never process or approve unreviewed nodes
+        if (node.status === "needs_review" || node.status === "draft") {
+          return {
+            nodeId:                   node.id,
+            skipped:                  true,
+            skipReason:               "skipped_needs_review",
+            childFriendlyExplanation: "",
+            basicExamples:            [] as string[],
+            commonMisconception:      "",
+            nonExamples:              [] as string[],
+          };
+        }
         const input: Phase2Input = {
           nodeId:            node.id,
           title:             node.title,
@@ -1664,7 +1677,19 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
 
       for (const result of batchResults) {
-        if (result.skipped) {
+        const nodeTitle = nodes.find((n) => n.id === result.nodeId)?.title ?? "";
+        if (result.skipped && result.skipReason === "skipped_needs_review") {
+          // Teacher has not yet reviewed this node — do NOT touch its status
+          summaryRows.push({
+            nodeId:     result.nodeId,
+            title:      nodeTitle,
+            status:     "skipped_needs_review",
+            confidence: null,
+            sourceType: "—",
+            skipReason: result.skipReason,
+          });
+        } else if (result.skipped) {
+          // Source content too thin — mark accordingly
           await db
             .update(lessonNodesTable)
             .set({ status: "needs_source_content" })
@@ -1672,62 +1697,58 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
 
           summaryRows.push({
             nodeId:     result.nodeId,
-            title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
+            title:      nodeTitle,
             status:     "needs_source_content",
             confidence: null,
             sourceType: "—",
             skipReason: result.skipReason,
           });
         } else {
+          // Success — write the 4 Set A fields the AB Teacher actually reads
           await db
             .update(lessonNodesTable)
             .set({
-              explanationSteps:          result.explanationSteps          as any,
-              beginnerExplanation:       result.beginnerExplanation       || null,
-              advancedExplanation:       result.advancedExplanation       || null,
-              analogy:                   result.analogy                   || null,
-              commonErrors:              result.commonErrors              as any,
-              recallQuestions:           result.recallQuestions           as any,
-              understandingQuestions:    result.understandingQuestions    as any,
-              applicationQuestions:      result.applicationQuestions      as any,
-              faqEntries:                result.faqEntries                as any,
-              contentSourceType:         result.contentSourceType,
-              teachingContentConfidence: result.teachingContentConfidence,
-              status:                    "approved",
+              childFriendlyExplanation: result.childFriendlyExplanation || null,
+              basicExamples:            result.basicExamples            as any,
+              commonMisconception:      result.commonMisconception      || null,
+              nonExamples:              result.nonExamples              as any,
+              status:                   "approved",
             })
             .where(eq(lessonNodesTable.id, result.nodeId));
 
           summaryRows.push({
             nodeId:     result.nodeId,
-            title:      nodes.find((n) => n.id === result.nodeId)?.title ?? "",
+            title:      nodeTitle,
             status:     "approved",
-            confidence: result.teachingContentConfidence,
-            sourceType: result.contentSourceType,
+            confidence: null,
+            sourceType: "textbook",
           });
         }
       }
     }
 
-    const approved         = summaryRows.filter((r) => r.status === "approved").length;
-    const needsSourceCount = summaryRows.filter((r) => r.status === "needs_source_content").length;
+    const approved              = summaryRows.filter((r) => r.status === "approved").length;
+    const needsSourceCount      = summaryRows.filter((r) => r.status === "needs_source_content").length;
+    const skippedReviewCount    = summaryRows.filter((r) => r.status === "skipped_needs_review").length;
 
     await db.update(mappingJobsTable)
       .set({
         status: "completed",
         result: {
           lessonId,
-          lessonTitle:        lesson.title,
-          totalNodes:         nodes.length,
+          lessonTitle:         lesson.title,
+          totalNodes:          nodes.length,
           approved,
-          needsSourceContent: needsSourceCount,
-          summary:            summaryRows,
+          needsSourceContent:  needsSourceCount,
+          skippedNeedsReview:  skippedReviewCount,
+          summary:             summaryRows,
         } as any,
         updatedAt: new Date(),
       })
       .where(eq(mappingJobsTable.id, job.id));
 
     logger.info(
-      { jobId: job.id, lessonId, total: nodes.length, approved, needsSource: needsSourceCount },
+      { jobId: job.id, lessonId, total: nodes.length, approved, needsSource: needsSourceCount, skippedReview: skippedReviewCount },
       "phase2 teaching content generation job completed"
     );
   } catch (err) {

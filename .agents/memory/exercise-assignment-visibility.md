@@ -21,6 +21,17 @@ Two insertion sites in `lessons.ts` (MicroNode exercises and additionalExercises
 - Phase 3: `WHERE lessonId = X AND assignment = 'CLASS' AND (relatedNodeId IN nodes OR relatedNodeId IS NULL)` — full DEEP_DIVE set.
 - Homework: `WHERE lessonId = X AND assignment = 'HOMEWORK'` — unchanged.
 
+## Phase 2 enrichment — Set A fields (Phase 6 Step 1, Aug 2026)
+
+Phase 2 now generates the 4 Set A fields the AB Teacher actually reads:
+- `childFriendlyExplanation`, `basicExamples`, `commonMisconception`, `nonExamples`
+- `Phase2GenerationResult` interface updated to only these 4 fields + skipped/skipReason
+- Set B fields (explanationSteps, beginnerExplanation, etc.) remain in DB schema but are never written by Phase 2 anymore
+- Teacher Review gate: nodes with status `needs_review` or `draft` are skipped (status unchanged, summary shows `skipped_needs_review`)
+- New test file: `artifacts/api-server/src/lib/__tests__/phase2-content.test.ts` (34 tests)
+
+**Why:** Old Phase 2 wrote Set B fields that chat.ts never read; AB Teacher context blocks (APPROVED_EXPLANATION, BASIC_EXAMPLES, NON_EXAMPLES, KNOWN_MISCONCEPTION) were always empty.
+
 ## Pass2 prompt — exercise→MicroNode assignment strengthening
 
 `PASS2_STEP2_SYSTEM` (lesson-mapping.ts) has been strengthened with 4 explicit rules:

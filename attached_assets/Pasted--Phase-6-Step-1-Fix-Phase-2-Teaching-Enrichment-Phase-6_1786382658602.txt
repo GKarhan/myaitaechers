@@ -1,0 +1,203 @@
+## Phase 6 — Step 1: Fix Phase 2 Teaching Enrichment
+
+Կատարիր **միայն Phase 6-ի Step 1-ը**։
+Մի անցիր Step 2, Step 3, Step 4, Step 5 կամ Phase 7-ին։
+
+### Նպատակ
+
+Phase 2-ը պետք է հաստատված MicroNode-ի տեսական բովանդակությունից ստեղծի այն teaching enrichment դաշտերը, որոնք իրականում օգտագործում է AB Teacher-ը։
+
+Այս պահին Phase 2-ը ստեղծում է մի շարք legacy/unused fields, որոնք AB Teacher-ը չի կարդում։ Դրանք այս քայլում պետք է փոխարինվեն 4 իրական դաշտերով։
+
+### 1. Phase 2 output-ը փոխիր հետևյալ 4 դաշտերի
+
+Phase 2-ի վերջնական structured output-ը պետք է լինի միայն՝
+
+```ts
+{
+  childFriendlyExplanation: string,
+  basicExamples: string[],
+  commonMisconception: string,
+  nonExamples: string[]
+}
+```
+
+Պահանջները.
+
+* `childFriendlyExplanation` — 2–3 պարզ նախադասություն, սովորողի տարիքին համապատասխան։
+* `basicExamples` — 2–4 պարզ, կոնկրետ, դասագրքային բովանդակությանը համապատասխան օրինակ։
+* `commonMisconception` — տվյալ MicroNode-ի վերաբերյալ մեկ իրական և հավանական սխալ պատկերացում։
+* `nonExamples` — 2–3 հակաօրինակ, որոնք օգնում են տարբերել ճիշտ հասկացությունը սխալից։
+
+### 2. Grounding-ը պահիր խիստ
+
+Բոլոր 4 դաշտերը պետք է հիմնված լինեն տվյալ MicroNode-ի հաստատված `theoryContent` / source content-ի վրա։
+
+Չի կարելի.
+
+* հորինել նոր տեսություն,
+* ավելացնել դասագրքում չհիմնավորված կանոն,
+* փոխել հասկացության իմաստը,
+* ներմուծել հաջորդ MicroNode-ի բովանդակություն,
+* օգտագործել արտաքին գիտելիք, եթե այն անհրաժեշտ չէ։
+
+`basicExamples`-ը կարող է պարզեցվել կամ վերաձևակերպվել, բայց իմաստը պետք է մնա source-ին հավատարիմ։
+
+`nonExamples`-ը նույնպես պետք է բխի տվյալ հասկացության սահմանումից և չլինի պատահական օրինակ։
+
+### 3. Պահպանիր weak-source logic-ը
+
+Գտիր գործող `isWeakSource` / weak-source skip logic-ը և **մի փոխիր դրա իմաստը**։
+
+Եթե MicroNode-ը չունի բավարար վստահելի source content Phase 2 enrichment ստեղծելու համար՝
+
+* enrichment չգեներացնել,
+* պահել գործող `needs_source_content` վարքագիծը։
+
+### 4. DB write-ը փոխիր
+
+Գտիր Phase 2 background job-ի այն հատվածը, որտեղ հիմա գրվում են legacy fields.
+
+Օրինակ՝
+
+* `explanationSteps`
+* `beginnerExplanation`
+* `advancedExplanation`
+* `analogy`
+* `commonErrors`
+* `recallQuestions`
+* `understandingQuestions`
+* `applicationQuestions`
+* `faqEntries`
+
+Այս Step-ում դրանք **այլևս չգրել Phase 2-ի արդյունքում**։
+
+Փոխարենը write արա միայն՝
+
+```ts
+childFriendlyExplanation
+basicExamples
+commonMisconception
+nonExamples
+```
+
+Չջնջես legacy DB columns-ը և migration չստեղծես։
+
+Դրանք կարող են մնալ schema-ում backward compatibility-ի համար։
+
+### 5. Teacher Review gate
+
+Սա շատ կարևոր է։
+
+Phase 2-ը **չպետք է ինքնուրույն հաստատի դեռ չվերանայված MicroNode-ը**։
+
+Մինչ Phase 2 enrichment ստեղծելը ստուգիր node-ի current status-ը։
+
+Եթե՝
+
+```text
+needs_review
+draft
+```
+
+ապա այդ node-ը **skip արա**։
+
+Այդ node-ի համար Phase 2-ը չպետք է overwrite անի status-ը կամ ներկայացնի այն որպես approved։
+
+Phase 2-ը կարող է աշխատել միայն այն node-ների վրա, որոնք արդեն teacher-approved են կամ գործող architecture-ով թույլատրելի համապատասխան status ունեն։
+
+Եթե node-ը skip է արվում review-ի պատճառով, summary-ում դա հստակ նշիր, օրինակ՝:
+
+```text
+skipped_needs_review
+```
+
+### 6. Status behavior
+
+Եթե Phase 2-ը հաջողությամբ ստեղծում է enrichment՝ պահպանիր գործող approved behavior-ը միայն այն node-ների համար, որոնք արդեն անցել են Teacher Review-ը։
+
+Եթե source-ը թույլ չէ՝ պահպանիր՝
+
+```text
+needs_source_content
+```
+
+Մի ստեղծիր նոր status առանց անհրաժեշտության։
+
+### 7. Ինչ ֆայլեր կարող են փոփոխվել
+
+Հիմնական փոփոխությունները կատարիր այնտեղ, որտեղ իրականում գտնվում են՝
+
+* `PHASE2_SYSTEM`
+* `buildPhase2Prompt()`
+* `Phase2GenerationResult`
+* `generatePhase2Content()`
+* Phase 2 background job-ի DB write logic-ը
+
+Սպասվում է հիմնականում՝
+
+```text
+artifacts/api-server/src/services/lesson-mapping.ts
+artifacts/api-server/src/routes/lessons.ts
+```
+
+Եթե ուրիշ ֆայլ փոփոխելը անհրաժեշտ է, նախ բացատրի՛ր ինչու։
+
+### 8. Ինչ ՉՊԵՏՔ է անել այս Step-ում
+
+Չփոխես՝
+
+* Pass 1
+* Pass 2 exercise assignment
+* `normalizeActivityPlacements()` Phases 1–6
+* exercise reassignment UI
+* Additional Exercises UI
+* Lesson Overview UI
+* dependency logic
+* dependency UI
+* DB schema
+* migrations
+* AB Teacher teaching cycle
+* `chat.ts`, եթե Phase 6-ի այս կոնկրետ փոփոխության համար դրա փոփոխությունը պարտադիր չէ։
+
+Հատկապես **մի փորձիր հիմա լուծել exercise mapping-ը կամ dependencies-ը**։
+
+### 9. Verification
+
+Փոփոխություններից հետո.
+
+1. Run build.
+2. Run բոլոր առկա համապատասխան tests-ը։
+3. Եթե tests չկան Phase 2-ի համար, ավելացրու միայն անհրաժեշտ minimal tests։
+4. Վերագործարկիր server-ը, եթե անհրաժեշտ է։
+5. Run Phase 2-ը մեկ իրական, արդեն Teacher Review անցած lesson-ի վրա։
+6. Ստուգիր DB-ում, որ տվյալ MicroNode-ի համար իրականում գրվել են՝
+
+```text
+childFriendlyExplanation
+basicExamples
+commonMisconception
+nonExamples
+```
+
+7. Ստուգիր, որ դեռ `needs_review` վիճակում գտնվող node-ը skip է արվել և չի դարձել approved։
+
+8. Ստուգիր, որ AB Teacher-ի համար արդեն հասանելի են այդ 4 fields-ը այն context blocks-երում, որոնք `chat.ts`-ն արդեն օգտագործում է։
+
+### 10. Վերջնական report
+
+Ավարտելուց հետո **մի անցիր հաջորդ փուլին**։
+
+Տուր ինձ միայն՝
+
+1. Որ ֆայլերն ես փոխել։
+2. Կոնկրետ ինչ ես փոխել։
+3. Phase 2-ի նոր output schema-ն։
+4. Teacher-review gate-ի վերջնական behavior-ը։
+5. Build արդյունքը։
+6. Test արդյունքը։
+7. Իրական lesson-ի վրա Phase 2-ի verification արդյունքը։
+8. DB-ում 4 դաշտերը populated եղա՞ն, թե՞ ոչ։
+9. Կա՞ որևէ խնդիր կամ բան, որը պետք է լուծել **մինչև Phase 6 Step 2-ին անցնելը**։
+
+**Մի կատարիր Phase 6 Step 2-ը առանց իմ հաջորդ հաստատման։**

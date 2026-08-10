@@ -1930,20 +1930,13 @@ export interface Phase2Input {
 }
 
 export interface Phase2GenerationResult {
-  nodeId:                     number;
-  skipped:                    boolean;
-  skipReason?:                string;
-  explanationSteps:           object[];
-  beginnerExplanation:        string;
-  advancedExplanation:        string;
-  analogy:                    string;
-  commonErrors:               object[];
-  recallQuestions:            object[];
-  understandingQuestions:     object[];
-  applicationQuestions:       object[];
-  faqEntries:                 object[];
-  contentSourceType:          "textbook" | "mixed" | "ai_generated";
-  teachingContentConfidence:  number;
+  nodeId:                    number;
+  skipped:                   boolean;
+  skipReason?:               string;
+  childFriendlyExplanation:  string;
+  basicExamples:             string[];
+  commonMisconception:       string;
+  nonExamples:               string[];
 }
 
 const WEAK_SOURCE_PATTERNS = [
@@ -1960,16 +1953,16 @@ export function isWeakSource(theoryContent: string | null | undefined): boolean 
   return WEAK_SOURCE_PATTERNS.some((re) => re.test(theoryContent.trim()));
 }
 
-const PHASE2_SYSTEM = `You are an expert Armenian language curriculum designer generating structured teaching content for a grade-7 Armenian textbook app.
+const PHASE2_SYSTEM = `You are an expert Armenian curriculum designer generating teaching support content for a grade-7 Armenian math textbook app.
 
-STRICT GROUNDING RULES — violating these is worse than leaving a field empty:
-1. explanationSteps, beginnerExplanation, advancedExplanation, recallQuestions, understandingQuestions: derived ONLY from the provided theoryContent — rephrase, sequence, or simplify what is already there; do NOT add facts not in the source.
-2. commonErrors: build from linked exercises (what wrong answers to those exercises look like). Stay grounded in the theory.
-3. applicationQuestions: reference actual linked exercises where possible.
-4. analogy: the ONE field allowed to be freely creative.
-5. teachingContentConfidence (0–100): 85–100 = grounded in verbatim text; 60–84 = inferred; <60 = AI-generated.
+STRICT GROUNDING RULES — violating any rule is worse than leaving a field empty:
+1. ALL four fields must be derived ONLY from the provided theoryContent. Do not add facts, rules, or examples not present in the source text.
+2. childFriendlyExplanation: rephrase the core concept in 2–3 simple sentences a 12-year-old can understand. No jargon. No new information beyond what is in theoryContent.
+3. basicExamples: extract or lightly simplify 2–4 concrete examples directly from the theory. Each example must be a complete, standalone statement or worked step. Preserve numbers and operations verbatim where possible.
+4. commonMisconception: state the single most likely wrong belief a grade-7 student would hold about THIS specific concept. Ground it in the definition — do not invent generic misconceptions unrelated to the source.
+5. nonExamples: provide 2–3 cases that look like they might fit the concept but do NOT satisfy its definition. Each must contrast directly with the definition in theoryContent.
 
-Keep each text field concise (2 sentences max). Return ONLY valid JSON. No markdown fences. No trailing commas.`;
+Return ONLY valid JSON. No markdown fences. No trailing commas.`;
 
 function buildPhase2Prompt(
   input: Phase2Input,
@@ -1987,33 +1980,18 @@ ${input.theoryContent}
 Linked Exercises (${exercises.length}):
 ${exList}
 
-Return JSON:
+Return JSON with exactly these 4 fields. All values must be in Armenian. Ground every field in the theoryContent above.
 {
-  "explanationSteps": [{"step":1,"heading":"Armenian","body":"Armenian (1 sentence)"},{"step":2,"heading":"Armenian","body":"Armenian (1 sentence)"}],
-  "beginnerExplanation": "Armenian (2 sentences max)",
-  "advancedExplanation": "Armenian (2 sentences max)",
-  "analogy": "Armenian (1 sentence, creative)",
-  "commonErrors": [{"error":"Armenian","correction":"Armenian","sourceType":"exercise_based|ai_generated","relatedExerciseId":"EX-XX-N or null"}],
-  "recallQuestions": [{"question":"Armenian","expectedAnswer":"Armenian (1 sentence)"},{"question":"Armenian","expectedAnswer":"Armenian (1 sentence)"}],
-  "understandingQuestions": [{"question":"Armenian","expectedAnswer":"Armenian (1 sentence)"}],
-  "applicationQuestions": [{"question":"Armenian","relatedExerciseId":"EX-XX-N or null","hint":"Armenian or null"}],
-  "faqEntries": [],
-  "contentSourceType": "textbook",
-  "teachingContentConfidence": 85
+  "childFriendlyExplanation": "Armenian — 2–3 simple sentences explaining the core concept, no jargon",
+  "basicExamples": ["Armenian concrete example 1", "Armenian concrete example 2"],
+  "commonMisconception": "Armenian — one specific wrong belief a grade-7 student would hold about this concept",
+  "nonExamples": ["Armenian non-example 1 that looks right but fails the definition", "Armenian non-example 2"]
 }`;
 }
 
-function applyPhase2Adjustments(parsed: Record<string, unknown>): void {
-  // A1: analogy present → mixed
-  if (typeof parsed.analogy === "string" && parsed.analogy.trim().length > 0) {
-    parsed.contentSourceType = "mixed";
-  }
-  // A2: mixed → cap confidence at 90
-  if (parsed.contentSourceType === "mixed") {
-    const conf = typeof parsed.teachingContentConfidence === "number"
-      ? parsed.teachingContentConfidence : 100;
-    parsed.teachingContentConfidence = Math.min(conf, 90);
-  }
+function extractStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
 }
 
 /**
@@ -2028,20 +2006,13 @@ export async function generatePhase2Content(
   // Weak-source guard — do not generate placeholder content
   if (isWeakSource(input.theoryContent)) {
     return {
-      nodeId:                    input.nodeId,
-      skipped:                   true,
-      skipReason:                "insufficient source content for teaching material",
-      explanationSteps:          [],
-      beginnerExplanation:       "",
-      advancedExplanation:       "",
-      analogy:                   "",
-      commonErrors:              [],
-      recallQuestions:           [],
-      understandingQuestions:    [],
-      applicationQuestions:      [],
-      faqEntries:                [],
-      contentSourceType:         "textbook",
-      teachingContentConfidence: 0,
+      nodeId:                   input.nodeId,
+      skipped:                  true,
+      skipReason:               "insufficient source content for teaching material",
+      childFriendlyExplanation: "",
+      basicExamples:            [],
+      commonMisconception:      "",
+      nonExamples:              [],
     };
   }
 
@@ -2075,39 +2046,23 @@ export async function generatePhase2Content(
   if (!parsed) {
     logger.warn({ nodeId: input.nodeId }, "phase2: JSON parse failed after retry");
     return {
-      nodeId:                    input.nodeId,
-      skipped:                   true,
-      skipReason:                "AI returned unparseable JSON after retry — re-run this node",
-      explanationSteps:          [],
-      beginnerExplanation:       "",
-      advancedExplanation:       "",
-      analogy:                   "",
-      commonErrors:              [],
-      recallQuestions:           [],
-      understandingQuestions:    [],
-      applicationQuestions:      [],
-      faqEntries:                [],
-      contentSourceType:         "textbook",
-      teachingContentConfidence: 0,
+      nodeId:                   input.nodeId,
+      skipped:                  true,
+      skipReason:               "AI returned unparseable JSON after retry — re-run this node",
+      childFriendlyExplanation: "",
+      basicExamples:            [],
+      commonMisconception:      "",
+      nonExamples:              [],
     };
   }
 
-  applyPhase2Adjustments(parsed);
-
   return {
-    nodeId:                    input.nodeId,
-    skipped:                   false,
-    explanationSteps:          Array.isArray(parsed.explanationSteps) ? parsed.explanationSteps : [],
-    beginnerExplanation:       typeof parsed.beginnerExplanation === "string" ? parsed.beginnerExplanation : "",
-    advancedExplanation:       typeof parsed.advancedExplanation === "string" ? parsed.advancedExplanation : "",
-    analogy:                   typeof parsed.analogy === "string" ? parsed.analogy : "",
-    commonErrors:              Array.isArray(parsed.commonErrors) ? parsed.commonErrors : [],
-    recallQuestions:           Array.isArray(parsed.recallQuestions) ? parsed.recallQuestions : [],
-    understandingQuestions:    Array.isArray(parsed.understandingQuestions) ? parsed.understandingQuestions : [],
-    applicationQuestions:      Array.isArray(parsed.applicationQuestions) ? parsed.applicationQuestions : [],
-    faqEntries:                Array.isArray(parsed.faqEntries) ? parsed.faqEntries : [],
-    contentSourceType:         (parsed.contentSourceType as "textbook" | "mixed" | "ai_generated") ?? "textbook",
-    teachingContentConfidence: typeof parsed.teachingContentConfidence === "number" ? parsed.teachingContentConfidence : 80,
+    nodeId:                   input.nodeId,
+    skipped:                  false,
+    childFriendlyExplanation: typeof parsed.childFriendlyExplanation === "string" ? parsed.childFriendlyExplanation : "",
+    basicExamples:            extractStringArray(parsed.basicExamples),
+    commonMisconception:      typeof parsed.commonMisconception === "string" ? parsed.commonMisconception : "",
+    nonExamples:              extractStringArray(parsed.nonExamples),
   };
 }
 
