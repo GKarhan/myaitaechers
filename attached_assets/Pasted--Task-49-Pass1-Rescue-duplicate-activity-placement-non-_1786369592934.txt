@@ -1,0 +1,184 @@
+Հիմա աշխատիր միայն **Task #49 — Pass1/Rescue duplicate activity placement / non-deterministic coverage failure** խնդրի վրա։
+
+Սա պետք է լուծվի որպես **ընդհանուր production fix**, ոչ թե Lesson 104-ի hardcode։
+
+### Հաստատված խնդիրը
+
+Lesson 104-ի տարբեր re-map run-երում Pass1-ը վերադարձնում է տարբեր block count՝ օրինակ 18, 20 կամ 26։
+
+Job 29/30-ում ստացվել է՝
+
+`coverage_failed`
+
+պատճառը՝
+
+`duplicateIndices: [13]`
+
+Log-ից երևում է, որ նույն activity block-ը միաժամանակ կարող է հայտնվել տարբեր ճանապարհներով.
+
+1. AI mapping-ից գալիս է invalid/duplicate placement
+2. Step C deterministic rescue-ը տեսնում է activity block-ը որպես missing
+3. rescue-ը ավելացնում է այն `additionalExercises`
+4. coverage validator-ը վերջում տեսնում է նույն block index-ի duplicate placement
+
+### Քո խնդիրը
+
+Գտիր **իրական root cause-ը**, թե ինչու Step A/B/C rescue logic-ը կարող է նույն activity block-ը համարել միաժամանակ արդեն տեղադրված և missing։
+
+Հատկապես ուսումնասիրիր՝
+
+* `collectValidActivityDestinations()`
+* `isValidBlockIndex()`
+* `unmappedBlockIndices`
+* `exercises[]`
+* `additionalExercises[]`
+* Step B rescue
+* Step C deterministic rescue
+* `validateSourceCoverage()`
+* duplicate detection
+* այն logic-ը, որով stripped/invalid MicroNode-ից activity mapping-ը վերանում է
+
+### Պահանջվող invariant
+
+Pipeline-ի վերջում յուրաքանչյուր Pass1 activity block-ի համար պետք է լինի **ճիշտ մեկ valid destination**։
+
+Այսինքն՝
+
+`EXERCISE / ACTIVITY / HOMEWORK block index N`
+
+պետք է հայտնվի՝
+
+* կամ `MicroNode.exercises[]`
+* կամ `additionalExercises[]`
+
+բայց **ոչ երկուսում միասին**։
+
+Եվ եթե AI-ն տվել է invalid index, օրինակ՝
+
+`blockIndex: null`
+
+կամ
+
+`blockIndex: 117`
+
+երբ իրական Pass1 block index-ը 12 է,
+
+ապա invalid entry-ը չպետք է հաշվվի որպես valid placement և չպետք է առաջացնի duplicate։
+
+### Կարևոր
+
+Մի՛ լուծիր խնդիրը պարզապես duplicate-ը validator-ից թաքցնելով։
+
+Այսինքն՝ ❌ չանես.
+
+`ignore duplicateIndices`
+
+կամ
+
+`dedupe only in coverage report`
+
+Պետք է pipeline-ի data state-ը դարձնել ճիշտ՝ մինչև coverage validation-ը։
+
+### Ճիշտ behavior
+
+Եթե block N-ը արդեն valid կերպով կա `exercises[]`-ում՝
+
+→ Step C չպետք է rescue անի։
+
+Եթե block N-ը արդեն valid կերպով կա `additionalExercises[]`-ում՝
+
+→ Step C չպետք է rescue անի։
+
+Եթե նույն block N-ը կա երկուսում՝
+
+→ պետք է ունենանք մեկ canonical placement։
+
+Առաջնահերթությունը թող լինի՝
+
+1. valid MicroNode `exercises[]`
+2. valid `additionalExercises[]`
+3. միայն եթե ոչ մեկը չկա → deterministic rescue
+
+Եթե duplicate AI output կա, ընտրիր canonical placement-ը deterministic ձևով և հեռացրու duplicate-ը pipeline state-ից։
+
+### Invalid blockIndex
+
+`null`, negative, non-integer կամ `>= pass1.blocks.length` index-ը երբեք չպետք է համարվի placement։
+
+Այդ entry-ը պետք է կամ՝
+
+* վերականգնվի իրական Pass1 activity block-ի correct index-ով, եթե կարելի է deterministic կերպով որոշել,
+* կամ դուրս գա canonical destinations-ից և Step C-ը պետք է rescue անի իրական Pass1 index-ը։
+
+### Tests
+
+Ավելացրու tests առնվազն հետևյալ դեպքերի համար.
+
+1. activity միայն `exercises[]` → no rescue
+2. activity միայն `additionalExercises[]` → no rescue
+3. activity missing → Step C rescue
+4. activity `blockIndex: null` → correct rescue
+5. activity invalid index → correct rescue
+6. same block in exercises + additionalExercises → exactly one final placement
+7. duplicate additionalExercises entries → exactly one final placement
+8. stripped MicroNode + activity → activity preserved exactly once
+9. multiple activity blocks → each exactly once
+10. regression: L104 problematic block 13
+11. rescue occurs before coverage validation
+12. final coverage has no duplicate activity indices
+
+### Regression verification
+
+Վերջում նորից re-map արա Lesson 104-ը առնվազն **3 անգամ**, որպեսզի ստուգենք nondeterminism-ը։
+
+Յուրաքանչյուր run-ի համար գրիր՝
+
+* Pass1 block count
+* topics
+* MicroNodes
+* exercises
+* additionalExercises
+* duplicateIndices
+* missingIndices
+* coverage %
+* coverage_valid
+* activityIssues
+
+Պետք է բոլոր run-երում invariant-ը պահվի։
+
+Ակնկալվող արդյունքը՝
+
+`duplicateIndices = []`
+
+`missingIndices = []`
+
+`activityIssues = 0`
+
+և activity/exercise blocks-ը DB-ում լինեն **ճիշտ մեկ անգամ**։
+
+### Մի կարևոր սահմանափակում
+
+P5.2-ի արդեն աշխատող փոփոխությունները չկոտրես.
+
+* `assignment = CLASS`
+* `assignment = HOMEWORK`
+* Phase 2 node-specific exercise visibility
+* Phase 3 unassigned CLASS exercise visibility
+* cross-lesson guard
+* AI Teacher exercise visibility
+
+Դրանց համար առկա 67 tests-ը նույնպես պետք է անցնեն։
+
+Վերջում տուր forensic report՝
+
+1. root cause
+2. exact files changed
+3. exact logic changed
+4. tests before/after
+5. 3 Lesson 104 remap results
+6. duplicate invariant
+7. missing invariant
+8. P5.2 regression status
+9. remaining risks
+
+Եթե 3 run-երից որևէ մեկը դեռ `coverage_failed` է, մի հայտարարիր խնդիրը fixed։

@@ -21,6 +21,21 @@ Two insertion sites in `lessons.ts` (MicroNode exercises and additionalExercises
 - Phase 3: `WHERE lessonId = X AND assignment = 'CLASS' AND (relatedNodeId IN nodes OR relatedNodeId IS NULL)` — full DEEP_DIVE set.
 - Homework: `WHERE lessonId = X AND assignment = 'HOMEWORK'` — unchanged.
 
+## Activity normalization note (normalizeActivityPlacements)
+
+Replaces Steps A+B+C. Runs BEFORE validateSourceCoverage. Enforces ∀ activity block N → exactly ONE canonical placement.
+
+Canonical priority: exercises[] > additionalExercises[]. Phases:
+1. Evict EXERCISE/ACTIVITY/HOMEWORK from sourceBlockIndices (ACTIVITY_IN_THEORY fix).
+1b. Strip MNs whose sourceBlockIndices became empty after eviction; rescue exercises to additionalExercises.
+2. Dedup exercises[] (first occurrence wins; invalid → drop).
+3. Dedup additionalExercises[] (exercises[] wins; invalid → drop; first per blockIndex wins).
+4. Rescue from unmappedBlockIndices (Step B).
+5. Rescue evicted-from-source blocks not yet placed.
+6. Rescue completely missing activity blocks (Step C).
+
+**Why Phase 1b is required:** If a MN had ONLY activity blocks in sourceBlockIndices, Phase 1 eviction leaves it empty → coverage validator's emptyMicroNodeTitles → coverage_failed. Phase 1b strips those empty MNs BEFORE coverage runs.
+
 ## Pass1 block count non-determinism note
 
-Lesson 104 produces 18, 20, or 26 blocks depending on AI OCR run — causing different coverage outcomes per remap. Job 28 (20 blocks) → completed. Jobs 29/30 (18 blocks) → coverage_failed due to duplicate index 13. This is pre-existing, not caused by P5.2.
+Lesson 104 produces 18-28 blocks across different AI OCR runs. This is now handled correctly — all runs since the fix produce coverage_valid=true regardless of block count.

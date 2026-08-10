@@ -1,417 +1,489 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Activity Rescue — integration tests for the deterministic rescue logic
+// Activity Normalization — integration tests for normalizeActivityPlacements()
 // Run with: pnpm --filter @workspace/api-server exec tsx src/lib/__tests__/activity-rescue.test.ts
 //
-// Tests that the comprehensive 3-step activity preservation scan in
-// runPass2Pipeline (Steps A+B+C) correctly rescues activity blocks.
+// Tests that normalizeActivityPlacements() (lesson-mapping.ts) enforces:
+//   ∀ EXERCISE / ACTIVITY / HOMEWORK block N → exactly ONE valid placement in
+//   microNode.exercises[] OR topic.additionalExercises[].
 //
-// These tests call the same helpers exported from lesson-mapping.ts:
-//   - isValidBlockIndex
+// Required test cases (per spec):
+//   Test  1: activity only in exercises[]          → no rescue
+//   Test  2: activity only in additionalExercises[] → no rescue
+//   Test  3: activity missing from all Pass2 output → Step C rescue
+//   Test  4: blockIndex: null in additionalExercises → correct rescue
+//   Test  5: invalid out-of-range blockIndex         → correct rescue
+//   Test  6: same block in exercises[] + additionalExercises[] → exactly one placement (exercises[] wins)
+//   Test  7: duplicate additionalExercises entries   → exactly one placement
+//   Test  8: stripped MicroNode (safety-net) + activity → preserved exactly once
+//   Test  9: multiple activity blocks                → each appears exactly once
+//   Test 10: regression — L104 block 13 ACTIVITY_IN_THEORY + Step C = old duplicate (now fixed)
+//   Test 11: rescue occurs before coverage validation (normalizeActivityPlacements mutates first)
+//   Test 12: final coverage has no duplicate activity indices
 //
-// And simulate the rescue algorithm directly (without spawning AI).
-//
-// Test scenarios correspond to spec sections 12 + 13:
-//   Test 1: EXERCISE correctly in microNode.exercises[] — no rescue needed
-//   Test 2: EXERCISE in sourceBlockIndices — not a valid activity destination
-//   Test 3: EXERCISE in unmappedBlockIndices — rescued (Step B)
-//   Test 4: EXERCISE missing from all Pass2 destinations — rescued (Step C)
-//   Test 5: additionalExercises has blockIndex: null — rescued (Step C)
-//   Test 6: additionalExercises has blockIndex: 999 (out of range) — rescued (Step C)
-//   Test 7: block in exercises[] AND additionalExercises[] — duplicate detected
-//   Test 8: EXAMPLE block in sourceBlockIndices — no activity rescue needed
-//   Test 9: worked EXAMPLE must NOT become a student exercise
-//   Test 10: all 8 L104 exercises 9–16 survive final normalization
+// isValidBlockIndex helper tests follow.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import assert from "node:assert/strict";
-import { isValidBlockIndex } from "../../services/lesson-mapping.js";
+import { isValidBlockIndex, normalizeActivityPlacements } from "../../services/lesson-mapping.js";
+import { validateSourceCoverage } from "../coverage-validator.js";
+import type { Pass2TopicResult, Pass2MicroNode } from "../../services/lesson-mapping.js";
 
 const tests: Array<[string, () => void]> = [];
 function it(name: string, fn: () => void): void { tests.push([name, fn]); }
 
-// ── Minimal types mirroring the pipeline's internal structures ─────────────────
+// ── Minimal block factory ─────────────────────────────────────────────────────
 
 interface MockBlock {
-  blockType:      string;
-  sourceText:     string;
-  sourcePage:     number;
+  blockType:       string;
+  sourceText:      string;
+  sourcePage:      number;
   sourceParagraph: string | null;
 }
 
-interface MockExercise {
-  blockIndex:      unknown;  // unknown to test null/invalid
-  sourceParagraph: string | null;
+function makeBlock(blockType: string, text = "Text.", page = 1): MockBlock {
+  return { blockType, sourceText: text, sourcePage: page, sourceParagraph: text.slice(0, 40) };
 }
 
-interface MockMicroNode {
-  title:                   string;
-  sourceBlockIndices:      number[];
-  exercises:               MockExercise[];
-  supportingMaterialIndices: number[];
+// Helper: build a minimal Pass2MicroNode for testing.
+function makeMN(
+  title: string,
+  sourceBlockIndices: number[],
+  exercises: { blockIndex: unknown }[] = [],
+  supportingMaterialIndices: number[] = [],
+): Pass2MicroNode {
+  return {
+    title,
+    learningObjective: "test LO",
+    microNodeType: "skill" as const,
+    sourceBlockIndices,
+    exercises: exercises as Pass2MicroNode["exercises"],
+    supportingMaterialIndices,
+  };
 }
 
-interface MockTopic {
-  title:                string;
-  microNodes:           MockMicroNode[];
-  unmappedBlockIndices: number[];
-  additionalExercises:  MockExercise[];
+// Helper: build a minimal Pass2TopicResult.
+function makeTopic(
+  title: string,
+  microNodes: Pass2MicroNode[],
+  unmappedBlockIndices: number[] = [],
+  additionalExercises: { blockIndex: unknown; sourceParagraph?: string | null }[] = [],
+): Pass2TopicResult {
+  return {
+    sequence: 1,
+    title,
+    topicType: "skill",
+    microNodes,
+    unmappedBlockIndices,
+    additionalExercises: additionalExercises as Pass2TopicResult["additionalExercises"],
+  };
 }
 
-// ── Rescue algorithm (mirrors lesson-mapping.ts logic) ────────────────────────
+// ── Test 1 — activity only in exercises[] → no rescue ────────────────────────
 
-const ACTIVITY_TYPES = new Set(["EXERCISE", "ACTIVITY", "HOMEWORK"]);
+it("Test 1: activity only in exercises[] — no rescue needed", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0], [{ blockIndex: 1 }])])];
 
-function collectValidActivityDestinations(topics: MockTopic[], blocks: MockBlock[]): Set<number> {
-  const refs = new Set<number>();
-  for (const topic of topics) {
-    for (const mn of topic.microNodes) {
-      for (const ex of mn.exercises) {
-        if (isValidBlockIndex(ex.blockIndex, blocks)) refs.add(ex.blockIndex as number);
-      }
-    }
-    for (const ex of topic.additionalExercises) {
-      if (isValidBlockIndex(ex.blockIndex, blocks)) refs.add(ex.blockIndex as number);
-    }
-  }
-  return refs;
-}
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
 
-/**
- * Simulates the 3-step activity preservation rescue.
- * Mutates topics in place (as the pipeline does).
- * Returns the set of rescued indices per step.
- */
-function runActivityRescue(topics: MockTopic[], blocks: MockBlock[]): {
-  stepBRescued: number[];
-  stepCRescued: number[];
-  finalDestinations: Set<number>;
-} {
-  // Step A
-  let destinations = collectValidActivityDestinations(topics, blocks);
-  const stepBRescued: number[] = [];
-  const stepCRescued: number[] = [];
-
-  // Step B: P5.4 — unmapped rescue
-  for (const topic of topics) {
-    const remaining: number[] = [];
-    for (const idx of topic.unmappedBlockIndices) {
-      const block = blocks[idx];
-      if (block && ACTIVITY_TYPES.has(block.blockType) && !destinations.has(idx)) {
-        stepBRescued.push(idx);
-        topic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
-        destinations.add(idx);
-      } else {
-        remaining.push(idx);
-      }
-    }
-    topic.unmappedBlockIndices = remaining;
-  }
-
-  // Step C: deterministic missing-activity rescue
-  const missingIndices: number[] = [];
-  for (let i = 0; i < blocks.length; i++) {
-    const block = blocks[i];
-    if (block && ACTIVITY_TYPES.has(block.blockType) && !destinations.has(i)) {
-      missingIndices.push(i);
-    }
-  }
-  if (missingIndices.length > 0 && topics.length > 0) {
-    const target = topics[topics.length - 1];
-    for (const idx of missingIndices) {
-      const block = blocks[idx];
-      if (!block) continue;
-      target.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
-      destinations.add(idx);
-      stepCRescued.push(idx);
-    }
-  }
-
-  return { stepBRescued, stepCRescued, finalDestinations: destinations };
-}
-
-function makeBlock(blockType: string, sourceText: string, sourcePage = 1): MockBlock {
-  return { blockType, sourceText, sourcePage, sourceParagraph: sourceText.slice(0, 40) };
-}
-
-// ── Test 1 — EXERCISE correctly in exercises[] — no rescue needed ─────────────
-
-it("Test 1: EXERCISE in exercises[] — no rescue needed", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("RULE",     "Rule text."),
-    makeBlock("EXERCISE", "Student task."),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [{ blockIndex: 1, sourceParagraph: null }], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [],
-  }];
-  const { stepBRescued, stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepBRescued.length, 0, "no Step B rescue needed");
-  assert.equal(stepCRescued.length, 0, "no Step C rescue needed");
-  assert.ok(finalDestinations.has(1), "block 1 in valid destination");
+  assert.deepEqual(r.evictedFromSource, [],   "no eviction");
+  assert.deepEqual(r.stepBRescued,      [],   "no Step B");
+  assert.deepEqual(r.stepCRescued,      [],   "no Step C");
+  assert.equal(topics[0].microNodes[0].exercises.length, 1, "exercise kept");
+  assert.equal(topics[0].additionalExercises.length,     0, "no additional");
 });
 
-// ── Test 2 — EXERCISE in sourceBlockIndices — not a valid activity destination ─
+// ── Test 2 — activity only in additionalExercises[] → no rescue ──────────────
 
-it("Test 2: EXERCISE in sourceBlockIndices — counted as MISSING (not activity destination)", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("EXERCISE", "Student task."),
-  ];
-  // AI put block 0 in sourceBlockIndices (wrong) — no exercises[], no additionalExercises
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [],
-  }];
-  const { stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  // P5.1 ACTIVITY_IN_THEORY is a validator finding, not a rescue action.
-  // The rescue (Step C) should rescue block 0 to additionalExercises regardless.
-  assert.equal(stepCRescued.length, 1, "Step C should rescue the missing block 0");
-  assert.ok(finalDestinations.has(0), "block 0 now has a valid activity destination");
-  assert.equal(topics[0].additionalExercises.length, 1);
-  assert.equal(topics[0].additionalExercises[0].blockIndex, 0);
+it("Test 2: activity only in additionalExercises[] — no rescue needed", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [], [{ blockIndex: 1 }])];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.stepBRescued, [], "no Step B");
+  assert.deepEqual(r.stepCRescued, [], "no Step C");
+  assert.equal(topics[0].additionalExercises.length, 1, "additionalExercise kept");
+  assert.equal((topics[0].additionalExercises[0] as any).blockIndex, 1);
 });
 
-// ── Test 3 — EXERCISE in unmappedBlockIndices — rescued in Step B ─────────────
+// ── Test 3 — activity missing from all Pass2 output → Step C rescue ──────────
 
-it("Test 3: EXERCISE in unmappedBlockIndices — rescued in Step B", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("NOTE",     "Header."),
-    makeBlock("EXERCISE", "Solve this."),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [1],  // AI put exercise in unmapped
-    additionalExercises:  [],
-  }];
-  const { stepBRescued, stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepBRescued.length, 1, "Step B should rescue block 1");
-  assert.ok(stepBRescued.includes(1));
-  assert.equal(stepCRescued.length, 0, "Step C not needed");
-  assert.ok(finalDestinations.has(1));
-  assert.equal(topics[0].unmappedBlockIndices.length, 0, "unmapped cleaned up");
-  assert.equal(topics[0].additionalExercises.length, 1);
-  assert.equal(topics[0].additionalExercises[0].blockIndex, 1);
-});
+it("Test 3: activity missing entirely from Pass2 output — Step C rescues to last topic", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0])])]; // block 1 not mentioned anywhere
 
-// ── Test 4 — EXERCISE missing from all Pass2 destinations — rescued in Step C ─
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
 
-it("Test 4: EXERCISE missing entirely from Pass2 output — rescued in Step C", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("RULE",     "Rule."),
-    makeBlock("EXERCISE", "Missing exercise."),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [],  // AI omitted block 1 entirely
-  }];
-  const { stepBRescued, stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepBRescued.length, 0, "Step B: nothing in unmapped");
-  assert.equal(stepCRescued.length, 1, "Step C must rescue block 1");
-  assert.ok(stepCRescued.includes(1));
-  assert.ok(finalDestinations.has(1));
-  const rescued = topics[0].additionalExercises.find(e => e.blockIndex === 1);
-  assert.ok(rescued, "rescued exercise must be in additionalExercises");
-  assert.equal(rescued!.blockIndex, 1, "sourceBlockIndex must be preserved");
-});
-
-// ── Test 5 — additionalExercises has null blockIndex — rescued in Step C ──────
-
-it("Test 5: additionalExercises has blockIndex: null — Step C rescues original block", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("RULE",     "Rule."),
-    makeBlock("EXERCISE", "Task.", 38),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [{ blockIndex: null, sourceParagraph: null }],  // AI returned null
-  }];
-  const { stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepCRescued.length, 1, "Step C must rescue block 1 (null blockIndex didn't register)");
-  assert.ok(finalDestinations.has(1));
-  // The rescued entry has the correct blockIndex
-  const valid = topics[0].additionalExercises.filter(e => isValidBlockIndex(e.blockIndex, blocks));
+  assert.deepEqual(r.stepCRescued, [1], "Step C must rescue block 1");
+  const valid = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks));
   assert.equal(valid.length, 1);
   assert.equal(valid[0].blockIndex, 1);
 });
 
-// ── Test 6 — additionalExercises has out-of-range blockIndex — rescued in Step C
+// ── Test 4 — blockIndex: null in additionalExercises → correct rescue ─────────
 
-it("Test 6: additionalExercises has blockIndex: 999 (out of range) — Step C rescues", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("RULE",     "Rule."),
-    makeBlock("EXERCISE", "Task.", 38),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [{ blockIndex: 999, sourceParagraph: null }],  // AI used textbook number
-  }];
-  const { stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepCRescued.length, 1, "Step C must rescue block 1");
-  assert.ok(finalDestinations.has(1));
-  const valid = topics[0].additionalExercises.filter(e => isValidBlockIndex(e.blockIndex, blocks));
+it("Test 4: additionalExercises has blockIndex: null — Step C rescues original block", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE", "Task.", 38)];
+  // AI returned null blockIndex — invalid, must be dropped and real block rescued
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [], [{ blockIndex: null }])];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.stepCRescued, [1], "Step C rescues block 1 (null didn't count)");
+  const valid = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks));
+  assert.equal(valid.length, 1,        "exactly one valid entry after normalization");
+  assert.equal(valid[0].blockIndex, 1, "correct blockIndex");
+  // The invalid null entry is gone
+  const invalid = (topics[0].additionalExercises as any[]).filter(e => !isValidBlockIndex(e.blockIndex, blocks));
+  assert.equal(invalid.length, 0, "null entry removed from additionalExercises");
+});
+
+// ── Test 5 — invalid out-of-range blockIndex → correct rescue ────────────────
+
+it("Test 5: additionalExercises has blockIndex: 999 (out of range) — Step C rescues", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE", "Task.", 38)];
+  // AI used textbook exercise number instead of Pass1 block index
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [], [{ blockIndex: 999 }])];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.stepCRescued, [1], "Step C rescues block 1");
+  const valid = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks));
   assert.equal(valid.length, 1);
   assert.equal(valid[0].blockIndex, 1);
+  // Invalid 999 entry is gone
+  const invalid = (topics[0].additionalExercises as any[]).filter(e => !isValidBlockIndex(e.blockIndex, blocks));
+  assert.equal(invalid.length, 0, "out-of-range entry removed");
 });
 
-// ── Test 7 — block in exercises[] AND additionalExercises[] — duplicate ────────
+// ── Test 6 — same block in exercises[] + additionalExercises[] → exercises[] wins ─
 
-it("Test 7: block in exercises[] AND additionalExercises[] → duplicate (no extra rescue)", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("RULE",     "Rule."),
-    makeBlock("EXERCISE", "Shared task.", 5),
+it("Test 6: block in exercises[] AND additionalExercises[] — exercises[] wins, additionalExercises entry removed", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  // exercises[] has blockIndex 1; additionalExercises also has blockIndex 1 (AI duplicate)
+  const topics = [makeTopic("T",
+    [makeMN("MN", [0], [{ blockIndex: 1 }])],
+    [],
+    [{ blockIndex: 1 }],
+  )];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.stepBRescued, [], "no Step B");
+  assert.deepEqual(r.stepCRescued, [], "no Step C");
+  // exercises[] entry preserved
+  assert.equal(topics[0].microNodes[0].exercises.length, 1, "exercise kept in exercises[]");
+  assert.equal((topics[0].microNodes[0].exercises[0] as any).blockIndex, 1);
+  // additionalExercises entry removed (exercises[] wins)
+  assert.equal(topics[0].additionalExercises.length, 0, "duplicate removed from additionalExercises[]");
+  assert.ok(r.dedupedAdditional.includes(1), "blockIndex 1 logged as deduped from additional");
+});
+
+// ── Test 7 — duplicate additionalExercises entries → exactly one placement ───
+
+it("Test 7: duplicate additionalExercises entries — exactly one final placement", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  // AI returned block 1 twice in additionalExercises
+  const topics = [makeTopic("T",
+    [makeMN("MN", [0])],
+    [],
+    [{ blockIndex: 1 }, { blockIndex: 1 }],
+  )];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.stepCRescued, [], "no Step C — block already placed (first occurrence)");
+  const valid = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks));
+  assert.equal(valid.length, 1,        "exactly one valid additionalExercise entry");
+  assert.equal(valid[0].blockIndex, 1, "correct blockIndex");
+  assert.ok(r.dedupedAdditional.includes(1), "second occurrence logged as deduped");
+});
+
+// ── Test 8 — stripped MicroNode (safety-net) + activity → preserved exactly once ─
+
+it("Test 8: safety-net strips MicroNode — exercise preserved exactly once (no duplicate)", () => {
+  // Simulates what the safety-net does in organizeTopicMicroNodes:
+  //   - Invalid MicroNode's exercises are pushed to topic.additionalExercises
+  //   - Valid MN has block 0 in sourceBlockIndices, block 1 in exercises[]
+  //   - Safety-net pushed {blockIndex: null} (invalid) exercises to additionalExercises
+  //   - Real EXERCISE block 1 is in exercises[] of valid MN
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T",
+    [makeMN("MN-valid", [0], [{ blockIndex: 1 }])],
+    [],
+    // Safety-net pushed invalid exercises (null blockIndex) from stripped MN
+    [{ blockIndex: null }, { blockIndex: null }],
+  )];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.stepCRescued, [], "no Step C — block 1 already in exercises[]");
+  // exercises[] entry preserved
+  assert.equal(topics[0].microNodes[0].exercises.length, 1, "exercise kept in exercises[]");
+  // Invalid additionalExercises (null) removed
+  const remaining = (topics[0].additionalExercises as any[]);
+  assert.equal(remaining.length, 0, "null entries removed from additionalExercises");
+
+  // Coverage validation: block 1 appears exactly once
+  const coverage = validateSourceCoverage(2, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, [], "no duplicates");
+  assert.deepEqual(coverage.missingIndices,   [], "no missing (block 0 in source, block 1 in exercises)");
+});
+
+// ── Test 9 — multiple activity blocks → each appears exactly once ─────────────
+
+it("Test 9: multiple activity blocks — each appears exactly once", () => {
+  const blocks = [
+    makeBlock("RULE"),     // 0
+    makeBlock("EXERCISE"), // 1 → in exercises[MN1]
+    makeBlock("ACTIVITY"), // 2 → in additionalExercises
+    makeBlock("HOMEWORK"), // 3 → missing from AI output → Step C
+    makeBlock("EXERCISE"), // 4 → in unmappedBlockIndices → Step B
+    makeBlock("NOTE"),     // 5 → theory, no activity rescue
   ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0], exercises: [{ blockIndex: 1, sourceParagraph: null }], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [{ blockIndex: 1, sourceParagraph: null }],  // already in exercises[] too
-  }];
-  const { stepBRescued, stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepBRescued.length, 0);
-  assert.equal(stepCRescued.length, 0, "no rescue: block 1 already has a valid destination");
-  assert.ok(finalDestinations.has(1));
-  // Duplicate detection is done by the validator, not the rescue — count additionalExercises
-  const validAdditional = topics[0].additionalExercises.filter(e => isValidBlockIndex(e.blockIndex, blocks));
-  assert.equal(validAdditional.length, 1, "original additionalExercise with valid blockIndex still present");
+  const topics = [makeTopic("T",
+    [
+      makeMN("MN1", [0], [{ blockIndex: 1 }]),
+      makeMN("MN2", [5]),
+    ],
+    [4], // block 4 EXERCISE wrongly placed in unmapped
+    [{ blockIndex: 2 }], // block 2 ACTIVITY in additionalExercises
+    // block 3 HOMEWORK entirely missing from AI output
+  )];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(r.evictedFromSource, [],  "no eviction");
+  assert.deepEqual(r.stepBRescued,      [4], "block 4 rescued from unmapped");
+  assert.deepEqual(r.stepCRescued,      [3], "block 3 rescued by Step C");
+
+  // Each activity block appears exactly once
+  const coverage = validateSourceCoverage(6, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, [], "no duplicates");
+  assert.deepEqual(coverage.missingIndices,   [], "no missing");
+  assert.equal(coverage.valid, true, "coverage valid");
+
+  // Verify final placements
+  const exs = (topics[0].microNodes[0].exercises as any[]).map(e => e.blockIndex);
+  assert.deepEqual(exs, [1], "block 1 in MN1.exercises[]");
+  const add = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks)).map(e => e.blockIndex).sort((a, b) => a - b);
+  assert.deepEqual(add, [2, 3, 4], "blocks 2, 3, 4 in additionalExercises");
 });
 
-// ── Test 8 — EXAMPLE in sourceBlockIndices — no activity rescue ───────────────
+// ── Test 10 — L104 regression: block 13 ACTIVITY_IN_THEORY + Step C = duplicate (now fixed) ──
 
-it("Test 8: EXAMPLE block in sourceBlockIndices — no activity rescue needed", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("EXAMPLE", "Worked example: 22 + □ = 88", 38),
-    makeBlock("RULE",    "Rule text.", 38),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0, 1], exercises: [], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [],
-  }];
-  const { stepBRescued, stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepBRescued.length, 0, "EXAMPLE is not an activity block");
-  assert.equal(stepCRescued.length, 0, "EXAMPLE is not an activity block");
-  assert.ok(!finalDestinations.has(0), "EXAMPLE block 0 correctly NOT in activity destinations");
-});
-
-// ── Test 9 — worked EXAMPLE must NOT become student exercise ──────────────────
-
-it("Test 9: EXAMPLE blocks must not appear in lesson_exercises (not rescued as activity)", () => {
-  const blocks: MockBlock[] = [
-    makeBlock("EXAMPLE", "Worked example: 22 + □ = 88",  38),
-    makeBlock("EXAMPLE", "Worked example: □ – 22 = 66",  38),
-    makeBlock("EXAMPLE", "Worked example: 88 – □ = 22",  38),
-    makeBlock("EXERCISE", "Real student exercise.", 39),
-  ];
-  const topics: MockTopic[] = [{
-    title:                "Topic A",
-    microNodes:           [{ title: "MN", sourceBlockIndices: [0, 1, 2], exercises: [{ blockIndex: 3, sourceParagraph: null }], supportingMaterialIndices: [] }],
-    unmappedBlockIndices: [],
-    additionalExercises:  [],
-  }];
-  const { stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
-  assert.equal(stepCRescued.length, 0, "No rescue: exercise 3 already placed, examples are theory");
-  assert.ok(!finalDestinations.has(0), "EXAMPLE 0 not an activity destination");
-  assert.ok(!finalDestinations.has(1), "EXAMPLE 1 not an activity destination");
-  assert.ok(!finalDestinations.has(2), "EXAMPLE 2 not an activity destination");
-  assert.ok(finalDestinations.has(3),  "EXERCISE 3 correctly in activity destination");
-});
-
-// ── Test 10 — L104 regression: all 8 exercises 9–16 survive ──────────────────
-
-it("Test 10: all 8 L104 exercises 9–16 rescued when AI returns null blockIndices", () => {
+it("Test 10: L104 regression — EXERCISE block in sourceBlockIndices + Step C = old duplicate; now fixed", () => {
+  // 18-block scenario: block 13 is EXERCISE but AI put it in MN.sourceBlockIndices.
+  // Old behaviour: Step C rescues 13 to additionalExercises → coverage duplicate.
+  // New behaviour: normalizeActivityPlacements evicts 13 from sourceBlockIndices,
+  //                rescues it to additionalExercises exactly once.
   const blocks: MockBlock[] = [];
-  // Blocks 0-8: non-activity
-  for (let i = 0; i <= 8; i++) blocks.push(makeBlock("RULE", `Block ${i}.`, 38));
-  // Blocks 9-16: EXERCISE
-  for (let i = 9; i <= 16; i++) blocks.push(makeBlock("EXERCISE", `Exercise ${i}.`, 38));
-  // Block 17: ACTIVITY
-  blocks.push(makeBlock("ACTIVITY", "Class activity.", 41));
+  for (let i = 0; i < 13; i++) blocks.push(makeBlock("DEFINITION", `Theory ${i}.`));
+  blocks.push(makeBlock("EXERCISE", "Exercise 13."));       // 13
+  for (let i = 14; i < 18; i++) blocks.push(makeBlock("EXERCISE", `Exercise ${i}.`)); // 14-17
 
-  const topics: MockTopic[] = [{
-    title: "Topic",
-    microNodes: [
-      { title: "MN A", sourceBlockIndices: [1, 5], exercises: [], supportingMaterialIndices: [] },
-      { title: "MN B", sourceBlockIndices: [2, 6], exercises: [], supportingMaterialIndices: [] },
-      { title: "MN C", sourceBlockIndices: [3, 4], exercises: [], supportingMaterialIndices: [] },
-      { title: "MN D", sourceBlockIndices: [8], exercises: [{ blockIndex: 17, sourceParagraph: null }], supportingMaterialIndices: [] },
+  // AI output: MN has block 13 among its sourceBlockIndices (wrong — ACTIVITY_IN_THEORY).
+  // Blocks 14-17 EXERCISE: AI returned null blockIndex (invalid additionalExercises entries).
+  const invalidAdditional = [14, 15, 16, 17].map(() => ({ blockIndex: null, sourceParagraph: null }));
+  const topics = [makeTopic("T",
+    // MN has blocks 0-13 in sourceBlockIndices. Block 13 is EXERCISE → evicted but MN stays (0-12 remain).
+    [makeMN("MN-main", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], [])],
+    [],
+    invalidAdditional,
+  )];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  // Block 13 must be evicted from sourceBlockIndices
+  assert.ok(r.evictedFromSource.includes(13), "block 13 evicted from sourceBlockIndices");
+  assert.ok(!topics[0].microNodes[0].sourceBlockIndices.includes(13),
+    "block 13 removed from MN.sourceBlockIndices");
+  // MN still has blocks 0-12 → NOT stripped by Phase 1b
+  assert.equal(topics[0].microNodes.length, 1, "MN kept (still has theory blocks)");
+  assert.deepEqual(r.postEvictionStripped, [], "no post-eviction MN stripping needed");
+
+  // Blocks 14-17 and 13 rescued (null entries dropped, then Step C picks them up)
+  const valid = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks));
+  const validIndices = valid.map((e: any) => e.blockIndex).sort((a: number, b: number) => a - b);
+  assert.deepEqual(validIndices, [13, 14, 15, 16, 17], "all 5 exercise blocks rescued exactly once");
+
+  // Coverage must be clean — NO duplicates for block 13
+  const coverage = validateSourceCoverage(18, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, [],  "no duplicate indices (block 13 fixed)");
+  assert.deepEqual(coverage.missingIndices,   [],  "no missing indices");
+  assert.equal(coverage.valid, true,               "coverage is valid");
+});
+
+// ── Test 10b — Phase 1b: MicroNode whose ONLY source block is ACTIVITY → stripped ──
+
+it("Test 10b: MN has ONLY activity blocks in sourceBlockIndices — eviction leaves empty MN, Phase 1b strips it", () => {
+  // Scenario: AI creates a MN with sourceBlockIndices = [1] where block 1 is EXERCISE.
+  // Old behaviour (after Phase 1 only): evict block 1 → MN.sourceBlockIndices = []
+  //   → coverage validator: emptyMicroNodes → coverage_failed.
+  // New behaviour (Phase 1b): MN with empty sourceBlockIndices after eviction is stripped;
+  //   its exercises are moved to additionalExercises.
+  const blocks: MockBlock[] = [
+    makeBlock("DEFINITION", "Theory block."),  // 0
+    makeBlock("EXERCISE",   "Only exercise."), // 1 — the ONLY source block in the MN
+    makeBlock("RULE",       "More theory."),   // 2
+  ];
+  // MN has sourceBlockIndices = [1] (only block 1 which is EXERCISE — wrong)
+  // MN also has exercises = [{blockIndex: 1}] (AI correctly linked exercise too)
+  const topics = [makeTopic("T",
+    [
+      makeMN("MN-theory", [0, 2]),                                    // valid theory MN
+      makeMN("MN-activity-only", [1], [{ blockIndex: 1 }]),           // only-activity source → Phase 1b strips it
     ],
-    unmappedBlockIndices: [0, 7],
-    additionalExercises: [
-      // AI returned 8 additionalExercises with null blockIndex — the Job 27 failure
-      { blockIndex: null, sourceParagraph: null }, { blockIndex: null, sourceParagraph: null },
-      { blockIndex: null, sourceParagraph: null }, { blockIndex: null, sourceParagraph: null },
-      { blockIndex: null, sourceParagraph: null }, { blockIndex: null, sourceParagraph: null },
-      { blockIndex: null, sourceParagraph: null }, { blockIndex: null, sourceParagraph: null },
+  )];
+
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
+
+  // Block 1 evicted from sourceBlockIndices
+  assert.ok(r.evictedFromSource.includes(1), "block 1 evicted");
+  // MN-activity-only stripped by Phase 1b (sourceBlockIndices became empty)
+  assert.deepEqual(r.postEvictionStripped, ["MN-activity-only"], "MN-activity-only logged as post-eviction stripped");
+  assert.equal(topics[0].microNodes.length, 1, "only MN-theory remains");
+  assert.equal(topics[0].microNodes[0].title, "MN-theory", "MN-theory kept");
+
+  // Block 1 preserved exactly once in additionalExercises (from stripped MN's exercises[])
+  const valid = (topics[0].additionalExercises as any[]).filter(e => isValidBlockIndex(e.blockIndex, blocks));
+  assert.equal(valid.length, 1, "exactly one additionalExercise entry");
+  assert.equal(valid[0].blockIndex, 1, "block 1 correctly rescued");
+
+  // Coverage: no duplicates, no missing, no empty MNs
+  const coverage = validateSourceCoverage(3, topics as any);
+  assert.deepEqual(coverage.duplicateIndices,    [], "no duplicates");
+  assert.deepEqual(coverage.missingIndices,      [], "no missing");
+  assert.deepEqual(coverage.emptyMicroNodeTitles, [], "no empty MicroNodes");
+  assert.equal(coverage.valid, true, "coverage valid");
+});
+
+// ── Test 10c — Phase 1b: 28-block run L104 scenario (Job 31/32 regression) ────
+
+it("Test 10c: 28-block L104 regression — ACTIVITY_IN_THEORY + single-source MN eviction + empty-MN strip", () => {
+  // Job 31/32 scenario with 28 blocks:
+  // - AI puts block 13 (EXERCISE) as the ONLY sourceBlockIndex of one MN
+  // - Phase 1: evicts block 13 → MN.sourceBlockIndices = []
+  // - Phase 1b: strips that empty MN, rescues its exercises
+  // - Result: no emptyMicroNodes, no duplicates, coverage valid
+  const blocks: MockBlock[] = [];
+  for (let i = 0; i <  8; i++) blocks.push(makeBlock("DEFINITION", `Theory ${i}.`));
+  for (let i =  8; i < 14; i++) blocks.push(makeBlock("EXERCISE",  `Exercise ${i}.`)); // 8-13
+  for (let i = 14; i < 22; i++) blocks.push(makeBlock("DEFINITION", `Theory ${i}.`));
+  for (let i = 22; i < 28; i++) blocks.push(makeBlock("EXERCISE",  `Exercise ${i}.`)); // 22-27
+
+  // MN "main" has theory blocks; MN "activity-only" has only block 13 as source
+  const topics = [makeTopic("T",
+    [
+      makeMN("MN-main",          [0,1,2,3,4,5,6,7,14,15,16,17,18,19,20,21], [{ blockIndex: 8 }, { blockIndex: 9 }]),
+      makeMN("MN-activity-only", [13], [{ blockIndex: 10 }, { blockIndex: 11 }]), // 13 is EXERCISE — only source
     ],
-  }];
+    [24, 25, 26, 27], // some exercises in unmapped
+    [
+      { blockIndex: 12 },  // valid additionalExercise
+      { blockIndex: null }, // invalid (safety-net artifact)
+    ],
+  )];
 
-  const { stepBRescued, stepCRescued, finalDestinations } = runActivityRescue(topics, blocks);
+  const r = normalizeActivityPlacements(topics as any, blocks as any);
 
-  // Step B: blocks 0 and 7 are in unmappedBlockIndices but are RULE/TABLE — not activity
-  assert.equal(stepBRescued.length, 0, "Step B: no activity blocks in unmapped");
+  assert.ok(r.evictedFromSource.includes(13),     "block 13 evicted from MN-activity-only sourceBlockIndices");
+  assert.ok(r.postEvictionStripped.includes("MN-activity-only"), "MN-activity-only stripped by Phase 1b");
+  assert.equal(topics[0].microNodes.length, 1,    "only MN-main remains");
+  assert.deepEqual(r.stepBRescued.sort((a,b)=>a-b), [24,25,26,27], "Step B rescues unmapped exercises");
 
-  // Step C: blocks 9-16 all missing from valid destinations → all rescued
-  assert.equal(stepCRescued.length, 8, "Step C must rescue all 8 missing exercise blocks");
-  for (let i = 9; i <= 16; i++) {
-    assert.ok(stepCRescued.includes(i), `block ${i} must be in Step C rescued`);
-    assert.ok(finalDestinations.has(i), `block ${i} must be in final activity destinations`);
-  }
-
-  // Block 17 (ACTIVITY) already in exercises[] via MN D — not re-rescued
-  assert.ok(finalDestinations.has(17), "block 17 already has valid destination");
-
-  // All rescued blocks have correct blockIndex
-  const validAdditional = topics[0].additionalExercises.filter(e => isValidBlockIndex(e.blockIndex, blocks));
-  const rescuedIndices = validAdditional.map(e => e.blockIndex as number).sort((a, b) => a - b);
-  assert.deepEqual(rescuedIndices, [9, 10, 11, 12, 13, 14, 15, 16], "all 8 exercise indices preserved");
-
-  // missingIndices should now be empty (blocks 0, 7 are RULE/TABLE — unmapped, non-activity)
-  const activityIndices = [9, 10, 11, 12, 13, 14, 15, 16, 17];
-  for (const idx of activityIndices) {
-    assert.ok(finalDestinations.has(idx), `activity block ${idx} must have final valid destination`);
-  }
+  // Final coverage must be valid
+  const coverage = validateSourceCoverage(28, topics as any);
+  assert.deepEqual(coverage.duplicateIndices,     [], "no duplicate indices");
+  assert.deepEqual(coverage.missingIndices,       [], "no missing indices");
+  assert.deepEqual(coverage.emptyMicroNodeTitles, [], "no empty MicroNodes after Phase 1b");
+  assert.equal(coverage.valid, true,                  "coverage valid");
 });
 
-// ── isValidBlockIndex helper ──────────────────────────────────────────────────
+// ── Test 11 — rescue occurs before coverage validation ───────────────────────
 
-it("isValidBlockIndex: null → false", () => {
-  assert.equal(isValidBlockIndex(null, [1, 2, 3]), false);
+it("Test 11: normalizeActivityPlacements mutates topics BEFORE validateSourceCoverage is called", () => {
+  // This verifies the temporal contract: once normalizeActivityPlacements returns,
+  // validateSourceCoverage on the same topics array should always be clean.
+  const blocks = [
+    makeBlock("RULE"),     // 0 — theory
+    makeBlock("EXERCISE"), // 1 — in sourceBlockIndices (ACTIVITY_IN_THEORY)
+    makeBlock("EXERCISE"), // 2 — missing from AI output entirely
+  ];
+  const topics = [makeTopic("T",
+    [makeMN("MN", [0, 1] /* 1 is EXERCISE — wrong */, [])],
+  )];
+
+  // BEFORE normalization: coverage would have duplicates and missings
+  const before = validateSourceCoverage(3, topics as any);
+  // (block 1 in sourceBlockIndices only — not a duplicate yet, but block 2 is missing)
+  assert.ok(before.missingIndices.includes(2), "block 2 missing before normalization");
+
+  // Run normalization
+  normalizeActivityPlacements(topics as any, blocks as any);
+
+  // AFTER normalization: coverage must be clean
+  const after = validateSourceCoverage(3, topics as any);
+  assert.deepEqual(after.duplicateIndices, [], "no duplicates after normalization");
+  assert.deepEqual(after.missingIndices,   [], "no missing after normalization");
+  assert.equal(after.valid, true,              "coverage valid after normalization");
 });
 
-it("isValidBlockIndex: undefined → false", () => {
-  assert.equal(isValidBlockIndex(undefined, [1, 2, 3]), false);
+// ── Test 12 — final coverage has no duplicate activity indices ────────────────
+
+it("Test 12: final state — coverage validator sees zero duplicate activity indices in all scenarios combined", () => {
+  // Stress test: combine ACTIVITY_IN_THEORY + AI duplicate additionalExercises
+  //             + safety-net invalid entries + missing block
+  const blocks = [
+    makeBlock("RULE"),     // 0 — theory
+    makeBlock("EXERCISE"), // 1 — in sourceBlockIndices (ACTIVITY_IN_THEORY) AND additionalExercises (null blockIndex from safety-net)
+    makeBlock("ACTIVITY"), // 2 — AI returned it twice in additionalExercises
+    makeBlock("HOMEWORK"), // 3 — missing entirely
+    makeBlock("EXERCISE"), // 4 — in exercises[] AND additionalExercises[]
+    makeBlock("NOTE"),     // 5 — theory
+  ];
+  const topics = [makeTopic("T",
+    [
+      makeMN("MN-A", [0, 1] /* 1 is EXERCISE — ACTIVITY_IN_THEORY */, [{ blockIndex: 4 }]),
+      makeMN("MN-B", [5]),
+    ],
+    [],
+    [
+      { blockIndex: null },   // safety-net invalid
+      { blockIndex: 2 },      // block 2 first occurrence
+      { blockIndex: 2 },      // block 2 duplicate
+      { blockIndex: 4 },      // block 4 also in exercises[] — should be removed (exercises[] wins)
+    ],
+  )];
+
+  normalizeActivityPlacements(topics as any, blocks as any);
+
+  const coverage = validateSourceCoverage(6, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, [], "zero duplicate activity indices in final coverage");
+  assert.deepEqual(coverage.missingIndices,   [], "zero missing indices");
+  assert.equal(coverage.valid, true,              "coverage valid");
+
+  // Verify placements are exactly right
+  const exArr = (topics[0].microNodes[0].exercises as any[]).map(e => e.blockIndex);
+  assert.deepEqual(exArr, [4], "block 4 in MN-A.exercises[]");
+
+  const addArr = (topics[0].additionalExercises as any[])
+    .filter((e: any) => isValidBlockIndex(e.blockIndex, blocks))
+    .map((e: any) => e.blockIndex)
+    .sort((a: number, b: number) => a - b);
+  assert.deepEqual(addArr, [1, 2, 3], "blocks 1, 2, 3 in additionalExercises (each exactly once)");
 });
 
-it("isValidBlockIndex: 0 → true", () => {
-  assert.equal(isValidBlockIndex(0, [1, 2, 3]), true);
-});
+// ── isValidBlockIndex helper tests ───────────────────────────────────────────
 
-it("isValidBlockIndex: -1 → false", () => {
-  assert.equal(isValidBlockIndex(-1, [1, 2, 3]), false);
-});
-
-it("isValidBlockIndex: out of range → false", () => {
-  assert.equal(isValidBlockIndex(999, [1, 2, 3]), false);
-});
-
-it("isValidBlockIndex: float → false", () => {
-  assert.equal(isValidBlockIndex(1.5, [1, 2, 3]), false);
-});
-
-it("isValidBlockIndex: string '1' → false", () => {
-  assert.equal(isValidBlockIndex("1", [1, 2, 3]), false);
-});
+it("isValidBlockIndex: null → false",        () => assert.equal(isValidBlockIndex(null,      [1, 2, 3]), false));
+it("isValidBlockIndex: undefined → false",   () => assert.equal(isValidBlockIndex(undefined, [1, 2, 3]), false));
+it("isValidBlockIndex: 0 → true",            () => assert.equal(isValidBlockIndex(0,          [1, 2, 3]), true));
+it("isValidBlockIndex: -1 → false",          () => assert.equal(isValidBlockIndex(-1,         [1, 2, 3]), false));
+it("isValidBlockIndex: out of range → false",() => assert.equal(isValidBlockIndex(999,        [1, 2, 3]), false));
+it("isValidBlockIndex: float → false",       () => assert.equal(isValidBlockIndex(1.5,        [1, 2, 3]), false));
+it("isValidBlockIndex: string → false",      () => assert.equal(isValidBlockIndex("1",        [1, 2, 3]), false));
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 

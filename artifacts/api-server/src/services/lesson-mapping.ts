@@ -33,28 +33,179 @@ export function isValidBlockIndex(
 }
 
 /**
- * Collects all block indices that already have a VALID activity destination
- * (exercises[] or additionalExercises[] with a valid integer blockIndex).
+ * Enforces the invariant:
+ *   ∀ EXERCISE / ACTIVITY / HOMEWORK block N from Pass1 → exactly ONE valid placement in:
+ *     1. microNode.exercises[]       — linked to a specific MicroNode
+ *     2. topic.additionalExercises[] — unassigned (relatedNodeId = null)
  *
- * NOTE: sourceBlockIndices, unmappedBlockIndices, and supportingMaterialIndices
- * are NOT valid activity destinations and are deliberately excluded.
+ * Canonical priority (higher wins; lower is removed):
+ *   exercises[] > additionalExercises[]
+ *
+ * Mutates topics in place. Must be called AFTER all AI calls and the safety-net,
+ * and BEFORE validateSourceCoverage.
+ *
+ * Handles all known duplicate-creating scenarios:
+ *  a. Activity block in sourceBlockIndices (ACTIVITY_IN_THEORY) AND Step C rescue
+ *     → Evict from sourceBlockIndices; rescue to additionalExercises.
+ *  b. Same block in exercises[] of two different MicroNodes
+ *     → Keep first (topic order), drop second.
+ *  c. Same block in exercises[] AND additionalExercises[]
+ *     → exercises[] wins; drop from additionalExercises[].
+ *  d. Duplicate entries in additionalExercises (invalid or repeated blockIndex)
+ *     → Keep first valid entry, drop the rest.
+ *  e. Safety-net + AI: safety-net moves exercise with invalid blockIndex to
+ *     additionalExercises; Step C rescues real block — no collision (invalid
+ *     entries are dropped before Step C).
+ *  f. Activity block in unmappedBlockIndices (AI misclassified as header)
+ *     → Rescue to additionalExercises (Step B equivalent).
+ *  g. Activity block missing from all Pass2 output
+ *     → Rescue to additionalExercises of last topic (Step C equivalent).
+ *
+ * Exported for testing.
  */
-function collectValidActivityDestinations(
+export function normalizeActivityPlacements(
   topics: Pass2TopicResult[],
   blocks: Pass1Block[],
-): Set<number> {
-  const refs = new Set<number>();
+): {
+  evictedFromSource: number[];
+  postEvictionStripped: string[];
+  dedupedExercises: number[];
+  dedupedAdditional: number[];
+  stepBRescued: number[];
+  stepCRescued: number[];
+} {
+  // ── Phase 1: Evict activity blocks from sourceBlockIndices ──────────────────
+  // EXERCISE/ACTIVITY/HOMEWORK have no place in sourceBlockIndices — those blocks
+  // are never inserted into lesson_exercises via that path.
+  // Remove them so they can be rescued to a proper activity destination below.
+  const evictedFromSource: number[] = [];
   for (const topic of topics) {
     for (const mn of topic.microNodes) {
-      for (const ex of mn.exercises) {
-        if (isValidBlockIndex(ex.blockIndex, blocks)) refs.add(ex.blockIndex);
+      const kept: number[] = [];
+      for (const idx of mn.sourceBlockIndices) {
+        if (!isValidBlockIndex(idx, blocks)) { kept.push(idx); continue; }
+        const block = blocks[idx];
+        if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType)) {
+          evictedFromSource.push(idx);
+          // Do NOT add to kept — evicted from theory placement.
+        } else {
+          kept.push(idx);
+        }
       }
-    }
-    for (const ex of topic.additionalExercises) {
-      if (isValidBlockIndex(ex.blockIndex, blocks)) refs.add(ex.blockIndex);
+      mn.sourceBlockIndices = kept;
     }
   }
-  return refs;
+
+  // ── Phase 1b: Strip MicroNodes that became empty after Phase 1 eviction ───────
+  // A MicroNode with no remaining sourceBlockIndices is structurally invalid
+  // (same rule the safety-net enforces at AI-output time, now extended to
+  // post-eviction state). Strip it and rescue its exercises to additionalExercises.
+  const postEvictionStripped: string[] = [];
+  for (const topic of topics) {
+    const keepMNs: Pass2MicroNode[] = [];
+    for (const mn of topic.microNodes) {
+      if (mn.sourceBlockIndices.length === 0) {
+        postEvictionStripped.push(mn.title);
+        // Rescue exercises to additionalExercises — Phases 2/3 will dedup.
+        topic.additionalExercises.push(...mn.exercises);
+      } else {
+        keepMNs.push(mn);
+      }
+    }
+    topic.microNodes = keepMNs;
+  }
+
+  // ── Phase 2: Deduplicate exercises[] (highest canonical priority) ───────────
+  // First occurrence (by topic order, then MN order) wins. Invalid → drop.
+  const inExercises = new Set<number>();
+  const dedupedExercises: number[] = [];
+  for (const topic of topics) {
+    for (const mn of topic.microNodes) {
+      mn.exercises = mn.exercises.filter(ex => {
+        if (!isValidBlockIndex(ex.blockIndex, blocks)) return false;
+        if (inExercises.has(ex.blockIndex)) {
+          dedupedExercises.push(ex.blockIndex);
+          return false;
+        }
+        inExercises.add(ex.blockIndex);
+        return true;
+      });
+    }
+  }
+
+  // ── Phase 3: Deduplicate additionalExercises[] ──────────────────────────────
+  // Drop: invalid blockIndex, blocks already in exercises[] (exercises[] wins),
+  // duplicates within/across topics (first valid occurrence wins).
+  const inAdditional = new Set<number>();
+  const dedupedAdditional: number[] = [];
+  for (const topic of topics) {
+    topic.additionalExercises = topic.additionalExercises.filter(ex => {
+      if (!isValidBlockIndex(ex.blockIndex, blocks)) return false;
+      if (inExercises.has(ex.blockIndex)) {
+        dedupedAdditional.push(ex.blockIndex);
+        return false; // exercises[] wins
+      }
+      if (inAdditional.has(ex.blockIndex)) {
+        dedupedAdditional.push(ex.blockIndex);
+        return false; // duplicate — keep first
+      }
+      inAdditional.add(ex.blockIndex);
+      return true;
+    });
+  }
+
+  // ── Build valid-destination set after Phase 2 + 3 cleanup ──────────────────
+  const validDestinations = new Set<number>([...inExercises, ...inAdditional]);
+
+  // ── Phase 4: Rescue from unmappedBlockIndices (Step B) ─────────────────────
+  const stepBRescued: number[] = [];
+  const rescuedByTopic: Record<string, number[]> = {};
+  for (const topic of topics) {
+    const remaining: number[] = [];
+    for (const idx of topic.unmappedBlockIndices) {
+      const block = blocks[idx];
+      if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType) && !validDestinations.has(idx)) {
+        stepBRescued.push(idx);
+        (rescuedByTopic[topic.title] ??= []).push(idx);
+        topic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
+        validDestinations.add(idx);
+      } else {
+        remaining.push(idx);
+      }
+    }
+    topic.unmappedBlockIndices = remaining;
+  }
+
+  // ── Phase 5: Rescue evicted-from-source blocks not yet placed ───────────────
+  // These were removed from sourceBlockIndices in Phase 1 and may not have
+  // ended up in exercises[] or additionalExercises[] via any AI path.
+  const lastTopic = topics.length > 0 ? topics[topics.length - 1] : null;
+  for (const idx of evictedFromSource) {
+    if (!validDestinations.has(idx) && lastTopic) {
+      const block = blocks[idx];
+      if (block) {
+        lastTopic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
+        validDestinations.add(idx);
+      }
+    }
+  }
+
+  // ── Phase 6: Rescue completely missing activity blocks (Step C) ─────────────
+  // Any Pass1 activity block still with no valid destination — handles null
+  // blockIndex from AI, AI omitting blocks, AI using textbook number, etc.
+  const stepCRescued: number[] = [];
+  if (lastTopic) {
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType) && !validDestinations.has(i)) {
+        lastTopic.additionalExercises.push({ blockIndex: i, sourceParagraph: block.sourceParagraph });
+        validDestinations.add(i);
+        stepCRescued.push(i);
+      }
+    }
+  }
+
+  return { evictedFromSource, postEvictionStripped, dedupedExercises, dedupedAdditional, stepBRescued, stepCRescued };
 }
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
@@ -1580,87 +1731,53 @@ export async function runPass2Pipeline(
     additionalExercises:   topicResults[i].additionalExercises,
   }));
 
-  // ── Activity preservation: comprehensive rescue (Phase 5 invariant) ─────────
+  // ── Activity normalization: enforce "exactly one canonical placement" invariant ─
   //
   // INVARIANT: every EXERCISE / ACTIVITY / HOMEWORK block from Pass1 must appear
   // in exactly one valid activity destination after Pass2:
   //   1. microNode.exercises[]       — linked to a MicroNode (relatedNodeId set)
   //   2. topic.additionalExercises[] — unassigned (relatedNodeId = null)
   //
-  // Valid activity destinations require a valid (integer, in-range) blockIndex.
-  // sourceBlockIndices, unmappedBlockIndices, and supportingMaterialIndices are
-  // NOT activity destinations — blocks in those categories are never inserted
-  // into lesson_exercises.
-  //
-  // Three-step rescue:
-  //   Step A: Collect all block indices already in valid activity destinations.
-  //   Step B: P5.4 rescue — EXERCISE/ACTIVITY/HOMEWORK from unmappedBlockIndices.
-  //           (AI sometimes treats exercises as structural headers.)
-  //   Step C: Deterministic missing-activity rescue.
-  //           Catches: AI returned null blockIndex, AI omitted block entirely,
-  //           AI used textbook exercise number instead of Pass1 block index,
-  //           any other AI output defect.
-
-  // Step A — current valid-destination set
-  let activityDestinations = collectValidActivityDestinations(topics, blocks);
-
-  // Step B — P5.4: rescue activity blocks from unmappedBlockIndices
+  // normalizeActivityPlacements() handles all known duplicate-creating paths:
+  //  • Activity block in sourceBlockIndices (ACTIVITY_IN_THEORY) + Step C rescue
+  //    → Evict from sourceBlockIndices first, then rescue.
+  //  • Same block in exercises[] of two MicroNodes, or exercises[]+additionalExercises[]
+  //    → exercises[] wins; duplicates removed.
+  //  • Invalid blockIndex entries (null, out-of-range, non-integer)
+  //    → Dropped before coverage validation.
+  //  • Activity blocks in unmappedBlockIndices (AI misclassified as header)
+  //    → Rescued to additionalExercises.
+  //  • Activity blocks missing from all Pass2 output
+  //    → Rescued to additionalExercises of last topic.
   {
-    const rescuedByTopic: Record<string, number[]> = {};
-    for (const topic of topics) {
-      const rescued: number[] = [];
-      const remaining: number[] = [];
-      for (const idx of topic.unmappedBlockIndices) {
-        const block = blocks[idx];
-        if (
-          block &&
-          ACTIVITY_BLOCK_TYPES.has(block.blockType) &&
-          !activityDestinations.has(idx)
-        ) {
-          rescued.push(idx);
-          topic.additionalExercises.push({ blockIndex: idx, sourceParagraph: block.sourceParagraph });
-          activityDestinations.add(idx);
-        } else {
-          remaining.push(idx);
-        }
-      }
-      if (rescued.length > 0) {
-        rescuedByTopic[topic.title] = rescued;
-        topic.unmappedBlockIndices = remaining;
-      }
-    }
-    if (Object.keys(rescuedByTopic).length > 0) {
+    const norm = normalizeActivityPlacements(topics, blocks);
+    if (norm.evictedFromSource.length > 0) {
       logger.warn(
-        { rescuedByTopic },
+        { evictedFromSource: norm.evictedFromSource },
+        "pass2 normalize: activity blocks evicted from sourceBlockIndices (ACTIVITY_IN_THEORY fix)",
+      );
+    }
+    if (norm.postEvictionStripped.length > 0) {
+      logger.warn(
+        { postEvictionStripped: norm.postEvictionStripped },
+        "pass2 normalize: MicroNodes stripped after activity eviction (sourceBlockIndices became empty)",
+      );
+    }
+    if (norm.dedupedExercises.length > 0 || norm.dedupedAdditional.length > 0) {
+      logger.warn(
+        { dedupedExercises: norm.dedupedExercises, dedupedAdditional: norm.dedupedAdditional },
+        "pass2 normalize: duplicate activity placements resolved — canonical kept",
+      );
+    }
+    if (norm.stepBRescued.length > 0) {
+      logger.warn(
+        { stepBRescued: norm.stepBRescued },
         "pass2 p5.4b: rescued EXERCISE/ACTIVITY/HOMEWORK from unmappedBlocks → additionalExercises",
       );
     }
-  }
-
-  // Step C — deterministic missing-activity rescue
-  // Any Pass1 activity block with no valid destination is rescued to the last topic.
-  // This handles: null blockIndex from AI, completely omitted blocks, wrong blockIndex.
-  {
-    const missingActivityIndices: number[] = [];
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType) && !activityDestinations.has(i)) {
-        missingActivityIndices.push(i);
-      }
-    }
-    if (missingActivityIndices.length > 0 && topics.length > 0) {
-      const rescueTarget = topics[topics.length - 1];
-      for (const idx of missingActivityIndices) {
-        const block = blocks[idx];
-        if (!block) continue;
-        rescueTarget.additionalExercises.push({
-          blockIndex:      idx,
-          sourceParagraph: block.sourceParagraph,
-        });
-        activityDestinations.add(idx);
-      }
+    if (norm.stepCRescued.length > 0) {
       logger.warn(
-        { missingActivityIndices, rescueTopicTitle: topics[topics.length - 1].title },
+        { stepCRescued: norm.stepCRescued, rescueTopicTitle: topics[topics.length - 1]?.title },
         "pass2 p5.4c: deterministic rescue of missing activity blocks → additionalExercises",
       );
     }
