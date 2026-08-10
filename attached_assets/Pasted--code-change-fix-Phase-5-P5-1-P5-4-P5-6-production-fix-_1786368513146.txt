@@ -1,0 +1,119 @@
+Հիմա որևէ code change կամ fix ՉԱՆԵՍ։
+
+Մենք ավարտել ենք Phase 5-ի P5.1 + P5.4 + P5.6 production fix-ը և Lesson 104 / Job 28-ը տվել է՝
+
+* coverage = 100%
+* coverage_valid = true
+* missingIndices = []
+* activityIssues = 0
+* 10 lesson_exercises
+* բոլոր exercise-ներն ունեն valid source_block_index
+* exerciseTextVerbatim-ը գալիս է Pass1 sourceText-ից
+* EXERCISE-ը sourceBlockIndices-ում այլևս չկա
+
+Հիմա պետք է միայն ստուգենք ամենակարևոր բաց մնացած հարցը՝
+
+**AI Teacher-ը իրական teaching session-ի ժամանակ տեսնո՞ւմ է Lesson 104-ի բոլոր պահպանված exercises-ը, հատկապես relatedNodeId = NULL ունեցող additionalExercises-ը։**
+
+### Քայլ 1 — DB-ից վերցրու Lesson 104-ի ամբողջ exercise inventory-ն
+
+Query արա `lesson_exercises`-ը `lesson_id = 104`-ով և յուրաքանչյուր row-ի համար ցույց տուր՝
+
+* id
+* source_block_index
+* related_node_id
+* assignment
+* exercise_text_verbatim-ի կարճ preview
+* lesson_id
+
+Հստակ բաժանիր՝
+
+A. mapped exercises (`relatedNodeId != null`)
+B. unassigned/additional exercises (`relatedNodeId == null`)
+
+Չփոխես DB-ի ոչ մի տվյալ։
+
+### Քայլ 2 — կարդա chat.ts-ի իրական handoff logic-ը
+
+Գտիր այն exact query/code path-ը, որով AI Teacher-ի node session-ի ժամանակ `classExercises`, `homeworkExercises`, `DEEP_DIVE_EXERCISES` և այլն կառուցվում են։
+
+Պարզիր՝
+
+* ինչ WHERE պայմաններով են exercises-ը վերցվում,
+* արդյոք `relatedNodeId = null` exercises-ը երբևէ մտնում են lessonContext,
+* եթե այո՝ կոնկրետ որ context block-ի մեջ,
+* եթե ոչ՝ կոնկրետ որտեղ են դուրս մնում։
+
+Մի ենթադրիր։ Ցույց տուր exact code evidence-ը։
+
+### Քայլ 3 — իրական Lesson 104 teaching session բացիր
+
+Օգտագործիր Lesson 104-ի իրական ուսուցման flow-ը։
+
+Ընտրիր այն MicroNode-ը, որի հետ կապված mapped exercises կան, և նաև ստուգիր՝ արդյոք unassigned exercises-ը հասանելի են AI Teacher-ին։
+
+Առնվազն մեկ իրական student message ուղարկիր և ստուգիր server-side generated `lessonContext`-ը / AI input-ը։
+
+Եթե հնարավոր է, log կամ query միջոցով ստացիր exact AI context-ը, որը գնում է `callAIStructured()`։
+
+### Քայլ 4 — համեմատիր DB-ն AI context-ի հետ
+
+Ստեղծիր այսպիսի աղյուսակ.
+
+| Exercise | source_block_index | relatedNodeId | DB exists | AI context exists | AI can present it |
+| -------- | -----------------: | ------------: | --------- | ----------------- | ----------------- |
+
+Հատկապես ստուգիր Lesson 104-ի 8 `relatedNodeId = null` exercises-ը։
+
+### Քայլ 5 — ստուգիր ամենակարևոր textbook-fidelity հարցը
+
+Եթե unassigned exercise-ը AI Teacher-ին հասանելի է, ստուգիր՝ արդյոք AI-ն կարող է օգտագործել հենց `exerciseTextVerbatim`-ը։
+
+Եթե AI Teacher-ը exercise է տալիս, համեմատիր՝
+
+`DB exerciseTextVerbatim`
+vs
+`AI Teacher's exercise text`
+
+և նշիր՝
+
+* exact verbatim
+* minor formatting difference
+* content mutation
+* completely substituted exercise
+
+### Քայլ 6 — ստուգիր նաև teaching cycle-ը
+
+Այս validation-ի ընթացքում հետևիր՝ արդյոք AI Teacher-ը շարունակում է պահպանել արդեն հաստատված teaching cycle-ը.
+
+`TEACH → MICRO_CHECK → FEEDBACK → TRANSITION`
+
+Սա նույնպես միայն ստուգիր, code change ՉԱՆԵՍ։
+
+### Քայլ 7 — վերջնական verdict
+
+Վերջում տուր միայն forensic report այս կառուցվածքով.
+
+1. **DB exercise inventory**
+2. **chat.ts handoff code evidence**
+3. **Actual AI Teacher context evidence**
+4. **Mapped exercises visibility**
+5. **Unassigned/additionalExercises visibility**
+6. **Verbatim fidelity**
+7. **Teaching cycle result**
+8. **PASS / FAIL**
+9. Եթե FAIL է՝ նշիր exact root cause-ը և exact file + line/logic-ը, որը պետք է փոխվի։
+
+### Շատ կարևոր
+
+Այս փուլում՝
+
+* ❌ ոչ մի code change
+* ❌ ոչ մի prompt change
+* ❌ ոչ մի DB modification
+* ❌ ոչ մի manual data correction
+* ❌ ոչ մի Lesson 104-specific workaround
+
+Միայն **read-only forensic validation**։
+
+Եթե պարզվի, որ `relatedNodeId = null` exercises-ը AI Teacher-ին հասանելի չեն, այդ դեպքում դեռ fix մի արա։ Պարզապես ցույց տուր exact failure point-ը, որպեսզի հաջորդ քայլով առանձին լուծենք P5.2-ը։
