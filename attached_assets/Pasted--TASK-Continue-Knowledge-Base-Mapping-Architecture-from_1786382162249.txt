@@ -1,0 +1,269 @@
+## TASK — Continue Knowledge Base Mapping Architecture from Phase 6
+
+Մենք արդեն աշխատել ենք Knowledge Base Mapping pipeline-ի վրա և հասել ենք այն վիճակին, որտեղ պետք է շարունակենք փուլերը՝ առանց նախորդ ճիշտ աշխատող logic-ը քանդելու։
+
+### Կարևոր ընդհանուր սկզբունք
+
+Current architecture-ը պետք է մնա՝
+
+**Pass 1 → Pass 2 → Teacher Review → Phase 2 → Phase 3 / Dependencies**
+
+**Pass 2-ը և Teacher Review-ը չպետք է bypass արվեն։**
+
+Phase 2-ը պետք է աշխատի միայն արդեն հաստատված MicroNode-ների վրա։
+
+---
+
+# Phase 6 — Phase 2: Teaching Enrichment
+
+Նախ ուսումնասիրիր ամբողջ ներկայիս Phase 2 implementation-ը՝
+
+* prompt-երը
+* schema-ները
+* DB fields
+* insert/update logic
+* API
+* UI
+* Teacher Review-ից դեպի Phase 2 անցման logic-ը
+* ինչպես է Phase 2-ի արդյունքը օգտագործվում AB Teacher-ի կողմից
+
+### Նպատակ
+
+Phase 2-ը պետք է վերցնի **արդեն հաստատված MicroNode-ը** և ստեղծի դրա teaching enrichment-ը։
+
+Պարտադիր դաշտերը պետք է լինեն միայն այն դաշտերը, որոնք իրականում անհրաժեշտ են.
+
+* `childFriendlyExplanation`
+* `basicExamples`
+* `commonMisconception`
+* `nonExamples`
+
+Հետագա հնարավոր դաշտերը՝ միայն եթե իրականում անհրաժեշտ են.
+
+* real-life examples
+* additional teaching scaffolds
+* recall questions
+* explanation steps
+* common errors
+* այլ teaching support
+
+### Շատ կարևոր
+
+Մի ստեղծիր duplicate fields միայն այն պատճառով, որ legacy DB/schema-ում նմանատիպ field արդեն գոյություն ունի։
+
+Նախ որոշիր՝
+
+1. ինչ fields արդեն կան,
+2. որոնք են օգտագործվում,
+3. որոնք են duplicate,
+4. որոնք են իրականում անհրաժեշտ AB Teacher-ի համար։
+
+Եթե հնարավոր է existing field-երով լուծել խնդիրը՝ **նոր field մի ստեղծիր**։
+
+### Phase 6-ի համար հիմա
+
+**Մի փոխիր կոդը անմիջապես։**
+
+Նախ արա forensic audit և ներկայացրու.
+
+* ներկայիս Phase 2 architecture
+* prompt
+* schema
+* DB fields
+* data flow
+* UI flow
+* AB Teacher integration
+* ինչն է ճիշտ
+* ինչն է ավելորդ
+* ինչն է բացակայում
+* ինչն է պետք փոխել
+
+Հետո առաջարկիր minimal-change implementation plan։
+
+**Մի implement արա մինչև ես չհաստատեմ plan-ը։**
+
+---
+
+# Phase 7 — Dependencies
+
+Dependencies-ը բաժանիր երկու մակարդակի։
+
+## Level 1 — Deterministic dependencies
+
+Եթե MicroNode-ների կառուցվածքից ակնհայտ է հաջորդականությունը, dependency-ն կարող է ստեղծվել deterministic logic-ով։
+
+Օրինակ՝
+
+`MN1 → MN2 → MN3`
+
+եթե դա բխում է դասի/թեմայի հաստատված կառուցվածքից։
+
+Դրա համար **AI call չօգտագործել**։
+
+Նախ ուսումնասիրիր՝ ներկայիս system-ում արդյոք արդեն կա dependency-related field/table/logic։
+
+---
+
+## Level 2 — Semantic dependencies
+
+Եթե dependency-ն չի բխում պարզապես sequence-ից, այլ պահանջում է բովանդակային իմաստային դատողություն, օրինակ՝
+
+`fractions → equivalent fractions → adding fractions`
+
+ապա հետագայում կարող է լինել AI-assisted dependency analysis։
+
+Բայց սա **առաջին iteration-ում պարտադիր չէ**։
+
+Առաջին iteration-ի նպատակն է ունենալ պարզ, վերահսկելի և deterministic dependency layer։
+
+---
+
+# Կարևոր Architecture Rule
+
+Մի սկսիր Phase 7-ը մինչև չհաստատես, որ Phase 6-ի արդյունքում ստացված MicroNode enrichment-ը ճիշտ է։
+
+Այսինքն՝
+
+**Source/Textbook**
+↓
+**Pass 1 — Source Blocks**
+↓
+**Pass 2 — Topics + MicroNodes + Exercise assignment**
+↓
+**Teacher Review / Editing**
+↓
+**Phase 2 — Teaching Enrichment**
+↓
+**Phase 7 — Dependencies**
+
+Teacher Review-ից հետո MicroNode-ի ձեռքով փոփոխությունները պետք է պահպանվեն և Phase 2-ը պետք է աշխատի հենց այդ հաստատված տվյալների վրա։
+
+---
+
+# Exercise Mapping — նույնպես հաշվի առ
+
+Նախորդ աշխատանքից կարևոր պահանջ կա.
+
+Բոլոր իրական `EXERCISE / ACTIVITY / HOMEWORK` source blocks-ը պետք է պահպանվեն։
+
+Յուրաքանչյուր exercise պետք է լինի կամ.
+
+### A. կապված MicroNode-ի հետ
+
+`MicroNode → exercises[]`
+
+կամ
+
+### B. չկապված՝ Additional Exercises
+
+`Topic → additionalExercises[]`
+
+**Ոչ մի exercise չպետք է կորի։**
+
+Teacher Review/UI-ում պետք է հնարավոր լինի ձեռքով փոխել exercise-ի owner-ը՝
+
+`MicroNode A → MicroNode B`
+
+կամ
+
+`MicroNode → Additional Exercises`
+
+կամ հակառակը։
+
+Այսինքն exercise assignment-ը պետք է լինի **editable**, ոչ թե irreversible AI decision։
+
+---
+
+# Mapping UI — կարևոր պահանջ
+
+Քարտեզագրված դասի UI-ն պետք է հստակ ցույց տա կառուցվածքը.
+
+### Lesson
+
+**Դասի ընդհանուր տեսական նկարագրություն**
+
+Սա պետք է լինի դասի մասին մի քանի նախադասությամբ կամ անհրաժեշտության դեպքում ավելի ընդարձակ բացատրություն՝ կախված դասարանի, առարկայի և դասի բովանդակությունից։
+
+Այն պետք է պատասխանի՝
+
+* ինչի մասին է այս դասը,
+* ինչ է սովորելու սովորողը,
+* ինչ հիմնական գաղափարներ են ընդգրկված։
+
+Այս field-ը հետագայում պետք է հասանելի լինի նաև **AB Teacher-ին**։
+
+↓
+
+### Topic
+
+↓
+
+### MicroNode
+
+**MicroNode title**
+
+**MicroNode theory/source content**
+
+**Exercises assigned to this MicroNode**
+
+**Phase 2 teaching enrichment**
+
+բոլոր համապատասխան fields-ը պետք է լինեն editable Teacher Review-ի ընթացքում։
+
+---
+
+# UI-ի գլխավոր սկզբունքը
+
+Teacher-ը պետք է կարողանա քարտեզագրումը ոչ միայն դիտել, այլ նաև **ամբողջությամբ ուղղել**։
+
+Պետք է հնարավոր լինի.
+
+* edit Topic
+* edit MicroNode
+* edit theory
+* edit teaching fields
+* move exercise MicroNode-ից MicroNode
+* move exercise դեպի Additional Exercises
+* move Additional Exercise դեպի MicroNode
+* ավելացնել/հեռացնել MicroNode
+* ավելացնել/խմբագրել lesson overview/theory
+* պահպանել փոփոխությունները
+
+AI-ի mapping-ը պետք է դիտվի որպես **initial mapping**, ոչ թե վերջնական immutable truth։
+
+---
+
+# Հիմա ինչ արա
+
+Մի փոխիր կոդը։
+
+Նախ ամբողջ repository-ում ուսումնասիրիր Phase 2 + Dependency + Mapping Review + Exercise assignment + UI architecture-ը։
+
+Հետո ինձ տուր մեկ ամբողջական report հետևյալ կառուցվածքով.
+
+1. **Current architecture**
+2. **What is already correct**
+3. **What we already changed**
+4. **What is missing**
+5. **Phase 6 exact changes**
+6. **Phase 7 exact changes**
+7. **Exercise reassignment/editing changes**
+8. **Lesson overview/theory field**
+9. **Teacher Review UI changes**
+10. **AB Teacher integration impact**
+11. **DB/schema changes**
+12. **API changes**
+13. **Files that must change**
+14. **Files that should NOT change**
+15. **Migration/backward-compatibility risks**
+16. **Minimal implementation order**
+
+Վերջում տուր նաև հստակ հաջորդականություն.
+
+**Step 1 → Step 2 → Step 3 → ...**
+
+և նշիր՝ որ քայլից հետո պետք է test/remap անել։
+
+**Մի գրիր ընդհանուր առաջարկներ։ Գտիր կոնկրետ ներկայիս implementation-ը repository-ում և հիմնվիր իրական code/schema/prompt/UI-ի վրա։**
+
+**Մի փոփոխիր ոչինչ մինչև audit report-ը պատրաստ չլինի և ես չհաստատեմ։**
