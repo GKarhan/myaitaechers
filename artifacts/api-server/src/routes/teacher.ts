@@ -599,10 +599,15 @@ router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Aut
   // that have never been auto-mapped (manual imports, legacy rows).
   res.json(lessons.map((l) => {
     const meta = (l as { mappingMetadata?: unknown }).mappingMetadata as
-      { quality?: { coverageValidation?: { valid?: boolean } } } | null | undefined;
+      | { quality?: { coverageValidation?: { valid?: boolean }; granularityIssues?: number } }
+      | null | undefined;
     const coverageValid: boolean | null =
       meta?.quality?.coverageValidation?.valid ?? null;
-    return { ...l, nodeCount: nodeCountMap.get(l.id) ?? 0, coverageValid };
+    // P4.13: expose granularityIssues so the teacher UI can show a separate badge.
+    // NULL means no auto-mapping has run yet (manual imports / legacy rows).
+    const granularityIssues: number | null =
+      meta?.quality?.granularityIssues ?? null;
+    return { ...l, nodeCount: nodeCountMap.get(l.id) ?? 0, coverageValid, granularityIssues };
   }));
 });
 

@@ -1128,7 +1128,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       .where(eq(mappingJobsTable.id, job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
-    const lessonText = await extractPdfPageRange(filePath, lesson.pagesFrom, lesson.pagesTo);
+    const lessonText = await extractPdfPageRange(filePath, lesson.pagesFrom!, lesson.pagesTo!);
 
     const baseInput = {
       subjectName:   subject?.name ?? "",
@@ -1151,7 +1151,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
         "lesson mapping: garbled text — using vision-based Pass 1"
       );
-      const pageImages = await rasterizePdfPages(filePath, lesson.pagesFrom, lesson.pagesTo);
+      const pageImages = await rasterizePdfPages(filePath, lesson.pagesFrom!, lesson.pagesTo!);
       logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages");
       pass1 = await extractBlocksWithVision(baseInput, pageImages);
     } else {
@@ -1165,8 +1165,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
     const pass2 = await runPass2Pipeline(pass1.blocks, {
       lessonTitle: lesson.title,
-      pagesFrom:   lesson.pagesFrom,
-      pagesTo:     lesson.pagesTo,
+      pagesFrom:   lesson.pagesFrom ?? undefined,
+      pagesTo:     lesson.pagesTo   ?? undefined,
     });
 
     await db.update(mappingJobsTable)
@@ -1354,6 +1354,20 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       });
     }
 
+    // ── P4.8 — Phase 4 granularity findings → reviewItems ────────────────────
+    // Advisory only: these do NOT change jobStatus or coverageValidation.
+    // coverageIssues = Phase 3 findings (skipped pages + coverage gaps).
+    // granularityIssues = Phase 4 semantic findings (mega-node / over-split / exercise mismatch).
+    const coverageIssues = reviewItems.length;  // count before appending Phase 4 items
+    for (const gf of pass2.granularityFindings) {
+      reviewItems.push({
+        nodeId:    null as unknown as number,
+        nodeTitle: gf.microNodeTitle,
+        reason:    `[${gf.issue} · ${gf.confidence}] ${gf.reason}${gf.suggestedAction ? ` — ${gf.suggestedAction}` : ""}`,
+      });
+    }
+    const granularityIssues = pass2.granularityFindings.length;
+
     const mappingReport = {
       lessonId,
       lessonTitle:  lesson.title,
@@ -1377,8 +1391,12 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         overallConfidencePercent: totalNodes > 0
           ? Math.round((nodesWithFullContent / totalNodes) * 100) : 0,
         teacherReviewRequired: reviewItems.length,
+        // P4.12: separate Phase 3 (structural) vs Phase 4 (semantic) issue counts
+        coverageIssues,
+        granularityIssues,
         reviewItems,
         coverageValidation: pass2.coverageValidation,
+        granularityFindings: pass2.granularityFindings,
       },
     };
 

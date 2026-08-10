@@ -11,6 +11,7 @@ const { PDFParse } = _require("pdf-parse") as {
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { logger } from "../lib/logger";
 import { validateSourceCoverage, type CoverageValidationResult } from "../lib/coverage-validator.js";
+import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
@@ -590,6 +591,7 @@ export async function extractBlocksWithVision(
 
 const PASS2_STEP1_MODEL   = "deepseek/deepseek-chat";   // topic boundary detection
 const PASS2_STEP2_MODEL   = "google/gemini-2.5-flash";  // per-topic MicroNode org
+const PASS2B_REVIEW_MODEL = "deepseek/deepseek-chat";   // semantic granularity review (Phase 4)
 const PASS2_MAX_GROUP_SIZE = 20;                          // size-cap before subdividing
 
 // ── Pass 2 output types ───────────────────────────────────────────────────────
@@ -624,12 +626,35 @@ export interface Pass2TopicResult {
   additionalExercises: Pass2Exercise[];
 }
 
+// ── Phase 4: Granularity review types ────────────────────────────────────────
+
+/**
+ * A single finding from the Pass 2B semantic granularity review.
+ * These are advisory — they never block the mapping or change any node.
+ */
+export interface GranularityFinding {
+  topicTitle: string;
+  microNodeTitle: string;
+  issue: "MEGA_NODE" | "OVER_SPLIT" | "EXERCISE_MISMATCH";
+  confidence: "HIGH" | "MEDIUM";
+  /** Armenian-language explanation for the teacher. */
+  reason: string;
+  /** Optional concrete recommendation (e.g. "Split into 2: … / …" or "Merge with: …"). */
+  suggestedAction?: string;
+}
+
 export interface Pass2Result {
   topics: Pass2TopicResult[];
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
   /** Deterministic source-coverage validation result. Independent of AI self-report. */
   coverageValidation: CoverageValidationResult;
+  /**
+   * Phase 4 — semantic granularity findings from Pass 2B.
+   * Advisory only: do NOT gate the mapping status on these.
+   * Empty when review AI call fails or finds no issues.
+   */
+  granularityFindings: GranularityFinding[];
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1091,6 +1116,240 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
   return { microNodes, unmappedIndices, additionalExercises };
 }
 
+// ── Pass 2B: Semantic granularity review ──────────────────────────────────────
+//
+// A single AI call over ALL MicroNodes from ALL topics simultaneously.
+// Cross-topic review is required so OVER_SPLIT candidates that span different
+// topic calls are still detectable.
+//
+// RULES:
+//   • Never modifies topics[], nodes, sourceBlockIndices, or coverageValidation.
+//   • Returns [] on any failure — mapping must never be blocked by this step.
+//   • Runs AFTER Step 2 and BEFORE coverageValidation (purely additive).
+
+const PASS2B_REVIEW_SYSTEM = `You are a curriculum quality reviewer. You receive a compact
+representation of all MicroNodes produced by a lesson mapping pipeline, along with
+deterministic heuristic signals flagged before this call.
+
+Your ONLY job is to detect three types of granularity problems and report them as
+structured JSON findings. You do NOT change any node, split anything, or merge anything.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. MEGA_NODE — a single MicroNode contains two or more INDEPENDENTLY ASSESSABLE objectives.
+
+Flag ONLY when: a student could correctly answer a test question for skill A while
+failing a test question for skill B, and both skills are contained in one MicroNode.
+
+EXAMPLE — flag this:
+  LO: "Student can define a verb and identify verbs in text."
+  Reason: Defining (recall) and identifying in context (application) are separately testable.
+  → MEGA_NODE
+
+DO NOT flag this:
+  LO: "Student can decompose a multi-digit number by grouping digits from right to left."
+  Reason: "grouping from right to left" is the METHOD of one procedure — not a separate skill.
+  → NOT a MEGA_NODE
+
+CRITICAL: The presence of "and", "կամ", "և", "ու" alone is NOT enough to flag MEGA_NODE.
+You must verify that both sides of the connector represent independently assessable skills.
+When a connector simply continues one procedure or adds a sub-step, do NOT flag.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. OVER_SPLIT — two MicroNodes in the SAME TOPIC describe the same underlying objective.
+
+Flag ONLY when: two MicroNodes are covering the same learning skill — one as procedure
+and another as rule, or one as definition and another as immediate application of
+the very same concept.
+
+EXAMPLE — flag this pair:
+  MN A: "Student can find the unknown addend using inverse operations."
+  MN B: "Student can apply the rules for finding the unknown addend."
+  Reason: The rule IS the procedure — the same cognitive skill described twice.
+  → OVER_SPLIT (report microNodeTitle as the second node, suggest merging into the first)
+
+DO NOT flag genuinely different objectives (even in the same topic):
+  MN A: "Student can explain what addition means."
+  MN B: "Student can solve subtraction word problems."
+  → These are different skills, NOT an over-split.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. EXERCISE_MISMATCH — an exercise obviously requires a skill far outside the MicroNode's LO.
+
+Flag ONLY when: the exercise's required primary skill is clearly not covered by or
+prerequisite to the MicroNode's learning objective.
+
+EXAMPLE — flag this:
+  MicroNode LO: "Student can solve problems using addition and subtraction."
+  Exercise requires: Calculate a unit price using division, then multiply by quantity.
+  → EXERCISE_MISMATCH
+
+DO NOT flag exercises that test the exact skill, a sub-skill, or a direct prerequisite.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HEURISTIC SIGNALS PROVIDED:
+The input includes pre-computed heuristic flags:
+  • compoundLO: true  — regex detected a possible compound connector between two verb phrases
+  • duplicateCandidates: [{titleA, titleB, similarity}] — token-overlap detected possible duplicates
+
+These signals are SUGGESTIONS. You must apply semantic judgment — do NOT automatically
+report MEGA_NODE just because compoundLO is true, or OVER_SPLIT just because similarity > 0.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary.
+{
+  "findings": [
+    {
+      "topicTitle": "exact topic title from input",
+      "microNodeTitle": "exact MicroNode title from input",
+      "issue": "MEGA_NODE",
+      "confidence": "HIGH",
+      "reason": "Armenian-language explanation for the teacher",
+      "suggestedAction": "Split into 2: [Title A] / [Title B]"
+    }
+  ]
+}
+
+findings may be an empty array [] if no issues found.
+Allowed issue values: "MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH" only.
+Allowed confidence values: "HIGH", "MEDIUM" only.
+reason MUST be in Armenian.
+suggestedAction is optional.`;
+
+/** Compact per-MicroNode representation sent to Pass 2B. */
+interface GranularityReviewMicroNode {
+  title: string;
+  learningObjective: string;
+  sourceBlockTypes: string[];
+  exerciseCount: number;
+  /** From detectCompoundLO heuristic. */
+  compoundLO: boolean;
+  compoundConnector?: string;
+}
+
+interface GranularityReviewTopic {
+  title: string;
+  microNodes: GranularityReviewMicroNode[];
+  /** Pairs flagged by detectDuplicateLOs within this topic. */
+  duplicateCandidates: Array<{ titleA: string; titleB: string; similarity: number }>;
+}
+
+/**
+ * Pass 2B — semantic granularity review.
+ *
+ * Runs a single AI call over all MicroNodes from all topics after Step 2.
+ * Returns an array of advisory findings (never blocks the mapping).
+ * Returns [] on any error.
+ */
+async function runGranularityReview(
+  topics: Pass2TopicResult[],
+  blocks: Pass1Block[],
+): Promise<GranularityFinding[]> {
+  // Build compact topic representation with heuristic signals
+  const reviewTopics: GranularityReviewTopic[] = topics.map((topic) => {
+    const mnRepresentations: GranularityReviewMicroNode[] = topic.microNodes.map((mn) => {
+      const compound = detectCompoundLO(mn.learningObjective);
+      const sourceBlockTypes = mn.sourceBlockIndices
+        .map((i) => blocks[i]?.blockType ?? "UNKNOWN")
+        .filter(Boolean);
+      return {
+        title:              mn.title,
+        learningObjective:  mn.learningObjective,
+        sourceBlockTypes,
+        exerciseCount:      mn.exercises.length,
+        compoundLO:         compound !== null,
+        ...(compound ? { compoundConnector: compound.connector } : {}),
+      };
+    });
+
+    const duplicateCandidates = detectDuplicateLOs(
+      topic.microNodes.map((mn) => ({ title: mn.title, learningObjective: mn.learningObjective })),
+    );
+
+    return {
+      title:              topic.title,
+      microNodes:         mnRepresentations,
+      duplicateCandidates: duplicateCandidates.map((c) => ({
+        titleA:     c.titleA,
+        titleB:     c.titleB,
+        similarity: c.similarity,
+      })),
+    };
+  });
+
+  // Skip the AI call if there are no MicroNodes at all
+  const totalMicroNodes = reviewTopics.reduce((s, t) => s + t.microNodes.length, 0);
+  if (totalMicroNodes === 0) return [];
+
+  const userPrompt = `Review the following lesson mapping for granularity issues.
+
+TOPICS AND MICRONODES:
+${JSON.stringify(reviewTopics, null, 2)}
+
+Apply the MEGA_NODE, OVER_SPLIT, and EXERCISE_MISMATCH criteria from the system prompt.
+Pay special attention to MicroNodes where compoundLO=true and duplicate candidate pairs.
+Return only the findings array — empty array if no issues.`;
+
+  try {
+    const r = await openrouter.chat.completions.create({
+      model:      PASS2B_REVIEW_MODEL,
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [
+        { role: "system", content: PASS2B_REVIEW_SYSTEM },
+        { role: "user",   content: userPrompt },
+      ],
+    });
+
+    const raw = r.choices[0]?.message?.content ?? "";
+    if (!raw.trim()) {
+      logger.warn({ totalMicroNodes }, "pass2b granularity review: empty response — returning no findings");
+      return [];
+    }
+
+    const parsed = parsePass2JSON(raw) as { findings?: unknown[] };
+    if (!parsed || !Array.isArray(parsed.findings)) {
+      logger.warn({ raw: raw.slice(0, 200) }, "pass2b granularity review: invalid JSON schema — returning no findings");
+      return [];
+    }
+
+    const VALID_ISSUES   = new Set(["MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH"]);
+    const VALID_CONFIDENCE = new Set(["HIGH", "MEDIUM"]);
+
+    const findings: GranularityFinding[] = [];
+    for (const f of parsed.findings) {
+      if (
+        typeof f !== "object" || f === null ||
+        !("topicTitle" in f) || !("microNodeTitle" in f) ||
+        !("issue" in f) || !("confidence" in f) || !("reason" in f)
+      ) continue;
+
+      const item = f as Record<string, unknown>;
+      if (!VALID_ISSUES.has(String(item.issue))) continue;
+      if (!VALID_CONFIDENCE.has(String(item.confidence))) continue;
+      if (!String(item.reason).trim()) continue;
+
+      findings.push({
+        topicTitle:       String(item.topicTitle),
+        microNodeTitle:   String(item.microNodeTitle),
+        issue:            item.issue as GranularityFinding["issue"],
+        confidence:       item.confidence as GranularityFinding["confidence"],
+        reason:           String(item.reason),
+        ...(item.suggestedAction ? { suggestedAction: String(item.suggestedAction) } : {}),
+      });
+    }
+
+    logger.info(
+      { findingCount: findings.length, totalMicroNodes },
+      "pass2b granularity review: complete",
+    );
+    return findings;
+
+  } catch (err) {
+    logger.warn({ err }, "pass2b granularity review: AI call failed — returning no findings (mapping unaffected)");
+    return [];
+  }
+}
+
 // ── Main exported Pass 2 function ─────────────────────────────────────────────
 
 /**
@@ -1102,13 +1361,13 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
  */
 export async function runPass2Pipeline(
   blocks: Pass1Block[],
-  lessonInfo: { lessonTitle: string; pagesFrom: number; pagesTo: number }
+  lessonInfo: { lessonTitle: string; pagesFrom?: number | null; pagesTo?: number | null }
 ): Promise<Pass2Result> {
   logger.info({ blockCount: blocks.length }, "pass2: starting pipeline");
 
   // Step 1: topic boundary detection
   let groups = await detectTopicGroups(
-    blocks, lessonInfo.lessonTitle, lessonInfo.pagesFrom, lessonInfo.pagesTo
+    blocks, lessonInfo.lessonTitle, lessonInfo.pagesFrom ?? 0, lessonInfo.pagesTo ?? 0
   );
   logger.info({ groupCount: groups.length }, "pass2 step1: initial topic groups");
 
@@ -1231,6 +1490,11 @@ export async function runPass2Pipeline(
 
   const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
 
+  // Pass 2B — semantic granularity review (Phase 4).
+  // Runs AFTER Step 2, BEFORE coverage validation.
+  // Returns [] on any failure — never blocks the mapping.
+  const granularityFindings = await runGranularityReview(topics, blocks);
+
   // Deterministic source-coverage validation (independent of AI self-report)
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
 
@@ -1263,7 +1527,7 @@ export async function runPass2Pipeline(
     logger.warn({ invalidIndices: coverageValidation.invalidIndices }, "pass2: block indices outside Pass1 bounds detected");
   }
 
-  return { topics, unmappedBlockIndices: allUnmapped, coverageValidation };
+  return { topics, unmappedBlockIndices: allUnmapped, coverageValidation, granularityFindings };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

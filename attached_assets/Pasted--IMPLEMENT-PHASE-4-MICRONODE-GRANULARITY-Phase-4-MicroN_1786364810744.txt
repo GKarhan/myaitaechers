@@ -1,0 +1,680 @@
+## IMPLEMENT PHASE 4 — MICRONODE GRANULARITY
+
+Իրականացրու **Phase 4 — MicroNode Granularity**-ը՝ հիմնվելով վերջին forensic audit-ի վրա։
+
+### Գլխավոր նպատակը
+
+Mapper-ի MicroNode-ների granularity-ն պետք է վերահսկվի հետևյալ contract-ով.
+
+> **ONE CLEAR LEARNING OBJECTIVE**
+
+Յուրաքանչյուր MicroNode պետք է ներկայացնի **մեկ հստակ, ինքնուրույն սովորեցվող և գնահատելի learning objective**։
+
+Պետք է կանխել երկուսն էլ.
+
+* **MEGA-NODE / over-merging** — տարբեր cognitive operations կամ անկախ skills մեկ MicroNode-ում
+* **OVER-SPLITTING** — նույն underlying skill-ը բաժանված է մի քանի MicroNode-ի
+
+Կենտրոնական diagnostic test-ը մնում է.
+
+> **Could two separate test questions be written such that a student could answer one correctly while failing the other?**
+
+Եթե՝ **YES → մեծ հավանականությամբ պետք է SPLIT**։
+
+Եթե երկու MicroNode փաստացի նույն underlying skill-ն են ներկայացնում տարբեր ձևակերպումներով → **MERGE / OVER-SPLIT finding**։
+
+---
+
+# P4.1 — INDEPENDENT GRANULARITY SECOND PASS
+
+Ֆայլ՝
+
+`artifacts/api-server/src/services/lesson-mapping.ts`
+
+Ավելացրու անկախ semantic review pass՝
+
+`runGranularityReview(...)`
+
+Այն պետք է գործարկվի **բոլոր Step 2 MicroNode-ների ստեղծումից հետո**։
+
+Pipeline-ը պետք է դառնա.
+
+```text
+Pass 1
+  ↓
+Pass 2 Step 1 — topic grouping
+  ↓
+Step 1b / 1c structural normalization
+  ↓
+Pass 2 Step 2 — MicroNode generation
+  ↓
+NEW: Pass 2B — Granularity Review
+  ↓
+Coverage Validator
+  ↓
+Final mapping
+```
+
+### Կարևոր
+
+Pass 2B-ը.
+
+* **չի փոխում MicroNode-ները**
+* **չի split անում**
+* **չի merge անում**
+* **չի ջնջում node**
+* **չի փոխում sourceBlockIndices**
+* **չի փոխում coverageValidation**
+* **չի block անում mapping-ը**
+
+Այն միայն հայտնաբերում է խնդիրներ և վերադարձնում `reviewItems`։
+
+---
+
+# P4.2 — GRANULARITY FINDING TYPE
+
+Ավելացրու.
+
+```ts
+interface GranularityFinding {
+  topicTitle: string;
+  microNodeTitle: string;
+  issue:
+    | "MEGA_NODE"
+    | "OVER_SPLIT"
+    | "EXERCISE_MISMATCH";
+  confidence: "HIGH" | "MEDIUM";
+  reason: string;
+  suggestedAction?: string;
+}
+```
+
+`Pass2Result`-ին ավելացրու.
+
+```ts
+granularityFindings: GranularityFinding[];
+```
+
+Եթե review AI call-ը fail է լինում՝
+
+```ts
+granularityFindings = [];
+```
+
+և mapping-ը **չպետք է fail լինի**։
+
+Log արա warning։
+
+---
+
+# P4.3 — SECOND-PASS INPUT
+
+Review model-ին մի ուղարկիր ամբողջ raw textbook-ը։
+
+Ուղարկիր compact representation.
+
+```ts
+{
+  topics: [
+    {
+      title: string,
+      microNodes: [
+        {
+          title: string,
+          learningObjective: string,
+          sourceBlockTypes: string[],
+          exerciseCount: number
+        }
+      ]
+    }
+  ]
+}
+```
+
+Բացի դրանից՝ review-ին փոխանցիր deterministic heuristic signals։
+
+Օրինակ.
+
+```ts
+{
+  compoundLO: boolean,
+  compoundConnector?: string
+}
+```
+
+և հնարավոր duplicate candidates։
+
+---
+
+# P4.4 — REVIEW MODEL CONTRACT
+
+Ստեղծիր առանձին review prompt։
+
+Review model-ը պետք է ստուգի.
+
+### 1. MEGA_NODE
+
+Flag արա միայն այն դեպքում, երբ MicroNode-ի LO-ն իրականում պարունակում է **երկու կամ ավելի independently assessable objectives**։
+
+Օրինակ՝
+
+❌
+
+> Student can define a verb and identify verbs in text.
+
+Սա երկու տարբեր operations է.
+
+* define
+* identify in context
+
+→ `MEGA_NODE`
+
+Բայց **մի flag արա միայն այն պատճառով, որ նախադասության մեջ կա `և`, `ու`, `and` կամ `or`**։
+
+Օրինակ՝
+
+> Student can decompose a number by grouping digits from right to left.
+
+Սա մեկ coherent procedure է։
+
+→ NOT MEGA_NODE։
+
+Այս տարբերությունը պարտադիր պահիր։
+
+---
+
+### 2. ONE PROCEDURE EXCEPTION
+
+Մի բաժանիր մեկ MicroNode-ը միայն նրա համար, որ գործողությունը ունի մի քանի քայլ։
+
+Օրինակ՝
+
+> Student can solve a multi-step equation using substitution.
+
+Եթե բոլոր քայլերը նույն underlying procedure-ի մասն են՝
+
+→ ONE MicroNode։
+
+Չպետք է լինի mechanical over-splitting։
+
+---
+
+### 3. OVER_SPLIT
+
+Փնտրիր նույն topic-ի MicroNode-ների միջև նույն underlying objective-ը։
+
+Օրինակ.
+
+```text
+Student can find unknown addend using inverse operations.
+
+Student can apply the rules for finding unknown addend.
+```
+
+Եթե դրանք փաստացի նույն skill-ն են՝
+
+→ `OVER_SPLIT`
+
+և առաջարկ.
+
+```text
+Merge with: [other MicroNode]
+```
+
+---
+
+### 4. EXERCISE_MISMATCH
+
+Flag արա միայն այն դեպքում, երբ exercise-ի պահանջվող հիմնական skill-ը ակնհայտորեն դուրս է MicroNode-ի learning objective-ի scope-ից։
+
+Օրինակ.
+
+MicroNode LO:
+
+> Student can solve problems using addition and subtraction.
+
+Exercise:
+
+> Calculate a unit price using division and then multiply by quantity.
+
+→ `EXERCISE_MISMATCH`
+
+Սակայն «closest prerequisite» assignment-ը ինքն իրեն mismatch-ի ապացույց չէ։
+
+---
+
+# P4.5 — DETERMINISTIC COMPOUND-LO HEURISTIC
+
+Ստեղծիր.
+
+`artifacts/api-server/src/lib/granularity-heuristics.ts`
+
+Ավելացրու.
+
+```ts
+detectCompoundLO(...)
+```
+
+Այն պետք է լինի **signal generator**, ոչ թե decision-maker։
+
+Պետք է կարողանա հայտնաբերել հնարավոր compound LO-ներ՝ օրինակ.
+
+```text
+define X and identify Y
+```
+
+կամ հայերեն համարժեքները՝
+
+```text
+սահմանել X և ճանաչել Y
+```
+
+Բայց պետք է չflag անի legitimate single procedures։
+
+Օրինակ՝
+
+```text
+group digits from right to left
+```
+
+կամ մեկ գործողության ներսում step-description։
+
+### Կարևոր
+
+Regex-ը երբեք ինքնուրույն չպետք է որոշի.
+
+> MEGA_NODE
+
+Այն միայն ասում է.
+
+> possible compound LO
+
+Վերջնական semantic որոշումը անում է Pass 2B review model-ը։
+
+---
+
+# P4.6 — DUPLICATE / OVERLAP HEURISTIC
+
+Նույն `granularity-heuristics.ts` ֆայլում ավելացրու.
+
+```ts
+detectDuplicateLOs(...)
+```
+
+Այն պետք է հայտնաբերի հնարավոր նույն objectives։
+
+Օրինակ.
+
+```text
+find unknown addend
+
+rules for finding unknown addend
+```
+
+→ candidate pair
+
+Բայց.
+
+```text
+explain addition
+
+solve subtraction word problems
+```
+
+→ no candidate։
+
+Սա նույնպես միայն **candidate generator** է։
+
+Վերջնական որոշումը՝ review model-ին։
+
+---
+
+# P4.7 — REVIEW OUTPUT
+
+Review model-ի output schema-ն թող լինի խիստ։
+
+```json
+{
+  "findings": [
+    {
+      "topicTitle": "...",
+      "microNodeTitle": "...",
+      "issue": "MEGA_NODE",
+      "confidence": "HIGH",
+      "reason": "...",
+      "suggestedAction": "Split into 2: ... / ..."
+    }
+  ]
+}
+```
+
+Թույլատրելի issue-ները միայն.
+
+```text
+MEGA_NODE
+OVER_SPLIT
+EXERCISE_MISMATCH
+```
+
+Եթե invalid JSON/schema է ստացվում՝
+
+```ts
+return [];
+```
+
+Mapping-ը չպետք է crash լինի։
+
+---
+
+# P4.8 — REVIEW ITEMS
+
+`granularityFindings`-ը միացրու արդեն գոյություն ունեցող mapping report-ի `reviewItems`-ին։
+
+Phase 3-ի coverage review-ը չփոխես։
+
+Պետք է պահպանվի.
+
+```text
+coverage failure
+    ↓
+coverage_failed
+```
+
+իսկ Phase 4 semantic finding-ը.
+
+```text
+granularity finding
+    ↓
+reviewItem
+    ↓
+mapping remains completed
+```
+
+Այսինքն՝
+
+### Structural = HARD GATE
+
+### Semantic granularity = REVIEW WARNING
+
+---
+
+# P4.9 — EXERCISE ALIGNMENT
+
+Phase 3-ում արդեն ավելացված `sourceBlockIndex`-ը օգտագործիր։
+
+Բայց **page-distance heuristic-ը մի ներկայացրու որպես իրական semantic exercise-to-LO validator**։
+
+Եթե օգտագործում ես page distance՝ այն պետք է լինի միայն.
+
+```text
+weak signal / review candidate
+```
+
+և ոչ երբեք.
+
+```text
+exercise is definitely mismatched
+```
+
+Առաջնային որոշումը պետք է հիմնված լինի exercise-ի actual skill-ի և MicroNode-ի LO-ի semantic comparison-ի վրա։
+
+Եթե դա հնարավոր չէ deterministic code-ով վստահորեն անել՝ ուղարկիր exercise + LO review model-ին։
+
+---
+
+# P4.10 — REVIEW ORDER
+
+Review-ը պետք է ստանա բոլոր MicroNode-ները միասին։
+
+Պատճառը՝ պետք է կարողանա հայտնաբերել.
+
+```text
+Node A
+Node B
+```
+
+որոնք տարբեր topic calls-ից են, բայց փաստացի նույն objective-ն են։
+
+Մի արա առանձին AI review յուրաքանչյուր topic-ի համար։
+
+Պետք է լինի.
+
+```text
+all topics
+   ↓
+one semantic granularity review
+```
+
+---
+
+# P4.11 — COVERAGE VALIDATOR ՉՓՈԽԵԼ
+
+`coverage-validator.ts`-ը **չփոխես**։
+
+Phase 3 structural gate-ը արդեն հաստատված է։
+
+Պահպանիր.
+
+* duplicate source block detection
+* missing blocks
+* out-of-range indices
+* empty coverage
+* coverage percentage
+* `coverage_failed`
+
+Phase 4-ը պետք է ավելանա դրա կողքին, ոչ թե փոխարինի։
+
+---
+
+# P4.12 — REPORT METRICS
+
+`mappingReport.quality`-ում ավելացրու.
+
+```ts
+granularityIssues: number;
+coverageIssues: number;
+```
+
+Օրինակ.
+
+```ts
+quality: {
+  teacherReviewRequired: 4,
+  granularityIssues: 3,
+  coverageIssues: 1,
+  reviewItems: [...]
+}
+```
+
+`granularityIssues` հաշվի առ միայն Phase 4 findings-ը։
+
+`coverageIssues` հաշվի առ Phase 3 findings-ը։
+
+---
+
+# P4.13 — TEACHER UI
+
+`teacher-dashboard.tsx`-ում միայն անհրաժեշտ փոքր փոփոխություն արա։
+
+Review summary-ում տարբերակիր.
+
+```text
+Coverage
+Granularity
+```
+
+օրինակ.
+
+```text
+⚠️ Coverage: 1
+⚠️ Granularity: 3
+```
+
+Existing mapping report UI-ն օգտագործիր։
+
+Նոր էջ կամ նոր workflow պետք չէ ստեղծել։
+
+---
+
+# P4.14 — DO NOT AUTO-FIX
+
+Շատ կարևոր։
+
+Phase 4-ը **չպետք է ավտոմատ վերագրի mapping-ը**։
+
+Եթե հայտնաբերվեց.
+
+```text
+MEGA_NODE
+```
+
+չպետք է ինքնուրույն split անել։
+
+Եթե հայտնաբերվեց.
+
+```text
+OVER_SPLIT
+```
+
+չպետք է ինքնուրույն merge անել։
+
+Եթե հայտնաբերվեց.
+
+```text
+EXERCISE_MISMATCH
+```
+
+չպետք է ինքնուրույն տեղափոխել exercise-ը։
+
+Այս փուլը միայն.
+
+> **detect → explain → recommend**
+
+է։
+
+---
+
+# P4.15 — TESTS
+
+Պարտադիր ավելացրու tests.
+
+### Compound LO
+
+```text
+define X and identify Y
+→ flagged
+```
+
+### Legitimate single procedure
+
+```text
+decompose by grouping digits from right to left
+→ not flagged
+```
+
+### Duplicate candidate
+
+```text
+find unknown addend
++
+rules for finding unknown addend
+→ candidate
+```
+
+### Unrelated objectives
+
+```text
+explain addition
++
+solve subtraction word problems
+→ not candidate
+```
+
+### AI failure
+
+Bad JSON / invalid response
+
+→
+
+```ts
+granularityFindings = []
+```
+
+և mapping-ը շարունակում է աշխատել։
+
+### Mega-node review
+
+Known compound LO
+
+→ `MEGA_NODE`
+
+### Over-split review
+
+Known duplicate pair
+
+→ `OVER_SPLIT`
+
+### Empty topics
+
+→ no findings
+
+### Regression
+
+Բոլոր existing tests-ը պետք է անցնեն։
+
+Phase 3-ի բոլոր tests-ը պետք է մնան green։
+
+---
+
+# P4.16 — FINAL VERIFICATION
+
+Implementation-ից հետո պարտադիր ստուգիր.
+
+1. TypeScript typecheck
+2. Existing tests
+3. New Phase 4 tests
+4. Phase 3 coverage tests
+5. Migration/schema changes չկան
+6. Existing mapping pipeline-ը չի փոխվել
+7. `coverage_failed` behavior-ը չի փոխվել
+8. `coverageValidation.valid`-ը Phase 4-ը չի փոխում
+9. Phase 4 AI failure-ը mapping job-ը չի fail անում
+10. Review findings-ը պահպանվում են `mappingReport.quality.reviewItems`-ում
+11. `granularityIssues` և `coverageIssues` թվերը ճիշտ են
+12. Teacher UI-ում երկու warning category-ները տարբերակվում են
+
+---
+
+# IMPORTANT — FINAL IMPLEMENTATION RULE
+
+Մի կատարիր լայն refactor։
+
+Փոխիր միայն այն ֆայլերն ու հատվածները, որոնք անհրաժեշտ են Phase 4-ի համար։
+
+Հատկապես **չփոխես**.
+
+* Pass 1 extraction
+* Pass 2 Step 1 topic grouping
+* Step 1b size cap
+* Step 1c hollow-group merge
+* Pass 2 Step 2 generation contract
+* Phase 3 coverage validator
+* AI Teacher teaching logic
+* node sequencing
+* existing exercise rescue logic
+
+Phase 4-ը պետք է լինի **additive semantic QA layer**։
+
+Վերջում ներկայացրու forensic-style implementation report՝
+
+1. Files changed
+2. Exact changes
+3. New review flow
+4. Tests
+5. Typecheck
+6. Regression verification
+7. Example findings from existing mappings
+8. Confirmation that Phase 3 remains unchanged
+9. Any limitations / false-positive risks
+
+**Մի կանգ առ implementation-ի կեսին approval խնդրելու համար։ Իրականացրու ամբողջ Phase 4-ը և վերջում տուր report-ը։**

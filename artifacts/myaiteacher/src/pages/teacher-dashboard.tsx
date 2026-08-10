@@ -3148,6 +3148,8 @@ export default function TeacherDashboard() {
                         const isMapped     = Boolean((l as any).coreIdea) || ((l as any).nodeCount ?? 0) > 0;
                         // P3.5: null = never auto-mapped (no coverage data), true = passed, false = coverage failed
                         const coverageValid: boolean | null = (l as any).coverageValid ?? null;
+                        // P4.13: null = never auto-mapped, 0 = clean, >0 = granularity findings
+                        const granularityIssues: number | null = (l as any).granularityIssues ?? null;
                         return (
                           <div key={l.id}>
                             {tbHeader && (
@@ -3201,13 +3203,22 @@ export default function TeacherDashboard() {
                                   </div>
                                 </div>
                                 <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
-                                  {/* P3.5: coverage badge — shown when auto-mapped but coverage validation failed */}
+                                  {/* P3.5: coverage badge — shown when auto-mapped but structural coverage validation failed */}
                                   {isMapped && coverageValid === false && (
                                     <span
                                       title="Source coverage validation failed — some blocks were not accounted for. Re-map or inspect the Mapping Report."
                                       className="px-2 py-1 rounded-lg text-xs text-orange-400 border border-orange-400/20 bg-orange-400/10 select-none cursor-help"
                                     >
                                       ⚠️ Coverage
+                                    </span>
+                                  )}
+                                  {/* P4.13: granularity badge — shown when semantic review found MEGA_NODE / OVER_SPLIT / EXERCISE_MISMATCH issues */}
+                                  {isMapped && granularityIssues !== null && granularityIssues > 0 && (
+                                    <span
+                                      title={`Granularity review found ${granularityIssues} issue${granularityIssues !== 1 ? "s" : ""} (MEGA_NODE / OVER_SPLIT / EXERCISE_MISMATCH). Inspect the Mapping Report for details.`}
+                                      className="px-2 py-1 rounded-lg text-xs text-yellow-400 border border-yellow-400/20 bg-yellow-400/10 select-none cursor-help"
+                                    >
+                                      ⚠️ Granularity: {granularityIssues}
                                     </span>
                                   )}
                                   {isCompleted ? (
