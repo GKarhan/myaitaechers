@@ -1,0 +1,500 @@
+ՊԱՐՏԱԴԻՐ FORENSIC AUDIT — AUTO MAPPING PIPELINE FIELD-BY-FIELD TRACE
+
+Սա ՄԻԱՅՆ ախտորոշիչ (diagnostic-only) task է։
+
+⚠️ ՈՉ ՄԻ ԿՈԴ ՉՓՈԽԵՍ։
+⚠️ ՈՉ ՄԻ PROMPT ՉՓՈԽԵՍ։
+⚠️ ՈՉ ՄԻ SCHEMA ՉՓՈԽԵՍ։
+⚠️ ՈՉ ՄԻ MIGRATION ՉՍՏԵՂԾԵՍ։
+⚠️ ՈՉ ՄԻ DB DATA ՉՓՈԽԵՍ։
+⚠️ ՈՉ ՄԻ UI ՉՓՈԽԵՍ։
+
+Նպատակը 100% պարզելն է, թե ամբողջ Automatic Mapping pipeline-ի
+
+PASS 1 → PASS 2 → PHASE 2 ENRICHMENT → MAPPER/TRANSFORMATION → DB WRITE → UI
+
+ո՞ր կոնկրետ շերտում է յուրաքանչյուր mapping-related field կորչում կամ ընդհանրապես չի ստեղծվում։
+
+Մի օգտագործիր ենթադրություններ։
+
+Յուրաքանչյուր եզրակացություն պետք է ունենա real evidence՝
+
+* exact file
+* exact function
+* line number, եթե հասանելի է
+* exact prompt հատված
+* exact schema հատված
+* exact mapper/inserter հատված
+* կամ real DB query result
+
+Եթե evidence չունես, գրիր՝ `NOT VERIFIED`։
+
+Երբեք մի գրիր «հավանաբար», «կարծես», «ենթադրաբար» որպես վերջնական եզրակացություն։
+
+═══════════════════════════════════════════════════
+PART 1 — FIRST MAP THE ACTUAL AUTO-MAPPING PIPELINE
+═══════════════════════════════════════════════════
+
+Նախքան field audit-ը, գտիր Automatic Mapping-ի իրական execution path-ը։
+
+Ցույց տուր կոնկրետ հերթականությամբ.
+
+1. Mapping-ի entry point
+2. Route/function
+3. Pass 1 extraction
+4. Pass 2 topic/node generation
+5. Phase 2 enrichment
+6. Exercise generation
+7. Dependency generation
+8. Mapper/transformation
+9. DB insert/update
+10. UI read/display, եթե applicable է
+
+Յուրաքանչյուր փուլի համար գրիր.
+
+FILE
+FUNCTION
+INPUT
+OUTPUT
+NEXT FUNCTION
+
+Հատուկ պարզիր՝ Automatic Mapping-ը օգտագործո՞ւմ է նույն code path-ը, ինչ TEXT/Manual Mapping-ը, թե դրանք երկու առանձին pipeline են։
+
+Եթե առանձին են՝ հստակ ցույց տուր որտեղ են բաժանվում։
+
+═══════════════════════════════════════════════════
+PART 2 — SOURCE BLOCK / PASS 1 TRACE
+═══════════════════════════════════════════════════
+
+Սա պարտադիր է։
+
+Գտիր Pass 1 extraction-ի իրական prompt-ը և response schema-ն։
+
+Պարզիր՝ extraction-ը ստեղծո՞ւմ է source blocks։
+
+Trace արա առնվազն հետևյալ fields-ը.
+
+* sourceText
+* sourcePage
+* sourceParagraph
+* sourcePosition
+* sourceBoundingBox
+* blockType
+* block index / ID
+* source order
+* exercise blocks
+* question blocks
+* example blocks
+* definition/rule/explanation blocks
+* table blocks
+* activity/project/homework blocks
+
+Պարզիր.
+
+1. AI-ին պարտադրվա՞ծ է բոլոր source blocks-ը պահպանել։
+2. Կա՞ source coverage gate։
+3. Կա՞ unmapped block validation։
+4. Կարո՞ղ է Pass 2-ը պարզապես չօգտագործել extraction-ի block-ը։
+5. Որտե՞ղ է պահվում extracted block-ը։
+6. DB-ում առանձին source-block storage կա՞։
+7. Եթե չկա՝ source block-ի տվյալները ինչպե՞ս են պահպանվում։
+
+Հատուկ trace արա Lesson 101-ի համար.
+
+mapping job = 15
+
+Եթե mapping metadata-ն ասում է՝
+
+pass1BlocksExtracted = 25
+
+ապա պարզիր՝ այդ 25 block-երը իրականում որտե՞ղ են։
+
+Տուր.
+
+25 extracted blocks
+→ քանի՞սն են մտել Pass 2
+→ քանի՞սն են կապված node-ի հետ
+→ քանի՞սն են կապված exercise-ի հետ
+→ քանի՞սն են մնացել unmapped
+→ վերջնական DB-ում դրանց trace կա՞, թե ոչ
+
+Եթե 25 block-ից որևէ block կորչում է՝ ցույց տուր կոնկրետ block index-ը և կորելու փուլը։
+
+═══════════════════════════════════════════════════
+PART 3 — FIELD-BY-FIELD 6-STEP TRACE
+═══════════════════════════════════════════════════
+
+Յուրաքանչյուր field-ի համար պատասխանիր հետևյալ 6 հարցին։
+
+1. PROMPT
+   Automatic Mapping-ի իրական ներկայիս AI prompt-ում այս field-ը պահանջվո՞ւմ է։
+
+Եթե այո՝ paste արա exact prompt հատվածը։
+
+2. AI SCHEMA
+   AI response schema-ն թույլ տալի՞ս է այս field-ը վերադարձնել։
+
+Ցույց տուր exact schema/interface հատվածը։
+
+3. AI RESPONSE
+   Իրական AI response-ում field-ը կա՞։
+
+Եթե production raw response կա՝ օգտագործիր այն։
+
+Եթե raw response չկա՝ կարող ես կատարել READ-ONLY test mapping run։
+
+Բայց test run-ի ժամանակ.
+
+⚠️ ոչ մի DB write
+⚠️ ոչ մի code change
+⚠️ ոչ մի persistent data change
+
+Ցույց տուր raw response-ի համապատասխան հատվածը։
+
+Եթե հնարավոր չէ ստանալ real response՝ գրիր `NOT VERIFIED`։
+
+4. MAPPER
+   AI response-ից դեպի DB transformation layer-ում field-ը փոխանցվո՞ւմ է։
+
+Ցույց տուր exact code։
+
+5. DB
+   Իրական DB query-ով ստուգիր Lesson 101-ի տվյալը։
+
+Ցույց տուր actual stored value-ը։
+
+6. UI
+   Եթե DB-ում արժեք կա՝ ստուգիր արդյոք UI-ն այն կարդում և ցուցադրում է։
+
+Եթե DB-ում արժեք կա, բայց UI-ում չկա՝ դա առանձին root cause է։
+
+═══════════════════════════════════════════════════
+PART 4 — CLASSIFICATION
+═══════════════════════════════════════════════════
+
+Յուրաքանչյուր field-ի համար վերջում տուր հետևյալ classification-ը.
+
+A — Chain complete / DB-ում ճիշտ կա
+
+B — Prompt gap
+Prompt-ը field-ը չի պահանջում
+
+C — Schema gap
+Prompt-ը պահանջում է, բայց AI response schema-ն field-ը չի թույլատրում
+
+D — Mapper/Transformation bug
+AI response-ում field-ը կա, բայց DB insert/update object-ում չի փոխանցվում
+
+E — Architecture/DB gap
+DB schema-ում field-ը ընդհանրապես գոյություն չունի
+
+F — UI gap
+DB-ում field-ը կա և արժեք ունի, բայց UI-ն չի կարդում կամ չի ցուցադրում
+
+G — AI generation gap
+Prompt + schema-ում field-ը կա, բայց իրական AI response-ում field-ը չի վերադարձվում
+
+H — DB write/storage gap
+Mapper-ը field-ը փոխանցում է, բայց DB-ում վերջնական արժեք չկա
+
+Մի՛ ընտրիր classification-ը առանց evidence-ի։
+
+═══════════════════════════════════════════════════
+PART 5 — LESSON-LEVEL FIELDS
+═══════════════════════════════════════════════════
+
+Trace արա առնվազն.
+
+lessonGoal
+lessonOutcomes
+coreIdea
+coreProblem
+essentialQuestion
+practicalTasks
+knowledgeBoundaries
+description
+content
+textbookTitle
+textbookAuthor
+chapterTitle
+phases
+mappingMetadata
+
+Եթե lessons schema-ում կան այլ mapping-related fields՝ նույնպես ավելացրու։
+
+═══════════════════════════════════════════════════
+PART 6 — NODE / MICRONODE CORE FIELDS
+═══════════════════════════════════════════════════
+
+Trace արա նաև core mapping fields-ը, ոչ միայն enrichment fields-ը։
+
+Պարտադիր.
+
+title
+sequence
+theoryContent
+verbatimTheoryAnchor
+learningObjective
+microNodeType
+sourcePage
+sourceText
+sourceParagraph
+sourceBoundingBox
+blockType
+confidenceScore
+targetBloomLevel
+estimatedMinutes
+teachingStage
+status
+createdBy
+contentSourceType
+version
+
+Հետո trace արա enrichment fields-ը.
+
+childFriendlyExplanation
+basicExamples
+realLifeExamples
+commonMisconception
+prerequisiteNodes
+nonExamples
+explanationSteps
+beginnerExplanation
+advancedExplanation
+analogy
+visualReferenceNote
+commonErrors
+misconceptionQuestions
+recallQuestions
+understandingQuestions
+applicationQuestions
+faqEntries
+teachingContentConfidence
+
+Եթե lesson_nodes schema-ում ուրիշ mapping-related fields կան՝ ավելացրու։
+
+═══════════════════════════════════════════════════
+PART 7 — EXERCISE FIELDS
+═══════════════════════════════════════════════════
+
+Trace արա.
+
+exerciseId
+lessonId
+sourcePage
+sequence
+exerciseTextVerbatim
+relatedNodeId
+exercisePurpose
+difficultyLevel
+cognitiveLoad
+assignment
+successCriteria
+sourceType
+sourceText
+confidenceScore
+status
+
+Հատուկ ստուգիր՝
+
+1. Բոլոր իրական textbook exercises-ը պահպանելու պարտադիր rule կա՞։
+2. Exercise sequence-ը պահպանվո՞ւմ է։
+3. Եթե textbook exercise-ը extraction-ից հետո կորում է՝ որտեղ է կորում։
+4. Lesson 101-ի EX-101-8-ի բացակայությունը կոնկրետ ո՞ր փուլում է առաջացել։
+5. mappingMetadata-ի exercisesCreated count-ը ինչպես է հաշվարկվում։
+6. Ինչու կարող է metadata-ն ասել 13, իսկ DB-ում լինել 10։
+
+═══════════════════════════════════════════════════
+PART 8 — DEPENDENCY TRACE
+═══════════════════════════════════════════════════
+
+Ամբողջ codebase-ում grep արա dependency-related logic-ի համար։
+
+Պարզիր.
+
+* dependency detection
+* dependency generation
+* dependency schema
+* dependency validation
+* dependency insert
+* dependency update
+* dependency read
+
+Հստակ պարզիր՝ Automatic Mapping pipeline-ը dependency ստեղծո՞ւմ է։
+
+Եթե ոչ՝ ցույց տուր evidence, որ dependency creation-ը միայն TEXT/Manual Mapping pipeline-ի մաս է։
+
+Trace արա lesson_node_dependencies-ի fields-ը։
+
+═══════════════════════════════════════════════════
+PART 9 — MAPPING_METADATA
+═══════════════════════════════════════════════════
+
+Գտիր mapping_metadata-ի ստեղծման և update-ի exact code-ը։
+
+Trace արա.
+
+pass1BlocksExtracted
+topicsCreated
+microNodesCreated
+exercisesCreated
+unmappedBlocks
+pagesFrom
+pagesTo
+generatedAt
+
+Պարզիր՝ այս counts-ը հաշվարկվում են.
+
+A. AI response-ից
+B. in-memory mapped objects-ից
+C. DB insert results-ից
+D. այլ source-ից
+
+Հատուկ ստուգիր Lesson 101-ի discrepancy-ն.
+
+mapping_metadata:
+exercisesCreated = 13
+
+DB:
+10 exercise records
+
+Գտիր կոնկրետ պատճառը։
+
+═══════════════════════════════════════════════════
+PART 10 — LESSON 101 END-TO-END TRACE
+═══════════════════════════════════════════════════
+
+Օգտագործիր միայն այս real lesson-ը.
+
+Lesson ID = 101
+Title = Միլիոնների դաս
+Pages = 8–11
+Section = §1.1
+Mapping Job = 15
+
+Trace արա ամբողջ pipeline-ը։
+
+Նվազագույնը ցույց տուր.
+
+25 source blocks
+→ Pass 2 input
+→ topics
+→ nodes
+→ enrichment
+→ exercises
+→ dependencies
+→ mapper objects
+→ DB rows
+
+Հատուկ ցույց տուր՝
+
+Node 1161
+Node 1162
+Node 1163
+
+և exercises:
+
+EX-101-1 ... EX-101-11
+
+Որտեղ sequence 8-ը բացակայում է՝ պարզիր exact պատճառը։
+
+═══════════════════════════════════════════════════
+PART 11 — MASTER FIELD MATRIX
+═══════════════════════════════════════════════════
+
+Վերջնական report-ում պարտադիր ստեղծիր ՄԵԿ ամբողջական table։
+
+Columns:
+
+Field
+Level
+DB Schema Exists
+Prompt
+AI Schema
+AI Response
+Mapper
+DB Value
+UI Display
+Classification
+Evidence
+
+Յուրաքանչյուր row-ի համար պետք է լինի real evidence։
+
+Evidence-ը կարող է լինել.
+
+FILE:function:line
+կամ
+DB query + result
+կամ
+exact prompt/schema/code excerpt
+
+═══════════════════════════════════════════════════
+PART 12 — FINAL COUNTS
+═══════════════════════════════════════════════════
+
+Հաշվիր բոլոր traced fields-ի համար.
+
+A = ?
+B = ?
+C = ?
+D = ?
+E = ?
+F = ?
+G = ?
+H = ?
+
+Հետո առանձին հաշվիր.
+
+LESSON fields
+NODE fields
+EXERCISE fields
+DEPENDENCY fields
+SOURCE BLOCK fields
+
+═══════════════════════════════════════════════════
+PART 13 — ROOT CAUSE RANKING
+═══════════════════════════════════════════════════
+
+Վերջում առանձնացրու TOP 5 ROOT CAUSES։
+
+Յուրաքանչյուրի համար գրիր.
+
+1. Problem
+2. Exact file
+3. Exact function
+4. Evidence
+5. Affected fields
+6. Affected pipeline stage
+
+Մի առաջարկիր code fix դեռ։
+
+═══════════════════════════════════════════════════
+PART 14 — FINAL VERDICT
+═══════════════════════════════════════════════════
+
+Վերջում մեկ հստակ պատասխան տուր.
+
+Automatic Mapping-ի հիմնական խնդիրը ո՞րն է.
+
+* Prompt design
+* AI output schema
+* AI generation
+* mapper/transformation
+* DB insertion
+* architecture
+* UI
+* կամ մի քանի շերտերի համակցություն
+
+Եվ եթե մի քանի շերտ է՝ նշիր դրանց ճիշտ հերթականությունը՝
+
+ROOT CAUSE #1
+ROOT CAUSE #2
+ROOT CAUSE #3
+
+⚠️ ԿՐԿԻՆ՝ ՈՉ ՄԻ ԿՈԴ ՉՓՈԽԵՍ։
+
+Այս փուլում մեզ պետք է միայն forensic evidence։
+
+Նպատակը մեկ բան է.
+
+**Պարզել՝ յուրաքանչյուր տվյալ ՈՐՏԵՂ Է ՍՏԵՂԾՎՈՒՄ, ՈՐՏԵՂ Է ԿՈՐՉՈՒՄ, ԵՎ ԻՆՉՈՒ ՎԵՐՋՆԱԿԱՆ DB-ՈՒՄ ՉԻ ԼՑՎՈՒՄ։**
