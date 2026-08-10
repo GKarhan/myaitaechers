@@ -1,0 +1,134 @@
+## ՓՈՒԼ 1 — ՔԱՅԼ 4․ Deterministic Source Coverage Validator
+
+Արա միայն այս scoped աշխատանքը։ Նախ ուսումնասիրիր և հետո implement արա։
+
+### Նպատակ
+
+Օգտագործելով արդեն պահպանվող՝
+
+* Pass1 `blocks[]`
+* Pass2 `sourceBlockIndices[]`
+* `exercises[].blockIndex`
+* `supportingMaterialIndices[]`
+* `unmappedBlockIndices[]`
+
+կառուցիր deterministic validator, որը ստուգում է source-block coverage-ը **AI-ի self-report-ից անկախ**։
+
+### Validator-ը պետք է ստուգի
+
+1. **Missing blocks**
+
+   * Pass1-ի որ block indices-ը ոչ մի կատեգորիայում չեն հայտնվում։
+
+2. **Duplicate blocks**
+
+   * նույն block index-ը հայտնվո՞ւմ է մեկից ավելի MicroNode/category-ում։
+
+3. **Invalid indices**
+
+   * կա՞ index, որը դուրս է Pass1 `blocks[]`-ի սահմաններից։
+
+4. **Empty MicroNodes**
+
+   * կա՞ MicroNode, որի `sourceBlockIndices`-ը դատարկ է։
+
+5. **Coverage counts**
+
+   * total source blocks
+   * covered blocks
+   * missing blocks
+   * duplicate blocks
+   * coverage percentage
+
+6. **Category accounting**
+   Հստակ տարանջատիր՝
+
+   * source/theory blocks
+   * exercise blocks
+   * supporting-material blocks
+   * unmapped blocks
+
+### Կարևոր
+
+Validator-ը **չպետք է օգտագործի միայն `unmappedBlocks`-ը որպես coverage-ի աղբյուր**։
+
+Coverage-ը հաշվիր Pass1-ի իրական `blocks[]`-ից և Pass2-ի բոլոր index arrays-ից։
+
+### Output
+
+Ստեղծիր structured validation result, օրինակ՝
+
+```ts
+{
+  valid: boolean,
+  totalBlocks: number,
+  coveredBlocks: number,
+  coveragePercent: number,
+  missingIndices: number[],
+  duplicateIndices: number[],
+  invalidIndices: number[],
+  emptyMicroNodeIds: string[],
+  categoryCounts: {
+    source: number,
+    exercises: number,
+    supportingMaterial: number,
+    unmapped: number
+  }
+}
+```
+
+Schema-ն կարող ես հարմարեցնել նախագծի existing conventions-ին, եթե ավելի ճիշտ type/interface արդեն կա։
+
+### Integration
+
+Validator-ը միացրու mapping pipeline-ի համապատասխան հատվածում այնպես, որ mapping-ի ժամանակ դրա արդյունքը հասանելի լինի։
+
+**Այս քայլում դեռ mapping-ը մի ձախողիր ավտոմատ կերպով։**
+
+Այսինքն՝ առաջին implementation-ում validator-ը կարող է՝
+
+* log անել ամբողջ validation result-ը,
+* job result/review metadata-ում պահել summary-ն, եթե դրա համար արդեն համապատասխան field կա,
+* բայց **չպետք է փոխի mapping-ի success/failure behavior-ը**։
+
+Մենք failure policy-ն կորոշենք հաջորդ քայլում՝ validator-ի իրական արդյունքները տեսնելուց հետո։
+
+### Չփոխել
+
+* Pass1 prompt
+* Pass2 Step1 prompt
+* Pass2 Step2 prompt
+* MicroNode granularity rules
+* Phase 2
+* dependencies
+* AI Teacher
+* UI
+* DB schema, եթե validator-ի համար արդեն առկա տվյալները բավարար են
+
+### Testing
+
+Ավելացրու deterministic unit tests առնվազն այս cases-ի համար.
+
+1. 100% valid coverage
+2. missing block
+3. duplicate block
+4. invalid index
+5. empty MicroNode
+6. exercises + source + supporting material միասին
+7. `unmappedBlocks = 0`, բայց իրական missing block կա
+
+Վերջին test-ը **պարտադիր է**, որովհետև հենց դա է ապացուցելու, որ validator-ը անկախ է AI-ի self-report-ից։
+
+### Վերջում տուր միայն report
+
+* Validator-ի գտնված/ստեղծված location-ը
+* Exact files changed
+* Validation algorithm-ը
+* Output structure
+* Integration point
+* Tests՝ case-by-case
+* Existing tests regression result
+* Test mapping-ի validation result
+* Ցանկացած pre-existing error՝ առանձին
+
+**Մի կատարիր որևէ այլ architecture կամ prompt փոփոխություն։**

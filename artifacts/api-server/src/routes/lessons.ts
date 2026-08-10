@@ -1350,6 +1350,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           ? Math.round((nodesWithFullContent / totalNodes) * 100) : 0,
         teacherReviewRequired: reviewItems.length,
         reviewItems,
+        coverageValidation: pass2.coverageValidation,
       },
     };
 

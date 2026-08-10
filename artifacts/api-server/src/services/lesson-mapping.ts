@@ -10,6 +10,7 @@ const { PDFParse } = _require("pdf-parse") as {
 };
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { logger } from "../lib/logger";
+import { validateSourceCoverage, type CoverageValidationResult } from "../lib/coverage-validator.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
@@ -622,6 +623,8 @@ export interface Pass2Result {
   topics: Pass2TopicResult[];
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
+  /** Deterministic source-coverage validation result. Independent of AI self-report. */
+  coverageValidation: CoverageValidationResult;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1043,40 +1046,39 @@ export async function runPass2Pipeline(
 
   const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
 
-  // Coverage validation (logged — caller may choose to error or warn)
-  const seen = new Set<number>();
-  for (const t of topics) {
-    for (const mn of t.microNodes) {
-      mn.sourceBlockIndices.forEach((i) => seen.add(i));
-      mn.exercises.forEach((e) => seen.add(e.blockIndex));
-      mn.supportingMaterialIndices.forEach((i) => seen.add(i));
-    }
-    t.unmappedBlockIndices.forEach((i) => seen.add(i));
-  }
-  const missing       = blocks.map((_, i) => i).filter((i) => !seen.has(i));
-  const emptySourceMNs = topics.flatMap((t) =>
-    t.microNodes.filter((mn) => mn.sourceBlockIndices.length === 0).map((mn) => mn.title)
-  );
+  // Deterministic source-coverage validation (independent of AI self-report)
+  const coverageValidation = validateSourceCoverage(blocks.length, topics);
 
   logger.info(
     {
-      coverage:      `${seen.size}/${blocks.length}`,
-      missing,
-      emptySourceMNs,
-      topicsCreated: topics.length,
-      microNodes:    topics.reduce((s, t) => s + t.microNodes.length, 0),
+      coverage:        `${coverageValidation.coveredBlocks}/${coverageValidation.totalBlocks}`,
+      coveragePercent: coverageValidation.coveragePercent,
+      valid:           coverageValidation.valid,
+      missingIndices:  coverageValidation.missingIndices,
+      duplicateIndices: coverageValidation.duplicateIndices,
+      invalidIndices:  coverageValidation.invalidIndices,
+      emptyMicroNodes: coverageValidation.emptyMicroNodeTitles,
+      categoryCounts:  coverageValidation.categoryCounts,
+      topicsCreated:   topics.length,
+      microNodes:      topics.reduce((s, t) => s + t.microNodes.length, 0),
     },
     "pass2: pipeline complete"
   );
 
-  if (missing.length > 0) {
-    logger.warn({ missing }, "pass2: blocks not placed by pipeline");
+  if (coverageValidation.missingIndices.length > 0) {
+    logger.warn({ missingIndices: coverageValidation.missingIndices }, "pass2: blocks not placed by pipeline");
   }
-  if (emptySourceMNs.length > 0) {
-    logger.warn({ emptySourceMNs }, "pass2: MicroNodes with empty sourceBlockIndices");
+  if (coverageValidation.emptyMicroNodeTitles.length > 0) {
+    logger.warn({ emptyMicroNodes: coverageValidation.emptyMicroNodeTitles }, "pass2: MicroNodes with empty sourceBlockIndices");
+  }
+  if (coverageValidation.duplicateIndices.length > 0) {
+    logger.warn({ duplicateIndices: coverageValidation.duplicateIndices }, "pass2: duplicate block index assignments detected");
+  }
+  if (coverageValidation.invalidIndices.length > 0) {
+    logger.warn({ invalidIndices: coverageValidation.invalidIndices }, "pass2: block indices outside Pass1 bounds detected");
   }
 
-  return { topics, unmappedBlockIndices: allUnmapped };
+  return { topics, unmappedBlockIndices: allUnmapped, coverageValidation };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,8 @@
     "test:inserter": "tsx src/mapping/__tests__/mapTextInserter.test.ts",
     "test:http": "tsx src/mapping/__tests__/mapTextHttp.test.ts",
     "test:translations": "tsx src/mapping/__tests__/mapTextTranslations.test.ts",
-    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts"
+    "test:coverage-validator": "tsx src/lib/__tests__/coverage-validator.test.ts",
+    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts && tsx src/lib/__tests__/coverage-validator.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
