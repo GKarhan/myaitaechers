@@ -1,0 +1,369 @@
+# PHASE 3 — SOURCE FIDELITY FIX PLAN
+
+## READ-ONLY AUDIT — NO CODE CHANGES YET
+
+Մենք ավարտել ենք Phase 3 forensic audit-ը։
+
+Audit-ի արդյունքով հայտնաբերվել են հետևյալ խնդիրները.
+
+### CRITICAL
+
+**C1 — Coverage completion gate**
+
+`coverageValidation.valid === false` դեպքում mapping job-ը դեռ ստանում է:
+
+```text
+status = "completed"
+```
+
+Սա սխալ է։
+
+Եթե source coverage-ը incomplete է, mapping-ը չպետք է համարվի fully completed։
+
+---
+
+**C2 — Teacher UI mapping status**
+
+Teacher UI-ն օգտագործում է մոտավորապես.
+
+```ts
+const isMapped =
+  Boolean(lesson.coreIdea) ||
+  ((lesson.nodeCount ?? 0) > 0);
+```
+
+Այսինքն՝ incomplete mapping-ը կարող է UI-ում երևալ որպես normal mapped lesson։
+
+---
+
+### HIGH
+
+**H1 — Երկու տարբեր coverage metric**
+
+Validator-ը հաշվում է իրական coverage-ը.
+
+```text
+coveredBlocks / totalBlocks
+```
+
+իսկ mapping report-ը օգտագործում է այլ բան.
+
+```text
+(totalBlocks - unmappedBlocks) / totalBlocks
+```
+
+Սա պետք է վերացվի։
+
+Պետք է լինի մեկ canonical coverage metric։
+
+---
+
+**H2 — Raw Pass-1 blocks չեն պահպանվում**
+
+Pass 1-ի source blocks-ը DB-ում ամբողջությամբ չեն պահպանվում։
+
+Եթե հետագայում missing block կա, մենք կարող ենք տեսնել միայն index-ը, բայց ոչ տվյալ block-ի ամբողջ sourceText / page / blockType metadata-ն։
+
+---
+
+**H3 — Exercise source traceability**
+
+`lesson_exercises`-ում `sourceBlockIndex` չկա։
+
+Այս պատճառով DB-ից հետո հնարավոր չէ վստահորեն կառուցել.
+
+```text
+Textbook source block
+        ↓
+Exercise
+        ↓
+MicroNode
+```
+
+---
+
+# ՔՈ ԱՌԱՋԱԴՐԱՆՔԸ
+
+## Քայլ 1 — DO NOT MODIFY CODE
+
+Սա դեռ implementation task չէ։
+
+Մի փոխիր.
+
+* code
+* schema
+* prompts
+* DB migrations
+* UI
+* pipeline logic
+
+մինչև ես չհաստատեմ fix plan-ը։
+
+---
+
+# Քայլ 2 — Verify each proposed fix against the actual codebase
+
+Յուրաքանչյուր խնդրի համար ուսումնասիրիր իրական repository-ն և որոշիր.
+
+### P3.1 — Coverage Completion Gate
+
+Գտիր՝
+
+* որտեղ է հաշվարկվում `coverageValidation`
+* որտեղ է mapping job-ի վերջնական `status`-ը դրվում
+* ինչ status values է իրականում թույլ տալիս schema-ն
+* կա՞ `failed`, `needs_review`, կամ այլ համապատասխան status
+* ինչ է տեղի ունենում incomplete mapping-ի դեպքում
+* կա՞ frontend/backend dependency, որը կարող է կոտրվել status-ի փոփոխությունից
+
+Առաջարկիր **ամենափոքր անվտանգ փոփոխությունը**։
+
+Մի ստեղծիր նոր status, եթե existing status-ով հնարավոր է ճիշտ լուծել խնդիրը։
+
+---
+
+### P3.2 — Canonical Coverage Metric
+
+Գտիր բոլոր տեղերը, որտեղ օգտագործվում են.
+
+* `coveragePercent`
+* `coveredBlocks`
+* `unmappedBlocks`
+* `missingIndices`
+* `coverageValidation.valid`
+* review threshold
+* mapping quality/review flags
+
+Որոշիր՝ որն է canonical source of truth-ը։
+
+Առաջարկը պետք է լինի.
+
+```text
+coverageValidation
+        ↓
+single canonical coveragePercent
+        ↓
+all downstream decisions
+```
+
+Չպետք է մնան երկու տարբեր coverage formulas։
+
+---
+
+### P3.3 — Source Block Traceability
+
+Ուսումնասիրիր՝ որտեղ և ինչպես է ստեղծվում Pass-1 `Pass1Block[]`։
+
+Պետք է գնահատել երկու տարբերակ.
+
+**Option A**
+Պահպանել source block metadata-ն `mapping_jobs.result`-ում։
+
+**Option B**
+Ստեղծել համապատասխան DB table/source-block persistence։
+
+Ընտրիր **ամենափոքր փոփոխությունը, որը բավարարում է forensic traceability-ի պահանջը**։
+
+Պարտադիր չէ ամբողջ source block schema կառուցել, եթե դրա կարիքը չկա։
+
+Պետք է հնարավոր լինի հետագայում missing index-ի դեպքում ստանալ առնվազն.
+
+```text
+blockIndex
+blockType
+sourceText
+sourcePage
+sourceParagraph
+sourceBoundingBox
+```
+
+և հասկանալ՝ ինչ textbook content էր կորել։
+
+---
+
+### P3.4 — Exercise Source Traceability
+
+Ուսումնասիրիր `lesson_exercises` schema-ն և բոլոր insert paths-ը։
+
+Պարզիր՝ որտեղ պետք է ավելացվի.
+
+```text
+sourceBlockIndex
+```
+
+կամ ավելի ճիշտ անվանում, եթե codebase-ի naming convention-ը այլ է։
+
+Ստուգիր.
+
+* normal MicroNode exercises
+* Additional Exercises
+* rescued exercises
+* all insert paths
+* existing data compatibility
+* migration requirements
+* whether `blockIndex` already exists transiently in Pass2 but is simply dropped during persistence
+
+Պետք է պահվի նույն source block reference-ը մինչև DB։
+
+---
+
+### P3.5 — Teacher UI Mapping State
+
+Ուսումնասիրիր Teacher UI-ի իրական mapping-state logic-ը։
+
+Պետք է առաջարկել նվազագույն փոփոխություն, որը տարբերակում է.
+
+```text
+FULLY MAPPED
+NEEDS REVIEW / INCOMPLETE
+FAILED
+```
+
+բայց միայն այն status-ները, որոնք իրական backend architecture-ը կարող է վստահորեն ապահովել։
+
+Մի վերափոխիր UI architecture-ը։
+
+---
+
+# Քայլ 3 — Check downstream impact
+
+Յուրաքանչյուր proposed change-ի համար ստուգիր.
+
+### Backend
+
+* routes
+* services
+* schemas
+* DB queries
+* job polling
+* mapping result serialization
+
+### Frontend
+
+* teacher dashboard
+* mapping status
+* lesson cards
+* mapping progress
+* error/review display
+
+### Existing mappings
+
+Ստուգիր՝ արդյոք փոփոխությունը կոտրում է արդեն գոյություն ունեցող mapped lessons-ը։
+
+Պետք է հաշվի առնել backward compatibility-ը։
+
+---
+
+# Քայլ 4 — Preserve existing behavior
+
+Չփոխել.
+
+* Pass 1 extraction logic
+* Pass 2 topic grouping
+* MicroNode generation
+* MicroNode granularity rules
+* exercise assignment logic
+* Phase 2
+* AI Teacher teaching logic
+* existing RC-3 persistence
+* existing sequence fix
+
+Phase 3-ի այս iteration-ի նպատակը միայն SOURCE → MAPPING integrity-ն է։
+
+---
+
+# Քայլ 5 — Produce a minimal implementation plan
+
+Վերջում տուր հետևյալ կառուցվածքով report.
+
+## PHASE 3 — MINIMAL FIX PLAN
+
+### P3.1 Coverage Completion Gate
+
+**Current behavior:**
+
+...
+
+**Exact file/function:**
+
+...
+
+**Problem:**
+
+...
+
+**Minimal fix:**
+
+...
+
+**Files changed:**
+
+...
+
+**Schema change: YES/NO**
+
+**Migration: YES/NO**
+
+**Regression risk: LOW/MEDIUM/HIGH**
+
+---
+
+### P3.2 Canonical Coverage Metric
+
+Նույն ձևաչափով։
+
+---
+
+### P3.3 Source Block Traceability
+
+Նույն ձևաչափով։
+
+---
+
+### P3.4 Exercise Source Traceability
+
+Նույն ձևաչափով։
+
+---
+
+### P3.5 Teacher UI Mapping State
+
+Նույն ձևաչափով։
+
+---
+
+# FINAL DECISION TABLE
+
+Վերջում ստեղծիր.
+
+| Fix                        | Required? | Code change | DB migration | UI change | Risk |
+| -------------------------- | --------- | ----------- | ------------ | --------- | ---- |
+| P3.1 Coverage gate         |           |             |              |           |      |
+| P3.2 Canonical metric      |           |             |              |           |      |
+| P3.3 Source traceability   |           |             |              |           |      |
+| P3.4 Exercise traceability |           |             |              |           |      |
+| P3.5 Teacher mapping state |           |             |              |           |      |
+
+---
+
+# IMPORTANT
+
+Այս turn-ում **ոչ մի code change չանել**։
+
+Մի ստեղծիր migration։
+
+Մի փոխիր schema։
+
+Մի փոխիր prompt։
+
+Մի փոխիր UI։
+
+Մի փոխիր mapper logic-ը։
+
+Միայն ուսումնասիրիր repository-ն և ներկայացրու **ամենափոքր, անվտանգ implementation plan-ը**։
+
+Հատկապես մի ընդունիր նախորդ forensic report-ի որևէ պնդում որպես փաստ առանց codebase-ում ստուգելու։
+
+Եթե audit-ի ընթացքում պարզվի, որ որևէ առաջարկ սխալ է կամ արդեն լուծված է, նշիր դա։
+
+**Նպատակը՝ Phase 3-ի fix plan-ը հաստատել նախքան implementation-ը։**
