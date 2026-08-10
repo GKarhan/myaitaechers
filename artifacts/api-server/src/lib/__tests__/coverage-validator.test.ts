@@ -32,8 +32,13 @@ function mn(
 function topic(
   microNodes: ReturnType<typeof mn>[],
   unmappedBlockIndices: number[] = [],
+  additionalExerciseBlockIndices: number[] = [],
 ): ValidatorTopic {
-  return { microNodes, unmappedBlockIndices };
+  return {
+    microNodes,
+    unmappedBlockIndices,
+    additionalExercises: additionalExerciseBlockIndices.map((blockIndex) => ({ blockIndex })),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

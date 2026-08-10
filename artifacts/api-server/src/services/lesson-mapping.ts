@@ -617,6 +617,11 @@ export interface Pass2TopicResult {
   topicType: string;   // "grammar" | "enrichment" | …
   microNodes: Pass2MicroNode[];
   unmappedBlockIndices: number[];
+  /** Exercises that practice a skill for which no instructional source block exists in
+   *  this topic, and no existing MicroNode's LO genuinely covers that skill.
+   *  Persisted in lesson_exercises with relatedNodeId = null.
+   *  Never creates a source-less MicroNode. Never placed in unmappedBlocks. */
+  additionalExercises: Pass2Exercise[];
 }
 
 export interface Pass2Result {
@@ -935,10 +940,31 @@ ABSOLUTE RULES:
    "Exercises and Activities" or "Introduction". Write "Վարժություններ" not "Exercises",
    "Ներածություն" not "Introduction", etc.
 
+WHEN AN EXERCISE HAS NO SOURCE-GROUNDED MICRONODE — use additionalExercises:
+If an exercise practices a skill for which NO instructional source block exists in this
+topic, AND no existing MicroNode's LO genuinely covers that skill:
+  → Place it in "additionalExercises" (see output format below).
+  → DO NOT create a MicroNode with sourceBlockIndices: [] just to house the exercise.
+  → DO NOT put real textbook exercises in unmappedBlocks.
+  → additionalExercises preserves the exercise as real textbook content without inventing
+    a source-less MicroNode.
+
+Decision tree for each EXERCISE/ACTIVITY/HOMEWORK block:
+  1. Does an existing MicroNode's LO genuinely cover what this exercise practices?
+     YES → assign it to that MicroNode's exercises[].
+  2. Does a genuine instructional source block exist for this skill in the current topic?
+     YES → create a MicroNode from that source, then assign the exercise.
+  3. Neither 1 nor 2 applies?
+     → Place in additionalExercises. Never create a source-less MicroNode.
+
 OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary before or after.
 {
   "microNodes": [ <MicroNode objects as shown above> ],
-  "unmappedBlocks": [ {"blockIndex": 0, "reason": "page header"} ]
+  "unmappedBlocks": [ {"blockIndex": 0, "reason": "page header only — no instructional content"} ],
+  "additionalExercises": [
+    {"blockIndex": 11, "reason": "No instructional source block for arithmetic operations in this topic; does not match any existing MicroNode LO"},
+    {"blockIndex": 12, "reason": "No instructional source block for arithmetic operations in this topic; does not match any existing MicroNode LO"}
+  ]
 }`;
 
 async function organizeTopicMicroNodes(
@@ -946,7 +972,7 @@ async function organizeTopicMicroNodes(
   topicIndices: number[],
   blocks: Pass1Block[],
   topicSeq: number
-): Promise<{ microNodes: Pass2MicroNode[]; unmappedIndices: number[] }> {
+): Promise<{ microNodes: Pass2MicroNode[]; unmappedIndices: number[]; additionalExercises: Pass2Exercise[] }> {
   const blockLines = topicIndices.map((i) => fmtPass2Block(i, blocks[i])).join("\n");
 
   const userPrompt = `Topic ${topicSeq}: «${topicTitle}»
@@ -999,9 +1025,10 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
       supportingMaterialIndices: number[];
     }[];
     unmappedBlocks: { blockIndex: number; reason: string }[];
+    additionalExercises?: { blockIndex: number; reason?: string }[];
   };
 
-  const microNodes: Pass2MicroNode[] = (parsed.microNodes ?? []).map((mn) => ({
+  const rawMicroNodes: Pass2MicroNode[] = (parsed.microNodes ?? []).map((mn) => ({
     title:                   mn.title ?? "",
     learningObjective:       mn.learningObjective ?? "",
     microNodeType:           mn.microNodeType === "skill" ? "skill" : "knowledge",
@@ -1014,8 +1041,30 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
       ? mn.supportingMaterialIndices : [],
   }));
 
+  // Collect additional exercises from model output first
+  const additionalExercises: Pass2Exercise[] = (parsed.additionalExercises ?? []).map((e) => ({
+    blockIndex:      e.blockIndex,
+    sourceParagraph: null,
+  }));
+
+  // Server-side safety net: strip any MicroNode whose sourceBlockIndices is still empty
+  // (model violated ABSOLUTE RULE 2). Move its exercises to additionalExercises instead
+  // of persisting an invalid source-less node.
+  const microNodes: Pass2MicroNode[] = [];
+  for (const mn of rawMicroNodes) {
+    if (mn.sourceBlockIndices.length === 0) {
+      logger.warn(
+        { title: mn.title, exerciseCount: mn.exercises.length },
+        "pass2 step2: safety-net — source-less MicroNode stripped; exercises moved to additionalExercises"
+      );
+      additionalExercises.push(...mn.exercises);
+    } else {
+      microNodes.push(mn);
+    }
+  }
+
   const unmappedIndices = (parsed.unmappedBlocks ?? []).map((u) => u.blockIndex);
-  return { microNodes, unmappedIndices };
+  return { microNodes, unmappedIndices, additionalExercises };
 }
 
 // ── Main exported Pass 2 function ─────────────────────────────────────────────
@@ -1153,6 +1202,7 @@ export async function runPass2Pipeline(
     topicType:             g.topicType,
     microNodes:            topicResults[i].microNodes,
     unmappedBlockIndices:  topicResults[i].unmappedIndices,
+    additionalExercises:   topicResults[i].additionalExercises,
   }));
 
   const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);

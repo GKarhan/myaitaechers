@@ -1,0 +1,524 @@
+# PHASE 1 — STEP 9: EXERCISE-ONLY CONTENT POLICY
+
+## CONTEXT
+
+We have completed Jobs 19, 20, and 21 while fixing MicroNode granularity.
+
+The mapping system now correctly:
+
+* removes the old 1–3 MicroNode cap;
+* creates more granular MicroNodes;
+* separates several distinct concepts;
+* excludes pure heading blocks from `sourceBlockIndices`;
+* maintains LO uniqueness.
+
+However, Jobs 20–21 revealed a persistent structural problem:
+
+The model creates MicroNodes for skills that appear **only in exercises**, even when there is no corresponding instructional/theory source block.
+
+Example from Job 21:
+
+* Node 1184:
+
+  * LO: "Student can determine the digit count and units in each class"
+  * `sourceBlockIndices: []`
+  * exercises assigned: 2
+
+* Node 1185:
+
+  * LO: "Student can read multi-digit numbers and give examples..."
+  * `sourceBlockIndices: []`
+  * exercises assigned: 2
+
+* Node 1186:
+
+  * LO: "Student can perform arithmetic operations with multi-digit numbers"
+  * `sourceBlockIndices: []`
+  * exercises assigned: 2
+
+* Node 1187:
+
+  * LO: "Student can determine and continue numerical sequence patterns"
+  * `sourceBlockIndices: []`
+  * exercise assigned: 1
+
+Coverage validator correctly reports:
+
+```text
+coveredBlocks = 100%
+missingIndices = []
+duplicateIndices = []
+emptyMicroNodeTitles = 4
+valid = false
+```
+
+The exercises themselves are real textbook exercises and must NOT be lost.
+
+---
+
+# NEW POLICY — EXERCISE WITHOUT A DEDICATED MICRONODE
+
+Implement and enforce the following conceptual policy.
+
+## RULE 1 — NEVER CREATE A SOURCELESS MICRONODE
+
+An exercise must NEVER cause creation of a MicroNode if there is no instructional source block supporting that MicroNode.
+
+A MicroNode MUST have at least one genuine instructional source block.
+
+Therefore this structure is ILLEGAL:
+
+```json
+{
+  "learningObjective": "Student can perform arithmetic operations with multi-digit numbers",
+  "sourceBlockIndices": [],
+  "exercises": [11, 12]
+}
+```
+
+Do NOT create it.
+
+---
+
+# RULE 2 — FIRST TRY TO MATCH THE EXERCISE TO AN EXISTING MICRONODE
+
+Before creating any new MicroNode from an exercise-derived skill:
+
+Ask:
+
+> Does an already-existing MicroNode have a learning objective whose concept/skill directly and meaningfully covers what this exercise practices?
+
+If YES:
+
+Assign the exercise to that existing MicroNode.
+
+The assignment must be pedagogically justified.
+
+Do NOT use simple page proximity alone.
+
+Do NOT assign an exercise merely because the MicroNode is nearby.
+
+The MicroNode's LO must genuinely cover the exercise's required skill.
+
+---
+
+# RULE 3 — IF NO MATCHING MICRONODE EXISTS, DO NOT CREATE ONE
+
+If:
+
+```text
+exercise skill exists
++
+no existing MicroNode has a matching LO
++
+no instructional source block exists for that skill
+```
+
+then:
+
+**DO NOT create a MicroNode.**
+
+Instead preserve the exercise separately as:
+
+```text
+Additional Exercises — No Dedicated MicroNode
+```
+
+These exercises remain part of the topic and remain available to the platform.
+
+They are NOT deleted.
+
+They are NOT treated as theory.
+
+They are NOT converted into fake MicroNodes.
+
+---
+
+# RULE 4 — ADDITIONAL EXERCISES ARE REAL SOURCE CONTENT
+
+An exercise in this category is still legitimate textbook content.
+
+The distinction is:
+
+```text
+MicroNode
+    = independently teachable + source-grounded learning objective
+
+Additional Exercise
+    = legitimate textbook exercise
+      but no dedicated instructional source exists
+      from which to construct a MicroNode
+```
+
+Therefore the mapper must preserve these exercises in the mapping output.
+
+---
+
+# RULE 5 — DO NOT PUT THESE EXERCISES INTO unmappedBlocks
+
+Do NOT use `unmappedBlocks` for these exercises.
+
+`unmappedBlocks` is for structural/non-learning content such as:
+
+* pure headings;
+* page labels;
+* chapter labels;
+* non-instructional fragments;
+* other content that should not participate in teaching.
+
+An actual textbook EXERCISE is learning content and must remain accessible.
+
+Therefore:
+
+```text
+heading → unmappedBlocks
+
+real exercise without dedicated MicroNode
+→ Additional Exercises — No Dedicated MicroNode
+
+exercise matching existing MicroNode
+→ that MicroNode.exercises
+```
+
+---
+
+# RULE 6 — PRESERVE TOPIC OWNERSHIP
+
+Every Additional Exercise must remain associated with the Topic from which it originated.
+
+Example:
+
+```text
+Topic
+  ├── MicroNode A
+  ├── MicroNode B
+  ├── MicroNode C
+  │
+  └── Additional Exercises — No Dedicated MicroNode
+        ├── Exercise 7
+        ├── Exercise 8
+        ├── Exercise 11
+        └── Exercise 13
+```
+
+Do not move these exercises to another topic merely to find a MicroNode.
+
+Topic boundaries remain authoritative.
+
+---
+
+# RULE 7 — NO NEW MICRONODE FROM EXERCISE CONTENT ALONE
+
+This is an explicit anti-pattern.
+
+## ILLEGAL
+
+```text
+EXERCISE
+    ↓
+identify skill
+    ↓
+create MicroNode
+    ↓
+sourceBlockIndices = []
+```
+
+## CORRECT
+
+```text
+EXERCISE
+    ↓
+identify practiced skill
+    ↓
+matching existing MicroNode?
+    ├── YES → assign exercise to that MicroNode
+    │
+    └── NO
+         ↓
+    instructional source for skill exists?
+         ├── YES → MicroNode may be created from that source
+         │
+         └── NO → Additional Exercise
+```
+
+Important:
+
+A MicroNode may only be created from **instructional source evidence**, not from the exercise's existence alone.
+
+---
+
+# RULE 8 — DO NOT INVENT THEORY
+
+The mapper must never infer that because an exercise tests a skill, the textbook necessarily teaches that skill in the current topic.
+
+For example:
+
+If the textbook contains:
+
+> "Perform the arithmetic operations."
+
+but contains no definition, explanation, rule, worked example, or other instructional source for arithmetic operations in this topic:
+
+Do NOT generate:
+
+```text
+MicroNode:
+Student can perform arithmetic operations...
+```
+
+unless a genuine source block supports it.
+
+The mapper is a source-grounded mapper, not a curriculum designer.
+
+---
+
+# RULE 9 — EXISTING MICRONODE MATCH MUST BE SEMANTIC
+
+For an exercise to be assigned to an existing MicroNode, ask:
+
+> Can a student reasonably solve this exercise primarily by mastering this MicroNode's LO?
+
+If YES → assign.
+
+If solving the exercise requires a different independent skill that is not represented by that LO → do NOT force the assignment.
+
+Use page proximity only as a supporting signal, never as the deciding criterion.
+
+---
+
+# RULE 10 — MULTI-SKILL EXERCISES
+
+If an exercise requires multiple skills:
+
+1. Find the MicroNode representing the most advanced/prerequisite-dependent skill.
+2. If that MicroNode genuinely covers the exercise → assign there.
+3. If no existing MicroNode genuinely covers the exercise → keep it under Additional Exercises.
+4. Never create a source-less MicroNode just to give the exercise a home.
+
+Do not duplicate the same exercise across MicroNodes.
+
+---
+
+# RULE 11 — ADDITIONAL EXERCISE OUTPUT CONTRACT
+
+Determine the smallest safe way to represent these exercises using the EXISTING schema/data structures.
+
+Do NOT introduce a new database schema unless absolutely necessary.
+
+Prefer reusing an existing exercise representation and adding a clear classification/status if the current schema already supports this.
+
+The resulting conceptual structure must distinguish:
+
+```text
+Mapped Exercise
+    → assigned to MicroNode
+
+Additional Exercise
+    → belongs to Topic
+    → has no Dedicated MicroNode
+```
+
+Before changing schema, inspect the existing mapping structures and determine whether the distinction can be represented without migration.
+
+---
+
+# RULE 12 — COVERAGE VALIDATION MUST NOT TREAT THESE AS EMPTY MICRONODES
+
+After this policy is implemented:
+
+A topic containing exercises without dedicated MicroNodes should NOT produce:
+
+```text
+emptyMicroNodeTitles
+```
+
+because there should be no MicroNode for those exercises.
+
+The correct state should be:
+
+```text
+MicroNodes:
+    only source-grounded MicroNodes
+
+Additional Exercises:
+    exercises without dedicated MicroNode
+
+Coverage:
+    all source blocks accounted for
+
+Empty MicroNodes:
+    none
+```
+
+---
+
+# IMPORTANT DISTINCTION
+
+Do NOT solve this by relaxing the existing rule:
+
+> "Every MicroNode must have sourceBlockIndices."
+
+That rule is CORRECT.
+
+Instead, remove the invalid MicroNode entirely and preserve the exercise separately.
+
+The desired invariant is:
+
+```text
+Every MicroNode
+    → has ≥1 genuine instructional source block
+
+Every real textbook exercise
+    → is preserved exactly once
+
+Every exercise
+    → either belongs to a matching MicroNode
+    → or belongs to Additional Exercises — No Dedicated MicroNode
+
+No exercise
+    → creates a source-less MicroNode
+```
+
+---
+
+# JOB 19–21 REGRESSION TARGET
+
+Use the existing Job 19–21 evidence as the regression case.
+
+For the lesson 101 example, the expected conceptual result is:
+
+### Topic 1
+
+MicroNodes should remain approximately:
+
+1. Number class decomposition
+2. One million
+3. Meaning/significance of number classes
+
+### Topic 2
+
+Keep only MicroNodes that have genuine instructional source support.
+
+Exercises such as:
+
+* digit-count questions;
+* "use the word million in a sentence";
+* multi-digit arithmetic;
+* numerical sequence continuation;
+
+must NOT create source-less MicroNodes if no instructional source block exists for those skills.
+
+Instead they should appear under:
+
+```text
+Additional Exercises — No Dedicated MicroNode
+```
+
+unless a genuine existing MicroNode directly covers the exercise.
+
+---
+
+# REQUIRED TASK
+
+This is an implementation task, but DO NOT redesign the entire mapping pipeline.
+
+Make the smallest safe change that enforces the policy above.
+
+Before editing code:
+
+1. Inspect the current Step2 mapping logic.
+2. Inspect the current exercise assignment logic.
+3. Inspect the current Pass2 schema/result structure.
+4. Inspect how `lesson_exercises` are persisted.
+5. Determine the smallest implementation that can represent:
+
+   * MicroNode-assigned exercises
+   * Additional Exercises with no dedicated MicroNode
+6. Do NOT modify unrelated mapping logic.
+
+Then implement the change.
+
+---
+
+# REQUIRED VALIDATION
+
+After implementation:
+
+1. Run all existing mapTextParser tests.
+2. Run TypeScript/typecheck.
+3. Restart the API server if necessary.
+4. Trigger a fresh mapping of the same lesson.
+5. Perform forensic extraction comparable to Jobs 19–21.
+
+Report:
+
+### A. MicroNode count
+
+### B. Every MicroNode's:
+
+* title
+* learningObjective
+* sourceBlockIndices
+* exercise count
+
+### C. Additional Exercises:
+
+* exercise index
+* page
+* text preview
+* reason it has no dedicated MicroNode
+
+### D. Verify:
+
+* zero `sourceBlockIndices: []` MicroNodes
+* zero exercises lost
+* zero duplicate exercise assignments
+* zero exercises incorrectly moved across topics
+* coverage validation
+* LO uniqueness
+* remaining multi-objective LO cases
+
+### E. Compare:
+
+```text
+Job 19
+Job 20
+Job 21
+NEW JOB
+```
+
+Do not stop after tests pass. The actual mapping result is the primary acceptance criterion.
+
+---
+
+# ACCEPTANCE CRITERIA
+
+The change is successful ONLY if:
+
+```text
+1. No source-less MicroNodes exist.
+2. Real textbook exercises are never deleted.
+3. Every exercise is represented exactly once.
+4. Matching exercises are assigned to genuine MicroNodes.
+5. Non-matching exercises remain under the correct Topic
+   as Additional Exercises — No Dedicated MicroNode.
+6. No fake theory is invented from exercise text.
+7. Coverage validation does not fail because of empty MicroNodes.
+8. Existing source coverage remains intact.
+9. Existing 22/22 tests continue to pass.
+10. No unrelated AI Tutor / Phase 2 / UI behavior is changed.
+```
+
+## CRITICAL
+
+Do NOT solve the problem by:
+
+* creating empty MicroNodes;
+* moving exercises to an unrelated MicroNode;
+* putting real exercises into `unmappedBlocks`;
+* deleting exercises;
+* inventing theory;
+* weakening the source-grounding rule;
+* adding a large architectural redesign.
+
+This is a **small policy correction to the existing mapping pipeline**, not a redesign.

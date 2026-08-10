@@ -31,8 +31,11 @@ export interface CoverageValidationResult {
   categoryCounts: {
     /** Total placements in sourceBlockIndices across all MicroNodes. */
     source: number;
-    /** Total placements in exercises across all MicroNodes. */
+    /** Total placements in exercises[] across all MicroNodes. */
     exercises: number;
+    /** Total placements in additionalExercises across all topics
+     *  (exercises with no dedicated MicroNode). */
+    additionalExercises: number;
     /** Total placements in supportingMaterialIndices across all MicroNodes. */
     supportingMaterial: number;
     /** Total placements in unmappedBlockIndices across all topics. */
@@ -52,6 +55,9 @@ export interface ValidatorMicroNode {
 export interface ValidatorTopic {
   microNodes: ReadonlyArray<ValidatorMicroNode>;
   unmappedBlockIndices: ReadonlyArray<number>;
+  /** Exercises preserved without a dedicated MicroNode (no source block exists for them).
+   *  Their blockIndices are counted as covered but never trigger emptyMicroNode errors. */
+  additionalExercises?: ReadonlyArray<{ blockIndex: number }>;
 }
 
 /**
@@ -68,7 +74,7 @@ export function validateSourceCoverage(
   // (used to detect duplicates without losing context for debugging)
   const seenMap = new Map<number, string[]>();
   const emptyMicroNodeTitles: string[] = [];
-  const categoryCounts = { source: 0, exercises: 0, supportingMaterial: 0, unmapped: 0 };
+  const categoryCounts = { source: 0, exercises: 0, additionalExercises: 0, supportingMaterial: 0, unmapped: 0 };
 
   function record(idx: number, label: string): void {
     const existing = seenMap.get(idx);
@@ -100,6 +106,10 @@ export function validateSourceCoverage(
     for (const i of topic.unmappedBlockIndices) {
       record(i, "unmapped");
       categoryCounts.unmapped++;
+    }
+    for (const ex of topic.additionalExercises ?? []) {
+      record(ex.blockIndex, "additionalEx");
+      categoryCounts.additionalExercises++;
     }
   }
 

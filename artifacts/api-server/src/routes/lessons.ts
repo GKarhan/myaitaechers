@@ -1288,6 +1288,27 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           totalExercises += 1;
         }
       }
+
+      // 4. Insert additional exercises — real textbook exercises with no dedicated MicroNode.
+      //    relatedNodeId = null (schema already supports nullable FK).
+      //    These are NOT fake MicroNodes; they are preserved as-is for platform access.
+      for (const ex of topic.additionalExercises ?? []) {
+        const block = pass1.blocks[ex.blockIndex];
+        if (!block) continue;
+        exerciseCounter += 1;
+
+        await db.insert(lessonExercisesTable).values({
+          lessonId,
+          exerciseId:           `EX-${lessonId}-${exerciseCounter}`,
+          exerciseTextVerbatim: block.sourceText.trim(),
+          sourcePage:           block.sourcePage ? String(block.sourcePage) : null,
+          relatedNodeId:        null,
+          sequence:             exerciseCounter,
+          sourceType:           "textbook" as const,
+          status:               "draft"    as const,
+        });
+        totalExercises += 1;
+      }
     }
 
     // ── Build, store, and return the structured mapping report ────────────────
