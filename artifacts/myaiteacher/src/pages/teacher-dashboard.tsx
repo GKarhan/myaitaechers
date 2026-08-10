@@ -594,6 +594,7 @@ function LessonNodesPanel({
   textbookAuthor = null,
   textbookTitle = null,
   chapterTitle = null,
+  lessonDescription = null,
 }: {
   lessonId: number;
   courseId: number;
@@ -602,17 +603,24 @@ function LessonNodesPanel({
   textbookAuthor?: string | null;
   textbookTitle?: string | null;
   chapterTitle?: string | null;
+  lessonDescription?: string | null;
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen]       = useState(false);
   const [deleteAllPending, setDeleteAllPending] = useState(false);
 
+  // Lesson description edit state
+  const [descEditing, setDescEditing] = useState(false);
+  const [descValue, setDescValue] = useState(lessonDescription ?? "");
+  const [descPending, setDescPending] = useState(false);
+
   // Node edit/add state
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
   const [editNodeForm, setEditNodeForm] = useState<{
     title: string; theoryContent: string; verbatimTheoryAnchor: string;
     commonMisconception: string; targetBloomLevel: string; estimatedMinutes: string;
+    childFriendlyExplanation: string; basicExamples: string; nonExamples: string; realLifeExamples: string;
   } | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [addNodeForm, setAddNodeForm] = useState({ title: "", theoryContent: "", targetBloomLevel: "1" });
@@ -621,7 +629,7 @@ function LessonNodesPanel({
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
   const [editExForm, setEditExForm] = useState<{
     exerciseTextVerbatim: string; successCriteria: string;
-    difficultyLevel: string; assignment: string;
+    difficultyLevel: string; assignment: string; relatedNodeId: number | null;
   } | null>(null);
   const [addExForNodeId, setAddExForNodeId] = useState<number | null>(null);
   const [addExForm, setAddExForm] = useState({
@@ -654,6 +662,10 @@ function LessonNodesPanel({
       commonMisconception: (n as any).commonMisconception ?? "",
       targetBloomLevel: String(n.targetBloomLevel ?? 1),
       estimatedMinutes: String(n.estimatedMinutes ?? 5),
+      childFriendlyExplanation: (n as any).childFriendlyExplanation ?? "",
+      basicExamples: ((n as any).basicExamples as string[] ?? []).join("\n"),
+      nonExamples: ((n as any).nonExamples as string[] ?? []).join("\n"),
+      realLifeExamples: ((n as any).realLifeExamples as string[] ?? []).join("\n"),
     });
   };
 
@@ -669,6 +681,10 @@ function LessonNodesPanel({
           commonMisconception: editNodeForm.commonMisconception,
           targetBloomLevel: parseInt(editNodeForm.targetBloomLevel) || 1,
           estimatedMinutes: parseInt(editNodeForm.estimatedMinutes) || 5,
+          childFriendlyExplanation: editNodeForm.childFriendlyExplanation,
+          basicExamples: editNodeForm.basicExamples.split("\n").map(s => s.trim()).filter(Boolean),
+          nonExamples: editNodeForm.nonExamples.split("\n").map(s => s.trim()).filter(Boolean),
+          realLifeExamples: editNodeForm.realLifeExamples.split("\n").map(s => s.trim()).filter(Boolean),
         },
       },
       { onSuccess: () => { setEditingNodeId(null); setEditNodeForm(null); refreshNodes(); } }
@@ -682,6 +698,7 @@ function LessonNodesPanel({
       successCriteria: ex.successCriteria ?? "",
       difficultyLevel: ex.difficultyLevel ?? "MEDIUM",
       assignment: ex.assignment ?? "CLASS",
+      relatedNodeId: ex.relatedNodeId ?? null,
     });
   };
 
@@ -811,6 +828,58 @@ function LessonNodesPanel({
 
       {open && (
         <div className="px-4 pb-4 space-y-3">
+          {/* ── Lesson Overview / General Theory (Step 5) ───────────────────── */}
+          <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">📖 Դасի ընдhанур теоретик мас</p>
+              {!descEditing && (
+                <button
+                  onClick={() => { setDescValue(lessonDescription ?? ""); setDescEditing(true); }}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                  title="Խmbagreл"
+                >✏️</button>
+              )}
+            </div>
+            {descEditing ? (
+              <div className="space-y-1.5">
+                <textarea
+                  className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+                  rows={4}
+                  placeholder="Ведите общее описание урока..."
+                  value={descValue}
+                  onChange={(e) => setDescValue(e.target.value)}
+                />
+                <div className="flex gap-1">
+                  <button
+                    disabled={descPending}
+                    onClick={async () => {
+                      setDescPending(true);
+                      try {
+                        await fetch(`/api/teacher/lessons/${lessonId}`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                          body: JSON.stringify({ description: descValue }),
+                        });
+                        setDescEditing(false);
+                      } finally {
+                        setDescPending(false);
+                      }
+                    }}
+                    className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
+                  >{descPending ? "..." : "Հаstaтел"}</button>
+                  <button
+                    onClick={() => setDescEditing(false)}
+                    className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
+                  >Ченarкел</button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap">
+                {(lessonDescription ?? descValue)?.trim() || <span className="text-muted-foreground/40 italic">Ոch нкараgrutywn</span>}
+              </p>
+            )}
+          </div>
+
           {/* Textbook metadata */}
           {(textbookTitle || textbookAuthor || chapterTitle) && (
             <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-0.5">
@@ -906,9 +975,37 @@ function LessonNodesPanel({
                             <textarea
                               className={fieldCls + " resize-none"}
                               rows={2}
-                              placeholder="Տարածված սխալ"
+                              placeholder="Տарастваца схал (commonMisconception)"
                               value={editNodeForm.commonMisconception}
                               onChange={(e) => setEditNodeForm((f) => f && { ...f, commonMisconception: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={3}
+                              placeholder="Мanкakaмит бацаратрутюн (childFriendlyExplanation)"
+                              value={editNodeForm.childFriendlyExplanation}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, childFriendlyExplanation: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={3}
+                              placeholder="Hnarin orinakner — мек tariq, мек оrinак (basicExamples)"
+                              value={editNodeForm.basicExamples}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, basicExamples: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={2}
+                              placeholder="Oче оринакнер — мек tariq, мек оrinак (nonExamples)"
+                              value={editNodeForm.nonExamples}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, nonExamples: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
+                              rows={2}
+                              placeholder="Каянкев кяnкум — мек tariq, мек оrinак (realLifeExamples)"
+                              value={editNodeForm.realLifeExamples}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, realLifeExamples: e.target.value })}
                             />
                             <div className="flex gap-2">
                               <input
@@ -1021,9 +1118,22 @@ function LessonNodesPanel({
                                       <option value="HOMEWORK">HOMEWORK</option>
                                     </select>
                                   </div>
+                                  {/* Step 4 — Կцел нодин */}
+                                  <select
+                                    className={fieldCls + " cursor-pointer"}
+                                    value={editExForm.relatedNodeId === null ? "null" : String(editExForm.relatedNodeId)}
+                                    onChange={(e) => setEditExForm((f) => f && { ...f, relatedNodeId: e.target.value === "null" ? null : parseInt(e.target.value) })}
+                                  >
+                                    <option value="null">📦 Չкцвац / Лратсуцич варжутюн</option>
+                                    {nodes.map((nd) => (
+                                      <option key={nd.id} value={String(nd.id)}>
+                                        {nd.sequence}. {nd.title}
+                                      </option>
+                                    ))}
+                                  </select>
                                   <div className="flex gap-1">
-                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հաստատել"}</button>
-                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
+                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հаstatел"}</button>
+                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Чеnаркел</button>
                                   </div>
                                 </div>
                               ) : (
@@ -1109,6 +1219,93 @@ function LessonNodesPanel({
               })}
             </div>
           )}
+
+          {/* ── Step 3 — Additional Exercises (relatedNodeId === null) ─────── */}
+          {(() => {
+            const additionalExercises = exercises.filter((e) => e.relatedNodeId === null);
+            return (
+              <div className="bg-white/3 border border-white/8 rounded-xl px-3 py-2 space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                  📦 Лратсуцич варжутюннер ({additionalExercises.length})
+                </p>
+                {additionalExercises.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/40 italic">Чка чкцвац варжутюннер</p>
+                ) : (
+                  <div className="space-y-2">
+                    {additionalExercises.map((ex) => {
+                      const isEditingEx = editingExerciseId === ex.id;
+                      return (
+                        <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
+                          {isEditingEx && editExForm ? (
+                            <div className="space-y-1.5">
+                              <textarea
+                                className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+                                rows={3}
+                                value={editExForm.exerciseTextVerbatim}
+                                onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextVerbatim: e.target.value })}
+                              />
+                              <input
+                                className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                placeholder="Haghoghutyyan banalich"
+                                value={editExForm.successCriteria}
+                                onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })}
+                              />
+                              {/* Step 4 — Move to node from additional */}
+                              <select
+                                className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
+                                value={editExForm.relatedNodeId === null ? "null" : String(editExForm.relatedNodeId)}
+                                onChange={(e) => setEditExForm((f) => f && { ...f, relatedNodeId: e.target.value === "null" ? null : parseInt(e.target.value) })}
+                              >
+                                <option value="null">📦 Чкцвац / Лратсуцич варжутюн</option>
+                                {nodes.map((nd) => (
+                                  <option key={nd.id} value={String(nd.id)}>
+                                    {nd.sequence}. {nd.title}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex gap-1">
+                                <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40">{updateEx.isPending ? "..." : "Hastatел"}</button>
+                                <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground">Чеnаркел</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-white/90 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  {ex.difficultyLevel && (
+                                    <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>
+                                  )}
+                                  {ex.assignment && (
+                                    <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
+                                      {ex.assignment === "HOMEWORK" ? "🏠 Тнайн" : "📋 Дасаранум"}
+                                    </span>
+                                  )}
+                                  {ex.sourcePage && (
+                                    <span className="text-[10px] text-muted-foreground/40"> Эж {ex.sourcePage}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-1 shrink-0">
+                                <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors" title="Ред.">✏️</button>
+                                <button
+                                  onClick={() => {
+                                    if (!confirm("Jnjel varjutyune?")) return;
+                                    deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx });
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                                >🗑️</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Add node button/form */}
           <div className="pt-1">
@@ -3305,6 +3502,7 @@ export default function TeacherDashboard() {
                                 textbookAuthor={(l as any).textbookAuthor ?? null}
                                 textbookTitle={(l as any).textbookTitle ?? null}
                                 chapterTitle={(l as any).chapterTitle ?? null}
+                                lessonDescription={(l as any).description ?? null}
                               />
                             </div>
                           </div>

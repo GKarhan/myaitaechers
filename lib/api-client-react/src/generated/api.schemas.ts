@@ -859,6 +859,12 @@ export interface LessonNode {
   commonMisconception?: string | null;
   childFriendlyExplanation?: string | null;
   basicExamples?: string[];
+  nonExamples?: string[];
+  realLifeExamples?: string[];
+  status?: string;
+  contentSourceType?: string;
+  createdBy?: string;
+  topicId?: number | null;
 }
 
 export interface CreateLessonNodeInput {
@@ -877,6 +883,8 @@ export interface UpdateLessonNodeInput {
   commonMisconception?: string;
   childFriendlyExplanation?: string;
   basicExamples?: string[];
+  nonExamples?: string[];
+  realLifeExamples?: string[];
 }
 
 export interface LessonExercise {

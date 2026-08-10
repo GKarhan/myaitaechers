@@ -592,6 +592,8 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
       commonMisconception: n.commonMisconception ?? null,
       childFriendlyExplanation: n.childFriendlyExplanation ?? null,
       basicExamples: Array.isArray(n.basicExamples) ? n.basicExamples : [],
+      nonExamples: Array.isArray(n.nonExamples) ? n.nonExamples : [],
+      realLifeExamples: Array.isArray(n.realLifeExamples) ? n.realLifeExamples : [],
       // Authoring provenance fields — used by teacher dashboard for badging
       status: n.status ?? "draft",
       contentSourceType: n.contentSourceType ?? "textbook",
@@ -670,7 +672,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
@@ -679,6 +681,8 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     commonMisconception?: string;
     childFriendlyExplanation?: string;
     basicExamples?: string[];
+    nonExamples?: string[];
+    realLifeExamples?: string[];
   };
 
   const patch: Partial<typeof existing> = {};
@@ -690,6 +694,8 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
   if (commonMisconception !== undefined) patch.commonMisconception = commonMisconception.trim() || null;
   if (childFriendlyExplanation !== undefined) patch.childFriendlyExplanation = childFriendlyExplanation.trim() || null;
   if (basicExamples !== undefined) patch.basicExamples = Array.isArray(basicExamples) ? basicExamples : [];
+  if (nonExamples !== undefined) patch.nonExamples = Array.isArray(nonExamples) ? nonExamples : [];
+  if (realLifeExamples !== undefined) patch.realLifeExamples = Array.isArray(realLifeExamples) ? realLifeExamples : [];
 
   const [updated] = await db
     .update(lessonNodesTable)
@@ -709,6 +715,8 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     commonMisconception: updated.commonMisconception ?? null,
     childFriendlyExplanation: updated.childFriendlyExplanation ?? null,
     basicExamples: Array.isArray(updated.basicExamples) ? updated.basicExamples : [],
+    nonExamples: Array.isArray(updated.nonExamples) ? updated.nonExamples : [],
+    realLifeExamples: Array.isArray(updated.realLifeExamples) ? updated.realLifeExamples : [],
   });
 });
 

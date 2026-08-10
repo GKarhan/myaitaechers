@@ -1,0 +1,349 @@
+## TASK — Complete Phase 6, Steps 2–5
+
+Մենք արդեն ավարտել ենք **Phase 6 — Step 1**։
+
+### Արդեն արված է և ՉՊԵՏՔ Է փոխել
+
+* Pass 1 → Pass 2 → Teacher Review → Phase 2 architecture
+* Phase 2-ը auto-chain չի արվում
+* Teacher Review gate-ը աշխատում է
+* Phase 2-ը գեներացնում և գրում է՝
+
+  * `childFriendlyExplanation`
+  * `basicExamples`
+  * `commonMisconception`
+  * `nonExamples`
+* `draft` և `needs_review` node-ները Phase 2-ում skip են արվում
+* AB Teacher-ը արդեն կարդում է այս 4 դաշտերը
+* 105/105 tests անցել են
+* `normalizeActivityPlacements()` Phases 1–6-ը ՉՓՈԽԵԼ
+* Pass 2 exercise assignment-ի նոր logic-ը ՉՓՈԽԵԼ
+* Phase 7 Dependencies-ը ԴԵՌ ՉՍԿՍԵԼ
+
+---
+
+# Նպատակ
+
+Հիմա ավարտիր **Phase 6-ի մնացած Step 2–5-ը**։
+
+Վերջնական Teacher Review / Mapping UI-ն պետք է թույլ տա ուսուցչին տեսնել և խմբագրել ամբողջ քարտեզը հետևյալ տրամաբանությամբ.
+
+```text
+Դասի ընդհանուր տեսական մաս
+        ↓
+Topic
+        ↓
+MicroNode 1
+    ├── Node-ի տեսական մաս
+    └── Վարժություններ
+        ↓
+MicroNode 2
+    ├── Node-ի տեսական մաս
+    └── Վարժություններ
+        ↓
+MicroNode 3
+    ├── Node-ի տեսական մաս
+    └── Վարժություններ
+        ↓
+...
+Լրացուցիչ վարժություններ
+```
+
+Բոլոր համապատասխան դաշտերը պետք է լինեն **editable**։
+
+---
+
+# STEP 2 — Teacher editing fields
+
+Audit արա ներկայիս node update API-ն և UI-ն։
+
+Ավելացրու teacher-ի խմբագրման հնարավորություն հետևյալ դաշտերի համար.
+
+* `childFriendlyExplanation`
+* `basicExamples`
+* `commonMisconception`
+* `nonExamples`
+* `realLifeExamples`
+* `verbatimTheoryAnchor`
+* `theoryContent`
+* `title` / node title
+
+Օգտագործիր արդեն գոյություն ունեցող update pattern-ը։
+
+### Կարևոր
+
+Մի ստեղծիր նոր DB columns։
+
+Schema-ում արդեն եղած դաշտերը օգտագործիր։
+
+`nonExamples` և `realLifeExamples` պետք է ընդունվեն node update route-ում և վերադարձվեն GET `/lessons/:lessonId/nodes` response-ում։
+
+---
+
+# STEP 3 — Additional Exercises UI
+
+Teacher Review-ի LessonNodesPanel-ում ավելացրու առանձին բաժին.
+
+### «📦 Լրացուցիչ վարժություններ»
+
+Այստեղ պետք է երևան **բոլոր exercises-ները, որոնց**
+
+```text
+relatedNodeId === null
+```
+
+Այսինքն՝ ոչ մի MicroNode-ի չկցված վարժությունները երբեք չպետք է կորչեն։
+
+Յուրաքանչյուր exercise պետք է ցույց տա առնվազն.
+
+* exercise number / title
+* exercise content
+* block type
+* էջը, եթե կա
+* edit button
+* delete button
+* «Կցել նոդին» գործողություն
+
+Բաժինը կարող է լինել collapsed/expandable։
+
+Եթե `additionalExercises = 0`, ցույց տուր համապատասխան empty state։
+
+---
+
+# STEP 4 — Move Exercise Between Nodes
+
+Exercise edit UI-ում ավելացրու.
+
+### «Կցել նոդին»
+
+Dropdown-ը պետք է պարունակի.
+
+```text
+Չկցված / Լրացուցիչ վարժություն
+MicroNode 1 — [title]
+MicroNode 2 — [title]
+MicroNode 3 — [title]
+...
+```
+
+Teacher-ը պետք է կարողանա.
+
+```text
+Node A → Node B
+Node A → Additional Exercises
+Additional Exercises → Node C
+```
+
+Օգտագործիր արդեն գոյություն ունեցող `relatedNodeId` update API-ն, եթե այն արդեն աշխատում է։
+
+**Նոր API route մի ստեղծիր, եթե անհրաժեշտ չէ։**
+
+Պահպանիր `relatedNodeId = null` semantics-ը՝ որպես Additional Exercise։
+
+### Կարևոր invariant
+
+Exercise-ը միշտ պետք է մնա տեսանելի ինչ-որ տեղ.
+
+```text
+relatedNodeId !== null
+        → համապատասխան MicroNode-ի exercises[]
+
+relatedNodeId === null
+        → Additional Exercises
+```
+
+Ոչ մի exercise չպետք է անհետանա UI-ից։
+
+---
+
+# STEP 5 — Lesson Overview / General Theory
+
+Մինչև MicroNode-ների ցուցակը պետք է լինի ամբողջ դասի ընդհանուր տեսական բացատրությունը։
+
+Ավելացրու editable section.
+
+### «📖 Դասի ընդհանուր տեսական մաս»
+
+Այն պետք է գտնվի մոտավորապես այս hierarchy-ում.
+
+```text
+Դասի վերնագիր
+Էջեր
+Դասի ընդհանուր տեսական մաս   ← այստեղ
+
+Topic
+  MicroNode
+    Node theory
+    Exercises
+  MicroNode
+    Node theory
+    Exercises
+
+Լրացուցիչ վարժություններ
+```
+
+Օգտագործիր արդեն գոյություն ունեցող.
+
+```text
+lessons.description
+```
+
+DB column-ը։
+
+### API
+
+Եթե արդեն գոյություն չունի համապատասխան update route, ավելացրու lesson description update-ի հնարավորություն։
+
+Օրինակ՝
+
+```text
+PATCH /lessons/:lessonId
+```
+
+body:
+
+```json
+{
+  "description": "..."
+}
+```
+
+Մի ստեղծիր նոր DB field։
+
+---
+
+# STEP 5B — Send Lesson Overview to AB Teacher
+
+AB Teacher-ի context-ում ավելացրու lesson-level overview.
+
+`chat.ts`-ում lesson-ի SELECT-ից վերցրու.
+
+```text
+lessons.description
+```
+
+և AI context-ում ավելացրու.
+
+```text
+LESSON_OVERVIEW
+```
+
+Այն պետք է լինի node theory-ից առաջ.
+
+```text
+LESSON_OVERVIEW
+        ↓
+NODE_THEORY
+        ↓
+APPROVED_EXPLANATION
+        ↓
+BASIC_EXAMPLES
+        ↓
+KNOWN_MISCONCEPTION
+        ↓
+NON_EXAMPLES
+        ↓
+EXERCISES
+```
+
+Այսպիսով AB Teacher-ը նախ հասկանում է՝ **ամբողջ դասը ինչի մասին է**, հետո միայն անցնում է ընթացիկ MicroNode-ին։
+
+---
+
+# UI-ի վերջնական կառուցվածքը
+
+LessonNodesPanel-ը պետք է մոտավորապես ունենա այս hierarchy-ն.
+
+```text
+┌──────────────────────────────────────┐
+│ Դասի վերնագիր                        │
+│ Էջեր                                 │
+│                                      │
+│ 📖 Դասի ընդհանուր տեսական մաս       │
+│ [editable text]              ✏️      │
+└──────────────────────────────────────┘
+
+┌──────────────────────────────────────┐
+│ 🗺️ Քարտեզված դաս                    │
+│                                      │
+│ Topic                                │
+│                                      │
+│ 1. MicroNode title           ✏️ 🗑️  │
+│    ├─ Տեսական մաս                    │
+│    │  [editable]                     │
+│    │                                 │
+│    └─ Վարժություններ                │
+│       114 ...                ✏️ 🗑️  │
+│       115 ...                ✏️ 🗑️  │
+│                                      │
+│ 2. MicroNode title           ✏️ 🗑️  │
+│    ├─ Տեսական մաս                    │
+│    └─ Վարժություններ                │
+│       116 ...                        │
+│       118 ...                        │
+│                                      │
+│ 3. MicroNode title                   │
+│    └─ ...                            │
+│                                      │
+│ 4. MicroNode title                   │
+│    └─ ...                            │
+└──────────────────────────────────────┘
+
+┌──────────────────────────────────────┐
+│ 📦 Լրացուցիչ վարժություններ (N)     │
+│                                      │
+│ 122 ...                              │
+│ [Կցել նոդին ▼]                      │
+└──────────────────────────────────────┘
+```
+
+---
+
+# Important architectural rules
+
+1. **Մի փոխիր Pass 1-ը։**
+2. **Մի փոխիր Pass 2 exercise assignment logic-ը։**
+3. **Մի փոխիր `normalizeActivityPlacements()`-ը։**
+4. **Մի սկսիր Phase 7 Dependencies։**
+5. **Մի ավելացրու նոր DB columns։**
+6. **Մի ջնջիր legacy Phase 2 columns։**
+7. `relatedNodeId = null` նշանակում է Additional Exercise։
+8. Բոլոր exercises-ը պետք է հասանելի լինեն UI-ում։
+9. Teacher-ը պետք է կարողանա ցանկացած exercise տեղափոխել ցանկացած MicroNode կամ վերադարձնել Additional Exercises։
+10. Բոլոր հիմնական mapping/theory fields-ը պետք է editable լինեն։
+11. Lesson overview-ը պետք է editable լինի։
+12. Lesson overview-ը պետք է հասանելի լինի AB Teacher-ին որպես `LESSON_OVERVIEW`։
+13. Existing tests-ը չպետք է կոտրվեն։
+
+---
+
+# Implementation discipline
+
+Սկզբում **audit արա միայն անհրաժեշտ files-ը** և հստակ ցույց տուր՝ ինչ ես պատրաստվում փոխել։
+
+Հետո իրականացրու Step 2–5-ը։
+
+Յուրաքանչյուր քայլից հետո ստուգիր build/tests։
+
+Վերջում պարտադիր ստուգիր իրական lesson-ի վրա.
+
+* բոլոր MicroNodes երևո՞ւմ են
+* node theory-ն երևո՞ւմ և խմբագրվո՞ւմ է
+* բոլոր exercises-ները երևո՞ւմ են
+* `relatedNodeId = null` exercises-ը երևո՞ւմ են Additional Exercises-ում
+* exercise-ը հնարավոր է՞ տեղափոխել node
+* node-ից Additional տեղափոխելը աշխատո՞ւմ է
+* lesson overview-ը պահպանվո՞ւմ է
+* lesson overview-ը AB Teacher context մտնո՞ւմ է
+* existing exercise-assignment tests-ը մնում են անցած
+
+### Չանցնել Phase 7-ին
+
+Այս task-ի վերջում միայն զեկուցիր.
+
+1. ինչ փոխվեց,
+2. ինչ tests անցան,
+3. ինչ live verification արվեց,
+4. Phase 6-ից ինչ է մնացել, եթե որևէ բան մնացել է։
+
+**Մի փոխիր ոչ մի այլ architecture առանց նախապես նշելու։**

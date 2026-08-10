@@ -644,6 +644,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               `6. Do not invent alternative explanations if the provided node content exists.`,
             ].join("\n")
           : "",
+        (lesson as { description?: string | null }).description?.trim()
+          ? `LESSON_OVERVIEW (context for this entire lesson — read before the current node):\n${(lesson as { description?: string | null }).description!.trim()}`
+          : "",
         currentNodeRecord?.theoryContent ? `NODE_THEORY:\n${currentNodeRecord.theoryContent}` : "",
         cfeBlock,
         verbatimAnchorBlock,
