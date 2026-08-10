@@ -1,0 +1,347 @@
+## TASK — «Միլիոնների դաս» քարտեզագրման ամբողջական DB AUDIT
+
+Կատարիր **READ-ONLY audit**։ ՈՉ ՄԻ տվյալ չփոխես, չավելացնես, չջնջես, migration չանես և code չփոփոխես։
+
+Քո նպատակն է պարզել՝ «Միլիոնների դաս» դասի համար **իրական PostgreSQL բազայում ինչ mapping-related տվյալներ են պահպանված**, նույնիսկ եթե դրանք platform-ի UI-ում չեն ցուցադրվում։
+
+### Դասը, որը պետք է գտնես
+
+Դասի վերնագիր՝ **Միլիոնների դաս**
+
+Էջեր՝ **8–11**
+
+Բաժին / §՝ **1.1**
+
+Հարթակում այս դասը երևում է մոտավորապես այս կառուցվածքով.
+
+* Միլիոնների դասի ներածություն
+* Թվերի կարդալու կանոններ
+* Թվերի տրոհում և մեկնաբանություն
+* textbook exercises 17, 18, 19, 20, 21, 22, 25, 26, 27, 28
+
+Եթե վերնագրով մի քանի record կա, գտիր այն record-ը, որի pages-ը համապատասխանում է 8–11-ին և որի nodes/exercises-ը համապատասխանում են վերևի բովանդակությանը։
+
+---
+
+# 1. Սկզբում գտիր Lesson-ի իրական ID-ն
+
+Փնտրիր `lessons` table-ում «Միլիոնների դաս» դասը։
+
+Ցույց տուր ամբողջ matching lesson row-ը՝ **բոլոր սյունակներով**, ոչ միայն հիմնական դաշտերով։
+
+Եթե կան մի քանի matching rows, ցույց տուր բոլորը և նշիր՝ որն ես համարում հիմնականը և ինչու։
+
+---
+
+# 2. Այդ Lesson-ի համար հանիր ԲՈԼՈՐ Lesson-level mapping fields
+
+Գտած `lessonId`-ով հանիր ամբողջ lesson row-ն։
+
+Յուրաքանչյուր field-ի համար ցույց տուր՝
+
+FIELD | VALUE | STATE
+
+որտեղ STATE-ը լինի՝
+
+* FILLED — իրական արժեք կա
+* NULL — database value = NULL
+* EMPTY — դատարկ string/array/object
+* DEFAULT — default արժեք է
+* NOT_PRESENT — տվյալ table-ում այդ field-ը գոյություն չունի
+
+**Մի թաքցրու NULL դաշտերը։**
+
+---
+
+# 3. Հանիր այդ Lesson-ի ԲՈԼՈՐ Nodes-ը
+
+Գտիր այդ lesson-ին կապված բոլոր `lesson_nodes` records-ը։
+
+Յուրաքանչյուր node-ի համար ցույց տուր.
+
+### Identity
+
+* id
+* lessonId
+* title
+* sequence
+* parentNodeId, եթե կա
+
+### Mapping / pedagogy
+
+* theoryContent
+* learningObjective
+* microNodeType
+* targetBloomLevel / bloomLevel
+* childFriendlyExplanation
+* basicExamples
+* realLifeExamples
+* commonMisconception
+* nonExamples
+* prerequisiteNodes
+* verbatimTheoryAnchor
+* knowledgeBoundaries
+* estimatedMinutes
+
+### Source / fidelity
+
+* sourceText
+* sourcePage
+* sourceParagraph
+* sourcePosition
+* blockType
+* sourceCoverage
+* confidenceScore
+* status
+* source/reference-related fields
+
+### Other mapping-related fields
+
+**Ցույց տուր նաև table-ում առկա ցանկացած այլ field, որը կարող է կապված լինել textbook mapping-ի հետ։**
+
+Կրկին՝ ոչ մի NULL field չթաքցնել։
+
+---
+
+# 4. Հանիր այդ Lesson-ի ԲՈԼՈՐ Exercises-ը
+
+Գտիր `lesson_exercises`-ում տվյալ lesson-ին կապված բոլոր exercises-ը։
+
+Յուրաքանչյուր exercise-ի համար ցույց տուր.
+
+* id
+* lessonId
+* nodeId / relatedNodeId
+* exercise text
+* exerciseType
+* difficulty
+* cognitiveLoad
+* sequence
+* sourcePage
+* sourceText
+* sourceType
+* confidenceScore
+* status
+* assignment
+* exercisePurpose
+* successCriteria
+* և table-ում առկա ցանկացած այլ mapping-related field
+
+Կարևոր է՝ **պահպանիր textbook exercise-ի ամբողջ իրական տեքստը**, եթե DB-ում կա։
+
+---
+
+# 5. Հանիր այդ Lesson-ի Node Dependencies-ը
+
+Գտիր բոլոր dependency records-ը, որոնք վերաբերում են այս Lesson-ի nodes-ին։
+
+Ցույց տուր.
+
+* id
+* fromNodeId
+* toNodeId
+* dependencyType
+* reason
+* confidenceScore
+* status
+* և մնացած fields-ը
+
+Եթե dependency չկա՝ գրիր.
+
+`NO DEPENDENCIES FOUND`
+
+---
+
+# 6. Փնտրիր SOURCE BLOCK / source mapping տվյալները
+
+Սա հատկապես կարևոր է։
+
+Repository/schema-ում փնտրիր՝ արդյոք կա առանձին table կամ relation, որը պահում է.
+
+* source blocks
+* sourceText
+* sourcePage
+* sourceParagraph
+* blockType
+* sourcePosition
+* sourceRef
+* sourceCoverage
+* textbook excerpts
+* textbook evidence
+* mapping sources
+* fidelity/source evidence
+
+Եթե նման table կա, գտիր դրա տվյալները **հենց «Միլիոնների դաս» Lesson-ի համար**։
+
+Եթե նման table չկա, գրիր.
+
+`NO SEPARATE SOURCE-BLOCK TABLE FOUND`
+
+Մի ենթադրիր։
+
+---
+
+# 7. Փնտրիր MicroNode-specific տվյալները
+
+Ստուգիր՝ ներկայիս DB architecture-ում MicroNode-ը.
+
+ա) առանձին table է,
+
+բ) `lesson_nodes`-ի record է,
+
+գ) այլ table/relation է,
+
+դ) ընդհանրապես առանձին DB entity չկա։
+
+Հստակ ցույց տուր՝ ինչ mechanism-ով է ներկայիս համակարգը պահում MicroNode-ը։
+
+Հատկապես ստուգիր՝ տվյալների մեջ իրականում գոյություն ունե՞ն.
+
+* microNodeId
+* microNodeType
+* learningObjective
+* sourceCoverage
+* sourceRef
+* sourceBlockIds
+* confidenceScore
+
+և տվյալ «Միլիոնների դասի» համար դրանց արժեքները։
+
+---
+
+# 8. Կապերը նույնպես ստուգիր
+
+Պետք է ցույց տաս իրական DB relationship-ը.
+
+LESSON
+→ NODES
+→ EXERCISES
+→ DEPENDENCIES
+→ SOURCE DATA
+→ OTHER MAPPING TABLES
+
+Յուրաքանչյուր կապի համար ցույց տուր իրական IDs։
+
+Օրինակ.
+
+`Lesson 123`
+→ `Node 456`
+→ `Exercises 17,18,20`
+→ `Dependency ...`
+
+Միայն իրական DB IDs օգտագործիր։
+
+---
+
+# 9. Հատուկ ստուգում — UI vs DATABASE
+
+Վերջում ստեղծիր այս աղյուսակը.
+
+| Mapping Field | DB-ում գոյություն ունի՞ | Այս Lesson-ի DB value | UI-ում երևո՞ւմ է | UI-ում չերևալու դեպքում՝ կա՞ DB-ում |
+| ------------- | ----------------------- | --------------------- | ---------------- | ----------------------------------- |
+
+Ներառիր առնվազն.
+
+### Lesson
+
+* title
+* subject
+* grade
+* textbook
+* author
+* section
+* pages
+* lessonGoal
+* lessonOutcomes
+* coreIdea
+* essentialQuestion
+* knowledgeBoundaries
+
+### Node
+
+* title
+* theoryContent
+* learningObjective
+* microNodeType
+* sourceBlockIds
+* sourceCoverage
+* sourceRef
+* childFriendlyExplanation
+* basicExamples
+* realLifeExamples
+* commonMisconception
+* nonExamples
+* targetBloomLevel
+* confidenceScore
+* status
+* sourcePage
+* sourceParagraph
+* sourcePosition
+* blockType
+
+### Exercise
+
+* text
+* sourcePage
+* sequence
+* exerciseType
+* difficulty
+* cognitiveLoad
+* relatedMicroNodes / nodeId
+* confidenceScore
+* status
+* assignment
+
+### Dependency
+
+* from
+* to
+* dependencyType
+* reason
+* confidenceScore
+
+Եթե որևէ field-ը schema-ում ընդհանրապես չկա, գրիր `NOT_PRESENT`, ոչ թե `NULL`։
+
+---
+
+# 10. Ամենակարևոր կանոնը
+
+Սա **ոչ թե mapping quality audit է**, այլ **physical DB state audit**։
+
+Չգնահատես՝ ճիշտ է, սխալ է, լավ է, վատ է։
+
+Միայն արձանագրիր.
+
+**ինչ կա DB-ում, ինչ չկա DB-ում, ինչն է NULL, և ինչն է UI-ում չերևում։**
+
+Մի՛ փորձիր բացակայող տվյալները վերականգնել կամ ենթադրել։
+
+---
+
+# 11. Վերջնական ամփոփում
+
+Վերջում տուր միայն այս 4 բաժինը.
+
+### A. LESSON
+
+Lesson ID + ամբողջ իրական DB state-ը
+
+### B. NODES
+
+Բոլոր nodes + բոլոր mapping-related fields
+
+### C. EXERCISES
+
+Բոլոր exercises + բոլոր mapping-related fields
+
+### D. DB vs UI GAP
+
+Որ fields-ը **կա DB-ում, բայց UI-ում չի երևում**։
+
+Հատուկ առանձնացրու.
+
+`DB HAS VALUE → UI DOES NOT SHOW`
+
+Սա է audit-ի հիմնական նպատակը։
+
+**Կրկնում եմ՝ READ-ONLY։ Ոչ մի փոփոխություն repository-ում կամ database-ում։**
