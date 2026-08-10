@@ -1,0 +1,146 @@
+Հիմա մի՛ փոխիր որևէ կոդ։
+
+Պետք է կատարենք **P5.1 + P5.4 + P5.6-ի production validation**՝ re-map անելով նախկինում հաստատված **Lesson 104**-ը։
+
+### Նպատակ
+
+Ստուգել՝ արդյոք քո կատարած փոփոխությունները իրական mapping pipeline-ում լուծել են L104-ի հաստատված failure case-երը, ոչ միայն unit tests-ում։
+
+### 1. Re-map Lesson 104
+
+Նույն source lesson-ը նորից run արա mapping pipeline-ով՝ օգտագործելով ներկայիս code-ը։
+
+Մի՛ օգտագործիր հին DB mapping result-ը որպես ապացույց։ Պետք է նոր mapping job-ի արդյունք։
+
+### 2. Հատուկ ստուգիր նախկին regression case-ը
+
+Հին արդյունքը՝
+
+```text
+Lesson 104
+MicroNode: MN1196
+block 12
+blockType: EXERCISE
+sourceBlockIndices: [12]
+exercise_count: 0
+```
+
+Նոր արդյունքի մեջ պարզ ցույց տուր՝
+
+* block 12-ի ներկայիս `blockType`
+* block 12-ի ներկայիս placement-ը
+* արդյոք այն հայտնվում է `sourceBlockIndices`-ում
+* արդյոք այն հայտնվում է `exercises[]`-ում
+* exercise-ի `sourceBlockIndex`
+* ստեղծված `lesson_exercises` row-ի ID-ն
+* `relatedNodeId`
+* որ MicroNode-ին է այն կցված
+* `exerciseTextVerbatim`
+
+### 3. Ստուգիր P5.4 rescue-ը
+
+Նոր mapping-ում ստուգիր բոլոր `unmappedBlockIndices`-ները։
+
+Եթե դրանց մեջ կա EXERCISE / ACTIVITY / HOMEWORK, ցույց տուր՝
+
+```text
+blockIndex
+blockType
+placement
+additionalExercises
+lesson_exercises
+relatedNodeId
+```
+
+Հաստատիր, որ իրական student-facing activity այլևս չի անհետանում։
+
+### 4. Coverage-ը նույնպես ստուգիր
+
+Նոր job-ի համար ցույց տուր՝
+
+```text
+pass1 block count
+topics
+MicroNodes
+mapped exercises
+additional exercises
+unmapped blocks
+coverage %
+coverage_valid
+missingIndices
+activityIssues
+```
+
+Հատուկ ստուգիր, որ rescue-ը coverage validation-ից առաջ է կատարվում և coverage-ը չի խեղաթյուրվում։
+
+### 5. P5.6 prompt hardening-ի իրական ազդեցությունը
+
+Գտիր Lesson 104-ում բոլոր EXERCISE blocks-ները և ցույց տուր նրանց վերջնական placement-ը։
+
+Հատկապես ստուգիր՝ կա՞ որևէ EXERCISE, որը կրկին հայտնվել է՝
+
+```text
+sourceBlockIndices
+```
+
+-ում։
+
+Եթե կա, ցույց տուր block-ը, MicroNode-ը և պատճառը։
+
+Եթե չկա, գրիր հստակ՝
+
+```text
+EXERCISE_IN_THEORY = 0
+```
+
+### 6. Worked examples-ի առանձին ստուգում
+
+Հին L104-ում՝
+
+```text
+EX-104-2
+EX-104-3
+```
+
+worked examples էին, որոնք սխալմամբ հայտնվել էին `lesson_exercises`-ում։
+
+Նոր mapping-ում ստուգիր՝
+
+* դրանց Pass 1 `blockType`
+* վերջնական placement-ը
+* արդյոք դեռ ստեղծվում են որպես `lesson_exercises`
+* եթե այո՝ ինչու
+* եթե ոչ՝ որտեղ են հայտնվում
+
+Այս ստուգումը կարևոր է, որպեսզի P5.6-ը EXERCISE-ի խնդիրը լուծելիս չստեղծի հակառակ՝ EXAMPLE → exercise խնդիր։
+
+### 7. AI Teacher handoff-ը դեռ մի փոխիր
+
+Այս validation-ի ընթացքում **chat.ts-ում ոչինչ չփոխես**։
+
+Մենք հիմա միայն պետք է պարզենք՝ mapping layer-ից հետո տվյալը ինչ վիճակում է հասնում DB։
+
+### 8. Վերջում տուր հստակ verdict
+
+Օգտագործիր այս ձևաչափը.
+
+```text
+P5.1 — PASS / FAIL
+P5.4 — PASS / FAIL
+P5.6 — PASS / FAIL
+
+L104 MN1196 regression — FIXED / NOT FIXED
+
+EXERCISE_IN_THEORY count = X
+EXERCISE_IN_UNMAPPED count = X
+additionalExercises count = X
+AI Teacher visibility = NOT TESTED YET
+
+Remaining risks:
+1. ...
+2. ...
+```
+
+Ոչ մի code change մի կատարիր այս փուլում։
+
+Եթե re-map-ը չի աշխատում կամ source lesson-ը հնարավոր չէ նույնությամբ re-run անել, մի գեներացրու ենթադրություն։ Ցույց տուր կոնկրետ ինչն է խանգարում և ինչ evidence է հասանելի։
