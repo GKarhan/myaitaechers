@@ -1,0 +1,356 @@
+We are continuing the mapping pipeline improvement in small, evidence-driven steps.
+
+## PHASE 1 — STEP 2: MicroNode Source Coverage & Granularity Audit
+
+### IMPORTANT
+
+This is an **AUDIT ONLY**.
+
+**DO NOT modify any code, prompts, schemas, database logic, or UI.**
+**DO NOT fix anything yet.**
+Do not make speculative recommendations until the actual code/data evidence has been collected.
+
+The goal is to determine, from the real implementation and real mapping data:
+
+1. Whether all meaningful Pass 1 source blocks are actually covered by Pass 2 Topics/MicroNodes.
+2. Whether source blocks can be silently dropped, merged incorrectly, or become unrepresented.
+3. Whether MicroNodes have the correct pedagogical granularity.
+4. Whether each MicroNode represents **one clear learning objective**, rather than multiple unrelated objectives bundled together.
+5. Whether the current Pass 2 logic is capable of producing the mapping contract we want.
+
+---
+
+# A. TRACE THE FULL SOURCE-COVERAGE PIPELINE
+
+Read the actual code and trace this path end-to-end:
+
+Pass 1 extracted blocks
+→ Pass 2 input
+→ Pass 2 topic generation
+→ Pass 2 MicroNode generation
+→ MicroNode source/block references
+→ DB insertion into `lessonNodesTable`
+
+Identify the exact files, functions, interfaces/types, and line numbers involved.
+
+Specifically verify:
+
+* How Pass 1 blocks are represented.
+* What fields identify each source block.
+* How blocks are passed from Pass 1 into Pass 2.
+* Whether Pass 2 receives ALL Pass 1 blocks or a filtered/subset.
+* Whether Pass 2 is explicitly required to cover every source block.
+* Whether Pass 2 has any coverage validation.
+* Whether a block can disappear between Pass 1 and Pass 2.
+* Whether a block can be assigned to multiple MicroNodes.
+* Whether a block can be assigned to zero MicroNodes.
+* Whether the current `sourceBlocks` / source reference mechanism is authoritative or only advisory.
+* Whether DB persistence preserves enough information to prove source coverage later.
+
+Do not infer. Show the actual code path.
+
+---
+
+# B. FIND THE CURRENT COVERAGE CONTRACT
+
+Determine whether the current mapper has an explicit rule equivalent to:
+
+> Every meaningful SOURCE BLOCK from Pass 1 must be represented by at least one Topic/MicroNode, unless it is explicitly classified as non-learning / ignorable.
+
+Search the actual prompts and validation code for:
+
+* source coverage
+* block coverage
+* unmapped blocks
+* missing blocks
+* source block IDs
+* block IDs
+* source references
+* coverage validation
+* orphan blocks
+* duplicate source assignment
+* all blocks
+* every block
+* complete coverage
+
+Report:
+
+1. Exact prompt/code rule if one exists.
+2. Exact file and line.
+3. Whether it is enforced or merely requested from the model.
+4. Whether there is a deterministic validator after AI generation.
+
+If there is no real enforcement, say explicitly:
+
+**NOT ENFORCED**
+
+Do not describe a prompt instruction as enforcement.
+
+---
+
+# C. AUDIT REAL MAPPING DATA
+
+Use at least one real existing mapped lesson from the database.
+
+Prefer Lesson 101 if its current mapping data is available.
+
+For the selected lesson, retrieve/compare:
+
+* total Pass 1 source blocks
+* source block types
+* source block IDs/references if available
+* total Topics
+* total MicroNodes
+* source blocks attached to each MicroNode
+* source blocks with no MicroNode representation
+* source blocks represented more than once
+* source blocks whose content appears to have been merged into another MicroNode
+
+Produce an explicit coverage table such as:
+
+| Source Block | Type | Source Text Summary | Assigned Topic | Assigned MicroNode | Coverage Status |
+| ------------ | ---- | ------------------- | -------------- | ------------------ | --------------- |
+| ...          | ...  | ...                 | ...            | ...                | COVERED         |
+| ...          | ...  | ...                 | ...            | ...                | ORPHAN          |
+| ...          | ...  | ...                 | ...            | ...                | DUPLICATED      |
+
+Do not fabricate rows. Use actual DB/code evidence.
+
+If the current DB does not retain enough information to perform this comparison, state exactly what is missing and why.
+
+---
+
+# D. AUDIT MICRO-NODE GRANULARITY
+
+Inspect the actual Pass 2 prompt/schema and determine what rules currently govern MicroNode creation.
+
+For each rule, identify whether it is:
+
+* explicitly required,
+* weakly suggested,
+* absent,
+* or deterministically validated.
+
+We specifically care about this target:
+
+> **One MicroNode = one clear learning objective that can be taught and checked independently.**
+
+Audit whether the current system prevents cases such as:
+
+### Too broad
+
+One MicroNode contains:
+
+* definition
+* classification
+* rules
+* exceptions
+* examples
+* application
+
+when those represent multiple teachable objectives.
+
+### Too narrow
+
+Multiple MicroNodes split what is really one indivisible learning objective into trivial fragments.
+
+### Correct
+
+One MicroNode has:
+
+* one coherent concept/skill,
+* one clear learning objective,
+* source evidence supporting it,
+* teachable explanation,
+* independently checkable understanding.
+
+Find the actual code/prompt logic responsible for this.
+
+---
+
+# E. CHECK FOR THE SPECIFIC FAILURE MODES
+
+Determine whether the current pipeline can produce each of these:
+
+1. **ORPHAN BLOCK**
+   A meaningful Pass 1 block is not represented by any MicroNode.
+
+2. **MULTI-OBJECTIVE MICRONODE**
+   One MicroNode contains multiple independent learning objectives.
+
+3. **OVER-MERGING**
+   Several conceptually distinct source blocks are merged into one MicroNode merely because they are adjacent.
+
+4. **OVER-SPLITTING**
+   One coherent learning objective is unnecessarily split into multiple MicroNodes.
+
+5. **SOURCE-LESS MICRONODE**
+   A MicroNode exists without traceable source evidence.
+
+6. **DUPLICATE COVERAGE**
+   The same source block is unnecessarily assigned to multiple unrelated MicroNodes.
+
+7. **NON-LEARNING BLOCK CONFUSION**
+   Examples, headings, exercises, objectives, or other source blocks are incorrectly treated as independent knowledge MicroNodes—or incorrectly discarded when they contain meaningful instructional information.
+
+For each failure mode give:
+
+* Can it happen? YES / NO / NOT VERIFIED
+* Exact evidence
+* Where it can happen
+* Whether a deterministic guard exists
+
+---
+
+# F. CHECK THE EXISTING `unmappedBlocks` MECHANISM
+
+The previous mapping reports contain values such as:
+
+`pass1BlocksExtracted`
+`unmappedBlocks`
+
+Audit exactly:
+
+* where `pass1BlocksExtracted` is calculated,
+* where `unmappedBlocks` is calculated,
+* what constitutes "mapped",
+* whether it is based on actual source-block identity,
+* whether it detects semantic coverage or merely counting,
+* whether a model can claim coverage without actually covering the source,
+* whether `unmappedBlocks = 0` is sufficient evidence of true source coverage.
+
+This is especially important.
+
+Do NOT assume:
+
+`unmappedBlocks = 0`
+
+means:
+
+> every meaningful source block is correctly represented.
+
+Prove what the code actually checks.
+
+---
+
+# G. CHECK WHETHER THE CURRENT DATA MODEL IS SUFFICIENT
+
+Determine whether the current DB schema can support a rigorous future coverage validator.
+
+Specifically answer whether each MicroNode can be traced back to:
+
+* one or more exact Pass 1 source blocks,
+* source block identity,
+* source text,
+* source page,
+* source paragraph,
+* bounding box,
+* block type.
+
+Also determine whether we can later calculate:
+
+`covered_source_blocks / meaningful_source_blocks`
+
+without relying on AI judgment.
+
+If not, identify the smallest schema/data-model change that would be required — but **DO NOT implement it**.
+
+---
+
+# H. FINAL REPORT FORMAT
+
+Return a forensic report with exactly these sections:
+
+## 1. EXECUTIVE VERDICT
+
+Give a short verdict:
+
+* Source coverage: VERIFIED / PARTIAL / NOT ENFORCED / NOT VERIFIED
+* MicroNode granularity: VERIFIED / PARTIAL / WEAK / NOT VERIFIED
+* Deterministic validation: YES / NO / PARTIAL
+
+## 2. SOURCE-COVERAGE PIPELINE
+
+Exact code path with files, functions, and line numbers.
+
+## 3. COVERAGE CONTRACT
+
+What the current system actually guarantees.
+
+Clearly distinguish:
+
+* prompt instruction
+* schema constraint
+* runtime validation
+* DB evidence
+
+## 4. REAL DATABASE COVERAGE AUDIT
+
+Use actual lesson data and provide the source-block → MicroNode coverage table.
+
+## 5. MICRONODE GRANULARITY AUDIT
+
+Explain exactly what currently forces or fails to force:
+
+**one MicroNode = one clear learning objective**
+
+## 6. FAILURE-MODE MATRIX
+
+| Failure Mode                 | Can Happen? | Evidence | Deterministic Guard? |
+| ---------------------------- | ----------- | -------- | -------------------- |
+| Orphan block                 |             |          |                      |
+| Multi-objective MicroNode    |             |          |                      |
+| Over-merging                 |             |          |                      |
+| Over-splitting               |             |          |                      |
+| Source-less MicroNode        |             |          |                      |
+| Duplicate coverage           |             |          |                      |
+| Non-learning block confusion |             |          |                      |
+
+## 7. `unmappedBlocks` FORENSIC CHECK
+
+Explain exactly what it proves and what it does NOT prove.
+
+## 8. DATA-MODEL READINESS
+
+Can the current DB support rigorous source-coverage validation?
+
+## 9. CONCRETE FINDINGS
+
+Separate into:
+
+### CONFIRMED BUGS
+
+Only things proven by code/data.
+
+### ARCHITECTURE GAPS
+
+Missing enforcement or missing data structures.
+
+### NOT VERIFIED
+
+Anything that cannot be proven from the available evidence.
+
+## 10. RECOMMENDED NEXT STEP
+
+Recommend **only the next smallest change** that should follow this audit.
+
+Do not implement it.
+
+---
+
+### STRICT FORENSIC RULES
+
+* No code changes.
+* No prompt changes.
+* No schema changes.
+* No speculative explanations.
+* No "probably".
+* No claiming a prompt instruction is an enforcement mechanism.
+* Distinguish **CONFIRMED**, **INFERRED**, and **NOT VERIFIED**.
+* Use exact file names, function names, variable names, and line numbers wherever possible.
+* If execution evidence is unavailable, say **NOT VERIFIED**.
+* If a DB query cannot prove something, say so.
+* Do not hide contradictory evidence.
+* Do not optimize for making the current architecture look good.
+
+We are building toward a strict, source-faithful Knowledge Base Mapping pipeline, so the audit should prioritize **truthful evidence over optimistic interpretation**.
