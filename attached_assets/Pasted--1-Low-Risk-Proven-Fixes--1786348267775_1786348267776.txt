@@ -1,0 +1,109 @@
+Մենք հիմա աշխատում ենք միայն **ՓՈՒԼ 1 — Low-Risk Proven Fixes**-ի վրա։
+
+Այս փուլում պետք է ստուգես և, միայն evidence-ը հաստատելուց հետո, ուղղես **երկու կոնկրետ խնդիր՝ RC-3 և `node.sequence` bug**։
+
+### ԿԱՐԵՎՈՐ
+
+Մի փոխիր այս փուլում՝
+
+* Phase 2-ի trigger/workflow-ը
+* lesson-level pedagogical fields-ի architecture-ը
+* Phase 2 schema-ն
+* dependency generation-ը
+* TEXT Contract-ը
+* AI Teacher-ի logic-ը
+* mapping prompts-ի հիմնական logic-ը
+
+Մի refactor արա։ Մի արա unrelated cleanup։
+
+## PART 1 — RC-3 SOURCE METADATA
+
+Ստուգիր ամբողջ data flow-ը՝
+
+Pass 1 extraction
+→ intermediate mapping data
+→ Pass 2 / mapper
+→ DB insert/update
+
+Հաստատիր իրական code evidence-ով՝ որտեղ են ստեղծվում/պահվում հետևյալ 4 դաշտերը.
+
+* `sourceText`
+* `sourceParagraph`
+* `sourceBoundingBox`
+* `blockType`
+
+Հաստատիր՝ արդյոք դրանք արդեն հասանելի են memory-ում mapper-ի insert-ի պահին։
+
+Հետո ցույց տուր կոնկրետ insert/update object-ը և ապացուցիր՝ այդ 4 field-ից որոնք չեն գրվում DB։
+
+### Միայն եթե հաստատվի, որ դրանք արդեն available են memory-ում և պարզապես չեն persist արվում՝
+
+ավելացրու դրանք համապատասխան DB insert/update object-ում։
+
+Չփոխես extraction logic-ը և չստեղծես նոր AI call։
+
+## PART 2 — NODE.SEQUENCE BUG
+
+Գտիր կոնկրետ code path-ը, որտեղ `node.sequence`-ը ստեղծվում է։
+
+Հաստատիր՝
+
+* որտեղ է `sequence`-ը հաշվարկվում,
+* ինչ variable է օգտագործվում,
+* ինչու է այն reset լինում կամ դառնում `1`,
+* արդյոք sequence-ը lesson-wide է, topic-wide է, թե այլ scope ունի։
+
+Ուշադրություն՝ մի խառնիր՝
+
+* Topic sequence
+* Node/MicroNode sequence
+* Lesson node ordering
+
+Նախ ցույց տուր current behavior-ը և կոնկրետ պատճառը։
+
+### Հետո միայն ուղղիր bug-ը
+
+Պահպանիր տվյալների ներկայիս architecture-ը և արա հնարավորինս փոքր փոփոխություն։
+
+## PART 3 — VERIFICATION
+
+Fix-ից հետո պարտադիր կատարիր իրական verification։
+
+1. Run/build/typecheck/tests, որոնք հասանելի են project-ում։
+2. Կատարիր մեկ test mapping նույն test lesson-ով, որով ներկայիս behavior-ը կարող ենք համեմատել։
+3. DB-ից իրական query-ով ստուգիր RC-3-ի 4 field-ը։
+4. DB-ից ստուգիր node sequences-ը։
+5. Համեմատիր node/microNode/exercise counts-ը fix-ից առաջ/հետո։
+6. Համոզվիր, որ existing mapping data չի կորել կամ unintended կերպով չի փոխվել։
+
+### Verification report-ը տուր այս ձևաչափով
+
+**RC-3**
+
+* Root cause:
+* File + line:
+* Before:
+* Change:
+* After:
+* DB evidence:
+
+**Sequence**
+
+* Root cause:
+* File + line:
+* Before:
+* Change:
+* After:
+* DB evidence:
+
+**Regression check**
+
+* Nodes:
+* MicroNodes:
+* Exercises:
+* Other affected fields:
+* Tests/build:
+
+Եթե որևէ բան իրական execution/DB evidence-ով չես կարող հաստատել, գրիր **NOT VERIFIED**։ Չենթադրես և մի լրացրու բացը ենթադրությամբ։
+
+Այս փուլում **մի անցիր հաջորդ architecture task-ին**։ Սպասիր այս verification report-ի ավարտին։

@@ -1191,6 +1191,9 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
 
     const topicRows: { id: number; sequence: number; title: string }[] = [];
     const nodeRows:  { id: number; topicId: number; title: string; sequence: number }[] = [];
+    // Sequence bug fix: lesson-wide counter so MicroNode sequence is unique across
+    // all topics (previously reset per topic, giving every first node sequence=1).
+    let mnSeq = 0;
 
     for (const topic of pass2.topics) {
       // 1. Insert the topic
@@ -1204,7 +1207,6 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         .returning();
 
       topicRows.push({ id: insertedTopic.id, sequence: topic.sequence, title: topic.title });
-      let mnSeq = 0;
 
       for (const mn of topic.microNodes) {
         mnSeq += 1;
@@ -1217,23 +1219,32 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           .join("\n\n");
         const firstSourcePage = sourceBlocks.find((b) => b.sourcePage)?.sourcePage ?? null;
 
+        // Primary source block — used to populate per-block provenance fields (RC-3 fix).
+        // MicroNodes aggregate multiple blocks; we use the first as the canonical source anchor.
+        const primaryBlock = sourceBlocks[0] ?? null;
+
         // 2. Insert the MicroNode
         const [insertedNode] = await db
           .insert(lessonNodesTable)
           .values({
             lessonId,
-            topicId:           insertedTopic.id,
-            sequence:          mnSeq,
-            title:             mn.title,
-            learningObjective: mn.learningObjective || null,
-            microNodeType:     mn.microNodeType,
-            theoryContent:     theoryContent || null,
+            topicId:             insertedTopic.id,
+            sequence:            mnSeq,
+            title:               mn.title,
+            learningObjective:   mn.learningObjective || null,
+            microNodeType:       mn.microNodeType,
+            theoryContent:       theoryContent || null,
             verbatimTheoryAnchor: theoryContent || null,
-            sourcePage:        firstSourcePage,
-            status:            "draft" as const,
-            createdBy:         "ai"   as const,
-            targetBloomLevel:  1,
-            estimatedMinutes:  5,
+            sourcePage:          firstSourcePage,
+            // RC-3: persist Pass-1 block provenance fields that were previously dropped
+            sourceText:          primaryBlock?.sourceText.trim() || null,
+            sourceParagraph:     primaryBlock?.sourceParagraph ?? null,
+            sourceBoundingBox:   primaryBlock?.sourceBoundingBox ?? null,
+            blockType:           primaryBlock?.blockType ?? null,
+            status:              "draft" as const,
+            createdBy:           "ai"   as const,
+            targetBloomLevel:    1,
+            estimatedMinutes:    5,
           })
           .returning();
 
