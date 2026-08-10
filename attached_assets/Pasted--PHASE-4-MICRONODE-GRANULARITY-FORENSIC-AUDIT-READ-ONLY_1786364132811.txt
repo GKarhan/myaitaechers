@@ -1,0 +1,514 @@
+# PHASE 4 — MICRONODE GRANULARITY FORENSIC AUDIT
+
+## READ-ONLY — NO CODE CHANGES
+
+Մենք ավարտել ենք Phase 3 — Source Fidelity / Coverage Gate։
+
+Այժմ սկսում ենք **Phase 4 — MicroNode Granularity**։
+
+Այս փուլում **ՈՉ ՄԻ CODE CHANGE ՉԱՆԵՍ**։
+
+Միայն ուսումնասիրիր repository-ն, գործող Mapper-ի logic-ը, prompts-ը, schemas-ը, validators-ը, իրական mapping արդյունքները և տուր forensic audit։
+
+---
+
+# 1. PHASE 4-Ի ՀԻՄՆԱԿԱՆ ՆՊԱՏԱԿԸ
+
+Պետք է պարզել՝ Mapper-ը կարողանո՞ւմ է ճիշտ որոշել.
+
+> այստեղ պետք է լինի **մեկ MicroNode**
+
+կամ
+
+> այստեղ պետք է լինի **երկու/երեք առանձին MicroNode**։
+
+Հիմնական սկզբունքը՝
+
+## ONE CLEAR LEARNING OBJECTIVE
+
+Յուրաքանչյուր MicroNode պետք է ներկայացնի **մեկ հստակ սովորելի նպատակ**։
+
+MicroNode-ը չպետք է լինի պարզապես թեմայի մի հատված կամ source blocks-ի պատահական խումբ։
+
+Այն պետք է ունենա մեկ հստակ learning objective, որը learner-ը կարող է սովորել, հասկանալ, կիրառել կամ ստուգել որպես մեկ coherent learning unit։
+
+---
+
+# 2. GRANULARITY-Ի ԵՐԵՔ ՀԻՄՆԱԿԱՆ ՎԻՃԱԿ
+
+Յուրաքանչյուր իրական MicroNode գնահատիր հետևյալ երեք կատեգորիաներից մեկով.
+
+### A. CORRECT GRANULARITY
+
+MicroNode-ը ճիշտ չափի է։
+
+Այն ունի.
+
+* մեկ հստակ learning objective
+* մեկ coherent concept/skill
+* source blocks-ը բնականորեն վերաբերում են նույն objective-ին
+* exercises-ը ստուգում են նույն հիմնական objective-ը
+* բաժանելու անհրաժեշտություն չկա
+* միավորելու անհրաժեշտություն չկա
+
+Սա PASS է։
+
+---
+
+### B. MEGA-NODE / UNDER-SPLIT
+
+MicroNode-ը չափազանց մեծ է։
+
+Մեկ MicroNode-ի մեջ միավորված են երկու կամ ավելի իրական learning objectives։
+
+Հատկապես ուշադրություն դարձրու այն դեպքերին, երբ տարբեր մասերը պահանջում են տարբեր **cognitive operations**։
+
+Օրինակ՝
+
+* ճանաչել + դասակարգել
+* սահմանել + կիրառել կանոնը
+* տարբերակել + փոխակերպել
+* կանոնը հասկանալ + բացառությունները կիրառել
+* concept A հասկանալ + անկախ concept B սովորել
+
+Եթե learner-ը պետք է երկու տարբեր բան սովորի, որպեսզի MicroNode-ը ամբողջությամբ յուրացրած համարվի, մեծ հավանականությամբ պետք է լինի երկու MicroNode։
+
+Նշիր.
+
+* ինչ objectives են միավորված
+* ինչ source blocks են միավորված
+* ինչու դրանք մեկ objective չեն
+* որտեղ պետք է բաժանվի
+* առաջարկվող MicroNode-ների քանակը
+
+---
+
+### C. OVER-SPLIT
+
+Mapper-ը նույն learning objective-ը բաժանել է մի քանի MicroNode-ի, չնայած դրանք իրականում մեկ coherent learning unit են։
+
+Օրինակ՝ նույն կանոնի.
+
+* definition
+* rule
+* immediate example
+
+առանձին MicroNode դարձնելը, եթե դրանք միասին ներկայացնում են մեկ սովորելի objective։
+
+Կամ նույն skill-ի շատ փոքր քայլերը բաժանել այնպես, որ learner-ը ստիպված լինի դրանք առանձին node-ներով անցնել, չնայած cognitive objective-ը մեկն է։
+
+Նշիր.
+
+* որ MicroNode-ներն են արհեստականորեն բաժանված
+* ինչն է ցույց տալիս, որ դրանք նույն objective-ն ունեն
+* ինչու պետք է merge անել
+* առաջարկվող merged MicroNode-ը
+
+---
+
+# 3. COGNITIVE OPERATION TEST
+
+Յուրաքանչյուր MicroNode-ի համար կատարիր այս test-ը։
+
+Հարց.
+
+> Learner-ը այս MicroNode-ը յուրացնելու համար կատարո՞ւմ է մեկ հիմնական cognitive operation, թե՞ մի քանի տարբեր։
+
+Օրինակներ՝
+
+### Մեկ operation
+
+* identify
+* define
+* distinguish
+* classify
+* apply one rule
+* calculate using one method
+* transform using one rule
+* explain one concept
+
+→ սովորաբար մեկ MicroNode։
+
+### Տարբեր operations
+
+Օրինակ՝
+
+> «Սովորել գոյականի սահմանումը և հետո սովորել դրա հոլովումը»
+
+Սրանք կարող են պահանջել տարբեր cognitive operations։
+
+Կամ՝
+
+> «Տարբերել գոյականը և ածականը + կիրառել հոլովման կանոնը»
+
+Եթե երկրորդ մասը անկախ skill է, պետք է ստուգել՝ արդյոք երկու MicroNode է անհրաժեշտ։
+
+Մի բաժանիր մեխանիկորեն միայն այն պատճառով, որ source-ում երկու paragraph կա։
+
+**Source structure ≠ learning structure։**
+
+---
+
+# 4. LEARNING OBJECTIVE TEST
+
+Յուրաքանչյուր MicroNode-ի համար extract արա.
+
+1. `title`
+2. `learningObjective`
+3. `sourceBlockIndices`
+4. source block-երի `blockType`
+5. source block-երի `sourceText`
+6. exercises
+7. supporting material
+8. unmapped material
+
+Այնուհետև վերաձևակերպիր learning objective-ը քո կողմից մեկ կարճ sentence-ով։
+
+Օրինակ.
+
+> Learner can identify nouns in a sentence.
+
+Հետո ստուգիր՝ տվյալ MicroNode-ի ամբողջ content-ը սպասարկո՞ւմ է հենց այդ objective-ը։
+
+Եթե ոչ՝ բացատրի՛ր։
+
+---
+
+# 5. OBJECTIVE COUNT TEST
+
+Յուրաքանչյուր MicroNode-ի համար փորձիր պատասխանել.
+
+> Կարո՞ղ եմ այս MicroNode-ի content-ը նկարագրել մեկ հստակ learning objective-ով՝ առանց «և»-երով մի քանի տարբեր նպատակներ միացնելու։
+
+Եթե objective-ը բնականաբար դառնում է.
+
+> Learner can X **and** Y **and** Z
+
+ապա դա հնարավոր Mega-node է։
+
+Սակայն **միայն "and" բառի առկայությունը բավարար ապացույց չէ**։
+
+Պետք է որոշել՝ X, Y, Z-ը նույն coherent skill-ի ենթաքայլե՞ր են, թե՞ իրականում տարբեր learning objectives։
+
+---
+
+# 6. SOURCE-TO-MICRONODE GRANULARITY
+
+Մի ուսումնասիրիր միայն `learningObjective` field-ը։
+
+Համեմատիր նաև source evidence-ը։
+
+Յուրաքանչյուր MicroNode-ի համար պարզիր.
+
+### Source coherence
+
+Բոլոր `sourceBlockIndices`-ը վերաբերում են նույն concept/skill-ին՞։
+
+Եթե ոչ՝ ինչու։
+
+### Source completeness
+
+Եթե MicroNode-ը ներկայացնում է objective X, source-ում X-ի համար անհրաժեշտ material-ը ամբողջությամբ ներառվա՞ծ է։
+
+### Source fragmentation
+
+Նույն objective-ի source blocks-ը անիմաստ կերպով բաժանվա՞ծ են տարբեր MicroNode-ների։
+
+---
+
+# 7. EXERCISE ALIGNMENT
+
+Յուրաքանչյուր MicroNode-ի exercises-ը նույնպես օգտագործիր granularity-ի evidence։
+
+Ստուգիր.
+
+> Այս exercises-ները ստուգո՞ւմ են նույն learning objective-ը։
+
+Եթե մեկ MicroNode-ում exercise A-ն ստուգում է skill X, իսկ exercise B-ն՝ անկախ skill Y, դա Mega-node-ի ուժեղ signal է։
+
+Եթե երկու տարբեր MicroNode-ների exercises-ը իրականում նույն skill-ն են ստուգում, դա Over-splitting-ի signal է։
+
+Հատուկ ստուգիր նաև.
+
+* `additionalExercises`
+* rescued exercises
+* exercise source block indices
+
+---
+
+# 8. PASS 2 PROMPT AUDIT
+
+Ուսումնասիրիր Mapper-ի այն prompt-ը/logic-ը, որը ստեղծում է MicroNodes։
+
+Փնտրիր.
+
+* ինչպես է սահմանվում MicroNode-ը
+* կա՞ explicit "one clear learning objective" rule
+* կա՞ over-splitting protection
+* կա՞ mega-node protection
+* կա՞ cognitive-operation criterion
+* AI-ին տրվո՞ւմ է split/merge decision rule
+* AI-ն ստանո՞ւմ է օրինակներ ճիշտ granularity-ի մասին
+* AI-ն ստիպվա՞ծ է reasoning անել objective count-ի շուրջ
+* server-side validator կա՞
+* granularity validation deterministic է՞, թե՞ միայն prompt-level
+
+Հատկապես տարբերակիր.
+
+### Prompt guarantee
+
+AI-ին ասվում է, որ պետք է ճիշտ granularity պահի։
+
+և
+
+### System guarantee
+
+Server-ը փաստացի ստուգում է, որ output-ը համապատասխանում է այդ պահանջին։
+
+---
+
+# 9. EXISTING MAPPING EVIDENCE
+
+Ուսումնասիրիր առնվազն մի քանի իրական mapping job։
+
+Պարտադիր ներառիր.
+
+* առնվազն մեկ mapping, որը ակնհայտորեն լավ granularity ունի
+* առնվազն մեկ mapping, որտեղ հնարավոր Mega-node կա
+* եթե կա՝ առնվազն մեկ mapping, որտեղ Over-splitting կա
+
+Եթե repository/database-ում բավարար իրական օրինակներ չկան, հստակ նշիր դա։
+
+**Մի հորինիր օրինակներ և մի ներկայացրու hypothetical case-ը որպես իրական evidence։**
+
+---
+
+# 10. DO NOT CONFUSE THESE CONCEPTS
+
+Հատուկ զգույշ եղիր.
+
+### Topic ≠ MicroNode
+
+Մեկ topic-ը կարող է ունենալ բազմաթիվ MicroNode-ներ։
+
+### Source block ≠ MicroNode
+
+Մեկ MicroNode-ը կարող է ունենալ բազմաթիվ source blocks։
+
+### Paragraph ≠ MicroNode
+
+Paragraph-ի սահմանները չեն որոշում learning unit-ի սահմանները։
+
+### Exercise ≠ MicroNode
+
+Յուրաքանչյուր exercise-ը առանձին node չէ։
+
+### Definition + Rule + Example ≠ automatically 3 MicroNodes
+
+Եթե դրանք միասին սովորեցնում են մեկ objective, դրանք կարող են լինել մեկ MicroNode։
+
+### Different cognitive operation ≠ automatically separate node
+
+Պետք է ստուգել՝ դա նույն skill-ի բնական ենթաքայլ է, թե անկախ learning objective։
+
+---
+
+# 11. REQUIRED FORENSIC ANALYSIS
+
+Տուր առնվազն հետևյալ հարցերի պատասխանները.
+
+### Q1
+
+Mapper-ի ներկայիս logic-ը իրականում ունի՞ measurable granularity contract։
+
+### Q2
+
+`one clear learning objective` սկզբունքը որտեղ և ինչպես է enforced։
+
+### Q3
+
+Կա՞ server-side protection Mega-node-ի դեմ։
+
+### Q4
+
+Կա՞ server-side protection Over-splitting-ի դեմ։
+
+### Q5
+
+AI-ն ինչ criteria-ով է որոշում split/merge։
+
+### Q6
+
+Կա՞ cognitive-operation-based rule։
+
+### Q7
+
+Կա՞ source coherence check։
+
+### Q8
+
+Կա՞ exercise/objective alignment check։
+
+### Q9
+
+Իրական mapping evidence-ով քանի՞ node է ակնհայտորեն Mega-node։
+
+### Q10
+
+Իրական mapping evidence-ով քանի՞ node/group է Over-split։
+
+---
+
+# 12. DO NOT PROPOSE CODE YET
+
+Այս փուլում **չգրես implementation plan**։
+
+Մի գրիր.
+
+* exact code edits
+* patch
+* migration
+* commit
+* refactor instructions
+
+մինչև forensic evidence-ը ամբողջությամբ ներկայացված չլինի։
+
+Վերջում միայն կարող ես նշել.
+
+> **Fix required: YES / NO**
+
+և շատ կարճ նկարագրել՝ ինչ տեսակի պաշտպանություն է պակասում։
+
+---
+
+# 13. SEVERITY
+
+Գնահատիր.
+
+### CRITICAL
+
+Granularity failure-ը կարող է հանգեցնել նրան, որ AI Teacher-ը մեկ node-ում սովորեցնի մի քանի անկախ objectives և learner-ի mastery-ը սխալ գնահատվի։
+
+### HIGH
+
+Mega-node կամ over-splitting-ը պարբերաբար հանդիպում է իրական mappings-ում։
+
+### MEDIUM
+
+Prompt-ում կան granularity կանոններ, բայց դրանք server-side չեն enforced։
+
+### LOW
+
+Minor edge cases կամ cosmetic granularity issues։
+
+---
+
+# 14. REQUIRED FINAL REPORT FORMAT
+
+Վերադարձիր հետևյալ կառուցվածքով.
+
+## PHASE 4 — MICRONODE GRANULARITY FORENSIC REPORT
+
+### 1. Pipeline / Granularity Decision Flow
+
+Ցույց տուր՝ որտեղ է որոշվում MicroNode-ի սահմանը։
+
+### 2. Current Contract
+
+Ի՞նչ է ասում գործող Mapper contract-ը MicroNode granularity-ի մասին։
+
+### 3. Enforcement Analysis
+
+Prompt-level vs server-side enforcement։
+
+### 4. Cognitive Operation Analysis
+
+Կա՞ արդյոք explicit cognitive-operation criterion։
+
+### 5. Real Mapping Evidence
+
+Աղյուսակ.
+
+| Mapping | MicroNode | Objective | Source Blocks | Classification | Evidence |
+| ------- | --------- | --------- | ------------- | -------------- | -------- |
+
+Classification-ը միայն.
+
+* `CORRECT`
+* `MEGA_NODE`
+* `OVER_SPLIT`
+
+### 6. Mega-node Findings
+
+Յուրաքանչյուր իրական finding-ի համար.
+
+* MicroNode
+* source blocks
+* current objective
+* hidden objectives
+* cognitive operations
+* why it should split
+* recommended split count
+
+### 7. Over-split Findings
+
+Յուրաքանչյուր իրական finding-ի համար.
+
+* MicroNodes
+* objectives
+* shared source concept
+* why they should merge
+* recommended merged structure
+
+### 8. Prompt Weaknesses
+
+Ինչն է բացակայում կամ թույլ։
+
+### 9. Validator Weaknesses
+
+Ինչը հնարավոր չէ guarantee անել server-side։
+
+### 10. Contract Compliance
+
+| Requirement                   | Status            | Evidence |
+| ----------------------------- | ----------------- | -------- |
+| One clear learning objective  | PASS/FAIL/PARTIAL |          |
+| No mega-nodes                 | PASS/FAIL/PARTIAL |          |
+| No over-splitting             | PASS/FAIL/PARTIAL |          |
+| Cognitive operation alignment | PASS/FAIL/PARTIAL |          |
+| Source coherence              | PASS/FAIL/PARTIAL |          |
+| Exercise alignment            | PASS/FAIL/PARTIAL |          |
+
+### 11. Severity Summary
+
+CRITICAL / HIGH / MEDIUM / LOW
+
+### 12. Final Verdict
+
+Վերջում հստակ գրիր.
+
+`PHASE 4 STATUS: PASS`
+
+կամ
+
+`PHASE 4 STATUS: PARTIAL`
+
+կամ
+
+`PHASE 4 STATUS: FAIL`
+
+և մեկ կարճ պատճառաբանություն։
+
+---
+
+## ABSOLUTE RULE
+
+Այս audit-ի ընթացքում **ոչ մի code change չանել**։
+
+Միայն forensic investigation։
+
+Մենք ուզում ենք նախ պարզել՝
+
+> **Mapper-ը իրականում կարողանո՞ւմ է ճիշտ չափի MicroNode ստեղծել, թե՞ պարզապես prompt-ում գրված է, որ պետք է դա անի։**
+
+Կանգ առ forensic report-ից հետո։
