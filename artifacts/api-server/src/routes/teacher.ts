@@ -593,8 +593,17 @@ router.get("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Aut
 
   const nodeCountMap = new Map(nodeCounts.map((r) => [r.lessonId, r.cnt]));
   // Include nodeCount so the frontend can tell a lesson is mapped even when
-  // coreIdea is null (manual TEXT-format imports don't set coreIdea on the row)
-  res.json(lessons.map((l) => ({ ...l, nodeCount: nodeCountMap.get(l.id) ?? 0 })));
+  // coreIdea is null (manual TEXT-format imports don't set coreIdea on the row).
+  // P3.5: include coverageValid so the UI can distinguish MAPPED+PASS vs MAPPED+FAIL.
+  // Sourced from lessons.mappingMetadata (written at /map time). NULL for lessons
+  // that have never been auto-mapped (manual imports, legacy rows).
+  res.json(lessons.map((l) => {
+    const meta = (l as { mappingMetadata?: unknown }).mappingMetadata as
+      { quality?: { coverageValidation?: { valid?: boolean } } } | null | undefined;
+    const coverageValid: boolean | null =
+      meta?.quality?.coverageValidation?.valid ?? null;
+    return { ...l, nodeCount: nodeCountMap.get(l.id) ?? 0, coverageValid };
+  }));
 });
 
 router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: AuthRequest, res) => {

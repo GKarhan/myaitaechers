@@ -124,9 +124,10 @@ async function uploadResource(
 // ── Shared type for lesson-centric job status poll ────────────────────────────
 interface LessonJobStatus {
   jobId:    number | null;
-  status:   string;   // 'none' | 'pending' | 'running' | 'completed' | 'failed'
+  status:   string;   // 'none' | 'pending' | 'running' | 'completed' | 'coverage_failed' | 'failed'
   progress: string | null;
   error:    string | null;
+  result?:  { coverageValid?: boolean } | null;
 }
 
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
@@ -270,6 +271,15 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
       qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
       qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+    } else if (mapStatus.status === 'coverage_failed') {
+      // P3.1: mapping ran to completion but source coverage validation failed.
+      // Nodes/exercises were persisted; refresh data so the teacher can inspect them.
+      setPostPending(false);
+      qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
+      qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+      qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
+      qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+      setMapError('⚠️ Քարտեզագրումն ավարտվեց, բայց source coverage-ը թերի է — կան չծածկված blocks։ Ստուգիր Mapping Report-ը։');
     } else if (mapStatus.status === 'failed') {
       setPostPending(false);
       setMapError(mapStatus.error ?? 'Qartezagrume djaxolvets, pkhorel krnkin');
@@ -3133,9 +3143,11 @@ export default function TeacherDashboard() {
                   return (
                     <div className="space-y-2">
                       {passItems.map(({ tbHeader, topicHeader, lesson: l, isFirstLesson }, _idx) => {
-                        const isCompleted = (l as any).status === "completed";
-                        const isActive    = (l as any).status === "active";
-                        const isMapped    = Boolean((l as any).coreIdea) || ((l as any).nodeCount ?? 0) > 0;
+                        const isCompleted  = (l as any).status === "completed";
+                        const isActive     = (l as any).status === "active";
+                        const isMapped     = Boolean((l as any).coreIdea) || ((l as any).nodeCount ?? 0) > 0;
+                        // P3.5: null = never auto-mapped (no coverage data), true = passed, false = coverage failed
+                        const coverageValid: boolean | null = (l as any).coverageValid ?? null;
                         return (
                           <div key={l.id}>
                             {tbHeader && (
@@ -3189,6 +3201,15 @@ export default function TeacherDashboard() {
                                   </div>
                                 </div>
                                 <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
+                                  {/* P3.5: coverage badge — shown when auto-mapped but coverage validation failed */}
+                                  {isMapped && coverageValid === false && (
+                                    <span
+                                      title="Source coverage validation failed — some blocks were not accounted for. Re-map or inspect the Mapping Report."
+                                      className="px-2 py-1 rounded-lg text-xs text-orange-400 border border-orange-400/20 bg-orange-400/10 select-none cursor-help"
+                                    >
+                                      ⚠️ Coverage
+                                    </span>
+                                  )}
                                   {isCompleted ? (
                                     <span className="px-2 py-1 rounded-lg text-xs text-teal-400 border border-teal-400/20 bg-teal-400/10 select-none">
                                       Ավարտված

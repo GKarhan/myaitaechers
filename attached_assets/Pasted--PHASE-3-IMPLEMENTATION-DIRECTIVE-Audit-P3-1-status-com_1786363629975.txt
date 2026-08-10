@@ -1,0 +1,136 @@
+## PHASE 3 — IMPLEMENTATION DIRECTIVE
+
+Audit-ը հաստատված է, բայց P3.1-ում առաջարկված `status: "completed" + coverageValid: false` տարբերակը ՉԵՆՔ ընդունում։
+
+Մեր Phase 3 contract-ի պարտադիր կանոնն է.
+
+> Եթե `coverageValidation.valid === false`, mapping-ը ՉՊԵՏՔ Է անցնի որպես `completed`։
+
+### P3.1 — Իրական Coverage Completion Gate
+
+Փոխիր completion logic-ը այնպես, որ mapping job-ի status-ը կախված լինի coverage validation-ից.
+
+```text
+coverageValidation.valid === true
+→ status = "completed"
+
+coverageValidation.valid === false
+→ status = "coverage_failed"
+
+technical/runtime exception
+→ status = "failed"
+```
+
+`coverage_failed`-ը պետք է լինի առանձին business/contract failure state, ոչ թե technical failure։
+
+Frontend polling-ը պարտադիր թարմացրու այնպես, որ.
+
+* `completed` → success
+* `coverage_failed` → mapping-ը ավարտված է, բայց SOURCE coverage-ը չի անցել → error/warning state
+* `failed` → technical failure
+* `pending/running` → loading
+
+Ոչ մի դեպքում `coverage_failed` վիճակում spinner-ը չպետք է մնա կախված։
+
+### P3.2 — Canonical Coverage Metric
+
+Պահպանիր audit-ի առաջարկը.
+
+`pass2.coverageValidation.coveragePercent`
+
+պետք է լինի Mapper-ի միակ canonical coverage metric-ը։
+
+Հեռացրու/դադարեցրու divergent local formula-ն.
+
+```ts
+(totalBlocks - unmappedBlocks) / totalBlocks
+```
+
+Review threshold-ը նույնպես պետք է հիմնվի canonical validator metric-ի և իրական `missingIndices` տվյալների վրա։
+
+### P3.3 — Source Block Traceability
+
+Պահպանիր ամբողջ `pass1.blocks`-ը mapping job result-ում.
+
+```ts
+pass1Blocks: pass1.blocks
+```
+
+որպեսզի ցանկացած `missingIndices` հետո հնարավոր լինի վերածել իրական source content-ի։
+
+Չստեղծել նոր table, եթե դրա անհրաժեշտությունը չկա։
+
+### P3.4 — Exercise Source Traceability
+
+Ավելացնել nullable.
+
+```ts
+sourceBlockIndex
+```
+
+`lesson_exercises`-ում։
+
+Այն պետք է փոխանցվի BOTH exercise insert paths-ում.
+
+1. MicroNode exercises
+2. Additional exercises
+
+Պետք է պահպանվի նաև Phase 2 safety-net-ով rescued exercises-ի դեպքում։
+
+Պետք է ստեղծվի և կիրառվի DB migration։
+
+### P3.5 — Teacher UI
+
+Teacher UI-ում պետք է հնարավոր լինի տարբերել.
+
+```text
+NOT MAPPED
+MAPPED + COVERAGE PASSED
+MAPPED + COVERAGE FAILED
+```
+
+`coverage_failed` mapping-ը չպետք է ցուցադրվի որպես սովորական հաջողությամբ mapped lesson։
+
+### Կարևոր սահմանափակումներ
+
+* Չփոխել Mapper prompt-ը։
+* Չփոխել Pass 1 extraction logic-ը։
+* Չփոխել Pass 2 topic/micronode semantics-ը։
+* Չփոխել Phase 2 atomicity safety net-ը։
+* Չփոխել Additional Exercises-ի rescue logic-ը, բացի source traceability field-ը պահպանելու անհրաժեշտությունից։
+* Չավելացնել նոր behavior, որը audit-ում չի հիմնավորվել։
+* Փոփոխությունները պահել հնարավորինս minimal։
+* Existing valid mappings-ի behavior-ը չխախտել։
+
+### Implementation order
+
+1. P3.1 + P3.2 + P3.3
+2. Typecheck/tests
+3. P3.4 migration + schema + inserts
+4. Migration verification + typecheck/tests
+5. P3.5 backend + frontend
+6. Full regression test
+
+### Required forensic verification
+
+Implementation-ից հետո վերադարձնել forensic report, ոչ թե պարզապես «done».
+
+Պարտադիր ցույց տալ.
+
+* changed files
+* exact changes
+* tests before/after
+* typecheck before/after
+* migration status
+* `coverageValidation.valid=false` դեպքում իրական status-ը
+* `coverageValidation.valid=true` դեպքում իրական status-ը
+* canonical coverage metric-ի արժեքը
+* missing block behavior
+* `pass1Blocks` persistence verification
+* exercise `sourceBlockIndex` persistence verification
+* teacher UI behavior for all 3 mapping states
+* confirmation that no unrelated logic changed
+
+Եթե որևէ պահանջի implementation-ը հակասում է existing architecture-ին, կանգ առ և ներկայացրու կոնկրետ conflict-ը։ Ինքնուրույն fallback behavior մի հորինի։
+
+**Do not make changes outside this Phase 3 scope.**

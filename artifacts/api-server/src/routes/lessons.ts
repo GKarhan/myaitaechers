@@ -1282,6 +1282,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
             sourcePage:          block.sourcePage ? String(block.sourcePage) : null,
             relatedNodeId:       insertedNode.id,
             sequence:            exerciseCounter,
+            // P3.4: persist the Pass-1 block index for MAPPING → SOURCE traceability
+            sourceBlockIndex:    ex.blockIndex,
             sourceType:          "textbook" as const,
             status:              "draft"    as const,
           });
@@ -1304,6 +1306,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           sourcePage:           block.sourcePage ? String(block.sourcePage) : null,
           relatedNodeId:        null,
           sequence:             exerciseCounter,
+          // P3.4: persist the Pass-1 block index for MAPPING → SOURCE traceability
+          sourceBlockIndex:     ex.blockIndex,
           sourceType:           "textbook" as const,
           status:               "draft"    as const,
         });
@@ -1312,9 +1316,11 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     }
 
     // ── Build, store, and return the structured mapping report ────────────────
-    const coveragePercent = pass1.blocks.length > 0
-      ? Math.round(((pass1.blocks.length - pass2.unmappedBlockIndices.length) / pass1.blocks.length) * 100)
-      : 100;
+    // P3.2: use the validator's canonical metric — coveredBlocks / totalBlocks — as the
+    // single source of truth for coverage percent.  The old formula
+    // ((totalBlocks - unmappedBlocks) / totalBlocks) excluded missingIndices and diverged
+    // from the validator's result.
+    const coveragePercent = pass2.coverageValidation.coveragePercent;
 
     // ── Review items for pages that failed extraction entirely ───────────────
     // These are pages where Pass 1 could not parse the AI's response even after
@@ -1339,11 +1345,12 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       });
     }
     // High-severity: coverage below 90% indicates a potentially serious gap.
+    // P3.2: use canonical validator metric (missingIndices.length) not the old unmapped formula.
     if (coveragePercent < 90) {
       reviewItems.push({
         nodeId:    null as unknown as number,
         nodeTitle: "—",
-        reason:    `Coverage is only ${coveragePercent}% — ${pass1.blocks.length - (pass1.blocks.length - pass2.unmappedBlockIndices.length)} of ${pass1.blocks.length} blocks were not placed in any MicroNode. Significant content may be missing.`,
+        reason:    `Coverage is only ${coveragePercent}% — ${pass2.coverageValidation.missingIndices.length} of ${pass1.blocks.length} source blocks were not accounted for by the mapping pipeline. Significant content may be missing.`,
       });
     }
 
@@ -1394,16 +1401,27 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       "lesson mapping Pass 1 + Pass 2 complete"
     );
 
+    // P3.1: branch completion status on coverage validity.
+    //   "completed"      → all source blocks accounted for (valid = true)
+    //   "coverage_failed"→ mapping ran but validator found missing/duplicate/invalid indices
+    //   "failed"         → technical/runtime exception (handled in catch block)
+    const jobStatus = pass2.coverageValidation.valid ? "completed" : "coverage_failed";
+
     await db.update(mappingJobsTable)
       .set({
-        status: "completed",
+        status: jobStatus,
         result: {
+          // P3.1: surface coverage validity at the top level for easy polling
+          coverageValid:        pass2.coverageValidation.valid,
           pass1BlocksExtracted: pass1.blocks.length,
           topicsCreated:        pass2.topics.length,
           microNodesCreated:    totalNodes,
           exercisesCreated:     totalExercises,
           unmappedBlocks:       pass2.unmappedBlockIndices.length,
           mappingReport,
+          // P3.3: persist full Pass-1 block array so any missingIndices can later
+          // be resolved to their original blockType / sourceText / page metadata.
+          pass1Blocks:          pass1.blocks,
           topics: topicRows.map((t) => ({
             id:       t.id,
             sequence: t.sequence,
@@ -1421,6 +1439,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       {
         jobId:           job.id,
         lessonId,
+        jobStatus,
+        coverageValid:   pass2.coverageValidation.valid,
         pass1Blocks:     pass1.blocks.length,
         topicsCreated:   pass2.topics.length,
         microNodes:      totalNodes,

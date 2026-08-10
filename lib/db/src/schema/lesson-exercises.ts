@@ -25,6 +25,12 @@ export const lessonExercisesTable = pgTable("lesson_exercises", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 
   // ── Authoring provenance & review fields (mirrors lesson_nodes pattern) ─
+  // 0-based index into the Pass-1 blocks[] array that produced this exercise.
+  // Populated for all exercises created by the mapping pipeline (both MicroNode-linked
+  // and additionalExercises). NULL on manually-created exercises (no Pass-1 source).
+  // Enables MAPPING → SOURCE traceability: join with mapping_jobs.result->>'pass1Blocks'
+  // using this index to recover the original blockType / sourceText / page metadata.
+  sourceBlockIndex: integer("source_block_index"),
   // Origin of this exercise: "textbook" (extracted) | "ai_generated" (created by AI).
   sourceType: text("source_type").notNull().default("textbook"),
   // Verbatim passage from the textbook this exercise is based on
