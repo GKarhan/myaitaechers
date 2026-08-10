@@ -4,7 +4,7 @@ import {
   lessonNodesTable, lessonExercisesTable,
   lessonNodeDependenciesTable, usersTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, gte } from "drizzle-orm";
+import { eq, and, asc, inArray, gte, or, isNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import {
   callAI, callAIStructured,
@@ -353,13 +353,28 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             verbatim: e.exerciseTextVerbatim?.slice(0, 80),
           })),
         }, "Phase2 classExercises loaded");
-      } else if (phase === 3 && allNodeIds.length > 0) {
+      } else if (phase === 3) {
+        // P5.2: Phase 3 (wrap-up / DEEP_DIVE) includes both:
+        //   - CLASS exercises linked to any lesson node (relatedNodeId IN allNodeIds)
+        //   - CLASS exercises that are unassigned (relatedNodeId IS NULL) but belong to
+        //     this lesson — these are textbook tasks the pipeline could not attach to a
+        //     specific MicroNode (additionalExercises rescued by the deterministic pass).
+        // The lessonId guard is mandatory for the IS NULL branch (prevents cross-lesson leaks).
+        // Phase 2 is deliberately kept node-specific (relatedNodeId = currentNodeId only),
+        // so unassigned exercises never appear during in-node teaching.
+        const nodeOrNullFilter = allNodeIds.length > 0
+          ? or(
+              inArray(lessonExercisesTable.relatedNodeId, allNodeIds),
+              isNull(lessonExercisesTable.relatedNodeId),
+            )
+          : isNull(lessonExercisesTable.relatedNodeId);
         classExercises = await db
           .select()
           .from(lessonExercisesTable)
           .where(and(
-            inArray(lessonExercisesTable.relatedNodeId, allNodeIds),
-            eq(lessonExercisesTable.assignment, "CLASS")
+            eq(lessonExercisesTable.lessonId, lessonId),
+            eq(lessonExercisesTable.assignment, "CLASS"),
+            nodeOrNullFilter,
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
       }

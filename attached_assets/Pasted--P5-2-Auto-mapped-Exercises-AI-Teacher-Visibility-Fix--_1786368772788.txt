@@ -1,0 +1,146 @@
+Կատարիր **P5.2 — Auto-mapped Exercises → AI Teacher Visibility Fix**-ը։
+
+Կարևոր՝ սա պետք է լինի **կոդի ընդհանուր fix**, ոչ թե միայն Lesson 104-ի համար։ Lesson 104-ը օգտագործիր որպես regression/production verification case։
+
+### Հաստատված root cause
+
+Forensic report-ը հաստատել է՝
+
+* `lesson_exercises`-ում auto-mapped exercises-ը ստեղծվում են,
+* բայց `assignment` field-ը չի գրվում,
+* դրա պատճառով այն մնում է `NULL`,
+* իսկ `chat.ts`-ը AI Teacher context-ի համար փնտրում է միայն `assignment = "CLASS"` կամ `assignment = "HOMEWORK"`,
+* արդյունքում auto-mapped exercises-ից **0-ը հասնում է AI Teacher-ին**։
+
+Խնդրի կոնկրետ insertion sites-ը՝
+
+`artifacts/api-server/src/routes/lessons.ts`
+
+1. MicroNode exercises insertion
+2. `additionalExercises` insertion
+
+### FIX 1 — lessons.ts: assignment գրել DB-ում
+
+MicroNode-ի սովորական exercises-ի դեպքում ավելացրու՝
+
+`assignment: "CLASS"`
+
+`additionalExercises`-ի դեպքում որոշումը արա հենց source Pass1 block-ի `block.blockType`-ից.
+
+* `EXERCISE` → `assignment: "CLASS"`
+* `ACTIVITY` → `assignment: "CLASS"`
+* `HOMEWORK` → `assignment: "HOMEWORK"`
+
+Չփոխես `exerciseTextVerbatim`, `sourceBlockIndex`, `relatedNodeId` կամ այլ գործող behavior։
+
+Կարևոր՝ assignment-ը **չպետք է AI-generated text-ից որոշվի**։ Օգտագործիր Pass1-ի իրական `block.blockType`-ը։
+
+### FIX 2 — null relatedNodeId-ի visibility
+
+8 unassigned exercises ունեն՝
+
+`relatedNodeId = null`
+
+Դրանք չպետք է կորչեն AI Teacher-ի context-ից։
+
+Ուսումնասիրիր `chat.ts`-ի Phase 3 / DEEP_DIVE exercise query-ը և այնպես փոխիր, որ համապատասխան `CLASS` exercises-ը հասանելի լինեն նաև այն դեպքում, երբ `relatedNodeId IS NULL`։
+
+Բայց **մի՛ խառնիր unassigned exercises-ը ընթացիկ MicroNode-ի exercises-ի հետ Phase 2-ում**։
+
+Phase 2-ի behavior-ը պետք է մնա node-specific.
+
+Phase 3 / wrap-up-ում կարող ես ներառել՝
+
+* exercises կապված տվյալ lesson-ի node-ների հետ
+* և `relatedNodeId IS NULL` unassigned CLASS exercises
+
+HOMEWORK-ը թող մնա իր առանձին `assignment = "HOMEWORK"` տրամաբանությամբ։
+
+### FIX 3 — չփոխել Teaching Cycle-ը
+
+Չփոխես արդեն գործող՝
+
+`TEACH → MICRO_CHECK → FEEDBACK → TRANSITION`
+
+և
+
+`THEORY → MICRO_CHECK → EXERCISE → VERIFIED`
+
+logic-ը։
+
+Միայն ապահովիր, որ exercise-ները, որոնք արդեն կան DB-ում, հասնեն այդ logic-ին։
+
+### FIX 4 — tests
+
+Ավելացրու deterministic tests, որոնք հաստատում են՝
+
+1. Auto-mapped `EXERCISE` → `assignment = CLASS`
+2. Auto-mapped `ACTIVITY` → `assignment = CLASS`
+3. Auto-mapped `HOMEWORK` → `assignment = HOMEWORK`
+4. Existing manually-created exercises-ի behavior-ը չի կոտրվում
+5. `relatedNodeId != null + CLASS` → Phase 2-ում հասանելի է
+6. `relatedNodeId = null + CLASS` → Phase 3-ում հասանելի է
+7. `relatedNodeId = null + HOMEWORK` → homework context-ում հասանելի է
+8. Unassigned CLASS exercise-ը Phase 2-ի current-node query-ում չի հայտնվում
+9. Existing teaching-cycle behavior-ը չի փոխվում
+
+### FIX 5 — Lesson 104 regression
+
+Fix-ից հետո re-map արա **Lesson 104**-ը։
+
+Ստուգիր DB-ում բոլոր 10 exercises-ի համար՝
+
+* `assignment` ճիշտ է
+* `source_block_index` valid է
+* `exerciseTextVerbatim` պահպանվել է Pass1 source-ից
+* 2 mapped exercises → `relatedNodeId = 1209`, `assignment = CLASS`
+* 8 unassigned exercises → `relatedNodeId = null`, համապատասխան assignment-ով
+
+Հետո ստուգիր իրական `chat.ts` context-ը։
+
+Պետք է ստանանք մոտավորապես՝
+
+**Phase 2 / node 1209**
+
+* `classExercisesCount = 2`
+* `CLASS_EXERCISES` section-ը կա lessonContext-ում
+
+**Phase 3 / wrap-up**
+
+* mapped CLASS exercises-ը հասանելի են
+* unassigned CLASS exercises-ը նույնպես հասանելի են
+* `DEEP_DIVE_EXERCISES` section-ը կա
+
+**Homework**
+
+* միայն `HOMEWORK` exercises-ը հայտնվում են `HOMEWORK_TASKS`-ում
+
+### Կարևոր սահմանափակումներ
+
+Մի՛ արա հետևյալը.
+
+* Մի՛ hardcode արա Lesson 104-ը
+* Մի՛ hardcode արա exercise IDs
+* Մի՛ փոխիր Pass1/Pass2 mapping contract-ը
+* Մի՛ փոխիր sourceBlockIndices-ի logic-ը
+* Մի՛ վերագրիր unassigned exercises-ը պատահական MicroNode-ի
+* Մի՛ փոխիր Teaching Mode state machine-ը
+* Մի՛ ջնջիր validator-ների արդեն աշխատող logic-ը
+* Մի՛ թաքցրու սխալները fallback-ով
+
+Սկզբում կարդա համապատասխան `lessons.ts`, `chat.ts`, schema/interface-ները և առկա tests-ը։ Հետո կատարիր նվազագույն targeted փոփոխությունները։
+
+Վերջում ինձ տուր forensic verification report՝
+
+1. փոխված ֆայլերը
+2. exact root cause
+3. exact code changes
+4. tests passed/failed
+5. Lesson 104 DB verification
+6. Phase 2 context verification
+7. Phase 3 context verification
+8. Homework context verification
+9. AI Teacher exercise visibility՝ `X/Y`
+10. regression risks
+
+Եթե որևէ test կամ typecheck failure կա, **մի թաքցրու այն**․ նշիր՝ pre-existing է, թե այս փոփոխությունից առաջացած։

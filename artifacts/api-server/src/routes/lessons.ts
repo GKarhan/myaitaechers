@@ -1296,6 +1296,9 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
             sourceBlockIndex:    ex.blockIndex,
             sourceType:          "textbook" as const,
             status:              "draft"    as const,
+            // P5.2: exercises attached to a MicroNode are CLASS exercises.
+            // chat.ts Phase 2 filters on assignment = "CLASS" to populate CLASS_EXERCISES.
+            assignment:          "CLASS"    as const,
           });
           totalExercises += 1;
         }
@@ -1319,6 +1322,13 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
         }
         exerciseCounter += 1;
 
+        // P5.2: derive assignment from the Pass1 block type.
+        // HOMEWORK blocks → "HOMEWORK" (shown in HOMEWORK_TASKS context).
+        // EXERCISE / ACTIVITY → "CLASS" (shown in DEEP_DIVE_EXERCISES context, Phase 3).
+        // chat.ts Phase 3 now includes relatedNodeId IS NULL + assignment = "CLASS".
+        const additionalAssignment: "CLASS" | "HOMEWORK" =
+          block.blockType === "HOMEWORK" ? "HOMEWORK" : "CLASS";
+
         await db.insert(lessonExercisesTable).values({
           lessonId,
           exerciseId:           `EX-${lessonId}-${exerciseCounter}`,
@@ -1330,6 +1340,7 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           sourceBlockIndex:     ex.blockIndex,
           sourceType:           "textbook" as const,
           status:               "draft"    as const,
+          assignment:           additionalAssignment,
         });
         totalExercises += 1;
       }
