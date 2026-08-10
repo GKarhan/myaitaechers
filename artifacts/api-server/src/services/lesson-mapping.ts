@@ -645,6 +645,17 @@ function parsePass2JSON(raw: string): unknown {
   if (s.startsWith("```json")) s = s.slice(7);
   else if (s.startsWith("```"))  s = s.slice(3);
   if (s.endsWith("```")) s = s.slice(0, -3).trim();
+  // Sanitize bare control characters that models occasionally emit inside JSON string
+  // literals (e.g. literal \n, \r, \t instead of the escaped forms \\n \\r \\t).
+  // The regex matches complete JSON string literals (handles \" escapes, dotAll flag)
+  // and escapes/strips the offending bytes before JSON.parse sees them.
+  s = s.replace(/"(?:[^"\\]|\\.)*"/gs, (str) =>
+    str
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+  );
   return JSON.parse(s);
 }
 
