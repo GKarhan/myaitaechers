@@ -1,0 +1,518 @@
+## PHASE 4 — MICRONODE GRANULARITY FIX PLAN
+
+### READ-ONLY AUDIT — DO NOT MODIFY CODE
+
+Phase 3 — Source Fidelity / Coverage Gate — արդեն implementation է արվել։
+
+Հիմա անցնում ենք **Phase 4 — MicroNode Granularity**-ին։
+
+Քո առաջադրանքը այս փուլում **միայն forensic audit + minimal implementation plan կազմելն է**։
+
+**ՉՓՈԽԵՍ ՈՉ ՄԻ ԿՈԴ։**
+**ՉՍՏԵՂԾԵՍ MIGRATION։**
+**ՉՎԵՐԱԳՐԵՍ PROMPT-Ը։**
+**ՉԱՆԵՍ IMPLEMENTATION։**
+
+Վերջում կանգ առ և սպասիր իմ հաստատմանը։
+
+---
+
+# 1. ՆՊԱՏԱԿԸ
+
+Mapper-ը պետք է որոշի՝ source content-ի տվյալ հատվածը պահանջում է.
+
+* **1 MicroNode**
+* **2 MicroNode**
+* **3+ MicroNode**
+
+Չպետք է ստացվի ոչ՝
+
+**OVER-SPLITTING**
+
+ոչ էլ՝
+
+**MEGA-NODE**
+
+Հիմնական չափանիշը.
+
+> **ONE CLEAR LEARNING OBJECTIVE**
+
+Յուրաքանչյուր MicroNode պետք է ներկայացնի մեկ հստակ, ինքնուրույն teachable learning objective։
+
+Եթե երկու տարբեր բան սովորեցնելու համար անհրաժեշտ են երկու տարբեր cognitive operations, մեծ հավանականությամբ դրանք պետք է լինեն տարբեր MicroNode-ներ։
+
+Օրինակ՝
+
+❌ Mega-node:
+
+> Student can define a verb and identify verbs in text.
+
+Այստեղ կան երկու տարբեր գործողություններ.
+
+* define
+* identify in text
+
+Ուստի պետք է ուսումնասիրել՝ արդյոք դրանք պետք է լինեն 2 MicroNode։
+
+Մյուս կողմից՝
+
+❌ Over-splitting:
+
+* Find the unknown addend.
+* Rule for finding the unknown addend.
+
+Եթե դրանք իրականում նույն learning objective-ի տարբեր ներկայացումներ են, պետք է merge անել։
+
+---
+
+# 2. AUDIT-Ի ՀԻՄՆԱԿԱՆ ՀԱՐՑԸ
+
+Պարզիր՝ ներկայիս համակարգում որտեղ և ինչպես է որոշվում MicroNode-ի granularությունը։
+
+Հետազոտիր ամբողջ pipeline-ը.
+
+```text
+SOURCE
+  ↓
+PASS 1
+  ↓
+SOURCE BLOCKS
+  ↓
+PASS 2 TOPIC GROUPING
+  ↓
+MICRONODE GENERATION
+  ↓
+EXERCISE ASSIGNMENT
+  ↓
+SERVER VALIDATION
+  ↓
+DATABASE
+```
+
+Հստակ ցույց տուր՝
+
+1. որ ֆայլն է որոշում MicroNode split/merge-ը,
+2. որ prompt-ն է դա կառավարում,
+3. ինչ schema ունի MicroNode-ը,
+4. ինչ server-side validation կա,
+5. ինչ semantic validation ՉԿԱ,
+6. ինչ տվյալ է հասնում DB,
+7. ինչ տվյալ է հետագայում օգտագործում AI Teacher-ը։
+
+---
+
+# 3. AUDIT — ONE CLEAR LEARNING OBJECTIVE
+
+Ստուգիր ներկայիս MicroNode prompt-ը։
+
+Գտիր՝ արդյոք այն արդեն ունի կանոններ նման.
+
+* one coherent learning objective
+* one action
+* one concept/skill
+* split when separately assessable
+* merge duplicate objectives
+* one procedure with multiple steps remains one node
+
+Բայց մի բավարարվիր նրանով, որ կանոնները prompt-ում գրված են։
+
+Պարզիր՝
+
+> **արդյոք այդ կանոնները իրականում enforce են արվում։**
+
+Տարբերակիր.
+
+```text
+PROMPT RULE
+vs
+SERVER ENFORCEMENT
+vs
+ACTUAL PRODUCTION BEHAVIOR
+```
+
+---
+
+# 4. REAL PRODUCTION DATA AUDIT
+
+Օգտագործիր առնվազն մի քանի իրական mapping/job։
+
+Հատկապես ստուգիր արդեն հայտնի խնդիրները, եթե տվյալները դեռ հասանելի են.
+
+* Lesson 103 / Job 26
+* Lesson 104 / Job 24
+* Lesson 69 / Job 5
+
+Յուրաքանչյուր MicroNode-ի համար ստուգիր.
+
+```text
+MicroNode title
+learningObjective
+sourceBlockIndices
+source text
+exercise list
+```
+
+և որոշիր.
+
+### A. CORRECT
+
+Մեկ հստակ objective է։
+
+### B. MEGA_NODE
+
+Մի node-ում կան երկու կամ ավելի անկախ learning objectives։
+
+### C. OVER_SPLIT
+
+Երկու կամ ավելի MicroNode իրականում նույն underlying objective-ն են ներկայացնում։
+
+### D. AMBIGUOUS
+
+Դեպք, որը միայն prompt-ից հնարավոր չէ վստահ որոշել։
+
+Յուրաքանչյուր finding-ի համար բեր կոնկրետ evidence։
+
+---
+
+# 5. COGNITIVE OPERATION
+
+Ստուգիր՝ ներկայիս համակարգը հաշվի առնո՞ւմ է cognitive operation-ը։
+
+Օրինակ՝
+
+```text
+define
+identify
+classify
+compare
+explain
+apply
+calculate
+solve
+construct
+analyze
+```
+
+Հատուկ ստուգիր՝ արդյոք հետևյալ կառուցվածքը պետք է flag արվի.
+
+```text
+define X AND identify X
+classify X AND use X
+explain X AND calculate Y
+recognize X AND produce Y
+memorize rule AND apply rule
+```
+
+Բայց կարևոր է.
+
+**Մի համարիր `և` / `and` բառի առկայությունը ավտոմատ ապացույց, որ պետք է split անել։**
+
+Օրինակ՝ մեկ procedure-ի մեջ մի քանի քայլ կարող են մնալ մեկ MicroNode։
+
+Պետք է տարբերակել.
+
+```text
+compound grammatical sentence
+```
+
+և
+
+```text
+compound learning objective
+```
+
+---
+
+# 6. OVER-SPLITTING AUDIT
+
+Գտիր՝ ներկայիս համակարգը չափից շատ մանրացնո՞ւմ է նույն skill-ը։
+
+Հատուկ փնտրիր.
+
+```text
+Rule → Application
+Definition → immediate application
+Concept → same concept in slightly different wording
+```
+
+Ստուգիր՝ արդյոք դրանք իրականում տարբեր learning objectives են, թե նույն objective-ի տարբեր փուլեր։
+
+Յուրաքանչյուր հնարավոր merge-ի համար գրիր.
+
+```text
+MicroNode A
+MicroNode B
+Shared objective
+Why separate?
+Why merge?
+Final recommendation
+```
+
+---
+
+# 7. EXERCISE → MICRONODE ALIGNMENT
+
+Սա Phase 4-ի պարտադիր մաս է։
+
+Ստուգիր՝ exercise-ը իրականում համապատասխանում է իր MicroNode-ի learningObjective-ին։
+
+Օրինակ՝ եթե node-ի LO-ն է.
+
+> Student can solve addition and subtraction problems.
+
+ապա exercise-ը չպետք է պահանջի multiplication/division, եթե դա node-ի stated objective-ի մեջ չկա։
+
+Ստուգիր.
+
+```text
+MicroNode LO
+       ↓
+Exercise
+       ↓
+Does exercise test the stated skill?
+```
+
+Առանձին նշիր.
+
+* aligned
+* prerequisite
+* unrelated
+* requires broader/different skill
+
+Հատուկ ուսումնասիրիր ներկայիս `closest prerequisite` logic-ը։
+
+Պարզիր՝ արդյոք այն թույլ է տալիս exercise-ը սխալ MicroNode-ի տակ դնել։
+
+---
+
+# 8. CURRENT VALIDATOR AUDIT
+
+Ուսումնասիրիր ներկայիս `coverage-validator.ts`-ը և հարակից validation logic-ը։
+
+Պարզիր՝ validator-ը կարո՞ղ է հայտնաբերել.
+
+* empty MicroNode
+* empty LO
+* duplicate source indices
+* out-of-range source indices
+* compound LO
+* duplicate/overlapping objectives
+* mega-node
+* over-splitting
+* exercise/LO mismatch
+* source semantic coherence
+
+Աղյուսակով ցույց տուր.
+
+| Check | Current support | Structural/Semantic | Blocking? |
+| ----- | --------------- | ------------------- | --------- |
+
+Հստակ տարբերակիր Phase 3-ի source coverage validation-ը Phase 4-ի semantic validation-ից։
+
+**Phase 3 coverage gate-ը մի կոտրիր և մի փոխարինիր։**
+
+---
+
+# 9. SECOND-PASS DESIGN
+
+Ուսումնասիրիր՝ արդյոք լավագույն լուծումը կլինի MicroNode generation-ից հետո առանձին semantic review pass ավելացնել։
+
+Առաջարկվող architecture-ը գնահատիր.
+
+```text
+PASS 1
+  ↓
+SOURCE BLOCKS
+  ↓
+PASS 2 — TOPIC GROUPING
+  ↓
+PASS 2 — MICRONODE GENERATION
+  ↓
+PASS 2B — MICRONODE SEMANTIC REVIEW
+  ↓
+SERVER STRUCTURAL VALIDATION
+  ↓
+SOURCE COVERAGE VALIDATION
+  ↓
+EXERCISE ALIGNMENT
+  ↓
+FINAL MAPPING
+```
+
+Երկրորդ pass-ը պետք է ստուգի ամբողջ արդեն ստեղծված MicroNode list-ը, այլ ոչ թե model-ին խնդրի իր իսկ generation-ի ընթացքում ինքն իրեն ստուգել։
+
+Ուսումնասիրիր.
+
+* որտեղ է լավագույն insertion point-ը,
+* ինչ input պետք է տրվի,
+* ինչ output schema պետք է լինի,
+* արդյոք պետք է `PASS`, `REVIEW`, `SPLIT`, `MERGE` decisions,
+* ինչպես պետք է պահպանվեն sourceBlockIndices-ը,
+* ինչպես պետք է պահպանվեն exercises-ը,
+* ինչպես պետք է փոխանցվի decision-ը final mapping report-ին։
+
+---
+
+# 10. DO NOT AUTOMATICALLY SPLIT FROM "AND"
+
+Սա պարտադիր constraint է։
+
+Չառաջարկես այսպիսի պարզ logic.
+
+```ts
+if (learningObjective.includes("և")) split();
+```
+
+Փոխարենը գնահատիր semantic review-ի կամ ավելի ապահով heuristic-ի տարբերակը.
+
+```text
+compound signal
+      ↓
+semantic review
+      ↓
+independent cognitive operations?
+      ↓
+YES → SPLIT REVIEW
+NO  → KEEP
+```
+
+---
+
+# 11. GATING STRATEGY
+
+Առաջարկիր՝ Phase 4-ի validation-ը ինչ severity պետք է ունենա։
+
+Համեմատի՛ր առնվազն.
+
+### Option A
+
+Granularity failure = hard fail
+
+### Option B
+
+Granularity failure = review required
+
+### Option C
+
+Structural issues = hard fail
+Semantic issues = review
+
+Գնահատիր regression risk-ը։
+
+**Մի փոխիր Phase 3-ի hard coverage gate-ը։**
+
+---
+
+# 12. MINIMAL FIX
+
+Վերջում առաջարկիր ամենափոքր անվտանգ implementation-ը։
+
+Բաժանիր.
+
+### P4.1
+
+MicroNode semantic second-pass review
+
+### P4.2
+
+Deterministic structural/heuristic signals
+
+### P4.3
+
+Duplicate / overlap detection
+
+### P4.4
+
+Exercise-to-LO alignment
+
+### P4.5
+
+Teacher/report visibility
+
+Յուրաքանչյուրի համար գրիր.
+
+* exact file
+* exact function
+* approximate line
+* current behavior
+* required change
+* schema change?
+* migration?
+* frontend change?
+* risk
+* tests needed
+
+---
+
+# 13. IMPORTANT — DO NOT OVER-ENGINEER
+
+Մի առաջարկիր նոր database architecture, եթե JSON/result/report-ում հնարավոր է պահել։
+
+Մի ստեղծիր նոր service/table, եթե գոյություն ունեցող pipeline-ում կարելի է անել։
+
+Նպատակն է.
+
+> **minimal safe fix that makes the ONE CLEAR LEARNING OBJECTIVE contract actually enforceable.**
+
+---
+
+# 14. FINAL REPORT FORMAT
+
+Վերջում տուր forensic report այս կառուցվածքով.
+
+```text
+PHASE 4 — MICRONODE GRANULARITY FORENSIC REPORT
+
+1. Current pipeline
+2. Current contract
+3. Enforcement analysis
+4. Production evidence
+5. Mega-node findings
+6. Over-split findings
+7. Exercise alignment findings
+8. Validator gaps
+9. Second-pass architecture
+10. Recommended gating strategy
+11. Minimal fix plan
+12. Files to change
+13. Migration requirements
+14. Regression risks
+15. Tests required
+16. FINAL VERDICT
+```
+
+Final Verdict-ը թող լինի.
+
+```text
+PHASE 4 STATUS: PASS
+```
+
+կամ
+
+```text
+PHASE 4 STATUS: FAIL
+```
+
+և հստակ բացատրի՝ ինչու։
+
+---
+
+## ABSOLUTE INSTRUCTION
+
+Այս փուլում **ոչ մի implementation չանես**։
+
+Մի փոխիր.
+
+* prompts
+* TypeScript
+* schema
+* migrations
+* DB
+* frontend
+* tests
+
+Մի ստեղծիր checkpoint որպես implementation։
+
+Միայն ուսումնասիրիր → ապացույցներ հավաքիր → առաջարկիր minimal fix plan։
+
+**Վերջում կանգ առ և սպասիր իմ հաստատմանը։**
