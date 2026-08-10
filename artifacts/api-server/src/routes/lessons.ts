@@ -1241,6 +1241,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
             sourceParagraph:     primaryBlock?.sourceParagraph ?? null,
             sourceBoundingBox:   primaryBlock?.sourceBoundingBox ?? null,
             blockType:           primaryBlock?.blockType ?? null,
+            // STEP-3: persist all source block indices for coverage auditing
+            sourceBlockIndices:  mn.sourceBlockIndices as any,
             status:              "draft" as const,
             createdBy:           "ai"   as const,
             targetBloomLevel:    1,

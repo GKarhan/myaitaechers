@@ -56,6 +56,11 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   // One of: DEFINITION | RULE | EXAMPLE | EXERCISE | OBJECTIVE | WARNING |
   //         EXCEPTION | TABLE | IMAGE | CAPTION | NOTE | ACTIVITY | HOMEWORK
   blockType: text("block_type"),
+  // All Pass-1 block indices (0-based positions in the extraction output) that
+  // constitute this MicroNode's source content. Stored as a JSONB integer array,
+  // e.g. [0, 3, 7]. Enables deterministic coverage auditing without re-running
+  // the pipeline. NULL on manually-created nodes (no Pass-1 source).
+  sourceBlockIndices: jsonb("source_block_indices"),
   // AI confidence 0–100 in the extraction/classification (nullable).
   confidenceScore: integer("confidence_score"),
   // Who created this node: "ai" (mapping pipeline) | "teacher" (manual).
