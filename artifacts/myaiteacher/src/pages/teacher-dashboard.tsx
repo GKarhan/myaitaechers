@@ -739,7 +739,7 @@ function LessonNodesPanel({
         >
           <span className="font-medium tracking-wide">
             {(nodes.length > 0 || exercises.length > 0)
-              ? `🗺️ Քարտեզագրված դաս (${nodes.length} լուկ · ${exercises.length} վարժ.)`
+              ? `🗺️ Քարտեզագրված դաս (${nodes.length} գ/հ · ${exercises.length} վարժ.)`
               : "🗺️ Քարտեզագրված դաս"}
           </span>
           <span>{open ? "▲" : "▼"}</span>
@@ -1012,7 +1012,7 @@ function LessonNodesPanel({
                                     </select>
                                   </div>
                                   <div className="flex gap-1">
-                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Enty"}</button>
+                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հաստատել"}</button>
                                     <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                                   </div>
                                 </div>
