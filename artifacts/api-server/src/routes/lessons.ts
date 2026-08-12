@@ -6,7 +6,7 @@ import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
-import { eq, and, asc, desc, max, inArray, count } from "drizzle-orm";
+import { eq, and, asc, desc, max, inArray, count, or } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
@@ -689,7 +689,11 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     status?: "approved" | "needs_review" | "draft";
   };
 
-  const patch: Partial<typeof existing> = {};
+  // Use Record<string, unknown> so drizzle's set() receives a plain object
+  // (Partial<typeof existing> carries drizzle's inferred select type which
+  //  is not directly assignable to drizzle's UpdateSet, causing "No values to set"
+  //  when only the status field is being changed).
+  const patch: Record<string, unknown> = {};
   if (title !== undefined) patch.title = title.trim();
   if (theoryContent !== undefined) patch.theoryContent = theoryContent.trim() || null;
   if (targetBloomLevel !== undefined) patch.targetBloomLevel = targetBloomLevel;
@@ -706,9 +710,14 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     patch.status = status;
   }
 
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: "No fields to update" }); return;
+  }
+
   const [updated] = await db
     .update(lessonNodesTable)
-    .set(patch)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .set(patch as any)
     .where(eq(lessonNodesTable.id, nodeId))
     .returning();
 

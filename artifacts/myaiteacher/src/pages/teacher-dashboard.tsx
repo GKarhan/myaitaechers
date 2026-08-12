@@ -966,7 +966,7 @@ function LessonNodesPanel({
                     onClick={approveAll}
                     disabled={approvingAll}
                     className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 font-medium"
-                  >{approvingAll ? "…" : "✅ Հաutatrel bolor hanguytsnerě"}</button>
+                  >{approvingAll ? "…" : "✅ Հաստատել բոլոր հանգույցները"}</button>
                 </div>
               )}
               {nodes.map((n, nodeIdx) => {
@@ -1136,7 +1136,7 @@ function LessonNodesPanel({
                               )}
                               {((n as any).status === 'draft' || !(n as any).status) && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">
-                                  📝 Draft
+                                  📝 Սևագիր
                                 </span>
                               )}
                               {(n as any).contentSourceType === 'manual' && (
@@ -1340,10 +1340,10 @@ function LessonNodesPanel({
             return (
               <div className="bg-white/3 border border-white/8 rounded-xl px-3 py-2 space-y-2">
                 <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
-                  📦 Лратсуцич варжутюннер ({additionalExercises.length})
+                  📦 Լրացուցիչ վարժություններ ({additionalExercises.length})
                 </p>
                 {additionalExercises.length === 0 ? (
-                  <p className="text-xs text-muted-foreground/40 italic">Чка чкцвац варжутюннер</p>
+                  <p className="text-xs text-muted-foreground/40 italic">Չկցված վարժություններ չկան</p>
                 ) : (
                   <div className="space-y-2">
                     {additionalExercises.map((ex) => {
@@ -1441,7 +1441,7 @@ function LessonNodesPanel({
                 />
                 <input
                   className={fieldCls}
-                  placeholder="Bloom 1-6"
+                  placeholder="Բլումի մակարդակ 1-6"
                   type="number" min={1} max={6}
                   value={addNodeForm.targetBloomLevel}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, targetBloomLevel: e.target.value }))}

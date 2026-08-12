@@ -1,0 +1,425 @@
+PHASE 7 — PHASE 2 TEACHING ENRICHMENT END-TO-END VERIFICATION
+
+We are continuing the existing Knowledge Base / AI Teacher pipeline.
+
+Phase 5 (exercise preservation/assignment) and Phase 6 (Teacher Review + approval workflow) are considered CLOSED unless this verification proves a blocking regression.
+
+DO NOT refactor unrelated code.
+DO NOT redesign the mapping pipeline.
+DO NOT modify mapper granularity, source extraction, exercise attribution, quiz flow, Knowledge Tree, or chat teaching behavior unless a concrete Phase 7 integration defect requires the smallest possible fix.
+
+The goal of this task is to VERIFY and, only where necessary, minimally FIX the Phase 2 enrichment pipeline.
+
+==================================================
+TARGET ARCHITECTURE
+==================================================
+
+The intended pipeline is:
+
+TEXTBOOK / SOURCE
+→ Pass 1
+→ Pass 2 Mapping
+→ Teacher Review
+→ Teacher Approval
+→ Phase 2 Teaching Enrichment
+→ Approved Knowledge Base
+→ AI Teacher
+
+Phase 2 MUST enrich an already mapped/approved MicroNode.
+
+Phase 2 MUST NOT:
+- remap the lesson
+- create/delete MicroNodes
+- change Topic assignment
+- change MicroNode sequence
+- change source coverage
+- move exercises
+- alter source/verbatim content
+- silently approve nodes
+
+==================================================
+CORE PHASE 2 FIELDS
+==================================================
+
+For every eligible approved MicroNode, Phase 2 must populate these 4 CORE fields:
+
+1. childFriendlyExplanation
+2. basicExamples
+3. commonMisconception
+4. nonExamples
+
+These are the required Phase 7 fields.
+
+Do NOT add optional enrichment fields in this task.
+
+Do NOT preserve duplicate legacy fields merely for convenience unless existing runtime compatibility requires them.
+
+==================================================
+STEP 0 — AUDIT FIRST, NO CHANGES
+==================================================
+
+Before changing any code, inspect the current implementation.
+
+Report:
+
+1. Where Phase 2 is triggered.
+2. Exact backend route(s).
+3. Exact service/function responsible for Phase 2 generation.
+4. Exact AI prompt used for Phase 2.
+5. Exact DB table/columns where the 4 fields are persisted.
+6. How eligibility is determined.
+7. How Teacher approval is checked.
+8. Whether Phase 2 can currently run on an unapproved MicroNode.
+9. Whether Phase 2 can modify mapping structure.
+10. Whether the AI Teacher currently reads these Phase 2 fields.
+
+Also identify any legacy/duplicate enrichment fields, but DO NOT clean them up in this task unless they break the required pipeline.
+
+Return a short CURRENT STATE table before implementation.
+
+==================================================
+STEP 1 — APPROVAL GATE
+==================================================
+
+Verify the following behavior with REAL data.
+
+A MicroNode that is NOT approved must NOT receive Phase 2 enrichment.
+
+Attempt Phase 2 against an unapproved MicroNode and prove that:
+
+- generation does not proceed
+- no Phase 2 fields are written
+- existing mapping/source/exercises remain unchanged
+
+Then approve the MicroNode through the existing Phase 6 approval path.
+
+Do NOT bypass approval by directly modifying the DB for the success-path test unless absolutely necessary for test setup.
+
+==================================================
+STEP 2 — RUN PHASE 2 ON A REAL APPROVED MICRONODE
+==================================================
+
+Use a real mapped lesson already available in the database.
+
+Prefer a lesson with meaningful theory content.
+
+Run:
+
+Teacher Review
+→ approve MicroNode
+→ Phase 2
+
+Use the REAL existing route/service, not a mocked standalone function.
+
+After Phase 2 completes, fetch the MicroNode from DB/API.
+
+Prove that all 4 required fields are populated:
+
+- childFriendlyExplanation
+- basicExamples
+- commonMisconception
+- nonExamples
+
+For each field report:
+
+- NULL / non-NULL
+- approximate length
+- short content preview
+
+Do not dump huge AI responses.
+
+==================================================
+STEP 3 — CONTENT QUALITY SANITY CHECK
+==================================================
+
+Perform a lightweight sanity check only.
+
+Verify that:
+
+childFriendlyExplanation
+- explains the SAME MicroNode concept
+- is understandable for the target learner
+- does not introduce an unrelated lesson
+
+basicExamples
+- are examples of the current learning objective
+- do not contradict approved theory
+
+commonMisconception
+- represents a plausible misunderstanding of this concept
+
+nonExamples
+- clearly contrast with the target concept
+
+This is NOT a full pedagogical quality audit.
+
+We only need to prove that the fields contain relevant enrichment rather than garbage, duplicates, or unrelated content.
+
+==================================================
+STEP 4 — MAPPING IMMUTABILITY
+==================================================
+
+Capture BEFORE and AFTER values for the enriched MicroNode and lesson.
+
+At minimum compare:
+
+- lesson id
+- Topic id
+- MicroNode id
+- sequence/order
+- title
+- learning objective
+- theory content
+- source anchor / verbatim anchor
+- source metadata
+- exercise assignments
+- approval state
+
+Phase 2 is allowed to change ONLY Phase 2 enrichment fields and Phase-2-specific metadata/status.
+
+Prove:
+
+MicroNodes before = MicroNodes after
+Topics before = Topics after
+Exercises before = Exercises after
+source coverage unchanged
+sequence unchanged
+
+No remapping is allowed.
+
+==================================================
+STEP 5 — DB PERSISTENCE / RE-FETCH
+==================================================
+
+Do not trust only the immediate API response.
+
+After Phase 2:
+
+1. re-fetch from DB
+2. restart/reload if practical
+3. fetch again through the normal API
+
+Prove that the 4 fields persist.
+
+Expected:
+
+childFriendlyExplanation != NULL
+basicExamples != NULL
+commonMisconception != NULL
+nonExamples != NULL
+
+If fields are stored as JSON/arrays, verify they deserialize correctly.
+
+No malformed JSON.
+No double serialization.
+No silent truncation.
+
+==================================================
+STEP 6 — AI TEACHER CONTEXT INTEGRATION
+==================================================
+
+This is the most important integration check.
+
+Trace the REAL code path used when AI Teacher constructs lesson/current-node context.
+
+Determine whether the AI Teacher receives:
+
+- Lesson overview
+- current Topic
+- current MicroNode
+- learning objective
+- approved theory
+- childFriendlyExplanation
+- basicExamples
+- commonMisconception
+- nonExamples
+- assigned exercises
+- dependencies, if currently available
+- source boundaries / source anchor, where currently supported
+
+IMPORTANT:
+
+Do NOT redesign chat.ts in this task.
+
+First inspect and prove what is already passed.
+
+If one or more of the FOUR CORE Phase 2 fields are generated and stored but NOT passed into the AI Teacher context, make the SMALLEST integration fix necessary so the existing AI Teacher context includes them.
+
+Do NOT modify the teaching-cycle logic.
+
+The existing teaching cycle must remain:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+==================================================
+STEP 7 — CONTEXT PROOF
+==================================================
+
+Provide runtime/test evidence that the AI Teacher context for the selected enriched MicroNode actually contains the four Phase 2 fields.
+
+Do NOT merely say:
+
+"the query selects the columns."
+
+Show evidence from the final context object/prompt construction immediately before the AI call, or from a focused automated test that captures the generated context.
+
+We need proof of:
+
+DB
+→ query
+→ context builder
+→ AI Teacher prompt/context
+
+==================================================
+STEP 8 — REGRESSION TESTS
+==================================================
+
+Add only focused tests needed for Phase 7.
+
+At minimum cover:
+
+1. unapproved MicroNode cannot run Phase 2
+2. approved MicroNode can run Phase 2
+3. all 4 required fields persist
+4. Phase 2 does not alter mapping structure
+5. Phase 2 does not alter exercise assignments
+6. AI Teacher context includes the four Phase 2 fields
+7. malformed/failed Phase 2 generation does not partially corrupt the MicroNode
+
+Then run the FULL existing test suite.
+
+Do not weaken existing tests to make this pass.
+
+==================================================
+STEP 9 — REAL END-TO-END VERIFICATION
+==================================================
+
+Perform one real chain:
+
+Existing mapped lesson
+→ Teacher Review
+→ approve one MicroNode
+→ run Phase 2
+→ DB re-fetch
+→ API re-fetch
+→ construct AI Teacher context
+
+Report exact evidence.
+
+Do NOT start a long simulated student conversation yet.
+
+That belongs to Phase 10.
+
+==================================================
+PASS / FAIL GATE
+==================================================
+
+Phase 7 PASS requires ALL of these:
+
+[ ] Phase 2 only runs on approved MicroNodes
+[ ] childFriendlyExplanation populated
+[ ] basicExamples populated
+[ ] commonMisconception populated
+[ ] nonExamples populated
+[ ] fields persist after DB re-fetch
+[ ] fields survive API re-fetch
+[ ] no malformed JSON / double serialization
+[ ] MicroNode count unchanged
+[ ] Topic count unchanged
+[ ] exercise count/assignment unchanged
+[ ] source coverage unchanged
+[ ] sequence unchanged
+[ ] approved theory/source content unchanged
+[ ] AI Teacher context contains all 4 Phase 2 fields
+[ ] teaching-cycle logic unchanged
+[ ] focused Phase 7 tests pass
+[ ] full existing test suite passes
+
+If any mandatory item fails, Phase 7 = FAIL.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+DO NOT:
+
+- change Pass 1 extraction
+- change Pass 2 mapping prompt
+- change Topic/MicroNode granularity
+- change exercise attribution logic
+- change Additional Exercises behavior
+- redesign Teacher Review
+- implement semantic dependencies
+- modify quiz creation/taking
+- modify Knowledge Tree
+- rewrite chat teaching logic
+- add optional Phase 2 fields
+- perform UI polishing
+- make unrelated refactors
+
+Minimal fixes are allowed ONLY for defects directly blocking the Phase 7 contract.
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return:
+
+1. CURRENT STATE BEFORE CHANGES
+
+2. DEFECTS FOUND
+   - BLOCKING
+   - NON-BLOCKING / BACKLOG
+
+3. CODE CHANGES
+   exact files/functions/routes
+
+4. REAL TEST MICRONODE
+   lesson id
+   topic id
+   MicroNode id
+   approval state
+
+5. PHASE 2 FIELD EVIDENCE
+
+   Field | Before | After | Persisted | AI Teacher receives?
+   childFriendlyExplanation
+   basicExamples
+   commonMisconception
+   nonExamples
+
+6. IMMUTABILITY CHECK
+
+   Item | Before | After | Result
+   Topic count
+   MicroNode count
+   exercise count
+   exercise assignments
+   sequence
+   source coverage
+   theory/source anchor
+
+7. AI TEACHER CONTEXT EVIDENCE
+
+8. TEST RESULTS
+   focused tests
+   full suite
+   TypeScript
+
+9. PHASE 7 GATE MATRIX
+   every mandatory requirement PASS/FAIL
+
+10. FINAL VERDICT
+
+   PHASE 7 = PASS
+   or
+   PHASE 7 = FAIL
+
+If PASS, explicitly say:
+
+"Ready for Phase 8 — Minimal Dependencies."
+
+Do not begin Phase 8.
