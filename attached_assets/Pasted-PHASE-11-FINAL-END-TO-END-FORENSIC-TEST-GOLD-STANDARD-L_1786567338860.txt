@@ -1,0 +1,812 @@
+PHASE 11 — FINAL END-TO-END FORENSIC TEST
+GOLD STANDARD LESSON 105
+FINAL V1 ACCEPTANCE TEST
+
+This is the FINAL verification phase of the current Knowledge Base → AI Teacher architecture.
+
+IMPORTANT:
+This is NOT a redesign phase.
+This is NOT a refactor phase.
+Do NOT improve architecture just because you see something that could be cleaner.
+
+The purpose is to prove whether the complete production pipeline works end-to-end on one real textbook lesson.
+
+==================================================
+GOLD STANDARD
+==================================================
+
+Use:
+
+Lesson ID: 105
+
+Ֆիզիկա 7
+Գ. Մելիքյան
+
+Lesson:
+«ՖԻԶԻԿԱՅԻ ՈՒՍՈՒՄՆԱՍԻՐՄԱՆ ԱՌԱՐԿԱՆ:
+ՖԻԶԻԿԱԿԱՆ ԵՐԵՎՈՒՅԹՆԵՐ»
+
+Pages: 5–9
+
+Current accepted Gold Standard state:
+
+- Source coverage = 100%
+- Topics = 4
+- MicroNodes = 10
+- Source activities = 15
+- Stored activities = 15
+- Assigned exercises = 11
+- Additional exercises = 4
+- Lost exercises = 0
+- Duplicate exercises = 0
+- Approved MicroNodes = 10
+- Phase 2 enrichment complete = 10/10
+- Sequential dependencies = 9
+- KB valid = true
+- readyForAiTeacher = true
+- Existing regression suite = 333/333 PASS
+- Phase 10 AI Teacher Integration = PASS
+
+Do NOT treat different counts as automatically acceptable.
+If any Gold Standard count changes, investigate and explain exactly why.
+
+==================================================
+CRITICAL RULE
+==================================================
+
+FIRST perform a READ-ONLY forensic audit.
+
+Do NOT modify code or DB before capturing the baseline.
+
+If a defect is discovered:
+
+1. prove the exact root cause;
+2. show the evidence;
+3. make ONLY the smallest required fix;
+4. rerun the affected step;
+5. rerun the entire E2E verification;
+6. rerun the full regression suite.
+
+Do NOT:
+
+- redesign mapper architecture
+- rewrite Pass 1
+- rewrite Pass 2
+- change mapping prompts unless a proven blocking defect requires it
+- change quiz flow
+- change Knowledge Tree
+- change scoring
+- perform UI polishing
+- change unrelated files
+- weaken validators/tests merely to make the test pass
+- hard-code Lesson 105 behavior into production code
+
+==================================================
+STEP 0 — CAPTURE BASELINE
+==================================================
+
+Before doing anything, capture the current persisted Lesson 105 state.
+
+Report:
+
+LESSON
+- lesson id
+- resource id
+- pages_from
+- pages_to
+- lesson title
+- lesson overview/description
+- lesson goal
+
+SOURCE / MAPPING
+- source block count
+- coverageValidation.valid
+- coveragePercent
+- missing source blocks
+- duplicate source blocks
+- unsupported/orphan blocks if tracked
+
+STRUCTURE
+- Topic count
+- Topic IDs/titles/sequences
+- MicroNode count
+- MicroNode IDs/titles/sequences/topicIds
+- learning objectives
+- status
+- sourcePage
+- sourceBlockIndices
+
+ACTIVITIES
+- source activity count
+- stored activity count
+- assigned count
+- Additional count
+- lost count
+- duplicate count
+
+PHASE 2
+For every MicroNode:
+- childFriendlyExplanation present?
+- basicExamples present?
+- commonMisconception present?
+- nonExamples present?
+
+DEPENDENCIES
+- total dependency count
+- dependency edges
+- dependency types
+- cycles?
+- invalid references?
+
+KB
+Run the production KB validator.
+
+Record:
+- valid
+- readyForAiTeacher
+- errors
+- warnings
+
+Save this as the BEFORE snapshot.
+
+==================================================
+STEP 1 — VERIFY TEXTBOOK → SOURCE EXTRACTION
+==================================================
+
+Verify the source side of the pipeline using the actual Lesson 105 resource/pages.
+
+Do NOT rely only on stored final counts.
+
+Prove that the relevant textbook pages contain:
+
+- theory/content blocks
+- summary material
+- Questions and Tasks
+- practical activities
+
+Specifically verify that the source contains 15 real activities/tasks total.
+
+Confirm that Pass 1/extraction represents all required source material.
+
+Report:
+
+SOURCE BLOCKS = N
+SOURCE ACTIVITIES = 15
+MISSING SOURCE CONTENT = ?
+DUPLICATE SOURCE CONTENT = ?
+
+If source extraction cannot be proven from the currently available persisted artifacts/logs without destructive re-mapping, DO NOT re-map merely for this test.
+
+Instead report exactly what can and cannot be proven.
+
+==================================================
+STEP 2 — VERIFY SOURCE → MAPPING
+==================================================
+
+Trace the existing persisted mapping back to source blocks.
+
+Prove:
+
+SOURCE BLOCK
+↓
+Topic
+↓
+MicroNode
+
+Expected:
+
+Topics = 4
+MicroNodes = 10
+empty MicroNodes = 0
+invalid sequences = 0
+
+Every MicroNode must have:
+
+- title
+- one learning objective
+- theoryContent
+- source evidence/anchor
+- valid sequence
+- valid Topic relationship
+
+Check for:
+
+- lost source blocks
+- unsupported invented content
+- duplicate source coverage
+- orphan source blocks
+- mega-node obvious violations
+- empty nodes
+
+IMPORTANT:
+
+Do not attempt subjective perfection here.
+
+We are checking structural correctness and traceability sufficient for V1.
+
+==================================================
+STEP 3 — VERIFY EXERCISE PRESERVATION
+==================================================
+
+This is a HARD acceptance gate.
+
+Expected invariant:
+
+15 source activities
+=
+11 assigned
++
+4 Additional
+
+Verify all 15 individually.
+
+For every activity report:
+
+- exercise id
+- source page
+- source type
+- exerciseTextVerbatim
+- assignment
+- relatedNodeId or NULL
+- activity type if available
+
+Verify:
+
+- lost = 0
+- duplicates = 0
+- no matching task incorrectly split into multiple exercises
+- practical activities preserved
+- HOMEWORK/CLASS assignment preserved where applicable
+- Additional exercises remain visible and unassigned
+- Additional exercises are not silently attached to arbitrary nodes
+
+Do NOT change the 11/4 attribution merely to make it look cleaner.
+
+Teacher correction authority is part of the architecture.
+
+==================================================
+STEP 4 — VERIFY TEACHER REVIEW / APPROVAL STATE
+==================================================
+
+Verify production Teacher Review state.
+
+All 10 MicroNodes should be approved.
+
+Prove Teacher Review exposes:
+
+- Lesson overview
+- Topics
+- MicroNodes
+- learning objectives
+- theory
+- source page/anchor where supported
+- status
+- assigned exercises
+- Additional Exercises
+
+Verify that exercise reassignment functionality still exists.
+
+Do NOT actually move exercises during this test unless necessary.
+
+We are verifying capability without mutating the Gold Standard.
+
+==================================================
+STEP 5 — VERIFY PHASE 2 ENRICHMENT
+==================================================
+
+For each of the 10 approved MicroNodes verify:
+
+1. childFriendlyExplanation
+2. basicExamples
+3. commonMisconception
+4. nonExamples
+
+Expected:
+
+approvedNodeCount = 10
+missingEnrichmentCount = 0
+
+Also prove Phase 2 did NOT modify:
+
+- Topic structure
+- MicroNode IDs
+- sequence
+- learning objectives
+- theoryContent
+- source anchors
+- exercise attribution
+
+Do NOT regenerate Phase 2 if all fields are already present.
+
+This is verification, not regeneration.
+
+==================================================
+STEP 6 — VERIFY DEPENDENCIES
+==================================================
+
+Verify the current Level-1 dependency structure.
+
+Expected:
+
+10 MicroNodes
+9 SEQUENTIAL dependencies
+
+Expected conceptual shape:
+
+MN1 → MN2 → MN3 → ... → MN10
+
+Verify:
+
+- invalid references = 0
+- self dependencies = 0
+- duplicate dependency edges = 0
+- cycles = false
+
+Also verify that backend node advancement respects the dependency/order mechanism.
+
+Do not add semantic AI-generated dependencies in Phase 11.
+
+==================================================
+STEP 7 — FINAL KB VALIDATION BEFORE AI TEACHER
+==================================================
+
+Run the production KB validation endpoint.
+
+Expected:
+
+valid = true
+readyForAiTeacher = true
+
+sourceCoverage:
+- valid = true
+- coveragePercent = 100
+
+activities:
+- sourceCount = 15
+- storedCount = 15
+- assignedCount = 11
+- additionalCount = 4
+- lostCount = 0
+- duplicateCount = 0
+- valid = true
+
+microNodes:
+- total = 10
+- emptyCount = 0
+- invalidSequenceCount = 0
+- valid = true
+
+phase2:
+- approvedNodeCount = 10
+- missingEnrichmentCount = 0
+- valid = true
+
+dependencies:
+- total = 9
+- invalidReferenceCount = 0
+- selfDependencyCount = 0
+- duplicateEdgeCount = 0
+- cycleDetected = false
+- valid = true
+
+errors = []
+
+Warnings are allowed ONLY when they represent valid architecture,
+for example:
+
+4 Additional exercises with relatedNodeId=null.
+
+==================================================
+STEP 8 — VERIFY KB → AI TEACHER CONTEXT
+==================================================
+
+Trace one real current MicroNode through:
+
+DB
+↓
+chat.ts
+↓
+lessonContext
+↓
+AI model input
+
+Prove that the AI Teacher receives:
+
+- Lesson overview
+- current Topic
+- current MicroNode
+- learning objective
+- theoryContent
+- verbatim/source grounding where supported
+- childFriendlyExplanation
+- basicExamples
+- commonMisconception
+- nonExamples
+- assigned CLASS exercises for the current MicroNode
+- progress/sequence information
+
+Also explicitly report:
+
+A. Which dependency information is used by backend logic.
+B. Whether dependency information is directly rendered into the model prompt.
+C. Which source-boundary metadata is available to the model.
+
+Do NOT change these just because some fields are backend-only.
+Record gaps separately unless they block correct teaching behavior.
+
+==================================================
+STEP 9 — REAL AI TEACHER SESSION
+==================================================
+
+Use a real student account and the real AI model.
+
+No mocking.
+
+Start/resume Lesson 105.
+
+Run enough interaction to demonstrate the actual Phase 2 cycle:
+
+TEACH
+↓
+MICRO_CHECK
+↓
+FEEDBACK
+↓
+TRANSITION
+
+For each turn capture:
+
+BEFORE:
+- session id
+- phase
+- currentNodeId
+- nodeTeachingStage
+- mastery/evidence state where available
+
+INPUT:
+- exact student message
+
+OUTPUT:
+- teaching_mode
+- student-visible response
+- is_micro_check
+- node_decision
+- evidence quality if produced
+
+AFTER:
+- phase
+- currentNodeId
+- nodeTeachingStage
+- mastery/evidence state
+
+Acceptance:
+
+TEACH:
+- current MicroNode only
+- uses KB content
+- no premature completion
+
+MICRO_CHECK:
+- exactly one focused check
+- aligned with current learning objective
+- Armenian
+- waits for student response
+
+FEEDBACK:
+- responds to actual student answer
+- does not reset into unrelated TEACH
+- evidence quality reasonable
+
+TRANSITION:
+- controlled by backend
+- only advances when backend criteria are met
+- sequence/dependency order respected
+
+==================================================
+STEP 10 — NODE LOCK / BOUNDARY TEST
+==================================================
+
+During the same real session test:
+
+A. Ask a normal in-scope question.
+
+Expected:
+AI answers within current MicroNode.
+
+B. Ask an unrelated/out-of-scope question.
+
+Expected:
+AI redirects to current MicroNode.
+currentNodeId must NOT change.
+
+C. Ask to skip ahead.
+
+Expected:
+AI refuses/redirects according to Node Lock.
+Backend must not silently jump nodes.
+
+Prove currentNodeId before/after each test.
+
+==================================================
+STEP 11 — REAL TEXTBOOK EXERCISE DELIVERY
+==================================================
+
+This step is important.
+
+Do NOT prove exercise delivery only from code.
+
+Reach or create a valid test session state on a MicroNode that actually has an assigned CLASS exercise.
+
+For Lesson 105, existing data indicates exercises are attached to later nodes.
+
+Use a legitimate production/session path where possible.
+
+Verify a real exercise reaches the AI Teacher.
+
+Capture:
+
+- nodeId
+- exercise DB id
+- exerciseTextVerbatim
+- source page
+- assignment
+- relatedNodeId
+- exact exercise text inserted into AI context
+- student-visible exercise delivered by AI
+
+Acceptance:
+
+1. Exercise belongs to currentNodeId.
+2. assignment = CLASS.
+3. exerciseTextVerbatim is preserved.
+4. Page/source attribution is preserved where supported.
+5. An Additional exercise with relatedNodeId=null is NOT used as though assigned to the current node.
+6. AI does not invent a replacement exercise when a required verbatim textbook exercise is available.
+
+If reaching the exercise requires progressing through earlier nodes,
+you may use the legitimate backend/session test path.
+
+Do NOT directly corrupt production session state just to force the result.
+
+==================================================
+STEP 12 — KNOWLEDGE BASE IMMUTABILITY
+==================================================
+
+After the AI Teacher session, compare against BEFORE snapshot.
+
+The conversation must NOT mutate:
+
+- source blocks
+- Topic count
+- Topic IDs
+- MicroNode count
+- MicroNode IDs
+- titles
+- learning objectives
+- theoryContent
+- source anchors
+- source pages
+- sourceBlockIndices
+- Phase 2 enrichment
+- exercise count
+- exercise text
+- exercise attribution
+- dependency graph
+
+Session/evidence state MAY change.
+Knowledge Base structure/content must not.
+
+==================================================
+STEP 13 — FINAL KB REVALIDATION
+==================================================
+
+Run KB validation again AFTER the real teaching session.
+
+Expected:
+
+valid = true
+readyForAiTeacher = true
+errors = []
+
+And all Gold Standard counts remain:
+
+Topics = 4
+MicroNodes = 10
+
+Activities:
+15 = 11 assigned + 4 Additional
+
+Lost = 0
+Duplicates = 0
+
+Approved = 10
+Missing enrichment = 0
+
+Dependencies = 9
+Cycles = false
+
+Coverage = 100%
+
+==================================================
+STEP 14 — FULL REGRESSION
+==================================================
+
+Run the complete existing test suite.
+
+Current baseline:
+
+333/333 PASS
+
+Expected:
+
+ALL existing tests pass.
+
+If test count increases because a legitimate Phase 11 regression test is added, report:
+
+previous total
+new tests
+new total
+failures
+
+Do NOT modify existing assertions merely because production data changed unless you prove the assertion is genuinely stale.
+
+Never weaken a validator to obtain PASS.
+
+==================================================
+STEP 15 — FINAL V1 ACCEPTANCE MATRIX
+==================================================
+
+Return this matrix:
+
+SOURCE
+[ ] correct lesson pages
+[ ] source blocks preserved
+[ ] source coverage = 100%
+[ ] missing source = 0
+
+MAPPING
+[ ] Topics = 4
+[ ] MicroNodes = 10
+[ ] empty nodes = 0
+[ ] sequence valid
+[ ] source traceability valid
+
+EXERCISES
+[ ] source activities = 15
+[ ] stored activities = 15
+[ ] assigned = 11
+[ ] Additional = 4
+[ ] lost = 0
+[ ] duplicates = 0
+[ ] real assigned exercise delivered by AI Teacher
+[ ] Additional does not leak into node exercise delivery
+
+TEACHER REVIEW
+[ ] all nodes visible
+[ ] all exercises visible
+[ ] Additional visible
+[ ] edit/reassignment capability exists
+[ ] 10 nodes approved
+
+PHASE 2
+[ ] CFE = 10/10
+[ ] basicExamples = 10/10
+[ ] commonMisconception = 10/10
+[ ] nonExamples = 10/10
+[ ] mapping unchanged
+
+DEPENDENCIES
+[ ] total = 9
+[ ] references valid
+[ ] duplicates = 0
+[ ] cycles = false
+[ ] advancement order respected
+
+KNOWLEDGE BASE
+[ ] valid = true
+[ ] readyForAiTeacher = true
+[ ] errors = []
+
+AI TEACHER
+[ ] correct lesson context
+[ ] correct MicroNode context
+[ ] learning objective available
+[ ] theory available
+[ ] Phase 2 content available
+[ ] assigned exercise available
+[ ] TEACH works
+[ ] MICRO_CHECK works
+[ ] FEEDBACK works
+[ ] TRANSITION works
+[ ] Node Lock works
+[ ] backend controls completion
+[ ] Armenian contract works
+[ ] session state coherent
+
+IMMUTABILITY
+[ ] KB unchanged by teaching session
+
+REGRESSION
+[ ] full test suite PASS
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return:
+
+1. BASELINE
+2. TEXTBOOK → SOURCE RESULT
+3. SOURCE → MAPPING RESULT
+4. EXERCISE PRESERVATION RESULT
+5. TEACHER REVIEW RESULT
+6. PHASE 2 RESULT
+7. DEPENDENCY RESULT
+8. KB VALIDATION BEFORE TEACHING
+9. KB → AI CONTEXT MATRIX
+10. REAL AI TEACHER SESSION TRACE
+11. NODE LOCK TEST
+12. REAL TEXTBOOK EXERCISE DELIVERY PROOF
+13. KB IMMUTABILITY CHECK
+14. KB VALIDATION AFTER TEACHING
+15. REGRESSION RESULT
+16. DEFECTS FOUND
+17. CODE/DB CHANGES MADE
+18. FINAL V1 ACCEPTANCE MATRIX
+
+Then give exactly one final verdict:
+
+V1 COMPLETE = PASS
+
+or
+
+V1 COMPLETE = FAIL
+
+If FAIL:
+list ONLY the blocking failures preventing V1 completion.
+
+If PASS:
+do NOT begin polishing, Phase 12, redesign, or optional improvements.
+
+Stop after the final report.
+
+==================================================
+FINAL PRINCIPLE
+==================================================
+
+We are proving this architecture:
+
+TEXTBOOK
+↓
+SOURCE BLOCKS
+↓
+VALIDATED MAPPING
+↓
+TOPICS
+↓
+MICRONODES
+↓
+EXERCISES
+↓
+TEACHER REVIEW
+↓
+APPROVED KNOWLEDGE BASE
+↓
+PHASE 2 ENRICHMENT
+↓
+DEPENDENCIES
+↓
+KB VALIDATION
+↓
+AI TEACHER
+↓
+TEACH → MICRO_CHECK → FEEDBACK → TRANSITION
+
+The mapper proposes.
+Code validates.
+Teacher approves/corrects.
+Phase 2 enriches.
+The Knowledge Base becomes the source of truth.
+The AI Teacher teaches from that approved Knowledge Base.
+
+This Phase 11 test determines whether that architecture is V1 complete.
