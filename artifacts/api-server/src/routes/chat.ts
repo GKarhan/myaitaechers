@@ -12,6 +12,7 @@ import {
 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
+import { enforceVerbatimExercise, isExerciseDeliveryTurn } from "../lib/exercise-delivery";
 
 const router = Router();
 
@@ -849,6 +850,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingMode = aiResult.teaching_mode;
     const st = aiResult.answer_evaluation.status;
     wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
+
   } catch (err) {
     logger.error(
       {
@@ -869,6 +871,48 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       logger.error({ err: err2 }, "callAI fallback also failed");
       res.status(503).json({ error: "AI service unavailable" });
       return;
+    }
+  }
+
+  // ── Phase 11.1: Verbatim exercise delivery enforcement ─────────────────────
+  // Fires after BOTH the structured and unstructured (callAI fallback) paths.
+  // When phase=2, nodeTeachingStage=MICRO_CHECK, and CLASS exercises exist,
+  // the backend guarantees the exact exerciseTextVerbatim appears in the
+  // final student-visible response — regardless of what the model returned.
+  // Also advances stage MICRO_CHECK→EXERCISE (directly if aiResult is null,
+  // via teaching_mode override if aiResult is non-null).
+  // Does NOT change currentNodeId, mastery, attempt counters, or KB data.
+  if (session && isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)) {
+    const verbatimEx = classExercises[0].exerciseTextVerbatim;
+    const enforced = enforceVerbatimExercise(studentMessage, verbatimEx);
+    if (enforced !== studentMessage) {
+      logger.info(
+        { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: classExercises[0].exerciseId },
+        "P11.1: backend injected verbatim exercise text (model omitted/paraphrased it)"
+      );
+      studentMessage = enforced;
+    }
+    // Always set teachingMode to TRANSITION for exercise delivery turns
+    teachingMode = "TRANSITION";
+    if (aiResult) {
+      // Structured path: override aiResult so anticipatory MICRO_CHECK→EXERCISE advance fires below
+      (aiResult as { teaching_mode: string }).teaching_mode = "TRANSITION";
+      if (!aiResult.source_fidelity?.exercise_id) {
+        (aiResult as unknown as { source_fidelity: { exercise_id: string | null } }).source_fidelity = {
+          ...(aiResult.source_fidelity ?? {}),
+          exercise_id: classExercises[0].exerciseId ?? null,
+        };
+      }
+    } else if (session.nodeTeachingStage === "MICRO_CHECK") {
+      // Fallback path (callAI): advance stage directly since aiResult stage-machine won't run
+      await db
+        .update(lessonSessionsTable)
+        .set({ nodeTeachingStage: "EXERCISE" })
+        .where(eq(lessonSessionsTable.id, session.id));
+      logger.info(
+        { sessionId: session.id, nodeId: session.currentNodeId },
+        "P11.1: direct stage advance MICRO_CHECK -> EXERCISE (callAI fallback path)"
+      );
     }
   }
 
