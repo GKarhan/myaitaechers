@@ -742,9 +742,16 @@ function validateTeachingCycle(
   }
 
   // ── Rule 2: TEACH must have is_micro_check=true ────────────────────────────
-  if (mode === "TEACH" && response.is_micro_check !== true) {
+  // Phase 1 (review/greeting phase) uses TEACH for introductions without a
+  // micro-check, so R2 only applies to Phase 2 where every TEACH turn must
+  // immediately include a micro-check question (THEORY stage contract).
+  const _statePhase = parseInt(
+    lessonContext.match(/STUDENT_STATE:.*?phase=(\d+)/)?.[1] ?? "2",
+    10
+  );
+  if (_statePhase >= 2 && mode === "TEACH" && response.is_micro_check !== true) {
     logger.warn(
-      { teaching_mode: mode, is_micro_check: response.is_micro_check },
+      { teaching_mode: mode, is_micro_check: response.is_micro_check, _statePhase },
       "validateTeachingCycle [R2]: TEACH response missing is_micro_check=true"
     );
     throw new Error(

@@ -1,0 +1,501 @@
+PHASE 10 — AI TEACHER INTEGRATION
+GOLD STANDARD LESSON 105 — REAL RUNTIME VERIFICATION
+
+IMPORTANT:
+Phase 9.5 has PASSED.
+
+Lesson 105 is now our GOLD STANDARD Knowledge Base lesson.
+
+Verified baseline:
+
+- valid = true
+- readyForAiTeacher = true
+- source coverage = 100%
+- MicroNodes = 10
+- approvedNodeCount = 10
+- missingEnrichmentCount = 0
+- source activities = 15
+- stored activities = 15
+- assigned activities = 11
+- Additional Exercises = 4
+- lost activities = 0
+- duplicate activities = 0
+- sequential dependencies = 9
+- dependency cycle = false
+- regression baseline = 333/333 PASS
+
+PHASE 10 GOAL:
+
+Prove that the REAL AI Teacher runtime actually consumes this approved
+Knowledge Base correctly and follows the existing teaching architecture.
+
+This is NOT a mapper task.
+This is NOT a Phase 2 task.
+This is NOT a redesign task.
+
+Do NOT modify anything until the read-only forensic audit is complete.
+
+Protected unless a proven integration defect requires a minimal fix:
+
+- lesson-mapping.ts
+- Pass 1
+- Pass 2
+- mapping prompts
+- Phase 2 generation
+- quiz creation/taking flow
+- Knowledge Tree
+- scoring
+- unrelated Teacher Dashboard UI
+
+==================================================
+STEP 0 — READ-ONLY RUNTIME TRACE
+==================================================
+
+Trace the complete production path for a student starting/continuing
+Lesson 105.
+
+Identify with exact files/functions:
+
+1. How Lesson 105 is assigned/opened by a student.
+2. How a lesson session is created or resumed.
+3. How currentNodeId is selected.
+4. How the current MicroNode is fetched.
+5. How lessonContext is assembled.
+6. What exact DB fields are fetched.
+7. What exact context is sent to the AI model.
+8. How the AI structured response is parsed.
+9. How teaching phase/state is persisted.
+10. How the backend decides when to stay on the current MicroNode
+    or transition to the next one.
+
+Do NOT modify code during this step.
+
+==================================================
+STEP 1 — VERIFY KNOWLEDGE BASE → AI CONTEXT
+==================================================
+
+Using Lesson 105 and a real approved MicroNode, prove that the AI Teacher
+runtime receives the intended Knowledge Base fields.
+
+For the selected current MicroNode verify presence of:
+
+LESSON LEVEL
+- Lesson overview / description if available
+- lesson goal / framing if used by current architecture
+
+TOPIC / NODE LEVEL
+- current Topic
+- current MicroNode title
+- learning objective
+- approved theory / theoryContent
+- source page / source boundary where supported
+
+PHASE 2
+- childFriendlyExplanation
+- basicExamples
+- commonMisconception
+- nonExamples
+
+ACTIVITIES
+- exercises assigned to THIS MicroNode
+- exerciseTextVerbatim where applicable
+- page/source metadata where applicable
+
+DEPENDENCIES
+- relevant prerequisite / sequential dependency information
+  if the current runtime uses it
+
+IMPORTANT:
+Do not merely prove that these columns exist in DB.
+
+Prove:
+
+DB
+→ query/select
+→ context builder
+→ final model input
+
+For every field classify:
+
+AVAILABLE IN DB
+FETCHED
+INCLUDED IN AI CONTEXT
+USED/ENFORCED BY PROMPT
+
+Return a matrix.
+
+==================================================
+STEP 2 — VERIFY NODE LOCK / SOURCE BOUNDARIES
+==================================================
+
+Using a real Lesson 105 student session, verify that the AI Teacher is
+restricted to the CURRENT MicroNode.
+
+The Teacher must not silently teach another MicroNode merely because
+related information exists elsewhere in Lesson 105.
+
+Test at least:
+
+A. normal in-scope student response/question
+B. question about another MicroNode in the same lesson
+C. request to skip/change topic
+
+Expected:
+
+- currentNodeId remains authoritative
+- out-of-scope request does not silently change the node
+- redirect behavior follows the existing Node Lock contract
+- backend, not the model alone, controls completion/transition
+
+Do NOT weaken Node Lock.
+
+==================================================
+STEP 3 — REAL TEACHING CYCLE TEST
+==================================================
+
+Run an actual production AI Teacher conversation against Lesson 105.
+
+Do NOT mock the AI response for this test.
+
+Use one real approved MicroNode.
+
+Verify the runtime cycle:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+The important part is not just labels/state variables.
+
+Inspect the ACTUAL student-visible AI messages.
+
+--------------------------------------------------
+3A — TEACH
+--------------------------------------------------
+
+Expected:
+
+- teaches only current MicroNode
+- explanation is appropriate to the learning objective
+- approved Phase 2 content is available to the model
+- does not dump the entire textbook theory unnecessarily
+- does not prematurely declare the node complete
+
+Capture:
+
+currentNodeId
+phase before
+AI action/state
+student_message
+phase after
+
+--------------------------------------------------
+3B — MICRO_CHECK
+--------------------------------------------------
+
+Trigger the normal micro-check path.
+
+Verify:
+
+- exactly one focused micro-check
+- question targets the current MicroNode learning objective
+- ≤25 words if that remains the current contract
+- does not combine multiple unrelated objectives
+- does not transition before feedback
+
+Capture actual message.
+
+--------------------------------------------------
+3C — FEEDBACK
+--------------------------------------------------
+
+Give a student answer.
+
+Preferably test one correct answer and, if practical without corrupting
+the session, one incorrect-answer path.
+
+Verify:
+
+- next turn is FEEDBACK
+- feedback responds to the student's actual answer
+- no TEACH reset immediately after micro-check
+- misconception/scaffold behavior can use approved KB information
+- micro-check evidence does not incorrectly become STRONG evidence
+  if current evidence rules still specify MODERATE maximum
+
+Capture actual message and state transition.
+
+--------------------------------------------------
+3D — TRANSITION
+--------------------------------------------------
+
+Verify that transition occurs only when the existing backend conditions
+allow it.
+
+Confirm:
+
+- model cannot independently mark node complete
+- backend controls node advancement
+- dependency/order logic is respected
+- next currentNodeId is correct when transition is legitimately allowed
+
+Do NOT force DB state just to obtain a transition.
+
+If a real exercise / STRONG evidence is required by the current contract,
+use the normal production flow.
+
+==================================================
+STEP 4 — REAL TEXTBOOK EXERCISE DELIVERY
+==================================================
+
+Lesson 105 contains 15 preserved textbook activities:
+
+11 assigned
+4 Additional
+
+For a MicroNode that has an assigned textbook exercise, verify that the
+AI Teacher can receive/use the assigned exercise through the real
+production context/path.
+
+If exerciseTextVerbatim exists, verify the current verbatim contract:
+
+- textbook wording preserved
+- no silent rewriting that changes the task
+- page/reference metadata available as required by current architecture
+
+IMPORTANT:
+
+Additional Exercises with relatedNodeId = null must NOT randomly appear
+as if they were assigned to the current MicroNode.
+
+Prove this behavior from the runtime path.
+
+==================================================
+STEP 5 — PHASE 2 CONTENT USAGE
+==================================================
+
+We already proved in Phase 9.5 that all 10 nodes contain:
+
+- childFriendlyExplanation
+- basicExamples
+- commonMisconception
+- nonExamples
+
+Now prove that these are not dead DB fields.
+
+For the tested MicroNode show:
+
+DB value
+→ fetched value
+→ context block
+→ actual model input label/instruction
+
+Then inspect the real response and determine whether behavior is
+consistent with the provided enrichment.
+
+Do NOT require verbatim reproduction unless the existing contract says
+near-verbatim/verbatim.
+
+We need integration evidence, not string matching.
+
+==================================================
+STEP 6 — ARMENIAN + RESPONSE CONTRACT
+==================================================
+
+Verify existing AI Teacher response rules still work with the new KB.
+
+Check:
+
+- student-facing teacher text is Armenian
+- no unintended English/Russian system labels leak to student
+- math notation follows current platform rules where applicable
+- structured AI response parses correctly
+- student_message is the intended student-visible field
+- no raw JSON is exposed to the student
+
+Do not redesign the response schema.
+
+==================================================
+STEP 7 — FAILURE / RECOVERY PATH
+==================================================
+
+Read-only inspect the existing runtime handling for:
+
+- malformed structured AI response
+- first structured-call failure
+- retry
+- fallback behavior
+- Node Lock validation
+- scope-drift validation
+
+Do not intentionally damage production data.
+
+If existing tests already prove these paths, cite those tests.
+
+Only add/fix something if a real Phase 10 integration defect is found.
+
+==================================================
+STEP 8 — SESSION / STATE INTEGRITY
+==================================================
+
+After the real conversation, verify DB/session state.
+
+Report:
+
+- lessonSession id
+- lessonId
+- currentNodeId before/after
+- teaching phase/state before/after
+- relevant lastQuestionAsked / cycle state if persisted
+- evidence written, if any
+- whether any unrelated node was modified
+- whether Lesson 105 mapping/Phase2 data remained unchanged
+
+The AI conversation must NOT mutate the Knowledge Base itself.
+
+==================================================
+STEP 9 — PHASE 9 REVALIDATION
+==================================================
+
+After the AI Teacher test run:
+
+GET /api/lessons/105/kb-validate
+
+Must still show:
+
+valid = true
+readyForAiTeacher = true
+source coverage = 100%
+approvedNodeCount = 10
+missingEnrichmentCount = 0
+lostCount = 0
+duplicateCount = 0
+cycleDetected = false
+errors = []
+
+The student teaching session must not corrupt the Gold Standard KB.
+
+==================================================
+STEP 10 — REGRESSION
+==================================================
+
+Run the full existing test suite.
+
+Baseline:
+
+333 / 333 PASS
+
+Required:
+
+all existing tests pass.
+
+If Phase 10 requires new tests, keep them focused specifically on proven
+integration invariants.
+
+Do NOT create dozens of synthetic tests just to increase the count.
+
+==================================================
+DEFECT POLICY
+==================================================
+
+If you find a defect:
+
+STOP and prove:
+
+1. expected behavior
+2. actual behavior
+3. exact file/function
+4. root cause
+5. smallest safe fix
+
+Then make ONLY the minimal fix.
+
+After the fix:
+
+- rerun the exact failed runtime scenario
+- rerun Phase 9 validation
+- rerun full regression
+
+Do NOT refactor unrelated code.
+
+Do NOT weaken validators.
+
+Do NOT change Gold Standard Lesson 105 data merely to make the Teacher
+test pass.
+
+Do NOT alter the mapping to accommodate AI Teacher behavior.
+
+The AI Teacher must consume the approved Knowledge Base — the Knowledge
+Base must not be distorted to accommodate the Teacher.
+
+==================================================
+PHASE 10 ACCEPTANCE GATE
+==================================================
+
+PHASE 10 may PASS only if all of these are proven:
+
+[ ] Lesson 105 readyForAiTeacher = true before test
+[ ] real student lesson session used
+[ ] real AI model used
+[ ] currentNodeId correctly resolved
+[ ] current Topic available
+[ ] MicroNode title available
+[ ] learning objective available
+[ ] theoryContent available
+[ ] childFriendlyExplanation available
+[ ] basicExamples available
+[ ] commonMisconception available
+[ ] nonExamples available
+[ ] assigned exercises available to correct MicroNode
+[ ] Additional exercises do not leak into arbitrary nodes
+[ ] Node Lock works
+[ ] source/scope boundaries enforced
+[ ] TEACH works
+[ ] MICRO_CHECK works
+[ ] FEEDBACK works
+[ ] TRANSITION controlled correctly
+[ ] model cannot independently complete node
+[ ] Armenian response contract works
+[ ] structured response parses correctly
+[ ] session state remains coherent
+[ ] Knowledge Base remains immutable
+[ ] Phase 9 revalidation still PASS
+[ ] full regression suite PASS
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly these sections:
+
+1. RUNTIME ARCHITECTURE TRACE
+2. KB → AI CONTEXT MATRIX
+3. REAL SESSION USED
+4. TEACH RESULT
+5. MICRO_CHECK RESULT
+6. FEEDBACK RESULT
+7. TRANSITION RESULT
+8. NODE LOCK / SCOPE TEST
+9. TEXTBOOK EXERCISE DELIVERY
+10. PHASE 2 CONTENT USAGE
+11. SESSION / DB STATE CHECK
+12. PHASE 9 REVALIDATION
+13. REGRESSION RESULT
+14. DEFECTS FOUND
+15. CODE CHANGES MADE
+16. PHASE 10 FINAL VERDICT
+
+Final verdict must be exactly one of:
+
+PHASE 10 — AI TEACHER INTEGRATION = PASS
+
+or
+
+PHASE 10 — AI TEACHER INTEGRATION = FAIL
+
+If FAIL, list only the blocking defects that prevent Phase 10 completion.
+
+STOP after Phase 10.
+
+DO NOT START PHASE 11.

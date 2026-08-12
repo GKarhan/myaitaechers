@@ -879,7 +879,7 @@ function LessonNodesPanel({
           {/* ── Lesson Overview / General Theory (Step 5) ───────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">📖 Դасի ընдhанур теоретик мас</p>
+              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">📖 Տեսական մաս</p>
               {!descEditing && (
                 <button
                   onClick={() => { setDescValue(lessonDescription ?? ""); setDescEditing(true); }}
@@ -907,11 +907,11 @@ function LessonNodesPanel({
                       );
                     }}
                     className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
-                  >{descUpdateMutation.isPending ? "..." : "Հаstaтел"}</button>
+                  >{descUpdateMutation.isPending ? "..." : "Հաստատել"}</button>
                   <button
                     onClick={() => setDescEditing(false)}
                     className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
-                  >Ченarкел</button>
+                  >Չեղարկել</button>
                 </div>
               </div>
             ) : (
@@ -1246,8 +1246,8 @@ function LessonNodesPanel({
                                     ))}
                                   </select>
                                   <div className="flex gap-1">
-                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հаstatел"}</button>
-                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Чеnаркел</button>
+                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հաստատել"}</button>
+                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                                   </div>
                                 </div>
                               ) : (
@@ -1370,7 +1370,7 @@ function LessonNodesPanel({
                                 value={editExForm.relatedNodeId === null ? "null" : String(editExForm.relatedNodeId)}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, relatedNodeId: e.target.value === "null" ? null : parseInt(e.target.value) })}
                               >
-                                <option value="null">📦 Чкцвац / Лратсуцич варжутюн</option>
+                                <option value="null">📦 Չկցված / Լրացուցիչ վարժություն</option>
                                 {nodes.map((nd) => (
                                   <option key={nd.id} value={String(nd.id)}>
                                     {nd.sequence}. {nd.title}
@@ -1379,7 +1379,7 @@ function LessonNodesPanel({
                               </select>
                               <div className="flex gap-1">
                                 <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40">{updateEx.isPending ? "..." : "Hastatел"}</button>
-                                <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground">Чеnаркел</button>
+                                <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground">Չեղարկել</button>
                               </div>
                             </div>
                           ) : (
