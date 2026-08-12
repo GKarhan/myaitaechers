@@ -1126,12 +1126,12 @@ function LessonNodesPanel({
                               {/* P6.5: Status badges */}
                               {(n as any).status === 'approved' && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
-                                  ✅ Հաutatrvats
+                                  ✅ Հաստատված
                                 </span>
                               )}
                               {(n as any).status === 'needs_review' && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
-                                  ⚠ Veranajogh
+                                  ⚠ Վերանայող
                                 </span>
                               )}
                               {((n as any).status === 'draft' || !(n as any).status) && (

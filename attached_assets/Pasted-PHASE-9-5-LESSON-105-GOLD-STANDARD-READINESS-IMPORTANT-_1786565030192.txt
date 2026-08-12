@@ -1,0 +1,323 @@
+PHASE 9.5 — LESSON 105 GOLD STANDARD READINESS
+
+IMPORTANT:
+This is NOT Phase 10.
+
+Do not implement any new feature.
+Do not refactor the architecture.
+Do not modify mapper logic, Pass 1, Pass 2, prompts, chat.ts, quiz flow,
+Knowledge Tree, scoring, or unrelated UI.
+
+The only goal is to take Lesson 105 from its current validated-but-not-ready state
+to a fully approved + Phase-2-enriched + AI-Teacher-ready Gold Standard state.
+
+CURRENT VERIFIED BASELINE
+
+Phase 9 already passed.
+
+Lesson 105 currently has:
+
+- source coverage = 100%
+- source activities = 15
+- stored activities = 15
+- assigned = 11
+- Additional Exercises = 4
+- lost activities = 0
+- duplicate activities = 0
+- MicroNodes = 10
+- empty MicroNodes = 0
+- sequence valid = true
+- approvedNodeCount = 0
+- all 10 MicroNodes currently status = draft
+- final valid = true
+- readyForAiTeacher = false
+
+This is expected because Teacher Review / Approval + Phase 2 enrichment
+have not yet been completed for Lesson 105.
+
+==================================================
+STEP 0 — READ-ONLY PRECONDITION AUDIT
+==================================================
+
+Before changing any data, verify the current real DB state for Lesson 105.
+
+Report:
+
+1. MicroNode IDs, sequence, title, status.
+2. Total node count.
+3. Approved node count.
+4. For every node, whether these fields currently exist:
+
+   - childFriendlyExplanation
+   - basicExamples
+   - commonMisconception
+   - nonExamples
+
+5. Exercise counts:
+   - total
+   - assigned
+   - Additional
+
+6. Current result of:
+
+GET /api/lessons/105/kb-validate
+
+Confirm specifically:
+
+- valid
+- readyForAiTeacher
+- approvedNodeCount
+- missingEnrichmentCount
+- errors
+- warnings
+
+Do NOT change anything until this baseline is captured.
+
+==================================================
+STEP 1 — APPROVE LESSON 105 MICRONODES
+==================================================
+
+Use the EXISTING Teacher Review approval mechanism.
+
+Do NOT update DB directly unless the existing application route is broken.
+
+Approve all 10 current Lesson 105 MicroNodes using the same production path
+that the Teacher Review UI uses.
+
+After approval verify from DB:
+
+- MicroNodes = 10
+- approved = 10
+- draft = 0
+
+IMPORTANT:
+
+Approval must NOT modify:
+
+- node title
+- learning objective
+- theoryContent
+- verbatimTheoryAnchor
+- sourcePage
+- sourceBlockIndices
+- topic assignment
+- sequence
+- exercises
+- exercise relatedNodeId
+- mapping metadata
+
+Capture a structural snapshot before and after approval and compare it.
+
+==================================================
+STEP 2 — RUN PHASE 2 ON LESSON 105
+==================================================
+
+Use the EXISTING production Phase 2 route:
+
+POST /lessons/105/generate-teaching-content
+
+Do not call the Phase 2 service manually.
+
+Do not bypass the normal background-job flow.
+
+Poll the existing generate-status endpoint until the job reaches a terminal state.
+
+Do not modify the Phase 2 prompt or generation logic.
+
+==================================================
+STEP 3 — VERIFY ALL 4 REQUIRED ENRICHMENT FIELDS
+==================================================
+
+After Phase 2 completes, inspect all 10 approved MicroNodes.
+
+Every approved MicroNode must have valid non-empty:
+
+1. childFriendlyExplanation
+2. basicExamples
+3. commonMisconception
+4. nonExamples
+
+Report a table:
+
+nodeId
+sequence
+title
+status
+childFriendlyExplanation
+basicExamples
+commonMisconception
+nonExamples
+PASS/FAIL
+
+Do not print huge field contents.
+For verification, field presence + type/count/character length is enough.
+
+Acceptance:
+
+approvedNodeCount = 10
+missingEnrichmentCount = 0
+
+If any node is skipped or fails enrichment:
+
+STOP.
+
+Report the exact node and exact reason.
+Do NOT weaken the validator.
+Do NOT manually fabricate enrichment data.
+
+==================================================
+STEP 4 — PROVE MAPPING IMMUTABILITY
+==================================================
+
+Compare the BEFORE snapshot with the AFTER snapshot.
+
+Phase 2 must NOT change:
+
+- Topic count
+- MicroNode count
+- node IDs
+- titles
+- learning objectives
+- theoryContent
+- verbatimTheoryAnchor
+- sourcePage
+- sourceBlockIndices
+- sequence
+- Topic → MicroNode relationships
+- exercise count
+- exerciseTextVerbatim
+- exercise sourcePage/sourceBlockIndices
+- exercise → MicroNode assignments
+- Additional Exercise assignments
+
+Expected exercise invariant remains:
+
+15 source activities
+=
+11 assigned
++
+4 Additional
+
+Lost = 0
+Duplicates = 0
+
+==================================================
+STEP 5 — RUN PHASE 9 VALIDATOR AGAIN
+==================================================
+
+Run:
+
+GET /api/lessons/105/kb-validate
+
+Required final result:
+
+valid = true
+approvedNodeCount = 10
+missingEnrichmentCount = 0
+readyForAiTeacher = true
+errors = []
+
+Source coverage must remain 100%.
+
+Activities must remain:
+
+sourceCount = 15
+storedCount = 15
+assignedCount = 11
+additionalCount = 4
+lostCount = 0
+duplicateCount = 0
+
+MicroNodes must remain:
+
+total = 10
+emptyCount = 0
+sequence valid = true
+
+Dependencies may remain 0 for Lesson 105.
+Do NOT invent dependencies merely to make this test pass.
+
+==================================================
+STEP 6 — REGRESSION TEST
+==================================================
+
+Run the existing full test suite.
+
+Current baseline:
+
+333 / 333 PASS
+
+Required:
+
+- all existing tests still pass
+- zero regressions
+
+Do NOT add a large new test suite for this step unless a real bug is found
+that requires regression coverage.
+
+==================================================
+IMPORTANT FAILURE POLICY
+==================================================
+
+If any existing production route fails:
+
+1. identify the exact root cause;
+2. make only the smallest necessary fix;
+3. explain the fix;
+4. rerun the failed step;
+5. rerun the full regression suite.
+
+Do NOT redesign working architecture.
+
+Do NOT change validation rules merely to obtain PASS.
+
+Do NOT manually write fake Phase 2 content into DB.
+
+Do NOT delete or remap Lesson 105.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. BEFORE STATE
+2. APPROVAL RESULT
+3. PHASE 2 JOB RESULT
+4. 10-NODE ENRICHMENT TABLE
+5. MAPPING IMMUTABILITY CHECK
+6. EXERCISE INVARIANT CHECK
+7. FINAL KB VALIDATION RESULT
+8. FULL TEST RESULT
+9. ANY CODE CHANGES MADE
+10. FINAL VERDICT
+
+The final verdict must be one of:
+
+LESSON 105 GOLD STANDARD READY = PASS
+
+or
+
+LESSON 105 GOLD STANDARD READY = FAIL
+
+PASS is allowed only if:
+
+valid = true
+AND
+approvedNodeCount = 10
+AND
+missingEnrichmentCount = 0
+AND
+readyForAiTeacher = true
+AND
+source coverage = 100%
+AND
+lost activities = 0
+AND
+duplicate activities = 0
+AND
+all regression tests pass.
+
+STOP after this verification.
+
+DO NOT START PHASE 10.

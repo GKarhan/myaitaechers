@@ -616,13 +616,18 @@ await test("Lesson 105: microNode integrity passes (≥1 node, no empty theory, 
   assert.ok(mn.valid);
 });
 
-await test("Lesson 105: phase2 gate passes (draft nodes exempt; 0 approved → 0 missing)", () => {
+await test("Lesson 105: phase2 gate passes (all 10 approved nodes fully enriched)", () => {
+  // Phase 9.5 GOLD STANDARD: Lesson 105 approved + Phase 2 enriched.
+  // All 10 nodes are approved with childFriendlyExplanation, basicExamples,
+  // commonMisconception, and nonExamples populated.
   const p2 = lesson105.phase2;
-  assert.equal(p2.missingEnrichmentCount, 0);
+  assert.equal(p2.approvedNodeCount, 10, `Expected 10 approved nodes, got ${p2.approvedNodeCount}`);
+  assert.equal(p2.missingEnrichmentCount, 0, `Expected 0 missing enrichment, got ${p2.missingEnrichmentCount}`);
   assert.ok(p2.valid);
 });
 
-await test("Lesson 105: dependency gate passes (0 deps, no cycles, no invalid refs)", () => {
+await test("Lesson 105: dependency gate passes (9 sequential deps, no cycles, no invalid refs)", () => {
+  // Phase 9.5: approve-all generated 9 SEQUENTIAL deps (nodes 1→2→…→10).
   const dep = lesson105.dependencies;
   assert.equal(dep.cycleDetected, false);
   assert.equal(dep.invalidReferenceCount, 0);
@@ -637,14 +642,13 @@ await test("Lesson 105: overall valid = true (all structural gates pass)", () =>
     `Expected 0 errors; got: ${lesson105.errors.join("; ")}`);
 });
 
-await test("Lesson 105: readyForAiTeacher = false (nodes are draft, not yet teacher-approved)", () => {
-  // Lesson 105 nodes are all draft — no approved nodes with Phase 2 enrichment.
-  // This is a VALID mapping that is not yet teacher-reviewed, which is correct.
-  assert.equal(lesson105.readyForAiTeacher, false,
-    "Draft-only lesson should not be AI Teacher ready (expected — nodes need teacher approval first)");
-  // The warning should explain this
-  assert.ok(lesson105.warnings.some((w) => w.includes("approved")),
-    "Should warn about no approved nodes");
+await test("Lesson 105: readyForAiTeacher = true (Phase 9.5 GOLD STANDARD)", () => {
+  // Phase 9.5 complete: all 10 nodes are approved + Phase 2 enriched.
+  // The validator must report readyForAiTeacher=true.
+  assert.ok(lesson105.readyForAiTeacher,
+    "All nodes approved + enriched — lesson must be AI Teacher ready");
+  assert.equal(lesson105.errors.length, 0,
+    "No errors expected in Gold Standard state");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
