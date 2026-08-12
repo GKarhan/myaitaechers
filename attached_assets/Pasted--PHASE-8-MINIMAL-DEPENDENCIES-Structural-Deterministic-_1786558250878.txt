@@ -1,0 +1,510 @@
+## PHASE 8 — MINIMAL DEPENDENCIES
+### Structural / Deterministic Dependencies Only
+### Scope: ONLY Phase 8
+
+Phase 5 is CLOSED.
+Phase 6 is CLOSED.
+Phase 7 is CLOSED and verified.
+
+Do NOT reopen previous phases unless a blocking regression is proven.
+
+Do NOT modify:
+- Pass 1 extraction
+- Pass 2 mapping logic
+- exercise assignment
+- Teacher Review architecture
+- Phase 2 enrichment prompt/schema
+- AI Teacher teaching cycle
+- quiz flow
+- Knowledge Tree
+- semantic dependency AI analysis
+- UI styling/polish
+
+The goal is to CLOSE Phase 8 with the smallest safe v1 dependency system.
+
+==================================================
+TARGET V1 ARCHITECTURE
+==================================================
+
+For v1 we only need:
+
+STRUCTURAL / DETERMINISTIC dependency
+
+Example:
+
+MN1 → MN2 → MN3
+
+when the lesson structure clearly indicates that the MicroNodes should be taught in that sequence.
+
+We are NOT implementing semantic prerequisite analysis now.
+
+Examples OUT OF SCOPE:
+
+fractions
+→ equivalent fractions
+→ adding fractions
+
+unless that relationship already exists structurally.
+
+No extra AI call is required for Phase 8.
+
+==================================================
+STEP 0 — AUDIT FIRST, NO CHANGES
+==================================================
+
+Before modifying code, inspect the current dependency system.
+
+Report:
+
+1. Existing DB table/schema for dependencies.
+2. Exact fields:
+   - fromNodeId
+   - toNodeId
+   - dependencyType
+   - requiredLevel
+   - reason
+   - any lesson/topic scoping fields
+3. Where dependencies are currently created.
+4. Whether Pass 2 currently creates dependencies.
+5. Whether current dependencies are AI-generated, deterministic, or mixed.
+6. Whether duplicate dependencies can be inserted.
+7. Whether self-dependencies can exist.
+8. Whether circular dependencies can exist.
+9. How the AI Teacher currently reads dependencies.
+10. What happens when a prerequisite is not satisfied.
+11. Whether dependency order follows node.sequence.
+12. Whether Teacher Review currently exposes dependencies.
+
+Do not guess.
+Use exact code + DB evidence.
+
+==================================================
+STEP 1 — DEFINE THE V1 DEPENDENCY CONTRACT
+==================================================
+
+For Phase 8 v1, the dependency contract is:
+
+For an ordered group of teachable MicroNodes:
+
+MN1
+MN2
+MN3
+MN4
+
+create:
+
+MN1 → MN2
+MN2 → MN3
+MN3 → MN4
+
+Meaning:
+
+toNode depends on fromNode.
+
+Use the existing direction convention if the project already uses the inverse convention.
+
+DO NOT silently reverse the current runtime meaning.
+
+First confirm actual semantics from chat.ts / prerequisite checking.
+
+For this task use:
+
+dependencyType = existing structural/sequential type
+if one already exists.
+
+Prefer:
+"SEQUENTIAL"
+
+Do not introduce a new enum/value if the existing schema already has a suitable one.
+
+==================================================
+STEP 2 — DEPENDENCY SCOPE
+==================================================
+
+Dependencies should be created only where sequence is structurally defensible.
+
+Preferred rule for v1:
+
+Within the same lesson:
+
+- sort MicroNodes by their real teaching sequence
+- create dependency from each MicroNode to the next
+
+BUT first inspect Topic boundaries.
+
+Do NOT automatically create a dependency across unrelated Topics if the current mapper/topic structure makes that unsafe.
+
+Use the smallest deterministic rule supported by the existing structure.
+
+Preferred hierarchy:
+
+A. If node sequence is globally meaningful for the lesson:
+   sequential chain across lesson nodes is acceptable.
+
+B. If sequence is only meaningful inside Topic:
+   create dependencies only inside each Topic.
+
+Document which one is true in the current code/schema.
+
+Do not invent semantics.
+
+==================================================
+STEP 3 — DO NOT USE AI
+==================================================
+
+No LLM call for Phase 8 Level 1.
+
+Do not ask AI:
+
+"which node is prerequisite to which?"
+
+This task is only structural sequence.
+
+Existing AI-generated dependencies:
+- inspect them
+- do not automatically delete them unless they conflict with the final deterministic v1 invariant
+- do not add another AI pass
+
+If current Pass 2 already creates AI SEQUENTIAL dependencies, determine whether we should:
+A. keep them,
+B. replace only SEQUENTIAL ones deterministically,
+C. leave current data but create deterministic dependencies for new mappings.
+
+Choose the smallest architecture that gives reproducible behavior.
+
+==================================================
+STEP 4 — DETERMINISTIC CREATION
+==================================================
+
+Implement or verify a deterministic dependency builder.
+
+It should accept the final persisted/approved MicroNode ordering and produce stable edges.
+
+Required properties:
+
+- deterministic
+- idempotent
+- no duplicates
+- no self-edge
+- valid node IDs only
+- same lesson only
+- stable across repeated execution
+- respects actual sequence
+
+Example:
+
+nodes:
+1 seq=1
+2 seq=2
+3 seq=3
+
+output:
+
+1 → 2
+2 → 3
+
+Running it twice must NOT produce four rows.
+
+==================================================
+STEP 5 — WHEN DEPENDENCIES ARE CREATED
+==================================================
+
+Determine the safest creation point.
+
+Do NOT auto-chain Phase 2.
+
+Preferred options:
+
+- after mapping persistence
+OR
+- after Teacher Review approval
+
+For v1 we want dependency structure to follow the FINAL MicroNode structure.
+
+Therefore strongly prefer:
+
+Teacher-approved/final mapping
+→ deterministic dependency refresh
+
+unless current architecture makes another point clearly safer.
+
+Important:
+
+If Teacher deletes/reorders/adds a MicroNode later, stale dependencies must not silently remain forever.
+
+Do NOT build a large invalidation framework now.
+
+At minimum document current behavior and provide one safe refresh path.
+
+==================================================
+STEP 6 — REFRESH BEHAVIOR
+==================================================
+
+Implement or verify one explicit deterministic refresh operation:
+
+For one lesson:
+
+1. read current final MicroNodes
+2. remove/rebuild ONLY structural SEQUENTIAL dependencies for that lesson
+3. preserve future semantic/conceptual dependency types
+4. insert the deterministic chain
+5. return counts
+
+Expected response/report:
+
+- nodeCount
+- deletedSequentialDependencies
+- createdSequentialDependencies
+- preservedNonSequentialDependencies
+
+Prefer reusing existing routes/services.
+
+Do not add a new route if there is already a safe internal refresh path.
+
+==================================================
+STEP 7 — CYCLE PROTECTION
+==================================================
+
+For deterministic sequential dependencies, cycles should be impossible if sequence is valid.
+
+Still verify:
+
+- no self-edge
+- no A→B and B→A generated by structural builder
+- no duplicate edge
+
+If the table also contains semantic dependencies, perform a lightweight cycle check for the FINAL dependency graph.
+
+Do NOT build a complex graph engine.
+
+A small DFS/Kahn-style check is enough.
+
+For Phase 8 gate we only need:
+
+obvious cycle = 0
+
+==================================================
+STEP 8 — AI TEACHER INTEGRATION
+==================================================
+
+Trace the real AI Teacher prerequisite path.
+
+Answer:
+
+1. Does chat.ts read lesson_node_dependencies?
+2. Which direction does it interpret?
+3. Does it block/redirect a learner if prerequisite node is incomplete?
+4. Which dependency types does it respect?
+5. Does it use requiredLevel?
+6. Does it accidentally treat sequence as hard mastery prerequisite when it should only indicate teaching order?
+
+IMPORTANT:
+
+Do NOT redesign the AI Teacher.
+
+If current dependency direction or filtering is broken, make only the smallest Phase 8 integration fix.
+
+Teaching cycle remains unchanged:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+==================================================
+STEP 9 — REAL PRODUCTION TEST
+==================================================
+
+Use one real lesson with at least 3 MicroNodes.
+
+Prefer the Phase 7 real lesson if still available:
+
+Lesson 69
+3 MicroNodes
+sequence 1,2,3
+
+Or another clean approved lesson.
+
+Run the deterministic dependency refresh.
+
+Verify DB result.
+
+Expected for 3 sequential nodes:
+
+2 structural dependency rows
+
+Example:
+
+MN1 → MN2
+MN2 → MN3
+
+Provide:
+
+fromNode
+fromSequence
+toNode
+toSequence
+dependencyType
+reason
+
+==================================================
+STEP 10 — IDEMPOTENCY TEST
+==================================================
+
+Run the same dependency refresh twice.
+
+Expected:
+
+First run:
+created = N-1
+
+Second run:
+final row count still = N-1
+
+No duplicate rows.
+
+If refresh uses delete + recreate internally, that's acceptable as long as the final result is stable and semantic dependency types are preserved.
+
+==================================================
+STEP 11 — STRUCTURAL CHANGE TEST
+==================================================
+
+Perform one controlled test on test data or reversible production data:
+
+Example:
+
+3 nodes
+→ create deps
+
+then temporarily change sequence or add/remove one test node
+→ refresh
+→ verify dependency chain follows new final structure
+
+Restore production data afterward.
+
+If this is risky on real lesson data, do it in an automated integration test instead.
+
+==================================================
+STEP 12 — TEACHER REVIEW UI
+==================================================
+
+Dependency UI is NOT required for Phase 8 PASS.
+
+Only inspect whether it exists.
+
+If no dependency UI:
+BACKLOG.
+
+Do NOT build full CRUD/UI now.
+
+If a tiny read-only display already exists, verify it.
+
+Teacher-editable dependencies can wait until polish unless the lack of editability blocks the AI Teacher.
+
+==================================================
+STEP 13 — TESTS
+==================================================
+
+Add focused tests only.
+
+At minimum cover:
+
+1. 0 nodes → 0 dependencies
+2. 1 node → 0 dependencies
+3. 3 ordered nodes → 2 dependencies
+4. sequence order respected
+5. no duplicate edge
+6. no self-edge
+7. idempotent refresh
+8. nodes from another lesson not included
+9. semantic/non-sequential dependencies preserved
+10. cycle detection catches obvious cycle
+11. AI Teacher reads dependency in correct direction
+
+Run full existing suite afterward.
+
+Do not weaken existing tests.
+
+==================================================
+STEP 14 — MINIMAL PHASE 8 GATE
+==================================================
+
+Phase 8 PASS requires:
+
+[ ] structural dependency logic is deterministic
+[ ] no AI call required
+[ ] sequence direction verified
+[ ] no duplicate dependencies
+[ ] no self-dependencies
+[ ] same-lesson scope enforced
+[ ] idempotent refresh works
+[ ] semantic dependency types are not destroyed
+[ ] obvious cycle = 0
+[ ] AI Teacher reads dependency direction correctly
+[ ] real 3+ MicroNode lesson verified
+[ ] full tests pass
+
+Teacher dependency CRUD/UI is NOT required for Phase 8 PASS.
+
+Semantic dependency analysis is NOT required.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+DO NOT:
+
+- change mapping granularity
+- change Topic generation
+- change exercise logic
+- change Phase 2
+- change approval workflow
+- build semantic dependency AI analysis
+- build dependency graph visualization
+- redesign AI Teacher prerequisite behavior
+- touch quizzes
+- touch Knowledge Tree
+- do UI polish
+
+Only fix concrete structural dependency defects.
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return:
+
+## PHASE 8 — MINIMAL DEPENDENCIES REPORT
+
+### 1. Current Dependency Architecture
+
+### 2. Direction Semantics
+
+### 3. Defects Found
+
+### 4. Files Changed
+
+### 5. Deterministic Dependency Logic
+
+### 6. Refresh / Idempotency
+
+### 7. Cycle Check
+
+### 8. AI Teacher Integration
+
+### 9. Production Evidence
+
+### 10. Tests
+
+### 11. Remaining Backlog
+
+### 12. Phase 8 Gate Matrix
+
+End with:
+
+PHASE 8 STATUS: PASS / FAIL
+
+Ready for Phase 9 — Knowledge Base Validation: YES / NO
+
+Do NOT start Phase 9.
+Stop after the report.

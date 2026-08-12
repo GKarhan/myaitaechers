@@ -12,6 +12,7 @@ import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizeP
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
+import { refreshSequentialDependencies } from "../lib/sequential-deps.js";
 
 const router = Router();
 
@@ -743,6 +744,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
 
 // POST /lessons/:lessonId/nodes/approve-all — set all draft/needs_review nodes to approved
 // P6.6: Convenience bulk approval — does NOT run Phase 2.
+// P8:   After approval, always rebuilds SEQUENTIAL dependencies for the lesson.
 router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -762,7 +764,29 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: Aut
     )
     .returning({ id: lessonNodesTable.id });
 
-  res.json({ approvedCount: updated.length, nodeIds: updated.map((n) => n.id) });
+  // P8: Rebuild sequential dependency chain after node approval.
+  const depResult = await refreshSequentialDependencies(lessonId);
+
+  res.json({
+    approvedCount:          updated.length,
+    nodeIds:                updated.map((n) => n.id),
+    sequentialDependencies: depResult,
+  });
+});
+
+// POST /lessons/:lessonId/refresh-dependencies — explicit sequential dependency refresh
+// P8: Standalone route for rebuilding SEQUENTIAL deps on an already-approved lesson.
+// Preserves REQUIRED / CONCEPTUAL / other dep types.
+router.post("/lessons/:lessonId/refresh-dependencies", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select({ id: lessonsTable.id }).from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  const result = await refreshSequentialDependencies(lessonId);
+  res.json(result);
 });
 
 // POST /lessons/:lessonId/topics/:topicId/update — partial update for topic title
