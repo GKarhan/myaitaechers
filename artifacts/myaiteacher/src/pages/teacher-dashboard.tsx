@@ -613,7 +613,7 @@ function LessonNodesPanel({
   // Lesson description edit state
   const [descEditing, setDescEditing] = useState(false);
   const [descValue, setDescValue] = useState(lessonDescription ?? "");
-  const [descPending, setDescPending] = useState(false);
+  const descUpdateMutation = useUpdateTeacherLesson();
 
   // Node edit/add state
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
@@ -851,22 +851,15 @@ function LessonNodesPanel({
                 />
                 <div className="flex gap-1">
                   <button
-                    disabled={descPending}
-                    onClick={async () => {
-                      setDescPending(true);
-                      try {
-                        await fetch(`/api/teacher/lessons/${lessonId}`, {
-                          method: "PUT",
-                          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                          body: JSON.stringify({ description: descValue }),
-                        });
-                        setDescEditing(false);
-                      } finally {
-                        setDescPending(false);
-                      }
+                    disabled={descUpdateMutation.isPending}
+                    onClick={() => {
+                      descUpdateMutation.mutate(
+                        { id: lessonId, data: { description: descValue } },
+                        { onSuccess: () => setDescEditing(false) }
+                      );
                     }}
                     className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
-                  >{descPending ? "..." : "Հаstaтел"}</button>
+                  >{descUpdateMutation.isPending ? "..." : "Հаstaтел"}</button>
                   <button
                     onClick={() => setDescEditing(false)}
                     className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"

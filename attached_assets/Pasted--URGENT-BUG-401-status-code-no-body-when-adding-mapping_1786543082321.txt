@@ -1,0 +1,96 @@
+## URGENT BUG — 401 status code (no body) when adding/mapping a lesson
+
+Do NOT make unrelated changes.
+
+I am getting a visible frontend error:
+
+`401 status code (no body)`
+
+It appears in the Teacher Dashboard while working with a newly added lesson / mapping flow.
+
+### TASK 1 — FORENSIC TRACE FIRST
+
+Before changing code, identify the exact request that returns 401.
+
+Trace from the frontend UI action to the backend route.
+
+Inspect:
+
+* browser/API request path
+* HTTP method
+* request body
+* whether `Authorization` header is present
+* whether auth cookie/session is sent
+* frontend API helper used
+* backend auth middleware
+* route registration
+* teacher-role guard
+
+Find the exact file/function/line on both frontend and backend.
+
+### TASK 2 — CHECK RECENT CHANGES
+
+Pay special attention to recent Phase 6 / Teacher Review changes, especially:
+
+* lesson update routes
+* lesson description / overview update
+* node update routes
+* exercise move/update routes
+* additional exercises UI
+* Phase 2 generate endpoint
+
+Check whether any new request uses raw `fetch()` instead of the project’s authenticated API client/helper.
+
+### TASK 3 — DETERMINE ROOT CAUSE
+
+Report exactly which of these is happening:
+
+A. auth header missing
+B. auth cookie not sent
+C. expired/invalid token
+D. wrong endpoint/path
+E. backend route has wrong auth middleware
+F. teacher role check fails
+G. frontend is calling an endpoint intended for another auth flow
+
+Do not guess. Confirm with logs/network evidence.
+
+### TASK 4 — MINIMAL FIX
+
+Only after identifying the exact cause, apply the smallest fix.
+
+Preferred principle:
+
+* reuse the existing authenticated API client/helper
+* do not weaken backend authentication
+* do not remove teacher authorization
+* do not bypass middleware
+* do not hardcode tokens
+
+### TASK 5 — VERIFY
+
+After fix:
+
+1. login as teacher
+2. open Teacher Dashboard
+3. add/open a lesson
+4. trigger the same action that previously produced 401
+5. confirm response is 2xx
+6. confirm no `401 status code (no body)` appears
+7. confirm existing mapping and Phase 2 routes still work
+8. run relevant tests/build
+
+### FINAL REPORT
+
+Return:
+
+* exact failing endpoint
+* exact frontend call
+* exact backend route
+* exact auth failure reason
+* files changed
+* exact fix
+* verification result
+* whether this was caused by recent Phase 6/UI changes
+
+Do not continue to any other task.
