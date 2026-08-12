@@ -1,0 +1,673 @@
+PHASE 5 — GOLD STANDARD EXERCISE / ACTIVITY PRESERVATION
+FORENSIC AUDIT + MINIMAL FIX + REAL LESSON 105 VERIFICATION
+
+IMPORTANT:
+This task is ONLY about textbook exercise/question/activity/task preservation
+for the mapping pipeline.
+
+Do NOT start Phase 9.
+Do NOT redesign the mapper.
+Do NOT change AI Teacher behavior.
+Do NOT change Phase 2 enrichment.
+Do NOT change dependency logic from Phase 8.
+Do NOT change quiz creation/taking.
+Do NOT change unrelated UI/design.
+
+We have now proven that Lesson 105 contains real textbook activities,
+but the current mapping produced:
+
+  9 MicroNodes
+  0 exercises
+  "📦 Լրացուցիչ վարժություններ (0)"
+
+Therefore Phase 5 is NOT complete.
+
+The goal of this task is:
+
+SOURCE TEXTBOOK
+→ Pass 1
+→ activity detection/classification
+→ Pass 2 / rescue if applicable
+→ persistence
+→ assignment
+→ Teacher Review
+
+with ZERO lost source activities.
+
+════════════════════════════════════════════════════════════
+GOLD STANDARD TEST LESSON
+════════════════════════════════════════════════════════════
+
+Lesson ID: 105
+
+Textbook:
+Ֆիզիկա 7
+Գ. Մելիքյան
+
+Lesson:
+ՖԻԶԻԿԱՅԻ ՈՒՍՈՒՄՆԱՍԻՐՄԱՆ ԱՌԱՐԿԱՆ:
+ՖԻԶԻԿԱԿԱՆ ԵՐԵՎՈՒՅԹՆԵՐ
+
+Displayed lesson pages:
+5–8
+
+IMPORTANT:
+The textbook source clearly contains a section:
+
+"Հարցեր և առաջադրանքներ"
+
+with the following 13 logical numbered activities:
+
+1. Ի՞նչ է բնությունը:
+
+2. Ի՞նչ է բնության երևույթը:
+
+3. Ի՞նչ է ուսումնասիրում ֆիզիկան:
+
+4. Բերե՛ք ֆիզիկական երևույթների օրինակներ:
+
+5. Նշված երևույթներից որո՞նք են ֆիզիկական՝
+   սառույցը հալվում է,
+   ծառերը ծաղկում են,
+   լույսի ճառագայթն անդրադառնում է հայելուց,
+   ջուրը եռում է,
+   անձրև է տեղում,
+   թթվածնի և ջրածնի միացումից ջուր է առաջանում:
+
+6. Ի՞նչ է ֆիզիկական մարմինը:
+   Բերե՛ք օրինակներ:
+
+7. Ի՞նչ է նյութը:
+   Բերե՛ք օրինակներ:
+
+8. Բերե՛ք ֆիզիկական մարմինների օրինակներ, որոնք՝
+   ա. կազմված են միևնույն նյութից,
+   բ. ունեն նույն անվանումը, սակայն կազմված են տարբեր նյութերից:
+
+9. 1-ին աղյուսակի համապատասխան վանդակներում գրե՛ք բառեր,
+   որոնք արտահայտում են ֆիզիկական մարմին, նյութ, երևույթ:
+
+   ԱՂՅՈՒՍԱԿ 1
+   Մարմին | Նյութ | Երևույթ
+
+10. Համապատասխանեցման մեկ ամբողջական activity:
+
+    Երևույթը համապատասխանեցրե՛ք տեսակի հետ.
+
+    Նետը սլանում է
+    Լույսն անդրադառնում է հայելուց
+    Կողմնացույցի սլաքը շեղվում է
+    Ջուրը տաքանում է
+
+    համապատասխան տեսակներ՝
+    Մագնիսական
+    Մեխանիկական
+    Օպտիկական
+    Ջերմային
+
+IMPORTANT:
+The source/PDF extraction may visually/OCR-wise number the matching rows
+as 10, 11, 12, 13, 14.
+
+Do NOT automatically interpret those rows as five independent exercises.
+
+Semantically this is ONE matching activity unless the actual source layout
+proves otherwise.
+
+11. Ի՞նչ է մատերիան:
+
+12. Մատերիայի ի՞նչ տեսակներ գիտեք:
+
+13. Ո՞րն է ֆիզիկայի հիմնական խնդիրը:
+
+
+The same lesson also contains:
+
+"Գործնական աշխատանքներ"
+
+with 2 real activities:
+
+P1.
+Take a piece of ice from a refrigerator, place it on a plate,
+observe it after approximately half an hour,
+describe the phenomenon,
+name it,
+and identify the material transformation.
+
+P2.
+Study Aristotle's biography and prepare approximately a one-page
+presentation of the important episodes of his scientific activity,
+using encyclopedias, the Internet, or other sources.
+
+Therefore our GOLD STANDARD expected logical activity count is:
+
+13 QUESTIONS/TASKS
++
+2 PRACTICAL ACTIVITIES
+=
+15 SOURCE ACTIVITIES
+
+Do NOT hard-code Lesson 105, the number 15, these texts,
+or Physics-specific rules into production code.
+
+Lesson 105 is only the regression fixture / acceptance test.
+
+════════════════════════════════════════════════════════════
+STEP 0 — FREEZE CURRENT STATE
+════════════════════════════════════════════════════════════
+
+Before changing ANY code:
+
+Capture the current Lesson 105 state.
+
+Report:
+
+- mapping job id/status
+- Pass 1 block count
+- Pass 1 block types
+- exact source pages actually sent to extraction
+- Topic count
+- MicroNode count
+- exercise count
+- Additional Exercise count
+- coverageValidation
+- sourceBlockIndices used by nodes
+- current DB rows in lesson_exercises for lesson 105
+- current mapping/activity logs relevant to lesson 105
+
+Also identify all code paths involved in:
+
+PDF page selection
+→ Pass 1 extraction
+→ activity classification
+→ activity rescue
+→ Pass 2
+→ exercise normalization
+→ persistence
+→ assignment
+→ Teacher Review API/UI
+
+DO NOT MODIFY CODE YET.
+
+════════════════════════════════════════════════════════════
+STEP 1 — FIND THE EXACT LOSS BOUNDARY
+════════════════════════════════════════════════════════════
+
+This is the most important part.
+
+Trace EACH of the expected 15 activities through the pipeline.
+
+Determine whether each activity exists at:
+
+A. raw PDF/page input
+B. Pass 1 extracted blocks
+C. Pass 1 classified activity blocks
+D. activity rescue output
+E. Pass 2 input
+F. Pass 2 output
+G. normalized exercise list
+H. DB persistence
+I. MicroNode assignment / Additional
+J. Teacher Review API response
+
+Produce a forensic matrix:
+
+Activity | PDF | Pass1 | Classified | Rescue | Pass2 | Persisted | Assigned/Additional
+
+Do not guess.
+
+Use actual logs, DB queries, stored metadata, API responses,
+and source extraction output.
+
+We need the FIRST stage where the activities disappear.
+
+════════════════════════════════════════════════════════════
+STEP 2 — CHECK PAGE / LESSON BOUNDARY FIRST
+════════════════════════════════════════════════════════════
+
+Explicitly verify whether the displayed lesson page range "5–8"
+matches the physical PDF pages/source pages containing
+"Հարցեր և առաջադրանքներ" and "Գործնական աշխատանքներ".
+
+This is critical.
+
+Determine:
+
+- Which physical PDF page contains "Հարցեր և առաջադրանքներ"?
+- Which physical PDF page contains the two practical activities?
+- Is that page included in Lesson 105's extraction range?
+- Is there a printed-page vs PDF-page offset?
+- Does the activity section continue onto the next physical PDF page?
+- Is content being clipped because the lesson metadata says pages 5–8?
+- Does the next lesson actually start after these activities?
+
+If the activities are OUTSIDE the pages currently sent to Pass 1,
+then the root cause is upstream lesson/page-boundary selection.
+
+In that case:
+
+DO NOT patch the activity parser to compensate for missing source input.
+
+Fix the source boundary/page-selection logic at the correct layer.
+
+But preserve existing lesson mapping behavior and avoid pulling content
+from the next lesson.
+
+════════════════════════════════════════════════════════════
+STEP 3 — IF SOURCE REACHES PASS 1, AUDIT CLASSIFICATION
+════════════════════════════════════════════════════════════
+
+If the activity content DOES reach Pass 1:
+
+Inspect why it is not becoming activities.
+
+Check recognition of Armenian headings such as:
+
+Հարցեր և առաջադրանքներ
+Հարցեր
+Առաջադրանքներ
+Վարժություններ
+Գործնական աշխատանք
+Գործնական աշխատանքներ
+Տնային աշխատանք
+
+and equivalent structural signals already supported by the system.
+
+Check whether:
+
+- question blocks are incorrectly THEORY
+- practical activities are incorrectly THEORY
+- numbered items are merged incorrectly
+- one activity is split into fragments
+- matching/table activities are incorrectly counted as many exercises
+- multiline questions are lost
+- continuation blocks are disconnected
+- page breaks break activity grouping
+- OCR/extraction formatting causes classification failure
+
+Do NOT create Physics-specific regexes if a generic structural rule
+can solve the problem.
+
+════════════════════════════════════════════════════════════
+STEP 4 — VERIFY LOGICAL ACTIVITY GROUPING
+════════════════════════════════════════════════════════════
+
+We need semantic/logical activities, not blindly one exercise per
+number-looking token.
+
+For Lesson 105 specifically verify:
+
+The matching task:
+
+"Երևույթը համապատասխանեցրե՛ք տեսակի հետ"
+
+plus its rows/options must remain ONE logical activity.
+
+Likewise:
+
+- question + "Բերե՛ք օրինակներ" continuation = one activity
+- table instruction + table = one activity
+- practical-work instruction spanning multiple lines/pages = one activity
+
+The preservation invariant is:
+
+ONE source activity
+→ ONE stored exercise/activity record
+
+unless the source itself clearly defines separate independent activities.
+
+No artificial splitting merely because OCR produced separate numbered lines.
+
+════════════════════════════════════════════════════════════
+STEP 5 — VERIFY ACTIVITY RESCUE
+════════════════════════════════════════════════════════════
+
+We already have activity rescue / activity validator machinery.
+
+Audit whether it is actually reached for Lesson 105.
+
+If Pass 1 contains activity-like blocks that Pass 2 omits,
+the rescue layer must recover them.
+
+Verify:
+
+source activity
+→ Pass 2 omitted
+→ rescue detects omission
+→ exercise survives
+→ persistence succeeds
+
+If the existing rescue mechanism should already catch this but does not,
+fix the GENERIC defect.
+
+Do not duplicate the rescue system with a second parallel implementation.
+
+════════════════════════════════════════════════════════════
+STEP 6 — PRESERVATION BEFORE ASSIGNMENT
+════════════════════════════════════════════════════════════
+
+These are TWO different problems:
+
+1. PRESERVATION
+2. ASSIGNMENT
+
+First guarantee preservation.
+
+Every real source activity must survive regardless of whether
+the AI knows which MicroNode it belongs to.
+
+Only after preservation attempt best-fit assignment:
+
+Exercise → best-fit MicroNode by learning objective.
+
+If confidence is insufficient:
+
+relatedNodeId = null
+
+and preserve it in:
+
+📦 Լրացուցիչ վարժություններ
+
+NEVER drop an activity because assignment is uncertain.
+
+Invariant:
+
+TOTAL SOURCE ACTIVITIES
+=
+ASSIGNED ACTIVITIES
++
+ADDITIONAL ACTIVITIES
+
+════════════════════════════════════════════════════════════
+STEP 7 — EXPECTED BEST-FIT MAPPING FOR GOLD STANDARD
+════════════════════════════════════════════════════════════
+
+Do NOT hard-code this mapping.
+
+Use it only to evaluate mapping quality.
+
+Expected approximate attribution:
+
+MN "Բնություն և բնության երևույթներ"
+→ Q1, Q2
+
+MN "Ֆիզիկական երևույթներ"
+→ Q3, Q4, Q5
+→ matching activity Q10
+→ practical ice observation activity P1
+
+MN "Ֆիզիկական մարմին և նյութ"
+→ Q6, Q7, Q8, Q9
+
+MN "Մատերիա և նրա տեսակները"
+→ Q11, Q12
+
+MN "Ֆիզիկայի հիմնական խնդիրը"
+→ Q13
+
+The Aristotle research activity P2 may reasonably remain:
+
+relatedNodeId = null
+
+→ 📦 Լրացուցիչ վարժություններ
+
+unless an existing MicroNode has a genuinely valid learning-objective fit.
+
+Again:
+Preservation is mandatory.
+Perfect attribution is NOT mandatory.
+
+════════════════════════════════════════════════════════════
+STEP 8 — MINIMAL ROOT-CAUSE FIX
+════════════════════════════════════════════════════════════
+
+Only after Steps 0–7 identify the exact root cause:
+
+Implement the SMALLEST GENERIC fix at the stage where data is actually lost.
+
+Examples:
+
+If page boundary is wrong
+→ fix page/source selection.
+
+If Pass 1 classification is wrong
+→ fix generic activity classification.
+
+If continuation grouping is wrong
+→ fix generic activity grouping.
+
+If Pass 2 drops activities
+→ strengthen existing rescue/coverage enforcement.
+
+If persistence drops unassigned activities
+→ fix persistence.
+
+If Teacher Review hides null-node activities
+→ fix Additional Exercises retrieval/rendering.
+
+Do not change unrelated architecture.
+
+════════════════════════════════════════════════════════════
+STEP 9 — RE-MAP LESSON 105 FROM SOURCE
+════════════════════════════════════════════════════════════
+
+After the fix, perform a CLEAN re-map of Lesson 105.
+
+Do not manually insert the 15 exercises into DB.
+
+They must be produced by the real pipeline from the textbook source.
+
+Then report:
+
+Pass 1 block count
+Pass 1 activity count
+Pass 2 activity count
+rescued activity count
+stored exercise count
+assigned exercise count
+Additional Exercise count
+lost count
+duplicate count
+
+════════════════════════════════════════════════════════════
+STEP 10 — DB + API VERIFICATION
+════════════════════════════════════════════════════════════
+
+Show real evidence.
+
+For every stored exercise/activity report at least:
+
+- DB id
+- lesson_id
+- related node id / null
+- source page
+- activity type if available
+- exerciseTextVerbatim
+- source block/index metadata if available
+
+Verify:
+
+COUNT(source logical activities) = 15
+COUNT(DB stored activities) = 15
+lost = 0
+duplicates = 0
+
+Also verify API responses used by Teacher Review.
+
+════════════════════════════════════════════════════════════
+STEP 11 — TEACHER REVIEW VERIFICATION
+════════════════════════════════════════════════════════════
+
+Verify Lesson 105 UI/API now represents all activities.
+
+Expected:
+
+Mapped lesson:
+9 MicroNodes
+15 total activities
+
+Each activity must appear EITHER:
+
+A. under a MicroNode
+
+OR
+
+B. in
+
+📦 Լրացուցիչ վարժություններ (N)
+
+No third invisible state is allowed.
+
+If UI manual reassignment already exists, verify:
+
+Additional → MicroNode
+MicroNode → another MicroNode
+MicroNode → Additional
+
+If reassignment is already proven from Phase 5 tests,
+do not redesign it — just regression-test it with this lesson if practical.
+
+════════════════════════════════════════════════════════════
+STEP 12 — REGRESSION TESTS
+════════════════════════════════════════════════════════════
+
+Add tests for the GENERIC failure mode found.
+
+At minimum cover:
+
+1. Armenian "Հարցեր և առաջադրանքներ" section detection
+2. Armenian "Գործնական աշխատանքներ" section detection
+3. multiline question preservation
+4. question + continuation preservation
+5. table activity preservation
+6. matching activity remains one logical activity
+7. practical activity spanning many lines remains one activity
+8. Pass 2 omission → rescue preservation
+9. uncertain assignment → Additional, not deletion
+10. total source activities = assigned + additional
+11. remap idempotency / no duplicates
+12. no regression to source coverage
+13. no regression to MicroNode count/sequence
+14. no regression to Phase 7 enrichment
+15. no regression to Phase 8 dependencies
+
+Then run the FULL existing test suite.
+
+════════════════════════════════════════════════════════════
+NON-REGRESSION REQUIREMENTS
+════════════════════════════════════════════════════════════
+
+For Lesson 105, unless the forensic root cause proves otherwise,
+preserve the currently validated mapping structure:
+
+Topics: 5
+MicroNodes: 9
+
+Do not alter the 9-node structure merely to make exercises fit.
+
+Do not modify:
+
+- Phase 2 enrichment fields
+- node approval state unnecessarily
+- Phase 8 dependencies
+- AI Teacher cycle
+- quiz system
+- Knowledge Tree
+- scoring
+- unrelated lessons
+
+Source coverage must remain valid.
+
+════════════════════════════════════════════════════════════
+FINAL ACCEPTANCE GATE — PHASE 5 GOLD STANDARD
+════════════════════════════════════════════════════════════
+
+Do NOT mark PASS unless ALL mandatory conditions hold:
+
+Lesson 105:
+
+Expected logical source activities = 15
+
+Source activities found = 15
+Stored activities = 15
+
+Assigned + Additional = 15
+
+Lost activities = 0
+
+Duplicate activities = 0
+
+Matching task incorrectly split = 0
+
+Practical activities preserved = 2
+
+Every stored activity has source traceability where schema supports it.
+
+Teacher Review exposes all 15.
+
+Existing Topic/MicroNode structure remains valid.
+
+Source coverage remains valid.
+
+Phase 7 still passes.
+
+Phase 8 still passes.
+
+Full test suite passes.
+
+════════════════════════════════════════════════════════════
+FINAL REPORT FORMAT
+════════════════════════════════════════════════════════════
+
+Return:
+
+1. ROOT CAUSE
+   Exact stage where the 15 activities disappeared.
+
+2. WHY EXISTING TESTS DID NOT CATCH IT
+   Explain why Phase 5 previously appeared to pass.
+
+3. SOURCE/PAGE BOUNDARY EVIDENCE
+   Exact PDF/source pages and extraction range.
+
+4. FORENSIC ACTIVITY MATRIX
+   All 15 activities traced through every stage.
+
+5. FILES + FUNCTIONS CHANGED
+   Exact files/functions and reason.
+
+6. BEFORE / AFTER
+   Before:
+   9 MicroNodes / 0 activities
+
+   After:
+   9 MicroNodes / 15 activities
+   with Assigned + Additional breakdown.
+
+7. DB EVIDENCE
+   Actual stored activity rows.
+
+8. TEACHER REVIEW EVIDENCE
+   Prove every activity is visible.
+
+9. REGRESSION TEST RESULTS
+
+10. FULL TEST SUITE RESULT
+
+11. FINAL VERDICT
+
+Only write:
+
+PHASE 5 GOLD STANDARD = PASS
+
+if every acceptance condition above is proven.
+
+Otherwise:
+
+PHASE 5 GOLD STANDARD = FAIL
+
+and state the exact remaining blocker.
+
+STOP AFTER THIS TASK.
+
+DO NOT START PHASE 9.

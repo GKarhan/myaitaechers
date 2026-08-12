@@ -1392,11 +1392,11 @@ function LessonNodesPanel({
                                   )}
                                   {ex.assignment && (
                                     <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
-                                      {ex.assignment === "HOMEWORK" ? "🏠 Тнайн" : "📋 Дасаранум"}
+                                      {ex.assignment === "HOMEWORK" ? "🏠 Տնային աշխատանք" : "📋 Դասարանում"}
                                     </span>
                                   )}
                                   {ex.sourcePage && (
-                                    <span className="text-[10px] text-muted-foreground/40"> Эж {ex.sourcePage}</span>
+                                    <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
                                   )}
                                 </div>
                               </div>
