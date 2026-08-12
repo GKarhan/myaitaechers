@@ -852,6 +852,7 @@ export interface LessonNode {
   lessonId: number;
   sequence: number;
   title: string;
+  learningObjective?: string | null;
   theoryContent?: string | null;
   targetBloomLevel?: number | null;
   estimatedMinutes?: number | null;
@@ -865,6 +866,7 @@ export interface LessonNode {
   contentSourceType?: string;
   createdBy?: string;
   topicId?: number | null;
+  sourcePage?: number | null;
 }
 
 export interface CreateLessonNodeInput {
@@ -876,6 +878,7 @@ export interface CreateLessonNodeInput {
 
 export interface UpdateLessonNodeInput {
   title?: string;
+  learningObjective?: string;
   theoryContent?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
@@ -885,6 +888,8 @@ export interface UpdateLessonNodeInput {
   basicExamples?: string[];
   nonExamples?: string[];
   realLifeExamples?: string[];
+  /** P6.5: Teacher approval — "approved" | "needs_review" | "draft" */
+  status?: string;
 }
 
 export interface LessonExercise {

@@ -618,7 +618,7 @@ function LessonNodesPanel({
   // Node edit/add state
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
   const [editNodeForm, setEditNodeForm] = useState<{
-    title: string; theoryContent: string; verbatimTheoryAnchor: string;
+    title: string; learningObjective: string; theoryContent: string; verbatimTheoryAnchor: string;
     commonMisconception: string; targetBloomLevel: string; estimatedMinutes: string;
     childFriendlyExplanation: string; basicExamples: string; nonExamples: string; realLifeExamples: string;
   } | null>(null);
@@ -657,6 +657,7 @@ function LessonNodesPanel({
     setEditingNodeId(n.id);
     setEditNodeForm({
       title: n.title,
+      learningObjective: (n as any).learningObjective ?? "",
       theoryContent: n.theoryContent ?? "",
       verbatimTheoryAnchor: (n as any).verbatimTheoryAnchor ?? "",
       commonMisconception: (n as any).commonMisconception ?? "",
@@ -676,6 +677,7 @@ function LessonNodesPanel({
         lessonId, nodeId,
         data: {
           title: editNodeForm.title,
+          learningObjective: editNodeForm.learningObjective,
           theoryContent: editNodeForm.theoryContent,
           verbatimTheoryAnchor: editNodeForm.verbatimTheoryAnchor,
           commonMisconception: editNodeForm.commonMisconception,
@@ -737,6 +739,52 @@ function LessonNodesPanel({
       setDeleteAllOpen(false);
     }
   }, [lessonId, courseId, token, qc]);
+
+  // P6.3: Topic inline title edit state
+  const [editingTopicId, setEditingTopicId]       = useState<number | null>(null);
+  const [editingTopicTitle, setEditingTopicTitle] = useState("");
+  const [topicSaving, setTopicSaving]             = useState(false);
+
+  const startEditTopic = (t: { id: number; title: string }, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTopicId(t.id);
+    setEditingTopicTitle(t.title);
+  };
+  const cancelEditTopic = (e: React.MouseEvent) => { e.stopPropagation(); setEditingTopicId(null); };
+  const saveTopic = async (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!editingTopicTitle.trim()) return;
+    setTopicSaving(true);
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/topics/${topicId}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
+        body: JSON.stringify({ title: editingTopicTitle.trim() }),
+      });
+      if (r.ok) { setEditingTopicId(null); qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] }); }
+    } finally { setTopicSaving(false); }
+  };
+
+  // P6.5: Individual node approval via existing updateNode hook
+  const approveNode = (nodeId: number) => {
+    updateNode.mutate(
+      { lessonId, nodeId, data: { status: "approved" } },
+      { onSuccess: () => refreshNodes() }
+    );
+  };
+
+  // P6.6: Approve-all convenience action
+  const [approvingAll, setApprovingAll] = useState(false);
+  const approveAll = async () => {
+    setApprovingAll(true);
+    try {
+      await fetch(`/api/lessons/${lessonId}/nodes/approve-all`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token ?? ""}` },
+      });
+      refreshNodes();
+    } finally { setApprovingAll(false); }
+  };
 
   const [collapsedTopics, setCollapsedTopics] = useState<Set<number>>(new Set());
   const toggleTopic = (id: number) => setCollapsedTopics((prev) => {
@@ -911,6 +959,16 @@ function LessonNodesPanel({
             </p>
           ) : (
             <div className="space-y-2">
+              {/* P6.6: Approve All convenience button */}
+              {nodes.some((nd) => (nd as any).status !== 'approved') && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={approveAll}
+                    disabled={approvingAll}
+                    className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 font-medium"
+                  >{approvingAll ? "…" : "✅ Հաutatrel bolor hanguytsnerě"}</button>
+                </div>
+              )}
               {nodes.map((n, nodeIdx) => {
                 const nodeExercises = exercises.filter((e) => e.relatedNodeId === n.id);
                 const isEditingNode = editingNodeId === n.id;
@@ -924,16 +982,42 @@ function LessonNodesPanel({
                 return (
                   <Fragment key={n.id}>
                     {isTopicStart && topic && (
-                      <button
-                        onClick={() => toggleTopic(topic.id)}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:brightness-105 transition-all mt-1"
+                      <div
+                        className="w-full flex items-center gap-1 px-2 py-1.5 rounded-lg mt-1"
                         style={{ background: `${accent}18`, borderLeft: `3px solid ${accent}` }}
                       >
-                        <span className="text-[10px] font-mono text-white/40 w-5 shrink-0">{topic.sequence}.</span>
-                        <span className="text-xs font-bold text-white flex-1 text-left leading-snug">{topic.title}</span>
-                        <span className="text-[10px] text-white/40 shrink-0">{nodes.filter((x) => (x as any).topicId === topic!.id).length} ՄՆ</span>
-                        <span className="text-[10px] text-white/30 ml-1">{collapsedTopics.has(topic.id) ? "▶" : "▼"}</span>
-                      </button>
+                        {editingTopicId === topic.id ? (
+                          <>
+                            <input
+                              className="flex-1 bg-black/40 border border-white/15 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-primary/50"
+                              value={editingTopicTitle}
+                              onChange={(e) => setEditingTopicTitle(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => { if (e.key === "Enter") saveTopic(topic.id, e as any); if (e.key === "Escape") cancelEditTopic(e as any); }}
+                              autoFocus
+                            />
+                            <button onClick={(e) => saveTopic(topic.id, e)} disabled={topicSaving} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 shrink-0 disabled:opacity-40">{topicSaving ? "…" : "✅"}</button>
+                            <button onClick={cancelEditTopic} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-muted-foreground hover:text-white shrink-0">✕</button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => toggleTopic(topic.id)}
+                              className="flex-1 flex items-center gap-2 hover:brightness-105 transition-all"
+                            >
+                              <span className="text-[10px] font-mono text-white/40 w-5 shrink-0">{topic.sequence}.</span>
+                              <span className="text-xs font-bold text-white flex-1 text-left leading-snug">{topic.title}</span>
+                              <span className="text-[10px] text-white/40 shrink-0">{nodes.filter((x) => (x as any).topicId === topic!.id).length} ՄՆ</span>
+                              <span className="text-[10px] text-white/30 ml-1">{collapsedTopics.has(topic.id) ? "▶" : "▼"}</span>
+                            </button>
+                            <button
+                              onClick={(e) => startEditTopic(topic, e)}
+                              title="Խmbagreл թema"
+                              className="text-[10px] text-white/30 hover:text-white/70 transition-colors shrink-0 px-1"
+                            >✏️</button>
+                          </>
+                        )}
+                      </div>
                     )}
                   {!isHidden && (
                   <div className="bg-background/40 border border-white/8 rounded-xl overflow-hidden"
@@ -947,14 +1031,21 @@ function LessonNodesPanel({
                           <div className="space-y-1.5">
                             <input
                               className={fieldCls}
-                              placeholder="Վաղանակ"
+                              placeholder="Վաղanaken (title)"
                               value={editNodeForm.title}
                               onChange={(e) => setEditNodeForm((f) => f && { ...f, title: e.target.value })}
                             />
                             <textarea
                               className={fieldCls + " resize-none"}
+                              rows={2}
+                              placeholder="Ulmnatanumah hdrakhum — ush stanum e (learningObjective)"
+                              value={editNodeForm.learningObjective}
+                              onChange={(e) => setEditNodeForm((f) => f && { ...f, learningObjective: e.target.value })}
+                            />
+                            <textarea
+                              className={fieldCls + " resize-none"}
                               rows={3}
-                              placeholder="Թեորիական բովանդակություն"
+                              placeholder="Թeoritakan bovandakutюn (theoryContent)"
                               value={editNodeForm.theoryContent}
                               onChange={(e) => setEditNodeForm((f) => f && { ...f, theoryContent: e.target.value })}
                             />
@@ -1032,28 +1123,58 @@ function LessonNodesPanel({
                           <>
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-xs font-semibold text-white">{n.title}</span>
+                              {/* P6.5: Status badges */}
+                              {(n as any).status === 'approved' && (
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
+                                  ✅ Հաutatrvats
+                                </span>
+                              )}
                               {(n as any).status === 'needs_review' && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
-                                  ⚠ Վεranajogh
+                                  ⚠ Veranajogh
+                                </span>
+                              )}
+                              {((n as any).status === 'draft' || !(n as any).status) && (
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">
+                                  📝 Draft
                                 </span>
                               )}
                               {(n as any).contentSourceType === 'manual' && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">
-                                  ✍ Ձεqrqwy
+                                  ✍ Ձeqnakan
                                 </span>
                               )}
                             </div>
+                            {/* P6.4: Learning objective */}
+                            {(n as any).learningObjective && (
+                              <p className="text-[10px] text-primary/70 mt-0.5 leading-relaxed italic">🎯 {(n as any).learningObjective}</p>
+                            )}
                             {n.theoryContent && (
                               <p className="text-xs text-muted-foreground/80 mt-0.5 line-clamp-2 leading-relaxed">{n.theoryContent}</p>
                             )}
-                            {n.targetBloomLevel != null && (
-                              <span className="text-[10px] text-primary/50">Bloom {n.targetBloomLevel}</span>
-                            )}
+                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                              {n.targetBloomLevel != null && (
+                                <span className="text-[10px] text-primary/50">Bloom {n.targetBloomLevel}</span>
+                              )}
+                              {/* P6.7: Source page */}
+                              {(n as any).sourcePage != null && (
+                                <span className="text-[10px] text-white/30">Էջ {(n as any).sourcePage}</span>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>
                       {!isEditingNode && (
                         <div className="flex gap-1 shrink-0 pt-0.5">
+                          {/* P6.5: Approve button */}
+                          {(n as any).status !== 'approved' && (
+                            <button
+                              onClick={() => approveNode(n.id)}
+                              disabled={updateNode.isPending}
+                              title="Հաutatrel"
+                              className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors disabled:opacity-40"
+                            >✅</button>
+                          )}
                           <button
                             onClick={() => startEditNode(n)}
                             title="Խmbagrel"

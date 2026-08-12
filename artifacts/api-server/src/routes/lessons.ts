@@ -585,6 +585,7 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
       topicId: n.topicId ?? null,
       sequence: n.sequence,
       title: n.title,
+      learningObjective: n.learningObjective ?? null,
       theoryContent: n.theoryContent ?? null,
       targetBloomLevel: n.targetBloomLevel ?? null,
       estimatedMinutes: n.estimatedMinutes ?? null,
@@ -598,6 +599,7 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
       status: n.status ?? "draft",
       contentSourceType: n.contentSourceType ?? "textbook",
       createdBy: n.createdBy ?? "ai",
+      sourcePage: n.sourcePage ?? null,
     }))
   );
 });
@@ -672,7 +674,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples, learningObjective, status } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
@@ -683,6 +685,8 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     basicExamples?: string[];
     nonExamples?: string[];
     realLifeExamples?: string[];
+    learningObjective?: string;
+    status?: "approved" | "needs_review" | "draft";
   };
 
   const patch: Partial<typeof existing> = {};
@@ -696,6 +700,11 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
   if (basicExamples !== undefined) patch.basicExamples = Array.isArray(basicExamples) ? basicExamples : [];
   if (nonExamples !== undefined) patch.nonExamples = Array.isArray(nonExamples) ? nonExamples : [];
   if (realLifeExamples !== undefined) patch.realLifeExamples = Array.isArray(realLifeExamples) ? realLifeExamples : [];
+  if (learningObjective !== undefined) patch.learningObjective = learningObjective.trim() || null;
+  // P6.5: Teacher approval — only allow safe status transitions
+  if (status !== undefined && ["approved", "needs_review", "draft"].includes(status)) {
+    patch.status = status;
+  }
 
   const [updated] = await db
     .update(lessonNodesTable)
@@ -708,6 +717,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     lessonId: updated.lessonId,
     sequence: updated.sequence,
     title: updated.title,
+    learningObjective: updated.learningObjective ?? null,
     theoryContent: updated.theoryContent ?? null,
     targetBloomLevel: updated.targetBloomLevel ?? null,
     estimatedMinutes: updated.estimatedMinutes ?? null,
@@ -717,7 +727,67 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     basicExamples: Array.isArray(updated.basicExamples) ? updated.basicExamples : [],
     nonExamples: Array.isArray(updated.nonExamples) ? updated.nonExamples : [],
     realLifeExamples: Array.isArray(updated.realLifeExamples) ? updated.realLifeExamples : [],
+    status: updated.status ?? "draft",
+    sourcePage: updated.sourcePage ?? null,
   });
+});
+
+// POST /lessons/:lessonId/nodes/approve-all — set all draft/needs_review nodes to approved
+// P6.6: Convenience bulk approval — does NOT run Phase 2.
+router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const updated = await db
+    .update(lessonNodesTable)
+    .set({ status: "approved" })
+    .where(
+      and(
+        eq(lessonNodesTable.lessonId, lessonId),
+        // Only promote eligible statuses — never downgrade approved or override needs_source_content
+        or(
+          eq(lessonNodesTable.status, "draft"),
+          eq(lessonNodesTable.status, "needs_review"),
+        )
+      )
+    )
+    .returning({ id: lessonNodesTable.id });
+
+  res.json({ approvedCount: updated.length, nodeIds: updated.map((n) => n.id) });
+});
+
+// POST /lessons/:lessonId/topics/:topicId/update — partial update for topic title
+// P6.3: Minimal topic editability — title only for v1.
+router.post("/lessons/:lessonId/topics/:topicId/update", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const topicId  = parseInt(String(req.params.topicId),  10);
+  if (isNaN(lessonId) || isNaN(topicId)) {
+    res.status(400).json({ error: "Invalid lesson id or topic id" }); return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(lessonTopicsTable)
+    .where(and(eq(lessonTopicsTable.id, topicId), eq(lessonTopicsTable.lessonId, lessonId)))
+    .limit(1);
+
+  if (!existing) { res.status(404).json({ error: "Topic not found" }); return; }
+
+  const { title } = req.body as { title?: string };
+  if (title !== undefined && !title.trim()) {
+    res.status(400).json({ error: "title cannot be empty" }); return;
+  }
+
+  const patch: Partial<typeof existing> = {};
+  if (title !== undefined) patch.title = title.trim();
+
+  const [updated] = await db
+    .update(lessonTopicsTable)
+    .set(patch)
+    .where(eq(lessonTopicsTable.id, topicId))
+    .returning();
+
+  res.json({ id: updated.id, lessonId: updated.lessonId, sequence: updated.sequence, title: updated.title });
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/delete — delete a node

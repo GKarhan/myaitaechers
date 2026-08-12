@@ -1,0 +1,575 @@
+## PHASE 6 — FINAL COMPLETION TASK
+### Teacher Review / Mapping Approval Workspace
+### Scope: ONLY Phase 6
+
+Phase 5 is CLOSED and verified:
+
+- all real activities preserved
+- lost = 0
+- duplicate = 0
+- valid sourceBlockIndex
+- assignment populated
+- Additional Exercises visible
+- manual exercise reassignment works
+
+Do NOT reopen Phase 5 unless a blocking regression is proven.
+
+Do NOT continue to Phase 7 automatically.
+Do NOT modify Phase 2 enrichment logic.
+Do NOT modify dependency logic.
+Do NOT modify chat.ts teaching cycle.
+Do NOT modify quiz flow.
+Do NOT redesign the mapper.
+Do NOT polish visual styling beyond what is necessary for usability.
+
+The goal is to CLOSE Phase 6 as a practical Teacher Review / approval layer.
+
+Architectural principle:
+
+AI Mapper → Validation Gates → Teacher Review → Approved Mapping → Phase 2
+
+Teacher Review is NOT a passive preview.
+The teacher must be able to inspect and correct the mapped knowledge base before Phase 2.
+
+---
+
+# 0. FIRST — READ-ONLY AUDIT
+
+Before changing code, inspect the current implementation and report which of these already work:
+
+## Lesson level
+
+1. Lesson overview/general theory is visible.
+2. Lesson overview is editable.
+3. Lesson overview persists to DB.
+4. Lesson overview survives refresh.
+5. Existing lesson goal / core idea / core problem / essential question remain intact.
+
+## Topic level
+
+6. Topic title is visible.
+7. Topic title is editable.
+8. Topic ordering is visible/correct.
+9. Topic description/overview exists or not.
+
+## MicroNode level
+
+10. MicroNode title is visible/editable.
+11. Learning objective is visible/editable.
+12. Theory content is visible/editable.
+13. Source/verbatim anchor is visible/editable.
+14. Common misconception is visible/editable.
+15. nonExamples are visible/editable if already supported.
+16. basicExamples are visible/editable if already supported.
+17. MicroNode ordering is stable.
+
+## Exercises
+
+18. Node-linked exercises visible.
+19. Additional Exercises visible.
+20. Exercise text editable.
+21. Assignment CLASS/HOMEWORK visible.
+22. Exercise can move Node A → Node B.
+23. Exercise can move Node → Additional.
+24. Exercise can move Additional → Node.
+25. Move does not duplicate DB rows.
+
+## Approval
+
+26. There is a real teacher approval mechanism for mapped nodes.
+27. Teacher can distinguish:
+   - draft / needs_review
+   - approved
+   - needs_source_content
+28. Phase 2 can only process teacher-approved nodes.
+
+Use actual code + DB evidence.
+Do not guess.
+
+---
+
+# 1. TARGET V1 TEACHER REVIEW
+
+For v1, the Teacher Review workspace only needs to support:
+
+## A. Lesson
+
+Editable:
+
+- Lesson overview / general theoretical description
+
+Visible:
+
+- lesson title
+- textbook
+- author
+- pages
+- lesson goal if present
+- core idea if present
+
+Do NOT add complex lesson-level AI fields now.
+
+## B. Topics
+
+Visible:
+
+- topic sequence
+- topic title
+- number of MicroNodes
+
+Editable:
+
+- topic title
+
+Topic description is OPTIONAL for v1.
+Do not add schema/migration only for topic description.
+
+## C. MicroNodes
+
+Each MicroNode must show:
+
+- sequence
+- title
+- learning objective
+- theory content
+- source/verbatim anchor
+- basicExamples
+- commonMisconception
+- nonExamples
+- current status
+
+Editable fields for v1:
+
+- title
+- learningObjective
+- theoryContent
+- verbatimTheoryAnchor
+- basicExamples
+- commonMisconception
+- nonExamples
+
+Do not add legacy/unused fields just because they exist in DB.
+
+## D. Exercises
+
+Under each MicroNode show linked exercises.
+
+At bottom show:
+
+📦 Լրացուցիչ վարժություններ (N)
+
+Each exercise must support:
+
+- edit text
+- change CLASS/HOMEWORK assignment
+- Move to another MicroNode
+- Move to Additional
+- delete
+
+## E. Approval
+
+Teacher must explicitly approve mapped MicroNodes.
+
+Preferred v1 behavior:
+
+- Newly mapped nodes remain `draft` or `needs_review`
+- Teacher reviews them
+- Teacher can approve individual MicroNode
+- Optional convenience: “Approve all reviewed nodes”
+- Phase 2 must continue to skip unapproved nodes
+
+Do NOT auto-approve merely because Teacher Review page was opened.
+
+---
+
+# 2. LESSON OVERVIEW
+
+We already introduced a lesson-level description/overview feature.
+
+Audit it carefully.
+
+Required behavior:
+
+1. UI displays editable textarea:
+   `Դասի ընդհանուր տեսական նկարագրություն`
+2. Save uses the existing authenticated API client/hook.
+3. No raw unauthenticated fetch.
+4. DB `lessons.description` is updated.
+5. Refresh returns the same value.
+6. Error state is visible if save fails.
+7. Existing lesson fields are not overwritten.
+
+Do NOT reintroduce the previous 401 bug.
+
+If current implementation already satisfies all 7:
+make no change.
+
+---
+
+# 3. TOPIC EDITABILITY
+
+Check whether topic title edit already exists.
+
+If YES:
+verify only.
+
+If NO:
+add the smallest safe update route/UI control needed.
+
+Do NOT add topic deletion/reordering unless already present and working.
+
+For v1, correct sequence display is enough.
+
+---
+
+# 4. MICRONODE EDITABILITY
+
+Audit the existing node update route.
+
+Prefer extending existing route over creating new routes.
+
+Required accepted fields:
+
+- title
+- learningObjective
+- theoryContent
+- verbatimTheoryAnchor
+- basicExamples
+- commonMisconception
+- nonExamples
+
+If realLifeExamples already exists, it may stay editable, but it is NOT required for Phase 6 PASS.
+
+After edit:
+
+- DB updates one node only
+- refresh preserves value
+- sourceBlockIndices/source metadata are NOT silently changed
+- related exercises remain attached
+- node sequence unchanged
+
+---
+
+# 5. APPROVAL WORKFLOW
+
+This is the most important Phase 6 requirement.
+
+Audit current node status handling.
+
+We need a real workflow:
+
+`draft / needs_review`
+→ teacher reviews
+→ `approved`
+→ Phase 2 eligible
+
+Required:
+
+### Individual approval
+
+Teacher can mark one MicroNode approved.
+
+### Safe status update
+
+Approval must not modify:
+
+- theory
+- source anchors
+- exercises
+- sourceBlockIndices
+- sequence
+
+Only status should change unless teacher explicitly edits another field.
+
+### Unapproved node
+
+Must remain skipped by Phase 2.
+
+Existing Phase 7/Phase 2 gate must remain unchanged.
+
+Do NOT automatically run Phase 2 after approval.
+
+Teacher approval and Phase 2 execution are separate actions.
+
+---
+
+# 6. APPROVE ALL — OPTIONAL BUT USEFUL
+
+If very small to implement safely, add:
+
+`✅ Հաստատել բոլոր հանգույցները`
+
+Behavior:
+
+- only lesson's current MicroNodes
+- set eligible review statuses to `approved`
+- do not alter content
+- no Phase 2 auto-run
+
+If it requires broad refactor, skip it.
+Individual approval is enough for Phase 6 PASS.
+
+---
+
+# 7. SOURCE VISIBILITY
+
+Teacher Review must make source-grounding inspectable.
+
+For each MicroNode show at least:
+
+- theoryContent
+- verbatimTheoryAnchor
+- source page if available
+
+Do NOT expose raw DB internals unnecessarily.
+
+No need to build a full source-block forensic viewer now.
+
+The purpose is simply:
+
+teacher can tell what textbook material the MicroNode came from.
+
+---
+
+# 8. EXERCISE REVIEW
+
+Phase 5 functionality must remain intact.
+
+Verify in the same Teacher Review workspace:
+
+Assigned:
+
+`relatedNodeId != null`
+→ displayed under owning MicroNode
+
+Additional:
+
+`relatedNodeId == null`
+→ displayed in Additional Exercises
+
+Manual moves must still work after any Phase 6 change.
+
+Do NOT change exercise attribution algorithms.
+
+---
+
+# 9. REAL PRODUCTION TEST
+
+Use one real mapped lesson with:
+
+- multiple MicroNodes
+- at least several exercises
+- at least one Additional Exercise if available
+
+Prefer the recent Phase 5 regression lesson if still available.
+
+Do NOT use a zero-exercise lesson for the exercise portion.
+
+Perform this real Teacher Review flow:
+
+1. Open mapped lesson.
+2. Edit lesson overview.
+3. Save.
+4. Refresh → confirm persisted.
+5. Edit one Topic title OR verify existing topic edit if implemented.
+6. Edit one MicroNode:
+   - learningObjective
+   - theoryContent or source anchor
+7. Save + refresh.
+8. Move one exercise:
+   Additional → Node
+9. Move it back:
+   Node → Additional
+10. Approve one MicroNode.
+11. Verify DB status = approved.
+12. Leave one other node draft/needs_review.
+13. Verify statuses coexist correctly.
+14. Do NOT run Phase 2 yet.
+
+Use a harmless test edit and restore original values after verification where appropriate.
+
+Do not remap during this verification.
+
+---
+
+# 10. DB VERIFICATION
+
+Report for the production lesson:
+
+## Lesson
+
+- id
+- description before
+- description after
+- persisted after refresh
+
+## Topics
+
+- count
+- sequence
+- edited title verification if tested
+
+## Nodes
+
+For each sampled node:
+
+- id
+- sequence
+- status
+- title
+- learningObjective present?
+- theoryContent present?
+- verbatimTheoryAnchor present?
+
+## Exercises
+
+- total
+- node-linked
+- additional
+- duplicates
+- total rows before/after manual move
+
+Expected:
+
+moving ownership changes `relatedNodeId`,
+NOT row count.
+
+---
+
+# 11. PHASE 2 GATE VERIFICATION
+
+Do NOT execute Phase 2.
+
+Only verify from code that:
+
+- approved node → eligible
+- draft node → skipped
+- needs_review → skipped
+
+If we already have automated tests for this:
+run them.
+
+Phase 6 does not need a Phase 2 generation run.
+
+That belongs to Phase 7 verification.
+
+---
+
+# 12. NO NEW SCHEMA UNLESS BLOCKING
+
+Prefer zero migrations.
+
+Current schema already has most required fields.
+
+Do NOT remove legacy columns.
+Do NOT rename existing columns.
+Do NOT introduce duplicate fields.
+
+If a required Phase 6 field truly does not exist:
+report before adding schema.
+
+---
+
+# 13. TESTS
+
+Run all current relevant test suites.
+
+At minimum:
+
+- activity-rescue
+- activity-validator
+- exercise-assignment
+- phase2-content
+- mapping parser/validator tests
+
+Add narrowly scoped tests only for new Phase 6 behavior, especially:
+
+- node approval status update
+- lesson overview update
+- exercise move does not duplicate rows
+
+Do not convert the existing custom test architecture.
+
+Use the project's correct existing runner.
+
+---
+
+# 14. WHAT NOT TO FIX NOW
+
+Explicit backlog — do NOT address in this task:
+
+- Physics Lesson 105 pedagogical granularity
+- lesson boundary/orientation content
+- Bloom levels
+- semantic exercise best-fit perfection
+- topic semantic review
+- dependency UI
+- semantic dependencies
+- Phase 2 optional enrichment fields
+- AI Teacher prompt/cycle
+- visual design polish
+- sourceParagraph schema migration
+
+Only log them if encountered.
+
+---
+
+# 15. FINAL PHASE 6 GATE
+
+Phase 6 PASS requires:
+
+| Requirement | Expected |
+|---|---|
+| Lesson overview visible | YES |
+| Lesson overview editable | YES |
+| Lesson overview persists | YES |
+| Topic title visible | YES |
+| MicroNode title editable | YES |
+| Learning Objective editable | YES |
+| Theory editable | YES |
+| Source anchor inspectable/editable | YES |
+| Core Phase 2 fields editable | YES |
+| Assigned exercises visible | YES |
+| Additional Exercises visible | YES |
+| Exercise move controls work | YES |
+| Exercise row duplicates after move | 0 |
+| Individual MicroNode approval works | YES |
+| Approved + unapproved nodes can coexist | YES |
+| Phase 2 gate respects approval | YES |
+
+If a cosmetic issue remains:
+do not fail Phase 6.
+
+If teacher cannot inspect/correct/approve the mapping:
+Phase 6 FAIL.
+
+---
+
+# FINAL REPORT FORMAT
+
+Return exactly:
+
+## PHASE 6 — FINAL COMPLETION REPORT
+
+### 1. Current-State Audit
+### 2. Files Changed
+### 3. Lesson Review
+### 4. Topic Review
+### 5. MicroNode Review
+### 6. Exercise Review
+### 7. Approval Workflow
+### 8. Production Verification
+### 9. DB Evidence
+### 10. Tests
+### 11. Regressions
+### 12. Remaining Backlog
+### 13. Final Gate
+
+End with:
+
+`PHASE 6 STATUS: PASS / FAIL`
+
+`Ready for Phase 7 Verification: YES / NO`
+
+Do NOT start Phase 7.
+Stop after the report.
