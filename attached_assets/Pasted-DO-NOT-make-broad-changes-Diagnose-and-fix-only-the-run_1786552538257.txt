@@ -1,0 +1,81 @@
+DO NOT make broad changes. Diagnose and fix only the runtime JSON parsing error currently visible in the Teacher lesson UI.
+
+Current visible error:
+
+`Unterminated string in JSON at position 115 (line 6 column 30)`
+
+It appears inside lesson 105 / its mapped node content.
+
+IMPORTANT:
+
+* Existing verification is green: TypeScript 0 errors, 105/105 tests pass, DB persistence check passes.
+* Therefore do NOT assume this is a compile/test failure.
+* Treat this as a real persisted-data or runtime parsing issue.
+* Do NOT modify chat.ts, quiz flow, manual mapping architecture, or unrelated code.
+
+### STEP 1 — FIND THE EXACT SOURCE, NO CHANGES YET
+
+Trace the frontend rendering path that produces this red JSON parse error.
+
+Identify:
+
+1. The exact component/file rendering the error.
+2. The exact `JSON.parse(...)` or equivalent parsing call that throws it.
+3. The exact DB table + row + column/value being parsed.
+4. Whether the malformed value belongs to lesson 105, one of its lesson_nodes, exercises, Phase 2 content, metadata, or another related record.
+5. Print/show the raw persisted value BEFORE parsing.
+
+Do not summarize the raw value. Show enough of it to identify exactly where line 6 column 30 / position 115 becomes invalid.
+
+### STEP 2 — DETERMINE ROOT CAUSE
+
+Determine whether the malformed JSON was caused by:
+
+* an unescaped double quote inside Armenian/source text,
+* a missing closing quote,
+* newline handling,
+* JSON serialized twice,
+* manually constructed JSON string,
+* truncation,
+* or another specific cause.
+
+Also identify the code path that originally wrote this malformed value to DB.
+
+### STEP 3 — FIX MINIMALLY
+
+Only after proving the root cause:
+
+A. Repair the malformed persisted value for the affected record.
+
+B. If the producer code can generate the same corruption again, make the smallest safe fix at the producer boundary:
+
+* use proper `JSON.stringify(...)` / structured values,
+* do not manually concatenate JSON strings,
+* preserve Armenian/source text exactly.
+
+C. Do NOT silently swallow malformed JSON with an empty fallback unless the field is genuinely optional. We need corruption to remain detectable.
+
+### STEP 4 — VERIFY WITH REAL DATA
+
+Re-fetch the affected DB record and prove:
+
+1. Its JSON is valid.
+2. Lesson 105 renders without the red:
+   `Unterminated string in JSON...`
+3. Existing content has not been lost or altered.
+4. Frontend TypeScript still has 0 errors.
+5. Existing tests still pass.
+
+### REPORT
+
+Return:
+
+* ROOT CAUSE
+* EXACT FILE + LINE
+* EXACT DB TABLE/COLUMN/ROW
+* MALFORMED FRAGMENT
+* CODE CHANGE
+* DATA REPAIR
+* VERIFICATION EVIDENCE
+
+Do not make any unrelated refactors.

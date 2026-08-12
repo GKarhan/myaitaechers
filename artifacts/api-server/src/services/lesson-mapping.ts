@@ -865,10 +865,9 @@ function parsePass2JSON(raw: string): unknown {
   if (s.startsWith("```json")) s = s.slice(7);
   else if (s.startsWith("```"))  s = s.slice(3);
   if (s.endsWith("```")) s = s.slice(0, -3).trim();
-  // Sanitize bare control characters that models occasionally emit inside JSON string
-  // literals (e.g. literal \n, \r, \t instead of the escaped forms \\n \\r \\t).
-  // The regex matches complete JSON string literals (handles \" escapes, dotAll flag)
-  // and escapes/strips the offending bytes before JSON.parse sees them.
+  // Primary repair: sanitize bare control characters inside COMPLETE JSON string
+  // literals (handles \" escapes, dotAll flag). Unterminated strings (missing
+  // closing quote) are not matched here and fall through to the secondary repair.
   s = s.replace(/"(?:[^"\\]|\\.)*"/gs, (str) =>
     str
       .replace(/\n/g, "\\n")
@@ -876,7 +875,30 @@ function parsePass2JSON(raw: string): unknown {
       .replace(/\t/g, "\\t")
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
   );
-  return JSON.parse(s);
+
+  try { return JSON.parse(s); } catch (firstErr: unknown) {
+    const msg = String(firstErr);
+    // Secondary repair: if the error is a bare control character inside a string
+    // (including unterminated strings where the primary regex could not match),
+    // walk the string char-by-char tracking quote state and escape any bare
+    // newline/carriage-return found inside a string literal, then retry once.
+    if (msg.includes("Unterminated string") || msg.includes("Invalid control character")) {
+      let inStr = false, esc = false;
+      const out: string[] = [];
+      for (const c of s) {
+        if (esc)        { out.push(c); esc = false; continue; }
+        if (c === "\\") { out.push(c); esc = true;  continue; }
+        if (c === '"')  { inStr = !inStr; out.push(c); continue; }
+        if (inStr && c === "\n") { out.push("\\n"); continue; }
+        if (inStr && c === "\r") { out.push("\\r"); continue; }
+        if (inStr && c === "\t") { out.push("\\t"); continue; }
+        if (inStr && c < " ")   { /* strip other control chars */ continue; }
+        out.push(c);
+      }
+      return JSON.parse(out.join(""));
+    }
+    throw firstErr;
+  }
 }
 
 // ── Step 1: detect topic boundaries ──────────────────────────────────────────
@@ -2238,7 +2260,10 @@ export async function mapLessonWithAI(
 
   ];
   if (input.teacherGoal) {
-    userPromptParts.push("", `USUC'CHII SEvaGIR NPATAKE: ${input.teacherGoal}`);
+    // Normalize: replace literal newlines with spaces so they don't appear as
+    // bare control characters when the AI echoes this text inside a JSON string.
+    const goalNorm = input.teacherGoal.replace(/[\n\r]/g, " ").trim();
+    userPromptParts.push("", `USUC'CHII SEvaGIR NPATAKE: ${goalNorm}`);
   }
   if (input.teacherOutcomes && input.teacherOutcomes.length > 0) {
     userPromptParts.push(`USUC'CHII SEvaGIR VERJALNARDUTYUNNER: ${input.teacherOutcomes.join("; ")}`);
@@ -2483,7 +2508,7 @@ export async function mapLessonWithVision(
       "",
       `Kc'vats' en ${chunkImages.length} patker (ej' ${chunkFrom}–${chunkTo}). Karda AMEN inch' — amen tekst, vernagirnor, heghinak, varjutyun, aghjusak — u katarel kartezagrm ysts hrahangner.`,
       input.teacherGoal
-      ? `USUC'CHII SEVAGIR NPATAKE: ${input.teacherGoal}` : "",
+      ? `USUC'CHII SEVAGIR NPATAKE: ${input.teacherGoal.replace(/[\n\r]/g, " ").trim()}` : "",
       input.teacherOutcomes && input.teacherOutcomes.length > 0
       ? `USUC'CHII SEVAGIR VERJALNARDUTYUNNER: ${input.teacherOutcomes.join("; ")}` : "",
     ].filter(Boolean).join("\n");
