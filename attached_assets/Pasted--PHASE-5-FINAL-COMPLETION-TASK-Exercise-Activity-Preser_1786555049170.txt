@@ -1,0 +1,517 @@
+## PHASE 5 — FINAL COMPLETION TASK
+### Exercise / Activity Preservation + Assignment
+### Scope: ONLY Phase 5
+
+We are NOT reopening Phases 1–4.
+Do NOT work on Phase 6 Teacher Review beyond what is strictly required to verify exercise visibility/reassignment.
+Do NOT touch Phase 7 Phase 2 enrichment.
+Do NOT touch dependencies.
+Do NOT touch AI Teacher teaching logic.
+Do NOT polish UI styling.
+
+The goal is to CLOSE Phase 5 as a working v1 gate.
+
+Current architectural principle:
+
+AI proposes exercise ownership.
+Code guarantees lossless preservation.
+Teacher may correct ownership manually.
+
+The required invariant is:
+
+TOTAL REAL SOURCE ACTIVITIES
+=
+ASSIGNED TO MICRONODES
++
+ADDITIONAL / UNASSIGNED ACTIVITIES
+
+with:
+
+lost = 0
+duplicate = 0
+
+---
+
+# 0. FIRST — AUDIT CURRENT STATE
+
+Before modifying code, inspect the current implementation and report which of the following are ALREADY working and which are still missing:
+
+1. Pass 1 preserves real:
+   - EXERCISE
+   - QUESTION
+   - ACTIVITY
+   - TASK
+   - PRACTICE
+   - HOMEWORK
+
+2. Pass 2 tries to assign activities to the best-fit MicroNode.
+
+3. Activities with no defensible MicroNode owner are preserved with:
+
+   relatedNodeId = null
+
+4. All activities are inserted into `lesson_exercises`.
+
+5. `sourceBlockIndex` is valid and persisted.
+
+6. `exerciseTextVerbatim` comes from the original Pass1 block text.
+
+7. `assignment` is populated correctly:
+   - EXERCISE / QUESTION / ACTIVITY / TASK / PRACTICE → CLASS
+   - HOMEWORK → HOMEWORK
+
+8. Activities with `relatedNodeId = null` are visible in Teacher Review UI.
+
+9. Teacher can move:
+   - Node A → Node B
+   - Node → Additional
+   - Additional → Node
+
+10. No activity silently disappears after:
+    - safety-net stripping
+    - normalizeActivityPlacements
+    - coverage validation
+    - DB insert
+
+11. Duplicate activity placement is prevented or deterministically normalized before DB persistence.
+
+Do not guess.
+Use actual code + DB evidence.
+
+---
+
+# 1. DO NOT REDESIGN THE MAPPER
+
+Do NOT try to make AI exercise attribution perfect.
+
+We accept this v1 architecture:
+
+### Case A — clear match
+
+Exercise skill clearly matches one MicroNode LO.
+
+→ assign to that MicroNode.
+
+### Case B — uncertain / cross-node
+
+No single defensible owner.
+
+→ preserve as Additional Exercise.
+
+### Case C — teacher correction
+
+Teacher manually reassigns later.
+
+This task is about:
+
+LOSSLESS PRESERVATION + EDITABLE OWNERSHIP
+
+not perfect semantic attribution.
+
+---
+
+# 2. ACTIVITY TYPES
+
+Confirm how the current Pass1 contract handles all student-facing learning activities.
+
+The following must not be silently lost:
+
+- EXERCISE
+- QUESTION
+- ACTIVITY
+- TASK
+- PRACTICE
+- HOMEWORK
+
+If QUESTION / TASK / PRACTICE are intentionally normalized into EXERCISE, that is acceptable for v1 ONLY IF their source text and student-facing function are preserved.
+
+Do not add new DB block types unless absolutely necessary.
+
+No schema migration unless a real blocking gap requires it.
+
+---
+
+# 3. FINAL PRESERVATION INVARIANT
+
+Before coverage validation / DB persistence, establish a deterministic invariant over Pass1 activity blocks.
+
+For every Pass1 block whose semantic role is a real student-facing activity:
+
+it must appear EXACTLY ONCE in one of:
+
+A. `microNode.exercises[]`
+
+OR
+
+B. `topic.additionalExercises[]`
+
+It must NOT remain only in:
+
+- `sourceBlockIndices`
+- `unmappedBlockIndices`
+- invalid/null blockIndex stubs
+- duplicate exercise collections
+
+The existing `normalizeActivityPlacements()` logic should remain the central place for this if possible.
+
+Do NOT rewrite it unnecessarily.
+
+Only fill actual gaps.
+
+---
+
+# 4. ACTIVITY VALIDATION
+
+After normalization, verify deterministically:
+
+For all real activity blocks:
+
+- valid integer `blockIndex`
+- in range
+- appears exactly once
+- not in theory/sourceBlockIndices
+- not in unmappedBlockIndices
+- not missing
+- not duplicated
+
+Return/report at least:
+
+- totalSourceActivities
+- assignedActivities
+- additionalActivities
+- missingActivities
+- duplicateActivities
+- activityInTheory
+- activityInUnmapped
+
+Hard requirement:
+
+`missingActivities = 0`
+
+`duplicateActivities = 0`
+
+for a successful completed mapping.
+
+If activity loss or duplication exists, mapping must NOT silently report success.
+
+Do not create a new complicated status unless the existing coverage gate can correctly fail the job.
+
+Prefer minimal integration with current validation.
+
+---
+
+# 5. DB PERSISTENCE VERIFICATION
+
+For every final activity row in `lesson_exercises`, verify:
+
+- `lessonId`
+- `sourceBlockIndex`
+- `exerciseTextVerbatim`
+- `sourcePage`
+- `sourceParagraph` where available
+- `relatedNodeId`
+- `assignment`
+- `sourceType`
+
+Required semantics:
+
+### Assigned exercise
+
+`relatedNodeId = MicroNode ID`
+
+### Additional exercise
+
+`relatedNodeId = null`
+
+### CLASS
+
+EXERCISE / QUESTION / ACTIVITY / TASK / PRACTICE
+
+### HOMEWORK
+
+HOMEWORK source blocks
+
+No silent `continue` for invalid blockIndex.
+
+If insert cannot resolve the source block:
+- log explicitly
+- validator must already have prevented a false successful mapping
+
+---
+
+# 6. TEACHER REVIEW — ONLY PHASE 5 FEATURES
+
+Do not redesign the whole Teacher Review UI.
+
+Only verify / complete these Phase 5 controls.
+
+## A. Node exercises
+
+Under every MicroNode, show all exercises where:
+
+`relatedNodeId === node.id`
+
+## B. Additional Exercises
+
+At bottom of mapped lesson, show:
+
+`📦 Լրացուցիչ վարժություններ (N)`
+
+containing every exercise where:
+
+`relatedNodeId === null`
+
+No `relatedNodeId = null` activity may be invisible.
+
+Each Additional Exercise should show at minimum:
+
+- text
+- source page
+- exercise/source paragraph if available
+- assignment
+- edit
+- delete
+- Move to Node control
+
+## C. Move ownership
+
+Teacher must be able to move:
+
+`Node A → Node B`
+
+`Node A → Additional`
+
+`Additional → Node C`
+
+Prefer the existing exercise update API if it already supports `relatedNodeId`.
+
+Do NOT create duplicate routes if the existing update route already works.
+
+UI invariant:
+
+Every exercise must always render in exactly one place:
+
+if `relatedNodeId !== null`
+→ under that MicroNode
+
+if `relatedNodeId === null`
+→ Additional Exercises
+
+---
+
+# 7. REAL PRODUCTION TEST
+
+Do NOT use Lesson 105 for the main Phase 5 verification because it currently has 0 exercises in its mapped output.
+
+Use the real mathematics lesson we have already used repeatedly:
+
+**«Գումարի և տարբերության անհայտ բաղադրիչների գտնելը»**
+pages 38–41
+
+This is our main Phase 5 regression case.
+
+It contains exercises 114–122 and has already exposed:
+
+- exercise-only MicroNodes
+- null blockIndex output
+- activity-in-theory
+- additionalExercises
+- wrong ownership
+- duplicate activity rescue
+- `assignment = null`
+- Teacher visibility issues
+
+Use a fresh mapping run after any required fix.
+
+---
+
+# 8. REQUIRED PRODUCTION VERIFICATION
+
+For the fresh mapping, provide:
+
+## Source inventory
+
+- Pass1 total blocks
+- total student-facing activity blocks
+- list of activity block indices
+- source paragraph/exercise numbers where available
+
+## Final mapping
+
+- activities linked to MicroNodes
+- activities in Additional Exercises
+- missing activity indices
+- duplicate activity indices
+
+## DB
+
+Count:
+
+- total `lesson_exercises`
+- `relatedNodeId != null`
+- `relatedNodeId = null`
+- `assignment = CLASS`
+- `assignment = HOMEWORK`
+- `assignment = NULL`
+- invalid/null `sourceBlockIndex`
+
+Expected:
+
+`assignment = NULL → 0`
+
+`invalid sourceBlockIndex → 0`
+
+`lost activities → 0`
+
+`duplicate activities → 0`
+
+---
+
+# 9. MANUAL REASSIGNMENT LIVE TEST
+
+Perform one real Teacher Review reassignment.
+
+Example:
+
+1. Pick one Additional Exercise.
+2. Move it to a MicroNode.
+3. Verify DB `relatedNodeId` changed.
+4. Verify UI moved it from Additional Exercises to that MicroNode.
+5. Move the same exercise back to Additional.
+6. Verify `relatedNodeId = null`.
+7. Verify it reappears in Additional Exercises.
+8. Verify no duplicate DB row was created.
+
+Do NOT remap between these steps.
+
+---
+
+# 10. DO NOT TRY TO FIX SEMANTIC PERFECTION
+
+If AI maps exercise 117 to a defensible but not ideal MicroNode:
+
+DO NOT redesign the mapper now.
+
+Only flag it as:
+
+`assignment quality / backlog`
+
+Teacher correction exists specifically for that reason.
+
+Phase 5 v1 PASS depends on:
+
+- preservation
+- valid ownership state
+- teacher correction ability
+
+not perfect best-fit assignment.
+
+---
+
+# 11. REGRESSION PROTECTION
+
+Do not modify:
+
+- Pass1 extraction unless a blocking activity-loss bug is proven there
+- source coverage architecture
+- Phase 4 granularity review
+- Phase 2 teaching enrichment
+- dependency logic
+- chat.ts teaching cycle
+- quiz flow
+- manual mapping architecture
+
+Run all current relevant tests.
+
+At minimum preserve:
+
+- activity-rescue tests
+- activity-validator tests
+- exercise-assignment tests
+- Phase 2 content tests
+
+Add only narrowly scoped tests for any new Phase 5 behavior.
+
+---
+
+# 12. FINAL PHASE 5 GATE
+
+Phase 5 can be marked COMPLETE only if:
+
+### Preservation
+
+`TOTAL SOURCE ACTIVITIES = ASSIGNED + ADDITIONAL`
+
+### Loss
+
+`lost = 0`
+
+### Duplicate
+
+`duplicate = 0`
+
+### Invalid block index
+
+`0`
+
+### DB assignment NULL
+
+`0`
+
+### Additional exercises visible
+
+YES
+
+### Move Additional → Node
+
+YES
+
+### Move Node → Additional
+
+YES
+
+### Move Node A → Node B
+
+YES
+
+### No duplicate row after move
+
+YES
+
+If any of these fail:
+
+`PHASE 5 STATUS: FAIL`
+
+Otherwise:
+
+`PHASE 5 STATUS: PASS`
+
+---
+
+# FINAL REPORT FORMAT
+
+Return exactly:
+
+## PHASE 5 — FINAL COMPLETION REPORT
+
+### 1. Current-State Audit
+### 2. Files Changed
+### 3. Preservation Logic
+### 4. Activity Validator Result
+### 5. Production Mapping Evidence
+### 6. DB Evidence
+### 7. Additional Exercises UI
+### 8. Manual Reassignment Test
+### 9. Tests
+### 10. Regressions
+### 11. Remaining Backlog
+### 12. Final Gate
+
+End with:
+
+`PHASE 5 STATUS: PASS / FAIL`
+
+`Ready for Phase 6: YES / NO`
+
+Do not continue to Phase 6 automatically.
+Stop after the report.
