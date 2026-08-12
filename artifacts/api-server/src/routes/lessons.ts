@@ -13,6 +13,7 @@ import { validateActivityPlacement, formatActivityFinding } from "../lib/activit
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { refreshSequentialDependencies } from "../lib/sequential-deps.js";
+import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 
 const router = Router();
 
@@ -1101,6 +1102,20 @@ router.get("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, re
     title:       t.title,
     description: t.description ?? null,
   })));
+});
+
+// GET /lessons/:lessonId/kb-validate — Phase 9 Knowledge Base Validation
+//   Deterministic, read-only structural check. Zero AI calls. Zero DB writes.
+//   Returns whether the lesson is structurally sound and ready for AI Teacher.
+router.get("/lessons/:lessonId/kb-validate", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const result = await validateKnowledgeBaseLesson(lessonId);
+  if (result.microNodes.total === 0 && result.sourceCoverage.note?.includes("not been mapped")) {
+    res.status(404).json({ error: "Lesson not found or not yet mapped" });
+    return;
+  }
+  res.json(result);
 });
 
 // GET /lessons/:lessonId/mapping-report — quality report from the last /map run

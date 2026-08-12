@@ -1,0 +1,617 @@
+TASK — PHASE 9: KNOWLEDGE BASE VALIDATION — MINIMAL RELEASE GATE
+
+We have completed and verified:
+
+PHASE 5 — Exercise / Activity Preservation
+PHASE 6 — Teacher Review
+PHASE 7 — Phase 2 Teaching Enrichment
+PHASE 8 — Level-1 Dependencies
+
+Lesson 105 is our current GOLD STANDARD fixture.
+
+IMPORTANT:
+This phase is NOT a mapper redesign.
+This phase is NOT a UI redesign.
+This phase is NOT an AI Teacher task.
+This phase must NOT change mapping quality heuristics unless a real blocking defect is proven.
+
+The purpose of Phase 9 is to answer one question:
+
+"Is an approved mapped lesson structurally safe and complete enough
+to be consumed by the AI Teacher?"
+
+═══════════════════════════════════════════════════
+STEP 0 — READ-ONLY AUDIT FIRST
+═══════════════════════════════════════════════════
+
+Before changing ANY code:
+
+Inspect the current implementation and database schema for:
+
+- lessons
+- lesson topics
+- lesson nodes / MicroNodes
+- lesson exercises / activities
+- source coverage data
+- Phase 2 enrichment fields
+- node sequence
+- node dependencies
+- approval/status fields
+- mapping jobs / validation results if relevant
+
+Also inspect the validators/tests already created in Phases 1–8.
+
+Specifically reuse existing validation logic wherever possible.
+
+DO NOT create duplicate validators if equivalent deterministic
+validation already exists.
+
+Report:
+
+1. existing validators that can be reused;
+2. missing Phase 9 checks;
+3. exact files that would need modification;
+4. whether any blocking defect exists before implementation.
+
+Do not modify code until this audit is complete.
+
+═══════════════════════════════════════════════════
+PHASE 9 VALIDATION CONTRACT
+═══════════════════════════════════════════════════
+
+Implement one deterministic lesson-level validation result.
+
+Conceptually:
+
+validateKnowledgeBaseLesson(lessonId)
+
+The exact function/location may follow the existing architecture.
+
+The result must contain at minimum:
+
+{
+  valid: boolean,
+  lessonId: number,
+
+  sourceCoverage: {
+    valid: boolean,
+    coveragePercent?: number,
+    missingSourceBlocks?: number[]
+  },
+
+  activities: {
+    sourceCount: number,
+    storedCount: number,
+    assignedCount: number,
+    additionalCount: number,
+    lostCount: number,
+    duplicateCount: number,
+    valid: boolean
+  },
+
+  microNodes: {
+    total: number,
+    emptyCount: number,
+    invalidSequenceCount: number,
+    valid: boolean
+  },
+
+  phase2: {
+    approvedNodeCount: number,
+    missingEnrichmentCount: number,
+    valid: boolean
+  },
+
+  dependencies: {
+    total: number,
+    invalidReferenceCount: number,
+    cycleDetected: boolean,
+    valid: boolean
+  },
+
+  errors: [],
+  warnings: []
+}
+
+Exact internal naming may follow existing project conventions,
+but all these facts must be represented.
+
+═══════════════════════════════════════════════════
+GATE 1 — SOURCE COVERAGE
+═══════════════════════════════════════════════════
+
+Reuse the existing source coverage validator.
+
+For a lesson to PASS:
+
+- coverage validation must be valid;
+- there must be no unexplained missing source blocks;
+- source coverage must not be silently bypassed.
+
+Do NOT invent a second definition of coverage.
+
+Use the existing Phase 1–5 coverage contract.
+
+If the current architecture stores coverage validation as part of the
+mapping job rather than directly on the lesson, use the latest completed
+mapping result for that lesson where appropriate.
+
+If reliable validation cannot be reconstructed from persisted data,
+report that as a real architecture gap rather than fabricating PASS.
+
+═══════════════════════════════════════════════════
+GATE 2 — ACTIVITY / EXERCISE INTEGRITY
+═══════════════════════════════════════════════════
+
+This gate must enforce the Phase 5 invariant:
+
+SOURCE ACTIVITIES
+=
+NODE-ASSIGNED ACTIVITIES
++
+ADDITIONAL EXERCISES
+
+with:
+
+lostCount = 0
+duplicateCount = 0
+
+IMPORTANT:
+
+"Additional Exercises" are VALID preserved activities.
+They are NOT lost activities.
+
+An activity must not be counted twice merely because it appears in
+Teacher Review under a node.
+
+Use stable DB identity / source identity where available.
+
+Do not use fuzzy text matching as the primary duplicate definition.
+
+For Lesson 105 GOLD STANDARD the expected current evidence is:
+
+source activities = 15
+stored activities = 15
+assigned + additional = 15
+lost = 0
+duplicates = 0
+
+These numbers are TEST EXPECTATIONS ONLY.
+
+DO NOT hard-code:
+- lessonId 105
+- page 9
+- 15 activities
+- activity texts
+- specific node IDs
+
+into production validation logic.
+
+═══════════════════════════════════════════════════
+GATE 3 — MICRONODE STRUCTURAL INTEGRITY
+═══════════════════════════════════════════════════
+
+Every mapped lesson must satisfy:
+
+- at least one MicroNode exists;
+- no MicroNode has empty/null title;
+- no MicroNode has empty/null meaningful theory content;
+- every MicroNode has a valid positive sequence;
+- sequence order is deterministic;
+- duplicate sequence values inside the same lesson are invalid unless
+  the current schema explicitly scopes sequence per Topic.
+
+IMPORTANT:
+
+First inspect how sequence is actually scoped in the current schema.
+
+Do not impose lesson-global uniqueness if the implementation intentionally
+uses topic-local sequence.
+
+Validate according to the real data model.
+
+A node with whitespace-only theory is EMPTY.
+
+Do not rewrite theory in Phase 9.
+
+Only report failure.
+
+═══════════════════════════════════════════════════
+GATE 4 — PHASE 2 ENRICHMENT
+═══════════════════════════════════════════════════
+
+For every node that is APPROVED and intended for AI Teacher consumption,
+verify the four required Phase 2 fields:
+
+1. childFriendlyExplanation
+2. basicExamples
+3. commonMisconception
+4. nonExamples
+
+Validation rules:
+
+childFriendlyExplanation:
+- non-empty meaningful string
+
+basicExamples:
+- valid non-empty collection / representation according to current schema
+
+commonMisconception:
+- non-empty meaningful string
+
+nonExamples:
+- valid non-empty collection / representation according to current schema
+
+Do not regenerate Phase 2 content here.
+
+Phase 9 only validates it.
+
+Draft / needs_review nodes must NOT accidentally cause the whole lesson
+to appear AI-Teacher-ready.
+
+If the lesson still contains nodes requiring teacher approval,
+the readiness result must make this visible.
+
+Determine the exact blocking behavior from the existing approval contract
+rather than silently changing status semantics.
+
+═══════════════════════════════════════════════════
+GATE 5 — SEQUENCE VALIDATION
+═══════════════════════════════════════════════════
+
+Verify the effective teaching order.
+
+At minimum:
+
+- sequences must be positive;
+- no impossible/ambiguous duplicate ordering;
+- all nodes participating in teaching order are reachable in a
+  deterministic order.
+
+Do NOT renumber nodes automatically.
+
+If sequence is invalid:
+
+valid = false
+
+and return a precise error.
+
+═══════════════════════════════════════════════════
+GATE 6 — DEPENDENCY VALIDATION
+═══════════════════════════════════════════════════
+
+Phase 8 implemented Level-1 dependencies.
+
+Validate:
+
+1. every dependency source node exists;
+2. every dependency target node exists;
+3. source and target belong to the correct lesson scope;
+4. no self-dependency;
+5. no duplicate dependency edge;
+6. no directed cycle.
+
+Cycle detection MUST be deterministic code.
+
+NO AI CALL.
+
+Use a standard graph traversal / topological validation approach.
+
+Examples:
+
+A → B → C = valid
+
+A → B
+B → A = invalid
+
+A → A = invalid
+
+Dependency validation must NOT generate or modify dependencies.
+
+Read-only validation only.
+
+═══════════════════════════════════════════════════
+GATE 7 — APPROVAL / AI-TEACHER READINESS
+═══════════════════════════════════════════════════
+
+The validator must clearly distinguish:
+
+MAPPED
+from
+READY FOR AI TEACHER
+
+A lesson is READY FOR AI TEACHER only when all mandatory Phase 9 gates pass.
+
+Do not equate:
+
+mapping job completed
+
+with:
+
+AI Teacher ready.
+
+Expose a clear final result such as:
+
+valid = true
+readyForAiTeacher = true
+
+or equivalent existing project naming.
+
+If any mandatory gate fails:
+
+readyForAiTeacher = false
+
+and the exact reason must appear in errors.
+
+═══════════════════════════════════════════════════
+ERRORS VS WARNINGS
+═══════════════════════════════════════════════════
+
+ERROR — blocks AI Teacher readiness:
+
+- invalid source coverage
+- lost activity
+- duplicate persisted source activity
+- zero MicroNodes
+- empty required MicroNode content
+- invalid sequence
+- approved node missing required Phase 2 content
+- invalid dependency reference
+- self dependency
+- duplicate dependency edge if structurally invalid
+- dependency cycle
+- unresolved approval state that existing contract says is blocking
+
+WARNING — does NOT necessarily block:
+
+- activity remains in Additional Exercises
+- node has no directly assigned exercise
+- optional Phase 2 fields are absent
+- no dependency exists where sequence alone is sufficient
+- other non-mandatory metadata absent
+
+Do not convert warnings into errors without evidence from the existing
+contract.
+
+═══════════════════════════════════════════════════
+NO AI IN PHASE 9
+═══════════════════════════════════════════════════
+
+This is mandatory.
+
+Knowledge Base validation must be:
+
+- deterministic
+- database-driven
+- repeatable
+- cheap
+- zero AI calls
+
+Do NOT call:
+
+OpenRouter
+DeepSeek
+Gemini
+OpenAI
+or any other model.
+
+Running Phase 9 validation twice against unchanged data must return the
+same structural result.
+
+═══════════════════════════════════════════════════
+NO WRITE DURING VALIDATION
+═══════════════════════════════════════════════════
+
+The validation operation itself must be READ-ONLY.
+
+It must NOT:
+
+- change node status;
+- approve nodes;
+- generate enrichment;
+- reassign exercises;
+- repair sequences;
+- modify dependencies;
+- trigger mapping;
+- modify source coverage;
+- delete anything.
+
+If validation fails, report the defect.
+
+Do not silently repair it.
+
+═══════════════════════════════════════════════════
+TEST REQUIREMENTS
+═══════════════════════════════════════════════════
+
+Add focused Phase 9 tests.
+
+Test at minimum:
+
+P9.1 — healthy lesson → PASS
+
+P9.2 — missing source block → FAIL
+
+P9.3 — lost activity → FAIL
+
+P9.4 — duplicate activity → FAIL
+
+P9.5 — Additional Exercise preserved → PASS
+
+P9.6 — zero MicroNodes → FAIL
+
+P9.7 — empty MicroNode theory → FAIL
+
+P9.8 — invalid sequence → FAIL
+
+P9.9 — approved node missing childFriendlyExplanation → FAIL
+
+P9.10 — approved node missing basicExamples → FAIL
+
+P9.11 — approved node missing commonMisconception → FAIL
+
+P9.12 — approved node missing nonExamples → FAIL
+
+P9.13 — valid A→B→C dependencies → PASS
+
+P9.14 — dependency references nonexistent node → FAIL
+
+P9.15 — self dependency → FAIL
+
+P9.16 — A→B→A cycle → FAIL
+
+P9.17 — validation performs zero AI calls
+
+P9.18 — validation performs zero DB writes
+
+P9.19 — same unchanged input produces same validation result
+
+P9.20 — Lesson 105 GOLD STANDARD → PASS,
+provided its current approved/enrichment state satisfies the contract.
+
+IMPORTANT:
+
+Lesson 105-specific numbers belong only in fixture/test assertions,
+never production code.
+
+═══════════════════════════════════════════════════
+REAL DATABASE VERIFICATION
+═══════════════════════════════════════════════════
+
+After tests pass, run the validator against Lesson 105.
+
+Report the REAL values:
+
+1. source coverage valid?
+2. source coverage percent
+3. source activity count
+4. stored activity count
+5. assigned activity count
+6. Additional Exercises count
+7. lost activity count
+8. duplicate activity count
+9. MicroNode count
+10. empty MicroNode count
+11. sequence valid?
+12. approved node count
+13. approved nodes missing Phase 2 content
+14. dependency count
+15. invalid dependency references
+16. self dependencies
+17. duplicate dependency edges
+18. cycle detected?
+19. final valid
+20. readyForAiTeacher
+
+Do not infer these values from previous reports.
+
+Read the CURRENT database / current persisted mapping.
+
+═══════════════════════════════════════════════════
+FULL REGRESSION
+═══════════════════════════════════════════════════
+
+After Phase 9 tests:
+
+Run the COMPLETE existing test suite.
+
+Current previously verified baseline:
+
+286 / 286 PASS
+
+Report:
+
+previous tests
+new Phase 9 tests
+new total
+failed count
+
+Zero regression is required.
+
+═══════════════════════════════════════════════════
+STRICT SCOPE
+═══════════════════════════════════════════════════
+
+DO NOT modify unless a proven blocking defect requires it:
+
+- chat.ts
+- AI Teacher teaching cycle
+- quiz system
+- Knowledge Tree
+- scoring
+- manual mapping contract
+- Phase 2 generation prompt
+- mapping Pass 1 / Pass 2 prompts
+- exercise attribution heuristics
+- Teacher Review UI
+- dependency generation logic
+- lesson source boundaries
+- PDF extraction logic
+
+DO NOT redesign the mapper.
+
+DO NOT optimize prompts.
+
+DO NOT polish UI.
+
+DO NOT start Phase 10.
+
+═══════════════════════════════════════════════════
+FINAL REPORT FORMAT
+═══════════════════════════════════════════════════
+
+Return:
+
+# PHASE 9 — KNOWLEDGE BASE VALIDATION REPORT
+
+## 1. Read-only audit
+- existing reusable validators
+- missing pieces found
+
+## 2. Implementation
+- exact files changed
+- exact reason for every change
+
+## 3. Validation gates
+Table:
+
+Gate | Result | Evidence
+
+Source Coverage
+Activity Integrity
+MicroNode Integrity
+Phase 2 Enrichment
+Sequence
+Dependencies
+Approval / Readiness
+
+## 4. Lesson 105 real DB verification
+Include all 20 requested values.
+
+## 5. Tests
+- Phase 9 tests
+- full regression total
+- failures
+
+## 6. AI-call proof
+Explicitly confirm Phase 9 validator makes ZERO AI calls.
+
+## 7. Write-safety proof
+Explicitly confirm validation performs ZERO DB writes.
+
+## 8. Final verdict
+
+Return exactly one:
+
+PHASE 9 = PASS
+
+or
+
+PHASE 9 = FAIL
+
+If FAIL:
+list the blocking defects.
+
+STOP after Phase 9.
+
+DO NOT begin Phase 10.
