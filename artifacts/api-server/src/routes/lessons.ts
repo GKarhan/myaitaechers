@@ -632,27 +632,34 @@ router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, re
     return;
   }
 
-  const [maxRow] = await db
-    .select({ maxSeq: max(lessonNodesTable.sequence) })
-    .from(lessonNodesTable)
-    .where(eq(lessonNodesTable.lessonId, lessonId));
+  // Atomic: insert + SEQUENTIAL rebuild in one transaction so the graph is
+  // never left stale after a new node is appended.
+  const node = await db.transaction(async (tx) => {
+    const [maxRow] = await tx
+      .select({ maxSeq: max(lessonNodesTable.sequence) })
+      .from(lessonNodesTable)
+      .where(eq(lessonNodesTable.lessonId, lessonId));
 
-  const nextSeq = (maxRow?.maxSeq ?? 0) + 1;
+    const nextSeq = (maxRow?.maxSeq ?? 0) + 1;
 
-  const [node] = await db
-    .insert(lessonNodesTable)
-    .values({
-      lessonId,
-      sequence: nextSeq,
-      title: title.trim(),
-      theoryContent: theoryContent?.trim() ?? null,
-      targetBloomLevel: targetBloomLevel ?? 1,
-      estimatedMinutes: estimatedMinutes ?? 5,
-      topicId: topicId ?? null,
-      learningObjective: learningObjective?.trim() ?? null,
-      createdBy: "teacher",
-    })
-    .returning();
+    const [inserted] = await tx
+      .insert(lessonNodesTable)
+      .values({
+        lessonId,
+        sequence: nextSeq,
+        title: title.trim(),
+        theoryContent: theoryContent?.trim() ?? null,
+        targetBloomLevel: targetBloomLevel ?? 1,
+        estimatedMinutes: estimatedMinutes ?? 5,
+        topicId: topicId ?? null,
+        learningObjective: learningObjective?.trim() ?? null,
+        createdBy: "teacher",
+      })
+      .returning();
+
+    await refreshSequentialDependencies(lessonId, tx as unknown as typeof db);
+    return inserted;
+  });
 
   await invalidateLessonApproval(lessonId);
   res.status(201).json({
@@ -1056,7 +1063,13 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
     return;
   }
 
-  await db.delete(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId));
+  // Atomic: delete + SEQUENTIAL rebuild so no stale edges remain after removal.
+  // FK CASCADE on lesson_node_dependencies removes edges touching nodeId first;
+  // refreshSequentialDependencies then rebuilds the chain from remaining nodes.
+  await db.transaction(async (tx) => {
+    await tx.delete(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId));
+    await refreshSequentialDependencies(lessonId, tx as unknown as typeof db);
+  });
   await invalidateLessonApproval(lessonId);
   res.json({ message: "Node deleted" });
 });

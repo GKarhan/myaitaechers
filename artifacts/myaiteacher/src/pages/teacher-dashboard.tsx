@@ -1251,11 +1251,11 @@ function LessonNodesPanel({
                     onClick={() => saveNode(n.id)}
                     disabled={updateNode.isPending}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                  >{updateNode.isPending ? "..." : "Ընthel"}</button>
+                  >{updateNode.isPending ? "..." : "Հաստատել"}</button>
                   <button
                     onClick={() => { setEditingNodeId(null); setEditNodeForm(null); }}
                     className={btnSm + " bg-white/10 text-muted-foreground"}
-                  >Անcel</button>
+                  >Չեղարկել</button>
                 </div>
               </div>
             ) : (
@@ -1348,7 +1348,7 @@ function LessonNodesPanel({
         {/* Exercises under this node */}
         {nodeExercises.length > 0 && (
           <div className="border-t border-white/6 px-3 py-2 space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Varjutyunner</p>
+            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Վարժություններ</p>
             {nodeExercises.map((ex) => {
               const isEditingEx = editingExerciseId === ex.id;
               return (
@@ -1381,8 +1381,8 @@ function LessonNodesPanel({
                         {nodes.map((nd) => <option key={nd.id} value={String(nd.id)}>{nd.sequence}. {nd.title}</option>)}
                       </select>
                       <div className="flex gap-1">
-                        <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Hastatrel"}</button>
-                        <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Chegharkrel</button>
+                        <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հաստատել"}</button>
+                        <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                       </div>
                     </div>
                   ) : (
@@ -1406,7 +1406,7 @@ function LessonNodesPanel({
                           {ex.difficultyLevel && <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>}
                           {ex.assignment && (
                             <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
-                              {ex.assignment === "HOMEWORK" ? "🏠 Tnyin" : "📋 Dasarannum"}
+                              {ex.assignment === "HOMEWORK" ? "🏠 Tnyin" : "📋 Դասարանում"}
                             </span>
                           )}
                           {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>}
@@ -1479,7 +1479,7 @@ function LessonNodesPanel({
               </div>
               <div className="flex gap-1">
                 <button disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()} onClick={() => { createEx.mutate({ lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } }, { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }); }} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createEx.isPending ? "..." : "+ Avaelatsnel"}</button>
-                <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Chegharkel</button>
+                <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
               </div>
             </div>
           ) : (
@@ -1873,11 +1873,11 @@ function LessonNodesPanel({
                                 rows={3}
                                 value={editExForm.exerciseTextEdited}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
-                                placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (Դասագրքի բն)…" : "Varjutyutyan bnagir"}
+                                placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (Դասագրքի բնօրինակի վրա)…" : "Վարժության բնօրինակ"}
                               />
                               <input
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                                placeholder="Haghoghutyyan banalich"
+                                placeholder="Հաջողության բանալին"
                                 value={editExForm.successCriteria}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })}
                               />
@@ -1906,8 +1906,8 @@ function LessonNodesPanel({
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                   {/* P1.6B — source origin badge + reset button */}
                                   {(ex as any).sourceType === 'textbook'
-                                    ? <span className="text-[9px] text-blue-400/50">📖 Dasagrkic</span>
-                                    : <span className="text-[9px] text-purple-400/50">✍️ Dzerckov</span>
+                                    ? <span className="text-[9px] text-blue-400/50">📖 Դասագրքից </span>
+                                    : <span className="text-[9px] text-purple-400/50">✍️ ՁԵռքով</span>
                                   }
                                   {(ex as any).exerciseTextEdited && (
                                     <button
@@ -2047,7 +2047,7 @@ function LessonNodesPanel({
                             setAddAdditionalForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" });
                           }}
                           className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
-                        >Chegharkrel</button>
+                        >Չեղարկել</button>
                       </div>
                     </div>
                   ) : (
@@ -2149,7 +2149,7 @@ function LessonNodesPanel({
                     }}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
                   >{createNode.isPending ? "..." : "Avaelatsnel"}</button>
-                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Chegharkrel</button>
+                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                 </div>
               </div>
             ) : (
@@ -3897,7 +3897,7 @@ export default function TeacherDashboard() {
                           }
                           className={inputCls}
                         >
-                          <option value="">— ընтrel —</option>
+                          <option value="">— Հաստատել —</option>
                           {courseResources
                             .filter((r) => r.type === "textbook")
                             .map((r) => (

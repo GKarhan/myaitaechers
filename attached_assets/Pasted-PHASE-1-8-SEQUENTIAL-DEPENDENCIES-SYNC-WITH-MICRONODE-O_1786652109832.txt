@@ -1,0 +1,776 @@
+PHASE 1.8 — SEQUENTIAL DEPENDENCIES SYNC WITH MICRONODE ORDER
+
+Phase 1.1–1.7 are complete.
+
+This task is ONLY:
+
+PHASE 1.8 — Synchronize structural SEQUENTIAL dependencies with MicroNode ordering.
+
+IMPORTANT:
+
+DO NOT redesign dependency architecture.
+DO NOT build semantic dependency AI.
+DO NOT infer prerequisites.
+DO NOT modify REQUIRED dependency semantics.
+DO NOT modify Mapper dependency-generation semantics unless a concrete bug is proven.
+DO NOT change Teacher Review ordering UX unless required to fix a proven dependency-sync defect.
+
+Current authoritative hierarchy:
+
+Lesson → Topic → MicroNode
+
+Current authoritative MicroNode ordering:
+
+`lesson_nodes.sequence`
+
+Previous Phase 1.2 forensic work already found:
+
+- SEQUENTIAL dependencies are structural/order-derived
+- REQUIRED dependencies are semantic
+- `refreshSequentialDependencies()` already exists
+- node reorder already calls the SEQUENTIAL refresh
+- transaction integrity was previously fixed so node reorder + SEQUENTIAL rebuild commit atomically
+
+DO NOT assume those previous changes are still correct.
+
+Audit and prove them against the current repository.
+
+==================================================
+1. REQUIRED BEHAVIOR
+==================================================
+
+If current MicroNode order is:
+
+MN1 → MN2 → MN3
+
+structural SEQUENTIAL graph must be:
+
+MN1 → MN2
+MN2 → MN3
+
+If teacher reorders to:
+
+MN1 → MN3 → MN2
+
+structural SEQUENTIAL graph must become:
+
+MN1 → MN3
+MN3 → MN2
+
+The old structural edges:
+
+MN1 → MN2
+MN2 → MN3
+
+must not remain stale.
+
+Only SEQUENTIAL edges derived from structural order are rebuilt.
+
+REQUIRED dependencies must remain untouched.
+
+==================================================
+2. AUDIT FIRST — NO CODE CHANGES
+==================================================
+
+Inspect the current repository.
+
+Identify:
+
+A. Dependency table/schema
+
+Report actual:
+
+- table name
+- from/source node field
+- to/target node field
+- dependency type field
+- lesson relationship
+- timestamps/metadata if relevant
+- uniqueness constraints
+
+B. Dependency types
+
+Identify all actual types present or supported.
+
+Especially:
+
+- SEQUENTIAL
+- REQUIRED
+- RELATED
+- anything else
+
+Classify each:
+
+STRUCTURAL / ORDER-DERIVED
+
+or
+
+SEMANTIC / NOT ORDER-DERIVED
+
+Do not infer semantics from names only.
+
+Trace actual code.
+
+C. SEQUENTIAL generation
+
+Find:
+
+- `refreshSequentialDependencies`
+- `buildSequentialChain`
+- or current equivalents
+
+Explain exactly:
+
+- where node order comes from
+- whether it sorts by `lesson_nodes.sequence`
+- whether Topic grouping affects the chain
+- whether chain is lesson-wide or topic-local
+- what happens to standalone/topicless nodes
+
+D. Reorder path
+
+Trace:
+
+Teacher UI reorder
+→ reorder API
+→ DB sequence updates
+→ SEQUENTIAL rebuild
+→ transaction commit
+
+Confirm exact file/function names.
+
+==================================================
+3. AUTHORITATIVE ORDER SCOPE
+==================================================
+
+Previous audit established:
+
+MicroNode sequence is lesson-wide.
+
+Reconfirm this.
+
+For Lesson 105, if the persisted order is:
+
+MN1
+MN2
+MN3
+...
+MN10
+
+then SEQUENTIAL graph should be one deterministic lesson-wide chain:
+
+MN1→MN2
+MN2→MN3
+...
+MN9→MN10
+
+unless current architecture explicitly defines another scope.
+
+Do NOT introduce Topic-local dependency chains if the authoritative architecture is lesson-wide.
+
+Topic reorder must NOT silently rewrite MicroNode SEQUENTIAL dependencies unless Topic reorder actually changes `lesson_nodes.sequence`.
+
+Audit and report this explicitly.
+
+==================================================
+4. TRANSACTION ATOMICITY — CRITICAL
+==================================================
+
+Verify that MicroNode reorder and SEQUENTIAL dependency rebuild happen inside the SAME DB transaction.
+
+Required atomic invariant:
+
+Either:
+
+NEW node order
++
+matching NEW SEQUENTIAL graph
+
+both commit
+
+OR:
+
+OLD node order
++
+OLD SEQUENTIAL graph
+
+remain
+
+Forbidden state:
+
+NEW order
++
+OLD SEQUENTIAL graph
+
+Also forbidden:
+
+OLD order
++
+NEW SEQUENTIAL graph
+
+If current implementation already guarantees this, DO NOT rewrite it.
+
+Provide exact code evidence.
+
+If not, minimally fix it.
+
+==================================================
+5. REBUILD ONLY SEQUENTIAL
+==================================================
+
+During refresh:
+
+Delete/rebuild ONLY structural SEQUENTIAL edges derived from ordering.
+
+Do NOT delete or recreate:
+
+- REQUIRED
+- semantic prerequisite
+- manually created semantic dependency
+- other non-SEQUENTIAL types
+
+Test this explicitly.
+
+If the helper currently deletes every dependency and rebuilds only SEQUENTIAL, that is a critical bug.
+
+Fix only that defect.
+
+==================================================
+6. GRAPH INTEGRITY RULES
+==================================================
+
+After every SEQUENTIAL refresh verify:
+
+- no stale SEQUENTIAL edge
+- no duplicate SEQUENTIAL edge
+- no self-edge
+- no missing adjacent edge
+- edge count = max(nodeCount - 1, 0)
+- all referenced nodes belong to the same lesson
+- order matches authoritative `sequence`
+
+For 10 MicroNodes expected:
+
+SEQUENTIAL edges = 9
+
+if the architecture is one lesson-wide chain.
+
+==================================================
+7. CREATE / DELETE MICRONODE
+==================================================
+
+Audit what happens when teacher:
+
+A. creates a new MicroNode
+
+B. deletes a MicroNode
+
+These operations also change the structural sequence graph.
+
+Example:
+
+Before:
+
+MN1 → MN2 → MN3
+
+Delete MN2.
+
+Expected graph:
+
+MN1 → MN3
+
+not:
+
+MN1 → deleted MN2
+MN2 → MN3
+
+Similarly, if a new node is inserted at the end:
+
+MN1 → MN2 → MN3 → MN4
+
+graph should include:
+
+MN3 → MN4
+
+Determine whether current node create/delete routes already:
+
+- normalize sequence
+- refresh SEQUENTIAL dependencies
+
+If already correct:
+report PASS and do not modify.
+
+If missing:
+minimal fix is IN SCOPE because Phase 1.8 is about structural graph synchronization.
+
+==================================================
+8. TOPIC REASSIGNMENT
+==================================================
+
+Changing a MicroNode's `topicId` does NOT necessarily change its lesson-wide sequence.
+
+Audit current behavior.
+
+If:
+
+topicId changes
+but sequence remains unchanged
+
+then SEQUENTIAL graph should remain unchanged.
+
+Do not rebuild semantic dependencies merely because Topic association changed.
+
+If current UI/API also changes sequence during reassignment, follow the actual persisted order.
+
+==================================================
+9. TOPIC REORDER
+==================================================
+
+Audit Topic drag-and-drop.
+
+Determine whether Topic reorder changes only:
+
+`lesson_topics.sequence`
+
+or also changes:
+
+`lesson_nodes.sequence`
+
+If Topic reorder changes ONLY Topic sequence:
+
+SEQUENTIAL MicroNode graph should remain unchanged.
+
+If it also deterministically changes MicroNode lesson-wide order:
+
+then SEQUENTIAL graph must follow that new order.
+
+Do not assume.
+
+Prove actual behavior.
+
+==================================================
+10. REQUIRED DEPENDENCY PRESERVATION TEST
+==================================================
+
+Use a safe test fixture or temporary reversible dependency.
+
+Create or use a REQUIRED dependency between two Lesson 105 MicroNodes.
+
+Record its:
+
+- ID
+- source node
+- target node
+- type
+- metadata
+
+Perform MicroNode reorder.
+
+Expected:
+
+REQUIRED dependency remains EXACTLY unchanged.
+
+SEQUENTIAL graph changes.
+
+Then restore original node order.
+
+REQUIRED still unchanged.
+
+Clean up temporary REQUIRED dependency if it was created only for testing.
+
+Do NOT alter genuine semantic prerequisite data.
+
+==================================================
+11. REAL LESSON 105 ACCEPTANCE TEST
+==================================================
+
+Use current Physics 7 Lesson 105.
+
+First record:
+
+- all 10 MicroNode IDs
+- titles
+- sequences
+- Topic IDs
+- all dependency rows/types
+
+Expected baseline if current architecture is healthy:
+
+10 MicroNodes
+9 SEQUENTIAL edges
+
+Do not assume — report actual values.
+
+Select at least 3 adjacent nodes.
+
+Example current order:
+
+A → B → C
+
+Record structural edges:
+
+A→B
+B→C
+
+Using the REAL Teacher Review reorder UI:
+
+reorder:
+
+A → C → B
+
+Then prove:
+
+1. UI changes
+2. reorder API succeeds
+3. DB sequence changes
+4. SEQUENTIAL graph becomes:
+   A→C
+   C→B
+5. old:
+   A→B
+   B→C
+   edges are gone where no longer valid
+6. REQUIRED/other semantic edges unchanged
+7. full browser refresh preserves node order
+
+Then restore the ORIGINAL node order using the real UI.
+
+Verify original SEQUENTIAL graph is rebuilt.
+
+Do not leave Lesson 105 in a test reorder state.
+
+==================================================
+12. CREATE TEST
+==================================================
+
+Prefer an isolated temporary/test-safe MicroNode.
+
+Record structural tail, for example:
+
+MN9 → MN10
+
+Create temporary MicroNode at the current architecture's normal insertion position.
+
+Verify sequence normalization.
+
+Expected graph updates to include the new node in its actual sequence position.
+
+Then delete the temporary node.
+
+Verify:
+
+- node removed
+- sequences normalized
+- graph rebuilt
+- no dependency references deleted node
+- original graph restored
+
+IMPORTANT:
+
+Do NOT attach or delete real source exercises during this temporary-node test.
+
+Clean up fully.
+
+==================================================
+13. DELETE TEST
+==================================================
+
+Do NOT delete a real mapped MicroNode.
+
+Use only the temporary node from the create test.
+
+This test must prove deletion graph behavior without damaging real lesson content.
+
+==================================================
+14. FAILURE / ROLLBACK TEST
+==================================================
+
+Add or use an automated integration test that simulates failure during the dependency rebuild after sequence updates.
+
+Expected:
+
+transaction rolls back.
+
+After failure:
+
+original node sequences remain
+original SEQUENTIAL graph remains
+
+Do not intentionally corrupt the live Lesson 105 DB for this test.
+
+Use test transaction/fixture/mocked failure injection following existing project patterns.
+
+==================================================
+15. FINAL APPROVAL INTERACTION
+==================================================
+
+Phase 1.7 established:
+
+Approved Lesson
++ meaningful authoring change
+→ needs_review
+
+MicroNode reorder is a meaningful authoring change.
+
+Verify:
+
+Lesson 105 initially approved
+
+→ MicroNode reorder
+
+Expected:
+
+lesson `authoringStatus = needs_review`
+
+After restoring original order and validating the lesson:
+
+run Final Approval again if needed.
+
+Final state at end of Phase 1.8:
+
+Lesson 105 must be returned to its intended original MicroNode order
+
+and:
+
+authoringStatus = approved
+
+Do NOT leave the lesson needs_review due only to testing.
+
+==================================================
+16. AI TEACHER — READ-ONLY AUDIT ONLY
+==================================================
+
+DO NOT modify AI Teacher teaching logic.
+
+But perform a READ-ONLY audit answering:
+
+Does the existing AI Teacher runtime consume:
+
+A. `lesson_nodes.sequence`
+
+B. SEQUENTIAL dependency graph
+
+C. both
+
+D. neither
+
+when determining lesson/node progression?
+
+Report exact code path.
+
+This is informational only.
+
+If AI Teacher does not use the updated structural order correctly:
+
+REPORT:
+
+`OUT-OF-SCOPE PHASE 2 FINDING`
+
+Do NOT fix it in Phase 1.8.
+
+This prevents us from falsely assuming that graph synchronization automatically means the AI Teacher uses it.
+
+==================================================
+17. AUTOMATED TESTS
+==================================================
+
+Add focused tests covering at minimum:
+
+1. 3 nodes A,B,C → A→B, B→C
+2. reorder A,C,B → A→C, C→B
+3. stale edges removed
+4. edge count = nodeCount - 1
+5. no duplicates
+6. no self-edge
+7. REQUIRED preserved
+8. non-SEQUENTIAL types preserved
+9. create node refreshes chain
+10. delete node refreshes chain
+11. sequence/rebuild atomic rollback on failure
+12. zero-node lesson → zero SEQUENTIAL
+13. one-node lesson → zero SEQUENTIAL
+14. two-node lesson → one SEQUENTIAL
+15. cross-lesson nodes never joined in same chain
+
+Use actual dependency helper/service behavior.
+
+Do not create fake tests disconnected from current implementation.
+
+==================================================
+18. DATA INTEGRITY FINAL CHECK
+==================================================
+
+At the end restore Lesson 105 completely.
+
+Expected:
+
+Topics = 4
+MicroNodes = 10
+Textbook exercises = 15
+Manual test exercises = 0
+Lost source exercises = 0
+
+MicroNode order = original intended order
+
+Topic order = original intended order
+
+SEQUENTIAL dependency count = expected count
+
+REQUIRED dependencies = unchanged from pre-test state
+
+No temporary dependency remains
+
+No temporary MicroNode remains
+
+All source provenance unchanged
+
+Exercise approval states unchanged
+
+Learning Objectives unchanged
+
+Phase 2 enrichment unchanged
+
+Final authoringStatus = approved
+
+==================================================
+19. DO NOT TOUCH
+==================================================
+
+DO NOT implement:
+
+- semantic prerequisite AI
+- REQUIRED dependency inference
+- dependency recommendation AI
+- dependency visualization redesign
+- Mapper redesign
+- Quiz/Test features
+- Knowledge Tree
+- mastery/scoring/evidence
+- Student assignment
+- AI Teacher teaching changes
+- spacing
+- interleaving
+- personalization
+- source architecture changes
+- Phase 2 orchestration
+
+This task is structural SEQUENTIAL synchronization only.
+
+==================================================
+20. FINAL REPORT
+==================================================
+
+Return exactly:
+
+## A. Actual Dependency Architecture
+
+- DB table
+- fields
+- dependency types
+- structural vs semantic classification
+
+## B. Current Sync Implementation
+
+- helper/function
+- reorder route
+- transaction behavior
+
+## C. Ordering Scope
+
+Explicitly answer:
+
+SEQUENTIAL chain is:
+
+LESSON-WIDE / TOPIC-LOCAL / OTHER
+
+and why.
+
+## D. Real Lesson 105 Reorder Test
+
+Show:
+
+BEFORE node order
+BEFORE SEQUENTIAL edges
+
+→ real UI reorder →
+
+AFTER DB order
+AFTER SEQUENTIAL edges
+
+→ full refresh
+
+→ restore
+
+## E. REQUIRED Preservation
+
+Before / after exact dependency evidence.
+
+## F. Create/Delete Sync
+
+PASS / FAIL
+
+## G. Transaction Rollback
+
+PASS / FAIL
+
+## H. Topic Reorder Interaction
+
+Does Topic reorder alter MicroNode sequence?
+
+YES / NO
+
+Does it therefore alter SEQUENTIAL graph?
+
+YES / NO
+
+Explain.
+
+## I. AI Teacher Read-Only Finding
+
+Progression currently uses:
+
+sequence / dependencies / both / neither
+
+Exact files/functions.
+
+DO NOT modify.
+
+## J. Automated Tests
+
+Exact command
+passed / failed
+
+## K. Final Data Integrity
+
+- Topics
+- MicroNodes
+- exercises
+- temporary nodes
+- SEQUENTIAL count
+- REQUIRED count
+- lost source exercises
+- final authoringStatus
+
+## L. FILES CHANGED
+
+Exact files + reasons.
+
+If no code change was needed, explicitly say:
+
+`NO PRODUCTION CODE CHANGES — existing implementation already satisfied Phase 1.8`
+
+## M. FINAL GATE 1.8
+
+PASS / PARTIAL / FAIL
+
+PASS requires:
+
+1. SEQUENTIAL graph always matches authoritative MicroNode order
+2. reorder rebuild is atomic
+3. stale structural edges cannot remain
+4. REQUIRED/semantic dependencies are preserved
+5. create/delete do not leave stale graph
+6. real Lesson 105 reorder + restore is proven
+7. no test pollution remains
+
+Do NOT continue to Phase 1.9.
