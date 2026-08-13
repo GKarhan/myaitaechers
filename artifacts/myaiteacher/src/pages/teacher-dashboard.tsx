@@ -749,7 +749,14 @@ function LessonNodesPanel({
     [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
     reorderNodesMutation.mutate(
       { lessonId, data: { orderedNodeIds: newOrder } },
-      { onSuccess: () => refreshNodes() }
+      {
+        onSuccess: () => refreshNodes(),
+        onError: (err: unknown) => {
+          console.error("Node reorder failed:", err);
+          const msg = (err as { message?: string })?.message ?? "Unknown error";
+          alert(`Հանգույցի վերադասավորումը ձախողվեց: ${msg}`);
+        },
+      }
     );
   };
 
@@ -929,16 +936,16 @@ function LessonNodesPanel({
           {/* ▲▼ reorder buttons */}
           <div className="flex flex-col gap-0.5 shrink-0 pt-0.5">
             <button
-              onClick={() => moveNode(n.id, "up")}
+              onClick={(e) => { e.stopPropagation(); moveNode(n.id, "up"); }}
               disabled={!canMoveUp || reorderNodesMutation.isPending}
-              title="Տեղ‌ ↑"
-              className="text-[9px] text-white/20 hover:text-white/60 disabled:opacity-20 transition-colors leading-none"
+              title="Տեղափoxел ↑"
+              className="text-[11px] text-white/50 hover:text-primary disabled:text-white/15 disabled:cursor-not-allowed transition-colors leading-none"
             >▲</button>
             <button
-              onClick={() => moveNode(n.id, "down")}
+              onClick={(e) => { e.stopPropagation(); moveNode(n.id, "down"); }}
               disabled={!canMoveDown || reorderNodesMutation.isPending}
-              title="Տեղ‌ ↓"
-              className="text-[9px] text-white/20 hover:text-white/60 disabled:opacity-20 transition-colors leading-none"
+              title="Տեղափoxел ↓"
+              className="text-[11px] text-white/50 hover:text-primary disabled:text-white/15 disabled:cursor-not-allowed transition-colors leading-none"
             >▼</button>
           </div>
           <span className="text-xs font-mono text-primary/60 w-5 shrink-0 pt-0.5">{n.sequence}.</span>

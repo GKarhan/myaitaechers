@@ -1,0 +1,201 @@
+# SMALL FINAL UI FIX — TWO CONFIRMED USER-FACING ISSUES ONLY
+
+The Phase 1.1 + 1.2 backend/data work is already complete.
+
+DO NOT repeat the forensic audit.
+DO NOT redesign the architecture.
+DO NOT change DB schema.
+
+We have only TWO confirmed user-facing issues to close.
+
+---
+
+# ISSUE 1 — KNOWLEDGE TREE “← Հետ” DOES NOT WORK
+
+On the student Knowledge Tree page there is a visible:
+
+`← Հետ`
+
+control at the top-left.
+
+Clicking it currently does not navigate away.
+
+Find the exact component and root cause.
+
+Use the application's existing routing pattern.
+
+Before changing it, determine the intended stable destination of this page.
+
+Do not blindly use `navigate(-1)` if a direct page refresh could leave no useful history entry.
+
+Implement the smallest correct fix with an appropriate parent/fallback route.
+
+VERIFY IN THE RUNNING UI:
+
+1. Open Knowledge Tree.
+2. Click `← Հետ`.
+3. Confirm navigation succeeds.
+4. Open Knowledge Tree again by its normal route.
+5. Full-refresh the Knowledge Tree page.
+6. Click `← Հետ` again.
+7. Confirm it still navigates correctly.
+8. Confirm no console/runtime error.
+
+Do not modify Knowledge Tree mastery/state/card logic.
+
+---
+
+# ISSUE 2 — MICRONODE ▲ / ▼ REORDER MUST WORK FROM THE REAL TEACHER UI
+
+Backend reorder is already verified.
+
+Current authoritative model is:
+
+`Lesson → Topic → MicroNode`
+
+There is NO separate Node/Subnode hierarchy.
+
+`lesson_nodes.sequence` is lesson-wide.
+
+The Teacher Review currently displays `▲ / ▼` controls for MicroNodes, but the teacher reports that they cannot actually move the nodes from the UI.
+
+DO NOT verify this only by manually calling the reorder API.
+
+Reproduce it by using the actual visible Teacher Review controls.
+
+Trace:
+
+`▲/▼ click`
+→ handler
+→ ordered node IDs
+→ mutation
+→ reorder API
+→ DB
+→ query invalidation/refetch
+→ rendered order
+
+Because node sequence is lesson-wide while nodes are visually grouped by Topic, ensure the UI does not accidentally send an invalid topic-local subset to an endpoint requiring the full lesson node ID list.
+
+Cross-topic movement is NOT required.
+
+At Topic boundaries, ▲/▼ may remain disabled.
+
+Topic reassignment continues through the existing `topicId` edit control.
+
+---
+
+# REQUIRED REAL UI ACCEPTANCE TEST
+
+Use Lesson 105 or another real mapped lesson.
+
+Choose two MicroNodes in the SAME Topic.
+
+Example:
+
+Before:
+
+`MN1 → MN2`
+
+Click the visible UI control to change them to:
+
+`MN2 → MN1`
+
+Then prove:
+
+1. Actual button click changes UI.
+2. Reorder network/API call succeeds.
+3. DB sequences are normalized.
+4. SEQUENTIAL dependencies match the new lesson-wide order.
+5. Perform a FULL browser refresh.
+6. UI still displays `MN2 → MN1`.
+7. Restore original order using the UI.
+8. Full-refresh again and confirm restoration.
+
+If the UI currently fails, fix ONLY the proven frontend issue.
+
+Do not replace the existing interaction with a new architecture.
+
+---
+
+# ALSO VERIFY TOPIC REORDER QUICKLY
+
+Use the actual visible Topic drag-and-drop UI once.
+
+Prove:
+
+`drag → API → DB → full browser refresh → same order`
+
+Restore afterward.
+
+If already working, change nothing.
+
+---
+
+# DATA SAFETY
+
+After these UI tests confirm:
+
+* Topic count unchanged
+* MicroNode count unchanged
+* Exercise count unchanged
+* lost exercises = 0
+* REQUIRED dependencies unchanged
+* Phase 2 data unchanged
+
+---
+
+# DO NOT TOUCH
+
+* Mapper
+* AI Teacher
+* quizzes
+* scoring/mastery/evidence
+* Exercise Management
+* Exercise Approval
+* source validation
+* Final Lesson Approval
+* Knowledge Tree logic beyond the broken Back navigation
+* Node/Subnode schema
+* semantic dependency logic
+
+---
+
+# FINAL REPORT
+
+Return only:
+
+## 1. Knowledge Tree Back Button
+
+* root cause
+* file changed
+* destination route
+* browser verification result
+
+## 2. MicroNode UI Reorder
+
+* root cause, if broken
+* file changed, if needed
+* BEFORE order
+* UI action used
+* API result
+* DB order
+* AFTER FULL REFRESH order
+* restoration result
+
+## 3. Topic Drag Verification
+
+`PASS / FAIL`
+
+with full-refresh evidence.
+
+## 4. Data Integrity
+
+`lost exercises = ?`
+
+and any unexpected changes.
+
+## 5. Final Gate 1.2 UI Result
+
+`PASS / FAIL`
+
+Do not call PASS unless the actual browser UI controls were used and a full browser refresh preserved the order.
