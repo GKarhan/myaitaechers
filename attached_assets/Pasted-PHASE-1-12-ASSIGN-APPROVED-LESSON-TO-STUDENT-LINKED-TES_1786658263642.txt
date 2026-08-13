@@ -1,0 +1,959 @@
+PHASE 1.12 — ASSIGN APPROVED LESSON TO STUDENT
++ LINKED TEST VISIBILITY / RELEASE CONTROL
++ LESSON-CARD TEST ACTION PARITY
+
+IMPORTANT:
+This is the final Phase 1 authoring → student handoff task.
+
+AUDIT FIRST.
+Do not assume the current assignment architecture.
+Inspect UI → API → DB → student read path → session creation before changing code.
+
+Do not redesign AI Teacher teaching behavior.
+
+==================================================
+0. CORE PRODUCT MODEL
+==================================================
+
+We have now completed the authoring-side architecture:
+
+Knowledge/source
+→ Lesson
+→ Topics
+→ ordered MicroNodes
+→ exercises
+→ Phase 2 enrichment
+→ dependencies
+→ linked quizzes/tests
+→ Final Lesson Approval
+→ Knowledge Tree initialization
+
+Phase 1.12 connects this approved lesson package to a student.
+
+CORE RULE:
+
+Teacher assigns an APPROVED LESSON to a student.
+
+The student must never receive or start from a raw/incomplete mapping.
+
+The student-facing lesson package may contain:
+
+Lesson
+→ Topics
+→ ordered MicroNodes
+→ Learning Objectives
+→ theory/source-grounded content
+→ Phase 2 enrichment
+→ approved exercises
+→ dependencies
+→ linked tests
+
+Student presses:
+
+"Սկսել"
+
+→ lesson session is created.
+
+STOP THERE.
+
+How the AI Teacher actually teaches the lesson,
+chooses teaching actions,
+moves through MicroNodes,
+uses exercises,
+decides when to assess,
+or orchestrates tests
+
+is PHASE 2 and is explicitly OUT OF SCOPE here.
+
+==================================================
+1. CRITICAL DISTINCTION — LINKED TEST ≠ RELEASED TEST
+==================================================
+
+This distinction is mandatory.
+
+A test can be LINKED to a Lesson without being RELEASED to the student.
+
+Example:
+
+Lesson A has:
+
+Test 1
+Test 2
+Test 3
+
+All three may belong to / be linked to Lesson A.
+
+But the teacher may decide:
+
+- Test 1 should be available before or early in the lesson
+- Test 2 should become available later
+- Test 3 should become available at the end
+
+We are NOT implementing automatic pedagogical timing in Phase 1.12.
+
+The teacher controls release manually.
+
+Therefore:
+
+LINKAGE answers:
+
+"Which tests belong to this lesson?"
+
+RELEASE / ASSIGNMENT answers:
+
+"Which of those tests may this student solve right now?"
+
+These MUST NOT be treated as the same state.
+
+==================================================
+2. AUDIT CURRENT QUIZ / ASSIGNMENT MODEL FIRST
+==================================================
+
+Before changing code, inspect the existing quiz architecture created in Phases 1.9 and 1.10.
+
+Determine exactly:
+
+- quiz table
+- quiz ↔ lesson relationship
+- quiz ↔ MicroNode relationship
+- quiz type/scope fields
+- quiz assignment table
+- student assignment fields
+- assignment/status fields
+- attempt/start logic
+- student quiz list/query
+- teacher quiz list/query
+- existing "Ուղարկել" action
+- existing "Դիտել" action
+- existing student "Սկսել" behavior
+
+IMPORTANT:
+
+Reuse the existing quiz assignment mechanism if it already represents:
+
+quiz X assigned/released to student Y.
+
+DO NOT create a second parallel release system if quiz_assignments or an equivalent existing relationship already solves this.
+
+One Quiz record must remain one Quiz record.
+
+Do NOT duplicate quizzes when linking or releasing them.
+
+==================================================
+3. LESSON CARD — LINKED TEST ACTIONS
+==================================================
+
+Current Teacher Dashboard lesson card already displays linked tests.
+
+Example:
+
+📝 Թեստեր (3)
+
+Test A
+Test B
+Test C
+
+But the lesson-card linked-test block currently does not expose all the useful actions available in the main "Թեստեր" section.
+
+Fix this.
+
+For every linked test displayed inside a Lesson card, provide the relevant existing actions, including at minimum:
+
+Դիտել
+Ուղարկել
+
+Use the SAME underlying behavior/routes/components where possible.
+
+Do not create separate quiz logic just for the lesson card.
+
+Expected:
+
+Teacher Dashboard
+  Lesson
+    📝 Թեստեր (3)
+      Test A     [Դիտել] [Ուղարկել]
+      Test B     [Դիտել] [Ուղարկել]
+      Test C     [Դիտել] [Ուղարկել]
+
+The exact styling should follow the current application design.
+
+==================================================
+4. IMPORTANT — "ՈՒՂԱՐԿԵԼ" MEANS RELEASE TO STUDENT
+==================================================
+
+When the teacher uses "Ուղարկել" for a linked test:
+
+the test becomes available to the selected student through the EXISTING quiz assignment mechanism.
+
+Do not infer release merely because:
+
+quiz.lessonId = lessonId
+
+or because:
+
+quiz is visible inside the lesson package.
+
+Linked ≠ released.
+
+If the existing UI already has a better established Armenian label than "Ուղարկել", preserve it.
+
+Do not introduce inconsistent terminology.
+
+==================================================
+5. ASSIGN LESSON TO STUDENT
+==================================================
+
+Audit the existing:
+
+"Հանձնարարել սովորողին"
+
+flow.
+
+The teacher must be allowed to assign only a lesson that is eligible for student delivery.
+
+Minimum required gate:
+
+Lesson must have passed Final Lesson Approval.
+
+Determine the actual current status model first.
+
+Previous phases revealed statuses such as:
+
+approved
+needs_review
+active
+
+Do NOT guess how these interact.
+
+Audit the real code and define the authoritative delivery eligibility rule.
+
+Important semantic requirement:
+
+A raw/incomplete/needs_review lesson must NOT be assignable to a student.
+
+If "active" is a legitimate post-approval/published state, preserve it appropriately rather than incorrectly blocking it.
+
+Report the exact state machine you discover.
+
+==================================================
+6. ASSIGNED LESSON PACKAGE
+==================================================
+
+When an eligible Lesson is assigned, the student must have access to the authoritative lesson package.
+
+Verify the package can resolve:
+
+Lesson metadata
+
+Topics
+
+ordered MicroNodes
+
+for each MicroNode:
+- title
+- learningObjective
+- theory/content
+- source-grounded content where applicable
+- Phase 2 enrichment fields
+
+approved exercises
+
+dependencies
+
+linked tests
+
+IMPORTANT:
+
+Do not duplicate the full lesson structure per student unless the current architecture explicitly requires a snapshot.
+
+Prefer relationship-based assignment to the shared approved lesson structure.
+
+The architecture should conceptually be:
+
+SHARED AUTHORITATIVE STRUCTURE
+
+Lesson
+→ Topic
+→ MicroNode
+→ Exercise
+→ Dependency
+→ Quiz relationship
+
+STUDENT-SPECIFIC STATE
+
+Student
+→ Lesson Assignment
+→ Lesson Session
+→ mastery/evidence
+→ Quiz Assignment
+→ Quiz Attempt
+
+Verify whether the current DB follows this model.
+
+Do not invent a new model if equivalent structures already exist.
+
+==================================================
+7. LINKED TESTS TRAVEL WITH THE LESSON — BUT LOCKED
+==================================================
+
+This requirement is subtle and mandatory.
+
+When Lesson A is assigned to Student S:
+
+the student may be able to SEE that the Lesson has linked tests if the current UI/product model supports showing them.
+
+BUT:
+
+A linked test MUST NOT automatically become solvable merely because the Lesson was assigned.
+
+Example:
+
+Lesson A assigned to Student S.
+
+Linked tests:
+
+Test 1 — not released
+Test 2 — released
+Test 3 — not released
+
+Student state must behave like:
+
+Test 1
+visible if appropriate
+Սկսել = disabled / unavailable
+
+Test 2
+Սկսել = enabled
+
+Test 3
+visible if appropriate
+Սկսել = disabled / unavailable
+
+The exact locked-state UX can follow the current UI.
+
+Examples:
+
+"Դեռ հասանելի չէ"
+
+or disabled "Սկսել"
+
+But do not invent unnecessary complex UI.
+
+==================================================
+8. TEACHER RELEASE CONTROL
+==================================================
+
+Teacher must be able to release linked tests independently.
+
+Example:
+
+Lesson assigned today.
+
+Teacher initially releases no tests.
+
+Later:
+
+Teacher clicks "Ուղարկել" on Test 1.
+
+Only Test 1 becomes startable.
+
+Later:
+
+Teacher releases Test 2.
+
+Now Test 1 + Test 2 are startable.
+
+Test 3 remains locked.
+
+This release must be student-specific if the existing quiz assignment model is student-specific.
+
+Do not globally unlock the quiz for every student unless that is explicitly how the existing assignment architecture works and is intended.
+
+Audit this carefully.
+
+==================================================
+9. STUDENT-SIDE START GATE
+==================================================
+
+Do not rely only on a disabled frontend button.
+
+Backend must enforce quiz access.
+
+If Student S attempts to directly call the quiz-start/attempt endpoint for a linked but unreleased test:
+
+the backend must reject it.
+
+Expected concept:
+
+linked quiz
++
+no assignment/release for this student
+=
+CANNOT START
+
+released quiz
++
+valid student assignment
+=
+CAN START
+
+Use the existing authorization/status mechanism wherever possible.
+
+Do not create duplicate access-control logic unnecessarily.
+
+==================================================
+10. LESSON ASSIGNMENT DOES NOT AUTO-RELEASE TESTS
+==================================================
+
+This must have an explicit regression test.
+
+Operation:
+
+Assign Lesson A to Student S.
+
+Lesson A has 3 linked tests.
+
+Expected:
+
+Lesson assignment created.
+
+Quiz records unchanged.
+
+Quiz ↔ Lesson relationships unchanged.
+
+NO new quiz assignment/release records are created merely because the lesson was assigned.
+
+Unless existing product behavior explicitly requires otherwise, the default must be:
+
+linked tests = unreleased
+
+Teacher controls release separately.
+
+==================================================
+11. STUDENT LESSON START
+==================================================
+
+Student receives assigned eligible Lesson.
+
+Student sees:
+
+Lesson card / assigned lesson entry
+
+and:
+
+"Սկսել"
+
+When Student presses "Սկսել":
+
+create or initialize the lesson session using the existing session architecture.
+
+Verify:
+
+- correct student
+- correct lesson
+- correct first ordered MicroNode
+- no duplicate active session if the current architecture prevents duplicates
+- session references shared lesson structure
+- no raw mapping copy created
+
+STOP at session creation.
+
+DO NOT change AI Teacher behavior after the session begins.
+
+==================================================
+12. AUTHORITATIVE ORDER
+==================================================
+
+The assigned lesson must respect the teacher-approved current order.
+
+Use:
+
+Topic ordering
+MicroNode sequence
+SEQUENTIAL dependencies
+
+as currently defined by the architecture.
+
+Do not restore deleted MicroNodes.
+
+IMPORTANT CURRENT LESSON 105 FACT:
+
+Node 1348 was intentionally deleted by the teacher.
+
+Therefore the current 9-MicroNode structure is legitimate.
+
+DO NOT restore node 1348.
+
+Lesson 105's current teacher-edited structure is authoritative.
+
+Tests must not assume the old 10-node structure.
+
+Prefer structural invariants such as:
+
+SEQUENTIAL edge count = max(nodeCount - 1, 0)
+
+and
+
+SEQUENTIAL edges exactly match current node sequence.
+
+==================================================
+13. EXERCISE DELIVERY
+==================================================
+
+Only approved exercises should be eligible for normal student lesson delivery.
+
+Verify:
+
+- textbook provenance remains intact
+- exerciseTextVerbatim remains immutable for textbook source
+- exerciseTextEdited/effectiveExerciseText resolution remains intact
+- draft exercises are not accidentally exposed as approved lesson work
+- Assigned vs Additional relationships remain intact
+
+Do not modify exercise authoring behavior in this phase.
+
+==================================================
+14. LINKED TEST TYPES
+==================================================
+
+Preserve Phase 1.9 / 1.10 quiz semantics.
+
+V1 types:
+
+Դասի թեստ
+= one Lesson
+
+Ամփոփիչ թեստ
+= multiple Lessons
+
+Do not duplicate quiz records.
+
+A summary test linked to multiple Lessons may legitimately appear through relationships in more than one relevant context.
+
+It is still ONE Quiz record.
+
+==================================================
+15. TEST DISPLAY ORGANIZATION — DO NOT OVERDESIGN YET
+==================================================
+
+We know that tests may appear in:
+
+- global "Թեստեր" section
+- Lesson card → linked tests block
+- potentially other future topic/summary views
+
+Do NOT redesign the taxonomy/display hierarchy in Phase 1.12.
+
+Do NOT decide yet how lesson tests vs summary tests should ultimately be grouped visually across every screen.
+
+For now:
+
+preserve the existing sections.
+
+Make linked tests usable from the Lesson card.
+
+Preserve quiz type/scope metadata so later UI can distinguish:
+
+Դասի թեստ
+vs
+Ամփոփիչ թեստ.
+
+No duplicate records.
+
+==================================================
+16. KNOWLEDGE TREE REGRESSION
+==================================================
+
+Phase 1.11 must remain intact.
+
+Verify:
+
+shared lesson_nodes structure
+
++
+
+student-specific knowledge_nodes/mastery state.
+
+Assigning a lesson must NOT create fake mastery evidence.
+
+For a student with no evidence:
+
+MicroNode
+→ not_started
+→ "Դեռ չի ուսումնասիրել"
+
+Lesson assignment itself is NOT evidence.
+
+Lesson session creation itself is NOT mastery evidence.
+
+==================================================
+17. DATA INTEGRITY / TRANSACTIONS
+==================================================
+
+Where assignment creation involves multiple dependent writes, use the existing transactional pattern.
+
+Prevent:
+
+- partial lesson assignment
+- duplicate assignment rows where uniqueness should apply
+- orphan sessions
+- automatic quiz releases
+- duplicated Quiz records
+- duplicated lesson structure
+
+Do not introduce schema changes unless the current schema genuinely cannot represent the required state.
+
+If schema change appears necessary:
+
+STOP first and report:
+
+STRUCTURAL GAP
+
+with:
+- current schema
+- missing concept
+- proposed minimal change
+
+before implementing a major redesign.
+
+A small additive field/constraint may be implemented only if clearly justified and consistent with existing architecture.
+
+==================================================
+18. REQUIRED ACCEPTANCE TESTS
+==================================================
+
+Create deterministic tests for at least the following.
+
+A — APPROVED LESSON ASSIGNMENT
+
+Eligible approved lesson
+→ teacher assigns student
+→ assignment succeeds.
+
+B — NON-APPROVED BLOCK
+
+needs_review/raw/incomplete lesson
+→ assignment rejected.
+
+C — SHARED STRUCTURE
+
+Assign same Lesson to Student A and Student B.
+
+Expected:
+
+one shared Lesson structure
+one shared set of MicroNodes
+
+but:
+
+separate student assignment/state.
+
+D — NO FAKE KNOWLEDGE
+
+Assign Lesson to zero-evidence Student.
+
+Expected:
+
+MicroNodes remain:
+not_started / "Դեռ չի ուսումնասիրել"
+
+No mastery/evidence fabricated.
+
+E — LINKED QUIZ NOT AUTO-RELEASED
+
+Lesson has linked Quiz Q.
+
+Assign Lesson to Student.
+
+Expected:
+
+Q remains linked.
+
+No quiz assignment/release automatically created.
+
+Student cannot start Q.
+
+F — MANUAL QUIZ RELEASE
+
+Teacher releases Q to Student.
+
+Expected:
+
+existing quiz assignment mechanism creates/activates student access.
+
+Student can now start Q.
+
+G — STUDENT ISOLATION
+
+Release Q to Student A.
+
+Expected:
+
+Student A → can start
+Student B → cannot start
+
+unless Q was independently released to B.
+
+H — MULTIPLE LINKED TESTS
+
+Lesson has Q1, Q2, Q3.
+
+Release Q2 only.
+
+Expected:
+
+Q1 locked
+Q2 startable
+Q3 locked.
+
+I — LESSON CARD ACTIONS
+
+Linked test shown in Lesson card.
+
+Verify:
+
+Դիտել works through existing quiz view flow.
+
+Ուղարկել works through existing assignment/release flow.
+
+No duplicate Quiz created.
+
+J — GLOBAL TEST LIST PARITY
+
+The same Quiz remains visible in the global Tests section.
+
+Lesson-card representation and global representation reference the SAME quiz ID.
+
+K — LESSON START
+
+Student presses "Սկսել".
+
+Expected:
+
+lesson session created.
+
+Correct studentId.
+Correct lessonId.
+Correct current/first ordered MicroNode.
+
+No duplicate lesson structure created.
+
+L — QUIZ BACKEND ACCESS GATE
+
+Direct start attempt against unreleased linked Quiz:
+
+BLOCKED.
+
+After release:
+
+ALLOWED.
+
+M — APPROVED EXERCISES ONLY
+
+Student package does not treat draft/unapproved exercise as normal approved lesson work.
+
+N — KNOWLEDGE TREE REGRESSION
+
+Lesson assignment/session creation does not change zero-evidence mastery from not_started.
+
+O — QUIZ TYPE REGRESSION
+
+Lesson test remains one-Lesson scoped.
+
+Summary test remains multi-Lesson scoped.
+
+No duplicate quiz rows.
+
+==================================================
+19. REAL LESSON 105 ACCEPTANCE
+==================================================
+
+After isolated tests, run a read-safe acceptance check using Lesson 105 where possible.
+
+IMPORTANT:
+
+Current 9-MicroNode structure is legitimate because the teacher intentionally deleted node 1348.
+
+DO NOT restore it.
+
+Do not pollute Lesson 105 with permanent test data.
+
+If temporary assignment/release records are required:
+
+- clearly identify them
+- clean them up
+- verify cleanup
+
+Final Lesson 105 integrity should remain:
+
+Topics = current authoritative count
+MicroNodes = 9
+textbook exercises = 15
+manual exercises = 0
+lost source exercises = 0
+
+SEQUENTIAL edges must equal:
+
+MicroNodeCount - 1
+
+if current architecture remains lesson-wide sequential.
+
+Do not change teacher-authored content.
+
+==================================================
+20. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- AI Teacher pedagogical sequencing
+- automatic "give this quiz after MN3"
+- automatic pre-test/post-test scheduling
+- adaptive assessment timing
+- automatic test release based on mastery
+- automatic test release based on session progress
+- prerequisite semantics
+- Phase 2 orchestration
+- recommendation engine
+- new Knowledge Tree mastery logic
+- quiz generation redesign
+- lesson mapping changes
+
+Those belong to Phase 2 or later.
+
+Phase 1.12 only establishes:
+
+APPROVED LESSON
+→ ASSIGN TO STUDENT
+→ STUDENT ACCESS
+→ MANUAL TEST RELEASE CONTROL
+→ STUDENT STARTS LESSON
+→ SESSION CREATED
+
+==================================================
+21. REQUIRED FINAL REPORT
+==================================================
+
+Return a structured report with:
+
+A. Existing assignment architecture
+
+- lesson assignment table/model
+- quiz assignment table/model
+- session model
+- relevant status fields
+- uniqueness constraints
+
+B. Approved lesson delivery gate
+
+Explain exactly which lesson statuses are deliverable and why.
+
+C. Student lesson package
+
+List exactly which fields/entities are available:
+
+Lesson
+Topics
+MicroNodes
+LO
+theory
+Phase 2 enrichment
+approved exercises
+dependencies
+linked tests
+
+D. Linked vs Released test architecture
+
+Explain exactly:
+
+how Quiz ↔ Lesson linkage is stored
+
+and separately:
+
+how Quiz ↔ Student release is stored.
+
+E. Teacher Lesson-card UI
+
+Show:
+
+linked test
+→ Դիտել
+→ Ուղարկել
+
+and confirm same Quiz ID is used in global Tests section.
+
+F. Student test gate
+
+Show:
+
+linked + unreleased → cannot start
+
+linked + released → can start.
+
+G. Lesson assignment behavior
+
+Confirm:
+
+assigning Lesson does NOT automatically release linked tests.
+
+H. Lesson session creation
+
+Show:
+
+student clicks "Սկսել"
+→ session created
+→ correct first ordered MicroNode.
+
+STOP before AI teaching behavior.
+
+I. Knowledge Tree regression
+
+Confirm:
+
+assignment ≠ evidence
+session creation ≠ mastery
+zero evidence remains "Դեռ չի ուսումնասիրել".
+
+J. Automated tests
+
+List every test and result.
+
+K. Real Lesson 105 integrity
+
+Topics =
+MicroNodes = 9
+Textbook exercises = 15
+Manual exercises = 0
+SEQUENTIAL edges =
+Lost source exercises =
+authoringStatus =
+
+L. Files changed
+
+Exact files + reason.
+
+M. FINAL GATE 1.12
+
+PASS
+
+only if all are true:
+
+1. only eligible approved/published lesson can be assigned
+2. student receives shared authoritative lesson structure
+3. lesson assignment does not duplicate structure
+4. linked tests remain single Quiz records
+5. linked tests are NOT automatically released
+6. teacher can release each linked test independently
+7. unreleased test cannot be started by direct API access
+8. released test can be started by intended student
+9. release is student-specific
+10. Lesson-card linked tests have View + Send/Release actions
+11. global Tests section still references same Quiz
+12. student "Սկսել" creates lesson session
+13. assignment/session does not fabricate mastery evidence
+14. approved exercises only are delivered as approved lesson work
+15. Lesson 105 remains unpolluted and structurally valid
+
+Otherwise:
+
+BLOCKED — report the exact failing invariant.

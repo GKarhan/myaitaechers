@@ -638,6 +638,8 @@ function LessonNodesPanel({
   chapterTitle = null,
   lessonDescription = null,
   authoringStatus = "draft",
+  lessonClassId = null,
+  lessonSubjectId = null,
 }: {
   lessonId: number;
   courseId: number;
@@ -649,8 +651,13 @@ function LessonNodesPanel({
   lessonDescription?: string | null;
   /** P1.7: lesson-level authoring status — "draft" | "approved" | "needs_review" */
   authoringStatus?: string;
+  /** P1.12: class the lesson belongs to (for quiz release) */
+  lessonClassId?: number | null;
+  /** P1.12: subject for quiz review navigation */
+  lessonSubjectId?: number | null;
 }) {
   const qc = useQueryClient();
+  const [, setLocation] = useLocation(); // P1.12: navigate to quiz review
   const [open, setOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen]       = useState(false);
   const [deleteAllPending, setDeleteAllPending] = useState(false);
@@ -709,6 +716,7 @@ function LessonNodesPanel({
   // Phase 1.9: linked tests section
   const [linkedTests, setLinkedTests] = useState<Array<{
     id: number; title: string; status: string; quizType: string | null; questionCount: number;
+    classId: number | null;
   }>>([]);
   const [linkedTestsLoading, setLinkedTestsLoading] = useState(false);
   const [linkedTestsOpen, setLinkedTestsOpen] = useState(false);
@@ -2204,28 +2212,57 @@ function LessonNodesPanel({
             ) : linkedTests.length === 0 ? (
               <p className="text-xs text-muted-foreground/40 py-1">Թեստեր չկան</p>
             ) : (
-              linkedTests.map((q) => (
-                <div
-                  key={q.id}
-                  className="flex items-center justify-between bg-white/3 border border-white/8 rounded-lg px-3 py-1.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-white/80 truncate font-medium">{q.title}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">
-                        {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Амфогнакум" : "—"}
-                      </span>
-                      <span className="text-muted-foreground/30 text-[9px]">·</span>
-                      <span className="text-[9px] text-muted-foreground/60">{q.questionCount} հարց.</span>
-                      {q.status === "GENERATED" || q.status === "PUBLISHED" ? (
-                        <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">✓</span>
-                      ) : q.status === "ASSIGNED" ? (
-                        <span className="text-[9px] px-1 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">→</span>
-                      ) : null}
+              linkedTests.map((q) => {
+                const effectiveClassId = q.classId ?? lessonClassId;
+                return (
+                  <div
+                    key={q.id}
+                    className="flex items-center gap-2 bg-white/3 border border-white/8 rounded-lg px-3 py-1.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-white/80 truncate font-medium">{q.title}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">
+                          {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Амфогнакум" : "—"}
+                        </span>
+                        <span className="text-muted-foreground/30 text-[9px]">·</span>
+                        <span className="text-[9px] text-muted-foreground/60">{q.questionCount} հարց.</span>
+                        {q.status === "GENERATED" || q.status === "PUBLISHED" ? (
+                          <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">✓</span>
+                        ) : q.status === "ASSIGNED" ? (
+                          <span className="text-[9px] px-1 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">→</span>
+                        ) : null}
+                      </div>
                     </div>
+                    {/* P1.12: release linked quiz to students (SAME endpoint as global Tests section) */}
+                    {q.status !== "ASSIGNED" && effectiveClassId !== null && (
+                      <button
+                        onClick={async () => {
+                          const tok = authToken ?? localStorage.getItem("myaiteacher_token") ?? "";
+                          const r = await fetch(`/api/quizzes/${q.id}/assign`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+                            body: JSON.stringify({ classId: effectiveClassId }),
+                          });
+                          if (r.ok) {
+                            setLinkedTests((prev) => prev.map((x) => x.id === q.id ? { ...x, status: "ASSIGNED" } : x));
+                          }
+                        }}
+                        className="text-[10px] px-2 py-1 rounded bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
+                      >
+                        Ուղարկել
+                      </button>
+                    )}
+                    {/* P1.12: view quiz details (SAME route as global Tests section) */}
+                    <button
+                      onClick={() => setLocation(`/quiz/${q.id}/review?classId=${effectiveClassId ?? ""}&subjectId=${lessonSubjectId ?? ""}`)}
+                      className="text-[10px] px-2 py-1 rounded bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
+                    >
+                      Դիտել
+                    </button>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -4322,7 +4359,8 @@ export default function TeacherDashboard() {
                                     <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
                                       Ընթացքի մեջ
                                     </span>
-                                  ) : isMapped ? (
+                                  ) : isMapped && (l as any).status === "approved" ? (
+                                    /* P1.12: gate - only approved lessons can be assigned to students */
                                     <button
                                       onClick={() => handleStatusChange(l.id, "active")}
                                       disabled={updateStatus.isPending}
@@ -4330,6 +4368,14 @@ export default function TeacherDashboard() {
                                     >
                                       Հանձնարարել սովորողին
                                     </button>
+                                  ) : isMapped ? (
+                                    /* Mapped but not yet approved - show disabled */
+                                    <span
+                                      title="Նախ վердնական հastатum արарек"
+                                      className="px-2 py-1 rounded-lg text-xs text-muted-foreground/40 border border-white/5 select-none cursor-help"
+                                    >
+                                      Հանձնարարել սովորողին
+                                    </span>
                                   ) : (
                                     <span
                                       title="Նախ քարտևզագրիր"
@@ -4399,7 +4445,9 @@ export default function TeacherDashboard() {
                                 textbookTitle={(l as any).textbookTitle ?? null}
                                 chapterTitle={(l as any).chapterTitle ?? null}
                                 lessonDescription={(l as any).description ?? null}
-                                authoringStatus={(l as any).authoringStatus ?? "draft"}
+                                authoringStatus={(l as any).status ?? "draft"}
+                                lessonClassId={(l as any).classId ?? null}
+                                lessonSubjectId={selectedCourse?.subjectId ?? null}
                               />
                             </div>
                           </div>

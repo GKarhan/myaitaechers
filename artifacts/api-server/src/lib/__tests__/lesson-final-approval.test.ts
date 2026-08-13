@@ -2,7 +2,7 @@
 // P1.7 — Final Lesson Approval Validation — deterministic tests
 // Run with: pnpm --filter @workspace/api-server exec tsx src/lib/__tests__/lesson-final-approval.test.ts
 // No external test framework — uses node:assert/strict + exit code.
-// Live DB: Lesson 105 is the canonical fixture (all 10 nodes approved + Phase 2 complete).
+// Live DB: Lesson 105 is the canonical fixture (9 nodes approved + Phase 2 complete; node 1348 intentionally deleted).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import assert from "node:assert/strict";

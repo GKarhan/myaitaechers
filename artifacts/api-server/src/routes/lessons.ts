@@ -177,6 +177,13 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  // P1.12: Students may only start lessons that have been activated (status="active").
+  // Teachers and admins bypass this gate so they can test/preview any lesson.
+  if (req.userRole !== "teacher" && req.userRole !== "admin" && lesson.status !== "active") {
+    res.status(403).json({ error: "LESSON_NOT_ACTIVE", message: "This lesson is not yet available" });
+    return;
+  }
+
   const existing = await db
     .select()
     .from(lessonSessionsTable)
@@ -2987,6 +2994,7 @@ router.get("/lessons/:lessonId/quizzes", requireTeacher, async (req: AuthRequest
       status:        quizzesTable.status,
       quizType:      quizzesTable.quizType,
       difficultyMode: quizzesTable.difficultyMode,
+      classId:       quizzesTable.classId,
       createdAt:     quizzesTable.createdAt,
     })
     .from(quizLessonLinksTable)
@@ -3012,6 +3020,7 @@ router.get("/lessons/:lessonId/quizzes", requireTeacher, async (req: AuthRequest
     status:         r.status,
     quizType:       r.quizType ?? null,
     difficultyMode: r.difficultyMode,
+    classId:        r.classId ?? null,
     questionCount:  qCounts[r.quizId] ?? 0,
     createdAt:      r.createdAt.toISOString(),
   })));

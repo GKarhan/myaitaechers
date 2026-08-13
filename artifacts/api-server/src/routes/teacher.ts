@@ -260,6 +260,16 @@ router.put("/teacher/lessons/:id/status", requireTeacher, async (req: AuthReques
   const [lesson] = await db.select().from(lessonsTable).where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!))).limit(1);
   if (!lesson) { res.status(404).json({ error: "Das chi gtnvel" }); return; }
 
+  // P1.12: Only an "approved" lesson may be set to "active" (assigned to students).
+  // Raw/draft/needs_review lessons must never be delivered to students.
+  if (status === "active" && lesson.status !== "approved") {
+    res.status(400).json({
+      error: "LESSON_NOT_APPROVED",
+      message: "Lesson must be in 'approved' state before it can be assigned to students",
+    });
+    return;
+  }
+
   const patch: Record<string, unknown> = { status };
   if (status === "assigned" && !lesson.assignedAt) {
     patch.assignedAt = new Date();

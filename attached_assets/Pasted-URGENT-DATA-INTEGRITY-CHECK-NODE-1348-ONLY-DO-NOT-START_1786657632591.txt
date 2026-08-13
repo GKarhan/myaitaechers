@@ -1,0 +1,458 @@
+URGENT DATA INTEGRITY CHECK — NODE 1348 ONLY
+DO NOT START PHASE 1.12.
+DO NOT MAKE UNRELATED CHANGES.
+
+Context:
+During Phase 1.11, Lesson 105 unexpectedly had 9 MicroNodes instead of the previously verified 10.
+
+The missing record is:
+
+lessonId = 105
+nodeId = 1348
+previous known title = "Դասագրքի կառուցվածքին ծանոթացում"
+
+Before this incident, Lesson 105 had repeatedly passed integrity gates with:
+
+- Topics = 4
+- MicroNodes = 10
+- textbook exercises = 15
+- manual exercises = 0
+- SEQUENTIAL edges = 9
+- authoringStatus = approved
+
+During Phase 1.11 you found node 1348 missing and changed some existing acceptance tests from:
+
+10 nodes / 9 SEQUENTIAL edges
+
+to:
+
+9 nodes / 8 SEQUENTIAL edges
+
+because the live DB currently contained only 9 nodes.
+
+That is NOT sufficient evidence that 9 nodes is the correct canonical state.
+
+We must determine whether node 1348 was intentionally deleted by the teacher or was accidentally deleted during Phase 1.7–1.11 testing/debugging.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+This task is ONLY about the disappearance of node 1348 and any direct structural consequences caused by that disappearance.
+
+DO NOT:
+
+- start Phase 1.12
+- redesign Knowledge Tree
+- modify AI Teacher
+- modify quiz behavior
+- modify mapping architecture
+- change unrelated lesson content
+- create new pedagogical content from AI
+- invent replacement content
+- silently accept 9 nodes as canonical
+- permanently modify tests merely to accommodate corrupted live data
+- modify any other Lesson 105 MicroNode content unless strictly required to restore node 1348
+- delete any existing source exercise
+
+AUDIT FIRST.
+
+Do not write production data until the forensic investigation is complete.
+
+==================================================
+PART A — ESTABLISH THE PRE-DELETION CANONICAL STATE
+==================================================
+
+Search ALL available authoritative/pre-test sources for node 1348.
+
+At minimum inspect:
+
+1. mapping_jobs for Lesson 105
+2. Phase 1 / Phase 2 mapping outputs
+3. mapping metadata
+4. source/pass1Blocks
+5. lesson source records
+6. mapping review/import records if present
+7. DB logs/history/audit records if any
+8. test files/scripts from Phase 1.7, 1.8, 1.9, 1.10, 1.11
+9. server logs if deletion request information is available
+10. git/checkpoint history if accessible
+11. any previous persisted representation of Lesson 105
+
+Establish whether the canonical mapped lesson contained node 1348.
+
+We already have strong historical evidence that it did:
+
+Node 1348:
+title:
+"Դասագրքի կառուցվածքին ծանոթացում"
+
+Previously displayed content included:
+
+Learning Objective:
+"Աշակերտը կարող է նկարագրել դասագրքի կառուցվածքը և օգտագործվող պայմանական նշանները։"
+
+Theory/source text:
+"Մինչ դասագրքով աշխատելը, մանրամասն ծանոթացի՛ր նրա կառուցվածքին, օգտագործվող պայմանական նշաններին: Դասագրքում դու կհանդիպես նաև QR կոդով նշված հետաքրքիր լրացուցիչ նյութերի, որոնք կօգնեն քեզ ավելի հարստացնելու գիտելիքներդ ֆիզիկայից:"
+
+sourcePage = 5
+
+Previous position:
+Topic = "Ներածություն"
+MicroNode sequence = 2
+
+But DO NOT blindly trust this prompt as the authoritative DB source.
+
+Use stored mapping/source evidence wherever available and report exactly what is independently recoverable.
+
+==================================================
+PART B — FIND THE DELETION CAUSE
+==================================================
+
+Determine as far as technically possible:
+
+1. When node 1348 disappeared.
+2. Which route/action deleted it.
+3. Whether deletion came from:
+   - normal teacher UI action,
+   - Phase 1.7 acceptance testing,
+   - Phase 1.8 testing,
+   - Phase 1.9 testing,
+   - Phase 1.10 testing,
+   - Phase 1.11 testing,
+   - cleanup script,
+   - direct DB operation,
+   - another source.
+
+Search for evidence of:
+
+POST /lessons/105/nodes/1348/delete
+
+or equivalent DB DELETE.
+
+Check scripts/tests for hardcoded:
+
+1348
+lesson 105
+node delete
+delete route
+DELETE FROM lesson_nodes
+cleanup
+
+IMPORTANT:
+
+Do not claim "teacher deleted it" merely because the normal delete route exists.
+
+That requires evidence.
+
+If exact deletion provenance cannot be established, explicitly report:
+
+DELETION CAUSE = UNKNOWN
+
+rather than guessing.
+
+==================================================
+PART C — CASCADE DAMAGE AUDIT
+==================================================
+
+Before restoration, determine exactly what disappeared with node 1348 because of FK cascades or cleanup logic.
+
+Check at minimum:
+
+lesson_node_dependencies
+knowledge_nodes
+evidence_events
+exercise relationships
+quiz question/node relationships
+any Phase 2 enrichment tables
+any other table referencing lesson_node_id
+
+Report:
+
+- records lost due to cascade
+- records still present
+- textbook exercises affected
+- student mastery/evidence affected
+- quiz relationships affected
+
+Do NOT fabricate historical student data.
+
+If historical evidence was cascaded and no authoritative backup exists, report it as unrecoverable.
+
+==================================================
+PART D — DECISION GATE
+==================================================
+
+Only after Parts A–C choose one of these outcomes.
+
+CASE 1 — Intentional teacher deletion proven
+
+If reliable evidence proves that the teacher intentionally deleted node 1348:
+
+STOP.
+
+Do not restore it.
+
+Report the evidence.
+
+Then explain why the canonical Lesson 105 state should now legitimately be:
+
+9 MicroNodes
+8 SEQUENTIAL edges
+
+and why tests should use structural/dynamic invariants instead of old hardcoded counts.
+
+CASE 2 — Accidental/test deletion or canonical node clearly lost
+
+If evidence shows node 1348 was deleted by testing/debugging,
+OR authoritative mapping evidence clearly establishes that node 1348 belongs to the canonical Lesson 105 structure and there is no evidence of an intentional teacher deletion:
+
+RESTORE IT.
+
+But restoration must use authoritative stored values.
+
+Do NOT ask AI to regenerate the node.
+
+==================================================
+PART E — SAFE RESTORATION
+==================================================
+
+If restoration is required:
+
+Restore node 1348 using the maximum recoverable original fields.
+
+Prefer preserving the original PK id=1348 IF and ONLY IF:
+
+- the ID is currently unused,
+- restoring that ID is DB-safe,
+- sequence/FK integrity allows it.
+
+If reusing 1348 is unsafe, create a new PK and explicitly report the new ID.
+
+Restore all recoverable fields including, where available:
+
+- lessonId
+- topicId
+- title
+- learningObjective
+- theory/content
+- sourcePage
+- sourceBlockIndices
+- verbatimTheoryAnchor
+- contentSourceType
+- Bloom level
+- status
+- Phase 2 enrichment fields
+- sequence
+- confidence/status metadata
+- other original mapper-generated fields
+
+DO NOT invent values for fields that cannot be recovered.
+
+If some fields are unrecoverable, explicitly list them.
+
+==================================================
+PART F — ORDER + DEPENDENCY REPAIR
+==================================================
+
+After restoration:
+
+Normalize Lesson 105 MicroNode sequence using the existing production ordering mechanism.
+
+Expected structural position, if supported by authoritative evidence:
+
+Topic "Ներածություն"
+
+1. node 1347
+2. node 1348
+
+Then remaining lesson nodes follow their canonical order.
+
+Use the existing reorder/normalization path rather than ad-hoc sequence manipulation if possible.
+
+Rebuild SEQUENTIAL dependencies through the existing:
+
+refreshSequentialDependencies(...)
+
+mechanism.
+
+Expected if Lesson 105 returns to 10 nodes:
+
+SEQUENTIAL edges = 9
+
+Verify every edge matches the final authoritative node order.
+
+Do not touch REQUIRED/CONCEPTUAL semantic dependencies.
+
+==================================================
+PART G — EXERCISE INTEGRITY
+==================================================
+
+Verify Lesson 105 still has exactly:
+
+textbook exercises = 15
+manual exercises = 0
+lost source exercises = 0
+
+Do not move exercises merely to make counts look correct.
+
+Specifically verify whether any exercise originally belonged to node 1348.
+
+If none did, report that.
+
+If any did and their relatedNodeId was nulled/deleted by the cascade, restore the relationship only with authoritative evidence.
+
+==================================================
+PART H — KNOWLEDGE TREE IMPACT
+==================================================
+
+If node 1348 is restored:
+
+Verify the Phase 1.11 architecture automatically exposes it through the shared lesson_nodes structure.
+
+For a zero-evidence student:
+
+node 1348 → not_started / "Դեռ չի ուսումնասիրել"
+
+Do NOT create fake evidence.
+
+Do NOT create fake mastery rows merely to make it appear.
+
+The normal LEFT JOIN/lazy knowledge-state architecture should produce the state.
+
+Also verify that students remain isolated:
+
+Student A mastery state must not affect Student B.
+
+==================================================
+PART I — TEST CORRECTION
+==================================================
+
+Review every test changed during Phase 1.11 merely because Lesson 105 temporarily had 9 nodes.
+
+Do not blindly leave:
+
+9 nodes / 8 edges
+
+if canonical Lesson 105 is restored to 10 nodes.
+
+But also avoid fragile hardcoded production-data assumptions where the actual invariant can be tested structurally.
+
+Preferred assertions:
+
+SEQUENTIAL edge count = max(nodeCount - 1, 0)
+
+and
+
+edges exactly match nodes ordered by sequence.
+
+For tests whose explicit purpose is to validate the known Lesson 105 fixture, 10 nodes may be asserted ONLY after canonical restoration is independently proven.
+
+Clearly list every test file changed and why.
+
+==================================================
+PART J — FINAL APPROVAL
+==================================================
+
+If node 1348 is restored and all integrity checks pass:
+
+Run the existing Final Lesson Approval Gate.
+
+Expected:
+
+authoringStatus = approved
+
+Do not bypass validation or directly force status='approved'.
+
+Use the real final-approval path.
+
+==================================================
+PART K — REQUIRED FINAL REPORT
+==================================================
+
+Return this exact report structure:
+
+A. Was node 1348 part of the canonical mapped Lesson 105?
+YES / NO / INCONCLUSIVE
+
+Evidence:
+...
+
+B. Deletion cause
+INTENTIONAL TEACHER DELETE /
+TEST OR DEBUG DELETE /
+OTHER /
+UNKNOWN
+
+Evidence:
+...
+
+C. Cascade damage
+- dependencies:
+- knowledge_nodes:
+- evidence_events:
+- exercises:
+- quizzes:
+- other:
+
+D. Restoration decision
+RESTORED / NOT RESTORED
+
+Reason:
+...
+
+E. Node record
+
+Before:
+missing
+
+After:
+id =
+title =
+topicId =
+sequence =
+learningObjective =
+sourcePage =
+sourceBlockIndices =
+contentSourceType =
+status =
+Phase 2 fields restored =
+unrecoverable fields =
+
+F. Final Lesson 105 structure
+
+Topics =
+MicroNodes =
+Textbook exercises =
+Manual exercises =
+SEQUENTIAL edges =
+REQUIRED edges =
+Lost source exercises =
+
+G. Knowledge Tree check
+
+Zero-evidence node 1348 state =
+Student isolation =
+Fake evidence created = NO
+
+H. Tests corrected
+
+List exact files and assertions changed.
+
+I. Final authoringStatus =
+
+J. FINAL RESULT
+
+PASS
+or
+BLOCKED — explain exact unresolved integrity problem.
+
+==================================================
+CRITICAL SAFETY RULE
+==================================================
+
+Do not change production data until you have completed the forensic audit and established that restoration is justified.
+
+Do not reinterpret missing production data as the new expected state merely to make tests pass.
+
+Source/data integrity has priority over green tests.
