@@ -957,15 +957,15 @@ router.post("/lessons/:lessonId/nodes/reorder", requireAuth, async (req: AuthReq
     res.status(400).json({ error: "orderedNodeIds must include all nodes for this lesson" }); return;
   }
 
-  // Transactional normalized update
-  await db.transaction(async (tx) => {
+  // Transactional: sequence updates + dep rebuild happen atomically.
+  // Passing tx to refreshSequentialDependencies ensures we never commit
+  // a new node order without a matching updated dependency graph.
+  const depResult = await db.transaction(async (tx) => {
     for (let i = 0; i < orderedNodeIds.length; i++) {
       await tx.update(lessonNodesTable).set({ sequence: i + 1 }).where(eq(lessonNodesTable.id, orderedNodeIds[i]));
     }
+    return refreshSequentialDependencies(lessonId, tx as unknown as typeof db);
   });
-
-  // Rebuild SEQUENTIAL deps from new sequence order; preserves REQUIRED/other types
-  const depResult = await refreshSequentialDependencies(lessonId);
 
   const updated = await db
     .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
