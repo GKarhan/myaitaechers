@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -2954,6 +2954,67 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
 
   // LEGACY JSON PATH — do not add features
   await handleLegacyJsonImport(req, res, lessonId, rawText);
+});
+
+// ── GET /api/lessons/:lessonId/quizzes ────────────────────────────────────────
+// Phase 1.9 — return quizzes linked to a lesson via quiz_lesson_links.
+// Teacher-only. Returns metadata suitable for the Lesson card / authoring UI.
+// Each quiz appears exactly once regardless of how many lessons it links to.
+router.get("/lessons/:lessonId/quizzes", requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid lesson id" });
+    return;
+  }
+
+  // Verify lesson exists (no ownership check — teachers can view any linked quiz
+  // they own; the quiz join below implicitly scopes to teacher-owned quizzes).
+  const [lesson] = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  // Join quiz_lesson_links → quizzes and count questions — single query, no N+1.
+  const rows = await db
+    .select({
+      quizId:        quizzesTable.id,
+      title:         quizzesTable.title,
+      status:        quizzesTable.status,
+      quizType:      quizzesTable.quizType,
+      difficultyMode: quizzesTable.difficultyMode,
+      createdAt:     quizzesTable.createdAt,
+    })
+    .from(quizLessonLinksTable)
+    .innerJoin(quizzesTable, eq(quizzesTable.id, quizLessonLinksTable.quizId))
+    .where(eq(quizLessonLinksTable.lessonId, lessonId))
+    .orderBy(desc(quizzesTable.createdAt));
+
+  // Batch-load question counts to avoid N+1.
+  const quizIds = rows.map((r) => r.quizId);
+  const qCounts: Record<number, number> = {};
+  if (quizIds.length > 0) {
+    const countRows = await db
+      .select({ quizId: quizQuestionsTable.quizId, cnt: count(quizQuestionsTable.id) })
+      .from(quizQuestionsTable)
+      .where(inArray(quizQuestionsTable.quizId, quizIds))
+      .groupBy(quizQuestionsTable.quizId);
+    for (const r of countRows) qCounts[r.quizId] = Number(r.cnt);
+  }
+
+  res.json(rows.map((r) => ({
+    id:             r.quizId,
+    title:          r.title,
+    status:         r.status,
+    quizType:       r.quizType ?? null,
+    difficultyMode: r.difficultyMode,
+    questionCount:  qCounts[r.quizId] ?? 0,
+    createdAt:      r.createdAt.toISOString(),
+  })));
 });
 
 export default router;

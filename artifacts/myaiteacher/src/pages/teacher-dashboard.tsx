@@ -706,6 +706,27 @@ function LessonNodesPanel({
   const [approvalWarnings, setApprovalWarnings] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
   const [showApprovalErrors, setShowApprovalErrors] = useState(false);
 
+  // Phase 1.9: linked tests section
+  const [linkedTests, setLinkedTests] = useState<Array<{
+    id: number; title: string; status: string; quizType: string | null; questionCount: number;
+  }>>([]);
+  const [linkedTestsLoading, setLinkedTestsLoading] = useState(false);
+  const [linkedTestsOpen, setLinkedTestsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!authToken) return;
+    let cancelled = false;
+    setLinkedTestsLoading(true);
+    fetch(`/api/lessons/${lessonId}/quizzes`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then((r) => r.json())
+      .then((data) => { if (!cancelled && Array.isArray(data)) setLinkedTests(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLinkedTestsLoading(false); });
+    return () => { cancelled = true; };
+  }, [lessonId, authToken]);
+
   // Sync external authoringStatus changes (e.g. after lesson list refetch)
   useEffect(() => { setApprovalStatus(authoringStatus); }, [authoringStatus]);
 
@@ -1263,7 +1284,7 @@ function LessonNodesPanel({
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-semibold text-white">{n.title}</span>
                   {(n as any).status === 'approved' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✅ Հаstatatsval</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✅ Հաստատված</span>
                   )}
                   {(n as any).status === 'needs_review' && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Veranayl</span>
@@ -1272,7 +1293,7 @@ function LessonNodesPanel({
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">📝 Sevagir</span>
                   )}
                   {(n as any).contentSourceType === 'manual' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">✍ Dzernakan</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">✍ Ձեռքով</span>
                   )}
                 </div>
                 {(n as any).learningObjective && (
@@ -1281,19 +1302,19 @@ function LessonNodesPanel({
                 {/* P1.5: Deterministic LO validation messages — recomputed from persisted data */}
                 {!isLOValid((n as any).learningObjective) && (
                   <p className="text-[9px] font-semibold text-red-400 mt-0.5 leading-relaxed">
-                    🔴 Սkhalt․ Ouchumnakan npataky bacakayum e
+                    🔴 Սkhalt․ Ուսումնական նպատակը բացակայում է
                   </p>
                 )}
                 {isLOValid((n as any).learningObjective) &&
                   detectCompoundLOWarning((n as any).learningObjective) !== null && (
                   <p className="text-[9px] font-medium text-amber-400/80 mt-0.5 leading-relaxed">
-                    🟠 Zgushatsum․ Ouchumnakan npataky karoɫ e yndgrel mekic avel owumnakan npatак
+                    🟠 Զգուշացում․ Ուսումնական նպատակը կարող է ընդգրկել մեկից ավել նպատակներ
                   </p>
                 )}
                 {isLOValid((n as any).learningObjective) &&
                   detectMegaNodeWarning((n as any).learningObjective) && (
                   <p className="text-[9px] font-medium text-amber-400/80 mt-0.5 leading-relaxed">
-                    🟠 Zgushatsum․ Hanguytsy karoɫ e charqazanc layn linel
+                    🟠 Զգուշացում․ Գիտելիքի հանգույցը կարող է չափազանց ծավալուն լինել
                   </p>
                 )}
                 {n.theoryContent && (
@@ -1367,7 +1388,7 @@ function LessonNodesPanel({
                         onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
                         placeholder={(ex as any).sourceType === 'textbook' ? "Հարմարեցում (Դասագրքի բնօրինակի վրա)…" : "Varjutyutyan bnagir"}
                       />
-                      <input className={fieldCls} placeholder="Haghoghutyyan banalich" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
+                      <input className={fieldCls} placeholder="Ճիշտ պատասխանի օրինակ" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
                       <div className="flex gap-2">
                         <select className={fieldCls + " cursor-pointer"} value={editExForm.difficultyLevel} onChange={(e) => setEditExForm((f) => f && { ...f, difficultyLevel: e.target.value })}>
                           <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
@@ -1401,7 +1422,7 @@ function LessonNodesPanel({
                               disabled={updateEx.isPending}
                               title="Verakangnel bnaginakin"
                               className="text-[9px] text-amber-400/50 hover:text-amber-300 transition-colors disabled:opacity-40"
-                            >↩ Verakangnel</button>
+                            >↩ Վերականգնել</button>
                           )}
                           {ex.difficultyLevel && <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>}
                           {ex.assignment && (
@@ -1877,7 +1898,7 @@ function LessonNodesPanel({
                               />
                               <input
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                                placeholder="Հաջողության բանալին"
+                                placeholder="Ճիշտ պատասխանի օրինակ"
                                 value={editExForm.successCriteria}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })}
                               />
@@ -1895,7 +1916,7 @@ function LessonNodesPanel({
                                 ))}
                               </select>
                               <div className="flex gap-1">
-                                <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40">{updateEx.isPending ? "..." : "Hastatел"}</button>
+                                <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40">{updateEx.isPending ? "..." : "Հաստատել"}</button>
                                 <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground">Չեղարկել</button>
                               </div>
                             </div>
@@ -1938,7 +1959,7 @@ function LessonNodesPanel({
                                         onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
                                         disabled={updateEx.isPending}
                                         className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
-                                      >Hastatel</button>
+                                      >Հաստատել</button>
                                     </>
                                   )}
                                 </div>
@@ -2161,6 +2182,54 @@ function LessonNodesPanel({
           </div>
         </div>
       )}
+
+      {/* P1.9: Linked tests section — always visible, collapsible */}
+      <div className="border-t border-white/8">
+        <button
+          onClick={() => setLinkedTestsOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <span className="font-medium tracking-wide">
+            {linkedTestsLoading
+              ? "📝 Թեստեր..."
+              : `📝 Թեստեր${linkedTests.length > 0 ? ` (${linkedTests.length})` : ""}`}
+          </span>
+          <span>{linkedTestsOpen ? "▲" : "▼"}</span>
+        </button>
+
+        {linkedTestsOpen && (
+          <div className="px-4 pb-3 space-y-1.5">
+            {linkedTestsLoading ? (
+              <p className="text-xs text-muted-foreground/50 py-1">Բеռнвum е...</p>
+            ) : linkedTests.length === 0 ? (
+              <p className="text-xs text-muted-foreground/40 py-1">Թեստեր չկան</p>
+            ) : (
+              linkedTests.map((q) => (
+                <div
+                  key={q.id}
+                  className="flex items-center justify-between bg-white/3 border border-white/8 rounded-lg px-3 py-1.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-white/80 truncate font-medium">{q.title}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">
+                        {q.quizType === "lesson" ? "Дасի Թест" : q.quizType === "summary" ? "Амфогнакум" : "—"}
+                      </span>
+                      <span className="text-muted-foreground/30 text-[9px]">·</span>
+                      <span className="text-[9px] text-muted-foreground/60">{q.questionCount} հшт.</span>
+                      {q.status === "GENERATED" || q.status === "PUBLISHED" ? (
+                        <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">✓</span>
+                      ) : q.status === "ASSIGNED" ? (
+                        <span className="text-[9px] px-1 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">→</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

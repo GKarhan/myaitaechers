@@ -16,7 +16,8 @@
     "test:coverage-validator": "tsx src/lib/__tests__/coverage-validator.test.ts",
     "test:final-approval": "tsx src/lib/__tests__/lesson-final-approval.test.ts",
     "test:phase18-seq": "tsx src/lib/__tests__/sequential-deps-phase18.test.ts",
-    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts && tsx src/lib/__tests__/coverage-validator.test.ts && tsx src/lib/__tests__/lesson-final-approval.test.ts && tsx src/lib/__tests__/sequential-deps-phase18.test.ts"
+    "test:phase19-quiz-links": "tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts",
+    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts && tsx src/lib/__tests__/coverage-validator.test.ts && tsx src/lib/__tests__/lesson-final-approval.test.ts && tsx src/lib/__tests__/sequential-deps-phase18.test.ts && tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

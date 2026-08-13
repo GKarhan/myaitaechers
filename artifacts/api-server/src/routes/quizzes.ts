@@ -6,8 +6,10 @@ import {
   quizAssignmentsTable,
   quizAttemptsTable,
   quizAnswersTable,
+  quizLessonLinksTable,
   classStudentsTable,
   lessonNodesTable,
+  lessonsTable,
   knowledgeNodesTable,
   evidenceEventsTable,
   usersTable,
@@ -15,7 +17,7 @@ import {
   lessonNodeDependenciesTable,
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
-import { eq, and, asc, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, desc, sql, count } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
@@ -365,6 +367,36 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     return;
   }
 
+  // Phase 1.9: resolve authoritative lesson IDs for the relationship table.
+  // If lessonIds were provided explicitly, use them directly.
+  // If only nodeIds were provided (single-lesson node-scoped case), derive lesson.
+  let resolvedLessonIds: number[] = lessonIds ?? [];
+  if (resolvedLessonIds.length === 0 && resolvedNodeIds.length > 0) {
+    const lessonRows = await db
+      .selectDistinct({ lessonId: lessonNodesTable.lessonId })
+      .from(lessonNodesTable)
+      .where(inArray(lessonNodesTable.id, resolvedNodeIds));
+    resolvedLessonIds = lessonRows.map((r) => r.lessonId).filter((id): id is number => id !== null);
+  }
+
+  // Validate all lesson IDs exist and belong to this teacher's authorized scope.
+  if (resolvedLessonIds.length > 0) {
+    const existingLessons = await db
+      .select({ id: lessonsTable.id })
+      .from(lessonsTable)
+      .where(inArray(lessonsTable.id, resolvedLessonIds));
+    if (existingLessons.length !== resolvedLessonIds.length) {
+      res.status(400).json({ error: "One or more lesson IDs not found" });
+      return;
+    }
+  }
+
+  // Derive quizType from lesson count.
+  const derivedQuizType: string | null =
+    resolvedLessonIds.length === 1 ? "lesson"
+    : resolvedLessonIds.length  >  1 ? "summary"
+    : null; // no lesson linkage (edge case — book-only or free-form)
+
   // Create DRAFT quiz
   const quizTitle = title?.trim() || `Թեստ — ${new Date().toLocaleDateString("hy-AM")}`;
   const [quiz] = await db
@@ -379,8 +411,19 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
       questionCount,
       difficultyMode,
       status:       "DRAFT",
+      quizType:     derivedQuizType,
     })
     .returning();
+
+  // Persist lesson relationships immediately so the lesson card can show this
+  // quiz even before generation completes (avoids partial state on rollback too
+  // because the quiz delete in the catch block cascades to links).
+  if (resolvedLessonIds.length > 0) {
+    await db
+      .insert(quizLessonLinksTable)
+      .values(resolvedLessonIds.map((lid) => ({ quizId: quiz.id, lessonId: lid })))
+      .onConflictDoNothing(); // idempotent
+  }
 
   try {
     // Generate questions via AI
@@ -785,6 +828,12 @@ router.get("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
     .where(eq(quizQuestionsTable.quizId, quizId))
     .orderBy(asc(quizQuestionsTable.sequence));
 
+  // Phase 1.9: include quizType and linked lesson IDs
+  const links = await db
+    .select({ lessonId: quizLessonLinksTable.lessonId })
+    .from(quizLessonLinksTable)
+    .where(eq(quizLessonLinksTable.quizId, quizId));
+
   res.json({
     id:             quiz.id,
     title:          quiz.title,
@@ -795,6 +844,8 @@ router.get("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
     questionCount:  questions.length,
     difficultyMode: quiz.difficultyMode,
     status:         quiz.status,
+    quizType:       quiz.quizType ?? null,
+    lessonIds:      links.map((l) => l.lessonId),
     createdAt:      quiz.createdAt.toISOString(),
     questions:      questions.map((q) => ({
       id:                 q.id,
@@ -1434,6 +1485,78 @@ router.get("/quizzes/:id/analysis", requireTeacher, async (req: AuthRequest, res
 // ── DELETE /api/quizzes/:id ───────────────────────────────────────────────────
 // Remove a teacher-owned quiz. The schema already cascades to quiz_questions,
 // quiz_assignments, quiz_attempts, and quiz_answers automatically.
+// ── POST /api/quizzes/:id/lessons/:lessonId — link a quiz to a lesson ─────────
+// Idempotent (duplicate→ 200 with no DB change).
+// Teacher must own the quiz; lesson must exist.
+router.post("/quizzes/:id/lessons/:lessonId", requireTeacher, async (req: AuthRequest, res) => {
+  const quizId   = parseInt(String(req.params.id),       10);
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(quizId) || isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid quiz id or lesson id" }); return;
+  }
+
+  const [quiz] = await db
+    .select({ id: quizzesTable.id, quizType: quizzesTable.quizType })
+    .from(quizzesTable)
+    .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
+    .limit(1);
+  if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
+
+  // Verify lesson exists
+  const [lesson] = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+  if (!lesson) { res.status(400).json({ error: "Lesson not found" }); return; }
+
+  // Check existing links to enforce Lesson Test constraint (≤1 lesson for type='lesson')
+  if (quiz.quizType === "lesson") {
+    const existingLinks = await db
+      .select({ lessonId: quizLessonLinksTable.lessonId })
+      .from(quizLessonLinksTable)
+      .where(eq(quizLessonLinksTable.quizId, quizId));
+    const alreadyLinked = existingLinks.some((l) => l.lessonId === lessonId);
+    if (!alreadyLinked && existingLinks.length >= 1) {
+      res.status(400).json({ error: "Lesson Test can only be linked to exactly one lesson" }); return;
+    }
+  }
+
+  await db
+    .insert(quizLessonLinksTable)
+    .values({ quizId, lessonId })
+    .onConflictDoNothing();
+
+  res.json({ quizId, lessonId, linked: true });
+});
+
+// ── DELETE /api/quizzes/:id/lessons/:lessonId — unlink quiz from a lesson ─────
+// Removes the relationship row only — quiz record is preserved.
+router.delete("/quizzes/:id/lessons/:lessonId", requireTeacher, async (req: AuthRequest, res) => {
+  const quizId   = parseInt(String(req.params.id),       10);
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(quizId) || isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid quiz id or lesson id" }); return;
+  }
+
+  const [quiz] = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(and(eq(quizzesTable.id, quizId), eq(quizzesTable.teacherId, req.userId!)))
+    .limit(1);
+  if (!quiz) { res.status(404).json({ error: "Quiz not found" }); return; }
+
+  await db
+    .delete(quizLessonLinksTable)
+    .where(and(
+      eq(quizLessonLinksTable.quizId,   quizId),
+      eq(quizLessonLinksTable.lessonId, lessonId),
+    ));
+
+  res.json({ quizId, lessonId, unlinked: true });
+});
+
+// ── DELETE /api/quizzes/:id ───────────────────────────────────────────────────
 router.delete("/quizzes/:id", requireTeacher, async (req: AuthRequest, res) => {
   const quizId = parseInt(String(req.params.id), 10);
   if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }

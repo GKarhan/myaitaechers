@@ -1,0 +1,685 @@
+PHASE 1.9 — LESSON ↔ TESTS RELATIONSHIP MODEL
+
+Phase 1.1–1.8 are complete.
+
+This task is ONLY:
+
+PHASE 1.9 — LESSON ↔ TESTS
+
+Goal:
+
+Give Quiz/Test records an explicit lesson scope/type and expose linked tests from the Lesson authoring UI WITHOUT creating duplicate quiz records.
+
+V1 quiz types:
+
+1. LESSON TEST
+   - linked to exactly ONE Lesson
+
+2. SUMMARY TEST
+   - may include MULTIPLE Lessons
+
+The same Quiz/Test record must continue to appear in the global Tests section.
+
+Do NOT duplicate quizzes.
+
+Authoritative principle:
+
+ONE QUIZ RECORD
++
+RELATIONSHIP(S) TO LESSON(S)
+
+NOT:
+
+one copy under Lesson
++
+another copy under Tests
+
+==================================================
+0. AUDIT FIRST — DO NOT CHANGE CODE YET
+==================================================
+
+Inspect the current quiz architecture before implementing anything.
+
+Audit:
+
+- quizzes table
+- quiz_questions
+- quiz_assignments
+- quiz_attempts
+- quiz_answers
+- any quiz↔lesson fields already present
+- any multi-lesson selection fields already present
+- any nodeIds / lessonIds arrays or relationship tables
+- current quiz creation API
+- current Teacher Tests UI
+- current Lesson card / Teacher Review UI
+- current quiz-taking flow
+
+Report internally:
+
+A. Current Quiz identity model
+
+B. Current lesson linkage model
+
+C. Whether one quiz can already reference:
+- one lesson
+- multiple lessons
+- specific nodes
+
+D. Whether current schema already supports V1 cleanly
+
+REUSE existing architecture if possible.
+
+Do NOT create a second quiz subsystem.
+
+==================================================
+1. REQUIRED V1 QUIZ TYPE
+==================================================
+
+Every quiz/test must have an explicit type/scope equivalent to:
+
+`lesson`
+or
+`summary`
+
+Use current naming conventions if the repository already has a compatible field.
+
+Do NOT add redundant fields if existing schema can represent this safely.
+
+Semantics:
+
+LESSON TEST:
+- quizType = lesson
+- exactly 1 linked Lesson
+
+SUMMARY TEST:
+- quizType = summary
+- 2 or more linked Lessons is the normal case
+- allow 1 only if existing architecture requires transitional compatibility, but report it
+
+Do NOT determine when the test is delivered to students here.
+
+That belongs to Phase 2 orchestration.
+
+==================================================
+2. RELATIONSHIP ARCHITECTURE
+==================================================
+
+Preferred conceptual model:
+
+Quiz
+↔
+QuizLessonRelationship
+↔
+Lesson
+
+If an existing relationship table or array already supports this, reuse it.
+
+If current quiz schema contains a single `lessonId` only:
+
+audit whether the existing multi-lesson quiz implementation already stores multiple lessons elsewhere.
+
+Do NOT immediately replace working architecture.
+
+Only add the minimum relationship structure needed to support:
+
+- one Lesson → many Quizzes
+- one Quiz → one Lesson
+- one Summary Quiz → many Lessons
+
+The relationship must be authoritative.
+
+Do NOT copy Quiz records.
+
+==================================================
+3. LESSON TEST RULE
+==================================================
+
+For a Lesson Test:
+
+Exactly ONE Lesson relationship must be authoritative.
+
+Example:
+
+Quiz:
+`Ֆիզիկական երևույթներ — ստուգում`
+
+Type:
+`lesson`
+
+Linked Lesson:
+Lesson 105
+
+Expected:
+
+Lesson 105 card shows this test.
+
+Other Lessons do not.
+
+Global Tests section also shows the SAME quiz record.
+
+Deleting/unlinking the relationship must NOT create another copy.
+
+==================================================
+4. SUMMARY TEST RULE
+==================================================
+
+For a Summary Test:
+
+One quiz may link to multiple Lessons.
+
+Example:
+
+Summary Quiz Q500:
+
+- Lesson 105
+- Lesson 106
+- Lesson 107
+
+Expected:
+
+Q500 appears under:
+
+Lesson 105
+Lesson 106
+Lesson 107
+
+and ALSO once in:
+
+Global Tests
+
+Still ONE Quiz record.
+
+Verify IDs are identical everywhere.
+
+==================================================
+5. LESSON CARD / AUTHORING UI
+==================================================
+
+In the Lesson card / authoring area add a linked-tests section.
+
+Example Armenian UI:
+
+`📝 Թեստեր (3)`
+
+Then linked quiz titles, for example:
+
+- Ֆիզիկական երևույթներ — ստուգում
+- Դասի վերջնական թեստ
+- Կրկնության թեստ
+
+Use the current design system.
+
+Do NOT redesign the lesson card.
+
+Each row may minimally show:
+
+- title
+- type
+- status if already available
+- open/edit action if current routing supports it
+
+Do not implement new quiz-edit workflows here.
+
+If there are no linked tests:
+
+show a sensible empty state such as:
+
+`Թեստեր չկան`
+
+Do not hide relationship logic.
+
+==================================================
+6. GLOBAL TESTS SECTION
+==================================================
+
+Existing global Tests section must continue working.
+
+A quiz linked to Lessons must appear there exactly ONCE.
+
+Verify:
+
+- Lesson-linked test appears once globally
+- Summary test appears once globally even if linked to 3 Lessons
+- no duplicate quiz cards
+- no duplicate quiz DB records
+
+Global Tests section is the canonical list of quiz records.
+
+Lesson section is a relationship-based filtered view.
+
+==================================================
+7. BACKEND READ API
+==================================================
+
+Provide/reuse a clean backend path for loading quizzes linked to a Lesson.
+
+Conceptually:
+
+GET /lessons/:lessonId/quizzes
+
+or equivalent.
+
+Do not invent route naming before checking current route conventions.
+
+Result should contain enough information for Lesson UI:
+
+- quiz id
+- title
+- quiz type
+- status if available
+- linked lesson IDs if useful
+- question count if already cheaply available
+
+Avoid N+1 queries if current DB layer supports joins/batched queries.
+
+==================================================
+8. QUIZ READ MODEL
+==================================================
+
+Ensure quiz read responses can distinguish:
+
+LESSON TEST
+vs
+SUMMARY TEST
+
+Do not infer type from number of lessons on the frontend if backend has/should have an explicit authoritative type.
+
+If legacy quizzes do not have a type:
+
+define a safe backward-compatible classification rule only if needed.
+
+Report legacy behavior.
+
+Do not bulk mutate old quizzes without evidence.
+
+==================================================
+9. CURRENT MULTI-LESSON / NODE-SELECTION LOGIC
+==================================================
+
+IMPORTANT:
+
+We already have existing quiz creation logic supporting:
+
+- single-lesson selection
+- nodeIds[] for single lesson
+- multi-lesson selection
+- whole selected lessons for multi-lesson mode
+
+DO NOT rewrite that logic.
+
+Audit and reuse the current fields/relationships.
+
+Phase 1.9 only establishes the authoritative Lesson ↔ Quiz relationship and Lesson-side visibility.
+
+Phase 1.10 will refine creation UI/type selection.
+
+If current creation already creates the necessary relationships, preserve it.
+
+If it does not, minimally add the persistence hook required so newly created quizzes can populate the relationship model.
+
+Do NOT redesign the quiz generation engine.
+
+==================================================
+10. NODE-SCOPED LESSON TESTS
+==================================================
+
+A Lesson Test may optionally target selected MicroNodes.
+
+Example:
+
+Quiz Q200
+
+Type:
+lesson
+
+Lesson:
+105
+
+Node scope:
+[1349, 1350]
+
+This remains ONE lesson-linked quiz.
+
+Do NOT model each node as a separate Lesson relationship.
+
+Node scope and Lesson relationship are different dimensions.
+
+Reuse existing `nodeIds[]` behavior.
+
+Do not change question generation in Phase 1.9.
+
+==================================================
+11. RELATIONSHIP INTEGRITY
+==================================================
+
+Enforce deterministically:
+
+A. Lesson Test
+- exactly 1 Lesson relationship
+
+B. Summary Test
+- may have multiple Lesson relationships
+
+C. relationship Lesson must exist
+
+D. no duplicate:
+(quizId, lessonId)
+
+E. deleting a relationship must not delete the Quiz unless existing explicit delete semantics say so
+
+F. deleting a Quiz should remove its lesson relationships using FK cascade / existing safe cleanup
+
+G. deleting a Lesson:
+audit expected relationship behavior
+prefer relationship cleanup without silently deleting a Summary Quiz used by other Lessons
+
+Do not create unsafe cascading quiz deletion from Lesson deletion.
+
+==================================================
+12. AUTHORIZATION
+==================================================
+
+Reuse current quiz and lesson authorization rules.
+
+Teacher should only see/link quizzes they are authorized to manage.
+
+Do NOT weaken authorization.
+
+Do not expose quizzes from unrelated teacher/class scope.
+
+==================================================
+13. REAL DATA ACCEPTANCE TEST
+==================================================
+
+Use real Lesson 105.
+
+Create TEST FIXTURES only if safe and clean them up afterward.
+
+Test A — Lesson Test
+
+Create or use one quiz:
+
+Type:
+lesson
+
+Linked Lesson:
+105
+
+Verify:
+
+- one quiz DB record
+- one Lesson relationship
+- Lesson 105 UI lists it
+- global Tests lists same quiz once
+- same quiz ID in both places
+
+Test B — Summary Test
+
+Create/use one Summary quiz linked to at least:
+
+Lesson 105
++ another real/test-safe Lesson
+
+Verify:
+
+- one quiz record
+- two relationships
+- both Lesson views show same quiz
+- global Tests shows it once
+
+Test C — Duplicate protection
+
+Attempt duplicate link:
+
+same quizId + Lesson 105
+
+Expected:
+
+no duplicate relationship
+
+Test D — Unlink
+
+Remove Lesson 105 relationship from Summary test.
+
+Expected:
+
+- quiz record remains
+- other Lesson relationship remains
+- quiz still appears globally
+- Lesson 105 no longer lists it
+
+Restore if appropriate.
+
+==================================================
+14. LEGACY QUIZ AUDIT
+==================================================
+
+Audit existing quizzes already in DB.
+
+Report:
+
+- total quiz count
+- quizzes already linked to lessons
+- quizzes with nodeIds
+- quizzes with multiple lessons if any
+- quizzes without any Lesson relationship
+- ambiguous legacy records
+
+Do NOT silently classify/migrate ambiguous legacy quizzes.
+
+If safe inference exists, report it.
+
+If not, preserve legacy data and mark:
+
+`LEGACY UNCLASSIFIED`
+
+Do not block Phase 1.9 merely because old unrelated test data is incomplete.
+
+==================================================
+15. QUIZ IDENTITY — CRITICAL PROOF
+==================================================
+
+For each acceptance test prove:
+
+Lesson view Quiz ID
+=
+Global Tests Quiz ID
+
+For Summary test:
+
+Lesson A Quiz ID
+=
+Lesson B Quiz ID
+=
+Global Tests Quiz ID
+
+This proves no duplicate records were created.
+
+==================================================
+16. NO QUESTION GENERATION CHANGES
+==================================================
+
+Do NOT modify:
+
+- quiz AI generation prompt
+- suggested question count
+- question scoring
+- answer grading
+- mastery scoring
+- quiz-taking flow
+- quiz submission
+- evidence writes
+
+Those are already existing systems and outside Phase 1.9.
+
+==================================================
+17. NO DELIVERY ORCHESTRATION
+==================================================
+
+Do NOT decide whether a Lesson Test is:
+
+- before lesson
+- during lesson
+- after lesson
+- review
+- diagnostic
+- formative
+- summative timing
+
+Those are Phase 2 orchestration concerns.
+
+Phase 1.9 only defines:
+
+WHAT quiz is linked to WHICH lesson(s).
+
+==================================================
+18. AUTOMATED TESTS
+==================================================
+
+Add focused tests covering at minimum:
+
+1. lesson quiz links to exactly one Lesson
+2. summary quiz links to multiple Lessons
+3. duplicate relationship prevented
+4. same quiz appears by ID from Lesson and global queries
+5. unlink does not delete Quiz
+6. deleting Quiz removes relationships safely
+7. deleting one Lesson does not delete multi-lesson Summary quiz
+8. invalid Lesson ID rejected
+9. unauthorized link rejected
+10. node-scoped lesson quiz still has exactly one Lesson relationship
+11. relationship read returns correct type
+12. global query does not duplicate summary quiz rows due to joins
+
+Use actual DB/service/API behavior.
+
+==================================================
+19. DATA SAFETY
+==================================================
+
+Do not disturb Lesson 105 authoring state.
+
+At end verify Lesson 105 still:
+
+- Topics = 4
+- MicroNodes = 10
+- textbook exercises = 15
+- lost source exercises = 0
+- authoringStatus = approved
+
+Do not change Topic/MicroNode order.
+
+Do not change dependencies.
+
+Do not change exercises.
+
+Temporary quiz fixtures must be removed unless intentionally retained for demo and explicitly reported.
+
+==================================================
+20. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- Phase 1.10 Test Creation UI redesign
+- test timing/orchestration
+- AI Teacher test delivery
+- quiz-taking flow changes
+- scoring/mastery/evidence changes
+- Knowledge Tree changes
+- Student assignment
+- Mapper changes
+- dependency changes
+- Phase 2 learning logic
+
+This phase is relationship architecture + Lesson-side visibility only.
+
+==================================================
+21. FINAL REPORT
+==================================================
+
+Return exactly:
+
+## A. Current Quiz Architecture
+
+- quiz table
+- existing lesson/node fields
+- existing multi-lesson implementation
+- current relationship model
+
+## B. V1 Type Model
+
+Lesson Test:
+...
+
+Summary Test:
+...
+
+## C. Relationship Storage
+
+Exact table/fields or reused architecture.
+
+## D. Lesson UI
+
+How linked tests are displayed.
+
+## E. Global Tests Regression
+
+Same quiz appears once globally.
+
+## F. Lesson Test Acceptance
+
+Quiz ID:
+Lesson ID:
+Relationship:
+Lesson view ID:
+Global view ID:
+PASS / FAIL
+
+## G. Summary Test Acceptance
+
+Quiz ID:
+Lesson IDs:
+Lesson A view ID:
+Lesson B view ID:
+Global view ID:
+PASS / FAIL
+
+## H. Duplicate / Unlink / Delete Integrity
+
+PASS / FAIL per case.
+
+## I. Legacy Quiz Audit
+
+Counts + ambiguous records.
+
+## J. Automated Tests
+
+Exact command
+passed / failed
+
+## K. Data Integrity
+
+Lesson 105 counts/state unchanged.
+
+## L. Files Changed
+
+Exact files + purpose.
+
+## M. FINAL GATE 1.9
+
+PASS / PARTIAL / FAIL
+
+PASS requires:
+
+1. Lesson Test can be linked to exactly one Lesson
+2. Summary Test can link to multiple Lessons
+3. ONE quiz record is reused across Lesson and global views
+4. no duplicate relationship rows
+5. Lesson card displays linked tests
+6. global Tests section remains correct
+7. existing multi-lesson/node-scope behavior is not broken
+8. Lesson 105 authoring integrity is unchanged
+
+Do NOT continue to Phase 1.10.

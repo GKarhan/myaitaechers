@@ -1,10 +1,11 @@
-import { pgTable, serial, integer, text, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, jsonb, boolean, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 import { subjectsTable } from "./subjects";
 import { classesTable } from "./classes";
 import { booksTable } from "./books";
 import { lessonNodesTable } from "./lesson-nodes";
+import { lessonsTable } from "./lessons";
 
 // ── quizzesTable ──────────────────────────────────────────────────────────────
 export const quizzesTable = pgTable("quizzes", {
@@ -26,6 +27,8 @@ export const quizzesTable = pgTable("quizzes", {
   difficultyMode: text("difficulty_mode").notNull().default("MIXED"),
   // DRAFT | GENERATED | PUBLISHED | ASSIGNED | CLOSED
   status: text("status").notNull().default("DRAFT"),
+  // Phase 1.9: explicit quiz scope — 'lesson' (1 linked lesson) | 'summary' (≥1 lessons) | null (legacy/unclassified)
+  quizType: text("quiz_type"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -107,3 +110,21 @@ export const quizAnswersTable = pgTable("quiz_answers", {
 });
 
 export type QuizAnswer = typeof quizAnswersTable.$inferSelect;
+
+// ── quizLessonLinksTable ──────────────────────────────────────────────────────
+// Authoritative Lesson ↔ Quiz relationship (Phase 1.9).
+// One quiz may link to one lesson (type='lesson') or many lessons (type='summary').
+// Deleting a quiz cascades to remove its links.
+// Deleting a lesson removes only that link row — never the quiz itself.
+export const quizLessonLinksTable = pgTable(
+  "quiz_lesson_links",
+  {
+    id:       serial("id").primaryKey(),
+    quizId:   integer("quiz_id").notNull().references(() => quizzesTable.id,  { onDelete: "cascade" }),
+    lessonId: integer("lesson_id").notNull().references(() => lessonsTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.quizId, t.lessonId)],
+);
+
+export type QuizLessonLink = typeof quizLessonLinksTable.$inferSelect;
