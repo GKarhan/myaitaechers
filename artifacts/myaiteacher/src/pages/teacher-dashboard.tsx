@@ -1249,8 +1249,8 @@ function LessonNodesPanel({
                   disabled={updateNode.isPending || !isLOValid((n as any).learningObjective)}
                   title={
                     !isLOValid((n as any).learningObjective)
-                      ? "Hastatrel chhnaravor e. Ouchumnakan npataky bacakayum e."
-                      : "Hastatrel"
+                      ? "Հաստատել հնարավոր չէ․ ուսուցման նպատակը բացակայում է"
+                      : "Հաստատել"
                   }
                   className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >✅</button>

@@ -1,0 +1,158 @@
+# PHASE 1.5 — FINAL CLEANUP ONLY
+
+Do NOT redo Phase 1.5.
+
+The implementation is already working.
+
+We have only THREE remaining verification/cleanup items before Gate 1.5 can be closed.
+
+---
+
+## 1. FIX THE TWO PRE-EXISTING INVALID APPROVED NODES
+
+Your global audit found:
+
+* node 46
+* node 47
+* lesson 51
+
+Both are currently:
+
+`status = approved`
+
+with missing/blank Learning Objective.
+
+This violates the Phase 1.5 invariant:
+
+**NO approved MicroNode may have a missing/blank Learning Objective.**
+
+Do NOT invent Learning Objectives.
+
+Do NOT generate AI content.
+
+Use the existing workflow semantics already implemented in Phase 1.5.
+
+Move these invalid nodes out of `approved` into the appropriate existing review state, expected:
+
+`needs_review`
+
+Preserve all other fields exactly.
+
+Then verify globally:
+
+approved nodes
+WHERE learningObjective IS NULL
+OR trim(learningObjective) = ''
+
+Expected count:
+
+`0`
+
+Report the before/after rows for nodes 46 and 47.
+
+---
+
+## 2. FIX THE REMAINING TRANSLITERATED TOOLTIP
+
+The disabled approval tooltip currently uses transliterated text such as:
+
+`Hastatrel chhnaravor e`
+
+Replace it with proper Armenian.
+
+Use:
+
+`Հաստատել հնարավոր չէ․ ուսուցման նպատակը բացակայում է`
+
+Do not change functionality or styling.
+
+Check that no new Phase 1.5 UI strings remain transliterated.
+
+---
+
+## 3. VERIFY WARNING HEURISTICS ON REAL LESSON 105
+
+Do NOT change heuristics yet.
+
+Run the current deterministic heuristics against all 10 real MicroNodes in Lesson 105.
+
+Return a table:
+
+| MicroNode | Compound LO warning | Mega-node warning | Reason |
+| --------- | ------------------- | ----------------- | ------ |
+
+For each warning show the exact deterministic trigger:
+
+* distinct action verbs detected
+* LO word count
+* LO character count
+
+We want to confirm that the heuristic is conservative.
+
+Specifically verify that normal objectives such as:
+
+`Ուսանողը կարող է սահմանել բնությունը։`
+
+do NOT receive false warnings.
+
+Warnings remain advisory and must NOT block approval.
+
+If the current mega-node heuristic produces obviously excessive false positives on Lesson 105, STOP and report the evidence before broadening or rewriting the heuristic.
+
+Do not add AI.
+
+---
+
+## FINAL REGRESSION
+
+Verify again:
+
+Lesson 105:
+
+* Topics = 4
+* MicroNodes = 10
+* Source exercises = 15
+* Assigned = 12
+* Additional = 3
+* lost source exercises = 0
+
+Global:
+
+`approved MicroNodes with missing/blank LO = 0`
+
+---
+
+## FINAL REPORT
+
+Return only:
+
+### A. Legacy invalid nodes
+
+46 before → after
+47 before → after
+
+### B. Global invariant
+
+approved nodes with blank LO = ?
+
+### C. Armenian tooltip
+
+exact final text
+
+### D. Lesson 105 warning matrix
+
+all 10 MicroNodes + exact trigger/reason
+
+### E. Data integrity
+
+counts and regressions
+
+### F. FINAL GATE 1.5
+
+PASS / FAIL
+
+Gate 1.5 = PASS only if:
+
+`approved MicroNodes with missing/blank LO = 0`
+
+Do not continue to Phase 1.6.
