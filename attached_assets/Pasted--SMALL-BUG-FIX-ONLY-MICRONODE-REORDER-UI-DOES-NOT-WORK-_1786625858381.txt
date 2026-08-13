@@ -1,0 +1,256 @@
+# SMALL BUG FIX ONLY — MICRONODE REORDER UI DOES NOT WORK
+
+Phase 1.1 backend/data work is complete.
+
+The current authoritative hierarchy is:
+
+`Lesson → Topic → MicroNode`
+
+There is NO separate Node/Subnode hierarchy.
+
+Backend node reorder is already implemented and verified.
+
+Current problem:
+
+The teacher can see MicroNode reorder controls in Teacher Review, but MicroNodes still cannot actually be moved from the real UI.
+
+This task is ONLY to fix the MicroNode reorder UI.
+
+Do NOT repeat the full forensic audit.
+Do NOT redesign the architecture.
+Do NOT change DB schema.
+
+---
+
+## 1. REPRODUCE THE BUG FROM THE REAL UI
+
+Use Lesson 105 or another real mapped lesson.
+
+Open Teacher Review.
+
+Choose two MicroNodes inside the SAME Topic.
+
+Try the visible `▲ / ▼` controls.
+
+Confirm the current failure before changing code.
+
+Do NOT test only by calling the API manually.
+
+---
+
+## 2. TRACE THE EXACT UI PATH
+
+Trace:
+
+`▲ / ▼ click`
+→ frontend handler
+→ ordered node list
+→ reorder mutation
+→ API request
+→ backend reorder route
+→ DB sequence
+→ query invalidation/refetch
+→ rendered UI
+
+Find the exact root cause.
+
+Check especially:
+
+* click handler not firing
+* wrong node ID
+* wrong index
+* wrong array being reordered
+* topic-local filtered array being passed to a lesson-wide reorder endpoint
+* mutation not called
+* stale frontend state
+* cache/query not invalidated
+* API error hidden from UI
+* buttons incorrectly disabled
+* event propagation issue
+
+---
+
+## 3. IMPORTANT — LESSON-WIDE SEQUENCE
+
+Previous audit confirmed:
+
+`lesson_nodes.sequence` is lesson-wide.
+
+Topics are only grouping/display containers.
+
+Example:
+
+Topic A:
+`A1(seq1), A2(seq2)`
+
+Topic B:
+`B1(seq3), B2(seq4), B3(seq5)`
+
+If teacher moves B3 before B1, expected global order is:
+
+`A1, A2, B3, B1, B2`
+
+with normalized DB sequence:
+
+`1,2,3,4,5`
+
+Do NOT send only:
+
+`[B3,B1,B2]`
+
+to a backend route that requires ALL Lesson node IDs.
+
+The reorder payload must preserve the full lesson-wide node order.
+
+---
+
+## 4. TOPIC BOUNDARIES
+
+Cross-topic movement is NOT required in this task.
+
+The teacher may reorder MicroNodes within their current Topic.
+
+At the top/bottom of a Topic group:
+
+* `▲ / ▼` may be disabled
+* node `topicId` must NOT silently change
+
+Topic reassignment remains available through the existing `topicId` edit dropdown.
+
+---
+
+## 5. REQUIRED BEHAVIOR
+
+Example:
+
+Before inside one Topic:
+
+`MN1 → MN2 → MN3`
+
+Teacher clicks `▲` on MN3.
+
+Expected:
+
+`MN1 → MN3 → MN2`
+
+Click `▲` again:
+
+`MN3 → MN1 → MN2`
+
+Backend sequences must remain normalized.
+
+---
+
+## 6. REAL UI ACCEPTANCE TEST
+
+Use actual visible UI controls.
+
+Record BEFORE:
+
+* Lesson ID
+* Topic ID
+* MicroNode IDs
+* titles
+* sequence values
+
+Then:
+
+1. Click `▲` or `▼`.
+2. Confirm visible order changes.
+3. Confirm reorder API request succeeds.
+4. Query/read DB.
+5. Confirm normalized sequence.
+6. Confirm SEQUENTIAL dependencies reflect the new lesson-wide order.
+7. Perform FULL browser refresh.
+8. Confirm the same MicroNode order remains.
+9. Restore original order using the actual UI.
+10. Full-refresh again.
+11. Confirm original order is restored.
+
+Required chain:
+
+**UI click → API → DB → full refresh → same UI order**
+
+Do NOT report PASS without this exact browser-level verification.
+
+---
+
+## 7. DO NOT CHANGE
+
+Do NOT modify:
+
+* Topic reorder unless needed by the same shared bug
+* Knowledge Tree
+* Mapper
+* AI Teacher
+* quizzes
+* scoring/mastery/evidence
+* exercises
+* exercise approval
+* Phase 2 enrichment
+* Final Lesson Approval
+* student dashboard
+* student assignment
+* semantic dependencies
+* schema/hierarchy
+
+---
+
+## 8. DATA SAFETY
+
+After testing verify:
+
+* Topic count unchanged
+* MicroNode count unchanged
+* Exercise count unchanged
+* lost exercises = 0
+* REQUIRED dependencies unchanged
+* Phase 2 enrichment unchanged
+
+---
+
+# FINAL REPORT
+
+Return only:
+
+## Root cause
+
+Exact reason MicroNode UI reorder did not work.
+
+## File changed
+
+Path + exact change.
+
+## BEFORE
+
+Actual MicroNode IDs/titles/sequences.
+
+## UI action
+
+Which `▲ / ▼` control was clicked.
+
+## API
+
+Request/result.
+
+## DB
+
+Persisted normalized order.
+
+## Full refresh
+
+Order after browser refresh.
+
+## Restoration
+
+Original order restored from UI and confirmed after refresh.
+
+## Data integrity
+
+`lost exercises = 0 / NOT 0`
+
+## Final Gate 1.2 UI
+
+`PASS / FAIL`
+
+Do not perform any other work.

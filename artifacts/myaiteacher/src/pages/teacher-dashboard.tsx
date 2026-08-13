@@ -739,19 +739,39 @@ function LessonNodesPanel({
     );
   };
 
-  // Move a node up or down within the lesson (preserving overall order, swapping with adjacent)
+  // Move a node up or down within the lesson (preserving overall order, swapping with adjacent).
+  // Uses an optimistic cache update so the UI reorders immediately on click, before the API
+  // round-trip completes.  On error the cache is rolled back and an alert is shown.
   const moveNode = (nodeId: number, dir: "up" | "down") => {
     const idx = sortedNodes.findIndex((n) => n.id === nodeId);
     if (idx === -1) return;
     const swapIdx = dir === "up" ? idx - 1 : idx + 1;
     if (swapIdx < 0 || swapIdx >= sortedNodes.length) return;
+
+    const nodeA = sortedNodes[idx];
+    const nodeB = sortedNodes[swapIdx];
+
+    // Optimistic update: swap the two nodes' sequence values in the query cache so that
+    // `sortedNodes` (sorted by sequence) immediately reflects the new order.
+    const prevData = qc.getQueryData(getGetLessonNodesQueryKey(lessonId));
+    qc.setQueryData(getGetLessonNodesQueryKey(lessonId), (old: unknown) => {
+      if (!Array.isArray(old)) return old;
+      return (old as Array<Record<string, unknown>>).map((n) => {
+        if (n.id === nodeA.id) return { ...n, sequence: nodeB.sequence };
+        if (n.id === nodeB.id) return { ...n, sequence: nodeA.sequence };
+        return n;
+      });
+    });
+
     const newOrder = sortedNodes.map((n) => n.id);
     [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
     reorderNodesMutation.mutate(
       { lessonId, data: { orderedNodeIds: newOrder } },
       {
-        onSuccess: () => refreshNodes(),
+        onSuccess: () => refreshNodes(), // confirm with server-normalised sequences
         onError: (err: unknown) => {
+          // Roll back the optimistic update so the UI returns to the pre-click state.
+          qc.setQueryData(getGetLessonNodesQueryKey(lessonId), prevData);
           console.error("Node reorder failed:", err);
           const msg = (err as { message?: string })?.message ?? "Unknown error";
           alert(`Հանգույցի վերադասավորումը ձախողվեց: ${msg}`);

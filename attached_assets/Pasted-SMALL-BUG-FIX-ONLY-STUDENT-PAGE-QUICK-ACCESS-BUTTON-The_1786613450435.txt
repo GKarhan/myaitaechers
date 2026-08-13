@@ -1,0 +1,71 @@
+SMALL BUG FIX ONLY — STUDENT PAGE QUICK ACCESS BUTTON
+
+There is a “Աշակերտի էջ — արագ մուտք” / student-page quick access button in the teacher/admin UI.
+
+The button is visible, but clicking it currently does not open/navigate to the student page correctly.
+
+TASK
+
+1. Find the exact component that renders this quick-access button.
+2. Trace its current click/navigation logic.
+3. Determine the intended destination route for the selected/current student.
+4. Fix ONLY this navigation bug using the routing pattern already used in the app.
+
+Do not hardcode a guessed route before checking the existing route definitions.
+
+Audit first:
+
+- exact frontend file/component
+- current onClick / Link / navigate logic
+- expected student ID source
+- actual student page route in App/router configuration
+- query params if required
+- whether the button is using teacher ID instead of student ID
+- whether the destination route has changed
+- whether the button is disabled because student context is missing
+- whether navigation throws a console/runtime error
+
+Use the smallest correct fix.
+
+IMPORTANT
+
+Do NOT modify:
+
+- Knowledge Tree logic
+- Teacher Review CRUD/reorder
+- Mapper
+- AI Teacher
+- quizzes
+- mastery/scoring/evidence
+- student data model
+- lesson assignment logic
+
+This is navigation only.
+
+ACCEPTANCE TEST
+
+Use a real student.
+
+1. Open the page containing “Աշակերտի էջ — արագ մուտք”.
+2. Click the button.
+3. Confirm it opens the intended student page.
+4. Confirm the URL contains the correct student identifier/context.
+5. Confirm the page loads actual data for that student.
+6. Navigate back and click the quick-access button again.
+7. Full-refresh the source page and test again.
+8. Confirm no console/runtime errors.
+
+If multiple student quick-access buttons exist, verify at least two students and confirm each opens the correct student page, not the same hardcoded student.
+
+FINAL REPORT
+
+Return only:
+
+- root cause
+- file changed
+- previous navigation behavior
+- new destination route
+- how student ID/context is resolved
+- verification result
+
+Do not perform any other changes.
