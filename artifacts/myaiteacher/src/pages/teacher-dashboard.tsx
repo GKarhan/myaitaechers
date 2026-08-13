@@ -1430,7 +1430,7 @@ function LessonNodesPanel({
                               {ex.assignment === "HOMEWORK" ? "🏠 Tnyin" : "📋 Դասարանում"}
                             </span>
                           )}
-                          {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>}
+                          {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>}
                           {/* Gate 1.4 — approval status badge */}
                           {ex.status === "approved" ? (
                             <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
@@ -1947,7 +1947,7 @@ function LessonNodesPanel({
                                     </span>
                                   )}
                                   {ex.sourcePage && (
-                                    <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>
+                                    <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
                                   )}
                                   {/* Gate 1.4 — approval status badge */}
                                   {ex.status === "approved" ? (
@@ -2417,6 +2417,7 @@ export default function TeacherDashboard() {
   const [quizBooks,     setQuizBooks]       = useState<{id:number;name:string}[]>([]);
   const [quizCreating,  setQuizCreating]    = useState(false);
   const [quizError,     setQuizError]       = useState<string|null>(null);
+  const [quizType,      setQuizType]        = useState<"lesson"|"summary">("lesson");
   // ── Node drill-down (single-lesson mode) ──────────────────────────────────
   const [quizNodeIds,      setQuizNodeIds]      = useState<number[]>([]);
   const [quizLessonNodes,  setQuizLessonNodes]  = useState<{id:number;title:string;sequence:number}[]>([]);
@@ -2634,14 +2635,17 @@ export default function TeacherDashboard() {
   }, [section]);
 
   async function handleCreateQuiz() {
+    // Type-specific frontend validation
+    if (quizType === "lesson" && quizLessonIds.length !== 1) return;
+    if (quizType === "summary" && quizLessonIds.length < 2) return;
     if (quizLessonIds.length === 0) return;
     setQuizCreating(true);
     setQuizError(null);
     const tok = localStorage.getItem("myaiteacher_token") ?? "";
-    // Single lesson + specific nodes selected → send only those nodeIds
-    // Single lesson + no nodes selected → send lessonIds (backend resolves all nodes)
-    // Multi-lesson → send lessonIds (no node-level drill-down)
-    const isSingleLesson = quizLessonIds.length === 1;
+    // Lesson Test + specific nodes selected → send only those nodeIds
+    // Lesson Test + no nodes selected → send lessonIds (backend resolves all nodes)
+    // Summary Test → send lessonIds only (no node-level drill-down)
+    const isSingleLesson = quizType === "lesson" && quizLessonIds.length === 1;
     const sendNodeIds = isSingleLesson && quizNodeIds.length > 0 ? quizNodeIds : undefined;
     try {
       const resp = await fetch(`/api/quizzes`, {
@@ -2651,6 +2655,7 @@ export default function TeacherDashboard() {
           subjectId:      selectedCourse?.subjectId ?? undefined,
           classId:        selectedClass?.id ?? undefined,
           sourceBookId:   quizBookId ?? undefined,
+          quizType,
           lessonIds:      sendNodeIds ? undefined : quizLessonIds,
           nodeIds:        sendNodeIds,
           questionCount:  quizCount,
@@ -2671,9 +2676,24 @@ export default function TeacherDashboard() {
   }
 
   function toggleLesson(lid: number) {
-    setQuizLessonIds((prev) =>
-      prev.includes(lid) ? prev.filter((x) => x !== lid) : [...prev, lid]
-    );
+    if (quizType === "lesson") {
+      // Lesson Test: single selection — clicking already-selected deselects; clicking other replaces
+      setQuizLessonIds((prev) => prev.includes(lid) ? [] : [lid]);
+    } else {
+      setQuizLessonIds((prev) => prev.includes(lid) ? prev.filter((x) => x !== lid) : [...prev, lid]);
+    }
+  }
+
+  function handleQuizTypeSwitch(newType: "lesson" | "summary") {
+    setQuizType(newType);
+    if (newType === "lesson") {
+      // Keep only the first lesson (if any were selected), clear node selection
+      setQuizLessonIds((prev) => prev.length > 0 ? [prev[0]] : []);
+      setQuizNodeIds([]);
+    } else {
+      // Summary: clear node selection but keep all selected lessons
+      setQuizNodeIds([]);
+    }
   }
 
   // ── Fetch lesson nodes when single lesson is selected ─────────────────────
@@ -3620,6 +3640,7 @@ export default function TeacherDashboard() {
                     onClick={() => {
                       setQuizModalOpen(true);
                       setQuizError(null);
+                      setQuizType("lesson");
                       setQuizLessonIds([]);
                       setQuizTitle("");
                       setQuizNodeIds([]);
@@ -4949,8 +4970,38 @@ export default function TeacherDashboard() {
           <div className="bg-card border border-white/15 rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-1">Ստեղծել թեստ</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              AI-ն կստեղծի հարցեր ընտրված դասերի node-երից
+              AI-ն կստեղծի հարցեր ընտրված դասի բովանդակությունից
             </p>
+
+            {/* Test type selector */}
+            <div className="mb-5">
+              <label className="block text-sm text-muted-foreground mb-2">Տեսակ</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ["lesson",  "Դասի թեստ"],
+                  ["summary", "Ամփոփիչ թեստ"],
+                ] as const).map(([val, label]) => (
+                  <label
+                    key={val}
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      quizType === val
+                        ? "border-primary/60 bg-primary/10 text-white"
+                        : "border-white/8 text-muted-foreground hover:border-white/20 hover:bg-white/5"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="quizType"
+                      value={val}
+                      checked={quizType === val}
+                      onChange={() => handleQuizTypeSwitch(val)}
+                      className="accent-primary shrink-0"
+                    />
+                    <span className="text-sm font-medium">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
 
             {/* Title */}
             <div className="mb-4">
@@ -4987,7 +5038,7 @@ export default function TeacherDashboard() {
             {/* Lesson multi-select */}
             <div className="mb-4">
               <label className="block text-sm text-muted-foreground mb-1.5">
-                Դասեր *
+                {quizType === "lesson" ? "Ընտրել դասը *" : "Ընտրել դասերը *"}
               </label>
               {courseLessons.length === 0 ? (
                 <p className="text-sm text-muted-foreground/60 italic">
@@ -5022,22 +5073,22 @@ export default function TeacherDashboard() {
               )}
             </div>
 
-            {/* Node drill-down — single lesson only */}
-            {quizLessonIds.length === 1 && (
+            {/* Node drill-down — Lesson Test only */}
+            {quizType === "lesson" && quizLessonIds.length === 1 && (
               <div className="mb-4">
                 <label className="block text-sm text-muted-foreground mb-1.5">
-                  [LABEL_NODES_SECTION]
+                  Ընտրել գիտելիքի հանգույցները
                 </label>
                 {quizNodesLoading ? (
                   <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
                     <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    ...
+                    Բեռնվում է...
                   </div>
                 ) : quizLessonNodes.length === 0 ? (
                   <p className="text-xs text-muted-foreground/50 italic py-1">—</p>
                 ) : (
                   <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                    {/* "All nodes" option */}
+                    {/* "Whole lesson" option */}
                     <label className={`flex items-center gap-3 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
                       quizNodeIds.length === 0
                         ? "border-primary/60 bg-primary/10"
@@ -5049,7 +5100,7 @@ export default function TeacherDashboard() {
                         onChange={() => setQuizNodeIds([])}
                         className="accent-primary shrink-0"
                       />
-                      <span className="text-sm text-white font-medium">[LABEL_ALL_NODES]</span>
+                      <span className="text-sm text-white font-medium">Ամբողջ դասը</span>
                       <span className="text-xs text-muted-foreground ml-auto">{quizLessonNodes.length}</span>
                     </label>
                     {quizLessonNodes.map((n) => (
@@ -5081,15 +5132,22 @@ export default function TeacherDashboard() {
               </div>
             )}
 
-            {/* Multi-lesson note — no node drill-down */}
-            {quizLessonIds.length > 1 && (
-              <p className="text-xs text-muted-foreground/60 mb-4 px-1">[HINT_MULTILESSEN]</p>
+            {/* Summary Test: validation hint (< 2 lessons) or whole-lesson note (≥ 2) */}
+            {quizType === "summary" && quizLessonIds.length === 1 && (
+              <p className="text-xs text-amber-400/80 mb-4 px-1">
+                ⚠ Ամփոփիչ թեստի համար ընտրեք առնվազն 2 դաս
+              </p>
+            )}
+            {quizType === "summary" && quizLessonIds.length >= 2 && (
+              <p className="text-xs text-muted-foreground/60 mb-4 px-1">
+                Ամփոփիչ թեստի դեպքում ընտրվում են ամբողջ դասերը
+              </p>
             )}
 
             {/* Question count + suggestion */}
             <div className="mb-4">
               <label className="block text-sm text-muted-foreground mb-1.5">
-                Հարցերի քանակը (1–50)
+                Հարցերի քանակ
               </label>
               <div className="flex items-center gap-3 flex-wrap">
                 <input
@@ -5101,36 +5159,33 @@ export default function TeacherDashboard() {
                   className="w-32 bg-background/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/60"
                 />
                 {quizLeafCount > 0 && (() => {
-                  const minQ = quizLeafCount;
-                  const idealQ = quizLeafCount * 3;
-                  const effectiveLeaf = quizLessonIds.length === 1 && quizNodeIds.length > 0
+                  const effectiveLeaf = quizType === "lesson" && quizNodeIds.length > 0
                     ? quizNodeIds.length
                     : quizLeafCount;
-                  const minQEff = effectiveLeaf;
+                  const minQEff  = effectiveLeaf;
                   const idealQEff = effectiveLeaf * 3;
-                  void minQ; void idealQ;
                   return (
                     <span className="text-xs text-muted-foreground/80">
-                      [LABEL_SUGGESTED_COUNT:{minQEff},{idealQEff}]
+                      Առաջարկվող հարցերի քանակ: {minQEff}–{idealQEff}
                     </span>
                   );
                 })()}
               </div>
               {/* Below-minimum warning */}
               {quizLeafCount > 0 && (() => {
-                const effectiveLeaf = quizLessonIds.length === 1 && quizNodeIds.length > 0
+                const effectiveLeaf = quizType === "lesson" && quizNodeIds.length > 0
                   ? quizNodeIds.length
                   : quizLeafCount;
                 return quizCount < effectiveLeaf ? (
                   <p className="text-xs text-amber-400/80 mt-1.5 flex items-center gap-1">
-                    ⚠ [WARN_BELOW_MINIMUM]
+                    ⚠ Հարցերի քանակը ցածր է նվազագույն սահմանից
                   </p>
                 ) : null;
               })()}
               {/* Leaf count info */}
               {quizLeafCount > 0 && (
                 <p className="text-xs text-muted-foreground/50 mt-1">
-                  [LABEL_LEAF_COUNT:{quizLessonIds.length === 1 && quizNodeIds.length > 0 ? quizNodeIds.length : quizLeafCount}]
+                  {quizType === "lesson" && quizNodeIds.length > 0 ? quizNodeIds.length : quizLeafCount} գիտելիքի հանգույց
                 </p>
               )}
             </div>
@@ -5173,7 +5228,11 @@ export default function TeacherDashboard() {
             <div className="flex gap-3">
               <button
                 onClick={handleCreateQuiz}
-                disabled={quizCreating || quizLessonIds.length === 0}
+                disabled={
+                  quizCreating ||
+                  (quizType === "lesson" && quizLessonIds.length !== 1) ||
+                  (quizType === "summary" && quizLessonIds.length < 2)
+                }
                 className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 {quizCreating ? (

@@ -325,6 +325,7 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     sourceBookId,
     lessonIds,   // array of lesson ids — route maps to nodeIds internally
     nodeIds: explicitNodeIds,
+    quizType: requestedQuizType,
     questionCount = 10,
     difficultyMode = "MIXED",
     title,
@@ -334,6 +335,7 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     sourceBookId?: number;
     lessonIds?: number[];
     nodeIds?: number[];
+    quizType?: string;
     questionCount?: number;
     difficultyMode?: string;
     title?: string;
@@ -349,6 +351,10 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
   }
   if (!["SIMPLE", "MEDIUM", "HARD", "MIXED"].includes(difficultyMode)) {
     res.status(400).json({ error: "Invalid difficultyMode" });
+    return;
+  }
+  if (requestedQuizType !== undefined && !["lesson", "summary"].includes(requestedQuizType)) {
+    res.status(400).json({ error: "quizType must be 'lesson' or 'summary'" });
     return;
   }
 
@@ -391,11 +397,43 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
     }
   }
 
-  // Derive quizType from lesson count.
+  // Phase 1.10: type-specific validation (after all lesson/node resolution is done).
+  if (requestedQuizType === "lesson") {
+    if (resolvedLessonIds.length !== 1) {
+      res.status(400).json({ error: "Lesson Test requires exactly one lesson" });
+      return;
+    }
+    // All explicit nodeIds must belong to the single selected lesson
+    if (explicitNodeIds && explicitNodeIds.length > 0) {
+      const lessonId = resolvedLessonIds[0];
+      const validNodes = await db
+        .select({ id: lessonNodesTable.id })
+        .from(lessonNodesTable)
+        .where(and(inArray(lessonNodesTable.id, explicitNodeIds), eq(lessonNodesTable.lessonId, lessonId)));
+      if (validNodes.length !== explicitNodeIds.length) {
+        res.status(400).json({ error: "One or more nodeIds do not belong to the selected lesson" });
+        return;
+      }
+    }
+  } else if (requestedQuizType === "summary") {
+    if (resolvedLessonIds.length < 2) {
+      res.status(400).json({ error: "Summary Test requires at least 2 lessons" });
+      return;
+    }
+    // Summary tests cover whole lessons — manual node selection is not allowed
+    if (explicitNodeIds && explicitNodeIds.length > 0) {
+      res.status(400).json({ error: "Summary Test does not support manual node selection" });
+      return;
+    }
+  }
+
+  // Use explicit quizType if provided; otherwise derive from lesson count.
+  // Do NOT infer a conflicting type and silently override the teacher's explicit choice.
   const derivedQuizType: string | null =
-    resolvedLessonIds.length === 1 ? "lesson"
+    requestedQuizType ??
+    (resolvedLessonIds.length === 1 ? "lesson"
     : resolvedLessonIds.length  >  1 ? "summary"
-    : null; // no lesson linkage (edge case — book-only or free-form)
+    : null); // no lesson linkage (edge case — book-only or free-form)
 
   // Create DRAFT quiz
   const quizTitle = title?.trim() || `Թեստ — ${new Date().toLocaleDateString("hy-AM")}`;

@@ -1,0 +1,834 @@
+PHASE 1.10 — TEST CREATION UI
+REUSE EXISTING MULTI-LESSON / NODE-SELECTION LOGIC
+
+Phase 1.1–1.9 are complete.
+
+This task is ONLY:
+
+PHASE 1.10 — Test Creation UI
+
+Goal:
+
+When teacher clicks:
+
+`Ստեղծել թեստ`
+
+the UI must explicitly ask for TEST TYPE:
+
+1. `Դասի թեստ`
+2. `Ամփոփիչ թեստ`
+
+Then reuse the already-existing lesson/node selection logic.
+
+DO NOT rebuild quiz generation.
+DO NOT rewrite multi-lesson logic.
+DO NOT rewrite node-selection logic.
+DO NOT change quiz-taking flow.
+DO NOT change scoring/mastery/evidence.
+DO NOT decide when the test is delivered to the student.
+
+==================================================
+0. CURRENT CONFIRMED ARCHITECTURE
+==================================================
+
+Phase 1.9 established:
+
+Quiz identity:
+
+ONE quiz record
++
+lesson relationships via `quiz_lesson_links`
+
+Quiz types:
+
+`lesson`
+`summary`
+
+Lesson Test:
+- exactly 1 Lesson relationship
+
+Summary Test:
+- multiple Lesson relationships supported
+
+Existing quiz creation already supports:
+
+- single Lesson
+- nodeIds[] for single Lesson
+- multi-Lesson selection
+- whole selected Lessons in multi-Lesson mode
+- suggested question count
+- minimum / ideal question count
+- existing question generation pipeline
+
+REUSE THIS.
+
+Do not create a second selection system.
+
+==================================================
+1. AUDIT FIRST — NO CODE CHANGES
+==================================================
+
+Before implementation inspect the current quiz creation UI and trace:
+
+Teacher Tests UI
+→ create quiz modal/dialog
+→ selectedLessonIds
+→ selectedNodeIds
+→ multiLesson mode
+→ question count logic
+→ POST /api/quizzes
+→ quizType / quiz_lesson_links persistence
+
+Identify:
+
+A. current component/file
+B. current selection state
+C. current single-lesson flow
+D. current multi-lesson flow
+E. current node drill-down
+F. current submit payload
+G. current validations
+H. current suggested question-count logic
+
+Classify each requested Phase 1.10 requirement:
+
+✅ already works
+🟡 partial
+🔴 missing
+⚠️ broken
+
+Then modify ONLY the gaps.
+
+==================================================
+2. TEST TYPE SELECTOR
+==================================================
+
+At the start/top of the Create Test UI add:
+
+`Տեսակ`
+
+Options:
+
+`Դասի թեստ`
+`Ամփոփիչ թեստ`
+
+Use the app's existing radio/select/toggle UI pattern.
+
+Internally map explicitly to:
+
+Lesson Test:
+`quizType = "lesson"`
+
+Summary Test:
+`quizType = "summary"`
+
+Do NOT infer type only from lesson count after submit.
+
+The UI selection should be explicit and authoritative.
+
+Backend should still validate relationship consistency.
+
+==================================================
+3. LESSON TEST FLOW
+==================================================
+
+If teacher selects:
+
+`Դասի թեստ`
+
+then:
+
+- exactly ONE Lesson may be selected
+- teacher may optionally drill into that Lesson's MicroNodes
+- teacher may choose:
+  - whole Lesson
+  OR
+  - selected MicroNodes
+
+Reuse the existing single-Lesson/node-selection behavior.
+
+Expected conceptual state:
+
+quizType = "lesson"
+lessonIds = [ONE_LESSON_ID]
+
+Optional:
+nodeIds = [selected MicroNode IDs]
+
+If no MicroNodes selected:
+
+scope = whole Lesson
+
+Do NOT force node selection.
+
+==================================================
+4. LESSON TEST — NODE DRILL-DOWN
+==================================================
+
+For Lesson Test only:
+
+After selecting the Lesson, show the existing node/MicroNode drill-down.
+
+Use the actual authoritative Lesson structure.
+
+Current architecture:
+
+Lesson → Topic → MicroNode
+
+The selection UI may display nodes grouped by Topic if already implemented.
+
+Teacher may select:
+
+- all MicroNodes implicitly via whole Lesson
+- one MicroNode
+- multiple MicroNodes
+
+Do NOT create separate Quiz records per MicroNode.
+
+This remains:
+
+ONE Quiz
+linked to ONE Lesson
+with optional nodeIds[]
+
+==================================================
+5. SUMMARY TEST FLOW
+==================================================
+
+If teacher selects:
+
+`Ամփոփիչ թեստ`
+
+then:
+
+- teacher may select MULTIPLE Lessons
+- node-level drill-down is DISABLED / hidden
+- selected Lessons are included as whole Lessons
+
+Reuse existing multi-Lesson behavior.
+
+Expected:
+
+quizType = "summary"
+lessonIds = [L1, L2, ...]
+
+nodeIds should be derived by the existing backend/generation logic from the selected Lessons as already implemented.
+
+Do NOT allow an inconsistent state where:
+
+summary quiz
++
+nodeIds manually selected from one Lesson
+
+unless the current product deliberately supports that and Phase 1.9 architecture proves it.
+
+V1 rule:
+
+SUMMARY = whole selected Lessons.
+
+==================================================
+6. TYPE SWITCHING MUST RESET INVALID STATE
+==================================================
+
+This is important.
+
+Example:
+
+Teacher selects:
+
+Lesson Test
+→ Lesson 105
+→ MicroNodes 1349, 1350
+
+Then changes type to:
+
+Summary Test
+
+The old MicroNode selection must NOT remain hidden in state and accidentally submit.
+
+Clear/reset node selection.
+
+Similarly:
+
+Summary Test
+→ selects Lessons 105, 106, 107
+
+Then changes to:
+
+Lesson Test
+
+The UI must not retain three Lessons.
+
+Reset to a valid Lesson Test state.
+
+Use predictable behavior.
+
+Do not silently submit stale hidden selections.
+
+==================================================
+7. QUESTION COUNT — REUSE CURRENT LOGIC
+==================================================
+
+DO NOT rewrite suggested question-count logic.
+
+Existing logic uses atomic/leaf MicroNode count.
+
+Reuse it.
+
+Previously established:
+
+minimumQuestions = leafCount × 1
+
+idealQuestions = leafCount × 3
+
+If Lesson Test + selected MicroNodes:
+leafCount = selected MicroNode count
+
+If Lesson Test + whole Lesson:
+leafCount = all MicroNodes in selected Lesson
+
+If Summary Test:
+leafCount = all MicroNodes across all selected Lessons
+
+Continue showing existing:
+
+- suggested count
+- minimum warning
+- teacher-editable question count
+
+Do not restore the old 50-question cap.
+
+Do not alter scoring.
+
+==================================================
+8. TYPE-SPECIFIC VALIDATION
+==================================================
+
+Frontend validation:
+
+LESSON TEST:
+- quizType = lesson
+- exactly 1 Lesson required
+- nodeIds optional
+
+SUMMARY TEST:
+- quizType = summary
+- at least 2 Lessons preferred/required for V1 unless current backward compatibility requires 1
+- no manually selected nodeIds
+
+Use the strictest interpretation consistent with Phase 1.9.
+
+Preferred V1:
+
+Summary Test requires at least 2 Lessons.
+
+If only one Lesson is selected:
+
+show Armenian validation message and do not submit.
+
+Backend MUST also validate.
+
+Do not rely only on frontend.
+
+==================================================
+9. BACKEND VALIDATION
+==================================================
+
+Audit POST /api/quizzes.
+
+Ensure it validates:
+
+If quizType = lesson:
+- exactly one lessonId
+- nodeIds, if provided, must all belong to that Lesson
+
+If quizType = summary:
+- at least 2 lessonIds
+- no duplicate lessonIds
+- node scope follows existing whole-Lesson multi-select behavior
+- generated relationship rows match selected Lessons
+
+Reject inconsistent payloads.
+
+Do not infer a conflicting quizType from lesson count and silently override teacher's explicit choice.
+
+Explicit type + relationship structure must agree.
+
+==================================================
+10. PERSISTENCE — PHASE 1.9 MODEL
+==================================================
+
+On successful creation:
+
+LESSON TEST:
+- one Quiz record
+- quizType = lesson
+- exactly one `quiz_lesson_links` row
+- optional nodeIds stored using existing architecture
+
+SUMMARY TEST:
+- one Quiz record
+- quizType = summary
+- multiple `quiz_lesson_links` rows
+
+No duplicate Quiz records.
+
+==================================================
+11. LESSON-SIDE VISIBILITY
+==================================================
+
+After successful creation:
+
+Lesson Test linked to Lesson 105:
+
+Lesson 105:
+`📝 Թեստեր`
+→ new quiz appears
+
+Global Tests:
+→ same quiz appears once
+
+Summary Test linked to L105 + L106:
+
+Lesson 105:
+→ same summary quiz
+
+Lesson 106:
+→ same summary quiz
+
+Global Tests:
+→ same quiz once
+
+Use the SAME Quiz ID everywhere.
+
+Do not manually add separate frontend copies.
+
+==================================================
+12. CURRENT UI COPY — ARMENIAN
+==================================================
+
+Use proper Armenian UI labels.
+
+Required:
+
+`Ստեղծել թեստ`
+
+`Տեսակ`
+
+`Դասի թեստ`
+
+`Ամփոփիչ թեստ`
+
+`Ընտրել դասը`
+
+`Ընտրել դասերը`
+
+`Ընտրել գիտելիքի հանգույցները`
+or the existing preferred MicroNode label
+
+`Ամբողջ դասը`
+
+`Առաջարկվող հարցերի քանակ`
+
+`Հարցերի քանակ`
+
+`Ամփոփիչ թեստի համար ընտրեք առնվազն 2 դաս`
+
+Do NOT introduce transliterated UI strings.
+
+While touching this Create Test UI, fix ONLY Phase 1.10-related transliterated labels encountered in the same component.
+
+Do not run a broad UI localization cleanup.
+
+==================================================
+13. EXISTING CREATION FIELDS
+==================================================
+
+Preserve existing fields and functionality unless type-specific logic requires different visibility.
+
+Examples may include:
+
+- title
+- subject
+- class
+- difficulty mode
+- question count
+- generation mode
+- any existing required fields
+
+Do not remove working creation options.
+
+Do not redesign the modal visually.
+
+==================================================
+14. DEFAULT TYPE
+==================================================
+
+Choose a safe, obvious default.
+
+Preferred:
+
+`Դասի թեստ`
+
+because it is the simpler/smaller scope.
+
+But audit current user flow first.
+
+If the existing modal already opens with a single-Lesson flow, default:
+
+quizType = lesson
+
+Do not auto-switch type based only on user selecting a second Lesson.
+
+Teacher explicitly controls type.
+
+==================================================
+15. REAL UI ACCEPTANCE — LESSON TEST
+==================================================
+
+Use the REAL Teacher Tests creation UI.
+
+Create a temporary Lesson Test:
+
+Type:
+Դասի թեստ
+
+Lesson:
+105
+
+Select specific MicroNodes if convenient, for example 2 MicroNodes.
+
+Use a small safe question count.
+
+Verify:
+
+1. UI type = Lesson Test
+2. exactly one Lesson selected
+3. MicroNode selector visible
+4. selected nodeIds submitted correctly
+5. one Quiz record created
+6. quizType = lesson
+7. one lesson relationship to Lesson 105
+8. Lesson 105 linked-tests section shows the Quiz
+9. global Tests shows the SAME quiz ID once
+10. full refresh preserves it
+
+Delete temporary quiz afterward unless explicitly retained.
+
+==================================================
+16. REAL UI ACCEPTANCE — WHOLE LESSON TEST
+==================================================
+
+Create or test:
+
+Type:
+Դասի թեստ
+
+Lesson:
+105
+
+No MicroNodes selected.
+
+Expected:
+
+whole Lesson scope.
+
+Verify existing backend resolves appropriate lesson nodes.
+
+Do not require all checkboxes to be manually selected.
+
+==================================================
+17. REAL UI ACCEPTANCE — SUMMARY TEST
+==================================================
+
+Use at least two safe Lessons.
+
+Create temporary:
+
+Type:
+Ամփոփիչ թեստ
+
+Lessons:
+Lesson 105
++ another real/test-safe Lesson
+
+Verify:
+
+1. multiple Lesson selection enabled
+2. MicroNode selector hidden/disabled
+3. no stale manual node selection submitted
+4. one Quiz record
+5. quizType = summary
+6. two lesson relationship rows
+7. both Lesson views show same Quiz ID
+8. global Tests shows same Quiz ID once
+9. question count suggestion uses combined leaf count
+
+Clean up temporary quiz afterward.
+
+==================================================
+18. TYPE SWITCH ACCEPTANCE TEST
+==================================================
+
+Test:
+
+A.
+
+Lesson Test
+→ select Lesson 105
+→ select 2 MicroNodes
+→ switch to Summary
+
+Expected:
+
+nodeIds cleared
+
+B.
+
+Summary
+→ select 3 Lessons
+→ switch to Lesson Test
+
+Expected:
+
+selection becomes valid for single Lesson mode
+and hidden extra lesson selections do not submit
+
+Prove submit payload is clean.
+
+==================================================
+19. NEGATIVE TESTS
+==================================================
+
+Verify:
+
+1. Lesson Test with 0 Lessons → blocked
+2. Lesson Test with 2 Lessons → blocked
+3. Lesson Test with nodeId from another Lesson → backend rejected
+4. Summary with 0 Lessons → blocked
+5. Summary with 1 Lesson → blocked under V1
+6. Summary with duplicate Lesson IDs → rejected/deduplicated safely
+7. Summary with stale nodeIds → rejected/cleared
+8. invalid Lesson ID → rejected
+
+Do not create bad DB state.
+
+==================================================
+20. LEGACY QUIZ
+==================================================
+
+Phase 1.9 identified quiz id=27 as:
+
+LEGACY UNCLASSIFIED
+
+Do NOT silently modify it during Phase 1.10.
+
+The new Create Test flow should produce correctly typed quizzes going forward.
+
+Legacy migration remains separate unless needed later.
+
+==================================================
+21. QUIZ GENERATION REGRESSION
+==================================================
+
+Verify existing generation still works after type selection.
+
+Do NOT modify:
+
+- AI quiz prompt
+- question parsing
+- question storage
+- quiz questions
+- suggested scoring rules
+- mastery/evidence calculations
+
+The generated quiz must use the same existing engine.
+
+This task changes scope selection/persistence only.
+
+==================================================
+22. NO TEST DELIVERY TIMING
+==================================================
+
+Do NOT add:
+
+`Դասից առաջ`
+
+`Դասի ընթացքում`
+
+`Դասի վերջում`
+
+`Կրկնության ժամանակ`
+
+or any scheduling/orchestration field.
+
+That is Phase 2.
+
+Phase 1.10 answers only:
+
+WHAT type of test?
+
+WHICH Lesson(s)?
+
+WHICH MicroNodes, when Lesson Test?
+
+HOW MANY questions?
+
+==================================================
+23. AUTOMATED TESTS
+==================================================
+
+Add focused tests covering at minimum:
+
+1. lesson type + one Lesson accepted
+2. lesson type + two Lessons rejected
+3. lesson type + valid nodeIds accepted
+4. lesson type + cross-Lesson nodeId rejected
+5. lesson type + no nodeIds = whole Lesson
+6. summary + two Lessons accepted
+7. summary + one Lesson rejected
+8. summary + stale nodeIds rejected
+9. type switch state helper clears nodes
+10. type switch summary→lesson removes extra Lessons
+11. creation writes correct quizType
+12. creation writes correct lesson links
+13. one Quiz ID across Lesson/global views
+14. summary creates one Quiz record only
+15. existing question-count suggestion still uses correct leaf count
+
+Use actual route/service behavior where practical.
+
+==================================================
+24. DATA SAFETY
+==================================================
+
+After testing:
+
+Lesson 105 must remain:
+
+Topics = 4
+MicroNodes = 10
+Textbook exercises = 15
+Lost source exercises = 0
+authoringStatus = approved
+
+Do not modify:
+
+- source content
+- exercises
+- dependencies
+- ordering
+- Lesson approval
+
+Temporary quizzes/relationships should be removed after acceptance testing unless intentionally retained and reported.
+
+==================================================
+25. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- test timing/orchestration
+- AI Teacher test delivery
+- quiz-taking changes
+- scoring changes
+- mastery/evidence changes
+- Knowledge Tree changes
+- Student assignment
+- Mapper changes
+- dependency changes
+- Phase 2 learning orchestration
+- recommendation engine
+
+==================================================
+26. FINAL REPORT
+==================================================
+
+Return exactly:
+
+## A. Existing Creation UI Audit
+
+What was reused vs changed.
+
+## B. Type Selector
+
+Exact UI behavior.
+
+## C. Lesson Test Flow
+
+Whole Lesson + selected MicroNode behavior.
+
+## D. Summary Test Flow
+
+Multi-Lesson behavior.
+
+## E. Type Switching
+
+State reset rules.
+
+## F. Question Count
+
+Proof existing leaf-count logic was reused.
+
+## G. Backend Validation
+
+Lesson vs Summary constraints.
+
+## H. Lesson Test Acceptance
+
+Quiz ID
+Lesson ID
+nodeIds
+quizType
+relationship count
+Lesson view ID
+Global view ID
+PASS / FAIL
+
+## I. Summary Test Acceptance
+
+Quiz ID
+Lesson IDs
+quizType
+relationship rows
+Lesson view IDs
+Global view ID
+PASS / FAIL
+
+## J. Negative Tests
+
+PASS / FAIL per case.
+
+## K. Automated Tests
+
+Exact command
+passed / failed
+
+## L. Data Integrity
+
+Lesson 105 unchanged.
+
+## M. Files Changed
+
+Exact files + purpose.
+
+## N. FINAL GATE 1.10
+
+PASS / PARTIAL / FAIL
+
+PASS requires:
+
+1. teacher explicitly selects Lesson Test or Summary Test
+2. Lesson Test = exactly one Lesson
+3. Lesson Test optionally supports selected MicroNodes
+4. Lesson Test without node selection means whole Lesson
+5. Summary Test supports multiple Lessons
+6. Summary Test does not use node drill-down
+7. type switching cannot submit stale hidden selections
+8. existing multi-Lesson/node-selection logic is reused
+9. existing question-count suggestion is preserved
+10. one Quiz record + correct Lesson relationships are persisted
+11. Lesson/global views show same Quiz ID
+12. quiz generation/taking/scoring behavior is not regressed
+
+Do NOT continue beyond Phase 1.10.
