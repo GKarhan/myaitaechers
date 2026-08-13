@@ -615,6 +615,10 @@ function SortableTopicItem({
     transition,
     opacity: isDragging ? 0.5 : 1,
     position: "relative",
+    // Required by @dnd-kit PointerSensor: without this the browser claims the
+    // pointer for scrolling the overflow-y:auto ancestor before DnD-kit's 8px
+    // activation distance is reached, so onDragStart never fires.
+    touchAction: "none",
   };
   return (
     <div ref={setNodeRef} style={style}>

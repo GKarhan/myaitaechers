@@ -1,0 +1,84 @@
+BUG STILL EXISTS — TOPIC DRAG-AND-DROP DOES NOT WORK IN THE REAL UI
+
+The previous report claimed PASS, but the teacher manually tested the real UI and Topic drag-and-drop STILL DOES NOT WORK.
+
+Therefore Gate 1.2 is NOT PASS.
+
+DO NOT investigate backend/API/DB again.
+Those are already proven working.
+
+DO NOT repeat the optimistic-cache fix.
+That code is already present.
+
+The remaining bug is specifically:
+
+THE USER CANNOT PHYSICALLY DRAG A TOPIC FROM THE VISIBLE ⠿ HANDLE IN THE BROWSER UI.
+
+Focus ONLY on the real pointer/drag interaction.
+
+Inspect the actual SortableTopicItem implementation and verify:
+
+- useSortable() attributes/listeners are attached to the correct drag handle
+- setNodeRef is attached to the correct sortable container
+- transform/transition styles are applied to that same sortable element
+- the ⠿ handle is not inside an element that swallows pointer/mouse events
+- no parent onClick / collapse handler intercepts pointerdown
+- pointer-events CSS is not blocking the handle
+- touch-action / user-select CSS is not preventing drag
+- DndContext sensors are configured correctly
+- PointerSensor / MouseSensor activation works with a normal desktop mouse
+- SortableContext items exactly match current topic IDs
+- topic IDs have consistent type (number vs string) everywhere
+- handle listeners are not accidentally attached to the collapse chevron instead of the drag handle
+- dragStart and dragEnd actually fire from the real UI
+
+IMPORTANT:
+Do not verify by manually calling the reorder API.
+
+Use the actual browser UI.
+
+TEMPORARILY instrument the frontend if necessary to prove:
+
+pointerDown on handle
+→ onDragStart fires
+→ active.id is correct
+→ over.id is correct
+→ onDragEnd fires
+
+Remove temporary debug logging after the bug is fixed.
+
+REAL ACCEPTANCE TEST:
+
+Use the actual Physics 7 Teacher Review page.
+
+Current Topics:
+
+1. Ներածություն
+2. Բնության երևույթներ և ֆիզիկական մեթոդներ
+3. Ֆիզիկական մարմիններ և նյութեր
+4. Ամփոփում
+
+With the mouse:
+
+1. Grab the visible ⠿ handle on Topic 3.
+2. Physically drag it above Topic 2.
+3. The entire Topic block must visibly move while dragging/dropping.
+4. After drop, order must become 1 → 3 → 2 → 4.
+5. Full refresh.
+6. Same order must remain.
+7. Restore original order using the same real drag gesture.
+
+DO NOT report PASS unless the real visible drag gesture was used successfully.
+
+If browser automation cannot reproduce authenticated drag-and-drop, say so explicitly instead of claiming PASS.
+
+Return only:
+- exact root cause
+- exact frontend file/lines changed
+- whether onDragStart fired before fix
+- whether onDragEnd fired before fix
+- exact fix
+- real browser drag verification
+- PASS / FAIL
+
+Do not change any unrelated code.
