@@ -6,7 +6,7 @@ import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
-import { eq, and, asc, desc, max, inArray, count, or } from "drizzle-orm";
+import { eq, and, asc, desc, max, inArray, count, or, ne } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
@@ -1163,6 +1163,7 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
     successCriteria: ex.successCriteria ?? null,
     difficultyLevel: ex.difficultyLevel ?? null,
     assignment: ex.assignment ?? null,
+    status: ex.status ?? "draft",
   });
 });
 
@@ -1180,7 +1181,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
 
   if (!existing) { res.status(404).json({ error: "Exercise not found" }); return; }
 
-  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, difficultyLevel, assignment, exercisePurpose } = req.body as {
+  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, difficultyLevel, assignment, exercisePurpose, status } = req.body as {
     exerciseTextVerbatim?: string;
     relatedNodeId?: number | null;
     sourcePage?: string;
@@ -1188,7 +1189,13 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     difficultyLevel?: string;
     assignment?: string;
     exercisePurpose?: string;
+    status?: string;
   };
+
+  // Gate 1.4: only allow known lifecycle values; reject anything unknown
+  if (status !== undefined && !["draft", "reviewed", "approved"].includes(status)) {
+    res.status(400).json({ error: "Invalid status; allowed values: draft, reviewed, approved" }); return;
+  }
 
   const patch: Partial<typeof existing> = {};
   if (exerciseTextVerbatim !== undefined) patch.exerciseTextVerbatim = exerciseTextVerbatim.trim();
@@ -1198,6 +1205,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
   if (difficultyLevel !== undefined) patch.difficultyLevel = difficultyLevel;
   if (assignment !== undefined) patch.assignment = assignment;
   if (exercisePurpose !== undefined) patch.exercisePurpose = exercisePurpose;
+  if (status !== undefined) patch.status = status;
 
   const [updated] = await db
     .update(lessonExercisesTable)
@@ -1217,7 +1225,35 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     successCriteria: updated.successCriteria ?? null,
     difficultyLevel: updated.difficultyLevel ?? null,
     assignment: updated.assignment ?? null,
+    status: updated.status ?? "draft",
+    sourceType: updated.sourceType ?? null,
+    sourceBlockIndex: updated.sourceBlockIndex ?? null,
   });
+});
+
+// POST /lessons/:lessonId/exercises/approve-all — bulk approve all non-approved exercises in a lesson
+// Gate 1.4: transaction-safe; only touches the current lesson's exercises.
+// Uses fail-closed logic: status === "approved" is the only eligible value.
+router.post("/lessons/:lessonId/exercises/approve-all", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select({ id: lessonsTable.id }).from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  // Update every non-approved exercise in this lesson atomically.
+  // "ne" (not equal) ensures already-approved exercises are not touched.
+  const updated = await db
+    .update(lessonExercisesTable)
+    .set({ status: "approved" })
+    .where(and(
+      eq(lessonExercisesTable.lessonId, lessonId),
+      ne(lessonExercisesTable.status, "approved"),
+    ))
+    .returning({ id: lessonExercisesTable.id });
+
+  res.json({ approvedCount: updated.length, lessonId });
 });
 
 // POST /lessons/:lessonId/exercises/:exerciseId/delete

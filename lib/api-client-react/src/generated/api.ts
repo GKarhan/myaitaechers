@@ -72,6 +72,7 @@ import type {
   MapLessonResult,
   CreateLessonExerciseInput,
   UpdateLessonExerciseInput,
+  ApproveAllLessonExercisesResponse,
   LoginInput,
   NewLesson,
   OverallProgress,
@@ -6717,6 +6718,41 @@ export const useDeleteLessonExercise = <TError = ErrorType<ErrorResponse>, TCont
   options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLessonExercise>>, TError, { lessonId: number; exerciseId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
 ): UseMutationResult<Awaited<ReturnType<typeof deleteLessonExercise>>, TError, { lessonId: number; exerciseId: number }, TContext> => {
   return useMutation(getDeleteLessonExerciseMutationOptions(options));
+};
+
+// ── Approve-all exercises (Gate 1.4) ──────────────────────────────────────────
+export const getApproveAllLessonExercisesUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/exercises/approve-all`;
+
+export const approveAllLessonExercises = async (
+  lessonId: number,
+  options?: RequestInit,
+): Promise<ApproveAllLessonExercisesResponse> => {
+  return customFetch<ApproveAllLessonExercisesResponse>(
+    getApproveAllLessonExercisesUrl(lessonId),
+    { ...options, method: "POST" },
+  );
+};
+
+export const getApproveAllLessonExercisesMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof approveAllLessonExercises>>, TError, { lessonId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof approveAllLessonExercises>>, TError, { lessonId: number }, TContext> => {
+  const mutationKey = ['approveAllLessonExercises'];
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveAllLessonExercises>>, { lessonId: number }> = (props) => {
+    const { lessonId } = props;
+    return approveAllLessonExercises(lessonId, requestOptions);
+  };
+  return { mutationKey, mutationFn, ...mutationOptions };
+};
+
+export type ApproveAllLessonExercisesMutationResult = NonNullable<Awaited<ReturnType<typeof approveAllLessonExercises>>>;
+export type ApproveAllLessonExercisesMutationError = ErrorType<ErrorResponse>;
+
+export const useApproveAllLessonExercises = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof approveAllLessonExercises>>, TError, { lessonId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof approveAllLessonExercises>>, TError, { lessonId: number }, TContext> => {
+  return useMutation(getApproveAllLessonExercisesMutationOptions(options));
 };
 
 export const getGetStudentDetailUrl = (studentId: number,) => {

@@ -61,6 +61,7 @@ import {
   useCreateLessonExercise,
   useUpdateLessonExercise,
   useDeleteLessonExercise,
+  useApproveAllLessonExercises,
   useMapLessonWithAI,
   useCreateLessonTopic,
   useDeleteLessonTopic,
@@ -705,6 +706,7 @@ function LessonNodesPanel({
   const createEx = useCreateLessonExercise();
   const updateEx = useUpdateLessonExercise();
   const deleteEx = useDeleteLessonExercise();
+  const approveAllEx = useApproveAllLessonExercises();
   const createTopicMutation = useCreateLessonTopic();
   const deleteTopicMutation = useDeleteLessonTopic();
   const reorderTopicsMutation = useReorderLessonTopics();
@@ -1215,6 +1217,19 @@ function LessonNodesPanel({
                             </span>
                           )}
                           {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>}
+                          {/* Gate 1.4 — approval status badge */}
+                          {ex.status === "approved" ? (
+                            <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաutatvats</span>
+                          ) : (
+                            <>
+                              <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
+                              <button
+                                onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
+                                disabled={updateEx.isPending}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
+                              >Հustat.</button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -1449,6 +1464,17 @@ function LessonNodesPanel({
                 </div>
               )}
 
+              {/* Gate 1.4: Approve All exercises — lesson-scoped, transaction-safe */}
+              {exercises.some((e) => e.status !== "approved") && exercises.length > 0 && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => approveAllEx.mutate({ lessonId }, { onSuccess: refreshEx })}
+                    disabled={approveAllEx.isPending}
+                    className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 font-medium"
+                  >{approveAllEx.isPending ? "…" : "✅ Հutatrel bolor varjutyunnere"}</button>
+                </div>
+              )}
+
               {/* ── Topic list with drag-to-reorder ── */}
               {reorderSaving && (
                 <p className="text-[10px] text-primary/60 text-center">Պահպանվում է...</p>
@@ -1635,6 +1661,19 @@ function LessonNodesPanel({
                                   )}
                                   {ex.sourcePage && (
                                     <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
+                                  )}
+                                  {/* Gate 1.4 — approval status badge */}
+                                  {ex.status === "approved" ? (
+                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հutatvats</span>
+                                  ) : (
+                                    <>
+                                      <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
+                                      <button
+                                        onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
+                                        disabled={updateEx.isPending}
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
+                                      >Հustat.</button>
+                                    </>
                                   )}
                                 </div>
                               </div>

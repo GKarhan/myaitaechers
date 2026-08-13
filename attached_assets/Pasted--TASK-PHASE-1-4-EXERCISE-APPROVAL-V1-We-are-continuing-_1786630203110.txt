@@ -1,0 +1,769 @@
+# TASK — PHASE 1.4 EXERCISE APPROVAL V1
+
+We are continuing the existing MY AI TEACHER codebase.
+
+Phase 1.1 Teacher Review CRUD is complete.
+Phase 1.2 Topic/MicroNode ordering is complete.
+Phase 1.3 Exercise Management is complete enough to continue.
+
+This task is ONLY:
+
+# PHASE 1.4 — EXERCISE APPROVAL
+
+Required V1 lifecycle:
+
+`draft → approved`
+
+Teacher Review must allow:
+
+1. approving an individual exercise
+2. approving all exercises in the current Lesson
+
+Most importantly:
+
+**AI Teacher must only be able to select/use approved exercises.**
+
+Gate 1.4:
+
+`draft exercise → NOT available to AI Teacher`
+
+`approved exercise → available to AI Teacher`
+
+Do NOT redesign the exercise system.
+
+---
+
+# PART 0 — AUDIT FIRST, THEN IMPLEMENT ONLY THE GAPS
+
+Before changing code, inspect the CURRENT implementation.
+
+Previous Phase 1.3 work confirmed that exercise API data already contains a `status` field and real exercises currently return values such as:
+
+`status = draft`
+
+Therefore first determine whether the existing schema/status field can be reused directly.
+
+Trace:
+
+`DB schema`
+→ `exercise API`
+→ `Teacher Review`
+→ `AI Teacher exercise loading/selection`
+
+For each layer classify:
+
+* ✅ ALREADY WORKS
+* 🟡 PARTIAL
+* 🔴 MISSING
+* ⚠️ BROKEN
+
+Do not create a second approval field if `status` already represents this lifecycle.
+
+---
+
+# PART 1 — AUTHORITATIVE STATUS MODEL
+
+Inspect the actual exercise status schema/type.
+
+Report:
+
+* DB column
+* TypeScript type/enum
+* existing allowed values
+* current default
+* existing update route
+* all current consumers of exercise status
+
+For V1 we need:
+
+`draft`
+`approved`
+
+If additional legacy statuses already exist, DO NOT remove or rename them without proving they are obsolete.
+
+Do not perform a migration merely to force a two-value enum if the existing schema safely supports V1.
+
+The required semantic rule is simply:
+
+**Only `approved` means learner-ready.**
+
+Everything else must be treated as NOT approved for AI Teacher exercise selection unless existing architecture proves another state is intentionally learner-ready.
+
+Fail closed.
+
+---
+
+# PART 2 — INDIVIDUAL EXERCISE APPROVAL
+
+In Teacher Review, every exercise must clearly show its current approval state.
+
+Example:
+
+`🟡 Սևագիր`
+
+or
+
+`✅ Հաստատված`
+
+For a draft exercise provide:
+
+`Հաստատել`
+
+Teacher action:
+
+`draft → approved`
+
+Requirements:
+
+* persist in DB
+* update UI
+* survive full refresh
+* do not alter exercise text
+* do not alter relatedNodeId
+* do not alter source metadata
+* do not alter page
+* do not create a duplicate exercise
+
+Use the existing exercise update endpoint if appropriate.
+
+Do not create a duplicate API route unless necessary.
+
+---
+
+# PART 3 — APPROVE ALL EXERCISES
+
+Teacher Review must provide a lesson-level action:
+
+`Հաստատել բոլոր վարժությունները`
+
+Scope:
+
+ONLY exercises belonging to the current Lesson.
+
+Behavior:
+
+* find all non-approved exercises in current Lesson
+* mark them `approved`
+* already-approved exercises remain unchanged
+* exercises from other Lessons MUST NOT be affected
+
+Prefer a backend bulk operation/transaction if current architecture supports it cleanly.
+
+Do NOT implement this as an unsafe sequence of unrelated client requests if a partial failure could leave an unpredictable state.
+
+If a bulk endpoint is needed, keep it narrow and lesson-scoped.
+
+Example:
+
+Before:
+
+`draft = 7`
+`approved = 8`
+
+Teacher clicks:
+
+`Հաստատել բոլոր վարժությունները`
+
+After:
+
+`draft = 0`
+`approved = 15`
+
+Total exercises:
+
+`15 → 15`
+
+No exercise is created or deleted.
+
+---
+
+# PART 4 — OPTIONAL UNAPPROVE
+
+V1 requires:
+
+`draft → approved`
+
+It does NOT require an `approved → draft` workflow.
+
+Before adding an unapprove/revoke button, inspect whether such semantics already exist.
+
+If not already supported and clearly useful, DO NOT add it in this task.
+
+Report it as:
+
+`OUT OF SCOPE — approval reversal`
+
+We want the smallest reliable V1.
+
+---
+
+# PART 5 — CRITICAL AI TEACHER GATE
+
+This is the most important part of Phase 1.4.
+
+Audit every backend path by which AI Teacher can obtain or select a real lesson exercise.
+
+Do NOT assume there is only one path.
+
+Search specifically for:
+
+* `lessonExercisesTable`
+* exercise queries
+* `relatedNodeId`
+* `exerciseTextVerbatim`
+* current-node exercise selection
+* lesson exercise loading
+* strong-evidence exercise selection
+* exercise injection into lesson context
+* fallback exercise selection
+* any code that supplies textbook exercises to `chat.ts` / AI Teacher
+
+Identify the authoritative runtime path(s).
+
+Then enforce:
+
+`status === "approved"`
+
+at the SERVER/DATA-SELECTION boundary.
+
+Do NOT rely only on frontend hiding.
+
+Do NOT rely on the prompt telling the model not to use draft exercises.
+
+Draft exercises must not enter the AI Teacher's eligible exercise pool.
+
+---
+
+# PART 6 — FAIL-CLOSED RULE
+
+The filter must be explicit.
+
+Correct principle:
+
+`eligible = status === "approved"`
+
+Avoid logic such as:
+
+`status !== "draft"`
+
+because unknown/null/legacy values could then become learner-visible accidentally.
+
+If status is:
+
+* draft
+* null
+* unknown
+* unsupported legacy value
+
+then it must NOT be learner-eligible unless existing documented semantics explicitly prove otherwise.
+
+---
+
+# PART 7 — MANUAL AND SOURCE EXERCISES
+
+Approval semantics apply to BOTH:
+
+* textbook/source exercises
+* teacher-created manual exercises
+
+A manually created exercise must NOT automatically bypass approval simply because the teacher created it.
+
+Audit the current create behavior.
+
+For V1 preferred safe default:
+
+new exercise → `draft`
+
+unless existing explicit product behavior already intentionally creates teacher-authored exercises as approved.
+
+Do not guess.
+
+Report and normalize the behavior if necessary.
+
+---
+
+# PART 8 — REASSIGNMENT MUST NOT CHANGE APPROVAL
+
+Phase 1.3 already supports:
+
+* MN A → MN B
+* MN → Additional
+* Additional → MN
+
+Exercise movement must NOT silently change approval status.
+
+Example:
+
+`approved exercise + move MN3 → MN5`
+→ remains `approved`
+
+`draft exercise + move Additional → MN4`
+→ remains `draft`
+
+Verify this explicitly.
+
+---
+
+# PART 9 — EDIT MUST NOT SILENTLY CHANGE APPROVAL
+
+Audit current edit behavior.
+
+For V1:
+
+Editing text/source-independent teacher-editable fields should NOT silently toggle approval unless the product already has an explicit invalidation rule.
+
+Do not invent automatic re-drafting in this task.
+
+If an approved exercise is edited:
+
+* preserve current status for V1
+* report automatic approval invalidation as a possible future policy question
+
+We can tighten this later if required.
+
+---
+
+# PART 10 — ADDITIONAL EXERCISES
+
+Approval and assignment are separate dimensions.
+
+An exercise may be:
+
+`relatedNodeId = NULL`
+and
+`status = approved`
+
+That means:
+
+approved content, currently not assigned to a MicroNode.
+
+However, AI Teacher must not select an Additional exercise for a MicroNode merely because it is approved unless existing selection logic intentionally supports that.
+
+Eligibility normally requires BOTH:
+
+* correct structural assignment/scope
+* `status === approved`
+
+Do not change Phase 1.3 assignment semantics.
+
+---
+
+# PART 11 — REAL DATA TEST MATRIX
+
+Use the real Physics 7 Lesson used in previous phases.
+
+Before testing record:
+
+* Lesson ID
+* total exercises
+* draft count
+* approved count
+* Additional count
+* assigned count
+
+Do not destroy the lesson's final intended state during testing.
+
+---
+
+## TEST A — DRAFT MUST BE BLOCKED
+
+Choose one real exercise with:
+
+`status = draft`
+
+Record:
+
+* exercise ID
+* relatedNodeId
+* text
+* page
+* source metadata
+
+Using the SAME backend/service path that AI Teacher uses, prove:
+
+`draft exercise NOT returned / NOT eligible`
+
+Do NOT merely inspect the Teacher UI.
+
+Required:
+
+**AI Teacher runtime selection path excludes it.**
+
+---
+
+## TEST B — INDIVIDUAL APPROVAL
+
+Using the real Teacher Review UI:
+
+Click:
+
+`Հաստատել`
+
+for that exercise.
+
+Verify:
+
+UI
+→ API
+→ DB:
+
+`status = approved`
+
+Full refresh.
+
+Verify UI still shows:
+
+`Հաստատված`
+
+Then use the SAME AI Teacher runtime exercise-selection path.
+
+Expected:
+
+the exercise is now eligible/returned for its correct MicroNode/scope.
+
+This is the core Gate 1.4 proof:
+
+`same exercise: draft → blocked`
+`same exercise: approved → eligible`
+
+---
+
+## TEST C — REASSIGNMENT PRESERVES STATUS
+
+Take one approved exercise.
+
+Move:
+
+`MN A → MN B`
+
+Verify:
+
+`status remains approved`
+
+Then restore if needed.
+
+Take one draft exercise if available.
+
+Move:
+
+`Additional → MN`
+
+Verify:
+
+`status remains draft`
+
+---
+
+## TEST D — EDIT PRESERVES STATUS
+
+Edit one approved exercise.
+
+Verify:
+
+* intended field changed
+* status remains approved
+* source metadata preserved
+* refresh persists
+
+Restore test content afterward if appropriate.
+
+---
+
+## TEST E — MANUAL EXERCISE DEFAULT
+
+Create a temporary manual exercise.
+
+Verify its initial status.
+
+Required safe V1 result unless existing architecture intentionally dictates otherwise:
+
+`draft`
+
+Verify AI Teacher cannot use it.
+
+Approve it.
+
+Verify AI Teacher can use it when correctly assigned.
+
+Delete temporary test record afterward.
+
+---
+
+## TEST F — APPROVE ALL
+
+Before:
+
+record exact:
+
+`draft = ?`
+`approved = ?`
+`total = ?`
+
+Use the REAL Teacher Review:
+
+`Հաստատել բոլոր վարժությունները`
+
+Verify:
+
+* only current Lesson affected
+* all current Lesson exercises become approved
+* total exercise count unchanged
+* no duplicates
+* no deletions
+* source metadata unchanged
+
+Full refresh.
+
+Verify:
+
+`draft = 0`
+
+and:
+
+`approved = total`
+
+IMPORTANT:
+
+If preserving some real draft exercises is necessary for future testing, create temporary test fixtures instead of permanently changing production-like data blindly.
+
+---
+
+# PART 12 — AI TEACHER FILTER TESTS
+
+Add focused automated tests around the ACTUAL exercise-selection boundary used by AI Teacher.
+
+At minimum prove:
+
+1. draft assigned exercise → excluded
+2. approved assigned exercise → included
+3. null status → excluded
+4. unknown/non-approved status → excluded where type/system permits
+5. approved exercise for wrong MicroNode → excluded
+6. approved Additional/unassigned exercise → not accidentally selected for unrelated MicroNode
+7. status transition draft → approved changes eligibility without duplicating exercise
+
+Do not test only a mock helper disconnected from runtime.
+
+Test the real query/service or route boundary used by AI Teacher.
+
+---
+
+# PART 13 — BULK APPROVAL SAFETY
+
+If implementing bulk approval:
+
+Verify:
+
+* authenticated teacher only
+* lesson exists
+* appropriate ownership/access rules reused
+* update scoped by `lessonId`
+* transaction if multiple writes are required
+* returns useful count such as:
+  `approvedCount`
+* cannot approve exercises from another lesson accidentally
+
+Do not weaken existing authorization.
+
+---
+
+# PART 14 — DATA INTEGRITY
+
+Before/after report:
+
+* total exercises
+* draft
+* approved
+* assigned
+* Additional
+* source exercises if distinguishable
+* manual exercises if distinguishable
+
+Required:
+
+`total exercises before = total exercises after`
+except temporary test records that are created and cleaned up.
+
+Required:
+
+`lost exercises = 0`
+
+`duplicate exercises = 0`
+
+`source metadata erased = 0`
+
+`relatedNodeId unexpectedly changed = 0`
+
+---
+
+# PART 15 — UI
+
+Keep UI minimal.
+
+Do not redesign Teacher Review.
+
+Each exercise should make status understandable at a glance.
+
+Example:
+
+`🟡 Սևագիր   [Հաստատել]`
+
+`✅ Հաստատված`
+
+At lesson/exercise section level:
+
+`Հաստատել բոլոր վարժությունները`
+
+Use proper Armenian UI text.
+
+Do not expose raw values such as:
+
+`draft`
+`approved`
+
+as the primary teacher-facing label if Armenian labels are already the product convention.
+
+---
+
+# PART 16 — OUT OF SCOPE
+
+DO NOT implement:
+
+* Final Lesson Approval
+* LO/granularity validation
+* source/page integrity expansion
+* Quiz/Test changes
+* Knowledge Tree changes
+* Student assignment
+* mastery/scoring/evidence changes
+* spaced retrieval
+* interleaving
+* semantic prerequisite redesign
+* AI Teacher teaching scenario changes
+* Mapper redesign
+* new exercise recommendation AI
+* approval reversal workflow unless already present
+
+IMPORTANT:
+
+Filtering AI Teacher's eligible exercises by approval status IS IN SCOPE.
+
+Changing HOW AI Teacher teaches or chooses pedagogical actions is NOT.
+
+---
+
+# FINAL REPORT
+
+Return exactly:
+
+## A. EXISTING APPROVAL ARCHITECTURE
+
+* DB field
+* allowed values
+* default
+* API support
+* current Teacher UI
+* current AI Teacher filtering
+
+---
+
+## B. FILES CHANGED
+
+`path → reason`
+
+---
+
+## C. INDIVIDUAL APPROVAL
+
+Show:
+
+`draft → Teacher UI approve → API → DB approved → refresh`
+
+---
+
+## D. BULK APPROVAL
+
+Show:
+
+`before counts → approve all → after counts → refresh`
+
+---
+
+## E. AI TEACHER GATE — CRITICAL
+
+Show the SAME exercise:
+
+### BEFORE
+
+`status=draft`
+→ AI Teacher runtime eligibility = BLOCKED
+
+### AFTER
+
+`status=approved`
+→ AI Teacher runtime eligibility = ELIGIBLE
+
+Identify the exact runtime query/service where this is enforced.
+
+Do NOT claim Gate 1.4 PASS without this evidence.
+
+---
+
+## F. REASSIGNMENT / EDIT REGRESSION
+
+* approved move → remains approved
+* draft move → remains draft
+* approved edit → remains approved
+
+---
+
+## G. DATA INTEGRITY
+
+* total exercises
+* lost exercises
+* duplicates
+* source metadata
+* assignment changes
+
+---
+
+## H. TESTS
+
+Exact commands and passed/failed count.
+
+---
+
+## I. SCOPE CHECK
+
+Explicitly state whether you changed:
+
+* Mapper
+* AI Teacher teaching logic
+* quizzes
+* Knowledge Tree
+* scoring/mastery/evidence
+* Final Lesson Approval
+
+Expected:
+
+`NO`
+
+The ONLY AI Teacher-side change allowed is filtering exercise eligibility to `status === "approved"` at the correct runtime boundary.
+
+---
+
+## J. FINAL GATE 1.4
+
+Required:
+
+`draft exercise → unavailable to AI Teacher`
+
+`approved exercise → available to AI Teacher`
+
+Result:
+
+`PASS / PARTIAL / FAIL`
+
+Do not report PASS based only on UI status changes.
+
+The AI Teacher runtime eligibility boundary must be proven.

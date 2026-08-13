@@ -936,6 +936,10 @@ export interface LessonExercise {
   successCriteria?: string | null;
   difficultyLevel?: string | null;
   assignment?: string | null;
+  /** Authoring lifecycle: "draft" | "approved" (may include legacy "reviewed"). */
+  status?: string | null;
+  sourceType?: string | null;
+  sourceBlockIndex?: number | null;
 }
 
 export interface CreateLessonExerciseInput {
@@ -956,5 +960,12 @@ export interface UpdateLessonExerciseInput {
   difficultyLevel?: string;
   assignment?: string;
   exercisePurpose?: string;
+  /** Gate 1.4 approval lifecycle: "draft" | "reviewed" | "approved" */
+  status?: string;
+}
+
+export interface ApproveAllLessonExercisesResponse {
+  approvedCount: number;
+  lessonId: number;
 }
 

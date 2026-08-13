@@ -341,7 +341,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .from(lessonExercisesTable)
           .where(and(
             eq(lessonExercisesTable.relatedNodeId, session.currentNodeId),
-            eq(lessonExercisesTable.assignment, "CLASS")
+            eq(lessonExercisesTable.assignment, "CLASS"),
+            // Gate 1.4: only approved exercises reach AI Teacher. Fail-closed.
+            eq(lessonExercisesTable.status, "approved"),
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
         logger.info({
@@ -376,6 +378,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             eq(lessonExercisesTable.lessonId, lessonId),
             eq(lessonExercisesTable.assignment, "CLASS"),
             nodeOrNullFilter,
+            // Gate 1.4: only approved exercises reach AI Teacher. Fail-closed.
+            eq(lessonExercisesTable.status, "approved"),
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
       }
@@ -387,7 +391,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .from(lessonExercisesTable)
           .where(and(
             eq(lessonExercisesTable.lessonId, lessonId),
-            eq(lessonExercisesTable.assignment, "HOMEWORK")
+            eq(lessonExercisesTable.assignment, "HOMEWORK"),
+            // Gate 1.4: only approved exercises reach AI Teacher. Fail-closed.
+            eq(lessonExercisesTable.status, "approved"),
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
       }
