@@ -937,13 +937,86 @@ function LessonNodesPanel({
     } finally { setTopicSaving(false); }
   };
 
+  // ── P1.5: Learning Objective validation helpers ──────────────────────────────
+  // These are pure deterministic functions — no AI, no async, no DB.
+  // They are computed from persisted node data on every render so warnings
+  // survive refresh automatically.
+
+  /** True when the Learning Objective is non-null and non-blank. */
+  const isLOValid = (lo: string | null | undefined): boolean =>
+    typeof lo === "string" && lo.trim().length > 0;
+
+  const _P15_ARM_VERB_SUFFIXES = ["ел", "ал", "ум", "ир", "и", "а"];
+  const _P15_EN_VERBS = [
+    "define","identify","classify","compare","explain","apply","calculate",
+    "solve","construct","analyze","describe","recognize","use","find",
+    "determine","interpret","demonstrate","evaluate","name","list","distinguish",
+  ];
+  // U+0587 = Armenian ECH YIWN ligature (canonical Eastern Armenian "and")
+  const _P15_CONNECTORS = ["\u0587", "եւ", "ու", "կամ", " and ", " or "];
+
+  function _p15HasVerb(text: string): boolean {
+    const lower = text.toLowerCase();
+    if (_P15_EN_VERBS.some((v) => {
+      const idx = lower.indexOf(v);
+      if (idx === -1) return false;
+      const b = idx > 0 ? lower[idx - 1] : " ";
+      const a = idx + v.length < lower.length ? lower[idx + v.length] : " ";
+      return /\W/.test(b) && /\W/.test(a);
+    })) return true;
+    return text.split(/[\s,;:!?()\[\]{}"'»«]+/).filter(Boolean)
+      .some((w) => _P15_ARM_VERB_SUFFIXES.some((s) => w.endsWith(s) && w.length > s.length + 1));
+  }
+
+  /**
+   * Returns the connector string if the LO appears to contain two independent
+   * verb clauses joined by a compound connector; null otherwise.
+   * Mirrors the backend detectCompoundLO heuristic exactly.
+   */
+  function detectCompoundLOWarning(lo: string | null | undefined): string | null {
+    if (!lo || lo.trim().length < 10) return null;
+    for (const connector of _P15_CONNECTORS) {
+      const pos = lo.toLowerCase().indexOf(connector.toLowerCase());
+      if (pos === -1) continue;
+      const left  = lo.slice(0, pos).trim();
+      const right = lo.slice(pos + connector.length).trim();
+      if (left.length < 8 || right.length < 8) continue;
+      if (_p15HasVerb(left) && _p15HasVerb(right)) return connector.trim();
+    }
+    return null;
+  }
+
+  /**
+   * Returns true when the LO is suspiciously long/broad.
+   * Mirrors the backend detectMegaNode heuristic exactly.
+   */
+  function detectMegaNodeWarning(lo: string | null | undefined): boolean {
+    if (!lo) return false;
+    const trimmed = lo.trim();
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    return wordCount > 35 || trimmed.length > 200;
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // P6.5: Individual node approval via existing updateNode hook
   const approveNode = (nodeId: number) => {
+    setNodeApproveErrors((prev) => { const n = { ...prev }; delete n[nodeId]; return n; });
     updateNode.mutate(
       { lessonId, nodeId, data: { status: "approved" } },
-      { onSuccess: () => refreshNodes() }
+      {
+        onSuccess: () => refreshNodes(),
+        onError: (err: unknown) => {
+          const msg =
+            (err as { message?: string })?.message ??
+            "Հautateln chheçav: ownumnamatanumahy npataky bacakayum e";
+          setNodeApproveErrors((prev) => ({ ...prev, [nodeId]: msg }));
+        },
+      }
     );
   };
+
+  // P1.5: per-node approval error messages
+  const [nodeApproveErrors, setNodeApproveErrors] = useState<Record<number, string>>({});
 
   // P6.6: Approve-all convenience action
   const [approvingAll, setApprovingAll] = useState(false);
@@ -1136,6 +1209,24 @@ function LessonNodesPanel({
                 {(n as any).learningObjective && (
                   <p className="text-[10px] text-primary/70 mt-0.5 leading-relaxed italic">🎯 {(n as any).learningObjective}</p>
                 )}
+                {/* P1.5: Deterministic LO validation messages — recomputed from persisted data */}
+                {!isLOValid((n as any).learningObjective) && (
+                  <p className="text-[9px] font-semibold text-red-400 mt-0.5 leading-relaxed">
+                    🔴 Սkhalt․ Ouchumnakan npataky bacakayum e
+                  </p>
+                )}
+                {isLOValid((n as any).learningObjective) &&
+                  detectCompoundLOWarning((n as any).learningObjective) !== null && (
+                  <p className="text-[9px] font-medium text-amber-400/80 mt-0.5 leading-relaxed">
+                    🟠 Zgushatsum․ Ouchumnakan npataky karoɫ e yndgrel mekic avel owumnakan npatак
+                  </p>
+                )}
+                {isLOValid((n as any).learningObjective) &&
+                  detectMegaNodeWarning((n as any).learningObjective) && (
+                  <p className="text-[9px] font-medium text-amber-400/80 mt-0.5 leading-relaxed">
+                    🟠 Zgushatsum․ Hanguytsy karoɫ e charqazanc layn linel
+                  </p>
+                )}
                 {n.theoryContent && (
                   <p className="text-xs text-muted-foreground/80 mt-0.5 line-clamp-2 leading-relaxed">{n.theoryContent}</p>
                 )}
@@ -1151,14 +1242,23 @@ function LessonNodesPanel({
             )}
           </div>
           {!isEditingNode && (
-            <div className="flex gap-1 shrink-0 pt-0.5">
+            <div className="flex flex-col items-end gap-0.5 shrink-0 pt-0.5">
               {(n as any).status !== 'approved' && (
                 <button
                   onClick={() => approveNode(n.id)}
-                  disabled={updateNode.isPending}
-                  title="Hastatrel"
-                  className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors disabled:opacity-40"
+                  disabled={updateNode.isPending || !isLOValid((n as any).learningObjective)}
+                  title={
+                    !isLOValid((n as any).learningObjective)
+                      ? "Hastatrel chhnaravor e. Ouchumnakan npataky bacakayum e."
+                      : "Hastatrel"
+                  }
+                  className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >✅</button>
+              )}
+              {nodeApproveErrors[n.id] && (
+                <span className="text-[8px] text-red-400 leading-tight text-right max-w-[80px]">
+                  {nodeApproveErrors[n.id]}
+                </span>
               )}
               <button
                 onClick={() => startEditNode(n)}

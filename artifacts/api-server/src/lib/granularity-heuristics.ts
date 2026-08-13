@@ -190,6 +190,43 @@ export function detectDuplicateLOs(
   return candidates;
 }
 
+// ── detectMegaNode ────────────────────────────────────────────────────────────
+
+export interface MegaNodeSignal {
+  flagged: true;
+  reason: "long_lo";
+  loWordCount: number;
+  loCharCount: number;
+}
+
+/**
+ * Detects a suspiciously broad MicroNode based on the length of its Learning
+ * Objective — the single most reliable deterministic proxy for over-scoping.
+ *
+ * A standard single-objective Armenian LO is typically 10–25 words / <140 chars.
+ * Thresholds (conservative to avoid false positives):
+ *   - word count > 35
+ *   - OR character count > 200
+ *
+ * Returns a signal object, or null when no signal is detected.
+ * Does NOT call AI; does NOT auto-split the node.
+ */
+export function detectMegaNode(
+  learningObjective: string | null | undefined,
+): MegaNodeSignal | null {
+  if (!learningObjective) return null;
+  const lo = learningObjective.trim();
+  if (lo.length === 0) return null;
+
+  const loWordCount = lo.split(/\s+/).filter(Boolean).length;
+  const loCharCount  = lo.length;
+
+  if (loWordCount > 35 || loCharCount > 200) {
+    return { flagged: true, reason: "long_lo", loWordCount, loCharCount };
+  }
+  return null;
+}
+
 // ── Token utilities ───────────────────────────────────────────────────────────
 
 /**

@@ -1,0 +1,569 @@
+PHASE 1.5 — MICRONODE LEARNING OBJECTIVE + GRANULARITY VALIDATION
+
+Phase 1.1, 1.2, 1.3 and 1.4 are COMPLETE.
+
+Current confirmed state for the real Physics 7 lesson (Lesson 105):
+
+- Topics = 4
+- MicroNodes = 10
+- Source exercises = 15
+- Assigned exercises = 12
+- Additional exercises = 3
+- lost source exercises = 0
+- all 15 exercises currently approved
+- exercise approval gate is working
+- Teacher Review CRUD is working
+- Topic reorder is working
+- MicroNode reorder is working
+
+DO NOT reopen or redesign completed Phase 1.1–1.4 work.
+
+We are implementing ONLY:
+
+PHASE 1.5 — Granularity + Learning Objective Validation
+
+==================================================
+1. GOAL
+==================================================
+
+The Mapper already creates MicroNodes with `learningObjective`.
+
+However, audit/review has shown that some MicroNodes may be:
+
+- missing a Learning Objective
+- suspiciously broad / mega-nodes
+- multi-objective nodes
+
+For V1 we are NOT building a new AI validation system.
+
+We are adding deterministic validation + Teacher Review warnings.
+
+Required semantics:
+
+1. Missing/blank Learning Objective → BLOCKING ERROR
+2. Suspicious mega-node → WARNING
+3. Suspicious multi-objective Learning Objective → WARNING
+
+The teacher may edit/split the MicroNode after seeing a warning.
+
+Warnings DO NOT automatically block approval.
+
+Missing Learning Objective DOES block approval.
+
+Most important invariant:
+
+NO APPROVED MICRONODE MAY EXIST WITHOUT A NON-EMPTY LEARNING OBJECTIVE.
+
+==================================================
+2. AUDIT FIRST — NO CODE CHANGES YET
+==================================================
+
+Before implementing anything, inspect the actual repository and report internally:
+
+A. MicroNode schema
+
+Determine the authoritative fields for:
+
+- id
+- title
+- learningObjective
+- theory/content
+- status
+- sequence
+- topicId
+- source metadata
+
+B. Current MicroNode approval mechanism
+
+Find exactly:
+
+- how a MicroNode becomes approved
+- API endpoint
+- backend validation
+- frontend control
+- DB status values
+
+C. Current Teacher Review rendering
+
+Find where MicroNode:
+
+- title
+- Learning Objective
+- content/theory
+- approval status
+
+are displayed.
+
+D. Existing validation infrastructure
+
+Search for any existing:
+
+- lesson validation
+- node validation
+- mapping validation
+- approval validation
+- warnings/errors
+- granularity logic
+- learningObjective validation
+
+REUSE existing infrastructure where appropriate.
+
+Do not create duplicate validation systems unnecessarily.
+
+==================================================
+3. LEARNING OBJECTIVE — BLOCKING VALIDATION
+==================================================
+
+Implement a backend-authoritative invariant:
+
+A MicroNode cannot become `approved` if:
+
+- learningObjective is null
+- learningObjective is undefined
+- learningObjective is empty
+- learningObjective contains whitespace only
+
+Normalize with `.trim()` for validation.
+
+Example:
+
+learningObjective = ""
+
+→ BLOCK
+
+learningObjective = "    "
+
+→ BLOCK
+
+learningObjective = null
+
+→ BLOCK
+
+learningObjective =
+"Աշակերտը կարող է սահմանել բնությունը։"
+
+→ valid
+
+IMPORTANT:
+
+Do NOT rely only on frontend validation.
+
+The backend approval path MUST enforce this invariant.
+
+If the existing node update endpoint can change `learningObjective` after approval, prevent this sequence:
+
+1. approved node has valid LO
+2. teacher edits LO to blank
+3. node remains approved
+
+Choose the smallest architecture-consistent solution.
+
+Acceptable behavior:
+
+- reject clearing LO while node is approved
+
+OR
+
+- automatically move the node back to draft/review state
+
+Prefer the behavior most consistent with the current repository's approval semantics.
+
+Do not invent a new workflow state unless required.
+
+==================================================
+4. TEACHER REVIEW — MISSING LO ERROR
+==================================================
+
+In Teacher Review, clearly show a blocking validation error for a MicroNode with no valid LO.
+
+Use proper Armenian UI text.
+
+Suggested semantic wording:
+
+`🔴 Սխալ․ ուսուցման նպատակը բացակայում է`
+
+The exact styling should follow existing application UI patterns.
+
+Do not redesign the MicroNode card.
+
+If the node has a missing LO:
+
+- error must be visible
+- approval must not succeed
+
+==================================================
+5. GRANULARITY WARNING — V1
+==================================================
+
+We do NOT want an AI call.
+
+Implement a small deterministic heuristic that identifies only clearly suspicious cases.
+
+The purpose is NOT to mathematically determine whether a node is pedagogically perfect.
+
+The purpose is to warn the teacher that manual review may be useful.
+
+A suspicious mega-node may be detected from existing fields such as:
+
+- unusually long Learning Objective
+- unusually long theory/content relative to other MicroNodes
+- obvious multiple-objective linguistic structure
+- other simple deterministic signals already supported by the current data model
+
+IMPORTANT:
+
+Avoid aggressive false positives.
+
+A long theory section alone should NOT automatically mean the node is invalid.
+
+Granularity findings are WARNING only.
+
+They must NOT automatically:
+
+- split a MicroNode
+- rewrite content
+- change LO
+- call AI
+- modify Mapper output
+- block approval
+
+==================================================
+6. MULTI-OBJECTIVE WARNING
+==================================================
+
+Add a conservative deterministic heuristic for suspicious multi-objective LOs.
+
+Example suspicious pattern:
+
+`Աշակերտը կարող է սահմանել X, բացատրել Y և համեմատել Z։`
+
+This may represent several distinct learning objectives.
+
+But:
+
+`Աշակերտը կարող է բացատրել X և բերել օրինակներ։`
+
+should NOT automatically be considered invalid merely because the word
+`և`
+exists.
+
+Therefore DO NOT implement:
+
+`if learningObjective.includes("և") → warning`
+
+Use a conservative rule based on multiple distinct action verbs / objective structures.
+
+Reuse Bloom/action-verb knowledge already present in the repository if such a deterministic list exists.
+
+Do not add an AI call.
+
+==================================================
+7. WARNING SEMANTICS
+==================================================
+
+Warnings are informational.
+
+Examples:
+
+`🟠 Զգուշացում․ ուսուցման նպատակը կարող է ներառել մեկից ավելի ուսումնական նպատակ`
+
+`🟠 Զգուշացում․ հանգույցը կարող է չափազանց լայն լինել`
+
+The teacher may:
+
+- edit the MicroNode
+- split it manually using the existing CRUD
+- ignore the warning and keep the MicroNode
+
+WARNING must NOT prevent node approval.
+
+ERROR must prevent node approval.
+
+==================================================
+8. IMPORTANT — CURRENT REAL LESSON
+==================================================
+
+Use Lesson 105 for real verification.
+
+Current MicroNodes include examples such as:
+
+- Ֆիզիկա առարկայի նպատակը
+- Դասագրքի կառուցվածքին ծանոթացում
+- Բնության երևույթներ
+- Բնության սահմանումը
+- Բնության երևույթներն ուսումնասիրող գիտություններ և ֆիզիկական երևույթներ
+- Ֆիզիկայի հիմնական խնդիրը
+- Ֆիզիկական մարմին, նյութ և մատերիա
+- Բնության երևույթներ և բնագիտություն
+- Ֆիզիկական մարմիններ և նյութեր
+- Ֆիզիկա և ֆիզիկական երևույթներ
+
+Some existing LOs are intentionally broad enough to be useful real-world test cases.
+
+For example:
+
+`Ուսանողը կարող է նկարագրել բնության երևույթներն ուսումնասիրող գիտությունները, սահմանել ֆիզիկական երևույթները և բերել դրանց օրինակներ։`
+
+This is a reasonable candidate for a multi-objective WARNING.
+
+Another example:
+
+`Աշակերտը կարող է տարբերակել ֆիզիկական մարմինը, նյութը և մատերիան՝ տալով դրանց սահմանումները և օրինակներ։`
+
+Do NOT automatically assume this must be split.
+
+The heuristic must remain conservative.
+
+==================================================
+9. REAL ACCEPTANCE TEST — MISSING LO
+==================================================
+
+Use a temporary test MicroNode or safely use an existing node and restore it afterward.
+
+Do NOT permanently damage real lesson content.
+
+Prove:
+
+CASE A
+
+MicroNode:
+learningObjective = blank
+status = draft/review
+
+Attempt approval.
+
+Expected:
+
+→ backend rejects approval
+→ UI shows blocking LO error
+→ DB does NOT contain an approved MicroNode with blank LO
+
+CASE B
+
+Set a valid LO.
+
+Approve.
+
+Expected:
+
+→ approval succeeds
+→ DB status = approved
+
+CASE C
+
+For an already approved MicroNode:
+
+attempt to change learningObjective to blank.
+
+Expected:
+
+→ invariant remains true
+
+After operation:
+
+NO approved MicroNode has blank LO.
+
+==================================================
+10. REAL ACCEPTANCE TEST — WARNINGS
+==================================================
+
+Verify at least:
+
+A. one normal single-objective LO
+
+Expected:
+no multi-objective warning
+
+B. one clearly multi-objective LO
+
+Expected:
+warning displayed
+
+C. one suspiciously broad/mega-node case if the heuristic detects one
+
+Expected:
+warning displayed
+
+D. teacher can still approve a node that has WARNING but no ERROR
+
+Expected:
+approval succeeds
+
+Warnings must survive refresh because they should be deterministically recomputed from authoritative persisted node data.
+
+Do NOT create unnecessary warning rows in the DB unless the current architecture already persists validation results.
+
+==================================================
+11. EXISTING APPROVED NODES — IMPORTANT
+==================================================
+
+Audit the current database for ALL approved MicroNodes.
+
+Run a query equivalent to:
+
+approved nodes
+WHERE
+learningObjective IS NULL
+OR trim(learningObjective) = ''
+
+Report the count.
+
+If existing invalid approved nodes are found:
+
+DO NOT silently invent Learning Objectives.
+
+Report them.
+
+Do not fabricate educational content.
+
+If none exist:
+
+report:
+
+`approved MicroNodes with missing LO = 0`
+
+==================================================
+12. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- Mapper extraction
+- manual-map parser/contract
+- source exercise recovery
+- Exercise Management
+- Exercise Approval
+- AI Teacher teaching logic
+- AI Teacher exercise selection except existing Phase 1.4 gate
+- quizzes/tests
+- scoring
+- mastery
+- evidence
+- Knowledge Tree
+- assignment
+- Phase 2 enrichment
+- semantic dependencies
+- source validation beyond what is strictly necessary for this task
+- DB schema unless an existing schema deficiency makes the task impossible
+
+NO AI calls for granularity validation.
+
+NO automatic MicroNode splitting.
+
+NO automatic LO rewriting.
+
+==================================================
+13. REGRESSION / DATA SAFETY
+==================================================
+
+After implementation verify Lesson 105 remains:
+
+Topics = 4
+MicroNodes = 10
+Source exercises = 15
+Assigned + Additional = 15
+lost source exercises = 0
+
+Exercise statuses unchanged unless explicitly required by the test and restored afterward.
+
+MicroNode ordering unchanged after tests.
+
+Topic ordering unchanged.
+
+Source metadata unchanged.
+
+Dependencies unchanged except if an existing test operation legitimately triggers current order-derived behavior; restore everything afterward.
+
+==================================================
+14. AUTOMATED TESTS
+==================================================
+
+Add focused tests for the validation rules if the current project test structure supports it.
+
+At minimum cover:
+
+1. null LO → approval rejected
+2. empty LO → approval rejected
+3. whitespace LO → approval rejected
+4. valid LO → approval allowed
+5. approved node cannot end up with blank LO
+6. normal LO → no false multi-objective warning
+7. clearly multi-objective LO → warning
+8. warning does not block approval
+
+Do not create a huge new test framework.
+
+==================================================
+15. FINAL REPORT
+==================================================
+
+Return:
+
+## A. Existing Architecture
+
+- authoritative MicroNode fields
+- approval endpoint/path
+- existing validation reused
+
+## B. LO Blocking Rule
+
+- exact backend enforcement
+- behavior when approving blank LO
+- behavior when clearing LO on approved node
+
+## C. Warning Heuristics
+
+Describe exactly and deterministically:
+
+- multi-objective rule
+- mega-node rule
+
+No vague statement such as "AI detects it".
+
+## D. Teacher Review UI
+
+Show exact Armenian:
+
+- ERROR label
+- WARNING labels
+
+## E. Real Lesson 105 Verification
+
+Report:
+
+- approved MicroNodes with blank LO before
+- approved MicroNodes with blank LO after
+- normal LO test
+- multi-objective warning test
+- mega-node warning test
+- warning + approval test
+
+## F. Automated Tests
+
+passed / failed
+
+## G. Data Integrity
+
+Topics = ?
+MicroNodes = ?
+Source exercises = ?
+Assigned = ?
+Additional = ?
+lost source exercises = ?
+unexpected data changes = ?
+
+## H. Files Changed
+
+List exact files and purpose.
+
+## I. FINAL GATE 1.5
+
+PASS / FAIL
+
+Gate 1.5 may be PASS only if:
+
+`approved MicroNodes with missing/blank Learning Objective = 0`
+
+and backend prevents creating that invalid state.
+
+Do not continue to Phase 1.6.

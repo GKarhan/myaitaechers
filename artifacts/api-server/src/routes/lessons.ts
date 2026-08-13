@@ -6,7 +6,7 @@ import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
-import { eq, and, asc, desc, max, inArray, count, or, ne } from "drizzle-orm";
+import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
@@ -722,6 +722,34 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
   // P12: Allow teacher to move a MicroNode between topics (or make standalone)
   if (topicId !== undefined) patch.topicId = topicId; // null = standalone
 
+  // ── P1.5: Learning Objective invariant ──────────────────────────────────────
+  // A MicroNode cannot become "approved" if its effective LO (after the patch)
+  // is null / empty / whitespace-only.
+  if (patch.status === "approved") {
+    const effectiveLO = learningObjective !== undefined
+      ? String(learningObjective).trim()
+      : (existing.learningObjective ?? "").trim();
+    if (!effectiveLO) {
+      res.status(400).json({
+        error: "MISSING_LEARNING_OBJECTIVE",
+        message: "Ուusumnatanumahy npataky bacakayum e: hastatrelou hamar anhrjesht e:",
+      });
+      return;
+    }
+  }
+
+  // P1.5: If an approved node's LO is being cleared, auto-revert to needs_review
+  // rather than silently creating an approved node without a Learning Objective.
+  if (
+    learningObjective !== undefined &&
+    patch.learningObjective === null &&     // LO being cleared
+    existing.status === "approved" &&       // node currently approved
+    patch.status === undefined              // not also changing status explicitly
+  ) {
+    patch.status = "needs_review";
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   if (Object.keys(patch).length === 0) {
     res.status(400).json({ error: "No fields to update" }); return;
   }
@@ -760,6 +788,22 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: Aut
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
+  // P1.5: Count nodes that are eligible by status but will be skipped due to blank LO
+  const [skippedLOResult] = await db
+    .select({ count: count() })
+    .from(lessonNodesTable)
+    .where(
+      and(
+        eq(lessonNodesTable.lessonId, lessonId),
+        or(eq(lessonNodesTable.status, "draft"), eq(lessonNodesTable.status, "needs_review")),
+        or(
+          sql`${lessonNodesTable.learningObjective} IS NULL`,
+          sql`TRIM(${lessonNodesTable.learningObjective}) = ''`,
+        ),
+      )
+    );
+  const skippedLOCount = Number(skippedLOResult?.count ?? 0);
+
   const updated = await db
     .update(lessonNodesTable)
     .set({ status: "approved" })
@@ -770,7 +814,10 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: Aut
         or(
           eq(lessonNodesTable.status, "draft"),
           eq(lessonNodesTable.status, "needs_review"),
-        )
+        ),
+        // P1.5: Never bulk-approve nodes that have no Learning Objective
+        isNotNull(lessonNodesTable.learningObjective),
+        sql`TRIM(${lessonNodesTable.learningObjective}) != ''`,
       )
     )
     .returning({ id: lessonNodesTable.id });
@@ -781,6 +828,7 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: Aut
   res.json({
     approvedCount:          updated.length,
     nodeIds:                updated.map((n) => n.id),
+    skippedLOCount,          // P1.5: nodes skipped because LO was blank
     sequentialDependencies: depResult,
   });
 });
