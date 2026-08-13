@@ -1,0 +1,941 @@
+# TASK — PHASE 1.1 + 1.2
+
+## Teacher Review Structural CRUD + Topic/MicroNode Ordering
+
+We are continuing an existing production codebase.
+Do **NOT** redesign the architecture from scratch.
+
+Repository:
+
+`https://github.com/GKarhan/myaitaechers`
+
+This task belongs ONLY to:
+
+* **PHASE 1.1 — Teacher Review CRUD**
+* **PHASE 1.2 — Topic / MicroNode Reordering**
+
+Do not implement later Phase 1 items unless a tiny change is strictly necessary for 1.1/1.2.
+
+Especially DO NOT modify:
+
+* AI Teacher teaching logic
+* `chat.ts` teaching behavior
+* Student Model
+* mastery/scoring
+* evidence pipeline
+* spaced retrieval
+* interleaving
+* personalization
+* quiz-taking flow
+* Mapper extraction/mapping logic
+* Phase 2 enrichment behavior
+* Knowledge Tree behavior
+* lesson assignment flow
+
+The existing architecture is the baseline.
+
+The governing principle is:
+
+**AI Mapper → Validation → Teacher Review → Approved Knowledge Base**
+
+The AI Mapper output is **not** the final authority.
+The teacher must have correction authority.
+
+---
+
+# PART A — FORENSIC AUDIT FIRST
+
+## DO NOT CHANGE CODE YET
+
+Before implementing anything, inspect the repository and report the current state.
+
+I do not want assumptions.
+
+For every requirement below, classify it as:
+
+* ✅ ALREADY WORKS
+* 🟡 PARTIAL
+* 🔴 MISSING
+* ⚠️ PRESENT BUT BROKEN / INCONSISTENT
+
+For every conclusion provide:
+
+* exact file path
+* relevant component/function/route/schema name
+* brief explanation of current behavior
+
+Do not infer behavior only from UI labels.
+
+Trace the complete path:
+
+**UI → API → DB → refresh/read-back**
+
+---
+
+# 1. AUDIT TEACHER REVIEW ARCHITECTURE
+
+Find the actual Teacher Review implementation.
+
+Inspect at minimum the relevant frontend, backend, schemas and DB structures.
+
+Determine where the following entities are stored and edited:
+
+### Lesson
+
+Find whether Teacher Review currently allows editing the lesson-level overview/description used as the lesson's general theoretical/context description.
+
+Report:
+
+* frontend field/component
+* API route
+* DB field/table
+* whether save persists after refresh
+
+Do not create a new duplicate lesson overview field if an appropriate authoritative field already exists.
+
+---
+
+### Topic
+
+Determine whether teacher can currently:
+
+* edit Topic title
+* edit Topic description/overview if such field exists
+* create Topic
+* delete Topic
+
+Report the current CRUD path for each action.
+
+Also identify:
+
+* Topic ID model
+* Topic → Lesson relationship
+* authoritative Topic ordering field
+
+---
+
+### MicroNode
+
+Determine whether teacher can currently:
+
+* edit title
+* edit `learningObjective`
+* edit theory/content
+* create MicroNode
+* delete MicroNode
+* assign a newly created MicroNode to the correct Topic
+* move an existing MicroNode between Topics, if already supported
+
+For each one trace:
+
+**frontend → API → DB**
+
+Identify the authoritative fields currently used for:
+
+* title
+* learningObjective
+* theory/content
+* Topic relationship
+* sequence/order
+* approval/status if present
+
+Do not invent parallel fields if current authoritative fields already exist.
+
+---
+
+# 2. AUDIT CURRENT SEQUENCE / ORDERING ARCHITECTURE
+
+We need two independent ordering domains:
+
+### Topic ordering
+
+Within a Lesson:
+
+`Topic 1 → Topic 2 → Topic 3`
+
+### MicroNode ordering
+
+Within the appropriate Topic:
+
+`MN1 → MN2 → MN3`
+
+These order domains MUST NOT be mixed.
+
+Audit:
+
+* Which DB tables contain `sequence`, `order`, `position`, `sortOrder`, or equivalent?
+* How is Topic order currently calculated?
+* How is MicroNode order currently calculated?
+* Are nodes currently globally sequenced across the Lesson or scoped to Topic?
+* Which API queries currently sort them?
+* Which frontend components assume a certain ordering?
+* Does any code derive ordering from array index instead of DB sequence?
+* Is sequence normalized today?
+
+Show actual evidence.
+
+---
+
+# 3. AUDIT DEPENDENCY ↔ SEQUENCE RELATIONSHIP
+
+This is important.
+
+Find the existing dependency implementation.
+
+Inspect at minimum:
+
+* dependency table/schema
+* dependency creation code
+* dependency update/delete code
+* Mapper/manual-map dependency creation
+* any deterministic SEQUENTIAL dependency generation
+* any runtime code that consumes dependencies
+
+Answer explicitly:
+
+### Q1
+
+Are current `SEQUENTIAL` dependencies generated from MicroNode sequence/order?
+
+### Q2
+
+If MicroNodes are reordered today, do those existing SEQUENTIAL dependencies automatically change?
+
+### Q3
+
+Could implementing reorder leave a stale graph such as:
+
+Before:
+
+`MN1 → MN2 → MN3`
+
+Teacher changes order to:
+
+`MN1 → MN3 → MN2`
+
+but DB dependencies remain:
+
+`MN1 → MN2 → MN3`
+
+### Q4
+
+Are there dependency types such as:
+
+* SEQUENTIAL
+* REQUIRED
+* RELATED
+* anything else
+
+and which ones are structural versus semantic?
+
+For this task:
+
+**DO NOT redesign semantic dependency architecture.**
+
+`REQUIRED` prerequisite semantics are a later-phase concern.
+
+We only need to know whether structural SEQUENTIAL dependencies need synchronization when order changes.
+
+---
+
+# 4. AUDIT EXISTING CRUD SAFETY
+
+Before implementation, check:
+
+* foreign keys
+* cascading deletes
+* orphan risks
+* exercises linked through `relatedNodeId`
+* dependencies referencing deleted MicroNodes
+* Phase 2/enrichment data referencing nodes
+* review/approval records referencing nodes
+* any knowledge/student tables that could accidentally be affected by authoring edits
+
+We do NOT want a broad redesign.
+
+We only need enough safety handling so Teacher Review CRUD does not corrupt the current Knowledge Base.
+
+For Topic deletion specifically, determine the current architecture and safest existing-compatible behavior if the Topic still contains MicroNodes.
+
+Do not silently choose destructive cascade behavior without reporting it.
+
+---
+
+# 5. AUDIT CURRENT UI
+
+Identify the current Teacher Review UI structure.
+
+Report:
+
+* exact page/component file(s)
+* Topic rendering component
+* MicroNode rendering component
+* edit controls
+* add controls
+* delete controls
+* any existing drag-and-drop library already installed in the repository
+* any existing sortable/reorder component elsewhere in the project that can be reused
+
+Before adding a dependency, inspect `package.json`.
+
+Prefer existing project dependencies and patterns.
+
+Do NOT add a large drag-and-drop framework if an appropriate library is already installed.
+
+---
+
+# STOP POINT 1 — REPORT BEFORE IMPLEMENTATION
+
+Before changing code, give me a concise forensic report with this matrix:
+
+| Requirement                    | Status | Existing implementation | Missing piece | Files |
+| ------------------------------ | ------ | ----------------------- | ------------- | ----- |
+| Lesson overview edit           |        |                         |               |       |
+| Topic edit                     |        |                         |               |       |
+| Topic add                      |        |                         |               |       |
+| Topic delete                   |        |                         |               |       |
+| MicroNode title edit           |        |                         |               |       |
+| learningObjective edit         |        |                         |               |       |
+| theory/content edit            |        |                         |               |       |
+| MicroNode add                  |        |                         |               |       |
+| MicroNode delete               |        |                         |               |       |
+| MicroNode → Topic relationship |        |                         |               |       |
+| Topic ordering                 |        |                         |               |       |
+| MicroNode ordering             |        |                         |               |       |
+| sequence normalization         |        |                         |               |       |
+| dependency synchronization     |        |                         |               |       |
+
+Then provide:
+
+## MINIMAL IMPLEMENTATION PLAN
+
+List only changes required to close the missing/partial items.
+
+For each proposed change provide:
+
+* file
+* function/component/route
+* exact behavior being added
+* why it is required
+
+Do not implement unrelated improvements.
+
+---
+
+# PART B — IMPLEMENT ONLY AFTER THE AUDIT
+
+After completing the audit above, proceed with the minimal implementation needed for Phase 1.1 + 1.2.
+
+Do not stop merely because some functionality already exists.
+
+If something is already correct, reuse it.
+
+---
+
+# 6. REQUIRED FINAL PHASE 1.1 BEHAVIOR
+
+Teacher Review must allow the teacher to:
+
+## Lesson
+
+* edit Lesson overview
+
+## Topic
+
+* create Topic
+* edit Topic
+* delete Topic
+
+## MicroNode
+
+* create MicroNode
+* edit MicroNode
+* delete MicroNode
+* edit title
+* edit `learningObjective`
+* edit theory/content
+* assign new MicroNode to a Topic
+
+Existing source-grounding metadata must not be accidentally erased merely because a teacher edits title/LO/theory.
+
+Use PATCH/update semantics that preserve untouched fields.
+
+Do not replace whole DB objects with partial frontend objects if that would erase metadata.
+
+---
+
+# 7. DELETE SAFETY
+
+MicroNode deletion must correctly handle its structural references.
+
+Audit existing conventions and implement the smallest safe behavior.
+
+At minimum ensure no invalid dangling structural references remain.
+
+Do NOT silently delete unrelated source exercises.
+
+Remember the existing invariant that will be enforced in Phase 1.3:
+
+**Total Source Exercises = Assigned Exercises + Additional Exercises**
+
+Therefore, if deleting a MicroNode affects exercises attached through `relatedNodeId`, do not delete those source exercises merely because the node is deleted.
+
+Use the architecture already present for unassigned/Additional exercises if appropriate.
+
+This task is NOT the full Exercise Management implementation, but CRUD must not cause exercise loss.
+
+---
+
+# 8. REQUIRED PHASE 1.2 — REORDER UX
+
+Primary preferred UX:
+
+**drag-and-drop**
+
+Teacher must be able to reorder:
+
+### Topics
+
+Example:
+
+`T1 → T2 → T3 → T4`
+
+drag T4 before T2:
+
+`T1 → T4 → T2 → T3`
+
+### MicroNodes
+
+Example:
+
+`MN1 → MN2 → MN3 → MN4`
+
+drag MN4 before MN2:
+
+`MN1 → MN4 → MN2 → MN3`
+
+If the current UI architecture makes drag-and-drop disproportionately invasive, you may use an existing lightweight sortable implementation already available in the codebase.
+
+But do not replace it with only temporary local UI sorting.
+
+The persisted DB order is authoritative.
+
+---
+
+# 9. OPTIONAL SECONDARY SEQUENCE CONTROL
+
+If it can be added without unnecessary complexity, sequence number may also be editable as a secondary control.
+
+Drag-and-drop remains the preferred UX.
+
+If sequence input is included:
+
+* validate integer
+* no zero/negative sequence
+* normalize after save
+
+Do not maintain two conflicting ordering systems.
+
+Both mechanisms must write to the same authoritative sequence architecture.
+
+---
+
+# 10. SEQUENCE NORMALIZATION — REQUIRED
+
+After reorder, backend must persist normalized values:
+
+`1, 2, 3, 4, ...`
+
+NOT:
+
+`1, 7, 12, 19`
+
+Do not rely solely on frontend ordering.
+
+Backend must validate/normalize the order being persisted.
+
+Prefer a transactional operation.
+
+A reorder should behave atomically:
+
+either the complete new order is committed,
+
+or the previous order remains.
+
+Do not leave partially updated sequences if one DB write fails.
+
+---
+
+# 11. TOPIC AND MICRONODE ORDER DOMAINS MUST STAY SEPARATE
+
+Do not mix Topic sequence and MicroNode sequence.
+
+Topic order must be normalized within the appropriate Lesson.
+
+MicroNode order must follow the existing Topic/MicroNode architecture discovered in the audit.
+
+If MicroNodes are conceptually ordered inside each Topic, normalize within Topic.
+
+If the current authoritative architecture uses Lesson-wide MicroNode order, do NOT silently change that data model.
+
+Instead report it clearly and make the minimal compatible implementation.
+
+We want reorder functionality, not an undocumented schema migration.
+
+---
+
+# 12. MOVING MICRONODES ACROSS TOPICS
+
+Do not automatically implement cross-Topic drag-and-drop unless it fits the existing architecture cleanly.
+
+Phase 1.1 requires that a newly created MicroNode can be assigned to the correct Topic.
+
+If existing CRUD already supports changing Topic association, preserve it.
+
+If moving an existing MicroNode across Topics is easy and already compatible, you may expose the existing capability.
+
+But do not turn Phase 1.2 into a full tree-editor rewrite.
+
+---
+
+# 13. SEQUENTIAL DEPENDENCY SYNC
+
+Based on the forensic audit:
+
+IF structural `SEQUENTIAL` dependencies are derived from order,
+
+then after a successful MicroNode reorder rebuild/synchronize ONLY those structural SEQUENTIAL dependencies that are derived from that order.
+
+Example:
+
+Before:
+
+`MN1 → MN2`
+`MN2 → MN3`
+
+Teacher reorders:
+
+`MN1 → MN3 → MN2`
+
+Expected structural graph:
+
+`MN1 → MN3`
+`MN3 → MN2`
+
+Do NOT overwrite semantic prerequisite relations.
+
+Do NOT reinterpret `REQUIRED`.
+
+Do NOT generate AI semantic dependencies.
+
+If current SEQUENTIAL dependencies are NOT actually order-derived, do not invent synchronization behavior. Report the evidence instead.
+
+---
+
+# 14. API REQUIREMENTS
+
+Reuse existing CRUD routes where they are already correct.
+
+Only add routes if necessary.
+
+For reorder, prefer a clear bulk operation rather than N unrelated frontend requests, e.g. conceptually:
+
+`PATCH .../topics/reorder`
+
+and/or
+
+`PATCH .../nodes/reorder`
+
+The exact route names must follow existing repository conventions.
+
+Payload should identify the ordered IDs or equivalent unambiguously.
+
+Backend must verify:
+
+* entities exist
+* they belong to the expected Lesson/Topic scope
+* duplicate IDs are rejected
+* missing/unexpected IDs cannot silently corrupt ordering
+* normalization is deterministic
+
+Use a DB transaction where the operation spans multiple updates.
+
+---
+
+# 15. UI REQUIREMENTS
+
+Keep the current Teacher Review design.
+
+Do not redesign the entire page.
+
+Add only the controls needed to make structural editing usable.
+
+Required usability:
+
+* clear Edit action
+* clear Add Topic
+* clear Add MicroNode
+* clear Delete action
+* visible drag handle or obvious draggable behavior
+* save/loading state
+* useful error message on failed mutation
+* query/cache refresh after successful mutations
+
+Do NOT use optimistic UI if a failed backend write could leave the teacher seeing an order that was never persisted, unless rollback is implemented correctly.
+
+Correct persistence is more important than animation.
+
+---
+
+# 16. REFRESH / PERSISTENCE REQUIREMENT
+
+The acceptance criterion is NOT:
+
+“the item moved on screen.”
+
+It is:
+
+**action → API → DB → full refresh → same state**
+
+For every CRUD operation and reorder operation, verify after a fresh fetch/reload.
+
+---
+
+# 17. REQUIRED TESTS
+
+Add focused tests for the code changed.
+
+At minimum cover where applicable:
+
+### CRUD
+
+* create Topic
+* edit Topic
+* delete Topic
+* create MicroNode under correct Topic
+* edit title
+* edit learningObjective
+* edit theory/content
+* delete MicroNode without losing source exercise records
+
+### Reordering
+
+Input:
+
+`[A, B, C, D]`
+
+Reorder:
+
+`[A, D, B, C]`
+
+Expected DB sequence:
+
+* A = 1
+* D = 2
+* B = 3
+* C = 4
+
+Also test:
+
+* duplicate IDs rejected
+* wrong Lesson/Topic entity rejected
+* sequence normalizes to contiguous integers
+* no partial reorder on failure if transaction is used
+
+### Dependencies
+
+If SEQUENTIAL sync is required by current architecture:
+
+verify reorder updates only the structural SEQUENTIAL graph and does not alter unrelated dependency types.
+
+---
+
+# 18. REAL DATA VERIFICATION — REQUIRED
+
+Do not finish with only unit tests.
+
+Use one real existing mapped Lesson in the development DB.
+
+Record the Lesson ID used.
+
+Perform actual Phase 1.1 operations:
+
+1. Edit Lesson overview.
+
+2. Refresh/read DB.
+
+3. Confirm persisted.
+
+4. Edit a Topic.
+
+5. Refresh/read DB.
+
+6. Confirm persisted.
+
+7. Create a temporary Topic.
+
+8. Refresh/read DB.
+
+9. Confirm it exists.
+
+10. Create a temporary MicroNode under that Topic with:
+
+* title
+* one learningObjective
+* theory/content
+
+11. Refresh/read DB.
+
+12. Confirm Topic relationship and values persisted.
+
+13. Edit that MicroNode.
+
+14. Refresh/read DB.
+
+15. Confirm persisted.
+
+16. Delete the temporary MicroNode.
+
+17. Delete the temporary Topic.
+
+18. Refresh/read DB.
+
+19. Confirm clean state.
+
+Do not damage the real approved lesson content; use clearly temporary test records and clean them up.
+
+---
+
+# 19. REAL REORDER VERIFICATION — REQUIRED
+
+Choose a real Lesson containing multiple Topics/MicroNodes.
+
+Capture BEFORE:
+
+* IDs
+* titles
+* Topic sequence
+* MicroNode sequence
+* relevant SEQUENTIAL dependencies
+
+Perform a real reorder.
+
+Example:
+
+Before:
+
+`MN1 → MN2 → MN3 → MN4`
+
+After:
+
+`MN1 → MN4 → MN2 → MN3`
+
+Then verify directly from DB:
+
+* sequences are exactly `1,2,3,4`
+* query/read-back returns the new order
+* page refresh returns the same new order
+* dependency graph is correct if structural sync applies
+
+Then restore the original order if needed so the verification does not unintentionally alter production-like lesson semantics.
+
+Do the same for at least one Topic reorder if the Lesson has multiple Topics.
+
+---
+
+# 20. DATA-LOSS CHECK
+
+Before and after the real verification capture:
+
+* Topic count
+* MicroNode count
+* Exercise count
+* Additional/unassigned exercise count if available
+* dependency count/types
+* Phase 2/enrichment presence on existing nodes
+
+After tests:
+
+* existing source exercises lost = 0
+* unexpected existing MicroNodes lost = 0
+* Phase 2 content unexpectedly erased = 0
+* unrelated dependencies modified = 0
+
+---
+
+# 21. DO NOT TOUCH THESE PHASES
+
+This task stops after Phase 1.1 + 1.2.
+
+Do NOT implement now:
+
+### Phase 1.3
+
+Full exercise reassignment/edit/add/delete UI.
+
+### Phase 1.4
+
+Exercise approval.
+
+### Phase 1.5
+
+Granularity/LO validation enhancements.
+
+### Phase 1.6
+
+Source/page validation enhancements.
+
+### Phase 1.7
+
+Final Lesson Approval.
+
+### Phase 1.9–1.10
+
+Lesson ↔ Test architecture.
+
+### Phase 1.11
+
+Knowledge Tree initialization.
+
+### Phase 1.12
+
+Student assignment.
+
+And do not begin any Phase 2 Learning Intelligence work.
+
+If you discover an issue belonging to those phases, report it under:
+
+`OUT-OF-SCOPE FINDING`
+
+Do not fix it.
+
+---
+
+# 22. FINAL REPORT FORMAT
+
+At completion return exactly these sections.
+
+## A. FORENSIC AUDIT RESULT
+
+For every Phase 1.1 / 1.2 requirement:
+
+* existing
+* partial
+* missing
+* implemented
+
+Include file paths/functions.
+
+## B. FILES CHANGED
+
+For each changed file:
+
+`path → exact reason`
+
+## C. CRUD VERIFICATION
+
+Matrix:
+
+| Operation | UI | API | DB | Refresh | Result |
+| --------- | -- | --- | -- | ------- | ------ |
+
+Include:
+
+* Lesson edit
+* Topic add
+* Topic edit
+* Topic delete
+* MicroNode add
+* MicroNode edit
+* MicroNode delete
+* Topic association
+
+## D. REORDER VERIFICATION
+
+Show BEFORE and AFTER with real IDs/titles.
+
+Show persisted DB sequences.
+
+## E. DEPENDENCY VERIFICATION
+
+Show dependency rows/types before and after reorder.
+
+Explicitly state whether SEQUENTIAL sync was needed and what happened.
+
+## F. DATA-INTEGRITY VERIFICATION
+
+Report before/after:
+
+* Topics
+* MicroNodes
+* Exercises
+* unassigned/Additional exercises
+* dependencies
+* enrichment data
+
+Explicitly report:
+
+`lost existing exercises = ?`
+
+## G. TESTS
+
+Give exact test commands and results.
+
+Separate:
+
+* automated tests
+* real DB verification
+
+## H. SCOPE CHECK
+
+Explicitly state whether you changed any of:
+
+* Mapper
+* AI Teacher/chat
+* scoring/mastery/evidence
+* quizzes
+* Knowledge Tree
+* Phase 2 enrichment
+* student assignment
+
+Expected answer:
+
+`NO`
+
+unless a strictly necessary shared helper change was required, in which case explain it precisely.
+
+## I. FINAL GATES
+
+Report separately:
+
+### Gate 1.1 — Teacher Review CRUD
+
+`PASS / PARTIAL / FAIL`
+
+Acceptance:
+
+**add/edit/delete → refresh → DB persistence → UI consistency**
+
+### Gate 1.2 — Ordering
+
+`PASS / PARTIAL / FAIL`
+
+Acceptance:
+
+**reorder → normalized DB sequence → refresh → same UI order**
+
+Do NOT declare PASS without real DB/read-back evidence.
+
+---
+
+# FINAL PRINCIPLE
+
+Do not optimize beyond this task.
+
+Do not rewrite working systems.
+
+Do not redesign the Mapper.
+
+Do not enter Learning Intelligence.
+
+**Audit first → reuse existing architecture → implement only missing pieces → verify with real data.**

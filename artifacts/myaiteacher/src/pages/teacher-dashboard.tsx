@@ -1,4 +1,19 @@
-import { useState, useRef, useEffect, Fragment, useCallback } from "react";
+import { useState, useRef, useEffect, Fragment, useCallback, useMemo } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { translateIssue } from "@/lib/issueTranslations";
 import {
   Dialog,
@@ -47,6 +62,10 @@ import {
   useUpdateLessonExercise,
   useDeleteLessonExercise,
   useMapLessonWithAI,
+  useCreateLessonTopic,
+  useDeleteLessonTopic,
+  useReorderLessonTopics,
+  useReorderLessonNodes,
   getGetTeacherClassesQueryKey,
   getGetClassStudentsQueryKey,
   getGetClassCoursesQueryKey,
@@ -586,6 +605,24 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
 }
 
 // ── Lesson Nodes sub-component ────────────────────────────────────────────────
+// ── Sortable topic wrapper for drag-and-drop ─────────────────────────────────
+function SortableTopicItem({
+  id, children,
+}: { id: number; children: (dragHandleProps: Record<string, unknown>) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative",
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ ...attributes, ...listeners })}
+    </div>
+  );
+}
+
 function LessonNodesPanel({
   lessonId,
   courseId,
@@ -621,9 +658,17 @@ function LessonNodesPanel({
     title: string; learningObjective: string; theoryContent: string; verbatimTheoryAnchor: string;
     commonMisconception: string; targetBloomLevel: string; estimatedMinutes: string;
     childFriendlyExplanation: string; basicExamples: string; nonExamples: string; realLifeExamples: string;
+    topicId: number | null;
   } | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
-  const [addNodeForm, setAddNodeForm] = useState({ title: "", theoryContent: "", targetBloomLevel: "1" });
+  const [addNodeForm, setAddNodeForm] = useState({ title: "", theoryContent: "", targetBloomLevel: "1", topicId: null as number | null, learningObjective: "" });
+
+  // Topic add / delete state
+  const [addTopicOpen, setAddTopicOpen] = useState(false);
+  const [addTopicTitle, setAddTopicTitle] = useState("");
+  const [deleteTopicId, setDeleteTopicId] = useState<number | null>(null);
+  const [deleteTopicOpen, setDeleteTopicOpen] = useState(false);
+  const [reorderSaving, setReorderSaving] = useState(false);
 
   // Exercise edit/add state
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
@@ -649,9 +694,64 @@ function LessonNodesPanel({
   const createEx = useCreateLessonExercise();
   const updateEx = useUpdateLessonExercise();
   const deleteEx = useDeleteLessonExercise();
+  const createTopicMutation = useCreateLessonTopic();
+  const deleteTopicMutation = useDeleteLessonTopic();
+  const reorderTopicsMutation = useReorderLessonTopics();
+  const reorderNodesMutation = useReorderLessonNodes();
 
   const refreshNodes = () => qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) });
   const refreshEx = () => qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+  const refreshTopics = () => qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] });
+
+  // DnD sensors for topic reordering
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  // Build grouped view: nodes sorted by sequence, grouped by topicId
+  const sortedNodes = useMemo(() => [...nodes].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), [nodes]);
+
+  const handleCreateTopic = () => {
+    if (!addTopicTitle.trim()) return;
+    createTopicMutation.mutate(
+      { lessonId, data: { title: addTopicTitle.trim() } },
+      { onSuccess: () => { setAddTopicOpen(false); setAddTopicTitle(""); refreshTopics(); } }
+    );
+  };
+
+  const handleDeleteTopic = () => {
+    if (!deleteTopicId) return;
+    deleteTopicMutation.mutate(
+      { lessonId, topicId: deleteTopicId },
+      { onSuccess: () => { setDeleteTopicOpen(false); setDeleteTopicId(null); refreshTopics(); refreshNodes(); } }
+    );
+  };
+
+  const handleTopicDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = topics.findIndex((t) => t.id === active.id);
+    const newIndex = topics.findIndex((t) => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(topics, oldIndex, newIndex);
+    setReorderSaving(true);
+    reorderTopicsMutation.mutate(
+      { lessonId, data: { orderedTopicIds: reordered.map((t) => t.id) } },
+      { onSettled: () => setReorderSaving(false), onSuccess: () => refreshTopics() }
+    );
+  };
+
+  // Move a node up or down within the lesson (preserving overall order, swapping with adjacent)
+  const moveNode = (nodeId: number, dir: "up" | "down") => {
+    const idx = sortedNodes.findIndex((n) => n.id === nodeId);
+    if (idx === -1) return;
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sortedNodes.length) return;
+    const newOrder = sortedNodes.map((n) => n.id);
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    reorderNodesMutation.mutate(
+      { lessonId, data: { orderedNodeIds: newOrder } },
+      { onSuccess: () => refreshNodes() }
+    );
+  };
 
   const startEditNode = (n: (typeof nodes)[0]) => {
     setEditingNodeId(n.id);
@@ -667,6 +767,7 @@ function LessonNodesPanel({
       basicExamples: ((n as any).basicExamples as string[] ?? []).join("\n"),
       nonExamples: ((n as any).nonExamples as string[] ?? []).join("\n"),
       realLifeExamples: ((n as any).realLifeExamples as string[] ?? []).join("\n"),
+      topicId: (n as any).topicId ?? null,
     });
   };
 
@@ -687,6 +788,7 @@ function LessonNodesPanel({
           basicExamples: editNodeForm.basicExamples.split("\n").map(s => s.trim()).filter(Boolean),
           nonExamples: editNodeForm.nonExamples.split("\n").map(s => s.trim()).filter(Boolean),
           realLifeExamples: editNodeForm.realLifeExamples.split("\n").map(s => s.trim()).filter(Boolean),
+          topicId: editNodeForm.topicId,
         },
       },
       { onSuccess: () => { setEditingNodeId(null); setEditNodeForm(null); refreshNodes(); } }
@@ -803,6 +905,287 @@ function LessonNodesPanel({
   });
   const fieldCls = "w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50";
   const btnSm = "px-2 py-0.5 rounded text-xs font-medium transition-colors";
+
+  // Node card renderer — used for both topic-grouped and standalone nodes
+  const renderNodeCard = (
+    n: (typeof nodes)[0],
+    nodeExercises: (typeof exercises),
+    isEditingNode: boolean,
+    accent: string | undefined,
+    nIdxInGroup: number,
+    groupLength: number,
+    _globalIdx: number,
+  ) => {
+    const canMoveUp = nIdxInGroup > 0;
+    const canMoveDown = nIdxInGroup < groupLength - 1;
+    return (
+      <div
+        key={n.id}
+        className="bg-background/40 border border-white/8 rounded-xl overflow-hidden"
+        style={accent ? { marginLeft: "8px", borderLeft: `2px solid ${accent}35` } : {}}
+      >
+        {/* Node header row */}
+        <div className="flex items-start gap-2 px-3 py-2">
+          {/* ▲▼ reorder buttons */}
+          <div className="flex flex-col gap-0.5 shrink-0 pt-0.5">
+            <button
+              onClick={() => moveNode(n.id, "up")}
+              disabled={!canMoveUp || reorderNodesMutation.isPending}
+              title="Տեղ‌ ↑"
+              className="text-[9px] text-white/20 hover:text-white/60 disabled:opacity-20 transition-colors leading-none"
+            >▲</button>
+            <button
+              onClick={() => moveNode(n.id, "down")}
+              disabled={!canMoveDown || reorderNodesMutation.isPending}
+              title="Տեղ‌ ↓"
+              className="text-[9px] text-white/20 hover:text-white/60 disabled:opacity-20 transition-colors leading-none"
+            >▼</button>
+          </div>
+          <span className="text-xs font-mono text-primary/60 w-5 shrink-0 pt-0.5">{n.sequence}.</span>
+          <div className="flex-1 min-w-0">
+            {isEditingNode && editNodeForm ? (
+              <div className="space-y-1.5">
+                <input
+                  className={fieldCls}
+                  placeholder="Վաղanaken (title)"
+                  value={editNodeForm.title}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, title: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Ulmnatanumah hdrakhum — ush stanum e (learningObjective)"
+                  value={editNodeForm.learningObjective}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, learningObjective: e.target.value })}
+                />
+                {/* Topic assignment */}
+                <select
+                  className={fieldCls + " cursor-pointer"}
+                  value={editNodeForm.topicId === null ? "null" : String(editNodeForm.topicId)}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, topicId: e.target.value === "null" ? null : parseInt(e.target.value) })}
+                >
+                  <option value="null">📌 Standalone (no topic)</option>
+                  {topics.map((t) => (
+                    <option key={t.id} value={String(t.id)}>{t.sequence}. {t.title}</option>
+                  ))}
+                </select>
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={3}
+                  placeholder="Թeoritakan bovandakutюn (theoryContent)"
+                  value={editNodeForm.theoryContent}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, theoryContent: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Դасагрqyan mecберуtюн (verbatimTheoryAnchor)"
+                  value={editNodeForm.verbatimTheoryAnchor}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, verbatimTheoryAnchor: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Тارастваца схал (commonMisconception)"
+                  value={editNodeForm.commonMisconception}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, commonMisconception: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={3}
+                  placeholder="Манкакамит бацаратрутюн (childFriendlyExplanation)"
+                  value={editNodeForm.childFriendlyExplanation}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, childFriendlyExplanation: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={3}
+                  placeholder="Hnarin orinakner — мек tariq, мек оrinак (basicExamples)"
+                  value={editNodeForm.basicExamples}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, basicExamples: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Oче оринакнер — мек tariq, мек оrinак (nonExamples)"
+                  value={editNodeForm.nonExamples}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, nonExamples: e.target.value })}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Каянкев кяnкум — мек tariq, мек оrinак (realLifeExamples)"
+                  value={editNodeForm.realLifeExamples}
+                  onChange={(e) => setEditNodeForm((f) => f && { ...f, realLifeExamples: e.target.value })}
+                />
+                <div className="flex gap-2">
+                  <input
+                    className={fieldCls}
+                    placeholder="Bloom 1-6"
+                    type="number" min={1} max={6}
+                    value={editNodeForm.targetBloomLevel}
+                    onChange={(e) => setEditNodeForm((f) => f && { ...f, targetBloomLevel: e.target.value })}
+                  />
+                  <input
+                    className={fieldCls}
+                    placeholder="Ժам (ропф)"
+                    type="number" min={1}
+                    value={editNodeForm.estimatedMinutes}
+                    onChange={(e) => setEditNodeForm((f) => f && { ...f, estimatedMinutes: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => saveNode(n.id)}
+                    disabled={updateNode.isPending}
+                    className={btnSm + " bg-primary text-black disabled:opacity-40"}
+                  >{updateNode.isPending ? "..." : "Ընthel"}</button>
+                  <button
+                    onClick={() => { setEditingNodeId(null); setEditNodeForm(null); }}
+                    className={btnSm + " bg-white/10 text-muted-foreground"}
+                  >Անcel</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-semibold text-white">{n.title}</span>
+                  {(n as any).status === 'approved' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✅ Հаstatatsval</span>
+                  )}
+                  {(n as any).status === 'needs_review' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Veranayl</span>
+                  )}
+                  {((n as any).status === 'draft' || !(n as any).status) && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">📝 Sevagir</span>
+                  )}
+                  {(n as any).contentSourceType === 'manual' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">✍ Dzernakan</span>
+                  )}
+                </div>
+                {(n as any).learningObjective && (
+                  <p className="text-[10px] text-primary/70 mt-0.5 leading-relaxed italic">🎯 {(n as any).learningObjective}</p>
+                )}
+                {n.theoryContent && (
+                  <p className="text-xs text-muted-foreground/80 mt-0.5 line-clamp-2 leading-relaxed">{n.theoryContent}</p>
+                )}
+                <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                  {n.targetBloomLevel != null && (
+                    <span className="text-[10px] text-primary/50">Bloom {n.targetBloomLevel}</span>
+                  )}
+                  {(n as any).sourcePage != null && (
+                    <span className="text-[10px] text-white/30">Էj {(n as any).sourcePage}</span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+          {!isEditingNode && (
+            <div className="flex gap-1 shrink-0 pt-0.5">
+              {(n as any).status !== 'approved' && (
+                <button
+                  onClick={() => approveNode(n.id)}
+                  disabled={updateNode.isPending}
+                  title="Hastatrel"
+                  className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors disabled:opacity-40"
+                >✅</button>
+              )}
+              <button
+                onClick={() => startEditNode(n)}
+                title="Xmbagrel"
+                className="text-xs text-muted-foreground hover:text-white transition-colors"
+              >✏️</button>
+              <button
+                onClick={() => {
+                  if (!confirm(`Ջnjel «${n.title}»`)) return;
+                  deleteNode.mutate({ lessonId, nodeId: n.id }, { onSuccess: () => { refreshNodes(); refreshEx(); } });
+                }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >🗑️</button>
+            </div>
+          )}
+        </div>
+
+        {/* Exercises under this node */}
+        {nodeExercises.length > 0 && (
+          <div className="border-t border-white/6 px-3 py-2 space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Varjutyunner</p>
+            {nodeExercises.map((ex) => {
+              const isEditingEx = editingExerciseId === ex.id;
+              return (
+                <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
+                  {isEditingEx && editExForm ? (
+                    <div className="space-y-1.5">
+                      <textarea className={fieldCls + " resize-none"} rows={3} value={editExForm.exerciseTextVerbatim} onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextVerbatim: e.target.value })} />
+                      <input className={fieldCls} placeholder="Haghoghutyyan banalich" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
+                      <div className="flex gap-2">
+                        <select className={fieldCls + " cursor-pointer"} value={editExForm.difficultyLevel} onChange={(e) => setEditExForm((f) => f && { ...f, difficultyLevel: e.target.value })}>
+                          <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
+                        </select>
+                        <select className={fieldCls + " cursor-pointer"} value={editExForm.assignment} onChange={(e) => setEditExForm((f) => f && { ...f, assignment: e.target.value })}>
+                          <option value="CLASS">CLASS</option><option value="HOMEWORK">HOMEWORK</option>
+                        </select>
+                      </div>
+                      <select className={fieldCls + " cursor-pointer"} value={editExForm.relatedNodeId === null ? "null" : String(editExForm.relatedNodeId)} onChange={(e) => setEditExForm((f) => f && { ...f, relatedNodeId: e.target.value === "null" ? null : parseInt(e.target.value) })}>
+                        <option value="null">📦 Chkcvats / Lratsucich varjutyun</option>
+                        {nodes.map((nd) => <option key={nd.id} value={String(nd.id)}>{nd.sequence}. {nd.title}</option>)}
+                      </select>
+                      <div className="flex gap-1">
+                        <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Hastatrel"}</button>
+                        <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Chegharkrel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-white/90 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {ex.difficultyLevel && <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>}
+                          {ex.assignment && (
+                            <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
+                              {ex.assignment === "HOMEWORK" ? "🏠 Tnyin" : "📋 Dasarannum"}
+                            </span>
+                          )}
+                          {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors">✏️</button>
+                        <button onClick={() => { if (!confirm("Jnjel varjutyune?")) return; deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx }); }} className="text-xs text-muted-foreground hover:text-destructive transition-colors">🗑️</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add exercise to this node */}
+        <div className="border-t border-white/6 px-3 py-1.5">
+          {addExForNodeId === n.id ? (
+            <div className="space-y-1.5 py-1">
+              <textarea className={fieldCls + " resize-none"} rows={2} placeholder="Varjutyutyan bnagir *" value={addExForm.exerciseTextVerbatim} onChange={(e) => setAddExForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))} />
+              <div className="flex gap-2">
+                <select className={fieldCls + " cursor-pointer"} value={addExForm.difficultyLevel} onChange={(e) => setAddExForm((f) => ({ ...f, difficultyLevel: e.target.value }))}>
+                  <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
+                </select>
+                <select className={fieldCls + " cursor-pointer"} value={addExForm.assignment} onChange={(e) => setAddExForm((f) => ({ ...f, assignment: e.target.value }))}>
+                  <option value="CLASS">CLASS</option><option value="HOMEWORK">HOMEWORK</option>
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <button disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()} onClick={() => { createEx.mutate({ lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } }, { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }); }} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createEx.isPending ? "..." : "+ Avaelatsnel"}</button>
+                <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Chegharkel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }} className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5">+ Avlelatsnel varjutyun</button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="border-t border-white/8">
@@ -953,14 +1336,15 @@ function LessonNodesPanel({
 
           {isBusy && nodes.length === 0 ? (
             <p className="text-xs text-muted-foreground">Բեռնվում...</p>
-          ) : nodes.length === 0 ? (
-            <p className="text-xs text-muted-foreground/60">
-              Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը
-            </p>
           ) : (
             <div className="space-y-2">
+              {nodes.length === 0 && (
+                <p className="text-xs text-muted-foreground/60">
+                  Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը
+                </p>
+              )}
               {/* P6.6: Approve All convenience button */}
-              {nodes.some((nd) => (nd as any).status !== 'approved') && (
+              {nodes.some((nd) => (nd as any).status !== 'approved') && nodes.length > 0 && (
                 <div className="flex justify-end">
                   <button
                     onClick={approveAll}
@@ -969,372 +1353,131 @@ function LessonNodesPanel({
                   >{approvingAll ? "…" : "✅ Հաստատել բոլոր հանգույցները"}</button>
                 </div>
               )}
-              {nodes.map((n, nodeIdx) => {
+
+              {/* ── Topic list with drag-to-reorder ── */}
+              {reorderSaving && (
+                <p className="text-[10px] text-primary/60 text-center">Պահպանվում է...</p>
+              )}
+              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTopicDragEnd}>
+                <SortableContext items={topics.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                  {topics.map((topic, tIdx) => {
+                    const accent = TOPIC_ACCENTS[tIdx % TOPIC_ACCENTS.length];
+                    const topicNodes = sortedNodes.filter((n) => (n as any).topicId === topic.id);
+                    const isCollapsed = collapsedTopics.has(topic.id);
+                    return (
+                      <SortableTopicItem key={topic.id} id={topic.id}>
+                        {(dragHandleProps) => (
+                          <div className="rounded-lg overflow-hidden" style={{ borderLeft: `3px solid ${accent}` }}>
+                            {/* Topic header */}
+                            <div
+                              className="w-full flex items-center gap-1 px-2 py-1.5"
+                              style={{ background: `${accent}18` }}
+                            >
+                              {/* Drag handle */}
+                              <span
+                                {...dragHandleProps}
+                                className="text-[10px] text-white/25 hover:text-white/60 cursor-grab active:cursor-grabbing shrink-0 select-none px-0.5"
+                                title="Drag to reorder topic"
+                              >⠿</span>
+
+                              {editingTopicId === topic.id ? (
+                                <>
+                                  <input
+                                    className="flex-1 bg-black/40 border border-white/15 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-primary/50"
+                                    value={editingTopicTitle}
+                                    onChange={(e) => setEditingTopicTitle(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => { if (e.key === "Enter") saveTopic(topic.id, e as any); if (e.key === "Escape") cancelEditTopic(e as any); }}
+                                    autoFocus
+                                  />
+                                  <button onClick={(e) => saveTopic(topic.id, e)} disabled={topicSaving} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 shrink-0 disabled:opacity-40">{topicSaving ? "…" : "✅"}</button>
+                                  <button onClick={cancelEditTopic} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-muted-foreground hover:text-white shrink-0">✕</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => toggleTopic(topic.id)}
+                                    className="flex-1 flex items-center gap-2 hover:brightness-105 transition-all"
+                                  >
+                                    <span className="text-[10px] font-mono text-white/40 w-5 shrink-0">{topic.sequence}.</span>
+                                    <span className="text-xs font-bold text-white flex-1 text-left leading-snug">{topic.title}</span>
+                                    <span className="text-[10px] text-white/40 shrink-0">{topicNodes.length} ՄՆ</span>
+                                    <span className="text-[10px] text-white/30 ml-1">{isCollapsed ? "▶" : "▼"}</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => startEditTopic(topic, e)}
+                                    title="Խmbagreл թema"
+                                    className="text-[10px] text-white/30 hover:text-white/70 transition-colors shrink-0 px-1"
+                                  >✏️</button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setDeleteTopicId(topic.id); setDeleteTopicOpen(true); }}
+                                    title="Ջnjel thema"
+                                    className="text-[10px] text-white/20 hover:text-destructive/70 transition-colors shrink-0 px-1"
+                                  >🗑️</button>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Nodes belonging to this topic */}
+                            {!isCollapsed && topicNodes.map((n, nIdxInTopic) => {
+                              const nodeExercises = exercises.filter((e) => e.relatedNodeId === n.id);
+                              const isEditingNode = editingNodeId === n.id;
+                              const globalIdx = sortedNodes.findIndex((x) => x.id === n.id);
+                              return renderNodeCard(n, nodeExercises, isEditingNode, accent, nIdxInTopic, topicNodes.length, globalIdx);
+                            })}
+                          </div>
+                        )}
+                      </SortableTopicItem>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
+
+              {/* Standalone nodes (no topic) */}
+              {sortedNodes.filter((n) => (n as any).topicId == null).map((n, nIdxInGroup, arr) => {
                 const nodeExercises = exercises.filter((e) => e.relatedNodeId === n.id);
                 const isEditingNode = editingNodeId === n.id;
-                const nTopicId = (n as any).topicId as number | null ?? null;
-                const prevTopicId = nodeIdx > 0 ? ((nodes[nodeIdx - 1] as any).topicId as number | null ?? null) : ("start" as const);
-                const isTopicStart = nTopicId !== prevTopicId;
-                const topic = nTopicId != null ? topics.find((t) => t.id === nTopicId) : undefined;
-                const tIdx = topic ? topics.indexOf(topic) : -1;
-                const accent = tIdx >= 0 ? TOPIC_ACCENTS[tIdx % TOPIC_ACCENTS.length] : undefined;
-                const isHidden = nTopicId != null && collapsedTopics.has(nTopicId);
-                return (
-                  <Fragment key={n.id}>
-                    {isTopicStart && topic && (
-                      <div
-                        className="w-full flex items-center gap-1 px-2 py-1.5 rounded-lg mt-1"
-                        style={{ background: `${accent}18`, borderLeft: `3px solid ${accent}` }}
-                      >
-                        {editingTopicId === topic.id ? (
-                          <>
-                            <input
-                              className="flex-1 bg-black/40 border border-white/15 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-primary/50"
-                              value={editingTopicTitle}
-                              onChange={(e) => setEditingTopicTitle(e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => { if (e.key === "Enter") saveTopic(topic.id, e as any); if (e.key === "Escape") cancelEditTopic(e as any); }}
-                              autoFocus
-                            />
-                            <button onClick={(e) => saveTopic(topic.id, e)} disabled={topicSaving} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 shrink-0 disabled:opacity-40">{topicSaving ? "…" : "✅"}</button>
-                            <button onClick={cancelEditTopic} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-muted-foreground hover:text-white shrink-0">✕</button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => toggleTopic(topic.id)}
-                              className="flex-1 flex items-center gap-2 hover:brightness-105 transition-all"
-                            >
-                              <span className="text-[10px] font-mono text-white/40 w-5 shrink-0">{topic.sequence}.</span>
-                              <span className="text-xs font-bold text-white flex-1 text-left leading-snug">{topic.title}</span>
-                              <span className="text-[10px] text-white/40 shrink-0">{nodes.filter((x) => (x as any).topicId === topic!.id).length} ՄՆ</span>
-                              <span className="text-[10px] text-white/30 ml-1">{collapsedTopics.has(topic.id) ? "▶" : "▼"}</span>
-                            </button>
-                            <button
-                              onClick={(e) => startEditTopic(topic, e)}
-                              title="Խmbagreл թema"
-                              className="text-[10px] text-white/30 hover:text-white/70 transition-colors shrink-0 px-1"
-                            >✏️</button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  {!isHidden && (
-                  <div className="bg-background/40 border border-white/8 rounded-xl overflow-hidden"
-                    style={accent ? { marginLeft: "8px", borderLeft: `2px solid ${accent}35` } : {}}
-                  >
-                    {/* Node header row */}
-                    <div className="flex items-start gap-2 px-3 py-2">
-                      <span className="text-xs font-mono text-primary/60 w-5 shrink-0 pt-0.5">{n.sequence}.</span>
-                      <div className="flex-1 min-w-0">
-                        {isEditingNode && editNodeForm ? (
-                          <div className="space-y-1.5">
-                            <input
-                              className={fieldCls}
-                              placeholder="Վաղanaken (title)"
-                              value={editNodeForm.title}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, title: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={2}
-                              placeholder="Ulmnatanumah hdrakhum — ush stanum e (learningObjective)"
-                              value={editNodeForm.learningObjective}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, learningObjective: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={3}
-                              placeholder="Թeoritakan bovandakutюn (theoryContent)"
-                              value={editNodeForm.theoryContent}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, theoryContent: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={2}
-                              placeholder="Դասագրքային մեջբերություն (առառ կap)"
-                              value={editNodeForm.verbatimTheoryAnchor}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, verbatimTheoryAnchor: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={2}
-                              placeholder="Տарастваца схал (commonMisconception)"
-                              value={editNodeForm.commonMisconception}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, commonMisconception: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={3}
-                              placeholder="Мanкakaмит бацаратрутюн (childFriendlyExplanation)"
-                              value={editNodeForm.childFriendlyExplanation}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, childFriendlyExplanation: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={3}
-                              placeholder="Hnarin orinakner — мек tariq, мек оrinак (basicExamples)"
-                              value={editNodeForm.basicExamples}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, basicExamples: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={2}
-                              placeholder="Oче оринакнер — мек tariq, мек оrinак (nonExamples)"
-                              value={editNodeForm.nonExamples}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, nonExamples: e.target.value })}
-                            />
-                            <textarea
-                              className={fieldCls + " resize-none"}
-                              rows={2}
-                              placeholder="Каянкев кяnкум — мек tariq, мек оrinак (realLifeExamples)"
-                              value={editNodeForm.realLifeExamples}
-                              onChange={(e) => setEditNodeForm((f) => f && { ...f, realLifeExamples: e.target.value })}
-                            />
-                            <div className="flex gap-2">
-                              <input
-                                className={fieldCls}
-                                placeholder="Bloom 1-6"
-                                type="number" min={1} max={6}
-                                value={editNodeForm.targetBloomLevel}
-                                onChange={(e) => setEditNodeForm((f) => f && { ...f, targetBloomLevel: e.target.value })}
-                              />
-                              <input
-                                className={fieldCls}
-                                placeholder="Ժամ (րոփ)"
-                                type="number" min={1}
-                                value={editNodeForm.estimatedMinutes}
-                                onChange={(e) => setEditNodeForm((f) => f && { ...f, estimatedMinutes: e.target.value })}
-                              />
-                            </div>
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => saveNode(n.id)}
-                                disabled={updateNode.isPending}
-                                className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                              >{updateNode.isPending ? "..." : "Ընthel"}</button>
-                              <button
-                                onClick={() => { setEditingNodeId(null); setEditNodeForm(null); }}
-                                className={btnSm + " bg-white/10 text-muted-foreground"}
-                              >Անcel</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-xs font-semibold text-white">{n.title}</span>
-                              {/* P6.5: Status badges */}
-                              {(n as any).status === 'approved' && (
-                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
-                                  ✅ Հաստատված
-                                </span>
-                              )}
-                              {(n as any).status === 'needs_review' && (
-                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
-                                  ⚠ Վերանայող
-                                </span>
-                              )}
-                              {((n as any).status === 'draft' || !(n as any).status) && (
-                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">
-                                  📝 Սևագիր
-                                </span>
-                              )}
-                              {(n as any).contentSourceType === 'manual' && (
-                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">
-                                  ✍ Ձeqnakan
-                                </span>
-                              )}
-                            </div>
-                            {/* P6.4: Learning objective */}
-                            {(n as any).learningObjective && (
-                              <p className="text-[10px] text-primary/70 mt-0.5 leading-relaxed italic">🎯 {(n as any).learningObjective}</p>
-                            )}
-                            {n.theoryContent && (
-                              <p className="text-xs text-muted-foreground/80 mt-0.5 line-clamp-2 leading-relaxed">{n.theoryContent}</p>
-                            )}
-                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                              {n.targetBloomLevel != null && (
-                                <span className="text-[10px] text-primary/50">Bloom {n.targetBloomLevel}</span>
-                              )}
-                              {/* P6.7: Source page */}
-                              {(n as any).sourcePage != null && (
-                                <span className="text-[10px] text-white/30">Էջ {(n as any).sourcePage}</span>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      {!isEditingNode && (
-                        <div className="flex gap-1 shrink-0 pt-0.5">
-                          {/* P6.5: Approve button */}
-                          {(n as any).status !== 'approved' && (
-                            <button
-                              onClick={() => approveNode(n.id)}
-                              disabled={updateNode.isPending}
-                              title="Հաutatrel"
-                              className="text-xs text-emerald-500/60 hover:text-emerald-400 transition-colors disabled:opacity-40"
-                            >✅</button>
-                          )}
-                          <button
-                            onClick={() => startEditNode(n)}
-                            title="Խmbagrel"
-                            className="text-xs text-muted-foreground hover:text-white transition-colors"
-                          >✏️</button>
-                          <button
-                            onClick={() => {
-                              if (!confirm(`Ջنجel «${n.title}»`)) return;
-                              deleteNode.mutate({ lessonId, nodeId: n.id }, { onSuccess: () => { refreshNodes(); refreshEx(); } });
-                            }}
-                            className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                          >🗑️</button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Exercises under this node */}
-                    {nodeExercises.length > 0 && (
-                      <div className="border-t border-white/6 px-3 py-2 space-y-2">
-                        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Վարժություններ</p>
-                        {nodeExercises.map((ex) => {
-                          const isEditingEx = editingExerciseId === ex.id;
-                          return (
-                            <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
-                              {isEditingEx && editExForm ? (
-                                <div className="space-y-1.5">
-                                  <textarea
-                                    className={fieldCls + " resize-none"}
-                                    rows={3}
-                                    value={editExForm.exerciseTextVerbatim}
-                                    onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextVerbatim: e.target.value })}
-                                  />
-                                  <input
-                                    className={fieldCls}
-                                    placeholder="Հaghoghutyyan banalich"
-                                    value={editExForm.successCriteria}
-                                    onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })}
-                                  />
-                                  <div className="flex gap-2">
-                                    <select
-                                      className={fieldCls + " cursor-pointer"}
-                                      value={editExForm.difficultyLevel}
-                                      onChange={(e) => setEditExForm((f) => f && { ...f, difficultyLevel: e.target.value })}
-                                    >
-                                      <option value="LOW">LOW</option>
-                                      <option value="MEDIUM">MEDIUM</option>
-                                      <option value="HIGH">HIGH</option>
-                                    </select>
-                                    <select
-                                      className={fieldCls + " cursor-pointer"}
-                                      value={editExForm.assignment}
-                                      onChange={(e) => setEditExForm((f) => f && { ...f, assignment: e.target.value })}
-                                    >
-                                      <option value="CLASS">CLASS</option>
-                                      <option value="HOMEWORK">HOMEWORK</option>
-                                    </select>
-                                  </div>
-                                  {/* Step 4 — Կцел нодин */}
-                                  <select
-                                    className={fieldCls + " cursor-pointer"}
-                                    value={editExForm.relatedNodeId === null ? "null" : String(editExForm.relatedNodeId)}
-                                    onChange={(e) => setEditExForm((f) => f && { ...f, relatedNodeId: e.target.value === "null" ? null : parseInt(e.target.value) })}
-                                  >
-                                    <option value="null">📦 Չкцвац / Лратсуцич варжутюн</option>
-                                    {nodes.map((nd) => (
-                                      <option key={nd.id} value={String(nd.id)}>
-                                        {nd.sequence}. {nd.title}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <div className="flex gap-1">
-                                    <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հաստատել"}</button>
-                                    <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-white/90 leading-relaxed">{ex.exerciseTextVerbatim}</p>
-                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                      {ex.difficultyLevel && (
-                                        <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>
-                                      )}
-                                      {ex.assignment && (
-                                        <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
-                                          {ex.assignment === "HOMEWORK" ? "🏠 Տնային" : "📋 Դասարանում"}
-                                        </span>
-                                      )}
-                                      {ex.sourcePage && (
-                                        <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-1 shrink-0">
-                                    <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors">✏️</button>
-                                    <button
-                                      onClick={() => {
-                                        if (!confirm("Jnjel varjutyune?")) return;
-                                        deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx });
-                                      }}
-                                      className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                                    >🗑️</button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Add exercise to this node */}
-                    <div className="border-t border-white/6 px-3 py-1.5">
-                      {addExForNodeId === n.id ? (
-                        <div className="space-y-1.5 py-1">
-                          <textarea
-                            className={fieldCls + " resize-none"}
-                            rows={2}
-                            placeholder="Varjutyutyan bnagir *"
-                            value={addExForm.exerciseTextVerbatim}
-                            onChange={(e) => setAddExForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))}
-                          />
-                          <div className="flex gap-2">
-                            <select className={fieldCls + " cursor-pointer"} value={addExForm.difficultyLevel} onChange={(e) => setAddExForm((f) => ({ ...f, difficultyLevel: e.target.value }))}>
-                              <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
-                            </select>
-                            <select className={fieldCls + " cursor-pointer"} value={addExForm.assignment} onChange={(e) => setAddExForm((f) => ({ ...f, assignment: e.target.value }))}>
-                              <option value="CLASS">CLASS</option><option value="HOMEWORK">HOMEWORK</option>
-                            </select>
-                          </div>
-                          <div className="flex gap-1">
-                            <button
-                              disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()}
-                              onClick={() => {
-                                createEx.mutate(
-                                  { lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } },
-                                  { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }
-                                );
-                              }}
-                              className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                            >{createEx.isPending ? "..." : "+ Ավելացնել"}</button>
-                            <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }}
-                          className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5"
-                        >+ Ավելացնել վարժություն</button>
-                      )}
-                    </div>
-                  </div>
-                  )}
-                  </Fragment>
-                );
+                const globalIdx = sortedNodes.findIndex((x) => x.id === n.id);
+                return renderNodeCard(n, nodeExercises, isEditingNode, undefined, nIdxInGroup, arr.length, globalIdx);
               })}
             </div>
           )}
 
-          {/* ── Step 3 — Additional Exercises (relatedNodeId === null) ─────── */}
+          {/* ── Delete Topic confirm ────────────────────────────────────────── */}
+          <AlertDialog open={deleteTopicOpen} onOpenChange={setDeleteTopicOpen}>
+            <AlertDialogContent className="bg-[#0f1117] border border-white/10 text-white">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-sm font-semibold text-white">Ջնջե՞լ թեման</AlertDialogTitle>
+                <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                  Թեման կջնջվի։ Դրան պատկանող MicroNode-ները կդառնան ինքնուրույն (standalone)։ Վարժությունները չեն կորի։
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white text-xs" disabled={deleteTopicMutation.isPending}>Չեղարկել</AlertDialogCancel>
+                <AlertDialogAction onClick={(e) => { e.preventDefault(); handleDeleteTopic(); }} disabled={deleteTopicMutation.isPending} className="bg-destructive text-white hover:bg-destructive/90 text-xs">
+                  {deleteTopicMutation.isPending ? "Ջnjvum e..." : "Ջնջել"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* HACK: renderNodeCard is defined below and referenced above — hoisted via closure */}
+          {null /* placeholder: renderNodeCard is a local fn defined after this block */}
+
+          {/* ── Step 3 — Additional Exercises (relatedNodeId === null) is rendered below separately */}
+          {(() => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const _ = null; // renderNodeCard must be defined before JSX runs — define it here
+            return null;
+          })()}
+
+          {/* ── HELPER: renderNodeCard (defined as closure — must appear BEFORE JSX uses it) ── */}
+          {/* We hoist the function definition before the main return using an IIFE trick.
+              React doesn't allow hooks inside functions defined in JSX, but renderNodeCard
+              uses only non-hook state and callbacks so this is safe. */}
+          {/* NOTE: The actual function is defined below, BEFORE this return statement, as a named nested function. */}
+
+          {/* ── Step 3b — Additional Exercises ─────────────────────────────── */}
           {(() => {
             const additionalExercises = exercises.filter((e) => e.relatedNodeId === null);
             return (
@@ -1421,27 +1564,70 @@ function LessonNodesPanel({
             );
           })()}
 
+          {/* Add topic button/form */}
+          <div className="pt-1">
+            {addTopicOpen ? (
+              <div className="bg-background/30 border border-white/10 rounded-xl px-3 py-2 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">Նոր թեմա</p>
+                <input
+                  className={fieldCls}
+                  placeholder="Թեմայի անվանում *"
+                  value={addTopicTitle}
+                  onChange={(e) => setAddTopicTitle(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleCreateTopic(); if (e.key === "Escape") setAddTopicOpen(false); }}
+                  autoFocus
+                />
+                <div className="flex gap-1">
+                  <button disabled={createTopicMutation.isPending || !addTopicTitle.trim()} onClick={handleCreateTopic} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createTopicMutation.isPending ? "..." : "Ավելացնել"}</button>
+                  <button onClick={() => { setAddTopicOpen(false); setAddTopicTitle(""); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չеղarkel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setAddTopicOpen(true)} className="w-full text-xs text-muted-foreground/50 hover:text-amber-400/70 border border-dashed border-white/8 hover:border-amber-400/30 rounded-xl py-1.5 transition-colors">
+                + Ավելացնել թեմա
+              </button>
+            )}
+          </div>
+
+
           {/* Add node button/form */}
           <div className="pt-1">
             {addNodeOpen ? (
               <div className="bg-background/30 border border-white/10 rounded-xl px-3 py-2 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground">Նոր հանգույց</p>
+                <p className="text-xs font-semibold text-muted-foreground">Նор MicroNode</p>
                 <input
                   className={fieldCls}
-                  placeholder="Վերնագիր *"
+                  placeholder="Vernagir *"
                   value={addNodeForm.title}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, title: e.target.value }))}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Տեսական Բովանդակություն"
+                  placeholder="Ulmnatanumah napatak (learningObjective)"
+                  value={addNodeForm.learningObjective}
+                  onChange={(e) => setAddNodeForm((f) => ({ ...f, learningObjective: e.target.value }))}
+                />
+                <textarea
+                  className={fieldCls + " resize-none"}
+                  rows={2}
+                  placeholder="Tesakan bovandakutyun"
                   value={addNodeForm.theoryContent}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, theoryContent: e.target.value }))}
                 />
+                <select
+                  className={fieldCls + " cursor-pointer"}
+                  value={addNodeForm.topicId === null ? "null" : String(addNodeForm.topicId)}
+                  onChange={(e) => setAddNodeForm((f) => ({ ...f, topicId: e.target.value === "null" ? null : parseInt(e.target.value) }))}
+                >
+                  <option value="null">📌 Standalone (no topic)</option>
+                  {topics.map((t) => (
+                    <option key={t.id} value={String(t.id)}>{t.sequence}. {t.title}</option>
+                  ))}
+                </select>
                 <input
                   className={fieldCls}
-                  placeholder="Բլումի մակարդակ 1-6"
+                  placeholder="Bloom 1-6"
                   type="number" min={1} max={6}
                   value={addNodeForm.targetBloomLevel}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, targetBloomLevel: e.target.value }))}
@@ -1451,13 +1637,22 @@ function LessonNodesPanel({
                     disabled={createNode.isPending || !addNodeForm.title.trim()}
                     onClick={() => {
                       createNode.mutate(
-                        { lessonId, data: { title: addNodeForm.title.trim(), theoryContent: addNodeForm.theoryContent || undefined, targetBloomLevel: parseInt(addNodeForm.targetBloomLevel) || 1 } },
-                        { onSuccess: () => { setAddNodeOpen(false); setAddNodeForm({ title: "", theoryContent: "", targetBloomLevel: "1" }); refreshNodes(); } }
+                        {
+                          lessonId,
+                          data: {
+                            title: addNodeForm.title.trim(),
+                            learningObjective: addNodeForm.learningObjective || undefined,
+                            theoryContent: addNodeForm.theoryContent || undefined,
+                            targetBloomLevel: parseInt(addNodeForm.targetBloomLevel) || 1,
+                            topicId: addNodeForm.topicId ?? undefined,
+                          },
+                        },
+                        { onSuccess: () => { setAddNodeOpen(false); setAddNodeForm({ title: "", theoryContent: "", targetBloomLevel: "1", topicId: null, learningObjective: "" }); refreshNodes(); } }
                       );
                     }}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                  >{createNode.isPending ? "..." : "Ավելացնել"}</button>
-                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
+                  >{createNode.isPending ? "..." : "Avaelatsnel"}</button>
+                  <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Chegharkrel</button>
                 </div>
               </div>
             ) : (

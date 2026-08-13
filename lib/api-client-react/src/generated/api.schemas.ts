@@ -874,6 +874,10 @@ export interface CreateLessonNodeInput {
   theoryContent?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
+  /** Phase 1.1: Topic assignment for new MicroNode */
+  topicId?: number | null;
+  /** Phase 1.1: Learning objective for new MicroNode */
+  learningObjective?: string;
 }
 
 export interface UpdateLessonNodeInput {
@@ -890,6 +894,34 @@ export interface UpdateLessonNodeInput {
   realLifeExamples?: string[];
   /** P6.5: Teacher approval — "approved" | "needs_review" | "draft" */
   status?: string;
+  /** Phase 1.1: Move MicroNode to a different topic (null = standalone) */
+  topicId?: number | null;
+}
+
+export interface LessonTopic {
+  id: number;
+  lessonId: number;
+  sequence: number;
+  title: string;
+  description?: string | null;
+}
+
+export interface CreateLessonTopicInput {
+  title: string;
+  description?: string;
+}
+
+export interface UpdateLessonTopicInput {
+  title?: string;
+  description?: string;
+}
+
+export interface ReorderTopicsInput {
+  orderedTopicIds: number[];
+}
+
+export interface ReorderNodesInput {
+  orderedNodeIds: number[];
 }
 
 export interface LessonExercise {

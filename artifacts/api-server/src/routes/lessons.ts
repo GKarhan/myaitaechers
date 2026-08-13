@@ -614,11 +614,13 @@ router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, re
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, topicId, learningObjective } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
     estimatedMinutes?: number;
+    topicId?: number | null;
+    learningObjective?: string;
   };
 
   if (!title?.trim()) {
@@ -642,6 +644,9 @@ router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, re
       theoryContent: theoryContent?.trim() ?? null,
       targetBloomLevel: targetBloomLevel ?? 1,
       estimatedMinutes: estimatedMinutes ?? 5,
+      topicId: topicId ?? null,
+      learningObjective: learningObjective?.trim() ?? null,
+      createdBy: "teacher",
     })
     .returning();
 
@@ -649,7 +654,9 @@ router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, re
     id: node.id,
     lessonId: node.lessonId,
     sequence: node.sequence,
+    topicId: node.topicId ?? null,
     title: node.title,
+    learningObjective: node.learningObjective ?? null,
     theoryContent: node.theoryContent ?? null,
     targetBloomLevel: node.targetBloomLevel ?? null,
     estimatedMinutes: node.estimatedMinutes ?? null,
@@ -676,7 +683,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples, learningObjective, status } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples, learningObjective, status, topicId } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
@@ -689,6 +696,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     realLifeExamples?: string[];
     learningObjective?: string;
     status?: "approved" | "needs_review" | "draft";
+    topicId?: number | null;
   };
 
   // Use Record<string, unknown> so drizzle's set() receives a plain object
@@ -711,6 +719,8 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
   if (status !== undefined && ["approved", "needs_review", "draft"].includes(status)) {
     patch.status = status;
   }
+  // P12: Allow teacher to move a MicroNode between topics (or make standalone)
+  if (topicId !== undefined) patch.topicId = topicId; // null = standalone
 
   if (Object.keys(patch).length === 0) {
     res.status(400).json({ error: "No fields to update" }); return;
@@ -807,21 +817,163 @@ router.post("/lessons/:lessonId/topics/:topicId/update", requireAuth, async (req
 
   if (!existing) { res.status(404).json({ error: "Topic not found" }); return; }
 
-  const { title } = req.body as { title?: string };
+  const { title, description } = req.body as { title?: string; description?: string };
   if (title !== undefined && !title.trim()) {
     res.status(400).json({ error: "title cannot be empty" }); return;
   }
 
-  const patch: Partial<typeof existing> = {};
+  const patch: Record<string, unknown> = {};
   if (title !== undefined) patch.title = title.trim();
+  if (description !== undefined) patch.description = description.trim() || null;
+
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: "No fields to update" }); return;
+  }
 
   const [updated] = await db
     .update(lessonTopicsTable)
-    .set(patch)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .set(patch as any)
     .where(eq(lessonTopicsTable.id, topicId))
     .returning();
 
-  res.json({ id: updated.id, lessonId: updated.lessonId, sequence: updated.sequence, title: updated.title });
+  res.json({ id: updated.id, lessonId: updated.lessonId, sequence: updated.sequence, title: updated.title, description: updated.description ?? null });
+});
+
+// ── TOPIC CRUD + REORDER ──────────────────────────────────────────────────────
+
+// POST /lessons/:lessonId/topics — create a new topic
+// Auto-assigns next available sequence; returns the new topic row.
+router.post("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const { title, description } = req.body as { title?: string; description?: string };
+  if (!title?.trim()) { res.status(400).json({ error: "title is required" }); return; }
+
+  const [maxRow] = await db
+    .select({ maxSeq: max(lessonTopicsTable.sequence) })
+    .from(lessonTopicsTable)
+    .where(eq(lessonTopicsTable.lessonId, lessonId));
+
+  const nextSeq = (maxRow?.maxSeq ?? 0) + 1;
+  const [topic] = await db
+    .insert(lessonTopicsTable)
+    .values({ lessonId, title: title.trim(), sequence: nextSeq, description: description?.trim() ?? null })
+    .returning();
+  res.status(201).json({ id: topic.id, lessonId: topic.lessonId, sequence: topic.sequence, title: topic.title, description: topic.description ?? null });
+});
+
+// POST /lessons/:lessonId/topics/:topicId/delete — delete a topic
+// lesson_nodes.topic_id FK onDelete: SET NULL — nodes in this topic become standalone.
+// Exercises are untouched (they reference lesson_nodes, not topics).
+router.post("/lessons/:lessonId/topics/:topicId/delete", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const topicId  = parseInt(String(req.params.topicId),  10);
+  if (isNaN(lessonId) || isNaN(topicId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const [existing] = await db
+    .select({ id: lessonTopicsTable.id })
+    .from(lessonTopicsTable)
+    .where(and(eq(lessonTopicsTable.id, topicId), eq(lessonTopicsTable.lessonId, lessonId)))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: "Topic not found" }); return; }
+
+  await db.delete(lessonTopicsTable).where(eq(lessonTopicsTable.id, topicId));
+  res.json({ message: "Topic deleted", id: topicId });
+});
+
+// POST /lessons/:lessonId/topics/reorder — bulk reorder topics (normalized, transactional)
+// Payload: { orderedTopicIds: number[] } — must include ALL topic IDs for this lesson.
+// Normalizes sequences to 1, 2, 3, … contiguous integers.
+router.post("/lessons/:lessonId/topics/reorder", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const { orderedTopicIds } = req.body as { orderedTopicIds?: number[] };
+  if (!Array.isArray(orderedTopicIds) || orderedTopicIds.length === 0) {
+    res.status(400).json({ error: "orderedTopicIds must be a non-empty array" }); return;
+  }
+  if (new Set(orderedTopicIds).size !== orderedTopicIds.length) {
+    res.status(400).json({ error: "Duplicate topic IDs" }); return;
+  }
+
+  const existing = await db
+    .select({ id: lessonTopicsTable.id })
+    .from(lessonTopicsTable)
+    .where(eq(lessonTopicsTable.lessonId, lessonId));
+  const existingIds = new Set(existing.map((t) => t.id));
+
+  for (const id of orderedTopicIds) {
+    if (!existingIds.has(id)) {
+      res.status(400).json({ error: `Topic ${id} does not belong to lesson ${lessonId}` }); return;
+    }
+  }
+  if (orderedTopicIds.length !== existingIds.size) {
+    res.status(400).json({ error: "orderedTopicIds must include all topics for this lesson" }); return;
+  }
+
+  // Transactional normalized update
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < orderedTopicIds.length; i++) {
+      await tx.update(lessonTopicsTable).set({ sequence: i + 1 }).where(eq(lessonTopicsTable.id, orderedTopicIds[i]));
+    }
+  });
+
+  const updated = await db
+    .select()
+    .from(lessonTopicsTable)
+    .where(eq(lessonTopicsTable.lessonId, lessonId))
+    .orderBy(asc(lessonTopicsTable.sequence));
+  res.json(updated.map((t) => ({ id: t.id, lessonId: t.lessonId, sequence: t.sequence, title: t.title, description: t.description ?? null })));
+});
+
+// POST /lessons/:lessonId/nodes/reorder — bulk reorder nodes (normalized, transactional + dep sync)
+// Payload: { orderedNodeIds: number[] } — must include ALL node IDs for this lesson.
+// Normalizes sequences to 1, 2, 3, … then rebuilds SEQUENTIAL deps (preserves REQUIRED/other).
+router.post("/lessons/:lessonId/nodes/reorder", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const { orderedNodeIds } = req.body as { orderedNodeIds?: number[] };
+  if (!Array.isArray(orderedNodeIds) || orderedNodeIds.length === 0) {
+    res.status(400).json({ error: "orderedNodeIds must be a non-empty array" }); return;
+  }
+  if (new Set(orderedNodeIds).size !== orderedNodeIds.length) {
+    res.status(400).json({ error: "Duplicate node IDs" }); return;
+  }
+
+  const existing = await db
+    .select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId));
+  const existingIds = new Set(existing.map((n) => n.id));
+
+  for (const id of orderedNodeIds) {
+    if (!existingIds.has(id)) {
+      res.status(400).json({ error: `Node ${id} does not belong to lesson ${lessonId}` }); return;
+    }
+  }
+  if (orderedNodeIds.length !== existingIds.size) {
+    res.status(400).json({ error: "orderedNodeIds must include all nodes for this lesson" }); return;
+  }
+
+  // Transactional normalized update
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < orderedNodeIds.length; i++) {
+      await tx.update(lessonNodesTable).set({ sequence: i + 1 }).where(eq(lessonNodesTable.id, orderedNodeIds[i]));
+    }
+  });
+
+  // Rebuild SEQUENTIAL deps from new sequence order; preserves REQUIRED/other types
+  const depResult = await refreshSequentialDependencies(lessonId);
+
+  const updated = await db
+    .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId))
+    .orderBy(asc(lessonNodesTable.sequence));
+
+  res.json({ nodes: updated, dependencies: depResult });
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/delete — delete a node

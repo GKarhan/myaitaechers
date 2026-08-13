@@ -104,7 +104,12 @@ import type {
   UpdateLessonStatusInput,
   UpdateStudentProfileInput,
   UpdateTeacherInput,
-  UserProfile
+  UserProfile,
+  LessonTopic,
+  CreateLessonTopicInput,
+  UpdateLessonTopicInput,
+  ReorderTopicsInput,
+  ReorderNodesInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -6428,6 +6433,160 @@ export const useDeleteLessonNode = <TError = ErrorType<ErrorResponse>, TContext 
   options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLessonNode>>, TError, { lessonId: number; nodeId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
 ): UseMutationResult<Awaited<ReturnType<typeof deleteLessonNode>>, TError, { lessonId: number; nodeId: number }, TContext> => {
   return useMutation(getDeleteLessonNodeMutationOptions(options));
+};
+
+// ── CREATE LESSON TOPIC ──────────────────────────────────────────────────────
+
+export const getCreateLessonTopicUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/topics`;
+
+export const createLessonTopic = async (lessonId: number, data: CreateLessonTopicInput, options?: RequestInit): Promise<LessonTopic> => {
+  return customFetch<LessonTopic>(getCreateLessonTopicUrl(lessonId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const getCreateLessonTopicMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createLessonTopic>>, TError, { lessonId: number; data: CreateLessonTopicInput }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof createLessonTopic>>, TError, { lessonId: number; data: CreateLessonTopicInput }, TContext> => {
+  const mutationKey = ['createLessonTopic'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLessonTopic>>, { lessonId: number; data: CreateLessonTopicInput }> = (props) => {
+    const { lessonId, data } = props ?? {};
+    return createLessonTopic(lessonId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLessonTopicMutationResult = NonNullable<Awaited<ReturnType<typeof createLessonTopic>>>;
+export type CreateLessonTopicMutationError = ErrorType<ErrorResponse>;
+
+export const useCreateLessonTopic = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createLessonTopic>>, TError, { lessonId: number; data: CreateLessonTopicInput }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof createLessonTopic>>, TError, { lessonId: number; data: CreateLessonTopicInput }, TContext> => {
+  return useMutation(getCreateLessonTopicMutationOptions(options));
+};
+
+// ── DELETE LESSON TOPIC ──────────────────────────────────────────────────────
+
+export const getDeleteLessonTopicUrl = (lessonId: number, topicId: number) =>
+  `/api/lessons/${lessonId}/topics/${topicId}/delete`;
+
+export const deleteLessonTopic = async (lessonId: number, topicId: number, options?: RequestInit): Promise<SuccessMessage> => {
+  return customFetch<SuccessMessage>(getDeleteLessonTopicUrl(lessonId, topicId), {
+    ...options,
+    method: 'POST',
+  });
+};
+
+export const getDeleteLessonTopicMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLessonTopic>>, TError, { lessonId: number; topicId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLessonTopic>>, TError, { lessonId: number; topicId: number }, TContext> => {
+  const mutationKey = ['deleteLessonTopic'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLessonTopic>>, { lessonId: number; topicId: number }> = (props) => {
+    const { lessonId, topicId } = props ?? {};
+    return deleteLessonTopic(lessonId, topicId, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteLessonTopicMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLessonTopic>>>;
+export type DeleteLessonTopicMutationError = ErrorType<ErrorResponse>;
+
+export const useDeleteLessonTopic = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLessonTopic>>, TError, { lessonId: number; topicId: number }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof deleteLessonTopic>>, TError, { lessonId: number; topicId: number }, TContext> => {
+  return useMutation(getDeleteLessonTopicMutationOptions(options));
+};
+
+// ── REORDER LESSON TOPICS ────────────────────────────────────────────────────
+
+export const getReorderLessonTopicsUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/topics/reorder`;
+
+export const reorderLessonTopics = async (lessonId: number, data: ReorderTopicsInput, options?: RequestInit): Promise<LessonTopic[]> => {
+  return customFetch<LessonTopic[]>(getReorderLessonTopicsUrl(lessonId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const getReorderLessonTopicsMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof reorderLessonTopics>>, TError, { lessonId: number; data: ReorderTopicsInput }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof reorderLessonTopics>>, TError, { lessonId: number; data: ReorderTopicsInput }, TContext> => {
+  const mutationKey = ['reorderLessonTopics'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderLessonTopics>>, { lessonId: number; data: ReorderTopicsInput }> = (props) => {
+    const { lessonId, data } = props ?? {};
+    return reorderLessonTopics(lessonId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReorderLessonTopicsMutationResult = NonNullable<Awaited<ReturnType<typeof reorderLessonTopics>>>;
+export type ReorderLessonTopicsMutationError = ErrorType<ErrorResponse>;
+
+export const useReorderLessonTopics = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof reorderLessonTopics>>, TError, { lessonId: number; data: ReorderTopicsInput }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof reorderLessonTopics>>, TError, { lessonId: number; data: ReorderTopicsInput }, TContext> => {
+  return useMutation(getReorderLessonTopicsMutationOptions(options));
+};
+
+// ── REORDER LESSON NODES ─────────────────────────────────────────────────────
+
+export const getReorderLessonNodesUrl = (lessonId: number) =>
+  `/api/lessons/${lessonId}/nodes/reorder`;
+
+export const reorderLessonNodes = async (lessonId: number, data: ReorderNodesInput, options?: RequestInit): Promise<{ nodes: { id: number; sequence: number }[]; dependencies: unknown }> => {
+  return customFetch<{ nodes: { id: number; sequence: number }[]; dependencies: unknown }>(getReorderLessonNodesUrl(lessonId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const getReorderLessonNodesMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof reorderLessonNodes>>, TError, { lessonId: number; data: ReorderNodesInput }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationOptions<Awaited<ReturnType<typeof reorderLessonNodes>>, TError, { lessonId: number; data: ReorderNodesInput }, TContext> => {
+  const mutationKey = ['reorderLessonNodes'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderLessonNodes>>, { lessonId: number; data: ReorderNodesInput }> = (props) => {
+    const { lessonId, data } = props ?? {};
+    return reorderLessonNodes(lessonId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReorderLessonNodesMutationResult = NonNullable<Awaited<ReturnType<typeof reorderLessonNodes>>>;
+export type ReorderLessonNodesMutationError = ErrorType<ErrorResponse>;
+
+export const useReorderLessonNodes = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof reorderLessonNodes>>, TError, { lessonId: number; data: ReorderNodesInput }, TContext>; request?: SecondParameter<typeof customFetch> },
+): UseMutationResult<Awaited<ReturnType<typeof reorderLessonNodes>>, TError, { lessonId: number; data: ReorderNodesInput }, TContext> => {
+  return useMutation(getReorderLessonNodesMutationOptions(options));
 };
 
 // ── LESSON EXERCISES ─────────────────────────────────────────────────────────
