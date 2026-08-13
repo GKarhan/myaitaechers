@@ -1,0 +1,105 @@
+URGENT — PHASE 1.7 FINAL DATA CLEANUP ONLY
+
+Do NOT modify architecture, routes, schema, validation logic, ordering,
+topics, exercises, Phase 2 data, or any other lesson content.
+
+The previous cleanup report incorrectly claimed that the corrupted
+transliterated values had been restored to proper Armenian.
+
+The REAL Teacher Review UI proves they are still corrupted in DB.
+
+Lesson ID: 105
+
+Fix ONLY these exact persisted values:
+
+1. MicroNode ID 1347
+
+Current title:
+Ֆіizika arkakayi npataky
+
+Replace EXACTLY with:
+Ֆիզիկա առարկայի նպատակը
+
+Current learningObjective:
+Аshakerti karoghy e bachatrel fizika arakakayi ousumnasirutyany npataky ew dra kareworyutyouny
+
+Replace EXACTLY with:
+Աշակերտը կարող է բացատրել ֆիզիկա առարկայի ուսումնասիրության նպատակը և դրա կարևորությունը։
+
+2. MicroNode ID 1349
+
+Current title:
+Բнatoutyan sahmanumy
+
+Replace EXACTLY with:
+Բնության սահմանումը
+
+IMPORTANT:
+These must be real Armenian Unicode characters.
+Do NOT transliterate.
+Do NOT reconstruct them from Latin/Cyrillic lookalike characters.
+Use the exact strings supplied above.
+
+After the update, READ THE VALUES BACK FROM THE DATABASE.
+
+Then verify character integrity:
+- Node 1347 title contains Armenian-script characters only
+  (apart from normal spaces/punctuation).
+- Node 1347 learningObjective contains Armenian-script characters only
+  (apart from normal spaces/punctuation).
+- Node 1349 title contains Armenian-script characters only
+  (apart from normal spaces/punctuation).
+- No Latin or Cyrillic lookalike characters remain in those 3 fields.
+
+Also verify that this targeted cleanup caused NO collateral changes:
+
+Lesson 105 must still have:
+- Topics = 4
+- MicroNodes = 10
+- textbook exercises = 15
+- manual exercises = 0
+- assigned + additional textbook exercises = 15
+- Additional exercises = 3
+- lost source exercises = 0
+- approved nodes with blank learningObjective = 0
+
+Do NOT run destructive acceptance tests.
+Do NOT create temporary nodes/exercises.
+Do NOT rename anything else.
+Do NOT change exercise assignment.
+Do NOT change ordering.
+
+Because changing node authoring data may invalidate final lesson approval,
+after the exact corrections:
+1. check lesson 105 authoringStatus;
+2. if it became needs_review as designed, run the existing Final Approval
+   flow once;
+3. verify final authoringStatus = approved.
+
+FINAL REPORT MUST SHOW:
+
+A. Node 1347 DB read-back:
+   title = ...
+   learningObjective = ...
+
+B. Node 1349 DB read-back:
+   title = ...
+
+C. Unicode/script validation:
+   Latin characters in these fields = 0
+   Cyrillic characters in these fields = 0
+
+D. Integrity counts:
+   Topics = ?
+   MicroNodes = ?
+   textbook exercises = ?
+   manual exercises = ?
+   Additional = ?
+   lost source exercises = ?
+
+E. final authoringStatus = ?
+
+Do not declare PASS unless the DB read-back contains EXACTLY the Armenian
+strings supplied in this prompt.
+
+No other code or data changes.

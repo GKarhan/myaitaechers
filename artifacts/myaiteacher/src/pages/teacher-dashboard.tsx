@@ -1358,14 +1358,14 @@ function LessonNodesPanel({
                       {/* P1.6B: show read-only original when editing an adapted textbook exercise */}
                       {(ex as any).sourceType === 'textbook' && (ex as any).exerciseTextEdited && (
                         <div className="bg-black/30 border border-amber-500/20 rounded px-2 py-1.5">
-                          <p className="text-[9px] text-amber-400/60 mb-0.5">📖 Dasagrkic bnaginak</p>
+                          <p className="text-[9px] text-amber-400/60 mb-0.5">📖 Դասագրքից բնօրինակ</p>
                           <p className="text-[10px] text-white/40 leading-relaxed">{ex.exerciseTextVerbatim}</p>
                         </div>
                       )}
                       <textarea className={fieldCls + " resize-none"} rows={3}
                         value={editExForm.exerciseTextEdited}
                         onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
-                        placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (dasagrkic bnaginakin vray)…" : "Varjutyutyan bnagir"}
+                        placeholder={(ex as any).sourceType === 'textbook' ? "Հարմարեցում (Դասագրքի բնօրինակի վրա)…" : "Varjutyutyan bnagir"}
                       />
                       <input className={fieldCls} placeholder="Haghoghutyyan banalich" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
                       <div className="flex gap-2">
@@ -1392,8 +1392,8 @@ function LessonNodesPanel({
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           {/* P1.6B — source origin badge + reset button */}
                           {(ex as any).sourceType === 'textbook'
-                            ? <span className="text-[9px] text-blue-400/50">📖 Dasagrkic</span>
-                            : <span className="text-[9px] text-purple-400/50">✍️ Dzerckov</span>
+                            ? <span className="text-[9px] text-blue-400/50">📖 Դասագրքից </span>
+                            : <span className="text-[9px] text-purple-400/50">✍️ Ձեռքով</span>
                           }
                           {(ex as any).exerciseTextEdited && (
                             <button
@@ -1864,7 +1864,7 @@ function LessonNodesPanel({
                               {/* P1.6B: show read-only original when editing an adapted textbook exercise */}
                               {(ex as any).sourceType === 'textbook' && (ex as any).exerciseTextEdited && (
                                 <div className="bg-black/30 border border-amber-500/20 rounded px-2 py-1.5">
-                                  <p className="text-[9px] text-amber-400/60 mb-0.5">📖 Dasagrkic bnaginak</p>
+                                  <p className="text-[9px] text-amber-400/60 mb-0.5">📖 Դասագրքից բնօրինակ</p>
                                   <p className="text-[10px] text-white/40 leading-relaxed">{ex.exerciseTextVerbatim}</p>
                                 </div>
                               )}
@@ -1873,7 +1873,7 @@ function LessonNodesPanel({
                                 rows={3}
                                 value={editExForm.exerciseTextEdited}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
-                                placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (dasagrkic bnaginakin vray)…" : "Varjutyutyan bnagir"}
+                                placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (Դասագրքի բն)…" : "Varjutyutyan bnagir"}
                               />
                               <input
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
@@ -1930,7 +1930,7 @@ function LessonNodesPanel({
                                   )}
                                   {/* Gate 1.4 — approval status badge */}
                                   {ex.status === "approved" ? (
-                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
+                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված </span>
                                   ) : (
                                     <>
                                       <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
@@ -2054,7 +2054,7 @@ function LessonNodesPanel({
                     <button
                       onClick={() => setAddExToAdditional(true)}
                       className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5"
-                    >+ Avlelatsnel varjutyun</button>
+                    >+ Ավելացնել վարժություն</button>
                   )}
                 </div>
               </div>
