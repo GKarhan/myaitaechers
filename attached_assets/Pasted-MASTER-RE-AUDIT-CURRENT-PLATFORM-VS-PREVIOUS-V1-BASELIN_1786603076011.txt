@@ -1,0 +1,765 @@
+MASTER RE-AUDIT — CURRENT PLATFORM VS PREVIOUS V1 BASELINE
+READ-ONLY FIRST. DO NOT FIX ANYTHING.
+
+PURPOSE
+
+We previously completed a multi-phase audit and eventually reported:
+
+V1 COMPLETE = PASS
+
+with the following production baseline:
+
+- 53 source blocks
+- 100% validated source coverage
+- 4 Topics
+- 10 MicroNodes
+- every MicroNode source-grounded
+- 15 textbook exercises preserved
+- 11 assigned exercises
+- 4 Additional Exercises
+- 0 lost exercises
+- 0 duplicate exercises
+- Teacher Review working
+- Phase 2 enrichment populated for 10/10 nodes
+- 9 SEQUENTIAL dependencies
+- no dependency cycles
+- KB validation:
+  valid=true
+  readyForAiTeacher=true
+  errors=[]
+- AI Teacher:
+  Node Lock PASS
+  TEACH → MICRO_CHECK → FEEDBACK → TRANSITION PASS
+  Armenian contract PASS
+  backend-controlled progression PASS
+- KB remained immutable during teaching
+- full regression suite:
+  333/333 PASS
+
+There was also one previously recorded non-blocking finding:
+exercise presentation at the AI Teacher EXERCISE stage needed
+post-V1 quality tuning even though the correct exercise was delivered
+to the model.
+
+IMPORTANT:
+
+Do NOT trust the previous PASS report.
+
+Your task is to independently re-audit the CURRENT repository,
+CURRENT database schema/data, CURRENT runtime behavior, and CURRENT
+tests, then compare the evidence with that previous baseline.
+
+This is primarily an AUDIT.
+
+DO NOT modify code.
+DO NOT modify DB data.
+DO NOT create migrations.
+DO NOT “fix while auditing”.
+DO NOT mark something PASS because a previous test/report says PASS.
+
+If a real runtime test absolutely requires temporary test data,
+explain exactly why BEFORE doing it and prefer existing test data.
+
+============================================================
+PART 1 — CURRENT SYSTEM INVENTORY
+============================================================
+
+First determine what actually exists today.
+
+Inspect at minimum:
+
+- lesson mapping pipeline
+- Pass 1/source extraction
+- Pass 2/mapping
+- source block persistence
+- Topics
+- MicroNodes
+- learningObjective
+- theory/source anchors
+- exercise extraction
+- exercise assignment
+- Additional Exercises
+- Teacher Review
+- approval/status gates
+- Phase 2 teaching enrichment
+- dependencies
+- KB validation
+- AI Teacher context construction
+- AI Teacher runtime/state machine
+- mastery/evidence/student model
+- Knowledge Tree
+- quiz → evidence pipeline
+- retrieval/review scheduling if present
+- tests covering these systems
+
+Identify the exact current files/functions/routes/tables involved.
+
+Produce:
+
+CURRENT ARCHITECTURE MAP
+
+TEXTBOOK
+→ SOURCE EXTRACTION
+→ SOURCE BLOCKS
+→ MAPPING
+→ TOPICS
+→ MICRONODES
+→ EXERCISES
+→ TEACHER REVIEW
+→ APPROVED KB
+→ PHASE 2
+→ DEPENDENCIES
+→ AI TEACHER
+→ STUDENT EVIDENCE
+→ MASTERY / KNOWLEDGE TREE
+
+For every arrow state whether it is:
+
+IMPLEMENTED
+PARTIAL
+NOT IMPLEMENTED
+or
+DEAD/UNUSED CODE
+
+Do not infer implementation merely from schema fields.
+Trace actual reads/writes/runtime use.
+
+============================================================
+PART 2 — SOURCE FIDELITY AUDIT
+============================================================
+
+Audit the current mapper against these rules:
+
+1. Source content cannot silently disappear.
+2. Every instructional source block must have a mapping destination
+   or an explicit unmapped/supporting status.
+3. MicroNodes must be source-grounded.
+4. No invented theory/concepts/rules.
+5. Invalid source indices = 0.
+6. Duplicate source indices = 0.
+7. Empty source evidence on a valid MicroNode = 0.
+
+Use a REAL mapped lesson if possible.
+
+Prefer the same gold-standard Physics lesson used in the previous
+forensic test if it still exists.
+
+Previous baseline:
+
+53 source blocks
+100% source coverage.
+
+Report CURRENT values.
+
+============================================================
+PART 3 — TOPIC / MICRONODE GRANULARITY AUDIT
+============================================================
+
+Scientific/contract target:
+
+ONE MICRONODE
+=
+ONE PRIMARY OBSERVABLE LEARNING OBJECTIVE
+
+Audit:
+
+- learningObjective exists in schema
+- persisted in DB
+- mapper actually generates it
+- Teacher Review displays it
+- Phase 2 receives it where relevant
+- AI Teacher receives it
+- quiz/evidence/mastery systems reference the same knowledge unit
+
+For every MicroNode in the gold-standard lesson classify:
+
+PASS
+TOO BROAD / MEGA-NODE
+TOO NARROW / ARTIFICIAL SPLIT
+MULTIPLE INDEPENDENT OBJECTIVES
+UNSUPPORTED BY SOURCE
+
+Do not judge from title alone.
+Inspect objective + source evidence + theory.
+
+Report:
+
+MicroNodes total =
+one-objective PASS =
+multi-objective =
+unsupported =
+empty-source =
+mega-node =
+
+Compare with previous baseline:
+10 MicroNodes, all source-grounded.
+
+============================================================
+PART 4 — EXERCISE FORENSIC AUDIT
+============================================================
+
+This is CRITICAL.
+
+Every real textbook:
+
+EXERCISE
+QUESTION
+ACTIVITY
+TASK
+PRACTICE
+HOMEWORK
+
+must be preserved EXACTLY ONCE.
+
+For the gold-standard lesson independently compare:
+
+SOURCE ACTIVITIES
+vs
+DB EXERCISES
+vs
+MICRONODE ASSIGNMENTS
+vs
+ADDITIONAL EXERCISES
+
+Previous baseline:
+
+15 source activities
+15 persisted
+11 assigned
+4 Additional
+0 lost
+0 duplicate
+
+Recalculate these numbers from current data.
+
+For every exercise determine:
+
+- source page
+- verbatim/source text preservation
+- relatedNodeId
+- assigned MicroNode
+- whether assignment actually matches learningObjective
+- Additional status if no defensible match
+
+Report any:
+
+LOST
+DUPLICATE
+FORCED ASSIGNMENT
+WRONG NODE
+TRUNCATED
+INVENTED
+MISSING SOURCE PAGE
+FAKE EXERCISE
+
+Also verify that one exercise is not simultaneously stored as both
+assigned and Additional.
+
+============================================================
+PART 5 — TEACHER REVIEW AUDIT
+============================================================
+
+Verify current Teacher Review functionality.
+
+Teacher must be able to see/review:
+
+- Topic
+- MicroNode
+- learning objective
+- theory/source evidence
+- page/source reference
+- status
+- exercises
+- Additional Exercises
+
+Verify actual functionality for:
+
+Additional Exercise → MicroNode
+
+and
+
+MicroNode A exercise → MicroNode B
+
+Verify persistence after refresh/re-fetch.
+
+Check approval gates:
+
+draft
+needs_review
+approved
+needs_source_content
+or any current equivalents.
+
+Report actual behavior, not intended behavior.
+
+============================================================
+PART 6 — PHASE 2 ENRICHMENT AUDIT
+============================================================
+
+Verify current Phase 2.
+
+For approved eligible nodes verify actual persistence of:
+
+childFriendlyExplanation
+basicExamples
+commonMisconception
+nonExamples
+
+Previous baseline:
+10/10 populated.
+
+Recalculate current result.
+
+Verify:
+
+- draft/needs_review nodes are not enriched
+- weak source guard still exists
+- failure does not partially corrupt node data
+- mapping/source fields are not modified
+- exercises are not changed
+- Additional Exercises do not leak into Phase 2
+
+Report:
+
+eligible nodes =
+successfully enriched =
+skipped =
+partial/corrupt =
+mapping fields changed =
+
+============================================================
+PART 7 — DEPENDENCY AUDIT
+============================================================
+
+Previous baseline:
+
+9 SEQUENTIAL dependencies
+0 cycles.
+
+Audit current implementation.
+
+Verify:
+
+- deterministic structural dependencies
+- correct direction
+- no self dependency
+- no duplicates
+- same-lesson scope
+- idempotency
+- semantic dependency types are not destroyed
+- cycle detection
+- actual runtime consumer
+
+IMPORTANT:
+
+Distinguish between:
+
+DEPENDENCY STORED
+
+and
+
+DEPENDENCY ACTUALLY USED BY AI TEACHER / PERSONALIZATION.
+
+If SEQUENTIAL dependencies are only stored/documentational,
+say so explicitly.
+
+============================================================
+PART 8 — KNOWLEDGE BASE VALIDATION
+============================================================
+
+Run/reconstruct the current validation gate.
+
+Minimum checks:
+
+source coverage valid
+lost exercises = 0
+duplicate exercises = 0
+empty MicroNodes = 0
+unsupported MicroNodes = 0
+invalid source references = 0
+sequence valid
+dependencies valid
+no obvious cycle
+approved nodes have required Phase 2 fields
+
+Report the exact current result:
+
+valid =
+readyForAiTeacher =
+errors =
+warnings =
+
+Do not rely only on the endpoint response.
+Trace what the validator actually checks.
+
+Identify IMPORTANT conditions that are NOT currently validated.
+
+============================================================
+PART 9 — AI TEACHER CONTEXT AUDIT
+============================================================
+
+Trace CURRENT chat/runtime code.
+
+Prove whether AI Teacher receives:
+
+- correct Lesson
+- lesson overview
+- Topic
+- current MicroNode
+- learningObjective
+- approved theory/source content
+- childFriendlyExplanation
+- basicExamples
+- commonMisconception
+- nonExamples
+- assigned exercises
+- dependency information
+- source boundaries
+- current student evidence/mastery where applicable
+
+For each item report:
+
+DB FIELD
+→ QUERY
+→ CONTEXT BUILDER
+→ PROMPT/RUNTIME USE
+
+Classify:
+
+FULLY USED
+AVAILABLE BUT NOT USED
+PARTIAL
+MISSING
+
+============================================================
+PART 10 — AI TEACHER STATE MACHINE / RUNTIME AUDIT
+============================================================
+
+Previous required cycle:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+Audit the current code and, if safe, perform a real runtime test.
+
+Verify:
+
+- Node Lock
+- no scope drift
+- one micro-check at a time
+- MICRO_CHECK followed by FEEDBACK
+- backend controls node completion
+- model cannot self-complete a node
+- exercise stage uses real assigned exercise
+- exercise text is preserved correctly
+- Armenian student-facing response contract
+- structured response path
+- fallback behavior
+- session state consistency
+- KB immutability
+
+IMPORTANT REGRESSION CHECK:
+
+A previous audit found a bug where Phase 1 TEACH turns incorrectly
+required `is_micro_check`, causing structured-call failures and
+fallback to unstructured AI.
+
+That bug was reported fixed.
+
+Verify independently that this regression has NOT returned.
+
+Also re-check the previous non-blocking EXERCISE-stage verbatim
+presentation finding and report whether it is:
+
+FIXED
+STILL PRESENT
+WORSE
+NOT TESTABLE
+
+============================================================
+PART 11 — STUDENT MODEL / MASTERY / EVIDENCE AUDIT
+============================================================
+
+This section must NOT be skipped merely because mapping works.
+
+Trace the real current model for:
+
+Student × MicroNode
+
+Determine whether the system currently stores/uses:
+
+- mastery
+- confidence
+- evidence
+- attempts
+- errors
+- reviewSchedule
+- evidence strength
+- evidence type
+
+Trace:
+
+QUIZ
+→ ANSWER
+→ EVIDENCE
+→ MICRONODE
+→ MASTERY
+→ KNOWLEDGE TREE
+
+Verify the current 4 Knowledge Tree states:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+and determine exactly how each is calculated.
+
+Do not assume confidence == mastery.
+
+============================================================
+PART 12 — SCIENTIFIC GAP AUDIT
+============================================================
+
+This is a comparison against the previously identified scientific
+backlog.
+
+For EACH item classify current status as:
+
+IMPLEMENTED
+PARTIAL
+NOT IMPLEMENTED
+IMPLEMENTED BUT UNUSED
+
+A. One observable Learning Objective per MicroNode
+
+B. Exercise → multiple skills / secondary MicroNodes
+
+C. Exercise metadata:
+   - exerciseType
+   - difficulty
+   - cognitiveDemand
+   - requiredNodes/skills
+
+D. Rich mastery evidence:
+   - recall
+   - understanding
+   - application
+   - transfer
+
+E. Delayed retrieval / spaced practice
+
+F. reviewSchedule actually driving future practice
+
+G. interleaving for later practice/review
+
+H. dependency strength/type:
+   - required prerequisite
+   - recommended prerequisite
+   - related concept
+   - requiredLevel if implemented
+
+I. adaptive scaffolding:
+   Prompt → Hint → Question → Retrieval → Feedback
+   rather than answer substitution
+
+J. mastery not being declared solely from immediate correctness
+
+For every IMPLEMENTED claim provide code + DB/runtime evidence.
+
+============================================================
+PART 13 — TEST SUITE REALITY CHECK
+============================================================
+
+Previous baseline:
+
+333/333 PASS.
+
+Run the CURRENT relevant test suite.
+
+Report:
+
+current total tests =
+passed =
+failed =
+skipped =
+
+Then classify tests:
+
+UNIT
+INTEGRATION
+HTTP
+DB
+REAL RUNTIME/AI
+MOCKED
+
+Important:
+
+333 passing mocked/unit tests do NOT by themselves prove the
+production pipeline.
+
+Identify critical production behaviors with NO meaningful test.
+
+============================================================
+PART 14 — OLD VS CURRENT COMPARISON MATRIX
+============================================================
+
+Produce this exact comparison table:
+
+| Area | Previous baseline | Current evidence | Status | Change |
+|---|---|---|---|---|
+| Source blocks | 53 | | | |
+| Source coverage | 100% | | | |
+| Topics | 4 | | | |
+| MicroNodes | 10 | | | |
+| Source-grounded MicroNodes | 10/10 | | | |
+| One-objective MicroNodes | previous audit target | | | |
+| Source activities | 15 | | | |
+| Persisted exercises | 15 | | | |
+| Assigned exercises | 11 | | | |
+| Additional exercises | 4 | | | |
+| Lost exercises | 0 | | | |
+| Duplicate exercises | 0 | | | |
+| Teacher Review | PASS | | | |
+| Phase 2 enrichment | 10/10 | | | |
+| Dependencies | 9 | | | |
+| Dependency cycles | 0 | | | |
+| KB valid | true | | | |
+| readyForAiTeacher | true | | | |
+| AI Teacher context | PASS | | | |
+| Node Lock | PASS | | | |
+| Teaching cycle | PASS | | | |
+| Armenian contract | PASS | | | |
+| Exercise-stage verbatim | non-blocking finding | | | |
+| KB immutability | PASS | | | |
+| Regression tests | 333/333 | | | |
+
+Status must be one of:
+
+IMPROVED
+UNCHANGED
+REGRESSED
+NOT COMPARABLE
+UNKNOWN
+
+============================================================
+PART 15 — SCIENTIFIC BACKLOG COMPARISON
+============================================================
+
+Previous scientific/architecture audit identified these weaker areas:
+
+1. Dependencies — needed development
+2. Learning Objectives — needed strengthening
+3. Exercise → multiple skills — missing/weak
+4. Student Knowledge Model — simplified
+5. Retrieval / spacing — foundation existed but incomplete
+6. Transfer/application evidence — weak
+7. Exercise cognitive metadata — absent
+8. Interleaving — future work
+
+Produce:
+
+| Scientific area | Previous state | Current state | Real improvement? | Evidence |
+|---|---|---|---|---|
+
+This table is extremely important.
+
+We need to know what was ACTUALLY implemented since the previous audit.
+
+============================================================
+PART 16 — FINAL VERDICT
+============================================================
+
+Do NOT simply output PASS.
+
+Give five separate scores from 0–100:
+
+1. Source Fidelity
+2. Knowledge Mapping Quality
+3. Practice / Exercise Model
+4. AI Teacher Runtime
+5. Student Model / Scientific Learning Architecture
+
+Then:
+
+OVERALL ARCHITECTURE SCORE = X/100
+
+Also classify the platform as ONE of:
+
+A — Prototype
+B — Functional MVP
+C — Strong V1
+D — Production-ready learning architecture
+
+Explain the classification using evidence.
+
+============================================================
+PART 17 — WHAT ACTUALLY CHANGED
+============================================================
+
+End with three lists:
+
+CONFIRMED IMPROVEMENTS SINCE PREVIOUS AUDIT
+- only things proven by evidence
+
+STILL OPEN
+- previously identified gaps that remain
+
+REGRESSIONS / NEW DEFECTS
+- anything that previously passed but now fails
+
+Then give:
+
+TOP 5 NEXT ACTIONS
+
+ordered by educational/system impact, not by ease of coding.
+
+============================================================
+STRICT AUDIT RULES
+============================================================
+
+1. READ-ONLY first.
+2. Do not change code during this audit.
+3. Do not repair defects while discovering them.
+4. Previous reports are baseline claims, NOT evidence.
+5. Current code + current DB + current runtime = evidence.
+6. A schema field existing does NOT mean feature implemented.
+7. A prompt mentioning something does NOT mean runtime uses it.
+8. A passing unit test does NOT prove end-to-end behavior.
+9. Distinguish stored vs consumed vs behaviorally enforced.
+10. Give exact file paths, functions, routes, tables and DB evidence.
+11. Mark anything not proven as UNKNOWN/NOT VERIFIED.
+12. Do not hide failures behind an overall PASS.
+13. Do not perform broad refactors.
+14. Do not spend time fixing cosmetic/UI issues.
+15. The goal is TRUTH about current architecture.
+
+FINAL OUTPUT ORDER:
+
+1. Executive Summary
+2. Current Architecture Map
+3. Current Forensic Metrics
+4. Source Fidelity
+5. Topic/MicroNode Quality
+6. Exercise Forensics
+7. Teacher Review
+8. Phase 2
+9. Dependencies
+10. KB Validation
+11. AI Teacher Context
+12. AI Teacher Runtime
+13. Student Model / Mastery / Knowledge Tree
+14. Scientific Gap Audit
+15. Test Reality Check
+16. Old vs Current Matrix
+17. Scientific Backlog Comparison
+18. Scores
+19. Confirmed Improvements
+20. Still Open
+21. Regressions / New Defects
+22. Top 5 Next Actions
+
+DO NOT IMPLEMENT FIXES.
+AUDIT AND REPORT ONLY.
