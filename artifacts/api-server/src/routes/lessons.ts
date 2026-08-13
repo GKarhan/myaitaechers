@@ -1100,6 +1100,10 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest,
     successCriteria: e.successCriteria ?? null,
     difficultyLevel: e.difficultyLevel ?? null,
     assignment: e.assignment ?? null,
+    // Provenance / review fields — included for teacher review UI
+    sourceType: e.sourceType ?? null,
+    sourceBlockIndex: e.sourceBlockIndex ?? null,
+    status: e.status ?? null,
   })));
 });
 

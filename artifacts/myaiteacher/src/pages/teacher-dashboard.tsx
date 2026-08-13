@@ -684,6 +684,13 @@ function LessonNodesPanel({
   const [addExForm, setAddExForm] = useState({
     exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
   });
+  // Quick-move state: which exercise is showing the "→ Տեղափ." node selector
+  const [movingExerciseId, setMovingExerciseId] = useState<number | null>(null);
+  // Add-to-Additional state: inline form for adding a manual exercise with relatedNodeId=null
+  const [addExToAdditional, setAddExToAdditional] = useState(false);
+  const [addAdditionalForm, setAddAdditionalForm] = useState({
+    exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
+  });
 
   const { data: nodes = [], isFetching: nodesFetching } = useGetLessonNodes(lessonId, {
     query: { enabled: open, queryKey: getGetLessonNodesQueryKey(lessonId) },
@@ -859,6 +866,19 @@ function LessonNodesPanel({
     updateEx.mutate(
       { lessonId, exerciseId: exId, data: { ...editExForm } },
       { onSuccess: () => { setEditingExerciseId(null); setEditExForm(null); refreshEx(); } }
+    );
+  };
+
+  // Quick-move: update only relatedNodeId without opening the full edit form.
+  // Source metadata (sourcePage, sourceText, sourceBlockIndex, sourceType) is
+  // NOT sent, so the backend leaves it untouched.
+  const quickMoveExercise = (exId: number, newNodeId: number | null) => {
+    updateEx.mutate(
+      { lessonId, exerciseId: exId, data: { relatedNodeId: newNodeId } },
+      {
+        onSuccess: () => { setMovingExerciseId(null); refreshEx(); },
+        onError: () => { setMovingExerciseId(null); },
+      }
     );
   };
 
@@ -1197,7 +1217,34 @@ function LessonNodesPanel({
                           {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>}
                         </div>
                       </div>
-                      <div className="flex gap-1 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Quick-move: shows a node selector without opening the full edit form */}
+                        {movingExerciseId === ex.id ? (
+                          <select
+                            autoFocus
+                            className="text-[10px] bg-black/40 border border-white/20 rounded px-1 py-0.5 text-white cursor-pointer max-w-[140px]"
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (!v) return;
+                              quickMoveExercise(ex.id, v === "null" ? null : parseInt(v, 10));
+                            }}
+                            onBlur={() => setMovingExerciseId(null)}
+                          >
+                            <option value="">→ Տեղափ...</option>
+                            <option value="null">📦 Լրացուցիչ</option>
+                            {nodes.map((nd) => (
+                              <option key={nd.id} value={String(nd.id)}>
+                                {nd.sequence}. {nd.title.substring(0, 28)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <button
+                            onClick={() => setMovingExerciseId(ex.id)}
+                            className="text-[11px] text-white/30 hover:text-primary/80 transition-colors shrink-0"
+                            title="Տեղափոխել →"
+                          >→</button>
+                        )}
                         <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors">✏️</button>
                         <button onClick={() => { if (!confirm("Jnjel varjutyune?")) return; deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx }); }} className="text-xs text-muted-foreground hover:text-destructive transition-colors">🗑️</button>
                       </div>
@@ -1421,10 +1468,10 @@ function LessonNodesPanel({
                               className="w-full flex items-center gap-1 px-2 py-1.5"
                               style={{ background: `${accent}18` }}
                             >
-                              {/* Drag handle */}
+                              {/* Drag handle — kept visually distinct from the ▼ expand chevron */}
                               <span
                                 {...dragHandleProps}
-                                className="text-[10px] text-white/25 hover:text-white/60 cursor-grab active:cursor-grabbing shrink-0 select-none px-0.5"
+                                className="text-sm text-white/50 hover:text-white/90 cursor-grab active:cursor-grabbing shrink-0 select-none px-1 leading-none"
                                 title="Drag to reorder topic"
                               >⠿</span>
 
@@ -1591,7 +1638,34 @@ function LessonNodesPanel({
                                   )}
                                 </div>
                               </div>
-                              <div className="flex gap-1 shrink-0">
+                              <div className="flex items-center gap-1 shrink-0">
+                                {/* Quick-move selector for Additional block exercises */}
+                                {movingExerciseId === ex.id ? (
+                                  <select
+                                    autoFocus
+                                    className="text-[10px] bg-black/40 border border-white/20 rounded px-1 py-0.5 text-white cursor-pointer max-w-[140px]"
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      if (!v) return;
+                                      quickMoveExercise(ex.id, v === "null" ? null : parseInt(v, 10));
+                                    }}
+                                    onBlur={() => setMovingExerciseId(null)}
+                                  >
+                                    <option value="">→ Տեղափ...</option>
+                                    <option value="null">📦 Լրացուցիչ</option>
+                                    {nodes.map((nd) => (
+                                      <option key={nd.id} value={String(nd.id)}>
+                                        {nd.sequence}. {nd.title.substring(0, 28)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <button
+                                    onClick={() => setMovingExerciseId(ex.id)}
+                                    className="text-[11px] text-white/30 hover:text-primary/80 transition-colors shrink-0"
+                                    title="Տեղափոխել →"
+                                  >→</button>
+                                )}
                                 <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors" title="Ред.">✏️</button>
                                 <button
                                   onClick={() => {
@@ -1608,6 +1682,76 @@ function LessonNodesPanel({
                     })}
                   </div>
                 )}
+
+                {/* Add manual exercise directly to Additional Exercises (relatedNodeId = null) */}
+                <div className="border-t border-white/6 pt-1.5">
+                  {addExToAdditional ? (
+                    <div className="space-y-1.5">
+                      <textarea
+                        className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+                        rows={2}
+                        placeholder="Varjutyutyan bnagir *"
+                        value={addAdditionalForm.exerciseTextVerbatim}
+                        onChange={(e) => setAddAdditionalForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <select
+                          className="bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
+                          value={addAdditionalForm.difficultyLevel}
+                          onChange={(e) => setAddAdditionalForm((f) => ({ ...f, difficultyLevel: e.target.value }))}
+                        >
+                          <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
+                        </select>
+                        <select
+                          className="bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
+                          value={addAdditionalForm.assignment}
+                          onChange={(e) => setAddAdditionalForm((f) => ({ ...f, assignment: e.target.value }))}
+                        >
+                          <option value="CLASS">CLASS</option><option value="HOMEWORK">HOMEWORK</option>
+                        </select>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          disabled={createEx.isPending || !addAdditionalForm.exerciseTextVerbatim.trim()}
+                          onClick={() => {
+                            createEx.mutate(
+                              {
+                                lessonId,
+                                data: {
+                                  ...addAdditionalForm,
+                                  relatedNodeId: null,
+                                  difficultyLevel: addAdditionalForm.difficultyLevel as "LOW" | "MEDIUM" | "HIGH",
+                                  assignment: addAdditionalForm.assignment as "CLASS" | "HOMEWORK",
+                                },
+                              },
+                              {
+                                onSuccess: () => {
+                                  setAddExToAdditional(false);
+                                  setAddAdditionalForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" });
+                                  refreshEx();
+                                },
+                              }
+                            );
+                          }}
+                          className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
+                        >{createEx.isPending ? "..." : "+ Avaelatsnel"}</button>
+                        <button
+                          onClick={() => {
+                            setAddExToAdditional(false);
+                            setAddAdditionalForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" });
+                          }}
+                          className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
+                        >Chegharkrel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAddExToAdditional(true)}
+                      className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5"
+                    >+ Avlelatsnel varjutyun</button>
+                  )}
+                </div>
               </div>
             );
           })()}

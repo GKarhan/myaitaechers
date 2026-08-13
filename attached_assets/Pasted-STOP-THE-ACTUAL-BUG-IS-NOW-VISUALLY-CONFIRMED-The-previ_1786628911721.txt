@@ -1,0 +1,126 @@
+STOP — THE ACTUAL BUG IS NOW VISUALLY CONFIRMED.
+
+The previous diagnosis assumed that the Topic drag handle `⠿` was visible
+and that the user could grab it.
+
+That assumption is FALSE.
+
+In the REAL Teacher Review UI, the Topic header currently shows controls
+such as:
+
+Topic number/title ... ▼ ✏️ 🗑️
+
+but there is NO VISIBLE `⠿` DRAG HANDLE for the teacher to grab.
+
+MicroNode ▲/▼ controls are visible and already work.
+
+DO NOT investigate backend, DB, reorder API, React Query cache,
+touch-action, dependencies, or MicroNode reorder again.
+
+Those have already been investigated.
+
+CURRENT TASK:
+
+Make the existing Topic drag handle actually visible and usable in the
+REAL Teacher Review UI.
+
+1. Inspect SortableTopicItem and its actual rendered Topic header.
+
+2. Determine why the existing `⠿` element described in the code is not
+visible in the rendered UI.
+
+Check specifically:
+- whether the drag handle is actually rendered in the active component
+- whether a different Topic component/render path is being used
+- whether CSS hides it
+- whether text/icon color makes it invisible
+- whether width/overflow/layout clips it
+- whether conditional rendering prevents it
+- whether listeners/attributes are attached to an element that is not
+  actually visible
+- whether the `SortableTopicItem` being edited is really the component
+  used by this Teacher Review screen
+
+3. Fix ONLY this Topic drag-handle UI problem.
+
+The Topic header must visibly contain a dedicated drag control, for example:
+
+`⠿  2. Բնության երևույթներ և ֆիզիկական մեթոդներ`
+
+or another clearly visible drag-grip icon.
+
+IMPORTANT:
+The drag handle and expand/collapse control must remain separate controls.
+
+Recommended behavior:
+
+`⠿` = drag Topic
+`▼ / ▶` = expand/collapse Topic
+`✏️` = edit
+`🗑️` = delete
+
+Do NOT make the whole Topic header draggable if that interferes with
+expand/edit/delete.
+
+4. The visible handle must receive the existing useSortable drag
+attributes/listeners.
+
+5. Keep the previously added optimistic update and touch-action fix unless
+there is concrete evidence they are wrong.
+
+REAL ACCEPTANCE TEST:
+
+Use the Physics 7 Teacher Review screen that is currently visible.
+
+First prove that the `⠿` drag handle is visibly rendered next to EVERY Topic.
+
+Then the teacher must be able to:
+
+Topic order BEFORE:
+
+1. Ներածություն
+2. Բնության երևույթներ և ֆիզիկական մեթոդներ
+3. Ֆիզիկական մարմիններ և նյութեր
+4. Ամփոփում
+
+Grab the VISIBLE `⠿` handle of Topic 3
+→ drag it above Topic 2
+
+Expected visible result:
+
+1 → 3 → 2 → 4
+
+Then:
+
+full browser refresh
+→ order must remain 1 → 3 → 2 → 4.
+
+Then restore using the SAME visible drag handle:
+
+1 → 2 → 3 → 4
+
+and full refresh again.
+
+CRITICAL:
+
+Do NOT claim PASS merely because:
+- the reorder API works,
+- DB order changes,
+- SortableTopicItem contains code for a handle,
+- or touch-action is configured.
+
+PASS requires that the teacher can SEE the drag handle in the actual
+Teacher Review UI and physically use it.
+
+If you cannot perform the authenticated browser gesture yourself,
+state that clearly and leave final PASS confirmation to the teacher.
+
+RETURN ONLY:
+
+1. Why the drag handle was not visible
+2. Exact component/render path actually used
+3. File changed
+4. Exact UI fix
+5. Screenshot/UI evidence that the handle is now visible
+6. Whether backend/API code was changed (expected: NO)
+7. Awaiting teacher drag confirmation / PASS

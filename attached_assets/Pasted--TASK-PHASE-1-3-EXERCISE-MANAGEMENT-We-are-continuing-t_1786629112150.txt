@@ -1,0 +1,761 @@
+# TASK — PHASE 1.3 EXERCISE MANAGEMENT
+
+We are continuing the existing MY AI TEACHER codebase.
+
+Phase 1.1 Teacher Review CRUD and Phase 1.2 Topic/MicroNode ordering are complete.
+
+DO NOT redesign the architecture.
+
+This task is ONLY:
+
+# PHASE 1.3 — EXERCISE MANAGEMENT
+
+The governing invariant is:
+
+**TOTAL SOURCE EXERCISES = ASSIGNED EXERCISES + ADDITIONAL EXERCISES**
+
+Lost source exercise must always equal:
+
+`0`
+
+The AI Mapper's initial exercise attribution is NOT final.
+
+Teacher has correction authority.
+
+---
+
+# PART 0 — AUDIT FIRST
+
+Before changing code, inspect the CURRENT implementation.
+
+Do not assume functionality is missing merely because it is not obvious in the UI.
+
+Trace each operation:
+
+**Teacher Review UI → API → DB → refresh/read-back**
+
+Classify each requirement as:
+
+* ✅ ALREADY WORKS
+* 🟡 PARTIAL
+* 🔴 MISSING
+* ⚠️ BROKEN
+
+Audit these operations separately:
+
+1. MicroNode A → MicroNode B
+2. MicroNode → Additional Exercises
+3. Additional Exercises → MicroNode
+4. Edit exercise
+5. Delete exercise
+6. Add manual exercise
+7. Exercise page/source metadata preservation
+8. Additional Exercises visibility
+9. Refresh persistence
+10. Exercise count integrity
+
+For every conclusion provide:
+
+* frontend file/component
+* API route/hook
+* DB table/fields
+* current behavior
+* missing piece
+
+---
+
+# PART 1 — CONFIRM CURRENT DATA MODEL
+
+Determine the authoritative exercise architecture.
+
+Inspect at minimum:
+
+* `lesson_exercises`
+* `relatedNodeId` / `related_node_id`
+* lesson/node relationship
+* exercise status fields
+* source/verbatim fields
+* page metadata
+* exercise type/category fields
+* manual vs source exercise distinction, if one exists
+
+Explicitly confirm whether the current model is:
+
+`relatedNodeId = MicroNode ID`
+→ assigned exercise
+
+and
+
+`relatedNodeId = NULL`
+→ Additional / unassigned exercise
+
+If this is already the architecture, REUSE IT.
+
+Do not create a second assignment system.
+
+Do not create a new junction table unless the current architecture truly requires it.
+
+Multi-skill exercises are OUT OF SCOPE.
+
+---
+
+# PART 2 — REQUIRED TEACHER ACTIONS
+
+Teacher Review must support all of these:
+
+## A. MicroNode A → MicroNode B
+
+Example:
+
+Exercise E currently:
+
+`relatedNodeId = MN3`
+
+Teacher selects:
+
+`Move to → MN5`
+
+Expected:
+
+`relatedNodeId = MN5`
+
+Exercise disappears from MN3 and appears under MN5.
+
+Full refresh must preserve this.
+
+---
+
+## B. MicroNode → Additional Exercises
+
+Teacher selects:
+
+`Move to → Additional Exercises`
+
+Expected:
+
+`relatedNodeId = NULL`
+
+Exercise must NOT be deleted.
+
+It must appear in:
+
+`📦 Լրացուցիչ վարժություններ`
+
+after refresh.
+
+---
+
+## C. Additional Exercises → MicroNode
+
+An exercise currently in Additional:
+
+`relatedNodeId = NULL`
+
+Teacher selects:
+
+`Move to → MN4`
+
+Expected:
+
+`relatedNodeId = MN4`
+
+It disappears from Additional and appears under MN4.
+
+Full refresh must preserve this.
+
+---
+
+# PART 3 — EXERCISE EDIT
+
+Teacher must be able to edit an exercise.
+
+Audit the authoritative fields first.
+
+At minimum support editing the teacher-editable exercise text/content already used by the application.
+
+IMPORTANT:
+
+Do not silently destroy source traceability.
+
+If the exercise originated from the textbook, preserve source metadata such as:
+
+* original/source text field if separately stored
+* source page
+* source reference/anchor
+* exercise number/id
+* provenance metadata
+
+If current architecture distinguishes:
+
+`exerciseTextVerbatim`
+
+from
+
+teacher-edited/display text,
+
+preserve that distinction.
+
+Do not overwrite the original source evidence merely because the teacher edits the usable exercise text.
+
+If no such distinction currently exists, report it before introducing any new field.
+
+Do NOT redesign source architecture in this task.
+
+---
+
+# PART 4 — EXERCISE DELETE
+
+Teacher must be able to delete an exercise intentionally.
+
+Before implementation, determine current delete semantics.
+
+Important distinction:
+
+### Node deletion
+
+must NOT automatically delete attached source exercises.
+
+### Teacher explicitly deletes an exercise
+
+may delete the exercise record if that is the existing intended CRUD behavior.
+
+Do not confuse these two cases.
+
+For explicit exercise delete:
+
+* require deliberate teacher action
+* preferably confirmation
+* persist after refresh
+
+Report whether source-derived deleted exercises are physically deleted or soft-deleted in current architecture.
+
+Do not invent soft delete unless necessary.
+
+---
+
+# PART 5 — ADD MANUAL EXERCISE
+
+Teacher must be able to add a new exercise manually.
+
+At minimum teacher should be able to choose:
+
+* exercise text
+* target MicroNode OR Additional Exercises
+* existing relevant metadata fields if required by schema
+
+Do not force fake textbook source metadata onto manually created exercises.
+
+If schema has provenance/source type, use it correctly.
+
+If no explicit provenance field exists, report that; do not redesign schema unless blocking.
+
+Manual exercise should not be counted as a lost source exercise.
+
+---
+
+# PART 6 — UI REQUIREMENT
+
+Keep the current Teacher Review design.
+
+Do NOT redesign the page.
+
+Each exercise should have a clear action for reassignment.
+
+Preferred minimal UX:
+
+`Տեղափոխել →`
+
+with options:
+
+* Topic/MicroNode list
+* `📦 Լրացուցիչ վարժություններ`
+
+or reuse the existing current UI pattern if one already exists.
+
+The teacher must be able to tell where the exercise currently belongs.
+
+Do not create duplicate exercise cards.
+
+Same exercise record moves between containers.
+
+---
+
+# PART 7 — ADDITIONAL EXERCISES BLOCK
+
+The block:
+
+`📦 Լրացուցիչ վարժություններ (N)`
+
+must remain clearly visible.
+
+It represents exercises that are preserved but not currently assigned to a MicroNode.
+
+Requirements:
+
+* count is correct
+* all `relatedNodeId = NULL` exercises appear there
+* moving into a MicroNode removes them from this block
+* moving out of a MicroNode adds them here
+* refresh preserves state
+
+Do not hide Additional Exercises simply because count becomes zero unless current UI convention already does so.
+
+---
+
+# PART 8 — SOURCE EXERCISE INVARIANT
+
+For a mapped lesson, determine the authoritative source-exercise count.
+
+Then verify:
+
+`TOTAL SOURCE EXERCISES`
+
+equals
+
+`ASSIGNED SOURCE EXERCISES + ADDITIONAL SOURCE EXERCISES`
+
+at all times.
+
+Reassignment must never change total source exercise count.
+
+Example:
+
+Before:
+
+Assigned = 11
+Additional = 4
+Total source = 15
+
+Move one Assigned → Additional:
+
+Assigned = 10
+Additional = 5
+Total source = 15
+
+Move one Additional → Assigned:
+
+Assigned = 11
+Additional = 4
+Total source = 15
+
+Expected:
+
+`lost source exercises = 0`
+
+---
+
+# PART 9 — DO NOT MIX MANUAL EXERCISES WITH SOURCE COVERAGE
+
+If teacher adds a manual exercise, total exercise count may increase.
+
+Example:
+
+Source exercises = 15
+
+Teacher adds 1 manual exercise.
+
+Total DB exercises may become 16.
+
+This must NOT make the system claim:
+
+`source exercises = 16`
+
+Source preservation and teacher-added content are separate concepts.
+
+Audit whether current schema can distinguish this reliably.
+
+If it cannot, report the limitation as:
+
+`OUT-OF-SCOPE / FUTURE PROVENANCE IMPROVEMENT`
+
+unless it blocks the invariant.
+
+Do not build a new provenance subsystem without evidence it is required.
+
+---
+
+# PART 10 — API / BACKEND SAFETY
+
+Reuse existing reassignment endpoint if already correct.
+
+Do not create duplicate routes unnecessarily.
+
+For reassignment verify:
+
+* exercise exists
+* belongs to expected Lesson
+* target MicroNode exists
+* target MicroNode belongs to same Lesson
+* cross-lesson assignment is rejected
+* `NULL` target is allowed for Additional
+* unrelated fields remain unchanged
+
+Prefer PATCH/update semantics.
+
+Reassignment should update only the relationship unless another field is intentionally edited.
+
+---
+
+# PART 11 — CACHE / UI CONSISTENCY
+
+We already encountered UI issues where backend updates worked but React Query showed stale state.
+
+Therefore explicitly verify after each operation:
+
+**UI action → API → DB → query/cache refresh → UI**
+
+If useful, optimistic update is allowed, but only with rollback on failure.
+
+Do not use optimistic UI if it can silently show a state that DB rejected.
+
+---
+
+# PART 12 — REAL DATA VERIFICATION
+
+Use the real Physics 7 mapped lesson already used in previous Phase 1 testing.
+
+It currently has approximately:
+
+* 10 MicroNodes
+* 15 source exercises
+* Additional Exercises block
+
+Record exact current counts before testing.
+
+Use real existing exercises where safe.
+
+---
+
+## TEST A — MicroNode A → MicroNode B
+
+Choose one exercise from an existing MicroNode.
+
+Record:
+
+* exercise ID
+* source text
+* current relatedNodeId
+* page
+* source metadata
+
+Move it to another MicroNode using the REAL UI.
+
+Verify:
+
+* source MicroNode no longer shows it
+* target MicroNode shows it
+* DB `relatedNodeId` updated
+* page/source metadata unchanged
+* full refresh preserves placement
+
+Then restore if appropriate.
+
+---
+
+## TEST B — MicroNode → Additional
+
+Use a real exercise.
+
+Move it from MicroNode to Additional.
+
+Verify:
+
+* DB `relatedNodeId = NULL`
+* exercise record still exists
+* source metadata unchanged
+* Additional count increases by 1
+* Assigned count decreases by 1
+* total source exercises unchanged
+* refresh persists
+
+---
+
+## TEST C — Additional → MicroNode
+
+Use one exercise currently in Additional.
+
+Move it to a MicroNode.
+
+Verify:
+
+* DB `relatedNodeId = target MN`
+* Additional count decreases by 1
+* Assigned count increases by 1
+* total source exercises unchanged
+* refresh persists
+
+Restore original assignment if test data should not remain changed.
+
+---
+
+## TEST D — Edit Exercise
+
+Edit one exercise through real Teacher Review UI.
+
+Verify:
+
+* intended editable text changed
+* refresh persists
+* source/page/provenance fields not accidentally erased
+* no duplicate exercise created
+
+Restore if appropriate.
+
+---
+
+## TEST E — Add Manual Exercise
+
+Create a clearly temporary manual exercise.
+
+Assign it first to a MicroNode or Additional according to existing UX.
+
+Verify:
+
+* record created
+* correct Lesson
+* correct `relatedNodeId`
+* refresh persists
+
+Then optionally move it to another MicroNode and Additional to verify reusability.
+
+Clean up temporary record afterward.
+
+---
+
+## TEST F — Delete Manual Exercise
+
+Delete the temporary manual exercise.
+
+Verify:
+
+* record deleted according to intended semantics
+* no unrelated exercise deleted
+* source exercise count remains unchanged
+
+---
+
+# PART 13 — AUTOMATED TESTS
+
+Add focused tests only where current test architecture supports real route/service behavior.
+
+At minimum cover:
+
+### Reassignment
+
+* MN A → MN B
+* MN → NULL
+* NULL → MN
+* cross-lesson target rejected
+* nonexistent target rejected
+* exercise count unchanged
+
+### Edit
+
+* editable field persists
+* unrelated source metadata preserved
+
+### Add
+
+* manual exercise created
+* target MicroNode accepted
+* NULL/Additional accepted
+
+### Delete
+
+* explicit exercise delete removes only target exercise
+* unrelated exercises preserved
+
+Do not add fake tests that only test local array manipulation.
+
+---
+
+# PART 14 — DATA INTEGRITY
+
+Before and after the entire verification report:
+
+* total exercises
+* source exercises, if distinguishable
+* assigned exercises
+* Additional exercises
+* manual exercises, if distinguishable
+* MicroNode count
+* Topic count
+
+Required:
+
+`lost source exercises = 0`
+
+`duplicate exercises created unexpectedly = 0`
+
+`cross-lesson reassignment = 0`
+
+`source/page metadata accidentally erased = 0`
+
+---
+
+# PART 15 — OUT OF SCOPE
+
+DO NOT implement:
+
+* Exercise Approval Phase 1.4
+* draft → approved workflow
+* AI Teacher exercise filtering
+* LO/granularity validation
+* source/page validator enhancements
+* Final Lesson Approval
+* Lesson ↔ Tests
+* Knowledge Tree
+* Student assignment
+* AI Teacher teaching logic
+* evidence/mastery/scoring
+* spaced retrieval
+* interleaving
+* multi-skill exercise architecture
+* Mapper redesign
+
+If you discover these issues, report them under:
+
+`OUT-OF-SCOPE FINDING`
+
+Do not fix them.
+
+---
+
+# FINAL REPORT
+
+Return exactly these sections.
+
+## A. FORENSIC AUDIT
+
+| Requirement | Status | Existing path | Missing/fixed | Files |
+| ----------- | ------ | ------------- | ------------- | ----- |
+
+Include:
+
+* MN → MN
+* MN → Additional
+* Additional → MN
+* edit
+* delete
+* add manual
+
+---
+
+## B. FILES CHANGED
+
+`path → reason`
+
+---
+
+## C. REAL UI VERIFICATION
+
+For each:
+
+### MN A → MN B
+
+BEFORE → UI ACTION → API → DB → REFRESH → AFTER
+
+### MN → Additional
+
+same format
+
+### Additional → MN
+
+same format
+
+### Edit
+
+same format
+
+### Add Manual
+
+same format
+
+### Delete
+
+same format
+
+---
+
+## D. EXERCISE INVARIANT
+
+Report actual numbers:
+
+`Source exercises = ?`
+
+`Assigned source exercises = ?`
+
+`Additional source exercises = ?`
+
+Then:
+
+`Source = Assigned + Additional → PASS / FAIL`
+
+Report:
+
+`lost source exercises = ?`
+
+---
+
+## E. SOURCE METADATA INTEGRITY
+
+Confirm whether these remained intact after move/edit:
+
+* page
+* source/verbatim text
+* source reference/anchor
+* other provenance fields
+
+---
+
+## F. TESTS
+
+Exact commands.
+
+Passed / failed count.
+
+---
+
+## G. DATA INTEGRITY
+
+Before / after counts.
+
+---
+
+## H. SCOPE CHECK
+
+Explicitly state whether you changed:
+
+* Mapper
+* AI Teacher
+* quizzes
+* Knowledge Tree
+* scoring/mastery/evidence
+* Exercise Approval
+* Final Lesson Approval
+
+Expected:
+
+`NO`
+
+---
+
+## I. FINAL GATE 1.3
+
+Acceptance:
+
+**MN ↔ MN / MN ↔ Additional / edit / delete / add → refresh → DB persistence → lost source exercises = 0**
+
+Result:
+
+`PASS / PARTIAL / FAIL`
+
+Do NOT report PASS unless real UI + DB + refresh evidence exists.
+
+---
+
+# FINAL PRINCIPLE
+
+Do not optimize beyond this task.
+
+**Audit existing reassignment first → reuse current relatedNodeId architecture → add only missing Teacher Review controls → prove Source Exercises = Assigned + Additional with real data.**
