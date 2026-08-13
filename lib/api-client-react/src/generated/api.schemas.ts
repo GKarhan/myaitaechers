@@ -982,3 +982,34 @@ export interface ApproveAllLessonExercisesResponse {
   lessonId: number;
 }
 
+/** P1.7: Individual validation issue returned by POST /lessons/:id/final-approve */
+export interface LessonApprovalIssue {
+  code: string;
+  messageArm: string;
+  nodeId?: number;
+  nodeTitle?: string;
+  count?: number;
+}
+
+/** P1.7: Summary counts returned alongside errors/warnings */
+export interface LessonApprovalSummary {
+  totalNodes: number;
+  approvedNodes: number;
+  totalTopics: number;
+  sourceExercises: number;
+  approvedSourceExercises: number;
+  draftSourceExercises: number;
+  phase2CompleteNodes: number;
+  missingLONodes: number;
+  emptyNodes: number;
+}
+
+/** P1.7: Response from POST /lessons/:id/final-approve */
+export interface FinalApproveResponse {
+  approved: boolean;
+  lessonId: number;
+  errors: LessonApprovalIssue[];
+  warnings: LessonApprovalIssue[];
+  summary: LessonApprovalSummary;
+}
+

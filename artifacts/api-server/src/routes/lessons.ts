@@ -14,6 +14,8 @@ import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { refreshSequentialDependencies } from "../lib/sequential-deps.js";
 import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
+import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
+import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 
 const router = Router();
 
@@ -138,6 +140,8 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
     description: lesson.description,
     bloomLevel: lesson.bloomLevel,
     content: lesson.content ?? null,
+    // P1.7: Expose authoring status — values: "draft","needs_review","approved" (+ assignment values)
+    authoringStatus: lesson.status ?? "draft",
     currentSession: session
       ? {
           id: session.id,
@@ -650,6 +654,7 @@ router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, re
     })
     .returning();
 
+  await invalidateLessonApproval(lessonId);
   res.status(201).json({
     id: node.id,
     lessonId: node.lessonId,
@@ -761,6 +766,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
     .where(eq(lessonNodesTable.id, nodeId))
     .returning();
 
+  await invalidateLessonApproval(lessonId);
   res.json({
     id: updated.id,
     lessonId: updated.lessonId,
@@ -885,6 +891,7 @@ router.post("/lessons/:lessonId/topics/:topicId/update", requireAuth, async (req
     .where(eq(lessonTopicsTable.id, topicId))
     .returning();
 
+  await invalidateLessonApproval(lessonId);
   res.json({ id: updated.id, lessonId: updated.lessonId, sequence: updated.sequence, title: updated.title, description: updated.description ?? null });
 });
 
@@ -908,6 +915,7 @@ router.post("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, r
     .insert(lessonTopicsTable)
     .values({ lessonId, title: title.trim(), sequence: nextSeq, description: description?.trim() ?? null })
     .returning();
+  await invalidateLessonApproval(lessonId);
   res.status(201).json({ id: topic.id, lessonId: topic.lessonId, sequence: topic.sequence, title: topic.title, description: topic.description ?? null });
 });
 
@@ -927,6 +935,7 @@ router.post("/lessons/:lessonId/topics/:topicId/delete", requireAuth, async (req
   if (!existing) { res.status(404).json({ error: "Topic not found" }); return; }
 
   await db.delete(lessonTopicsTable).where(eq(lessonTopicsTable.id, topicId));
+  await invalidateLessonApproval(lessonId);
   res.json({ message: "Topic deleted", id: topicId });
 });
 
@@ -972,6 +981,7 @@ router.post("/lessons/:lessonId/topics/reorder", requireAuth, async (req: AuthRe
     .from(lessonTopicsTable)
     .where(eq(lessonTopicsTable.lessonId, lessonId))
     .orderBy(asc(lessonTopicsTable.sequence));
+  await invalidateLessonApproval(lessonId);
   res.json(updated.map((t) => ({ id: t.id, lessonId: t.lessonId, sequence: t.sequence, title: t.title, description: t.description ?? null })));
 });
 
@@ -1021,6 +1031,7 @@ router.post("/lessons/:lessonId/nodes/reorder", requireAuth, async (req: AuthReq
     .where(eq(lessonNodesTable.lessonId, lessonId))
     .orderBy(asc(lessonNodesTable.sequence));
 
+  await invalidateLessonApproval(lessonId);
   res.json({ nodes: updated, dependencies: depResult });
 });
 
@@ -1046,6 +1057,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
   }
 
   await db.delete(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId));
+  await invalidateLessonApproval(lessonId);
   res.json({ message: "Node deleted" });
 });
 
@@ -1207,6 +1219,7 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
     })
     .returning();
 
+  await invalidateLessonApproval(lessonId);
   res.status(201).json({
     id: ex.id,
     lessonId: ex.lessonId,
@@ -1316,6 +1329,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
   const updatedEdited = (updated as any).exerciseTextEdited as string | null | undefined;
   const effectiveText = updatedEdited?.trim() ? updatedEdited.trim() : updated.exerciseTextVerbatim;
 
+  await invalidateLessonApproval(lessonId);
   res.json({
     id: updated.id,
     lessonId: updated.lessonId,
@@ -1358,6 +1372,7 @@ router.post("/lessons/:lessonId/exercises/approve-all", requireAuth, async (req:
     ))
     .returning({ id: lessonExercisesTable.id });
 
+  await invalidateLessonApproval(lessonId);
   res.json({ approvedCount: updated.length, lessonId });
 });
 
@@ -1376,6 +1391,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireAuth, asyn
   if (!existing) { res.status(404).json({ error: "Exercise not found" }); return; }
 
   await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.id, exerciseId));
+  await invalidateLessonApproval(lessonId);
   res.json({ message: "Exercise deleted" });
 });
 
@@ -1399,6 +1415,45 @@ router.get("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, re
     title:       t.title,
     description: t.description ?? null,
   })));
+});
+
+// POST /lessons/:lessonId/final-approve — P1.7 Final Lesson Approval Gate
+// Runs full deterministic validation; if errors === 0, sets lesson status → 'approved'.
+// Returns { approved, lessonId, errors[], warnings[], summary } always.
+// On validation failure: 422 with errors. On success: 200 with approved: true.
+router.post("/lessons/:lessonId/final-approve", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select({ id: lessonsTable.id })
+    .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  const result = await validateLessonForFinalApproval(lessonId);
+
+  if (result.errors.length > 0) {
+    res.status(422).json({
+      approved: false,
+      lessonId,
+      errors: result.errors,
+      warnings: result.warnings,
+      summary: result.summary,
+    });
+    return;
+  }
+
+  // All checks passed — stamp the lesson as approved
+  await db.update(lessonsTable)
+    .set({ status: "approved" })
+    .where(eq(lessonsTable.id, lessonId));
+
+  res.json({
+    approved: true,
+    lessonId,
+    errors: [],
+    warnings: result.warnings,
+    summary: result.summary,
+  });
 });
 
 // GET /lessons/:lessonId/kb-validate — Phase 9 Knowledge Base Validation

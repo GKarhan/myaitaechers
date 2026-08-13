@@ -6,6 +6,7 @@ import fs from "fs";
 import { db, usersTable, teachersTable, classesTable, classStudentsTable, lessonsTable, lessonNodesTable, homeworkTable, scheduleTable, classDocumentsTable, coursesTable, resourcesTable, lessonSessionsTable, teacherClassSubjectsTable, subjectsTable } from "@workspace/db";
 import { eq, and, inArray, avg, count, desc, ne, sql } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
+import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -236,6 +237,8 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
     .where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!)))
     .returning();
   if (updated.length === 0) { res.status(404).json({ error: "Das chi gtnvel" }); return; }
+  // P1.7: lesson overview edit invalidates final approval
+  await invalidateLessonApproval(id);
   res.json(updated[0]);
 });
 

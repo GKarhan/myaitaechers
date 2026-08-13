@@ -637,6 +637,7 @@ function LessonNodesPanel({
   textbookTitle = null,
   chapterTitle = null,
   lessonDescription = null,
+  authoringStatus = "draft",
 }: {
   lessonId: number;
   courseId: number;
@@ -646,6 +647,8 @@ function LessonNodesPanel({
   textbookTitle?: string | null;
   chapterTitle?: string | null;
   lessonDescription?: string | null;
+  /** P1.7: lesson-level authoring status — "draft" | "approved" | "needs_review" */
+  authoringStatus?: string;
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -694,6 +697,48 @@ function LessonNodesPanel({
   const [addAdditionalForm, setAddAdditionalForm] = useState({
     exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
   });
+
+  // P1.7: Final Lesson Approval state
+  const { token: authToken } = useAuth();
+  const [approvalStatus, setApprovalStatus] = useState<string>(authoringStatus);
+  const [approvalPending, setApprovalPending] = useState(false);
+  const [approvalErrors, setApprovalErrors] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
+  const [approvalWarnings, setApprovalWarnings] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
+  const [showApprovalErrors, setShowApprovalErrors] = useState(false);
+
+  // Sync external authoringStatus changes (e.g. after lesson list refetch)
+  useEffect(() => { setApprovalStatus(authoringStatus); }, [authoringStatus]);
+
+  const handleFinalApprove = async () => {
+    if (approvalPending) return;
+    setApprovalPending(true);
+    setApprovalErrors([]);
+    setApprovalWarnings([]);
+    setShowApprovalErrors(false);
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/final-approve`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },
+      });
+      const data = await r.json();
+      if (data.approved) {
+        setApprovalStatus("approved");
+        setApprovalErrors([]);
+        setApprovalWarnings(data.warnings ?? []);
+        setShowApprovalErrors(false);
+      } else {
+        setApprovalStatus("needs_review");
+        setApprovalErrors(data.errors ?? []);
+        setApprovalWarnings(data.warnings ?? []);
+        setShowApprovalErrors(true);
+      }
+    } catch {
+      setApprovalErrors([{ code: "NETWORK_ERROR", messageArm: "Կապի սխալ. Փortsek kjnakel." }]);
+      setShowApprovalErrors(true);
+    } finally {
+      setApprovalPending(false);
+    }
+  };
 
   const { data: nodes = [], isFetching: nodesFetching } = useGetLessonNodes(lessonId, {
     query: { enabled: open, queryKey: getGetLessonNodesQueryKey(lessonId) },
@@ -1513,10 +1558,62 @@ function LessonNodesPanel({
             </AlertDialog>
           </>
         )}
+
+        {/* P1.7: Final Approval button + status badge */}
+        {nodes.length > 0 && (
+          <div className="flex items-center gap-1.5 px-2 shrink-0">
+            {approvalStatus === "approved" ? (
+              <span className="px-2 py-1 rounded-lg text-xs text-emerald-400 border border-emerald-400/20 bg-emerald-400/10 select-none" title="Դասը վերջնականապես հաստատված է">
+                ✅ Հաստ.
+              </span>
+            ) : approvalStatus === "needs_review" ? (
+              <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none" title="Դասը փոփոխվել է հաստատումից հետո — անհրաժեշt է կրկին հաստատել">
+                🔄 Վեր.
+              </span>
+            ) : null}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleFinalApprove(); }}
+              disabled={approvalPending}
+              title="Հաutatateldasgirkel das (P1.7 Final Approval Gate)"
+              className="px-2 py-1 rounded-lg text-xs text-emerald-400/70 border border-emerald-400/15 hover:border-emerald-400/40 hover:text-emerald-400 hover:bg-emerald-400/8 transition-colors disabled:opacity-40 shrink-0"
+            >
+              {approvalPending ? (
+                <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : "✅"}
+            </button>
+          </div>
+        )}
       </div>
 
       {open && (
         <div className="px-4 pb-4 space-y-3">
+          {/* P1.7: Validation error/warning panel */}
+          {showApprovalErrors && (approvalErrors.length > 0 || approvalWarnings.length > 0) && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-destructive">
+                  ❌ Հաutatуmы chi anhnar · {approvalErrors.length} skhаlm.
+                </span>
+                <button onClick={() => setShowApprovalErrors(false)} className="text-xs text-muted-foreground hover:text-white">✕</button>
+              </div>
+              {approvalErrors.map((e, i) => (
+                <div key={i} className="text-[11px] text-destructive/80 pl-2 border-l border-destructive/20">
+                  <span className="font-mono text-[10px] text-muted-foreground/60">[{e.code}]</span> {e.messageArm}
+                </div>
+              ))}
+              {approvalWarnings.length > 0 && (
+                <>
+                  <div className="text-xs font-medium text-amber-400/80 pt-1">⚠️ Nahatakutyunner · {approvalWarnings.length}</div>
+                  {approvalWarnings.map((w, i) => (
+                    <div key={i} className="text-[11px] text-amber-400/60 pl-2 border-l border-amber-400/20">
+                      <span className="font-mono text-[10px] text-muted-foreground/60">[{w.code}]</span> {w.messageArm}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
           {/* ── Lesson Overview / General Theory (Step 5) ───────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
@@ -4212,6 +4309,7 @@ export default function TeacherDashboard() {
                                 textbookTitle={(l as any).textbookTitle ?? null}
                                 chapterTitle={(l as any).chapterTitle ?? null}
                                 lessonDescription={(l as any).description ?? null}
+                                authoringStatus={(l as any).authoringStatus ?? "draft"}
                               />
                             </div>
                           </div>

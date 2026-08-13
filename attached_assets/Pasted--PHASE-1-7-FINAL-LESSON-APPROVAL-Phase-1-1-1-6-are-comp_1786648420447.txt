@@ -1,0 +1,892 @@
+# PHASE 1.7 — FINAL LESSON APPROVAL
+
+Phase 1.1–1.6 are complete enough to continue.
+
+Current confirmed Lesson 105 baseline:
+
+* Topics = 4
+* MicroNodes = 10
+* source textbook exercises = 15
+* assigned textbook exercises = 12
+* Additional textbook exercises = 3
+* lost source exercises = 0
+* all source exercises approved
+* approved MicroNodes with blank Learning Objective = 0
+* Topic reorder works
+* MicroNode reorder works
+* exercise reassignment/edit/add/delete works
+* source provenance preservation architecture is implemented
+* textbook exercise original text is preserved separately from teacher edits
+* AI Teacher exercise approval gate is implemented
+
+This task is ONLY:
+
+# PHASE 1.7 — FINAL LESSON APPROVAL
+
+Goal:
+
+Create/complete the real lesson-level final approval gate so that the system can produce an:
+
+**APPROVED LESSON PACKAGE**
+
+Do NOT redesign previous phases.
+
+Do NOT continue to Phase 1.8 dependency-sync work.
+
+---
+
+# 0. REQUIRED V1 LESSON LIFECYCLE
+
+We need a simple lesson-level workflow conceptually equivalent to:
+
+`Mapped → Needs Review → Approved`
+
+Before adding anything, audit the existing lesson status architecture.
+
+Determine:
+
+* current lesson status DB field(s)
+* allowed status values
+* existing approval/review fields
+* existing API behavior
+* Teacher Review UI behavior
+* any existing "approve lesson" functionality
+
+REUSE the current schema/status system if possible.
+
+Do NOT add a duplicate lesson approval field.
+
+Do NOT introduce a complex workflow engine.
+
+If the existing status names differ but provide the same semantics, preserve them and report the mapping.
+
+---
+
+# 1. AUDIT FIRST — NO CODE CHANGES
+
+Before implementation, trace:
+
+**Teacher Review UI → lesson approval API → validation → DB → refresh/read-back**
+
+Audit all validation infrastructure already present.
+
+Specifically determine whether the application already checks any of:
+
+* Learning Objective presence
+* MicroNode sequence
+* empty MicroNodes
+* source coverage
+* exercise preservation
+* exercise approval
+* Phase 2 enrichment
+* source integrity
+* dependency validity
+
+Classify each required Final Approval rule as:
+
+* ✅ already enforced
+* 🟡 partially enforced
+* 🔴 missing
+* ⚠️ broken
+
+Then implement only the missing parts.
+
+---
+
+# 2. FINAL APPROVAL — BACKEND AUTHORITATIVE
+
+Lesson approval must NOT be a frontend-only status toggle.
+
+When teacher attempts:
+
+`Lesson → Approved`
+
+the backend must run the Final Lesson Validation Gate.
+
+If any BLOCKING ERROR exists:
+
+* approval must fail
+* lesson must NOT become approved
+* backend must return structured validation errors
+* Teacher Review must display the reason
+
+Warnings may be displayed but must not block approval unless explicitly defined below.
+
+---
+
+# 3. REQUIRED BLOCKING VALIDATIONS
+
+At minimum Final Lesson Approval must validate these rules.
+
+## A. Learning Objectives
+
+Every MicroNode intended to be part of the final Lesson must have:
+
+`trim(learningObjective) !== ""`
+
+Required:
+
+`approved/final MicroNodes with missing LO = 0`
+
+This should reuse Phase 1.5 validation.
+
+Do not duplicate logic unnecessarily.
+
+---
+
+## B. EMPTY MICRONODES
+
+No final MicroNode may be structurally empty.
+
+Audit the authoritative theory/content fields.
+
+Define a conservative deterministic "empty MicroNode" rule.
+
+At minimum a node must not consist only of:
+
+* title
+* blank theory/content
+* blank Learning Objective
+
+Since LO is already required, determine the correct content field from the current architecture.
+
+Do NOT flag legitimate concise textbook nodes as empty merely because their theory is short.
+
+Required:
+
+`empty final MicroNodes = 0`
+
+---
+
+## C. SEQUENCE VALIDITY
+
+Topic and MicroNode ordering must be valid.
+
+Current architecture:
+
+`Lesson → Topic → MicroNode`
+
+Topic sequence and MicroNode sequence are separate domains.
+
+Validate:
+
+### Topics
+
+Sequence must be normalized and unique within Lesson:
+
+`1,2,3,...N`
+
+### MicroNodes
+
+Current authoritative node sequence is lesson-wide.
+
+Sequence must be normalized and unique:
+
+`1,2,3,...N`
+
+No:
+
+* duplicate sequence
+* zero
+* negative sequence
+* gaps
+* missing sequence
+
+Do NOT change the ordering architecture.
+
+Do NOT implement new reorder behavior.
+
+Only validate current persisted state.
+
+---
+
+## D. SOURCE COVERAGE / SOURCE INTEGRITY
+
+Reuse the established source integrity architecture.
+
+Final approval must fail if the current lesson has a known blocking source-integrity violation.
+
+For source-derived textbook content verify at minimum:
+
+* source exercise preservation is valid
+* source identities are not lost
+* no unresolved dangling provenance for required source content
+
+Do NOT rerun the Mapper.
+
+Do NOT rebuild source blocks.
+
+Use existing persisted source/mapping evidence.
+
+---
+
+## E. LOST EXERCISES
+
+The invariant remains:
+
+**TOTAL SOURCE EXERCISES = ASSIGNED SOURCE EXERCISES + ADDITIONAL SOURCE EXERCISES**
+
+For Lesson 105 expected:
+
+`15 = 12 + 3`
+
+Final Lesson Approval must fail if:
+
+`lost source exercises > 0`
+
+Manual teacher-created exercises must NOT be counted as source textbook exercises.
+
+Do not rely merely on total DB exercise row count.
+
+Use source identity/provenance.
+
+---
+
+## F. EXERCISE STATES
+
+All source exercises intended for learner use in the final Lesson must have a valid V1 status.
+
+Current V1 exercise lifecycle:
+
+`draft → approved`
+
+Final Lesson Approval must require:
+
+`draft source exercises = 0`
+
+and:
+
+`source exercises with status != approved = 0`
+
+unless an existing explicit product rule defines a source exercise as intentionally excluded from the final lesson.
+
+Do NOT invent a third workflow.
+
+For current Lesson 105 expected:
+
+`approved source exercises = 15`
+
+---
+
+## G. REQUIRED PHASE 2 STATE
+
+Phase 2 enrichment currently contains core fields such as:
+
+* childFriendlyExplanation
+* basicExamples
+* commonMisconception
+* nonExamples
+
+Audit the existing workflow carefully.
+
+Do NOT automatically run Phase 2.
+
+Do NOT auto-chain Phase 2.
+
+Teacher Review → Phase 2 remains the existing deliberate workflow.
+
+Determine which MicroNodes are required to have Phase 2 enrichment before final lesson approval under the CURRENT architecture.
+
+For those nodes, validate required Phase 2 fields.
+
+If current workflow says Phase 2 applies only to approved MicroNodes, respect that.
+
+Do not invent optional Phase 2 requirements.
+
+Do not modify Phase 2 generation logic.
+
+Final approval should only validate the required existing Phase 2 state.
+
+---
+
+# 4. WARNINGS VS ERRORS
+
+Return structured validation results conceptually like:
+
+`errors[]`
+`warnings[]`
+
+Blocking errors prevent approval.
+
+Warnings do not.
+
+Examples:
+
+ERROR:
+
+* Missing Learning Objective
+* invalid sequence
+* empty MicroNode
+* lost source exercise
+* draft source exercise
+* missing required Phase 2 field
+* blocking source-integrity failure
+
+WARNING:
+
+* Phase 1.5 compound/multi-objective warning
+* mega-node advisory warning
+* other non-blocking review findings already defined
+
+Do not promote Phase 1.5 warnings into blockers.
+
+---
+
+# 5. FINAL LESSON APPROVAL UI
+
+Teacher Review should have a clear lesson-level action:
+
+`✅ Հաստատել դասը`
+
+Before/after behavior:
+
+### If validation fails
+
+Show a clear Armenian summary.
+
+Example:
+
+`Դասը դեռ հնարավոր չէ վերջնական հաստատել`
+
+Then show the actual blocking reasons.
+
+Examples:
+
+* `Ուսուցման նպատակ չկա՝ 1 հանգույցում`
+* `Չհաստատված վարժություններ՝ 2`
+* `Կորած աղբյուրային վարժություններ՝ 1`
+* `Phase 2 պարտադիր տվյալներ բացակայում են՝ 3 հանգույցում`
+
+Do not expose raw backend error codes as the primary teacher-facing text.
+
+### If validation succeeds
+
+Lesson becomes:
+
+`✅ Հաստատված`
+
+and persists after full refresh.
+
+---
+
+# 6. VALIDATE BEFORE MUTATING STATUS
+
+Final approval flow must conceptually be:
+
+1. Load authoritative Lesson package
+2. Run deterministic validation
+3. If errors > 0:
+
+   * DO NOT update lesson approval status
+4. If errors = 0:
+
+   * persist Lesson as approved
+5. return validation/approval result
+
+Do not temporarily mark Approved and then try to repair afterward.
+
+---
+
+# 7. APPROVAL INVALIDATION AFTER AUTHORING CHANGES
+
+This is important.
+
+Once a Lesson is final Approved, the approval must not silently remain valid after meaningful Teacher Review changes.
+
+Audit current update routes and implement the smallest safe invalidation mechanism.
+
+Meaningful authoring changes include at minimum:
+
+* Lesson overview edit
+* Topic add/edit/delete
+* Topic reorder
+* MicroNode add/edit/delete
+* MicroNode reorder
+* Learning Objective edit
+* theory/content edit
+* MicroNode Topic reassignment
+* exercise add/edit/delete
+* exercise reassignment
+* exercise approval state change
+* source-integrity relevant teacher adaptation
+* Phase 2 required field changes, if editable
+
+Preferred V1 behavior:
+
+`Approved Lesson + meaningful authoring change`
+→ Lesson becomes:
+`needs_review`
+
+or the current repository's equivalent non-final state.
+
+Teacher must run Final Approval again.
+
+Do NOT build version history in this task.
+
+Do NOT build approval snapshots.
+
+Do NOT make cosmetic UI actions invalidate approval.
+
+Only persisted authoring changes should.
+
+If centralizing invalidation would require a broad invasive refactor, identify the smallest safe existing-compatible helper/service.
+
+Avoid copy-pasting inconsistent invalidation logic across many routes if a small reusable function is appropriate.
+
+---
+
+# 8. APPROVED LESSON PACKAGE
+
+When Final Approval succeeds, prove that the resulting authoritative package contains the currently required authoring data.
+
+At minimum:
+
+Lesson
+→ Topics
+→ ordered MicroNodes
+→ Learning Objectives
+→ approved theory/content
+→ Phase 2 required enrichment
+→ approved exercises
+→ dependencies already present
+→ source provenance/metadata
+→ linked tests only if already existing in current architecture
+
+IMPORTANT:
+
+Do NOT implement Lesson ↔ Tests here.
+
+That is Phase 1.9.
+
+If no linked tests exist yet, that must NOT block 1.7.
+
+Do NOT implement Student Assignment.
+
+That is Phase 1.12.
+
+The purpose here is to establish that the Lesson itself is final and learner-ready from an authoring perspective.
+
+---
+
+# 9. DO NOT IMPLEMENT PHASE 1.8
+
+Dependency synchronization after reorder is Phase 1.8.
+
+Do NOT redesign or extend dependency semantics here.
+
+If current dependencies contain an obvious blocking integrity issue that prevents declaring the package structurally valid, REPORT IT.
+
+Do not implement the Phase 1.8 solution in this task.
+
+REQUIRED prerequisite semantics remain out of scope.
+
+---
+
+# 10. REAL ACCEPTANCE TEST — LESSON 105
+
+Use real Physics 7 Lesson 105.
+
+First record current state:
+
+* Lesson status
+* Topics
+* MicroNodes
+* approved MicroNodes
+* blank LO count
+* empty MicroNode count
+* Topic sequence
+* MicroNode sequence
+* source textbook exercises
+* assigned textbook
+* Additional textbook
+* draft source exercises
+* approved source exercises
+* required Phase 2 completeness
+* source-integrity errors
+
+Expected current structural baseline includes:
+
+Topics = 4
+MicroNodes = 10
+source textbook exercises = 15
+assigned textbook = 12
+Additional textbook = 3
+lost source exercises = 0
+blank LO among approved MicroNodes = 0
+
+Do not assume Final Approval should pass until every required check is actually evaluated.
+
+---
+
+# 11. NEGATIVE TESTS — FINAL APPROVAL MUST BLOCK
+
+Use temporary/safely restored changes.
+
+Do not permanently damage Lesson 105.
+
+## CASE A — Missing LO
+
+Make one test-safe MicroNode invalid with blank LO/non-approved state as required.
+
+Attempt Final Lesson Approval.
+
+Expected:
+
+BLOCKED
+
+Restore.
+
+---
+
+## CASE B — Draft exercise
+
+Set one source exercise to:
+
+`draft`
+
+Attempt Final Lesson Approval.
+
+Expected:
+
+BLOCKED
+
+Restore to approved.
+
+---
+
+## CASE C — Invalid sequence
+
+Create a temporary invalid sequence state in a transaction/test environment if safe.
+
+Example duplicate/gap.
+
+Attempt validation.
+
+Expected:
+
+BLOCKED
+
+Restore immediately.
+
+If mutating the live lesson for this test is unsafe, use integration test fixtures.
+
+Do not leave bad sequence data behind.
+
+---
+
+## CASE D — Lost source exercise simulation
+
+Do NOT delete a real source exercise again.
+
+Use a test fixture or deterministic validation test representing:
+
+source expected = 15
+present assigned + additional = 14
+
+Expected:
+
+BLOCKED
+
+Do not reproduce the previous destructive deletion incident.
+
+---
+
+## CASE E — Missing required Phase 2 data
+
+Use a test fixture or safely reversible real field if appropriate.
+
+Expected:
+
+BLOCKED
+
+Restore.
+
+---
+
+# 12. POSITIVE TEST — FINAL APPROVAL
+
+After all data is restored and valid:
+
+Run Final Lesson Approval on Lesson 105.
+
+Expected:
+
+validation errors = 0
+
+Lesson status → Approved
+
+Full browser refresh.
+
+Expected:
+
+Lesson still displays:
+
+`✅ Հաստատված`
+
+DB/read-back confirms approved status.
+
+---
+
+# 13. INVALIDATION TEST
+
+After Lesson 105 is Approved:
+
+perform ONE harmless but meaningful reversible authoring edit.
+
+Example:
+
+temporarily edit Lesson overview by appending a clear temporary marker.
+
+Expected:
+
+Lesson approval automatically becomes:
+
+`needs_review`
+
+or repository equivalent.
+
+Full refresh confirms it is no longer final Approved.
+
+Restore original overview text.
+
+Run Final Approval again.
+
+Expected:
+
+Lesson returns to Approved.
+
+This test proves final approval cannot become stale.
+
+---
+
+# 14. BACKEND/API DESIGN
+
+Prefer a clear lesson-level operation following existing route conventions.
+
+Conceptually:
+
+`POST /lessons/:lessonId/final-approve`
+
+or reuse an existing approval route if appropriate.
+
+Do not choose route naming before checking repository conventions.
+
+The operation should return structured result such as:
+
+* approved
+* lessonId
+* errors
+* warnings
+* validation summary
+
+Avoid returning only:
+
+`success: true`
+
+We need actionable validation evidence.
+
+---
+
+# 15. VALIDATION FUNCTION
+
+Prefer one deterministic reusable lesson-finalization validator rather than scattering the gate across UI components.
+
+Conceptually:
+
+`validateLessonForFinalApproval(lessonId)`
+
+or existing architectural equivalent.
+
+It must NOT call AI.
+
+It must read authoritative persisted state.
+
+Reuse existing validation helpers from:
+
+* LO validation
+* source integrity
+* exercise approval
+* sequence validation
+* Phase 2 completeness
+
+where available.
+
+Do not duplicate mature logic.
+
+---
+
+# 16. AUTOMATED TESTS
+
+Add focused tests covering at minimum:
+
+1. valid Lesson → approval allowed
+2. blank LO → blocked
+3. empty MicroNode → blocked
+4. invalid Topic sequence → blocked
+5. invalid MicroNode sequence → blocked
+6. lost source exercise → blocked
+7. draft source exercise → blocked
+8. missing required Phase 2 → blocked
+9. warnings alone → approval allowed
+10. successful approval persists
+11. meaningful edit invalidates final approval
+12. re-approval after correction works
+
+Do not add tests for later phases.
+
+---
+
+# 17. DATA INTEGRITY
+
+After all testing restore Lesson 105 to the intended final state.
+
+Report final:
+
+* Topics
+* MicroNodes
+* source textbook exercises
+* assigned
+* Additional
+* lost source exercises
+* draft exercises
+* approved exercises
+* blank LO
+* empty MicroNodes
+* Phase 2 complete count
+* Topic sequence validity
+* MicroNode sequence validity
+* Lesson final status
+
+Expected core counts:
+
+Topics = 4
+MicroNodes = 10
+Source textbook exercises = 15
+Assigned + Additional = 15
+Lost source exercises = 0
+
+No test marker or temporary data may remain.
+
+---
+
+# 18. OUT OF SCOPE
+
+DO NOT implement:
+
+* Phase 1.8 dependency synchronization changes
+* semantic dependency AI
+* Lesson ↔ Test architecture
+* Test creation changes
+* Knowledge Tree initialization
+* Student assignment
+* AI Teacher pedagogy
+* evidence/mastery/scoring
+* spacing
+* interleaving
+* personalization
+* Mapper redesign
+* new source architecture
+* approval version history
+
+Report later-phase findings under:
+
+`OUT-OF-SCOPE FINDING`
+
+Do not fix them.
+
+---
+
+# FINAL REPORT
+
+Return exactly:
+
+## A. Existing Lesson Approval Architecture
+
+* DB field/status
+* existing lifecycle
+* reused components/routes
+
+## B. Final Validation Rules
+
+For each rule:
+
+| Validation | ERROR/WARNING | Implemented/reused | Result |
+| ---------- | ------------- | ------------------ | ------ |
+
+Include:
+
+* LO
+* empty MicroNode
+* Topic sequence
+* MicroNode sequence
+* source integrity
+* lost exercises
+* exercise approval
+* Phase 2 required state
+
+## C. Negative Tests
+
+A–E:
+PASS / FAIL
+
+## D. Positive Lesson 105 Approval
+
+Show:
+
+validation
+→ API
+→ DB
+→ full refresh
+
+## E. Approval Invalidation
+
+Show:
+
+Approved
+→ meaningful authoring edit
+→ Needs Review
+→ restore
+→ re-approve
+
+## F. Approved Lesson Package
+
+Report what authoritative package now contains.
+
+## G. Data Integrity
+
+Final counts and temporary-test cleanup.
+
+## H. Files Changed
+
+Exact files + purpose.
+
+## I. Scope Check
+
+Explicitly state whether you changed:
+
+* Mapper
+* AI Teacher teaching logic
+* quizzes
+* Knowledge Tree
+* scoring/mastery/evidence
+* Phase 1.8 dependency semantics
+* Student assignment
+
+Expected:
+
+NO
+
+## J. FINAL GATE 1.7
+
+PASS / PARTIAL / FAIL
+
+PASS only if:
+
+1. blocking validation errors prevent Lesson approval
+2. valid Lesson can become Approved
+3. approval persists after refresh
+4. meaningful authoring changes invalidate stale approval
+5. Lesson can be re-approved after correction
+6. no Phase 1.1–1.6 integrity invariant regressed
+
+Do not continue to Phase 1.8.
