@@ -1,0 +1,127 @@
+PHASE 1.7 — CLEANUP + FINAL VERIFICATION ONLY
+
+Do NOT add features.
+Do NOT change architecture.
+Do NOT modify mapper, AI Teacher, quiz, Knowledge Tree, scoring, or Phase 1.7 logic.
+
+We have manually verified the core Phase 1.7 lifecycle in the real browser:
+
+approved lesson
+→ edit a MicroNode
+→ lesson approval is invalidated
+→ Final Approve becomes available again
+→ Final Approve succeeds
+→ lesson returns to approved state.
+
+Now CLEAN UP test pollution left by Phase 1.7 acceptance testing and perform final verification.
+
+TARGET:
+Lesson ID 105
+Physics 7
+Pages 5–9
+
+1. RESTORE TEST-POLLUTED MICRONODE
+
+The real lesson currently contains test data left by Phase 1.7 testing:
+
+Title:
+"P1.7 invalidation test node"
+
+Learning objective:
+"Auusumnadumahy npataky restored"
+(or the exact corrupted/test value currently stored)
+
+Find this node by ID and determine its original values from authoritative pre-test data / mapping records.
+
+Expected original title from the previously verified lesson:
+"Ֆիզիկա առարկայի նպատակը"
+
+Restore the original learningObjective from authoritative stored mapping data.
+Do NOT invent or rewrite it.
+
+Also verify whether any other node contains a temporary "TEST" suffix.
+If the node titled:
+"Բնության սահմանումը TEST"
+still exists, restore ONLY the title to:
+"Բնության սահմանումը"
+
+Do not alter its theory, source provenance, LO, exercises, or other fields.
+
+2. DELETE ONLY PHASE 1.7 TEMPORARY MANUAL EXERCISES
+
+Search Lesson 105 for temporary test/manual exercises created by acceptance testing, especially:
+
+"Live test manual exercise"
+"Updated manual text"
+
+Delete them ONLY if you can prove they are test-created manual exercises
+(sourceType = manual / no textbook provenance).
+
+NEVER delete a textbook/source exercise.
+
+3. VERIFY SOURCE EXERCISE INVARIANT
+
+After cleanup, Lesson 105 must have:
+
+sourceType=textbook exercises = 15
+assigned textbook + additional textbook = 15
+lost textbook exercises = 0
+duplicate sourceBlockIndex = 0
+
+Do not recreate, rewrite, move, or otherwise modify textbook exercises unless required to restore an exact proven pre-test state.
+
+4. VERIFY LESSON STRUCTURE
+
+Confirm after cleanup:
+
+Topics = 4
+MicroNodes = 10
+Textbook/source exercises = 15
+
+Confirm all source provenance remains intact.
+
+5. FINAL APPROVAL STATE
+
+Cleanup mutations are expected to invalidate final lesson approval.
+
+After cleanup:
+- verify lesson becomes needs_review if an authoring mutation occurred;
+- run the existing Final Approval validation;
+- if and only if all blocking validation rules pass, final-approve Lesson 105 again.
+
+Then perform a fresh GET/read-back and confirm:
+lesson authoringStatus = approved.
+
+6. FINAL REGRESSION TEST — READ ONLY
+
+After final approval, DO NOT mutate the lesson again.
+
+Verify:
+- all MicroNodes required for approval are approved;
+- approved nodes have non-empty learningObjective;
+- all 15 textbook exercises are approved;
+- no test data remains;
+- no manual acceptance-test exercises remain;
+- Topics = 4;
+- MicroNodes = 10;
+- textbook exercises = 15;
+- lost source exercises = 0.
+
+7. REPORT EXACTLY
+
+Return:
+
+A. Test pollution found
+B. Exact records restored/deleted, including IDs
+C. Evidence used to recover original values
+D. Counts before cleanup
+E. Counts after cleanup
+F. Final authoringStatus
+G. Source integrity result
+H. PASS/FAIL for Gate 1.7
+
+IMPORTANT:
+Do not leave any new test records in the real lesson.
+Do not run destructive acceptance tests after cleanup.
+Do not make unrelated code changes.
+Do not claim PASS unless the final read-back proves the clean state.
