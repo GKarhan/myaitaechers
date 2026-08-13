@@ -1483,7 +1483,7 @@ function LessonNodesPanel({
               </div>
             </div>
           ) : (
-            <button onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }} className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5">+ Avlelatsnel varjutyun</button>
+            <button onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }} className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5">+ Ավելացնել վարժություն</button>
           )}
         </div>
       </div>
@@ -1930,7 +1930,7 @@ function LessonNodesPanel({
                                   )}
                                   {/* Gate 1.4 — approval status badge */}
                                   {ex.status === "approved" ? (
-                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Hastatvatc</span>
+                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
                                   ) : (
                                     <>
                                       <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
@@ -2156,7 +2156,7 @@ function LessonNodesPanel({
               <button
                 onClick={() => setAddNodeOpen(true)}
                 className="w-full text-xs text-muted-foreground/50 hover:text-primary/70 border border-dashed border-white/10 hover:border-primary/30 rounded-xl py-2 transition-colors"
-              >+ Ավելացնել հանգույց</button>
+              >+ Ավելացնել գիտելիքի հանգույց</button>
             )}
           </div>
         </div>
