@@ -732,10 +732,27 @@ function LessonNodesPanel({
     const newIndex = topics.findIndex((t) => t.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
     const reordered = arrayMove(topics, oldIndex, newIndex);
+
+    // Optimistic update: immediately reflect the new order (and correct sequence numbers)
+    // in the query cache so DnD-kit keeps the topic in its dropped position without snapping back.
+    const prevTopics = qc.getQueryData(["lesson-topics", lessonId]);
+    const optimisticTopics = reordered.map((t, i) => ({ ...t, sequence: i + 1 }));
+    qc.setQueryData(["lesson-topics", lessonId], optimisticTopics);
+
     setReorderSaving(true);
     reorderTopicsMutation.mutate(
       { lessonId, data: { orderedTopicIds: reordered.map((t) => t.id) } },
-      { onSettled: () => setReorderSaving(false), onSuccess: () => refreshTopics() }
+      {
+        onSettled: () => setReorderSaving(false),
+        onSuccess: () => refreshTopics(), // confirm with server-normalised sequences
+        onError: (err: unknown) => {
+          // Roll back the optimistic update so the UI returns to the pre-drag state.
+          qc.setQueryData(["lesson-topics", lessonId], prevTopics);
+          console.error("Topic reorder failed:", err);
+          const msg = (err as { message?: string })?.message ?? "Unknown error";
+          alert(`Թեմաների վերադասավորումը ձախողվեց: ${msg}`);
+        },
+      }
     );
   };
 

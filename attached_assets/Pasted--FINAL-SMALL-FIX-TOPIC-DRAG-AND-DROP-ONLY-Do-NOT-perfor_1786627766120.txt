@@ -1,0 +1,193 @@
+# FINAL SMALL FIX — TOPIC DRAG-AND-DROP ONLY
+
+Do NOT perform another broad forensic audit.
+
+Do NOT touch the now-working MicroNode ▲ / ▼ reorder.
+
+Current authoritative hierarchy is already confirmed:
+
+`Lesson → Topic → MicroNode`
+
+The remaining Phase 1.2 user-facing gap is ONLY:
+
+**Teacher cannot reorder Topics from the real Teacher Review UI.**
+
+The arrow/chevron currently visible at the right side of each Topic header is ONLY expand/collapse.
+
+Do NOT change that behavior.
+
+Backend Topic reorder support already exists and was previously verified.
+
+---
+
+## REQUIRED UX
+
+Implement/expose Topic reorder as real drag-and-drop.
+
+Teacher must be able to grab a dedicated visible drag handle on the Topic header, for example:
+
+`⋮⋮`
+
+and move the entire Topic block.
+
+Example:
+
+Current:
+
+1. Ներածություն
+2. Բնության երևույթներ և ֆիզիկական մեթոդներ
+3. Ֆիզիկական մարմիններ և նյութեր
+4. Ամփոփում
+
+Teacher grabs Topic 3 and drags it before Topic 2.
+
+Expected:
+
+1. Ներածություն
+2. Ֆիզիկական մարմիններ և նյութեր
+3. Բնության երևույթներ և ֆիզիկական մեթոդներ
+4. Ամփոփում
+
+The entire Topic block moves together with its existing MicroNodes.
+
+MicroNode `topicId` values must NOT change.
+
+---
+
+## IMPORTANT
+
+The Topic header must have TWO clearly different controls:
+
+* drag handle → reorder Topic
+* existing chevron → expand/collapse Topic
+
+Do not overload the same arrow for both actions.
+
+Do not add ▲ / ▼ Topic buttons unless drag-and-drop genuinely cannot be implemented with the already existing code/dependencies.
+
+The preferred UX is drag-and-drop.
+
+---
+
+## REUSE EXISTING IMPLEMENTATION
+
+First inspect ONLY the already-written Topic sortable/reorder code.
+
+Previous work reportedly already included:
+
+* Topic reorder backend route
+* Topic reorder mutation/hook
+* `SortableTopicItem` or equivalent frontend sortable code
+
+If these already exist, FIX/EXPOSE them.
+
+Do not rewrite them.
+
+Do not install a new drag-and-drop library if the project already contains the required DnD dependency/code from the previous implementation.
+
+---
+
+## REAL UI ACCEPTANCE TEST
+
+Use the current Physics 7 mapped lesson.
+
+Before:
+
+1. Ներածություն
+2. Բնության երևույթներ և ֆիզիկական մեթոդներ
+3. Ֆիզիկական մարմիններ և նյութեր
+4. Ամփոփում
+
+Using the ACTUAL browser UI:
+
+1. Grab Topic 3 using the dedicated drag handle.
+2. Drag it before Topic 2.
+3. Confirm the entire Topic block moves.
+4. Confirm its MicroNodes remain attached to Topic 3.
+5. Confirm reorder API succeeds.
+6. Confirm DB topic sequences become exactly:
+   `1,2,3,4`
+7. Perform FULL browser refresh.
+8. Confirm the new Topic order remains.
+9. Restore the original Topic order using drag-and-drop.
+10. Full-refresh again and confirm restoration.
+
+Required:
+
+**drag → API → DB → full refresh → same Topic order**
+
+Do not verify this only by directly calling the API.
+
+---
+
+## REGRESSION CHECK
+
+After Topic reorder verify:
+
+* MicroNode ▲ / ▼ reorder still works
+* Topic expand/collapse chevron still works
+* Topic count unchanged
+* MicroNode count unchanged
+* exercise count unchanged
+* MicroNode `topicId` values unchanged
+* lost exercises = 0
+* Phase 2 enrichment unchanged
+
+---
+
+## DO NOT TOUCH
+
+* MicroNode reorder implementation unless the Topic fix directly breaks it
+* Mapper
+* AI Teacher
+* quizzes
+* Knowledge Tree
+* scoring/mastery/evidence
+* exercises
+* Exercise Approval
+* Final Lesson Approval
+* DB schema
+* semantic dependencies
+* student dashboard
+
+This is ONLY Topic drag-and-drop UI completion.
+
+---
+
+## FINAL RESPONSE
+
+Return only:
+
+### Root cause
+
+Why Topic drag-and-drop was not usable/visible.
+
+### Files changed
+
+Exact paths.
+
+### UI implementation
+
+Where the drag handle was added/fixed.
+
+### Real verification
+
+Show:
+
+`BEFORE → drag action → API → DB → full refresh → AFTER`
+
+### Restoration
+
+Confirm original Topic order restored through UI.
+
+### Regression
+
+* MicroNode reorder: PASS/FAIL
+* expand/collapse: PASS/FAIL
+* lost exercises: 0 / NOT 0
+
+### Final Gate 1.2
+
+`PASS / FAIL`
+
+Do not perform any unrelated work.
