@@ -1,0 +1,555 @@
+# PHASE 1.6 — SOURCE / PAGE INTEGRITY
+
+Phase 1.1–1.5 are already closed.
+
+Current confirmed state for the real Physics 7 lesson (Lesson 105):
+
+* Topics = 4
+* MicroNodes = 10
+* Source exercises = 15
+* Assigned exercises = 12
+* Additional exercises = 3
+* lost source exercises = 0
+* approved MicroNodes with blank Learning Objective = 0
+* all 15 source exercises are currently approved
+
+DO NOT repeat previous audits.
+
+This phase is ONLY about proving and enforcing SOURCE / PAGE INTEGRITY.
+
+The goal is:
+
+> Teacher edits/reorders/reassigns/approves mapped content without silently breaking its connection to the original textbook source.
+
+Do NOT redesign the mapper.
+
+---
+
+# 0. AUDIT FIRST — NO CODE CHANGES
+
+Before changing anything, inspect the actual current implementation and DB schema.
+
+Determine the authoritative source fields for:
+
+## MicroNodes
+
+Inspect actual fields such as:
+
+* sourcePage
+* sourceBlockIndex / source block reference, if any
+* sourceQuote
+* theory/content
+* source metadata
+* any provenance fields actually present
+
+Do not assume fields exist.
+
+## Exercises
+
+Inspect actual fields such as:
+
+* sourceType
+* sourcePage
+* sourceBlockIndex
+* exerciseTextVerbatim
+* relatedNodeId
+* assignment
+* status
+* any other provenance fields
+
+## Source blocks / mapping provenance
+
+Determine where the authoritative extracted textbook source currently exists.
+
+Examples may include:
+
+* source blocks table
+* mapping_jobs.pass1Blocks
+* mapping import data
+* lesson source records
+* PDF/page extraction records
+
+Report the actual authoritative chain.
+
+Do not invent a new source system.
+
+---
+
+# 1. DEFINE SOURCE INTEGRITY CLASSES
+
+The system now contains at least two fundamentally different content classes.
+
+## A. SOURCE-DERIVED CONTENT
+
+Content originating from the textbook/PDF.
+
+Examples:
+
+* mapped MicroNodes
+* textbook exercises
+
+Its provenance must survive teacher operations.
+
+## B. MANUAL CONTENT
+
+Content created manually by the teacher after mapping.
+
+Manual content does NOT need fake textbook provenance.
+
+Never invent:
+
+* fake sourcePage
+* fake sourceBlockIndex
+* fake sourceQuote
+* fake textbook sourceType
+
+Clearly distinguish these two classes using the fields/schema that already exist.
+
+Do not add schema unless absolutely necessary and proven unavoidable.
+
+---
+
+# 2. SOURCE EXERCISE INTEGRITY — HARD GATE
+
+For every source/textbook exercise in Lesson 105 verify:
+
+### A. Verbatim source
+
+`exerciseTextVerbatim`
+
+must match the authoritative original extracted source block exactly.
+
+No fuzzy matching.
+
+No semantic similarity.
+
+No normalization that changes source wording.
+
+Exact source fidelity is required.
+
+### B. Page integrity
+
+`sourcePage`
+
+must match the authoritative source block/page.
+
+### C. Block integrity
+
+If `sourceBlockIndex` exists and is authoritative:
+
+* it must point to the correct source EXERCISE block
+* the referenced block must belong to this lesson/source
+* its text must correspond exactly to `exerciseTextVerbatim`
+
+### D. Provenance
+
+`sourceType = textbook` or the repository's actual equivalent must remain intact.
+
+### E. Teacher operations must NOT destroy provenance
+
+Verify that these operations preserve source metadata:
+
+1. MicroNode → another MicroNode reassignment
+2. MicroNode → Additional
+3. Additional → MicroNode
+4. approve exercise
+5. approve-all exercises
+6. edit teacher-editable fields
+7. MicroNode reorder
+8. Topic reorder
+
+Changing `relatedNodeId` is allowed during reassignment.
+
+Changing status is allowed during approval.
+
+Those actions must NOT silently erase/change:
+
+* sourceType
+* sourcePage
+* sourceBlockIndex
+* original source identity
+
+---
+
+# 3. IMPORTANT — EDITING SOURCE EXERCISE TEXT
+
+Audit the current Teacher Review behavior carefully.
+
+Phase 1.3 currently allows exercise text editing.
+
+We need to know what that means for source fidelity.
+
+If a teacher edits a textbook exercise's displayed text and the system overwrites:
+
+`exerciseTextVerbatim`
+
+then the original textbook wording is destroyed.
+
+That is a source-integrity violation.
+
+Determine the actual behavior.
+
+## Required invariant
+
+For SOURCE-DERIVED exercises:
+
+**The original textbook verbatim text must never be silently destroyed.**
+
+Do NOT choose an architecture before auditing.
+
+Possible existing safe designs include:
+
+* immutable `exerciseTextVerbatim` + separate editable override/display field
+* source snapshot stored elsewhere + edited working copy
+* another existing provenance mechanism
+
+Use the current schema/architecture if it already supports this.
+
+If the current schema has ONLY one text field and editing it destroys the only exact source copy:
+
+STOP.
+
+Report this as a structural gap before adding schema or redesigning the model.
+
+Do NOT silently add a new DB column in Phase 1.6 without explicit approval.
+
+This is especially important.
+
+---
+
+# 4. MICRONODE SOURCE INTEGRITY
+
+For all 10 Lesson 105 MicroNodes, audit source provenance.
+
+For each MicroNode determine:
+
+* title
+* sourcePage
+* source block/reference if present
+* sourceQuote if present
+* whether the source reference is valid
+* whether sourceQuote is an exact substring of the authoritative source text, where applicable
+
+Remember the existing TEXT Contract rule:
+
+> sourceQuote must be an exact substring of sourceBlock.sourceText.
+
+No fuzzy matching.
+
+If a MicroNode is teacher-created/manual and has no source provenance, that is acceptable — but it must be identifiable as manual rather than pretending to be textbook-derived.
+
+Do NOT invent source references for manual nodes.
+
+---
+
+# 5. PAGE RANGE VALIDATION
+
+Lesson 105 corresponds to textbook pages:
+
+`5–9`
+
+Audit all source-derived MicroNodes and source exercises.
+
+No source-derived item should reference a page outside the lesson's authoritative source range unless there is explicit source evidence explaining why.
+
+For Lesson 105 report:
+
+* minimum referenced page
+* maximum referenced page
+* invalid page references
+* missing page references
+
+Exercises are expected to preserve their real textbook page.
+
+Do not rewrite page numbers merely to satisfy the range.
+
+If a mismatch exists, trace it back to the authoritative source first.
+
+---
+
+# 6. SOURCE BLOCK VALIDITY
+
+Where sourceBlockIndex/source-block references exist, verify:
+
+1. referenced block exists
+2. block belongs to the correct source extraction
+3. block page matches stored sourcePage
+4. exercise block text matches exerciseTextVerbatim exactly
+5. MicroNode sourceQuote matches the referenced source text exactly where the model stores such a relationship
+
+Detect:
+
+* dangling block references
+* wrong-page references
+* wrong-block references
+* source text mismatch
+* duplicate source identity
+* source block assigned to multiple exercises unexpectedly
+
+Do not automatically repair ambiguous mismatches.
+
+---
+
+# 7. SOURCE COVERAGE REGRESSION
+
+This phase is NOT remapping the lesson.
+
+But verify that the source coverage invariant established earlier has not been damaged by Teacher Review operations.
+
+For Lesson 105:
+
+`15 source exercises = assigned + additional`
+
+Expected:
+
+`15 = 12 + 3`
+
+Also verify unique source identity.
+
+There must be no:
+
+* lost source exercise
+* duplicated source exercise
+* source exercise converted accidentally into manual
+* manual exercise counted as source
+* sourceBlockIndex collision between distinct source exercises
+
+The restored exercise currently has a new DB primary key.
+
+DB primary-key continuity is NOT the invariant.
+
+Source identity/provenance is the invariant.
+
+---
+
+# 8. MANUAL CONTENT TEST
+
+Create ONE temporary manual exercise through the real Teacher Review UI/API flow.
+
+Verify that it is clearly manual and does NOT receive fabricated textbook provenance.
+
+Expected conceptually:
+
+* sourceType = manual or actual existing equivalent
+* no fake sourceBlockIndex
+* no fake textbook page unless teacher explicitly supplied a legitimate page reference
+
+Delete the temporary manual exercise afterward.
+
+Verify source exercise count returns to exactly 15.
+
+If manual MicroNode creation uses the same provenance model, audit that behavior too, but do not create unnecessary permanent data.
+
+---
+
+# 9. SAFE BACKEND VALIDATION
+
+After the audit, add deterministic backend validation ONLY where a concrete integrity hole is proven and the existing schema supports fixing it safely.
+
+Examples of acceptable validation:
+
+* reject impossible sourcePage values when authoritative lesson range is known
+* prevent a source exercise update from erasing immutable provenance accidentally
+* reject invalid sourceBlockIndex when sufficient authoritative data is available
+
+BUT:
+
+Do not make Teacher Review unusable.
+
+Do not add AI validation.
+
+Do not add fuzzy source matching.
+
+Do not introduce new DB schema without explicit approval.
+
+Do not mutate historical source data merely because a heuristic disagrees with it.
+
+If a structural schema gap is discovered, REPORT IT and STOP that part.
+
+---
+
+# 10. REAL LESSON 105 AUDIT TABLES
+
+Return a MicroNode table:
+
+| ID | Title | Source-derived/manual | Page | Source ref | Quote valid | Integrity |
+| -- | ----- | --------------------- | ---: | ---------- | ----------- | --------- |
+
+All 10 MicroNodes.
+
+Return an exercise table:
+
+| ID | Source identity | Assigned/Additional | Page | Block | Verbatim exact | sourceType | Integrity |
+| -- | --------------- | ------------------- | ---: | ----: | -------------- | ---------- | --------- |
+
+All 15 source exercises.
+
+Do not omit rows.
+
+---
+
+# 11. REGRESSION TEST — TEACHER OPERATIONS
+
+Use one real source exercise.
+
+Record BEFORE:
+
+* DB id
+* exerciseTextVerbatim
+* sourceType
+* sourcePage
+* sourceBlockIndex
+* relatedNodeId
+* status
+
+Perform and restore:
+
+### Test A
+
+MicroNode → Additional
+
+Verify provenance unchanged.
+
+### Test B
+
+Additional → MicroNode
+
+Verify provenance unchanged.
+
+### Test C
+
+approval/status change if safe to test
+
+Verify provenance unchanged.
+
+### Test D
+
+MicroNode reorder
+
+Verify exercise provenance unchanged.
+
+### Test E
+
+Topic reorder
+
+Verify exercise provenance unchanged.
+
+Restore the original lesson structure afterward.
+
+Do NOT permanently alter exercise wording merely for testing.
+
+---
+
+# 12. DATA SAFETY
+
+At the end verify:
+
+Lesson 105:
+
+* Topics = 4
+* MicroNodes = 10
+* source exercises = 15
+* assigned + additional = 15
+* lost source exercises = 0
+* duplicate source exercises = 0
+
+Also verify:
+
+* no exercise text was unintentionally changed
+* no sourcePage erased
+* no sourceBlockIndex erased
+* no sourceType changed
+* no MicroNode source reference unintentionally changed
+* no REQUIRED dependency changed
+* exercise approval statuses restored
+* Topic/MicroNode ordering restored after tests
+
+---
+
+# DO NOT TOUCH
+
+* Mapper algorithm
+* manual-map parser/validator Contract
+* AI Teacher pedagogy
+* quiz creation
+* quiz-taking
+* scoring/mastery/evidence
+* Knowledge Tree
+* Exercise Approval semantics
+* MicroNode approval semantics
+* Final Lesson Approval
+* dependency semantics
+* DB schema unless separately approved after reporting a proven structural gap
+
+---
+
+# FINAL REPORT
+
+Return only:
+
+## A. Actual Source Model
+
+Actual authoritative source/provenance fields and source chain.
+
+## B. MicroNode Integrity
+
+10-row Lesson 105 table.
+
+## C. Exercise Integrity
+
+15-row Lesson 105 table.
+
+## D. Page Integrity
+
+* lesson range
+* min/max referenced page
+* invalid references
+* missing references
+
+## E. Teacher Operation Regression
+
+For Tests A–E:
+
+`PASS / FAIL`
+
+with before/after provenance evidence.
+
+## F. Manual Content Integrity
+
+Temporary manual exercise result and cleanup.
+
+## G. Structural Gaps
+
+Especially answer explicitly:
+
+**Can a teacher currently edit a textbook exercise without destroying the only immutable verbatim source copy?**
+
+`YES / NO`
+
+If NO, explain the exact schema/code reason and DO NOT invent a schema fix.
+
+## H. Data Integrity
+
+Final counts and any unexpected mutations.
+
+## I. FINAL GATE 1.6
+
+Return:
+
+`PASS`
+
+only if source/page provenance is preserved and no unresolved integrity violation exists.
+
+Return:
+
+`BLOCKED — STRUCTURAL GAP`
+
+if the current schema cannot preserve immutable textbook provenance during permitted Teacher Review editing.
+
+Return:
+
+`FAIL`
+
+for a proven implementation/data integrity defect that can be fixed safely within the existing architecture.
+
+Do not continue to Phase 1.7.
