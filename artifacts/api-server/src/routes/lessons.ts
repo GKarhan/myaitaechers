@@ -2145,18 +2145,11 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const batch = nodes.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(batch.map(async (node) => {
-        // Teacher Review gate — never process or approve unreviewed nodes
-        if (node.status === "needs_review" || node.status === "draft") {
-          return {
-            nodeId:                   node.id,
-            skipped:                  true,
-            skipReason:               "skipped_needs_review",
-            childFriendlyExplanation: "",
-            basicExamples:            [] as string[],
-            commonMisconception:      "",
-            nonExamples:              [] as string[],
-          };
-        }
+        // No status gate here — the teacher's explicit click on "Generate Teaching Content"
+        // IS the review action. The real quality gate is isWeakSource() inside
+        // generatePhase2Content(), which rejects nodes whose theoryContent is too thin.
+        // This allows Phase 2 to run on freshly-mapped (draft) nodes without requiring
+        // individual teacher approval of each node first.
         const input: Phase2Input = {
           nodeId:            node.id,
           title:             node.title,
@@ -2202,16 +2195,23 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
             skipReason: result.skipReason,
           });
         } else {
-          // Success — write the 4 Set A fields the AB Teacher actually reads
+          // Success — write the 4 Set A fields, using "don't degrade" semantics:
+          // never overwrite a non-empty field with an empty/null AI response.
+          // This preserves Phase 2 data from a prior run when the AI returns
+          // a partial result (e.g. empty basicExamples for a borderline-thin node).
+          const phase2Updates: Record<string, unknown> = { status: "approved" as const };
+          if (result.childFriendlyExplanation?.trim())
+            phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
+          if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
+            phase2Updates.basicExamples = result.basicExamples;
+          if (result.commonMisconception?.trim())
+            phase2Updates.commonMisconception = result.commonMisconception;
+          if (Array.isArray(result.nonExamples) && result.nonExamples.length > 0)
+            phase2Updates.nonExamples = result.nonExamples;
+
           await db
             .update(lessonNodesTable)
-            .set({
-              childFriendlyExplanation: result.childFriendlyExplanation || null,
-              basicExamples:            result.basicExamples            as any,
-              commonMisconception:      result.commonMisconception      || null,
-              nonExamples:              result.nonExamples              as any,
-              status:                   "approved",
-            })
+            .set(phase2Updates)
             .where(eq(lessonNodesTable.id, result.nodeId));
 
           summaryRows.push({

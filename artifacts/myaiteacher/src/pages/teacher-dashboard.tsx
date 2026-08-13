@@ -1227,35 +1227,35 @@ function LessonNodesPanel({
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Тارастваца схал (commonMisconception)"
+                  placeholder="Տարածված սխալ պատկերացում (commonMisconception)"
                   value={editNodeForm.commonMisconception}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, commonMisconception: e.target.value })}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={3}
-                  placeholder="Манкакамит бацаратрутюн (childFriendlyExplanation)"
+                  placeholder="Սովորողին հասկանալի բացատրություն (childFriendlyExplanation)"
                   value={editNodeForm.childFriendlyExplanation}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, childFriendlyExplanation: e.target.value })}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={3}
-                  placeholder="Hnarin orinakner — мек tariq, мек оrinак (basicExamples)"
+                  placeholder="Հիմնական օրինակներ — մեկ տող, մեկ օրինակ (basicExamples)"
                   value={editNodeForm.basicExamples}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, basicExamples: e.target.value })}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Oче оринакнер — мек tariq, мек оrinак (nonExamples)"
+                  placeholder="Հակաօրինակներ — մեկ տող, մեկ օրինակ (nonExamples)"
                   value={editNodeForm.nonExamples}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, nonExamples: e.target.value })}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Каянкев кяnкум — мек tariq, мек оrinак (realLifeExamples)"
+                  placeholder="Իրական կյանքից օրինակներ — մեկ տող, մեկ օրինակ (realLifeExamples)"
                   value={editNodeForm.realLifeExamples}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, realLifeExamples: e.target.value })}
                 />
@@ -1588,6 +1588,13 @@ function LessonNodesPanel({
           </>
         )}
 
+        {/* Phase 2: Generate Teaching Content — teacher-level trigger (one click per lesson) */}
+        {nodes.length > 0 && (
+          <div className="flex items-center gap-1 px-1 shrink-0">
+            <GenerateTeachingContentButton lessonId={lessonId} hasNodes={nodes.length > 0} />
+          </div>
+        )}
+
         {/* P1.7: Final Approval button + status badge */}
         {nodes.length > 0 && (
           <div className="flex items-center gap-1.5 px-2 shrink-0">
@@ -1642,6 +1649,24 @@ function LessonNodesPanel({
               )}
             </div>
           )}
+
+          {/* Phase 2 status banner — show when nodes exist but Phase 2 is not yet complete */}
+          {(() => {
+            const phase2Missing = nodes.filter((n) => !(n as any).childFriendlyExplanation).length;
+            if (phase2Missing === 0 || nodes.length === 0) return null;
+            return (
+              <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/8 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-indigo-400/80 font-medium">
+                    🧠 {phase2Missing}/{nodes.length} MicroNode-ner bacakayum en usutsman bovanndakutyun
+                  </span>
+                </div>
+                <span className="text-[9px] text-indigo-400/50 italic">
+                  Steghtsir klkatsir "🧠 Ստեղծել ուսուցման բովանդակությունը"
+                </span>
+              </div>
+            );
+          })()}
 
           {/* ── Lesson Overview / General Theory (Step 5) ───────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">

@@ -1,0 +1,368 @@
+TASK — FIX AUTOMATIC PHASE 2 ENRICHMENT AFTER MAPPING / REMAPPING
+
+IMPORTANT:
+Audit first. Do not manually populate Phase 2 fields in the DB.
+Do not invent a second enrichment pipeline.
+Find and reuse the EXISTING Phase 2 / Generate Teaching Content flow.
+
+Current real case:
+Lesson 105 (Physics 7, pages 5–9) was remapped.
+
+Current mapping result:
+- 4 Topics
+- 9 MicroNodes
+- 15 textbook exercises
+
+Mapping itself succeeds.
+
+However Final Lesson Approval now fails with 9 blocking errors:
+
+[MISSING_PHASE2] Phase 2 enrichment fields are missing...
+
+This happens for all 9 current MicroNodes.
+
+In the Teacher Review MicroNode edit UI I can see Phase 2 fields such as:
+
+- commonMisconception
+- childFriendlyExplanation
+- basicExamples
+- nonExamples
+- realLifeExamples
+
+and possibly other Phase 2 fields already defined in the current schema/implementation.
+
+Some/all of these are empty after remapping.
+
+EXPECTED ARCHITECTURE
+
+The intended workflow is:
+
+PDF / source
+→ Mapping
+→ Teacher Review
+→ Phase 2 Generate Teaching Content
+→ Teacher Review
+→ Final Approval
+→ Assign Lesson
+
+Phase 2 enrichment must be generated automatically through the EXISTING Phase 2 generation mechanism.
+
+Teachers must NOT have to manually fill Phase 2 fields for every MicroNode.
+
+══════════════════════════════════════
+PART A — FORENSIC AUDIT FIRST
+══════════════════════════════════════
+
+Before changing code, trace the complete existing Phase 2 implementation.
+
+Find and report:
+
+1. The backend route/function responsible for:
+   Generate Teaching Content / Phase 2.
+
+2. The frontend trigger/button, if one exists.
+
+3. The exact Phase 2 fields generated.
+
+Do NOT infer the fields from this prompt.
+Read the actual schema, API and implementation and list the authoritative fields.
+
+4. Determine where Phase 2 data is stored.
+
+5. Determine whether Phase 2 generation is:
+   - lesson-wide,
+   - per Topic,
+   - or per MicroNode.
+
+6. Determine what currently triggers Phase 2 generation after:
+   A. automatic mapping
+   B. manual TEXT mapping
+   C. remapping
+   D. teacher editing
+
+7. Inspect Lesson 105 and explain exactly why its current 9 MicroNodes have missing Phase 2 data.
+
+Answer specifically:
+
+- Was Phase 2 never run?
+- Was old Phase 2 data deleted during remap?
+- Did remap create new node IDs?
+- Is Phase 2 generation disconnected from the current mapping workflow?
+- Is there a UI trigger that is hidden/missing?
+- Did a previous implementation intentionally require a separate teacher action?
+
+IMPORTANT:
+Do not change architecture until this is known.
+
+══════════════════════════════════════
+PART B — PRESERVE THE TWO-STEP WORKFLOW
+══════════════════════════════════════
+
+Do NOT blindly chain Phase 2 immediately after mapping.
+
+Our intended architecture is still:
+
+Mapping
+→ Teacher reviews/edits structure
+→ Generate Teaching Content
+→ Final review
+→ Final Approval
+
+Reason:
+
+The teacher may:
+- edit a MicroNode,
+- delete a MicroNode,
+- create a MicroNode,
+- split/reorganize content,
+- reorder nodes,
+
+before expensive Phase 2 enrichment is generated.
+
+Therefore Phase 2 must operate on the FINAL teacher-reviewed MicroNode structure.
+
+Do NOT change this into:
+
+Mapping → automatic Phase 2 immediately
+
+unless the existing architecture already explicitly requires that behavior.
+
+══════════════════════════════════════
+PART C — REQUIRED USER FLOW
+══════════════════════════════════════
+
+After mapping/remapping succeeds, Teacher Review must provide a clear action:
+
+✨ Generate Teaching Content
+
+Armenian UI label may be:
+
+✨ Ստեղծել ուսուցման բովանդակությունը
+
+or reuse the existing Armenian label if the project already has one.
+
+The teacher clicks this ONCE for the lesson.
+
+The system then runs the existing Phase 2 generator for all eligible current MicroNodes that require enrichment.
+
+The teacher must NOT open 9 MicroNodes individually and populate Phase 2 manually.
+
+══════════════════════════════════════
+PART D — GENERATION BEHAVIOR
+══════════════════════════════════════
+
+When Generate Teaching Content is triggered:
+
+1. Read the CURRENT lesson structure from DB.
+
+2. Use the CURRENT MicroNodes after teacher review.
+
+3. Preserve source fidelity.
+
+4. Generate the authoritative Phase 2 fields using the EXISTING implementation/prompt.
+
+5. Persist Phase 2 results to the correct MicroNode records.
+
+6. Do not modify:
+   - source provenance
+   - sourceBlockIndices
+   - sourcePage
+   - textbook verbatim exercise text
+   - exercise relationships
+   - Topic structure
+   - MicroNode order
+   - SEQUENTIAL dependencies
+
+7. Do not create duplicate MicroNodes.
+
+8. Do not create a second Phase 2 storage model.
+
+9. Do not silently mark the lesson Final Approved.
+
+Generation and Final Approval remain separate operations.
+
+══════════════════════════════════════
+PART E — REGENERATION / EDIT SAFETY
+══════════════════════════════════════
+
+Audit how existing Phase 2 invalidation works.
+
+We need safe behavior when a teacher edits the lesson after Phase 2 generation.
+
+Do NOT automatically regenerate Phase 2 on every small edit.
+
+Determine which mutations actually make Phase 2 stale.
+
+At minimum investigate:
+
+- learningObjective edit
+- theory/content edit
+- node create
+- node delete
+- node reorder
+- Topic reorder
+- exercise edit
+- exercise assignment change
+
+Reuse existing invalidation semantics if already implemented.
+
+Do not invent broad invalidation rules without evidence.
+
+If Phase 2 is stale/missing, UI should clearly indicate that Teaching Content needs generation/regeneration.
+
+══════════════════════════════════════
+PART F — UI STATE
+══════════════════════════════════════
+
+Teacher Review should make these states understandable:
+
+1. Mapping complete, Phase 2 missing
+   → Generate Teaching Content button available.
+
+2. Phase 2 generation running
+   → loading/progress state; prevent duplicate request.
+
+3. Phase 2 complete
+   → fields visible/editable in current MicroNode UI.
+
+4. Phase 2 stale after relevant authoring mutation
+   → Regenerate Teaching Content available.
+
+5. Final Approval
+   → enabled/possible only when existing Phase 1.7 validation passes.
+
+Do not hide the reason Final Approval fails.
+
+══════════════════════════════════════
+PART G — LESSON 105 REAL ACCEPTANCE TEST
+══════════════════════════════════════
+
+Use current Lesson 105.
+
+IMPORTANT:
+The current 9-MicroNode structure is intentional.
+Do NOT restore deleted node 1348.
+Do NOT change the current canonical structure merely to satisfy a test.
+
+BEFORE:
+- Topics = 4
+- MicroNodes = 9
+- textbook exercises = 15
+- Phase 2 missing on current nodes
+- Final Approval currently reports MISSING_PHASE2
+
+Run the real Generate Teaching Content flow.
+
+AFTER GENERATION verify:
+
+1. Topics = 4
+2. MicroNodes = 9
+3. textbook exercises = 15
+4. manual/test exercises = 0
+5. no duplicate nodes
+6. source provenance unchanged
+7. ordering unchanged
+8. SEQUENTIAL graph still matches node order
+9. every required Phase 2 field required by Final Approval is present
+10. MISSING_PHASE2 blocking errors = 0
+
+Then run Final Approval.
+
+Expected:
+Final Approval PASS, assuming there are no unrelated legitimate validation errors.
+
+Do NOT weaken the Final Approval validator to make this pass.
+
+Fix the Phase 2 generation flow instead.
+
+══════════════════════════════════════
+PART H — REGRESSION TEST
+══════════════════════════════════════
+
+Create an isolated test lesson.
+
+Test:
+
+Mapping/reviewed nodes
+→ Phase 2 missing
+→ Generate Teaching Content
+→ Phase 2 fields persisted
+→ refresh/read-back
+→ fields remain
+→ Final Approval sees Phase 2 as complete.
+
+Also verify idempotency/safety:
+
+Click Generate twice or repeat the request.
+
+It must NOT:
+- duplicate nodes,
+- duplicate exercises,
+- corrupt provenance,
+- corrupt ordering.
+
+Report what the existing system does with regenerated Phase 2 content:
+overwrite, merge, skip complete nodes, etc.
+
+Do not change that behavior without justification.
+
+══════════════════════════════════════
+PART I — IMPORTANT SCOPE LIMITS
+══════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher teaching behavior / chat.ts unless the existing Phase 2
+  generator itself genuinely lives there and a change is required
+- Knowledge Tree
+- Quiz generation
+- Quiz assignment
+- scoring/mastery
+- student lesson session behavior
+- mapping parser/validator semantics
+- source provenance model
+- Phase 1.7 Final Approval requirements just to bypass MISSING_PHASE2
+
+Do not manually insert fake Phase 2 content into Lesson 105.
+
+The purpose of this task is to make the REAL generation workflow work.
+
+══════════════════════════════════════
+PART J — SEPARATE EXISTING BUG
+══════════════════════════════════════
+
+There is also a separate Quiz Creation UI error:
+
+Failed to execute 'json' on 'Response':
+Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+
+DO NOT fix it in this task.
+
+Only identify it as a separate issue and leave it for the next task.
+
+══════════════════════════════════════
+FINAL REPORT
+══════════════════════════════════════
+
+Return:
+
+A. Existing Phase 2 architecture
+B. Existing generator route/function
+C. Exact authoritative Phase 2 fields
+D. Why Lesson 105 lost/is missing Phase 2
+E. Code changes made
+F. UI behavior before/after
+G. Invalidation/regeneration behavior
+H. Lesson 105 before/after counts
+I. Phase 2 persistence evidence
+J. Final Approval result
+K. Tests and results
+L. Files changed
+M. Any remaining architectural gap
+
+FINAL GATE:
+
+PASS only if a teacher can take a mapped/reviewed lesson and generate
+Phase 2 teaching content for the current MicroNodes with ONE lesson-level
+action, persist it, refresh without data loss, and subsequently pass the
+existing Final Approval gate without manually filling every MicroNode.
