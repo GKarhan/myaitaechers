@@ -1,0 +1,660 @@
+PHASE 1.11 — KNOWLEDGE TREE INITIALIZATION
+
+Phase 1.1–1.10 are complete.
+
+This task is ONLY:
+
+PHASE 1.11 — Knowledge Tree Initialization
+
+GOAL:
+
+Every MicroNode from a FINAL APPROVED Lesson must be represented correctly in the Knowledge Tree.
+
+For a NEW student with NO real evidence:
+
+MicroNode → `not_studied`
+Teacher-facing Armenian:
+`Դեռ չի ուսումնասիրել`
+
+IMPORTANT ARCHITECTURE RULE:
+
+The knowledge structure is SHARED.
+
+The mastery/evidence state is PER STUDENT.
+
+Example:
+
+Same MicroNode ID = 1349
+
+Student A:
+mastered
+
+Student B:
+partial
+
+Student C:
+not_studied
+
+Do NOT duplicate the knowledge structure per student.
+
+Do NOT store mastery directly on the shared MicroNode.
+
+==================================================
+0. AUDIT FIRST — NO CODE CHANGES
+==================================================
+
+Before implementation inspect the actual current Knowledge Tree architecture.
+
+Trace:
+
+Approved Lesson
+→ lesson_nodes / knowledge_nodes
+→ Knowledge Tree API
+→ student-specific evidence/mastery state
+→ Knowledge Tree UI
+
+Identify actual tables and code paths for:
+
+- lesson_nodes
+- knowledge_nodes
+- student mastery/state
+- evidence_events
+- quiz evidence
+- lesson/session evidence
+- Knowledge Tree API
+- Knowledge Tree frontend
+
+Report:
+
+A. Which table is the shared knowledge structure?
+
+B. Which table/state is student-specific?
+
+C. How a MicroNode becomes visible in Knowledge Tree today.
+
+D. What happens for a student with zero evidence.
+
+E. Whether Lesson approval currently affects Knowledge Tree visibility.
+
+F. Whether the current system creates duplicate knowledge structure per student.
+
+Do NOT assume the intended architecture already exists.
+
+==================================================
+1. AUTHORITATIVE SHARED STRUCTURE
+==================================================
+
+Use the existing authoritative MicroNode structure.
+
+Current lesson architecture:
+
+Lesson → Topic → MicroNode
+
+Do NOT create a second copy of every MicroNode for each student.
+
+If `knowledge_nodes` already mirrors/links lesson MicroNodes:
+
+reuse that model.
+
+If Knowledge Tree already reads directly from `lesson_nodes`:
+
+reuse that model.
+
+Determine the actual existing source of truth first.
+
+Required invariant:
+
+ONE shared knowledge node identity
++
+many student mastery states
+
+NOT:
+
+Student A copy of node
+Student B copy of node
+Student C copy of node
+
+==================================================
+2. APPROVED LESSON GATE
+==================================================
+
+Knowledge Tree initialization must use FINAL APPROVED Lesson content.
+
+A raw mapped / needs_review Lesson must NOT initialize new learner-ready Knowledge Tree structure as if finalized.
+
+Current Phase 1.7 lesson authoring statuses include:
+
+`needs_review`
+`approved`
+
+Use the actual repository status values.
+
+Required:
+
+Lesson `approved`
+→ eligible for Knowledge Tree initialization
+
+Lesson not approved
+→ not eligible for new final initialization
+
+Do NOT delete existing historical student evidence if a Lesson later becomes needs_review.
+
+This phase concerns initialization/availability, not destructive rollback.
+
+==================================================
+3. NEW STUDENT DEFAULT STATE
+==================================================
+
+For a student with NO evidence for a MicroNode:
+
+state must be:
+
+`not_studied`
+
+UI label:
+
+`Դեռ չի ուսումնասիրել`
+
+Do NOT infer:
+
+- weak
+- partial
+- mastered
+- confidence
+- score
+
+from Lesson approval alone.
+
+Lesson approval says:
+
+"this content is ready to teach"
+
+It does NOT say:
+
+"this student knows it"
+
+==================================================
+4. FOUR KNOWLEDGE TREE STATES
+==================================================
+
+Preserve the already-defined four-state Knowledge Tree semantics:
+
+1. `mastered`
+   → `Գիտի`
+
+2. partial knowledge state
+   → `Մասնակի գիտի`
+
+3. does-not-know state
+   → `Չգիտի`
+
+4. no evidence / not studied
+   → `Դեռ չի ուսումնասիրել`
+
+Audit the actual backend enum/labels.
+
+Do NOT rename working internal values unless necessary.
+
+The critical Phase 1.11 requirement is:
+
+NO EVIDENCE
+→ NOT STUDIED
+
+==================================================
+5. DO NOT CREATE FAKE EVIDENCE
+==================================================
+
+Initialization must NOT create artificial:
+
+- quiz answers
+- mastery scores
+- confidence scores
+- evidence events
+- completed sessions
+
+merely to make nodes appear in Knowledge Tree.
+
+A new student may have a visible Knowledge Tree node with:
+
+zero evidence
+
+and therefore:
+
+`not_studied`.
+
+If current architecture requires a student-state row, that row must clearly mean:
+
+no evidence / not studied
+
+not synthetic performance.
+
+Prefer deriving default state when possible rather than creating fake evidence.
+
+==================================================
+6. PER-STUDENT ISOLATION — CRITICAL
+==================================================
+
+Use at least two students.
+
+For the SAME shared MicroNode:
+
+Student A:
+has evidence
+
+Student B:
+has no evidence
+
+Expected:
+
+Student A state reflects Student A's evidence.
+
+Student B remains:
+
+`Դեռ չի ուսումնասիրել`
+
+Student A evidence must NEVER alter Student B state.
+
+Verify this at DB/API level.
+
+==================================================
+7. NEW STUDENT INITIALIZATION
+==================================================
+
+Audit when Knowledge Tree state is initialized today.
+
+Possible triggers may include:
+
+- student creation
+- class enrollment
+- lesson assignment
+- Knowledge Tree first load
+- evidence creation
+- lazy derivation
+
+Do NOT invent a new trigger unnecessarily.
+
+Use the smallest architecture-consistent approach.
+
+Important:
+
+Phase 1.12 will handle:
+
+Assign Lesson to Student
+
+So do NOT implement assignment workflow here.
+
+Phase 1.11 only guarantees that when an approved Lesson is relevant/visible to a new student, its MicroNodes resolve correctly to:
+
+`not_studied`
+
+until evidence exists.
+
+==================================================
+8. LESSON 105 REAL TEST
+==================================================
+
+Use Approved Physics 7 Lesson 105.
+
+Current expected structure:
+
+Topics = 4
+MicroNodes = 10
+
+Verify all 10 MicroNodes are represented by the authoritative Knowledge Tree structure.
+
+For a test/new student with no evidence for Lesson 105:
+
+Expected:
+
+10 / 10 MicroNodes
+→ `Դեռ չի ուսումնասիրել`
+
+Report each:
+
+| MicroNode ID | Title | Evidence count | State |
+
+Expected evidence count:
+
+0
+
+Expected state:
+
+not_studied
+
+for every node.
+
+==================================================
+9. EVIDENCE TRANSITION TEST
+==================================================
+
+Use ONE test-safe MicroNode and student.
+
+Start:
+
+Evidence = 0
+→ not_studied
+
+Then use existing scoring/evidence path or safe fixture to add REAL-compatible evidence.
+
+Do NOT redesign scoring.
+
+Verify state leaves `not_studied` according to existing scoring/mastery rules.
+
+Then use a DIFFERENT student with no evidence.
+
+Expected:
+
+same node
+→ still not_studied
+
+This proves:
+
+shared structure
++
+per-student state.
+
+Clean up temporary evidence if using fixtures.
+
+Do NOT alter real student history.
+
+==================================================
+10. LESSON STRUCTURE CHANGES
+==================================================
+
+Audit what happens if an approved Lesson later changes and is re-approved.
+
+Example:
+
+Approved Lesson has 10 MicroNodes.
+
+Teacher adds MN11
+→ Lesson becomes needs_review
+→ re-approves Lesson
+
+Expected Knowledge Tree architecture:
+
+shared structure now includes MN11.
+
+For a student with no evidence on MN11:
+
+MN11 = not_studied
+
+Existing mastery for MN1–MN10 must remain intact.
+
+Do NOT implement destructive state resets.
+
+If this behavior already works, test and report.
+
+If not, make the smallest safe structural sync fix.
+
+==================================================
+11. NODE DELETE SAFETY
+==================================================
+
+Audit what happens when a MicroNode with student evidence is deleted during Teacher Review.
+
+Do NOT make destructive policy decisions in this phase.
+
+If deletion cascades and destroys historical evidence, REPORT:
+
+`STRUCTURAL / HISTORICAL DATA RISK`
+
+Do not redesign archival semantics unless absolutely required for Phase 1.11.
+
+We mainly need to know whether current architecture is safe.
+
+==================================================
+12. KNOWLEDGE TREE API
+==================================================
+
+The Knowledge Tree API should conceptually return for each visible MicroNode:
+
+- shared node identity
+- title
+- lesson/topic relationship
+- student-specific mastery state
+- evidence count / mastery metadata if existing
+- default `not_studied` when no evidence
+
+Do not make the frontend infer missing-state semantics inconsistently.
+
+Prefer backend-authoritative state mapping if current architecture already does this.
+
+==================================================
+13. UI
+==================================================
+
+Verify new/no-evidence nodes appear under:
+
+`Դեռ չի ուսումնասիրել`
+
+Do NOT hide them merely because no mastery row exists.
+
+The four visible blocks remain:
+
+- Գիտի
+- Մասնակի գիտի
+- Չգիտի
+- Դեռ չի ուսումնասիրել
+
+Do NOT redesign Knowledge Tree UI.
+
+Only fix initialization/display gaps if proven.
+
+==================================================
+14. APPROVED LESSON VISIBILITY TEST
+==================================================
+
+Test:
+
+A. approved Lesson
+→ MicroNodes eligible/visible
+
+B. needs_review/non-approved Lesson
+→ must NOT initialize as new finalized learner-ready structure
+
+Do NOT remove historical student evidence from an already-used Lesson merely because authoring status temporarily changes.
+
+Report the actual chosen semantics.
+
+==================================================
+15. NO DUPLICATED STRUCTURE TEST
+==================================================
+
+For two students viewing the same Lesson 105 node:
+
+Prove:
+
+shared node ID is SAME
+
+Do not accept:
+
+different duplicated node IDs per student.
+
+Expected conceptual proof:
+
+Student A:
+nodeId = 1349
+state = mastered
+
+Student B:
+nodeId = 1349
+state = not_studied
+
+Same node identity.
+
+Different learner state.
+
+==================================================
+16. AUTOMATED TESTS
+==================================================
+
+Add focused tests covering at minimum:
+
+1. approved Lesson nodes visible in Knowledge Tree
+2. non-approved Lesson does not initialize new learner-ready nodes
+3. zero evidence → not_studied
+4. one student's evidence does not affect another student
+5. same shared node ID used across students
+6. all 10 Lesson 105 nodes visible for zero-evidence student
+7. evidence causes state transition away from not_studied
+8. second no-evidence student remains not_studied
+9. newly approved new MicroNode appears as not_studied
+10. existing mastery survives adding a new node
+11. no fake evidence rows created during initialization
+12. no duplicate knowledge nodes created per student
+13. Knowledge Tree API returns correct four-state classification
+14. no-evidence node appears in `Դեռ չի ուսումնասիրել` UI bucket
+
+Do not rewrite scoring tests.
+
+Reuse existing scoring/mastery functions.
+
+==================================================
+17. DATA SAFETY
+==================================================
+
+After tests Lesson 105 must remain:
+
+Topics = 4
+MicroNodes = 10
+Textbook exercises = 15
+Lost source exercises = 0
+authoringStatus = approved
+
+Do not modify:
+
+- ordering
+- dependencies
+- Lesson content
+- exercises
+- quiz relationships
+- Lesson approval
+
+Do not leave fake student evidence.
+
+Clean up test student/state fixtures where appropriate.
+
+==================================================
+18. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- Assign Lesson to Student
+- AI Teacher lesson orchestration
+- adaptive teaching
+- quiz scheduling
+- spaced repetition
+- interleaving
+- new mastery/scoring algorithm
+- new confidence algorithm
+- prerequisite AI
+- personalization engine redesign
+
+Those belong to later phases.
+
+==================================================
+19. FINAL REPORT
+==================================================
+
+Return exactly:
+
+## A. Actual Knowledge Tree Architecture
+
+Shared structure:
+...
+
+Student-specific state:
+...
+
+Evidence source:
+...
+
+## B. Initialization Trigger
+
+Explain how/when zero-evidence state is produced.
+
+## C. Approved Lesson Gate
+
+Approved:
+...
+
+Needs Review:
+...
+
+## D. Lesson 105 Zero-Evidence Test
+
+All 10 rows:
+
+Node ID
+Title
+Evidence count
+State
+
+## E. Student Isolation Test
+
+Same node:
+
+Student A → state
+Student B → state
+
+Shared node ID equality proof.
+
+## F. Evidence Transition
+
+Before:
+not_studied
+
+After real-compatible evidence:
+actual resulting state
+
+## G. New Node Sync
+
+Approved Lesson gains a new MicroNode:
+existing mastery preserved?
+new node = not_studied?
+
+PASS / FAIL
+
+## H. Historical/Delete Risk
+
+Report any structural risk found.
+
+Do not redesign unless required.
+
+## I. Automated Tests
+
+Exact command
+passed / failed
+
+## J. Data Integrity
+
+Lesson 105 unchanged.
+
+Fake evidence remaining = 0
+
+Duplicate shared nodes = 0
+
+## K. Files Changed
+
+Exact files + reason.
+
+If no production code was needed, say so.
+
+## L. FINAL GATE 1.11
+
+PASS / PARTIAL / FAIL
+
+PASS requires:
+
+1. Approved Lesson MicroNodes appear in Knowledge Tree
+2. zero evidence = `Դեռ չի ուսումնասիրել`
+3. same shared knowledge structure is reused by all students
+4. mastery/evidence state is isolated per student
+5. initialization creates no fake evidence
+6. new approved MicroNode defaults to not_studied
+7. existing learner mastery is not reset
+8. Lesson 105 integrity is unchanged
+
+Do NOT continue to Phase 1.12.

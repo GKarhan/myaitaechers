@@ -2213,10 +2213,10 @@ function LessonNodesPanel({
                     <p className="text-xs text-white/80 truncate font-medium">{q.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">
-                        {q.quizType === "lesson" ? "Дасի Թест" : q.quizType === "summary" ? "Амфогнакум" : "—"}
+                        {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Амфогнакум" : "—"}
                       </span>
                       <span className="text-muted-foreground/30 text-[9px]">·</span>
-                      <span className="text-[9px] text-muted-foreground/60">{q.questionCount} հшт.</span>
+                      <span className="text-[9px] text-muted-foreground/60">{q.questionCount} հարց.</span>
                       {q.status === "GENERATED" || q.status === "PUBLISHED" ? (
                         <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">✓</span>
                       ) : q.status === "ASSIGNED" ? (

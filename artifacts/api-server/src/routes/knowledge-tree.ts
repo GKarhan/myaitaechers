@@ -11,7 +11,7 @@ import {
   classStudentsTable,
   reviewScheduleTable,
 } from "@workspace/db";
-import { eq, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, or } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { getMasteryLevelFromScores } from "../lib/mastery";
 
@@ -155,7 +155,19 @@ router.get(
           eq(reviewScheduleTable.userId,  targetUserId),
         )
       )
-      .where(inArray(lessonsTable.courseId, courseIds))
+      // Phase 1.11: only surface nodes from approved lessons for zero-evidence
+      // students.  Students who already have a knowledge_nodes row (historical
+      // evidence) continue to see their node even if authoring status later
+      // regresses to needs_review — the OR preserves that history.
+      .where(
+        and(
+          inArray(lessonsTable.courseId, courseIds),
+          or(
+            eq(lessonsTable.status, "approved"),
+            isNotNull(knowledgeNodesTable.id),
+          )
+        )
+      )
       .orderBy(lessonNodesTable.id);
 
     const mappedTopics = topics.map((t) => {
