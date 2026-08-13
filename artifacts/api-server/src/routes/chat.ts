@@ -12,7 +12,7 @@ import {
 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
-import { enforceVerbatimExercise, isExerciseDeliveryTurn } from "../lib/exercise-delivery";
+import { enforceVerbatimExercise, isExerciseDeliveryTurn, effectiveExerciseText } from "../lib/exercise-delivery";
 
 const router = Router();
 
@@ -438,27 +438,30 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const deepDiveIdx = session?.deepDiveExerciseIndex ?? 0;
       const exBlock = phase === 3 && classExercises.length > 0
         ? `\nDEEP_DIVE_EXERCISES (MANDATORY — present these textbook exercises in order; do NOT replace with AI-generated tasks; start from index ${deepDiveIdx}):\n` +
-          classExercises.map((e, i) =>
-            `[idx=${i}] [${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-            `  VERBATIM: ${e.exerciseTextVerbatim?.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
-            `  successCriteria: ${e.successCriteria ?? ""}`
-          ).join("\n")
+          classExercises.map((e, i) => {
+            const eff = effectiveExerciseText(e.exerciseTextVerbatim, (e as any).exerciseTextEdited as string | null);
+            return `[idx=${i}] [${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
+              `  VERBATIM: ${eff.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
+              `  successCriteria: ${e.successCriteria ?? ""}`;
+          }).join("\n")
         : phase === 2 && classExercises.length > 0
         ? `\nCLASS_EXERCISES (use verbatim when exerciseTextVerbatim is non-empty):\n` +
-          classExercises.map((e) =>
-            `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-            `  VERBATIM: ${e.exerciseTextVerbatim?.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
-            `  successCriteria: ${e.successCriteria ?? ""}`
-          ).join("\n")
+          classExercises.map((e) => {
+            const eff = effectiveExerciseText(e.exerciseTextVerbatim, (e as any).exerciseTextEdited as string | null);
+            return `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
+              `  VERBATIM: ${eff.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
+              `  successCriteria: ${e.successCriteria ?? ""}`;
+          }).join("\n")
         : "";
 
       const hwBlock = homeworkExercises.length > 0
         ? `\nHOMEWORK_TASKS (present verbatim, explain why each matters):\n` +
-          homeworkExercises.map((e) =>
-            `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-            `  VERBATIM: ${e.exerciseTextVerbatim || "(no text — describe the task)"}\n` +
-            `  successCriteria: ${e.successCriteria ?? ""}`
-          ).join("\n")
+          homeworkExercises.map((e) => {
+            const eff = effectiveExerciseText(e.exerciseTextVerbatim, (e as any).exerciseTextEdited as string | null);
+            return `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
+            `  VERBATIM: ${eff || "(no text — describe the task)"}\n` +
+            `  successCriteria: ${e.successCriteria ?? ""}`;
+          }).join("\n")
         : "";
 
       const allNodeTitles = allNodes.map((n) => n.title);
@@ -524,7 +527,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         if (teachingStage === "MICRO_CHECK") {
           if (classExercises.length > 0) {
             const ex = classExercises[0];
-            const verbatim = ex.exerciseTextVerbatim?.trim() ? ex.exerciseTextVerbatim : `[${ex.exerciseId}]`;
+            const effText = effectiveExerciseText(ex.exerciseTextVerbatim, (ex as any).exerciseTextEdited as string | null);
+            const verbatim = effText.trim() ? effText : `[${ex.exerciseId}]`;
             return (
               `NODE_STAGE: MICRO_CHECK\n` +
               `DIRECTIVE — THIS TURN YOU MUST: Present this CLASS_EXERCISE VERBATIM using teaching_mode: "TRANSITION". ` +
@@ -889,7 +893,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   // via teaching_mode override if aiResult is non-null).
   // Does NOT change currentNodeId, mastery, attempt counters, or KB data.
   if (session && isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)) {
-    const verbatimEx = classExercises[0].exerciseTextVerbatim;
+    const verbatimEx = effectiveExerciseText(classExercises[0].exerciseTextVerbatim, (classExercises[0] as any).exerciseTextEdited as string | null);
     const enforced = enforceVerbatimExercise(studentMessage, verbatimEx);
     if (enforced !== studentMessage) {
       logger.info(

@@ -40,6 +40,11 @@ export const lessonExercisesTable = pgTable("lesson_exercises", {
   confidenceScore: integer("confidence_score"),
   // Authoring lifecycle: "draft" → "reviewed" → "approved"
   status: text("status").notNull().default("draft"),
+  // P1.6B — Teacher-editable text layer.
+  // NULL  → no teacher adaptation; effectiveExerciseText = exerciseTextVerbatim.
+  // non-null → teacher-edited wording; effectiveExerciseText = exerciseTextEdited.
+  // exerciseTextVerbatim is IMMUTABLE for sourceType='textbook' exercises.
+  exerciseTextEdited: text("exercise_text_edited"),
 });
 
 export const insertLessonExerciseSchema = createInsertSchema(lessonExercisesTable).omit({

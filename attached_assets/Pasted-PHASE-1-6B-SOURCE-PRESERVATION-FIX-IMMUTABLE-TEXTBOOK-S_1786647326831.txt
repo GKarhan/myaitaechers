@@ -1,0 +1,806 @@
+PHASE 1.6B — SOURCE PRESERVATION FIX
+IMMUTABLE TEXTBOOK SOURCE + EDITABLE TEACHER VERSION
+
+This task closes the structural gap found in the Phase 1.6 audit.
+
+IMPORTANT:
+This is a targeted source-integrity fix.
+
+DO NOT redesign the Mapper.
+DO NOT redesign AI Teacher.
+DO NOT change quiz/scoring/mastery/evidence logic.
+DO NOT change Topic/MicroNode ordering.
+DO NOT change Exercise Approval semantics except where needed to preserve source integrity.
+DO NOT silently rewrite existing textbook source text.
+DO NOT “clean up” source extraction artifacts.
+DO NOT recreate or remap lesson content.
+
+════════════════════════════════════════════════════
+0. CURRENT VERIFIED STATE
+════════════════════════════════════════════════════
+
+The Phase 1.6 audit established:
+
+Authoritative source chain:
+
+PDF
+→ mapping_jobs.result.pass1Blocks
+→ lesson_exercises / lesson_nodes
+
+For textbook exercises:
+
+- sourceType = textbook
+- sourceBlockIndex points to the original extracted source block
+- sourcePage identifies the original textbook page
+- exerciseTextVerbatim contains the source exercise text
+
+CURRENT STRUCTURAL GAP:
+
+`exerciseTextVerbatim` is mutable through Teacher Review.
+
+Therefore teacher editing can overwrite the only stored verbatim textbook copy.
+
+`sourcePage` is also currently mutable through the exercise update route.
+
+Additionally, manually created teacher exercises currently inherit:
+
+sourceType = "textbook"
+
+because of the DB/schema default.
+
+That provenance is incorrect.
+
+Lesson 105 current verified integrity baseline:
+
+Topics = 4
+MicroNodes = 10
+Source textbook exercises = 15
+Assigned textbook exercises = 12
+Additional textbook exercises = 3
+Lost source exercises = 0
+Approved textbook exercises = 15
+
+Do not damage this baseline.
+
+════════════════════════════════════════════════════
+1. REQUIRED ARCHITECTURAL RULE
+════════════════════════════════════════════════════
+
+Textbook source and teacher-edited instructional text MUST be separate.
+
+For TEXTBOOK exercises:
+
+IMMUTABLE SOURCE LAYER:
+
+- exerciseTextVerbatim
+- sourcePage
+- sourceBlockIndex
+- sourceType
+
+These represent provenance and MUST NOT be changed by normal Teacher Review editing.
+
+EDITABLE TEACHER LAYER:
+
+Add ONE separate nullable field for teacher-edited/adapted exercise text.
+
+Preferred name:
+
+`exerciseTextEdited`
+
+Use the repo's existing naming conventions when mapping DB snake_case ↔ TypeScript camelCase.
+
+Semantics:
+
+exerciseTextEdited = null
+→ no teacher adaptation exists
+→ effective exercise text = exerciseTextVerbatim
+
+exerciseTextEdited contains nonblank text
+→ teacher adaptation exists
+→ effective exercise text = exerciseTextEdited
+
+The original:
+
+exerciseTextVerbatim
+
+must remain unchanged.
+
+Do NOT rename exerciseTextVerbatim.
+
+Do NOT repurpose exerciseTextVerbatim.
+
+Do NOT copy edited text back into exerciseTextVerbatim.
+
+════════════════════════════════════════════════════
+2. DATABASE CHANGE
+════════════════════════════════════════════════════
+
+Audit the actual schema/migration conventions first.
+
+Then add the minimum schema change necessary:
+
+lesson_exercises.exercise_text_edited
+nullable text
+
+Existing rows:
+
+exercise_text_edited = NULL
+
+Do NOT backfill textbook exercises with duplicate text.
+
+The existing exerciseTextVerbatim remains the authoritative source copy.
+
+Preserve all existing:
+
+- IDs
+- relatedNodeId
+- status
+- assignment
+- difficulty
+- successCriteria
+- sourcePage
+- sourceBlockIndex
+- sourceType
+
+Run the migration using the repository's normal migration mechanism.
+
+Do not manually mutate production-style data unless required by the migration.
+
+════════════════════════════════════════════════════
+3. TEXTBOOK EXERCISE UPDATE RULE
+════════════════════════════════════════════════════
+
+Audit the current route:
+
+POST /lessons/:lessonId/exercises/:exerciseId/update
+
+For an existing exercise where:
+
+sourceType === "textbook"
+
+Teacher Review MUST NOT be able to mutate:
+
+- exerciseTextVerbatim
+- sourcePage
+- sourceBlockIndex
+- sourceType
+
+Text editing from Teacher Review must instead update:
+
+exerciseTextEdited
+
+Other legitimate editable fields must continue to work, including where currently supported:
+
+- relatedNodeId
+- assignment
+- difficultyLevel
+- successCriteria
+- status
+
+Do not break Phase 1.3 reassignment.
+
+Do not break Phase 1.4 approval.
+
+IMPORTANT:
+
+Do not rely only on the frontend to protect provenance.
+
+Backend must enforce the invariant.
+
+A crafted request must not be able to overwrite textbook provenance fields through the normal Teacher Review update endpoint.
+
+════════════════════════════════════════════════════
+4. MANUAL EXERCISE PROVENANCE
+════════════════════════════════════════════════════
+
+Teacher-created manual exercises must NOT pretend to be textbook exercises.
+
+Audit the current create route.
+
+When a teacher manually creates an exercise from Teacher Review:
+
+sourceType MUST be:
+
+"manual"
+
+and:
+
+sourcePage = null
+sourceBlockIndex = null
+
+Do not fabricate textbook provenance.
+
+For manual exercises, determine the cleanest semantics using the new model.
+
+Preferred rule:
+
+- sourceType = "manual"
+- exerciseTextVerbatim may contain the originally entered manual text if required for backward compatibility
+- exerciseTextEdited may remain null initially
+
+OR, if the existing application architecture strongly favors another representation, document it before changing it.
+
+But the following invariant is mandatory:
+
+MANUAL exercise
+≠ textbook source
+
+and manual exercises must never be counted as source textbook exercises.
+
+Do NOT change existing 15 textbook exercises to manual.
+
+════════════════════════════════════════════════════
+5. EFFECTIVE EXERCISE TEXT
+════════════════════════════════════════════════════
+
+Create/reuse ONE deterministic helper for resolving the exercise text shown/delivered to the learner.
+
+Conceptually:
+
+effectiveExerciseText =
+  nonblank exerciseTextEdited
+    ? exerciseTextEdited
+    : exerciseTextVerbatim
+
+Do not scatter slightly different fallback rules across the codebase.
+
+Find all learner-facing exercise delivery paths used by AI Teacher.
+
+Phase 1.4 previously identified at least:
+
+- Phase 2 CLASS
+- Phase 3 CLASS
+- Phase 3 HOMEWORK
+
+Audit rather than assuming exact locations.
+
+Every learner-facing path must use EFFECTIVE exercise text.
+
+Approval gate remains unchanged:
+
+status === "approved"
+
+Only approved exercises are eligible.
+
+Therefore:
+
+approved textbook exercise + no teacher edit
+→ learner receives exerciseTextVerbatim
+
+approved textbook exercise + teacher edit
+→ learner receives exerciseTextEdited
+
+draft exercise
+→ learner receives neither version because exercise is blocked
+
+Do not weaken the Phase 1.4 approval gate.
+
+════════════════════════════════════════════════════
+6. TEACHER REVIEW UI
+════════════════════════════════════════════════════
+
+Update the existing exercise edit UI minimally.
+
+For textbook exercises:
+
+Display the effective exercise text normally.
+
+When teacher clicks ✏️:
+
+the editable field should represent the teacher-editable version.
+
+If exerciseTextEdited is null:
+
+initialize the edit control visually from exerciseTextVerbatim so the teacher can edit naturally.
+
+BUT:
+
+Saving must write the result to exerciseTextEdited,
+NOT exerciseTextVerbatim.
+
+Do not mutate provenance.
+
+Also provide a small way for the teacher to distinguish that the exercise originates from the textbook.
+
+Minimum acceptable UI:
+
+`📖 Դասագրքից`
+
+For manual exercise:
+
+`✍️ Ձեռքով`
+
+Do not redesign the exercise card.
+
+OPTIONAL only if trivial with existing UI:
+Allow teacher to see the original textbook wording while editing.
+
+For example:
+
+`Դասագրքի բնօրինակ`
+
+showing exerciseTextVerbatim read-only.
+
+Do NOT build a large comparison UI in this phase.
+
+════════════════════════════════════════════════════
+7. RESET TEACHER EDIT
+════════════════════════════════════════════════════
+
+For textbook exercises that have:
+
+exerciseTextEdited != null
+
+provide a small action allowing the teacher to return to the original textbook wording.
+
+Example Armenian UI:
+
+`Վերականգնել բնօրինակը`
+
+Its behavior:
+
+exerciseTextEdited → null
+
+NOT:
+
+exerciseTextVerbatim ← something else
+
+After reset:
+
+effectiveExerciseText = exerciseTextVerbatim
+
+Original provenance must remain untouched.
+
+If adding this UI would require substantial redesign, the backend behavior must still support setting exerciseTextEdited to null, and report the UI limitation.
+
+Prefer implementing the small reset action.
+
+════════════════════════════════════════════════════
+8. API / TYPES
+════════════════════════════════════════════════════
+
+Update all necessary API schemas/types/hooks so that exercise responses expose:
+
+- exerciseTextVerbatim
+- exerciseTextEdited
+- effective exercise text if the API architecture normally exposes computed fields
+- sourceType
+- sourcePage
+- sourceBlockIndex
+- status
+- relatedNodeId
+
+Avoid introducing duplicate competing text-resolution logic.
+
+If an `effectiveExerciseText` field is returned by the API, derive it deterministically from:
+
+exerciseTextEdited ?? exerciseTextVerbatim
+
+with blank edited strings treated as absent.
+
+════════════════════════════════════════════════════
+9. BACKWARD COMPATIBILITY
+════════════════════════════════════════════════════
+
+All existing exercises have:
+
+exerciseTextEdited = null
+
+after migration.
+
+Therefore existing behavior must remain unchanged until a teacher actually edits an exercise.
+
+Existing textbook exercises must still render exactly as before.
+
+Existing AI Teacher sessions must still receive the same approved textbook exercise text when no teacher edit exists.
+
+Existing exercise reassignment must continue working:
+
+MicroNode → Additional
+Additional → MicroNode
+
+Existing approval must continue working:
+
+draft → approved
+
+Existing delete behavior must continue working.
+
+Existing ordering must continue working.
+
+════════════════════════════════════════════════════
+10. DO NOT ALTER SOURCE ARTIFACTS
+════════════════════════════════════════════════════
+
+Phase 1.6 found one source-text mismatch:
+
+exercise 873 / source block 44
+
+with a one-character whitespace-before-colon difference.
+
+DO NOT modify it in this task.
+
+Do not normalize punctuation.
+
+Do not trim/rewrite historical textbook source rows.
+
+Do not attempt automatic source correction.
+
+This phase establishes preservation architecture only.
+
+════════════════════════════════════════════════════
+11. REQUIRED ACCEPTANCE TESTS
+════════════════════════════════════════════════════
+
+Use Lesson 105.
+
+Before tests record:
+
+Topics
+MicroNodes
+textbook source exercises
+assigned textbook exercises
+additional textbook exercises
+approved/draft counts
+
+Expected baseline:
+
+Topics = 4
+MicroNodes = 10
+textbook exercises = 15
+assigned textbook = 12
+additional textbook = 3
+lost textbook exercises = 0
+
+Then perform ALL cases.
+
+────────────────────────────────────────
+CASE A — EXISTING TEXTBOOK EXERCISE
+────────────────────────────────────────
+
+Choose one real textbook exercise.
+
+Record BEFORE:
+
+exerciseTextVerbatim
+exerciseTextEdited
+sourceType
+sourcePage
+sourceBlockIndex
+relatedNodeId
+status
+
+Expected initially:
+
+exerciseTextEdited = null
+
+Edit its visible exercise text through Teacher Review.
+
+AFTER save prove:
+
+exerciseTextVerbatim = EXACTLY unchanged
+exerciseTextEdited = teacher's new text
+sourceType unchanged
+sourcePage unchanged
+sourceBlockIndex unchanged
+relatedNodeId unchanged
+status unchanged
+
+Full browser refresh.
+
+Prove Teacher Review still displays the edited/effective text.
+
+PASS only if original verbatim remains intact.
+
+────────────────────────────────────────
+CASE B — AI TEACHER EFFECTIVE TEXT
+────────────────────────────────────────
+
+Using the same approved textbook exercise:
+
+prove learner-facing exercise selection resolves to:
+
+exerciseTextEdited
+
+while:
+
+exerciseTextVerbatim
+
+still contains the original source wording.
+
+Then reset edit:
+
+exerciseTextEdited = null
+
+Prove learner-facing text falls back to:
+
+exerciseTextVerbatim
+
+Do not alter approval status during this test unless necessary.
+
+────────────────────────────────────────
+CASE C — BACKEND IMMUTABILITY
+────────────────────────────────────────
+
+Attempt a direct/crafted normal update request against the textbook exercise trying to change:
+
+exerciseTextVerbatim
+sourcePage
+sourceBlockIndex
+sourceType
+
+The backend must NOT allow textbook provenance to be mutated.
+
+Use either:
+
+- explicit HTTP 400 rejection
+
+OR
+
+- ignore immutable fields and preserve DB values
+
+Choose one consistent behavior and document it.
+
+Preferred behavior:
+reject the request clearly if it attempts to mutate immutable textbook provenance.
+
+After attempt prove DB values are unchanged.
+
+────────────────────────────────────────
+CASE D — REASSIGNMENT REGRESSION
+────────────────────────────────────────
+
+Move textbook exercise:
+
+MicroNode → Additional
+
+Verify:
+
+exerciseTextVerbatim unchanged
+exerciseTextEdited unchanged
+sourceType unchanged
+sourcePage unchanged
+sourceBlockIndex unchanged
+
+Then restore:
+
+Additional → original MicroNode
+
+Verify all provenance unchanged.
+
+────────────────────────────────────────
+CASE E — APPROVAL REGRESSION
+────────────────────────────────────────
+
+For a temporary/test-safe exercise state:
+
+approved → draft
+
+prove AI Teacher blocks it.
+
+draft → approved
+
+prove AI Teacher allows it.
+
+Both original and edited text must remain unchanged by status transitions.
+
+Restore original state.
+
+────────────────────────────────────────
+CASE F — MANUAL EXERCISE
+────────────────────────────────────────
+
+Create one temporary exercise through the actual Teacher Review create flow.
+
+Verify DB:
+
+sourceType = "manual"
+sourcePage = null
+sourceBlockIndex = null
+
+Verify it is NOT included in textbook source count.
+
+Edit its text.
+
+Verify edit works normally.
+
+Delete the temporary manual exercise.
+
+Verify final counts return to baseline.
+
+────────────────────────────────────────
+CASE G — FULL REFRESH
+────────────────────────────────────────
+
+After textbook edit:
+
+full browser refresh
+→ edited/effective text remains visible
+
+After reset:
+
+full browser refresh
+→ original verbatim text is visible again
+
+No provenance fields changed.
+
+════════════════════════════════════════════════════
+12. AUTOMATED TESTS
+════════════════════════════════════════════════════
+
+Add focused automated tests covering at minimum:
+
+1. textbook exercise edit preserves exerciseTextVerbatim
+2. textbook sourcePage immutable
+3. textbook sourceBlockIndex immutable
+4. textbook sourceType immutable
+5. exerciseTextEdited overrides verbatim for effective text
+6. null edited text falls back to verbatim
+7. blank edited text falls back to verbatim
+8. reassignment preserves provenance
+9. approval change preserves provenance
+10. manual create → sourceType=manual
+11. manual create → sourcePage=null
+12. manual create → sourceBlockIndex=null
+13. manual exercise excluded from textbook source count
+14. draft exercise remains blocked from AI Teacher
+15. approved exercise uses effective text
+
+Do not merely unit-test helpers if route/integration behavior can be tested.
+
+════════════════════════════════════════════════════
+13. DATA INTEGRITY FINAL CHECK
+════════════════════════════════════════════════════
+
+After all temporary tests are restored/deleted:
+
+Lesson 105 must return to:
+
+Topics = 4
+MicroNodes = 10
+Textbook source exercises = 15
+Assigned textbook = 12
+Additional textbook = 3
+Lost textbook exercises = 0
+
+Also verify:
+
+duplicate textbook sourceBlockIndex = 0
+textbook exercises with sourceType != textbook = 0
+textbook exercises with missing sourcePage = 0
+textbook exercises with missing sourceBlockIndex = 0
+
+Do not count temporary/manual exercises as source textbook exercises.
+
+Also verify no unexpected changes to:
+
+- Topic order
+- MicroNode order
+- relatedNodeId
+- exercise approval state
+- Learning Objectives
+- dependency graph
+
+════════════════════════════════════════════════════
+14. SCOPE — DO NOT TOUCH
+════════════════════════════════════════════════════
+
+Do NOT modify unless strictly required for effective-text consumption:
+
+- Mapper extraction logic
+- manual-map parser/validator
+- source coverage gate
+- MicroNode mapping semantics
+- quiz creation
+- quiz taking
+- scoring
+- mastery
+- Knowledge Tree
+- evidence pipeline
+- Topic ordering
+- MicroNode ordering
+- dependency semantics
+- Final Lesson Approval
+- unrelated Teacher Dashboard sections
+
+chat.ts may be changed ONLY where necessary so AI Teacher consumes the effective approved exercise text while preserving the existing Phase 1.4 approval gate.
+
+════════════════════════════════════════════════════
+15. FINAL REPORT
+════════════════════════════════════════════════════
+
+Return:
+
+## A. Pre-change architecture
+- exact structural gap confirmed
+- affected files/routes/schema
+
+## B. Schema
+- migration added
+- new field
+- existing-row behavior
+
+## C. Textbook provenance protection
+- which fields are immutable
+- backend enforcement method
+
+## D. Effective text semantics
+Show explicitly:
+
+no edit:
+verbatim → learner
+
+teacher edit:
+edited → learner
+verbatim → preserved
+
+reset:
+edited=null
+verbatim → learner
+
+## E. Manual exercise semantics
+- sourceType
+- sourcePage
+- sourceBlockIndex
+
+## F. Acceptance tests
+A–G:
+PASS / FAIL individually
+
+## G. Automated tests
+passed / failed counts
+
+## H. Lesson 105 final integrity
+- Topics
+- MicroNodes
+- textbook source exercises
+- assigned textbook
+- additional textbook
+- manual exercises
+- lost source exercises
+- duplicates
+
+## I. Files changed
+exact list + purpose
+
+## J. FINAL GATE 1.6
+
+PASS / FAIL
+
+PASS only if ALL are true:
+
+1. textbook original exercise text cannot be destroyed by Teacher Review editing
+2. textbook provenance fields cannot be mutated through normal Teacher Review update
+3. teacher can still adapt exercise wording
+4. AI Teacher uses teacher-edited wording when present
+5. AI Teacher falls back to verbatim when no edit exists
+6. Phase 1.4 approval gate remains enforced
+7. manual exercises are correctly identified as manual
+8. Lesson 105 still has exactly 15 textbook source exercises
+9. lost textbook source exercises = 0
+
+If any invariant fails:
+
+DO NOT claim PASS.
+Report the exact blocker.
+
+IMPORTANT:
+Do not stop after implementing the schema.
+Trace and verify the complete chain:
+
+SOURCE
+→ DB provenance
+→ Teacher edit
+→ API
+→ effective text
+→ AI Teacher
+→ refresh persistence
+→ reset
+→ original source recovery
+
+The purpose of Phase 1.6 is not merely to store another text field.
+
+The purpose is to guarantee:
+
+ORIGINAL TEXTBOOK SOURCE IS PERMANENTLY PRESERVED
+while
+TEACHER ADAPTATION REMAINS POSSIBLE.

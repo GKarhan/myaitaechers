@@ -678,7 +678,9 @@ function LessonNodesPanel({
   // Exercise edit/add state
   const [editingExerciseId, setEditingExerciseId] = useState<number | null>(null);
   const [editExForm, setEditExForm] = useState<{
-    exerciseTextVerbatim: string; successCriteria: string;
+    // P1.6B: teacher edits go here; display initialized from exerciseTextEdited ?? exerciseTextVerbatim
+    exerciseTextEdited: string;
+    successCriteria: string;
     difficultyLevel: string; assignment: string; relatedNodeId: number | null;
   } | null>(null);
   const [addExForNodeId, setAddExForNodeId] = useState<number | null>(null);
@@ -854,8 +856,9 @@ function LessonNodesPanel({
 
   const startEditEx = (ex: (typeof exercises)[0]) => {
     setEditingExerciseId(ex.id);
+    // P1.6B: pre-populate with exerciseTextEdited if present, else show verbatim as starting point
     setEditExForm({
-      exerciseTextVerbatim: ex.exerciseTextVerbatim,
+      exerciseTextEdited: (ex as any).exerciseTextEdited ?? ex.exerciseTextVerbatim,
       successCriteria: ex.successCriteria ?? "",
       difficultyLevel: ex.difficultyLevel ?? "MEDIUM",
       assignment: ex.assignment ?? "CLASS",
@@ -865,10 +868,31 @@ function LessonNodesPanel({
 
   const saveEx = (exId: number) => {
     if (!editExForm) return;
+    // P1.6B: always send exerciseTextEdited — backend routes to correct field by sourceType
     updateEx.mutate(
-      { lessonId, exerciseId: exId, data: { ...editExForm } },
+      { lessonId, exerciseId: exId, data: {
+        exerciseTextEdited: editExForm.exerciseTextEdited,
+        successCriteria: editExForm.successCriteria,
+        difficultyLevel: editExForm.difficultyLevel,
+        assignment: editExForm.assignment,
+        relatedNodeId: editExForm.relatedNodeId,
+      }},
       { onSuccess: () => { setEditingExerciseId(null); setEditExForm(null); refreshEx(); } }
     );
+  };
+
+  // P1.6B: reset teacher edit — sets exerciseTextEdited=null → effective text reverts to verbatim
+  const resetExEdit = (exId: number) => {
+    updateEx.mutate(
+      { lessonId, exerciseId: exId, data: { exerciseTextEdited: null } },
+      { onSuccess: () => refreshEx() }
+    );
+  };
+
+  // P1.6B: resolve effective exercise text for display (mirrors backend helper)
+  const effectiveText = (ex: (typeof exercises)[0]) => {
+    const edited = (ex as any).exerciseTextEdited as string | null | undefined;
+    return edited?.trim() ? edited.trim() : ex.exerciseTextVerbatim;
   };
 
   // Quick-move: update only relatedNodeId without opening the full edit form.
@@ -1286,7 +1310,18 @@ function LessonNodesPanel({
                 <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
                   {isEditingEx && editExForm ? (
                     <div className="space-y-1.5">
-                      <textarea className={fieldCls + " resize-none"} rows={3} value={editExForm.exerciseTextVerbatim} onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextVerbatim: e.target.value })} />
+                      {/* P1.6B: show read-only original when editing an adapted textbook exercise */}
+                      {(ex as any).sourceType === 'textbook' && (ex as any).exerciseTextEdited && (
+                        <div className="bg-black/30 border border-amber-500/20 rounded px-2 py-1.5">
+                          <p className="text-[9px] text-amber-400/60 mb-0.5">📖 Dasagrkic bnaginak</p>
+                          <p className="text-[10px] text-white/40 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                        </div>
+                      )}
+                      <textarea className={fieldCls + " resize-none"} rows={3}
+                        value={editExForm.exerciseTextEdited}
+                        onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
+                        placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (dasagrkic bnaginakin vray)…" : "Varjutyutyan bnagir"}
+                      />
                       <input className={fieldCls} placeholder="Haghoghutyyan banalich" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
                       <div className="flex gap-2">
                         <select className={fieldCls + " cursor-pointer"} value={editExForm.difficultyLevel} onChange={(e) => setEditExForm((f) => f && { ...f, difficultyLevel: e.target.value })}>
@@ -1308,8 +1343,21 @@ function LessonNodesPanel({
                   ) : (
                     <div className="flex items-start gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-white/90 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                        <p className="text-xs text-white/90 leading-relaxed">{effectiveText(ex)}</p>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {/* P1.6B — source origin badge + reset button */}
+                          {(ex as any).sourceType === 'textbook'
+                            ? <span className="text-[9px] text-blue-400/50">📖 Dasagrkic</span>
+                            : <span className="text-[9px] text-purple-400/50">✍️ Dzerckov</span>
+                          }
+                          {(ex as any).exerciseTextEdited && (
+                            <button
+                              onClick={() => resetExEdit(ex.id)}
+                              disabled={updateEx.isPending}
+                              title="Verakangnel bnaginakin"
+                              className="text-[9px] text-amber-400/50 hover:text-amber-300 transition-colors disabled:opacity-40"
+                            >↩ Verakangnel</button>
+                          )}
                           {ex.difficultyLevel && <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>}
                           {ex.assignment && (
                             <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
@@ -1716,11 +1764,19 @@ function LessonNodesPanel({
                         <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
                           {isEditingEx && editExForm ? (
                             <div className="space-y-1.5">
+                              {/* P1.6B: show read-only original when editing an adapted textbook exercise */}
+                              {(ex as any).sourceType === 'textbook' && (ex as any).exerciseTextEdited && (
+                                <div className="bg-black/30 border border-amber-500/20 rounded px-2 py-1.5">
+                                  <p className="text-[9px] text-amber-400/60 mb-0.5">📖 Dasagrkic bnaginak</p>
+                                  <p className="text-[10px] text-white/40 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                                </div>
+                              )}
                               <textarea
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
                                 rows={3}
-                                value={editExForm.exerciseTextVerbatim}
-                                onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextVerbatim: e.target.value })}
+                                value={editExForm.exerciseTextEdited}
+                                onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
+                                placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (dasagrkic bnaginakin vray)…" : "Varjutyutyan bnagir"}
                               />
                               <input
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
@@ -1749,30 +1805,43 @@ function LessonNodesPanel({
                           ) : (
                             <div className="flex items-start gap-2">
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs text-white/90 leading-relaxed">{ex.exerciseTextVerbatim}</p>
+                                <p className="text-xs text-white/90 leading-relaxed">{effectiveText(ex)}</p>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  {/* P1.6B — source origin badge + reset button */}
+                                  {(ex as any).sourceType === 'textbook'
+                                    ? <span className="text-[9px] text-blue-400/50">📖 Dasagrkic</span>
+                                    : <span className="text-[9px] text-purple-400/50">✍️ Dzerckov</span>
+                                  }
+                                  {(ex as any).exerciseTextEdited && (
+                                    <button
+                                      onClick={() => resetExEdit(ex.id)}
+                                      disabled={updateEx.isPending}
+                                      title="Verakangnel bnaginakin"
+                                      className="text-[9px] text-amber-400/50 hover:text-amber-300 transition-colors disabled:opacity-40"
+                                    >↩ Verakangnel</button>
+                                  )}
                                   {ex.difficultyLevel && (
                                     <span className="text-[10px] text-muted-foreground/60">{ex.difficultyLevel}</span>
                                   )}
                                   {ex.assignment && (
                                     <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
-                                      {ex.assignment === "HOMEWORK" ? "🏠 Տնային աշխատանք" : "📋 Դասարանում"}
+                                      {ex.assignment === "HOMEWORK" ? "🏠 Տնային աշխատանք" : "📋 Դасарануm"}
                                     </span>
                                   )}
                                   {ex.sourcePage && (
-                                    <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
+                                    <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>
                                   )}
                                   {/* Gate 1.4 — approval status badge */}
                                   {ex.status === "approved" ? (
-                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
+                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Hastatvatc</span>
                                   ) : (
                                     <>
-                                      <span className="text-[10px] text-amber-400/60">🟡 Սևագիր</span>
+                                      <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
                                       <button
                                         onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
                                         disabled={updateEx.isPending}
                                         className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
-                                      >Հաստատել</button>
+                                      >Hastatel</button>
                                     </>
                                   )}
                                 </div>

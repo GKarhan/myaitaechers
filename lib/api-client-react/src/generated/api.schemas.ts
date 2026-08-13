@@ -930,7 +930,12 @@ export interface LessonExercise {
   exerciseId: string;
   sequence: number;
   sourcePage?: string | null;
+  /** Immutable textbook source text. Never overwritten by teacher edits. */
   exerciseTextVerbatim: string;
+  /** Teacher-edited adaptation. null = no edit; non-null = adapted wording. */
+  exerciseTextEdited?: string | null;
+  /** Resolved learner-facing text: exerciseTextEdited (trimmed, non-empty) ?? exerciseTextVerbatim */
+  effectiveExerciseText?: string;
   exercisePurpose?: string | null;
   relatedNodeId?: number | null;
   successCriteria?: string | null;
@@ -938,6 +943,7 @@ export interface LessonExercise {
   assignment?: string | null;
   /** Authoring lifecycle: "draft" | "approved" (may include legacy "reviewed"). */
   status?: string | null;
+  /** "textbook" | "manual" */
   sourceType?: string | null;
   sourceBlockIndex?: number | null;
 }
@@ -953,9 +959,16 @@ export interface CreateLessonExerciseInput {
 }
 
 export interface UpdateLessonExerciseInput {
+  /**
+   * Teacher-edited adaptation text (P1.6B).
+   * For sourceType='textbook' exercises this is the ONLY field that changes displayed text.
+   * Send null or "" to reset (restores verbatim text as the effective text).
+   * For sourceType='manual' exercises exerciseTextVerbatim may still be patched directly.
+   */
+  exerciseTextEdited?: string | null;
+  /** Only accepted for sourceType='manual' exercises. Rejected for textbook exercises. */
   exerciseTextVerbatim?: string;
   relatedNodeId?: number | null;
-  sourcePage?: string;
   successCriteria?: string;
   difficultyLevel?: string;
   assignment?: string;

@@ -1,4 +1,22 @@
 /**
+ * P1.6B — Effective exercise text resolver.
+ *
+ * Single authoritative rule:
+ *   exerciseTextEdited (trimmed, non-empty) → learner-facing text
+ *   otherwise                               → exerciseTextVerbatim
+ *
+ * Use this everywhere exercise text is delivered to learners or shown as
+ * the "current" wording in Teacher Review.  Never scatter this logic inline.
+ */
+export function effectiveExerciseText(
+  exerciseTextVerbatim: string,
+  exerciseTextEdited: string | null | undefined,
+): string {
+  const edited = exerciseTextEdited?.trim();
+  return edited ? edited : exerciseTextVerbatim;
+}
+
+/**
  * Phase 11.1 — Exercise Delivery Enforcement
  *
  * Backend authority over verbatim textbook exercise delivery.

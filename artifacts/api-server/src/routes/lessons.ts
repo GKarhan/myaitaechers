@@ -1136,23 +1136,29 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest,
     .where(eq(lessonExercisesTable.lessonId, lessonId))
     .orderBy(asc(lessonExercisesTable.sequence));
 
-  res.json(exercises.map((e) => ({
-    id: e.id,
-    lessonId: e.lessonId,
-    exerciseId: e.exerciseId,
-    sequence: e.sequence,
-    sourcePage: e.sourcePage ?? null,
-    exerciseTextVerbatim: e.exerciseTextVerbatim,
-    exercisePurpose: e.exercisePurpose ?? null,
-    relatedNodeId: e.relatedNodeId ?? null,
-    successCriteria: e.successCriteria ?? null,
-    difficultyLevel: e.difficultyLevel ?? null,
-    assignment: e.assignment ?? null,
-    // Provenance / review fields — included for teacher review UI
-    sourceType: e.sourceType ?? null,
-    sourceBlockIndex: e.sourceBlockIndex ?? null,
-    status: e.status ?? null,
-  })));
+  res.json(exercises.map((e) => {
+    const edited = (e as any).exerciseTextEdited as string | null | undefined;
+    const effectiveText = edited?.trim() ? edited.trim() : e.exerciseTextVerbatim;
+    return {
+      id: e.id,
+      lessonId: e.lessonId,
+      exerciseId: e.exerciseId,
+      sequence: e.sequence,
+      sourcePage: e.sourcePage ?? null,
+      exerciseTextVerbatim: e.exerciseTextVerbatim,
+      exerciseTextEdited: edited ?? null,
+      effectiveExerciseText: effectiveText,
+      exercisePurpose: e.exercisePurpose ?? null,
+      relatedNodeId: e.relatedNodeId ?? null,
+      successCriteria: e.successCriteria ?? null,
+      difficultyLevel: e.difficultyLevel ?? null,
+      assignment: e.assignment ?? null,
+      // Provenance / review fields — included for teacher review UI
+      sourceType: e.sourceType ?? null,
+      sourceBlockIndex: e.sourceBlockIndex ?? null,
+      status: e.status ?? null,
+    };
+  }));
 });
 
 // POST /lessons/:lessonId/exercises — create a new exercise
@@ -1196,6 +1202,8 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
       difficultyLevel: difficultyLevel ?? "MEDIUM",
       assignment: assignment ?? "CLASS",
       exercisePurpose: exercisePurpose ?? "INDEPENDENT_PRACTICE",
+      // P1.6B: teacher-created exercises are always manual — never pretend to be textbook.
+      sourceType: "manual",
     })
     .returning();
 
@@ -1206,12 +1214,16 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
     sequence: ex.sequence,
     sourcePage: ex.sourcePage ?? null,
     exerciseTextVerbatim: ex.exerciseTextVerbatim,
+    exerciseTextEdited: null,
+    effectiveExerciseText: ex.exerciseTextVerbatim,
     exercisePurpose: ex.exercisePurpose ?? null,
     relatedNodeId: ex.relatedNodeId ?? null,
     successCriteria: ex.successCriteria ?? null,
     difficultyLevel: ex.difficultyLevel ?? null,
     assignment: ex.assignment ?? null,
     status: ex.status ?? "draft",
+    sourceType: ex.sourceType ?? "manual",
+    sourceBlockIndex: null,
   });
 });
 
@@ -1229,8 +1241,13 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
 
   if (!existing) { res.status(404).json({ error: "Exercise not found" }); return; }
 
-  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, difficultyLevel, assignment, exercisePurpose, status } = req.body as {
+  const {
+    exerciseTextVerbatim, exerciseTextEdited,
+    relatedNodeId, sourcePage, successCriteria, difficultyLevel,
+    assignment, exercisePurpose, status,
+  } = req.body as {
     exerciseTextVerbatim?: string;
+    exerciseTextEdited?: string | null;
     relatedNodeId?: number | null;
     sourcePage?: string;
     successCriteria?: string;
@@ -1240,15 +1257,50 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     status?: string;
   };
 
-  // Gate 1.4: only allow known lifecycle values; reject anything unknown
+  // Gate 1.4: only allow known lifecycle values
   if (status !== undefined && !["draft", "reviewed", "approved"].includes(status)) {
     res.status(400).json({ error: "Invalid status; allowed values: draft, reviewed, approved" }); return;
   }
 
-  const patch: Partial<typeof existing> = {};
-  if (exerciseTextVerbatim !== undefined) patch.exerciseTextVerbatim = exerciseTextVerbatim.trim();
+  // P1.6B: protect textbook provenance — immutable fields for textbook exercises
+  const isTextbook = existing.sourceType === "textbook";
+  if (isTextbook) {
+    const forbidden: string[] = [];
+    if (exerciseTextVerbatim !== undefined) forbidden.push("exerciseTextVerbatim");
+    if (sourcePage !== undefined) forbidden.push("sourcePage");
+    if (forbidden.length > 0) {
+      res.status(400).json({
+        error: "IMMUTABLE_TEXTBOOK_PROVENANCE",
+        message: `Textbook provenance fields are immutable: ${forbidden.join(", ")}. ` +
+          "To adapt exercise wording use exerciseTextEdited instead.",
+        immutableFields: forbidden,
+      });
+      return;
+    }
+  }
+
+  const patch: Record<string, unknown> = {};
+
+  // Text editing: textbook → write to exerciseTextEdited; manual → allow verbatim patch
+  if (isTextbook) {
+    if (exerciseTextEdited !== undefined) {
+      // null or blank string = reset (teacher reverts to original verbatim)
+      patch.exerciseTextEdited = exerciseTextEdited === null || exerciseTextEdited.trim() === ""
+        ? null
+        : exerciseTextEdited.trim();
+    }
+  } else {
+    // Manual exercise: allow patching verbatim directly
+    if (exerciseTextVerbatim !== undefined) patch.exerciseTextVerbatim = exerciseTextVerbatim.trim();
+    if (exerciseTextEdited !== undefined) {
+      patch.exerciseTextEdited = exerciseTextEdited === null || exerciseTextEdited.trim() === ""
+        ? null
+        : exerciseTextEdited.trim();
+    }
+    if (sourcePage !== undefined) patch.sourcePage = sourcePage;
+  }
+
   if (relatedNodeId !== undefined) patch.relatedNodeId = relatedNodeId;
-  if (sourcePage !== undefined) patch.sourcePage = sourcePage;
   if (successCriteria !== undefined) patch.successCriteria = successCriteria.trim() || null;
   if (difficultyLevel !== undefined) patch.difficultyLevel = difficultyLevel;
   if (assignment !== undefined) patch.assignment = assignment;
@@ -1261,6 +1313,9 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     .where(eq(lessonExercisesTable.id, exerciseId))
     .returning();
 
+  const updatedEdited = (updated as any).exerciseTextEdited as string | null | undefined;
+  const effectiveText = updatedEdited?.trim() ? updatedEdited.trim() : updated.exerciseTextVerbatim;
+
   res.json({
     id: updated.id,
     lessonId: updated.lessonId,
@@ -1268,6 +1323,8 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     sequence: updated.sequence,
     sourcePage: updated.sourcePage ?? null,
     exerciseTextVerbatim: updated.exerciseTextVerbatim,
+    exerciseTextEdited: updatedEdited ?? null,
+    effectiveExerciseText: effectiveText,
     exercisePurpose: updated.exercisePurpose ?? null,
     relatedNodeId: updated.relatedNodeId ?? null,
     successCriteria: updated.successCriteria ?? null,
