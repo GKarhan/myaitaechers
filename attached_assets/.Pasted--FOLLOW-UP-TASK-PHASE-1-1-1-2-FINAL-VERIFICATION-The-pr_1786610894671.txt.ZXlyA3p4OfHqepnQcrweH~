@@ -1,0 +1,611 @@
+# FOLLOW-UP TASK — PHASE 1.1 + 1.2 FINAL VERIFICATION
+
+The previous Phase 1.1 + 1.2 implementation is already in place.
+
+DO NOT restart the task from scratch.
+
+DO NOT redesign the Teacher Review.
+
+DO NOT rewrite working CRUD or reorder code unless this verification proves that a specific requirement is still missing or broken.
+
+This is a focused:
+
+**Hierarchy Audit → Verification → Minimal Fix → Final Gate**
+
+task.
+
+The previous audit reported:
+
+* `lesson_topics.sequence` exists and Topic reorder was implemented
+* `lesson_nodes.sequence` is currently lesson-wide
+* node reorder was implemented
+* node reorder calls `refreshSequentialDependencies()`
+* SEQUENTIAL dependencies are structural/order-derived
+* REQUIRED dependencies are semantic and must not be modified
+* Topic create/delete/reorder routes were live-DB tested
+* Node create/edit supports `learningObjective` and `topicId`
+
+Now we need to close the remaining ambiguity and prove the full acceptance criteria.
+
+---
+
+# PART 1 — IMPORTANT NODE / SUBNODE HIERARCHY AUDIT
+
+Before changing any code, determine the ACTUAL structural hierarchy used by the current repository and Teacher Review.
+
+Do not rely on naming alone.
+
+Inspect:
+
+* DB schema
+* mapping output types
+* Teacher Review UI
+* API responses
+* Mapper/manual-map persistence
+* Topic/Node relationships
+* any `parentId`, `parentNodeId`, `topicId`, `relatedNodeId`, hierarchy/path fields
+* any nested arrays or frontend grouping logic
+
+Explicitly determine which of these models is actually true.
+
+### MODEL A
+
+`Lesson → Topic → MicroNode`
+
+There is no separate parent Node entity.
+
+### MODEL B
+
+`Lesson → Topic → Node → Subnode/MicroNode`
+
+Node and Subnode are separate structural levels.
+
+### MODEL C
+
+Some other hierarchy.
+
+If Model C, document it precisely.
+
+Do NOT invent a Node/Subnode schema.
+
+Do NOT migrate the DB merely to satisfy terminology.
+
+The repository's actual knowledge model is authoritative for this verification.
+
+---
+
+# PART 2 — REQUIRED ORDERING SEMANTICS
+
+The teacher must be able to reorder at every structural hierarchy level that ACTUALLY EXISTS in Teacher Review.
+
+If the current repository contains:
+
+`Topic → Node → Subnode/MicroNode`
+
+then ordering must independently support:
+
+1. Topic ordering within the Lesson
+2. Node ordering within its parent Topic / Lesson scope
+3. Subnode/MicroNode ordering within its parent Node
+
+Example:
+
+Node order:
+
+`N1 → N2 → N3`
+
+Teacher changes:
+
+`N1 → N3 → N2`
+
+Inside N2:
+
+`SN2.1 → SN2.2 → SN2.3`
+
+Teacher changes:
+
+`SN2.1 → SN2.3 → SN2.2`
+
+These are independent ordering domains.
+
+Sequence normalization must be parent-scoped.
+
+Subnodes under N1 and Subnodes under N2 must each independently normalize to:
+
+`1, 2, 3, ...`
+
+Do NOT globally mix sequence numbers across different parent Nodes.
+
+---
+
+# PART 3 — IF THE CURRENT MODEL IS ONLY TOPIC → MICRONODE
+
+If forensic evidence proves that the current architecture is only:
+
+`Lesson → Topic → MicroNode`
+
+and there is NO separate parent Node/Subnode level,
+
+then DO NOT add one.
+
+Instead explicitly report:
+
+`NO DISTINCT NODE → SUBNODE HIERARCHY EXISTS IN CURRENT AUTHORITATIVE MODEL`
+
+Then verify whether the current implementation correctly supports:
+
+### Topic order
+
+Independent Topic sequence within Lesson.
+
+### MicroNode order
+
+The authoritative MicroNode order according to the existing model.
+
+If MicroNode order remains lesson-wide, explain:
+
+* why
+* which DB field makes it authoritative
+* how Topic grouping interacts with it
+* whether dragging nodes inside a Topic can accidentally affect ordering of nodes belonging to other Topics
+
+This last point is critical.
+
+---
+
+# PART 4 — CHECK FOR A POSSIBLE LESSON-WIDE SEQUENCE PROBLEM
+
+The previous audit reported:
+
+`lesson_nodes.sequence` is lesson-wide`
+
+Now inspect the actual drag-and-drop implementation.
+
+Example:
+
+Topic A:
+
+`A1(seq 1), A2(seq 2)`
+
+Topic B:
+
+`B1(seq 3), B2(seq 4)`
+
+Teacher reorders only Topic B:
+
+`B2 → B1`
+
+Expected final global order must remain structurally coherent.
+
+For example, if lesson-wide sequence is authoritative:
+
+`A1=1`
+`A2=2`
+`B2=3`
+`B1=4`
+
+It must NOT accidentally become:
+
+`A1=1`
+`B2=2`
+`A2=3`
+`B1=4`
+
+unless that is intentionally the actual visual/structural order.
+
+Verify that Topic-local drag behavior cannot silently corrupt lesson-wide sequence.
+
+If this is broken, fix it minimally.
+
+Do NOT redesign the data model unless absolutely necessary.
+
+---
+
+# PART 5 — REAL UI DRAG-AND-DROP VERIFICATION
+
+The previous report verified backend reorder routes.
+
+Now verify the COMPLETE user path.
+
+For one real mapped Lesson:
+
+## Topic reorder
+
+1. Record current Topic order from DB.
+2. Open Teacher Review.
+3. Drag Topic 4 before Topic 2.
+4. Confirm UI changes.
+5. Confirm reorder API succeeds.
+6. Query DB.
+7. Confirm normalized sequences:
+   `1,2,3,4,...`
+8. Perform a FULL page refresh.
+9. Confirm UI shows the same order.
+10. Restore original order after test if necessary.
+
+Required chain:
+
+**drag → API → DB → full refresh → same UI**
+
+---
+
+## MicroNode reorder
+
+Use at least 4 real MicroNodes.
+
+Record:
+
+* node IDs
+* titles
+* topic IDs
+* sequences
+* relevant SEQUENTIAL dependencies
+
+Perform:
+
+`MN1 → MN2 → MN3 → MN4`
+
+to:
+
+`MN1 → MN4 → MN2 → MN3`
+
+Then verify:
+
+* UI order
+* reorder API response
+* DB sequence
+* sequence normalization
+* full refresh
+* same UI order
+* rebuilt SEQUENTIAL dependencies
+
+Restore original semantic order after the test if appropriate.
+
+---
+
+# PART 6 — VERIFY CROSS-TOPIC BEHAVIOR
+
+We do NOT require cross-topic drag-and-drop as a UX feature in this task.
+
+The previous implementation already added `topicId` selection in create/edit.
+
+Verify that a teacher can:
+
+* create a MicroNode under Topic A
+* edit it and assign it to Topic B
+* save
+* refresh
+* DB shows Topic B
+* UI shows it under Topic B
+
+If this works:
+
+**DO NOT add cross-topic drag-and-drop now.**
+
+Report it as optional future UX.
+
+If it does not work, minimally fix the existing edit-based Topic reassignment.
+
+---
+
+# PART 7 — DELETE NODE → EXERCISE PRESERVATION
+
+Verify with actual DB evidence.
+
+Choose a temporary MicroNode with an attached temporary/test exercise if safe.
+
+Before delete:
+
+* exercise exists
+* `relatedNodeId = NODE_ID`
+
+Delete the MicroNode.
+
+Expected:
+
+* MicroNode deleted
+* exercise record still exists
+* exercise `relatedNodeId = NULL`
+* exercise becomes Additional/unassigned
+* lost exercise count = 0
+
+Do NOT rely only on FK schema inspection.
+
+Prove it with actual DB before/after rows.
+
+Clean up temporary test data afterward.
+
+---
+
+# PART 8 — DEPENDENCY SAFETY
+
+The previous audit found:
+
+* SEQUENTIAL = structural/order-derived
+* REQUIRED = semantic
+
+Verify with tests and/or real DB evidence that node reorder:
+
+* rebuilds SEQUENTIAL correctly
+* does NOT delete REQUIRED
+* does NOT alter REQUIRED
+* does NOT create duplicate SEQUENTIAL edges
+* does not leave stale SEQUENTIAL edges
+* does not create a self-edge
+
+Show before/after dependency rows.
+
+---
+
+# PART 9 — AUTOMATED TEST COVERAGE
+
+The previous implementation must not remain dependent only on manual live-DB tests.
+
+Add focused automated tests for the reorder/CRUD behavior if equivalent tests do not already exist.
+
+At minimum cover:
+
+### Topic reorder
+
+* normal reorder
+* normalized sequence
+* duplicate IDs rejected
+* missing ID rejected
+* ID from another Lesson rejected
+* transaction prevents partial update
+
+### Node reorder
+
+* normal reorder
+* normalized sequence
+* duplicate IDs rejected
+* missing ID rejected
+* ID from another Lesson rejected
+* transaction prevents partial update
+* SEQUENTIAL rebuilt
+* REQUIRED preserved
+
+### Node deletion
+
+* exercises are not deleted
+* exercise becomes unassigned/Additional
+
+### Topic relationship
+
+* create node with `topicId`
+* update node `topicId`
+* refresh/read-back persists relationship
+
+If some cases cannot be cleanly automated using the current test architecture, explain exactly why and provide real DB verification instead.
+
+Do not invent fake tests that do not exercise the actual route/service behavior.
+
+---
+
+# PART 10 — TRANSACTION INTEGRITY
+
+Inspect the reorder implementation.
+
+Confirm whether both of these are transactional:
+
+### Topic reorder
+
+All sequence updates happen atomically.
+
+### Node reorder
+
+All node sequence updates AND structural SEQUENTIAL dependency rebuild happen atomically.
+
+If dependency refresh currently happens outside the transaction, report it.
+
+If that creates a real inconsistency risk, minimally fix it.
+
+Expected invariant:
+
+Either:
+
+**new node order + matching SEQUENTIAL graph**
+
+are both committed,
+
+or:
+
+**old node order + old SEQUENTIAL graph**
+
+remain.
+
+Never allow:
+
+**new order + old dependency graph**
+
+after a failed operation.
+
+---
+
+# PART 11 — DATA INTEGRITY BEFORE / AFTER
+
+For the real Lesson used in verification, record BEFORE and AFTER:
+
+* Lesson ID
+* Topic count
+* MicroNode count
+* Exercise count
+* Additional/unassigned exercise count
+* dependency count by type
+* Phase 2 enrichment presence/count if applicable
+
+Expected:
+
+* existing Topics lost = 0
+* existing MicroNodes lost = 0
+* existing source exercises lost = 0
+* Phase 2 enrichment unexpectedly erased = 0
+* REQUIRED dependencies unexpectedly modified = 0
+
+---
+
+# PART 12 — DO NOT IMPLEMENT THESE
+
+Do NOT implement:
+
+* Exercise Management Phase 1.3
+* Exercise approval Phase 1.4
+* LO/granularity validation Phase 1.5
+* Source/page validation Phase 1.6
+* Final Lesson Approval Phase 1.7
+* semantic REQUIRED prerequisite logic
+* Lesson ↔ Test architecture
+* Knowledge Tree changes
+* Student assignment
+* AI Teacher changes
+* scoring/mastery/evidence
+* spacing
+* interleaving
+* personalization
+* Mapper redesign
+
+Also DO NOT implement cross-topic drag-and-drop unless it is strictly necessary to repair broken existing CRUD.
+
+---
+
+# PART 13 — FINAL REPORT
+
+Return these sections.
+
+## A. ACTUAL HIERARCHY
+
+State exactly:
+
+`Lesson → ... → ...`
+
+Include DB fields/tables and UI grouping.
+
+Explicitly answer:
+
+**Does a distinct Node → Subnode hierarchy exist? YES / NO**
+
+---
+
+## B. ORDERING DOMAINS
+
+For every real hierarchy level show:
+
+| Level | Parent scope | DB sequence field | Reorder supported | Normalization scope |
+| ----- | ------------ | ----------------- | ----------------- | ------------------- |
+
+---
+
+## C. UI REORDER EVIDENCE
+
+### Topic
+
+Show:
+
+BEFORE → AFTER → DB → REFRESH
+
+### MicroNode / Node / Subnode
+
+Show the same.
+
+---
+
+## D. NODE/SUBNODE REQUIREMENT
+
+Explicitly state one of:
+
+### CASE 1
+
+`Distinct Node/Subnode hierarchy exists and reorder works independently at both levels.`
+
+or:
+
+### CASE 2
+
+`No distinct Node/Subnode hierarchy exists; current authoritative model is Topic → MicroNode, therefore no new artificial hierarchy was added.`
+
+Do not leave this ambiguous.
+
+---
+
+## E. EXERCISE PRESERVATION
+
+Show actual exercise row before/after node deletion.
+
+Report:
+
+`lost exercises = 0 / NOT 0`
+
+---
+
+## F. DEPENDENCY VERIFICATION
+
+Show:
+
+* SEQUENTIAL before
+* SEQUENTIAL after
+* REQUIRED before
+* REQUIRED after
+
+---
+
+## G. AUTOMATED TESTS
+
+List:
+
+* test files changed/added
+* exact commands
+* number passed/failed
+
+---
+
+## H. DATA INTEGRITY
+
+Before/after counts.
+
+---
+
+## I. FILES CHANGED
+
+Only files changed in this follow-up verification/fix round.
+
+---
+
+## J. FINAL GATES
+
+### Gate 1.1 — Teacher Review CRUD
+
+Acceptance:
+
+**add/edit/delete → refresh → DB persistence → UI consistency**
+
+Result:
+
+`PASS / PARTIAL / FAIL`
+
+### Gate 1.2 — Ordering
+
+Acceptance:
+
+**reorder → normalized DB sequence → correct dependency graph → full refresh → same UI order**
+
+Result:
+
+`PASS / PARTIAL / FAIL`
+
+### Node/Subnode hierarchy requirement
+
+Result:
+
+`PASS / NOT APPLICABLE / FAIL`
+
+Do NOT report PASS without evidence.
+
+---
+
+# FINAL RULE
+
+This is NOT a redesign task.
+
+Use the implementation already completed.
+
+**Audit the hierarchy → verify the real UI/DB path → fix only proven gaps → add missing tests → close Gate 1.1 and 1.2.**

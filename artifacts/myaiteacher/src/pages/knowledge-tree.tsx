@@ -86,12 +86,12 @@ export default function KnowledgeTree() {
       <header className="border-b border-card-border bg-card/50 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
           {/* Back navigation:
-              - Teacher-view: window.history.back() — the teacher always arrives
-                from a known page and we don't need to reconstruct the URL.
+              - Teacher-view: setLocation("/teacher") — stable even after direct
+                page load or refresh (window.history.back() silently fails then).
               - Student-view: hardcoded link to /subjects/:id as before.     */}
           {isTeacherView ? (
             <button
-              onClick={() => window.history.back()}
+              onClick={() => setLocation("/teacher")}
               className="text-muted-foreground hover:text-white transition-colors"
             >
               ← Հետ
