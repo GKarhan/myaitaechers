@@ -1,0 +1,358 @@
+FOLLOW-UP — PHASE 1.4 CLEANUP + FINAL VERIFICATION ONLY
+
+Phase 1.4 implementation is already in place.
+
+DO NOT redo the feature.
+DO NOT perform a broad forensic audit.
+DO NOT touch unrelated code.
+
+We need to verify and clean up ONLY three remaining issues before Gate 1.4 can be considered final PASS.
+
+---
+
+# 1. V1 STATUS SEMANTICS — KEEP IT SIMPLE
+
+Our required V1 lifecycle is:
+
+draft → approved
+
+Your report mentioned:
+
+draft → reviewed → approved
+
+Audit the current schema/type and determine:
+
+- whether `reviewed` already existed before this task
+- whether it is actually used anywhere in runtime/product behavior
+- whether you introduced any new `reviewed` workflow in Phase 1.4
+
+IMPORTANT:
+
+Do NOT introduce or require a new review step.
+
+For Phase 1.4 V1:
+
+- Teacher action must approve directly from `draft` to `approved`
+- AI Teacher eligibility must require exactly `status === "approved"`
+
+If `reviewed` is only a pre-existing legacy/allowed enum value:
+- leave the schema backward-compatible
+- do NOT expose it in the V1 UI
+- do NOT treat it as learner-ready
+- do NOT make it part of the teacher workflow
+
+If you introduced new reviewed-state logic in this Phase 1.4 implementation, remove that new workflow and return to:
+
+draft → approved
+
+Do not perform a schema migration unless strictly necessary.
+
+---
+
+# 2. FIX ALL EXERCISE APPROVAL UI LABELS TO PROPER ARMENIAN
+
+The current UI reportedly contains transliterated/broken labels such as:
+
+`Sevagir`
+`Hutatvats`
+`Hustat.`
+`Hutatrel bolor varjutyunnere`
+
+Replace them with proper Armenian UI text:
+
+`🟡 Սևագիր`
+
+`✅ Հաստատված`
+
+`Հաստատել`
+
+`Հաստատել բոլոր վարժությունները`
+
+Check BOTH exercise contexts:
+
+- exercises under MicroNodes
+- Additional Exercises block
+
+Do not change functionality.
+
+This is text/UI cleanup only.
+
+---
+
+# 3. VERIFY THE REAL EXERCISE COUNT — EXPECTED SOURCE COUNT = 15
+
+The real Physics 7 lesson used throughout the Phase 1 tests has had:
+
+15 source exercises
+
+Previous invariant:
+
+Source Exercises = Assigned + Additional
+
+and:
+
+lost exercises = 0
+
+Your latest report said:
+
+`14/14 exercises`
+
+This must be explained.
+
+Use the actual real lesson DB data and report:
+
+- Lesson ID
+- total exercise rows
+- source exercise count
+- manual exercise count, if distinguishable
+- assigned exercise count
+- Additional/unassigned exercise count
+- draft count
+- approved count
+
+Determine why the previous report said 14/14.
+
+Possible explanations may include:
+- one exercise was excluded from that specific test
+- temporary/manual test data
+- only a subset was being cycled
+- a real source exercise was actually lost
+
+Do NOT assume.
+
+Required final invariant:
+
+`15 source exercises = assigned source exercises + additional source exercises`
+
+and:
+
+`lost source exercises = 0`
+
+If a source exercise is missing, STOP and report FAIL before making unrelated fixes.
+
+Do not silently recreate or fabricate missing source content.
+
+---
+
+# 4. VERIFY INDIVIDUAL APPROVAL IN REAL UI
+
+Use one real draft exercise.
+
+From the real Teacher Review UI:
+
+1. Confirm it shows:
+   `🟡 Սևագիր`
+2. Click:
+   `Հաստատել`
+3. Confirm API succeeds
+4. Confirm DB:
+   `status = approved`
+5. Full browser refresh
+6. Confirm UI still shows:
+   `✅ Հաստատված`
+
+Do not verify only through curl/API.
+
+---
+
+# 5. VERIFY APPROVE ALL IN REAL UI
+
+Use the current real lesson.
+
+Record BEFORE:
+
+- total exercises
+- draft
+- approved
+- assigned
+- Additional
+
+Click the real UI button:
+
+`Հաստատել բոլոր վարժությունները`
+
+Verify:
+
+- only this Lesson is affected
+- all Lesson exercises become approved
+- total exercise count is unchanged
+- no duplicates
+- no deletions
+- relatedNodeId values unchanged
+- source metadata unchanged
+
+Full browser refresh.
+
+Confirm:
+
+`draft = 0`
+
+and:
+
+`approved = total lesson exercises`
+
+---
+
+# 6. RE-VERIFY AI TEACHER GATE
+
+Do not modify AI Teacher teaching behavior.
+
+Only verify the approval eligibility filter.
+
+Use the actual runtime exercise-selection path.
+
+Prove:
+
+### Case A
+
+`status = draft`
+
+→ exercise is NOT eligible / NOT returned to AI Teacher
+
+### Case B
+
+same exercise after:
+
+`status = approved`
+
+→ exercise IS eligible for the correct MicroNode/scope
+
+The rule must remain:
+
+`eligible only if status === "approved"`
+
+`reviewed`, `draft`, null, or any other value must NOT be learner-ready.
+
+---
+
+# 7. DATA SAFETY
+
+After verification confirm:
+
+- source exercises lost = 0
+- duplicate exercises = 0
+- exercise text unexpectedly changed = 0
+- page/source metadata erased = 0
+- relatedNodeId unexpectedly changed = 0
+- MicroNode count unchanged
+- Topic count unchanged
+
+---
+
+# 8. DO NOT TOUCH
+
+Do NOT modify:
+
+- Mapper
+- Topic/MicroNode ordering
+- Exercise reassignment architecture
+- Quiz system
+- Knowledge Tree
+- scoring/mastery/evidence
+- Final Lesson Approval
+- AI Teacher teaching cycle
+- semantic dependencies
+- Student assignment
+- Phase 2 enrichment
+
+This is ONLY Phase 1.4 cleanup + verification.
+
+---
+
+# FINAL REPORT
+
+Return only:
+
+## A. STATUS SEMANTICS
+
+- allowed DB/type values
+- whether `reviewed` pre-existed
+- whether reviewed is used in V1 UI
+- final V1 workflow
+
+Expected:
+
+`draft → approved`
+
+---
+
+## B. ARMENIAN UI LABELS
+
+List exact labels now rendered.
+
+---
+
+## C. EXERCISE COUNT
+
+Report:
+
+`Source exercises = ?`
+`Assigned source = ?`
+`Additional source = ?`
+`Manual = ?`
+`Total rows = ?`
+
+Explain exactly why previous report said `14/14`.
+
+Report:
+
+`lost source exercises = ?`
+
+---
+
+## D. INDIVIDUAL APPROVAL
+
+`draft → UI approve → DB approved → refresh → approved`
+
+PASS / FAIL
+
+---
+
+## E. APPROVE ALL
+
+Before counts → UI action → after counts → refresh
+
+PASS / FAIL
+
+---
+
+## F. AI TEACHER GATE
+
+Same exercise:
+
+`draft → BLOCKED`
+
+`approved → ELIGIBLE`
+
+PASS / FAIL
+
+---
+
+## G. DATA INTEGRITY
+
+- lost exercises
+- duplicates
+- metadata preservation
+- assignment preservation
+
+---
+
+## H. FILES CHANGED
+
+Only files changed in this follow-up.
+
+---
+
+## I. FINAL GATE 1.4
+
+Required:
+
+`draft exercise → unavailable to AI Teacher`
+
+`approved exercise → available to AI Teacher`
+
+Result:
+
+`PASS / PARTIAL / FAIL`
+
+Do NOT report PASS if the real source exercise count is not 15 or if the AI Teacher gate is not proven.

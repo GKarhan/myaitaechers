@@ -1219,15 +1219,15 @@ function LessonNodesPanel({
                           {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Ej {ex.sourcePage}</span>}
                           {/* Gate 1.4 — approval status badge */}
                           {ex.status === "approved" ? (
-                            <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաutatvats</span>
+                            <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
                           ) : (
                             <>
-                              <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
+                              <span className="text-[10px] text-amber-400/60">🟡 Սևագիր</span>
                               <button
                                 onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
                                 disabled={updateEx.isPending}
                                 className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
-                              >Հustat.</button>
+                              >Հաստատել</button>
                             </>
                           )}
                         </div>
@@ -1471,7 +1471,7 @@ function LessonNodesPanel({
                     onClick={() => approveAllEx.mutate({ lessonId }, { onSuccess: refreshEx })}
                     disabled={approveAllEx.isPending}
                     className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 font-medium"
-                  >{approveAllEx.isPending ? "…" : "✅ Հutatrel bolor varjutyunnere"}</button>
+                  >{approveAllEx.isPending ? "…" : "✅ Հաստատել բոլոր վարժությունները"}</button>
                 </div>
               )}
 
@@ -1664,15 +1664,15 @@ function LessonNodesPanel({
                                   )}
                                   {/* Gate 1.4 — approval status badge */}
                                   {ex.status === "approved" ? (
-                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հutatvats</span>
+                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
                                   ) : (
                                     <>
-                                      <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
+                                      <span className="text-[10px] text-amber-400/60">🟡 Սևագիր</span>
                                       <button
                                         onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
                                         disabled={updateEx.isPending}
                                         className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
-                                      >Հustat.</button>
+                                      >Հաստատել</button>
                                     </>
                                   )}
                                 </div>
