@@ -1,0 +1,122 @@
+URGENT DATA-INTEGRITY RECOVERY ONLY — RESTORE LOST SOURCE EXERCISE 876
+
+Do NOT continue to Phase 1.5 yet.
+
+Phase 1.4 approval logic is already proven correct.
+
+The only blocker is a real source-data loss discovered during final verification:
+
+Lesson 105 previously had 15 textbook/source exercises.
+
+Current DB has 14.
+
+Missing source exercise:
+ID 876
+
+The exercise was deleted during Phase 1.3 delete-functionality testing.
+
+TASK:
+
+Recover the exact lost textbook exercise from authoritative existing source data and restore it safely.
+
+DO NOT invent or reconstruct the exercise text from memory.
+
+AUDIT THESE SOURCES IN THIS ORDER:
+
+1. Existing source/mapping records for Lesson 105
+2. Previous mapper/manual-map payloads or persisted source metadata
+3. Source blocks / sourceBlockIndex references
+4. Application logs/history/test output that may contain exercise 876 before deletion
+5. The original textbook/PDF source associated with Lesson 105, if accessible in the project
+
+Determine the exact original values for the missing exercise, including as many authoritative fields as applicable:
+
+- exercise text/verbatim text
+- exercise number/id from textbook
+- source page
+- sourceBlockIndex / source reference
+- sourceType
+- relatedNodeId
+- category/type
+- homework/classroom metadata
+- status before deletion, if recoverable
+- any other persisted source metadata
+
+IMPORTANT:
+
+Do NOT create a replacement exercise until the exact source content is proven.
+
+If the exact source exercise cannot be recovered from authoritative evidence, STOP and report FAIL.
+
+Do not fabricate a substitute.
+
+---
+
+RECOVERY
+
+Once the exact original source exercise is identified:
+
+1. Recreate the exercise record using the authoritative source values.
+2. Preserve `sourceType = textbook`.
+3. Restore the correct relatedNodeId or NULL/Additional assignment based on the original record.
+4. Set approval status according to current Phase 1.4 workflow:
+   - if the lesson has already been bulk-approved, the restored exercise may be set to `approved` only if this is consistent with the current lesson state;
+   - otherwise restore its prior/source-appropriate status.
+5. Do not create any other exercise.
+
+The new DB primary key does NOT need to be 876 if ID sequences make that unsafe.
+
+The important requirement is restoration of the exact lost source exercise entity/content, not reuse of the old primary key.
+
+---
+
+FINAL VERIFICATION
+
+After restoration prove:
+
+Source exercises = 15
+
+Assigned source exercises + Additional source exercises = 15
+
+lost source exercises = 0
+
+duplicate source exercises = 0
+
+manual exercises = unchanged
+
+MicroNodes = 10
+
+Topics = 4
+
+Also verify:
+
+- source metadata preserved
+- no unrelated exercise changed
+- AI Teacher approval gate still works:
+  draft = blocked
+  approved = eligible
+
+If all 15 exercises are currently intended to be approved after the previous approve-all operation, verify:
+
+approved = 15
+draft = 0
+
+---
+
+FINAL REPORT
+
+Return only:
+
+1. Where exercise 876 was recovered from
+2. Exact evidence identifying its original content
+3. Restored exercise fields
+4. New DB exercise ID
+5. Original relatedNodeId / Additional placement
+6. Counts before and after
+7. Source Exercises = Assigned + Additional
+8. lost exercises
+9. duplicates
+10. Gate 1.4 regression result
+11. FINAL RESULT: PASS / FAIL
+
+Do not perform any unrelated changes.
