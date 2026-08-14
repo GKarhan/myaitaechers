@@ -1,0 +1,1048 @@
+PHASE 1.13 — FULL LESSON LIFECYCLE END-TO-END ACCEPTANCE TEST
+MAPPING → AUTHORING → ENRICHMENT → APPROVAL → ASSIGNMENT →
+STUDENT → TESTS → LESSON SESSION → KNOWLEDGE/EVIDENCE
+
+This is the FINAL end-to-end acceptance phase for the complete Lesson
+Authoring → Student Learning entry workflow built so far.
+
+IMPORTANT:
+
+This is primarily an ACCEPTANCE / INTEGRATION / FORENSIC TEST phase.
+
+DO NOT begin by changing code.
+
+First run the real workflow from beginning to end and identify what actually
+works and what actually fails.
+
+Only fix a problem when:
+
+1. it is reproducible;
+2. the root cause is identified;
+3. it belongs to the architecture already built in Phases 1.x;
+4. the smallest safe fix is clear.
+
+Do NOT redesign working architecture.
+
+════════════════════════════════════════════
+0. PRIMARY GOAL
+════════════════════════════════════════════
+
+We have built the system incrementally.
+
+Now verify the COMPLETE real lifecycle:
+
+SOURCE / TEXTBOOK
+    ↓
+MAPPING
+    ↓
+TEACHER REVIEW
+    ↓
+PHASE 2 ENRICHMENT
+    ↓
+FINAL APPROVAL
+    ↓
+LESSON READY
+    ↓
+TEACHER ASSIGNS LESSON
+    ↓
+STUDENT SEES LESSON
+    ↓
+LINKED TESTS
+    ↓
+TEACHER RELEASES TEST WHEN DESIRED
+    ↓
+STUDENT COMPLETES TEST
+    ↓
+RESULT / EVIDENCE
+    ↓
+STUDENT STARTS LESSON
+    ↓
+LESSON SESSION
+    ↓
+KNOWLEDGE TREE / STUDENT STATE
+
+The purpose is to prove that these layers work together as ONE system.
+
+════════════════════════════════════════════
+1. STRICT SCOPE
+════════════════════════════════════════════
+
+IN SCOPE:
+
+- Mapping persistence/integration
+- Teacher Review
+- Topic/MicroNode CRUD
+- ordering
+- exercises
+- Phase 2 enrichment
+- selective MicroNode enrichment
+- Final Approval
+- post-approval editing
+- lesson assignment
+- student lesson visibility
+- student lesson package
+- linked quizzes
+- quiz release
+- quiz completion
+- quiz results
+- lesson session creation
+- Knowledge Tree initialization
+- evidence created by real quiz completion
+- data integrity across the entire flow
+
+OUT OF SCOPE:
+
+- redesigning AI Teacher pedagogy
+- rewriting chat.ts teaching logic
+- changing TEACH → MICRO_CHECK → FEEDBACK → TRANSITION
+- semantic prerequisite AI
+- new personalization algorithms
+- mastery algorithm redesign
+- new quiz-generation architecture
+- Phase 2 learning orchestration
+
+Do not expand Phase 1.13 into Phase 2.
+
+════════════════════════════════════════════
+2. TEST DATA SAFETY — CRITICAL
+════════════════════════════════════════════
+
+Previous acceptance tests left temporary test pollution inside a real lesson.
+
+Example discovered:
+
+    POST-P1.12 Test Node B1
+
+and historical test content such as:
+
+    Phase 6 Step 5 — LESSON_OVERVIEW test
+
+This MUST NOT happen again.
+
+RULE:
+
+Prefer isolated test fixtures for destructive/mutation tests.
+
+If a REAL lesson is used:
+
+BEFORE mutation:
+- capture exact original DB state;
+- capture IDs;
+- capture values;
+- capture counts.
+
+AFTER test:
+- restore exact original values;
+- delete every temporary record;
+- normalize ordering if required;
+- rebuild deterministic dependencies if required;
+- perform final read-back.
+
+Temporary objects may include:
+
+- Topic
+- MicroNode
+- exercise
+- dependency
+- quiz
+- quiz assignment
+- quiz attempt
+- lesson session
+- knowledge/evidence test data
+- temporary student
+- temporary class relationship
+
+NO temporary object may remain after the test unless it represents a real
+user action explicitly intended to persist.
+
+════════════════════════════════════════════
+3. PRE-FLIGHT FORENSIC AUDIT
+════════════════════════════════════════════
+
+Before testing the lifecycle, inspect the CURRENT repository and DB.
+
+Report:
+
+A. Lesson lifecycle/status architecture
+
+Exact meaning and writers of:
+
+- draft
+- needs_review
+- approved
+- active
+- everApproved
+
+B. Mapping architecture
+
+- mapping source
+- mapping jobs
+- Topics
+- MicroNodes
+- exercises
+- source provenance
+- coverage metadata
+
+C. Phase 2 architecture
+
+- whole-lesson enrichment route
+- selective MicroNode enrichment route
+- Phase 2 fields
+- duplicate-job protection
+- don't-degrade behavior
+
+D. Quiz architecture
+
+- quizzes
+- quiz_lesson_links
+- quiz_assignments
+- quiz_attempts
+- quiz_answers
+
+E. Student architecture
+
+- lesson assignment/access
+- student package
+- lesson_sessions
+- knowledge_nodes
+- evidence_events
+
+F. Dependency architecture
+
+- SEQUENTIAL
+- REQUIRED
+- other semantic dependency types
+
+Do not modify anything during this audit.
+
+════════════════════════════════════════════
+4. CURRENT REAL LESSON — POLLUTION CHECK
+════════════════════════════════════════════
+
+Before using Lesson 105 or any existing real lesson, inspect it for previous
+test pollution.
+
+Specifically search for:
+
+- titles containing TEST/test
+- POST-P1.12
+- Phase 6 Step
+- temporary
+- acceptance
+- fixture
+- dummy
+- manual test exercises
+- unexpected Topics/MicroNodes
+- unexpected quiz records
+- orphaned dependencies
+
+IMPORTANT:
+
+Do NOT blindly delete anything merely because its title looks suspicious.
+
+For every suspicious record classify:
+
+1. confirmed temporary test pollution;
+2. intentional teacher-created data;
+3. uncertain.
+
+Only category 1 may be automatically cleaned.
+
+If uncertain, REPORT it and leave it untouched.
+
+For Lesson 105 specifically investigate the currently visible:
+
+    POST-P1.12 Test Node B1
+
+and determine from test code / creation path whether it is definitely a
+temporary Phase 1.12 fixture.
+
+If confirmed:
+- remove it;
+- normalize node sequence;
+- rebuild SEQUENTIAL dependencies;
+- verify existing real nodes and Phase 2 remain unchanged.
+
+Also investigate:
+
+    Phase 6 Step 5 — LESSON_OVERVIEW test
+
+Do not replace it unless an authoritative prior value can be recovered.
+
+════════════════════════════════════════════
+5. CLEAN BASELINE
+════════════════════════════════════════════
+
+Establish a clean baseline before the E2E run.
+
+Record:
+
+Lesson ID
+Teacher ID
+Class ID
+Student ID
+
+Counts:
+
+Topics
+MicroNodes
+Exercises
+Phase 2 complete nodes
+SEQUENTIAL dependencies
+REQUIRED dependencies
+linked quizzes
+quiz assignments
+quiz attempts
+knowledge_nodes
+evidence_events
+lesson sessions
+
+Also record lesson:
+
+status
+everApproved
+
+This baseline will be compared against the final state.
+
+════════════════════════════════════════════
+6. MAPPING ACCEPTANCE
+════════════════════════════════════════════
+
+Test the mapping layer using a SAFE isolated lesson or safe fixture.
+
+Do NOT remap a real lesson merely for convenience.
+
+Verify:
+
+- source content enters mapping correctly;
+- Topics persist;
+- MicroNodes persist;
+- exercises persist;
+- source provenance persists;
+- ordering persists;
+- source coverage metadata persists;
+- no source exercise silently disappears;
+- mapping creates no fake student evidence/mastery.
+
+For TEXT mapping verify the existing Contract rules still hold.
+
+Do NOT redesign the mapper.
+
+════════════════════════════════════════════
+7. TEACHER REVIEW ACCEPTANCE
+════════════════════════════════════════════
+
+Using the mapped safe lesson verify:
+
+Topic:
+- create
+- edit
+- reorder
+- delete
+
+MicroNode:
+- create
+- edit
+- reorder
+- delete
+
+Exercise:
+- create
+- edit
+- delete
+
+Verify after each:
+
+UI action
+    ↓
+API
+    ↓
+DB
+    ↓
+read-back
+    ↓
+refresh
+
+The same value/order must remain after refresh.
+
+Verify no UI-only fake persistence.
+
+════════════════════════════════════════════
+8. ORDERING + DEPENDENCIES
+════════════════════════════════════════════
+
+Example:
+
+MN1
+MN2
+MN3
+
+Reorder:
+
+MN1
+MN3
+MN2
+
+Verify:
+
+sequence:
+1,2,3
+
+SEQUENTIAL:
+
+MN1 → MN3
+MN3 → MN2
+
+Old structural edges must disappear.
+
+Semantic REQUIRED dependencies must remain unchanged.
+
+Create/delete must also heal the structural chain.
+
+No human approval should be required merely for ordering.
+
+════════════════════════════════════════════
+9. INITIAL PHASE 2 ENRICHMENT
+════════════════════════════════════════════
+
+For the safe newly prepared lesson:
+
+Run whole-lesson:
+
+    🧠 Հարստացնել ուսուցման նյութը
+
+Verify every eligible MicroNode receives the actual existing Phase 2 fields.
+
+Record BEFORE and AFTER.
+
+Verify:
+
+- job completes;
+- no duplicate concurrent job;
+- fields persist;
+- refresh retains them;
+- empty AI response does not degrade valid values.
+
+This is the INITIAL enrichment path.
+
+════════════════════════════════════════════
+10. FINAL APPROVAL
+════════════════════════════════════════════
+
+Run the real Final Approval.
+
+Verify:
+
+- deterministic validation executes;
+- valid lesson passes;
+- status becomes approved;
+- everApproved becomes true;
+- approval persists after refresh.
+
+Also verify an invalid never-approved lesson cannot bypass the initial gate.
+
+Do not weaken Final Approval validation.
+
+════════════════════════════════════════════
+11. POST-APPROVAL AUTHORING SIMPLIFICATION
+════════════════════════════════════════════
+
+Now test the new simplified model.
+
+On an already-everApproved lesson:
+
+A. edit MicroNode title;
+B. edit LO;
+C. edit theory;
+D. reorder nodes;
+E. add exercise;
+F. edit exercise;
+G. delete the temporary exercise.
+
+After each:
+
+SAVE
+    ↓
+DB updated
+    ↓
+DONE
+
+Verify:
+
+- everApproved remains true;
+- no whole-lesson Phase 2 job starts;
+- no repeated Final Approval is required;
+- ordinary edit does not unnecessarily break student accessibility;
+- deterministic integrity maintenance still happens.
+
+This is a critical Phase 1.13 acceptance gate.
+
+════════════════════════════════════════════
+12. NEW MICRONODE + SELECTIVE ENRICHMENT
+════════════════════════════════════════════
+
+Create ONE temporary new MicroNode in the safe lesson.
+
+Verify:
+
+- node persists;
+- no automatic AI call;
+- existing Phase 2 nodes remain unchanged;
+- whole lesson is not forced through Final Approval again.
+
+Capture Phase 2 values/hashes of ALL existing nodes.
+
+Now explicitly click/call:
+
+    🧠 Հարստացնել ընտրված հանգույցը
+
+for ONLY the new node.
+
+THIS TEST MUST COMPLETE SUCCESSFULLY.
+
+Do NOT count timeout/408 as PASS.
+
+Required evidence:
+
+- HTTP/API success;
+- selected node receives Phase 2;
+- existing nodes' Phase 2 hashes remain unchanged;
+- no whole-lesson job is created;
+- don't-degrade rule holds.
+
+If the AI call times out:
+
+    TEST = FAIL
+
+Investigate the actual timeout/root cause.
+
+Do not weaken the assertion.
+
+After verification delete the temporary node and restore structure.
+
+════════════════════════════════════════════
+13. READ-ONLY MICRONODE VIEW
+════════════════════════════════════════════
+
+Verify:
+
+    👁 Դիտել
+
+opens the complete MicroNode read-only view.
+
+Check actual display of available:
+
+- sequence
+- title
+- LO
+- theory
+- Bloom
+- source/page
+- child-friendly explanation
+- examples
+- counterexamples
+- misconception
+- real-life examples
+- linked exercises
+- dependencies where implemented
+
+Verify:
+
+- no editable inputs;
+- no Save;
+- closing requires no Cancel-edit flow;
+- opening and closing causes ZERO DB writes.
+
+Then verify:
+
+    ✏️ Խմբագրել
+
+still independently works.
+
+════════════════════════════════════════════
+14. WHOLE-LESSON REGENERATION SAFETY
+════════════════════════════════════════════
+
+For an already enriched lesson:
+
+Verify accidental ordinary click does NOT immediately overwrite/regenerate the
+whole lesson.
+
+The UI must clearly distinguish:
+
+INITIAL:
+
+    🧠 Հարստացնել ուսուցման նյութը
+
+from already-enriched state, e.g.:
+
+    🔄 Վերագեներացնել ամբողջ դասը
+
+with explicit confirmation.
+
+Verify:
+
+- confirmation required;
+- cancel → zero AI jobs;
+- second click while job running → no duplicate job.
+
+Do NOT actually destructively regenerate a real canonical lesson just to test
+the confirmation.
+
+Use safe fixture where needed.
+
+════════════════════════════════════════════
+15. ASSIGN LESSON TO STUDENT
+════════════════════════════════════════════
+
+Now use a valid approved lesson.
+
+Teacher assigns/activates it for the test student.
+
+Verify:
+
+- student gets access;
+- canonical lesson is referenced;
+- Topics not duplicated;
+- MicroNodes not duplicated;
+- exercises not duplicated;
+- no fake knowledge_nodes;
+- no fake evidence_events;
+- no lesson session created merely by assignment;
+- linked tests are NOT automatically released.
+
+════════════════════════════════════════════
+16. STUDENT DASHBOARD
+════════════════════════════════════════════
+
+Logically test the real student-facing flow.
+
+Before starting AI Teacher, student must be able to see the lesson in their
+normal dashboard/lesson area.
+
+Verify:
+
+- lesson title;
+- start/continue action;
+- relevant linked-test state.
+
+Student must NOT need to enter AI Teacher first merely to discover an
+available linked test.
+
+════════════════════════════════════════════
+17. LINKED QUIZ — UNRELEASED
+════════════════════════════════════════════
+
+Take Quiz A linked to the lesson.
+
+Before teacher releases it:
+
+Student should see:
+
+    Դեռ հասանելի չէ
+
+or equivalent existing UX.
+
+Verify direct URL/API bypass is blocked.
+
+No active assignment means no take permission.
+
+════════════════════════════════════════════
+18. TEACHER RELEASES QUIZ
+════════════════════════════════════════════
+
+Teacher explicitly releases Quiz A.
+
+Verify:
+
+- assignment record created correctly;
+- no duplicate Quiz record;
+- only intended student/class receives it according to existing semantics.
+
+Student now sees:
+
+    ▶ Սկսել թեստը
+
+Verify take API succeeds.
+
+════════════════════════════════════════════
+19. STUDENT COMPLETES QUIZ
+════════════════════════════════════════════
+
+Complete Quiz A through the real existing flow.
+
+Verify:
+
+- quiz_attempt created correctly;
+- answers persist;
+- score persists;
+- assignment becomes completed according to architecture;
+- real evidence is created through the existing evidence pipeline;
+- Knowledge Tree/mastery may update according to existing algorithm.
+
+DO NOT change scoring/mastery logic.
+
+We are only verifying integration.
+
+════════════════════════════════════════════
+20. COMPLETED QUIZ UX
+════════════════════════════════════════════
+
+After completion:
+
+Lesson actionable area must NOT still show:
+
+    ▶ Սկսել թեստը
+
+for that completed release.
+
+Completed quiz should disappear from the lesson actionable list.
+
+Result remains in:
+
+    Իմ թեստերը
+
+Verify:
+
+- completed status;
+- score;
+- result view.
+
+No duplicate result presentation is required under the lesson.
+
+════════════════════════════════════════════
+21. SAME QUIZ RE-RELEASE
+════════════════════════════════════════════
+
+Teacher releases SAME Quiz A again.
+
+Verify:
+
+- same Quiz record is reused;
+- new assignment/release cycle becomes actionable;
+- previous completed assignment/history remains;
+- previous attempt/result remains;
+- student can start the new release.
+
+Do not duplicate the Quiz record.
+
+════════════════════════════════════════════
+22. STUDENT-SPECIFIC ISOLATION
+════════════════════════════════════════════
+
+Where safe, use Student A and Student B.
+
+Verify:
+
+Student A:
+- quiz released/completed
+
+must NOT automatically make Student B:
+- released;
+- completed;
+- mastered.
+
+Student mastery/evidence state must remain student-specific.
+
+Shared lesson structure must remain common.
+
+════════════════════════════════════════════
+23. START LESSON
+════════════════════════════════════════════
+
+Student presses:
+
+    Սկսել դասը
+
+Verify:
+
+- lesson session created or existing session resumed;
+- correct student;
+- correct lesson;
+- correct first/current MicroNode;
+- canonical node sequence used;
+- no duplicate session if architecture resumes existing one;
+- no fake evidence merely from session creation;
+- no fake mastery merely from session creation.
+
+STOP at the AI Teacher boundary.
+
+Do NOT modify teaching pedagogy.
+
+════════════════════════════════════════════
+24. KNOWLEDGE TREE INITIALIZATION
+════════════════════════════════════════════
+
+Verify shared-vs-student architecture.
+
+Canonical lesson MicroNodes are shared.
+
+For a student with NO evidence for a MicroNode:
+
+    Դեռ չի ուսումնասիրել
+
+For real evidence generated through the quiz:
+
+state may move according to the existing mastery algorithm.
+
+Verify:
+
+- no per-student copy of lesson_nodes;
+- student-specific knowledge_nodes/evidence;
+- Student A state does not leak to Student B.
+
+Do NOT redesign Knowledge Tree.
+
+════════════════════════════════════════════
+25. LIVE TEACHER EDIT AFTER ASSIGNMENT
+════════════════════════════════════════════
+
+This is important after the new authoring simplification.
+
+For a safe already-assigned lesson:
+
+Teacher makes a harmless temporary edit.
+
+Verify:
+
+- canonical DB record changes;
+- student package sees the saved canonical change on next fetch/refresh;
+- assignment is not duplicated;
+- lesson does not unexpectedly disappear merely because teacher edited it.
+
+Restore the original value afterward.
+
+If an already-running AI Teacher session caches old content, REPORT that as a
+Phase 2/session-context finding.
+
+Do not redesign chat/session context in this task.
+
+════════════════════════════════════════════
+26. FINAL CLEANUP — MANDATORY
+════════════════════════════════════════════
+
+Before declaring PASS:
+
+Delete/restore ALL Phase 1.13 temporary data.
+
+Search DB for the exact temporary identifiers used during this test.
+
+Verify:
+
+TEMP Topics = 0
+TEMP MicroNodes = 0
+TEMP exercises = 0
+TEMP dependencies = 0
+TEMP quizzes = 0 if temporary quizzes were created
+TEMP assignments = 0 where cleanup is intended
+TEMP students = 0
+TEMP sessions = 0 where cleanup is intended
+
+Restore real lesson fields exactly.
+
+Normalize sequences.
+
+Refresh SEQUENTIAL dependencies.
+
+Verify no source exercise was lost.
+
+IMPORTANT:
+
+The test suite itself must use try/finally or equivalent cleanup protection so
+a failed assertion cannot leave temporary test data behind.
+
+════════════════════════════════════════════
+27. BEFORE vs AFTER INTEGRITY REPORT
+════════════════════════════════════════════
+
+Compare the baseline from Section 5 with final state.
+
+For every real lesson touched report:
+
+BEFORE:
+Topics =
+MicroNodes =
+Exercises =
+SEQUENTIAL =
+REQUIRED =
+linked quizzes =
+status =
+everApproved =
+
+AFTER:
+same fields.
+
+Any difference must be explicitly explained as:
+
+- intentional real user change;
+or
+- BUG / test pollution.
+
+Unexplained differences = FAIL.
+
+════════════════════════════════════════════
+28. REGRESSION TESTS
+════════════════════════════════════════════
+
+Run relevant existing suites sequentially when they share DB state.
+
+DO NOT run DB-mutating suites concurrently if they can interfere with the same
+real lesson.
+
+At minimum run:
+
+- mapping/parser/validator relevant suites
+- Teacher Review CRUD
+- ordering
+- Final Approval
+- sequential dependencies
+- quiz lesson links
+- quiz creation
+- Knowledge Tree initialization
+- Phase 1.12 assignment/student-package
+- Phase 1.12 quiz completion/re-release
+- authoring simplification
+- Phase 2 generation/selective enrichment
+
+TypeScript/build must pass.
+
+Browser/runtime console must have no relevant errors.
+
+════════════════════════════════════════════
+29. NO FALSE GREEN TESTS
+════════════════════════════════════════════
+
+Do NOT weaken assertions to make tests green.
+
+Specifically:
+
+- AI timeout is NOT selective-enrichment success.
+- 404 is NOT success unless 404 is the required behavior.
+- skipped test is NOT evidence of implemented behavior.
+- direct DB mutation is NOT proof that the user-facing API works, except for
+  explicit fixture setup/cleanup.
+- UI presence alone is NOT proof of backend authorization.
+- backend success alone is NOT proof of required UI behavior.
+
+If something cannot be tested:
+
+    NOT VERIFIED
+
+not PASS.
+
+════════════════════════════════════════════
+30. FINAL GATE
+════════════════════════════════════════════
+
+Phase 1.13 passes only if ALL are proven:
+
+[ ] Mapping persists correct canonical structure
+[ ] Teacher Review CRUD persists
+[ ] ordering persists
+[ ] SEQUENTIAL sync works
+[ ] initial Phase 2 works
+[ ] Final Approval works
+[ ] everApproved behavior works
+[ ] post-approval direct editing works
+[ ] edits do not auto-run AI
+[ ] selective one-node enrichment REALLY succeeds
+[ ] other nodes remain unchanged during selective enrichment
+[ ] 👁 read-only view works
+[ ] whole-lesson regeneration protected
+[ ] approved lesson assignment works
+[ ] student package works
+[ ] linked tests appear correctly
+[ ] unreleased quiz blocked
+[ ] released quiz actionable
+[ ] quiz completion persists
+[ ] completed quiz removed from lesson actionable list
+[ ] result remains in Իմ թեստերը
+[ ] same quiz can be re-released
+[ ] historical result survives
+[ ] student-specific state isolated
+[ ] lesson session starts/resumes correctly
+[ ] session start creates no fake mastery/evidence
+[ ] Knowledge Tree zero-evidence = not studied
+[ ] real evidence updates existing student state pipeline
+[ ] canonical teacher edits propagate on subsequent student read
+[ ] no temporary test pollution remains
+[ ] before/after integrity reconciles
+[ ] regression suites pass
+[ ] TypeScript/build passes
+
+════════════════════════════════════════════
+31. FINAL REPORT — REQUIRED FORMAT
+════════════════════════════════════════════
+
+Return:
+
+A. EXECUTIVE RESULT
+
+B. CURRENT END-TO-END ARCHITECTURE
+Source → Mapper → DB → Teacher → Phase2 → Approval → Assignment →
+Student → Quiz → Evidence → KT → Session
+
+C. PRE-TEST BASELINE
+
+D. EXISTING POLLUTION AUDIT
+Especially Lesson 105 / POST-P1.12 Test Node B1 / suspicious overview.
+
+E. MAPPING RESULT
+
+F. TEACHER REVIEW RESULT
+
+G. ORDERING + DEPENDENCY RESULT
+
+H. PHASE 2 RESULT
+Include proof of REAL selective one-node enrichment success.
+
+I. FINAL APPROVAL / everApproved RESULT
+
+J. POST-APPROVAL EDITING RESULT
+
+K. READ-ONLY VIEW RESULT
+
+L. LESSON ASSIGNMENT RESULT
+
+M. STUDENT PACKAGE RESULT
+
+N. QUIZ LIFECYCLE RESULT
+Unreleased → Released → Completed → Re-released.
+
+O. EVIDENCE / KNOWLEDGE TREE RESULT
+
+P. LESSON SESSION RESULT
+
+Q. STUDENT ISOLATION RESULT
+
+R. CLEANUP REPORT
+
+S. BEFORE/AFTER DATA-INTEGRITY TABLE
+
+T. TEST RESULTS
+Exact suites + counts.
+
+U. FAILURES FOUND AND FIXED
+For every fix:
+symptom → root cause → exact file → change → verification.
+
+V. DEFERRED PHASE 2 FINDINGS
+Do not implement them here.
+
+W. FINAL VERDICT
+
+Exactly one:
+
+PHASE 1.13 = PASS — PHASE 1 FOUNDATION ACCEPTED
+
+or
+
+PHASE 1.13 = FAIL — FOUNDATION NOT YET ACCEPTED
+
+If FAIL:
+list exact blockers and do NOT proceed.
+
+IMPORTANT:
+Do not declare PASS while temporary test pollution remains.
+Do not declare PASS if selective MicroNode enrichment only timed out.
+Do not begin Phase 2 implementation.

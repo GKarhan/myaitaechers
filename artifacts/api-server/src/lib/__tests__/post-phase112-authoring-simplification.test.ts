@@ -55,6 +55,22 @@ async function api(method: string, path: string, body?: unknown, timeoutMs = 200
   }
 }
 
+// ─── Pre-cleanup: remove any lingering test nodes from crashed prior runs ──────
+// If a prior run was killed before afterAll, B1 nodes may persist.
+const staleNodes = await db
+  .select({ id: lessonNodesTable.id })
+  .from(lessonNodesTable)
+  .where(and(
+    eq(lessonNodesTable.lessonId, LESSON_ID),
+    eq(lessonNodesTable.title, "POST-P1.12 Test Node B1"),
+  ));
+if (staleNodes.length > 0) {
+  await db.delete(lessonNodesTable).where(
+    eq(lessonNodesTable.title, "POST-P1.12 Test Node B1")
+  );
+  console.log(`[pre-cleanup] Removed ${staleNodes.length} stale B1 node(s) from prior crashed run`);
+}
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 const allNodes = await db
   .select()

@@ -1044,7 +1044,7 @@ router.post("/quizzes/:id/assign", requireTeacher, async (req: AuthRequest, res)
     quizId,
     classId,
     assignedCount: newMembers.length,
-    alreadyAssigned: alreadyAssigned.size,
+    alreadyAssigned: alreadyActiveAssigned.size,
   });
 });
 
