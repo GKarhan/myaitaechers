@@ -1,0 +1,375 @@
+KT-1.2 FINAL FIX — KNOWLEDGE TREE ENTRY SCROLL / UI STATE RESET
+
+STRICT SCOPE
+
+Fix ONLY the inconsistent initial view of the student Knowledge Tree page:
+
+/knowledge-tree/:subjectId
+
+Do NOT change:
+- Knowledge Tree backend/API
+- mastery calculations
+- mastery state mapping
+- node visibility rules
+- node counts
+- database/schema
+- mapping
+- quizzes
+- AI Teacher
+- Knowledge Tree hierarchy
+- Knowledge Tree design
+- subject cards
+
+This is a frontend navigation/view-state bug only.
+
+==================================================
+1. CONFIRMED REAL UAT BEHAVIOR
+==================================================
+
+There are two ways to open the Physics Knowledge Tree.
+
+FLOW A
+
+Student sidebar
+→ «Գիտելիքի ծառ»
+→ /kt-subjects
+→ Physics
+→ /knowledge-tree/18
+
+This opens the Knowledge Tree near the TOP.
+
+We see:
+- filter bar
+- Ատոմներ
+- Տարրեր
+- Մոլեկուլներ
+
+FLOW B
+
+Student
+→ «Իմ առարկաները»
+→ Physics
+→ «Գիտելիքի ծառ»
+→ /knowledge-tree/18
+
+This can open the SAME page at a LOWER scroll position.
+
+Then the user sees:
+- only the lower card, e.g. Մոլեկուլներ
+- AI recommendations below it
+
+This makes it appear that Flow B opened another Knowledge Tree with only
+one node.
+
+However, manual screenshot comparison confirms that the second screenshot
+is the SAME page scrolled down.
+
+Both flows use:
+
+/knowledge-tree/18
+
+Physics currently has exactly 3 legitimate Knowledge Tree nodes.
+
+Therefore DO NOT investigate this again as a missing-node/backend problem
+unless browser evidence disproves the confirmed behavior.
+
+==================================================
+2. ROOT CAUSE TO VERIFY
+==================================================
+
+Audit the actual SPA navigation behavior.
+
+For BOTH flows record:
+
+- pathname
+- rendered component
+- subjectId
+- activeFilter
+- window.scrollY
+- total Knowledge Tree cards in DOM
+- visible cards in current viewport
+
+IMPORTANT:
+
+Do NOT confuse:
+
+"cards currently visible in viewport"
+
+with:
+
+"cards actually rendered in DOM".
+
+Expected Physics DOM count = 3.
+
+The likely bug is persisted/restored scroll position during client-side
+navigation.
+
+==================================================
+3. REQUIRED FIX — SCROLL RESET
+==================================================
+
+Whenever the student enters a subject Knowledge Tree:
+
+/knowledge-tree/:subjectId
+
+the page must open at the TOP.
+
+This must be true when entering from:
+
+A. /kt-subjects
+B. /subjects/:subjectId
+C. another Knowledge Tree subject
+D. returning to the KT page after navigating elsewhere
+
+Implement the appropriate React lifecycle behavior in the canonical
+KnowledgeTree page.
+
+On a new Knowledge Tree subject/page entry ensure:
+
+window.scrollTo(0, 0)
+
+or the correct equivalent if the application uses a dedicated scroll
+container instead of window.
+
+IMPORTANT:
+
+FIRST determine which element actually owns scrolling.
+
+If StudentLayout/main content uses an overflow scroll container, reset
+THAT container instead of blindly calling window.scrollTo().
+
+Do not use arbitrary setTimeout hacks unless the actual rendering model
+requires it and you can prove why.
+
+==================================================
+4. RESET PAGE-LOCAL FILTER STATE
+==================================================
+
+The canonical initial Knowledge Tree state must be:
+
+activeFilter = "all"
+
+When subjectId changes, reset:
+
+activeFilter → "all"
+
+Do NOT reset:
+- mastery
+- score
+- confidence
+- evidence
+- learner data
+
+Only reset local UI/navigation state.
+
+==================================================
+5. DO NOT CHANGE NODE DATA
+==================================================
+
+Physics must remain exactly the same data set.
+
+Expected legitimate nodes:
+
+- Ատոմներ
+- Տարրեր
+- Մոլեկուլներ
+
+Do NOT create/delete/update Knowledge Tree records to solve this UI issue.
+
+Do NOT create fake knowledge_nodes rows.
+
+Do NOT modify mastery values.
+
+==================================================
+6. REQUIRED REAL-BROWSER ACCEPTANCE TESTS
+==================================================
+
+Do not PASS based only on API tests.
+
+Use the actual running browser UI.
+
+------------------------------
+TEST A
+------------------------------
+
+Start from Student Dashboard.
+
+Click:
+
+Sidebar
+→ «Գիտելիքի ծառ»
+→ Physics
+
+Verify:
+
+URL = /knowledge-tree/18
+
+activeFilter = all
+
+page starts at TOP
+
+filter bar is visible
+
+all 3 Physics cards exist in DOM
+
+------------------------------
+TEST B — CRITICAL
+------------------------------
+
+On /knowledge-tree/18:
+
+scroll far DOWN until the AI recommendations section is visible.
+
+Then navigate away to:
+
+Իմ առարկաները
+
+Open:
+
+Physics
+→ «Գիտելիքի ծառ»
+
+Verify:
+
+URL = /knowledge-tree/18
+
+BUT the old scroll position MUST NOT be preserved.
+
+The page must open at the TOP again.
+
+PASS only if the user immediately sees the normal top of the Knowledge
+Tree.
+
+------------------------------
+TEST C — REVERSE FLOW
+------------------------------
+
+Again scroll down.
+
+Navigate away.
+
+Then enter through:
+
+Sidebar
+→ «Գիտելիքի ծառ»
+→ Physics
+
+Again:
+
+page starts at TOP
+activeFilter = all
+3 cards exist in DOM.
+
+------------------------------
+TEST D — FILTER RESET
+------------------------------
+
+On Physics KT:
+
+select a filter other than "all".
+
+Navigate away.
+
+Re-enter Physics KT through the other navigation flow.
+
+Expected:
+
+activeFilter = "all"
+
+The previously selected filter must not make the new page entry appear
+to have missing nodes.
+
+------------------------------
+TEST E — SUBJECT CHANGE
+------------------------------
+
+If another KT subject is available:
+
+Physics KT
+→ another subject KT
+→ Physics KT
+
+Each subject page must start with:
+
+activeFilter = all
+scroll at top
+
+==================================================
+7. ROUTE / COMPONENT INVARIANT
+==================================================
+
+Both entry flows must still resolve to the SAME canonical route:
+
+/knowledge-tree/:subjectId
+
+and SAME canonical KnowledgeTree component.
+
+Do NOT create another KT page.
+
+Do NOT duplicate KnowledgeTree JSX.
+
+Do NOT introduce separate implementations for the two navigation flows.
+
+==================================================
+8. ACCEPTANCE GATE
+==================================================
+
+KT-1.2 FINAL FIX = PASS only if:
+
+Flow A and Flow B both produce:
+
+same URL
+same component
+same API
+same subjectId
+same 3 Physics nodes
+same default filter = all
+same initial scroll position = top
+
+Most importantly:
+
+After deliberately scrolling the KT page to the bottom, leaving it, and
+re-entering through EITHER navigation flow, the KT page MUST open from
+the top.
+
+==================================================
+9. FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. Actual scroll owner
+   - window OR specific container/component
+
+B. Root cause
+
+C. File(s) changed
+
+D. Exact code behavior added
+
+E. Flow A:
+   - URL
+   - scroll position
+   - activeFilter
+   - total DOM cards
+
+F. Flow B:
+   - URL
+   - scroll position
+   - activeFilter
+   - total DOM cards
+
+G. Test after deliberately scrolling to bottom and re-entering
+
+H. Confirmation:
+   Physics still contains exactly 3 legitimate nodes and their mastery
+   values were not modified.
+
+I. Confirmation:
+   no backend/API/DB/mastery changes
+
+J. PASS / FAIL
+
+Do not proceed to KT-1.3.
+
+STOP after this fix and report.

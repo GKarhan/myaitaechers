@@ -25,10 +25,12 @@ export default function KnowledgeTree() {
 
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
 
-  // Reset filter to "all" when the subject changes so SPA navigation
-  // between subjects never inherits a stale mastery filter.
+  // Reset filter and scroll position when the subject changes so SPA
+  // navigation never inherits stale UI state from the previous page.
+  // Scroll owner is <main id="student-main" overflow-y-auto> in StudentLayout.
   useEffect(() => {
     setActiveFilter("all");
+    document.getElementById("student-main")?.scrollTo(0, 0);
   }, [subjectId]);
 
   useEffect(() => {

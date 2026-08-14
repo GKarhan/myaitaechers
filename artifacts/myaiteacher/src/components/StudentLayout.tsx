@@ -91,7 +91,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto">
+        <main id="student-main" className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto px-5 sm:px-8 py-8">
             {children}
           </div>
