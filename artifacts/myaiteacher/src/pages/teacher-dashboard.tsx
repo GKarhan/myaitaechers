@@ -593,7 +593,7 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
       >
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        ) : genDone ? '✅ Arvest' : '🧠 Arvest parelatstnel'}
+        ) : genDone ? '✅ Արված է' : '🧠 Ուս/Ն համալրում'}
       </button>
       {isActive && (
         <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
@@ -1976,7 +1976,7 @@ function LessonNodesPanel({
                                   )}
                                   {ex.assignment && (
                                     <span className={`text-[10px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/70" : "text-teal-400/70"}`}>
-                                      {ex.assignment === "HOMEWORK" ? "🏠 Տնային աշխատանք" : "📋 Դасарануm"}
+                                      {ex.assignment === "HOMEWORK" ? "🏠 Տնային աշխատանք" : "📋 Դասարանում"}
                                     </span>
                                   )}
                                   {ex.sourcePage && (

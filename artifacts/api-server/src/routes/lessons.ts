@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -159,6 +159,135 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
 });
 
 // Start or resume a lesson session
+// ── GET /api/lessons/:lessonId/student-package ───────────────────────────────
+// Student-facing read-only bundle. Requires lesson.status === "active" for
+// students; teachers bypass the gate to preview the student view.
+// Returns: lesson meta, topics, APPROVED nodes (with Phase 2 fields), APPROVED
+// exercises, SEQUENTIAL dependencies, linked quizzes with per-student release
+// state from quiz_assignments. READ ONLY — no AI, no writes.
+router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const userId    = req.userId!;
+  const isTeacher = req.userRole === "teacher" || req.userRole === "admin";
+
+  const [lesson] = await db
+    .select()
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  // Authorization: students may only access active lessons; teachers preview any.
+  if (!isTeacher && lesson.status !== "active") {
+    res.status(403).json({ error: "LESSON_NOT_ACTIVE" }); return;
+  }
+
+  const [subject] = await db
+    .select({ name: subjectsTable.name })
+    .from(subjectsTable)
+    .where(eq(subjectsTable.id, lesson.subjectId))
+    .limit(1);
+
+  // Parallel fetch — all reads, no writes.
+  const [topics, nodes, exercises, deps, linkedQuizRows, myAssignments] = await Promise.all([
+    db.select()
+      .from(lessonTopicsTable)
+      .where(eq(lessonTopicsTable.lessonId, lessonId))
+      .orderBy(asc(lessonTopicsTable.sequence)),
+
+    db.select()
+      .from(lessonNodesTable)
+      .where(and(eq(lessonNodesTable.lessonId, lessonId), eq(lessonNodesTable.status, "approved")))
+      .orderBy(asc(lessonNodesTable.sequence)),
+
+    db.select()
+      .from(lessonExercisesTable)
+      .where(and(eq(lessonExercisesTable.lessonId, lessonId), eq(lessonExercisesTable.status, "approved")))
+      .orderBy(asc(lessonExercisesTable.sequence)),
+
+    db.select()
+      .from(lessonNodeDependenciesTable)
+      .where(eq(lessonNodeDependenciesTable.lessonId, lessonId)),
+
+    db.select({
+      quizId:   quizzesTable.id,
+      title:    quizzesTable.title,
+      quizType: quizzesTable.quizType,
+      classId:  quizzesTable.classId,
+      status:   quizzesTable.status,
+    })
+      .from(quizLessonLinksTable)
+      .innerJoin(quizzesTable, eq(quizzesTable.id, quizLessonLinksTable.quizId))
+      .where(eq(quizLessonLinksTable.lessonId, lessonId))
+      .orderBy(desc(quizzesTable.createdAt)),
+
+    // Which linked quizzes has this student been assigned/released to?
+    db.select({ quizId: quizAssignmentsTable.quizId })
+      .from(quizAssignmentsTable)
+      .where(eq(quizAssignmentsTable.studentId, userId)),
+  ]);
+
+  const myAssignedQuizIds = new Set(myAssignments.map((a) => a.quizId));
+
+  res.json({
+    lesson: {
+      id:          lesson.id,
+      title:       lesson.title,
+      description: lesson.description ?? null,
+      status:      lesson.status,
+      subjectId:   lesson.subjectId,
+      subjectName: subject?.name ?? "",
+    },
+    topics: topics.map((t) => ({
+      id:       t.id,
+      sequence: t.sequence,
+      title:    t.title,
+    })),
+    nodes: nodes.map((n) => ({
+      id:                       n.id,
+      topicId:                  n.topicId ?? null,
+      sequence:                 n.sequence,
+      title:                    n.title,
+      learningObjective:        n.learningObjective ?? null,
+      theoryContent:            n.theoryContent ?? null,
+      childFriendlyExplanation: n.childFriendlyExplanation ?? null,
+      commonMisconception:      n.commonMisconception ?? null,
+      basicExamples:            Array.isArray(n.basicExamples) ? n.basicExamples : [],
+      nonExamples:              Array.isArray(n.nonExamples) ? n.nonExamples : [],
+      realLifeExamples:         Array.isArray((n as any).realLifeExamples) ? (n as any).realLifeExamples : [],
+    })),
+    exercises: exercises.map((e) => {
+      const edited = (e as any).exerciseTextEdited as string | null | undefined;
+      return {
+        id:                    e.id,
+        relatedNodeId:         e.relatedNodeId ?? null,
+        sequence:              e.sequence,
+        sourcePage:            e.sourcePage ?? null,
+        exerciseTextVerbatim:  e.exerciseTextVerbatim,
+        exerciseTextEdited:    edited ?? null,
+        effectiveExerciseText: edited?.trim() ? edited.trim() : e.exerciseTextVerbatim,
+        successCriteria:       e.successCriteria ?? null,
+        difficultyLevel:       e.difficultyLevel ?? null,
+        assignment:            e.assignment ?? null,
+      };
+    }),
+    dependencies: deps.map((d) => ({
+      fromNodeId:     d.fromNodeId,
+      toNodeId:       d.toNodeId,
+      dependencyType: (d as any).dependencyType ?? "SEQUENTIAL",
+    })),
+    quizzes: linkedQuizRows.map((q) => ({
+      id:         q.quizId,
+      title:      q.title,
+      quizType:   q.quizType ?? null,
+      classId:    q.classId ?? null,
+      isReleased: myAssignedQuizIds.has(q.quizId),
+    })),
+  });
+});
+
 router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
   const { lessonId } = req.body as { lessonId: number };
   if (!lessonId) {
