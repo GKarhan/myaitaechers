@@ -519,7 +519,16 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 // ── Generate Teaching Content Button sub-component ────────────────────────────
 // Polls GET /lessons/:id/generate-status (lesson-centric) with per-batch
 // progress labels ("Processing 3/9 MicroNodes...") read from the job record.
-function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: number; hasNodes: boolean }) {
+function GenerateTeachingContentButton({
+  lessonId,
+  hasNodes,
+  hasExistingPhase2,
+}: {
+  lessonId: number;
+  hasNodes: boolean;
+  /** True when ≥1 node already has childFriendlyExplanation — require confirmation */
+  hasExistingPhase2: boolean;
+}) {
   const qc = useQueryClient();
   const { token } = useAuth();
   const [genError,    setGenError]    = useState<string | null>(null);
@@ -560,6 +569,16 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
   }, [genStatus?.status]);
 
   const handleGenerate = async () => {
+    // Safety: if lesson already has Phase 2 enrichment, require explicit confirmation
+    // to prevent accidental overwrite of existing AI-generated content.
+    if (hasExistingPhase2) {
+      const ok = window.confirm(
+        "Dasn ardev uni usutsman bovanndakutyun.\n\n" +
+        "Ambolj dasi verageneratsumy karog e poxel goyutyun unetsog bovanndakutyuny.\n\n" +
+        "Sharunjel? (Yetha uxum ek mi hanguyts harstatsnel, ogtvekel 🧠 knopy aynd hanguyci mot)"
+      );
+      if (!ok) return;
+    }
     setGenError(null);
     setGenDone(false);
     setPostPending(true);
@@ -589,11 +608,14 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
       <button
         onClick={handleGenerate}
         disabled={isActive}
+        title={hasExistingPhase2
+          ? "Վերागеneratsnel amboлj dasy (կпаhаnjي hаstatum)"
+          : "Ствrzел usutsman боvandakutyun"}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        ) : genDone ? '✅ Արված է' : '🧠 Ուս/Ն համալրում'}
+        ) : genDone ? '✅ Արված է' : hasExistingPhase2 ? '🔄 Վերա/Ն' : '🧠 Ուս/Ն համалрум'}
       </button>
       {isActive && (
         <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
@@ -602,6 +624,159 @@ function GenerateTeachingContentButton({ lessonId, hasNodes }: { lessonId: numbe
       )}
       {genError && <span className="text-xs text-destructive whitespace-nowrap">{genError}</span>}
     </>
+  );
+}
+
+// ── NodeViewModal — read-only complete MicroNode information ──────────────────
+// 👁 Դиtел: shows all stored node data + Phase 2 enrichment + linked exercises.
+// Zero DB writes. No editable inputs. No Save button.
+function NodeViewModal({
+  node,
+  exercises,
+  onClose,
+}: {
+  node: Record<string, unknown>;
+  exercises: Array<Record<string, unknown>>;
+  onClose: () => void;
+}) {
+  const nodeExercises = exercises.filter((e) => e.relatedNodeId === node.id);
+
+  const renderText = (label: string, value: unknown, italic?: boolean) => {
+    if (!value || (typeof value === "string" && !value.trim())) return null;
+    return (
+      <div className="space-y-0.5">
+        <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{label}</p>
+        <p className={`text-xs text-white/85 leading-relaxed whitespace-pre-line${italic ? " italic" : ""}`}>{String(value)}</p>
+      </div>
+    );
+  };
+
+  const renderList = (label: string, value: unknown) => {
+    let items: string[] = [];
+    if (Array.isArray(value)) items = value.map(String).filter(Boolean);
+    else if (typeof value === "string" && value.trim()) items = value.split("\n").filter(Boolean);
+    if (items.length === 0) return null;
+    return (
+      <div className="space-y-0.5">
+        <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{label}</p>
+        <ul className="space-y-0.5">
+          {items.map((item, i) => (
+            <li key={i} className="text-xs text-white/80 leading-relaxed pl-2 border-l border-white/10">
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0f1117] border border-white/12 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-4 pt-4 pb-2 border-b border-white/8 shrink-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-mono text-primary/60">{String(node.sequence ?? "?")}.</span>
+              <span className="text-sm font-semibold text-white leading-snug">{String(node.title ?? "")}</span>
+              {node.status === "approved" && (
+                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">✅ Հаstatved</span>
+              )}
+            </div>
+            {node.targetBloomLevel != null && (
+              <span className="text-[10px] text-primary/40 mt-0.5 inline-block">Bloom {String(node.targetBloomLevel)}</span>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-white transition-colors ml-3 shrink-0 text-lg leading-none"
+            title="Փакел"
+          >✕</button>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 px-4 py-3 space-y-4">
+          {/* CORE */}
+          <section className="space-y-3">
+            <p className="text-[9px] font-bold text-primary/50 uppercase tracking-widest">Հимнаван</p>
+            {renderText("Ուuumnakaн нпатак (LO)", node.learningObjective, true)}
+            {renderText("Թeoretakan bovanndakutyun", node.theoryContent)}
+            {renderText("Verbatim հаncabradutyun", node.verbatimTheoryAnchor)}
+            {node.sourcePage != null && (
+              <div className="space-y-0.5">
+                <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Aghbyur Ej</p>
+                <p className="text-xs text-white/70">Էջ {String(node.sourcePage)}</p>
+              </div>
+            )}
+          </section>
+
+          {/* PHASE 2 */}
+          {(node.childFriendlyExplanation || node.basicExamples || node.commonMisconception || node.nonExamples || node.realLifeExamples) && (
+            <section className="space-y-3 border-t border-white/6 pt-3">
+              <p className="text-[9px] font-bold text-indigo-400/60 uppercase tracking-widest">🧠 Phase 2 — Usutsman bovanndakutyun</p>
+              {renderText("Sovороlіn hаskaналi batsatroutyun", node.childFriendlyExplanation)}
+              {renderList("Himnakaн orіnakner", node.basicExamples)}
+              {renderText("Таratsvaу sxal patkеrazum", node.commonMisconception)}
+              {renderList("Hаkаorіnakner", node.nonExamples)}
+              {renderList("Иrаkaн кyanqіts orіnakner", node.realLifeExamples)}
+            </section>
+          )}
+          {!node.childFriendlyExplanation && (
+            <section className="border border-indigo-500/15 rounded-lg bg-indigo-500/5 px-3 py-2">
+              <p className="text-[10px] text-indigo-400/70">🧠 Phase 2 dater bacakayum en. Klkatsir «🧠» knopы hanguyci mot՝ mіаin аys hanguyts harstatsnelov.</p>
+            </section>
+          )}
+
+          {/* EXERCISES */}
+          {nodeExercises.length > 0 && (
+            <section className="space-y-2 border-t border-white/6 pt-3">
+              <p className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">Varjutyunner ({nodeExercises.length})</p>
+              {nodeExercises.map((ex, i) => {
+                const displayText = (ex.exerciseTextEdited as string | undefined)?.trim()
+                  ? ex.exerciseTextEdited as string
+                  : ex.exerciseTextVerbatim as string ?? "";
+                return (
+                  <div key={String(ex.id ?? i)} className="bg-white/4 border border-white/8 rounded-lg px-2.5 py-2 space-y-1">
+                    <p className="text-xs text-white/85 leading-relaxed">{displayText}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {ex.sourceType === "textbook"
+                        ? <span className="text-[9px] text-blue-400/60">📖 Dasagrqits</span>
+                        : <span className="text-[9px] text-purple-400/60">✍️ Dzeqov</span>}
+                      {ex.sourcePage != null && <span className="text-[9px] text-white/30">Ej {String(ex.sourcePage)}</span>}
+                      {ex.status === "approved"
+                        ? <span className="text-[9px] text-emerald-400/60">✅</span>
+                        : <span className="text-[9px] text-amber-400/50">🟡 Sevagiр</span>}
+                      {ex.assignment && (
+                        <span className={`text-[9px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/60" : "text-teal-400/60"}`}>
+                          {ex.assignment === "HOMEWORK" ? "🏠" : "📋"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
+        </div>
+
+        {/* Footer — read-only close only */}
+        <div className="px-4 py-3 border-t border-white/8 shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-1.5 rounded-lg bg-white/8 hover:bg-white/12 text-xs text-muted-foreground hover:text-white transition-colors"
+          >
+            Փакел
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -704,6 +879,40 @@ function LessonNodesPanel({
   const [addAdditionalForm, setAddAdditionalForm] = useState({
     exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
   });
+
+  // POST-P1.12: Read-only node view (👁 Դител) + per-node Phase 2 enrichment (🧠)
+  const [viewingNodeData, setViewingNodeData] = useState<{
+    node: Record<string, unknown>;
+    exercises: Array<Record<string, unknown>>;
+  } | null>(null);
+  const [enrichingNodeId, setEnrichingNodeId] = useState<number | null>(null);
+  const [enrichNodeErrors, setEnrichNodeErrors] = useState<Record<number, string>>({});
+  const [enrichNodeDone, setEnrichNodeDone] = useState<Record<number, boolean>>({});
+
+  const enrichNode = async (nodeId: number) => {
+    if (enrichingNodeId !== null) return; // one at a time
+    setEnrichingNodeId(nodeId);
+    setEnrichNodeErrors((e) => { const n = { ...e }; delete n[nodeId]; return n; });
+    setEnrichNodeDone((d) => { const n = { ...d }; delete n[nodeId]; return n; });
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/enrich`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
+      });
+      const data = await r.json() as { success?: boolean; error?: string; message?: string };
+      if (!r.ok || !data.success) {
+        setEnrichNodeErrors((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? "Sxаl" }));
+      } else {
+        setEnrichNodeDone((d) => ({ ...d, [nodeId]: true }));
+        refreshNodes();
+        setTimeout(() => setEnrichNodeDone((d) => { const n = { ...d }; delete n[nodeId]; return n; }), 4000);
+      }
+    } catch {
+      setEnrichNodeErrors((e) => ({ ...e, [nodeId]: "Kapі sxal" }));
+    } finally {
+      setEnrichingNodeId(null);
+    }
+  };
 
   // P1.7: Final Lesson Approval state
   const { token: authToken } = useAuth();
@@ -1358,6 +1567,27 @@ function LessonNodesPanel({
                   {nodeApproveErrors[n.id]}
                 </span>
               )}
+              {/* 👁 Read-only view */}
+              <button
+                onClick={() => setViewingNodeData({ node: n as unknown as Record<string, unknown>, exercises: exercises as unknown as Array<Record<string, unknown>> })}
+                title="Դitel — ամovornakan deghekatvats tveyal"
+              className="text-xs text-muted-foreground hover:text-primary/80 transition-colors"
+              >👁</button>
+              {/* 🧠 Per-node Phase 2 enrichment */}
+              <button
+                onClick={() => enrichNode(n.id)}
+                disabled={enrichingNodeId !== null}
+                title="Harstatsnel mіаin ays MicroNode-y (Phase 2)"
+                className="text-xs text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {enrichingNodeId === n.id
+                  ? <span className="inline-block w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  : enrichNodeDone[n.id] ? "✅" : "🧠"}
+              </button>
+              {enrichNodeErrors[n.id] && (
+                <span className="text-[8px] text-red-400 leading-tight text-right max-w-[80px]" title={enrichNodeErrors[n.id]}>!</span>
+              )}
+              {/* ✏️ Edit */}
               <button
                 onClick={() => startEditNode(n)}
                 title="Xmbagrel"
@@ -1591,7 +1821,11 @@ function LessonNodesPanel({
         {/* Phase 2: Generate Teaching Content — teacher-level trigger (one click per lesson) */}
         {nodes.length > 0 && (
           <div className="flex items-center gap-1 px-1 shrink-0">
-            <GenerateTeachingContentButton lessonId={lessonId} hasNodes={nodes.length > 0} />
+            <GenerateTeachingContentButton
+              lessonId={lessonId}
+              hasNodes={nodes.length > 0}
+              hasExistingPhase2={nodes.some((n) => !!(n as any).childFriendlyExplanation)}
+            />
           </div>
         )}
 
@@ -2292,6 +2526,14 @@ function LessonNodesPanel({
           </div>
         )}
       </div>
+    {/* 👁 POST-P1.12: Read-only node view modal — fixed-position overlay, rendered inside root */}
+    {viewingNodeData && (
+      <NodeViewModal
+        node={viewingNodeData.node}
+        exercises={viewingNodeData.exercises}
+        onClose={() => setViewingNodeData(null)}
+      />
+    )}
     </div>
   );
 }

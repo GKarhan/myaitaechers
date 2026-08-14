@@ -240,33 +240,62 @@ it("P2: GET /lessons/105 returns authoringStatus: 'approved'", async () => {
   assert.equal(body.authoringStatus, "approved", `Expected 'approved', got '${body.authoringStatus}'`);
 });
 
-// ── I: Invalidation ──────────────────────────────────────────────────────────
+// ── I: Invalidation (POST-P1.12 semantics) ───────────────────────────────────
 
-it("I1: node update while approved → lesson reverts to needs_review", async () => {
-  // Ensure the lesson is currently approved
-  await db.update(lessonsTable).set({ status: "approved" }).where(eq(lessonsTable.id, LESSON_ID));
+it("I1: node update while approved + everApproved=true → lesson STAYS approved (not reverted)", async () => {
+  // POST-P1.12 AUTHORING SIMPLIFICATION:
+  // Once a lesson has ever been approved (everApproved=true), ordinary teacher
+  // edits must NOT revert the lesson to needs_review.
+  // Lesson 105 has everApproved=true (set by final-approve above).
+
+  // Ensure lesson is approved first
+  await db.update(lessonsTable).set({ status: "approved" } as never).where(eq(lessonsTable.id, LESSON_ID));
 
   const snap = await getNode(NODE.id);
   assert.ok(snap);
 
-  // Send a real update payload so the route doesn't bail early at "No fields to update"
+  // Node update via the POST .../update route
   const r = await fetch(`${BASE}/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, {
     method: "POST",
     headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ title: "P1.7 invalidation test node" }),
+    body: JSON.stringify({ title: "P1.7 invalidation test — new semantics" }),
   });
   assert.equal(r.status, 200, "Node update must succeed");
 
+  // With everApproved=true the lesson must NOT revert to needs_review.
   const [lesson] = await db.select({ status: lessonsTable.status })
     .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
-  assert.equal(lesson?.status, "needs_review", "Expected needs_review after node update via API");
+  assert.equal(lesson?.status, "approved", "Lesson must remain approved when everApproved=true");
   await restoreNode(snap!);
 });
 
-it("I2: re-approve after invalidation → approved again", async () => {
-  const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-  assert.equal(status, 200, `Re-approve failed: ${JSON.stringify(body)}`);
-  assert.equal(body.approved, true);
+it("I2: invalidateLessonApproval DID revert when everApproved=false (backward-compat guard)", async () => {
+  // Manually set everApproved=false to test the OLD code path still works
+  // for lessons that have never been approved.
+  await db.update(lessonsTable)
+    .set({ status: "approved", everApproved: false } as never)
+    .where(eq(lessonsTable.id, LESSON_ID));
+
+  const snap = await getNode(NODE.id);
+  assert.ok(snap);
+  try {
+    const r = await fetch(`${BASE}/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "P1.7 invalidation test — everApproved=false path" }),
+    });
+    assert.equal(r.status, 200, "Node update must succeed");
+
+    const [lesson] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(lesson?.status, "needs_review", "Lesson must revert when everApproved=false");
+  } finally {
+    await restoreNode(snap!);
+    // Restore everApproved=true and re-approve for subsequent suite cleanliness
+    await db.update(lessonsTable)
+      .set({ everApproved: true } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+  }
 });
 
 // Restore lesson to "active" so other Phase 1.12 test suites can use lesson 105

@@ -1,0 +1,1067 @@
+POST-PHASE 1.12 — TEACHER AUTHORING WORKFLOW SIMPLIFICATION
+ONE-TIME INITIAL APPROVAL + DIRECT EDITING + SELECTIVE MICRONODE ENRICHMENT + READ-ONLY VIEW
+
+IMPORTANT:
+This task happens AFTER Phase 1.12 is fully closed.
+
+This is NOT Phase 1.13.
+
+The goal is to simplify the existing Lesson Authoring workflow before moving
+forward.
+
+Do NOT redesign Mapping.
+Do NOT redesign AI Teacher.
+Do NOT redesign quizzes.
+Do NOT redesign Knowledge Tree.
+Do NOT change student learning orchestration.
+
+AUDIT FIRST.
+Do not change production code until the current behavior is fully traced.
+
+════════════════════════════════════════════
+0. PRODUCT GOAL
+════════════════════════════════════════════
+
+The current authoring workflow has become too approval-heavy.
+
+Today, ordinary teacher edits can cause:
+- lesson approval invalidation;
+- needs_review;
+- repeated Final Approval;
+- repeated Phase 2 generation;
+- unnecessary teacher clicks;
+- unnecessary AI cost.
+
+We want a much simpler model.
+
+INITIAL LESSON PREPARATION happens once:
+
+Mapping
+    ↓
+Teacher Review
+    ↓
+Phase 2 enrichment
+    ↓
+Final Approval
+    ↓
+Lesson is ready
+
+AFTER THAT:
+
+Teacher is the final authority.
+
+Normal teacher edits should behave like normal editing:
+
+EDIT
+    ↓
+SAVE
+    ↓
+DB updated
+    ↓
+UI immediately reflects saved data
+
+NO additional approval click should normally be required.
+
+Core principle:
+
+    SAVE = AUTHORITATIVE TEACHER UPDATE
+
+Do not make the teacher repeatedly approve their own edits.
+
+════════════════════════════════════════════
+1. AUDIT FIRST — CURRENT INVALIDATION ARCHITECTURE
+════════════════════════════════════════════
+
+Before modifying anything, trace ALL authoring mutations.
+
+Create a matrix containing every current mutation, including at minimum:
+
+LESSON:
+- lesson overview edit
+
+TOPIC:
+- create
+- edit
+- delete
+- reorder
+
+MICRONODE:
+- create
+- edit title
+- edit Learning Objective
+- edit theory/content
+- edit other fields
+- delete
+- reorder
+
+EXERCISE:
+- create
+- edit
+- delete
+- approve
+- reset edited textbook exercise
+- move/reassign if supported
+
+PHASE 2:
+- whole-lesson generation
+- repeated generation
+- node-specific generation if it already exists
+
+For every mutation report:
+
+1. frontend component/action;
+2. API route;
+3. DB write;
+4. whether invalidateLessonApproval() is called;
+5. resulting lesson.status;
+6. whether Phase 2 becomes stale;
+7. whether Final Approval becomes required again;
+8. whether student accessibility changes;
+9. whether SEQUENTIAL dependencies are rebuilt;
+10. whether any AI generation is triggered.
+
+Do NOT assume current behavior is desirable.
+
+Report CURRENT behavior first.
+
+════════════════════════════════════════════
+2. NEW AUTHORITATIVE APPROVAL RULE
+════════════════════════════════════════════
+
+Final Approval is primarily an INITIAL AUTHORING GATE.
+
+Required initial lifecycle:
+
+Mapping
+    ↓
+Teacher Review
+    ↓
+Phase 2 enrichment
+    ↓
+Final Approval
+    ↓
+READY
+
+Once the lesson has successfully passed Final Approval:
+
+ordinary teacher authoring changes must NOT automatically send the entire
+lesson back through the initial approval workflow.
+
+Specifically, after initial approval, the following must NOT automatically:
+
+- set the whole lesson to needs_review;
+- remove approved/ready state;
+- require whole-lesson Final Approval again;
+- require whole-lesson Phase 2 regeneration;
+- trigger AI generation;
+- block the teacher with another approval workflow.
+
+Teacher explicitly saved the edit.
+
+That saved edit is authoritative.
+
+════════════════════════════════════════════
+3. DIRECT EDITING AFTER INITIAL APPROVAL
+════════════════════════════════════════════
+
+After initial Final Approval, teacher must be able to perform normal edits.
+
+Examples include:
+
+- correct typo;
+- change title;
+- edit Learning Objective;
+- edit theory/content;
+- edit lesson overview;
+- edit Topic;
+- reorder Topics;
+- reorder MicroNodes;
+- add exercise;
+- edit exercise;
+- delete exercise;
+- move/reassociate exercise where currently supported;
+- create MicroNode;
+- delete MicroNode.
+
+Required UX:
+
+Teacher changes something
+    ↓
+Teacher presses existing Save
+    ↓
+DB changes
+    ↓
+read-back confirms change
+    ↓
+UI shows updated value
+
+DONE.
+
+Do not require:
+
+    Save
+      ↓
+    Phase 2 again
+      ↓
+    Final Approve again
+      ↓
+    another confirmation
+
+for ordinary teacher authoring.
+
+════════════════════════════════════════════
+4. IMPORTANT — DO NOT CONFUSE APPROVAL WITH DATA INTEGRITY
+════════════════════════════════════════════
+
+Removing repeated Final Approval must NOT disable deterministic integrity
+maintenance.
+
+Example:
+
+MicroNode order:
+
+MN1 → MN2 → MN3
+
+Teacher reorders:
+
+MN1 → MN3 → MN2
+
+Required:
+
+- sequence updates;
+- SEQUENTIAL dependencies rebuild automatically;
+- DB remains internally consistent.
+
+Teacher should NOT need to approve this.
+
+Similarly:
+
+Delete/create operations must maintain required deterministic relationships
+and constraints automatically.
+
+Therefore:
+
+REMOVE unnecessary human re-approval.
+
+DO NOT remove automatic deterministic integrity maintenance.
+
+════════════════════════════════════════════
+5. PHASE 2 — INITIAL GENERATION
+════════════════════════════════════════════
+
+For a newly mapped lesson, Phase 2 still works as the initial enrichment step.
+
+Conceptually:
+
+Mapped MicroNodes
+    ↓
+Teacher reviews
+    ↓
+Teacher runs:
+    «Հարստացնել ուսուցման նյութը»
+    ↓
+Phase 2 fields generated
+    ↓
+Final Approval
+
+This whole-lesson enrichment is primarily for INITIAL lesson preparation.
+
+Preserve this capability.
+
+════════════════════════════════════════════
+6. PHASE 2 — NEVER AUTO-REGENERATE AFTER EDIT
+════════════════════════════════════════════
+
+After initial approval:
+
+NO teacher edit may automatically call AI Phase 2 generation.
+
+Examples:
+
+Changing:
+- one character;
+- title;
+- LO;
+- theory;
+- ordering;
+- exercise;
+- Topic;
+
+must NEVER silently cause an AI generation job.
+
+AI generation must always require an explicit teacher action.
+
+This is important for:
+
+- predictable UX;
+- AI cost control;
+- preventing accidental regeneration;
+- preserving teacher-authored content.
+
+════════════════════════════════════════════
+7. SELECTIVE MICRONODE PHASE 2 ENRICHMENT
+════════════════════════════════════════════
+
+This is REQUIRED.
+
+After initial approval, teacher may create a NEW MicroNode.
+
+Example:
+
+Existing lesson:
+
+MN1
+MN2
+MN3
+MN4
+
+All already enriched.
+
+Teacher creates:
+
+MN5
+
+MN5 has:
+- title;
+- Learning Objective;
+- theory/content;
+
+but naturally has no Phase 2 enrichment yet.
+
+DO NOT require regenerating:
+
+MN1
+MN2
+MN3
+MN4
+
+Teacher must be able to select ONLY MN5 and explicitly run:
+
+    🧠 Հարստացնել ընտրված հանգույցը
+
+or equivalent clear Armenian label.
+
+Only MN5 is sent to Phase 2 generation.
+
+Required:
+
+MN1 Phase 2 → unchanged
+MN2 Phase 2 → unchanged
+MN3 Phase 2 → unchanged
+MN4 Phase 2 → unchanged
+MN5 Phase 2 → generated
+
+No other node may be overwritten.
+
+No whole-lesson Final Approval should be required afterward.
+
+The newly generated MN5 content is saved directly.
+
+════════════════════════════════════════════
+8. SELECTIVE ENRICHMENT FOR EXISTING MICRONODE
+════════════════════════════════════════════
+
+Teacher may also intentionally regenerate enrichment for ONE existing
+MicroNode.
+
+Example:
+
+Teacher substantially rewrites MN3 theory.
+
+Teacher may decide:
+
+    I want new Phase 2 enrichment for MN3.
+
+Teacher explicitly chooses MN3 and runs:
+
+    🧠 Հարստացնել ընտրված հանգույցը
+
+Required:
+
+ONLY MN3 Phase 2 fields may change.
+
+MN1/MN2/MN4/... must remain byte-for-byte unchanged.
+
+Do NOT automatically decide that regeneration is required.
+
+The teacher decides.
+
+Teacher may also edit theory/LO and choose NOT to regenerate Phase 2.
+
+That is allowed.
+
+Teacher is authoritative.
+
+════════════════════════════════════════════
+9. WHOLE-LESSON REGENERATION SAFETY
+════════════════════════════════════════════
+
+Current whole-lesson:
+
+    «Հարստացնել ուսուցման նյութը»
+
+must NOT remain a dangerous accidental one-click operation after enrichment
+already exists.
+
+Audit its current behavior.
+
+Required UX:
+
+CASE A — Initial lesson / Phase 2 missing
+
+Button may show:
+
+    🧠 Հարստացնել ուսուցման նյութը
+
+Normal click starts initial generation.
+
+CASE B — Lesson already has Phase 2 enrichment
+
+Do NOT silently regenerate everything.
+
+Either:
+
+OPTION 1:
+disable/hide normal whole-lesson generation and expose an explicit secondary:
+
+    Վերագեներացնել ամբողջ դասը
+
+OR
+
+OPTION 2:
+keep the action but require explicit confirmation.
+
+Confirmation must clearly state that existing generated enrichment may be
+replaced/updated.
+
+Do not allow accidental click → whole-lesson AI job.
+
+Also prevent duplicate concurrent generation jobs.
+
+If generation is already running:
+
+- button disabled;
+- visible progress/state;
+- second click must NOT create another job.
+
+════════════════════════════════════════════
+10. DON'T-DEGRADE RULE
+════════════════════════════════════════════
+
+Preserve the previously implemented don't-degrade behavior.
+
+A new AI response must not replace valid existing Phase 2 data with:
+
+- null;
+- undefined;
+- empty string;
+- empty array;
+
+unless there is an explicit intentional reset mechanism.
+
+For selective node enrichment this rule is especially important.
+
+Do not degrade valid existing enrichment.
+
+════════════════════════════════════════════
+11. NEW READ-ONLY MICRONODE VIEW
+════════════════════════════════════════════
+
+Current UX problem:
+
+To inspect all MicroNode information, teacher must click:
+
+    ✏️ Խմբագրել
+
+This enters edit mode even when teacher only wants to READ the node.
+
+Add a separate action:
+
+    👁 Դիտել
+
+Recommended action order:
+
+    👁 Դիտել
+    ✏️ Խմբագրել
+    🗑️ Ջնջել
+
+Do not remove existing Edit/Delete actions.
+
+════════════════════════════════════════════
+12. 👁 ԴԻՏԵԼ — REQUIRED CONTENT
+════════════════════════════════════════════
+
+Clicking:
+
+    👁 Դիտել
+
+must open a read-only modal/panel/drawer using the existing UI conventions.
+
+It should show the COMPLETE stored MicroNode information that is useful to
+the teacher.
+
+At minimum, where available:
+
+CORE:
+- sequence/order;
+- title;
+- Learning Objective;
+- theory/content;
+- Bloom level;
+- source page/source information.
+
+PHASE 2:
+- child-friendly explanation;
+- basic examples;
+- counter examples;
+- common misconception;
+- real-life examples;
+- any other existing Phase 2 enrichment fields actually present in schema.
+
+EXERCISES:
+- exercises linked to this MicroNode;
+- effective exercise text;
+- source/manual indicator;
+- page;
+- current exercise metadata useful for review.
+
+DEPENDENCIES:
+- relevant existing dependency information if already available to this UI.
+
+IMPORTANT:
+
+This is READ ONLY.
+
+No editable inputs.
+
+No Save button.
+
+No Cancel-edit workflow.
+
+Only a simple action such as:
+
+    Փակել
+
+Opening/closing this view must cause ZERO DB writes.
+
+════════════════════════════════════════════
+13. EDIT MODE REMAINS SEPARATE
+════════════════════════════════════════════
+
+✏️ Խմբագրել remains the action for modifying data.
+
+Do not overload 👁 Դիտել with editing.
+
+Required mental model:
+
+👁 Դիտել
+    = inspect complete node
+
+✏️ Խմբագրել
+    = modify node
+
+🧠 Հարստացնել ընտրված հանգույցը
+    = explicit AI enrichment for this node only
+
+These are three distinct actions.
+
+════════════════════════════════════════════
+14. NEW MICRONODE UX
+════════════════════════════════════════════
+
+When teacher creates a new MicroNode after the lesson was already initially
+approved:
+
+1. Save the MicroNode normally.
+2. Do NOT invalidate the entire lesson.
+3. Do NOT auto-run Phase 2.
+4. Do NOT require whole-lesson Final Approval.
+5. Clearly indicate that this MicroNode has no enrichment yet, if applicable.
+6. Allow teacher to click:
+
+       🧠 Հարստացնել ընտրված հանգույցը
+
+7. Generate Phase 2 for only that MicroNode.
+8. Save it.
+9. Done.
+
+Do not disturb existing nodes.
+
+════════════════════════════════════════════
+15. EXERCISES AFTER INITIAL APPROVAL
+════════════════════════════════════════════
+
+Teacher may add/edit/delete exercises after initial approval.
+
+These operations must:
+
+- persist immediately;
+- appear in UI after read-back/refresh;
+- preserve textbook provenance protections already implemented;
+- preserve exerciseTextVerbatim immutability rules;
+- preserve exerciseTextEdited behavior;
+- preserve effectiveExerciseText behavior.
+
+Do NOT require whole-lesson Final Approval simply because an exercise changed.
+
+Do NOT automatically run Phase 2.
+
+Do NOT weaken textbook provenance protections.
+
+════════════════════════════════════════════
+16. ORDERING AFTER INITIAL APPROVAL
+════════════════════════════════════════════
+
+Teacher may reorder:
+
+- Topics;
+- MicroNodes.
+
+Required:
+
+- order persists;
+- refresh shows same order;
+- DB sequence normalized;
+- SEQUENTIAL dependencies stay synchronized according to Phase 1.8;
+- semantic REQUIRED dependencies remain untouched.
+
+NO Phase 2 regeneration.
+
+NO Final Approval.
+
+NO needs_review merely because ordering changed.
+
+════════════════════════════════════════════
+17. DELETE AFTER INITIAL APPROVAL
+════════════════════════════════════════════
+
+Teacher is allowed to intentionally delete Topic/MicroNode/exercise using the
+existing delete workflow.
+
+Preserve existing confirmation UX where applicable.
+
+After intentional delete:
+
+- DB reflects deletion;
+- deterministic dependent structure is repaired where required;
+- UI reflects deletion.
+
+Do NOT automatically send the entire lesson through Final Approval again.
+
+IMPORTANT:
+Do not change existing cascade/data-retention architecture in this task unless
+a direct bug prevents this workflow.
+
+Report cascade risks separately if discovered.
+
+════════════════════════════════════════════
+18. STUDENT VISIBILITY / LIVE EDIT QUESTION
+════════════════════════════════════════════
+
+Audit how already-assigned/active lessons read canonical lesson data.
+
+Preferred architecture:
+
+Because student assignments reference the canonical lesson rather than a
+duplicated snapshot, teacher-authoritative saved changes should naturally be
+visible on subsequent student reads where appropriate.
+
+Do NOT create student-specific copies merely to implement this simplification.
+
+Report exactly:
+
+- whether students read canonical current lesson data;
+- whether a teacher edit becomes visible on next student fetch/refresh;
+- whether an active lesson/session caches any fields that may remain stale.
+
+Do NOT redesign active-session synchronization unless necessary.
+
+If an already-running AI Teacher session has snapshot/cached context,
+REPORT that separately rather than broadening this task.
+
+════════════════════════════════════════════
+19. INITIAL FINAL APPROVAL MUST STILL HAVE VALUE
+════════════════════════════════════════════
+
+Do not delete Final Approval entirely.
+
+It still serves as the INITIAL quality gate before first student use.
+
+Before first approval, preserve deterministic validation such as:
+
+- required node data;
+- required initial Phase 2 fields according to current contract;
+- source/exercise integrity;
+- ordering integrity;
+- other existing Phase 1.7 checks.
+
+The simplification is:
+
+BEFORE FIRST APPROVAL:
+    strict preparation gate
+
+AFTER FIRST APPROVAL:
+    teacher-authoritative direct editing
+
+Do not confuse these two stages.
+
+Audit whether the current schema can distinguish:
+
+    NEVER APPROVED
+
+from
+
+    PREVIOUSLY APPROVED BUT LATER EDITED
+
+If current `status` alone cannot safely distinguish them, report this before
+changing schema.
+
+Prefer the smallest reliable solution.
+
+Do NOT invent a large versioning system.
+
+════════════════════════════════════════════
+20. CRITICAL STATUS AUDIT
+════════════════════════════════════════════
+
+The current system has used statuses such as:
+
+- draft
+- needs_review
+- approved
+- active
+
+Audit their exact semantics and every route that writes them.
+
+We need to prevent a dangerous side effect:
+
+An ACTIVE lesson that teacher edits must not accidentally become inaccessible
+to already assigned students merely because an authoring mutation changes its
+status.
+
+Report and fix within scope if current invalidation causes this.
+
+Do not casually collapse student publication state and authoring-quality state
+if they are currently overloaded in one field.
+
+If this is the root architectural problem, report the smallest safe
+separation/model adjustment before implementing it.
+
+════════════════════════════════════════════
+21. ACCEPTANCE TESTS — DIRECT EDITING
+════════════════════════════════════════════
+
+Create focused tests.
+
+A1.
+Initially approved lesson → edit MicroNode title → save.
+
+Expected:
+- DB updated;
+- UI/read API returns new title;
+- no whole-lesson Phase 2 generation;
+- no repeated Final Approval required.
+
+A2.
+Edit LO.
+
+Same expectations.
+
+A3.
+Edit theory.
+
+Same expectations.
+
+A4.
+Reorder MicroNodes.
+
+Expected:
+- order persists;
+- SEQUENTIAL graph updates;
+- no Phase 2;
+- no Final Approval.
+
+A5.
+Add exercise.
+
+Expected:
+- persists;
+- no Phase 2;
+- no Final Approval.
+
+A6.
+Edit exercise.
+
+Same.
+
+A7.
+Delete exercise.
+
+Same.
+
+════════════════════════════════════════════
+22. ACCEPTANCE TESTS — NEW MICRONODE
+════════════════════════════════════════════
+
+B1.
+Add a new MicroNode to previously approved lesson.
+
+Expected:
+- new node persists;
+- existing nodes unchanged;
+- lesson does not enter whole-lesson approval cycle;
+- no automatic AI call.
+
+B2.
+Verify new node Phase 2 is initially missing.
+
+B3.
+Run:
+
+    Հարստացնել ընտրված հանգույցը
+
+for ONLY the new node.
+
+Expected:
+- only new node gets Phase 2;
+- existing nodes' Phase 2 remains unchanged.
+
+Capture before/after values/hashes for existing nodes to prove this.
+
+B4.
+No whole-lesson Final Approval required afterward.
+
+════════════════════════════════════════════
+23. ACCEPTANCE TESTS — SELECTIVE REGENERATION
+════════════════════════════════════════════
+
+C1.
+Choose one already-enriched MicroNode.
+
+Capture Phase 2 values of ALL nodes.
+
+C2.
+Explicitly regenerate ONLY selected node.
+
+Expected:
+- selected node may change;
+- every other node remains unchanged.
+
+C3.
+Empty AI response must not degrade existing valid fields.
+
+C4.
+No duplicate concurrent generation jobs.
+
+════════════════════════════════════════════
+24. ACCEPTANCE TESTS — READ-ONLY VIEW
+════════════════════════════════════════════
+
+D1.
+Click 👁 Դիտել.
+
+Expected:
+- complete MicroNode information visible;
+- Phase 2 visible;
+- linked exercises visible where applicable.
+
+D2.
+No editable fields.
+
+D3.
+No Save required.
+
+D4.
+Close view.
+
+Expected:
+- zero DB mutation.
+
+D5.
+✏️ Խմբագրել remains independent and still works.
+
+════════════════════════════════════════════
+25. ACCEPTANCE TESTS — WHOLE-LESSON SAFETY
+════════════════════════════════════════════
+
+E1.
+Lesson without Phase 2:
+whole-lesson enrichment remains available.
+
+E2.
+Lesson already fully enriched:
+ordinary accidental click must NOT immediately start destructive regeneration.
+
+E3.
+Explicit whole-lesson regenerate requires the selected safe UX
+(disabled/secondary confirmation).
+
+E4.
+While generation job is running:
+second click cannot start duplicate concurrent job.
+
+════════════════════════════════════════════
+26. REAL LESSON ACCEPTANCE
+════════════════════════════════════════════
+
+Use a real existing approved/active lesson where safe.
+
+DO NOT permanently pollute production-like lesson data.
+
+If you must perform mutation tests:
+
+- capture exact original values;
+- restore them afterward;
+- verify restoration.
+
+For destructive/new-node tests prefer isolated fixtures unless explicitly
+safe.
+
+Verify at minimum on a real lesson:
+
+1. existing Phase 2 completeness;
+2. edit one safe field and restore;
+3. reorder and restore if safe;
+4. no whole-lesson approval invalidation;
+5. no unintended Phase 2 generation;
+6. student package still resolves;
+7. active/student accessibility is preserved.
+
+════════════════════════════════════════════
+27. REGRESSION SUITES
+════════════════════════════════════════════
+
+Run all relevant existing tests, especially:
+
+- Teacher Review CRUD
+- ordering / Phase 1.2
+- source preservation / Phase 1.6B
+- Final Approval / Phase 1.7
+- SEQUENTIAL dependencies / Phase 1.8
+- Phase 2 generation tests
+- Phase 1.12 student package/assignment tests
+
+Do NOT weaken tests just to make them pass.
+
+Some Phase 1.7 tests may encode the OLD behavior:
+
+    every authoring mutation → needs_review
+
+If so:
+
+1. identify each stale assertion;
+2. show OLD expected behavior;
+3. show NEW approved product rule;
+4. update only tests that genuinely conflict with this new specification.
+
+Do not silently rewrite tests.
+
+════════════════════════════════════════════
+28. FINAL REQUIRED PRODUCT BEHAVIOR
+════════════════════════════════════════════
+
+INITIAL AUTHORING:
+
+Map
+  ↓
+Teacher Review
+  ↓
+Whole-lesson Phase 2
+  ↓
+Final Approval
+  ↓
+READY
+
+AFTER INITIAL APPROVAL:
+
+Edit
+  ↓
+Save
+  ↓
+DB updated
+  ↓
+DONE
+
+New MicroNode:
+
+Create
+  ↓
+Save
+  ↓
+optional explicit:
+«Հարստացնել ընտրված հանգույցը»
+  ↓
+DONE
+
+Inspect MicroNode:
+
+👁 Դիտել
+  ↓
+read-only complete information
+  ↓
+Փակել
+
+NO unnecessary:
+
+- needs_review;
+- repeated Final Approval;
+- whole-lesson Phase 2;
+- automatic AI generation;
+- repeated teacher confirmation.
+
+════════════════════════════════════════════
+29. FINAL REPORT
+════════════════════════════════════════════
+
+Return:
+
+A. CURRENT ARCHITECTURE BEFORE CHANGES
+
+B. ROOT CAUSE
+Why ordinary edits currently trigger repeated approval/regeneration workflow.
+
+C. STATUS MODEL
+Exact meaning of draft / needs_review / approved / active after the change.
+
+D. INVALIDATION MATRIX
+For every authoring mutation:
+OLD behavior → NEW behavior.
+
+E. PHASE 2 MODEL
+- initial whole-lesson enrichment;
+- selective node enrichment;
+- explicit whole-lesson regeneration;
+- concurrent-job protection;
+- don't-degrade protection.
+
+F. READ-ONLY VIEW
+Exact fields shown by 👁 Դիտել.
+
+G. FILES CHANGED
+Exact files + purpose.
+
+H. TEST RESULTS
+Exact suites and counts.
+
+I. REAL LESSON VERIFICATION
+
+J. DATA INTEGRITY
+Prove no duplicate nodes/exercises/dependencies and no accidental AI jobs.
+
+K. STUDENT IMPACT
+Whether saved teacher edits appear in canonical student package and any
+limitations for already-running sessions.
+
+L. FINAL VERDICT
+
+Exactly one:
+
+AUTHORING SIMPLIFICATION = PASS — READY FOR PHASE 1.13
+
+or
+
+AUTHORING SIMPLIFICATION = FAIL — DO NOT PROCEED
+
+If FAIL, list exact blockers.
+
+Do NOT begin Phase 1.13.

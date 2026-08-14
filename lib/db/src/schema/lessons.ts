@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -44,6 +44,9 @@ export const lessonsTable = pgTable("lessons", {
   knowledgeBoundaries: jsonb("knowledge_boundaries").notNull().default(sql`'[]'::jsonb`),
   mappingMetadata: jsonb("mapping_metadata"),
   status: text("status").notNull().default("draft"),
+  // P1.13-pre: set to true on first successful final-approval; once true, ordinary
+  // teacher edits do NOT revert the lesson to needs_review.
+  everApproved: boolean("ever_approved").notNull().default(false),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

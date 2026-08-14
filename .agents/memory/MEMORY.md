@@ -19,6 +19,7 @@
 - [Phase 1.8 sequential deps](phase18-sequential-deps.md) — node create+delete now atomic with refreshSequentialDeps; SEQUENTIAL-only delete preserved REQUIRED/CONCEPTUAL; AI Teacher uses sequence not SEQUENTIAL deps.
 - [Phase 1.9 quiz-lesson links](phase19-quiz-lesson-links.md) — quiz_lesson_links join table; quizType on quizzes; GET /lessons/:id/quizzes; link/unlink routes; LessonNodesPanel linked-tests section.
 - [Phase 1.12 lesson assignment](phase112-lesson-assignment.md) — approved-only gate on lesson activation; student start gate; linked quiz classId; lesson-card Ucharel/Ditcel parity; setLocation inside LessonNodesPanel.
+- [Post-P1.12 authoring simplification](post-p112-authoring.md) — everApproved bool (sticky, never reverts); invalidation no-op when true; per-node enrich route POST .../nodes/:id/enrich; node update route is POST .../update not PUT.
 - [Phase 1.12 student package](phase112-student-package.md) — GET /lessons/:id/student-package; students only access active lessons; nodes/exercises APPROVED-only; quiz isReleased per quiz_assignments; session start returns 200 or 201.
 - [Phase 2 enrichment fix](phase2-enrichment-fix.md) — 3 root causes: button never rendered, draft-node skip gate, second-run field degradation; all fixed; "don't degrade" semantics on Phase 2 field updates.
 - [KT approved lesson gate](kt-approved-gate.md) — knowledge-tree.ts WHERE filters non-approved lessons unless student already has a KN row; "active" status not in gate (potential gap if teachers activate lessons).

@@ -1227,6 +1227,100 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
   res.json({ message: "Node deleted" });
 });
 
+// POST /lessons/:lessonId/nodes/:nodeId/enrich
+// Selective Phase 2 enrichment for a single MicroNode.
+// Runs synchronously (returns when AI is done) — designed for single-node operations.
+// Uses same don't-degrade semantics as whole-lesson generate-teaching-content.
+// Does NOT require whole-lesson final approval afterward.
+router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId = parseInt(String(req.params.nodeId), 10);
+  if (isNaN(lessonId) || isNaN(nodeId)) {
+    res.status(400).json({ error: "Invalid lesson id or node id" });
+    return;
+  }
+
+  const [node] = await db
+    .select({
+      id:                lessonNodesTable.id,
+      title:             lessonNodesTable.title,
+      learningObjective: lessonNodesTable.learningObjective,
+      theoryContent:     lessonNodesTable.theoryContent,
+      blockType:         lessonNodesTable.blockType,
+    })
+    .from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
+    .limit(1);
+
+  if (!node) {
+    res.status(404).json({ error: "Node not found" });
+    return;
+  }
+
+  // Fetch exercises linked to this node
+  const nodeExercises = await db
+    .select({
+      exerciseId:           lessonExercisesTable.exerciseId,
+      exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim,
+    })
+    .from(lessonExercisesTable)
+    .where(and(
+      eq(lessonExercisesTable.lessonId, lessonId),
+      eq(lessonExercisesTable.relatedNodeId, nodeId),
+    ));
+
+  const input: Phase2Input = {
+    nodeId:            node.id,
+    title:             node.title,
+    learningObjective: node.learningObjective ?? null,
+    theoryContent:     node.theoryContent ?? null,
+    blockType:         node.blockType ?? null,
+  };
+  const exercises: Phase2LinkedExercise[] = nodeExercises.map((e) => ({
+    exerciseId:           e.exerciseId,
+    exerciseTextVerbatim: e.exerciseTextVerbatim,
+  }));
+
+  const result = await generatePhase2Content(input, exercises);
+
+  if (result.skipped) {
+    res.status(422).json({
+      error: "SKIP",
+      skipReason: result.skipReason,
+      message: result.skipReason === "skipped_needs_review"
+        ? "Node has not been reviewed yet"
+        : "Theory content is too thin for Phase 2 generation",
+    });
+    return;
+  }
+
+  // Apply don't-degrade semantics: never overwrite a valid field with empty AI response
+  const phase2Updates: Record<string, unknown> = { status: "approved" as const };
+  if (result.childFriendlyExplanation?.trim())
+    phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
+  if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
+    phase2Updates.basicExamples = result.basicExamples;
+  if (result.commonMisconception?.trim())
+    phase2Updates.commonMisconception = result.commonMisconception;
+  if (Array.isArray(result.nonExamples) && result.nonExamples.length > 0)
+    phase2Updates.nonExamples = result.nonExamples;
+
+  await db
+    .update(lessonNodesTable)
+    .set(phase2Updates)
+    .where(eq(lessonNodesTable.id, nodeId));
+
+  // Return the freshly-saved node for immediate UI update
+  const [updated] = await db
+    .select()
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, nodeId))
+    .limit(1);
+
+  logger.info({ lessonId, nodeId, fields: Object.keys(phase2Updates) }, "single-node Phase 2 enrichment completed");
+  res.json({ success: true, nodeId, node: updated });
+});
+
 // DELETE /lessons/:lessonId/mapping — delete entire lesson mapping (nodes, topics, exercises, deps)
 // Lesson row itself is NOT deleted — only the mapping data.
 router.delete("/lessons/:lessonId/mapping", requireTeacher, async (req: AuthRequest, res) => {
@@ -1608,9 +1702,11 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireTeacher, asy
     return;
   }
 
-  // All checks passed — stamp the lesson as approved
+  // All checks passed — stamp the lesson as approved.
+  // Also set everApproved=true (sticky flag) so future teacher edits do NOT
+  // revert the lesson to needs_review (POST-P1.12 authoring simplification).
   await db.update(lessonsTable)
-    .set({ status: "approved" })
+    .set({ status: "approved", everApproved: true } as any)
     .where(eq(lessonsTable.id, lessonId));
 
   res.json({
