@@ -1,0 +1,331 @@
+KT SUBJECT PAGE UNIFICATION — REMOVE DUPLICATE KNOWLEDGE TREE IMPLEMENTATIONS
+
+STRICT SCOPE:
+Fix the duplicate subject-specific Knowledge Tree implementations.
+
+Do NOT start KT-1.3 hierarchy redesign.
+Do NOT change mastery formulas.
+Do NOT change backend visibility rules.
+Do NOT change mapping, quizzes, AI Teacher, Phase 2, DB schema.
+
+REAL MANUAL UAT PROBLEM
+
+There are TWO different ways to open the Physics Knowledge Tree, and they show DIFFERENT UI and DIFFERENT CONTENT.
+
+FLOW A:
+Student Sidebar
+→ Գիտելիքի ծառ
+→ /kt-subjects
+→ Physics
+→ subject Knowledge Tree
+
+FLOW B:
+Student
+→ Իմ առարկաները
+→ Physics
+→ "Գիտելիքի ծառ"
+→ subject Knowledge Tree
+
+These two flows do NOT render the same experience.
+
+Observed differences:
+
+- different page design/layout
+- different node rendering
+- one path previously showed only 1 node
+- the other path shows all 3 Physics nodes
+- filters/actions/layout are visibly different
+
+THIS MEANS THERE ARE TWO DISTINCT SUBJECT-KT IMPLEMENTATIONS OR TWO DISTINCT RENDER PATHS.
+
+This must be eliminated.
+
+==================================================
+A. FORENSIC AUDIT FIRST
+==================================================
+
+Before editing anything, trace both flows independently.
+
+For FLOW A report:
+
+1. final browser URL
+2. React route matched
+3. page/component rendered
+4. API/hook/query used
+5. data shape
+6. number of Physics nodes returned
+7. number rendered
+8. design/component tree
+
+For FLOW B report the same 8 items.
+
+Create an explicit comparison table:
+
+FLOW | URL | ROUTE | COMPONENT | QUERY | NODE COUNT | DESIGN
+
+Do not assume the URLs alone prove the same page.
+Trace the actual rendered component tree.
+
+==================================================
+B. IDENTIFY THE TWO IMPLEMENTATIONS
+==================================================
+
+Find all subject-specific Knowledge Tree page components.
+
+Search for:
+
+- routes matching /knowledge-tree/:subjectId
+- alternate KT components
+- subject-detail embedded KT
+- dashboard KT sections
+- legacy Knowledge Tree page
+- conditional rendering based on navigation source
+- duplicate API hooks
+- duplicate card renderers
+
+Report exact file names and component names.
+
+Identify which implementation is:
+
+A. current/new canonical implementation
+B. legacy/duplicate implementation
+
+==================================================
+C. CHOOSE ONE AUTHORITATIVE SUBJECT-KT PAGE
+==================================================
+
+There must be ONE subject-specific Knowledge Tree implementation.
+
+Canonical route:
+
+/knowledge-tree/:subjectId
+
+Canonical component:
+ONE component only.
+
+Choose the implementation that satisfies BOTH:
+
+1. correct/current data contract
+2. all legitimate Physics nodes are visible
+
+For Physics the canonical page must currently show all 3 legitimate atomic units.
+
+Do not choose based only on appearance.
+
+If the visually better page uses stale data logic,
+merge only the useful visual components into the canonical data-driven page.
+
+If the data-correct page has the poorer design,
+reuse styling safely, but keep one underlying page implementation.
+
+==================================================
+D. ALL ENTRY POINTS MUST CONVERGE
+==================================================
+
+After the fix:
+
+FLOW A:
+
+Sidebar
+→ /kt-subjects
+→ Physics
+→ /knowledge-tree/18
+→ CANONICAL KT COMPONENT
+
+FLOW B:
+
+Իմ առարկաները
+→ Physics
+→ Գիտելիքի ծառ
+→ /knowledge-tree/18
+→ THE SAME CANONICAL KT COMPONENT
+
+No different component based on entry path.
+
+No source-based conditional UI.
+
+No duplicated page.
+
+==================================================
+E. REMOVE LEGACY SUBJECT-KT PAGE SAFELY
+==================================================
+
+After identifying the duplicate:
+
+- remove stale route
+- remove stale imports
+- remove stale links
+- remove duplicate component/page if unused
+- remove duplicate query/render logic
+
+BUT only after proving the canonical page contains all required behavior.
+
+If some useful functionality exists only in the legacy page:
+move/reuse that functionality in the canonical page first.
+
+Do NOT keep two full pages "just in case".
+
+==================================================
+F. DATA INVARIANT
+==================================================
+
+For Physics subject 18:
+
+Both entry flows must produce exactly the same:
+
+- URL
+- component
+- API response
+- node IDs
+- node count
+- mastery states
+- filters
+- card design
+
+Current expected legitimate Physics atomic units = 3.
+
+The exact IDs/titles should be verified from the live API/DB before the change.
+
+==================================================
+G. DESIGN INVARIANT
+==================================================
+
+The two entry flows must render visually IDENTICAL pages.
+
+Same:
+
+- header
+- filter bar
+- cards
+- colors
+- buttons
+- spacing
+- state labels
+- actions
+
+No visible clue should reveal whether the user arrived from Sidebar or "Իմ առարկաները".
+
+==================================================
+H. BACK NAVIGATION
+==================================================
+
+Keep deterministic navigation:
+
+Global entry:
+Sidebar
+→ /kt-subjects
+→ Physics
+→ /knowledge-tree/18
+
+Subject-context entry:
+Իմ առարկաները
+→ Physics
+→ Knowledge Tree
+→ /knowledge-tree/18
+
+For now keep the canonical KT back action as:
+
+/knowledge-tree/:subjectId
+→ /kt-subjects
+
+Do not introduce entry-source-dependent back behavior in this task.
+
+==================================================
+I. REAL BROWSER UAT — MANDATORY
+==================================================
+
+Do not mark PASS from API/unit tests only.
+
+Perform BOTH flows in the actual browser.
+
+TEST A:
+
+Sidebar
+→ Գիտելիքի ծառ
+→ Physics
+
+Capture:
+URL
+visible node count
+visible node titles
+screenshot/layout
+
+TEST B:
+
+Իմ առարկաները
+→ Physics
+→ Գիտելիքի ծառ
+
+Capture the same.
+
+PASS only if:
+
+URL A == URL B
+
+component A == component B
+
+node IDs A == node IDs B
+
+node count A == node count B
+
+design A == design B
+
+For Physics:
+all 3 legitimate nodes must be visible in "Բոլորը".
+
+==================================================
+J. ACCEPTANCE TESTS
+==================================================
+
+T01 Both entry flows resolve to the same canonical URL.
+
+T02 Both route paths render the same React component.
+
+T03 Both use the same KT query/data source.
+
+T04 Physics node-ID set is identical from both flows.
+
+T05 Physics node count is identical from both flows.
+
+T06 The same mastery filters are available.
+
+T07 The same default filter is selected.
+
+T08 The same visual card component is used.
+
+T09 No legacy subject-KT route remains student-facing.
+
+T10 No duplicate subject-KT page component remains active.
+
+T11 No mastery/data/backend logic regression.
+
+T12 No test pollution.
+
+==================================================
+K. FINAL REPORT
+==================================================
+
+Return:
+
+1. Flow A old component
+2. Flow B old component
+3. Why they differed
+4. Which implementation became canonical
+5. Files/components removed
+6. Files/components retained
+7. New route graph
+8. Physics exact node IDs/titles
+9. Browser proof for Flow A
+10. Browser proof for Flow B
+11. Confirmation that both designs are now identical
+12. PASS / FAIL
+
+FINAL GATE:
+
+KT SUBJECT PAGE UNIFICATION = PASS
+
+only if there is ONE subject-specific Knowledge Tree page/component and
+both entry flows render the same data and same design.
+
+STOP.
+Do NOT start KT-1.3.
