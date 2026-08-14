@@ -13,7 +13,7 @@ import {
   getGetStudentHomeworkSummaryQueryKey,
 } from "@workspace/api-client-react";
 
-import { NAV_ITEMS, NavKey as Section, lessonStatusBadge } from "@/lib/student-nav";
+import { NAV_ITEMS, NAV_STANDALONE_ROUTES, NavKey as Section, lessonStatusBadge } from "@/lib/student-nav";
 
 type AssignedLesson = {
   id: number; subject: string; teacherName: string; title: string;
@@ -186,22 +186,31 @@ export default function Dashboard() {
   const activeLesson = allLessons?.find((l) => l.status === "active") ?? null;
 
   /* ── NAV BUTTON ── */
-  const NavBtn = ({ item }: { item: (typeof NAV_ITEMS)[0] }) => (
-    <button
-      onClick={() => {
-        setSection(item.key);
-        setSidebarOpen(false);
-      }}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
-        section === item.key
-          ? "bg-primary/20 text-primary border border-primary/20"
-          : "text-muted-foreground hover:text-white hover:bg-white/5"
-      }`}
-    >
-      <span className="text-lg leading-none shrink-0">{item.emoji}</span>
-      <span>{item.label}</span>
-    </button>
-  );
+  const NavBtn = ({ item }: { item: (typeof NAV_ITEMS)[0] }) => {
+    const standaloneHref = NAV_STANDALONE_ROUTES[item.key];
+    return (
+      <button
+        onClick={() => {
+          setSidebarOpen(false);
+          if (standaloneHref) {
+            // Items like "knowledge-tree" are standalone routes — navigate there
+            // directly instead of updating the dashboard section state.
+            setLocation(standaloneHref);
+          } else {
+            setSection(item.key);
+          }
+        }}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all text-left ${
+          section === item.key
+            ? "bg-primary/20 text-primary border border-primary/20"
+            : "text-muted-foreground hover:text-white hover:bg-white/5"
+        }`}
+      >
+        <span className="text-lg leading-none shrink-0">{item.emoji}</span>
+        <span>{item.label}</span>
+      </button>
+    );
+  };
 
   /* ── AI TEACHER ── */
   const SectionAI = () => (

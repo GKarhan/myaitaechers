@@ -1,0 +1,202 @@
+KT NAVIGATION FIX ONLY — SIDEBAR "ԳԻՏԵԼԻՔԻ ԾԱՌ" MUST OPEN THE NEW SUBJECT-SELECTION PAGE
+
+STRICT SCOPE:
+This is a small navigation fix only.
+
+Do NOT modify:
+- Knowledge Tree data queries
+- mastery logic
+- 4-state logic
+- knowledge-tree API
+- node visibility
+- subject cards
+- mapping
+- quizzes
+- AI Teacher
+- Knowledge Tree hierarchy
+- existing mastery data
+- DB/schema
+
+CURRENT REAL BROWSER PROBLEM
+
+In the student sidebar there is already a menu item:
+
+🌳 Գիտելիքի ծառ
+
+But clicking this sidebar item does NOT reliably navigate to the new Knowledge Tree entry page.
+
+The NEW Knowledge Tree entry page already exists and works at:
+
+/kt-subjects
+
+This is the page shown in manual UAT:
+- title: "Գիտելիքի ծառ"
+- subtitle: "Ընտրեք առարկան՝ ձեր գիտելիքի ծառը դիտելու համար"
+- subject cards such as:
+  - Մաթեմատիկա
+  - Մայրենի
+  - Ֆիզիկա
+- each card shows Knowledge Tree summary/counts
+- clicking a subject later opens its subject Knowledge Tree
+
+THIS `/kt-subjects` PAGE IS NOW THE CANONICAL ENTRY POINT
+FOR THE STUDENT KNOWLEDGE TREE.
+
+==================================================
+TASK
+==================================================
+
+Fix ONLY the student sidebar navigation so that:
+
+Student sidebar
+→ click "🌳 Գիտելիքի ծառ"
+→ navigate directly to:
+
+/kt-subjects
+
+No intermediate page.
+
+It MUST NOT navigate to:
+
+/dashboard?section=knowledge-tree
+
+or:
+
+/subjects/:subjectId
+
+or directly to:
+
+/knowledge-tree/:subjectId
+
+or any old Knowledge Tree entry page.
+
+==================================================
+AUDIT FIRST
+==================================================
+
+Before changing code, trace the actual click path.
+
+Inspect at minimum:
+
+1. student-nav.ts
+2. StudentLayout.tsx
+3. dashboard.tsx
+4. App.tsx
+5. any NAV_STANDALONE_ROUTES / route mapping used by the sidebar
+
+Report:
+
+A. What NavKey is used for "Գիտելիքի ծառ"
+B. What href/path is currently generated for that item
+C. What component handles the click
+D. Why the real browser currently does not land on `/kt-subjects`
+
+Do NOT guess from intended architecture.
+Trace the actual rendered sidebar click behavior.
+
+==================================================
+IMPLEMENTATION CONTRACT
+==================================================
+
+There must be ONE canonical sidebar destination:
+
+knowledge-tree → /kt-subjects
+
+Prefer using the existing standalone-route mechanism if it already exists.
+
+Do NOT create another Knowledge Tree page.
+
+Do NOT duplicate `/kt-subjects`.
+
+Do NOT change the contents of KtSubjectSelect.
+
+Do NOT modify `/knowledge-tree/:subjectId`.
+
+Do NOT change subject-card navigation in this task.
+
+Do NOT touch mastery/state normalization.
+
+IMPORTANT:
+Do NOT make unrelated "cleanup" changes.
+
+==================================================
+MANUAL BROWSER VERIFICATION — REQUIRED
+==================================================
+
+Do not mark PASS based only on unit tests or route definitions.
+
+Verify the REAL student sidebar behavior.
+
+Starting from:
+
+/dashboard
+
+1. Confirm "🌳 Գիտելիքի ծառ" is visible.
+2. Click that exact sidebar item.
+3. Capture/inspect resulting browser pathname.
+4. It MUST equal:
+
+/kt-subjects
+
+5. Confirm the resulting page is the NEW page containing:
+
+"Գիտելիքի ծառ"
+
+and
+
+"Ընտրեք առարկան՝ ձեր գիտելիքի ծառը դիտելու համար"
+
+6. Confirm subject cards render.
+
+Also test:
+
+/dashboard
+→ sidebar "Գիտելիքի ծառ"
+→ /kt-subjects
+
+and then:
+
+/kt-subjects
+→ browser refresh
+→ remains on /kt-subjects and renders correctly.
+
+==================================================
+ACCEPTANCE GATE
+==================================================
+
+PASS only if the REAL sidebar click produces:
+
+/dashboard
+   ↓
+🌳 Գիտելիքի ծառ
+   ↓
+/kt-subjects
+
+FAIL if it produces:
+
+/dashboard?section=knowledge-tree
+
+/subjects/:id
+
+/knowledge-tree/:id
+
+or remains on /dashboard.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Root cause
+2. Files changed
+3. Exact old sidebar destination
+4. Exact new sidebar destination
+5. Browser pathname after actual click
+6. Confirmation that `/kt-subjects` is the canonical Knowledge Tree entry page
+7. Confirmation that no KT data/mastery/API logic was changed
+8. PASS / FAIL
+
+STOP after this fix.
+
+Do NOT start KT-1.3 or any other Knowledge Tree work.
