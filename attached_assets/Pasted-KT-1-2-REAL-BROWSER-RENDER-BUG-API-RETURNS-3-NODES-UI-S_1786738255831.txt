@@ -1,0 +1,279 @@
+KT-1.2 REAL BROWSER RENDER BUG — API RETURNS 3 NODES, UI SHOWS ONLY 1
+
+STRICT SCOPE:
+Fix ONLY the real browser rendering inconsistency on:
+
+/knowledge-tree/:subjectId
+
+Do NOT change backend visibility rules unless browser evidence proves backend is wrong.
+Do NOT start KT-1.3.
+Do NOT change mastery formulas.
+Do NOT change mapping.
+Do NOT change quiz/evidence logic.
+
+REAL UAT FACTS
+
+For Physics subject 18:
+
+Backend/API currently returns 3 legitimate nodes.
+
+Subject card also shows:
+totalUnits = 3
+
+But the real browser page:
+
+/knowledge-tree/18
+
+still visually renders only ONE knowledge-unit card.
+
+This is a REAL UI bug.
+
+The previous audit only proved backend correctness.
+It did NOT fix the browser UI.
+
+════════════════════════════════════
+A. REPRODUCE IN THE REAL BROWSER FIRST
+════════════════════════════════════
+
+Open the real authenticated student browser flow.
+
+Navigate:
+
+Sidebar
+→ Գիտելիքի ծառ
+→ Physics
+→ /knowledge-tree/18
+
+Do NOT rely only on curl/API tests.
+
+Capture:
+
+1. actual API response length
+2. actual React Query/query result length
+3. actual array passed into rendering
+4. active filter state
+5. number of cards rendered into DOM
+
+For Physics, expected raw array length = 3.
+
+Report these exact values BEFORE changing code.
+
+════════════════════════════════════
+B. TRACE FRONTEND FILTERING
+════════════════════════════════════
+
+Inspect knowledge-tree.tsx and all related helpers.
+
+Find every place that can reduce the node list:
+
+- active mastery filter
+- selected tab
+- search
+- useMemo
+- .filter()
+- .slice()
+- grouping logic
+- deduplication
+- React key collision
+- query cache
+- stale initial state
+- topic grouping
+- pagination
+- conditional rendering
+
+Build a trace:
+
+API nodes
+→ transformed nodes
+→ filtered nodes
+→ rendered cards
+
+For each stage report count.
+
+Expected for Physics:
+3 → 3 → 3 → 3
+
+Find exactly where 3 becomes 1.
+
+Do not guess.
+
+════════════════════════════════════
+C. CHECK FILTER DEFAULT
+════════════════════════════════════
+
+The page has mastery filter buttons:
+
+Բոլորը
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Verify the DEFAULT selected filter.
+
+Default MUST be:
+
+Բոլորը
+
+When the page first opens, all legitimate nodes must render.
+
+If some prior filter remains in state/cache/local storage and hides nodes,
+fix that behavior.
+
+Subject navigation must not inherit an unintended stale mastery filter.
+
+════════════════════════════════════
+D. CHECK REACT QUERY CACHE
+════════════════════════════════════
+
+Verify queryKey for:
+
+/knowledge-tree/:subjectId
+
+The cache key must include subjectId.
+
+Opening Physics must not reuse stale node data from another subject or previous partial response.
+
+If needed:
+- correct the queryKey
+- invalidate/refetch on subjectId change
+
+Do not globally disable caching as a workaround.
+
+════════════════════════════════════
+E. CHECK CARD KEYS / DUPLICATE KEYS
+════════════════════════════════════
+
+Verify React map key.
+
+Each rendered atomic node card MUST use a unique stable key:
+
+prefer lessonNodeId / atomic node ID
+
+Do not use:
+- topicName
+- sequence
+- masteryLevel
+- index
+
+if those can collide.
+
+A duplicate React key may cause cards to overwrite/reconcile incorrectly.
+
+════════════════════════════════════
+F. CHECK OLD "TOPICS" NAMING
+════════════════════════════════════
+
+KT-1.1 confirmed the atomic unit is lesson_nodes / MicroNode.
+
+The current API may still return an array named "topics".
+
+Verify the frontend is not accidentally grouping/deduplicating by topicName.
+
+Three distinct atomic MicroNodes must remain three distinct cards even if:
+- same topic/group
+- same masteryLevel
+- same sequence
+- same lesson
+
+Do not collapse atomic units into one card in KT-1.2.
+
+════════════════════════════════════
+G. FIX ONLY THE REAL ROOT CAUSE
+════════════════════════════════════
+
+Once the exact point where 3 → 1 is proven, apply the smallest fix.
+
+After fix:
+
+Physics API nodes = 3
+React query nodes = 3
+filtered nodes with "Բոլորը" = 3
+DOM cards = 3
+
+Visible cards must be the exact legitimate node IDs:
+2019
+2020
+2021
+(or current real IDs if DB changed)
+
+════════════════════════════════════
+H. BROWSER UAT — MANDATORY
+════════════════════════════════════
+
+This task is NOT PASS based only on automated tests.
+
+MANDATORY real browser verification:
+
+1. Login as the actual student used in UAT.
+2. Sidebar → Գիտելիքի ծառ.
+3. Physics card shows 3 units.
+4. Open Physics.
+5. Confirm THREE cards are visibly rendered simultaneously.
+6. Read and report their titles.
+7. Click each mastery filter:
+   - Բոլորը
+   - Գիտի
+   - Մասնակի գիտի
+   - Չգիտի
+   - Դեռ չի ուսումնասիրել
+8. Return to "Բոլորը".
+9. Confirm all 3 return.
+10. Refresh the browser.
+11. Confirm all 3 still render.
+12. Navigate away and back.
+13. Confirm all 3 still render.
+
+If only API tests pass but browser still shows 1:
+FINAL VERDICT MUST BE FAIL.
+
+════════════════════════════════════
+I. NAVIGATION BUG ALSO VERIFY
+════════════════════════════════════
+
+While doing browser UAT, verify KT-1.2 navigation:
+
+Sidebar "Գիտելիքի ծառ"
+→ /kt-subjects
+
+Subject card Physics
+→ /knowledge-tree/18
+
+Back from /knowledge-tree/18
+→ /kt-subjects
+
+No /dashboard?section=knowledge-tree path.
+
+If sidebar navigation is still broken, fix it in the same narrow navigation layer.
+
+════════════════════════════════════
+J. FINAL REPORT
+════════════════════════════════════
+
+Return:
+
+A. Browser reproduction before fix
+B. API count
+C. React query count
+D. Filtered count
+E. DOM rendered count
+F. Exact stage where 3 became 1
+G. Root cause
+H. Files changed
+I. Browser screenshot/result after fix
+J. Exact 3 titles visible
+K. Navigation verification
+L. Tests
+
+FINAL GATE:
+
+KT-1.2 REAL UI = PASS
+
+ONLY if the real browser visibly shows all 3 Physics knowledge units
+with default filter "Բոլորը".
+
+Otherwise:
+KT-1.2 REAL UI = FAIL
+
+STOP.
+DO NOT START KT-1.3.

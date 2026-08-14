@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
 
 // 4 visible blocks: mastered=Գիտի | weak=Մասնակի գիտի | in_progress=Չգիտի | not_started=Դեռ չի ուսումնասիրել
+// needs_review folds into mastered in the UI (5-state API → 4-state display)
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
 
 export default function KnowledgeTree() {
@@ -23,6 +24,12 @@ export default function KnowledgeTree() {
   const isTeacherView = !!studentId && !isNaN(studentId) && user?.role === "teacher";
 
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
+
+  // Reset filter to "all" when the subject changes so SPA navigation
+  // between subjects never inherits a stale mastery filter.
+  useEffect(() => {
+    setActiveFilter("all");
+  }, [subjectId]);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -75,11 +82,19 @@ export default function KnowledgeTree() {
 
   if (!user || !treeData) return null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const filteredTopics = (treeData.topics as any[])?.filter((topic) => {
+  const rawTopics = (treeData.topics as any[]) ?? [];
+
+  // needs_review is a 5th server state that folds into "mastered" for the 4-block display.
+  // Normalize before filtering so the "Գիտի" tab correctly shows needs_review nodes.
+  const normalizedTopics = rawTopics.map((t: any) => ({
+    ...t,
+    masteryLevel: t.masteryLevel === "needs_review" ? "mastered" : t.masteryLevel,
+  }));
+
+  const filteredTopics = normalizedTopics.filter((topic: any) => {
     if (activeFilter === "all") return true;
     return topic.masteryLevel === activeFilter;
-  }) ?? [];
+  });
 
   return (
     <div className="min-h-[100dvh] w-full bg-background text-white pb-20">
@@ -154,7 +169,7 @@ export default function KnowledgeTree() {
             const isMastered   = topic.masteryLevel === "mastered";
             const isWeak       = topic.masteryLevel === "weak";
             const isInProgress = topic.masteryLevel === "in_progress";
-            const isNotStarted = topic.masteryLevel === "not_started";
+            const isNotStarted = !isMastered && !isWeak && !isInProgress;
 
             let borderColorClass = "";
             let badgeText        = "";
@@ -187,7 +202,7 @@ export default function KnowledgeTree() {
 
             return (
               <div
-                key={idx}
+                key={topic.lessonNodeId ?? topic.id ?? idx}
                 className={`p-6 rounded-2xl bg-card border border-card-border border-l-4 ${borderColorClass} flex flex-col h-full`}
               >
                 <div className="flex justify-between items-start mb-4">
