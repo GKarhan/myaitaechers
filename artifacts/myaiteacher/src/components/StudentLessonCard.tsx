@@ -20,6 +20,8 @@ export type LinkedQuiz = {
   title: string;
   quizType: string | null;
   isReleased: boolean;
+  /** true when the CURRENT (latest) release has already been completed */
+  isCompleted?: boolean;
 };
 
 const quizTypeLabel = (t: string | null) =>
@@ -69,43 +71,52 @@ export default function StudentLessonCard({
         </Link>
       </div>
 
-      {/* ── Linked tests block ── */}
-      {quizzes.length > 0 && (
-        <div className="border-t border-white/8 pt-3">
-          <p className="text-xs font-semibold text-muted-foreground mb-2">
-            📝 Թեստեր ({quizzes.length})
-          </p>
-          <div className="flex flex-col gap-2">
-            {quizzes.map((q) => (
-              <div
-                key={q.id}
-                className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white/4 border border-white/6"
-              >
-                <div className="min-w-0">
-                  <span className="text-sm text-white/90 truncate block">{q.title}</span>
-                  {quizTypeLabel(q.quizType) && (
-                    <span className="text-xs text-muted-foreground/70">
-                      {quizTypeLabel(q.quizType)}
+      {/* ── Linked tests block ──
+           STATE A: not released   → "Դեռ հասանելի չէ"
+           STATE B: released, not completed → "▶ Սկսել թեստը"
+           STATE C: current release completed → hidden (shown in "Իմ թեստերը")
+      */}
+      {(() => {
+        // Filter to only actionable quizzes (not yet completed for current release)
+        const actionable = quizzes.filter((q) => !(q.isReleased && q.isCompleted));
+        if (actionable.length === 0) return null;
+        return (
+          <div className="border-t border-white/8 pt-3">
+            <p className="text-xs font-semibold text-muted-foreground mb-2">
+              📝 Թեստեր ({actionable.length})
+            </p>
+            <div className="flex flex-col gap-2">
+              {actionable.map((q) => (
+                <div
+                  key={q.id}
+                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white/4 border border-white/6"
+                >
+                  <div className="min-w-0">
+                    <span className="text-sm text-white/90 truncate block">{q.title}</span>
+                    {quizTypeLabel(q.quizType) && (
+                      <span className="text-xs text-muted-foreground/70">
+                        {quizTypeLabel(q.quizType)}
+                      </span>
+                    )}
+                  </div>
+                  {q.isReleased ? (
+                    <Link
+                      href={`/quiz/${q.id}/take`}
+                      className="px-3 py-1.5 bg-secondary/90 hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0"
+                    >
+                      ▶ Սկսել թեստը
+                    </Link>
+                  ) : (
+                    <span className="text-xs text-muted-foreground/60 italic whitespace-nowrap shrink-0">
+                      Դեռ հասանելի չէ
                     </span>
                   )}
                 </div>
-                {q.isReleased ? (
-                  <Link
-                    href={`/quiz/${q.id}/take`}
-                    className="px-3 py-1.5 bg-secondary/90 hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0"
-                  >
-                    ▶ Սկսել թեստը
-                  </Link>
-                ) : (
-                  <span className="text-xs text-muted-foreground/60 italic whitespace-nowrap shrink-0">
-                    Դեռ հասանելի չէ
-                  </span>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

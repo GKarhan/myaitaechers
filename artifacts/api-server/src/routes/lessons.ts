@@ -223,13 +223,26 @@ router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRe
       .where(eq(quizLessonLinksTable.lessonId, lessonId))
       .orderBy(desc(quizzesTable.createdAt)),
 
-    // Which linked quizzes has this student been assigned/released to?
-    db.select({ quizId: quizAssignmentsTable.quizId })
+    // All assignment rows for this student — we derive latest status per quiz below.
+    db.select({
+      quizId:     quizAssignmentsTable.quizId,
+      status:     quizAssignmentsTable.status,
+      assignedAt: quizAssignmentsTable.assignedAt,
+    })
       .from(quizAssignmentsTable)
-      .where(eq(quizAssignmentsTable.studentId, userId)),
+      .where(eq(quizAssignmentsTable.studentId, userId))
+      .orderBy(desc(quizAssignmentsTable.assignedAt)),
   ]);
 
-  const myAssignedQuizIds = new Set(myAssignments.map((a) => a.quizId));
+  // Build a map: quizId → latest assignment (most recent assignedAt, already ordered DESC)
+  // Used to compute isReleased and isCompleted per quiz.
+  const latestAssignmentPerQuiz = new Map<number, { status: string }>();
+  for (const a of myAssignments) {
+    if (!latestAssignmentPerQuiz.has(a.quizId)) {
+      // First occurrence is the latest (ordered DESC)
+      latestAssignmentPerQuiz.set(a.quizId, { status: a.status });
+    }
+  }
 
   res.json({
     lesson: {
@@ -278,13 +291,17 @@ router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRe
       toNodeId:       d.toNodeId,
       dependencyType: (d as any).dependencyType ?? "SEQUENTIAL",
     })),
-    quizzes: linkedQuizRows.map((q) => ({
-      id:         q.quizId,
-      title:      q.title,
-      quizType:   q.quizType ?? null,
-      classId:    q.classId ?? null,
-      isReleased: myAssignedQuizIds.has(q.quizId),
-    })),
+    quizzes: linkedQuizRows.map((q) => {
+      const latest = latestAssignmentPerQuiz.get(q.quizId);
+      return {
+        id:          q.quizId,
+        title:       q.title,
+        quizType:    q.quizType ?? null,
+        classId:     q.classId ?? null,
+        isReleased:  latest !== undefined,
+        isCompleted: latest?.status === "COMPLETED",
+      };
+    }),
   });
 });
 

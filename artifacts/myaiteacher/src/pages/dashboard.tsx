@@ -355,43 +355,48 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            {/* Linked tests for the active lesson */}
-            {(lessonQuizzes[activeLesson.id] ?? []).length > 0 && (
-              <div className="border-t border-white/8 pt-4 mt-2">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">
-                  📝 Թեստեր ({(lessonQuizzes[activeLesson.id] ?? []).length})
-                </p>
-                <div className="flex flex-col gap-2">
-                  {(lessonQuizzes[activeLesson.id] ?? []).map((q) => (
-                    <div
-                      key={q.id}
-                      className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white/4 border border-white/6"
-                    >
-                      <div className="min-w-0">
-                        <span className="text-sm text-white/90 truncate block">{q.title}</span>
-                        {q.quizType && (
-                          <span className="text-xs text-muted-foreground/70">
-                            {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Ամփոփիչ" : null}
+            {/* Linked tests for the active lesson — only actionable (not yet completed) */}
+            {(() => {
+              const actionable = (lessonQuizzes[activeLesson.id] ?? [])
+                .filter((q) => !(q.isReleased && q.isCompleted));
+              if (actionable.length === 0) return null;
+              return (
+                <div className="border-t border-white/8 pt-4 mt-2">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    📝 Թեստեր ({actionable.length})
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {actionable.map((q) => (
+                      <div
+                        key={q.id}
+                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white/4 border border-white/6"
+                      >
+                        <div className="min-w-0">
+                          <span className="text-sm text-white/90 truncate block">{q.title}</span>
+                          {q.quizType && (
+                            <span className="text-xs text-muted-foreground/70">
+                              {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Ամփոփիչ" : null}
+                            </span>
+                          )}
+                        </div>
+                        {q.isReleased ? (
+                          <Link
+                            href={`/quiz/${q.id}/take`}
+                            className="px-3 py-1.5 bg-secondary/90 hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0"
+                          >
+                            ▶ Սկսել թեստը
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60 italic whitespace-nowrap shrink-0">
+                            Դեռ հասանելի չէ
                           </span>
                         )}
                       </div>
-                      {q.isReleased ? (
-                        <Link
-                          href={`/quiz/${q.id}/take`}
-                          className="px-3 py-1.5 bg-secondary/90 hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0"
-                        >
-                          ▶ Սկսել թեստը
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/60 italic whitespace-nowrap shrink-0">
-                          Դեռ հասանելի չէ
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ) : (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 text-center text-muted-foreground">

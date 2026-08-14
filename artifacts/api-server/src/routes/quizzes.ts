@@ -17,7 +17,7 @@ import {
   lessonNodeDependenciesTable,
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
-import { eq, and, asc, inArray, desc, sql, count } from "drizzle-orm";
+import { eq, and, asc, inArray, desc, sql, count, ne } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
@@ -809,14 +809,16 @@ router.get("/quizzes/:id/my-result", requireAuth, async (req: AuthRequest, res) 
   const quizId = parseInt(String(req.params.id), 10);
   if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
 
+  // Get the LATEST completed assignment (supports re-release history)
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
     .where(and(
       eq(quizAssignmentsTable.quizId,    quizId),
       eq(quizAssignmentsTable.studentId, req.userId!),
-      eq(quizAssignmentsTable.status,    "COMPLETED")
+      eq(quizAssignmentsTable.status,    "COMPLETED"),
     ))
+    .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
   if (!assignment) {
     res.status(404).json({ error: "No completed attempt found for this quiz" });
@@ -1008,14 +1010,19 @@ router.post("/quizzes/:id/assign", requireTeacher, async (req: AuthRequest, res)
 
   const dueDate = dueAt ? new Date(dueAt) : null;
 
-  // Create one assignment per student (skip if already exists for this quiz+student)
+  // Create one assignment per student.
+  // Skip students who already have an ACTIVE (ASSIGNED or IN_PROGRESS) assignment —
+  // they cannot hold two concurrent open assignments for the same quiz.
+  // Students with a COMPLETED assignment DO get a new row (re-release cycle).
   const existingAssignments = await db
-    .select({ studentId: quizAssignmentsTable.studentId })
+    .select({ studentId: quizAssignmentsTable.studentId, status: quizAssignmentsTable.status })
     .from(quizAssignmentsTable)
     .where(eq(quizAssignmentsTable.quizId, quizId));
-  const alreadyAssigned = new Set(existingAssignments.map((a) => a.studentId));
+  const alreadyActiveAssigned = new Set(
+    existingAssignments.filter((a) => a.status !== "COMPLETED").map((a) => a.studentId)
+  );
 
-  const newMembers = members.filter((m) => !alreadyAssigned.has(m.studentId));
+  const newMembers = members.filter((m) => !alreadyActiveAssigned.has(m.studentId));
   if (newMembers.length > 0) {
     await db.insert(quizAssignmentsTable).values(
       newMembers.map((m) => ({
@@ -1048,14 +1055,17 @@ router.get("/quizzes/:id/take", requireAuth, async (req: AuthRequest, res) => {
   const quizId = parseInt(String(req.params.id), 10);
   if (isNaN(quizId)) { res.status(400).json({ error: "Invalid quiz id" }); return; }
 
-  // Verify assignment
+  // Verify assignment — get the LATEST non-completed assignment for this student.
+  // With re-release, a student may have multiple rows; we want the newest active one.
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
     .where(and(
       eq(quizAssignmentsTable.quizId,    quizId),
-      eq(quizAssignmentsTable.studentId, req.userId!)
+      eq(quizAssignmentsTable.studentId, req.userId!),
+      ne(quizAssignmentsTable.status,    "COMPLETED"),
     ))
+    .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
 
   if (!assignment) {
@@ -1107,22 +1117,22 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     return;
   }
 
-  // Verify assignment belongs to req.userId
+  // Verify assignment — get the LATEST non-completed assignment for this student.
+  // With re-release, a student may have multiple rows; we target the newest active one.
   const [assignment] = await db
     .select()
     .from(quizAssignmentsTable)
     .where(and(
       eq(quizAssignmentsTable.quizId,    quizId),
-      eq(quizAssignmentsTable.studentId, req.userId!)
+      eq(quizAssignmentsTable.studentId, req.userId!),
+      ne(quizAssignmentsTable.status,    "COMPLETED"),
     ))
+    .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
 
   if (!assignment) {
-    res.status(403).json({ error: "No assignment found for this quiz" });
-    return;
-  }
-  if (assignment.status === "COMPLETED") {
-    res.status(409).json({ error: "Quiz already completed" });
+    // Either no assignment at all, or all assignments are completed (quiz already done)
+    res.status(403).json({ error: "No active assignment found for this quiz" });
     return;
   }
 

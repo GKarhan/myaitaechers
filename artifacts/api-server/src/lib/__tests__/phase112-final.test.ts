@@ -303,24 +303,38 @@ it("T14: linked unreleased Quiz — student package shows isReleased=false for S
   console.log(`  [INFO] Student B has 0 assignments for quiz ${linkedQuizId} ✓`);
 });
 
-it("T15: release mechanism — quiz_assignments row created for Student A (direct DB insert)", async () => {
+it("T15: release mechanism — quiz_assignments row with status=ASSIGNED exists for Student A", async () => {
   // The existing linked quizzes belong to teacherId=161 (not teacher 1),
   // so we cannot call the teacher API to release them. Instead, we directly
   // insert a quiz_assignment for Student A, which is exactly what the assign
   // route does server-side. This tests the isReleased flag, not the assign API.
   // (The assign API itself is tested in phase112-lesson-assignment.test.ts, test F.)
-  const existing = await db.select({ id: quizAssignmentsTable.id })
+  //
+  // Phase 1.12 Cleanup: with re-release support, multiple assignment rows can exist.
+  // We need at least one non-COMPLETED row so T18 (take gate) can verify 200.
+  // If all existing rows are COMPLETED (student already finished), create a fresh one.
+  const existing = await db
+    .select({ id: quizAssignmentsTable.id, status: quizAssignmentsTable.status })
     .from(quizAssignmentsTable)
     .where(and(eq(quizAssignmentsTable.quizId, linkedQuizId), eq(quizAssignmentsTable.studentId, studentAId)));
-  if (existing.length > 0) {
-    console.log(`  [INFO] Assignment already exists for Student A × quiz ${linkedQuizId} — using existing`);
+
+  const hasActiveAssignment = existing.some((a) => a.status !== "COMPLETED");
+
+  if (hasActiveAssignment) {
+    console.log(`  [INFO] Active (non-COMPLETED) assignment already exists for Student A × quiz ${linkedQuizId} — no insert needed`);
     return;
   }
+
+  // All existing assignments are COMPLETED (or none exist) — insert a fresh ASSIGNED row.
   const [row] = await db.insert(quizAssignmentsTable)
     .values({ quizId: linkedQuizId, studentId: studentAId, status: "ASSIGNED" } as any)
     .returning();
   tempAssignmentIds.push(row.id);
-  console.log(`  [INFO] Inserted quiz_assignment: id=${row.id} quizId=${linkedQuizId} studentId=${studentAId}`);
+  if (existing.length > 0) {
+    console.log(`  [INFO] All ${existing.length} prior assignment(s) were COMPLETED — re-released: id=${row.id} quizId=${linkedQuizId}`);
+  } else {
+    console.log(`  [INFO] Inserted quiz_assignment: id=${row.id} quizId=${linkedQuizId} studentId=${studentAId}`);
+  }
 });
 
 it("T16: release is student-specific — Student B (not in class) stays unreleased", async () => {

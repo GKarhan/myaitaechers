@@ -1,0 +1,304 @@
+PHASE 1.12 — FINAL CLEANUP
+STUDENT LESSON → LINKED QUIZ VISIBILITY AFTER COMPLETION
+
+IMPORTANT:
+This is a SMALL, STRICTLY SCOPED final fix for Phase 1.12.
+
+Do NOT redesign Phase 1.12.
+Do NOT modify mapping, Phase 2 generation, AI Teacher/chat, quiz generation,
+quiz scoring/mastery, Knowledge Tree, or teacher quiz creation.
+
+The current Phase 1.12 implementation is working:
+- linked quizzes appear under the assigned lesson;
+- unreleased quizzes show as unavailable;
+- released quizzes show "Սկսել թեստը";
+- completed quiz attempts already appear in the student's "Իմ թեստերը"
+  section with score/result and "Տեսնել արդյունքը".
+
+We only need to remove duplicate presentation after a quiz has been completed.
+
+════════════════════════════════════════════
+PART 0 — AUDIT FIRST, NO CODE CHANGES
+════════════════════════════════════════════
+
+Before changing anything, inspect the existing implementation and report:
+
+1. How the student lesson card currently determines:
+   - linked quizzes;
+   - isReleased;
+   - whether a quiz has already been completed by this student.
+
+2. Identify the authoritative DB/API source for:
+   - quiz assignment/release;
+   - quiz attempt;
+   - completed/submitted attempt;
+   - score/result.
+
+3. Confirm how "Իմ թեստերը" currently obtains and renders completed quizzes.
+
+4. Determine whether the existing
+   GET /api/lessons/:lessonId/student-package
+   already has enough information to know that the CURRENT RELEASE/ASSIGNMENT
+   has been completed.
+
+IMPORTANT:
+Do not infer completion merely because the student has EVER completed
+the same quiz in the past.
+
+We need assignment-cycle semantics:
+
+A previously completed attempt must NOT permanently hide the quiz if
+the teacher explicitly releases/assigns the same quiz again.
+
+Report the actual existing schema and relationships first.
+Do not invent a new schema unless the current schema genuinely cannot
+represent this requirement.
+
+Then implement the smallest safe change.
+
+════════════════════════════════════════════
+PART 1 — REQUIRED STUDENT UX
+════════════════════════════════════════════
+
+For every quiz linked to an assigned lesson:
+
+STATE A — NOT RELEASED
+
+Teacher has not released the quiz to this student/current assignment.
+
+Under the lesson show:
+
+    Դեռ հասանելի չէ
+
+There must be NO start button.
+
+────────────────────────────────────────────
+
+STATE B — RELEASED + NOT YET COMPLETED
+
+Teacher has released the quiz and the current release has not yet been
+completed by the student.
+
+Under the lesson show:
+
+    ▶ Սկսել թեստը
+
+The button must open the existing quiz-taking route.
+
+Do not change quiz-taking behavior.
+
+────────────────────────────────────────────
+
+STATE C — CURRENT RELEASE COMPLETED
+
+The student has completed/submitted the quiz for the current release.
+
+REMOVE THAT QUIZ FROM THE LINKED-QUIZZES LIST UNDER THE LESSON.
+
+Do NOT show:
+
+    Սկսել թեստը
+
+Do NOT show another duplicate:
+
+    Տեսնել արդյունքը
+
+under the lesson.
+
+The completed quiz/result already belongs in:
+
+    Իմ թեստերը
+
+where the existing UI should continue showing something equivalent to:
+
+    Ավարտված · 3/10 (30%)
+    Տեսնել արդյունքը
+
+Therefore:
+
+LESSON = what the student still needs/can do.
+ԻՄ ԹԵՍՏԵՐԸ = completed quiz history/results.
+
+════════════════════════════════════════════
+PART 2 — RE-RELEASE OF THE SAME QUIZ
+════════════════════════════════════════════
+
+This is CRITICAL.
+
+Completing Quiz X once must NOT permanently make Quiz X disappear forever.
+
+Required lifecycle:
+
+Teacher releases Quiz X
+        ↓
+Student sees "Սկսել թեստը"
+        ↓
+Student completes it
+        ↓
+Quiz X disappears from the lesson's actionable quiz list
+        ↓
+Result remains in "Իմ թեստերը"
+        ↓
+Teacher explicitly releases/assigns Quiz X again
+        ↓
+Quiz X MUST appear under the lesson again
+        ↓
+Student again sees "Սկսել թեստը"
+        ↓
+A new attempt can be completed.
+
+Historical attempts/results must remain intact.
+
+Do NOT delete or overwrite Attempt 1 when Attempt 2 is created.
+
+Do NOT duplicate the Quiz record merely to re-release it.
+
+Same Quiz ID may have multiple historical attempts/releases if the
+existing architecture supports that.
+
+Audit the current assignment/attempt model and implement this using the
+existing authoritative model wherever possible.
+
+If the current schema cannot distinguish:
+
+    "this quiz was completed sometime in the past"
+
+from
+
+    "this current teacher release has been completed"
+
+STOP before schema changes and report the exact limitation and the
+smallest schema/model change required.
+
+Do not silently implement a workaround based only on latest attempt.
+
+════════════════════════════════════════════
+PART 3 — DO NOT BREAK CURRENT BEHAVIOR
+════════════════════════════════════════════
+
+Preserve all current Phase 1.12 behavior:
+
+✓ Assigned active lesson remains visible to student.
+✓ Lesson "Սկսել դասը" behavior remains unchanged.
+✓ Linked quizzes remain tied to the same lesson.
+✓ Unreleased quiz cannot be taken.
+✓ Released quiz can be taken.
+✓ Release remains student-specific where currently supported.
+✓ Completing a quiz still writes its normal attempt/result.
+✓ "Իմ թեստերը" continues showing completed results.
+✓ "Տեսնել արդյունքը" continues opening the existing result view.
+✓ No fake evidence/mastery rows.
+✓ No duplicate quizzes.
+✓ No duplicate lesson nodes.
+✓ No automatic quiz release when lesson is assigned.
+✓ Existing scoring/mastery logic remains untouched.
+
+════════════════════════════════════════════
+PART 4 — IMPORTANT EMPTY-STATE RULE
+════════════════════════════════════════════
+
+If a lesson has linked quizzes but ALL of them have already been completed
+for their current releases, do not leave an ugly empty quiz container.
+
+Either hide the linked-tests subsection entirely or use the existing UI
+pattern that best fits the page.
+
+Do NOT remove the lesson itself.
+
+════════════════════════════════════════════
+PART 5 — ACCEPTANCE TESTS
+════════════════════════════════════════════
+
+Add focused regression tests for at least these cases:
+
+Q1.
+Linked + unreleased quiz
+→ appears under lesson
+→ "Դեռ հասանելի չէ"
+→ no start button.
+
+Q2.
+Linked + released + not completed
+→ appears under lesson
+→ "Սկսել թեստը".
+
+Q3.
+Student completes current released quiz
+→ quiz no longer appears under lesson actionable list.
+
+Q4.
+Same completed quiz still appears in "Իմ թեստերը"
+→ result/score preserved.
+
+Q5.
+Completed quiz cannot be started again merely by revisiting the lesson.
+
+Q6.
+Teacher explicitly releases/assigns the SAME quiz again
+→ quiz reappears under lesson
+→ "Սկսել թեստը" becomes available again.
+
+Q7.
+Previous attempt/result remains preserved after re-release.
+
+Q8.
+Completing the second release creates/preserves a separate attempt/history
+according to the existing architecture.
+
+Q9.
+Another linked quiz that has not been completed is unaffected.
+
+Q10.
+One student's completion must not hide the quiz for another student.
+
+Q11.
+No duplicate Quiz rows are created.
+
+Q12.
+No duplicate lesson nodes/exercises/evidence are created.
+
+Run the existing Phase 1.12 regression suite as well.
+
+════════════════════════════════════════════
+PART 6 — FINAL REPORT
+════════════════════════════════════════════
+
+After implementation report:
+
+A. Root cause of why completed quizzes still showed "Սկսել թեստը".
+
+B. Exact DB fields/tables used to distinguish:
+   - released,
+   - available,
+   - completed,
+   - re-released.
+
+C. Exact backend changes.
+
+D. Exact frontend changes.
+
+E. How re-release of the SAME quiz works.
+
+F. Evidence that historical attempts/results are preserved.
+
+G. Acceptance-test results.
+
+H. Existing Phase 1.12 regression-test results.
+
+I. TypeScript/build result.
+
+J. Explicit PASS/FAIL for this final state:
+
+Lesson:
+    unreleased quiz → "Դեռ հասանելի չէ"
+    released quiz → "Սկսել թեստը"
+    completed current release → removed
+
+Իմ թեստերը:
+    completed quiz → result/history remains
+
+Teacher re-releases same quiz:
+    quiz becomes actionable again
+    old result remains preserved
+
+Do not make unrelated changes.
