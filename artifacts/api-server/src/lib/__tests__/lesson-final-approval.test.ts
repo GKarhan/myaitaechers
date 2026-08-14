@@ -1,17 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// P1.7 — Final Lesson Approval Validation — deterministic tests
+// P1.7 — Final Lesson Approval Validation — deterministic tests (zero-pollution)
 // Run with: pnpm --filter @workspace/api-server exec tsx src/lib/__tests__/lesson-final-approval.test.ts
 // No external test framework — uses node:assert/strict + exit code.
-// Live DB: Lesson 105 is the canonical fixture (9 nodes approved + Phase 2 complete; node 1348 intentionally deleted).
+// Creates a fully dynamic lesson per run; cleans up in a top-level finally.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
-import { db, lessonsTable, lessonNodesTable, lessonExercisesTable } from "@workspace/db";
+import {
+  db,
+  lessonsTable,
+  lessonNodesTable,
+  lessonExercisesTable,
+} from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { validateLessonForFinalApproval } from "../lesson-final-approval.js";
+import { makeRunId, runTag } from "./helpers/run-id.js";
 
-const LESSON_ID = 105;
+// ── Run ID ─────────────────────────────────────────────────────────────────────
+const RUN_ID = makeRunId();
 
 const BEARER = jwt.sign(
   { userId: 1, role: "teacher" },
@@ -33,10 +40,9 @@ async function apiPost(path: string) {
   return { status: r.status, body: (await r.json()) as Record<string, unknown> };
 }
 
-// ── snapshot helpers ──────────────────────────────────────────────────────────
-
-type NodeRow = Awaited<ReturnType<typeof db.select<typeof lessonNodesTable>>>[number];
-type ExRow = Awaited<ReturnType<typeof db.select<typeof lessonExercisesTable>>>[number];
+// ── Types ─────────────────────────────────────────────────────────────────────
+type NodeRow = typeof lessonNodesTable.$inferSelect;
+type ExRow = typeof lessonExercisesTable.$inferSelect;
 
 async function getNode(nodeId: number): Promise<NodeRow | undefined> {
   const [n] = await db.select().from(lessonNodesTable).where(eq(lessonNodesTable.id, nodeId)).limit(1);
@@ -58,8 +64,75 @@ async function restoreExercise(snap: ExRow): Promise<void> {
   await db.update(lessonExercisesTable).set(snap as any).where(eq(lessonExercisesTable.id, snap.id));
 }
 
-// ── find test fixtures ────────────────────────────────────────────────────────
+// ── Dynamic fixture setup ──────────────────────────────────────────────────────
 
+// We need a lesson with a valid subjectId. Use subjectId=1 (always exists).
+const SUBJECT_ID = 1;
+
+// Create the dynamic lesson
+const [dynLesson] = await db.insert(lessonsTable).values({
+  title: runTag(RUN_ID, "approval_lesson"),
+  subjectId: SUBJECT_ID,
+  teacherId: 1,
+  status: "draft",
+  mappingMetadata: { sourceExerciseCount: 2 },
+}).returning({ id: lessonsTable.id });
+
+const LESSON_ID = dynLesson.id;
+
+// Create 2 approved nodes with all required Phase 2 fields
+const insertedNodes = await db.insert(lessonNodesTable).values([
+  {
+    lessonId: LESSON_ID,
+    sequence: 1,
+    title: runTag(RUN_ID, "node_1"),
+    status: "approved",
+    learningObjective: "Understand concept A",
+    theoryContent: "Theory content for node 1",
+    childFriendlyExplanation: "Simple explanation for kids",
+    commonMisconception: "Common wrong idea",
+    basicExamples: [{ example: "Example 1" }],
+    nonExamples: [{ nonExample: "Non-example 1" }],
+    createdBy: "teacher",
+  },
+  {
+    lessonId: LESSON_ID,
+    sequence: 2,
+    title: runTag(RUN_ID, "node_2"),
+    status: "approved",
+    learningObjective: "Understand concept B",
+    theoryContent: "Theory content for node 2",
+    childFriendlyExplanation: "Simple explanation for kids 2",
+    commonMisconception: "Another common wrong idea",
+    basicExamples: [{ example: "Example 2" }],
+    nonExamples: [{ nonExample: "Non-example 2" }],
+    createdBy: "teacher",
+  },
+]).returning({ id: lessonNodesTable.id });
+
+// Create 2 approved textbook exercises
+await db.insert(lessonExercisesTable).values([
+  {
+    lessonId: LESSON_ID,
+    exerciseId: `EX-${RUN_ID}-1`,
+    exerciseTextVerbatim: "Exercise text 1",
+    sourceType: "textbook",
+    sourceBlockIndex: 0,
+    status: "approved",
+    sequence: 1,
+  },
+  {
+    lessonId: LESSON_ID,
+    exerciseId: `EX-${RUN_ID}-2`,
+    exerciseTextVerbatim: "Exercise text 2",
+    sourceType: "textbook",
+    sourceBlockIndex: 1,
+    status: "approved",
+    sequence: 2,
+  },
+]);
+
+// Fetch created fixtures
 const allNodes = await db.select().from(lessonNodesTable)
   .where(and(eq(lessonNodesTable.lessonId, LESSON_ID), eq(lessonNodesTable.status, "approved")));
 const allExercises = await db.select().from(lessonExercisesTable)
@@ -69,8 +142,8 @@ const sourceExercises = allExercises.filter((e) => e.sourceType === "textbook");
 const NODE = allNodes[0];
 const EX = sourceExercises[0];
 
-if (!NODE) throw new Error("No approved node for lesson 105 — cannot run tests");
-if (!EX) throw new Error("No textbook exercise for lesson 105 — cannot run tests");
+if (!NODE) throw new Error(`No approved node for lesson ${LESSON_ID} — cannot run tests`);
+if (!EX) throw new Error(`No textbook exercise for lesson ${LESSON_ID} — cannot run tests`);
 
 // ── A: Learning Objective gate ────────────────────────────────────────────────
 
@@ -139,7 +212,7 @@ it("D1: inflated sourceExerciseCount in meta → LOST_SOURCE_EXERCISES error", a
     assert.ok((err?.count ?? 0) > 0, "Lost count must be > 0");
   } finally {
     await db.update(lessonsTable)
-      .set({ mappingMetadata: { ...origMeta, sourceExerciseCount: 15 } })
+      .set({ mappingMetadata: origMeta })
       .where(eq(lessonsTable.id, LESSON_ID));
   }
 });
@@ -218,7 +291,7 @@ it("G2: MISSING_PHASE2 blocks final-approve → 422", async () => {
 
 // ── P: Positive path ─────────────────────────────────────────────────────────
 
-it("P1: lesson 105 clean → approved: true (200)", async () => {
+it("P1: dynamic lesson clean → approved: true (200)", async () => {
   const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
   assert.equal(status, 200, `Expected 200, got ${status} body: ${JSON.stringify(body)}`);
   assert.equal(body.approved, true);
@@ -232,7 +305,7 @@ it("P1: lesson 105 clean → approved: true (200)", async () => {
   assert.equal(lesson?.status, "approved", "DB lesson.status must be 'approved'");
 });
 
-it("P2: GET /lessons/105 returns authoringStatus: 'approved'", async () => {
+it("P2: GET /lessons/:id returns authoringStatus: 'approved'", async () => {
   const r = await fetch(`${BASE}/lessons/${LESSON_ID}`, {
     headers: { Authorization: `Bearer ${BEARER}` },
   });
@@ -246,7 +319,6 @@ it("I1: node update while approved + everApproved=true → lesson STAYS approved
   // POST-P1.12 AUTHORING SIMPLIFICATION:
   // Once a lesson has ever been approved (everApproved=true), ordinary teacher
   // edits must NOT revert the lesson to needs_review.
-  // Lesson 105 has everApproved=true (set by final-approve above).
 
   // Ensure lesson is approved first
   await db.update(lessonsTable).set({ status: "approved" } as never).where(eq(lessonsTable.id, LESSON_ID));
@@ -258,7 +330,7 @@ it("I1: node update while approved + everApproved=true → lesson STAYS approved
   const r = await fetch(`${BASE}/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, {
     method: "POST",
     headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ title: "P1.7 invalidation test — new semantics" }),
+    body: JSON.stringify({ title: runTag(RUN_ID, "P1.7 invalidation test — new semantics") }),
   });
   assert.equal(r.status, 200, "Node update must succeed");
 
@@ -282,7 +354,7 @@ it("I2: invalidateLessonApproval DID revert when everApproved=false (backward-co
     const r = await fetch(`${BASE}/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, {
       method: "POST",
       headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "P1.7 invalidation test — everApproved=false path" }),
+      body: JSON.stringify({ title: runTag(RUN_ID, "P1.7 invalidation test — everApproved=false path") }),
     });
     assert.equal(r.status, 200, "Node update must succeed");
 
@@ -291,19 +363,12 @@ it("I2: invalidateLessonApproval DID revert when everApproved=false (backward-co
     assert.equal(lesson?.status, "needs_review", "Lesson must revert when everApproved=false");
   } finally {
     await restoreNode(snap!);
-    // Restore everApproved=true and re-approve for subsequent suite cleanliness
+    // Restore everApproved=true so final cleanup state is consistent
     await db.update(lessonsTable)
       .set({ everApproved: true } as never)
       .where(eq(lessonsTable.id, LESSON_ID));
   }
 });
-
-// Restore lesson to "active" so other Phase 1.12 test suites can use lesson 105
-// without needing to re-approve it. This is the canonical post-test state for
-// the shared fixture. The approval gate is still tested (P1, I1, I2 above).
-async function cleanup() {
-  await db.update(lessonsTable).set({ status: "active" } as any).where(eq(lessonsTable.id, LESSON_ID));
-}
 
 // ── Runner ─────────────────────────────────────────────────────────────────────
 
@@ -311,21 +376,25 @@ let passed = 0;
 let failed = 0;
 
 const total = tests.length;
-console.log(`\n  lesson-final-approval — ${total} test cases\n`);
+console.log(`\n  lesson-final-approval [${RUN_ID}] — ${total} test cases\n`);
 
-for (const [name, fn] of tests) {
-  try {
-    await fn();
-    console.log(`  ✓ ${name}`);
-    passed++;
-  } catch (err) {
-    console.error(`  ✗ ${name}`);
-    console.error(`    ${(err as Error).message}`);
-    failed++;
+try {
+  for (const [name, fn] of tests) {
+    try {
+      await fn();
+      console.log(`  ✓ ${name}`);
+      passed++;
+    } catch (err) {
+      console.error(`  ✗ ${name}`);
+      console.error(`    ${(err as Error).message}`);
+      failed++;
+    }
   }
+} finally {
+  // Cascade delete removes nodes and exercises automatically (FK onDelete: "cascade")
+  await db.delete(lessonsTable).where(eq(lessonsTable.id, LESSON_ID));
+  console.log(`  [cleanup] Dynamic lesson ${LESSON_ID} (${RUN_ID}) deleted.`);
 }
-
-await cleanup();
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

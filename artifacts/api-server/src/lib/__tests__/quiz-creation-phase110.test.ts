@@ -4,12 +4,27 @@
  * Uses real DB + real API. All test fixtures are cleaned up in finally blocks.
  *
  * Runner: pnpm --filter @workspace/api-server run test:phase110-quiz-creation
+ *
+ * AI tests are gated behind RUN_AI_TESTS=1 env var because they call the
+ * real OpenAI API and may be slow/costly. Validation tests always run.
  */
 
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
-import { db, quizzesTable, quizLessonLinksTable, lessonsTable, lessonNodesTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import {
+  db,
+  quizzesTable,
+  quizLessonLinksTable,
+  lessonsTable,
+  lessonNodesTable,
+  lessonTopicsTable,
+  lessonExercisesTable,
+} from "@workspace/db";
+import { eq, and, inArray, like } from "drizzle-orm";
+import { makeRunId, runTag } from "./helpers/run-id.js";
+
+// ── Run ID (unique per invocation — used to tag all fixtures) ──────────────────
+const RUN_ID = makeRunId();
 
 // ── harness ────────────────────────────────────────────────────────────────────
 let passed = 0, failed = 0;
@@ -44,7 +59,7 @@ async function api(method: string, path: string, body?: unknown, token = TEACHER
 // ── DB helpers ─────────────────────────────────────────────────────────────────
 async function makeTestLesson(): Promise<{ lessonId: number; nodeId: number }> {
   const [l] = await db.insert(lessonsTable).values({
-    title: `_p110_test_${Date.now()}`,
+    title: runTag(RUN_ID, "p110_lesson"),
     subjectId: 18,
     status: "draft",
   }).returning({ id: lessonsTable.id });
@@ -85,11 +100,42 @@ function simulateTypeSwitch(
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 console.log("\nPhase 1.10 — Test Creation UI: Backend Validation + Persistence\n");
+console.log(`[run-id] ${RUN_ID}`);
+
+// ── Pre-cleanup: remove stale fixtures from prior crashed runs ─────────────────
+try {
+  const prefix = `${RUN_ID}_`;
+  const staleQuizzes = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(like(quizzesTable.title, `${prefix}%`));
+  if (staleQuizzes.length > 0) {
+    await db.delete(quizzesTable).where(inArray(quizzesTable.id, staleQuizzes.map(q => q.id)));
+    console.log(`[pre-cleanup] Removed ${staleQuizzes.length} stale quiz(zes) from prior run`);
+  }
+  const staleLessons = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
+  if (staleLessons.length > 0) {
+    for (const l of staleLessons) {
+      await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, l.id));
+    }
+    await db.delete(lessonsTable).where(inArray(lessonsTable.id, staleLessons.map(l => l.id)));
+    console.log(`[pre-cleanup] Removed ${staleLessons.length} stale lesson(s) from prior run`);
+  }
+} catch {
+  // pre-cleanup failure must not abort the test suite
+}
 
 // ─── Group A: Lesson Test validation ──────────────────────────────────────────
-console.log("  Lesson Test validation");
+console.log("\n  Lesson Test validation");
 
 await test("T01: lesson type + one Lesson accepted (no nodeIds = whole Lesson)", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const { lessonId } = await makeTestLesson();
   let quizId: number | undefined;
   try {
@@ -129,6 +175,10 @@ await test("T02: lesson type + two Lessons rejected (backend 400)", async () => 
 });
 
 await test("T03: lesson type + valid nodeIds from that Lesson accepted", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const { lessonId, nodeId } = await makeTestLesson();
   let quizId: number | undefined;
   try {
@@ -170,6 +220,10 @@ await test("T04: lesson type + nodeId from a different Lesson rejected", async (
 });
 
 await test("T05: lesson type + no nodeIds = whole Lesson (lessonIds path)", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const { lessonId } = await makeTestLesson();
   let quizId: number | undefined;
   try {
@@ -191,6 +245,10 @@ await test("T05: lesson type + no nodeIds = whole Lesson (lessonIds path)", asyn
 console.log("\n  Summary Test validation");
 
 await test("T06: summary type + two Lessons accepted", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const a = await makeTestLesson();
   const b = await makeTestLesson();
   let quizId: number | undefined;
@@ -268,6 +326,10 @@ await test("T10: type switch summary→lesson keeps only first lesson, clears no
 console.log("\n  Persistence verification");
 
 await test("T11: creation writes correct quizType to quizzes table", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const { lessonId } = await makeTestLesson();
   let quizId: number | undefined;
   try {
@@ -285,6 +347,10 @@ await test("T11: creation writes correct quizType to quizzes table", async () =>
 });
 
 await test("T12: creation writes correct lesson links to quiz_lesson_links", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const a = await makeTestLesson();
   const b = await makeTestLesson();
   let quizId: number | undefined;
@@ -306,6 +372,10 @@ await test("T12: creation writes correct lesson links to quiz_lesson_links", asy
 });
 
 await test("T13: one Quiz ID appears in both lesson view and global query", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const { lessonId } = await makeTestLesson();
   let quizId: number | undefined;
   try {
@@ -334,6 +404,10 @@ await test("T13: one Quiz ID appears in both lesson view and global query", asyn
 });
 
 await test("T14: summary creates exactly ONE Quiz record even with two lesson links", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   const a = await makeTestLesson();
   const b = await makeTestLesson();
   let quizId: number | undefined;
@@ -364,6 +438,10 @@ await test("T14: summary creates exactly ONE Quiz record even with two lesson li
 });
 
 await test("T15: question-count suggestion uses correct leaf count per scope", async () => {
+  if (!process.env.RUN_AI_TESTS) {
+    console.log("    [skip] AI quiz creation (set RUN_AI_TESTS=1 to enable)");
+    return;
+  }
   // Verify that the backend resolves ALL nodes for a lesson (whole-lesson scope)
   // and that a node-scoped quiz stores only the selected nodes.
   const { lessonId, nodeId } = await makeTestLesson();
@@ -408,11 +486,6 @@ await test("T15: question-count suggestion uses correct leaf count per scope", a
 // ─── Lesson 105 data integrity ─────────────────────────────────────────────────
 console.log("\n  Lesson 105 data integrity post-test");
 
-import {
-  lessonTopicsTable,
-  lessonExercisesTable,
-} from "@workspace/db";
-
 await test("TI: Lesson 105 mapping state unchanged by Phase 1.10", async () => {
   // This phase does not touch Lesson 105. We only verify the invariants that
   // Phase 1.10 is responsible for:
@@ -447,8 +520,36 @@ await test("TI: Lesson 105 mapping state unchanged by Phase 1.10", async () => {
     .where(eq(lessonExercisesTable.lessonId, 105));
   assert.equal(exercises.length, 15, `Expected 15 exercises, got ${exercises.length}`);
 
-  console.log(`  Lesson 105 status=${lesson.status}, topics=${topics.length}, nodes=${nodes.length}, exercises=${exercises.length}`);
+  console.log(`    Lesson 105 status=${lesson.status}, topics=${topics.length}, nodes=${nodes.length}, exercises=${exercises.length}`);
 });
+
+// ── Post-pollution gate ────────────────────────────────────────────────────────
+// Verify that no quiz or lesson records tagged with this RUN_ID remain.
+console.log("\n[post-pollution gate]");
+{
+  const prefix = `${RUN_ID}_`;
+  const remainingQuizzes = await db
+    .select({ id: quizzesTable.id, title: quizzesTable.title })
+    .from(quizzesTable)
+    .where(like(quizzesTable.title, `${prefix}%`));
+  const remainingLessons = await db
+    .select({ id: lessonsTable.id, title: lessonsTable.title })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
+
+  if (remainingQuizzes.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingQuizzes.length} quiz(zes) not cleaned up:`, remainingQuizzes.map(q => q.id));
+    failed++;
+  } else {
+    console.log("  ✓ No quiz pollution");
+  }
+  if (remainingLessons.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingLessons.length} lesson(s) not cleaned up:`, remainingLessons.map(l => l.id));
+    failed++;
+  } else {
+    console.log("  ✓ No lesson pollution");
+  }
+}
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${passed + failed} tests run: ${passed} passed, ${failed} failed`);

@@ -28,3 +28,4 @@
 - [API client React stale declarations](api-client-react-stale-decl.md) — lib/api-client-react uses composite:true + emitDeclarationOnly; myaiteacher reads dist/*.d.ts; after adding hooks/types to api.ts or api.schemas.ts, run `cd lib/api-client-react && pnpm exec tsc --build` before typechecking myaiteacher.
 - [Phase 1.1+1.2 teacher CRUD](phase12-teacher-crud.md) — topic CRUD + reorder + node reorder routes; frontend uses SortableTopicItem + renderNodeCard pattern; api.ts needs manual imports when new schema types are added.
 - [Armenian "yev" connector codepoint](armenian-yev-connector.md) — Armenian "and" is U+0587 (single char), not Latin "yev"; COMPOUND_CONNECTORS already uses \u0587; test LOs must use \u0587 not "ev".
+- [Test isolation infrastructure](test-isolation-infra.md) — heliumdb_test + safety gate + fixture factory + S1–S7 safety tests; all 10 suites migrated; pg added to api-server devDeps; runId pattern for HTTP tests.

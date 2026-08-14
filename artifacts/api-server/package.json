@@ -21,7 +21,11 @@
     "test:phase111-kt-init": "tsx src/lib/__tests__/kt-initialization-phase111.test.ts",
     "test:post-p112-authoring": "tsx src/lib/__tests__/post-phase112-authoring-simplification.test.ts",
     "test:phase113-e2e": "tsx src/lib/__tests__/phase113-e2e-lifecycle.test.ts",
-    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts && tsx src/lib/__tests__/coverage-validator.test.ts && tsx src/lib/__tests__/lesson-final-approval.test.ts && tsx src/lib/__tests__/sequential-deps-phase18.test.ts && tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts && tsx src/lib/__tests__/quiz-creation-phase110.test.ts && tsx src/lib/__tests__/kt-initialization-phase111.test.ts && tsx src/lib/__tests__/post-phase112-authoring-simplification.test.ts && tsx src/lib/__tests__/phase113-e2e-lifecycle.test.ts"
+    "test:all": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts && tsx src/lib/__tests__/coverage-validator.test.ts && tsx src/lib/__tests__/lesson-final-approval.test.ts && tsx src/lib/__tests__/sequential-deps-phase18.test.ts && tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts && tsx src/lib/__tests__/quiz-creation-phase110.test.ts && tsx src/lib/__tests__/kt-initialization-phase111.test.ts && tsx src/lib/__tests__/post-phase112-authoring-simplification.test.ts && tsx src/lib/__tests__/phase113-e2e-lifecycle.test.ts",
+    "test:fast": "tsx src/mapping/__tests__/mapTextParser.test.ts && tsx src/mapping/__tests__/mapTextValidator.test.ts && tsx src/mapping/__tests__/mapTextTranslations.test.ts && tsx src/lib/__tests__/coverage-validator.test.ts && tsx src/lib/__tests__/activity-rescue.test.ts && tsx src/lib/__tests__/activity-validator.test.ts && tsx src/lib/__tests__/lo-validation.test.ts && tsx src/lib/__tests__/granularity-heuristics.test.ts",
+    "test:integration": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase12-teacher-crud.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/lib/__tests__/sequential-deps-phase18.test.ts && tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts && tsx src/lib/__tests__/kt-initialization-phase111.test.ts && tsx src/lib/__tests__/lesson-final-approval.test.ts && tsx src/lib/__tests__/quiz-creation-phase110.test.ts && tsx src/lib/__tests__/phase112-lesson-assignment.test.ts && tsx src/lib/__tests__/phase112-final.test.ts && tsx src/lib/__tests__/phase112-cleanup-quiz-completion.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts",
+    "test:ai-integration": "RUN_AI_TESTS=1 tsx src/lib/__tests__/post-phase112-authoring-simplification.test.ts && RUN_AI_TESTS=1 tsx src/lib/__tests__/phase2-generation.test.ts && RUN_AI_TESTS=1 tsx src/lib/__tests__/phase113-e2e-lifecycle.test.ts",
+    "test:safety": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/test-isolation-safety.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
@@ -42,6 +46,8 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
+    "@types/pg": "^8.20.0",
+    "pg": "^8.22.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

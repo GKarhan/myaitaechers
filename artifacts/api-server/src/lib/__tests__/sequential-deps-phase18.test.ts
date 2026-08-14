@@ -10,8 +10,12 @@
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
 import { db, lessonsTable, lessonNodesTable, lessonNodeDependenciesTable } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, like } from "drizzle-orm";
 import { buildSequentialChain, refreshSequentialDependencies, type NodeRef } from "../sequential-deps.js";
+import { makeRunId, runTag } from "./helpers/run-id.js";
+
+// ── Run ID (unique per invocation — used to tag all fixtures) ──────────────────
+const RUN_ID = makeRunId();
 
 // ── test harness ──────────────────────────────────────────────────────────────
 let passed = 0;
@@ -75,7 +79,7 @@ async function nodes(lessonId: number) {
 /** Create a throwaway lesson and N nodes, return { lessonId, nodeIds[] }. */
 async function makeTestLesson(nodeCount: number): Promise<{ lessonId: number; nodeIds: number[] }> {
   const [lesson] = await db.insert(lessonsTable).values({
-    title: `_phase18_test_${Date.now()}`,
+    title: runTag(RUN_ID, "phase18"),
     subjectId: 18, // Physics 7 — same subject as lesson 105, guaranteed to exist
     status: "draft",
   }).returning({ id: lessonsTable.id });
@@ -98,6 +102,28 @@ async function makeTestLesson(nodeCount: number): Promise<{ lessonId: number; no
 async function cleanLesson(lessonId: number) {
   await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
   await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pre-cleanup: delete stale fixtures left by prior crashed runs (title LIKE 'TR_%')
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\nPhase 1.8 — Sequential Dependency Sync Tests\n");
+console.log(`[run-id] ${RUN_ID}`);
+
+try {
+  const staleLessons = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, "TR_%"));
+  if (staleLessons.length > 0) {
+    for (const l of staleLessons) {
+      await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, l.id));
+    }
+    await db.delete(lessonsTable).where(inArray(lessonsTable.id, staleLessons.map(l => l.id)));
+    console.log(`[pre-cleanup] Removed ${staleLessons.length} stale lesson(s) from prior run(s)`);
+  }
+} catch {
+  // pre-cleanup failure must not abort the test suite
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -440,6 +466,24 @@ await test("T19: after restore, Final Approval passes and lesson returns to appr
   const body = fa.json as { approved?: boolean };
   assert.equal(body.approved, true, "Final Approval did not return approved=true");
 });
+
+// ── Post-pollution gate ────────────────────────────────────────────────────────
+// Verify that no lesson records tagged with this RUN_ID remain in the DB.
+console.log("\n[post-pollution gate]");
+{
+  const prefix = `${RUN_ID}_`;
+  const remainingLessons = await db
+    .select({ id: lessonsTable.id, title: lessonsTable.title })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
+
+  if (remainingLessons.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingLessons.length} lesson(s) not cleaned up:`, remainingLessons.map(l => l.id));
+    failed++;
+  } else {
+    console.log("  ✓ No lesson pollution");
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Summary

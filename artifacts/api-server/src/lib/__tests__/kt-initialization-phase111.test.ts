@@ -12,6 +12,10 @@
  *  - Approved gate:     knowledge-tree.ts WHERE clause filters non-approved lessons
  *                       (unless student already has a KN row — historical evidence preserved)
  *  - No duplicates:     UNIQUE(user_id, lesson_node_id) in knowledge_nodes
+ *
+ * Isolation: every created entity is tagged with RUN_ID so that:
+ *   - Pre-cleanup removes stale records from prior crashed runs.
+ *   - Post-suite pollution gate verifies zero records remain.
  */
 
 import assert from "node:assert/strict";
@@ -28,9 +32,14 @@ import {
   evidenceEventsTable,
   lessonTopicsTable,
   lessonExercisesTable,
+  teachersTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, like } from "drizzle-orm";
 import { getMasteryLevelFromScores } from "../mastery";
+import { makeRunId, runTag } from "./helpers/run-id.js";
+
+// ── Run-level isolation ID ─────────────────────────────────────────────────────
+const RUN_ID = makeRunId();
 
 // ── test harness ──────────────────────────────────────────────────────────────
 let passed = 0, failed = 0;
@@ -63,15 +72,33 @@ async function ktApi(subjectId: number, token: string) {
 }
 
 // ── DB helpers ─────────────────────────────────────────────────────────────────
-// TEACHER_ID = teachers.id (not users.id) for teacher userId=161
-const TEACHER_TABLE_ID = 19; // from probe: teacher161 has teachers.id=19
+// TEACHER_TABLE_ID resolved at startup from teachers WHERE user_id = 161
+// (user 161 is the teacher used for test fixtures — real production teacher)
+const TEACHER_USER_ID  = 161;
 const SUBJECT_ID       = 18; // Physics 7
+
+let TEACHER_TABLE_ID = 0; // resolved in setupFixtures()
+
+async function resolveTeacherTableId(): Promise<number> {
+  const [row] = await db
+    .select({ id: teachersTable.id })
+    .from(teachersTable)
+    .where(eq(teachersTable.userId, TEACHER_USER_ID))
+    .limit(1);
+  if (!row) {
+    throw new Error(
+      `Could not find teachers row for user_id=${TEACHER_USER_ID}. ` +
+      `Ensure the teacher exists before running Phase 1.11 tests.`,
+    );
+  }
+  return row.id;
+}
 
 async function makeTestUser(tag: string): Promise<number> {
   const [u] = await db.insert(usersTable).values({
-    username:     `_p111_${tag}_${Date.now()}`,
+    username:     runTag(RUN_ID, `kt_user_${tag}`),
     passwordHash: "dummy-hash",
-    fullName:     `P111 Test ${tag}`,
+    fullName:     `P111 Test ${tag} ${RUN_ID}`,
     role:         "student",
   }).returning({ id: usersTable.id });
   return u.id;
@@ -79,7 +106,7 @@ async function makeTestUser(tag: string): Promise<number> {
 
 async function makeTestClass(): Promise<number> {
   const [c] = await db.insert(classesTable).values({
-    name:      `_p111_class_${Date.now()}`,
+    name:      runTag(RUN_ID, "kt_class"),
     grade:     "7",
     teacherId: TEACHER_TABLE_ID,
   }).returning({ id: classesTable.id });
@@ -89,9 +116,9 @@ async function makeTestClass(): Promise<number> {
 async function makeTestCourse(classId: number): Promise<number> {
   const [c] = await db.insert(coursesTable).values({
     classId,
-    teacherId:   161,
+    teacherId:   TEACHER_USER_ID,
     subjectId:   SUBJECT_ID,
-    name:        `_p111_course_${Date.now()}`,
+    name:        runTag(RUN_ID, `kt_course_${Date.now()}`),
     description: "",
   }).returning({ id: coursesTable.id });
   return c.id;
@@ -99,7 +126,7 @@ async function makeTestCourse(classId: number): Promise<number> {
 
 async function makeTestLesson(courseId: number, status: string): Promise<{ lessonId: number; nodeId: number }> {
   const [l] = await db.insert(lessonsTable).values({
-    title:     `_p111_lesson_${status}_${Date.now()}`,
+    title:     runTag(RUN_ID, `kt_lesson_${status}`),
     subjectId: SUBJECT_ID,
     courseId,
     status,
@@ -107,7 +134,7 @@ async function makeTestLesson(courseId: number, status: string): Promise<{ lesso
   const [n] = await db.insert(lessonNodesTable).values({
     lessonId:  l.id,
     sequence:  1,
-    title:     `_p111_node_${status}`,
+    title:     runTag(RUN_ID, `kt_node_${status}`),
     createdBy: "teacher",
   }).returning({ id: lessonNodesTable.id });
   return { lessonId: l.id, nodeId: n.id };
@@ -115,7 +142,10 @@ async function makeTestLesson(courseId: number, status: string): Promise<{ lesso
 
 async function addExtraNode(lessonId: number, seq: number): Promise<number> {
   const [n] = await db.insert(lessonNodesTable).values({
-    lessonId, sequence: seq, title: `_p111_extra_${seq}`, createdBy: "teacher",
+    lessonId,
+    sequence:  seq,
+    title:     runTag(RUN_ID, `kt_extra_node_${seq}`),
+    createdBy: "teacher",
   }).returning({ id: lessonNodesTable.id });
   return n.id;
 }
@@ -162,13 +192,96 @@ async function cleanCourse(courseId: number) {
 }
 
 async function cleanLesson(lessonId: number) {
-  await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+  // Delete in FK dependency order for this lesson
+  const nodeRows = await db
+    .select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.lessonId, lessonId));
+  const nodeIds = nodeRows.map((r) => r.id);
+  if (nodeIds.length > 0) {
+    // knowledge_nodes → evidence_events cascade, but delete KN rows first for safety
+    await db.delete(knowledgeNodesTable).where(inArray(knowledgeNodesTable.lessonNodeId, nodeIds));
+    await db.delete(lessonNodesTable).where(inArray(lessonNodesTable.id, nodeIds));
+  }
   await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId));
 }
 
 async function cleanKnRow(knId: number) {
   // CASCADE on evidence_events.topic_id → deleting KN row removes evidence too
   await db.delete(knowledgeNodesTable).where(eq(knowledgeNodesTable.id, knId));
+}
+
+// ── Pre-cleanup: remove stale entities from prior crashed runs ─────────────────
+async function preCleanup(): Promise<void> {
+  const prefix = `${RUN_ID}_%`;
+  try {
+    // Find stale lessons tagged with this RUN_ID
+    const staleUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(like(usersTable.username, prefix));
+    if (staleUsers.length > 0) {
+      console.log(`  [pre-cleanup] removing ${staleUsers.length} stale user(s) from prior crash`);
+      await db.delete(usersTable).where(inArray(usersTable.id, staleUsers.map((r) => r.id)));
+    }
+
+    const staleLessons = await db
+      .select({ id: lessonsTable.id })
+      .from(lessonsTable)
+      .where(like(lessonsTable.title, prefix));
+    if (staleLessons.length > 0) {
+      console.log(`  [pre-cleanup] removing ${staleLessons.length} stale lesson(s) from prior crash`);
+      for (const l of staleLessons) {
+        await cleanLesson(l.id);
+      }
+    }
+
+    const staleClasses = await db
+      .select({ id: classesTable.id })
+      .from(classesTable)
+      .where(like(classesTable.name, prefix));
+    if (staleClasses.length > 0) {
+      console.log(`  [pre-cleanup] removing ${staleClasses.length} stale class(es) from prior crash`);
+      await db.delete(classesTable).where(inArray(classesTable.id, staleClasses.map((r) => r.id)));
+    }
+  } catch (err) {
+    // Pre-cleanup failures must never abort the test suite
+    console.warn(`  [pre-cleanup] non-fatal error:`, err);
+  }
+}
+
+// ── Post-suite pollution gate ──────────────────────────────────────────────────
+async function assertNoPollution(): Promise<void> {
+  const prefix = `${RUN_ID}_%`;
+
+  const leakedUsers = await db
+    .select({ id: usersTable.id, username: usersTable.username })
+    .from(usersTable)
+    .where(like(usersTable.username, prefix));
+
+  const leakedLessons = await db
+    .select({ id: lessonsTable.id, title: lessonsTable.title })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, prefix));
+
+  const leakedClasses = await db
+    .select({ id: classesTable.id, name: classesTable.name })
+    .from(classesTable)
+    .where(like(classesTable.name, prefix));
+
+  const leaked: string[] = [
+    ...leakedUsers.map((r) => `users.id=${r.id} username=${r.username}`),
+    ...leakedLessons.map((r) => `lessons.id=${r.id} title=${r.title}`),
+    ...leakedClasses.map((r) => `classes.id=${r.id} name=${r.name}`),
+  ];
+
+  if (leaked.length > 0) {
+    throw new Error(
+      `POST_POLLUTION_GATE FAIL: ${leaked.length} record(s) with RUN_ID prefix leaked after cleanup:\n` +
+      leaked.map((l) => `  ${l}`).join("\n"),
+    );
+  }
+  console.log("  [pollution-gate] ✓ zero records with RUN_ID prefix remain");
 }
 
 // ── Shared fixture state ───────────────────────────────────────────────────────
@@ -179,6 +292,9 @@ let studentAId = 0, studentBId = 0;
 let studentAToken = "", studentBToken = "";
 
 async function setupFixtures() {
+  // Resolve teachers.id dynamically — never hardcode
+  TEACHER_TABLE_ID = await resolveTeacherTableId();
+
   classId  = await makeTestClass();
   courseId = await makeTestCourse(classId);
   const approved = await makeTestLesson(courseId, "approved");
@@ -196,20 +312,38 @@ async function setupFixtures() {
 }
 
 async function teardownFixtures() {
-  // Class cascade deletes: class_students, course, and courses cascade lessons
-  // But we explicitly clean in order to be safe
-  await cleanLesson(approvedLessonId);
-  await cleanLesson(draftLessonId);
-  await cleanCourse(courseId);
-  await cleanClass(classId);  // also cascades class_students
-  await cleanUser(studentAId);
-  await cleanUser(studentBId);
+  // Delete in FK-safe order:
+  // knowledge_nodes → evidence_events (CASCADE), lesson_sessions, lessons, class_students, classes, users
+  try {
+    // Remove any lingering knowledge_nodes for our test students
+    if (studentAId) {
+      await db.delete(knowledgeNodesTable).where(eq(knowledgeNodesTable.userId, studentAId));
+    }
+    if (studentBId) {
+      await db.delete(knowledgeNodesTable).where(eq(knowledgeNodesTable.userId, studentBId));
+    }
+
+    // Lessons (nodes inside are cleaned via cleanLesson's per-nodeId cleanup)
+    if (approvedLessonId) await cleanLesson(approvedLessonId);
+    if (draftLessonId)    await cleanLesson(draftLessonId);
+
+    if (courseId) await cleanCourse(courseId);
+    if (classId)  await cleanClass(classId);  // also cascades class_students
+    if (studentAId) await cleanUser(studentAId);
+    if (studentBId) await cleanUser(studentBId);
+  } catch (err) {
+    console.error("  [teardown] error during cleanup:", err);
+  }
 }
 
 // ── Run tests ─────────────────────────────────────────────────────────────────
 console.log("\nPhase 1.11 — Knowledge Tree Initialization\n");
+console.log(`  RUN_ID = ${RUN_ID}`);
+console.log("  Running pre-cleanup for stale entities from prior crashes...");
+await preCleanup();
 console.log("  Setting up shared fixtures...");
 await setupFixtures();
+console.log(`  TEACHER_TABLE_ID=${TEACHER_TABLE_ID} (resolved from user_id=${TEACHER_USER_ID})`);
 console.log(`  classId=${classId}  courseId=${courseId}`);
 console.log(`  approved: lessonId=${approvedLessonId} nodeId=${approvedNodeId}`);
 console.log(`  draft:    lessonId=${draftLessonId}    nodeId=${draftNodeId}`);
@@ -280,6 +414,7 @@ try {
   console.log("\n  Lesson 105 direct verification");
 
   await test("T06: all Lesson 105 nodes exist and have zero evidence for test students (not_started)", async () => {
+    // READ-ONLY real-data verification — this test does NOT modify lesson 105
     // Lesson 105 may have had teacher edits outside Phase 1.11.
     // Verify whatever nodes exist all resolve to not_started for zero-evidence students.
     const nodes = await db.select({ id: lessonNodesTable.id, title: lessonNodesTable.title })
@@ -333,6 +468,7 @@ try {
   });
 
   await test("T08: studentB (no evidence) remains not_started while studentA is mastered", async () => {
+    // READ-ONLY real-data verification — studentB isolation check
     // studentA has KN row (from T07). Check studentB via KT API.
     const { json } = await ktApi(SUBJECT_ID, studentBToken);
     const topicB = json.topics.find((t) => t.lessonNodeId === approvedNodeId);
@@ -492,8 +628,7 @@ try {
 console.log("\n  Lesson 105 data integrity post-test");
 
 await test("TI: Phase 1.11 did not modify Lesson 105 structure or create fake KN rows", async () => {
-  // Lesson 105 may have had teacher edits outside Phase 1.11 (pre-existing condition).
-  // This test verifies that Phase 1.11 itself did NOT touch lesson 105.
+  // READ-ONLY real-data verification — this test ONLY reads, never writes
   const [lesson] = await db.select({ id: lessonsTable.id, status: lessonsTable.status })
     .from(lessonsTable).where(eq(lessonsTable.id, 105));
   assert.ok(lesson, "Lesson 105 must exist");
@@ -537,6 +672,15 @@ await test("TI: Phase 1.11 did not modify Lesson 105 structure or create fake KN
   console.log(`    │  fake KN rows created by Phase 1.11: 0`);
   console.log(`    └──────────────────────────────────────────────────────────────`);
 });
+
+// ── Post-suite pollution gate ──────────────────────────────────────────────────
+console.log("\n  Post-suite pollution gate...");
+try {
+  await assertNoPollution();
+} catch (e: unknown) {
+  console.error(`  ✗ POLLUTION GATE: ${e instanceof Error ? e.message : e}`);
+  failed++;
+}
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 console.log(`\n${passed + failed} tests run: ${passed} passed, ${failed} failed`);

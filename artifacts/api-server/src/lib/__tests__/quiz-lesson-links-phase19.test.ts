@@ -9,7 +9,11 @@
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
 import { db, quizzesTable, quizLessonLinksTable, lessonsTable, lessonNodesTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, like } from "drizzle-orm";
+import { makeRunId, runTag } from "./helpers/run-id.js";
+
+// ── Run ID (unique per invocation — used to tag all fixtures) ──────────────────
+const RUN_ID = makeRunId();
 
 // ── harness ────────────────────────────────────────────────────────────────────
 let passed = 0, failed = 0;
@@ -45,7 +49,7 @@ async function api(method: string, path: string, body?: unknown, token = TEACHER
 // ── DB helpers ─────────────────────────────────────────────────────────────────
 async function makeTestLesson(): Promise<number> {
   const [l] = await db.insert(lessonsTable).values({
-    title: `_p19_test_${Date.now()}`,
+    title: runTag(RUN_ID, "p19_lesson"),
     subjectId: 18,
     status: "draft",
   }).returning({ id: lessonsTable.id });
@@ -71,7 +75,7 @@ async function insertTestQuiz(opts: {
   const [q] = await db.insert(quizzesTable).values({
     teacherId:     opts.teacherId,
     subjectId:     opts.subjectId,
-    title:         `_p19_quiz_${Date.now()}`,
+    title:         runTag(RUN_ID, "p19_quiz"),
     questionCount: 5,
     status:        "GENERATED",
     nodeIds:       [],
@@ -84,11 +88,34 @@ async function getLinks(quizId: number) {
   return db.select().from(quizLessonLinksTable).where(eq(quizLessonLinksTable.quizId, quizId));
 }
 
-// ── Real lesson 105 ────────────────────────────────────────────────────────────
-const L105 = 105;
-
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Pre-cleanup: remove stale fixtures from prior crashed runs ─────────────────
 console.log("\nPhase 1.9 — Quiz ↔ Lesson Relationship Model\n");
+console.log(`[run-id] ${RUN_ID}`);
+
+try {
+  const prefix = `${RUN_ID}_`;
+  const staleQuizzes = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(like(quizzesTable.title, `${prefix}%`));
+  if (staleQuizzes.length > 0) {
+    await db.delete(quizzesTable).where(inArray(quizzesTable.id, staleQuizzes.map(q => q.id)));
+    console.log(`[pre-cleanup] Removed ${staleQuizzes.length} stale quiz(zes) from prior run`);
+  }
+  const staleLessons = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
+  if (staleLessons.length > 0) {
+    for (const l of staleLessons) {
+      await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, l.id));
+    }
+    await db.delete(lessonsTable).where(inArray(lessonsTable.id, staleLessons.map(l => l.id)));
+    console.log(`[pre-cleanup] Removed ${staleLessons.length} stale lesson(s) from prior run`);
+  }
+} catch {
+  // pre-cleanup failure must not abort the test suite
+}
 
 // T01: Lesson Test links to exactly one lesson
 await test("T01: lesson quiz links to exactly one Lesson", async () => {
@@ -357,109 +384,33 @@ await test("T12: global quiz list does not duplicate summary quiz linked to mult
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ACCEPTANCE: Real Lesson 105
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\nReal Lesson 105 acceptance");
+// ── Post-pollution gate ────────────────────────────────────────────────────────
+// Verify that no quiz or lesson records tagged with this RUN_ID remain.
+console.log("\n[post-pollution gate]");
+{
+  const prefix = `${RUN_ID}_`;
+  const remainingQuizzes = await db
+    .select({ id: quizzesTable.id, title: quizzesTable.title })
+    .from(quizzesTable)
+    .where(like(quizzesTable.title, `${prefix}%`));
+  const remainingLessons = await db
+    .select({ id: lessonsTable.id, title: lessonsTable.title })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
 
-// Create fixture quiz for L105
-const fixtureQuiz = await insertTestQuiz({ teacherId: 161, subjectId: 18, quizType: "lesson" });
-let summaryQuizId = 0;
-
-await test("TA: Lesson Test fixture — one quiz record, one Lesson 105 relationship", async () => {
-  await api("POST", `/quizzes/${fixtureQuiz}/lessons/${L105}`);
-  const links = await getLinks(fixtureQuiz);
-  assert.equal(links.length, 1);
-  assert.equal(links[0].lessonId, L105);
-});
-
-await test("TB: Lesson 105 view lists fixture quiz with correct ID", async () => {
-  const r = await api("GET", `/lessons/${L105}/quizzes`);
-  assert.equal(r.status, 200);
-  const list = r.json as Array<{ id: number; quizType: string | null }>;
-  const q = list.find((x) => x.id === fixtureQuiz);
-  assert.ok(q, "Fixture quiz not found in Lesson 105 view");
-  assert.equal(q!.quizType, "lesson");
-});
-
-await test("TC: Summary Test — one quiz record linked to Lesson 105 and one other lesson", async () => {
-  const otherLesson = await makeTestLesson();
-  summaryQuizId = await insertTestQuiz({ teacherId: 161, subjectId: 18, quizType: "summary" });
-  try {
-    await db.insert(quizLessonLinksTable).values([
-      { quizId: summaryQuizId, lessonId: L105       },
-      { quizId: summaryQuizId, lessonId: otherLesson },
-    ]).onConflictDoNothing();
-
-    // Both lesson views show the same quiz ID
-    const rA = await api("GET", `/lessons/${L105}/quizzes`);
-    const rB = await api("GET", `/lessons/${otherLesson}/quizzes`);
-    const inA = (rA.json as Array<{ id: number }>).find((q) => q.id === summaryQuizId);
-    const inB = (rB.json as Array<{ id: number }>).find((q) => q.id === summaryQuizId);
-    assert.ok(inA, "Summary quiz not in Lesson 105 view");
-    assert.ok(inB, "Summary quiz not in other lesson view");
-    assert.equal(inA!.id, inB!.id, "Quiz IDs differ between lesson views — duplicate record suspected");
-
-    // Global view shows it exactly once
-    const rG = await api("GET", `/quizzes?subjectId=18`);
-    const globalList = rG.json as Array<{ id: number }>;
-    const globalOcc  = globalList.filter((q) => q.id === summaryQuizId).length;
-    assert.equal(globalOcc, 1, `Summary quiz appears ${globalOcc}× globally — must be 1`);
-  } finally {
-    await cleanQuiz(summaryQuizId);
-    await cleanLesson(otherLesson);
+  if (remainingQuizzes.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingQuizzes.length} quiz(zes) not cleaned up:`, remainingQuizzes.map(q => q.id));
+    failed++;
+  } else {
+    console.log("  ✓ No quiz pollution");
   }
-});
-
-await test("TD: Duplicate link attempt → no duplicate row", async () => {
-  // Try linking fixtureQuiz to L105 again (already linked)
-  await api("POST", `/quizzes/${fixtureQuiz}/lessons/${L105}`);
-  const links = await getLinks(fixtureQuiz);
-  assert.equal(links.length, 1, `Expected 1 link, got ${links.length}`);
-});
-
-await test("TE: Unlink fixture quiz from L105 — quiz remains globally", async () => {
-  await api("DELETE", `/quizzes/${fixtureQuiz}/lessons/${L105}`);
-  const links = await getLinks(fixtureQuiz);
-  assert.equal(links.length, 0);
-
-  // Quiz still in global list
-  const r = await api("GET", `/quizzes?subjectId=18`);
-  const global = (r.json as Array<{ id: number }>).find((q) => q.id === fixtureQuiz);
-  assert.ok(global, "Quiz vanished from global list after unlink");
-
-  // No longer in Lesson 105 view
-  const rL = await api("GET", `/lessons/${L105}/quizzes`);
-  const inLesson = (rL.json as Array<{ id: number }>).find((q) => q.id === fixtureQuiz);
-  assert.equal(inLesson, undefined, "Quiz still appears in Lesson 105 view after unlink");
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Clean up fixture quiz
-await cleanQuiz(fixtureQuiz);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Lesson 105 data integrity check
-console.log("\nLesson 105 integrity post-test");
-
-await test("TI: Lesson 105 mapping state unchanged (4 topics, ≥1 nodes, 15 exercises, approved)", async () => {
-  // NOTE: One node was removed from Lesson 105 via the teacher UI before Phase 1.11.
-  // The test suite no longer asserts an exact node count — only that the structure is
-  // valid and that Phase 1.9 (this suite) did not modify it.
-  const { db: _db, lessonsTable: lt, lessonNodesTable: lnt, lessonExercisesTable: let_ } = await import("@workspace/db");
-  const { lessonTopicsTable } = await import("@workspace/db");
-  const { count: cnt } = await import("drizzle-orm");
-
-  const [topicCount] = await _db.select({ c: cnt() }).from(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, L105));
-  const [nodeCount]  = await _db.select({ c: cnt() }).from(lnt).where(eq(lnt.lessonId, L105));
-  const [exCount]    = await _db.select({ c: cnt() }).from(let_).where(eq(let_.lessonId, L105));
-  const [lesson]     = await _db.select({ status: lt.status }).from(lt).where(eq(lt.id, L105));
-
-  assert.equal(Number(topicCount.c), 4,  `Topics: expected 4, got ${topicCount.c}`);
-  assert.ok(Number(nodeCount.c) >= 1,    `Nodes: must have at least 1, got ${nodeCount.c}`);
-  assert.equal(Number(exCount.c),    15, `Exercises: expected 15, got ${exCount.c}`);
-  assert.equal(lesson.status, "approved", `Status: expected approved, got ${lesson.status}`);
-});
+  if (remainingLessons.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingLessons.length} lesson(s) not cleaned up:`, remainingLessons.map(l => l.id));
+    failed++;
+  } else {
+    console.log("  ✓ No lesson pollution");
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n  ${passed + failed} tests — ${passed} passed, ${failed} failed`);

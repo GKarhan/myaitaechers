@@ -21,3 +21,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+TEST_DATABASE_URL = "postgresql://postgres:password@helium/heliumdb_test?sslmode=disable"

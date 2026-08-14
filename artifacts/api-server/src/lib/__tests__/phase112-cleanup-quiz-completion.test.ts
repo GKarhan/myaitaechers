@@ -4,46 +4,54 @@
 //
 // Run: pnpm --filter @workspace/api-server exec tsx src/lib/__tests__/phase112-cleanup-quiz-completion.test.ts
 //
-// Fixtures strategy:
-//   - Teacher: userId=1
-//   - Student A: dynamically discovered (first student in DB)
-//   - Student B: freshly created temp user (isolated completion)
-//   - Quiz: a temp quiz created and linked to Lesson 105 for each test
-//   - All temp data cleaned up in CLEANUP step
+// Fixtures strategy (zero-pollution isolation):
+//   - RUN_ID: unique per invocation, embedded in all fixture names.
+//   - Teacher: userId=1 (hardcoded, not mutated).
+//   - Dynamic lesson: created at setup, tagged with RUN_ID, status=approved.
+//   - Student A: dynamically created + tagged with RUN_ID.
+//   - Student B: dynamically created + tagged with RUN_ID.
+//   - Quiz: temp quizzes linked to the dynamic lesson.
+//   - All temp data cleaned up in finally blocks.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
 import {
-  db, usersTable, lessonsTable, lessonNodesTable,
+  db, usersTable, lessonsTable, lessonNodesTable, lessonTopicsTable,
   quizzesTable, quizLessonLinksTable, quizAssignmentsTable,
-  quizAttemptsTable, quizQuestionsTable, lessonNodesTable as lessonNodesTbl,
+  quizAttemptsTable, quizQuestionsTable,
 } from "@workspace/db";
-import { eq, and, ne, inArray, desc } from "drizzle-orm";
+import { eq, and, ne, inArray, desc, like } from "drizzle-orm";
+import { makeRunId, runTag } from "./helpers/run-id.js";
 
-const SECRET    = process.env.SESSION_SECRET ?? "myaiteacher-secret";
-const BASE      = "http://localhost:8080/api";
-const LESSON_ID = 105;
+// ── Run ID (unique per invocation) ────────────────────────────────────────────
+const RUN_ID = makeRunId();
+
+const SECRET = process.env.SESSION_SECRET ?? "myaiteacher-secret";
+const BASE   = "http://localhost:8080/api";
 
 function headers(tok: string) {
   return { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" };
 }
-function tok(userId: number, role = "student", username = "u", fullName = "FN") {
+function makeTok(userId: number, role = "student", username = "u", fullName = "FN") {
   return jwt.sign({ userId, role, username, fullName }, SECRET, { expiresIn: "1h" });
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let studentAId  = 0;
-let studentBId  = 0;
-let quizSubjectId = 0;   // resolved from Lesson 105 at setup time
-let quizTeacherId = 0;   // resolved from Lesson 105 at setup time
-const teacherTok = tok(1, "teacher", "t", "T");
+let studentAId    = 0;
+let studentBId    = 0;
+let dynamicLessonId = 0;
+let quizSubjectId = 0;  // resolved from dynamic lesson at setup time
+let quizTeacherId = 0;  // resolved from dynamic lesson at setup time
+
+const teacherTok = makeTok(1, "teacher", "t", "T");
 
 const tempStudentIds:  number[] = [];
 const tempQuizIds:     number[] = [];
-const tempLinkIds:     number[] = []; // quizIds linked to Lesson 105 (for cleanup)
+const tempLinkIds:     number[] = [];
 const tempAssignIds:   number[] = [];
 const tempAttemptIds:  number[] = [];
+let   lessonCleaned    = false;
 
 // ── Test registry ──────────────────────────────────────────────────────────────
 type Test = [string, () => Promise<void>];
@@ -55,26 +63,28 @@ function it(name: string, fn: () => Promise<void>) { tests.push([name, fn]); }
 async function createTempQuiz(title: string): Promise<number> {
   if (!quizSubjectId || !quizTeacherId) throw new Error("SETUP-1 must run first to resolve subjectId/teacherId");
   const [q] = await db.insert(quizzesTable).values({
-    teacherId: quizTeacherId,
-    subjectId: quizSubjectId,
-    title,
-    status: "GENERATED",
-    difficultyMode: "MIXED",
+    teacherId:     quizTeacherId,
+    subjectId:     quizSubjectId,
+    title:         runTag(RUN_ID, title),
+    status:        "GENERATED",
+    questionCount: 5,
+    nodeIds:       [],
   } as any).returning({ id: quizzesTable.id });
   tempQuizIds.push(q.id);
 
-  // Link to lesson 105
-  await db.insert(quizLessonLinksTable).values({ quizId: q.id, lessonId: LESSON_ID });
+  // Link to dynamic lesson
+  await db.insert(quizLessonLinksTable).values({ quizId: q.id, lessonId: dynamicLessonId })
+    .onConflictDoNothing();
   tempLinkIds.push(q.id);
 
   // Add one dummy question (needed for the take endpoint)
   await db.insert(quizQuestionsTable).values({
-    quizId: q.id,
-    questionText: "Test question?",
-    options: JSON.stringify(["A","B","C","D"]),
+    quizId:             q.id,
+    questionText:       runTag(RUN_ID, "Q?"),
+    options:            JSON.stringify(["A", "B", "C", "D"]),
     correctOptionIndex: 0,
-    difficultyLevel: "MEDIUM",
-    sequence: 1,
+    difficultyLevel:    "MEDIUM",
+    sequence:           1,
   } as any);
 
   return q.id;
@@ -106,79 +116,133 @@ async function markCompleted(assignmentId: number): Promise<number> {
 }
 
 async function getPackageQuizzes(studentId: number): Promise<any[]> {
-  const t = tok(studentId);
-  const r = await fetch(`${BASE}/lessons/${LESSON_ID}/student-package`, { headers: headers(t) });
+  const t = makeTok(studentId);
+  const r = await fetch(`${BASE}/lessons/${dynamicLessonId}/student-package`, { headers: headers(t) });
   if (!r.ok) return [];
   const pkg = await r.json() as any;
   return pkg.quizzes ?? [];
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// PRE-CLEANUP: remove stale fixtures from prior crashed runs
+// ══════════════════════════════════════════════════════════════════════════════
+
+console.log(`\nPhase 1.12 Cleanup — Quiz Completion\n[run-id] ${RUN_ID}`);
+
+try {
+  const prefix = `${RUN_ID}_`;
+  const staleQuizzes = await db
+    .select({ id: quizzesTable.id })
+    .from(quizzesTable)
+    .where(like(quizzesTable.title, `${prefix}%`));
+  if (staleQuizzes.length > 0) {
+    await db.delete(quizzesTable).where(inArray(quizzesTable.id, staleQuizzes.map((q) => q.id)));
+    console.log(`[pre-cleanup] Removed ${staleQuizzes.length} stale quiz(zes)`);
+  }
+  const staleLessons = await db
+    .select({ id: lessonsTable.id })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
+  if (staleLessons.length > 0) {
+    for (const l of staleLessons) {
+      await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, l.id)).catch(() => {});
+    }
+    await db.delete(lessonsTable).where(inArray(lessonsTable.id, staleLessons.map((l) => l.id)));
+    console.log(`[pre-cleanup] Removed ${staleLessons.length} stale lesson(s)`);
+  }
+  const staleUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(like(usersTable.username, `${prefix}%`));
+  if (staleUsers.length > 0) {
+    await db.delete(usersTable).where(inArray(usersTable.id, staleUsers.map((u) => u.id)));
+    console.log(`[pre-cleanup] Removed ${staleUsers.length} stale user(s)`);
+  }
+} catch {
+  // pre-cleanup failures must never abort the test suite
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // SETUP
 // ══════════════════════════════════════════════════════════════════════════════
 
-it("SETUP-1: Lesson 105 must be active + resolve subjectId/teacherId", async () => {
-  const [l] = await db.select({ status: lessonsTable.status, subjectId: lessonsTable.subjectId, teacherId: lessonsTable.teacherId })
-    .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
-  assert.ok(l, "Lesson 105 must exist");
-  quizSubjectId = l.subjectId!;
-  quizTeacherId = l.teacherId!;
+it("SETUP-1: Create dynamic lesson with approved status + resolve subjectId/teacherId", async () => {
+  // Insert a dynamic lesson tagged with RUN_ID, status=approved
+  const [lesson] = await db.insert(lessonsTable).values({
+    title:     runTag(RUN_ID, "p112comp_lesson"),
+    subjectId: 18,
+    teacherId: 1,
+    status:    "approved",
+  } as any).returning({ id: lessonsTable.id, subjectId: lessonsTable.subjectId, teacherId: lessonsTable.teacherId });
 
-  // Force "active" via direct DB update — resilient to concurrent test runs that
-  // may leave lesson 105 in approved/needs_review/draft state, and to teacher
-  // ownership (lesson 105 is owned by teacher 161, not teacher 1).
-  if (l.status !== "active") {
-    await db.update(lessonsTable)
-      .set({ status: "active" } as any)
-      .where(eq(lessonsTable.id, LESSON_ID));
-    console.log(`  [INFO] Lesson 105 was '${l.status}' — force-set to 'active' for this test run`);
-  }
-  const [check] = await db.select({ status: lessonsTable.status })
-    .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
-  assert.equal(check.status, "active", "Lesson 105 must be active");
-  console.log(`  [INFO] Lesson 105: subjectId=${quizSubjectId}, teacherId=${quizTeacherId}, status=${check.status} ✓`);
+  dynamicLessonId = lesson.id;
+  quizSubjectId   = lesson.subjectId!;
+  quizTeacherId   = lesson.teacherId!;
+
+  // Create one topic and one node (needed for student-package endpoint)
+  const [topic] = await db.insert(lessonTopicsTable).values({
+    lessonId: dynamicLessonId,
+    title:    runTag(RUN_ID, "Topic1"),
+    sequence: 1,
+  }).returning({ id: lessonTopicsTable.id });
+
+  await db.insert(lessonNodesTable).values({
+    lessonId:          dynamicLessonId,
+    topicId:           topic.id,
+    sequence:          1,
+    title:             runTag(RUN_ID, "Node1"),
+    status:            "approved",
+    learningObjective: "Test learning objective",
+    theoryContent:     "Test theory content for isolation test node.",
+    createdBy:         "teacher",
+  } as any);
+
+  console.log(`  [INFO] Dynamic lesson: id=${dynamicLessonId}, subjectId=${quizSubjectId}, teacherId=${quizTeacherId}, status=approved ✓`);
 });
 
-it("SETUP-2: Resolve Student A", async () => {
-  const [s] = await db.select({ id: usersTable.id, username: usersTable.username, fullName: usersTable.fullName })
-    .from(usersTable).where(eq(usersTable.role, "student")).limit(1);
-  assert.ok(s, "At least one student must exist in DB");
+it("SETUP-2: Create dynamic Student A (tagged)", async () => {
+  const username = runTag(RUN_ID, "p112comp_studentA");
+  const [s] = await db.insert(usersTable)
+    .values({ username, passwordHash: "x", role: "student", fullName: runTag(RUN_ID, "Student A") })
+    .returning({ id: usersTable.id });
   studentAId = s.id;
+  tempStudentIds.push(s.id);
   console.log(`  [INFO] Student A: userId=${studentAId}`);
 });
 
-it("SETUP-3: Create temp Student B", async () => {
+it("SETUP-3: Create dynamic Student B (tagged)", async () => {
+  const username = runTag(RUN_ID, "p112comp_studentB");
   const [u] = await db.insert(usersTable)
-    .values({ username: `__cleanup_B_${Date.now()}`, passwordHash: "x", role: "student", fullName: "Cleanup Student B" })
-    .returning({ id: usersTable.id, username: usersTable.username, fullName: usersTable.fullName });
+    .values({ username, passwordHash: "x", role: "student", fullName: runTag(RUN_ID, "Student B") })
+    .returning({ id: usersTable.id });
   studentBId = u.id;
   tempStudentIds.push(u.id);
   console.log(`  [INFO] Student B: userId=${studentBId}`);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Q1: unreleased quiz → "Դеռ հасaneli chе" / not actionable
+// Q1: unreleased quiz → not actionable
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q1: unreleased quiz — appears in package with isReleased=false, isCompleted=false", async () => {
-  const qid = await createTempQuiz(`__Q1_unreleased_${Date.now()}`);
+  const qid = await createTempQuiz(`Q1_unreleased_${Date.now()}`);
   const qs = await getPackageQuizzes(studentAId);
   const q = qs.find((x: any) => x.id === qid);
   assert.ok(q, "Quiz must appear in student package");
   assert.equal(q.isReleased,  false, "isReleased must be false");
   assert.equal(q.isCompleted, false, "isCompleted must be false");
   // Start must be blocked (403)
-  const r = await fetch(`${BASE}/quizzes/${qid}/take`, { headers: headers(tok(studentAId)) });
+  const r = await fetch(`${BASE}/quizzes/${qid}/take`, { headers: headers(makeTok(studentAId)) });
   assert.equal(r.status, 403, `Expected 403 for unreleased quiz, got ${r.status}`);
   console.log(`  ✓ Q1: unreleased quiz isReleased=false, 403 on take`);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Q2: released + not completed → "▶ Sksеl thesty"
+// Q2: released + not completed → take allowed (200)
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q2: released + not completed — isReleased=true, isCompleted=false, take allowed (200)", async () => {
-  const qid = await createTempQuiz(`__Q2_released_${Date.now()}`);
+  const qid = await createTempQuiz(`Q2_released_${Date.now()}`);
   await assignQuizToStudent(qid, studentAId);
 
   const qs = await getPackageQuizzes(studentAId);
@@ -187,8 +251,7 @@ it("Q2: released + not completed — isReleased=true, isCompleted=false, take al
   assert.equal(q.isReleased,  true,  "isReleased must be true");
   assert.equal(q.isCompleted, false, "isCompleted must be false");
 
-  // Take must succeed
-  const r = await fetch(`${BASE}/quizzes/${qid}/take`, { headers: headers(tok(studentAId)) });
+  const r = await fetch(`${BASE}/quizzes/${qid}/take`, { headers: headers(makeTok(studentAId)) });
   assert.equal(r.status, 200, `Expected 200 on take, got ${r.status}`);
   console.log(`  ✓ Q2: released quiz isReleased=true, 200 on take`);
 });
@@ -198,7 +261,7 @@ it("Q2: released + not completed — isReleased=true, isCompleted=false, take al
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q3: student completes quiz → isCompleted=true, quiz not actionable from lesson", async () => {
-  const qid = await createTempQuiz(`__Q3_completed_${Date.now()}`);
+  const qid = await createTempQuiz(`Q3_completed_${Date.now()}`);
   const aid = await assignQuizToStudent(qid, studentAId);
   await markCompleted(aid);
 
@@ -211,15 +274,13 @@ it("Q3: student completes quiz → isCompleted=true, quiz not actionable from le
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Q4: completed quiz still appears in "Іm thestere" (/quizzes/assigned)
+// Q4: completed quiz still appears in /quizzes/assigned
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q4: completed quiz remains in /quizzes/assigned with status=COMPLETED", async () => {
-  // Find completed assignment from Q3
-  const r = await fetch(`${BASE}/quizzes/assigned`, { headers: headers(tok(studentAId)) });
+  const r = await fetch(`${BASE}/quizzes/assigned`, { headers: headers(makeTok(studentAId)) });
   assert.equal(r.status, 200);
   const assigned = await r.json() as any[];
-  // Find a COMPLETED entry for the quiz created in Q3 (title pattern)
   const completed = assigned.filter((a: any) => a.status === "COMPLETED");
   assert.ok(completed.length > 0, "Must have at least one COMPLETED assignment in /quizzes/assigned");
   const found = completed.find((a: any) => tempQuizIds.includes(a.quizId));
@@ -233,9 +294,7 @@ it("Q4: completed quiz remains in /quizzes/assigned with status=COMPLETED", asyn
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q5: completed quiz — take returns 403 (no active assignment)", async () => {
-  // Use a quiz that was completed in Q3 (latest assignment is COMPLETED)
   const completedQuizId = tempQuizIds[tempQuizIds.length - 1];
-  // Verify: latest assignment for studentAId × completedQuizId is COMPLETED
   const [a] = await db.select({ status: quizAssignmentsTable.status })
     .from(quizAssignmentsTable)
     .where(and(eq(quizAssignmentsTable.quizId, completedQuizId), eq(quizAssignmentsTable.studentId, studentAId)))
@@ -243,7 +302,7 @@ it("Q5: completed quiz — take returns 403 (no active assignment)", async () =>
     .limit(1);
   assert.equal(a?.status, "COMPLETED", "Precondition: latest assignment must be COMPLETED");
 
-  const r = await fetch(`${BASE}/quizzes/${completedQuizId}/take`, { headers: headers(tok(studentAId)) });
+  const r = await fetch(`${BASE}/quizzes/${completedQuizId}/take`, { headers: headers(makeTok(studentAId)) });
   assert.equal(r.status, 403, `Expected 403, got ${r.status}`);
   console.log(`  ✓ Q5: completed quiz take → 403`);
 });
@@ -264,8 +323,7 @@ it("Q6: teacher re-releases completed quiz → new assignment, isCompleted=false
   assert.equal(q.isReleased,  true,  "isReleased must be true after re-release");
   assert.equal(q.isCompleted, false, "isCompleted must be false (new ASSIGNED row is latest)");
 
-  // Take must succeed
-  const r = await fetch(`${BASE}/quizzes/${completedQuizId}/take`, { headers: headers(tok(studentAId)) });
+  const r = await fetch(`${BASE}/quizzes/${completedQuizId}/take`, { headers: headers(makeTok(studentAId)) });
   assert.equal(r.status, 200, `Expected 200 on take after re-release, got ${r.status}`);
   console.log(`  ✓ Q6: re-released quiz isCompleted=false, 200 on take`);
 });
@@ -277,7 +335,6 @@ it("Q6: teacher re-releases completed quiz → new assignment, isCompleted=false
 it("Q7: historical attempt preserved after re-release", async () => {
   const completedQuizId = tempQuizIds[tempQuizIds.length - 1];
 
-  // Find the original completed assignment (the one with status=COMPLETED)
   const completedAssignments = await db
     .select({ id: quizAssignmentsTable.id, status: quizAssignmentsTable.status })
     .from(quizAssignmentsTable)
@@ -288,7 +345,6 @@ it("Q7: historical attempt preserved after re-release", async () => {
     ));
   assert.ok(completedAssignments.length >= 1, "Must have at least 1 completed assignment row");
 
-  // Their attempt rows must still exist with score
   for (const ca of completedAssignments) {
     const [att] = await db.select().from(quizAttemptsTable)
       .where(eq(quizAttemptsTable.quizAssignmentId, ca.id)).limit(1);
@@ -298,8 +354,7 @@ it("Q7: historical attempt preserved after re-release", async () => {
     assert.equal(att.scorePercent,   30, "Historical scorePercent must be preserved");
   }
 
-  // /quizzes/assigned still shows completed row
-  const r = await fetch(`${BASE}/quizzes/assigned`, { headers: headers(tok(studentAId)) });
+  const r = await fetch(`${BASE}/quizzes/assigned`, { headers: headers(makeTok(studentAId)) });
   const assigned = await r.json() as any[];
   const completed = assigned.filter((a: any) => a.quizId === completedQuizId && a.status === "COMPLETED");
   assert.ok(completed.length >= 1, "Completed assignment must still appear in /quizzes/assigned");
@@ -313,22 +368,19 @@ it("Q7: historical attempt preserved after re-release", async () => {
 it("Q8: second release completion creates separate attempt / preserves history", async () => {
   const completedQuizId = tempQuizIds[tempQuizIds.length - 1];
 
-  // Find the latest non-completed assignment (created in Q6)
   const [newAssignment] = await db.select({ id: quizAssignmentsTable.id })
     .from(quizAssignmentsTable)
     .where(and(
-      eq(quizAssignmentsTable.quizId,   completedQuizId),
+      eq(quizAssignmentsTable.quizId,    completedQuizId),
       eq(quizAssignmentsTable.studentId, studentAId),
-      ne(quizAssignmentsTable.status,   "COMPLETED"),
+      ne(quizAssignmentsTable.status,    "COMPLETED"),
     ))
     .orderBy(desc(quizAssignmentsTable.assignedAt))
     .limit(1);
   assert.ok(newAssignment, "New (non-completed) assignment must exist from Q6");
 
-  // Simulate second completion
-  const attemptId = await markCompleted(newAssignment.id);
+  await markCompleted(newAssignment.id);
 
-  // Both assignments must now have attempt rows
   const allAssignments = await db.select({ id: quizAssignmentsTable.id, status: quizAssignmentsTable.status })
     .from(quizAssignmentsTable)
     .where(and(
@@ -351,7 +403,7 @@ it("Q8: second release completion creates separate attempt / preserves history",
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q9: another linked quiz (released, not completed) is unaffected by Q3–Q8 completions", async () => {
-  const qid = await createTempQuiz(`__Q9_unaffected_${Date.now()}`);
+  const qid = await createTempQuiz(`Q9_unaffected_${Date.now()}`);
   await assignQuizToStudent(qid, studentAId);
 
   const qs = await getPackageQuizzes(studentAId);
@@ -367,9 +419,8 @@ it("Q9: another linked quiz (released, not completed) is unaffected by Q3–Q8 c
 // ══════════════════════════════════════════════════════════════════════════════
 
 it("Q10: Student A completion does not affect Student B", async () => {
-  const qid = await createTempQuiz(`__Q10_two_students_${Date.now()}`);
+  const qid = await createTempQuiz(`Q10_two_students_${Date.now()}`);
 
-  // Assign to both
   const aidA = await assignQuizToStudent(qid, studentAId);
   const aidB = await assignQuizToStudent(qid, studentBId);
 
@@ -400,7 +451,6 @@ it("Q11: no duplicate Quiz records created during test lifecycle", async () => {
     .where(inArray(quizzesTable.id, quizIds));
   assert.equal(rows.length, quizIds.length, "Each temp quiz must exist exactly once");
 
-  // Check student package for the lesson: no duplicate IDs in quiz array
   const qs = await getPackageQuizzes(studentAId);
   const ids = qs.map((q: any) => q.id);
   const unique = new Set(ids);
@@ -409,17 +459,17 @@ it("Q11: no duplicate Quiz records created during test lifecycle", async () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Q12: no duplicate lesson nodes/exercises/evidence created
+// Q12: no duplicate lesson nodes/exercises created
 // ══════════════════════════════════════════════════════════════════════════════
 
-it("Q12: lesson 105 nodes count unchanged (no duplicate nodes/exercises created)", async () => {
-  const nodes = await db.select({ id: lessonNodesTbl.id })
-    .from(lessonNodesTbl).where(eq(lessonNodesTbl.lessonId, LESSON_ID));
+it("Q12: dynamic lesson node count unchanged (no duplicate nodes created)", async () => {
+  const nodes = await db.select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, dynamicLessonId));
   const nodeIds = nodes.map((n) => n.id);
   const unique = new Set(nodeIds);
-  assert.equal(unique.size, 9, `Expected exactly 9 unique nodes, got ${unique.size}`);
-  assert.equal(nodes.length, 9, `Expected exactly 9 node rows, got ${nodes.length}`);
-  console.log(`  ✓ Q12: Lesson 105 has exactly 9 unique nodes — no duplication`);
+  assert.equal(unique.size, nodes.length, `Node IDs are not unique — duplication detected: ${nodeIds.join(",")}`);
+  assert.equal(nodes.length, 1, `Expected exactly 1 node in dynamic lesson, got ${nodes.length}`);
+  console.log(`  ✓ Q12: Dynamic lesson has exactly ${nodes.length} unique node(s) — no duplication`);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -428,7 +478,6 @@ it("Q12: lesson 105 nodes count unchanged (no duplicate nodes/exercises created)
 
 it("CLEANUP: remove all temp data", async () => {
   if (tempAttemptIds.length) {
-    // attempts cascade from assignments but delete explicitly to be safe
     await db.delete(quizAttemptsTable).where(inArray(quizAttemptsTable.id, tempAttemptIds)).catch(() => {});
   }
   if (tempAssignIds.length) {
@@ -441,9 +490,16 @@ it("CLEANUP: remove all temp data", async () => {
     await db.delete(quizzesTable).where(inArray(quizzesTable.id, tempQuizIds)).catch(() => {});
     console.log(`  [INFO] Deleted ${tempQuizIds.length} temp quizzes`);
   }
-  if (studentBId) {
-    await db.delete(usersTable).where(eq(usersTable.id, studentBId)).catch(() => {});
-    console.log(`  [INFO] Deleted temp Student B (userId=${studentBId})`);
+  // Delete dynamic lesson (cascades nodes, topics)
+  if (dynamicLessonId) {
+    await db.delete(lessonsTable).where(eq(lessonsTable.id, dynamicLessonId)).catch(() => {});
+    lessonCleaned = true;
+    console.log(`  [INFO] Deleted dynamic lesson id=${dynamicLessonId}`);
+  }
+  // Delete temp student users
+  if (tempStudentIds.length) {
+    await db.delete(usersTable).where(inArray(usersTable.id, tempStudentIds)).catch(() => {});
+    console.log(`  [INFO] Deleted temp students: ${tempStudentIds.join(",")}`);
   }
 });
 
@@ -460,5 +516,44 @@ for (const [name, fn] of tests) {
     failed++;
   }
 }
+
+// ── Post-pollution gate ────────────────────────────────────────────────────────
+console.log("\n[post-pollution gate]");
+{
+  const prefix = `${RUN_ID}_`;
+  const remainingLessons = await db
+    .select({ id: lessonsTable.id, title: lessonsTable.title })
+    .from(lessonsTable)
+    .where(like(lessonsTable.title, `${prefix}%`));
+  const remainingQuizzes = await db
+    .select({ id: quizzesTable.id, title: quizzesTable.title })
+    .from(quizzesTable)
+    .where(like(quizzesTable.title, `${prefix}%`));
+  const remainingUsers = await db
+    .select({ id: usersTable.id, username: usersTable.username })
+    .from(usersTable)
+    .where(like(usersTable.username, `${prefix}%`));
+
+  if (remainingLessons.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingLessons.length} lesson(s) not cleaned up:`, remainingLessons.map((l) => l.id));
+    failed++;
+  } else {
+    console.log("  ✓ No lesson pollution");
+  }
+  if (remainingQuizzes.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingQuizzes.length} quiz(zes) not cleaned up:`, remainingQuizzes.map((q) => q.id));
+    failed++;
+  } else {
+    console.log("  ✓ No quiz pollution");
+  }
+  if (remainingUsers.length > 0) {
+    console.error(`  ✗ POLLUTION: ${remainingUsers.length} user(s) not cleaned up:`, remainingUsers.map((u) => u.id));
+    failed++;
+  } else {
+    console.log("  ✓ No user pollution");
+  }
+}
+
 console.log(`\nPhase 1.12 Cleanup: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+process.exit(0);

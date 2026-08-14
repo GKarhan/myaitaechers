@@ -1,0 +1,606 @@
+TEST ISOLATION & ZERO-POLLUTION CONTRACT
+SAFE AUTOMATED TESTING FOR THE ENTIRE PROJECT
+
+IMPORTANT:
+This is an infrastructure/data-safety task.
+
+Do NOT change product behavior unless a test-safety boundary requires a minimal compatibility change.
+
+Do NOT redesign:
+- mapping
+- lesson authoring
+- Phase 2
+- quizzes
+- AI Teacher
+- Knowledge Tree
+- scoring/mastery
+- student flows
+
+GOAL:
+
+Automated tests must NEVER pollute or mutate real/manual-UAT data.
+
+We have already had real pollution incidents:
+- temporary MicroNode left in a real lesson
+- UAT Verification quizzes left in the real DB
+- stale quiz assignments
+- stale Phase 2 jobs
+- hardcoded real lesson IDs causing DB drift/interference
+
+This must be prevented structurally, not cleaned manually afterward.
+
+════════════════════════════════════════════
+1. AUDIT FIRST — NO CODE CHANGES
+════════════════════════════════════════════
+
+Audit ALL automated/integration/E2E test suites.
+
+For every suite report:
+
+1. file
+2. DB connection used
+3. whether it writes data
+4. which tables it mutates
+5. whether it uses hardcoded real IDs
+6. whether it uses real teacher/student/class/lesson/quiz records
+7. whether cleanup exists
+8. cleanup mechanism
+9. whether cleanup runs after timeout/crash/failure
+10. whether the suite can run concurrently safely
+11. whether it invokes real AI/LLM calls
+12. whether it can expose test records in real teacher/student UI
+
+Classify every suite:
+
+SAFE
+UNSAFE
+PARTIAL
+
+Do not modify production data during this audit.
+
+════════════════════════════════════════════
+2. REQUIRED TARGET ARCHITECTURE
+════════════════════════════════════════════
+
+Preferred final architecture:
+
+MANUAL DEVELOPMENT / UAT DB
+    = real developer/teacher/student data
+
+AUTOMATED TEST DB OR TEST SCHEMA
+    = automated integration/E2E fixtures only
+
+Automated tests must not write to the manual-UAT database.
+
+Determine the smallest safe implementation supported by the current Replit/Postgres setup:
+
+OPTION A — preferred:
+separate TEST_DATABASE_URL / separate test database
+
+OPTION B:
+separate PostgreSQL test schema
+
+OPTION C — only if A/B are impossible:
+strict isolated fixture namespace inside the current DB
+
+Do NOT silently choose Option C if separate DB/schema is feasible.
+
+Report the actual environment capability first.
+
+════════════════════════════════════════════
+3. ENVIRONMENT SAFETY GATE
+════════════════════════════════════════════
+
+Every DB-mutating automated test must verify that it is running in an explicitly test-safe environment BEFORE any write.
+
+Example conceptually:
+
+NODE_ENV === "test"
+
+AND
+
+DATABASE_URL === TEST_DATABASE_URL
+
+or equivalent strong invariant.
+
+If the safety condition is false:
+
+ABORT THE TEST SUITE BEFORE THE FIRST WRITE.
+
+Return a clear error such as:
+
+TEST_DB_SAFETY_BLOCK:
+Refusing to mutate non-test database.
+
+Do not rely only on NODE_ENV.
+
+A mistaken NODE_ENV must not be enough to destroy real data.
+
+════════════════════════════════════════════
+4. REMOVE HARDCODED REAL ENTITY IDS
+════════════════════════════════════════════
+
+Search all test suites for hardcoded IDs such as:
+
+lesson 105
+lesson 524
+teacher 161
+student 93
+quiz 206
+quiz 207
+
+or any equivalent real entity IDs.
+
+DB-mutating tests must NOT depend on these.
+
+Replace writable fixture assumptions with dynamically created isolated entities.
+
+Pattern:
+
+create TEST teacher
+create TEST class
+create TEST student
+create TEST lesson
+create TEST topics/nodes/exercises/quizzes
+capture returned IDs
+run test
+cleanup
+
+Read-only diagnostics may inspect real entities ONLY when explicitly marked read-only.
+
+No mutation route may target a real hardcoded entity.
+
+════════════════════════════════════════════
+5. UNIQUE TEST RUN ID
+════════════════════════════════════════════
+
+Every integration/E2E test run must generate a unique run identifier.
+
+Example:
+
+TEST_RUN_20260814T180000_ab12cd
+
+All test-created human-readable names/titles should include this marker where practical.
+
+Examples:
+
+TEST_RUN_xxx_Lesson
+TEST_RUN_xxx_Node
+TEST_RUN_xxx_Quiz
+
+This provides forensic traceability.
+
+If schema-level metadata is appropriate and small, evaluate adding a dedicated test marker.
+
+Do NOT add test-only fields to core production tables unless truly necessary.
+
+Prefer test DB isolation over production-schema pollution.
+
+════════════════════════════════════════════
+6. FIXTURE FACTORY
+════════════════════════════════════════════
+
+Create shared deterministic test fixture helpers instead of each suite inventing its own DB setup.
+
+At minimum support creation of:
+
+- teacher
+- student
+- class
+- subject/course if required
+- lesson
+- topic
+- MicroNode
+- exercise
+- quiz
+- quiz_lesson_link
+- quiz_assignment
+- lesson session
+
+Fixture helper must:
+
+- return generated IDs
+- tag/namescope records with runId where practical
+- track created entities for cleanup
+
+Do not duplicate fixture setup across 15 test files.
+
+════════════════════════════════════════════
+7. CLEANUP MUST SURVIVE FAILURES
+════════════════════════════════════════════
+
+afterAll alone is NOT sufficient.
+
+Required lifecycle:
+
+PRE-CLEANUP
+    ↓
+CREATE FIXTURE
+    ↓
+try {
+    RUN TEST
+}
+finally {
+    CLEANUP
+}
+    ↓
+POST-POLLUTION GATE
+
+Use try/finally or an equivalent guaranteed cleanup mechanism.
+
+If one assertion fails:
+cleanup must still run.
+
+If an AI/API call times out:
+cleanup must still run.
+
+If setup partially succeeds:
+cleanup must delete the partial fixture.
+
+════════════════════════════════════════════
+8. PRE-CLEANUP
+════════════════════════════════════════════
+
+Before each test suite begins:
+
+search the TEST environment for stale records from prior crashed runs.
+
+Only remove records that are provably test records.
+
+Never use broad title matching like:
+
+contains "test"
+
+on a real DB.
+
+Cleanup must be constrained to:
+
+- test DB/schema
+or
+- exact runId/test namespace
+
+No legitimate teacher/student record may be eligible for automated cleanup.
+
+════════════════════════════════════════════
+9. POST-POLLUTION GATE
+════════════════════════════════════════════
+
+At the end of every mutating E2E/integration suite verify:
+
+records belonging to current runId remaining = 0
+
+Check relevant tables.
+
+If any test-created record remains:
+
+SUITE = FAIL
+
+even if every functional assertion passed.
+
+Report remaining IDs and tables.
+
+This is mandatory.
+
+════════════════════════════════════════════
+10. CROSS-SUITE CONCURRENCY
+════════════════════════════════════════════
+
+Audit suites currently run in parallel.
+
+Tests must never race on shared fixtures.
+
+Preferred:
+each run/suite owns isolated entities.
+
+If some legacy suite still uses shared mutable fixture state:
+force it to run sequentially until refactored.
+
+Do not let concurrent tests modify the same lesson/status/quiz.
+
+Remove the previous pattern where one suite changes lesson status while another expects another state.
+
+════════════════════════════════════════════
+11. REAL AI / LLM TESTS
+════════════════════════════════════════════
+
+Audit all automated tests that invoke real AI.
+
+These are high-risk because they:
+- are slow
+- may timeout
+- cost money
+- may fail non-deterministically
+- previously left partial state
+
+Split tests into:
+
+A. deterministic tests
+No real LLM call.
+
+B. AI integration tests
+Explicitly opt-in.
+
+Real AI tests must:
+- run only against test DB/schema
+- have explicit timeout
+- use isolated fixture
+- guarantee finally cleanup
+- not run in ordinary fast regression suite unless intentionally requested
+
+Do NOT count timeout as PASS.
+
+Do not repeatedly run costly LLM tests unnecessarily.
+
+════════════════════════════════════════════
+12. READ-ONLY REAL-DATA VERIFICATION
+════════════════════════════════════════════
+
+Sometimes we may want to verify a real manually-created lesson.
+
+That is allowed ONLY as READ ONLY.
+
+Permitted:
+- SELECT
+- GET
+- counts
+- integrity inspection
+
+Forbidden in real-data verification:
+- UPDATE
+- DELETE
+- CREATE related fixtures
+- reorder
+- final-approve
+- activate
+- quiz release
+- quiz submit
+- session mutation
+- Phase 2 generation
+
+If a real-data test needs mutation, reproduce the structure in the test environment instead.
+
+════════════════════════════════════════════
+13. PROTECT PRODUCTION/MANUAL-UAT ROUTES FROM TEST FIXTURES
+════════════════════════════════════════════
+
+When using a proper separate test DB/schema, automated fixture records must be invisible to the normal manual-UAT frontend by construction.
+
+Verify:
+
+Teacher UI real DB:
+0 TEST_RUN_* objects
+
+Student UI real DB:
+0 TEST_RUN_* objects
+
+No automated test should ever cause a temporary quiz/node to appear in the real UI.
+
+════════════════════════════════════════════
+14. MIGRATE EXISTING TEST SUITES
+════════════════════════════════════════════
+
+Migrate the important existing suites to the safe fixture model, especially:
+
+- lesson-final-approval
+- sequential-deps-phase18
+- quiz lesson links
+- quiz creation
+- Phase 1.12 lesson assignment
+- Phase 1.12 final/student package
+- Phase 1.12 quiz completion/re-release
+- post-P1.12 authoring simplification
+- Phase 1.13 E2E
+- Phase 2 generation/selective enrichment
+
+For each migrated suite:
+
+OLD:
+real/hardcoded/shared DB behavior
+
+NEW:
+isolated fixture behavior
+
+Document the change.
+
+Do not weaken functional assertions.
+
+════════════════════════════════════════════
+15. REMOVE TEST-SPECIFIC REPAIR HACKS
+════════════════════════════════════════════
+
+Audit and eliminate test setup hacks such as:
+
+- forcing real lesson 105/524 to active
+- resetting a real lesson status after a suite
+- deleting stale real quiz assignments before test
+- repairing real SEQUENTIAL dependencies before test
+- marking stale real Phase 2 jobs failed
+
+These are signs that the suite is touching the wrong environment.
+
+Replace them with isolated test fixtures.
+
+Do NOT change real data just to make tests pass.
+
+════════════════════════════════════════════
+16. SAFETY TESTS
+════════════════════════════════════════════
+
+Add explicit tests for the test infrastructure itself.
+
+S1.
+Mutating suite launched with real/manual DB URL.
+
+Expected:
+ABORT before first write.
+
+S2.
+Correct test DB.
+
+Expected:
+fixture creation succeeds.
+
+S3.
+Intentional assertion failure mid-suite.
+
+Expected:
+finally cleanup executes.
+
+S4.
+Intentional timeout/error after partial fixture creation.
+
+Expected:
+cleanup executes.
+
+S5.
+Two suites execute concurrently.
+
+Expected:
+no cross-run state interference.
+
+S6.
+Pollution gate with intentionally leaked fixture.
+
+Expected:
+suite FAILS and reports the leak.
+
+S7.
+Read-only real-data verifier.
+
+Expected:
+can SELECT but mutation helper refuses operation.
+
+════════════════════════════════════════════
+17. ZERO-POLLUTION MANUAL VERIFICATION
+════════════════════════════════════════════
+
+After implementation:
+
+1. Record current real DB counts.
+2. Run automated E2E suite.
+3. Re-read real DB counts.
+4. Compare.
+
+Expected:
+
+REAL DB BEFORE
+=
+REAL DB AFTER
+
+No temporary:
+- lesson
+- topic
+- node
+- exercise
+- quiz
+- assignment
+- attempt
+- session
+- knowledge/evidence
+- mapping job
+
+Then verify the actual teacher/student UI has no test fixture objects.
+
+════════════════════════════════════════════
+18. COST SAFETY
+════════════════════════════════════════════
+
+Because real AI calls cost money:
+
+Report which suites invoke LLMs.
+
+Create separate commands such as conceptually:
+
+test:fast
+test:integration
+test:ai-integration
+
+Normal regression runs should not repeatedly invoke real AI unless explicitly selected.
+
+Do not change product AI behavior.
+
+This is only test execution policy.
+
+════════════════════════════════════════════
+19. FINAL CONTRACT
+════════════════════════════════════════════
+
+After this work, the following must be true:
+
+AUTOMATED TESTS
+→ isolated test environment
+→ create isolated fixtures
+→ run
+→ cleanup
+→ zero pollution
+
+MANUAL UAT
+→ real development data
+→ never touched by automated mutating tests
+
+REAL DATA DIAGNOSTIC
+→ read-only
+
+NO automated test should ever again leave:
+
+- UAT Verification Quiz
+- POST-P1.12 Test Node
+- stale test assignment
+- stale test Phase 2 job
+- altered real lesson status
+
+in the real project data.
+
+════════════════════════════════════════════
+20. FINAL REPORT
+════════════════════════════════════════════
+
+Return:
+
+A. PREVIOUS RISK ARCHITECTURE
+Why pollution was possible.
+
+B. TEST ENVIRONMENT ARCHITECTURE
+Exact DB/schema isolation chosen and why.
+
+C. SAFETY GATE
+Exact conditions required before a mutating test may run.
+
+D. FIXTURE SYSTEM
+Files/helpers and supported fixtures.
+
+E. SUITES MIGRATED
+Per-suite old → new behavior.
+
+F. HARDCODED REAL IDs REMOVED
+List each removed dependency.
+
+G. AI TEST POLICY
+Which commands invoke real LLM vs deterministic tests.
+
+H. CLEANUP GUARANTEE
+How pre-cleanup / finally / post-pollution gate work.
+
+I. SAFETY TEST RESULTS
+S1–S7.
+
+J. REAL DB BEFORE/AFTER
+Prove zero mutation.
+
+K. UI VERIFICATION
+Teacher/student real UI contains zero TEST_RUN/UAT fixture records.
+
+L. FILES CHANGED
+
+M. FINAL VERDICT
+
+Exactly one:
+
+TEST ISOLATION = PASS — ZERO-POLLUTION CONTRACT ENFORCED
+
+or
+
+TEST ISOLATION = FAIL — AUTOMATED TESTS STILL UNSAFE
+
+If FAIL:
+list exact unsafe suites and do NOT proceed with further automated E2E testing.
