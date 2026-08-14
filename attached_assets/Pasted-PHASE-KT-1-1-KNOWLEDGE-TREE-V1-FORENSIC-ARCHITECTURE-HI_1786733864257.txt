@@ -1,0 +1,582 @@
+PHASE KT-1.1 — KNOWLEDGE TREE V1
+FORENSIC ARCHITECTURE + HIERARCHY + MASTERY AUDIT
+
+STRICT SCOPE:
+AUDIT FIRST.
+DO NOT IMPLEMENT KT-1.2/1.3/1.4/1.5 YET.
+
+DO NOT redesign or modify:
+- Mapping
+- Manual Map / Auto Map
+- Phase 2 enrichment
+- Lesson authoring
+- Quiz creation
+- Quiz taking
+- AI Teacher / chat.ts
+- Evidence scoring
+- Mastery scoring
+- Knowledge Tree classification logic
+- Personalization
+- Bloom logic
+- Review/spaced repetition
+
+This task exists to establish the exact current architecture before
+Knowledge Tree V1 is redesigned.
+
+==================================================
+PRODUCT GOAL — CONTEXT ONLY
+==================================================
+
+Knowledge Tree V1 will eventually provide:
+
+Student Sidebar
+→ Գիտելիքի ծառ
+→ Subjects
+→ Subject Knowledge Tree
+→ hierarchical/collapsible navigation
+→ mastery percentages at every meaningful hierarchy level
+→ four knowledge states
+→ atomic knowledge-unit Detail Panel
+
+Future hierarchy conceptually may look like:
+
+Subject
+  → Section / Topic
+    → Lesson
+      → Node / MicroNode
+
+BUT:
+
+DO NOT INVENT THIS HIERARCHY.
+
+Determine the actual repository/database hierarchy first.
+
+The final Knowledge Tree must scale to a full school-year subject with
+hundreds of knowledge units without rendering everything expanded at once.
+
+==================================================
+PART A — CURRENT STUDENT NAVIGATION
+==================================================
+
+Audit the student application navigation.
+
+Find:
+
+1. Student dashboard component/page.
+2. Student sidebar/navigation component.
+3. Current routes available to students.
+4. Current Knowledge Tree route.
+5. How a student currently reaches Knowledge Tree.
+6. Whether Knowledge Tree currently requires:
+   - subjectId
+   - courseId
+   - lessonId
+   - studentId
+   - another identifier
+7. Whether there is currently a subject-selection screen.
+
+Report exact:
+
+FILE
+COMPONENT
+ROUTE
+CURRENT BEHAVIOR
+
+Do not change anything.
+
+==================================================
+PART B — CURRENT KNOWLEDGE TREE FRONTEND
+==================================================
+
+Audit the current Knowledge Tree implementation.
+
+Especially inspect:
+
+artifacts/myaiteacher/src/pages/knowledge-tree.tsx
+
+and every component/helper it uses.
+
+Report:
+
+1. What API endpoint(s) it calls.
+2. What data structure it expects.
+3. What hierarchy it currently renders.
+4. Whether it renders:
+   - Subject
+   - Topic
+   - Lesson
+   - Node
+   - MicroNode
+5. Why the current UI appears to show only atomic/subnodes.
+6. Whether parent/group information is already available but not rendered.
+7. Current state labels.
+8. Current mastery/confidence display.
+9. Current actions/buttons.
+10. Current filtering/grouping/sorting behavior.
+
+Provide exact code evidence.
+
+==================================================
+PART C — DATABASE KNOWLEDGE STRUCTURE
+==================================================
+
+Trace the real hierarchy from DB schema.
+
+Inspect all relevant tables, including where applicable:
+
+- subjects
+- courses/classes
+- lessons
+- lesson topics
+- lesson_nodes
+- knowledge_nodes
+- lesson_node_dependencies
+- knowledge/evidence tables
+- any parent/child relation tables
+
+Determine the ACTUAL canonical hierarchy.
+
+For every level report:
+
+ENTITY
+TABLE
+PRIMARY KEY
+PARENT FIELD
+SEQUENCE FIELD
+TITLE FIELD
+RELATIONSHIP
+
+Answer explicitly:
+
+1. Is there a real Node → MicroNode hierarchy?
+2. Are lesson_nodes currently atomic MicroNodes?
+3. Does lesson_nodes have parent_id or equivalent?
+4. Are Topics real persisted entities?
+5. Are Topics parents/grouping containers for lesson_nodes?
+6. How is Lesson connected to Subject?
+7. Is there a Section/Chapter entity above Lesson?
+8. Is knowledge_nodes a structural tree or student-specific learner state?
+9. Is any current UI calling something a "subnode" even though DB structure is flat?
+
+CRITICAL:
+
+Do NOT propose a new schema yet.
+
+First tell us exactly what exists.
+
+==================================================
+PART D — SOURCE OF KNOWLEDGE TREE NODES
+==================================================
+
+Trace:
+
+Mapping
+→ lesson/topic/node creation
+→ Knowledge Tree visibility
+
+Answer:
+
+1. When a lesson is mapped, what DB records are created?
+2. Does mapping create knowledge_nodes immediately?
+3. Or are knowledge_nodes created only after evidence?
+4. How does a newly mapped node appear in Knowledge Tree before the
+   student has studied it?
+5. If no evidence exists, how is "Դեռ չի ուսումնասիրել" represented?
+6. Is a fake student mastery record created, or is the state inferred
+   from absence of evidence?
+7. Are all mapped atomic knowledge units visible in the current tree?
+8. Can draft/unapproved teacher content leak into student Knowledge Tree?
+
+We want eventually:
+
+NEW MAPPED KNOWLEDGE UNIT
+→ visible structurally
+→ student state = Դեռ չի ուսումնասիրել
+→ NO fake evidence/mastery required.
+
+Determine whether current architecture already supports this.
+
+==================================================
+PART E — CURRENT FOUR-STATE MODEL
+==================================================
+
+The required product states are:
+
+1. Գիտի
+2. Մասնակի գիտի
+3. Չգիտի
+4. Դեռ չի ուսումնասիրել
+
+Audit current implementation.
+
+For each state report:
+
+- internal enum/value
+- exact calculation
+- source fields
+- UI label
+- UI styling
+- whether quiz evidence can cause it
+- whether AI Teacher evidence can cause it
+
+Trace the actual code path.
+
+We previously observed scoring examples such as:
+
+3/3 → mastery 100 / confidence 100
+2/3 → mastery 67 / confidence 75
+1/3 → mastery 33 / confidence 55
+0/3 → mastery 0 / confidence 10
+
+DO NOT assume these are still authoritative.
+
+Verify current code and DB behavior.
+
+Also verify the current getMasteryLevel()/equivalent logic.
+
+==================================================
+PART F — MASTERY PERCENTAGE — CURRENT SOURCE
+==================================================
+
+We want Knowledge Tree V1 eventually to show mastery % at multiple levels:
+
+Subject %
+→ Topic/Section %
+→ Lesson %
+→ Node %
+→ atomic MicroNode %
+
+Before implementing this, determine what percentage data actually exists.
+
+Audit:
+
+1. Current masteryScore source.
+2. Current confidence source.
+3. Whether mastery is stored or calculated.
+4. Whether multiple evidence events update mastery.
+5. Whether quiz results update it.
+6. Whether AI Teacher interactions update it.
+7. Whether percentages currently exist for:
+   - MicroNode
+   - Node
+   - Lesson
+   - Topic
+   - Subject
+8. Whether any roll-up calculation already exists.
+
+CRITICAL:
+
+DO NOT IMPLEMENT A NEW ROLL-UP FORMULA.
+
+Report current formulas only.
+
+We will define one authoritative roll-up algorithm in KT-1.4 after this audit.
+
+==================================================
+PART G — KNOWLEDGE_NODES VS LESSON_NODES
+==================================================
+
+This distinction must be completely resolved.
+
+For both tables/entities explain:
+
+LESSON_NODE:
+- purpose
+- ownership
+- structural role
+- lifecycle
+
+KNOWLEDGE_NODE:
+- purpose
+- ownership
+- student specificity
+- mastery/confidence role
+- lifecycle
+
+Answer:
+
+Is the correct conceptual model currently:
+
+lesson_nodes
+= canonical curriculum/knowledge structure
+
+knowledge_nodes
+= student × knowledge-unit learner state
+
+?
+
+If not, explain the actual model.
+
+Also identify exact linking keys between them.
+
+==================================================
+PART H — EVIDENCE PIPELINE
+==================================================
+
+Trace current evidence flow:
+
+Quiz answer
+→ quiz attempt
+→ scoring
+→ evidence event
+→ knowledge/mastery update
+→ Knowledge Tree
+
+Also inspect AI Teacher/chat evidence path if it already exists,
+but DO NOT modify it.
+
+For each evidence source report:
+
+SOURCE
+TARGET NODE IDENTIFIER
+TABLE WRITTEN
+MASTERY EFFECT
+CONFIDENCE EFFECT
+KNOWLEDGE TREE EFFECT
+
+Identify any broken or incomplete path.
+
+==================================================
+PART I — SUBJECT / COURSE MODEL
+==================================================
+
+KT-1.2 will introduce:
+
+Sidebar
+→ Գիտելիքի ծառ
+→ Subjects
+
+Therefore determine what "subject" means in the current architecture.
+
+Audit:
+
+1. subjects table/entity
+2. course/class relation
+3. student enrollment
+4. lessons → subject relation
+5. whether the same subject can exist across grades/classes
+6. whether student subject cards should be derived from:
+   - enrollment
+   - assigned lessons
+   - course membership
+   - another authoritative relation
+
+Do NOT choose based on UI convenience.
+
+Identify the authoritative data source.
+
+For a real current student, provide a read-only example of which subjects
+would appear and why.
+
+==================================================
+PART J — SCALE ANALYSIS
+==================================================
+
+Knowledge Tree must support a full-year subject.
+
+Estimate using CURRENT real schema/data:
+
+For one representative subject:
+
+- number of lessons
+- topics
+- atomic lesson nodes
+- knowledge nodes/student states
+
+Then estimate expected scale if:
+
+5 lessons/week × school year × 10–15 atomic nodes per lesson.
+
+Do NOT redesign yet.
+
+Report which current rendering approach would fail at that scale and why.
+
+Evaluate conceptually whether the existing UI can support:
+
+- collapsed branches
+- lazy expansion
+- focused lesson view
+- search
+- state filtering
+
+No implementation yet.
+
+==================================================
+PART K — CURRENT DATA QUALITY / INTEGRITY
+==================================================
+
+READ-ONLY audit only.
+
+Check for:
+
+- duplicate lesson nodes
+- orphan knowledge_nodes
+- knowledge_nodes pointing to deleted lesson nodes
+- evidence pointing to missing nodes
+- duplicate student × lessonNode learner-state rows
+- sequence gaps
+- invalid topic relations
+- draft nodes visible to students
+
+DO NOT DELETE OR REPAIR ANYTHING.
+
+Report findings.
+
+IMPORTANT:
+Automated audit must obey the new Test Isolation / Zero-Pollution contract.
+
+No real DB mutations are allowed for this audit.
+
+==================================================
+PART L — PROPOSED V1 UI ARCHITECTURE
+==================================================
+
+ONLY AFTER Parts A–K are complete, propose the smallest architecture for:
+
+Sidebar
+→ Գիտելիքի ծառ
+→ Subject cards
+→ Subject hierarchy
+→ collapsible/focused navigation
+→ mastery percentages
+→ four states
+→ Detail Panel
+
+The proposal must use the ACTUAL existing data model whenever possible.
+
+Do not create new hierarchy merely for visual effect.
+
+For each proposed UI level specify:
+
+LEVEL
+DATA SOURCE
+CHILDREN
+MASTERY SOURCE
+STATE SUMMARY SOURCE
+DEFAULT EXPANDED/COLLAPSED BEHAVIOR
+
+The UI must be usable with hundreds or thousands of atomic knowledge units.
+
+==================================================
+PART M — SUBJECT CARD SPEC
+==================================================
+
+Propose the Subject Card structure.
+
+Required information:
+
+Առարկայի անուն
+
+Ընդամենը գիտելիքի միավորներ: N
+
+Գիտի: N
+Մասնակի գիտի: N
+Չգիտի: N
+Դեռ չի ուսումնասիրել: N
+
+Յուրացում: XX%
+
+Do NOT calculate XX% with a new invented formula yet.
+
+For now specify where the future authoritative roll-up will plug in.
+
+==================================================
+PART N — DETAIL PANEL SPEC
+==================================================
+
+For an atomic knowledge unit, propose a read-only Detail Panel for V1.
+
+V1 should use only data that already exists reliably.
+
+Candidate fields:
+
+- title
+- lesson/topic context
+- learning objective
+- current state
+- mastery %
+- confidence
+- latest evidence summary
+- source/reference if available
+
+Do NOT add Bloom-depth personalization yet.
+Do NOT add difficulty adaptation yet.
+Do NOT add spaced repetition yet.
+Do NOT add AI Teacher actions yet.
+
+Those belong to later Knowledge Tree phases.
+
+==================================================
+PART O — IMPLEMENTATION PLAN
+==================================================
+
+After the audit, produce the exact implementation sequence for:
+
+KT-1.2 — Student Navigation + Subjects
+KT-1.3 — Hierarchical / Collapsible Knowledge Tree
+KT-1.4 — Mastery Roll-up + Four-State Aggregation
+KT-1.5 — Detail Panel + Knowledge Tree V1 Closure
+
+For every step provide:
+
+- files likely changed
+- API changes
+- DB changes, if genuinely necessary
+- UI changes
+- acceptance tests
+- manual UAT steps
+- regression risks
+
+Do NOT implement those phases in this task.
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return:
+
+A. Current Student Navigation
+B. Current Knowledge Tree Frontend
+C. Actual DB Hierarchy
+D. Mapping → Knowledge Tree Lifecycle
+E. Four-State Model
+F. Current Mastery Calculation
+G. lesson_nodes vs knowledge_nodes
+H. Evidence Pipeline
+I. Subject/Course Authority
+J. Scale Analysis
+K. Data Integrity Findings
+L. Proposed V1 UI Architecture
+M. Subject Card Specification
+N. Detail Panel Specification
+O. KT-1.2 → KT-1.5 Implementation Plan
+
+Then provide these explicit verdicts:
+
+ACTUAL CANONICAL HIERARCHY:
+<exact hierarchy>
+
+ATOMIC KNOWLEDGE UNIT:
+<exact entity>
+
+STUDENT LEARNER-STATE ENTITY:
+<exact entity>
+
+SUBJECT AUTHORITY:
+<exact entity/relation>
+
+CURRENT MASTERY AUTHORITY:
+<exact function/table/path>
+
+KT-1.1 VERDICT:
+PASS — ARCHITECTURE READY FOR KT-1.2
+
+or
+
+BLOCKED — <exact architectural/data issue>
+
+STRICT END CONDITION:
+
+NO production feature changes in KT-1.1.
+NO DB writes.
+NO test fixture creation in the real/manual-UAT DB.
