@@ -4,6 +4,7 @@ import {
   subjectsTable,
   knowledgeNodesTable,
   lessonNodesTable,
+  lessonTopicsTable,
   lessonsTable,
   coursesTable,
   teachersTable,
@@ -174,9 +175,19 @@ router.get(
 );
 
 // ── GET /knowledge-tree/:subjectId ───────────────────────────────────────────
-// Per-subject Knowledge Tree for a single student (or teacher viewing a student).
+// KT-1.3: Per-subject hierarchical Knowledge Tree.
 //
-// KT-1.2 visibility contract (fixes the Phase 1.11 "approved" gate bug):
+// Response shape:
+//   { subjectId, subjectName, lessons: [{ lessonId, lessonTitle, lessonNumber,
+//     topics: [{ topicId, topicTitle, topicSequence, nodes: [...] }],
+//     ungroupedNodes: [...] }], recommendations: [...] }
+//
+// Hierarchy: Subject → Lesson → Topic → MicroNode
+// Ordering:  lessons by (lessonNumber NULLS LAST, lessonId)
+//            topics by (topic.sequence, topic.id)
+//            nodes by (node.sequence, node.id)
+//
+// Visibility contract (KT-1.2, preserved):
 //   lesson.status = 'active'  AND  lesson_nodes.status = 'approved'
 //   knowledge_nodes row NOT required — absent KN synthesised as not_started.
 router.get(
@@ -261,8 +272,6 @@ router.get(
     }
 
     // ── Fetch enrolled course IDs for this student + subject ─────────────────
-    // Authoritative chain: class_students → courses → subjects.
-    // Returns empty if student not enrolled.
     const enrolledCourses = await db
       .select({ courseId: coursesTable.id })
       .from(coursesTable)
@@ -276,123 +285,223 @@ router.get(
       .where(eq(coursesTable.subjectId, subjectId));
 
     if (enrolledCourses.length === 0) {
-      res.json({ subjectId: subject.id, subjectName: subject.name, topics: [], recommendations: [] });
+      res.json({ subjectId: subject.id, subjectName: subject.name, lessons: [], recommendations: [] });
       return;
     }
     const courseIds = enrolledCourses.map((c) => c.courseId);
 
-    // ── Fetch visible MicroNodes ─────────────────────────────────────────────
-    // Architecture: drive from lesson_nodes (not knowledge_nodes) so that nodes
-    // the student has never touched still appear as not_started.
-    //
-    // KT-1.2 visibility gate (replaces the broken Phase 1.11 "approved" gate):
-    //   lesson.status = 'active'         — student-facing lessons only
-    //   lesson_nodes.status = 'approved' — teacher-approved curriculum content only
-    //   No knowledge_nodes row required  — absence = not_started via LEFT JOIN NULL.
-    //
-    // Uses JOIN through classStudentsTable to filter by enrollment, avoiding
-    // inArray(lessons.courseId, ...) which has a nullable column type issue.
-    const topics = await db
+    // ── Step 1: Fetch all visible MicroNodes with lesson + mastery info ───────
+    // Drives from lesson_nodes so nodes with no knowledge_nodes row appear
+    // as not_started (LEFT JOIN NULL).
+    const nodeRows = await db
       .select({
+        lessonId:        lessonsTable.id,
+        lessonTitle:     lessonsTable.title,
+        lessonNumber:    lessonsTable.lessonNumber,
         lessonNodeId:    lessonNodesTable.id,
-        lessonNodeTitle: lessonNodesTable.title,
-        knId:            knowledgeNodesTable.id,
-        topicName:       knowledgeNodesTable.topicName,
+        nodeTitle:       lessonNodesTable.title,
+        nodeSequence:    lessonNodesTable.sequence,
+        topicId:         lessonNodesTable.topicId,       // nullable — null means ungrouped
         masteryScore:    knowledgeNodesTable.masteryScore,
         confidenceScore: knowledgeNodesTable.confidenceScore,
-        status:          knowledgeNodesTable.status,
         dueAt:           reviewScheduleTable.dueAt,
       })
       .from(lessonNodesTable)
       .innerJoin(lessonsTable, eq(lessonNodesTable.lessonId, lessonsTable.id))
       .innerJoin(coursesTable, and(
         eq(lessonsTable.courseId, coursesTable.id),
-        inArray(coursesTable.id, courseIds),         // filter by enrolled course IDs (PK — non-null)
-        eq(coursesTable.subjectId, subjectId),        // scope to this subject
+        inArray(coursesTable.id, courseIds),
+        eq(coursesTable.subjectId, subjectId),
       ))
-      .leftJoin(
-        knowledgeNodesTable,
-        and(
-          eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id),
-          eq(knowledgeNodesTable.userId,       targetUserId),
-          eq(knowledgeNodesTable.subjectId,    subjectId),
-        )
-      )
-      .leftJoin(
-        reviewScheduleTable,
-        and(
-          eq(reviewScheduleTable.topicId, knowledgeNodesTable.id),
-          eq(reviewScheduleTable.userId,  targetUserId),
-        )
-      )
-      // KT-1.2 gate: active lesson + approved node
-      .where(
-        and(
-          eq(lessonsTable.status,     "active"),    // student-facing lessons
-          eq(lessonNodesTable.status, "approved"),  // teacher-approved nodes only
-        )
-      )
-      .orderBy(lessonNodesTable.id);
+      .leftJoin(knowledgeNodesTable, and(
+        eq(knowledgeNodesTable.lessonNodeId, lessonNodesTable.id),
+        eq(knowledgeNodesTable.userId,       targetUserId),
+        eq(knowledgeNodesTable.subjectId,    subjectId),
+      ))
+      .leftJoin(reviewScheduleTable, and(
+        eq(reviewScheduleTable.topicId, knowledgeNodesTable.id),
+        eq(reviewScheduleTable.userId,  targetUserId),
+      ))
+      .where(and(
+        eq(lessonsTable.status,     "active"),
+        eq(lessonNodesTable.status, "approved"),
+      ));
 
-    const mappedTopics = topics.map((t) => {
-      const rawLevel = getMasteryLevelFromScores(t.masteryScore, t.confidenceScore, t.dueAt ?? null);
-      // needs_review folds into mastered — Knowledge Tree shows only 4 visible blocks:
-      //   mastered (Գиtи) | weak (Масnakи γиtи) | in_progress (Чγиtи) | not_started (Деrrr чи ousumnasirel)
-      const masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" =
+    // ── Step 2: Fetch lesson_topics for all involved lessons ─────────────────
+    const lessonIds = [...new Set(nodeRows.map(r => r.lessonId))];
+    const topicRows = lessonIds.length > 0
+      ? await db
+          .select()
+          .from(lessonTopicsTable)
+          .where(inArray(lessonTopicsTable.lessonId, lessonIds))
+      : [];
+
+    // ── Step 3: Build hierarchical structure in-memory ────────────────────────
+
+    type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
+
+    interface MicroNode {
+      lessonNodeId: number;
+      title: string;
+      sequence: number;
+      masteryScore: number;
+      confidenceScore: number | null;
+      masteryLevel: MasteryLevel4;
+    }
+
+    // Process each flat row → typed MicroNode
+    const processedNodes = nodeRows.map((row) => {
+      const rawLevel = getMasteryLevelFromScores(
+        row.masteryScore, row.confidenceScore, row.dueAt ?? null
+      );
+      const masteryLevel: MasteryLevel4 =
         rawLevel === "needs_review" ? "mastered" : rawLevel;
       return {
-        id:              t.knId ?? t.lessonNodeId,
-        topicName:       t.topicName ?? t.lessonNodeTitle,
-        lessonNodeId:    t.lessonNodeId,
-        score:           t.masteryScore ?? 0,
-        confidenceScore: t.confidenceScore ?? null,
-        status:          t.status ?? "not_started",
+        lessonId:  row.lessonId,
+        topicId:   row.topicId ?? null,
+        lessonNodeId: row.lessonNodeId,
+        title:     row.nodeTitle,
+        sequence:  row.nodeSequence,
+        masteryScore:    row.masteryScore    ?? 0,
+        confidenceScore: row.confidenceScore ?? null,
         masteryLevel,
+        // lesson meta — kept for lesson map below
+        lessonTitle:  row.lessonTitle,
+        lessonNumber: row.lessonNumber,
       };
     });
 
-    // ── Build AI recommendations ─────────────────────────────────────────────
+    // De-duplicate lessons (same lesson can appear multiple times if it has
+    // multiple enrolled courses — rare but possible)
+    const lessonMeta = new Map<number, { lessonTitle: string; lessonNumber: number | null }>();
+    for (const n of processedNodes) {
+      if (!lessonMeta.has(n.lessonId)) {
+        lessonMeta.set(n.lessonId, { lessonTitle: n.lessonTitle, lessonNumber: n.lessonNumber });
+      }
+    }
+
+    // Build topic map: topicId → topic record
+    const topicMap = new Map(topicRows.map(t => [t.id, t]));
+
+    // Group nodes: lessonId → (topicId | "ungrouped") → MicroNode[]
+    const lessonBuckets = new Map<number, Map<number | "ungrouped", MicroNode[]>>();
+    for (const node of processedNodes) {
+      if (!lessonBuckets.has(node.lessonId)) {
+        lessonBuckets.set(node.lessonId, new Map());
+      }
+      const lb = lessonBuckets.get(node.lessonId)!;
+      const key: number | "ungrouped" = node.topicId ?? "ungrouped";
+      if (!lb.has(key)) lb.set(key, []);
+      lb.get(key)!.push({
+        lessonNodeId: node.lessonNodeId,
+        title:        node.title,
+        sequence:     node.sequence,
+        masteryScore: node.masteryScore,
+        confidenceScore: node.confidenceScore,
+        masteryLevel: node.masteryLevel,
+      });
+    }
+
+    // Sort nodes within each bucket: sequence ASC, lessonNodeId ASC (stable tiebreak)
+    for (const topicBuckets of lessonBuckets.values()) {
+      for (const nodes of topicBuckets.values()) {
+        nodes.sort((a, b) => a.sequence - b.sequence || a.lessonNodeId - b.lessonNodeId);
+      }
+    }
+
+    // Sort lessons: lessonNumber ASC (NULLS LAST), lessonId ASC
+    const sortedLessonIds = [...lessonMeta.keys()].sort((a, b) => {
+      const numA = lessonMeta.get(a)!.lessonNumber;
+      const numB = lessonMeta.get(b)!.lessonNumber;
+      if (numA !== null && numB !== null) return numA - numB;
+      if (numA === null && numB !== null) return 1;   // null sorts last
+      if (numA !== null && numB === null) return -1;
+      return a - b;  // both null → sort by id
+    });
+
+    // Build lessons array
+    const lessons = sortedLessonIds.map((lessonId) => {
+      const meta    = lessonMeta.get(lessonId)!;
+      const buckets = lessonBuckets.get(lessonId) ?? new Map();
+
+      // Topics: all lesson_topics for this lesson, sorted by sequence then id
+      const lessonTopicsForLesson = topicRows
+        .filter(t => t.lessonId === lessonId)
+        .sort((a, b) => a.sequence - b.sequence || a.id - b.id);
+
+      const topics = lessonTopicsForLesson
+        .map(topic => ({
+          topicId:       topic.id,
+          topicTitle:    topic.title,
+          topicSequence: topic.sequence,
+          nodes:         buckets.get(topic.id) ?? [],
+        }))
+        .filter(t => t.nodes.length > 0);  // omit topics with zero approved nodes
+
+      // Ungrouped nodes (topicId = null)
+      const ungroupedNodes = buckets.get("ungrouped") ?? [];
+
+      return {
+        lessonId,
+        lessonTitle:  meta.lessonTitle,
+        lessonNumber: meta.lessonNumber,
+        topics,
+        ungroupedNodes,
+      };
+    });
+
+    // ── AI recommendations (from flat node list, same logic as KT-1.2) ───────
+    const flatNodes = processedNodes;
+
     const recommendations: Array<{
       type: "start" | "review" | "repeat";
       message: string;
       topicName: string;
     }> = [];
 
-    const notStarted  = mappedTopics.filter((t) => t.masteryLevel === "not_started");
-    const inProgress  = mappedTopics.filter((t) => t.masteryLevel === "in_progress");
-    const weak        = mappedTopics.filter((t) => t.masteryLevel === "weak");
-    const mastered    = mappedTopics.filter((t) => t.masteryLevel === "mastered");
+    const notStarted = flatNodes.filter(n => n.masteryLevel === "not_started");
+    const inProgress = flatNodes.filter(n => n.masteryLevel === "in_progress");
+    const weak       = flatNodes.filter(n => n.masteryLevel === "weak");
+    const mastered   = flatNodes.filter(n => n.masteryLevel === "mastered");
 
     if (notStarted.length > 0) {
       recommendations.push({
         type:      "start",
-        message:   `Սկсеть «${notStarted[0].topicName}» թема`,
-        topicName: notStarted[0].topicName,
+        message:   `Սկսել «${notStarted[0].title}» թեման`,
+        topicName: notStarted[0].title,
       });
     }
 
     const toReview = [...weak, ...inProgress];
     if (toReview.length > 0) {
-      const weakest = toReview.reduce((a, b) => (a.score < b.score ? a : b));
+      const weakest = toReview.reduce((a, b) => (a.masteryScore < b.masteryScore ? a : b));
       recommendations.push({
         type:      "review",
-        message:   `Կrknецте «${weakest.topicName}» — гnaatakne ${weakest.score}%`,
-        topicName: weakest.topicName,
+        message:   `Կրկնել «${weakest.title}» — գնահատականը ${weakest.masteryScore}%`,
+        topicName: weakest.title,
       });
     }
 
     if (mastered.length > 0) {
       recommendations.push({
         type:      "repeat",
-        message:   `Կrknецте «${mastered[0].topicName}» — amrape'ndets giteliknere`,
-        topicName: mastered[0].topicName,
+        message:   `Կրկնել «${mastered[0].title}» — ամրապնդել գիտելիքները`,
+        topicName: mastered[0].title,
       });
     }
 
+    // ── Deduplicate safety (T24) ─────────────────────────────────────────────
+    // Check for duplicate lessonNodeIds (shouldn't happen, but log if present)
+    const allNodeIds = processedNodes.map(n => n.lessonNodeId);
+    const uniqueNodeIds = new Set(allNodeIds);
+    if (uniqueNodeIds.size !== allNodeIds.length) {
+      console.warn(`[KT-1.3] Duplicate lessonNodeIds detected for subjectId=${subjectId}`);
+    }
+
     res.json({
-      subjectId:       subject.id,
-      subjectName:     subject.name,
-      topics:          mappedTopics,
+      subjectId:   subject.id,
+      subjectName: subject.name,
+      lessons,
       recommendations,
     });
   }

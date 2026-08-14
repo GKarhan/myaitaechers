@@ -120,17 +120,17 @@ export default function KtSubjectSelect() {
 function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
   const stateRows: { label: string; count: number; dotClass: string }[] = [
     { label: "Գիտի",                  count: s.masteredCount,   dotClass: "bg-secondary" },
-    { label: "Մасnakи γиtи",           count: s.weakCount,       dotClass: "bg-accent" },
-    { label: "Чγиtи",                  count: s.inProgressCount, dotClass: "bg-primary" },
-    { label: "Деrrr чи ousumnasirel",  count: s.notStartedCount, dotClass: "bg-destructive" },
+    { label: "Մասնակի գիտի",           count: s.weakCount,       dotClass: "bg-accent" },
+    { label: "Չգիտի",                  count: s.inProgressCount, dotClass: "bg-primary" },
+    { label: "Դեռ չի ուսումնասիրվել",  count: s.notStartedCount, dotClass: "bg-destructive" },
   ];
 
   // Proper Armenian labels
   const rows: { label: string; count: number; dotClass: string }[] = [
     { label: "Գիտի",                    count: s.masteredCount,   dotClass: "bg-secondary" },
-    { label: "Մասնakи гиtи",            count: s.weakCount,       dotClass: "bg-accent" },
-    { label: "Чгиtи",                   count: s.inProgressCount, dotClass: "bg-primary" },
-    { label: "Дерr чи ousumnasirel",    count: s.notStartedCount, dotClass: "bg-destructive" },
+    { label: "Մասնակի գիտի",            count: s.weakCount,       dotClass: "bg-accent" },
+    { label: "Չգիտի",                   count: s.inProgressCount, dotClass: "bg-primary" },
+    { label: "Դեռ չի ուսումնասիրել",    count: s.notStartedCount, dotClass: "bg-destructive" },
   ];
 
   void stateRows; // suppress lint (using rows instead)
@@ -161,7 +161,7 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
 
       {/* Mastery % placeholder — deferred to KT-1.4 */}
       <div className="text-xs text-muted-foreground border-t border-white/5 pt-3">
-        Юрацum՝ —
+        Յուրացման աստիճան՝ —
       </div>
 
       {/* CTA */}
@@ -169,7 +169,7 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
         href={`/knowledge-tree/${s.subjectId}`}
         className="block w-full text-center py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-semibold shadow-lg shadow-primary/20"
       >
-        Бaцел гиteliq'i ծarph
+        Բացել գիտելիքի ծառը
       </Link>
     </div>
   );

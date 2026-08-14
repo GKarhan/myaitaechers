@@ -4,9 +4,243 @@ import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
 
-// 4 visible blocks: mastered=Գիտի | weak=Մասնակի գիտի | in_progress=Չգիտի | not_started=Դեռ չի ուսումնասիրել
-// needs_review folds into mastered in the UI (5-state API → 4-state display)
+// ── KT-1.3 types ──────────────────────────────────────────────────────────────
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
+type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
+
+interface KTMicroNode {
+  lessonNodeId: number;
+  title: string;
+  sequence: number;
+  masteryScore: number;
+  confidenceScore: number | null;
+  masteryLevel: MasteryLevel4;
+}
+
+interface KTTopic {
+  topicId: number;
+  topicTitle: string;
+  topicSequence: number;
+  nodes: KTMicroNode[];
+}
+
+interface KTLesson {
+  lessonId: number;
+  lessonTitle: string;
+  lessonNumber: number | null;
+  topics: KTTopic[];
+  ungroupedNodes: KTMicroNode[];
+}
+
+interface KTData {
+  subjectId: number;
+  subjectName: string;
+  lessons: KTLesson[];
+  recommendations: Array<{ type: string; message: string; topicName: string }>;
+}
+
+// ── State helpers ─────────────────────────────────────────────────────────────
+
+function masteryConfig(level: MasteryLevel4) {
+  switch (level) {
+    case "mastered":    return { icon: "✓", label: "Գիտի",                badge: "bg-secondary/10 text-secondary border-secondary/20",   border: "border-l-secondary",  dot: "bg-secondary"  };
+    case "weak":        return { icon: "◐", label: "Մասնակի գիտի",        badge: "bg-accent/10 text-accent border-accent/20",             border: "border-l-accent",     dot: "bg-accent"     };
+    case "in_progress": return { icon: "!", label: "Չգիտի",               badge: "bg-primary/10 text-primary border-primary/20",          border: "border-l-primary",    dot: "bg-primary"    };
+    case "not_started": return { icon: "○", label: "Դեռ չի ուսումնասիրել", badge: "bg-destructive/10 text-destructive border-destructive/20", border: "border-l-destructive", dot: "bg-destructive" };
+  }
+}
+
+// Filter a lesson: returns the lesson with only matching nodes (or null if empty).
+function filterLesson(lesson: KTLesson, filter: FilterTab): KTLesson | null {
+  if (filter === "all") return lesson;
+  const filteredTopics = lesson.topics
+    .map(t => ({ ...t, nodes: t.nodes.filter(n => n.masteryLevel === filter) }))
+    .filter(t => t.nodes.length > 0);
+  const filteredUngrouped = lesson.ungroupedNodes.filter(n => n.masteryLevel === filter);
+  if (filteredTopics.length === 0 && filteredUngrouped.length === 0) return null;
+  return { ...lesson, topics: filteredTopics, ungroupedNodes: filteredUngrouped };
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function NodeRow({ node }: { node: KTMicroNode }) {
+  const cfg = masteryConfig(node.masteryLevel);
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl bg-card/50 border border-card-border border-l-4 ${cfg.border}`}
+    >
+      {/* State icon — distinct symbol per state (not just color) */}
+      <span
+        className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${cfg.dot} bg-opacity-20`}
+        style={{ backgroundColor: "transparent" }}
+        aria-label={cfg.label}
+      >
+        <span className={`text-xs font-bold ${
+          node.masteryLevel === "mastered"    ? "text-secondary" :
+          node.masteryLevel === "weak"        ? "text-accent"    :
+          node.masteryLevel === "in_progress" ? "text-primary"   :
+                                                "text-destructive"
+        }`}>{cfg.icon}</span>
+      </span>
+
+      {/* Title */}
+      <span className="flex-1 text-sm font-medium text-white">{node.title}</span>
+
+      {/* Score */}
+      <span className="text-sm font-semibold text-muted-foreground w-10 text-right">
+        {node.masteryScore}%
+      </span>
+
+      {/* Badge */}
+      <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium border ${cfg.badge}`}>
+        {cfg.label}
+      </span>
+    </div>
+  );
+}
+
+function TopicGroup({
+  topic,
+  isOpen,
+  onToggle,
+}: {
+  topic: KTTopic;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="mb-2">
+      {/* Topic header — collapsible */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-left group"
+      >
+        <span className="text-muted-foreground text-xs w-4 shrink-0">
+          {isOpen ? "▼" : "▶"}
+        </span>
+        <span className="text-sm font-semibold text-white/90 flex-1">{topic.topicTitle}</span>
+        <span className="text-xs text-muted-foreground">
+          {topic.nodes.length} {topic.nodes.length === 1 ? "հանգ." : "հանգ."}
+        </span>
+        {/* KT-1.4 will add roll-up % */}
+        <span className="text-xs text-muted-foreground ml-2">Յուրացում՝ —</span>
+      </button>
+
+      {/* Nodes — only mounted when topic is open (scalability T23) */}
+      {isOpen && (
+        <div className="ml-6 mt-1 flex flex-col gap-1.5">
+          {topic.nodes.map((node) => (
+            <NodeRow key={node.lessonNodeId} node={node} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LessonSection({
+  lesson,
+  lessonIndex,
+  isOpen,
+  onToggle,
+  expandedTopics,
+  onToggleTopic,
+}: {
+  lesson: KTLesson;
+  lessonIndex: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  expandedTopics: Set<string>;
+  onToggleTopic: (key: string) => void;
+}) {
+  const totalNodes =
+    lesson.topics.reduce((s, t) => s + t.nodes.length, 0) +
+    lesson.ungroupedNodes.length;
+
+  const lessonLabel = lesson.lessonNumber != null
+    ? `Դաս ${lesson.lessonNumber}`
+    : `Դաս ${lessonIndex + 1}`;
+
+  return (
+    <div className="mb-3 rounded-2xl border border-card-border bg-card overflow-hidden">
+      {/* Lesson header */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-white/5 transition-colors text-left"
+      >
+        <span className="text-muted-foreground text-sm w-4 shrink-0">
+          {isOpen ? "▼" : "▶"}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-semibold text-primary uppercase tracking-wide mb-0.5">
+            {lessonLabel}
+          </div>
+          <div className="text-sm font-semibold text-white truncate">{lesson.lessonTitle}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-xs text-muted-foreground">{totalNodes} հանգ.</div>
+          {/* KT-1.4 will add roll-up % */}
+          <div className="text-xs text-muted-foreground">Յուրացում՝ —</div>
+        </div>
+      </button>
+
+      {/* Lesson body — only mounted when expanded (scalability T23) */}
+      {isOpen && (
+        <div className="border-t border-card-border px-3 py-3">
+          {/* Topic groups */}
+          {lesson.topics.map((topic) => {
+            const topicKey = `topic-${lesson.lessonId}-${topic.topicId}`;
+            return (
+              <TopicGroup
+                key={topic.topicId}
+                topic={topic}
+                isOpen={expandedTopics.has(topicKey)}
+                onToggle={() => onToggleTopic(topicKey)}
+              />
+            );
+          })}
+
+          {/* Ungrouped nodes (topicId = null) */}
+          {lesson.ungroupedNodes.length > 0 && (
+            <div className="mb-2">
+              <button
+                onClick={() => onToggleTopic(`ungrouped-${lesson.lessonId}`)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-left"
+              >
+                <span className="text-muted-foreground text-xs w-4 shrink-0">
+                  {expandedTopics.has(`ungrouped-${lesson.lessonId}`) ? "▼" : "▶"}
+                </span>
+                <span className="text-sm font-semibold text-white/60 flex-1 italic">
+                  Առանց խմբի
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {lesson.ungroupedNodes.length} հանգ.
+                </span>
+                <span className="text-xs text-muted-foreground ml-2">Յուրացում՝ —</span>
+              </button>
+              {expandedTopics.has(`ungrouped-${lesson.lessonId}`) && (
+                <div className="ml-6 mt-1 flex flex-col gap-1.5">
+                  {lesson.ungroupedNodes.map((node) => (
+                    <NodeRow key={node.lessonNodeId} node={node} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Empty state for this lesson */}
+          {lesson.topics.length === 0 && lesson.ungroupedNodes.length === 0 && (
+            <div className="px-4 py-4 text-sm text-muted-foreground text-center">
+              Ոչ մի հանգույց
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function KnowledgeTree() {
   const { user, token, isLoading: authLoading } = useAuth();
@@ -14,22 +248,27 @@ export default function KnowledgeTree() {
   const { id } = useParams<{ id: string }>();
   const subjectId = parseInt(id || "", 10);
 
-  // Parse optional ?studentId and ?classId from URL
+  // Parse optional ?studentId and ?classId from URL (teacher view)
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
   const studentIdParam = searchParams.get("studentId");
   const studentId = studentIdParam ? parseInt(studentIdParam, 10) : null;
-
-  // Teacher-view mode: teacher is viewing a specific student's tree
   const isTeacherView = !!studentId && !isNaN(studentId) && user?.role === "teacher";
 
+  // ── Filter state ─────────────────────────────────────────────────────────
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
 
-  // Reset filter and scroll position when the subject changes so SPA
-  // navigation never inherits stale UI state from the previous page.
-  // Scroll owner is <main id="student-main" overflow-y-auto> in StudentLayout.
+  // ── Expansion state ───────────────────────────────────────────────────────
+  // Set of expanded lesson IDs
+  const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set());
+  // Set of expanded topic keys ("topic-{lessonId}-{topicId}" | "ungrouped-{lessonId}")
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+
+  // ── Reset on subject change (KT-1.2 scroll + filter + KT-1.3 expansion) ──
   useEffect(() => {
     setActiveFilter("all");
+    setExpandedLessons(new Set());
+    setExpandedTopics(new Set());
     document.getElementById("student-main")?.scrollTo(0, 0);
   }, [subjectId]);
 
@@ -39,20 +278,16 @@ export default function KnowledgeTree() {
     }
   }, [token, authLoading, setLocation]);
 
-  // ── Student viewing their own tree: use the generated hook ────────────────
+  // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: ownTreeData, isLoading: ownTreeLoading } = useGetKnowledgeTree(subjectId, {
     query: {
       queryKey: getGetKnowledgeTreeQueryKey(subjectId),
       enabled: !!token && !isNaN(subjectId) && !isTeacherView,
-      staleTime: 0,        // always refetch on mount — ensures fresh state after any quiz
+      staleTime: 0,
       refetchOnMount: true,
     },
   });
 
-  // ── Teacher viewing a student's tree: direct fetch with ?studentId= param ─
-  // The generated hook does not support extra query params, so we use a plain
-  // useQuery here.  The web app uses session cookies for auth; the token is
-  // also passed as a Bearer header to match the API server's requireAuth flow.
   const { data: teacherTreeData, isLoading: teacherTreeLoading } = useQuery({
     queryKey: ["knowledge-tree-teacher", subjectId, studentId],
     queryFn: async () => {
@@ -71,216 +306,176 @@ export default function KnowledgeTree() {
     refetchOnMount: true,
   });
 
-  const treeData  = isTeacherView ? teacherTreeData  : ownTreeData;
+  const rawData    = isTeacherView ? teacherTreeData  : ownTreeData;
   const treeLoading = isTeacherView ? teacherTreeLoading : ownTreeLoading;
 
+  // ── Auto-expand first lesson + all its topics once data arrives ───────────
+  useEffect(() => {
+    if (!rawData) return;
+    const data = rawData as unknown as KTData;
+    if (!data.lessons || data.lessons.length === 0) return;
+
+    const first = data.lessons[0];
+    // Only set defaults if expansion state is still empty (don't override user interactions)
+    setExpandedLessons(prev => {
+      if (prev.size > 0) return prev;
+      return new Set([first.lessonId]);
+    });
+    setExpandedTopics(prev => {
+      if (prev.size > 0) return prev;
+      const keys = new Set<string>();
+      for (const t of first.topics) {
+        keys.add(`topic-${first.lessonId}-${t.topicId}`);
+      }
+      if (first.ungroupedNodes.length > 0) {
+        keys.add(`ungrouped-${first.lessonId}`);
+      }
+      return keys;
+    });
+  }, [rawData]);
+
+  // ── Loading / auth guard ──────────────────────────────────────────────────
   if (authLoading || treeLoading) {
     return (
       <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (!user || !treeData) return null;
+  if (!user || !rawData) return null;
 
-  const rawTopics = (treeData.topics as any[]) ?? [];
+  const treeData = rawData as unknown as KTData;
+  const allLessons: KTLesson[] = treeData.lessons ?? [];
 
-  // needs_review is a 5th server state that folds into "mastered" for the 4-block display.
-  // Normalize before filtering so the "Գիտի" tab correctly shows needs_review nodes.
-  const normalizedTopics = rawTopics.map((t: any) => ({
-    ...t,
-    masteryLevel: t.masteryLevel === "needs_review" ? "mastered" : t.masteryLevel,
-  }));
+  // ── Apply filter: returns visible lessons with filtered nodes ─────────────
+  const visibleLessons: KTLesson[] = allLessons
+    .map(l => filterLesson(l, activeFilter))
+    .filter((l): l is KTLesson => l !== null);
 
-  const filteredTopics = normalizedTopics.filter((topic: any) => {
-    if (activeFilter === "all") return true;
-    return topic.masteryLevel === activeFilter;
-  });
+  // ── Toggle helpers ────────────────────────────────────────────────────────
+  function toggleLesson(lessonId: number) {
+    setExpandedLessons(prev => {
+      const next = new Set(prev);
+      if (next.has(lessonId)) next.delete(lessonId);
+      else next.add(lessonId);
+      return next;
+    });
+  }
 
+  function toggleTopic(key: string) {
+    setExpandedTopics(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-[100dvh] w-full bg-background text-white pb-20">
+      {/* ── Header ───────────────────────────────────────────────────────── */}
       <header className="border-b border-card-border bg-card/50 backdrop-blur-lg sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-          {/* Back navigation:
-              - Teacher-view: setLocation("/teacher") — stable even after direct
-                page load or refresh (window.history.back() silently fails then).
-              - Student-view: hardcoded link to /subjects/:id as before.     */}
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
           {isTeacherView ? (
             <button
               onClick={() => setLocation("/teacher")}
-              className="text-muted-foreground hover:text-white transition-colors"
+              className="text-muted-foreground hover:text-white transition-colors text-sm"
             >
               ← Հետ
             </button>
           ) : (
-            <Link href="/kt-subjects" className="text-muted-foreground hover:text-white transition-colors">
+            <Link href="/kt-subjects" className="text-muted-foreground hover:text-white transition-colors text-sm">
               ← Հետ
             </Link>
           )}
-          <div className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-            {treeData.subjectName} — Գիտելիքի ծառ
+          <div>
+            <div className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+              {treeData.subjectName}
+            </div>
+            <div className="text-xs text-muted-foreground">Գիտելիքի ծառ</div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 pt-10">
+      <div className="max-w-4xl mx-auto px-6 pt-6">
 
-        {/* ── Filter tabs ────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-2 mb-8 border-b border-card-border pb-6">
-          <button
-            onClick={() => setActiveFilter("all")}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border ${activeFilter === "all" ? "bg-white text-background border-white" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
-          >
-            Բոլորը
-          </button>
-          <button
-            onClick={() => setActiveFilter("mastered")}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "mastered" ? "bg-secondary/20 text-secondary border-secondary/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
-          >
-            <span className="w-2 h-2 rounded-full bg-secondary"></span>
-            Գիտի
-          </button>
-          <button
-            onClick={() => setActiveFilter("weak")}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "weak" ? "bg-accent/20 text-accent border-accent/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
-          >
-            <span className="w-2 h-2 rounded-full bg-accent"></span>
-            Մասնակի գիտի
-          </button>
-          <button
-            onClick={() => setActiveFilter("in_progress")}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "in_progress" ? "bg-primary/20 text-primary border-primary/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
-          >
-            <span className="w-2 h-2 rounded-full bg-primary"></span>
-            Չգիտի
-          </button>
-          <button
-            onClick={() => setActiveFilter("not_started")}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border flex items-center gap-2 ${activeFilter === "not_started" ? "bg-destructive/20 text-destructive border-destructive/50" : "bg-card border-card-border text-muted-foreground hover:text-white"}`}
-          >
-            <span className="w-2 h-2 rounded-full bg-destructive"></span>
-            Դեռ չի ուսումնասիրել
-          </button>
+        {/* ── Filter tabs ─────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {(
+            [
+              { key: "all",         label: "Բոլորը",              dot: null },
+              { key: "mastered",    label: "Գիտի",                dot: "bg-secondary"   },
+              { key: "weak",        label: "Մասնակի գիտի",        dot: "bg-accent"      },
+              { key: "in_progress", label: "Չգիտի",               dot: "bg-primary"     },
+              { key: "not_started", label: "Դեռ չի ուսումնասիրել", dot: "bg-destructive" },
+            ] as const
+          ).map(({ key, label, dot }) => (
+            <button
+              key={key}
+              onClick={() => setActiveFilter(key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${
+                activeFilter === key
+                  ? "bg-white/10 text-white border-white/30"
+                  : "bg-card border-card-border text-muted-foreground hover:text-white"
+              }`}
+            >
+              {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
+              {label}
+            </button>
+          ))}
         </div>
 
-        {/* ── Topic cards ────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          {filteredTopics.map((topic: any, idx: number) => {
-            const isMastered   = topic.masteryLevel === "mastered";
-            const isWeak       = topic.masteryLevel === "weak";
-            const isInProgress = topic.masteryLevel === "in_progress";
-            const isNotStarted = !isMastered && !isWeak && !isInProgress;
+        {/* ── Lesson list ─────────────────────────────────────────────────── */}
+        {visibleLessons.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground text-sm">
+            {activeFilter === "all"
+              ? "Ոչ մի հանգույց դեռ"
+              : "Ֆիլտրին համապատասխանող հանգույց չկա"}
+          </div>
+        ) : (
+          visibleLessons.map((lesson, idx) => (
+            <LessonSection
+              key={lesson.lessonId}
+              lesson={lesson}
+              lessonIndex={idx}
+              isOpen={expandedLessons.has(lesson.lessonId)}
+              onToggle={() => toggleLesson(lesson.lessonId)}
+              expandedTopics={expandedTopics}
+              onToggleTopic={toggleTopic}
+            />
+          ))
+        )}
 
-            let borderColorClass = "";
-            let badgeText        = "";
-            let badgeColorClass  = "";
-            let dotColorClass    = "";
-
-            if (isMastered) {
-              // Includes needs_review (folded into mastered — no 5th block)
-              borderColorClass = "border-l-secondary";
-              badgeText        = "Գիտի";
-              badgeColorClass  = "bg-secondary/10 text-secondary border-secondary/20";
-              dotColorClass    = "bg-secondary";
-            } else if (isWeak) {
-              borderColorClass = "border-l-accent";
-              badgeText        = "Մասնակի գիտի";
-              badgeColorClass  = "bg-accent/10 text-accent border-accent/20";
-              dotColorClass    = "bg-accent";
-            } else if (isInProgress) {
-              borderColorClass = "border-l-primary";
-              badgeText        = "Չգիտի";
-              badgeColorClass  = "bg-primary/10 text-primary border-primary/20";
-              dotColorClass    = "bg-primary";
-            } else {
-              // not_started = no quiz evidence yet → «Դեռ չի ուսումնասիրել»
-              borderColorClass = "border-l-destructive";
-              badgeText        = "Դեռ չի ուսումնասիրել";
-              badgeColorClass  = "bg-destructive/10 text-destructive border-destructive/20";
-              dotColorClass    = "bg-destructive";
-            }
-
-            return (
-              <div
-                key={topic.lessonNodeId ?? topic.id ?? idx}
-                className={`p-6 rounded-2xl bg-card border border-card-border border-l-4 ${borderColorClass} flex flex-col h-full`}
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="font-semibold text-lg leading-tight flex-1 pr-4">{topic.topicName}</h3>
-                  <div className="font-bold text-xl">{topic.score}%</div>
-                </div>
-
-                <div className={`self-start px-2.5 py-1 rounded-md text-xs font-medium border flex items-center gap-1.5 mb-6 ${badgeColorClass}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${dotColorClass}`}></span>
-                  {badgeText}
-                </div>
-
-                <div className="mt-auto flex gap-3">
-                  {isMastered && (
-                    <button className="flex-1 py-2 bg-card border border-card-border hover:bg-secondary/10 hover:border-secondary/30 hover:text-secondary rounded-lg transition-colors text-sm font-medium">
-                      Կրկնել
-                    </button>
-                  )}
-                  {isWeak && (
-                    <>
-                      <button className="flex-1 py-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg transition-colors text-sm font-medium">
-                        Սովորել
-                      </button>
-                      <button className="flex-1 py-2 bg-card border border-card-border hover:bg-accent/10 hover:border-accent/30 hover:text-accent rounded-lg transition-colors text-sm font-medium">
-                        Կրկնել
-                      </button>
-                    </>
-                  )}
-                  {isInProgress && (
-                    <button className="flex-1 py-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg transition-colors text-sm font-medium">
-                      Շարունակել
-                    </button>
-                  )}
-                  {isNotStarted && (
-                    <button className="flex-1 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors text-sm font-medium shadow-lg shadow-primary/20">
-                      Սովորել
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ── AI recommendations ─────────────────────────────────────────── */}
+        {/* ── AI recommendations ──────────────────────────────────────────── */}
         {treeData.recommendations && treeData.recommendations.length > 0 && (
-          <div>
-            <h2 className="text-2xl font-bold mb-6">AI-ի Առաջարկություններ</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {(treeData.recommendations as any[]).map((rec, idx) => {
-                let borderClass = "";
-                let bgClass     = "";
-                let dotClass    = "";
-
-                if (rec.type === "start") {
-                  borderClass = "border-l-primary";
-                  bgClass     = "bg-primary/5";
-                  dotClass    = "bg-primary";
-                } else if (rec.type === "review") {
-                  borderClass = "border-l-accent";
-                  bgClass     = "bg-accent/5";
-                  dotClass    = "bg-accent";
-                } else if (rec.type === "repeat") {
-                  borderClass = "border-l-secondary";
-                  bgClass     = "bg-secondary/5";
-                  dotClass    = "bg-secondary";
-                }
-
+          <div className="mt-8">
+            <h2 className="text-base font-bold mb-4 text-white/70">AI-ի Առաջարկություններ</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {treeData.recommendations.map((rec, idx) => {
+                const borderClass =
+                  rec.type === "start"  ? "border-l-primary"   :
+                  rec.type === "review" ? "border-l-accent"    :
+                                          "border-l-secondary";
+                const bgClass =
+                  rec.type === "start"  ? "bg-primary/5"   :
+                  rec.type === "review" ? "bg-accent/5"    :
+                                          "bg-secondary/5";
+                const dotClass =
+                  rec.type === "start"  ? "bg-primary"   :
+                  rec.type === "review" ? "bg-accent"    :
+                                          "bg-secondary";
                 return (
-                  <div key={idx} className={`p-5 rounded-xl border border-card-border border-l-4 ${borderClass} ${bgClass}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`w-2 h-2 rounded-full ${dotClass}`}></span>
-                      <h4 className="font-semibold text-white">{rec.topicName}</h4>
+                  <div
+                    key={idx}
+                    className={`p-4 rounded-xl border border-card-border border-l-4 ${borderClass} ${bgClass}`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+                      <h4 className="font-semibold text-white text-sm">{rec.topicName}</h4>
                     </div>
-                    <p className="text-sm text-muted-foreground">{rec.message}</p>
+                    <p className="text-xs text-muted-foreground">{rec.message}</p>
                   </div>
                 );
               })}
@@ -288,7 +483,7 @@ export default function KnowledgeTree() {
           </div>
         )}
 
-      </main>
+      </div>
     </div>
   );
 }
