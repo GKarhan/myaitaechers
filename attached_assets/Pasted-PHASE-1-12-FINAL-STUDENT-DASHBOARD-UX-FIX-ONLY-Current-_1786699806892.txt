@@ -1,0 +1,103 @@
+PHASE 1.12 — FINAL STUDENT DASHBOARD UX FIX ONLY
+
+Current backend architecture is already working:
+- student-package endpoint returns linked quizzes
+- each quiz has isReleased
+- unreleased quiz start is blocked by backend
+- released quiz start is allowed
+- lesson assignment does NOT auto-release quizzes
+
+Current UX problem:
+
+The linked tests were rendered only in lesson-detail.tsx.
+
+But in the real student flow, pressing "Սկսել դասը" may immediately resume/open the AI Teacher lesson session.
+
+Therefore the student may never see the linked tests before entering the lesson.
+
+REQUIRED UX:
+
+Show linked tests directly in the STUDENT DASHBOARD LESSON CARD / assigned lesson block — the same place where the student currently sees:
+
+`ՍԿՍԵԼ ԴԱՍԸ`
+
+Do NOT move or remove the existing lesson start button.
+
+Inside or directly under each assigned Lesson card add:
+
+`📝 Թեստեր (N)`
+
+For every quiz linked to that Lesson:
+
+If isReleased === false:
+
+- show quiz title
+- show quiz type if already available
+- show:
+  `Դեռ հասանելի չէ`
+- no active Start button
+
+If isReleased === true:
+
+- show quiz title
+- show:
+  `▶ Սկսել թեստը`
+- navigate through the existing quiz-taking route
+
+Use the SAME student-package / linked-quiz data already implemented.
+
+Do NOT create another backend relationship.
+Do NOT create duplicate quizzes.
+Do NOT auto-release tests.
+Do NOT change AI Teacher/session behavior.
+
+The student must be able to decide from the dashboard:
+
+1. Start / resume Lesson
+2. Start any teacher-released Quiz
+
+without entering the AI Teacher lesson first.
+
+REAL ACCEPTANCE:
+
+Use currently assigned Lesson 105.
+
+Student dashboard must show:
+
+Lesson card
+`▶ Սկսել դասը`
+
+and below it:
+
+`📝 Թեստեր (N)`
+
+For each linked quiz:
+- unreleased → `Դեռ հասանելի չէ`
+- released → `▶ Սկսել թեստը`
+
+Teacher releases one quiz only.
+
+Refresh student dashboard.
+
+Expected:
+- that quiz becomes startable
+- other linked quizzes remain locked
+- lesson start button remains unchanged
+
+Same Quiz ID must be used as teacher/global Tests.
+
+Do not touch:
+- mapping
+- Phase 2
+- lesson assignment backend
+- quiz generation
+- scoring
+- Knowledge Tree
+- AI Teacher
+
+FINAL REPORT:
+1. exact student dashboard component changed
+2. how linked quizzes are loaded/reused
+3. released/unreleased rendering
+4. real Lesson 105 screenshot/verification
+5. PASS / FAIL

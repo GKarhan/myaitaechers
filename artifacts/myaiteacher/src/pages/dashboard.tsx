@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
-import StudentLessonCard from "@/components/StudentLessonCard";
+import StudentLessonCard, { type LinkedQuiz } from "@/components/StudentLessonCard";
 import StudentQuizCard from "@/components/StudentQuizCard";
 import {
   useGetDashboard,
@@ -43,6 +43,7 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [allLessons, setAllLessons] = useState<AssignedLesson[] | undefined>(undefined);
   const [assignedQuizzes, setAssignedQuizzes] = useState<AssignedQuiz[] | undefined>(undefined);
+  const [lessonQuizzes, setLessonQuizzes] = useState<Record<number, LinkedQuiz[]>>({});
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,6 +103,29 @@ export default function Dashboard() {
     };
   }, [token, dashboard]);
 
+
+  // ── Fetch linked quizzes for each assigned lesson via student-package ──────
+  useEffect(() => {
+    if (!token || !allLessons || allLessons.length === 0) return;
+    let cancelled = false;
+    const active = allLessons.filter((l) => l.status === "active" || l.status === "assigned");
+    Promise.all(
+      active.map((l) =>
+        fetch(`/api/lessons/${l.id}/student-package`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((pkg: any) => ({ id: l.id, quizzes: (pkg?.quizzes ?? []) as LinkedQuiz[] }))
+          .catch(() => ({ id: l.id, quizzes: [] as LinkedQuiz[] }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const map: Record<number, LinkedQuiz[]> = {};
+      results.forEach(({ id, quizzes }) => { map[id] = quizzes; });
+      setLessonQuizzes(map);
+    });
+    return () => { cancelled = true; };
+  }, [token, allLessons]);
 
   useEffect(() => {
     if (!token) return;
@@ -330,6 +354,44 @@ export default function Dashboard() {
                 ▶ ՍԿՍԵԼ ԴԱՍԸ
               </Link>
             </div>
+
+            {/* Linked tests for the active lesson */}
+            {(lessonQuizzes[activeLesson.id] ?? []).length > 0 && (
+              <div className="border-t border-white/8 pt-4 mt-2">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">
+                  📝 Թեստեր ({(lessonQuizzes[activeLesson.id] ?? []).length})
+                </p>
+                <div className="flex flex-col gap-2">
+                  {(lessonQuizzes[activeLesson.id] ?? []).map((q) => (
+                    <div
+                      key={q.id}
+                      className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white/4 border border-white/6"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-sm text-white/90 truncate block">{q.title}</span>
+                        {q.quizType && (
+                          <span className="text-xs text-muted-foreground/70">
+                            {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Ամփոփիչ" : null}
+                          </span>
+                        )}
+                      </div>
+                      {q.isReleased ? (
+                        <Link
+                          href={`/quiz/${q.id}/take`}
+                          className="px-3 py-1.5 bg-secondary/90 hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0"
+                        >
+                          ▶ Սկսել թեստը
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/60 italic whitespace-nowrap shrink-0">
+                          Դեռ հասանելի չէ
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-2xl border border-white/10 bg-card/40 p-8 text-center text-muted-foreground">
@@ -434,7 +496,11 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-4">
           {assignedLessons.map((lesson) => (
-            <StudentLessonCard key={`task-${lesson.id}`} lesson={lesson} />
+            <StudentLessonCard
+              key={`task-${lesson.id}`}
+              lesson={lesson}
+              quizzes={lessonQuizzes[lesson.id] ?? []}
+            />
           ))}
         </div>
       )}
