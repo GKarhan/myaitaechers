@@ -1,0 +1,716 @@
+PHASE 1.12 — FINAL END-TO-END CLOSURE AUDIT
+ASSIGN APPROVED LESSON TO STUDENT + STUDENT LESSON PACKAGE + LINKED TEST CONTROL
+
+This is the FINAL closure task for Phase 1.12.
+
+IMPORTANT:
+Do NOT assume Phase 1.12 is complete merely because previous tests passed.
+
+First audit the CURRENT repository and CURRENT database state against the
+complete Phase 1.12 contract below.
+
+Then:
+- fix ONLY genuine remaining Phase 1.12 gaps;
+- do not redesign already-working behavior;
+- do not make unrelated changes.
+
+After this task, Phase 1.12 must be ready to be CLOSED and we will move to Phase 1.13.
+
+════════════════════════════════════════════
+0. STRICT SCOPE
+════════════════════════════════════════════
+
+IN SCOPE:
+
+1. Approved lesson → assignment/activation for student.
+2. Student visibility of assigned lesson.
+3. Student lesson package.
+4. Lesson → Topics → ordered MicroNodes.
+5. Learning Objectives.
+6. Theory/source-grounded teaching content.
+7. Existing Phase 2 enrichment included in student package.
+8. Approved exercises.
+9. Dependencies.
+10. Linked tests.
+11. Teacher-controlled test release.
+12. Student-specific test availability.
+13. Completed-test behavior.
+14. Same-test re-release behavior.
+15. Lesson session creation when student starts lesson.
+16. Authorization/data-integrity rules required by the above.
+
+OUT OF SCOPE:
+
+- HOW AI Teacher teaches the lesson.
+- TEACH → MICRO_CHECK → FEEDBACK → TRANSITION.
+- AI Teacher prompt/pedagogy.
+- mastery algorithm redesign.
+- Knowledge Tree redesign.
+- quiz generation redesign.
+- mapping algorithm redesign.
+- Phase 2 generation redesign.
+- Phase 1.13+ work.
+
+DO NOT touch these unless a compile/runtime regression caused directly by
+Phase 1.12 requires a minimal compatibility fix.
+
+════════════════════════════════════════════
+1. AUTHORITATIVE PHASE 1.12 CONTRACT
+════════════════════════════════════════════
+
+Teacher assigns an already APPROVED lesson to a student.
+
+The student must receive/access the approved lesson package, NOT raw mapping.
+
+Canonical conceptual package:
+
+Lesson
+  → Topics
+      → ordered MicroNodes
+          → Learning Objective
+          → theory/content
+          → existing Phase 2 enrichment
+          → approved exercises
+          → dependencies
+  → linked tests
+
+The assignment must NOT duplicate the lesson structure.
+
+The canonical mapped lesson remains the shared authoritative lesson.
+
+When the student presses:
+
+    «Սկսել դասը»
+
+a lesson session is created/resumed according to the existing architecture.
+
+STOP THERE pedagogically.
+
+How AI Teacher subsequently conducts that lesson belongs to Phase 2,
+NOT Phase 1.12.
+
+════════════════════════════════════════════
+2. AUDIT FIRST — NO CODE CHANGES YET
+════════════════════════════════════════════
+
+Before changing anything, trace the COMPLETE current flow:
+
+Teacher UI
+  ↓
+lesson approval
+  ↓
+lesson assignment/activation
+  ↓
+student dashboard
+  ↓
+student lesson package
+  ↓
+linked quizzes
+  ↓
+quiz release
+  ↓
+quiz completion
+  ↓
+quiz history/results
+  ↓
+lesson session start
+
+Report the exact:
+
+A. frontend files/components involved;
+B. API routes involved;
+C. DB tables involved;
+D. status/state fields involved;
+E. authorization gates involved;
+F. quiz assignment/release model;
+G. quiz attempt/completion model;
+H. lesson session model.
+
+For every requirement below classify current state as:
+
+    PASS
+    PARTIAL
+    MISSING
+    BROKEN
+
+Do not modify production code until this audit is complete.
+
+════════════════════════════════════════════
+3. LESSON APPROVAL → ASSIGNMENT GATE
+════════════════════════════════════════════
+
+Required:
+
+Only an APPROVED lesson may be assigned/activated for students.
+
+A raw mapped/draft/needs-review lesson must NOT become student-accessible.
+
+Verify BOTH:
+
+Frontend gate
+AND
+Backend authoritative gate.
+
+Frontend disabling alone is NOT sufficient.
+
+Expected lifecycle should follow the actual existing schema, conceptually:
+
+mapped/reviewed
+    ↓
+approved
+    ↓
+assigned/active
+    ↓
+student accessible
+
+Do NOT invent new statuses if existing statuses already represent this.
+
+Verify that assignment does NOT:
+
+- duplicate Topics;
+- duplicate MicroNodes;
+- duplicate exercises;
+- create fake mastery;
+- create fake evidence;
+- automatically start a lesson session;
+- automatically release every linked test.
+
+════════════════════════════════════════════
+4. STUDENT LESSON PACKAGE
+════════════════════════════════════════════
+
+For an assigned/active lesson, verify that the student-facing package exposes
+the approved/current canonical structure needed for learning.
+
+Required:
+
+Lesson metadata
+
+Topics
+- correct lesson
+- correct order
+
+MicroNodes
+- correct Topic relationship
+- correct order
+- approved/student-safe nodes only
+
+For every applicable MicroNode:
+- title
+- Learning Objective
+- theory/content
+- existing Phase 2 enrichment
+
+Phase 2 enrichment means the CURRENT existing Phase 2 fields.
+Do NOT regenerate Phase 2 in this task.
+
+Approved exercises:
+- correct lesson/node association
+- approved/student-safe exercises only
+- preserve authoritative exercise text
+
+Dependencies:
+- correct existing dependency relationships
+- no duplicates
+- no broken references
+
+Linked tests:
+- quizzes actually linked to this lesson
+- same canonical quiz IDs as teacher view
+- no ghost/duplicate quiz records
+
+IMPORTANT:
+Teacher-only authoring metadata must not accidentally leak into the
+student package if it is not required by the student UI.
+
+════════════════════════════════════════════
+5. STUDENT DASHBOARD / LESSON CARD
+════════════════════════════════════════════
+
+The assigned lesson must appear on the student's normal lesson/dashboard UI.
+
+The student must NOT be forced to enter AI Teacher first merely to discover
+lesson-linked tests.
+
+The lesson card/detail accessible BEFORE starting/resuming AI Teacher must
+provide the relevant linked-test state.
+
+Keep:
+
+    ▶ Սկսել դասը
+
+as the lesson action.
+
+Linked tests are separate actions from starting the lesson.
+
+════════════════════════════════════════════
+6. LINKED TEST — REQUIRED UX STATE MACHINE
+════════════════════════════════════════════
+
+For each quiz linked to the lesson:
+
+────────────────────────────────────────────
+STATE A — NOT RELEASED
+────────────────────────────────────────────
+
+Teacher has NOT released the quiz for this student/current release.
+
+Student lesson UI:
+
+    Դեռ հասանելի չէ
+
+NO start button.
+
+Student must NOT be able to bypass the UI by directly opening the quiz URL.
+
+Backend must enforce the same rule.
+
+────────────────────────────────────────────
+STATE B — RELEASED + NOT COMPLETED
+────────────────────────────────────────────
+
+Teacher has explicitly released the quiz and the current release is not
+completed.
+
+Student lesson UI:
+
+    ▶ Սկսել թեստը
+
+Student may open the existing quiz-taking flow.
+
+────────────────────────────────────────────
+STATE C — CURRENT RELEASE COMPLETED
+────────────────────────────────────────────
+
+Student completed/submitted the quiz for the current release.
+
+The quiz must disappear from the lesson's ACTIONABLE linked-test list.
+
+Do NOT continue showing:
+
+    ▶ Սկսել թեստը
+
+Do NOT duplicate:
+
+    Տեսնել արդյունքը
+
+inside the lesson if the result already exists in the dedicated test history.
+
+Completed result belongs in:
+
+    «Իմ թեստերը»
+
+Conceptual separation:
+
+LESSON AREA
+    = what the student still needs/can do
+
+ԻՄ ԹԵՍՏԵՐԸ
+    = completed test history/results
+
+If every linked quiz is completed for its current release, do not leave an
+ugly empty actionable-tests container.
+
+════════════════════════════════════════════
+7. COMPLETED TEST RESULTS
+════════════════════════════════════════════
+
+Verify that after completion the existing:
+
+    «Իմ թեստերը»
+
+area preserves the completed test.
+
+It should continue exposing the existing result information, conceptually:
+
+    Ավարտված
+    3/10
+    30%
+    Տեսնել արդյունքը
+
+Use the actual existing score/result model.
+
+Do NOT duplicate scoring logic.
+
+Do NOT recalculate scores differently for Phase 1.12.
+
+Do NOT delete attempts when hiding the completed quiz from the lesson.
+
+════════════════════════════════════════════
+8. SAME QUIZ RE-RELEASE — CRITICAL
+════════════════════════════════════════════
+
+A completed Quiz X must NOT become permanently unavailable forever.
+
+Required lifecycle:
+
+Teacher releases Quiz X
+    ↓
+Student sees «Սկսել թեստը»
+    ↓
+Student completes Quiz X
+    ↓
+Quiz X disappears from lesson actionable tests
+    ↓
+Attempt/result remains in «Իմ թեստերը»
+    ↓
+Teacher explicitly assigns/releases SAME Quiz X again
+    ↓
+Quiz X becomes actionable under lesson again
+    ↓
+Student sees «Սկսել թեստը»
+    ↓
+Student may complete another attempt
+
+CRITICAL:
+
+Do NOT determine current completion using:
+
+    "Has this student EVER completed Quiz X?"
+
+That would break re-release.
+
+Completion must correspond to the CURRENT release/assignment cycle according
+to the authoritative existing DB model.
+
+Historical attempts/results must remain preserved.
+
+Do NOT duplicate the Quiz itself merely to re-release it.
+
+If current schema genuinely cannot distinguish release cycles, STOP before
+inventing a workaround and report:
+
+1. exact schema limitation;
+2. why existing assignment + attempt records are insufficient;
+3. smallest safe model/schema change required.
+
+════════════════════════════════════════════
+9. TEACHER-SIDE LINKED TEST CONTROL
+════════════════════════════════════════════
+
+Verify the teacher's lesson-linked test block.
+
+For tests linked to the lesson, teacher must be able to perform the currently
+approved Phase 1.12 actions without navigating unnecessarily elsewhere.
+
+At minimum verify the existing intended actions:
+
+- view/review test;
+- release/assign test.
+
+Teacher controls WHEN a linked test becomes available.
+
+Example:
+
+Lesson has:
+    Quiz A
+    Quiz B
+    Quiz C
+
+Teacher may choose:
+
+Beginning:
+    none released
+
+After part of lesson:
+    release Quiz A
+
+Later:
+    release Quiz B
+
+End:
+    release Quiz C
+
+Assigning the lesson itself must NOT automatically release A/B/C.
+
+Preserve this manual control.
+
+════════════════════════════════════════════
+10. LESSON START / SESSION CREATION
+════════════════════════════════════════════
+
+When student presses:
+
+    «Սկսել դասը»
+
+verify that the existing lesson-session mechanism creates or resumes the
+correct session according to current architecture.
+
+Verify:
+
+- correct student;
+- correct lesson;
+- correct first/current MicroNode;
+- canonical ordering respected;
+- no duplicate lesson structure;
+- no fake evidence;
+- no fake mastery simply because session started.
+
+Do NOT modify how AI Teacher teaches after session creation.
+
+That is outside Phase 1.12.
+
+════════════════════════════════════════════
+11. AUTHORIZATION
+════════════════════════════════════════════
+
+Verify server-side enforcement, not merely UI behavior.
+
+At minimum:
+
+Student:
+- active/assigned lesson → accessible
+- non-active/non-assigned lesson → blocked according to current architecture
+- unreleased quiz → cannot take
+- released/current quiz → can take
+- completed current release → cannot simply retake unless explicitly re-released
+
+Teacher:
+- retains appropriate authoring/review access
+
+Student A state must not leak to Student B.
+
+Student A completing Quiz X must not hide Quiz X for Student B.
+
+Student A's release must not accidentally release it for Student B unless the
+existing assignment action intentionally targets the whole class.
+
+Document the actual current semantics.
+
+════════════════════════════════════════════
+12. DATA INTEGRITY
+════════════════════════════════════════════
+
+Verify that Phase 1.12 does NOT create:
+
+- duplicate lesson rows;
+- duplicate Topics;
+- duplicate MicroNodes;
+- duplicate exercises;
+- duplicate Quiz records merely for assignment;
+- fake knowledge_nodes;
+- fake evidence_events;
+- fake mastery;
+- accidental duplicate quiz attempts;
+- orphaned quiz assignments;
+- broken dependencies.
+
+Assignment should reference canonical entities wherever the architecture
+already supports that.
+
+════════════════════════════════════════════
+13. PHASE 2 BOUNDARY
+════════════════════════════════════════════
+
+Phase 1.12 may READ and SEND existing Phase 2 enrichment.
+
+Phase 1.12 must NOT:
+
+- automatically regenerate Phase 2;
+- alter Phase 2 generation prompts;
+- redesign Phase 2 invalidation;
+- regenerate content merely because a lesson is assigned;
+- regenerate content because a student starts the lesson.
+
+The following separate issue is explicitly DEFERRED:
+
+Simplifying Phase 2 regeneration / approval invalidation after teacher edits.
+
+Do NOT solve that in this task.
+
+We will handle it separately before Phase 1.13.
+
+════════════════════════════════════════════
+14. REQUIRED END-TO-END ACCEPTANCE SCENARIO
+════════════════════════════════════════════
+
+Use a REAL existing lesson and real linked quizzes where possible.
+
+Test this exact lifecycle:
+
+STEP 1
+Teacher has mapped/reviewed lesson.
+
+STEP 2
+Lesson becomes approved.
+
+STEP 3
+Teacher assigns/activates lesson.
+
+VERIFY:
+Student sees lesson.
+
+STEP 4
+Student opens lesson/dashboard view BEFORE starting AI Teacher.
+
+VERIFY:
+- lesson information accessible;
+- linked quizzes visible according to state;
+- unreleased quiz says «Դեռ հասանելի չէ».
+
+STEP 5
+Teacher releases Quiz A.
+
+VERIFY:
+Student sees:
+
+    ▶ Սկսել թեստը
+
+for Quiz A.
+
+Other unreleased quizzes remain unavailable.
+
+STEP 6
+Student completes Quiz A.
+
+VERIFY:
+- Quiz A disappears from lesson actionable list;
+- no «Սկսել թեստը» remains for that completed release;
+- result remains in «Իմ թեստերը»;
+- result details still open correctly.
+
+STEP 7
+Teacher releases Quiz B.
+
+VERIFY:
+Quiz B becomes actionable independently.
+
+STEP 8
+Teacher re-releases SAME Quiz A.
+
+VERIFY:
+- Quiz A becomes actionable again;
+- old Quiz A result remains preserved;
+- no duplicate Quiz row created.
+
+STEP 9
+Student presses «Սկսել դասը».
+
+VERIFY:
+- correct lesson session exists/starts/resumes;
+- correct canonical node order;
+- no fake evidence/mastery.
+
+════════════════════════════════════════════
+15. REGRESSION TESTS
+════════════════════════════════════════════
+
+Run ALL existing Phase 1.12 tests.
+
+Also run relevant existing tests covering:
+
+- lesson final approval;
+- lesson assignment;
+- student package;
+- linked quiz release;
+- quiz authorization;
+- quiz attempts/results;
+- lesson session start;
+- Phase 2 fields being readable.
+
+Do NOT weaken old assertions simply to make tests green.
+
+If an old test is stale because the approved specification changed, explicitly
+report:
+
+OLD EXPECTATION
+NEW AUTHORITATIVE EXPECTATION
+WHY UPDATE IS VALID
+
+before changing that test.
+
+TypeScript must compile cleanly.
+
+Check browser console/runtime for the actual student and teacher flows.
+
+════════════════════════════════════════════
+16. FINAL PHASE 1.12 PASS GATE
+════════════════════════════════════════════
+
+Phase 1.12 may be marked COMPLETE only if ALL are true:
+
+[ ] Only approved lessons can become student-accessible.
+[ ] Student receives canonical lesson, not duplicated raw mapping.
+[ ] Topics are available and correctly ordered.
+[ ] MicroNodes are available and correctly ordered.
+[ ] Learning Objectives are included.
+[ ] Theory/content is included.
+[ ] Existing Phase 2 enrichment is included.
+[ ] Approved exercises are included.
+[ ] Dependencies are included.
+[ ] Linked tests are included.
+[ ] Lesson assignment does NOT auto-release tests.
+[ ] Teacher controls test release.
+[ ] Unreleased test cannot be started.
+[ ] Released test can be started.
+[ ] Completed current release disappears from lesson actionable tests.
+[ ] Completed result remains in «Իմ թեստերը».
+[ ] Same quiz can be explicitly re-released.
+[ ] Historical attempt/result survives re-release.
+[ ] Student states do not leak between students.
+[ ] «Սկսել դասը» creates/resumes correct lesson session.
+[ ] Session start creates no fake mastery/evidence.
+[ ] No canonical lesson structure is duplicated.
+[ ] No Quiz records are duplicated merely for release/re-release.
+[ ] No Phase 2 generation is triggered by assignment/start.
+[ ] Existing Phase 1.12 regression tests pass.
+[ ] TypeScript/build passes.
+[ ] Browser/runtime has no relevant errors.
+
+If ANY item fails:
+
+DO NOT declare Phase 1.12 complete.
+
+Fix it if it is strictly within Phase 1.12 scope, then rerun the gate.
+
+════════════════════════════════════════════
+17. FINAL REPORT — REQUIRED FORMAT
+════════════════════════════════════════════
+
+Return:
+
+A. CURRENT ARCHITECTURE
+Exact UI → API → DB flow.
+
+B. REQUIREMENT MATRIX
+Every Phase 1.12 requirement:
+PASS / FIXED / FAIL.
+
+C. CHANGES MADE
+Exact files and purpose of each change.
+
+D. LESSON PACKAGE EVIDENCE
+Actual counts/structure from the tested real lesson.
+
+E. QUIZ LIFECYCLE EVIDENCE
+Unreleased → released → completed → re-released.
+
+F. SESSION EVIDENCE
+Student + lesson + current/first node behavior.
+
+G. DATA-INTEGRITY EVIDENCE
+Before/after counts proving no unwanted duplication/fake evidence.
+
+H. TEST RESULTS
+Exact suites and pass/fail counts.
+
+I. REGRESSION STATUS
+Anything changed outside intended behavior.
+
+J. DEFERRED ITEMS
+Explicitly list anything belonging to Phase 1.13 or later.
+
+K. FINAL VERDICT
+
+Exactly one:
+
+PHASE 1.12 = PASS — READY TO CLOSE
+
+or
+
+PHASE 1.12 = FAIL — DO NOT PROCEED TO 1.13
+
+If FAIL, list the remaining blockers.
+
+Do not begin Phase 1.13.
+Do not make unrelated improvements.

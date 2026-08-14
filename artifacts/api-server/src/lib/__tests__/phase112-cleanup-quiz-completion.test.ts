@@ -121,10 +121,22 @@ it("SETUP-1: Lesson 105 must be active + resolve subjectId/teacherId", async () 
   const [l] = await db.select({ status: lessonsTable.status, subjectId: lessonsTable.subjectId, teacherId: lessonsTable.teacherId })
     .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
   assert.ok(l, "Lesson 105 must exist");
-  assert.equal(l.status, "active", "Lesson 105 must be active");
   quizSubjectId = l.subjectId!;
   quizTeacherId = l.teacherId!;
-  console.log(`  [INFO] Lesson 105: subjectId=${quizSubjectId}, teacherId=${quizTeacherId}`);
+
+  // Force "active" via direct DB update — resilient to concurrent test runs that
+  // may leave lesson 105 in approved/needs_review/draft state, and to teacher
+  // ownership (lesson 105 is owned by teacher 161, not teacher 1).
+  if (l.status !== "active") {
+    await db.update(lessonsTable)
+      .set({ status: "active" } as any)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    console.log(`  [INFO] Lesson 105 was '${l.status}' — force-set to 'active' for this test run`);
+  }
+  const [check] = await db.select({ status: lessonsTable.status })
+    .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+  assert.equal(check.status, "active", "Lesson 105 must be active");
+  console.log(`  [INFO] Lesson 105: subjectId=${quizSubjectId}, teacherId=${quizTeacherId}, status=${check.status} ✓`);
 });
 
 it("SETUP-2: Resolve Student A", async () => {

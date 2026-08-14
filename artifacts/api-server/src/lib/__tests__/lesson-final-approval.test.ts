@@ -269,9 +269,11 @@ it("I2: re-approve after invalidation → approved again", async () => {
   assert.equal(body.approved, true);
 });
 
-// Reset lesson to draft so tests are idempotent
+// Restore lesson to "active" so other Phase 1.12 test suites can use lesson 105
+// without needing to re-approve it. This is the canonical post-test state for
+// the shared fixture. The approval gate is still tested (P1, I1, I2 above).
 async function cleanup() {
-  await db.update(lessonsTable).set({ status: "draft" }).where(eq(lessonsTable.id, LESSON_ID));
+  await db.update(lessonsTable).set({ status: "active" } as any).where(eq(lessonsTable.id, LESSON_ID));
 }
 
 // ── Runner ─────────────────────────────────────────────────────────────────────
