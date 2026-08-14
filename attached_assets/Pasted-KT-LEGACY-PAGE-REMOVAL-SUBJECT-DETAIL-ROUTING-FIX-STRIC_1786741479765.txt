@@ -1,0 +1,275 @@
+KT LEGACY PAGE REMOVAL + SUBJECT DETAIL ROUTING FIX
+
+STRICT SCOPE:
+Fix ONLY the Subject Detail → Knowledge Tree flow and remove the legacy Knowledge Tree page/route safely.
+
+Do NOT modify:
+- Knowledge Tree backend/API
+- mastery formulas
+- 4-state logic
+- mapping
+- quiz/evidence logic
+- AI Teacher
+- KT-1.3 hierarchy
+- KT-1.4 roll-up
+- KT-1.5 detail panel
+- DB/schema
+
+CURRENT REAL UAT STATE
+
+The first KT entry problem is already fixed:
+
+Student sidebar
+→ "Գիտելիքի ծառ"
+→ /kt-subjects
+
+This is correct.
+
+Now fix the SECOND navigation problem.
+
+Current behavior:
+
+Student
+→ "Իմ առարկաները"
+→ Physics subject page (/subjects/18)
+→ click "Գիտելիքի ծառ"
+
+This currently opens the OLD / LEGACY Knowledge Tree page.
+
+That is no longer acceptable.
+
+Desired behavior:
+
+Student
+→ "Իմ առարկաները"
+→ Physics
+→ click "Գիտելիքի ծառ"
+→ open the NEW Physics Knowledge Tree directly.
+
+No subject picker is needed here because subjectId is already known.
+
+==================================================
+CANONICAL ROUTING MODEL
+==================================================
+
+Global KT entry:
+
+Sidebar
+→ /kt-subjects
+→ choose Physics
+→ NEW Physics Knowledge Tree
+
+Subject-context KT entry:
+
+/subjects/:subjectId
+→ click "Գիտելիքի ծառ"
+→ NEW Knowledge Tree for that same subjectId
+
+Both paths must converge on the SAME current/new subject-specific KT experience.
+
+There must not be a second old KT experience.
+
+==================================================
+A. AUDIT LEGACY KT FIRST
+==================================================
+
+Before deleting anything, identify exactly:
+
+1. Which component/file is the OLD Knowledge Tree page.
+2. Which route renders it.
+3. Which links/buttons still navigate to it.
+4. Which component/file is the NEW subject-specific Knowledge Tree page.
+5. Whether the old and new pages currently share the same route with different code paths, or whether they have separate routes/components.
+6. Whether the old page contains any production logic still required by:
+   - new KT page
+   - subject cards
+   - mastery filters
+   - API hooks
+   - any other student page
+
+Produce a clear route/component map.
+
+Do NOT delete a file until all imports/references are traced.
+
+==================================================
+B. FIX SUBJECT DETAIL BUTTON
+==================================================
+
+On:
+
+/subjects/:subjectId
+
+the existing "Գիտելիքի ծառ" button must navigate directly to the NEW subject Knowledge Tree for that subject.
+
+Example:
+
+/subjects/18
+→ click "Գիտելիքի ծառ"
+→ NEW Physics KT page
+
+Do NOT route through:
+
+/kt-subjects
+
+because subjectId is already known.
+
+Do NOT route to any legacy page.
+
+==================================================
+C. REMOVE LEGACY KT ENTRY
+==================================================
+
+The legacy Knowledge Tree page must no longer be reachable through normal student navigation.
+
+Remove/update:
+
+- legacy route
+- legacy button target
+- stale imports
+- stale navigation references
+- dead route handling
+
+ONLY after proving they are obsolete.
+
+If the legacy component is fully unused after routing cleanup:
+delete it safely.
+
+If some reusable logic is still needed:
+extract/reuse that logic first, then remove only the obsolete page shell.
+
+Do NOT duplicate logic into the new page.
+
+==================================================
+D. CANONICAL PAGES AFTER FIX
+==================================================
+
+After this task the intended KT pages are:
+
+1. /kt-subjects
+   PURPOSE:
+   Knowledge Tree subject selection only.
+
+2. ONE subject-specific NEW Knowledge Tree page
+   PURPOSE:
+   Show the selected subject's Knowledge Tree.
+
+There must be no separate "old Knowledge Tree page" still exposed to students.
+
+==================================================
+E. IMPORTANT DATA PRESERVATION
+==================================================
+
+The currently working Physics data must remain unchanged.
+
+Do not change the fact that Physics currently has 3 visible atomic units.
+
+No changes to:
+- node count
+- mastery state
+- scores
+- filters
+- KT API payload
+- enrollment rules
+
+This task is routing/page cleanup only.
+
+==================================================
+F. REQUIRED REAL BROWSER UAT
+==================================================
+
+TEST 1 — GLOBAL ENTRY
+
+/dashboard
+→ sidebar "Գիտելիքի ծառ"
+→ /kt-subjects
+
+Must remain working.
+
+TEST 2 — SUBJECT CONTEXT
+
+/subjects/18
+→ click "Գիտելիքի ծառ"
+
+Expected:
+NEW Physics Knowledge Tree opens directly.
+
+No intermediate /kt-subjects.
+
+TEST 3 — DATA
+
+On the NEW Physics KT page verify the same 3 atomic units still appear.
+
+TEST 4 — LEGACY ACCESS
+
+Verify there is no normal student UI path that opens the old KT page.
+
+TEST 5 — DEAD ROUTE
+
+If the old route is removed:
+visiting it directly must either:
+- redirect safely to the new equivalent, or
+- resolve to the canonical new KT route,
+depending on existing routing conventions.
+
+Do not leave a broken blank page.
+
+TEST 6 — REGRESSION
+
+"Iմ առարկաները" page and subject detail page still work normally.
+
+==================================================
+G. ACCEPTANCE TESTS
+==================================================
+
+T01 Subject Detail KT button uses current subjectId.
+
+T02 It navigates directly to the NEW subject KT page.
+
+T03 It does not go through /kt-subjects.
+
+T04 Sidebar KT flow still goes to /kt-subjects.
+
+T05 /kt-subjects subject card still opens the same NEW subject KT page.
+
+T06 No student-facing link points to the legacy KT page.
+
+T07 Legacy route/component has zero active references after cleanup.
+
+T08 Physics still renders the same 3 atomic units.
+
+T09 Mastery/four-state logic unchanged.
+
+T10 No test pollution.
+
+==================================================
+H. FINAL REPORT
+==================================================
+
+Return:
+
+1. Old KT component/file
+2. New KT component/file
+3. Old route
+4. New canonical route
+5. All links that were changed
+6. Whether legacy component was deleted or retained internally, and why
+7. Browser proof:
+   - Sidebar → /kt-subjects
+   - /subjects/18 → NEW Physics KT
+8. Confirmation that Physics data remains unchanged
+9. Confirmation that no legacy KT page is reachable through student UI
+10. PASS / FAIL
+
+FINAL GATE:
+
+KT LEGACY CLEANUP = PASS
+
+only if:
+
+- sidebar flow still works,
+- Subject Detail opens the NEW subject KT directly,
+- old KT page is no longer student-facing,
+- no KT data/mastery logic changed.
+
+STOP after this cleanup.
+Do NOT start KT-1.3.
