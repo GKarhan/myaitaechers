@@ -21,6 +21,19 @@ import { eq, and, asc, inArray, desc, sql, count, ne } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
+
+// ---------------------------------------------------------------------------
+// Helper: wraps an async route handler so unhandled rejections are forwarded
+// to Express's error-handler pipeline (next(err)) instead of crashing the
+// process.  Express 4 does NOT catch async errors automatically.
+// ---------------------------------------------------------------------------
+import type { Request, Response, NextFunction } from "express";
+type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
+function asyncHandler(fn: AsyncRouteHandler) {
+  return (req: Request, res: Response, next: NextFunction) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 import {
   getMasteryLevelFromScores,
   getPersonalizedNextAction,
@@ -318,7 +331,7 @@ async function buildStudentResultAnalysis(
 // ── POST /api/quizzes ─────────────────────────────────────────────────────────
 // Create a DRAFT quiz, generate questions from the given lesson nodes, persist,
 // then set status = GENERATED. Returns the full quiz with questions.
-router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
+router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, res) => {
   const {
     subjectId,
     classId,
@@ -518,14 +531,23 @@ router.post("/quizzes", requireTeacher, async (req: AuthRequest, res) => {
       })),
     });
   } catch (err) {
-    // Roll back the DRAFT record so the teacher can retry cleanly
-    await db.delete(quizzesTable).where(eq(quizzesTable.id, quiz.id));
+    // Roll back the DRAFT record so the teacher can retry cleanly.
+    // Guard the delete so that a secondary DB failure does NOT re-throw
+    // (which would cause asyncHandler to call next(err) after headers were
+    // potentially already sent, or produce a double-response).
+    try {
+      await db.delete(quizzesTable).where(eq(quizzesTable.id, quiz.id));
+    } catch (deleteErr) {
+      logger.error({ err: deleteErr, quizId: quiz.id }, "failed to rollback DRAFT quiz");
+    }
     logger.error({ err, quizId: quiz.id }, "quiz generation failed — DRAFT deleted");
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Quiz generation failed, please retry",
+      });
+    }
   }
-});
+}));
 
 // ── GET /api/quizzes ──────────────────────────────────────────────────────────
 // List quizzes for a subject (teacher-owned). Query: ?subjectId=X

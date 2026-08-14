@@ -615,7 +615,7 @@ function GenerateTeachingContentButton({
       >
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        ) : genDone ? '✅ Արված է' : hasExistingPhase2 ? '🔄 Վերա/Ն' : '🧠 Ուս/Ն համалрум'}
+        ) : genDone ? '✅ Արված է' : hasExistingPhase2 ? '🔄 Կրկնիր' : '🧠 Ուս/Ն համալրում'}
       </button>
       {isActive && (
         <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
@@ -697,7 +697,7 @@ function NodeViewModal({
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-white transition-colors ml-3 shrink-0 text-lg leading-none"
-            title="Փакел"
+            title="Փակել"
           >✕</button>
         </div>
 
@@ -706,12 +706,12 @@ function NodeViewModal({
           {/* CORE */}
           <section className="space-y-3">
             <p className="text-[9px] font-bold text-primary/50 uppercase tracking-widest">Հимнаван</p>
-            {renderText("Ուuumnakaн нпатак (LO)", node.learningObjective, true)}
-            {renderText("Թeoretakan bovanndakutyun", node.theoryContent)}
-            {renderText("Verbatim հаncabradutyun", node.verbatimTheoryAnchor)}
+            {renderText("Ուuումնական նպատակ (LO)", node.learningObjective, true)}
+            {renderText("Տեսական բովնադակություն", node.theoryContent)}
+            {renderText("Բնօրինակ տեքստ", node.verbatimTheoryAnchor)}
             {node.sourcePage != null && (
               <div className="space-y-0.5">
-                <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Aghbyur Ej</p>
+                <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Աղբյուր էջ</p>
                 <p className="text-xs text-white/70">Էջ {String(node.sourcePage)}</p>
               </div>
             )}
@@ -720,12 +720,12 @@ function NodeViewModal({
           {/* PHASE 2 */}
           {(node.childFriendlyExplanation || node.basicExamples || node.commonMisconception || node.nonExamples || node.realLifeExamples) && (
             <section className="space-y-3 border-t border-white/6 pt-3">
-              <p className="text-[9px] font-bold text-indigo-400/60 uppercase tracking-widest">🧠 Phase 2 — Usutsman bovanndakutyun</p>
-              {renderText("Sovороlіn hаskaналi batsatroutyun", node.childFriendlyExplanation)}
-              {renderList("Himnakaн orіnakner", node.basicExamples)}
-              {renderText("Таratsvaу sxal patkеrazum", node.commonMisconception)}
-              {renderList("Hаkаorіnakner", node.nonExamples)}
-              {renderList("Иrаkaн кyanqіts orіnakner", node.realLifeExamples)}
+              <p className="text-[9px] font-bold text-indigo-400/60 uppercase tracking-widest">🧠 Phase 2 — Ուսումնական բովանդակություն</p>
+              {renderText("Պարզ բացատրություն", node.childFriendlyExplanation)}
+              {renderList("Հիմնական օրինակներ", node.basicExamples)}
+              {renderText("Տարածված սխալ պատկերացում", node.commonMisconception)}
+              {renderList("Հակաօրինակներ", node.nonExamples)}
+              {renderList("Օրինակներ իրական կյանքից", node.realLifeExamples)}
             </section>
           )}
           {!node.childFriendlyExplanation && (
@@ -737,7 +737,7 @@ function NodeViewModal({
           {/* EXERCISES */}
           {nodeExercises.length > 0 && (
             <section className="space-y-2 border-t border-white/6 pt-3">
-              <p className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">Varjutyunner ({nodeExercises.length})</p>
+              <p className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-widest">Վարժություններ ({nodeExercises.length})</p>
               {nodeExercises.map((ex, i) => {
                 const displayText = (ex.exerciseTextEdited as string | undefined)?.trim()
                   ? ex.exerciseTextEdited as string
@@ -747,15 +747,15 @@ function NodeViewModal({
                     <p className="text-xs text-white/85 leading-relaxed">{displayText}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       {ex.sourceType === "textbook"
-                        ? <span className="text-[9px] text-blue-400/60">📖 Dasagrqits</span>
-                        : <span className="text-[9px] text-purple-400/60">✍️ Dzeqov</span>}
-                      {ex.sourcePage != null && <span className="text-[9px] text-white/30">Ej {String(ex.sourcePage)}</span>}
+                        ? <span className="text-[9px] text-blue-400/60">📖 Դասագրքից</span>
+                        : <span className="text-[9px] text-purple-400/60">✍️ Ձեռքով</span>}
+                      {ex.sourcePage != null && <span className="text-[9px] text-white/30">Էջ {String(ex.sourcePage)}</span>}
                       {ex.status === "approved"
                         ? <span className="text-[9px] text-emerald-400/60">✅</span>
-                        : <span className="text-[9px] text-amber-400/50">🟡 Sevagiр</span>}
+                        : <span className="text-[9px] text-amber-400/50">🟡 Սևագիր</span>}
                       {ex.assignment && (
                         <span className={`text-[9px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/60" : "text-teal-400/60"}`}>
-                          {ex.assignment === "HOMEWORK" ? "🏠" : "📋"}
+                          {ex.assignment === "Տնային" ? "🏠" : "📋"}
                         </span>
                       )}
                     </div>
@@ -772,7 +772,7 @@ function NodeViewModal({
             onClick={onClose}
             className="w-full py-1.5 rounded-lg bg-white/8 hover:bg-white/12 text-xs text-muted-foreground hover:text-white transition-colors"
           >
-            Փакел
+           Փակել
           </button>
         </div>
       </div>
@@ -1542,7 +1542,7 @@ function LessonNodesPanel({
                     <span className="text-[10px] text-primary/50">Bloom {n.targetBloomLevel}</span>
                   )}
                   {(n as any).sourcePage != null && (
-                    <span className="text-[10px] text-white/30">Էj {(n as any).sourcePage}</span>
+                    <span className="text-[10px] text-white/30">Էջ {(n as any).sourcePage}</span>
                   )}
                 </div>
               </>
@@ -1624,7 +1624,7 @@ function LessonNodesPanel({
                       <textarea className={fieldCls + " resize-none"} rows={3}
                         value={editExForm.exerciseTextEdited}
                         onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
-                        placeholder={(ex as any).sourceType === 'textbook' ? "Հարմարեցում (Դասագրքի բնօրինակի վրա)…" : "Varjutyutyan bnagir"}
+                        placeholder={(ex as any).sourceType === 'textbook' ? "Հարմարեցում (Դասագրքի բնօրինակի վրա)…" : "Վարժության բնագիր"}
                       />
                       <input className={fieldCls} placeholder="Ճիշտ պատասխանի օրինակ" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
                       <div className="flex gap-2">
@@ -1636,7 +1636,7 @@ function LessonNodesPanel({
                         </select>
                       </div>
                       <select className={fieldCls + " cursor-pointer"} value={editExForm.relatedNodeId === null ? "null" : String(editExForm.relatedNodeId)} onChange={(e) => setEditExForm((f) => f && { ...f, relatedNodeId: e.target.value === "null" ? null : parseInt(e.target.value) })}>
-                        <option value="null">📦 Chkcvats / Lratsucich varjutyun</option>
+                        <option value="null">📦 Չկցված / Լրացուցիչ վարժություն</option>
                         {nodes.map((nd) => <option key={nd.id} value={String(nd.id)}>{nd.sequence}. {nd.title}</option>)}
                       </select>
                       <div className="flex gap-1">
@@ -1713,7 +1713,7 @@ function LessonNodesPanel({
                           >→</button>
                         )}
                         <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors">✏️</button>
-                        <button onClick={() => { if (!confirm("Jnjel varjutyune?")) return; deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx }); }} className="text-xs text-muted-foreground hover:text-destructive transition-colors">🗑️</button>
+                        <button onClick={() => { if (!confirm("Ջնջել վարժությունը?")) return; deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx }); }} className="text-xs text-muted-foreground hover:text-destructive transition-colors">🗑️</button>
                       </div>
                     </div>
                   )}
@@ -1727,7 +1727,7 @@ function LessonNodesPanel({
         <div className="border-t border-white/6 px-3 py-1.5">
           {addExForNodeId === n.id ? (
             <div className="space-y-1.5 py-1">
-              <textarea className={fieldCls + " resize-none"} rows={2} placeholder="Varjutyutyan bnagir *" value={addExForm.exerciseTextVerbatim} onChange={(e) => setAddExForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))} />
+              <textarea className={fieldCls + " resize-none"} rows={2} placeholder="Վարժության բնագիր *" value={addExForm.exerciseTextVerbatim} onChange={(e) => setAddExForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))} />
               <div className="flex gap-2">
                 <select className={fieldCls + " cursor-pointer"} value={addExForm.difficultyLevel} onChange={(e) => setAddExForm((f) => ({ ...f, difficultyLevel: e.target.value }))}>
                   <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
@@ -1737,7 +1737,7 @@ function LessonNodesPanel({
                 </select>
               </div>
               <div className="flex gap-1">
-                <button disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()} onClick={() => { createEx.mutate({ lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } }, { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }); }} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createEx.isPending ? "..." : "+ Avaelatsnel"}</button>
+                <button disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()} onClick={() => { createEx.mutate({ lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } }, { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }); }} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createEx.isPending ? "..." : "+ Ավելացնել"}</button>
                 <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
               </div>
             </div>
@@ -1892,7 +1892,7 @@ function LessonNodesPanel({
               <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/8 px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-indigo-400/80 font-medium">
-                    🧠 {phase2Missing}/{nodes.length} MicroNode-ner bacakayum en usutsman bovanndakutyun
+                    🧠 {phase2Missing}/{nodes.length} Գիտելիքի հանգույցներ բացակայում են
                   </span>
                 </div>
                 <span className="text-[9px] text-indigo-400/50 italic">
@@ -1942,7 +1942,7 @@ function LessonNodesPanel({
               </div>
             ) : (
               <p className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap">
-                {(lessonDescription ?? descValue)?.trim() || <span className="text-muted-foreground/40 italic">Ոch нкараgrutywn</span>}
+                {(lessonDescription ?? descValue)?.trim() || <span className="text-muted-foreground/40 italic">Տեքստ առկա չէ</span>}
               </p>
             )}
           </div>
@@ -2262,7 +2262,7 @@ function LessonNodesPanel({
                                 <button onClick={() => startEditEx(ex)} className="text-xs text-muted-foreground hover:text-white transition-colors" title="Ред.">✏️</button>
                                 <button
                                   onClick={() => {
-                                    if (!confirm("Jnjel varjutyune?")) return;
+                                    if (!confirm("Ջնջել վարժությունը?")) return;
                                     deleteEx.mutate({ lessonId, exerciseId: ex.id }, { onSuccess: refreshEx });
                                   }}
                                   className="text-xs text-muted-foreground hover:text-destructive transition-colors"
@@ -2283,7 +2283,7 @@ function LessonNodesPanel({
                       <textarea
                         className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
                         rows={2}
-                        placeholder="Varjutyutyan bnagir *"
+                        placeholder="Վարժության բնագիր *"
                         value={addAdditionalForm.exerciseTextVerbatim}
                         onChange={(e) => setAddAdditionalForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))}
                         autoFocus
@@ -2328,7 +2328,7 @@ function LessonNodesPanel({
                             );
                           }}
                           className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
-                        >{createEx.isPending ? "..." : "+ Avaelatsnel"}</button>
+                        >{createEx.isPending ? "..." : "+ Ավելացնել"}</button>
                         <button
                           onClick={() => {
                             setAddExToAdditional(false);
@@ -2364,7 +2364,7 @@ function LessonNodesPanel({
                 />
                 <div className="flex gap-1">
                   <button disabled={createTopicMutation.isPending || !addTopicTitle.trim()} onClick={handleCreateTopic} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createTopicMutation.isPending ? "..." : "Ավելացնել"}</button>
-                  <button onClick={() => { setAddTopicOpen(false); setAddTopicTitle(""); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չеղarkel</button>
+                  <button onClick={() => { setAddTopicOpen(false); setAddTopicTitle(""); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                 </div>
               </div>
             ) : (
@@ -2379,24 +2379,24 @@ function LessonNodesPanel({
           <div className="pt-1">
             {addNodeOpen ? (
               <div className="bg-background/30 border border-white/10 rounded-xl px-3 py-2 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground">Նор MicroNode</p>
+                <p className="text-xs font-semibold text-muted-foreground">Նոր գիտելիքի հանգույց</p>
                 <input
                   className={fieldCls}
-                  placeholder="Vernagir *"
+                  placeholder="Վերնագիր *"
                   value={addNodeForm.title}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, title: e.target.value }))}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Ulmnatanumah napatak (learningObjective)"
+                  placeholder="Ուսումնական նպատակ (learningObjective)"
                   value={addNodeForm.learningObjective}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, learningObjective: e.target.value }))}
                 />
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
-                  placeholder="Tesakan bovandakutyun"
+                  placeholder="Տեսական մաս"
                   value={addNodeForm.theoryContent}
                   onChange={(e) => setAddNodeForm((f) => ({ ...f, theoryContent: e.target.value }))}
                 />
@@ -2436,7 +2436,7 @@ function LessonNodesPanel({
                       );
                     }}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                  >{createNode.isPending ? "..." : "Avaelatsnel"}</button>
+                  >{createNode.isPending ? "..." : "Ավելացնել"}</button>
                   <button onClick={() => setAddNodeOpen(false)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                 </div>
               </div>
@@ -2967,6 +2967,13 @@ export default function TeacherDashboard() {
           title:          quizTitle.trim() || undefined,
         }),
       });
+      // Guard: if the server returned HTML instead of JSON (e.g. a proxy error
+      // or an unhandled server crash), surface a clear Armenian error message
+      // rather than the cryptic "Unexpected token '<'" parse failure.
+      const contentType = resp.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("Թեստի ստեղծման հարցումը վերադարձրել է անսպասելի պատասխան։ Կրկին փորձեք։");
+      }
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error ?? "Ձախողվեց");
       setQuizModalOpen(false);
@@ -3433,7 +3440,7 @@ export default function TeacherDashboard() {
                   ) : (
                     <div className="space-y-2">
                       {assignedLessons.map((ls) => {
-                        const SL: Record<string,string> = { draft: "Սևagir", assigned: "Հandznararvats", active: "Ակտիվ", completed: "Avartvel" };
+                        const SL: Record<string,string> = { draft: "Սևagir", assigned: "Հandznararvats", active: "Ակտիվ", completed: "Ավարտել" };
                         const SC: Record<string,string> = { draft: "text-muted-foreground border-white/10 bg-white/5", assigned: "text-amber-400 border-amber-400/30 bg-amber-400/10", active: "text-teal-400 border-teal-400/30 bg-teal-400/10", completed: "text-green-400 border-green-400/30 bg-green-400/10" };
                         return (
                           <div key={ls.id} className="bg-card/40 border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">

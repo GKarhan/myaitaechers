@@ -1,0 +1,211 @@
+SMALL TEACHER UI FIX — LESSON-LINKED TEST CARDS MUST SHOW LIVE QUIZ STATUS/RESULTS
+
+STRICT SCOPE:
+Fix ONLY the teacher-side linked-tests block shown inside each Lesson.
+
+Do NOT modify:
+- quiz creation
+- quiz scoring/mastery
+- student quiz-taking flow
+- lesson assignment
+- mapping
+- Phase 2
+- AI Teacher
+- Knowledge Tree
+
+CURRENT BEHAVIOR
+
+The global Teacher "Թեստեր" section already shows dynamic quiz state correctly, e.g.:
+
+- released / assigned state
+- X/Y students completed
+- average %
+- view
+- results
+
+But the SAME Quiz shown inside:
+
+Lesson
+→ 📝 Թեստեր
+
+still shows the old/static state such as:
+
+- Ուղարկել
+- Դիտել
+
+and does NOT update after students complete the quiz.
+
+This is inconsistent because both cards represent the SAME Quiz record.
+
+════════════════════════════════════
+PART A — AUDIT FIRST
+════════════════════════════════════
+
+Before changing code:
+
+1. Find the global Teacher Tests card component.
+2. Identify exactly which API/data it uses for:
+   - assignment/release status
+   - completed count
+   - total assigned students
+   - average score / percentage
+   - results availability
+3. Find the Lesson-linked Tests block.
+4. Identify what data it currently receives.
+5. Prove why linked lesson cards do not reflect completion/result state.
+
+Do NOT create a second calculation implementation if the global Tests UI already has authoritative logic.
+
+Prefer reuse of:
+- existing endpoint
+- existing computed fields
+- existing helper/component
+where cleanly possible.
+
+════════════════════════════════════
+PART B — REQUIRED LESSON-LINKED CARD STATES
+════════════════════════════════════
+
+For every Quiz linked to a Lesson, show live teacher-facing state.
+
+STATE 1 — NOT RELEASED
+
+Show:
+- quiz title
+- type
+- `Ուղարկել`
+- `Դիտել`
+
+No fake completion data.
+
+STATE 2 — RELEASED, NONE COMPLETED
+
+Example:
+`Ուղարկված · 0/3 ավարտել են`
+
+Actions:
+- `Դիտել`
+- `Արդյունքներ` only if existing UX permits empty result view
+
+STATE 3 — PARTIALLY COMPLETED
+
+Example:
+`Ուղարկված · 1/3 ավարտել են · Միջին՝ 22%`
+
+Actions:
+- `Դիտել`
+- `Արդյունքներ`
+
+STATE 4 — ALL COMPLETED
+
+Example:
+`Ավարտված · 3/3 · Միջին՝ 67%`
+
+Actions:
+- `Դիտել`
+- `Արդյունքներ`
+
+Use the existing Armenian labels/style from the global Tests section where possible.
+
+════════════════════════════════════
+PART C — SAME QUIZ, SAME STATE
+════════════════════════════════════
+
+Critical invariant:
+
+Global Tests card Quiz ID
+=
+Lesson-linked Quiz ID
+
+The same authoritative assignment/attempt/result data must drive both.
+
+Do NOT:
+- duplicate Quiz rows
+- duplicate result calculations
+- create lesson-specific quiz status tables
+- copy score data into quiz_lesson_links
+
+The Lesson-linked view is just another presentation of the same Quiz state.
+
+════════════════════════════════════
+PART D — RELEASE CYCLE SEMANTICS
+════════════════════════════════════
+
+Respect the existing re-release architecture.
+
+If Quiz Q was completed in a previous release and teacher re-releases it:
+
+Lesson-linked card must reflect the CURRENT active release cycle according to the existing quiz assignment model.
+
+Historical attempts/results remain preserved.
+
+Do not simply use:
+"Has anyone ever completed this quiz?"
+
+Reuse the same current-release semantics already implemented in the global Tests section.
+
+════════════════════════════════════
+PART E — REAL UAT
+════════════════════════════════════
+
+Use the current real Lesson and one linked Quiz.
+
+Verify:
+
+1. Before release:
+   Lesson-linked card shows `Ուղարկել`.
+
+2. Release quiz.
+
+3. Student completes it.
+
+4. Refresh teacher Lesson.
+
+Expected:
+Lesson-linked card now shows the SAME completion/result summary as the global Tests card.
+
+5. Compare both views side-by-side:
+
+- same Quiz ID
+- same completed count
+- same assigned count
+- same average %
+- same current release status
+
+6. `Արդյունքներ` opens the existing quiz results flow.
+
+7. `Դիտել` still works.
+
+════════════════════════════════════
+PART F — REGRESSION
+════════════════════════════════════
+
+Verify:
+- Teacher global Tests section unchanged.
+- Student dashboard unchanged.
+- Quiz release unchanged.
+- Quiz completion unchanged.
+- Re-release behavior unchanged.
+- No duplicate Quiz records.
+- No duplicate assignments/attempts.
+
+════════════════════════════════════
+FINAL REPORT
+════════════════════════════════════
+
+Return:
+
+A. Root cause
+B. Global Tests data source
+C. Lesson-linked Tests old data source
+D. Reused helper/API/component
+E. Files changed
+F. Before/after Lesson-linked card
+G. Real Quiz ID used
+H. Global vs Lesson card comparison
+I. Re-release semantics verification
+J. Regression results
+
+FINAL GATE:
+
+PASS only if the Lesson-linked Quiz card dynamically reflects the same current assignment/completion/result state as the global Teacher Tests card.

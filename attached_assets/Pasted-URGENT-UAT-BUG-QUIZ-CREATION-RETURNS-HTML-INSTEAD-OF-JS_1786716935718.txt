@@ -1,0 +1,211 @@
+URGENT UAT BUG — QUIZ CREATION RETURNS HTML INSTEAD OF JSON
+
+STRICT SCOPE:
+Fix ONLY the teacher Quiz Creation failure discovered during manual UAT.
+
+Do NOT modify:
+- mapping
+- Phase 2 enrichment
+- lesson authoring
+- student lesson package
+- Knowledge Tree
+- AI Teacher/chat.ts
+- scoring/mastery logic
+- quiz-taking flow unless required only to keep existing types compiling
+
+CURRENT REAL UAT FAILURE
+
+Teacher opens Create Test modal.
+
+Real selection:
+- 3 knowledge nodes selected
+- question count = 9
+- difficulty = mixed
+
+Teacher clicks:
+"Ստեղծել թեստ"
+
+UI error:
+
+Failed to execute 'json' on 'Response':
+Unexpected token '<',
+"<!DOCTYPE "... is not valid JSON
+
+No quiz was created.
+
+This is a REAL browser UAT failure.
+
+════════════════════════════════════
+PART A — FORENSIC AUDIT FIRST
+════════════════════════════════════
+
+Before changing code, trace the exact request made by the Create Test button.
+
+Identify and report:
+
+1. Frontend component/function that handles Create Test submit.
+2. Exact request URL.
+3. HTTP method.
+4. Request body.
+5. Whether it uses:
+   - fetch
+   - generated API client
+   - custom helper
+6. Expected backend route.
+7. Actual mounted backend route prefix.
+8. Actual HTTP status returned in the failing case.
+9. Actual Content-Type returned.
+10. First ~100 characters of the raw response body.
+
+Do NOT call response.json() before checking Content-Type during diagnosis.
+
+The key question is:
+
+WHY does this request receive HTML beginning with <!DOCTYPE instead of JSON?
+
+════════════════════════════════════
+PART B — VERIFY ROUTE MATCHING
+════════════════════════════════════
+
+Compare:
+
+frontend URL
+vs
+Express/API mounted route
+
+Check for mistakes such as:
+
+- missing /api prefix
+- extra /api prefix
+- wrong plural/singular path
+- wrong route version
+- wrong HTTP verb
+- stale generated client endpoint
+- request hitting Vite/Replit frontend fallback instead of api-server
+- wrong port/base URL
+- route shadowing
+
+Do not guess.
+
+Prove the mismatch from code/runtime logs.
+
+════════════════════════════════════
+PART C — BACKEND ERROR CONTRACT
+════════════════════════════════════
+
+Even after fixing the route, verify the quiz-create API consistently returns JSON.
+
+Success:
+Content-Type application/json
+valid JSON body
+
+Validation/business failure:
+4xx
+Content-Type application/json
+structured JSON error
+
+Unexpected server failure:
+5xx
+Content-Type application/json
+structured JSON error
+
+The frontend must never receive an HTML app shell for an API request.
+
+Do not hide a backend failure by only changing the frontend parser.
+
+════════════════════════════════════
+PART D — FRONTEND RESPONSE SAFETY
+════════════════════════════════════
+
+After fixing the root route/API issue, make the submit handler robust.
+
+Before parsing JSON:
+
+- inspect response.ok
+- inspect Content-Type
+
+If response is not JSON, show a useful diagnostic error instead of:
+
+Unexpected token '<'
+
+Example conceptually:
+
+"Թեստի ստեղծման հարցումը վերադարձրել է անսպասելի պատասխան։"
+
+But do NOT use this as a workaround for the broken endpoint.
+
+Root cause must still be fixed.
+
+════════════════════════════════════
+PART E — REAL UAT REPRODUCTION
+════════════════════════════════════
+
+Reproduce the exact real case:
+
+- same lesson
+- same 3 selected nodes if still available
+- question count = 9
+- difficulty = mixed
+
+Click Create Test through the actual browser flow.
+
+Expected:
+
+1. Request reaches correct API route.
+2. Response is JSON.
+3. Quiz record is created exactly once.
+4. Correct quiz type/scope preserved.
+5. Correct lesson/node relationships created.
+6. No duplicate quiz records.
+7. Modal shows success or closes according to existing UX.
+8. New quiz appears in existing Tests UI.
+
+════════════════════════════════════
+PART F — FAILURE TEST
+════════════════════════════════════
+
+Also intentionally send one invalid create payload.
+
+Expected:
+- JSON 4xx
+- no HTML
+- no duplicate/incomplete quiz row
+
+════════════════════════════════════
+PART G — REGRESSION
+════════════════════════════════════
+
+Run existing relevant tests:
+
+- Phase 1.9 quiz lesson links
+- Phase 1.10 quiz creation
+- Phase 1.12 linked quiz behavior
+- Phase 1.13 E2E quiz sections
+
+Do not weaken assertions.
+
+════════════════════════════════════
+FINAL REPORT
+════════════════════════════════════
+
+Return:
+
+A. Exact frontend request URL/method
+B. Exact backend expected route
+C. Actual HTTP status and Content-Type before fix
+D. Root cause
+E. Files changed
+F. Actual response after fix
+G. Real browser UAT result
+H. Quiz created ID
+I. Relationship/scope proof
+J. Duplicate count
+K. Regression test results
+
+FINAL GATE:
+
+PASS only if the REAL Create Test browser flow creates a quiz successfully
+and every API response on this path is JSON, never HTML.
+
+If browser UAT is not reproduced:
+DO NOT report PASS.
