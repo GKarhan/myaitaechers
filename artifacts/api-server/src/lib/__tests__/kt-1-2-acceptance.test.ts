@@ -373,6 +373,167 @@ async function main() {
     assert.equal(results.length, 0, "Zero nodes must be returned for unenrolled subject");
   });
 
+  // ── T01: subject card totalUnits equals KT endpoint node count ──────────
+  // Cross-endpoint consistency: subjects summary and per-subject KT must
+  // count the SAME nodes using the SAME visibility gate.
+
+  await test("T01 — subject card totalUnits equals per-subject KT node count", async () => {
+    const testDb = getTestDb();
+
+    // Create 4 approved + 1 draft node in an active lesson
+    const lesson = await F.lesson(teacherUserId, classId, subjectId, { status: "active" });
+    await testDb.update(lessonsTable).set({ courseId }).where(eq(lessonsTable.id, lesson.id));
+    const nodeA = await F.node(lesson.id, { status: "approved" });
+    const nodeB = await F.node(lesson.id, { status: "approved" });
+    const nodeC = await F.node(lesson.id, { status: "approved" });
+    const nodeD = await F.node(lesson.id, { status: "approved" });
+    await F.node(lesson.id, { status: "draft" }); // must NOT count
+
+    const createdIds = new Set([nodeA.id, nodeB.id, nodeC.id, nodeD.id]);
+
+    // Run both endpoint queries
+    const cids = await getEnrolledCourseIds(studentUserId, subjectId);
+    const perSubjectResults = await runKtQuery(studentUserId, subjectId, cids);
+    const visibleFromKt = perSubjectResults.filter((r) => createdIds.has(r.lessonNodeId));
+
+    // Replicate subjects endpoint aggregation for THIS subject + student
+    const subjectsResults = await testDb
+      .select({ lessonNodeId: lessonNodesTable.id })
+      .from(lessonNodesTable)
+      .innerJoin(lessonsTable, eq(lessonNodesTable.lessonId, lessonsTable.id))
+      .innerJoin(coursesTable, and(
+        eq(lessonsTable.courseId, coursesTable.id),
+        inArray(coursesTable.id, cids),
+        eq(coursesTable.subjectId, subjectId),
+      ))
+      .where(and(
+        eq(lessonsTable.status, "active"),
+        eq(lessonNodesTable.status, "approved"),
+      ));
+    const visibleFromSubjects = subjectsResults.filter((r) => createdIds.has(r.lessonNodeId));
+
+    // T01: counts must match
+    assert.equal(
+      visibleFromKt.length,
+      visibleFromSubjects.length,
+      `per-subject count (${visibleFromKt.length}) ≠ subjects count (${visibleFromSubjects.length})`
+    );
+    assert.equal(visibleFromKt.length, 4, "expected 4 approved nodes visible");
+  });
+
+  // ── T02: exact node-ID sets match ────────────────────────────────────────
+
+  await test("T02 — exact node-ID sets match between subjects aggregation and per-subject KT", async () => {
+    const testDb = getTestDb();
+
+    const lesson = await F.lesson(teacherUserId, classId, subjectId, { status: "active" });
+    await testDb.update(lessonsTable).set({ courseId }).where(eq(lessonsTable.id, lesson.id));
+    const nodeX = await F.node(lesson.id, { status: "approved" });
+    const nodeY = await F.node(lesson.id, { status: "approved" });
+    const draftNode = await F.node(lesson.id, { status: "draft" });
+
+    const expectedIds = new Set([nodeX.id, nodeY.id]);
+
+    const cids = await getEnrolledCourseIds(studentUserId, subjectId);
+
+    const ktResults = await runKtQuery(studentUserId, subjectId, cids);
+    const ktIds = new Set(
+      ktResults.filter((r) => expectedIds.has(r.lessonNodeId)).map((r) => r.lessonNodeId)
+    );
+
+    const subjectsRows = await testDb
+      .select({ lessonNodeId: lessonNodesTable.id })
+      .from(lessonNodesTable)
+      .innerJoin(lessonsTable, eq(lessonNodesTable.lessonId, lessonsTable.id))
+      .innerJoin(coursesTable, and(
+        eq(lessonsTable.courseId, coursesTable.id),
+        inArray(coursesTable.id, cids),
+        eq(coursesTable.subjectId, subjectId),
+      ))
+      .where(and(
+        eq(lessonsTable.status, "active"),
+        eq(lessonNodesTable.status, "approved"),
+      ));
+    const subjectsIds = new Set(
+      subjectsRows.filter((r) => expectedIds.has(r.lessonNodeId)).map((r) => r.lessonNodeId)
+    );
+
+    // T02: exact same node IDs
+    assert.deepEqual(
+      [...ktIds].sort((a, b) => a - b),
+      [...subjectsIds].sort((a, b) => a - b),
+      "node-ID set mismatch between per-subject KT and subjects aggregation"
+    );
+    // Draft node must not appear in either
+    assert.ok(!ktIds.has(draftNode.id), "draft node must not appear in KT results");
+    assert.ok(!subjectsIds.has(draftNode.id), "draft node must not appear in subjects aggregation");
+  });
+
+  // ── T07: all legitimately approved nodes appear — none dropped ───────────
+
+  await test("T07 — ALL active+approved nodes appear; no legitimate node dropped", async () => {
+    const testDb = getTestDb();
+
+    // Create 6 approved nodes across 2 active lessons
+    const lesson1 = await F.lesson(teacherUserId, classId, subjectId, { status: "active" });
+    const lesson2 = await F.lesson(teacherUserId, classId, subjectId, { status: "active" });
+    await testDb.update(lessonsTable).set({ courseId }).where(eq(lessonsTable.id, lesson1.id));
+    await testDb.update(lessonsTable).set({ courseId }).where(eq(lessonsTable.id, lesson2.id));
+
+    const nodes = await Promise.all([
+      F.node(lesson1.id, { status: "approved" }),
+      F.node(lesson1.id, { status: "approved" }),
+      F.node(lesson1.id, { status: "approved" }),
+      F.node(lesson2.id, { status: "approved" }),
+      F.node(lesson2.id, { status: "approved" }),
+      F.node(lesson2.id, { status: "approved" }),
+    ]);
+    const expectedIds = new Set(nodes.map((n) => n.id));
+
+    const cids = await getEnrolledCourseIds(studentUserId, subjectId);
+    const results = await runKtQuery(studentUserId, subjectId, cids);
+    const found = results.filter((r) => expectedIds.has(r.lessonNodeId));
+
+    // Every approved node from both lessons must appear
+    assert.equal(
+      found.length,
+      6,
+      `Expected 6 nodes from 2 lessons, got ${found.length}. Missing: ${
+        [...expectedIds].filter((id) => !found.some((r) => r.lessonNodeId === id)).join(", ")
+      }`
+    );
+    // No node dropped because it lacks a KN row
+    const withoutKn = found.filter((r) => r.knId === null);
+    assert.equal(withoutKn.length, 6, "all 6 nodes must appear as not_started (no KN rows created)");
+  });
+
+  // ── T08: no duplicate lessonNodeIds ─────────────────────────────────────
+
+  await test("T08 — per-subject KT query returns no duplicate lessonNodeIds", async () => {
+    const testDb = getTestDb();
+
+    const lesson = await F.lesson(teacherUserId, classId, subjectId, { status: "active" });
+    await testDb.update(lessonsTable).set({ courseId }).where(eq(lessonsTable.id, lesson.id));
+    const nodeA = await F.node(lesson.id, { status: "approved" });
+    const nodeB = await F.node(lesson.id, { status: "approved" });
+    const nodeC = await F.node(lesson.id, { status: "approved" });
+    const ourIds = new Set([nodeA.id, nodeB.id, nodeC.id]);
+
+    const cids = await getEnrolledCourseIds(studentUserId, subjectId);
+    const results = await runKtQuery(studentUserId, subjectId, cids);
+    const ours = results.filter((r) => ourIds.has(r.lessonNodeId));
+
+    // Check for duplicates
+    const seenIds = new Set<number>();
+    const duplicates: number[] = [];
+    for (const r of ours) {
+      if (seenIds.has(r.lessonNodeId)) duplicates.push(r.lessonNodeId);
+      seenIds.add(r.lessonNodeId);
+    }
+    assert.equal(duplicates.length, 0, `Duplicate lessonNodeIds: ${duplicates.join(", ")}`);
+    assert.equal(ours.length, 3, `Expected 3 distinct nodes, got ${ours.length}`);
+  });
+
   // ── T21/T23: getMasteryLevelFromScores unchanged ─────────────────────────
 
   await test("T21/T23 — getMasteryLevelFromScores produces correct 4-state output", () => {

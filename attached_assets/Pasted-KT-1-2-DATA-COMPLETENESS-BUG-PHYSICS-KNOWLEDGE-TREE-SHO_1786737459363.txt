@@ -1,0 +1,220 @@
+KT-1.2 DATA COMPLETENESS BUG
+PHYSICS KNOWLEDGE TREE SHOWS 1 UNIT IN NEW FLOW BUT 3 IN OLD VIEW
+
+STRICT SCOPE:
+Fix ONLY the KT-1.2 data completeness / visibility inconsistency.
+
+Do NOT start KT-1.3.
+Do NOT build hierarchy yet.
+Do NOT change mastery formulas.
+Do NOT change mapping.
+Do NOT change quiz/evidence logic.
+Do NOT create new Node/Subnode schema.
+
+REAL MANUAL UAT FAILURE:
+
+For the same student and same Physics subject:
+
+OLD Knowledge Tree view previously showed 3 atomic knowledge units.
+
+NEW KT-1.2 subject/knowledge-tree flow currently shows only 1 unit
+("Մոլեկուլներ").
+
+This means the new KT-1.2 visibility/data query is not returning the same
+legitimate student-visible curriculum set.
+
+==================================================
+A. FORENSIC COMPARISON FIRST
+==================================================
+
+For the exact current student and Physics subject, compare:
+
+1. OLD KT data source/query
+2. NEW KT-1.2 subject counts endpoint
+3. NEW /knowledge-tree/:subjectId endpoint
+
+Return exact lists of:
+
+lessonNodeId
+lessonId
+lesson status
+lessonNode status
+topicId
+title
+knowledgeNode exists?
+masteryScore
+confidenceScore
+masteryLevel
+
+for ALL Physics nodes seen by each path.
+
+Create a side-by-side matrix:
+
+NODE ID | TITLE | OLD VIEW | NEW VIEW | REASON INCLUDED/EXCLUDED
+
+Do not change code before this comparison.
+
+==================================================
+B. DETERMINE THE TRUE STUDENT-VISIBLE SET
+==================================================
+
+Use current production lifecycle semantics.
+
+For each missing Physics node determine:
+
+- Is its lesson active?
+- Is the node teacher-approved?
+- Is it needs_review?
+- Is it draft?
+- Does it already have student evidence / knowledge_nodes?
+- Was it legitimately visible before KT-1.2?
+- Should it be visible to the student now?
+
+Do NOT blindly loosen the node filter.
+
+The correct contract remains:
+
+Only legitimate student-visible curriculum units should appear.
+
+But ALL legitimate units must appear.
+
+==================================================
+C. CHECK COURSE/SUBJECT SCOPE
+==================================================
+
+Verify whether the new endpoint is incorrectly restricting by:
+
+- courseId
+- classId
+- subjectId
+- active lesson
+- enrollment
+- current course only
+
+Physics may have multiple lessons/courses under the same subject.
+
+The Subject Knowledge Tree must include the complete student-visible
+curriculum for that enrolled subject, not just one lesson/course accidentally.
+
+==================================================
+D. CHECK STATUS SEMANTICS
+==================================================
+
+KT-1.2 chose:
+
+lesson.status = active
+AND
+lesson_node.status = approved
+
+Verify this against REAL currently published lessons.
+
+If legitimate student-visible nodes are not status="approved",
+trace WHY.
+
+Do NOT expose "draft" simply to make counts match.
+
+If authoring lifecycle has a status mismatch, fix the lifecycle/query contract
+at the correct layer and document it.
+
+==================================================
+E. REQUIRED INVARIANT
+==================================================
+
+For one student + one subject:
+
+Subject card totalUnits
+
+must equal
+
+number of legitimate student-visible atomic lesson_nodes returned by
+/knowledge-tree/:subjectId
+
+and both must represent the SAME node IDs.
+
+No node may disappear merely because it has no knowledge_nodes row.
+
+No fake knowledge_nodes may be created.
+
+==================================================
+F. CURRENT PHYSICS UAT
+==================================================
+
+Use the real Physics subject from manual UAT.
+
+Before fix:
+old count = 3
+new visible count = 1
+
+After fix, report:
+
+- expected legitimate Physics node count
+- exact node IDs
+- exact titles
+- exact state for each
+
+If the true legitimate count is not 3, explain precisely why the old view was
+wrong.
+
+Do NOT force the answer to be 3.
+
+==================================================
+G. ACCEPTANCE TESTS
+==================================================
+
+T01 subject card totalUnits equals KT endpoint node count.
+
+T02 exact node-ID sets match.
+
+T03 no-KN node still appears as not_started.
+
+T04 KN-backed node appears with real mastery.
+
+T05 draft node does not leak.
+
+T06 unrelated subject node does not leak.
+
+T07 all active + legitimately approved Physics nodes appear.
+
+T08 no duplicate lessonNodeIds.
+
+T09 zero DB writes while reading KT.
+
+T10 no test pollution.
+
+==================================================
+H. MANUAL UAT
+==================================================
+
+After fix:
+
+1. Login as same student.
+2. Open sidebar → Գիտելիքի ծառ.
+3. Physics subject card shows correct totalUnits.
+4. Open Physics.
+5. The same number of legitimate atomic knowledge units appears.
+6. Compare with old/current known Physics nodes.
+7. No draft teacher content is visible.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. old data source
+B. new data source
+C. exact missing node IDs
+D. root cause
+E. visibility contract
+F. files changed
+G. Physics before/after
+H. tests
+I. manual UAT result
+
+FINAL GATE:
+
+KT-1.2 DATA COMPLETENESS = PASS
+
+only when subject summary and subject KT page use the SAME authoritative
+student-visible MicroNode set.
+
+STOP.
+DO NOT BEGIN KT-1.3.
