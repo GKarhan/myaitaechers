@@ -815,6 +815,7 @@ function LessonNodesPanel({
   authoringStatus = "draft",
   lessonClassId = null,
   lessonSubjectId = null,
+  onOpenResults,
 }: {
   lessonId: number;
   courseId: number;
@@ -830,6 +831,8 @@ function LessonNodesPanel({
   lessonClassId?: number | null;
   /** P1.12: subject for quiz review navigation */
   lessonSubjectId?: number | null;
+  /** Open the inline results panel for a quiz (quiz ID → parent handler) */
+  onOpenResults?: (quizId: number) => void;
 }) {
   const qc = useQueryClient();
   const [, setLocation] = useLocation(); // P1.12: navigate to quiz review
@@ -922,10 +925,12 @@ function LessonNodesPanel({
   const [approvalWarnings, setApprovalWarnings] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
   const [showApprovalErrors, setShowApprovalErrors] = useState(false);
 
-  // Phase 1.9: linked tests section
+  // Phase 1.9: linked tests section — type now includes live completion stats
+  // returned by the extended GET /api/lessons/:id/quizzes endpoint.
   const [linkedTests, setLinkedTests] = useState<Array<{
     id: number; title: string; status: string; quizType: string | null; questionCount: number;
     classId: number | null;
+    totalAssigned: number; completedCount: number; averageScorePercent: number | null;
   }>>([]);
   const [linkedTestsLoading, setLinkedTestsLoading] = useState(false);
   const [linkedTestsOpen, setLinkedTestsOpen] = useState(false);
@@ -2473,52 +2478,78 @@ function LessonNodesPanel({
             ) : (
               linkedTests.map((q) => {
                 const effectiveClassId = q.classId ?? lessonClassId;
+                const isAssigned = q.status === "ASSIGNED";
+                const hasResults = q.completedCount > 0;
+                const allDone    = isAssigned && q.totalAssigned > 0 && q.completedCount >= q.totalAssigned;
                 return (
                   <div
                     key={q.id}
-                    className="flex items-center gap-2 bg-white/3 border border-white/8 rounded-lg px-3 py-1.5"
+                    className="flex items-start gap-2 bg-white/3 border border-white/8 rounded-lg px-3 py-2"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-white/80 truncate font-medium">{q.title}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wide">
-                          {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Амфогнакум" : "—"}
+                          {q.quizType === "lesson" ? "Դասի թեստ" : q.quizType === "summary" ? "Ամփոփ թест" : "—"}
                         </span>
                         <span className="text-muted-foreground/30 text-[9px]">·</span>
                         <span className="text-[9px] text-muted-foreground/60">{q.questionCount} հարց.</span>
-                        {q.status === "GENERATED" || q.status === "PUBLISHED" ? (
-                          <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">✓</span>
-                        ) : q.status === "ASSIGNED" ? (
-                          <span className="text-[9px] px-1 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">→</span>
-                        ) : null}
                       </div>
-                    </div>
-                    {/* P1.12: release linked quiz to students (SAME endpoint as global Tests section) */}
-                    {q.status !== "ASSIGNED" && effectiveClassId !== null && (
-                      <button
-                        onClick={async () => {
-                          const tok = authToken ?? localStorage.getItem("myaiteacher_token") ?? "";
-                          const r = await fetch(`/api/quizzes/${q.id}/assign`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-                            body: JSON.stringify({ classId: effectiveClassId }),
-                          });
-                          if (r.ok) {
-                            setLinkedTests((prev) => prev.map((x) => x.id === q.id ? { ...x, status: "ASSIGNED" } : x));
+                      {/* Live completion status — same data as global Tests section */}
+                      {isAssigned && q.totalAssigned > 0 ? (
+                        <p className="text-[10px] mt-1 text-muted-foreground leading-tight">
+                          {allDone
+                            ? <span className="text-emerald-400 font-medium">Ավարտված</span>
+                            : <span className="text-blue-400">Ուղարկված</span>
                           }
-                        }}
-                        className="text-[10px] px-2 py-1 rounded bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap shrink-0"
+                          {" · "}{q.completedCount}/{q.totalAssigned} ավարտել են
+                          {hasResults && q.averageScorePercent !== null && (
+                            <> · Միջին՝ <span className="text-white/80">{q.averageScorePercent}%</span></>
+                          )}
+                        </p>
+                      ) : isAssigned ? (
+                        <p className="text-[10px] mt-1 text-blue-400">Ուղարկված · 0/? ավարտել են</p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col gap-1 shrink-0">
+                      {/* Release button — only when not yet assigned */}
+                      {!isAssigned && effectiveClassId !== null && (
+                        <button
+                          onClick={async () => {
+                            const tok = authToken ?? localStorage.getItem("myaiteacher_token") ?? "";
+                            const r = await fetch(`/api/quizzes/${q.id}/assign`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+                              body: JSON.stringify({ classId: effectiveClassId }),
+                            });
+                            if (r.ok) {
+                              setLinkedTests((prev) => prev.map((x) =>
+                                x.id === q.id ? { ...x, status: "ASSIGNED" } : x
+                              ));
+                            }
+                          }}
+                          className="text-[10px] px-2 py-1 rounded bg-amber-400/15 text-amber-400 hover:bg-amber-400/25 transition-colors border border-amber-400/20 whitespace-nowrap"
+                        >
+                          Ուղարկել
+                        </button>
+                      )}
+                      {/* View button — always shown */}
+                      <button
+                        onClick={() => setLocation(`/quiz/${q.id}/review?classId=${effectiveClassId ?? ""}&subjectId=${lessonSubjectId ?? ""}`)}
+                        className="text-[10px] px-2 py-1 rounded bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap"
                       >
-                        Ուղարկել
+                        Դիտել
                       </button>
-                    )}
-                    {/* P1.12: view quiz details (SAME route as global Tests section) */}
-                    <button
-                      onClick={() => setLocation(`/quiz/${q.id}/review?classId=${effectiveClassId ?? ""}&subjectId=${lessonSubjectId ?? ""}`)}
-                      className="text-[10px] px-2 py-1 rounded bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 whitespace-nowrap shrink-0"
-                    >
-                      Դիտել
-                    </button>
+                      {/* Results button — shown when ≥1 student completed; opens same panel as global Tests section */}
+                      {hasResults && onOpenResults && (
+                        <button
+                          onClick={() => onOpenResults(q.id)}
+                          className="text-[10px] px-2 py-1 rounded bg-teal-500/15 text-teal-400 hover:bg-teal-500/25 transition-colors border border-teal-500/20 whitespace-nowrap"
+                        >
+                          Արդյունքներ
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -4722,6 +4753,7 @@ export default function TeacherDashboard() {
                                 authoringStatus={(l as any).status ?? "draft"}
                                 lessonClassId={(l as any).classId ?? null}
                                 lessonSubjectId={selectedCourse?.subjectId ?? null}
+                                onOpenResults={(quizId) => { setResultsFrom("allQuizzes"); setResultsQuizId(quizId); }}
                               />
                             </div>
                           </div>

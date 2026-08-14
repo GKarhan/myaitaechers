@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -3244,27 +3244,60 @@ router.get("/lessons/:lessonId/quizzes", requireTeacher, async (req: AuthRequest
     .where(eq(quizLessonLinksTable.lessonId, lessonId))
     .orderBy(desc(quizzesTable.createdAt));
 
-  // Batch-load question counts to avoid N+1.
+  // Batch-load question counts, assignment stats, and score averages — same
+  // aggregation pattern as GET /api/quizzes so the lesson-linked cards show
+  // the same live completion state as the global Tests section.
   const quizIds = rows.map((r) => r.quizId);
-  const qCounts: Record<number, number> = {};
+  const qCounts:      Record<number, number>         = {};
+  const assignStats:  Record<number, { totalAssigned: number; completedCount: number }> = {};
+  const scoreStats:   Record<number, number | null>  = {};
+
   if (quizIds.length > 0) {
+    // Question counts
     const countRows = await db
       .select({ quizId: quizQuestionsTable.quizId, cnt: count(quizQuestionsTable.id) })
       .from(quizQuestionsTable)
       .where(inArray(quizQuestionsTable.quizId, quizIds))
       .groupBy(quizQuestionsTable.quizId);
     for (const r of countRows) qCounts[r.quizId] = Number(r.cnt);
+
+    // Assignment stats: totalAssigned + completedCount per quiz
+    const aRows = await db
+      .select({
+        quizId:         quizAssignmentsTable.quizId,
+        totalAssigned:  sql<number>`cast(count(*) as integer)`,
+        completedCount: sql<number>`cast(count(*) filter (where ${quizAssignmentsTable.status} = 'COMPLETED') as integer)`,
+      })
+      .from(quizAssignmentsTable)
+      .where(inArray(quizAssignmentsTable.quizId, quizIds))
+      .groupBy(quizAssignmentsTable.quizId);
+    for (const r of aRows) assignStats[r.quizId] = { totalAssigned: r.totalAssigned, completedCount: r.completedCount };
+
+    // Average score per quiz (completed attempts only)
+    const sRows = await db
+      .select({
+        quizId:              quizAssignmentsTable.quizId,
+        averageScorePercent: sql<number | null>`round(avg(${quizAttemptsTable.scorePercent}))`,
+      })
+      .from(quizAttemptsTable)
+      .innerJoin(quizAssignmentsTable, eq(quizAssignmentsTable.id, quizAttemptsTable.quizAssignmentId))
+      .where(inArray(quizAssignmentsTable.quizId, quizIds))
+      .groupBy(quizAssignmentsTable.quizId);
+    for (const r of sRows) scoreStats[r.quizId] = r.averageScorePercent ?? null;
   }
 
   res.json(rows.map((r) => ({
-    id:             r.quizId,
-    title:          r.title,
-    status:         r.status,
-    quizType:       r.quizType ?? null,
-    difficultyMode: r.difficultyMode,
-    classId:        r.classId ?? null,
-    questionCount:  qCounts[r.quizId] ?? 0,
-    createdAt:      r.createdAt.toISOString(),
+    id:                  r.quizId,
+    title:               r.title,
+    status:              r.status,
+    quizType:            r.quizType ?? null,
+    difficultyMode:      r.difficultyMode,
+    classId:             r.classId ?? null,
+    questionCount:       qCounts[r.quizId]               ?? 0,
+    createdAt:           r.createdAt.toISOString(),
+    totalAssigned:       assignStats[r.quizId]?.totalAssigned   ?? 0,
+    completedCount:      assignStats[r.quizId]?.completedCount  ?? 0,
+    averageScorePercent: scoreStats[r.quizId]              ?? null,
   })));
 });
 
