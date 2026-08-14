@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
-import { NAV_ITEMS } from "@/lib/student-nav";
+import { NAV_ITEMS, NAV_STANDALONE_ROUTES } from "@/lib/student-nav";
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -48,7 +48,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.key}
-              href={`/dashboard?section=${item.key}`}
+              href={NAV_STANDALONE_ROUTES[item.key] ?? `/dashboard?section=${item.key}`}
               onClick={() => setSidebarOpen(false)}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-muted-foreground hover:text-white hover:bg-white/5 transition-all"
             >

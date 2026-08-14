@@ -1,19 +1,27 @@
 // Shared student navigation — single source of truth for Dashboard and StudentLayout
 export type NavKey =
   | "ai-teacher" | "home" | "tasks" | "subjects" | "homework"
-  | "schedule" | "progress" | "library" | "profile" | "quizzes";
+  | "schedule" | "progress" | "library" | "profile" | "quizzes"
+  | "knowledge-tree";
+
+// Items whose href is a standalone route (not /dashboard?section=...)
+// Keyed by NavKey → absolute path.
+export const NAV_STANDALONE_ROUTES: Partial<Record<NavKey, string>> = {
+  "knowledge-tree": "/kt-subjects",
+};
 
 export const NAV_ITEMS: { key: NavKey; emoji: string; label: string }[] = [
-  { key: "ai-teacher", emoji: "🤖", label: "ԱԲ ուսուցիչ" },
-  { key: "home",       emoji: "🏠", label: "Գլխավոր" },
-  { key: "tasks",      emoji: "📝", label: "Իմ դասերը" },
-  { key: "subjects",   emoji: "📚", label: "Իմ առարկաները" },
-  { key: "homework",   emoji: "📋", label: "Իմ տնայինները" },
-  { key: "quizzes",   emoji: "📋", label: "Իմ թեստերը" },
-  { key: "schedule",   emoji: "📅", label: "Դասացուցակ" },
-  { key: "progress",   emoji: "📈", label: "Իմ առաջընթացը" },
-  { key: "library",    emoji: "📖", label: "Գրադարան" },
-  { key: "profile",    emoji: "👤", label: "Իմ պրոֆիլը" },
+  { key: "ai-teacher",      emoji: "🤖", label: "ԱԲ ուսուցիչ" },
+  { key: "home",            emoji: "🏠", label: "Գլխավոր" },
+  { key: "tasks",           emoji: "📝", label: "Իմ դասերը" },
+  { key: "subjects",        emoji: "📚", label: "Իմ առարկաները" },
+  { key: "knowledge-tree",  emoji: "🌳", label: "Գիտելիքի ծառ" },
+  { key: "homework",        emoji: "📋", label: "Իմ տնայինները" },
+  { key: "quizzes",         emoji: "📋", label: "Իմ թեստերը" },
+  { key: "schedule",        emoji: "📅", label: "Դասացուցակ" },
+  { key: "progress",        emoji: "📈", label: "Իմ առաջընթացը" },
+  { key: "library",         emoji: "📖", label: "Գրադարան" },
+  { key: "profile",         emoji: "👤", label: "Իմ պրոֆիլը" },
 ];
 
 export function lessonStatusBadge(mySessionStatus: string | null | undefined): { text: string; cls: string } {

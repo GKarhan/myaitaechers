@@ -11,6 +11,7 @@ import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import SubjectDetail from "@/pages/subject-detail";
 import KnowledgeTree from "@/pages/knowledge-tree";
+import KtSubjectSelect from "@/pages/kt-subject-select";
 import LessonDetail from "@/pages/lesson-detail";
 import LessonPage from "@/pages/lesson-page";
 import Chat from "@/pages/chat";
@@ -38,6 +39,7 @@ function Router() {
       <Route path="/admin/classes/:id" component={ClassDetail} />
       <Route path="/teacher" component={TeacherDashboard} />
       <Route path="/subjects/:id" component={SubjectDetail} />
+      <Route path="/kt-subjects" component={KtSubjectSelect} />
       <Route path="/knowledge-tree/:id" component={KnowledgeTree} />
       <Route path="/lessons/:id" component={LessonPage} />
       <Route path="/lesson/:id" component={LessonDetail} />

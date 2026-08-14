@@ -1,0 +1,527 @@
+PHASE KT-1.2 — KNOWLEDGE TREE V1
+VISIBILITY GATE + STUDENT SIDEBAR + SUBJECT SELECTION
+
+IMPORTANT:
+KT-1.1 forensic audit is complete.
+
+This task is ONLY KT-1.2.
+
+Do NOT implement KT-1.3 hierarchical/collapsible tree yet.
+Do NOT implement KT-1.4 mastery roll-up yet.
+Do NOT implement KT-1.5 Detail Panel yet.
+Do NOT change AI Teacher.
+Do NOT change quiz scoring.
+Do NOT change mapping.
+Do NOT change Phase 2 enrichment.
+Do NOT change quiz creation/release.
+Do NOT change mastery formulas.
+Do NOT invent a new Node/Subnode hierarchy.
+Do NOT create fake knowledge_nodes for not-started nodes.
+
+==================================================
+0. FIRST: AUDIT BEFORE WRITING CODE
+==================================================
+
+Before making any change, verify the current implementation and report:
+
+1. Current student navigation:
+   - artifacts/myaiteacher/src/lib/student-nav.ts
+   - artifacts/myaiteacher/src/components/StudentLayout.tsx
+   - relevant routing in App.tsx
+
+2. Current Knowledge Tree frontend:
+   - artifacts/myaiteacher/src/pages/knowledge-tree.tsx
+
+3. Current KT backend:
+   - artifacts/api-server/src/routes/knowledge-tree.ts
+
+4. Verify the actual canonical hierarchy remains:
+
+Subject
+  → Lesson
+    → Topic / grouping container (optional)
+      → lesson_node / MicroNode (ATOMIC knowledge unit)
+
+Do NOT invent:
+Node → Subnode
+or any other hierarchy that does not exist in DB.
+
+5. Verify:
+lesson_nodes = canonical curriculum knowledge units
+
+knowledge_nodes =
+student-specific learner state for a lesson_node
+
+6. Verify current lesson lifecycle/status values.
+
+7. VERY IMPORTANT:
+Determine the actual publication/visibility semantics of
+lesson_nodes.status.
+
+Specifically audit what these statuses mean in current production code:
+
+- draft
+- needs_review
+- approved
+- any other existing values
+
+Trace:
+mapping → teacher review → approve-all → final approval → active lesson.
+
+Answer explicitly:
+
+Which lesson_node statuses are actually safe for STUDENT visibility?
+
+DO NOT assume that "needs_review" is student-visible merely because the
+previous KT-1.1 proposal mentioned it.
+
+If "needs_review" means teacher review is still pending, it MUST NOT
+be exposed to students.
+
+Report this finding BEFORE implementing the visibility filter.
+
+==================================================
+1. FIX THE KNOWLEDGE TREE VISIBILITY CONTRACT
+==================================================
+
+KT-1.1 found a critical bug:
+
+The KT query currently relies on:
+
+lesson.status === "approved"
+
+But the real lesson lifecycle now includes:
+
+approved → active
+
+and real published/student-accessible lessons are "active".
+
+Therefore new students cannot currently see all curriculum nodes in
+Knowledge Tree unless a knowledge_nodes row already exists.
+
+Fix this.
+
+DESIRED CONTRACT:
+
+A curriculum MicroNode should appear in the student's Knowledge Tree
+when:
+
+A. the lesson is legitimately student-visible / active
+AND
+B. the MicroNode itself is legitimately student-visible according to
+   the node publication status discovered in Part 0
+AND
+C. the subject belongs to the student's enrolled curriculum.
+
+A knowledge_nodes row is NOT required for visibility.
+
+If there is no knowledge_nodes row:
+
+masteryLevel = "not_started"
+Armenian UI state = "Դեռ չի ուսումնասիրել"
+
+Do NOT insert a fake knowledge_nodes row merely to display the node.
+
+The absence of learner-state evidence must continue to represent
+not_started.
+
+IMPORTANT SECURITY / DATA RULE:
+
+Fix the active lesson gate AND the draft/unapproved node leak risk
+together.
+
+Never solve the active lesson bug by exposing draft teacher content.
+
+==================================================
+2. STUDENT SIDEBAR — ADD KNOWLEDGE TREE
+==================================================
+
+Add a new student navigation item:
+
+🌳 Գիտելիքի ծառ
+
+It must appear in the normal student sidebar/menu alongside the
+existing student navigation.
+
+Use the existing navigation architecture.
+Do not create a second sidebar implementation.
+
+Desired user flow:
+
+Student
+→ Sidebar
+→ "Գիտելիքի ծառ"
+→ Subject Selection screen
+→ choose subject
+→ Knowledge Tree for that subject
+
+Do NOT require the student to first open Subject Detail.
+
+Existing Subject Detail → Knowledge Tree navigation may remain.
+
+==================================================
+3. KNOWLEDGE TREE SUBJECT SELECTION SCREEN
+==================================================
+
+When the student clicks:
+
+🌳 Գիտելիքի ծառ
+
+show a Knowledge Tree subject-selection screen.
+
+IMPORTANT:
+Subjects MUST come from the authoritative enrollment chain already
+identified in KT-1.1:
+
+class_students
+→ courses
+→ subjects
+
+Do NOT derive the student's subject list from random lessons.
+Do NOT expose subjects belonging to classes in which the student is
+not enrolled.
+
+Each subject card should show:
+
+--------------------------------------------------
+[Subject name]
+
+Գիտելիքի միավորներ՝ N
+
+Գիտի՝ X
+Մասնակի գիտի՝ X
+Չգիտի՝ X
+Դեռ չի ուսումնասիրել՝ X
+
+Յուրացում՝ [NOT IMPLEMENTED YET]
+
+[Բացել գիտելիքի ծառը]
+--------------------------------------------------
+
+IMPORTANT ABOUT "Յուրացում":
+
+KT-1.4 will define the authoritative Subject/Topic/Lesson roll-up
+formula.
+
+DO NOT invent that formula in KT-1.2.
+
+Therefore either:
+
+A. omit the mastery percentage temporarily,
+
+or
+
+B. render a clearly neutral placeholder such as:
+   "Յուրացում՝ —"
+
+Do NOT calculate a simple average and silently make it authoritative.
+
+==================================================
+4. SUBJECT CARD COUNTS
+==================================================
+
+For each enrolled subject calculate:
+
+totalUnits
+masteredCount
+weakCount
+inProgressCount
+notStartedCount
+
+where the atomic unit is lesson_nodes / MicroNode.
+
+Use the SAME authoritative four-state classification logic already
+used by Knowledge Tree.
+
+Visible Armenian states must remain:
+
+mastered
+→ Գիտի
+
+weak
+→ Մասնակի գիտի
+
+in_progress
+→ Չգիտի
+
+not_started
+→ Դեռ չի ուսումնասիրել
+
+If internal "needs_review" exists as a mastery state due to spaced
+review timing, preserve the existing KT behavior for now.
+Do NOT redesign that model in KT-1.2.
+
+INVARIANT:
+
+totalUnits =
+masteredCount
++ weakCount
++ inProgressCount
++ notStartedCount
+
+This must hold for every subject card.
+
+==================================================
+5. OPENING A SUBJECT
+==================================================
+
+Clicking:
+
+"Բացել գիտելիքի ծառը"
+
+must navigate to the existing subject-specific KT route:
+
+/knowledge-tree/:subjectId
+
+Do not redesign that page yet.
+
+KT-1.3 will replace the current flat MicroNode layout with:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+collapsible navigation.
+
+For KT-1.2 the existing subject KT page may remain visually as-is,
+except for changes strictly required by the visibility fix.
+
+==================================================
+6. PRESERVE THE CURRENT FOUR-STATE MODEL
+==================================================
+
+Do NOT change:
+
+getMasteryLevelFromScores()
+
+Do NOT change:
+mastery thresholds
+confidence thresholds
+quiz evidence scoring
+AI Teacher evidence scoring
+review scheduling
+
+KT-1.2 is about DISCOVERY / VISIBILITY / NAVIGATION.
+
+It is NOT a mastery-algorithm phase.
+
+==================================================
+7. DATA SAFETY
+==================================================
+
+Follow the Test Isolation / Zero-Pollution principles.
+
+Automated tests MUST NOT mutate real teacher/student lesson data.
+
+Do not use hardcoded real lesson IDs as writable fixtures.
+
+If tests require writable data:
+
+create isolated TEST_* fixtures
+→ run test
+→ cleanup in finally
+→ verify zero test pollution.
+
+Real production/manual-UAT records may be used only for READ-ONLY
+verification.
+
+Do NOT create fake knowledge_nodes to test not_started.
+
+Test that state through the real LEFT JOIN / absence behavior.
+
+==================================================
+8. EXISTING DATA-INTEGRITY ISSUE
+==================================================
+
+KT-1.1 found a sequence integrity problem in an existing lesson
+(Lesson 60 in the audit environment):
+
+multiple lesson_nodes share the same sequence.
+
+DO NOT silently repair real lesson data in this task.
+
+Instead:
+
+A. verify whether the issue still exists;
+B. report it;
+C. ensure KT-1.2 does not depend on nondeterministic sequence ordering;
+D. leave actual sequence normalization for the appropriate authoring/
+   data-integrity task unless a production code bug is causing it.
+
+No destructive cleanup without explicit evidence.
+
+==================================================
+9. REQUIRED ACCEPTANCE TESTS
+==================================================
+
+Create focused KT-1.2 acceptance tests.
+
+NAVIGATION
+
+T01 Student sidebar contains:
+    "Գիտելիքի ծառ"
+
+T02 Clicking it opens the KT Subject Selection screen.
+
+T03 Existing student navigation still works.
+
+SUBJECT AUTHORITY
+
+T04 Only subjects from the student's enrolled class/course chain appear.
+
+T05 No unrelated subject appears.
+
+T06 Clicking a subject opens:
+    /knowledge-tree/:subjectId
+
+VISIBILITY
+
+T07 MicroNodes from an active/student-visible lesson appear.
+
+T08 A visible MicroNode with NO knowledge_nodes row appears as:
+    "Դեռ չի ուսումնասիրել"
+
+T09 T08 does NOT create a knowledge_nodes row.
+
+T10 Draft/unpublished lesson nodes do NOT appear.
+
+T11 Draft/unpublished lessons do NOT expose curriculum nodes.
+
+T12 Existing knowledge_nodes-backed nodes still appear correctly.
+
+FOUR-STATE COUNTS
+
+T13 Subject totalUnits equals the number of visible curriculum
+    MicroNodes.
+
+T14 masteredCount is correct.
+
+T15 weakCount is correct.
+
+T16 inProgressCount is correct.
+
+T17 notStartedCount is correct.
+
+T18:
+totalUnits =
+mastered + weak + inProgress + notStarted
+
+AUTHORIZATION
+
+T19 Student cannot retrieve KT data for a subject outside their
+    enrollment.
+
+If the current endpoint already enforces this, prove it.
+
+If it does not, fix it as part of KT-1.2.
+
+T20 Teacher-view KT functionality remains working.
+
+REGRESSION
+
+T21 Quiz-created learner state remains visible.
+
+T22 AI Teacher-created learner state path is not broken.
+
+T23 No mastery/confidence calculation changed.
+
+T24 No mapping/lesson/quiz data duplicated.
+
+T25 Test pollution after suite = 0.
+
+==================================================
+10. MANUAL UAT CHECKLIST
+==================================================
+
+After automated tests, give me exact manual steps.
+
+I should be able to test:
+
+1. Login as student.
+2. See "🌳 Գիտելիքի ծառ" in sidebar.
+3. Click it.
+4. See enrolled subject cards.
+5. Each card shows:
+   - total MicroNodes
+   - Գիտի
+   - Մասնակի գիտի
+   - Չգիտի
+   - Դեռ չի ուսումնասիրել
+6. Click Physics.
+7. Open existing Physics Knowledge Tree.
+8. Verify active lesson MicroNodes appear.
+9. Verify untouched MicroNodes show:
+   "Դեռ չի ուսումնասիրել"
+10. Verify quiz-evidenced MicroNodes show their real states.
+11. Verify draft teacher content is invisible.
+
+==================================================
+11. STRICT NON-GOALS
+==================================================
+
+DO NOT implement yet:
+
+- collapsible Lesson → Topic → MicroNode tree
+- NotebookLM-style map
+- mastery roll-up %
+- Topic mastery %
+- Lesson mastery %
+- Subject mastery %
+- Detail Panel
+- Bloom personalization
+- difficulty personalization
+- spaced repetition UI
+- next-best-action engine
+- AI Teacher shortcuts
+- new database hierarchy
+- Node → Subnode schema
+
+Those belong to later KT phases.
+
+==================================================
+12. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-IMPLEMENTATION AUDIT
+- exact node publication statuses found
+- exact student-visible status chosen and WHY
+- existing KT visibility bug proof
+
+B. FILES CHANGED
+- exact files
+- exact purpose of each change
+
+C. FINAL DATA FLOW
+
+Student enrollment
+→ Subject
+→ Active/student-visible Lesson
+→ student-visible lesson_node/MicroNode
+→ LEFT JOIN knowledge_nodes
+→ existing KN = real learner state
+→ no KN = not_started
+→ 4-state classification
+→ Subject card counts
+→ Knowledge Tree
+
+D. ACCEPTANCE TEST RESULTS
+T01–T25 individually.
+
+E. DATA SAFETY
+- test fixture IDs
+- cleanup result
+- pollution remaining = 0
+
+F. REGRESSION RESULTS
+
+G. MANUAL UAT STEPS
+
+H. FINAL VERDICT
+
+KT-1.2 = PASS / FAIL
+
+Do not start KT-1.3 automatically.
+Stop after KT-1.2 and wait for manual UAT.

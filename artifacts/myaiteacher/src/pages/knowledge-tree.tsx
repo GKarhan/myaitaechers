@@ -97,7 +97,7 @@ export default function KnowledgeTree() {
               ← Հետ
             </button>
           ) : (
-            <Link href={`/subjects/${subjectId}`} className="text-muted-foreground hover:text-white transition-colors">
+            <Link href="/kt-subjects" className="text-muted-foreground hover:text-white transition-colors">
               ← Հետ
             </Link>
           )}

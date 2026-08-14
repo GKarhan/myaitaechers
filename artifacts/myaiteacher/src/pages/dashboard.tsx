@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
@@ -919,7 +919,9 @@ export default function Dashboard() {
   };
 
 
-  const SECTIONS = {
+  // "knowledge-tree" is a standalone route (/kt-subjects) — not a dashboard section.
+  // It is intentionally absent here; the ?? fallback handles any stale ?section= params.
+  const SECTIONS: Partial<Record<Section, () => React.ReactElement | null>> = {
     "ai-teacher": SectionAI,
     home:         SectionHome,
     tasks:        SectionTasks,
