@@ -1,0 +1,784 @@
+PHASE KT-1.4 — MASTERY ROLL-UP + 4-STATE AGGREGATION
+
+STRICT SCOPE
+
+Implement authoritative mastery roll-up for the Knowledge Tree hierarchy:
+
+Subject
+→ Lesson
+→ Knowledge Group / Topic
+→ MicroNode / Atomic Knowledge Unit
+
+Student-facing terminology:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+IMPORTANT:
+KT-1.3 hierarchy is already implemented.
+
+DO NOT redesign hierarchy.
+DO NOT add new Node/Subnode layers.
+DO NOT change mapping.
+DO NOT change quiz scoring.
+DO NOT change AI Teacher evidence generation.
+DO NOT change existing atomic MicroNode mastery formulas unless a real bug is proven.
+DO NOT start KT-1.5 Detail Panel.
+DO NOT add Bloom personalization yet.
+DO NOT add difficulty/scaffolding yet.
+DO NOT add spaced repetition behavior yet.
+
+This phase is specifically about:
+
+1. authoritative mastery roll-up from atomic MicroNodes upward
+2. 4-state distributions at parent levels
+3. consistent percentages at:
+   - Topic / Knowledge Group
+   - Lesson
+   - Subject
+
+==================================================
+0. LOCKED CANONICAL MODEL
+==================================================
+
+Atomic knowledge unit:
+
+lesson_nodes / MicroNode
+
+Student-specific learner state:
+
+knowledge_nodes linked to the atomic lesson_node
+
+Curriculum hierarchy:
+
+Subject
+→ Lesson
+→ Topic / Knowledge Group
+→ MicroNode
+
+There is NO separate Node → Subnode model.
+
+Do not invent one.
+
+==================================================
+1. AUDIT FIRST — CURRENT MASTERY AUTHORITY
+==================================================
+
+Before writing code, trace the current authoritative atomic mastery pipeline.
+
+Inspect at minimum:
+
+- knowledge-tree.ts / equivalent backend route
+- mastery.ts / scoring helpers
+- knowledge_nodes schema
+- evidence_events
+- quiz scoring path
+- AI Teacher evidence path
+- any getMasteryLevelFromScores() / equivalent function
+- current KT state normalization
+
+Report:
+
+A. Atomic masteryScore source
+B. Atomic confidenceScore source
+C. Whether mastery is stored or derived
+D. Whether confidence is stored or derived
+E. Which function maps atomic scores into:
+   - mastered
+   - weak
+   - in_progress
+   - not_started
+F. Exact thresholds currently used
+G. Whether review/needs_review exists as a separate learner-state concept
+H. Whether any previous code incorrectly mixed authoring status "needs_review"
+   with learner mastery state
+
+Do NOT change anything before this audit.
+
+==================================================
+2. VERY IMPORTANT — SEPARATE AUTHORING STATUS FROM LEARNER STATE
+==================================================
+
+Audit for any accidental mixing between:
+
+lesson_node authoring status:
+- draft
+- needs_review
+- approved
+
+and learner mastery states:
+- mastered
+- weak
+- in_progress
+- not_started
+
+These are DIFFERENT concepts.
+
+Authoring "needs_review" must NEVER automatically mean:
+- mastered
+- weak
+- any learner mastery state
+
+If such normalization exists, fix it in KT-1.4 only if proven to be a real bug.
+
+Report exact evidence.
+
+==================================================
+3. FOUR-STATE CONTRACT — LOCKED
+==================================================
+
+Student-facing knowledge states are:
+
+1. mastered
+   → Գիտի
+
+2. weak / partial
+   → Մասնակի գիտի
+
+3. in_progress
+   → Չգիտի
+
+4. not_started
+   → Դեռ չի ուսումնասիրել
+
+Do NOT invent new learner-state categories in this phase.
+
+If an internal "review_due" / similar scheduling concept exists,
+it must remain orthogonal to the four-state mastery classification.
+
+==================================================
+4. ROLL-UP DESIGN PRINCIPLE
+==================================================
+
+We need one authoritative roll-up from atomic MicroNodes upward.
+
+Target hierarchy:
+
+MicroNode mastery
+→ Topic mastery
+→ Lesson mastery
+→ Subject mastery
+
+The parent levels also need four-state distributions.
+
+IMPORTANT:
+
+Do NOT silently use a naive simple average without analyzing the consequences.
+
+Before implementation, compare at least these candidate approaches:
+
+A. Simple arithmetic mean of child masteryScore
+B. Weighted mean by atomic unit weight / exercise/evidence count if such a weight exists
+C. State-based weighted aggregation
+D. Coverage-aware aggregation where not_started is treated explicitly
+
+For each candidate report:
+
+- formula
+- strengths
+- weaknesses
+- behavior when many nodes are not_started
+- behavior when one node has much more evidence than another
+- whether it remains interpretable to a student/teacher
+- whether current schema supports it without inventing hidden weights
+
+==================================================
+5. REQUIRED PRODUCT BEHAVIOR
+==================================================
+
+We need percentages that are understandable and stable.
+
+Examples conceptually:
+
+Subject mastery:
+58%
+
+Lesson mastery:
+72%
+
+Knowledge Group mastery:
+40%
+
+MicroNode mastery:
+67%
+
+The roll-up must be deterministic.
+
+Same underlying atomic states/scores
+→ same parent percentage.
+
+No UI-specific alternate formula.
+
+There must be ONE shared authoritative function/path.
+
+==================================================
+6. NOT_STARTED HANDLING — MUST BE EXPLICIT
+==================================================
+
+This is critical.
+
+A subject with:
+
+10 mastered nodes
+90 not_started nodes
+
+must NOT misleadingly appear as 100% mastered.
+
+The roll-up must account for the full curriculum coverage.
+
+Therefore explicitly decide how not_started contributes.
+
+Do not hide unstudied curriculum from the denominator unless you can justify that with the product model.
+
+Report the chosen semantics in plain language.
+
+The desired product interpretation is generally:
+
+"Յուրացում" = how much of the currently visible curriculum the student has mastered
+
+not merely:
+
+"average score among the nodes they happened to attempt."
+
+==================================================
+7. ATOMIC UNIT WEIGHTING
+==================================================
+
+Before deciding weights, inspect whether MicroNodes currently have a reliable canonical weight such as:
+
+- explicit weight
+- learning objective weight
+- lesson weight
+- exercise count
+- granularity
+- difficulty
+- source length
+- evidence count
+
+Do NOT use any of these as weights merely because they exist.
+
+If no pedagogically authoritative weight exists,
+prefer equal weight per atomic MicroNode for V1
+and state that clearly.
+
+Do NOT make evidence count increase curriculum weight.
+
+Evidence quantity is not the same as knowledge importance.
+
+==================================================
+8. RECOMMENDED V1 DIRECTION — VALIDATE, DO NOT BLINDLY APPLY
+==================================================
+
+Evaluate whether the cleanest V1 formula is:
+
+For each visible atomic MicroNode:
+
+effectiveMastery =
+- masteryScore if learner state exists
+- 0 if not_started / no learner state
+
+Parent mastery % =
+round(
+  sum(effectiveMastery for child atomic nodes)
+  /
+  number of visible atomic nodes
+)
+
+This means every atomic MicroNode has equal curriculum weight.
+
+Example:
+
+MicroNode A = 100
+MicroNode B = 67
+MicroNode C = 0
+MicroNode D = not_started → 0
+
+Parent =
+(100 + 67 + 0 + 0) / 4
+= 41.75%
+→ 42%
+
+This is only a candidate.
+
+Before implementing, audit whether any existing product rule conflicts with it.
+
+==================================================
+9. PARENT 4-STATE DISTRIBUTION
+==================================================
+
+At every parent level calculate counts:
+
+totalUnits
+masteredCount
+weakCount
+inProgressCount
+notStartedCount
+
+Invariant:
+
+totalUnits =
+masteredCount
++ weakCount
++ inProgressCount
++ notStartedCount
+
+Do this for:
+
+Knowledge Group
+Lesson
+Subject
+
+Counts must be based on ATOMIC MicroNodes only.
+
+Do NOT count container nodes as additional knowledge units.
+
+==================================================
+10. PARENT STATE LABEL — OPTIONAL / CAREFUL
+==================================================
+
+We definitely need:
+- parent mastery %
+- parent state distribution counts
+
+Do NOT automatically assign a single 4-state label to Topic/Lesson/Subject
+unless the product already requires it.
+
+If you propose a parent-level single state, stop and report the rule first.
+
+For KT-1.4 V1, percentage + distribution may be sufficient.
+
+Do not invent thresholds for parent states.
+
+==================================================
+11. API / SHARED LOGIC
+==================================================
+
+Create ONE authoritative roll-up implementation.
+
+Preferred architecture:
+
+shared function/helper used by:
+- subject card summary
+- subject KT page
+- lesson hierarchy rows
+- topic/group hierarchy rows
+
+Do NOT duplicate roll-up math separately in React components.
+
+If backend is already the authoritative KT aggregation layer,
+prefer calculating parent roll-ups there.
+
+Frontend should render the returned authoritative values.
+
+==================================================
+12. TARGET RESPONSE SHAPE
+==================================================
+
+The hierarchical KT API should conceptually expose:
+
+Subject:
+{
+  masteryPercent,
+  totalUnits,
+  masteredCount,
+  weakCount,
+  inProgressCount,
+  notStartedCount,
+
+  lessons: [...]
+}
+
+Lesson:
+{
+  masteryPercent,
+  totalUnits,
+  masteredCount,
+  weakCount,
+  inProgressCount,
+  notStartedCount,
+
+  topics: [...]
+}
+
+Topic:
+{
+  masteryPercent,
+  totalUnits,
+  masteredCount,
+  weakCount,
+  inProgressCount,
+  notStartedCount,
+
+  nodes: [...]
+}
+
+MicroNode:
+{
+  masteryScore,
+  confidenceScore,
+  masteryLevel
+}
+
+Do not duplicate atomic learner-state rows.
+
+==================================================
+13. SUBJECT CARD INTEGRATION
+==================================================
+
+The /kt-subjects page currently has:
+
+Յուրացում՝ —
+
+Replace the placeholder with the new authoritative Subject mastery %.
+
+Each Subject Card must show:
+
+Առարկայի անուն
+
+Գիտելիքի հանգույցներ՝ N
+
+Գիտի՝ X
+Մասնակի գիտի՝ X
+Չգիտի՝ X
+Դեռ չի ուսումնասիրել՝ X
+
+Յուրացում՝ XX%
+
+The total and the percentages must come from the same authoritative visible MicroNode set.
+
+==================================================
+14. KNOWLEDGE TREE HIERARCHY UI
+==================================================
+
+On /knowledge-tree/:subjectId:
+
+Subject header:
+show Subject mastery %
+
+Each Lesson row:
+show Lesson mastery %
+
+Each Knowledge Group row:
+show Topic mastery %
+
+Each MicroNode:
+show atomic masteryScore and four-state badge as already implemented.
+
+Do NOT overwhelm the UI.
+
+A compact format is enough, for example:
+
+Ֆիզիկա — Յուրացում 42%
+
+Դաս 1 — 55%
+Գիտելիքի խումբ — 67%
+
+Do not add charts unless already trivial.
+
+==================================================
+15. NOT_STARTED VISUAL SEMANTICS
+==================================================
+
+If all children are not_started:
+
+Parent mastery = 0%
+
+Distribution:
+notStartedCount = totalUnits
+
+This is correct.
+
+Do NOT show:
+"no data"
+
+unless totalUnits itself is 0.
+
+Distinguish:
+
+A. 0 curriculum units
+B. curriculum exists but mastery = 0 / not_started
+
+==================================================
+16. ZERO-UNIT EDGE CASE
+==================================================
+
+For a Subject/Lesson/Topic with zero visible atomic MicroNodes:
+
+Do NOT divide by zero.
+
+Return:
+
+masteryPercent = null
+or another explicit "no curriculum units" representation.
+
+Choose one clear contract.
+
+UI:
+Յուրացում՝ —
+
+Do NOT display 0% if there are genuinely zero units,
+because 0% would mean something different:
+curriculum exists but none mastered.
+
+==================================================
+17. CONFIDENCE
+==================================================
+
+Do NOT roll up confidence into Subject/Lesson/Topic in KT-1.4 unless an existing authoritative formula already exists.
+
+Atomic confidence remains available.
+
+If no parent confidence formula exists:
+leave it for later.
+
+Do not average confidence merely because mastery is averaged.
+
+==================================================
+18. EVIDENCE COUNT
+==================================================
+
+Do NOT use evidence count as mastery weight.
+
+More attempts must not make a MicroNode more important in the curriculum.
+
+Evidence changes atomic mastery/confidence through the existing scoring engine.
+
+Then roll-up reads the resulting atomic mastery.
+
+==================================================
+19. REQUIRED EXAMPLE CALCULATIONS
+==================================================
+
+Before implementation, show the chosen formula on at least these synthetic examples:
+
+CASE A
+4 nodes:
+100, 100, 100, 100
+Expected parent = 100%
+
+CASE B
+4 nodes:
+100, 67, 33, 0
+Show exact result.
+
+CASE C
+4 nodes:
+100, 100, not_started, not_started
+Show exact result.
+
+CASE D
+4 nodes:
+all not_started
+Expected parent = 0%
+
+CASE E
+0 atomic nodes
+Expected parent = no-data/null, not 0%
+
+CASE F
+mixed:
+mastered + weak + in_progress + not_started
+Verify counts and percentage.
+
+==================================================
+20. REQUIRED ACCEPTANCE TESTS
+==================================================
+
+ATOMIC PRESERVATION
+
+T01 Atomic masteryScore unchanged.
+T02 Atomic confidence unchanged.
+T03 Atomic four-state classification unchanged.
+
+ROLL-UP
+
+T04 Topic mastery calculated from atomic descendants.
+T05 Lesson mastery calculated from atomic descendants.
+T06 Subject mastery calculated from atomic descendants.
+
+NOT_STARTED
+
+T07 no-KN node contributes as not_started.
+T08 not_started is included according to the chosen denominator semantics.
+T09 all-not-started parent = 0%.
+
+ZERO UNIT
+
+T10 zero-unit parent does not divide by zero.
+T11 zero-unit UI/API distinguishes no-data from 0%.
+
+COUNTS
+
+T12 Topic count invariant holds.
+T13 Lesson count invariant holds.
+T14 Subject count invariant holds.
+
+CONSISTENCY
+
+T15 /kt-subjects Subject total/counts match /knowledge-tree/:subjectId.
+T16 Subject mastery % matches in both places.
+T17 same atomic node set drives counts and mastery.
+
+WEIGHTING
+
+T18 evidence count does not alter curriculum weight.
+T19 duplicate attempts do not duplicate atomic units in denominator.
+
+VISIBILITY
+
+T20 draft/unapproved nodes excluded.
+T21 unrelated subject nodes excluded.
+
+NO FAKE DATA
+
+T22 no fake knowledge_nodes created for not_started.
+T23 roll-up is read-only with respect to learner-state tables.
+
+REGRESSION
+
+T24 filters/collapsible hierarchy still work.
+T25 no test pollution.
+
+==================================================
+21. REAL PHYSICS UAT
+==================================================
+
+Use current Physics subject read-only.
+
+For the real current Physics example, report:
+
+Atomic nodes:
+- title
+- masteryScore
+- masteryLevel
+
+Then show:
+
+Topic/group mastery
+Lesson mastery
+Subject mastery
+
+And the four-state counts.
+
+Do NOT alter real data to make the numbers look nicer.
+
+The displayed percentage must reflect the current real learner state.
+
+==================================================
+22. MANUAL UAT CHECKLIST
+==================================================
+
+After implementation give exact browser steps:
+
+1. Student login.
+2. Sidebar → Գիտելիքի ծառ.
+3. Subject cards show Յուրացում XX%.
+4. Open Physics.
+5. Subject header shows same XX%.
+6. Expand a Lesson.
+7. Lesson row shows its mastery %.
+8. Expand a Knowledge Group.
+9. Group row shows its mastery %.
+10. Atomic nodes retain their own mastery/state.
+11. Verify counts:
+    Գիտի / Մասնակի / Չգիտի / Դեռ չի ուսումնասիրել.
+12. Compare subject-card percentage and subject-page percentage.
+13. They must match exactly.
+14. Change filter.
+15. Parent mastery must NOT change merely because UI filter changed.
+16. Refresh.
+17. Values remain deterministic.
+
+==================================================
+23. FILTERING MUST NOT CHANGE ROLL-UP
+==================================================
+
+Critical:
+
+UI filters are VIEW filters only.
+
+Selecting:
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+must NOT recalculate parent mastery based only on filtered nodes.
+
+Parent mastery always represents the full visible curriculum scope.
+
+Example:
+
+Subject mastery = 42%
+
+User clicks "Գիտի"
+
+The UI may show only mastered nodes,
+but Subject mastery remains 42%.
+
+Do not create filter-dependent mastery.
+
+==================================================
+24. PERFORMANCE
+==================================================
+
+Avoid N+1 queries.
+
+Prefer aggregating from the hierarchical KT dataset already loaded.
+
+Do not issue one mastery query per node/topic/lesson.
+
+Report query strategy.
+
+==================================================
+25. DATA SAFETY
+==================================================
+
+Use test isolation / zero-pollution rules.
+
+Automated writable tests:
+TEST_* fixtures only.
+
+Real Physics/student data:
+READ-ONLY verification only.
+
+No hardcoded real IDs as writable fixtures.
+
+Cleanup:
+pre-cleanup + finally + pollution gate.
+
+==================================================
+26. FINAL REPORT
+==================================================
+
+Return:
+
+A. CURRENT ATOMIC MASTERY AUTHORITY
+B. CURRENT 4-STATE FUNCTION / THRESHOLDS
+C. AUTHORING STATUS VS LEARNER STATE AUDIT
+D. ROLL-UP CANDIDATES COMPARED
+E. CHOSEN AUTHORITATIVE FORMULA + WHY
+F. NOT_STARTED SEMANTICS
+G. ZERO-UNIT SEMANTICS
+H. SHARED IMPLEMENTATION LOCATION
+I. API RESPONSE CHANGES
+J. UI CHANGES
+K. REAL PHYSICS CALCULATION
+L. TEST RESULTS T01–T25
+M. PERFORMANCE / QUERY STRATEGY
+N. DATA SAFETY / ZERO POLLUTION
+O. MANUAL UAT STEPS
+
+FINAL VERDICT:
+
+KT-1.4 = PASS — READY FOR KT-1.5
+
+or
+
+KT-1.4 = FAIL — DO NOT PROCEED
+
+STOP after KT-1.4.
+
+Do NOT automatically begin KT-1.5.

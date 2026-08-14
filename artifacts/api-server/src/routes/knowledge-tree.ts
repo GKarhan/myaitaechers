@@ -14,7 +14,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-import { getMasteryLevelFromScores } from "../lib/mastery";
+import { getMasteryLevelFromScores, computeRollup } from "../lib/mastery";
 
 const router = Router();
 
@@ -129,35 +129,28 @@ router.get(
         )
       );
 
-    // Step 3: Aggregate counts per subject.
-    const counts = new Map<number, {
-      totalUnits:      number;
-      masteredCount:   number;
-      weakCount:       number;
-      inProgressCount: number;
-      notStartedCount: number;
-    }>();
+    // Step 3: Collect per-subject node lists for roll-up.
+    // Each entry: { masteryScore (normalised to 0), masteryLevel (4-state) }
+    type NodeForRollup = { masteryScore: number; masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" };
+    const subjectNodes = new Map<number, NodeForRollup[]>();
     for (const sid of subjectMeta.keys()) {
-      counts.set(sid, { totalUnits: 0, masteredCount: 0, weakCount: 0, inProgressCount: 0, notStartedCount: 0 });
+      subjectNodes.set(sid, []);
     }
 
     for (const node of nodes) {
-      // Guard: skip if courseSubjectId is null (shouldn't happen given INNER JOINs above,
-      // but coursesTable.subjectId is nullable in the schema)
       const sid = node.courseSubjectId;
       if (sid == null) continue;
-      const c = counts.get(sid);
-      if (!c) continue;
+      const list = subjectNodes.get(sid);
+      if (!list) continue;
 
       const rawLevel = getMasteryLevelFromScores(node.masteryScore, node.confidenceScore, node.dueAt ?? null);
-      // needs_review folds into mastered (same policy as per-subject KT endpoint)
-      const level = rawLevel === "needs_review" ? "mastered" : rawLevel;
+      // needs_review folds into mastered (same 4-state policy as per-subject KT endpoint)
+      const masteryLevel = rawLevel === "needs_review" ? "mastered" : rawLevel as NodeForRollup["masteryLevel"];
 
-      c.totalUnits++;
-      if      (level === "mastered")    c.masteredCount++;
-      else if (level === "weak")        c.weakCount++;
-      else if (level === "in_progress") c.inProgressCount++;
-      else                              c.notStartedCount++;
+      list.push({
+        masteryScore: node.masteryScore ?? 0,   // null → 0 (not_started contributes 0)
+        masteryLevel,
+      });
     }
 
     // Step 4: Build response preserving enrollment order (deduped by subjectId).
@@ -166,8 +159,8 @@ router.get(
     for (const row of validCourses) {
       if (seen.has(row.subjectId)) continue;
       seen.add(row.subjectId);
-      const c = counts.get(row.subjectId)!;
-      subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, ...c });
+      const rollup = computeRollup(subjectNodes.get(row.subjectId) ?? []);
+      subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, ...rollup });
     }
 
     res.json({ subjects });
@@ -344,7 +337,7 @@ router.get(
       lessonNodeId: number;
       title: string;
       sequence: number;
-      masteryScore: number;
+      masteryScore: number;       // pre-normalised: 0 for not_started
       confidenceScore: number | null;
       masteryLevel: MasteryLevel4;
     }
@@ -419,7 +412,7 @@ router.get(
       return a - b;  // both null → sort by id
     });
 
-    // Build lessons array
+    // Build lessons array with roll-up at topic, lesson, and subject level
     const lessons = sortedLessonIds.map((lessonId) => {
       const meta    = lessonMeta.get(lessonId)!;
       const buckets = lessonBuckets.get(lessonId) ?? new Map();
@@ -430,16 +423,27 @@ router.get(
         .sort((a, b) => a.sequence - b.sequence || a.id - b.id);
 
       const topics = lessonTopicsForLesson
-        .map(topic => ({
-          topicId:       topic.id,
-          topicTitle:    topic.title,
-          topicSequence: topic.sequence,
-          nodes:         buckets.get(topic.id) ?? [],
-        }))
+        .map(topic => {
+          const nodes = buckets.get(topic.id) ?? [];
+          return {
+            topicId:       topic.id,
+            topicTitle:    topic.title,
+            topicSequence: topic.sequence,
+            nodes,
+            // KT-1.4: authoritative topic-level roll-up
+            ...computeRollup(nodes),
+          };
+        })
         .filter(t => t.nodes.length > 0);  // omit topics with zero approved nodes
 
       // Ungrouped nodes (topicId = null)
       const ungroupedNodes = buckets.get("ungrouped") ?? [];
+
+      // KT-1.4: lesson-level roll-up aggregates ALL child MicroNodes
+      const allLessonNodes = [
+        ...topics.flatMap(t => t.nodes),
+        ...ungroupedNodes,
+      ];
 
       return {
         lessonId,
@@ -447,6 +451,10 @@ router.get(
         lessonNumber: meta.lessonNumber,
         topics,
         ungroupedNodes,
+        // KT-1.4: authoritative roll-up for the "Առanc khmbi" (ungrouped) display group
+        ungroupedRollup: computeRollup(ungroupedNodes),
+        // KT-1.4: authoritative lesson-level roll-up (includes topics + ungrouped)
+        ...computeRollup(allLessonNodes),
       };
     });
 
@@ -498,9 +506,17 @@ router.get(
       console.warn(`[KT-1.3] Duplicate lessonNodeIds detected for subjectId=${subjectId}`);
     }
 
+    // KT-1.4: subject-level roll-up from all visible atomic MicroNodes
+    const allSubjectNodes = processedNodes.map(n => ({
+      masteryScore: n.masteryScore,   // already normalised to 0 for not_started
+      masteryLevel: n.masteryLevel,
+    }));
+    const subjectRollup = computeRollup(allSubjectNodes);
+
     res.json({
       subjectId:   subject.id,
       subjectName: subject.name,
+      ...subjectRollup,
       lessons,
       recommendations,
     });

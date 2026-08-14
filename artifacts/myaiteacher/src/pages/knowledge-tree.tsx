@@ -4,9 +4,21 @@ import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
 
-// ── KT-1.3 types ──────────────────────────────────────────────────────────────
+// ── KT-1.3 / KT-1.4 types ────────────────────────────────────────────────────
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
 type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
+
+// KT-1.4: roll-up fields present on Topic, Lesson, and Subject.
+// masteryPercent is null only when totalUnits === 0 (no curriculum units at all).
+// 0% means curriculum exists but mastery is 0 (distinguished from "no data").
+interface KTRollup {
+  masteryPercent:  number | null;
+  totalUnits:      number;
+  masteredCount:   number;
+  weakCount:       number;
+  inProgressCount: number;
+  notStartedCount: number;
+}
 
 interface KTMicroNode {
   lessonNodeId: number;
@@ -17,26 +29,40 @@ interface KTMicroNode {
   masteryLevel: MasteryLevel4;
 }
 
-interface KTTopic {
+interface KTTopic extends KTRollup {
   topicId: number;
   topicTitle: string;
   topicSequence: number;
   nodes: KTMicroNode[];
 }
 
-interface KTLesson {
+interface KTLesson extends KTRollup {
   lessonId: number;
   lessonTitle: string;
   lessonNumber: number | null;
   topics: KTTopic[];
   ungroupedNodes: KTMicroNode[];
+  ungroupedRollup: KTRollup;  // KT-1.4: rollup for the "Առanc khmbi" display group
 }
 
-interface KTData {
+interface KTData extends KTRollup {
   subjectId: number;
   subjectName: string;
   lessons: KTLesson[];
   recommendations: Array<{ type: string; message: string; topicName: string }>;
+}
+
+/** Render a mastery percentage (null = no curriculum → "—") */
+function formatMastery(pct: number | null): string {
+  return pct !== null ? `${pct}%` : "—";
+}
+
+/** Pick a colour class for a mastery percentage */
+function masteryColour(pct: number | null): string {
+  if (pct === null) return "text-muted-foreground";
+  if (pct >= 80)    return "text-secondary";
+  if (pct >= 40)    return "text-accent";
+  return "text-primary";
 }
 
 // ── State helpers ─────────────────────────────────────────────────────────────
@@ -120,10 +146,12 @@ function TopicGroup({
         </span>
         <span className="text-sm font-semibold text-white/90 flex-1">{topic.topicTitle}</span>
         <span className="text-xs text-muted-foreground">
-          {topic.nodes.length} {topic.nodes.length === 1 ? "հանգ." : "հանգ."}
+          {topic.totalUnits} հանգ.
         </span>
-        {/* KT-1.4 will add roll-up % */}
-        <span className="text-xs text-muted-foreground ml-2">Յուրացում՝ —</span>
+        {/* KT-1.4: authoritative topic mastery % — never recalculated from filter */}
+        <span className={`text-xs font-semibold ml-2 ${masteryColour(topic.masteryPercent)}`}>
+          {formatMastery(topic.masteryPercent)}
+        </span>
       </button>
 
       {/* Nodes — only mounted when topic is open (scalability T23) */}
@@ -153,10 +181,6 @@ function LessonSection({
   expandedTopics: Set<string>;
   onToggleTopic: (key: string) => void;
 }) {
-  const totalNodes =
-    lesson.topics.reduce((s, t) => s + t.nodes.length, 0) +
-    lesson.ungroupedNodes.length;
-
   const lessonLabel = lesson.lessonNumber != null
     ? `Դաս ${lesson.lessonNumber}`
     : `Դաս ${lessonIndex + 1}`;
@@ -177,10 +201,12 @@ function LessonSection({
           </div>
           <div className="text-sm font-semibold text-white truncate">{lesson.lessonTitle}</div>
         </div>
+        {/* KT-1.4: authoritative lesson mastery % — never recalculated from filter */}
         <div className="text-right shrink-0">
-          <div className="text-xs text-muted-foreground">{totalNodes} հանգ.</div>
-          {/* KT-1.4 will add roll-up % */}
-          <div className="text-xs text-muted-foreground">Յուրացում՝ —</div>
+          <div className="text-xs text-muted-foreground">{lesson.totalUnits} հanγ.</div>
+          <div className={`text-sm font-bold ${masteryColour(lesson.masteryPercent)}`}>
+            {formatMastery(lesson.masteryPercent)}
+          </div>
         </div>
       </button>
 
@@ -216,7 +242,10 @@ function LessonSection({
                 <span className="text-xs text-muted-foreground">
                   {lesson.ungroupedNodes.length} հանգ.
                 </span>
-                <span className="text-xs text-muted-foreground ml-2">Յուրացում՝ —</span>
+                {/* KT-1.4: ungrouped group mastery % — from backend, invariant to filter */}
+                <span className={`text-xs font-semibold ml-2 ${masteryColour(lesson.ungroupedRollup.masteryPercent)}`}>
+                  {formatMastery(lesson.ungroupedRollup.masteryPercent)}
+                </span>
               </button>
               {expandedTopics.has(`ungrouped-${lesson.lessonId}`) && (
                 <div className="ml-6 mt-1 flex flex-col gap-1.5">
@@ -394,7 +423,15 @@ export default function KnowledgeTree() {
             <div className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
               {treeData.subjectName}
             </div>
-            <div className="text-xs text-muted-foreground">Գիտելիքի ծառ</div>
+            {/* KT-1.4: subject mastery % — authoritative, invariant to UI filter */}
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs text-muted-foreground">Գիտելիքի ծառ</span>
+              {treeData.masteryPercent !== null && (
+                <span className={`text-xs font-bold ${masteryColour(treeData.masteryPercent)}`}>
+                  · Յուracum {treeData.masteryPercent}%
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </header>

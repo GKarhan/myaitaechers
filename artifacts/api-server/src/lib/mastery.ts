@@ -26,6 +26,87 @@ export type MasteryLevel =
   | "in_progress"
   | "not_started";
 
+/**
+ * The four student-facing mastery states (needs_review folds to mastered in KT).
+ * Used in roll-up inputs and KT response shapes.
+ */
+export type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
+
+/**
+ * Authoritative roll-up result returned by computeRollup().
+ * masteryPercent is null only when totalUnits === 0 (no curriculum units at all).
+ * 0% means curriculum exists but nothing has been mastered yet.
+ */
+export interface RollupResult {
+  masteryPercent: number | null;
+  totalUnits: number;
+  masteredCount: number;
+  weakCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+}
+
+/**
+ * Coverage-aware arithmetic mean — the ONE authoritative roll-up formula for KT-1.4.
+ *
+ * Formula:
+ *   effectiveMastery_i = masteryScore_i  (0 for not_started; masteryScore is pre-normalised to 0)
+ *   masteryPercent     = round( Σ(effectiveMastery) / totalUnits )
+ *
+ * not_started nodes contribute 0 to the numerator and 1 to the denominator —
+ * unstudied curriculum is always visible in the percentage ("Յուracум" = coverage).
+ *
+ * Returns masteryPercent = null when totalUnits === 0 (zero-unit edge case §16).
+ * Returns 0% when all nodes are not_started / have masteryScore 0.
+ *
+ * Invariant: masteredCount + weakCount + inProgressCount + notStartedCount = totalUnits.
+ *
+ * @param nodes  Flat list of atomic MicroNodes for a single scope (topic/lesson/subject).
+ *               masteryScore must already be normalised (null → 0).
+ *               masteryLevel must be one of the 4 KT states (needs_review already folded).
+ */
+export function computeRollup(
+  nodes: ReadonlyArray<{
+    masteryScore: number;       // pre-normalised: null → 0 (see knowledge-tree.ts)
+    masteryLevel: MasteryLevel4;
+  }>,
+): RollupResult {
+  const totalUnits = nodes.length;
+  if (totalUnits === 0) {
+    return {
+      masteryPercent: null,
+      totalUnits: 0,
+      masteredCount: 0,
+      weakCount: 0,
+      inProgressCount: 0,
+      notStartedCount: 0,
+    };
+  }
+
+  let sum = 0;
+  let masteredCount = 0;
+  let weakCount = 0;
+  let inProgressCount = 0;
+  let notStartedCount = 0;
+
+  for (const { masteryScore, masteryLevel } of nodes) {
+    sum += masteryScore;
+    if      (masteryLevel === "mastered")    masteredCount++;
+    else if (masteryLevel === "weak")        weakCount++;
+    else if (masteryLevel === "in_progress") inProgressCount++;
+    else                                     notStartedCount++;
+  }
+
+  return {
+    masteryPercent: Math.round(sum / totalUnits),
+    totalUnits,
+    masteredCount,
+    weakCount,
+    inProgressCount,
+    notStartedCount,
+  };
+}
+
 export type PersonalizedAction =
   | "REVIEW"          // mastered / needs_review → [REVIEW]
   | "LEARN_TARGETED"  // weak → [LEARN_TARGETED]

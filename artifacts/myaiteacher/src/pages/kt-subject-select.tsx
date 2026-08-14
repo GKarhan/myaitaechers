@@ -20,6 +20,7 @@ import StudentLayout from "@/components/StudentLayout";
 interface SubjectCard {
   subjectId:       number;
   subjectName:     string;
+  masteryPercent:  number | null;
   totalUnits:      number;
   masteredCount:   number;
   weakCount:       number;
@@ -159,9 +160,17 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
         ))}
       </div>
 
-      {/* Mastery % placeholder — deferred to KT-1.4 */}
-      <div className="text-xs text-muted-foreground border-t border-white/5 pt-3">
-        Յուրացման աստիճան՝ —
+      {/* KT-1.4: Authoritative subject mastery % */}
+      <div className="border-t border-white/5 pt-3 flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">Յուրացման աստիճան՝</span>
+        <span className={`text-sm font-bold ${
+          s.masteryPercent === null      ? "text-muted-foreground" :
+          s.masteryPercent >= 80         ? "text-secondary" :
+          s.masteryPercent >= 40         ? "text-accent" :
+                                           "text-primary"
+        }`}>
+          {s.masteryPercent !== null ? `${s.masteryPercent}%` : "—"}
+        </span>
       </div>
 
       {/* CTA */}
