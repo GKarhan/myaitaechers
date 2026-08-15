@@ -54,6 +54,13 @@ export default function LessonPage() {
   const [progressIndicator, setProgressIndicator] = useState<ProgressIndicator | null>(null);
   const [p6Result, setP6Result] = useState<P6Result | null>(null);
   const [p6Loading, setP6Loading] = useState(false);
+  // V2-R4A.3: local optimistic state for optional-continuation choice
+  // (server-of-truth is lesson?.currentSession, but local state gives instant feedback)
+  const [localOptContinuation, setLocalOptContinuation] = useState(false);
+  const [isFinishPending, setIsFinishPending] = useState(false);
+  const [isContinuePending, setIsContinuePending] = useState(false);
+  // Track last-known active learning seconds from chat responses (for summary display)
+  const [chatALS, setChatALS] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -87,21 +94,42 @@ export default function LessonPage() {
   const isCompleted = session?.status === "completed";
   const hasSession = !!session;
 
+  // V2-R4A.3: required-session completion state
+  const serverRequiredCompleted = !!(session as any)?.requiredSessionCompletedAt;
+  const serverOptionalContinuation = !!(session as any)?.optionalContinuation;
+  // Optimistic local override: once user chose "continue" don't wait for refetch
+  const isOptionalContinuation = serverOptionalContinuation || localOptContinuation;
+  const showCompletionCard = !isCompleted && serverRequiredCompleted && !isOptionalContinuation;
+  // Sync local state from server on refresh (keeps state correct after page reload)
+  useEffect(() => {
+    if (serverOptionalContinuation) setLocalOptContinuation(true);
+  }, [serverOptionalContinuation]);
+
   useEffect(() => { setGateMessage(null); }, [currentPhase]);
+
+  type ChatResponse = {
+    progressIndicator?: ProgressIndicator;
+    activeLearningSeconds?: number;
+    requiredSessionCompleted?: boolean;
+    requiredSessionCompletedAt?: string | null;
+    optionalContinuation?: boolean;
+    sessionDecision?: string | null;
+  };
+
+  const handleChatSuccess = useCallback((data: unknown) => {
+    const d = data as ChatResponse;
+    if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
+    if (typeof d?.activeLearningSeconds === "number") setChatALS(d.activeLearningSeconds);
+    queryClient.invalidateQueries({ queryKey: chatKey });
+    queryClient.invalidateQueries({ queryKey: lessonKey });
+  }, [queryClient, chatKey, lessonKey]);
 
   const triggerAI = useCallback((triggerMsg: string) => {
     sendMessage.mutate(
       { data: { message: triggerMsg, lessonId } },
-      {
-        onSuccess: (data: unknown) => {
-          const d = data as { progressIndicator?: ProgressIndicator };
-          if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
-          queryClient.invalidateQueries({ queryKey: chatKey });
-          queryClient.invalidateQueries({ queryKey: lessonKey });
-        },
-      }
+      { onSuccess: handleChatSuccess }
     );
-  }, [sendMessage, lessonId, queryClient, chatKey, lessonKey]);
+  }, [sendMessage, lessonId, handleChatSuccess]);
 
   useEffect(() => {
     if (hasSession && !autoStarted && !chatLoading && messages.length === 0 && !sendMessage.isPending) {
@@ -180,6 +208,33 @@ export default function LessonPage() {
     );
   };
 
+  // V2-R4A.3: finish / optional-continue handlers
+  const handleFinishSession = useCallback(() => {
+    setIsFinishPending(true);
+    fetch(`/api/lessons/${lessonId}/session/finish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    })
+      .finally(() => {
+        setIsFinishPending(false);
+        // Navigate back: required session is done, lesson remains resumable later
+        setLocation(`/subjects/${lesson?.subjectId ?? ""}`);
+      });
+  }, [lessonId, token, lesson?.subjectId, setLocation]);
+
+  const handleOptionalContinue = useCallback(() => {
+    setIsContinuePending(true);
+    fetch(`/api/lessons/${lessonId}/session/continue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    })
+      .then(() => {
+        setLocalOptContinuation(true);
+        queryClient.invalidateQueries({ queryKey: lessonKey });
+      })
+      .finally(() => setIsContinuePending(false));
+  }, [lessonId, token, queryClient, lessonKey]);
+
   const handleSend = () => {
     if (!message.trim() || sendMessage.isPending) return;
     const msg = message;
@@ -187,14 +242,7 @@ export default function LessonPage() {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     sendMessage.mutate(
       { data: { message: msg, lessonId } },
-      {
-        onSuccess: (data: unknown) => {
-          const d = data as { progressIndicator?: ProgressIndicator };
-          if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
-          queryClient.invalidateQueries({ queryKey: chatKey });
-          queryClient.invalidateQueries({ queryKey: lessonKey });
-        },
-      }
+      { onSuccess: handleChatSuccess }
     );
   };
 
@@ -511,10 +559,49 @@ export default function LessonPage() {
             </div>
           )}
 
-          <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} />
         </div>
       </main>
 
+      )}
+
+      {/* V2-R4A.3: Required-session completion card */}
+      {showCompletionCard && (
+        <div className="shrink-0 mx-4 mb-2 rounded-2xl border border-primary/40 bg-gradient-to-r from-primary/15 to-secondary/10 p-4 shadow-lg">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl mt-0.5">⏱️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white mb-1 leading-snug">
+                Այսօրվա պարտադիր ուսուցումն ավարտված է։
+              </p>
+              {chatALS != null && chatALS > 0 && (
+                <p className="text-xs text-muted-foreground mb-3">
+                  Ուսումնասիրել ես{" "}
+                  <span className="text-white/80 font-medium">
+                    {Math.round(chatALS / 60)} {Math.round(chatALS / 60) === 1 ? "րոպե" : "րոպե"}
+                  </span>{" "}
+                  ակտիվ ժամանակ։
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleOptionalContinue}
+                  disabled={isContinuePending || isFinishPending}
+                  className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                >
+                  {isContinuePending ? "⏳" : "Շարունակել կամավոր"}
+                </button>
+                <button
+                  onClick={handleFinishSession}
+                  disabled={isFinishPending || isContinuePending}
+                  className="flex-1 py-2 px-3 rounded-xl bg-white/10 text-white text-xs font-medium hover:bg-white/15 transition-colors border border-white/20 disabled:opacity-60"
+                >
+                  {isFinishPending ? "⏳" : "Ավարտել"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Input */}
@@ -529,13 +616,14 @@ export default function LessonPage() {
               value={message}
               onChange={adjustHeight}
               onKeyDown={handleKeyDown}
-              placeholder="Գրեք ձեր պատասխանը..."
+              placeholder={showCompletionCard ? "Ընտրեք՝ ավարտե՞լ, թե՞ շարունակել..." : "Գրեք ձեր պատասխանը..."}
               rows={1}
-              className="flex-1 bg-transparent border-0 focus:ring-0 resize-none max-h-[120px] min-h-[40px] py-2 px-3 text-sm outline-none"
+              disabled={showCompletionCard}
+              className="flex-1 bg-transparent border-0 focus:ring-0 resize-none max-h-[120px] min-h-[40px] py-2 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
               onClick={handleSend}
-              disabled={!message.trim() || sendMessage.isPending}
+              disabled={!message.trim() || sendMessage.isPending || showCompletionCard}
               className="shrink-0 p-2 h-10 w-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white disabled:opacity-40 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 -ml-0.5 mt-0.5">

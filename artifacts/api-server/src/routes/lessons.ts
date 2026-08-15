@@ -168,6 +168,9 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
           nodeStartedAt: session.nodeStartedAt?.toISOString() ?? null,
           startedAt: session.startedAt.toISOString(),
           completedAt: session.completedAt?.toISOString() ?? null,
+          // V2-R4A.3: required-session completion state
+          requiredSessionCompletedAt: (session as any).requiredSessionCompletedAt?.toISOString() ?? null,
+          optionalContinuation: (session as any).optionalContinuation ?? false,
         }
       : null,
   });
@@ -516,6 +519,81 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     nodeStartedAt: session.nodeStartedAt?.toISOString() ?? null,
     startedAt: session.startedAt.toISOString(),
     completedAt: null,
+  });
+});
+
+// ── V2-R4A.3: POST /lessons/:lessonId/session/finish ─────────────────────────
+// Learner chose «Ավարտել» after the required session completed.
+// Semantics: required session remains completed; optionalContinuation stays false.
+// The session is NOT marked "completed" here — the learner's unfinished curriculum
+// must remain resumable in a later session.
+// Idempotent: safe to call multiple times.
+router.post("/lessons/:lessonId/session/finish", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [session] = await db
+    .select()
+    .from(lessonSessionsTable)
+    .where(and(
+      eq(lessonSessionsTable.lessonId, lessonId),
+      eq(lessonSessionsTable.userId, req.userId!)
+    ))
+    .limit(1);
+
+  if (!session) { res.status(404).json({ error: "No active session for this lesson" }); return; }
+
+  if (!(session as any).requiredSessionCompletedAt) {
+    res.status(400).json({ error: "Required session has not yet completed" });
+    return;
+  }
+
+  // Nothing to write — optionalContinuation stays false (already the default).
+  // Return current state for the frontend to confirm.
+  res.json({
+    ok:                          true,
+    requiredSessionCompleted:    true,
+    requiredSessionCompletedAt:  (session as any).requiredSessionCompletedAt?.toISOString() ?? null,
+    optionalContinuation:        false,
+  });
+});
+
+// ── V2-R4A.3: POST /lessons/:lessonId/session/continue ────────────────────────
+// Learner chose «Շարունակել կամավոր» after the required session completed.
+// Sets optionalContinuation=true so that subsequent chat turns are no longer
+// blocked by END_REQUIRED_SESSION.
+// Idempotent: safe to call multiple times.
+router.post("/lessons/:lessonId/session/continue", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [session] = await db
+    .select()
+    .from(lessonSessionsTable)
+    .where(and(
+      eq(lessonSessionsTable.lessonId, lessonId),
+      eq(lessonSessionsTable.userId, req.userId!)
+    ))
+    .limit(1);
+
+  if (!session) { res.status(404).json({ error: "No active session for this lesson" }); return; }
+
+  if (!(session as any).requiredSessionCompletedAt) {
+    res.status(400).json({ error: "Required session has not yet completed" });
+    return;
+  }
+
+  // Idempotent write: set optionalContinuation=true
+  await db
+    .update(lessonSessionsTable)
+    .set({ optionalContinuation: true } as any)
+    .where(eq(lessonSessionsTable.id, session.id));
+
+  res.json({
+    ok:                          true,
+    requiredSessionCompleted:    true,
+    requiredSessionCompletedAt:  (session as any).requiredSessionCompletedAt?.toISOString() ?? null,
+    optionalContinuation:        true,
   });
 });
 

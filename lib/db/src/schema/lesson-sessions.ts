@@ -108,9 +108,19 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   // null = no qualifying event yet (first-activity anchor not yet established).
   lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
   //
-  // Fields deferred to V2-R4A.3 (optional-continuation UX):
-  //   requiredSessionCompletedAt — when required budget was first exhausted
-  //   optionalContinuation       — student chose to continue beyond required
+  // ── V2-R4A.3 — Required-session completion + optional continuation ───────────
+
+  // requiredSessionCompletedAt: timestamp of the first time activeLearningSeconds
+  // crossed the required budget (i.e., the FIRST time END_REQUIRED_SESSION fired).
+  // null = required session has not yet completed (either no budget or not reached).
+  // Once set, it is NEVER overwritten — idempotent completion mark.
+  requiredSessionCompletedAt: timestamp("required_session_completed_at", { withTimezone: true }),
+
+  // optionalContinuation: true when the learner explicitly chose «Շարունակել կամավոր»
+  // after the required portion ended.  false (default) = required portion only.
+  // When true, effectiveSessionBudgetExhausted = false, so teaching resumes normally.
+  // Evidence earned during optional continuation is real and stored normally.
+  optionalContinuation: boolean("optional_continuation").notNull().default(false),
 });
 
 export const insertLessonSessionSchema = createInsertSchema(lessonSessionsTable).omit({ id: true, startedAt: true });

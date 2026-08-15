@@ -358,6 +358,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     requiredSessionMinutes: number | null;
     activeLearningSeconds: number;
     lastActivityAt: Date | null;
+    // V2-R4A.3: required-session completion + optional continuation
+    requiredSessionCompletedAt: Date | null;
+    optionalContinuation: boolean;
   };
   let session: SessionRef | null = null;
 
@@ -427,9 +430,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           // V2-R3
           remediationStep:        (sessionRow as any).remediationStep        ?? 0,
           // V2-R4A: learning budget
-          requiredSessionMinutes: (sessionRow as any).requiredSessionMinutes ?? null,
-          activeLearningSeconds:  (sessionRow as any).activeLearningSeconds  ?? 0,
-          lastActivityAt:         (sessionRow as any).lastActivityAt         ?? null,
+          requiredSessionMinutes:      (sessionRow as any).requiredSessionMinutes      ?? null,
+          activeLearningSeconds:       (sessionRow as any).activeLearningSeconds       ?? 0,
+          lastActivityAt:              (sessionRow as any).lastActivityAt              ?? null,
+          requiredSessionCompletedAt:  (sessionRow as any).requiredSessionCompletedAt  ?? null,
+          optionalContinuation:        (sessionRow as any).optionalContinuation        ?? false,
         };
         sessionId = sessionRow.id;
       }
@@ -1575,6 +1580,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           0 // V1: per-node active seconds not tracked yet
         );
 
+        // V2-R4A.3: once the learner chose optional continuation the required
+        // budget is already satisfied — do NOT let it repeatedly block teaching.
+        const _effectiveSessionBudgetExhausted =
+          _sessionBudgetExhausted && !session.optionalContinuation;
+
         _pedagogicalDecision = decideNextPedagogicalAction({
           lessonNodeId:    session.currentNodeId!,
           lessonId:        lessonId!,
@@ -1596,8 +1606,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           levelEvidenceSummary:    _levelEvidenceSummary,
           nextNodeId:              null,
           nextNodeHasCriticalDependencyOnCurrentNode: _nextNodeHasCriticalDep,
-          // V2-R4A
-          sessionBudgetExhausted:      _sessionBudgetExhausted,
+          // V2-R4A / R4A.3
+          sessionBudgetExhausted:      _effectiveSessionBudgetExhausted,
           localNodeBudgetExhausted:    _localNodeBudgetExhausted,
         });
 
@@ -1614,6 +1624,23 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .update(lessonSessionsTable)
           .set(dUpdates as any)
           .where(eq(lessonSessionsTable.id, session.id));
+
+        // V2-R4A.3: Mark required-session completion (idempotent — written ONCE).
+        // Must happen synchronously (before res.json) so the response includes
+        // the correct requiredSessionCompletedAt value on the very first turn
+        // that exhausts the budget.
+        if (
+          _pedagogicalDecision.metaAction === "END_REQUIRED_SESSION" &&
+          session.requiredSessionCompletedAt === null
+        ) {
+          const _completedAt = new Date();
+          await db
+            .update(lessonSessionsTable)
+            .set({ requiredSessionCompletedAt: _completedAt } as any)
+            .where(eq(lessonSessionsTable.id, session.id));
+          session.requiredSessionCompletedAt = _completedAt;
+          logger.info({ sessionId: session.id }, "V2-R4A.3: requiredSessionCompletedAt written");
+        }
 
         logger.info({
           sessionId:          session.id,
@@ -1804,7 +1831,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     );
   }
 
-  // ── V2-R4A: Compute derived budget fields for response ────────────────────
+  // ── V2-R4A / R4A.3: Compute derived budget fields for response ───────────
   const _rsmins    = session?.requiredSessionMinutes ?? null;
   const _als       = session?.activeLearningSeconds ?? 0;
   const _budgetSec = _rsmins != null ? _rsmins * 60 : null;
@@ -1818,12 +1845,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingMode,
     hasActiveTask,          // Phase 2B: true when a MICRO_CHECK or EXERCISE task is active
     activeHelpCount:        session ? ((session as any).activeHelpCount ?? 0) : 0,
-    // V2-R4A: deterministic budget state — for R4A.3 consumption
-    requiredSessionMinutes:  _rsmins,
-    activeLearningSeconds:   _als,
+    // V2-R4A: deterministic budget state
+    requiredSessionMinutes:   _rsmins,
+    activeLearningSeconds:    _als,
     remainingRequiredSeconds: _remainSec,
-    sessionBudgetExhausted:  _budgetExhausted,
-    sessionDecision:         _pedagogicalDecision?.metaAction ?? null,
+    sessionBudgetExhausted:   _budgetExhausted,
+    sessionDecision:          _pedagogicalDecision?.metaAction ?? null,
+    // V2-R4A.3: required-session completion + optional continuation
+    requiredSessionCompleted:    session?.requiredSessionCompletedAt != null,
+    requiredSessionCompletedAt:  session?.requiredSessionCompletedAt?.toISOString() ?? null,
+    optionalContinuation:        session?.optionalContinuation ?? false,
   });
 
   // ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence ───────────
@@ -1993,6 +2024,70 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
       })().catch(() => {});
     }
+  }
+
+  // ── V2-R4A.3: SESSION_TIME_LIMIT — write revisit marker on active MicroNode ─
+  // Fires after res.json when the required session ends while the learner had
+  // already made at least one attempt on the current node.
+  //
+  // Rules:
+  //   - Only fires on END_REQUIRED_SESSION (not STOP_LEVEL_AND_REVISIT etc.)
+  //   - Only fires when nodeAttemptCount > 0 (learner worked on this node)
+  //   - Writes revisitRequired=true, revisitReason="SESSION_TIME_LIMIT"
+  //   - Idempotent: only writes if KN row exists AND revisitRequired is currently false
+  //     (never overwrites REMEDIATION_EXHAUSTED or LOCAL_BUDGET_EXHAUSTED)
+  //   - Does NOT write to future/unvisited nodes
+  if (
+    session && lessonId &&
+    session.currentPhase >= 2 && session.currentNodeId &&
+    _pedagogicalDecision?.metaAction === "END_REQUIRED_SESSION" &&
+    session.nodeAttemptCount > 0
+  ) {
+    const _slt_session  = session;
+    const _slt_lessonId = lessonId;
+    const _slt_userId   = req.userId!;
+    (async () => {
+      try {
+        const [lessonRow3] = await db
+          .select({ subjectId: (lessonsTable as any).subjectId })
+          .from(lessonsTable)
+          .where(eq(lessonsTable.id, _slt_lessonId))
+          .limit(1);
+        if (!lessonRow3?.subjectId) return;
+
+        const [existingKN3] = await db
+          .select({
+            id:             knowledgeNodesTable.id,
+            revisitRequired: knowledgeNodesTable.revisitRequired,
+          })
+          .from(knowledgeNodesTable)
+          .where(and(
+            eq(knowledgeNodesTable.subjectId,   lessonRow3.subjectId),
+            eq(knowledgeNodesTable.userId,       _slt_userId),
+            eq(knowledgeNodesTable.lessonNodeId, _slt_session.currentNodeId!),
+          ))
+          .limit(1);
+
+        // Only write if KN exists AND not already revisitRequired
+        // (don't overwrite REMEDIATION_EXHAUSTED / LOCAL_BUDGET_EXHAUSTED).
+        if (existingKN3 && !existingKN3.revisitRequired) {
+          await db
+            .update(knowledgeNodesTable)
+            .set({
+              revisitRequired: true,
+              revisitReason:   "SESSION_TIME_LIMIT",
+              updatedAt:       new Date(),
+            } as any)
+            .where(eq(knowledgeNodesTable.id, existingKN3.id));
+          logger.info(
+            { topicId: existingKN3.id, sessionId: _slt_session.id },
+            "V2-R4A.3: SESSION_TIME_LIMIT revisit marker written"
+          );
+        }
+      } catch (err) {
+        logger.error({ err, sessionId: _slt_session.id }, "V2-R4A.3: SESSION_TIME_LIMIT write failed");
+      }
+    })().catch(() => {});
   }
 });
 

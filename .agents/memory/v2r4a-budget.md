@@ -52,6 +52,20 @@ SESSION_TIME_LIMIT deferred to R4A.3.
 
 `lib/db/migrations/0003_v2r4a_learning_budget.sql` — applied to dev + test DBs.
 
+## R4A.3 additions
+
+**Schema**: `lesson_sessions.required_session_completed_at` (TIMESTAMPTZ nullable), `lesson_sessions.optional_continuation` (BOOLEAN NOT NULL DEFAULT false). Migration: `0004_v2r4a3_session_completion.sql`.
+
+**Effective budget gate**: `effectiveSessionBudgetExhausted = sessionBudgetExhausted && !session.optionalContinuation` — computed in chat.ts before engine call. This is what gets passed as `sessionBudgetExhausted` to the engine.
+
+**Completion write**: When END_REQUIRED_SESSION fires AND `session.requiredSessionCompletedAt === null` → write `requiredSessionCompletedAt = now` synchronously (before res.json). Idempotent — once only.
+
+**SESSION_TIME_LIMIT KN write**: Separate fire-and-forget block (after evidence block). Fires when END_REQUIRED_SESSION + nodeAttemptCount > 0 + KN exists + revisitRequired is currently false. Does NOT overwrite REMEDIATION_EXHAUSTED or LOCAL_BUDGET_EXHAUSTED.
+
+**New routes**: POST `/lessons/:lessonId/session/finish` (returns state, no DB write), POST `/lessons/:lessonId/session/continue` (sets optionalContinuation=true).
+
+**Frontend (lesson-page.tsx)**: `showCompletionCard = serverRequiredCompleted && !isOptionalContinuation && !isCompleted`. Local optimistic state `localOptContinuation` for instant feedback. Synced from server on refresh. Input disabled when card showing. Card shows "Այսօրվա պարտադիր ուսուցումն ավարտված է։" with [Ավարտել] (→ navigate away) and [Շարունակել կամավոր] (→ set optionalContinuation=true, resume).
+
 ## Known pre-existing failure
 
 `test:phase2a-r3` T27 was failing before R4A — confirmed by git stash check. Unrelated to budget work.

@@ -1,0 +1,292 @@
+TASK — AI TEACHER V2 — R4A.3
+REQUIRED SESSION COMPLETION + OPTIONAL CONTINUATION
+
+R4A.1 + R4A.2 are APPROVED.
+
+Implement ONLY R4A.3.
+Do not perform another broad architecture audit.
+First read only the exact R4A files/paths you need, then implement.
+
+GOAL
+
+When the required learning-time budget is exhausted, the AI Teacher
+must end the REQUIRED portion of the lesson cleanly without treating
+unfinished learning as failure.
+
+The learner must then be able to choose:
+
+[Ավարտել]
+[Շարունակել կամավոր]
+
+==================================================
+1. SCHEMA
+==================================================
+
+Add the two fields intentionally deferred from R4A.1:
+
+lesson_sessions.requiredSessionCompletedAt
+  TIMESTAMPTZ nullable
+
+lesson_sessions.optionalContinuation
+  BOOLEAN NOT NULL DEFAULT false
+
+Use the existing migration pattern.
+Non-destructive / idempotent.
+Apply to dev + test DB.
+
+Do not add other schema fields.
+
+==================================================
+2. REQUIRED-SESSION COMPLETION BOUNDARY
+==================================================
+
+Existing R4A.2 already derives:
+
+sessionBudgetExhausted
+remainingRequiredSeconds
+
+and Decision Engine can return:
+
+END_REQUIRED_SESSION
+
+Use those existing signals.
+
+Do NOT create another state machine.
+
+When END_REQUIRED_SESSION occurs:
+
+- preserve the learner's actual evidence from the current answer;
+- preserve any cognitive level legitimately confirmed by that answer;
+- do not fabricate failure;
+- do not increment remediation merely because time expired;
+- do not automatically advance into new required teaching.
+
+Mark:
+
+requiredSessionCompletedAt = now
+
+exactly once.
+
+Repeated requests / refresh must be idempotent.
+
+==================================================
+3. CURRENT MICRONODE AT TIME LIMIT
+==================================================
+
+If the required session ends while a MicroNode is still unfinished:
+
+distinguish:
+
+A) learner had actually begun/worked on the active MicroNode but its
+target remains unfinished because required time ended
+
+→ preserve demonstrated cognitive level
+→ do NOT mark failed
+→ if a defer/revisit marker is semantically required:
+   revisitRequired = true
+   revisitReason = SESSION_TIME_LIMIT
+
+B) future/unvisited MicroNodes
+
+→ do NOT mark them revisitRequired
+→ do NOT write failure/revisit records merely because session ended.
+
+SESSION_TIME_LIMIT means:
+"continue later because required time ended",
+NOT
+"learner could not learn this."
+
+==================================================
+4. API RESPONSE
+==================================================
+
+Expose the minimum deterministic state needed by frontend:
+
+requiredSessionCompleted
+requiredSessionCompletedAt
+optionalContinuation
+sessionBudgetExhausted
+remainingRequiredSeconds
+
+Preserve existing response fields.
+
+==================================================
+5. FRONTEND COMPLETION UI
+==================================================
+
+When required session becomes completed, show a compact completion
+state/modal/card in the existing student AI Teacher lesson flow.
+
+Armenian UI:
+
+«Այսօրվա պարտադիր ուսուցումն ավարտված է։»
+
+Show a short factual summary if existing data makes this safe,
+but do NOT invent mastery statements.
+
+Buttons:
+
+[Ավարտել]
+[Շարունակել կամավոր]
+
+Keep UI minimal.
+Do not redesign the lesson page.
+
+==================================================
+6. ԱՎԱՐՏԵԼ
+==================================================
+
+When learner chooses «Ավարտել»:
+
+- required session remains completed
+- optionalContinuation remains false
+- session exits/finishes using the existing safest session lifecycle
+- persist status/completedAt ONLY if compatible with existing session
+  semantics
+
+IMPORTANT:
+Do not destroy the learner's ability to resume unfinished curriculum
+in a later learning session.
+
+==================================================
+7. ՇԱՐՈՒՆԱԿԵԼ ԿԱՄԱՎՈՐ
+==================================================
+
+When learner chooses «Շարունակել կամավոր»:
+
+set:
+
+optionalContinuation = true
+
+Then allow normal AI Teacher teaching to continue.
+
+Critical invariant:
+
+Once optionalContinuation=true,
+sessionBudgetExhausted must NOT repeatedly block every subsequent
+pedagogical turn with END_REQUIRED_SESSION.
+
+The required budget is already satisfied.
+
+Teaching/evidence/remediation/cognitive progression continue normally.
+
+Evidence earned during optional continuation is REAL evidence and must
+be stored normally.
+
+Do NOT reset:
+- activeLearningSeconds
+- cognitive progress
+- remediation state
+- demonstrated level
+- current node
+
+==================================================
+8. REFRESH / RESUME
+==================================================
+
+Required behavior:
+
+If required session completed and learner chose optional continuation:
+refresh → remain in optional continuation.
+
+If required session completed and learner did NOT choose continuation:
+refresh → do not silently restart required teaching.
+
+No duplicate completion events.
+No duplicate SESSION_TIME_LIMIT writes.
+
+==================================================
+9. IMPORTANT ENGINE RULE
+==================================================
+
+Do not rewrite pedagogicalDecisionEngine unless a minimal guard is
+required.
+
+Conceptually:
+
+effectiveSessionBudgetExhausted =
+    sessionBudgetExhausted
+    AND NOT optionalContinuation
+
+Use the cleanest existing integration point.
+
+AI output cannot override this.
+
+==================================================
+10. TESTS
+==================================================
+
+Add focused R4A.3 tests.
+
+At minimum:
+
+T01 budget exhaustion marks required completion
+T02 requiredSessionCompletedAt written once
+T03 time completion creates no false incorrect evidence
+T04 demonstrated level is preserved
+T05 active unfinished MicroNode may receive SESSION_TIME_LIMIT
+T06 unvisited MicroNodes receive no revisit marker
+T07 choose Finish keeps optionalContinuation=false
+T08 choose Continue sets optionalContinuation=true
+T09 optional continuation bypasses END_REQUIRED_SESSION
+T10 evidence continues normally during optional continuation
+T11 cognitive progression continues during optional continuation
+T12 refresh preserves optional continuation
+T13 refresh after Finish does not restart required teaching
+T14 no duplicate completion writes
+T15 no duplicate SESSION_TIME_LIMIT writes
+T16 R4A.1/2 tests remain green
+T17 R3 tests green
+T18 R2 tests green
+T19 R1/R1.1 tests green
+T20 backend TypeScript clean
+T21 frontend TypeScript clean
+
+Do not perform expensive browser UAT in this round.
+
+==================================================
+11. STRICT SCOPE
+==================================================
+
+DO NOT implement:
+
+- Teacher required-time configuration UI (R4A.4)
+- countdown redesign
+- P / Adaptive Readiness
+- light mode
+- ZPD
+- cognitive-cost model
+- Kahoot/task redesign
+- mapper
+- quizzes
+- Knowledge Tree
+- unrelated cleanup/refactors
+
+==================================================
+12. FINAL REPORT
+==================================================
+
+Return only a concise implementation report:
+
+1. files changed
+2. schema/migration
+3. exact completion lifecycle
+4. SESSION_TIME_LIMIT behavior
+5. Finish behavior
+6. Optional Continue behavior
+7. refresh/resume behavior
+8. tests/pass counts
+9. TypeScript
+10. regressions
+11. anything deferred to R4A.4
+
+Explicitly answer:
+
+- Can required teaching now end cleanly?
+- Does time expiry remain non-failure?
+- Can learner continue voluntarily without budget blocking teaching?
+- Does refresh preserve the correct state?
+- Did R1–R4A.2 regress?
+
+STOP after R4A.3.
+Do NOT start R4A.4 automatically.
