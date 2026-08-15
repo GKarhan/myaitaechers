@@ -16,6 +16,109 @@ import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
 import { enforceVerbatimExercise, isExerciseDeliveryTurn, effectiveExerciseText } from "../lib/exercise-delivery";
 import { updateTopicScoring } from "../services/scoring";
+import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
+
+// ── V2-R2 shared help executor ────────────────────────────────────────────────
+// Used by both the inline HELP intent path (text-based "oghni") and the
+// dedicated POST /chat/help route.  Never writes evidence or advances stage.
+type HelpRequestResult =
+  | { ok: true; hintContent: string; helpLevel: number; newHelpCount: number; helpEventId: number | null; isAnswerReveal: boolean }
+  | { ok: false; errorCode: string; statusHint: number; message?: string };
+
+async function executeHelpRequest(
+  session: {
+    id: number; currentNodeId: number | null;
+    activeTaskProvenance: string | null; activeHelpCount: number;
+    activeLessonExerciseId: number | null; activeCognitiveLevelId: number | null;
+    lastQuestionAsked: string | null;
+  },
+  lessonId: number,
+  userId: number,
+  revealAnswer = false
+): Promise<HelpRequestResult> {
+  if (!session.activeTaskProvenance) {
+    return { ok: false, errorCode: "NO_ACTIVE_TASK", statusHint: 409, message: "No active task" };
+  }
+
+  const currentHelpCount = session.activeHelpCount ?? 0;
+  const nextHelpLevel    = Math.min(currentHelpCount + 1, 4);
+
+  if (nextHelpLevel === 4 && !revealAnswer) {
+    return { ok: false, errorCode: "REVEAL_REQUIRES_CONFIRMATION", statusHint: 409 };
+  }
+
+  let taskText: string | null = null;
+  if (session.activeLessonExerciseId) {
+    const [exRow] = await db
+      .select({ verbatim: lessonExercisesTable.exerciseTextVerbatim, edited: lessonExercisesTable.exerciseTextEdited })
+      .from(lessonExercisesTable)
+      .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
+      .limit(1);
+    taskText = exRow ? (exRow.edited || exRow.verbatim) : null;
+  } else if (session.lastQuestionAsked) {
+    taskText = session.lastQuestionAsked;
+  }
+
+  const HINT_INSTRUCTIONS: Record<number, string> = {
+    1: "Give a LIGHT directional hint only. No answer steps, no solution. 1-2 sentences in Armenian.",
+    2: "Give MODERATE conceptual/procedural guidance. No worked steps, no final answer. 2-3 sentences in Armenian.",
+    3: "Give STEP-BY-STEP guidance. Walk through the approach; leave final answer for student. 3-4 sentences in Armenian.",
+    4: "Reveal the COMPLETE correct answer with explanation. Student explicitly requested full reveal. In Armenian.",
+  };
+
+  let hintContent = "";
+  try {
+    const helpPrompt = [
+      `You are an Armenian AI Teacher giving a level-${nextHelpLevel} hint.`,
+      `Task: ${taskText ?? "(no task text available)"}`,
+      `Instruction: ${HINT_INSTRUCTIONS[nextHelpLevel] ?? HINT_INSTRUCTIONS[3]}`,
+      "Reply ONLY in Armenian. Do not repeat the task verbatim.",
+    ].join("\n");
+    hintContent = await callAI(
+      [{ role: "user" as const, content: helpPrompt }],
+      "\u0564\u0578\u0582 AI \u0578\u0582\u057d\u0578\u0582\u0581\u056b\u0579 \u0565\u057d\u0589 \u0570\u0561\u0575\u056f\u0561\u056f\u0561\u0576 \u0570\u0578\u0582\u0577 \u057f\u0578\u0582\u0580\u0589"
+    );
+  } catch (aiErr) {
+    logger.warn({ aiErr, sessionId: session.id }, "executeHelpRequest: AI hint failed");
+    hintContent = "\u0553\u0578\u0580\u056e\u056b\u0580 \u056f\u0580\u056f\u056b\u0576 \u0574\u057f\u0561\u056e\u0565\u056c \u056d\u0576\u0564\u056b\u0580\u056b \u0574\u0561\u057d\u056b\u0576, \u056f\u0561\u0574 \u0564\u056b\u0574\u056b\u0580 \u0578\u0582\u057d\u0578\u0582\u0581\u056c\u056b\u0579\u056b\u0576\u0589";
+  }
+
+  const LEVEL_TO_ASSIST: Record<number, string> = {
+    1: "light", 2: "moderate", 3: "guided", 4: "revealed",
+  };
+
+  const [helpEvent] = await db
+    .insert(helpEventsTable)
+    .values({
+      userId,
+      lessonSessionId:  session.id,
+      lessonNodeId:     session.currentNodeId!,
+      lessonExerciseId: session.activeLessonExerciseId,
+      quizQuestionId:   null,
+      cognitiveLevelId: session.activeCognitiveLevelId,
+      helpLevel:        nextHelpLevel,
+      isAnswerReveal:   nextHelpLevel === 4,
+      hintContent,
+    } as any)
+    .returning({ id: helpEventsTable.id });
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      activeHelpCount:       currentHelpCount + 1,
+      activeAssistanceLevel: LEVEL_TO_ASSIST[nextHelpLevel] ?? "guided",
+    } as any)
+    .where(eq(lessonSessionsTable.id, session.id));
+
+  return {
+    ok:            true,
+    hintContent,
+    helpLevel:     nextHelpLevel,
+    newHelpCount:  currentHelpCount + 1,
+    helpEventId:   helpEvent?.id ?? null,
+    isAnswerReveal: nextHelpLevel === 4,
+  };
+}
 
 const router = Router();
 
@@ -853,6 +956,106 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   }
   // ── End intro gate ────────────────────────────────────────────────────────────
 
+  // ── V2-R2: Intent Classification ─────────────────────────────────────────────
+  // Classify the student message BEFORE any AI answer-evaluation call.
+  // Stage A = deterministic phrase matching (no AI).
+  // Stage B = AI classification for ANSWER / CLARIFY / OFF_TOPIC ambiguity.
+  // Intent is state-aware: hasActiveTask, teachingStage, introConfirmed matter.
+  const _intentHasActiveTask =
+    session != null && (
+      (session.activeTaskProvenance != null && session.activeTaskProvenance !== "") ||
+      session.nodeTeachingStage === "MICRO_CHECK" ||
+      session.nodeTeachingStage === "EXERCISE"
+    );
+
+  let _intentResult: IntentResult = { intent: "ANSWER", confidence: 0.5, reason: "pre-classification-default" };
+  try {
+    const _intentCtx: IntentContext = {
+      teachingStage:        session?.nodeTeachingStage ?? null,
+      hasActiveTask:        _intentHasActiveTask,
+      introConfirmed:       session?.introConfirmed ?? false,
+      lastQuestionAsked:    session?.lastQuestionAsked ?? null,
+      activeTaskProvenance: session?.activeTaskProvenance ?? null,
+    };
+    _intentResult = await classifyIntent(message, _intentCtx);
+    logger.info(
+      {
+        sessionId:     session?.id ?? null,
+        teachingStage: _intentCtx.teachingStage,
+        hasActiveTask: _intentCtx.hasActiveTask,
+        intent:        _intentResult.intent,
+        reason:        _intentResult.reason,
+        msgLen:        message.length,
+      },
+      "V2-R2: intent classified"
+    );
+  } catch (intentErr) {
+    logger.warn({ intentErr }, "V2-R2: classifyIntent threw unexpectedly — defaulting to ANSWER");
+  }
+
+  // ── V2-R2: CONTINUE / READY with active task → fast-return, no task skip ────
+  // "sharunakenkh" / "ok" during an open assessable task MUST NOT clear the task,
+  // advance the node, or create evidence.  Remind the student and preserve state.
+  if (
+    (_intentResult.intent === "CONTINUE" || _intentResult.intent === "READY") &&
+    _intentHasActiveTask
+  ) {
+    const _activeQ  = session?.lastQuestionAsked;
+    // "\u0540\u0561\u0580\u0581\u0568 \u0564\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u0581 \u0565" = "Hartsе dadjord bac e" (The question is still open)
+    const taskReminder = _activeQ
+      ? `\u0540\u0561\u0580\u056e\u0568 \u0564\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u0581 \u0565.` +
+        ` \u053d\u0576\u0174\u0580\u0578\u0582\u0574 \u0565\u0574 \u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0565\u056c:\n${_activeQ}`
+      : "\u0540\u0561\u0580\u056e\u0568 \u0564\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u0581 \u0565. \u053d\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0574 \u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0565\u056c.";
+    const [contMsg] = await db
+      .insert(chatMessagesTable)
+      .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: taskReminder })
+      .returning();
+    logger.info({ sessionId: session?.id, intent: _intentResult.intent }, "V2-R2: CONTINUE/READY with active task — task preserved, no AI call");
+    res.json({
+      response:        taskReminder,
+      messageId:       contMsg.id,
+      progressIndicator,
+      teachingMode,
+      hasActiveTask:   true,
+      activeHelpCount: session?.activeHelpCount ?? 0,
+    });
+    return;
+  }
+
+  // ── V2-R2: HELP via text → reuse executeHelpRequest (same as 💡 button) ─────
+  // Text-based "oghni" / "hushum tur" routes to the same progressive help
+  // infrastructure as the button.  Falls through to normal AI if no active task
+  // (AI can then respond contextually).
+  if (
+    _intentResult.intent === "HELP" &&
+    session && lessonId &&
+    session.currentPhase >= 2 && session.currentNodeId
+  ) {
+    const _helpRes = await executeHelpRequest(session, lessonId, req.userId!);
+    if (_helpRes.ok) {
+      const [helpMsg] = await db
+        .insert(chatMessagesTable)
+        .values({ userId: req.userId!, lessonId, role: "assistant", content: _helpRes.hintContent })
+        .returning();
+      logger.info({ sessionId: session.id, helpLevel: _helpRes.helpLevel }, "V2-R2: HELP via text — help_event created, active task preserved");
+      res.json({
+        response:        _helpRes.hintContent,
+        messageId:       helpMsg.id,
+        progressIndicator,
+        teachingMode,
+        hasActiveTask:   _intentHasActiveTask,
+        activeHelpCount: _helpRes.newHelpCount,
+        helpLevel:       _helpRes.helpLevel,
+        helpEventId:     _helpRes.helpEventId,
+      });
+      return;
+    }
+    // _helpRes.ok=false (NO_ACTIVE_TASK or REVEAL_REQUIRES_CONFIRMATION):
+    // fall through to normal AI path so the AI can respond contextually.
+    logger.info({ sessionId: session.id, errorCode: _helpRes.errorCode }, "V2-R2: HELP intent but no active task — falling through to AI");
+  }
+  // ── End V2-R2 intent routing ──────────────────────────────────────────────────
+
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
   let wasCorrect: boolean | null = null;
@@ -913,6 +1116,29 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingMode = aiResult.teaching_mode;
     const st = aiResult.answer_evaluation.status;
     wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
+
+    // ── V2-R2: Non-ANSWER gate ────────────────────────────────────────────────
+    // CONFUSED / REPEAT / CLARIFY: AI still generates a pedagogical response,
+    // but we force answer_evaluation to NOT_APPLICABLE so the downstream state
+    // machine never fires evidence writes or attempt-counter increments.
+    // When a task is open, also lock node_decision to CONTINUE_SAME_NODE so
+    // the node cannot be advanced by the model's output.
+    if (
+      _intentResult.intent === "CONFUSED" ||
+      _intentResult.intent === "REPEAT"   ||
+      _intentResult.intent === "CLARIFY"
+    ) {
+      (aiResult.answer_evaluation as unknown as Record<string, string>).status          = "NOT_APPLICABLE";
+      (aiResult.answer_evaluation as unknown as Record<string, string>).evidence_quality = "NONE";
+      wasCorrect = null;
+      if (_intentHasActiveTask) {
+        (aiResult.node_decision as Record<string, string>).action = "CONTINUE_SAME_NODE";
+      }
+      logger.info(
+        { sessionId: session?.id, intent: _intentResult.intent },
+        "V2-R2: non-ANSWER intent — answer_evaluation forced NOT_APPLICABLE, no evidence/attempt"
+      );
+    }
 
   } catch (err) {
     logger.error(
@@ -1457,9 +1683,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// ── Phase 2B Part 6: POST /chat/help ─────────────────────────────────────────
-// Progressive help endpoint. Derives all task identity from server-side session.
-// Help levels 1-3 never reveal the final answer. Level 4 requires explicit consent.
+// ── Phase 2B Part 6 / V2-R2: POST /chat/help ─────────────────────────────────
+// Progressive help endpoint.  Business logic delegated to executeHelpRequest()
+// so it is shared with the inline text-based HELP intent path (V2-R2).
+// Help levels 1-3 never reveal the final answer.  Level 4 requires explicit consent.
 // Does NOT advance teaching stage or create evidence_events.
 router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
   const { lessonId, revealAnswer } = req.body as { lessonId?: number; revealAnswer?: boolean };
@@ -1475,96 +1702,44 @@ router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
   if (sessionRow.currentPhase < 2) { res.status(409).json({ error: "Help only available in Teaching Phase" }); return; }
   if (!sessionRow.currentNodeId) { res.status(409).json({ error: "No current node" }); return; }
 
-  const activeProvenance = (sessionRow as any).activeTaskProvenance as string | null;
-  if (!activeProvenance) {
-    res.status(409).json({ error: "NO_ACTIVE_TASK", message: "Ալ կա ակտiv խndlaban լini" });
+  const helpRes = await executeHelpRequest(
+    {
+      id:                    sessionRow.id,
+      currentNodeId:         sessionRow.currentNodeId,
+      activeTaskProvenance:  (sessionRow as any).activeTaskProvenance as string | null,
+      activeHelpCount:       ((sessionRow as any).activeHelpCount ?? 0) as number,
+      activeLessonExerciseId: ((sessionRow as any).activeLessonExerciseId ?? null) as number | null,
+      activeCognitiveLevelId: ((sessionRow as any).activeCognitiveLevelId ?? null) as number | null,
+      lastQuestionAsked:     sessionRow.lastQuestionAsked,
+    },
+    lessonId,
+    req.userId!,
+    revealAnswer ?? false
+  );
+
+  if (!helpRes.ok) {
+    if (helpRes.errorCode === "NO_ACTIVE_TASK") {
+      res.status(helpRes.statusHint).json({ error: helpRes.errorCode, message: helpRes.message });
+      return;
+    }
+    if (helpRes.errorCode === "REVEAL_REQUIRES_CONFIRMATION") {
+      res.status(helpRes.statusHint).json({
+        error:     "REVEAL_REQUIRES_CONFIRMATION",
+        helpLevel: 4,
+        message:   "Arayin tesnel-u kerp hstatutyun kllini",
+      });
+      return;
+    }
+    res.status(helpRes.statusHint).json({ error: helpRes.errorCode });
     return;
   }
-
-  const currentHelpCount = ((sessionRow as any).activeHelpCount ?? 0) as number;
-  const activeLessonExId = ((sessionRow as any).activeLessonExerciseId ?? null) as number | null;
-  const activeCogLevelId = ((sessionRow as any).activeCognitiveLevelId ?? null) as number | null;
-
-  const nextHelpLevel = Math.min(currentHelpCount + 1, 4);
-
-  if (nextHelpLevel === 4 && !revealAnswer) {
-    res.status(409).json({
-      error:     "REVEAL_REQUIRES_CONFIRMATION",
-      helpLevel: 4,
-      message:   "Arayin tesnel-u kerp hstatutyun kllini",
-    });
-    return;
-  }
-
-  let taskText: string | null = null;
-  if (activeLessonExId) {
-    const [exRow] = await db
-      .select({ verbatim: lessonExercisesTable.exerciseTextVerbatim, edited: lessonExercisesTable.exerciseTextEdited })
-      .from(lessonExercisesTable)
-      .where(eq(lessonExercisesTable.id, activeLessonExId))
-      .limit(1);
-    taskText = exRow ? (exRow.edited || exRow.verbatim) : null;
-  } else if (sessionRow.lastQuestionAsked) {
-    taskText = sessionRow.lastQuestionAsked;
-  }
-
-  const HINT_INSTRUCTIONS: Record<number, string> = {
-    1: "Give a LIGHT directional hint only. No answer steps, no solution. 1-2 sentences in Armenian.",
-    2: "Give MODERATE conceptual/procedural guidance. No worked steps, no final answer. 2-3 sentences in Armenian.",
-    3: "Give STEP-BY-STEP guidance. Walk through the approach; leave final answer for student. 3-4 sentences in Armenian.",
-    4: "Reveal the COMPLETE correct answer with explanation. Student explicitly requested full reveal. In Armenian.",
-  };
-
-  let hintContent = "";
-  try {
-    const helpPrompt = [
-      `You are an Armenian AI Teacher giving a level-${nextHelpLevel} hint.`,
-      `Task: ${taskText ?? "(no task text available)"}`,
-      `Instruction: ${HINT_INSTRUCTIONS[nextHelpLevel] ?? HINT_INSTRUCTIONS[3]}`,
-      "Reply ONLY in Armenian. Do not repeat the task verbatim.",
-    ].join("\n");
-    hintContent = await callAI(
-      [{ role: "user" as const, content: helpPrompt }],
-      "Դու AI ուսուցիչ ես։ Հայկական հուշ տուր։"
-    );
-  } catch (aiErr) {
-    logger.warn({ aiErr, sessionId: sessionRow.id }, "help endpoint: AI hint failed");
-    hintContent = "Փորձիր կրկին մտածել խնդրի մասին, կամ դիմիր ուսուցչին։";
-  }
-
-  const LEVEL_TO_ASSIST: Record<number, string> = {
-    1: "light", 2: "moderate", 3: "guided", 4: "revealed",
-  };
-
-  const [helpEvent] = await db
-    .insert(helpEventsTable)
-    .values({
-      userId:           req.userId!,
-      lessonSessionId:  sessionRow.id,
-      lessonNodeId:     sessionRow.currentNodeId,
-      lessonExerciseId: activeLessonExId,
-      quizQuestionId:   null,
-      cognitiveLevelId: activeCogLevelId,
-      helpLevel:        nextHelpLevel,
-      isAnswerReveal:   nextHelpLevel === 4,
-      hintContent,
-    } as any)
-    .returning({ id: helpEventsTable.id });
-
-  await db
-    .update(lessonSessionsTable)
-    .set({
-      activeHelpCount:       currentHelpCount + 1,
-      activeAssistanceLevel: LEVEL_TO_ASSIST[nextHelpLevel] ?? "guided",
-    } as any)
-    .where(eq(lessonSessionsTable.id, sessionRow.id));
 
   res.json({
     success:        true,
-    helpLevel:      nextHelpLevel,
-    isAnswerReveal: nextHelpLevel === 4,
-    hintContent,
-    helpEventId:    helpEvent?.id ?? null,
+    helpLevel:      helpRes.helpLevel,
+    isAnswerReveal: helpRes.isAnswerReveal,
+    hintContent:    helpRes.hintContent,
+    helpEventId:    helpRes.helpEventId,
   });
 });
 

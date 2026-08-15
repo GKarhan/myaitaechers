@@ -5161,7 +5161,7 @@ export default function TeacherDashboard() {
                                       title={`Granularity review found ${granularityIssues} issue${granularityIssues !== 1 ? "s" : ""} (MEGA_NODE / OVER_SPLIT / EXERCISE_MISMATCH). Inspect the Mapping Report for details.`}
                                       className="px-2 py-1 rounded-lg text-xs text-yellow-400 border border-yellow-400/20 bg-yellow-400/10 select-none cursor-help"
                                     >
-                                      ⚠️ Granularity: {granularityIssues}
+                                      ⚠️ Տրոհման մակարդակ: {granularityIssues}
                                     </span>
                                   )}
                                   {isCompleted ? (

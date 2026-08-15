@@ -1,0 +1,866 @@
+AI TEACHER V2 — ROUND 2
+STUDENT INTENT & RESPONSE ROUTER
+
+============================================================
+0. PURPOSE
+============================================================
+
+V2-R1 established the backend-controlled teaching foundation:
+
+- one current MicroNode
+- one teaching stage
+- at most one active task
+- one question at a time
+- feedback separated from next question
+- active task persisted
+- session state survives refresh
+
+V2-R2 now solves the next architectural problem:
+
+NOT EVERY STUDENT MESSAGE IS AN ANSWER.
+
+The backend must classify the learner's intent BEFORE allowing
+answer evaluation, evidence writing, attempt increments, or
+teaching-state progression.
+
+LOCKED PRINCIPLE:
+
+STUDENT MESSAGE
+→ INTENT ROUTER
+→ permitted action for current backend state
+→ only then AI pedagogical processing if needed
+
+Do NOT redesign V2-R1.
+
+============================================================
+1. CURRENT PROBLEM
+============================================================
+
+Current runtime historically treated messages such as:
+
+"օկ"
+"լավ"
+"շարունակենք"
+"արի շարունակենք"
+"չգիտեմ"
+"դու ասա"
+"օգնի"
+"չեմ հասկանում"
+"կրկնի"
+"ուրիշ օրինակ տուր"
+
+through the same AI evaluation path used for real learner answers.
+
+This creates risks:
+
+- fake answer attempts
+- fake evidence
+- progression commands skipping active tasks
+- confusion/help requests being marked incorrect
+- unnecessary AI calls
+- safety-cap counters increasing incorrectly
+
+V2-R2 must separate these semantics.
+
+============================================================
+2. CANONICAL INTENT CONTRACT
+============================================================
+
+Implement these canonical intent classes:
+
+ANSWER
+READY
+CONTINUE
+HELP
+CONFUSED
+REPEAT
+CLARIFY
+OFF_TOPIC
+
+Optionally:
+
+OTHER
+
+only if genuinely necessary.
+
+Definitions:
+
+ANSWER
+A genuine attempt to answer the currently active assessable task.
+
+READY
+Acknowledgement/start signal:
+"օկ", "լավ", "պատրաստ եմ"
+
+CONTINUE
+Progression request:
+"շարունակենք", "անցնենք առաջ", "հաջորդը"
+
+HELP
+Explicit help request:
+"օգնի", "օգնություն", "հուշում տուր"
+
+CONFUSED
+Learner cannot answer / does not understand:
+"չգիտեմ"
+"չեմ կարող"
+"չեմ հասկանում"
+"դու ասա"
+
+REPEAT
+Request to repeat/rephrase current explanation/task:
+"կրկնի"
+"նորից ասա"
+"կրկին բացատրի"
+
+CLARIFY
+Learner asks clarification about current MicroNode/task.
+
+OFF_TOPIC
+Learner requests another lesson/topic or unrelated content.
+
+============================================================
+3. IMPORTANT — INTENT IS STATE-AWARE
+============================================================
+
+The same message can mean different things depending on state.
+
+Example:
+
+"օկ"
+
+During INTRO_WAITING:
+→ READY
+
+During CHECK_WAITING:
+→ NOT an ANSWER
+→ acknowledgement/non-answer
+
+During ordinary TEACH with no input required:
+ideally learner should not need to send it at all.
+
+"շարունակենք"
+
+With NO active task:
+→ CONTINUE may be harmless, though auto-progression should normally
+  make it unnecessary.
+
+With active task:
+→ MUST NOT skip the task.
+
+Therefore the router must receive:
+
+- current teaching state
+- hasActiveTask
+- active task type
+- current MicroNode
+- intro state
+
+Do NOT classify text in isolation.
+
+============================================================
+4. TWO-STAGE CLASSIFICATION STRATEGY
+============================================================
+
+Prefer:
+
+STAGE A — deterministic classification
+
+Use deterministic normalization/rules for obvious cases:
+
+READY
+CONTINUE
+HELP
+CONFUSED
+REPEAT
+
+Examples:
+exact/short phrase matching,
+normalized Armenian punctuation/spacing,
+known variants.
+
+STAGE B — contextual AI classification only when needed
+
+Use AI only for ambiguous cases such as:
+
+ANSWER vs CLARIFY vs OFF_TOPIC
+
+Do NOT send every trivial "օկ" through the main teaching model.
+
+If AI classification is required:
+use a small structured classification contract.
+
+It must NOT generate teaching content.
+
+Output only the intent classification.
+
+============================================================
+5. ARMENIAN NORMALIZATION
+============================================================
+
+Audit current normalization utilities before creating new ones.
+
+Handle common variants safely:
+
+- Armenian punctuation
+- extra spaces
+- capitalization
+- repeated punctuation
+- simple transliterated "ok" if currently supported
+- common spelling variants
+
+Do not build a giant NLP system.
+
+Use deterministic normalization where practical.
+
+============================================================
+6. ROUTING CONTRACT
+============================================================
+
+After intent classification:
+
+READY:
+- only meaningful for lesson/session start
+- must not become answer evidence
+
+CONTINUE:
+- if active task exists:
+  keep same task
+  do not progress
+  return appropriate learner-facing response / expose Help
+- if no active task:
+  do not create fake evidence
+
+HELP:
+- route to structured Help flow
+- same active task
+- no answer evidence
+- no attempt increment
+
+CONFUSED:
+- keep same active task
+- do not mark incorrect automatically
+- do not create answer evidence
+- prepare remediation/help path
+
+REPEAT:
+- repeat/rephrase current explanation/task
+- do not create evidence
+- do not increment attempt
+- do not create new task identity
+
+CLARIFY:
+- answer within CURRENT MicroNode/task scope
+- preserve active task
+- do not treat clarification request as task answer
+
+OFF_TOPIC:
+- use existing Node Lock redirect behavior
+- no evidence
+- no progression
+
+ANSWER:
+- ONLY this path may enter assessable-answer evaluation
+- may update attempt sequence
+- may create evidence
+- may enter FEEDBACK state
+
+============================================================
+7. ACTIVE TASK HARD RULE
+============================================================
+
+If hasActiveTask = true:
+
+Only ANSWER may resolve/evaluate that active task.
+
+READY / CONTINUE / HELP / CONFUSED / REPEAT /
+CLARIFY / OFF_TOPIC:
+
+must leave the same task active.
+
+Do NOT clear:
+
+- active task identity
+- lessonExerciseId
+- cognitiveLevelId
+- help state
+- lastQuestionAsked
+
+unless the existing Help semantics explicitly update help metadata.
+
+============================================================
+8. "ՉԳԻՏԵՄ" IS NOT INCORRECT EVIDENCE
+============================================================
+
+LOCKED PRODUCT RULE:
+
+A learner explicitly saying:
+
+"չգիտեմ"
+"չեմ կարող"
+"դու ասա"
+
+means the learner did NOT produce an assessable answer.
+
+Therefore:
+
+- no incorrect answer evidence
+- no mastery penalty in this Round
+- no attempt increment as a submitted answer
+- active task remains open
+
+The system may respond with:
+- Help
+- simpler explanation
+- hint
+- guided support
+
+But that response belongs to pedagogical remediation,
+not answer scoring.
+
+============================================================
+9. CONTINUE CANNOT SKIP A TASK
+============================================================
+
+With active task:
+
+Student:
+"շարունակենք"
+
+Expected:
+
+Do NOT:
+- clear task
+- move to next task
+- move MicroNode
+- mark answer incorrect
+- increment attempt
+
+Instead communicate naturally that the current task is still active
+and optionally offer Help.
+
+No progression bypass.
+
+============================================================
+10. HELP TEXT AND HELP BUTTON MUST CONVERGE
+============================================================
+
+We already have structured:
+
+💡 Օգնություն
+
+backend/help infrastructure.
+
+Text-based messages such as:
+
+"օգնի"
+"օգնություն"
+"հուշում տուր"
+
+should route to the SAME structured Help mechanism where possible.
+
+Do NOT maintain two unrelated help systems:
+
+A. button Help
+B. ordinary AI chat help
+
+Both should eventually produce the same:
+
+active task
+→ help event
+→ assistance level
+→ same task remains open
+
+Do NOT redesign progressive help levels in this Round.
+
+Reuse Phase 2B infrastructure.
+
+============================================================
+11. CLARIFICATION WHILE TASK ACTIVE
+============================================================
+
+Example:
+
+Task:
+"Ո՞րն է մոլեկուլի տարբերությունը ատոմից։"
+
+Student:
+"իսկ ատոմը ինչ է նշանակում?"
+
+This is CLARIFY, not ANSWER.
+
+Expected:
+
+AI can answer the clarification briefly within Node Lock.
+
+Then:
+
+the SAME original active task remains open.
+
+Do not generate a replacement question unless backend later decides so.
+
+============================================================
+12. REPEAT REQUEST
+============================================================
+
+Example:
+
+"կրկնի"
+"նորից բացատրի"
+
+If active task:
+repeat/rephrase the same task or relevant explanation.
+
+If no active task:
+repeat/rephrase the current teaching chunk.
+
+Do not create evidence.
+
+Do not change stage unnecessarily.
+
+============================================================
+13. OFF-TOPIC / NODE LOCK
+============================================================
+
+Reuse existing:
+
+redirect_needed
+validateNodeLock
+scope-drift protections
+
+Do not build another competing Node Lock.
+
+The intent router should only identify OFF_TOPIC and then invoke the
+existing authoritative redirect behavior.
+
+No evidence from off-topic requests.
+
+============================================================
+14. ANSWER DETECTION
+============================================================
+
+Do NOT use simplistic:
+
+"anything not in phrase list = ANSWER"
+
+For active tasks, genuine answers may include:
+
+- one word
+- a number
+- a selected option
+- a short sentence
+- a longer explanation
+
+The router must use task context where necessary.
+
+Examples:
+
+Task:
+"2 + 2 = ?"
+
+Student:
+"4"
+→ ANSWER
+
+Task:
+"Ո՞րն է ճիշտ տարբերակը՝ A, B, թե C"
+
+Student:
+"B"
+→ ANSWER
+
+Task:
+"Բացատրի՛ր տարբերությունը"
+
+Student:
+"մոլեկուլը կազմված է ատոմներից"
+→ ANSWER
+
+Task:
+same
+
+Student:
+"չգիտեմ"
+→ CONFUSED
+
+============================================================
+15. STRUCTURED INTENT RESULT
+============================================================
+
+Create/reuse a typed contract such as:
+
+{
+  intent:
+    "ANSWER"
+    | "READY"
+    | "CONTINUE"
+    | "HELP"
+    | "CONFUSED"
+    | "REPEAT"
+    | "CLARIFY"
+    | "OFF_TOPIC"
+    | "OTHER",
+
+  confidence?: number,
+  reason?: string
+}
+
+Internal shape may differ.
+
+Do NOT expose model reasoning to learner.
+
+Prefer deterministic intent results where possible.
+
+============================================================
+16. INTENT MUST BE OBSERVABLE
+============================================================
+
+For debugging/testing, the backend should be able to log safely:
+
+- sessionId
+- current state
+- hasActiveTask
+- classified intent
+- routing decision
+
+Do not log sensitive unnecessary student information.
+
+Do not show debug fields in production learner UI.
+
+============================================================
+17. EVIDENCE GATE
+============================================================
+
+Before any AI Teacher evidence write:
+
+require:
+
+intent === ANSWER
+
+AND
+
+active assessable task exists
+
+AND
+
+answer evaluation produced valid evidence quality.
+
+This is a HARD backend gate.
+
+No AI output may override it.
+
+Therefore:
+
+READY
+CONTINUE
+HELP
+CONFUSED
+REPEAT
+CLARIFY
+OFF_TOPIC
+
+must never directly produce answer evidence.
+
+============================================================
+18. ATTEMPT COUNTER GATE
+============================================================
+
+Attempt counters must increment only for actual assessable ANSWER
+submissions.
+
+Do NOT increment for:
+
+- READY
+- CONTINUE
+- HELP
+- CONFUSED
+- REPEAT
+- CLARIFY
+- OFF_TOPIC
+
+This also prevents artificial safety-cap progression.
+
+============================================================
+19. FRONTEND CHANGES — MINIMAL
+============================================================
+
+Do NOT redesign chat UI.
+
+Only make frontend changes required to:
+
+- route structured Help if needed
+- preserve active task
+- display appropriate returned message
+- prevent accidental double submission
+
+Future Kahoot-like answer cards are V2-R4.
+
+============================================================
+20. PRESERVE AUTO-PROGRESSION
+============================================================
+
+Do not regress V2-R1/R1.1 behavior.
+
+When NO learner input is required:
+backend continues automatically.
+
+The intent router must NOT reintroduce:
+
+"send օկ to continue"
+
+Only classify messages that the learner actually sends.
+
+============================================================
+21. DO NOT CHANGE THESE
+============================================================
+
+STRICT NON-GOALS:
+
+- Cognitive Path integration
+- Cognitive level progression
+- preferredInteractionTypes use
+- Kahoot answer buttons
+- full Error Taxonomy rewrite
+- exercise variants
+- completion redesign
+- mastery formula
+- Confidence V2
+- Knowledge Tree
+- Mapper
+- Quiz scoring
+
+============================================================
+22. AUDIT FIRST
+============================================================
+
+Before implementation, trace the current handling of these real inputs:
+
+1. "օկ"
+2. "շարունակենք"
+3. "արի շարունակենք"
+4. "չգիտեմ"
+5. "դու ասա"
+6. "չեմ կարող"
+7. "օգնի"
+8. "չեմ հասկանում"
+9. "կրկնի"
+10. genuine answer
+11. clarification question
+12. off-topic question
+
+For each report:
+
+CURRENT STATE
+CURRENT AI PATH
+CURRENT ATTEMPT EFFECT
+CURRENT EVIDENCE EFFECT
+CURRENT STAGE EFFECT
+EXPECTED V2 INTENT
+
+Then implement.
+
+============================================================
+23. REQUIRED ACCEPTANCE TESTS
+============================================================
+
+Create dedicated V2-R2 tests.
+
+T01 — "օկ" at intro → READY.
+
+T02 — "օկ" during active task → not ANSWER.
+
+T03 — "օկ" during active task → no evidence.
+
+T04 — "օկ" → no attempt increment.
+
+T05 — "շարունակենք" with active task → CONTINUE.
+
+T06 — CONTINUE does not clear active task.
+
+T07 — CONTINUE does not advance MicroNode.
+
+T08 — "չգիտեմ" → CONFUSED.
+
+T09 — CONFUSED creates no answer evidence.
+
+T10 — CONFUSED does not increment answer attempt.
+
+T11 — "դու ասա" → CONFUSED/HELP semantics.
+
+T12 — "օգնի" → HELP.
+
+T13 — HELP uses same active task.
+
+T14 — HELP creates help event according to existing Help architecture.
+
+T15 — HELP creates zero answer evidence.
+
+T16 — "կրկնի" → REPEAT.
+
+T17 — REPEAT keeps same active task.
+
+T18 — clarification question → CLARIFY.
+
+T19 — CLARIFY keeps same active task.
+
+T20 — OFF_TOPIC → existing redirect/Node Lock flow.
+
+T21 — OFF_TOPIC creates no evidence.
+
+T22 — short numeric response can classify as ANSWER.
+
+T23 — single option response can classify as ANSWER.
+
+T24 — short Armenian answer can classify as ANSWER.
+
+T25 — ANSWER enters evaluation path.
+
+T26 — only ANSWER can increment attempt.
+
+T27 — only ANSWER can produce answer evidence.
+
+T28 — active task survives every non-answer intent.
+
+T29 — Help count survives CLARIFY/REPEAT messages.
+
+T30 — intent routing does not duplicate evidence.
+
+T31 — V2-R1 tests remain green.
+
+T32 — V2-R1.1 closure tests remain green.
+
+T33 — Phase 2B evidence tests remain green.
+
+T34 — frontend TypeScript clean.
+
+T35 — backend TypeScript clean.
+
+============================================================
+24. REAL BROWSER UAT
+============================================================
+
+Use a real student lesson.
+
+At one active question, test:
+
+A.
+student writes:
+"օկ"
+
+Expected:
+question remains active.
+no evidence.
+
+B.
+student writes:
+"շարունակենք"
+
+Expected:
+question remains active.
+no progression.
+
+C.
+student writes:
+"չգիտեմ"
+
+Expected:
+system responds pedagogically.
+same task remains.
+no answer evidence.
+
+D.
+student uses:
+💡 Օգնություն
+
+Expected:
+same active task.
+
+E.
+student asks clarification.
+
+Expected:
+clarification answered.
+same active task remains.
+
+F.
+student finally gives real answer.
+
+Expected:
+intent=ANSWER
+→ evaluation
+→ evidence if valid
+→ FEEDBACK
+
+Show DB state before/after.
+
+============================================================
+25. FINAL REPORT
+============================================================
+
+Return:
+
+A. Pre-implementation intent audit
+
+B. Final intent taxonomy
+
+C. Deterministic vs AI classification split
+
+D. Exact routing architecture
+
+E. Files changed
+
+F. API/schema changes
+
+G. Evidence gate
+
+H. Attempt-counter gate
+
+I. Help integration behavior
+
+J. CONTINUE behavior
+
+K. CONFUSED behavior
+
+L. CLARIFY behavior
+
+M. OFF_TOPIC behavior
+
+N. Tests T01–T35
+
+O. V2-R1 regression
+
+P. V2-R1.1 regression
+
+Q. Phase 2B regression
+
+R. Real browser UAT
+
+S. DB state/evidence proof
+
+T. Remaining V2-R3 work
+
+U. FINAL VERDICT:
+
+AI TEACHER V2-R2 = PASS / PARTIAL / FAIL
+
+============================================================
+26. PASS CONDITION
+============================================================
+
+PASS only if:
+
+- obvious control messages are not scored as answers
+- only ANSWER can enter answer-evaluation/evidence path
+- CONTINUE cannot skip an active task
+- CONFUSED does not become incorrect evidence
+- HELP preserves same task
+- CLARIFY preserves same task
+- REPEAT preserves same task
+- OFF_TOPIC uses Node Lock
+- attempts increment only for real ANSWER
+- active task remains stable
+- R1/R1.1 behavior does not regress
+- real browser UAT passes
+
+STOP after R2.
+Do NOT start V2-R3.
