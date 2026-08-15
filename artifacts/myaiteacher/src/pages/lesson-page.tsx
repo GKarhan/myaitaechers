@@ -10,6 +10,20 @@ import {
   useSendChatMessage,
 } from "@workspace/api-client-react";
 
+/** Format seconds as MM:SS or H:MM:SS (for >= 3600 s). */
+function formatCountdown(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
 const PHASES = [
   { phase: 1, name: "Կրկնություն", icon: "🔄" },
   { phase: 2, name: "Նոր դաս", icon: "💡" },
@@ -61,6 +75,9 @@ export default function LessonPage() {
   const [isContinuePending, setIsContinuePending] = useState(false);
   // Track last-known active learning seconds from chat responses (for summary display)
   const [chatALS, setChatALS] = useState<number | null>(null);
+  // V2-R4A.4: display countdown (seconds). null = no timer configured.
+  // Decrements locally every second; resyncs from backend on every chat response.
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -114,12 +131,48 @@ export default function LessonPage() {
     requiredSessionCompletedAt?: string | null;
     optionalContinuation?: boolean;
     sessionDecision?: string | null;
+    remainingRequiredSeconds?: number | null;
   };
+
+  // V2-R4A.4: Initialize countdown from session snapshot on page load / session change.
+  // Re-runs when session ID changes (new session or resume) — not on every render.
+  useEffect(() => {
+    const s = session as any;
+    if (!s) return;
+    const rsm: number | null = s.requiredSessionMinutes ?? null;
+    if (rsm == null) { setRemainingSeconds(null); return; }
+    const als: number = s.activeLearningSeconds ?? 0;
+    setRemainingSeconds(Math.max(0, rsm * 60 - als));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
+
+  // V2-R4A.4: Decrement display timer once per second.
+  // Stops when budget is up, required-session completed, or optional continuation active.
+  // Backend remains authoritative — this is display-only.
+  const shouldTick = (
+    remainingSeconds !== null &&
+    remainingSeconds > 0 &&
+    !serverRequiredCompleted &&
+    !isOptionalContinuation
+  );
+  useEffect(() => {
+    if (!shouldTick) return;
+    const id = setInterval(() => {
+      setRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [shouldTick]);
 
   const handleChatSuccess = useCallback((data: unknown) => {
     const d = data as ChatResponse;
     if (d?.progressIndicator) setProgressIndicator(d.progressIndicator);
     if (typeof d?.activeLearningSeconds === "number") setChatALS(d.activeLearningSeconds);
+    // V2-R4A.4: Resync countdown from authoritative backend value.
+    if (typeof d?.remainingRequiredSeconds === "number") {
+      setRemainingSeconds(Math.max(0, d.remainingRequiredSeconds));
+    } else if (d?.remainingRequiredSeconds === null) {
+      setRemainingSeconds(null);
+    }
     queryClient.invalidateQueries({ queryKey: chatKey });
     queryClient.invalidateQueries({ queryKey: lessonKey });
   }, [queryClient, chatKey, lessonKey]);
@@ -368,6 +421,30 @@ export default function LessonPage() {
             </span>
           )}
         </div>
+
+        {/* V2-R4A.4: Required session countdown — compact, display-only */}
+        {(session as any)?.requiredSessionMinutes != null && (
+          <div className="px-4 pb-1 flex items-center">
+            {isOptionalContinuation ? (
+              <span className="text-[11px] text-muted-foreground/70 italic">
+                ✓ Պarтадир zhamanak avartvac · kamavorshararunakutyun
+              </span>
+            ) : serverRequiredCompleted ? (
+              <span className="text-[11px] text-secondary font-medium">
+                ✓ Պarтадир usustsyan zhamanakn avartvac e
+              </span>
+            ) : (
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <span>⏱</span>
+                <span className="hidden sm:inline">Պarтадир usustsyan zhamanak ·</span>
+                <span className="text-white font-mono font-semibold tabular-nums">
+                  {remainingSeconds !== null ? formatCountdown(remainingSeconds) : "--:--"}
+                </span>
+                <span className="text-muted-foreground/60">mnacel e</span>
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Phase strip */}
         <div className="flex gap-1 px-4 pb-3 overflow-x-auto scrollbar-none">

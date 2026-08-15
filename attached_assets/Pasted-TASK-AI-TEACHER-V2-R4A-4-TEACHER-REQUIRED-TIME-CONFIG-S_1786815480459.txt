@@ -1,0 +1,395 @@
+TASK — AI TEACHER V2 — R4A.4
+TEACHER REQUIRED-TIME CONFIG + STUDENT COUNTDOWN + R4 CLOSURE
+
+R4A.1 + R4A.2 + R4A.3 are APPROVED.
+
+Implement ONLY R4A.4.
+
+COST / SCOPE RULE:
+DO NOT perform another broad architecture audit.
+DO NOT explore unrelated files.
+Read only the exact existing R4A implementation points needed for this task.
+Do not run browser UAT.
+Do not refactor unrelated code.
+Do not start R5.
+
+This is the FINAL R4 implementation round.
+
+==================================================
+1. GOAL
+==================================================
+
+Complete the Learning Budget feature by adding:
+
+A) Teacher configuration:
+   teacher can set the REQUIRED learning time for a lesson.
+
+B) Student visibility:
+   during the AI Teacher lesson, learner sees the remaining REQUIRED
+   learning time as a decreasing countdown.
+
+Example:
+
+Teacher sets:
+25 minutes
+
+Student sees:
+
+Պարտադիր ուսուցման ժամանակ
+Մնացել է 25:00
+
+then:
+
+24:59
+24:58
+24:57
+...
+
+until required learning is completed.
+
+IMPORTANT:
+
+The countdown UI is NOT authoritative.
+
+Backend R4A active-learning accounting and Decision Engine remain
+authoritative for actual session-budget exhaustion.
+
+==================================================
+2. TEACHER CONFIGURATION
+==================================================
+
+Use the EXISTING field:
+
+lessons.requiredSessionMinutes
+
+Do NOT create another duration field.
+
+Add a minimal teacher-side control in the existing appropriate lesson
+edit/configuration area.
+
+Armenian label:
+
+«Պարտադիր ուսուցման ժամանակ»
+
+Helper text:
+
+«Սահմանեք այս դասի պարտադիր ուսուցման տևողությունը րոպեներով։»
+
+Input:
+positive integer minutes.
+
+Example:
+
+Պարտադիր ուսուցման ժամանակ
+[ 25 ] րոպե
+
+Teacher must be able to:
+- see current value;
+- edit it;
+- save it;
+- refresh and see the persisted value.
+
+Use existing lesson update API if safely possible.
+Do not create duplicate lesson-settings architecture.
+
+Do not redesign Teacher Dashboard.
+
+==================================================
+3. SESSION SNAPSHOT RULE
+==================================================
+
+R4A already snapshots requiredSessionMinutes into lesson_sessions.
+
+Preserve this rule.
+
+Changing lessons.requiredSessionMinutes must affect NEW sessions.
+
+It must NOT silently rewrite the required-time contract of an already
+active session.
+
+Example:
+
+lesson configured = 25 min
+student starts session
+session snapshot = 25 min
+
+teacher later changes lesson to 30 min
+
+existing session remains 25 min
+new session uses 30 min.
+
+Add/retain a focused test for this invariant.
+
+==================================================
+4. EXPOSE REQUIRED TIME TO STUDENT
+==================================================
+
+GET /api/lessons/:id currentSession must expose the existing session
+snapshot:
+
+requiredSessionMinutes
+activeLearningSeconds
+requiredSessionCompletedAt
+optionalContinuation
+
+Do not calculate a second competing source of truth.
+
+Initial authoritative remaining time:
+
+remainingRequiredSeconds =
+max(
+  requiredSessionMinutes * 60 - activeLearningSeconds,
+  0
+)
+
+Reuse existing R4A calculation/helper where possible.
+
+==================================================
+5. STUDENT COUNTDOWN UI
+==================================================
+
+In the existing AI Teacher lesson page, show a compact time indicator.
+
+Armenian UI:
+
+⏱ Պարտադիր ուսուցման ժամանակ
+Մնացել է 24:37
+
+Display as MM:SS.
+
+If >= 60 minutes, support a sensible H:MM:SS representation.
+
+The timer must visibly decrease while the learner is in the active
+required-learning lesson.
+
+Do NOT create a stressful full-screen timer.
+Do NOT redesign the lesson page.
+
+Keep it compact and clearly visible.
+
+==================================================
+6. COUNTDOWN BEHAVIOR
+==================================================
+
+The frontend may decrement its DISPLAY timer once per second for smooth
+visual feedback.
+
+But:
+
+FRONTEND TIMER MUST NOT:
+- write mastery;
+- create evidence;
+- end the session by itself;
+- mark failure;
+- advance MicroNodes;
+- invoke END_REQUIRED_SESSION by itself.
+
+Backend remains authoritative.
+
+On every successful chat response, synchronize the displayed timer
+from the authoritative backend:
+
+remainingRequiredSeconds
+
+This corrects frontend drift.
+
+Also synchronize from currentSession on:
+- initial page load;
+- refresh;
+- resume.
+
+==================================================
+7. ACTIVE LEARNING VS WALL CLOCK
+==================================================
+
+CRITICAL:
+
+Do NOT replace the R4A active-learning accounting model with a pure
+wall-clock timer.
+
+Existing backend behavior remains authoritative.
+
+If browser sits idle, the visual timer may temporarily drift from the
+backend model.
+
+That is acceptable.
+
+At the next authoritative server response, UI MUST resync to backend
+remainingRequiredSeconds.
+
+Do not add heartbeat/pause architecture in R4A.4.
+
+==================================================
+8. REQUIRED SESSION COMPLETED
+==================================================
+
+When:
+
+requiredSessionCompletedAt != null
+AND
+optionalContinuation == false
+
+do NOT keep showing a negative/decreasing required timer.
+
+Show:
+
+«Պարտադիր ուսուցման ժամանակն ավարտված է»
+
+and preserve the existing R4A.3 completion UI:
+
+«Այսօրվա պարտադիր ուսուցումն ավարտված է։»
+
+[Ավարտել]
+[Շարունակել կամավոր]
+
+Never display negative time.
+
+==================================================
+9. OPTIONAL CONTINUATION
+==================================================
+
+When:
+
+optionalContinuation == true
+
+the required countdown is finished and must NOT continue decreasing.
+
+Show a small state such as:
+
+«Պարտադիր ժամանակն ավարտված է · կամավոր շարունակություն»
+
+Do NOT introduce a new optional-learning time limit.
+
+Optional continuation remains unlimited for now.
+
+All existing evidence and cognitive progression continue normally.
+
+==================================================
+10. NO REQUIRED TIME CONFIGURED
+==================================================
+
+If:
+
+lessons.requiredSessionMinutes == null
+
+preserve backward compatibility.
+
+Do NOT invent a default required duration in this round.
+
+The AI Teacher lesson must continue functioning normally.
+
+Do not show a misleading countdown.
+
+Teacher can configure the value later.
+
+==================================================
+11. IMPORTANT EXISTING R4 INVARIANTS
+==================================================
+
+Do not change these approved behaviors:
+
+- activeLearningSeconds is backend authoritative
+- session snapshot semantics
+- END_REQUIRED_SESSION is deterministic
+- time expiry is NOT learner failure
+- demonstrated cognitive level is preserved
+- SESSION_TIME_LIMIT means resume later
+- future/unvisited nodes are not marked failed/revisit merely because
+  session time ended
+- optionalContinuation bypasses required-budget blocking
+- evidence during optional continuation remains real
+- refresh preserves completion/continuation state
+
+==================================================
+12. MINIMAL TESTS
+==================================================
+
+Add focused R4A.4 tests only.
+
+At minimum verify:
+
+T01 teacher requiredSessionMinutes persists
+T02 refresh returns persisted lesson value
+T03 new session snapshots configured required minutes
+T04 active session snapshot is not changed by later teacher edit
+T05 currentSession exposes requiredSessionMinutes
+T06 currentSession exposes activeLearningSeconds
+T07 remainingRequiredSeconds never below zero
+T08 student display initializes from server state
+T09 display countdown decreases locally
+T10 chat response resynchronizes countdown from backend
+T11 refresh/resume resynchronizes from currentSession
+T12 completed required session shows completed state
+T13 optional continuation stops required countdown
+T14 null requiredSessionMinutes shows no misleading timer
+T15 frontend timer cannot trigger pedagogical state changes
+T16 R4A.3 remains green
+T17 R4A.1+2 remains green
+T18 R3/R2/R1/R1.1 remain green
+T19 backend TypeScript clean
+T20 frontend TypeScript clean
+
+Use unit/structural tests where practical.
+
+DO NOT perform browser UAT in this round.
+
+==================================================
+13. STRICTLY OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- P / Adaptive Readiness
+- learner «Պատրաստ եմ / հոգնած եմ / թեթև ռեժիմ» selection
+- ZPD adaptation
+- cognitive-cost model
+- motivation model
+- energy/fatigue inference
+- heartbeat system
+- pause/resume timer architecture
+- optional continuation time limits
+- lesson-page redesign
+- Kahoot UI
+- mapper changes
+- quiz changes
+- Knowledge Tree changes
+- unrelated cleanup
+- unrelated schema changes
+
+==================================================
+14. FINAL R4 CLOSURE REPORT
+==================================================
+
+Return a CONCISE report only.
+
+Report:
+
+1. files changed
+2. teacher required-time configuration
+3. DB persistence
+4. session snapshot behavior
+5. student countdown behavior
+6. backend/UI synchronization
+7. completion behavior
+8. optional-continuation behavior
+9. null-duration backward compatibility
+10. tests/pass counts
+11. TypeScript
+12. regression results
+
+Explicitly answer:
+
+A) Can teacher now set required lesson time?
+B) Does it persist after refresh?
+C) Does a started session preserve its original time snapshot?
+D) Can learner see remaining time decreasing during the lesson?
+E) Is backend still authoritative rather than the frontend timer?
+F) Does the timer resync after each chat response?
+G) Does time expiry remain non-failure?
+H) Does optional continuation work without countdown blocking?
+I) Did R1–R4A.3 regress?
+
+STOP after R4A.4.
+
+DO NOT start R5.
+DO NOT propose or execute additional tasks automatically.

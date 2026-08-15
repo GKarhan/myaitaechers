@@ -66,6 +66,26 @@ SESSION_TIME_LIMIT deferred to R4A.3.
 
 **Frontend (lesson-page.tsx)**: `showCompletionCard = serverRequiredCompleted && !isOptionalContinuation && !isCompleted`. Local optimistic state `localOptContinuation` for instant feedback. Synced from server on refresh. Input disabled when card showing. Card shows "Այսօրվա պարտադիր ուսուցումն ավարտված է։" with [Ավարտել] (→ navigate away) and [Շարունակել կամավոր] (→ set optionalContinuation=true, resume).
 
+## R4A.4 additions
+
+**Teacher config**: `PUT /teacher/lessons/:id` now accepts `requiredSessionMinutes` (positive integer or null). Validated server-side. Uses existing teacher lesson update route — no new route.
+
+**Session exposure**: GET /lessons/:id `currentSession` now includes `requiredSessionMinutes` (session snapshot) and `activeLearningSeconds`. Combined with existing `requiredSessionCompletedAt` and `optionalContinuation`, the student has all fields needed for countdown init.
+
+**Countdown formula (frontend)**: `remainingSeconds = max(0, rsm * 60 - als)`. Initialized from `currentSession` on mount (useEffect on `session?.id`). Decrements by 1/s via `setInterval` only when `shouldTick = remainingSeconds > 0 && !serverRequiredCompleted && !isOptionalContinuation`. Resynced from `d.remainingRequiredSeconds` on every chat response.
+
+**formatCountdown**: `MM:SS`; if seconds ≥ 3600, `H:MM:SS`. Located at top of lesson-page.tsx before the PHASES constant.
+
+**Display states** (in lesson-page.tsx header):
+- `requiredSessionMinutes == null` → nothing rendered (backward compat)
+- `isOptionalContinuation` → "✓ Partadir zhamanak avartvac · kamavorshararunakutyun"
+- `serverRequiredCompleted && !isOptionalContinuation` → "✓ Partadir usustsyan zhamanaknаvartvacel"
+- else → "⏱ ... [countdown]"
+
+**Teacher dashboard**: `LessonNodesPanel` gains `requiredSessionMinutes?: number | null` prop + `rsmEditing/rsmValue/rsmSaving/rsmError` state + inline edit panel. Saves via direct `fetch PUT /api/teacher/lessons/:id`. Call site passes `(l as any).requiredSessionMinutes ?? null`.
+
+**Test pattern**: Use absolute paths (`/home/runner/workspace/...`) + `execSync("cat ...")` — avoid `__dirname` (not available in ESM). Regression T16-T18 use `execSync("pnpm run test:xxx 2>&1 || true")` and assert on pass-count string.
+
 ## Known pre-existing failure
 
 `test:phase2a-r3` T27 was failing before R4A — confirmed by git stash check. Unrelated to budget work.

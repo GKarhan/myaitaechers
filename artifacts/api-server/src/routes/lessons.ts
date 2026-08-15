@@ -171,6 +171,9 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
           // V2-R4A.3: required-session completion state
           requiredSessionCompletedAt: (session as any).requiredSessionCompletedAt?.toISOString() ?? null,
           optionalContinuation: (session as any).optionalContinuation ?? false,
+          // V2-R4A.4: time fields for student countdown
+          requiredSessionMinutes:  (session as any).requiredSessionMinutes  ?? null,
+          activeLearningSeconds:   (session as any).activeLearningSeconds   ?? 0,
         }
       : null,
   });

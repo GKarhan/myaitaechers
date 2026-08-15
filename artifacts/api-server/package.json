@@ -38,7 +38,8 @@
     "test:v2r4a3": "tsx src/lib/__tests__/v2r4a3-session-completion.test.ts",
     "test:v2r1": "tsx src/lib/__tests__/v2r1-state-machine.test.ts",
     "test:v2r1-1": "tsx src/lib/__tests__/v2r1-1-closure.test.ts",
-    "test:v2r3": "tsx src/lib/__tests__/v2r3-decision-engine.test.ts"
+    "test:v2r3": "tsx src/lib/__tests__/v2r3-decision-engine.test.ts",
+    "test:v2r4a4": "tsx src/lib/__tests__/v2r4a4.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

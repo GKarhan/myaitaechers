@@ -194,12 +194,20 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
 router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId, lessonGoal, lessonOutcomes } = req.body as {
+  const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId, lessonGoal, lessonOutcomes, requiredSessionMinutes } = req.body as {
     title?: string; description?: string; bloomLevel?: number; content?: string;
     lessonNumber?: number; pagesFrom?: number; pagesTo?: number; month?: number; day?: number;
     textbookAuthor?: string; textbookTitle?: string; chapterTitle?: string; paragraphNumber?: string;
     textbookResourceId?: number | null; lessonGoal?: string; lessonOutcomes?: string[];
+    requiredSessionMinutes?: number | null;
   };
+  // R4A.4: validate requiredSessionMinutes if provided
+  if (requiredSessionMinutes !== undefined && requiredSessionMinutes !== null) {
+    const rsm = Number(requiredSessionMinutes);
+    if (!Number.isInteger(rsm) || rsm < 1) {
+      res.status(400).json({ error: "requiredSessionMinutes must be a positive integer" }); return;
+    }
+  }
   // If a resource is being linked/changed, derive title/author from it
   let resolvedTextbookTitle = textbookTitle;
   let resolvedTextbookAuthor = textbookAuthor;
@@ -233,6 +241,8 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
       ...(textbookResourceId !== undefined && { textbookResourceId }),
       ...(lessonGoal !== undefined && { lessonGoal }),
       ...(lessonOutcomes !== undefined && { lessonOutcomes }),
+      // R4A.4: teacher-configurable required session time
+      ...(requiredSessionMinutes !== undefined && { requiredSessionMinutes: requiredSessionMinutes ?? null }),
     })
     .where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!)))
     .returning();

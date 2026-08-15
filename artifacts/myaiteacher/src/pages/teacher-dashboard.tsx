@@ -815,6 +815,7 @@ function LessonNodesPanel({
   authoringStatus = "draft",
   lessonClassId = null,
   lessonSubjectId = null,
+  requiredSessionMinutes = null,
   onOpenResults,
 }: {
   lessonId: number;
@@ -831,6 +832,8 @@ function LessonNodesPanel({
   lessonClassId?: number | null;
   /** P1.12: subject for quiz review navigation */
   lessonSubjectId?: number | null;
+  /** R4A.4: teacher-configurable required session time (minutes) */
+  requiredSessionMinutes?: number | null;
   /** Open the inline results panel for a quiz (quiz ID → parent handler) */
   onOpenResults?: (quizId: number) => void;
 }) {
@@ -844,6 +847,12 @@ function LessonNodesPanel({
   const [descEditing, setDescEditing] = useState(false);
   const [descValue, setDescValue] = useState(lessonDescription ?? "");
   const descUpdateMutation = useUpdateTeacherLesson();
+
+  // R4A.4: Required session time edit state
+  const [rsmEditing, setRsmEditing] = useState(false);
+  const [rsmValue, setRsmValue] = useState(requiredSessionMinutes != null ? String(requiredSessionMinutes) : "");
+  const [rsmSaving, setRsmSaving] = useState(false);
+  const [rsmError, setRsmError] = useState<string | null>(null);
 
   // Node edit/add state
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
@@ -2411,6 +2420,83 @@ function LessonNodesPanel({
               </div>
             );
           })()}
+
+          {/* ── R4A.4: Required session time ────────────────────────────────── */}
+          <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">⏱ Պarтадир usustsyan zhamanak</p>
+              {!rsmEditing && (
+                <button
+                  onClick={() => { setRsmValue(requiredSessionMinutes != null ? String(requiredSessionMinutes) : ""); setRsmEditing(true); setRsmError(null); }}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                  title="Xmbagrел"
+                >✏️</button>
+              )}
+            </div>
+            {rsmEditing ? (
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-muted-foreground/60">Սahmanec ayzh dasi partadir usutsmyan tevolutyunə rponerov.</p>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number" min="1" step="1" placeholder="25"
+                    className="w-20 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    value={rsmValue}
+                    onChange={(e) => { setRsmValue(e.target.value); setRsmError(null); }}
+                  />
+                  <span className="text-xs text-muted-foreground/60">rop.</span>
+                </div>
+                {rsmError && <p className="text-[10px] text-destructive">{rsmError}</p>}
+                <div className="flex gap-1">
+                  <button
+                    disabled={rsmSaving}
+                    onClick={async () => {
+                      const parsed = parseInt(rsmValue, 10);
+                      if (!rsmValue.trim() && rsmValue !== "0") {
+                        // Allow clearing
+                        setRsmSaving(true);
+                        try {
+                          const r = await fetch(`/api/teacher/lessons/${lessonId}`, {
+                            method: "PUT",
+                            headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ requiredSessionMinutes: null }),
+                          });
+                          if (!r.ok) { const d = await r.json(); setRsmError(d.error ?? "Sxal"); return; }
+                          setRsmEditing(false);
+                          qc.invalidateQueries({ queryKey: ["teacher-courses"] });
+                        } finally { setRsmSaving(false); }
+                        return;
+                      }
+                      if (!Number.isInteger(parsed) || parsed < 1) {
+                        setRsmError("Datxel drakan amshakeluyts rope"); return;
+                      }
+                      setRsmSaving(true);
+                      try {
+                        const r = await fetch(`/api/teacher/lessons/${lessonId}`, {
+                          method: "PUT",
+                          headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
+                          body: JSON.stringify({ requiredSessionMinutes: parsed }),
+                        });
+                        if (!r.ok) { const d = await r.json(); setRsmError(d.error ?? "Sxal"); return; }
+                        setRsmEditing(false);
+                        qc.invalidateQueries({ queryKey: ["teacher-courses"] });
+                      } finally { setRsmSaving(false); }
+                    }}
+                    className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
+                  >{rsmSaving ? "..." : "Hastatеl"}</button>
+                  <button
+                    onClick={() => { setRsmEditing(false); setRsmError(null); }}
+                    className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
+                  >Chegharкel</button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-white/70">
+                {requiredSessionMinutes != null
+                  ? `${requiredSessionMinutes} rop.`
+                  : <span className="text-muted-foreground/40 italic">Chsahmanvatsi e</span>}
+              </p>
+            )}
+          </div>
 
           {/* ── Lesson Overview / General Theory (Step 5) ───────────────────── */}
           {/* Block is hidden when content is empty and not in edit mode (display-only, no DB change). */}
@@ -5261,6 +5347,7 @@ export default function TeacherDashboard() {
                                 authoringStatus={(l as any).status ?? "draft"}
                                 lessonClassId={(l as any).classId ?? null}
                                 lessonSubjectId={selectedCourse?.subjectId ?? null}
+                                requiredSessionMinutes={(l as any).requiredSessionMinutes ?? null}
                                 onOpenResults={(quizId) => { setResultsFrom("allQuizzes"); setResultsQuizId(quizId); }}
                               />
                             </div>
