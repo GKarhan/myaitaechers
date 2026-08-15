@@ -29,7 +29,8 @@
     "test:safety": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/test-isolation-safety.test.ts",
     "test:kt14a": "tsx src/lib/__tests__/kt-1-4a-coverage.test.ts",
     "test:kt15": "tsx src/lib/__tests__/kt-1-5-acceptance.test.ts",
-    "test:phase2a-r2": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r2-schema.test.ts"
+    "test:phase2a-r2": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r2-schema.test.ts",
+    "test:phase2a-r3": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r3-acceptance.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

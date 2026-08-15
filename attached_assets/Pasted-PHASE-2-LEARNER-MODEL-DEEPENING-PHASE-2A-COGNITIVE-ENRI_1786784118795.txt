@@ -1,0 +1,819 @@
+PHASE 2 — LEARNER MODEL DEEPENING
+PHASE 2A — COGNITIVE ENRICHMENT
+ROUND 3 — COGNITIVE PATH GENERATION + TEACHER REVIEW UI
+
+IMPORTANT CONTEXT
+
+Phase 2A Round 1 forensic audit is complete.
+
+Phase 2A Round 2 schema/data foundation is complete.
+
+Task #62 was completed with:
+- Cognitive Enrichment schema foundation
+- DB constraints
+- migration
+- validation
+- evidence-readiness foundation
+- 29/29 Phase 2A tests passing
+- KT-1.4A regression passing
+- KT-1.5 regression passing
+- clean TypeScript check
+
+DO NOT redesign the Round 2 schema unless a real implementation blocker is
+discovered and documented first.
+
+This round makes Cognitive Enrichment REAL and TEACHER-VISIBLE.
+
+============================================================
+0. PRIMARY GOAL
+============================================================
+
+For each existing MicroNode, allow the system to create and teacher-review
+a pedagogically valid cognitive path.
+
+Example:
+
+MicroNode:
+Ֆիզիկական մարմին և նյութ
+
+Cognitive Path:
+
+Հիշել
+→ Հասկանալ
+→ Կիրառել
+→ Վերլուծել
+
+Target Cognitive Ceiling:
+Վերլուծել
+
+Another MicroNode may legitimately have:
+
+Հիշել
+→ Հասկանալ
+→ Կիրառել
+
+Target:
+Կիրառել
+
+Another may have only:
+
+Հիշել
+→ Հասկանալ
+
+DO NOT mechanically assign all six Bloom levels to every MicroNode.
+
+The cognitive path must be determined from the actual learning objective,
+curriculum content, source exercises/tasks, and the type of knowledge/skill
+represented by the MicroNode.
+
+============================================================
+1. LOCKED CURRICULUM ARCHITECTURE
+============================================================
+
+DO NOT CHANGE the existing hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode remains the atomic curriculum knowledge unit.
+
+DO NOT create:
+
+MicroNode
+→ Bloom node
+→ subnode
+
+Cognitive levels are NOT curriculum nodes.
+
+They are enrichment metadata/assets attached to the existing MicroNode.
+
+Exercises remain attached to MicroNodes.
+
+The existing mapping architecture must remain source-faithful.
+
+============================================================
+2. THIS IS POST-MAPPING ENRICHMENT
+============================================================
+
+Cognitive Enrichment must NOT be added to the source extraction/parser
+responsibilities.
+
+The intended pipeline is:
+
+PDF/Textbook
+→ Mapping
+→ Teacher Review of Mapping
+→ Cognitive Enrichment
+→ Teacher Review/Confirmation
+→ later learner/evidence systems
+
+Therefore:
+
+DO NOT modify manual-map or auto-map contracts.
+
+DO NOT weaken source fidelity.
+
+DO NOT require remapping existing lessons.
+
+Existing mapped MicroNodes must be enrichable directly.
+
+============================================================
+3. AUDIT FIRST
+============================================================
+
+Before changing code:
+
+Inspect the exact implementation produced by Phase 2A Round 2.
+
+Report:
+
+A. Exact cognitive tables now present.
+B. Exact columns.
+C. Exact constraints/indexes.
+D. Exact task/exercise linkage architecture.
+E. Exact evidence-readiness fields added.
+F. Current use of lesson_nodes.target_bloom_level.
+G. Existing teacher review UI structure.
+H. Existing APIs for MicroNode editing.
+I. Existing AI structured-generation infrastructure that can safely be reused.
+J. Existing Phase 2 teaching-content generation flow.
+
+Then implement Round 3 against the ACTUAL repository.
+
+Do not invent duplicate schema.
+
+============================================================
+4. COGNITIVE PATH GENERATION
+============================================================
+
+Add an explicit teacher action for a MicroNode:
+
+"Ստեղծել ճանաչողական ուղին"
+
+If enrichment already exists:
+
+"Վերաստեղծել ճանաչողական ուղին"
+
+Generation must return a STRUCTURED result, not free-form prose.
+
+For each MicroNode determine:
+
+1. applicable cognitive levels
+2. sequence
+3. target cognitive ceiling
+4. performance objective for each level
+5. success criterion for each level
+6. minimumIndependentEvidence
+7. preferredInteractionTypes
+8. provenance
+
+Allowed cognitive levels:
+
+remember
+understand
+apply
+analyze
+evaluate
+create
+
+============================================================
+5. GENERATION INPUT
+============================================================
+
+The AI must receive enough context to make a pedagogically grounded decision.
+
+At minimum include:
+
+- Subject
+- Lesson
+- Topic
+- MicroNode title
+- learningObjective
+- theory/content associated with MicroNode
+- source page
+- source-grounded exercise/task information attached to the MicroNode
+- existing Phase 2 teaching content when relevant
+- any existing cognitive enrichment when REGENERATING
+
+DO NOT allow the model to use only the MicroNode title.
+
+============================================================
+6. TARGET COGNITIVE CEILING
+============================================================
+
+The AI must explicitly determine the highest justified cognitive level.
+
+The ceiling must be based on what the curriculum expects from THIS MicroNode.
+
+Examples:
+
+Definition/recognition:
+remember → understand
+
+Conceptual understanding:
+remember → understand
+
+Procedural use:
+remember → understand → apply
+
+Comparison/relationship reasoning:
+understand → apply → analyze
+
+Judgment with criteria:
+understand → apply → analyze → evaluate
+
+Production/design:
+understand → apply → analyze → evaluate → create
+
+These are GUIDES, not mechanical rules.
+
+The source learning objective and tasks have priority.
+
+============================================================
+7. PERFORMANCE OBJECTIVE
+============================================================
+
+Every applicable cognitive level needs an observable performance objective.
+
+Bad:
+
+"Հասկանալ մոլեկուլները։"
+
+Good:
+
+"Սովորողը կարող է սեփական բառերով բացատրել, թե ինչ է մոլեկուլը և
+տարբերակել այն ատոմից։"
+
+For Apply:
+
+"Սովորողը կարող է նոր օրինակում կիրառել ատոմի և մոլեկուլի
+տարբերակման սկզբունքը։"
+
+Objectives must describe observable learner performance.
+
+============================================================
+8. SUCCESS CRITERION
+============================================================
+
+Every cognitive level must have a success criterion.
+
+Example:
+
+REMEMBER
+Performance objective:
+Սովորողը կարող է ճանաչել և անվանել հասկացությունը։
+
+Success criterion:
+Ճիշտ է ճանաչում/ընտրում հասկացությունը անկախ օրինակներում։
+
+UNDERSTAND
+Performance objective:
+Սովորողը կարող է բացատրել հասկացության իմաստը։
+
+Success criterion:
+Ճիշտ բացատրում կամ դասակարգում է հասկացությունը նոր ձևակերպմամբ։
+
+APPLY
+Performance objective:
+Սովորողը կարող է կիրառել հասկացությունը նոր իրավիճակում։
+
+Success criterion:
+Ճիշտ լուծում կամ ընտրում է առնվազն պահանջվող անկախ կիրառական
+առաջադրանքները։
+
+============================================================
+9. EVIDENCE-PRODUCING ASSETS
+============================================================
+
+Cognitive Enrichment must not stop at Bloom labels.
+
+For every cognitive level the teacher must be able to see:
+
+- performance objective
+- success criterion
+- required independent evidence count
+- preferred interaction types
+- source exercises/tasks that can provide evidence
+- missing evidence opportunities
+
+Example:
+
+Կիրառել
+
+Պահանջվող անկախ ապացույցներ: 3
+
+Source համապատասխան վարժություններ: 1
+
+Պակասող հնարավորություններ: 2
+
+This DOES NOT yet mean generate the missing two tasks automatically.
+
+It means the architecture/UI makes the gap explicit.
+
+============================================================
+10. EXERCISE CLASSIFICATION
+============================================================
+
+Existing textbook exercises remain unchanged.
+
+Where pedagogically justified, allow an existing exercise/task to be linked
+to the cognitive level it can provide evidence for.
+
+Example:
+
+Exercise #4
+→ MicroNode: Ատոմներ
+→ Cognitive Level: understand
+
+Exercise #5
+→ MicroNode: Ատոմներ
+→ Cognitive Level: apply
+
+DO NOT duplicate exercise content.
+
+DO NOT rewrite textbook exercises.
+
+DO NOT fabricate source provenance.
+
+If AI proposes the cognitive classification, mark that classification with
+appropriate provenance/status according to the Round 2 architecture.
+
+Teacher must be able to review/change it.
+
+============================================================
+11. FUTURE AI-EQUIVALENT VARIANTS
+============================================================
+
+Show evidence gaps now.
+
+Example:
+
+Required evidence: 3
+Source tasks: 1
+Missing: 2
+
+But DO NOT yet make AI Teacher automatically generate learner-facing variants
+during teaching.
+
+That comes in a later round.
+
+However, preserve the Round 2 architecture that will allow:
+
+source exercise
+→ seed
+→ AI equivalent variant 1
+→ AI equivalent variant 2
+
+with provenance and lineage.
+
+============================================================
+12. MINIMUM-EFFORT INTERACTION PRINCIPLE
+============================================================
+
+LOCKED PRODUCT PRINCIPLE:
+
+MINIMUM-EFFORT INTERACTION,
+MAXIMUM-VALID EVIDENCE.
+
+Each cognitive level may specify preferred interaction types.
+
+Examples:
+
+remember:
+- multiple_choice
+- true_false
+- matching
+
+understand:
+- classification
+- matching
+- multiple_choice
+- short_answer
+
+apply:
+- numeric_answer
+- multiple_choice after independent problem solving
+- short_answer
+- problem_solving
+
+analyze:
+- classification
+- multi_select
+- ordering
+- short_answer
+- constructed_response
+
+evaluate/create:
+- use interaction formats justified by the actual task
+
+Do not mechanically assign these lists.
+
+AI proposes; teacher controls.
+
+============================================================
+13. INDEPENDENT PROBLEM SOLVING
+============================================================
+
+The model/UI must support the future case where:
+
+1. learner independently solves a problem;
+2. learner does NOT need to type the whole reasoning unless required;
+3. learner may:
+   - enter final answer, or
+   - select the correct final answer;
+4. the task still counts as Apply/Analyze if its actual cognitive demand
+   justifies that classification.
+
+DO NOT equate:
+
+multiple choice = Remember
+
+or
+
+written response = higher-order thinking.
+
+Interaction format and cognitive demand are separate.
+
+============================================================
+14. BLOOM ≠ DIFFICULTY ≠ INTERACTION
+============================================================
+
+Maintain three separate dimensions:
+
+Cognitive demand:
+remember / understand / apply / analyze / evaluate / create
+
+Difficulty:
+LOW / MEDIUM / HIGH or canonical repository equivalent
+
+Interaction:
+multiple_choice / matching / numeric_answer / short_answer / etc.
+
+Never infer one directly from another.
+
+============================================================
+15. TEACHER REVIEW UI
+============================================================
+
+Add Cognitive Enrichment INSIDE the existing Teacher Review experience.
+
+Do NOT create a disconnected admin page unless the current architecture
+makes that absolutely necessary.
+
+For each MicroNode add a collapsible block such as:
+
+────────────────────────────────────
+
+🧠 ՃԱՆԱՉՈՂԱԿԱՆ ՈՒՂԻ
+
+Հիշել → Հասկանալ → Կիրառել
+
+🎯 Թիրախային մակարդակ՝ Կիրառել
+
+[Հիշել]
+Կատարողական նպատակ
+...
+
+Հաջողության չափանիշ
+...
+
+Անկախ ապացույցներ
+Պահանջվում է՝ 2
+Source task՝ 1
+Պակասում է՝ 1
+
+Նախընտրելի պատասխանման ձևեր
+• Ընտրություն
+• Համապատասխանեցում
+
+Կապված վարժություններ
+• Վարժություն 4
+
+[Հասկանալ]
+...
+
+[Կիրառել] 🎯
+...
+
+────────────────────────────────────
+
+The exact visual design should match the existing Teacher Review UI.
+
+============================================================
+16. TEACHER CONTROL
+============================================================
+
+Teacher must be able to:
+
+- Generate cognitive enrichment
+- Regenerate it
+- Edit performanceObjective
+- Edit successCriterion
+- change minimumIndependentEvidence
+- change preferredInteractionTypes
+- add/remove an applicable cognitive level
+- reorder applicable levels where valid
+- change target ceiling
+- review/change exercise ↔ cognitive-level linkage
+- save/confirm
+
+Teacher has final authority.
+
+AI output is a proposal.
+
+============================================================
+17. SAFE REGENERATION
+============================================================
+
+Regeneration must NOT silently overwrite teacher-reviewed data.
+
+Audit the repository's current review/status conventions.
+
+Implement a safe behavior such as:
+
+Generate:
+allowed when no enrichment exists.
+
+Regenerate:
+must require explicit teacher action.
+
+If teacher-edited/confirmed enrichment exists:
+do not silently replace it.
+
+Use the repository's existing confirmation/modal pattern if available.
+
+============================================================
+18. PROVENANCE
+============================================================
+
+Preserve provenance visibly and in storage.
+
+At minimum distinguish:
+
+Աղբյուրից
+AI-ի կողմից
+Ուսուցչի կողմից
+
+Do not present AI-generated material as textbook content.
+
+Exercise text copied from textbook retains source provenance.
+
+AI-created cognitive objectives remain AI-generated until teacher review,
+according to the actual Round 2 schema/status model.
+
+============================================================
+19. ARMENIAN UI
+============================================================
+
+ALL learner/teacher-facing new labels must be Armenian Unicode.
+
+Use:
+
+remember   → Հիշել
+understand → Հասկանալ
+apply      → Կիրառել
+analyze    → Վերլուծել
+evaluate   → Գնահատել
+create     → Ստեղծել
+
+Suggested labels:
+
+🧠 Ճանաչողական ուղի
+🎯 Թիրախային մակարդակ
+Կատարողական նպատակ
+Հաջողության չափանիշ
+Պահանջվող անկախ ապացույցներ
+Կապված վարժություններ
+Պակասող ապացույցներ
+Նախընտրելի պատասխանման ձևեր
+Աղբյուր
+Ստեղծել ճանաչողական ուղին
+Վերաստեղծել ճանաչողական ուղին
+Պահպանել
+Հաստատել
+
+NO transliterated Armenian.
+NO Russian/Cyrillic substitutions.
+NO mixed-script labels.
+
+============================================================
+20. NO LEARNER COGNITIVE CLAIMS YET
+============================================================
+
+DO NOT display:
+
+"Սովորողը հասել է Կիրառել մակարդակին"
+
+or:
+
+"Current cognitive level = Apply"
+
+We still do not have sufficient cognitively tagged learner evidence.
+
+This round defines the CURRICULUM TARGET and evidence design.
+
+Learner demonstrated cognitive level comes later.
+
+============================================================
+21. DO NOT IMPLEMENT CONFIDENCE V2
+============================================================
+
+minimumIndependentEvidence is NOT confidence.
+
+Do NOT change confidenceScore.
+
+Do NOT say:
+
+3/3 = 100% confidence.
+
+Confidence V2 is a later phase.
+
+============================================================
+22. STRICT NON-GOALS
+============================================================
+
+DO NOT modify behavior of:
+
+- manual mapper
+- auto mapper
+- Text Contract
+- source coverage validation
+- source fidelity rules
+- AI Teacher teaching cycle
+- chat.ts runtime teaching behavior
+- quiz scoring
+- mastery scoring
+- Knowledge Tree 4-state model
+- coveragePercent
+- existing Confidence
+- Personalization Engine
+
+Do not change DB schema unless Round 3 genuinely requires a missing field
+that Round 2 failed to provide.
+
+If schema change appears necessary:
+STOP and report the blocker before changing schema.
+
+============================================================
+23. REAL-DATA PILOT
+============================================================
+
+After implementation, use ONE existing real lesson as a pilot.
+
+Prefer the current Physics lesson shown in Teacher Review.
+
+Generate Cognitive Enrichment for at least THREE different MicroNodes.
+
+The three examples should demonstrate different paths where pedagogically
+justified.
+
+For example, do NOT force:
+
+MicroNode 1 = 4 levels
+MicroNode 2 = 4 levels
+MicroNode 3 = 4 levels
+
+The point is to prove variable cognitive ceilings work.
+
+For each pilot MicroNode report:
+
+- title
+- existing learning objective
+- cognitive path
+- target ceiling
+- performance objective per level
+- success criterion per level
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- linked source exercises
+- evidence gap
+
+============================================================
+24. REQUIRED ACCEPTANCE TESTS
+============================================================
+
+At minimum:
+
+T01 — Existing lesson opens with zero cognitive enrichment.
+
+T02 — Generate enrichment for existing MicroNode.
+
+T03 — Generated path is persisted.
+
+T04 — Variable cognitive paths are supported.
+
+T05 — Not all six levels are automatically created.
+
+T06 — Exactly one target ceiling after confirmation.
+
+T07 — performanceObjective persists.
+
+T08 — successCriterion persists.
+
+T09 — minimumIndependentEvidence persists.
+
+T10 — preferredInteractionTypes persist.
+
+T11 — teacher can edit generated objective.
+
+T12 — teacher can edit success criterion.
+
+T13 — teacher can change target ceiling.
+
+T14 — teacher can add/remove applicable level safely.
+
+T15 — teacher can review exercise-level linkage.
+
+T16 — existing source exercise text remains byte-for-byte unchanged.
+
+T17 — no duplicate exercise is created by linking.
+
+T18 — source provenance remains source provenance.
+
+T19 — AI-generated enrichment has AI provenance.
+
+T20 — regeneration requires explicit action.
+
+T21 — confirmed teacher edits are not silently overwritten.
+
+T22 — existing Mapper tests/regressions pass.
+
+T23 — existing Phase 2 teaching-content behavior unchanged.
+
+T24 — quiz scoring unchanged.
+
+T25 — mastery scoring unchanged.
+
+T26 — Knowledge Tree regression passes.
+
+T27 — Confidence behavior unchanged.
+
+T28 — no learner demonstrated cognitive level is fabricated.
+
+T29 — all new UI labels are proper Armenian Unicode.
+
+T30 — zero test-data pollution.
+
+============================================================
+25. REQUIRED FINAL REPORT
+============================================================
+
+Return:
+
+A. Pre-implementation audit.
+
+B. Files changed.
+
+C. API endpoints added/changed.
+
+D. Exact generation input contract.
+
+E. Exact structured AI output contract.
+
+F. Teacher Review UI implementation.
+
+G. Cognitive path persistence flow.
+
+H. Exercise linkage behavior.
+
+I. Regeneration safety behavior.
+
+J. Provenance behavior.
+
+K. Real Physics pilot results for 3 MicroNodes.
+
+L. Screenshots/browser verification.
+
+M. Test results with exact PASS counts.
+
+N. Regression results.
+
+O. Confirmation that Mapper was unchanged.
+
+P. Confirmation that existing Phase 2 teaching content was unchanged.
+
+Q. Confirmation that AI Teacher runtime was unchanged.
+
+R. Confirmation that quiz/mastery/KT/confidence behavior was unchanged.
+
+S. Any unresolved architectural issue.
+
+============================================================
+26. STOP CONDITION
+============================================================
+
+At the end STOP.
+
+DO NOT automatically continue into:
+
+- cognitive-aware learner testing
+- automatic AI task variant generation
+- learner demonstrated cognitive level
+- Cognitive Depth %
+- Confidence V2
+- AI Teacher cognitive progression
+- Knowledge Tree Cognitive Depth UI
+
+Those are later rounds.

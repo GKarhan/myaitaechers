@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, Fragment, useCallback, useMemo, type ReactNode } from "react";
 import {
   DndContext,
   closestCenter,
@@ -641,7 +641,7 @@ function NodeViewModal({
 }) {
   const nodeExercises = exercises.filter((e) => e.relatedNodeId === node.id);
 
-  const renderText = (label: string, value: unknown, italic?: boolean) => {
+  const renderText = (label: string, value: unknown, italic?: boolean): ReactNode => {
     if (!value || (typeof value === "string" && !value.trim())) return null;
     return (
       <div className="space-y-0.5">
@@ -651,7 +651,7 @@ function NodeViewModal({
     );
   };
 
-  const renderList = (label: string, value: unknown) => {
+  const renderList = (label: string, value: unknown): ReactNode => {
     let items: string[] = [];
     if (Array.isArray(value)) items = value.map(String).filter(Boolean);
     else if (typeof value === "string" && value.trim()) items = value.split("\n").filter(Boolean);
@@ -709,23 +709,23 @@ function NodeViewModal({
             {renderText("Ուuումնական նպատակ (LO)", node.learningObjective, true)}
             {renderText("Տեսական բովնադակություն", node.theoryContent)}
             {renderText("Բնօրինակ տեքստ", node.verbatimTheoryAnchor)}
-            {node.sourcePage != null && (
+            {node.sourcePage != null ? (
               <div className="space-y-0.5">
                 <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Աղբյուր էջ</p>
                 <p className="text-xs text-white/70">Էջ {String(node.sourcePage)}</p>
               </div>
-            )}
+            ) : null}
           </section>
 
           {/* PHASE 2 */}
-          {(node.childFriendlyExplanation || node.basicExamples || node.commonMisconception || node.nonExamples || node.realLifeExamples) && (
+          {!!(node.childFriendlyExplanation || node.basicExamples || node.commonMisconception || node.nonExamples || node.realLifeExamples) && (
             <section className="space-y-3 border-t border-white/6 pt-3">
               <p className="text-[9px] font-bold text-indigo-400/60 uppercase tracking-widest">🧠 Phase 2 — Ուսումնական բովանդակություն</p>
-              {renderText("Պարզ բացատրություն", node.childFriendlyExplanation)}
-              {renderList("Հիմնական օրինակներ", node.basicExamples)}
-              {renderText("Տարածված սխալ պատկերացում", node.commonMisconception)}
-              {renderList("Հակաօրինակներ", node.nonExamples)}
-              {renderList("Օրինակներ իրական կյանքից", node.realLifeExamples)}
+              {renderText("Պарз бацатрутюн", node.childFriendlyExplanation)}
+              {renderList("Հimnaкan оrinakner", node.basicExamples)}
+              {renderText("Taratsvar sxal patkeratsum", node.commonMisconception)}
+              {renderList("Hakaоrinakner", node.nonExamples)}
+              {renderList("Оrinakner iraкan кyancits", node.realLifeExamples)}
             </section>
           )}
           {!node.childFriendlyExplanation && (
@@ -753,11 +753,11 @@ function NodeViewModal({
                       {ex.status === "approved"
                         ? <span className="text-[9px] text-emerald-400/60">✅</span>
                         : <span className="text-[9px] text-amber-400/50">🟡 Սևագիր</span>}
-                      {ex.assignment && (
+                      {ex.assignment != null ? (
                         <span className={`text-[9px] font-medium ${ex.assignment === "HOMEWORK" ? "text-amber-400/60" : "text-teal-400/60"}`}>
-                          {ex.assignment === "Տնային" ? "🏠" : "📋"}
+                          {ex.assignment === "Տnаyin" ? "🏠" : "📋"}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -891,6 +891,108 @@ function LessonNodesPanel({
   const [enrichingNodeId, setEnrichingNodeId] = useState<number | null>(null);
   const [enrichNodeErrors, setEnrichNodeErrors] = useState<Record<number, string>>({});
   const [enrichNodeDone, setEnrichNodeDone] = useState<Record<number, boolean>>({});
+
+  // ── Phase 2A R3: Cognitive Path ────────────────────────────────────────────
+  type CogTask = { id: number; cognitiveLevelId: number; lessonExerciseId: number | null; taskProvenance: string; exercise: { exerciseId: string; exerciseTextVerbatim: string; exerciseTextEdited: string | null } | null };
+  type CogLevel = { id: number; cognitiveLevel: string; sequence: number; isApplicable: boolean; isTargetCeiling: boolean; provenance: string; performanceObjective: string | null; successCriterion: string | null; minimumIndependentEvidence: number; preferredInteractionTypes: string[]; tasks: CogTask[] };
+  type CogPathData = { nodeId: number; levels: CogLevel[] };
+
+  const [cogPathOpen,       setCogPathOpen]       = useState<Record<number, boolean>>({});
+  const [cogPathData,       setCogPathData]       = useState<Record<number, CogPathData | null>>({});
+  const [cogPathLoading,    setCogPathLoading]    = useState<Record<number, boolean>>({});
+  const [cogPathGenerating, setCogPathGenerating] = useState<Record<number, boolean>>({});
+  const [cogPathError,      setCogPathError]      = useState<Record<number, string>>({});
+  const [cogPathForceNode,  setCogPathForceNode]  = useState<number | null>(null);
+  const [cogLevelEditId,    setCogLevelEditId]    = useState<number | null>(null);
+  const [cogLevelEditForm,  setCogLevelEditForm]  = useState<{ performanceObjective: string; successCriterion: string; minimumIndependentEvidence: number; preferredInteractionTypes: string[] } | null>(null);
+  const [cogLevelSaving,    setCogLevelSaving]    = useState(false);
+
+  const COG_LEVEL_LABELS: Record<string, string> = { remember: 'Հիշել', understand: 'Հասկանալ', apply: 'Կիրառել', analyze: 'Վերլուծել', evaluate: 'Գнахател', create: 'Ствceghтсел' };
+  const ALL_INTERACTION_TYPES = ['multiple_choice','multi_select','true_false','matching','classification','ordering','numeric_answer','short_answer','constructed_response','problem_solving'];
+
+  const loadCogPath = async (nodeId: number) => {
+    setCogPathLoading((l) => ({ ...l, [nodeId]: true }));
+    setCogPathError((e) => { const n = { ...e }; delete n[nodeId]; return n; });
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-path`, { headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+      const data: CogPathData = await r.json();
+      setCogPathData((d) => ({ ...d, [nodeId]: data }));
+    } catch { setCogPathError((e) => ({ ...e, [nodeId]: "Կаpу sхаl" })); }
+    finally { setCogPathLoading((l) => { const n = { ...l }; delete n[nodeId]; return n; }); }
+  };
+
+  const toggleCogPath = (nodeId: number) => {
+    const opening = !cogPathOpen[nodeId];
+    setCogPathOpen((o) => ({ ...o, [nodeId]: opening }));
+    if (opening && cogPathData[nodeId] === undefined) loadCogPath(nodeId);
+  };
+
+  const generateCogPath = async (nodeId: number, force = false) => {
+    if (cogPathGenerating[nodeId]) return;
+    setCogPathGenerating((g) => ({ ...g, [nodeId]: true }));
+    setCogPathError((e) => { const n = { ...e }; delete n[nodeId]; return n; });
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/generate-cognitive-path`, {
+        method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const data = await r.json() as { levels?: CogLevel[]; error?: string; message?: string };
+      if (r.status === 409 && data.error === 'TEACHER_EDITS_EXIST') {
+        setCogPathForceNode(nodeId);
+      } else if (!r.ok) {
+        setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? 'Sхаl' }));
+      } else {
+        setCogPathData((d) => ({ ...d, [nodeId]: { nodeId, levels: data.levels ?? [] } }));
+        setCogPathForceNode(null);
+      }
+    } catch { setCogPathError((e) => ({ ...e, [nodeId]: 'Кapу sхаl' })); }
+    finally { setCogPathGenerating((g) => { const n = { ...g }; delete n[nodeId]; return n; }); }
+  };
+
+  const startEditCogLevel = (level: CogLevel) => {
+    setCogLevelEditId(level.id);
+    setCogLevelEditForm({ performanceObjective: level.performanceObjective ?? '', successCriterion: level.successCriterion ?? '', minimumIndependentEvidence: level.minimumIndependentEvidence, preferredInteractionTypes: [...level.preferredInteractionTypes] });
+  };
+
+  const saveCogLevel = async (levelId: number, nodeId: number) => {
+    if (!cogLevelEditForm || cogLevelSaving) return;
+    setCogLevelSaving(true);
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
+        method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(cogLevelEditForm),
+      });
+      if (r.ok) { setCogLevelEditId(null); setCogLevelEditForm(null); await loadCogPath(nodeId); }
+      else { const d = await r.json() as { error?: string }; setCogPathError((e) => ({ ...e, [nodeId]: d.error ?? 'Save failed' })); }
+    } finally { setCogLevelSaving(false); }
+  };
+
+  const setCogCeiling = async (levelId: number, nodeId: number) => {
+    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}/update`, {
+      method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isTargetCeiling: true }),
+    });
+    await loadCogPath(nodeId);
+  };
+
+  const deleteCogLevel = async (levelId: number, nodeId: number, levelKey: string) => {
+    if (!confirm(`Hetаrzhkel «${COG_LEVEL_LABELS[levelKey] ?? levelKey}» macardaky?`)) return;
+    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/${levelId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+    await loadCogPath(nodeId);
+  };
+
+  const linkExercise = async (cognitiveLevelId: number, lessonExerciseId: number, nodeId: number) => {
+    const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks`, {
+      method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cognitiveLevelId, lessonExerciseId }),
+    });
+    if (r.ok) await loadCogPath(nodeId);
+  };
+
+  const unlinkTask = async (taskId: number, nodeId: number) => {
+    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+    await loadCogPath(nodeId);
+  };
 
   const enrichNode = async (nodeId: number) => {
     if (enrichingNodeId !== null) return; // one at a time
@@ -1748,6 +1850,221 @@ function LessonNodesPanel({
             </div>
           ) : (
             <button onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }} className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5">+ Ավելացնել վարժություն</button>
+          )}
+        </div>
+
+        {/* ── 🧠 Ճanachogakan ughi (Cognitive Path) — Phase 2A R3 ───────────── */}
+        <div className="border-t border-indigo-500/15">
+          {/* Toggle header */}
+          <button
+            onClick={() => toggleCogPath(n.id)}
+            className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] text-indigo-400/70 hover:text-indigo-300 hover:bg-indigo-500/5 transition-colors"
+          >
+            <span className="font-medium flex items-center gap-1.5">
+              🧠 <span>Ճանաչողական ուղի</span>
+              {cogPathData[n.id]?.levels.length ? (
+                <span className="text-[10px] text-indigo-400/50">
+                  ({cogPathData[n.id]!.levels.map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
+                </span>
+              ) : null}
+            </span>
+            <span className="text-[10px]">{cogPathOpen[n.id] ? '▲' : '▼'}</span>
+          </button>
+
+          {cogPathOpen[n.id] && (
+            <div className="px-3 pb-3 space-y-2">
+              {/* Loading spinner */}
+              {cogPathLoading[n.id] && (
+                <div className="flex justify-center py-2">
+                  <span className="inline-block w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {/* Error */}
+              {cogPathError[n.id] && (
+                <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1">{cogPathError[n.id]}</p>
+              )}
+
+              {/* Regeneration safety confirm dialog */}
+              {cogPathForceNode === n.id && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 space-y-1.5">
+                  <p className="text-[10px] text-amber-300 leading-relaxed">
+                    Ուsucichn arden khmbagrel e channachogakan ughiny. Vert egh i steghetsel ev kartsnel nakhkhin khmbaghrumner?
+                  </p>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => { generateCogPath(n.id, true); }} className={btnSm + " bg-amber-500 text-black text-[10px]"}>Ayn, vertasteghcel</button>
+                    <button onClick={() => setCogPathForceNode(null)} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Chegharkanel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Generate / Regenerate button */}
+              {cogPathForceNode !== n.id && !cogPathLoading[n.id] && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => generateCogPath(n.id, false)}
+                    disabled={!!cogPathGenerating[n.id]}
+                    className={btnSm + " text-[10px] " + (
+                      (cogPathData[n.id]?.levels.length ?? 0) > 0
+                        ? "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30"
+                        : "bg-indigo-600 text-white hover:bg-indigo-500"
+                    ) + " disabled:opacity-40"}
+                  >
+                    {cogPathGenerating[n.id]
+                      ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      : (cogPathData[n.id]?.levels.length ?? 0) > 0
+                        ? '🔄 Վerаsteghtsel chanach. ughi'
+                        : '✨ Steghtsel chanachogakan ughi'}
+                  </button>
+                  {(cogPathData[n.id]?.levels.length ?? 0) > 0 && (
+                    <span className="text-[9px] text-indigo-400/50">
+                      🎯 {COG_LEVEL_LABELS[cogPathData[n.id]!.levels.find((l) => l.isTargetCeiling)?.cognitiveLevel ?? ''] ?? ''}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Levels list */}
+              {(cogPathData[n.id]?.levels ?? []).map((level) => {
+                const isEditing = cogLevelEditId === level.id;
+                const linkedCount = level.tasks.length;
+                const mie = level.minimumIndependentEvidence;
+                const gap = Math.max(0, mie - linkedCount);
+                return (
+                  <div key={level.id} className={
+                    "rounded-lg border p-2 space-y-1.5 " +
+                    (level.isTargetCeiling ? "border-indigo-400/40 bg-indigo-500/8" : "border-white/8 bg-black/20")
+                  }>
+                    {/* Level header */}
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-semibold text-indigo-300">
+                          {COG_LEVEL_LABELS[level.cognitiveLevel] ?? level.cognitiveLevel}
+                        </span>
+                        {level.isTargetCeiling && <span className="text-[9px] bg-indigo-500/30 text-indigo-200 px-1 rounded">🎯 Thirakayin</span>}
+                        <span className="text-[9px] text-white/25">
+                          {level.provenance === 'teacher_authored' ? '✏️ Ouchucich' : level.provenance === 'ai_generated' ? '🤖 AI' : '📖 Achbyur'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!level.isTargetCeiling && (
+                          <button onClick={() => setCogCeiling(level.id, n.id)} title="Sahl thirakayin macardak" className="text-[10px] text-white/30 hover:text-indigo-400 transition-colors">🎯</button>
+                        )}
+                        <button onClick={() => isEditing ? (setCogLevelEditId(null), setCogLevelEditForm(null)) : startEditCogLevel(level)} className="text-[10px] text-white/30 hover:text-white transition-colors">{isEditing ? '✕' : '✏️'}</button>
+                        <button onClick={() => deleteCogLevel(level.id, n.id, level.cognitiveLevel)} className="text-[10px] text-white/20 hover:text-destructive transition-colors">🗑</button>
+                      </div>
+                    </div>
+
+                    {isEditing && cogLevelEditForm ? (
+                      <div className="space-y-1.5">
+                        <div>
+                          <p className="text-[9px] text-indigo-300/60 mb-0.5">Կատarоlakan npatак (Kataralakan npatak)</p>
+                          <textarea className={fieldCls + " resize-none text-[10px]"} rows={2}
+                            value={cogLevelEditForm.performanceObjective}
+                            onChange={(e) => setCogLevelEditForm((f) => f && { ...f, performanceObjective: e.target.value })}
+                            placeholder="Sovoroghy kare... (Armenian)"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-indigo-300/60 mb-0.5">Hajoghutyun chanabanich</p>
+                          <textarea className={fieldCls + " resize-none text-[10px]"} rows={2}
+                            value={cogLevelEditForm.successCriterion}
+                            onChange={(e) => setCogLevelEditForm((f) => f && { ...f, successCriterion: e.target.value })}
+                            placeholder="Inch e hashvum ancelfeli apacuyc... (Armenian)"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-white/50">Pak. ankakh apacuycer</label>
+                          <input type="number" min={1} max={10} className={fieldCls + " w-16 text-[10px]"}
+                            value={cogLevelEditForm.minimumIndependentEvidence}
+                            onChange={(e) => setCogLevelEditForm((f) => f && { ...f, minimumIndependentEvidence: Math.max(1, parseInt(e.target.value) || 1) })}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-white/50 mb-1">Naxntreliи pataskhanman dzevery</p>
+                          <div className="flex flex-wrap gap-1">
+                            {ALL_INTERACTION_TYPES.map((it) => {
+                              const checked = cogLevelEditForm.preferredInteractionTypes.includes(it);
+                              return (
+                                <button key={it} onClick={() => setCogLevelEditForm((f) => f && { ...f, preferredInteractionTypes: checked ? f.preferredInteractionTypes.filter((x) => x !== it) : [...f.preferredInteractionTypes, it] })}
+                                  className={"text-[9px] px-1.5 py-0.5 rounded transition-colors " + (checked ? "bg-indigo-500/40 text-indigo-200" : "bg-white/8 text-white/40 hover:bg-white/15")}>
+                                  {it.replace('_', ' ')}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => saveCogLevel(level.id, n.id)} disabled={cogLevelSaving} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{cogLevelSaving ? '...' : 'Pahpanel'}</button>
+                          <button onClick={() => { setCogLevelEditId(null); setCogLevelEditForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Chegharkanel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {level.performanceObjective && (
+                          <div>
+                            <p className="text-[9px] text-indigo-300/60">Katarоlakan npatak</p>
+                            <p className="text-[10px] text-white/70 leading-relaxed">{level.performanceObjective}</p>
+                          </div>
+                        )}
+                        {level.successCriterion && (
+                          <div>
+                            <p className="text-[9px] text-indigo-300/60">Hajoghutyun chanabanich</p>
+                            <p className="text-[10px] text-white/70 leading-relaxed">{level.successCriterion}</p>
+                          </div>
+                        )}
+                        {/* Evidence gap */}
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <span className="text-[9px] text-white/40">
+                            📊 Pak. apacuycer: {mie} · Kapvac: {linkedCount}
+                            {gap > 0 ? <span className="text-amber-400/80"> · Pakasоm e: {gap}</span> : <span className="text-emerald-400/80"> · ✓</span>}
+                          </span>
+                        </div>
+                        {/* Preferred interaction types */}
+                        {level.preferredInteractionTypes.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-0.5">
+                            {level.preferredInteractionTypes.map((it) => (
+                              <span key={it} className="text-[9px] bg-white/8 text-white/40 px-1.5 py-0.5 rounded">{it.replace('_', ' ')}</span>
+                            ))}
+                          </div>
+                        )}
+                        {/* Linked exercises */}
+                        {level.tasks.length > 0 && (
+                          <div className="space-y-0.5 pt-0.5">
+                            <p className="text-[9px] text-white/30">Kapvac varjutyunner</p>
+                            {level.tasks.map((task) => (
+                              <div key={task.id} className="flex items-start gap-1 group">
+                                <span className="text-[9px] text-white/50 leading-relaxed flex-1">
+                                  📎 {task.exercise?.exerciseTextEdited ?? task.exercise?.exerciseTextVerbatim ?? `[${task.exercise?.exerciseId ?? 'ID'}]`}
+                                </span>
+                                <button onClick={() => unlinkTask(task.id, n.id)} className="text-[9px] text-white/20 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all shrink-0">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Link exercise to this level */}
+                        {nodeExercises.length > 0 && (
+                          <select
+                            className={fieldCls + " text-[9px] cursor-pointer mt-1"}
+                            defaultValue=""
+                            onChange={(e) => { if (e.target.value) { linkExercise(level.id, parseInt(e.target.value), n.id); e.target.value = ''; } }}
+                          >
+                            <option value="">+ Kapel varjutyun...</option>
+                            {nodeExercises
+                              .filter((ex) => !level.tasks.some((t) => t.lessonExerciseId === ex.id))
+                              .map((ex) => (
+                                <option key={ex.id} value={String(ex.id)}>
+                                  [{(ex as any).exerciseId}] {((ex as any).exerciseTextVerbatim as string).substring(0, 50)}...
+                                </option>
+                              ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

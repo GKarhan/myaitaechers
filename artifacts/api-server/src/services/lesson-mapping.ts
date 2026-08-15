@@ -2089,6 +2089,214 @@ export async function generatePhase2Content(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Phase 2A R3: Cognitive Path Generation
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COGNITIVE_PATH_MODEL = "deepseek/deepseek-v4-flash";
+
+export interface CogPathExercise {
+  exerciseId: string;
+  exerciseText: string;
+}
+
+export interface CogPathInput {
+  nodeId:            number;
+  title:             string;
+  learningObjective: string | null;
+  theoryContent:     string | null;
+  blockType:         string | null;
+  subjectName:       string;
+  lessonTitle:       string;
+  topicTitle:        string | null;
+  // Phase 2 teaching content (if available — enriches the generation context)
+  childFriendlyExplanation?: string | null;
+  basicExamples?:             string[] | null;
+  // Source exercises linked to this node
+  exercises: CogPathExercise[];
+  // Existing enrichment, provided only when regenerating (for context)
+  existingLevels?: Array<{
+    cognitiveLevel:       string;
+    sequence:             number;
+    isTargetCeiling:      boolean;
+    performanceObjective: string | null;
+    successCriterion:     string | null;
+  }>;
+}
+
+export interface CogPathLevel {
+  cognitiveLevel:             "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create";
+  sequence:                   number;
+  isTargetCeiling:            boolean;
+  performanceObjective:       string;
+  successCriterion:           string;
+  minimumIndependentEvidence: number;
+  preferredInteractionTypes:  string[];
+}
+
+export interface CogPathGenerationResult {
+  nodeId:      number;
+  skipped:     boolean;
+  skipReason?: string;
+  levels:      CogPathLevel[];
+}
+
+import { z } from "zod";
+
+const _cogPathLevelSchema = z.object({
+  cognitiveLevel:             z.enum(["remember", "understand", "apply", "analyze", "evaluate", "create"]),
+  sequence:                   z.number().int().min(1),
+  isTargetCeiling:            z.boolean(),
+  performanceObjective:       z.string(),
+  successCriterion:           z.string(),
+  minimumIndependentEvidence: z.number().int().min(1).default(3),
+  preferredInteractionTypes:  z.array(z.string()).default([]),
+});
+
+const _cogPathResponseSchema = z.object({
+  levels: z.array(_cogPathLevelSchema).min(1),
+});
+
+const COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի փորձագետ ես, որը վերլուծում է MicroNode-ի ճանաչողական կառուցվածքը՝ Bloom-ի վերանայված տաքսոնոմիայի (2001) հիման վրա։
+
+ԿԱՆՈՆՆԵՐ.
+1. Որոշիր ԲՈLA unjust ճanachogakan макардакнеры, որոնք արдаrakunел են ուsuмnakan нправ-ovi и bovna ndakutYun-ov: Не добавляй уровни механически.
+2. Большинство МикроНодов нуждается в 2–4 уровнях. НЕ добавляй все шесть автоматически.
+3. Ֆyour последовательность ОБЯЗАТЕЛЬНО возрастает: remember < understand < apply < analyze < evaluate < create.
+4. РОВНО ОДИН уровень должен иметь isTargetCeiling: true — наивысшее когнитивное требование, которое ожидает учебная программа.
+5. Весь текст — АРМЯНСКИЙ Unicode. Никакой латиницы в тексте целей и критериев.
+6. performanceObjective: что учащийся может ДЕЛАТЬ на этом уровне. Начни с глагола действия. Должно быть наблюдаемым. Формат: «Սovonoghy kar может…»
+7. successCriterion: что считается приемлемым свидетельством. Конкретно.
+8. minimumIndependentEvidence: цель проектирования (1–5). По умолчанию: 2 для remember, 3 для understand/apply, 3 для analyze и выше.
+9. preferredInteractionTypes: выбери из: multiple_choice, multi_select, true_false, matching, classification, ordering, numeric_answer, short_answer, constructed_response, problem_solving.
+10. Взаимодействие и когнитивное требование — РАЗНЫЕ измерения. multiple_choice может оценивать Apply; written_response — не обязательно означает высшее мышление.
+
+ОРИЕНТИРЫ (следуй учебным целям и содержанию, а не этим примерам механически):
+- определение/распознавание: remember → understand
+- концептуальное понимание: remember → understand
+- процедурное применение: remember → understand → apply
+- сравнение/отношения: understand → apply → analyze
+- суждение с критериями: understand → apply → analyze → evaluate
+- создание/проектирование: understand → apply → analyze → evaluate → create
+
+Верни ТОЛЬКО валидный JSON. Без markdown. Без прозы.`;
+
+function buildCogPathPrompt(input: CogPathInput): string {
+  const exList = input.exercises.length
+    ? input.exercises.map((e) => `[${e.exerciseId}] ${e.exerciseText}`).join("\n")
+    : "(no source exercises linked)";
+
+  const phase2Section = input.childFriendlyExplanation
+    ? `\nPhase 2 content (child-friendly explanation):\n${input.childFriendlyExplanation}${
+        input.basicExamples?.length ? `\nBasic examples: ${input.basicExamples.join(" | ")}` : ""
+      }`
+    : "";
+
+  const existingSection = input.existingLevels?.length
+    ? `\n⚠️ REGENERATING — existing enrichment (for context; you may revise):\n${JSON.stringify(input.existingLevels, null, 2)}`
+    : "";
+
+  return `Subject: ${input.subjectName}
+Lesson: "${input.lessonTitle}"
+Topic: ${input.topicTitle ?? "(standalone node)"}
+MicroNode id=${input.nodeId}: "${input.title}"
+learningObjective: ${input.learningObjective ?? "(not set)"}
+blockType: ${input.blockType ?? "(unknown)"}
+
+theoryContent:
+${input.theoryContent ?? "(empty)"}
+${phase2Section}
+
+Linked Source Exercises (${input.exercises.length}):
+${exList}
+${existingSection}
+
+Analyze this MicroNode and return a pedagogically valid cognitive path.
+{
+  "levels": [
+    {
+      "cognitiveLevel": "remember",
+      "sequence": 1,
+      "isTargetCeiling": false,
+      "performanceObjective": "Armenian — observable action: Սovonoghy kare....",
+      "successCriterion": "Armenian — what counts as valid evidence...",
+      "minimumIndependentEvidence": 2,
+      "preferredInteractionTypes": ["multiple_choice", "matching"]
+    }
+  ]
+}
+
+CRITICAL: return ONLY the JSON object above. Exactly one level must have isTargetCeiling: true.`;
+}
+
+function tryParseCogPath(raw: string): Record<string, unknown> | null {
+  let clean = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
+  clean = clean.replace(/,(\s*[}\]])/g, "$1");
+  try { return JSON.parse(clean); } catch { return null; }
+}
+
+/**
+ * Generates a Cognitive Path for a single MicroNode.
+ * Returns skipped=true if theoryContent is too thin for grounded generation.
+ * Does NOT write to the database — caller handles persistence.
+ */
+export async function generateCognitivePath(input: CogPathInput): Promise<CogPathGenerationResult> {
+  if (isWeakSource(input.theoryContent)) {
+    return { nodeId: input.nodeId, skipped: true, skipReason: "insufficient source content for cognitive enrichment", levels: [] };
+  }
+
+  async function callModel(): Promise<string> {
+    const r = await openrouter.chat.completions.create({
+      model:       COGNITIVE_PATH_MODEL,
+      max_tokens:  3000,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: COGNITIVE_PATH_SYSTEM },
+        { role: "user",   content: buildCogPathPrompt(input) },
+      ],
+    });
+    return r.choices[0]?.message?.content ?? "";
+  }
+
+  let parsed = tryParseCogPath(await callModel());
+  if (!parsed) {
+    logger.warn({ nodeId: input.nodeId }, "cog-path: parse failed, retrying once");
+    parsed = tryParseCogPath(await callModel());
+  }
+  if (!parsed) {
+    logger.warn({ nodeId: input.nodeId }, "cog-path: parse failed after retry");
+    return { nodeId: input.nodeId, skipped: true, skipReason: "AI returned unparseable JSON after retry", levels: [] };
+  }
+
+  const validated = _cogPathResponseSchema.safeParse(parsed);
+  if (!validated.success) {
+    logger.warn({ nodeId: input.nodeId, error: validated.error }, "cog-path: Zod validation failed");
+    return { nodeId: input.nodeId, skipped: true, skipReason: `AI output failed validation: ${validated.error.message}`, levels: [] };
+  }
+
+  const levels = validated.data.levels;
+
+  // Enforce exactly-one ceiling (in case model produced 0 or >1)
+  const ceilingCount = levels.filter((l) => l.isTargetCeiling).length;
+  if (ceilingCount === 0) {
+    // Make the last level the ceiling
+    levels[levels.length - 1].isTargetCeiling = true;
+  } else if (ceilingCount > 1) {
+    // Keep only the highest-sequence ceiling
+    const maxSeq = Math.max(...levels.filter((l) => l.isTargetCeiling).map((l) => l.sequence));
+    for (const l of levels) {
+      if (l.isTargetCeiling && l.sequence !== maxSeq) l.isTargetCeiling = false;
+    }
+  }
+
+  return {
+    nodeId: input.nodeId,
+    skipped: false,
+    levels: levels as CogPathLevel[],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Legacy Pass 2 material below — kept for future use; NOT called by the
 // current mapping route (which now uses extractBlocksWithAI / extractBlocksWithVision).
 // ─────────────────────────────────────────────────────────────────────────────

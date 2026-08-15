@@ -1,14 +1,14 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, type Pass1Result, type Phase2Input, type Phase2LinkedExercise } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -3299,6 +3299,383 @@ router.get("/lessons/:lessonId/quizzes", requireTeacher, async (req: AuthRequest
     completedCount:      assignStats[r.quizId]?.completedCount  ?? 0,
     averageScorePercent: scoreStats[r.quizId]              ?? null,
   })));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2A R3: Cognitive Path routes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Helper: verify node belongs to lesson and exists. Returns node or null. */
+async function getCogNode(lessonId: number, nodeId: number) {
+  const [node] = await db
+    .select({
+      id: lessonNodesTable.id,
+      title: lessonNodesTable.title,
+      learningObjective: lessonNodesTable.learningObjective,
+      theoryContent: lessonNodesTable.theoryContent,
+      blockType: lessonNodesTable.blockType,
+      targetBloomLevel: lessonNodesTable.targetBloomLevel,
+      childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+      basicExamples: lessonNodesTable.basicExamples,
+      topicId: lessonNodesTable.topicId,
+    })
+    .from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
+    .limit(1);
+  return node ?? null;
+}
+
+// GET /lessons/:lessonId/nodes/:nodeId/cognitive-path
+// Returns all cognitive levels for a MicroNode with their linked exercises.
+router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  // Load levels ordered by sequence
+  const levels = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
+    .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+
+  if (levels.length === 0) {
+    res.json({ nodeId, levels: [] });
+    return;
+  }
+
+  // Load tasks for all levels + their exercise details in one pass
+  const levelIds = levels.map((l) => l.id);
+  const tasks = await db
+    .select({
+      id:              lessonNodeCognitiveTasksTable.id,
+      cognitiveLevelId: lessonNodeCognitiveTasksTable.cognitiveLevelId,
+      lessonExerciseId: lessonNodeCognitiveTasksTable.lessonExerciseId,
+      taskProvenance:  lessonNodeCognitiveTasksTable.taskProvenance,
+      notes:           lessonNodeCognitiveTasksTable.notes,
+      exerciseId:      lessonExercisesTable.exerciseId,
+      exerciseText:    lessonExercisesTable.exerciseTextVerbatim,
+      exerciseTextEdited: lessonExercisesTable.exerciseTextEdited,
+    })
+    .from(lessonNodeCognitiveTasksTable)
+    .leftJoin(lessonExercisesTable, eq(lessonExercisesTable.id, lessonNodeCognitiveTasksTable.lessonExerciseId))
+    .where(inArray(lessonNodeCognitiveTasksTable.cognitiveLevelId, levelIds));
+
+  const tasksByLevel = new Map<number, typeof tasks>();
+  for (const t of tasks) {
+    const arr = tasksByLevel.get(t.cognitiveLevelId) ?? [];
+    arr.push(t);
+    tasksByLevel.set(t.cognitiveLevelId, arr);
+  }
+
+  res.json({
+    nodeId,
+    levels: levels.map((l) => ({
+      ...l,
+      preferredInteractionTypes: (l.preferredInteractionTypes ?? []) as string[],
+      tasks: (tasksByLevel.get(l.id) ?? []).map((t) => ({
+        id:              t.id,
+        cognitiveLevelId: t.cognitiveLevelId,
+        lessonExerciseId: t.lessonExerciseId,
+        taskProvenance:  t.taskProvenance,
+        notes:           t.notes,
+        exercise: t.exerciseId ? {
+          exerciseId:          t.exerciseId,
+          exerciseTextVerbatim: t.exerciseText ?? "",
+          exerciseTextEdited:  t.exerciseTextEdited ?? null,
+        } : null,
+      })),
+    })),
+  });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/generate-cognitive-path
+// Generate (or safely regenerate) the cognitive path for a MicroNode.
+// Body: { force?: boolean }
+//   force=false (default): returns 409 if teacher-authored rows exist
+//   force=true: replaces all existing levels (use after explicit teacher confirmation)
+router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const force = !!(req.body as { force?: boolean })?.force;
+
+  // Regeneration safety: check for teacher-authored rows
+  const existingLevels = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
+    .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+
+  const hasTeacherEdits = existingLevels.some((l) => l.provenance === "teacher_authored");
+  if (hasTeacherEdits && !force) {
+    res.status(409).json({
+      error: "TEACHER_EDITS_EXIST",
+      message: "Ուսուցիչը արդեն խմբագրել է ճանաչողական ուղին։ Վերաստեղծե՞լ և կորցնել փոփoxUtYunNere?",
+    });
+    return;
+  }
+
+  // Build full context for AI generation
+  const [lesson] = await db
+    .select({ title: lessonsTable.title, subjectId: lessonsTable.subjectId })
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+
+  const [subject] = await db
+    .select({ name: subjectsTable.name })
+    .from(subjectsTable)
+    .where(eq(subjectsTable.id, lesson?.subjectId ?? 0))
+    .limit(1);
+
+  const topicRow = node.topicId
+    ? await db.select({ title: lessonTopicsTable.title }).from(lessonTopicsTable).where(eq(lessonTopicsTable.id, node.topicId)).limit(1).then((r) => r[0] ?? null)
+    : null;
+
+  const nodeExercises = await db
+    .select({ exerciseId: lessonExercisesTable.exerciseId, exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim })
+    .from(lessonExercisesTable)
+    .where(and(eq(lessonExercisesTable.lessonId, lessonId), eq(lessonExercisesTable.relatedNodeId, nodeId)));
+
+  const input: CogPathInput = {
+    nodeId:            node.id,
+    title:             node.title,
+    learningObjective: node.learningObjective ?? null,
+    theoryContent:     node.theoryContent ?? null,
+    blockType:         node.blockType ?? null,
+    subjectName:       subject?.name ?? "Unknown Subject",
+    lessonTitle:       lesson?.title ?? "Unknown Lesson",
+    topicTitle:        topicRow?.title ?? null,
+    childFriendlyExplanation: (node as any).childFriendlyExplanation ?? null,
+    basicExamples:     (node as any).basicExamples ?? null,
+    exercises:         nodeExercises.map((e): CogPathExercise => ({ exerciseId: e.exerciseId, exerciseText: e.exerciseTextVerbatim })),
+    existingLevels:    existingLevels.length > 0 ? existingLevels.map((l) => ({
+      cognitiveLevel:       l.cognitiveLevel,
+      sequence:             l.sequence,
+      isTargetCeiling:      l.isTargetCeiling,
+      performanceObjective: l.performanceObjective,
+      successCriterion:     l.successCriterion,
+    })) : undefined,
+  };
+
+  const result = await generateCognitivePath(input);
+
+  if (result.skipped) {
+    res.status(422).json({ error: "SKIP", skipReason: result.skipReason, message: result.skipReason });
+    return;
+  }
+
+  // Persist: delete old levels (cascade removes tasks), insert new ones
+  await db.delete(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId));
+
+  let newCeilingLevel: string | undefined;
+  for (const level of result.levels) {
+    await db.insert(lessonNodeCognitiveLevelsTable).values({
+      lessonNodeId:             nodeId,
+      cognitiveLevel:           level.cognitiveLevel,
+      sequence:                 level.sequence,
+      isApplicable:             true,
+      isTargetCeiling:          level.isTargetCeiling,
+      performanceObjective:     level.performanceObjective || null,
+      successCriterion:         level.successCriterion || null,
+      provenance:               "ai_generated",
+      minimumIndependentEvidence: level.minimumIndependentEvidence,
+      preferredInteractionTypes:  level.preferredInteractionTypes,
+    });
+    if (level.isTargetCeiling) newCeilingLevel = level.cognitiveLevel;
+  }
+
+  // Sync legacy targetBloomLevel for backward compat
+  if (newCeilingLevel && COGNITIVE_LEVEL_TO_BLOOM_INT[newCeilingLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT]) {
+    await db
+      .update(lessonNodesTable)
+      .set({ targetBloomLevel: COGNITIVE_LEVEL_TO_BLOOM_INT[newCeilingLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT] })
+      .where(eq(lessonNodesTable.id, nodeId));
+  }
+
+  logger.info({ lessonId, nodeId, levelCount: result.levels.length }, "cognitive path generated");
+
+  // Return the freshly-persisted path (same shape as GET)
+  const saved = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
+    .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+
+  res.json({
+    nodeId,
+    levels: saved.map((l) => ({
+      ...l,
+      preferredInteractionTypes: (l.preferredInteractionTypes ?? []) as string[],
+      tasks: [],
+    })),
+  });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update
+// Partial update of a cognitive level (marks it teacher_authored).
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  const levelId  = parseInt(String(req.params.levelId),  10);
+  if (isNaN(lessonId) || isNaN(nodeId) || isNaN(levelId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const [level] = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(and(eq(lessonNodeCognitiveLevelsTable.id, levelId), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)))
+    .limit(1);
+  if (!level) { res.status(404).json({ error: "Cognitive level not found" }); return; }
+
+  const body = req.body as {
+    performanceObjective?:     string;
+    successCriterion?:         string;
+    minimumIndependentEvidence?: number;
+    preferredInteractionTypes?:  string[];
+    isTargetCeiling?:          boolean;
+    isApplicable?:             boolean;
+  };
+
+  const updates: Record<string, unknown> = { provenance: "teacher_authored", updatedAt: new Date() };
+  if (body.performanceObjective    !== undefined) updates.performanceObjective    = body.performanceObjective    || null;
+  if (body.successCriterion        !== undefined) updates.successCriterion        = body.successCriterion        || null;
+  if (body.minimumIndependentEvidence !== undefined) updates.minimumIndependentEvidence = Math.max(1, body.minimumIndependentEvidence);
+  if (body.preferredInteractionTypes !== undefined) updates.preferredInteractionTypes = body.preferredInteractionTypes;
+  if (body.isApplicable            !== undefined) updates.isApplicable            = body.isApplicable;
+  if (body.isTargetCeiling === true) {
+    // Clear any existing ceiling first (bypass partial-unique-index constraint)
+    await db
+      .update(lessonNodeCognitiveLevelsTable)
+      .set({ isTargetCeiling: false, updatedAt: new Date() })
+      .where(and(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId), eq(lessonNodeCognitiveLevelsTable.isTargetCeiling, true)));
+    updates.isTargetCeiling = true;
+    // Sync legacy targetBloomLevel
+    const bloomInt = COGNITIVE_LEVEL_TO_BLOOM_INT[level.cognitiveLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT];
+    if (bloomInt) await db.update(lessonNodesTable).set({ targetBloomLevel: bloomInt }).where(eq(lessonNodesTable.id, nodeId));
+  } else if (body.isTargetCeiling === false) {
+    updates.isTargetCeiling = false;
+  }
+
+  if (Object.keys(updates).length === 2) { res.status(400).json({ error: "No updatable fields provided" }); return; }
+
+  await db.update(lessonNodeCognitiveLevelsTable).set(updates).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
+
+  const [updated] = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.id, levelId))
+    .limit(1);
+
+  res.json({ success: true, level: { ...updated, preferredInteractionTypes: (updated.preferredInteractionTypes ?? []) as string[] } });
+});
+
+// DELETE /lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId
+// Remove a cognitive level (and cascade-deletes its linked tasks).
+router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  const levelId  = parseInt(String(req.params.levelId),  10);
+  if (isNaN(lessonId) || isNaN(nodeId) || isNaN(levelId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const [level] = await db
+    .select({ id: lessonNodeCognitiveLevelsTable.id })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(and(eq(lessonNodeCognitiveLevelsTable.id, levelId), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)))
+    .limit(1);
+  if (!level) { res.status(404).json({ error: "Level not found" }); return; }
+
+  await db.delete(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
+  res.json({ success: true });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/cognitive-tasks
+// Link an existing lesson_exercise to a cognitive level of this node.
+// Body: { cognitiveLevelId: number, lessonExerciseId: number }
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const { cognitiveLevelId, lessonExerciseId } = req.body as { cognitiveLevelId?: number; lessonExerciseId?: number };
+  if (!cognitiveLevelId) { res.status(400).json({ error: "cognitiveLevelId required" }); return; }
+
+  // Verify level belongs to this node
+  const [level] = await db
+    .select({ id: lessonNodeCognitiveLevelsTable.id })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(and(eq(lessonNodeCognitiveLevelsTable.id, cognitiveLevelId), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)))
+    .limit(1);
+  if (!level) { res.status(404).json({ error: "Cognitive level not found on this node" }); return; }
+
+  // Verify exercise belongs to this lesson (if provided)
+  if (lessonExerciseId) {
+    const [ex] = await db
+      .select({ id: lessonExercisesTable.id })
+      .from(lessonExercisesTable)
+      .where(and(eq(lessonExercisesTable.id, lessonExerciseId), eq(lessonExercisesTable.lessonId, lessonId)))
+      .limit(1);
+    if (!ex) { res.status(404).json({ error: "Exercise not found in this lesson" }); return; }
+  }
+
+  try {
+    const [task] = await db
+      .insert(lessonNodeCognitiveTasksTable)
+      .values({
+        cognitiveLevelId,
+        lessonExerciseId: lessonExerciseId ?? null,
+        taskProvenance: "source_derived",
+      })
+      .returning();
+    res.status(201).json({ success: true, task });
+  } catch (err: unknown) {
+    const msg = String((err as Error)?.message ?? "");
+    if (msg.includes("lnct_level_exercise_uniq")) {
+      res.status(409).json({ error: "Exercise already linked to this cognitive level" });
+    } else {
+      throw err;
+    }
+  }
+});
+
+// DELETE /lessons/:lessonId/nodes/:nodeId/cognitive-tasks/:taskId
+// Unlink a task annotation (does NOT delete the exercise itself).
+router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks/:taskId", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  const taskId   = parseInt(String(req.params.taskId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId) || isNaN(taskId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  // Verify task belongs to a level of this node
+  const [task] = await db
+    .select({ id: lessonNodeCognitiveTasksTable.id })
+    .from(lessonNodeCognitiveTasksTable)
+    .innerJoin(lessonNodeCognitiveLevelsTable, eq(lessonNodeCognitiveLevelsTable.id, lessonNodeCognitiveTasksTable.cognitiveLevelId))
+    .where(and(eq(lessonNodeCognitiveTasksTable.id, taskId), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)))
+    .limit(1);
+  if (!task) { res.status(404).json({ error: "Task not found on this node" }); return; }
+
+  await db.delete(lessonNodeCognitiveTasksTable).where(eq(lessonNodeCognitiveTasksTable.id, taskId));
+  res.json({ success: true });
 });
 
 export default router;
