@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
-import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
+import { getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
 
 // ── KT-1.3 / KT-1.4 types ────────────────────────────────────────────────────
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
@@ -310,16 +310,21 @@ export default function KnowledgeTree() {
   }, [token, authLoading, setLocation]);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
-  const { data: ownTreeData, isLoading: ownTreeLoading } = useGetKnowledgeTree(subjectId, {
-    query: {
-      queryKey: getGetKnowledgeTreeQueryKey(subjectId),
-      enabled: !!token && !isNaN(subjectId) && !isTeacherView,
-      staleTime: 0,
-      refetchOnMount: true,
+  const { data: ownTreeData, isLoading: ownTreeLoading } = useQuery<KTData>({
+    queryKey: getGetKnowledgeTreeQueryKey(subjectId),
+    queryFn: async ({ signal }) => {
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const resp = await fetch(`/api/knowledge-tree/${subjectId}`, { signal, headers, credentials: "include" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json() as Promise<KTData>;
     },
+    enabled: !!token && !isNaN(subjectId) && !isTeacherView,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
-  const { data: teacherTreeData, isLoading: teacherTreeLoading } = useQuery({
+  const { data: teacherTreeData, isLoading: teacherTreeLoading } = useQuery<KTData>({
     queryKey: ["knowledge-tree-teacher", subjectId, studentId],
     queryFn: async () => {
       const url = `/api/knowledge-tree/${subjectId}?studentId=${studentId}`;
@@ -330,7 +335,7 @@ export default function KnowledgeTree() {
         const err = await resp.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error ?? `HTTP ${resp.status}`);
       }
-      return resp.json();
+      return resp.json() as Promise<KTData>;
     },
     enabled: !!token && !isNaN(subjectId) && isTeacherView,
     staleTime: 0,
@@ -343,7 +348,7 @@ export default function KnowledgeTree() {
   // ── Auto-expand first lesson + all its topics once data arrives ───────────
   useEffect(() => {
     if (!rawData) return;
-    const data = rawData as unknown as KTData;
+    const data = rawData!;  // non-null: guarded by "if (!rawData) return" above
     if (!data.lessons || data.lessons.length === 0) return;
 
     const first = data.lessons[0];
@@ -376,7 +381,7 @@ export default function KnowledgeTree() {
 
   if (!user || !rawData) return null;
 
-  const treeData = rawData as unknown as KTData;
+  const treeData = rawData;  // KTData: narrowed by the null-check guard above
   const allLessons: KTLesson[] = treeData.lessons ?? [];
 
   // ── Apply filter: returns visible lessons with filtered nodes ─────────────
@@ -430,7 +435,7 @@ export default function KnowledgeTree() {
               <span className="text-xs text-muted-foreground">Գիտելիքի ծառ</span>
               {treeData.coveragePercent !== null && (
                 <span className={`text-xs font-bold ${coverageColour(treeData.coveragePercent)}`}>
-                  · Ususumnasirvac {treeData.studiedCount}·{treeData.coveragePercent}%
+                  · Ուսումնասիրված՝ {treeData.studiedCount} / {treeData.totalUnits} · {treeData.coveragePercent}%
                 </span>
               )}
             </div>

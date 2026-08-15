@@ -1,0 +1,313 @@
+TASK — KT-1.4A FINAL CLOSURE
+Coverage terminology + acceptance/regression tests + type-safe API contract
+
+IMPORTANT:
+This is a SMALL CLOSURE TASK.
+
+Do NOT redesign Knowledge Tree.
+Do NOT change mastery/scoring formulas.
+Do NOT change the 4-state classification.
+Do NOT change quiz scoring.
+Do NOT change AI Teacher.
+Do NOT change Mapper.
+Do NOT change DB/schema.
+Do NOT implement Cognitive Depth yet.
+Do NOT implement K = P × L × R yet.
+Do NOT create new knowledge_nodes rows.
+
+Current KT-1.4A behavior is already correct:
+
+coveragePercent =
+studiedCount / totalUnits × 100
+
+where:
+
+studiedCount =
+masteredCount + partialCount + doesNotKnowCount
+
+and:
+
+notStudiedCount = totalUnits - studiedCount
+
+The four learner states remain:
+
+1. mastered → Գիտի
+2. weak → Մասնակի գիտի
+3. in_progress → Չգիտի
+4. not_started → Դեռ չի ուսումնասիրել
+
+==================================================
+PART 1 — FIX THE UI TERMINOLOGY
+==================================================
+
+There is currently a semantic naming problem.
+
+The UI shows wording equivalent to:
+
+"Սովորելու արդյունավետություն"
+
+next to coveragePercent.
+
+THIS IS WRONG.
+
+coveragePercent does NOT mean learning efficiency.
+
+It means only:
+
+How much of the available curriculum / MicroNodes
+the learner has already studied or generated evidence for.
+
+Example from the current real Physics data:
+
+totalUnits = 3
+studiedCount = 3
+masteredCount = 0
+partialCount = 1
+doesNotKnowCount = 2
+notStudiedCount = 0
+coveragePercent = 100
+
+This means:
+
+Ուսումնասիրված՝ 3 / 3 · 100%
+
+It DOES NOT mean:
+
+Սովորելու արդյունավետություն՝ 100%
+
+Replace all learner-facing labels where coveragePercent is described
+as learning efficiency/mastery with clear Armenian coverage terminology.
+
+Preferred wording:
+
+"Ուսումնասիրված"
+
+Example:
+
+Ուսումնասիրված՝ 3 / 3 · 100%
+
+For Subject cards, Lesson rows, Topic rows and subject header,
+use consistent terminology.
+
+IMPORTANT:
+
+Reserve the concept "Սովորելու արդյունավետություն"
+for the future Efficiency Engine:
+
+K = P × L × R
+
+Do NOT implement K now.
+
+Search the relevant KT frontend files for all old/misleading labels.
+Report every occurrence found and what it was changed to.
+
+==================================================
+PART 2 — ACCEPTANCE / REGRESSION TESTS
+==================================================
+
+Add tests protecting the KT-1.4A coverage contract.
+
+At minimum verify:
+
+TEST A
+
+totalUnits = 3
+mastered = 0
+partial = 1
+doesNotKnow = 2
+notStudied = 0
+
+Expected:
+
+studiedCount = 3
+coveragePercent = 100
+
+This proves:
+100% coverage does NOT mean 100% mastery.
+
+TEST B
+
+totalUnits = 4
+mastered = 1
+partial = 1
+doesNotKnow = 0
+notStudied = 2
+
+Expected:
+
+studiedCount = 2
+coveragePercent = 50
+
+TEST C
+
+all nodes not_started
+
+Expected:
+
+studiedCount = 0
+coveragePercent = 0
+
+TEST D
+
+all nodes studied/mastered
+
+Expected:
+
+studiedCount = totalUnits
+coveragePercent = 100
+
+TEST E — invariant
+
+For every aggregation:
+
+totalUnits =
+masteredCount +
+partialCount +
+doesNotKnowCount +
+notStudiedCount
+
+and:
+
+studiedCount =
+masteredCount +
+partialCount +
+doesNotKnowCount
+
+and:
+
+studiedCount + notStudiedCount = totalUnits
+
+TEST F — hierarchy consistency
+
+Verify the same aggregation contract works at:
+
+MicroNode → Topic → Lesson → Subject
+
+No level may reinterpret coverage as average masteryScore.
+
+TEST G — filter invariance
+
+Changing the visible KT state filter:
+
+Բոլորը
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+must NOT change the underlying coveragePercent.
+
+The filter only changes visible cards.
+
+==================================================
+PART 3 — REMOVE UNSAFE KT TYPE CAST
+==================================================
+
+Audit the frontend KT data flow for:
+
+as unknown as KTData
+
+or equivalent unsafe double casts.
+
+If the cast exists:
+
+1. identify why it was required,
+2. align the frontend TypeScript interface with the actual API response,
+3. remove the unsafe double cast,
+4. preserve runtime behavior exactly.
+
+The canonical coverage contract should contain the appropriate fields:
+
+totalUnits
+studiedCount
+notStudiedCount
+masteredCount
+partialCount
+doesNotKnowCount
+coveragePercent
+
+Do NOT fake fields on the frontend.
+
+The API response is authoritative.
+
+If shared typing already exists and can safely be reused,
+prefer that rather than duplicating incompatible interfaces.
+
+==================================================
+PART 4 — VERIFY REAL PHYSICS DATA
+==================================================
+
+Use the existing real Physics student data.
+
+Verify the current known example still returns:
+
+totalUnits = 3
+studiedCount = 3
+coveragePercent = 100%
+
+with state distribution:
+
+Գիտի = 0
+Մասնակի գիտի = 1
+Չգիտի = 2
+Դեռ չի ուսումնասիրել = 0
+
+Then verify the UI communicates this as:
+
+Ուսումնասիրված՝ 3 / 3 · 100%
+
+and NOT:
+
+Սովորելու արդյունավետություն՝ 100%
+
+Do not alter the real mastery/evidence data to make this pass.
+
+==================================================
+PART 5 — NON-REGRESSION
+==================================================
+
+Confirm no changes were made to:
+
+- mastery formulas
+- getMasteryLevel logic
+- quiz scoring
+- evidence generation
+- AI Teacher
+- Mapper/manual-map
+- lesson authoring
+- exercise management
+- DB schema
+- Cognitive Depth
+- P/L/R or K formula
+
+Run the relevant tests and type checks.
+
+If unrelated pre-existing TypeScript errors exist,
+separate them clearly from errors introduced by this task.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+A. Files changed
+B. Every misleading coverage label found
+C. Final Armenian labels
+D. Acceptance tests added
+E. Test results
+F. Whether unsafe cast existed
+G. How it was removed
+H. Real Physics API values
+I. Real Physics UI wording
+J. Confirmation that scoring/mastery behavior was untouched
+K. PASS / FAIL
+
+PASS only if:
+
+- coverage semantics remain correct,
+- no coverage value is presented as learning efficiency,
+- regression tests pass,
+- KT API/frontend contract is type-safe,
+- real Physics still gives 3/3 = 100% coverage with
+  0 Գիտի / 1 Մասնակի գիտի / 2 Չգիտի.

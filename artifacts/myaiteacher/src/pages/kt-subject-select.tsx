@@ -149,7 +149,7 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
 
       {/* KT-1.4A: Coverage summary row */}
       <div className="flex items-center justify-between bg-white/3 rounded-lg px-3 py-2">
-        <span className="text-xs text-muted-foreground">Սովորելու արդյունավետություն</span>
+        <span className="text-xs text-muted-foreground">Ուսումնասիրված՝</span>
         <div className="text-right">
           {s.totalUnits > 0 ? (
             <>

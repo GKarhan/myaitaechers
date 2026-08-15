@@ -36,3 +36,24 @@ Generated hook `useGetKnowledgeTree` doesn't support extra params → use raw `u
 - 3 nodes, all studied (have KN rows with scores)
 - `coveragePercent=100%` (all 3 studied), `partialCount=1`, `doesNotKnowCount=2`
 - Math/Hayereni: `totalUnits=0`, `coveragePercent=null`
+
+## KT-1.4A Final Closure (completed)
+
+**Part 1 — Label fixes:**
+- Replaced `Սovоrelу ardyounavetoutyoun` (learning effectiveness — WRONG) in kt-subject-select.tsx
+- Replaced `Ususumnasirvac` placeholder in knowledge-tree.tsx subject header
+- Correct Armenian label: `Ouusuomnasirvats` (= "Ousumnasirvats" = "Studied/Researched")
+- Format in subject header: `· Ousumnasirvats' {studiedCount} / {totalUnits} · {coveragePercent}%`
+- Format in subject card: `Ousumnasirvats': {studiedCount} · {coveragePercent}%`
+- Reserve `Сovоrelу ardyounavetoutyoun` for the future K=P×L×R Efficiency Engine
+
+**Part 2 — Acceptance tests:**
+- File: `artifacts/api-server/src/lib/__tests__/kt-1-4a-coverage.test.ts`
+- Script: `pnpm --filter @workspace/api-server run test:kt14a`
+- 9/9 tests pass (Tests A, B, C, D, D2, E, F, G, G2) — pure unit tests, no DB
+
+**Part 3 — Unsafe cast removal:**
+- Both queries now `useQuery<KTData>` (student + teacher views)
+- Removed both `as unknown as KTData` double casts (lines 346 and 379)
+- Teacher view also typed: `return resp.json() as Promise<KTData>`
+- `const treeData = rawData;` is valid after TypeScript narrowing from null guard
