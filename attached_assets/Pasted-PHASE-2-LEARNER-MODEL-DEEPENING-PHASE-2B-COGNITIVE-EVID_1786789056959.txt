@@ -1,0 +1,938 @@
+PHASE 2 — LEARNER MODEL DEEPENING
+
+PHASE 2B — COGNITIVE EVIDENCE MODEL
+
+ROUND 1 — FORENSIC AUDIT ONLY
+
+============================================================
+0. STRICT RULE — AUDIT ONLY
+============================================================
+
+DO NOT MODIFY CODE.
+DO NOT MODIFY DATABASE SCHEMA.
+DO NOT CREATE MIGRATIONS.
+DO NOT CREATE TEST DATA.
+DO NOT CHANGE UI.
+DO NOT CHANGE AI TEACHER.
+DO NOT CHANGE QUIZ SCORING.
+DO NOT CHANGE MASTERY OR CONFIDENCE.
+
+This round is FORENSIC AUDIT ONLY.
+
+The purpose is to understand the existing task/evidence architecture before
+designing the Cognitive Evidence Model.
+
+============================================================
+1. PRODUCT CONTEXT
+============================================================
+
+Phase 2A — Cognitive Enrichment is complete on the curriculum side.
+
+Canonical curriculum hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode is the atomic curriculum knowledge unit.
+
+Each MicroNode may now have a teacher-confirmed Cognitive Path:
+
+remember
+→ understand
+→ apply
+→ analyze
+→ evaluate
+→ create
+
+but only the levels pedagogically justified for that MicroNode.
+
+Example:
+
+Հիշել → Հասկանալ → Կիրառել
+
+Target cognitive ceiling:
+Կիրառել
+
+Phase 2A defines:
+
+WHAT cognitive depth the learner is expected to reach.
+
+Phase 2B must define:
+
+WHAT learner evidence is required to demonstrate each cognitive level.
+
+============================================================
+2. CORE PHASE 2B PRINCIPLE
+============================================================
+
+A correct answer alone is NOT enough information.
+
+Current evidence may effectively say:
+
+correct = true
+
+Future cognitive evidence must be able to answer:
+
+- Which learner?
+- Which MicroNode?
+- Which cognitive level was being tested?
+- Which task produced the evidence?
+- What kind of cognitive demand did the task require?
+- What interaction format was used?
+- Was the task source / AI-generated / teacher-authored?
+- Was the attempt independent?
+- Did the learner request help?
+- What kind/degree of help was used?
+- Was the answer correct?
+- When was the evidence produced?
+
+We are NOT implementing this yet.
+
+Audit whether the existing architecture can support it.
+
+============================================================
+3. COGNITIVE EVIDENCE SEMANTICS
+============================================================
+
+Use these as conceptual examples, NOT mechanical mappings:
+
+REMEMBER
+Possible evidence:
+- recognition
+- recall
+- identification
+
+UNDERSTAND
+Possible evidence:
+- explanation
+- classification
+- matching concepts
+- distinguishing examples/non-examples
+
+APPLY
+Possible evidence:
+- application in a new situation
+- independent problem solving
+- using a rule/procedure with changed data
+
+ANALYZE
+Possible evidence:
+- compare
+- classify by relevant properties
+- identify relationships
+- reason about parts/structure
+
+EVALUATE
+Possible evidence:
+- judgment against criteria
+- justification
+- selecting and defending a decision
+
+CREATE
+Possible evidence:
+- generating a new example
+- constructing a solution
+- producing/designing something new
+
+IMPORTANT:
+
+Do NOT assume:
+
+multiple_choice = remember
+
+or:
+
+written_answer = analyze/create.
+
+COGNITIVE DEMAND and INTERACTION FORMAT are separate dimensions.
+
+============================================================
+4. MINIMUM-EFFORT INTERACTION PRINCIPLE
+============================================================
+
+LOCKED PRODUCT PRINCIPLE:
+
+MINIMUM-EFFORT INTERACTION,
+MAXIMUM-VALID EVIDENCE.
+
+The learner should type as little as reasonably possible.
+
+Possible interaction formats include:
+
+- multiple choice
+- multi-select
+- true/false
+- matching
+- classification
+- ordering
+- numeric answer
+- short answer
+- constructed response
+- independent problem solving followed by final-answer entry
+- independent problem solving followed by final-answer selection
+
+But the interaction must still produce VALID evidence for the intended
+cognitive level.
+
+Example:
+
+An APPLY task may require the learner to independently solve a physics
+problem, but the system may ask only for the final numeric answer or a
+multiple-choice final result.
+
+That can still be APPLY evidence if the task itself genuinely requires
+application.
+
+Audit whether the current task/quiz architecture can represent this
+separation.
+
+============================================================
+5. HELP / HINT ARCHITECTURE — CRITICAL
+============================================================
+
+Help usage is a REQUIRED future evidence dimension.
+
+Future learner UX should support a task-level action such as:
+
+💡 Օգնություն
+
+The learner can request help when they cannot proceed or are unsure.
+
+IMPORTANT:
+
+The first help action should NOT simply reveal the answer.
+
+Conceptually we want progressive assistance, for example:
+
+Level 0:
+No help — independent attempt
+
+Level 1:
+Light directional hint
+
+Level 2:
+More explicit conceptual/procedural hint
+
+Level 3:
+Guided/step-by-step support
+
+Possibly later:
+worked explanation / answer reveal
+
+DO NOT implement these levels in this audit.
+
+Audit what the current system already records that could support this.
+
+We need eventually to distinguish:
+
+correct + no help
+
+from:
+
+correct + light hint
+
+from:
+
+correct + substantial guided support
+
+These must NOT automatically become equal-strength evidence.
+
+However:
+
+DO NOT invent Confidence weights.
+
+DO NOT implement formulas such as:
+
+1 hint = -20%
+
+Confidence Model V2 comes later.
+
+Phase 2B must first make the FACTS observable and persistable.
+
+============================================================
+6. HELP EVENT QUESTIONS TO AUDIT
+============================================================
+
+Inspect the current AI Teacher/chat/task architecture and determine whether
+the system currently records:
+
+- help requested
+- hint requested
+- hint count
+- hint type
+- hint level/depth
+- timestamp of help
+- task/question associated with help
+- MicroNode associated with help
+- cognitive level associated with help
+- whether help occurred before answer
+- whether answer occurred after help
+- answer reveal
+- guided solution
+- number of attempts before/after help
+
+If any exist:
+report exact table/column/event/API.
+
+If not:
+say MISSING.
+
+Do not infer.
+
+============================================================
+7. PROGRESSIVE HELP DESIGN QUESTION
+============================================================
+
+Audit whether the existing AI Teacher architecture could later support:
+
+Task
+↓
+Learner attempts
+↓
+[💡 Օգնություն]
+↓
+Hint 1
+↓
+still stuck
+↓
+[Ավելի շատ օգնություն]
+↓
+Hint 2
+↓
+still stuck
+↓
+guided support
+
+without losing task identity or evidence provenance.
+
+Specifically inspect whether chat.ts/session state currently knows:
+
+- current lesson
+- current MicroNode
+- current exercise/task
+- last question asked
+- learner answer
+- AI feedback/action
+- attempt sequence
+
+Report what exists and what is missing.
+
+DO NOT modify chat.ts.
+
+============================================================
+8. AUDIT EXISTING TASK / EXERCISE DATA MODEL
+============================================================
+
+Inspect all relevant tables/schema/code for:
+
+lesson_exercises / lessonExercisesTable
+quiz_questions
+quiz_answers
+quiz_attempts
+quizzes
+evidence_events
+knowledge_nodes
+lesson_nodes
+cognitive enrichment tables
+and any other task/evidence tables actually present.
+
+For each relevant table report:
+
+- exact table name
+- purpose
+- primary key
+- learner identity field if any
+- lessonNode/MicroNode linkage
+- exercise linkage
+- quiz linkage
+- cognitive-level linkage
+- task type
+- interaction type
+- provenance
+- correctness
+- attempt number
+- timestamps
+- help/hint fields
+- metadata JSON structure if present
+- relevant foreign keys
+- relevant indexes
+
+Do not rely only on ORM definitions.
+
+Where useful, verify against the actual DB schema.
+
+============================================================
+9. SOURCE EXERCISE ARCHITECTURE
+============================================================
+
+Trace how textbook exercises currently move through the system.
+
+Start from:
+
+mapped textbook exercise
+
+and trace:
+
+source exercise
+→ lesson exercise storage
+→ MicroNode linkage
+→ quiz/test usage if any
+→ learner answer
+→ scoring
+→ evidence event
+→ knowledge node/mastery update
+
+Report the exact chain.
+
+Critical questions:
+
+A. Is source exercise text preserved verbatim?
+
+B. Can one source exercise link to multiple MicroNodes?
+
+C. Can one exercise currently be classified by cognitive level?
+
+D. Is there already a task provenance field?
+
+E. Can source vs AI-generated vs teacher-authored tasks be distinguished?
+
+F. Is there lineage support such as:
+
+AI variant
+→ derived from source exercise X?
+
+G. Can multiple equivalent variants belong to the same evidence target?
+
+============================================================
+10. PHASE 2A → PHASE 2B LINK
+============================================================
+
+Inspect the Phase 2A schema implemented in previous rounds.
+
+For each cognitive level determine what is currently stored:
+
+- lessonNodeId
+- cognitiveLevel
+- sequence
+- target ceiling
+- performanceObjective
+- successCriterion
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- provenance/status
+- exercise/task linkage
+
+Answer:
+
+Can Phase 2B directly use these records as the TARGET definition for
+evidence collection?
+
+Example:
+
+MicroNode 2021
+Apply
+minimumIndependentEvidence = 3
+
+Can the current architecture query:
+
+"How many valid Apply evidence opportunities exist for this MicroNode?"
+
+If yes, show how.
+
+If no, identify the exact missing link.
+
+============================================================
+11. EXERCISE → COGNITIVE LEVEL LINKAGE
+============================================================
+
+Round 3 introduced or exposed exercise/task linkage to cognitive levels.
+
+Audit the actual implementation.
+
+Report:
+
+- exact table
+- exact foreign keys
+- whether linkage is exercise-level or task-level
+- whether one exercise can link to multiple cognitive levels
+- whether one cognitive level can have multiple exercises
+- provenance of the classification
+- teacher-editability
+- whether linking changes source exercise text
+- whether unlinking deletes source exercise data
+
+Verify with real code/schema.
+
+============================================================
+12. EVIDENCE EVENT FORENSIC AUDIT
+============================================================
+
+This section is CRITICAL.
+
+Inspect evidence_events in detail.
+
+Report the exact current meaning of:
+
+- id
+- student/user field
+- topic_id or equivalent
+- event_type
+- score/correctness fields
+- metadata
+- timestamps
+
+We previously observed that evidence_events.topic_id may actually reference
+knowledge_nodes.id rather than lesson_nodes.id.
+
+RE-VERIFY THIS.
+
+Do not trust the column name.
+
+Trace an actual evidence event to:
+
+evidence_event
+→ knowledge_node
+→ lesson_node / MicroNode
+→ lesson
+→ subject
+
+Show one real example using IDs.
+
+Then answer whether evidence_events currently knows:
+
+- canonical lessonNodeId
+- cognitive level
+- task ID
+- source exercise ID
+- quiz question ID
+- interaction type
+- provenance
+- independent vs assisted
+- help requested
+- help level
+- attempt sequence
+
+Mark each:
+
+EXISTS / INDIRECT / MISSING.
+
+============================================================
+13. QUIZ PIPELINE AUDIT
+============================================================
+
+Trace one real quiz answer end-to-end:
+
+quiz
+→ quiz_question
+→ quiz_attempt
+→ quiz_answer
+→ scoring
+→ evidence_event
+→ knowledge_node
+
+For one real example report IDs and values.
+
+Determine:
+
+A. What identifies the MicroNode?
+
+B. Whether quiz_question knows the source exercise.
+
+C. Whether quiz_question knows cognitive level.
+
+D. Whether quiz_answer preserves task identity.
+
+E. Whether multiple attempts are distinguishable.
+
+F. Whether help can currently be associated with a quiz answer.
+
+G. Whether response format is stored.
+
+H. Whether the existing quiz pipeline can be extended without changing
+current scoring behavior.
+
+============================================================
+14. AI TEACHER / REAL EXERCISE PIPELINE AUDIT
+============================================================
+
+Trace how a real lesson exercise is presented by AI Teacher.
+
+Determine:
+
+- how exercise is selected
+- how exerciseTextVerbatim is used
+- how current MicroNode is known
+- how learner response is captured
+- whether correctness is determined
+- whether an evidence event is created
+- what evidence strength is assigned
+- whether exercise ID survives through the whole flow
+- whether repeated attempts survive
+- whether help/hints are currently recorded
+
+Also inspect MICRO_CHECK separately.
+
+Remember existing product rule:
+
+micro-check evidence is at most MODERATE;
+real exercise may produce STRONG evidence.
+
+Do not change this behavior.
+
+============================================================
+15. TASK IDENTITY AUDIT
+============================================================
+
+For reliable Cognitive Evidence, every evidence-producing interaction
+eventually needs stable task identity.
+
+Audit whether stable task identity currently survives across:
+
+task selection
+→ display
+→ learner response
+→ scoring
+→ evidence event.
+
+Check separately for:
+
+A. source lesson exercise
+B. quiz question
+C. AI Teacher micro-check
+D. future AI-generated equivalent task
+
+Report where identity is lost.
+
+============================================================
+16. AI-GENERATED EQUIVALENT VARIANTS
+============================================================
+
+Future requirement:
+
+If:
+
+minimumIndependentEvidence = 3
+
+but:
+
+valid source tasks = 1
+
+the system may create 2 equivalent variants.
+
+Example:
+
+Source task S1
+
+→ AI variant V1
+→ AI variant V2
+
+Requirements for future design:
+
+- same MicroNode
+- intended same cognitive level
+- equivalent skill/construct
+- changed data/context/example
+- provenance = ai_generated
+- parent/source lineage preserved
+- must NOT masquerade as textbook content
+- teacher can review/edit
+- source task remains immutable
+- variants should provide separate evidence opportunities
+
+Audit whether current schema can support this.
+
+Do NOT generate variants yet.
+
+Identify exact missing fields/tables if necessary.
+
+============================================================
+17. INDEPENDENCE OF EVIDENCE
+============================================================
+
+Phase 2A contains minimumIndependentEvidence.
+
+Audit whether current system has ANY definition of independent evidence.
+
+Questions:
+
+- Are repeated attempts on the exact same question distinguishable?
+- Could the same question currently count multiple times?
+- Can two AI variants be distinguished?
+- Is task lineage known?
+- Can assisted vs unassisted attempts be distinguished?
+- Can attempts within one quiz be distinguished from attempts across quizzes?
+- Is there deduplication?
+
+Do NOT define the final independence algorithm yet.
+
+Report what data exists to support one later.
+
+============================================================
+18. CORRECTNESS IS NOT COGNITIVE LEVEL
+============================================================
+
+Audit all places where:
+
+correctness
+mastery
+confidence
+Bloom/cognitive level
+
+are currently used.
+
+Look specifically for any code that incorrectly assumes:
+
+correct answer → cognitive level achieved
+
+or:
+
+Bloom level on curriculum node → learner demonstrated that level.
+
+If such logic exists:
+report it.
+
+DO NOT modify it in this round.
+
+We must preserve the separation:
+
+CURRICULUM TARGET
+≠
+TASK COGNITIVE DEMAND
+≠
+LEARNER EVIDENCE
+≠
+LEARNER DEMONSTRATED LEVEL
+
+============================================================
+19. CURRENT CONFIDENCE MODEL
+============================================================
+
+Audit only.
+
+Do not modify.
+
+Report:
+
+- where confidenceScore is calculated
+- inputs
+- thresholds
+- whether evidence count matters
+- whether repeated answers matter
+- whether help currently matters
+- whether cognitive level currently matters
+
+We need this only so Phase 2B does not accidentally conflict with
+Confidence Model V1.
+
+Confidence Model V2 is a later phase.
+
+============================================================
+20. REQUIRED GAP MATRIX
+============================================================
+
+Return a matrix with these future requirements:
+
+1. canonical MicroNode identity
+2. cognitive level
+3. stable task identity
+4. task cognitive demand
+5. interaction type
+6. task provenance
+7. source-task lineage
+8. learner response
+9. correctness
+10. attempt identity
+11. attempt sequence
+12. independent/assisted
+13. help requested
+14. help level/type
+15. help count
+16. answer reveal
+17. timestamp
+18. quiz linkage
+19. source exercise linkage
+20. AI variant lineage
+21. evidence strength
+22. minimumIndependentEvidence target
+
+For each mark:
+
+EXISTS
+PARTIAL
+MISSING
+
+and give exact evidence.
+
+============================================================
+21. REQUIRED ARCHITECTURE RECOMMENDATION
+============================================================
+
+After the audit, recommend the MINIMUM architecture needed for Phase 2B.
+
+Do NOT implement it.
+
+Prefer extending existing architecture over creating parallel systems.
+
+Your recommendation must answer:
+
+A. Should cognitive evidence extend evidence_events?
+
+B. Do we need a canonical task/entity layer?
+
+C. Can lesson_exercises serve as that task layer?
+
+D. How should quiz questions relate to it?
+
+E. How should AI-generated variants relate to source exercises?
+
+F. Where should cognitiveLevel live?
+
+G. Where should interactionType live?
+
+H. Where should provenance live?
+
+I. Where should help usage live?
+
+J. Should help be stored on the final evidence row, as separate help events,
+or both?
+
+K. How should stable task identity survive AI Teacher and quiz flows?
+
+L. How can this be added without breaking current mastery scoring?
+
+============================================================
+22. HELP / HINT RECOMMENDATION
+============================================================
+
+Give a specific recommendation for future learner UX.
+
+Evaluate this candidate:
+
+Question / Task
+[answer interaction]
+
+[💡 Օգնություն]
+
+After click:
+
+Hint 1
+
+[Ավելի շատ օգնություն]
+
+Hint 2
+
+[Քայլային օգնություն]
+
+Then learner answers.
+
+Recommend:
+
+- whether this interaction model is appropriate
+- how many conceptual help stages we should support
+- what facts each help event should record
+- how answer reveal should be distinguished from hints
+- how to avoid giving away the answer too early
+- how this can later feed Confidence V2
+
+DO NOT assign numerical confidence penalties.
+
+============================================================
+23. REAL-DATA FORENSIC EXAMPLES
+============================================================
+
+Use real existing data where available.
+
+Provide at least:
+
+Example A:
+one source lesson exercise
+
+Example B:
+one quiz question/answer/evidence chain
+
+Example C:
+one MicroNode with confirmed Cognitive Enrichment
+
+For each show actual IDs and relationships.
+
+READ ONLY.
+
+Do not mutate production data.
+
+============================================================
+24. NON-GOALS
+============================================================
+
+DO NOT implement:
+
+- new schema
+- new migrations
+- AI task generation
+- AI variants
+- hint button
+- progressive help UI
+- cognitive scoring
+- cognitive progress %
+- learner demonstrated cognitive level
+- Confidence V2
+- new mastery thresholds
+- Knowledge Tree Cognitive Depth
+- AI Teacher cognitive progression
+
+This is AUDIT ONLY.
+
+============================================================
+25. REQUIRED FINAL REPORT
+============================================================
+
+Return exactly these sections:
+
+A. Executive summary
+
+B. Current task/exercise architecture
+
+C. Current evidence architecture
+
+D. Current quiz evidence pipeline
+
+E. Current AI Teacher exercise evidence pipeline
+
+F. Phase 2A → Phase 2B linkage
+
+G. Task identity findings
+
+H. Help/hint architecture findings
+
+I. Evidence independence findings
+
+J. Confidence V1 findings
+
+K. 22-item gap matrix
+
+L. Real-data examples
+
+M. Minimum recommended Phase 2B architecture
+
+N. Recommended progressive-help architecture
+
+O. Exact schema changes that WOULD be required in Round 2
+   — recommendation only, no implementation
+
+P. Risks / backward-compatibility concerns
+
+Q. Final verdict:
+   READY FOR PHASE 2B ROUND 2
+   or
+   BLOCKED — with exact reason
+
+============================================================
+26. STOP
+============================================================
+
+STOP after the audit.
+
+DO NOT implement the recommendation.
+
+Wait for approval before Phase 2B Round 2.
