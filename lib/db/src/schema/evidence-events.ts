@@ -4,6 +4,8 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { lessonSessionsTable } from "./lesson-sessions";
 import { knowledgeNodesTable } from "./knowledge-nodes";
+import { lessonExercisesTable } from "./lesson-exercises";
+import { lessonNodeCognitiveLevelsTable } from "./lesson-node-cognitive-levels";
 
 export const evidenceEventsTable = pgTable("evidence_events", {
   id: serial("id").primaryKey(),
@@ -65,7 +67,35 @@ export const evidenceEventsTable = pgTable("evidence_events", {
   //
   cognitiveLevel:  text("cognitive_level"),
   taskDifficulty:  text("task_difficulty"),
+
+  // ── assistanceLevel ──────────────────────────────────────────────────────
+  // Phase 2B semantics (supersedes old comment):
+  // none     → no help used
+  // light    → level-1 hint used
+  // moderate → level-2 hint used
+  // guided   → level-3 step-by-step used
+  // revealed → level-4 answer reveal used
   assistanceLevel: text("assistance_level"),
+
+  // ── Phase 2B Round 2 additions ───────────────────────────────────────────
+  // All nullable and backward-compatible. Old rows have null — that is correct.
+
+  // Stable identity of the source exercise that produced this evidence.
+  // null = AI MICRO_CHECK (no source exercise) or quiz question with no source link.
+  lessonExerciseId: integer("lesson_exercise_id")
+    .references(() => lessonExercisesTable.id, { onDelete: "set null" }),
+
+  // The ACTUAL interaction format the learner used (not merely the preferred format).
+  // Examples: multiple_choice | true_false | classification | short_answer | numeric_answer
+  interactionType: text("interaction_type"),
+
+  // Which attempt number on this same task (1-based). Allows distinguishing repeated
+  // attempts on the identical task for independence-of-evidence evaluation.
+  attemptSequence: integer("attempt_sequence"),
+
+  // Number of help events (help_events rows) that occurred before this answer.
+  // 0 = no help used. Combined with assistance_level for Confidence V2.
+  helpCount: integer("help_count").notNull().default(0),
 });
 
 export const insertEvidenceEventSchema = createInsertSchema(evidenceEventsTable).omit({ id: true, createdAt: true });

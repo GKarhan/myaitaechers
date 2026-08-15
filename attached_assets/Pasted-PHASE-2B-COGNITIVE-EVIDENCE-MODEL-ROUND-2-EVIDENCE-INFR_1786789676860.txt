@@ -1,0 +1,1004 @@
+PHASE 2B — COGNITIVE EVIDENCE MODEL
+ROUND 2 — EVIDENCE INFRASTRUCTURE + TASK IDENTITY + PROGRESSIVE HELP FOUNDATION
+
+IMPORTANT:
+This task follows the completed Phase 2B Round 1 forensic audit.
+
+Do NOT redesign the architecture.
+Do NOT create a parallel evidence system.
+Extend the existing architecture exactly where possible.
+
+The Round 1 audit established:
+
+1. evidence_events already contains:
+   - cognitive_level
+   - task_difficulty
+   - assistance_level
+
+   These currently exist but are not populated.
+
+2. evidence_events.topic_id is misleadingly named:
+   it references knowledge_nodes.id, NOT curriculum topic id.
+   DO NOT rename it in this task.
+
+3. lesson_node_cognitive_levels already defines:
+   - cognitive_level
+   - performance_objective
+   - success_criterion
+   - minimum_independent_evidence
+   - preferred_interaction_types
+   - target ceiling
+
+4. lesson_node_cognitive_tasks already exists as the
+   exercise ↔ cognitive-level bridge and already contains:
+   - cognitive_level_id
+   - lesson_exercise_id
+   - task_provenance
+   - seed_exercise_id
+
+5. lesson_exercises is the canonical source exercise store.
+
+6. The current quiz evidence chain loses:
+   - source exercise identity
+   - cognitive level
+   - interaction type
+   - assistance information
+
+7. AI Teacher currently writes ZERO durable evidence_events.
+
+8. hint_used exists on evidence_events but quiz evidence currently
+   hard-codes it to false.
+
+9. Confidence/Mastery V1 already reads hint_used.
+   Therefore DO NOT redesign scoring in this task.
+
+10. The progressive-help UX agreed for the AI Teacher is:
+
+   TASK
+     ↓
+   learner attempts / may request help
+     ↓
+   💡 Օգնություն
+     ↓
+   Hint 1 — light directional hint
+     ↓
+   Ավելի շատ օգնություն
+     ↓
+   Hint 2 — more concrete conceptual/procedural help
+     ↓
+   Քայլային աջակցություն
+     ↓
+   guided support
+     ↓
+   optional explicit answer/explanation reveal
+
+CRITICAL RULE:
+Help must stay inside the SAME active task.
+
+Requesting help must NOT:
+- create a new question,
+- close the current task,
+- advance the cognitive level,
+- advance the MicroNode,
+- advance the teaching stage,
+- count as an answer,
+- count as independent evidence.
+
+The final learner answer must remain linked to the same task identity
+and must record how much help occurred before that answer.
+
+
+============================================================
+PART 0 — MANDATORY PRE-IMPLEMENTATION AUDIT
+============================================================
+
+Before changing code, inspect the CURRENT workspace again.
+
+Do not assume the Round 1 report is still perfectly current.
+
+Report:
+
+A. exact Drizzle definitions for:
+   - evidence_events
+   - lesson_exercises
+   - lesson_node_cognitive_levels
+   - lesson_node_cognitive_tasks
+   - quiz_questions
+   - quiz_answers
+   - quiz_attempts
+   - lesson_sessions
+
+B. exact current quiz evidence write path.
+
+C. exact current AI Teacher chat flow around:
+   - current_node_id
+   - node_teaching_stage
+   - last_question_asked
+   - deep_dive_exercise_index
+   - source_fidelity.exercise_id
+   - evidence_quality
+
+D. current migrations/schema state in BOTH:
+   - production/dev DB
+   - test DB
+
+E. confirm whether any Phase 2B fields/tables from this prompt
+   already exist because of partial work.
+
+F. git diff / workspace state.
+
+If partial implementation exists:
+DO NOT duplicate it.
+Continue from actual state.
+
+Only after this audit, implement.
+
+
+============================================================
+PART 1 — CANONICAL TASK IDENTITY CONTRACT
+============================================================
+
+We need a stable identity chain:
+
+MicroNode
+  ↓
+Cognitive Level
+  ↓
+Canonical Task / Exercise
+  ↓
+Displayed Task Instance
+  ↓
+Learner Attempt
+  ↓
+Help Events
+  ↓
+Evidence Event
+
+Use the EXISTING architecture.
+
+Canonical source task:
+lesson_exercises.id
+
+Cognitive classification:
+lesson_node_cognitive_tasks
+
+Do NOT replace these with a new task table unless the actual current
+schema proves this is impossible.
+
+For source exercises:
+
+lesson_exercises
+   ↓
+lesson_node_cognitive_tasks
+   ↓
+lesson_node_cognitive_levels
+
+For future AI-generated equivalent variants:
+
+lesson_exercises
+  source_type = ai_generated
+
+and:
+
+lesson_node_cognitive_tasks
+  task_provenance = ai_generated
+  seed_exercise_id = original lesson_exercises.id
+
+DO NOT implement automatic AI variant generation in this Round unless
+it is strictly required to prove the identity chain.
+
+That belongs to a later evidence-asset generation task.
+
+But the schema/identity architecture MUST support it.
+
+
+============================================================
+PART 2 — QUIZ QUESTION COGNITIVE IDENTITY
+============================================================
+
+Extend quiz_questions minimally.
+
+Add nullable fields, using proper FK constraints where applicable:
+
+source_exercise_id
+  → lesson_exercises.id
+  ON DELETE SET NULL
+
+cognitive_level_id
+  → lesson_node_cognitive_levels.id
+  ON DELETE SET NULL
+
+interaction_type
+  text nullable
+
+Existing quiz questions MUST remain valid.
+
+NO destructive migration.
+
+NO required backfill for old questions.
+
+New quiz generation should carry these values WHEN they are known.
+
+Do not fabricate a source exercise link.
+
+If a generated quiz question is genuinely derived from a known
+lesson_exercise, store source_exercise_id.
+
+If it is generated only from MicroNode theory/context and has no
+specific source exercise:
+source_exercise_id = null.
+
+If the question is generated to assess a known cognitive level:
+store cognitive_level_id.
+
+interaction_type must describe the ACTUAL learner interaction, not
+merely copy a preferred interaction type.
+
+Examples:
+multiple_choice
+true_false
+classification
+matching
+short_answer
+numeric_answer
+
+Do not introduce formats that the current quiz-taking UI cannot
+actually render unless only storing them as future metadata.
+
+
+============================================================
+PART 3 — COMPLETE evidence_events COGNITIVE CONTEXT
+============================================================
+
+Keep the existing columns:
+
+cognitive_level
+task_difficulty
+assistance_level
+
+Add only what is actually missing:
+
+lesson_exercise_id
+  integer nullable
+  FK → lesson_exercises.id
+  ON DELETE SET NULL
+
+interaction_type
+  text nullable
+
+attempt_sequence
+  integer nullable
+
+help_count
+  integer NOT NULL DEFAULT 0
+
+Before migration:
+verify these fields do not already exist.
+
+Apply migration consistently to BOTH development and test DB.
+
+Do NOT change or rename:
+topic_id
+
+Do NOT change old evidence rows.
+
+Old rows may legitimately have null cognitive/task fields.
+
+
+============================================================
+PART 4 — HELP EVENT AUDIT TRAIL
+============================================================
+
+Create a durable help_events table if no equivalent currently exists.
+
+Minimum required fields:
+
+id
+user_id
+lesson_session_id nullable
+lesson_node_id
+lesson_exercise_id nullable
+quiz_question_id nullable
+cognitive_level_id nullable
+
+task_instance_id nullable IF Part 5 introduces a durable task-instance
+identifier.
+
+help_level
+integer NOT NULL
+
+is_answer_reveal
+boolean NOT NULL DEFAULT false
+
+hint_content
+text nullable
+
+created_at
+timestamp with timezone NOT NULL default now()
+
+Help levels:
+
+1 = light
+2 = moderate
+3 = guided
+4 = reveal
+
+Semantics:
+
+LEVEL 1 — LIGHT
+Directional hint.
+Must not provide solution steps or final answer.
+
+LEVEL 2 — MODERATE
+More specific conceptual/procedural guidance.
+Still should not reveal the final answer.
+
+LEVEL 3 — GUIDED
+Step-by-step support.
+Learner is still expected to produce/choose the final response.
+
+LEVEL 4 — REVEAL
+Explicit explanation/final-answer reveal.
+This must be treated separately from normal hints.
+
+Store the ACTUAL help event.
+
+Do not merely increment a counter.
+
+The final evidence row later stores the summary:
+
+help_count = number of help events before answer
+
+assistance_level =
+none
+light
+moderate
+guided
+revealed
+
+hint_used =
+false only when no help was used
+true when level >= 1 occurred before final answer.
+
+
+============================================================
+PART 5 — SAME-TASK CONTINUITY FOR AI TEACHER
+============================================================
+
+This is CRITICAL.
+
+Audit the best minimal way to persist the currently active task.
+
+We need to know, while the learner is answering:
+
+- lesson_session_id
+- lesson_node_id
+- cognitive_level_id if known
+- lesson_exercise_id if known
+- task provenance/type
+- current question/task identity
+- attempt sequence
+- help count
+- maximum assistance level already used
+
+Do NOT rely only on last_question_asked text as canonical identity.
+
+If the existing lesson_sessions table can safely hold the required
+active-task state with a small number of nullable fields, use it.
+
+If a separate task-instance table is demonstrably cleaner and
+necessary, STOP BEFORE creating it and report the exact reason.
+
+Do not casually create a second task architecture.
+
+For a textbook exercise:
+persist lesson_exercises.id, NOT only exercise_id text.
+
+For an AI MICRO_CHECK:
+there may be no lesson_exercise_id.
+
+In that case it still needs a stable per-task identity during the
+session.
+
+A MICRO_CHECK must be explicitly identifiable as:
+task provenance/type = micro_check / ai_generated
+
+and must NOT be falsely linked to a textbook exercise.
+
+
+============================================================
+PART 6 — PROGRESSIVE HELP BACKEND
+============================================================
+
+Implement the backend foundation for the AI Teacher help interaction.
+
+Preferred architecture:
+a dedicated help request endpoint or equivalent isolated action.
+
+The action MUST receive/derive the authenticated learner and current
+active task from server-side session state.
+
+Do NOT trust client-supplied:
+userId
+lessonNodeId
+cognitiveLevel
+exerciseId
+
+when those values can be derived from the authenticated session.
+
+On help request:
+
+1. Validate the lesson session belongs to the authenticated learner.
+
+2. Validate there is an active unanswered task.
+
+3. Determine next help level:
+   0 → 1
+   1 → 2
+   2 → 3
+
+4. Level 4 REVEAL must NOT happen automatically.
+   It requires a distinct explicit action.
+
+5. Generate or retrieve help appropriate to the SAME task.
+
+6. Insert help_events row.
+
+7. Update active-task help summary if such session state is persisted.
+
+8. Return:
+   - task identity
+   - help level
+   - hint text
+   - whether reveal occurred
+
+9. DO NOT:
+   - advance node_teaching_stage
+   - increment answer evidence
+   - mark task correct
+   - complete MicroNode
+   - generate a replacement question
+
+The AI prompt for help MUST receive enough context to know the exact
+current task and prior hints.
+
+It must explicitly prohibit premature answer reveal at levels 1–3.
+
+
+============================================================
+PART 7 — AI TEACHER DURABLE EVIDENCE
+============================================================
+
+This is the largest current evidence gap.
+
+The Round 1 audit proved AI Teacher produces zero evidence_events.
+
+Add durable evidence writing for learner ANSWERS to active tasks.
+
+Do NOT create evidence merely because the AI sent a teaching message.
+
+Do NOT create evidence for a help click.
+
+Evidence should be created only when there is an assessable learner
+response.
+
+For each assessable answer, record as much real context as exists:
+
+user_id
+lesson_session_id
+topic_id = knowledge_nodes.id
+event_type = answer
+was_correct
+lesson_exercise_id
+cognitive_level
+task_difficulty
+interaction_type
+attempt_sequence
+hint_used
+help_count
+assistance_level
+created_at
+
+metadata should include traceable identifiers where useful, e.g.:
+
+source: "ai_teacher"
+lessonNodeId
+cognitiveLevelId
+task provenance
+exercise text ID if applicable
+task instance identity if implemented
+
+DO NOT fabricate unknown values.
+
+If cognitive level is genuinely unknown:
+store null.
+
+If task is MICRO_CHECK:
+identify it as such in metadata/provenance.
+
+Preserve the existing distinction:
+
+MICRO_CHECK evidence
+  ≤ MODERATE
+
+REAL EXERCISE evidence
+  may be STRONG
+
+Do NOT alter the existing teaching-cycle rules:
+TEACH → MICRO_CHECK → FEEDBACK → TRANSITION
+
+Do NOT allow evidence persistence to accidentally advance the cycle
+twice.
+
+
+============================================================
+PART 8 — QUIZ EVIDENCE ENRICHMENT
+============================================================
+
+Update quiz evidence creation so new evidence_events carry the
+available Phase 2B context.
+
+From quiz question/answer, populate where real:
+
+lesson_exercise_id
+cognitive_level
+task_difficulty
+interaction_type
+attempt_sequence
+help_count
+assistance_level
+hint_used
+
+IMPORTANT:
+
+The current quiz UI has no progressive-help feature.
+
+Therefore for CURRENT quiz answers:
+
+help_count = 0
+assistance_level = 'none'
+hint_used = false
+
+This is acceptable because no help mechanism exists there.
+
+Do NOT pretend quiz help exists.
+
+If cognitive_level_id is available:
+resolve/store the canonical cognitive level string in evidence_events.
+
+If source_exercise_id is available:
+store it.
+
+If old question lacks these:
+store null.
+
+Backward compatibility is mandatory.
+
+
+============================================================
+PART 9 — POPULATE lesson_node_cognitive_tasks SAFELY
+============================================================
+
+The bridge table is currently empty according to Round 1.
+
+We need a safe first mechanism to classify existing exercises against
+cognitive levels.
+
+DO NOT bulk AI-classify every production exercise automatically.
+
+First implement a deterministic/teacher-controlled workflow.
+
+Teacher Dashboard cognitive-path block already has exercise
+link/unlink functionality from Phase 2A.
+
+Audit whether that existing UI already writes to
+lesson_node_cognitive_tasks correctly.
+
+If YES:
+reuse and verify it.
+
+If NO:
+fix it minimally.
+
+Teacher must be able to:
+
+- see exercises belonging to the MicroNode
+- link an exercise to a cognitive level
+- unlink it
+- see provenance
+- persist after refresh
+
+Do NOT duplicate the existing UI.
+
+Do NOT move exercises out of the MicroNode structure.
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+   → Exercises
+   → Cognitive Path
+
+The cognitive task bridge is relational metadata.
+It does NOT change the visible curriculum hierarchy.
+
+
+============================================================
+PART 10 — INDEPENDENT EVIDENCE SEMANTICS
+============================================================
+
+DO NOT implement Confidence V2 yet.
+
+But make independence computable later.
+
+For this Round, define and expose the raw facts needed.
+
+An answer is a candidate for independent evidence only if:
+
+- assistance_level = 'none'
+- help_count = 0
+- hint_used = false
+- no answer reveal occurred before the answer
+
+Repeated attempts on the exact same task must remain distinguishable
+via attempt_sequence/task identity.
+
+DO NOT yet decide how many repeats count toward mastery.
+
+DO NOT assign numeric penalties.
+
+DO NOT implement a new confidence formula.
+
+We only need observable facts.
+
+
+============================================================
+PART 11 — MINIMUM-EFFORT INTERACTION PRINCIPLE
+============================================================
+
+Preserve this project rule:
+
+MINIMUM-EFFORT INTERACTION,
+MAXIMUM-VALID EVIDENCE.
+
+The learner should type as little as reasonably possible.
+
+Use selection/classification/matching/short-answer interactions where
+they can validly demonstrate the target cognitive level.
+
+But do NOT reduce cognitive validity merely to minimize typing.
+
+Some tasks legitimately require the learner to solve independently.
+
+For example:
+
+- numeric/problem-solving task:
+  learner solves independently,
+  then may enter a short final answer OR choose the correct result.
+
+- Analyze/Evaluate:
+  a pure recognition MCQ may be insufficient if the performance
+  objective requires reasoning.
+
+This Round should preserve the metadata architecture needed to
+distinguish these task types.
+
+Do NOT redesign the student quiz UI broadly in this task.
+
+
+============================================================
+PART 12 — DO NOT TOUCH CONFIDENCE MODEL V2
+============================================================
+
+STRICT SCOPE BOUNDARY.
+
+Do NOT:
+
+- create Confidence V2 formula
+- create cognitive weighting formula
+- create assistance penalties
+- change mastery thresholds
+- change 3/3, 2/3, 1/3, 0/3 behavior
+- reinterpret coveragePercent
+- change Knowledge Tree four-state aggregation
+- change K=P×L×R
+- change retention calculations
+- retroactively recompute learner scores
+
+This Round makes the evidence richer.
+
+A later phase will decide how to calculate Confidence V2 from it.
+
+
+============================================================
+PART 13 — STUDENT HELP UI: MINIMAL INTEGRATION
+============================================================
+
+After the backend is proven, add the minimal student-facing help UI
+inside the AI Teacher chat.
+
+ONLY show it when there is an active assessable question/task.
+
+Initial state:
+
+[ 💡 Օգնություն ]
+
+After level 1:
+
+[ hint text ]
+
+[ Ավելի շատ օգնություն ]
+
+After level 2:
+
+[ hint text ]
+
+[ Քայլային աջակցություն ]
+
+After level 3:
+
+[ guided support ]
+
+[ Տեսնել բացատրությունը ]
+
+The level-4 reveal action must require an explicit second confirmation
+or clearly separate deliberate action.
+
+IMPORTANT:
+
+The help UI belongs to the SAME question/task card or immediate task
+context.
+
+It must not appear as a new AI Teacher question.
+
+It must not replace the current question.
+
+After help, the learner continues answering the SAME task.
+
+All learner-facing strings must be proper Armenian Unicode.
+No Latin transliteration.
+No mixed Cyrillic/Latin lookalikes.
+
+
+============================================================
+PART 14 — ACCEPTANCE TESTS
+============================================================
+
+Create a dedicated Phase 2B Round 2 acceptance suite.
+
+Minimum tests:
+
+T01 — Existing old evidence rows still load.
+
+T02 — Existing old quiz questions with null Phase 2B fields still work.
+
+T03 — New quiz question can persist source_exercise_id.
+
+T04 — New quiz question can persist cognitive_level_id.
+
+T05 — New quiz question can persist interaction_type.
+
+T06 — New quiz evidence records lesson_exercise_id correctly.
+
+T07 — New quiz evidence records cognitive_level correctly.
+
+T08 — New quiz evidence records interaction_type correctly.
+
+T09 — Current quiz evidence records help_count=0.
+
+T10 — Current quiz evidence records assistance_level='none'.
+
+T11 — Current quiz evidence records hint_used=false.
+
+T12 — Teacher can link exercise → cognitive level.
+
+T13 — Link persists after reload.
+
+T14 — Unlink works.
+
+T15 — Link does not modify exercise_text_verbatim.
+
+T16 — AI Teacher active source exercise uses lesson_exercises.id.
+
+T17 — MICRO_CHECK does not falsely receive a textbook exercise ID.
+
+T18 — Help level 1 creates exactly one help_event.
+
+T19 — Help level 2 remains on same task.
+
+T20 — Help level 3 remains on same task.
+
+T21 — Levels 1–3 do not reveal final answer.
+
+T22 — Reveal requires explicit level-4 action.
+
+T23 — Help request does not advance node_teaching_stage.
+
+T24 — Help request does not create evidence_event.
+
+T25 — Final answer after no help records:
+      help_count=0,
+      assistance_level='none',
+      hint_used=false.
+
+T26 — Final answer after level-1 help records:
+      help_count>=1,
+      assistance_level='light',
+      hint_used=true.
+
+T27 — Final answer after level-2 help records:
+      assistance_level='moderate'.
+
+T28 — Final answer after level-3 help records:
+      assistance_level='guided'.
+
+T29 — Final answer after reveal records:
+      assistance_level='revealed'.
+
+T30 — AI Teacher assessable answer creates durable evidence_event.
+
+T31 — Evidence belongs to authenticated learner only.
+
+T32 — Evidence maps to correct knowledge_nodes row.
+
+T33 — Evidence maps back to correct lesson_node_id.
+
+T34 — Cognitive level is null rather than fabricated when unknown.
+
+T35 — attempt_sequence distinguishes repeated attempts.
+
+T36 — Same task identity survives help → answer.
+
+T37 — No duplicate evidence event for a single submitted answer.
+
+T38 — Existing KT-1.4A tests still pass.
+
+T39 — Existing KT-1.5 tests still pass.
+
+T40 — Existing Phase 2A R3 tests still pass.
+
+T41 — Existing Phase 2A R3 closure tests still pass.
+
+T42 — No test pollution in production/dev learner data.
+
+Also typecheck:
+- api-server
+- frontend
+
+
+============================================================
+PART 15 — REAL-DATA PILOT
+============================================================
+
+After automated tests pass, perform a SMALL real-data pilot.
+
+DO NOT bulk modify all production nodes.
+
+Use:
+
+1 confirmed MicroNode with at least one real lesson exercise
+and
+1 MicroNode where a MICRO_CHECK can demonstrate the no-source-task case.
+
+Demonstrate:
+
+CASE A — source exercise:
+MicroNode
+→ cognitive level
+→ lesson exercise
+→ active AI Teacher task
+→ help if requested
+→ learner answer
+→ evidence_event
+
+Show every ID in the chain.
+
+CASE B — MICRO_CHECK:
+MicroNode
+→ cognitive level if known
+→ generated micro-check task
+→ no lesson_exercise_id
+→ learner answer
+→ evidence_event
+
+Confirm no fake source exercise linkage.
+
+If possible, also test:
+
+CASE C:
+same source exercise + one AI-derived variant architecture,
+but DO NOT create a production variant generator solely for this test.
+
+
+============================================================
+PART 16 — FINAL REPORT
+============================================================
+
+Return a structured report containing:
+
+A. Pre-implementation audit findings
+
+B. Exact schema changes
+
+C. Migration status:
+   - dev DB
+   - test DB
+
+D. Files changed
+
+E. Canonical task identity contract actually implemented
+
+F. Quiz identity chain after implementation
+
+G. AI Teacher identity chain after implementation
+
+H. Progressive-help architecture implemented
+
+I. Exact help-level semantics
+
+J. Exact evidence_events fields populated by:
+   - quiz
+   - AI Teacher source exercise
+   - AI Teacher MICRO_CHECK
+
+K. lesson_node_cognitive_tasks status:
+   - before
+   - after
+   - real example
+
+L. Real-data pilot IDs and rows
+
+M. Acceptance test results T01–T42
+
+N. Regression results
+
+O. Typecheck results
+
+P. DB pollution check
+
+Q. Explicit confirmation that these were NOT changed:
+   - Confidence V1 formula
+   - mastery thresholds
+   - 3-question exact-tier behavior
+   - Knowledge Tree aggregation
+   - coveragePercent
+   - K=P×L×R
+   - Mapper hierarchy
+   - source exercise verbatim text
+
+R. Remaining gaps for Phase 2B Round 3 / Confidence V2
+
+FINAL VERDICT:
+PASS / PARTIAL / FAIL
+
+Do not call PASS unless the complete chain is demonstrated:
+
+TARGET COGNITIVE LEVEL
+→ TASK
+→ SAME TASK DURING HELP
+→ LEARNER ANSWER
+→ DURABLE EVIDENCE
+→ COGNITIVE LEVEL + ASSISTANCE CONTEXT PRESERVED.
+
+
+============================================================
+NON-NEGOTIABLE RULES
+============================================================
+
+1. Audit first.
+2. No architecture rewrite.
+3. No parallel evidence system.
+4. No Confidence V2 formula.
+5. No mastery threshold changes.
+6. No KT aggregation changes.
+7. No Mapper hierarchy changes.
+8. Source exercise verbatim text remains immutable.
+9. Never fabricate cognitive level or source exercise linkage.
+10. Help levels 1–3 must not reveal the final answer.
+11. Help never advances the task/node by itself.
+12. Help and final answer must preserve SAME task identity.
+13. AI Teacher assessable answers must become durable evidence.
+14. Old rows/questions remain backward-compatible.
+15. All new learner-facing text must be proper Armenian Unicode.

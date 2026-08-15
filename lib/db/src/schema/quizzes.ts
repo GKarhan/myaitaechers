@@ -6,6 +6,8 @@ import { classesTable } from "./classes";
 import { booksTable } from "./books";
 import { lessonNodesTable } from "./lesson-nodes";
 import { lessonsTable } from "./lessons";
+import { lessonExercisesTable } from "./lesson-exercises";
+import { lessonNodeCognitiveLevelsTable } from "./lesson-node-cognitive-levels";
 
 // ── quizzesTable ──────────────────────────────────────────────────────────────
 export const quizzesTable = pgTable("quizzes", {
@@ -55,6 +57,25 @@ export const quizQuestionsTable = pgTable("quiz_questions", {
   // generation produced insufficient source material).
   // Individual slots may also be null (partial — that slot has no reliable explanation).
   optionExplanations: text("option_explanations").array(),
+
+  // ── Phase 2B Round 2 — Cognitive Identity ────────────────────────────────
+  // All nullable. Existing questions remain valid with null in these fields.
+  //
+  // If the question was genuinely derived from a known lesson exercise, store
+  // source_exercise_id. If it was generated only from node theory/context with
+  // no specific exercise, leave null. NEVER fabricate a link.
+  sourceExerciseId: integer("source_exercise_id")
+    .references(() => lessonExercisesTable.id, { onDelete: "set null" }),
+
+  // If the question was generated to assess a known cognitive level, store the FK.
+  // This enables evidence_events.cognitive_level to be populated at quiz submit time.
+  cognitiveLevelId: integer("cognitive_level_id")
+    .references(() => lessonNodeCognitiveLevelsTable.id, { onDelete: "set null" }),
+
+  // The ACTUAL learner interaction format for this question.
+  // Examples: multiple_choice | true_false | classification | short_answer | numeric_answer
+  // Reflects what the student UI renders — not a future target.
+  interactionType: text("interaction_type"),
 });
 
 export type QuizQuestion = typeof quizQuestionsTable.$inferSelect;

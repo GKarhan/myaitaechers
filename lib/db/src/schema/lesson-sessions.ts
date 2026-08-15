@@ -5,6 +5,8 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { lessonsTable } from "./lessons";
 import { lessonNodesTable } from "./lesson-nodes";
+import { lessonExercisesTable } from "./lesson-exercises";
+import { lessonNodeCognitiveLevelsTable } from "./lesson-node-cognitive-levels";
 
 export const lessonSessionsTable = pgTable("lesson_sessions", {
   id: serial("id").primaryKey(),
@@ -46,6 +48,36 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   introConfirmed: boolean("intro_confirmed").notNull().default(false),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+
+  // ── Phase 2B Round 2 — Active Task Identity ──────────────────────────────
+  // Tracks the currently active task so help requests and evidence events
+  // can be linked to the same stable task without trusting client input.
+  // All nullable — null = no active task (e.g. THEORY phase).
+
+  // lesson_exercises.id of the textbook exercise currently being presented.
+  // null = MICRO_CHECK (AI-generated) or THEORY phase.
+  activeLessonExerciseId: integer("active_lesson_exercise_id")
+    .references(() => lessonExercisesTable.id, { onDelete: "set null" }),
+
+  // lesson_node_cognitive_levels.id of the cognitive level being targeted.
+  // null = cognitive path not confirmed or not applicable.
+  activeCognitiveLevelId: integer("active_cognitive_level_id")
+    .references(() => lessonNodeCognitiveLevelsTable.id, { onDelete: "set null" }),
+
+  // Provenance of the active task: 'micro_check' | 'source_exercise' | null
+  activeTaskProvenance: text("active_task_provenance"),
+
+  // Which attempt number this is on the current active task (1-based).
+  // Reset to 1 when a new task starts; incremented on each answer attempt.
+  activeAttemptSequence: integer("active_attempt_sequence").notNull().default(0),
+
+  // How many help events have been requested during the current active task.
+  // Reset to 0 when a new task starts.
+  activeHelpCount: integer("active_help_count").notNull().default(0),
+
+  // Maximum help level reached during the current active task.
+  // 'none' | 'light' | 'moderate' | 'guided' | 'revealed'
+  activeAssistanceLevel: text("active_assistance_level").notNull().default("none"),
 });
 
 export const insertLessonSessionSchema = createInsertSchema(lessonSessionsTable).omit({ id: true, startedAt: true });

@@ -12,6 +12,7 @@ import {
   lessonsTable,
   knowledgeNodesTable,
   evidenceEventsTable,
+  lessonNodeCognitiveLevelsTable,
   usersTable,
   reviewScheduleTable,
   lessonNodeDependenciesTable,
@@ -1218,9 +1219,10 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
   // ── Fire-and-forget: write evidence_events per answer, update scoring ─────
   // Same non-blocking pattern as chat.ts. Any failure here is logged but must
   // never affect the student's score (already sent above).
-  const _studentId = req.userId!;
-  const _answerRows = answerRows; // capture before request scope expires
-  const _quizId = quizId;
+  const _studentId   = req.userId!;
+  const _answerRows  = answerRows;      // capture before request scope expires
+  const _quizId      = quizId;
+  const _questionMap = questionMap;     // Phase 2B: needed for cognitive fields
   (async () => {
     // 1. Fetch the quiz's subjectId (not available in the handler above)
     const [quizRow] = await db
@@ -1291,18 +1293,51 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
         if (!topicId) continue;
 
         // 4. Insert one evidence_events row per answer belonging to this nodeId
+        //    Phase 2B: also populate cognitive identity fields from quiz_questions.
         const nodeAnswers = _answerRows.filter((a) => a.nodeId === nodeId);
+
+        // Collect distinct cognitiveLevelIds from this batch so we can resolve
+        // the cognitive_level text in one query.
+        const cogLevelIds = [
+          ...new Set(
+            nodeAnswers
+              .map((a) => (_questionMap.get(a.questionId) as any)?.cognitiveLevelId)
+              .filter((id): id is number => typeof id === "number")
+          ),
+        ];
+        const cogLevelRows = cogLevelIds.length > 0
+          ? await db
+              .select({ id: lessonNodeCognitiveLevelsTable.id, cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel })
+              .from(lessonNodeCognitiveLevelsTable)
+              .where(inArray(lessonNodeCognitiveLevelsTable.id, cogLevelIds))
+          : [];
+        const cogLevelMap = new Map(cogLevelRows.map((r) => [r.id, r.cognitiveLevel]));
+
         await db.insert(evidenceEventsTable).values(
-          nodeAnswers.map((a) => ({
-            userId:          _studentId,
-            lessonSessionId: null,
-            topicId,
-            eventType:       "answer",
-            wasCorrect:      a.isCorrect,
-            responseTimeMs:  null,
-            hintUsed:        false,
-            metadata:        { source: "quiz", quizId: _quizId, questionId: a.questionId },
-          }))
+          nodeAnswers.map((a) => {
+            const q = _questionMap.get(a.questionId) as any;
+            const cogLevelId: number | null = q?.cognitiveLevelId ?? null;
+            const cogLevelText = cogLevelId ? (cogLevelMap.get(cogLevelId) ?? null) : null;
+            return {
+              userId:          _studentId,
+              lessonSessionId: null,
+              topicId,
+              eventType:       "answer",
+              wasCorrect:      a.isCorrect,
+              responseTimeMs:  null,
+              hintUsed:        false,
+              metadata:        { source: "quiz", quizId: _quizId, questionId: a.questionId },
+              // Phase 2A fields
+              cognitiveLevel:  cogLevelText,
+              taskDifficulty:  q?.difficultyLevel ?? null,
+              assistanceLevel: "none",
+              // Phase 2B new fields
+              lessonExerciseId: q?.sourceExerciseId ?? null,
+              interactionType:  q?.interactionType ?? "multiple_choice",
+              attemptSequence:  1,
+              helpCount:        0,
+            };
+          }) as any[]
         );
 
         // 5. Recompute mastery/confidence for this topic (fire-and-forget within

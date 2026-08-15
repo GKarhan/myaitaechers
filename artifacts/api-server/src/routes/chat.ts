@@ -3,6 +3,8 @@ import {
   db, chatMessagesTable, lessonsTable, lessonSessionsTable,
   lessonNodesTable, lessonExercisesTable,
   lessonNodeDependenciesTable, usersTable,
+  evidenceEventsTable, knowledgeNodesTable,
+  lessonNodeCognitiveLevelsTable, helpEventsTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, gte, or, isNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
@@ -13,6 +15,7 @@ import {
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
 import { enforceVerbatimExercise, isExerciseDeliveryTurn, effectiveExerciseText } from "../lib/exercise-delivery";
+import { updateTopicScoring } from "../services/scoring";
 
 const router = Router();
 
@@ -152,21 +155,29 @@ async function advanceNodeInSession(
     newNodeId = null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const advanceSet: Record<string, unknown> = {
+    currentNodeId: newNodeId,
+    nodeStartedAt: newNodeId ? new Date() : null,
+    nodeAttemptCount: 0,
+    currentPhase: newPhase,
+    lastQuestionAsked: null,
+    nodeMasteryEvidenceCount: 0,
+    nodeConsecutiveCorrect:   0,
+    nodeConsecutiveIncorrect: 0,
+    nodeLastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
+    nodeTeachingStage:        "THEORY",
+    // Phase 2B: reset active task state when advancing to a new node
+    activeLessonExerciseId: null,
+    activeCognitiveLevelId: null,
+    activeTaskProvenance:   null,
+    activeAttemptSequence:  0,
+    activeHelpCount:        0,
+    activeAssistanceLevel:  "none",
+  };
   await db
     .update(lessonSessionsTable)
-    .set({
-      currentNodeId: newNodeId,
-      nodeStartedAt: newNodeId ? new Date() : null,
-      nodeAttemptCount: 0,
-      currentPhase: newPhase,
-      lastQuestionAsked: null,
-      // Reset per-node progress counters for the incoming node
-      nodeMasteryEvidenceCount: 0,
-      nodeConsecutiveCorrect:   0,
-      nodeConsecutiveIncorrect: 0,
-      nodeLastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
-      nodeTeachingStage:        "THEORY",
-    })
+    .set(advanceSet as any)
     .where(eq(lessonSessionsTable.id, sessionId));
 
   return { newNodeId, newPhase, allNodesDone };
@@ -211,6 +222,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     nodeTeachingStage: string;
     phase1ConsecutiveCorrect: number;
     introConfirmed: boolean;
+    // Phase 2B: active task identity for evidence + help
+    activeLessonExerciseId: number | null;
+    activeCognitiveLevelId: number | null;
+    activeTaskProvenance: string | null;
+    activeAttemptSequence: number;
+    activeHelpCount: number;
+    activeAssistanceLevel: string;
   };
   let session: SessionRef | null = null;
 
@@ -265,6 +283,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeTeachingStage: sessionRow.nodeTeachingStage ?? "THEORY",
           phase1ConsecutiveCorrect: sessionRow.phase1ConsecutiveCorrect ?? 0,
           introConfirmed: sessionRow.introConfirmed ?? false,
+          // Phase 2B active task identity
+          activeLessonExerciseId: (sessionRow as any).activeLessonExerciseId ?? null,
+          activeCognitiveLevelId: (sessionRow as any).activeCognitiveLevelId ?? null,
+          activeTaskProvenance:   (sessionRow as any).activeTaskProvenance   ?? null,
+          activeAttemptSequence:  (sessionRow as any).activeAttemptSequence  ?? 0,
+          activeHelpCount:        (sessionRow as any).activeHelpCount        ?? 0,
+          activeAssistanceLevel:  (sessionRow as any).activeAssistanceLevel  ?? "none",
         };
         sessionId = sessionRow.id;
       }
@@ -1035,11 +1060,41 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       if (newTeachingStage) {
+        // Phase 2B: also update active task identity when stage transitions.
+        // MICRO_CHECK → not tied to a specific exercise.
+        // EXERCISE    → tied to classExercises[0] (the one being delivered verbatim).
+        // VERIFIED/THEORY → clear active task (node completing or resetting).
+        const activeTaskUpdate: Record<string, unknown> = { nodeTeachingStage: newTeachingStage };
+        if (newTeachingStage === "MICRO_CHECK") {
+          activeTaskUpdate.activeLessonExerciseId = null;
+          activeTaskUpdate.activeTaskProvenance   = "micro_check";
+          activeTaskUpdate.activeAttemptSequence  = 1;
+          activeTaskUpdate.activeHelpCount        = 0;
+          activeTaskUpdate.activeAssistanceLevel  = "none";
+        } else if (newTeachingStage === "EXERCISE" && classExercises.length > 0) {
+          activeTaskUpdate.activeLessonExerciseId = classExercises[0].id;
+          activeTaskUpdate.activeTaskProvenance   = "source_exercise";
+          activeTaskUpdate.activeAttemptSequence  = 1;
+          activeTaskUpdate.activeHelpCount        = 0;
+          activeTaskUpdate.activeAssistanceLevel  = "none";
+        } else if (newTeachingStage === "VERIFIED") {
+          activeTaskUpdate.activeLessonExerciseId = null;
+          activeTaskUpdate.activeTaskProvenance   = null;
+          activeTaskUpdate.activeAttemptSequence  = 0;
+          activeTaskUpdate.activeHelpCount        = 0;
+          activeTaskUpdate.activeAssistanceLevel  = "none";
+        }
         await db
           .update(lessonSessionsTable)
-          .set({ nodeTeachingStage: newTeachingStage })
+          .set(activeTaskUpdate as any)
           .where(eq(lessonSessionsTable.id, session.id));
         logger.info({ sessionId: session.id, nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
+      } else if (wasEval && session.activeTaskProvenance !== null) {
+        // Same stage, same active task — increment attempt sequence
+        await db
+          .update(lessonSessionsTable)
+          .set({ activeAttemptSequence: session.activeAttemptSequence + 1 } as any)
+          .where(eq(lessonSessionsTable.id, session.id));
       }
 
       // ── Mastery gate check ───────────────────────────────────────────────
@@ -1156,6 +1211,135 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     progressIndicator,
     teachingMode,
   });
+
+  // ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence ───────────
+  // Writes an evidence_events row when the learner submits an assessable answer.
+  // Fires AFTER res.json() so it never blocks the student-visible response.
+  // MICRO_CHECK evidence is capped at MODERATE per spec.
+  if (
+    session && aiResult && lessonId &&
+    session.currentPhase >= 2 && session.currentNodeId &&
+    wasEval !== null && aiResult
+  ) {
+    const evtQuality  = aiResult.answer_evaluation.evidence_quality;
+    const evtStatus   = aiResult.answer_evaluation.status;
+    const evtWasEval  = evtStatus !== "NOT_APPLICABLE";
+    const evtIsCorrect = evtStatus === "CORRECT" || evtStatus === "PARTIALLY_CORRECT";
+    // Only write evidence when there is an assessable answer with non-NONE quality
+    if (evtWasEval && evtQuality !== "NONE") {
+      const _sessionSnap = session; // capture before async
+      const _lessonId    = lessonId;
+      const _userId      = req.userId!;
+      (async () => {
+        try {
+          // Determine lesson subject for knowledge_nodes lookup
+          const [lessonRow2] = await db
+            .select({ subjectId: (lessonsTable as any).subjectId })
+            .from(lessonsTable)
+            .where(eq(lessonsTable.id, _lessonId))
+            .limit(1);
+          if (!lessonRow2?.subjectId) return;
+
+          // Find or create knowledge_nodes for this student + lesson_node
+          const [existingKN] = await db
+            .select({ id: knowledgeNodesTable.id })
+            .from(knowledgeNodesTable)
+            .where(
+              and(
+                eq(knowledgeNodesTable.subjectId,   lessonRow2.subjectId),
+                eq(knowledgeNodesTable.userId,        _userId),
+                eq(knowledgeNodesTable.lessonNodeId,  _sessionSnap.currentNodeId!),
+              )
+            )
+            .limit(1);
+
+          let topicId: number | null = existingKN?.id ?? null;
+          if (!topicId) {
+            const [nodeRow2] = await db
+              .select({ title: lessonNodesTable.title, targetBloomLevel: lessonNodesTable.targetBloomLevel })
+              .from(lessonNodesTable)
+              .where(eq(lessonNodesTable.id, _sessionSnap.currentNodeId!))
+              .limit(1);
+            if (!nodeRow2) return;
+            const [newKN] = await db
+              .insert(knowledgeNodesTable)
+              .values({
+                subjectId:    lessonRow2.subjectId,
+                userId:       _userId,
+                topicName:    nodeRow2.title,
+                lessonNodeId: _sessionSnap.currentNodeId!,
+                status:       "not_started",
+                isProvisional: true,
+                bloomLevel:   nodeRow2.targetBloomLevel ?? 1,
+              })
+              .returning({ id: knowledgeNodesTable.id });
+            topicId = newKN?.id ?? null;
+          }
+          if (!topicId) return;
+
+          // Resolve cognitive level text if activeCognitiveLevelId is set
+          let cogLevelText: string | null = null;
+          if (_sessionSnap.activeCognitiveLevelId) {
+            const [cogRow] = await db
+              .select({ cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel })
+              .from(lessonNodeCognitiveLevelsTable)
+              .where(eq(lessonNodeCognitiveLevelsTable.id, _sessionSnap.activeCognitiveLevelId))
+              .limit(1);
+            cogLevelText = cogRow?.cognitiveLevel ?? null;
+          }
+
+          // Cap evidence quality: MICRO_CHECK interactions cannot be STRONG/CONCLUSIVE
+          const provenance = _sessionSnap.activeTaskProvenance;
+          const cappedQuality =
+            provenance === "micro_check" && (evtQuality === "STRONG" || evtQuality === "CONCLUSIVE")
+              ? "MODERATE"
+              : evtQuality;
+
+          // Map assistance level to hint_used (backward compat)
+          const assistLvl = _sessionSnap.activeAssistanceLevel;
+          const hintUsedBool = assistLvl !== "none";
+
+          // Determine interaction type from provenance
+          const interactionType =
+            provenance === "source_exercise" ? "short_answer"
+            : provenance === "micro_check"   ? "micro_check"
+            : null;
+
+          await db.insert(evidenceEventsTable).values({
+            userId:          _userId,
+            lessonSessionId: _sessionSnap.id,
+            topicId,
+            eventType:       "answer",
+            wasCorrect:      evtIsCorrect,
+            responseTimeMs:  null,
+            hintUsed:        hintUsedBool,
+            metadata:        {
+              source:         "chat",
+              lessonId:       _lessonId,
+              nodeId:         _sessionSnap.currentNodeId,
+              stage:          _sessionSnap.nodeTeachingStage,
+              evidence_quality: cappedQuality,
+            },
+            cognitiveLevel:    cogLevelText,
+            taskDifficulty:    null, // not available from AI micro-check
+            assistanceLevel:   assistLvl !== "none" ? assistLvl : "none",
+            // Phase 2B new fields:
+            lessonExerciseId: _sessionSnap.activeLessonExerciseId,
+            interactionType,
+            attemptSequence:  _sessionSnap.activeAttemptSequence || 1,
+            helpCount:        _sessionSnap.activeHelpCount,
+          } as any);
+
+          // Update knowledge scoring in background
+          updateTopicScoring(topicId, _userId, { lessonId: _lessonId }).catch((err) =>
+            logger.error({ err, topicId }, "chat evidence: scoring failed")
+          );
+        } catch (err) {
+          logger.error({ err, sessionId: _sessionSnap.id }, "Phase 2B evidence write failed");
+        }
+      })().catch(() => {});
+    }
+  }
 });
 
 router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {

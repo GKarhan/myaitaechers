@@ -31,3 +31,5 @@ export * from "./mapping-review-items";
 // Phase 2A — Cognitive Enrichment schema
 export * from "./lesson-node-cognitive-levels";
 export * from "./lesson-node-cognitive-tasks";
+// Phase 2B — Cognitive Evidence Model schema
+export * from "./help-events";
