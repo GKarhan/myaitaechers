@@ -1,0 +1,269 @@
+KT-1.5 FINAL CLOSURE
+Semantic audit of needs_review + Armenian UI cleanup only
+
+STRICT SCOPE
+
+Do NOT change:
+- Knowledge Tree hierarchy
+- coverage formulas
+- mastery formulas
+- confidence formulas
+- quiz scoring
+- evidence generation
+- mapping
+- AI Teacher
+- DB/schema
+- Cognitive Depth
+- personalization
+- spaced repetition
+- P/L/R
+- K = P × L × R
+
+This task has ONLY TWO goals:
+
+1. Audit and resolve the `needs_review → mastered` semantic issue.
+2. Ensure the MicroNode Detail Panel is fully Armenian in learner-facing UI.
+
+Do NOT start Phase 2A.
+
+==================================================
+PART 1 — AUDIT `needs_review → mastered`
+==================================================
+
+The KT-1.5 report says:
+
+"masteryLevel computation: same getMasteryLevelFromScores + needs_review → mastered fold as the main tree"
+
+This must be audited carefully.
+
+We have two completely different concepts:
+
+AUTHORING STATUS
+lesson_nodes.status:
+- draft
+- needs_review
+- approved
+
+LEARNER MASTERY STATE:
+- mastered
+- weak
+- in_progress
+- not_started
+
+Authoring `needs_review` MUST NEVER automatically become learner `mastered`.
+
+Audit exactly:
+
+A. Where does `needs_review` come from?
+B. Which table/field contains it?
+C. Is it lesson_nodes.status?
+D. Is it a legacy learner-state alias?
+E. Which function performs `needs_review → mastered`?
+F. Why was this mapping introduced?
+
+Required outcome:
+
+If `needs_review` is AUTHORING status:
+- remove that contamination from learner mastery logic
+- update tests
+- preserve student-visible curriculum rule:
+  only approved MicroNodes are visible anyway
+
+If `needs_review` is a LEGACY learner-state alias:
+- prove the exact schema/source
+- normalize it at ONE authoritative learner-state boundary
+- do not keep scattered ad hoc folds in tree/panel code
+- document why it is safe
+
+The canonical learner-state contract after cleanup should ideally be:
+
+mastered
+weak
+in_progress
+not_started
+
+Coverage aggregator and Detail Panel must consume canonical learner states only.
+
+Do NOT change mastery thresholds.
+
+==================================================
+PART 2 — FULL ARMENIAN DETAIL PANEL CLEANUP
+==================================================
+
+Audit:
+
+artifacts/myaiteacher/src/pages/node-detail-panel.tsx
+
+and any child/helper strings used only by this panel.
+
+Replace ALL learner-facing mixed-script/transliterated text with proper Armenian.
+
+Use these exact labels where applicable:
+
+Գիտելիքի հանգույցի մանրամասներ
+
+Գիտելիքի հանգույց
+
+Բլումի մակարդակ
+
+Էջ
+
+🎯 Ուսուցման նպատակ
+
+Յուրացման վիճակ
+
+Գիտի
+
+Մասնակի գիտի
+
+Չգիտի
+
+Դեռ չի ուսումնասիրել
+
+Յուրացում
+
+Գնահատման վստահելիություն
+
+«Ցույց է տալիս, թե որքան բավարար ապացույց ունի համակարգը այս գնահատման համար»
+
+Հաջորդ կրկնություն
+
+Ապացույցներ
+
+Ընդամենը
+
+Թեստերից
+
+Դասի ընթացքում
+
+Վերջին ապացույցները
+
+Թեստ
+
+Ճիշտ
+
+Սխալ
+
+Աղբյուր
+
+Բեռնվում է...
+
+Այս հանգույցի համար դեռ գնահատման ապացույց չկա
+
+Do NOT change curriculum text coming from DB:
+- subject names
+- lesson titles
+- topic titles
+- node titles
+- learningObjective
+
+Only application-generated UI labels.
+
+==================================================
+PART 3 — DATE FORMAT
+==================================================
+
+Audit date rendering in the Detail Panel.
+
+If it currently shows:
+
+08/15/2026
+
+change learner-facing date display to:
+
+15.08.2026
+
+Use a stable Armenian-friendly DD.MM.YYYY format.
+
+Apply consistently to:
+- next review date
+- evidence dates
+
+Do NOT change stored timestamps.
+
+==================================================
+PART 4 — REGRESSION
+==================================================
+
+Re-run:
+
+- KT-1.4A tests
+- KT-1.5 tests
+
+Expected:
+- KT-1.4A remains PASS
+- KT-1.5 remains PASS
+
+Real Physics values must remain unchanged.
+
+Do NOT modify real learner data.
+
+==================================================
+PART 5 — BROWSER UAT
+==================================================
+
+Open real Physics Knowledge Tree.
+
+Open a MicroNode Detail Panel.
+
+Verify learner-facing UI visibly shows only Armenian labels.
+
+Check especially:
+
+- panel title
+- Bloom label
+- page label
+- learning objective heading
+- learner state heading
+- mastery label
+- confidence label
+- explanation sentence
+- next review label
+- evidence summary labels
+- recent evidence labels
+- correct/incorrect labels
+- source label
+- dates
+
+No Latin transliteration or mixed Cyrillic/Latin Armenian-like text should remain in application-generated labels.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Exact source of `needs_review`
+2. Whether it was authoring status or learner-state legacy
+3. Exact code path/function that mapped it
+4. Correction made, if any
+5. Final canonical learner-state contract
+6. Files changed
+7. Every UI string replaced:
+   OLD → NEW
+8. Date-format change
+9. KT-1.4A test result
+10. KT-1.5 test result
+11. Real Physics values unchanged: YES/NO
+12. Browser Armenian UI verification
+13. PASS / FAIL
+
+PASS only if:
+
+- authoring status cannot contaminate learner mastery
+- Detail Panel learner-facing UI is fully Armenian
+- dates use DD.MM.YYYY
+- all KT tests pass
+- no real learner data changed
+
+FINAL VERDICT:
+
+KT-1.5 CLOSURE = PASS — KNOWLEDGE TREE V1 CLOSED
+
+or
+
+KT-1.5 CLOSURE = FAIL — DO NOT PROCEED
+
+STOP.
+
+Do NOT start Phase 2A.

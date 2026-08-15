@@ -61,10 +61,10 @@ type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
 
 function masteryConfig(level: MasteryLevel4) {
   switch (level) {
-    case "mastered":    return { label: "Գիտի",                 colour: "text-secondary",   bg: "bg-secondary/10 border-secondary/20"   };
-    case "weak":        return { label: "Մասնակի գիտի",         colour: "text-accent",      bg: "bg-accent/10 border-accent/20"         };
-    case "in_progress": return { label: "Չգիտի",               colour: "text-primary",     bg: "bg-primary/10 border-primary/20"       };
-    case "not_started": return { label: "Դեռ չի ուսումնասիրել", colour: "text-destructive", bg: "bg-destructive/10 border-destructive/20" };
+    case "mastered":    return { colour: "text-secondary",   bg: "bg-secondary/10 border-secondary/20"   };
+    case "weak":        return { colour: "text-accent",      bg: "bg-accent/10 border-accent/20"         };
+    case "in_progress": return { colour: "text-primary",     bg: "bg-primary/10 border-primary/20"       };
+    case "not_started": return { colour: "text-destructive", bg: "bg-destructive/10 border-destructive/20" };
   }
 }
 
@@ -77,11 +77,13 @@ function armenianMasteryLabel(level: MasteryLevel4): string {
   }
 }
 
+/** DD.MM.YYYY — locale-independent, always stable regardless of system locale */
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("hy-AM", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-  });
+  const dd   = String(d.getDate()).padStart(2, "0");
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
 }
 
 // ── Panel component ───────────────────────────────────────────────────────────
@@ -152,13 +154,13 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
           transform transition-transform duration-300 ease-in-out
           ${visible ? "translate-x-0" : "translate-x-full"}
         `}
-        aria-label="Гітеліки hanguyts manatramb"
+        aria-label="Գիտելիքի հանգույցի մանրամասներ"
         role="complementary"
       >
         {/* ── Panel header ──────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-card-border shrink-0">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            Гітеліки hanguyts
+            Գիտելիքի հանգույց
           </span>
           <button
             ref={closeRef}
@@ -177,14 +179,14 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
           {isLoading && (
             <div className="flex items-center justify-center py-16">
               <div className="w-7 h-7 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="ml-3 text-sm text-muted-foreground">Bернвум é…</span>
+              <span className="ml-3 text-sm text-muted-foreground">Բեռնվում է...</span>
             </div>
           )}
 
           {/* Error */}
           {error && !isLoading && (
             <div className="py-10 text-center text-sm text-destructive">
-              Տeghekutyan bern banol hnaravar cher: {(error as Error).message}
+              Տ֌eghekoutyounə betbanel հnaravar cher: {(error as Error).message}
             </div>
           )}
 
@@ -222,12 +224,12 @@ function PanelContent({ data }: { data: NodeDetail }) {
         <div className="flex flex-wrap gap-1.5 mt-2">
           {data.targetBloomLevel && (
             <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-muted-foreground border border-card-border">
-              Bloom {data.targetBloomLevel}
+              Բլումի մակարդակ {data.targetBloomLevel}
             </span>
           )}
           {data.sourcePage && (
             <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-muted-foreground border border-card-border">
-              Ejh {data.sourcePage}
+              Էջ {data.sourcePage}
             </span>
           )}
         </div>
@@ -236,7 +238,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
       {/* ── Learning objective ─────────────────────────────────────────── */}
       {data.learningObjective && (
         <section className="rounded-xl border border-card-border bg-card/50 px-4 py-3">
-          <div className="text-xs font-semibold text-primary mb-1.5">🎯 Ousumnman npatok</div>
+          <div className="text-xs font-semibold text-primary mb-1.5">🎯 Ուսուցման նպատակ</div>
           <p className="text-sm text-white/80 leading-relaxed">{data.learningObjective}</p>
         </section>
       )}
@@ -244,7 +246,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
       {/* ── Learner state ──────────────────────────────────────────────── */}
       <section className="rounded-xl border border-card-border bg-card/50 px-4 py-3 space-y-3">
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Yoоuratsneri vichak
+          Յուրացման վիճակ
         </div>
 
         {/* State badge */}
@@ -256,7 +258,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
 
         {/* Mastery score */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Youratsoom</span>
+          <span className="text-sm text-muted-foreground">Յուրացում</span>
           <span className="text-sm font-bold text-white">{data.learnerState.masteryScore}%</span>
         </div>
 
@@ -264,7 +266,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
         {data.learnerState.confidenceScore !== null && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-muted-foreground">Gnahatkman vstahelioutyoun</span>
+              <span className="text-sm text-muted-foreground">Գնահատման վստահելիություն</span>
               <span className="text-sm font-semibold text-white">{data.learnerState.confidenceScore}%</span>
             </div>
             <div className="w-full bg-white/10 rounded-full h-1.5">
@@ -274,7 +276,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-              «츁ouys é talis, te yorkan bavarar apatsuyts ouni hamakargy ays gnahatkman hamar»
+              «Ցույց է տալիս, թե որքան բավարար ապացույց ունի համակարգը այս գնահատման համար»
             </p>
           </div>
         )}
@@ -282,7 +284,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
         {/* Next review */}
         {data.nextReviewAt && (
           <div className="flex items-center justify-between pt-1 border-t border-card-border">
-            <span className="text-xs text-muted-foreground">Hajord krknoutyoun</span>
+            <span className="text-xs text-muted-foreground">Հաջորդ կրկնություն</span>
             <span className="text-xs font-medium text-accent">{formatDate(data.nextReviewAt)}</span>
           </div>
         )}
@@ -291,28 +293,28 @@ function PanelContent({ data }: { data: NodeDetail }) {
       {/* ── Evidence summary ───────────────────────────────────────────── */}
       <section className="rounded-xl border border-card-border bg-card/50 px-4 py-3">
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Apatsouytcner
+          Ապացույցներ
         </div>
 
         {data.evidenceSummary.total === 0 ? (
           <p className="text-sm text-muted-foreground italic">
-            «Ays hangouyts'i hamar derrr gnahatkman apatsuyts chka»
+            Այս հանգույցի համար դեռ գնահատման ապացույց չկա
           </p>
         ) : (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Entameny</span>
+              <span className="text-sm text-muted-foreground">Ընդամենը</span>
               <span className="text-sm font-bold text-white">{data.evidenceSummary.total}</span>
             </div>
             {data.evidenceSummary.fromQuiz > 0 && (
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Testeric'</span>
+                <span className="text-xs text-muted-foreground">Թեստերից</span>
                 <span className="text-xs font-semibold text-white">{data.evidenceSummary.fromQuiz}</span>
               </div>
             )}
             {data.evidenceSummary.fromLesson > 0 && (
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Dasi yntatsqoum</span>
+                <span className="text-xs text-muted-foreground">Դասի ընթացքում</span>
                 <span className="text-xs font-semibold text-white">{data.evidenceSummary.fromLesson}</span>
               </div>
             )}
@@ -324,7 +326,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
       {data.recentEvidence.length > 0 && (
         <section>
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Verjin apatsouytcner
+            Վերջին ապացույցները
           </div>
           <div className="space-y-2">
             {data.recentEvidence.map((ev) => (
@@ -349,11 +351,11 @@ function EvidenceRow({ ev }: { ev: NodeDetailEvidenceItem }) {
         <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
           isQuiz ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
         }`}>
-          {isQuiz ? "Test" : "Das"}
+          {isQuiz ? "Թեստ" : "Դաս"}
         </span>
         {ev.wasCorrect !== null && (
           <span className={`text-xs font-semibold ${correct ? "text-secondary" : "text-destructive"}`}>
-            {correct ? "✓ Chisht" : "✗ Skhalkh"}
+            {correct ? "✓ Ճիշտ" : "✗ Սխալ"}
           </span>
         )}
       </div>
@@ -361,7 +363,7 @@ function EvidenceRow({ ev }: { ev: NodeDetailEvidenceItem }) {
       {/* Quiz source label */}
       {isQuiz && ev.quizTitle && (
         <p className="text-xs text-muted-foreground">
-          Agbyour՝ «{ev.quizTitle}»
+          Աղբյուր՝ «{ev.quizTitle}»
         </p>
       )}
     </div>
