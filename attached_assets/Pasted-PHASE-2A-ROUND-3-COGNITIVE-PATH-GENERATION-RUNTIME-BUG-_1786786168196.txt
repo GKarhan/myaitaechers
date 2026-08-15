@@ -1,0 +1,197 @@
+PHASE 2A ROUND 3 — COGNITIVE PATH GENERATION RUNTIME BUG
+DIAGNOSTIC + MINIMAL FIX ONLY
+
+REAL USER REPRO:
+
+Teacher Dashboard → lesson → MicroNode →
+click:
+
+"✨ Ստեղծել ճանաչողական ուղի"
+
+The UI does NOT generate/display the cognitive path.
+
+Instead the Cognitive Path block shows a red error message:
+
+"Կապը չկա"
+
+IMPORTANT:
+The button itself reacts, so do NOT assume this is a click-handler problem.
+
+==================================================
+1. REPRODUCE FIRST
+==================================================
+
+Use the SAME real MicroNode visible in the current teacher dashboard.
+
+Reproduce the failure from the browser.
+
+Record:
+
+- lessonId
+- lessonNodeId
+- frontend request URL
+- HTTP method
+- request body
+- HTTP response status
+- exact response body
+- browser console error
+- API/server log error
+
+Do NOT modify code yet.
+
+==================================================
+2. TRACE THE FULL RUNTIME CHAIN
+==================================================
+
+Trace:
+
+Teacher button
+→ frontend generation handler
+→ API request
+→ lessons.ts cognitive-path generation route
+→ generateCognitivePath()
+→ AI provider call
+→ Zod parse/validation
+→ DB persistence
+→ returned JSON
+→ frontend state/cache refresh
+→ rendered cognitive levels
+
+For EACH step report:
+
+PASS / FAIL
+
+and the concrete evidence.
+
+==================================================
+3. CHECK THE MOST LIKELY FAILURE POINTS
+==================================================
+
+Explicitly verify:
+
+A. frontend uses the correct lessonId and nodeId
+
+B. request URL exactly matches the backend route
+
+C. authentication/token is present
+
+D. route is actually registered and reachable
+
+E. backend receives the request
+
+F. generateCognitivePath() is actually called
+
+G. AI provider/model call succeeds or fails
+
+H. if AI fails:
+   return the exact provider error
+   and identify whether it is:
+   - credentials
+   - model/provider
+   - timeout
+   - malformed request
+   - quota/rate limit
+   - parsing/schema validation
+   - other
+
+I. if AI succeeds:
+   inspect the raw structured result before persistence
+
+J. Zod validation result
+
+K. DB transaction/persistence result
+
+L. final API response
+
+M. frontend handling of that response
+
+==================================================
+4. ERROR MESSAGE AUDIT
+==================================================
+
+Find where the Armenian message:
+
+"Կապը չկա"
+
+comes from.
+
+Report the exact file/function/condition.
+
+Determine whether the frontend is incorrectly converting ALL backend
+errors into this generic message.
+
+If yes, minimally fix error handling so development/runtime diagnostics
+preserve the real backend error while the user still gets a safe Armenian
+message.
+
+Do NOT expose secrets/API keys.
+
+==================================================
+5. MINIMAL FIX ONLY
+==================================================
+
+After the root cause is proven, fix ONLY the actual defect.
+
+Do NOT redesign:
+
+- Cognitive Enrichment schema
+- Teacher confirmation workflow
+- Teaching Content gate
+- Mapper
+- AI Teacher
+- Quiz
+- Mastery
+- Confidence
+- Knowledge Tree
+
+Do NOT batch-generate cognitive paths.
+
+==================================================
+6. REAL BROWSER VERIFICATION
+==================================================
+
+After the fix, use the same real MicroNode.
+
+Click:
+
+"✨ Ստեղծել ճանաչողական ուղի"
+
+Verify that:
+
+1. request returns 2xx
+2. AI generation actually executes
+3. cognitive levels are returned
+4. exactly one target ceiling exists
+5. rows persist in DB
+6. generated state is "Սպասում է հաստատման"
+7. UI renders the generated cognitive path
+8. refresh preserves it
+9. no duplicate rows are created
+10. no unrelated learner/source data changes
+
+Take browser proof if possible.
+
+==================================================
+7. FINAL REPORT
+==================================================
+
+Return:
+
+A. Root cause
+B. Exact failing step
+C. Exact HTTP status/error before fix
+D. Files changed
+E. Minimal fix
+F. HTTP result after fix
+G. Generated cognitive levels for the real MicroNode
+H. Target ceiling
+I. DB persistence proof
+J. Refresh proof
+K. Duplicate-row check
+L. Regression check
+M. PASS / FAIL
+
+Do NOT continue with the Round 3 closure implementation until this
+runtime generation bug is proven fixed.
+
+STOP after this bug fix.

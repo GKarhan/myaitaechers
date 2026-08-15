@@ -687,7 +687,7 @@ function NodeViewModal({
               <span className="text-[10px] font-mono text-primary/60">{String(node.sequence ?? "?")}.</span>
               <span className="text-sm font-semibold text-white leading-snug">{String(node.title ?? "")}</span>
               {node.status === "approved" && (
-                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">✅ Հаstatved</span>
+                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">✅ Հաստատված</span>
               )}
             </div>
             {node.targetBloomLevel != null && (
@@ -705,7 +705,7 @@ function NodeViewModal({
         <div className="overflow-y-auto flex-1 px-4 py-3 space-y-4">
           {/* CORE */}
           <section className="space-y-3">
-            <p className="text-[9px] font-bold text-primary/50 uppercase tracking-widest">Հимнаван</p>
+            <p className="text-[9px] font-bold text-primary/50 uppercase tracking-widest">Հիմնական</p>
             {renderText("Ուuումնական նպատակ (LO)", node.learningObjective, true)}
             {renderText("Տեսական բովնադակություն", node.theoryContent)}
             {renderText("Բնօրինակ տեքստ", node.verbatimTheoryAnchor)}
@@ -721,11 +721,11 @@ function NodeViewModal({
           {!!(node.childFriendlyExplanation || node.basicExamples || node.commonMisconception || node.nonExamples || node.realLifeExamples) && (
             <section className="space-y-3 border-t border-white/6 pt-3">
               <p className="text-[9px] font-bold text-indigo-400/60 uppercase tracking-widest">🧠 Phase 2 — Ուսումնական բովանդակություն</p>
-              {renderText("Պарз бацатрутюн", node.childFriendlyExplanation)}
-              {renderList("Հimnaкan оrinakner", node.basicExamples)}
-              {renderText("Taratsvar sxal patkeratsum", node.commonMisconception)}
-              {renderList("Hakaоrinakner", node.nonExamples)}
-              {renderList("Оrinakner iraкan кyancits", node.realLifeExamples)}
+              {renderText("Պարզ բացատրություն", node.childFriendlyExplanation)}
+              {renderList("Հիմնական օրինակներ", node.basicExamples)}
+              {renderText("Տարածված սխալ պատկերացումներ", node.commonMisconception)}
+              {renderList("Հակաօրինակներ", node.nonExamples)}
+              {renderList("Օրինակներ իրական կյանքից", node.realLifeExamples)}
             </section>
           )}
           {!node.childFriendlyExplanation && (
@@ -936,16 +936,26 @@ function LessonNodesPanel({
         method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ force }),
       });
-      const data = await r.json() as { levels?: CogLevel[]; error?: string; message?: string };
+      let data: { levels?: CogLevel[]; error?: string; message?: string } = {};
+      try { data = await r.json(); } catch (jsonErr) {
+        const txt = await r.text().catch(() => r.statusText);
+        console.error('[cog-path] generate non-JSON response', r.status, txt, jsonErr);
+        setCogPathError((e) => ({ ...e, [nodeId]: `Uхumbakutyun sxal (${r.status})` }));
+        return;
+      }
       if (r.status === 409 && data.error === 'TEACHER_EDITS_EXIST') {
         setCogPathForceNode(nodeId);
       } else if (!r.ok) {
-        setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? 'Sхаl' }));
+        console.error('[cog-path] generate error response', r.status, data);
+        setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? `Uхumbakutyun sxal (${r.status})` }));
       } else {
         setCogPathData((d) => ({ ...d, [nodeId]: { nodeId, levels: data.levels ?? [] } }));
         setCogPathForceNode(null);
       }
-    } catch { setCogPathError((e) => ({ ...e, [nodeId]: 'Кapу sхаl' })); }
+    } catch (err) {
+      console.error('[cog-path] generate fetch error', err);
+      setCogPathError((e) => ({ ...e, [nodeId]: 'Uхumbakutyun sxal' }));
+    }
     finally { setCogPathGenerating((g) => { const n = { ...g }; delete n[nodeId]; return n; }); }
   };
 
@@ -1913,8 +1923,8 @@ function LessonNodesPanel({
                     {cogPathGenerating[n.id]
                       ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       : (cogPathData[n.id]?.levels.length ?? 0) > 0
-                        ? '🔄 Վerаsteghtsel chanach. ughi'
-                        : '✨ Steghtsel chanachogakan ughi'}
+                        ? '🔄 Վերաստեղծել ճանաչողական ուղին'
+                        : '✨ Ստեղծել ճանաչողական ուղի'}
                   </button>
                   {(cogPathData[n.id]?.levels.length ?? 0) > 0 && (
                     <span className="text-[9px] text-indigo-400/50">
