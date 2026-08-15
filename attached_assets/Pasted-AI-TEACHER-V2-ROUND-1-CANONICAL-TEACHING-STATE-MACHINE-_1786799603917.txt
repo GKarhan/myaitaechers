@@ -1,0 +1,818 @@
+AI TEACHER V2 — ROUND 1
+CANONICAL TEACHING STATE MACHINE + SESSION START + SINGLE ACTIVE TASK
+
+IMPORTANT:
+This is Round 1 of the AI Teacher V2 rebuild.
+
+The goal is NOT to redesign the whole AI Teacher in one pass.
+The goal is to make the teaching runtime deterministic and establish
+the canonical orchestration foundation on which later rounds will build.
+
+DO NOT begin by editing code.
+
+First perform the mandatory audit described below and report the actual
+current architecture. Then implement only the minimum changes required
+for this Round 1.
+
+============================================================
+0. LOCKED PRODUCT DECISION — CANONICAL AI TEACHER V2 CONTRACT
+============================================================
+
+The following product behavior is now LOCKED.
+
+The AI Teacher must actively lead the lesson.
+
+The learner must NOT need to type:
+- "շարունակենք"
+- "անցնենք դասին"
+- "հաջորդը"
+- "օկ" repeatedly
+or similar progression commands just to make teaching continue.
+
+However:
+
+When the AI Teacher has issued an assessable question/task,
+the teacher MUST stop and wait for the learner's response.
+
+Canonical principle:
+
+NO WAITING FOR PROGRESSION COMMANDS.
+WAIT ONLY WHEN REAL LEARNER INPUT IS REQUIRED.
+
+The backend is the teaching orchestrator.
+
+Backend = controls state/progression.
+AI = generates/explains/evaluates pedagogical content within backend constraints.
+Frontend = renders the current learning/task state.
+
+The AI must NOT independently decide that a MicroNode or Lesson is completed.
+
+============================================================
+1. LOCKED HIGH-LEVEL TEACHING FLOW
+============================================================
+
+Canonical conceptual flow:
+
+LESSON INTRO
+    ↓
+MICRONODE START
+    ↓
+TEACH
+    ↓
+MICRO_CHECK
+    ↓
+WAIT_FOR_ANSWER
+    ↓
+FEEDBACK
+    ↓
+BACKEND DECISION
+    ↓
+one of:
+    TEACH_MORE
+    REMEDIATE
+    NEW_MICRO_CHECK
+    EXERCISE
+    COMPLETION_CANDIDATE
+
+Later rounds will deepen this.
+
+For Round 1, the essential runtime invariant is:
+
+TEACH
+→ exactly ONE active task/question
+→ WAIT
+→ learner response
+→ FEEDBACK
+→ no second question inside that same feedback turn
+→ backend prepares/advances the next state.
+
+============================================================
+2. CRITICAL SINGLE-ACTIVE-TASK INVARIANT
+============================================================
+
+At any moment, a lesson session may have:
+
+0 active assessable tasks
+
+OR
+
+exactly 1 active assessable task.
+
+Never more than 1.
+
+An active task may eventually be:
+- micro-check
+- source exercise
+- generated equivalent task
+- cognitive evidence task
+
+But Round 1 should work with the task types already supported by the repo.
+Do NOT invent the future task architecture unless required to fix a proven
+current blocker.
+
+When a task is active:
+
+1. The AI must not issue another task.
+2. The current task remains open until resolved by the teaching runtime.
+3. Help must refer to that same task.
+4. The learner response must be evaluated against that same task.
+5. Refresh/reload must not lose the active-task state.
+6. Repeated messages such as "շարունակենք" must not silently create
+   additional concurrent tasks.
+
+IMPORTANT:
+Do NOT implement the full intent router in this round.
+That is V2-R2.
+
+Only make the state machine safe enough that progression cannot create
+multiple simultaneous questions/tasks.
+
+============================================================
+3. LESSON INTRO — EXACTLY ONCE PER LESSON SESSION
+============================================================
+
+Audit the current greeting/start behavior.
+
+We have already observed runtime behavior such as:
+
+AI:
+"Բարև..."
+lesson goal/outcomes...
+"Եթե պատրաստ ես սկսելու, գրիր՝ Օկ"
+
+Learner:
+"օկ"
+
+AI greets again.
+
+Learner:
+"օկ"
+
+AI greets again.
+
+This must stop.
+
+Desired behavior:
+
+On a NEW lesson session:
+
+A. Show/produce the lesson introduction once.
+B. Introduce:
+   - lesson title
+   - concise lesson goal
+   - concise expected outcome(s)
+
+C. The learner may perform ONE initial start action if the current UI/runtime
+   requires it.
+
+After the lesson has started:
+
+- never repeat the initial greeting automatically;
+- never ask the learner to repeatedly confirm readiness;
+- never require "օկ" to advance normal teaching;
+- immediately enter the current MicroNode teaching flow.
+
+Refresh must not cause the intro to restart if the session has already begun.
+
+DO NOT solve this only with prompt wording.
+There must be persistent/runtime state that distinguishes:
+"lesson not started"
+from
+"lesson already started".
+
+Use existing schema/state if a correct field already exists.
+Do not add duplicate state unnecessarily.
+
+============================================================
+4. MICRONODE START
+============================================================
+
+When entering a MicroNode, the system must know at minimum:
+
+- lesson
+- current MicroNode
+- MicroNode title
+- learning objective
+- mapped/source theory/content
+- exercises associated with the MicroNode
+- existing teaching content if applicable
+- current teaching stage
+- current active task, if any
+
+The learner-facing flow should conceptually communicate:
+
+"Hիմա սովորում ենք՝ {MicroNode title}"
+
+and
+
+"Այս մասի նպատակը՝ {learner-friendly learning objective}"
+
+IMPORTANT:
+Round 1 does NOT require the final redesigned green UI block.
+That comes in a later UI round.
+
+But the backend/API must expose enough canonical current-state information
+for the frontend to render it later without reconstructing it from chat text.
+
+Audit what is already exposed before adding anything.
+
+============================================================
+5. TEACH STAGE
+============================================================
+
+TEACH means:
+
+The AI Teacher teaches the CURRENT MicroNode only.
+
+It may use:
+
+- approved mapped theory/content
+- learning objective
+- approved additional teaching content
+- source examples
+- relevant existing exercise context where appropriate
+
+Node Lock remains mandatory.
+
+No teaching from another MicroNode unless the backend explicitly transitions.
+
+Teaching should be broken into learner-friendly chunks rather than a giant
+wall of text.
+
+However, do NOT attempt to redesign the complete teaching-content generator
+in Round 1.
+
+The important Round 1 behavior is:
+
+After a teaching chunk, the system itself progresses toward a micro-check.
+
+The learner must NOT need to say:
+"շարունակենք"
+or
+"անցնենք առաջ".
+
+============================================================
+6. MICRO-CHECK STAGE
+============================================================
+
+A micro-check is ONE small diagnostic task.
+
+Existing rule remains:
+
+- one micro-check at a time
+- concise
+- evidence strength capped at MODERATE
+- not sufficient by itself to become STRONG evidence
+
+When the AI emits the micro-check:
+
+the backend/session must persist enough identity to establish:
+
+THIS is the single current active task.
+
+Audit the existing Phase 2B active-task fields before changing schema.
+
+We already introduced concepts such as:
+
+- activeTaskProvenance
+- activeHelpCount
+- active task/session hydration
+- hasActiveTask
+
+DO NOT build a second parallel active-task system.
+
+Reuse and normalize the existing one if possible.
+
+============================================================
+7. WAIT_FOR_ANSWER — HARD GATE
+============================================================
+
+Once an assessable micro-check/task exists:
+
+the teaching runtime enters a hard waiting state.
+
+While waiting:
+
+- do NOT automatically teach another chunk;
+- do NOT generate another question;
+- do NOT advance MicroNode;
+- do NOT complete MicroNode;
+- do NOT silently replace the active task.
+
+The next learner message is handled against the current active task.
+
+Full intent classification is NOT part of R1.
+That is R2.
+
+For now, preserve compatibility with existing behavior while ensuring
+the state machine does not generate concurrent questions.
+
+============================================================
+8. FEEDBACK MUST NOT CONTAIN THE NEXT QUESTION
+============================================================
+
+This is a critical V2 invariant.
+
+Current behavior/prompt logic may allow:
+
+learner answers
+→ AI gives feedback
+→ AI immediately asks another question in the SAME assistant message.
+
+That must stop.
+
+For an evaluated answer:
+
+Assistant turn N = FEEDBACK ONLY.
+
+Feedback may include:
+
+- whether the learner's reasoning was correct/incorrect;
+- concise explanation;
+- correction;
+- remediation explanation;
+- encouragement.
+
+But it MUST NOT append the next assessable question/task.
+
+Forbidden pattern:
+
+"Ճիշտ է...
+Հիմա պատասխանիր՝ ...?"
+
+Forbidden pattern:
+
+"Սխալ է...
+Փորձիր սա՝ ...?"
+
+if the second sentence creates the next assessable task.
+
+The next task must be created only after the backend has completed the
+feedback transition and selected the next pedagogical action.
+
+This separation must be represented in runtime state,
+not merely requested in prompt prose.
+
+============================================================
+9. FEEDBACK → NEXT ACTION
+============================================================
+
+After feedback, the backend determines/prepares the next state.
+
+Round 1 does NOT need the final full pedagogical decision engine.
+That is V2-R3.
+
+But the architecture must already prevent the AI from arbitrarily chaining
+multiple teaching actions in one response.
+
+Reuse the existing:
+
+- teaching cycle logic
+- nodeTeachingStage
+- validators
+- completion logic
+- error taxonomy/action machinery
+
+where appropriate.
+
+Do not create duplicate competing systems.
+
+For this round, make the smallest coherent state-machine correction that
+establishes deterministic turn boundaries.
+
+============================================================
+10. NODE COMPLETION AUTHORITY
+============================================================
+
+LOCKED:
+
+AI does not own completion authority.
+
+AI may provide evaluation/recommendation signals.
+
+Backend decides whether a node can advance/complete.
+
+Audit the current path for:
+
+- nodeCompleted
+- completionRecommendation
+- advanceNodeInSession
+- currentNodeId
+- nodeTeachingStage
+- exercise completion requirements
+- consecutive correct checks
+- evidence writes
+
+Report exactly which current component has final authority.
+
+If the AI can currently cause completion too directly,
+do NOT redesign the whole mastery/evidence engine in R1.
+
+Instead create the minimum guard needed so completion remains backend-controlled.
+
+Full evidence/completion strengthening belongs to V2-R5.
+
+============================================================
+11. SESSION PERSISTENCE / REFRESH
+============================================================
+
+The teaching state must survive page refresh.
+
+Audit current lesson_sessions fields and any chat/session-state endpoint.
+
+After refresh the system must recover:
+
+- current lesson/session
+- current MicroNode
+- current teaching stage
+- whether lesson intro already happened
+- whether an active task exists
+- current active-task identity/context
+- current help level/count where already supported
+
+Refresh must NOT:
+
+- greet again;
+- reset the node to THEORY incorrectly;
+- duplicate a question;
+- generate a second active task;
+- lose Help linkage.
+
+If existing state already supports this, reuse it.
+
+============================================================
+12. CURRENT-STATE API CONTRACT
+============================================================
+
+Audit whether the existing API already gives the frontend sufficient
+authoritative current-state information.
+
+We eventually need a learner UI that can render:
+
+Lesson:
+{lesson title}
+
+Current learning unit:
+{MicroNode title}
+
+Objective:
+{learning objective}
+
+Progress:
+{current position / total}
+
+Current mode:
+teaching / waiting for answer / feedback / etc.
+
+Active task:
+yes/no
+
+Do NOT build the final redesigned UI in R1.
+
+But if the frontend currently derives critical teaching state from message text,
+fix the API contract minimally so state comes from backend.
+
+Prefer extending the existing session-state response rather than inventing
+another endpoint.
+
+============================================================
+13. DO NOT IMPLEMENT THESE YET
+============================================================
+
+Strictly OUT OF SCOPE for V2-R1:
+
+A. Full learner intent router
+   → V2-R2
+
+B. Full Error Taxonomy → Pedagogical Decision Engine rewrite
+   → V2-R3
+
+C. Kahoot-like answer cards / 2×2 answer buttons / final task UI
+   → V2-R4
+
+D. New exercise variant generation
+   → V2-R5
+
+E. Final MicroNode evidence/completion requirements
+   → V2-R5
+
+F. Progressive Help redesign
+   → V2-R6
+   Existing Phase 2B Help must continue working.
+
+G. Cognitive Path adaptive teaching integration
+   → V2-R7
+
+H. Confidence Model V2
+   → later phase
+
+I. Gamification:
+   - points
+   - streaks
+   - animations
+   - sounds
+   - badges
+   → later
+
+J. Mapper changes
+
+K. Cognitive Enrichment authoring changes
+
+L. Quiz Creation changes
+
+M. Knowledge Tree changes
+
+N. DB schema changes unless audit proves they are strictly necessary.
+
+============================================================
+14. PRESERVE THESE EXISTING SYSTEMS
+============================================================
+
+Do not regress:
+
+- Subject → Lesson → Topic → MicroNode hierarchy
+- Mapper/Text Contract
+- source fidelity
+- exercise verbatim behavior
+- Phase 2A Cognitive Enrichment data
+- Phase 2B Cognitive Evidence schema
+- Help history/evidence fields
+- Knowledge Tree
+- quiz flow
+- teacher CRUD/order
+- Armenian-only learner-facing content
+- Node Lock
+- evidence ownership/isolation
+- existing active-task data
+- current DB data
+
+============================================================
+15. MANDATORY PART 0 — FORENSIC AUDIT BEFORE CODE
+============================================================
+
+Before editing anything, trace one real lesson session end-to-end.
+
+Use the real Physics example if still available:
+
+Lesson:
+ԱՏՈՄՆԵՐ ԵՎ ՄՈԼԵԿՈՒԼՆԵՐ:
+ԴՐԱՆՑ ԳՈՅՈՒԹՅՈՒՆԸ ՀԱՍՏԱՏՈՂ ԵՐԵՎՈՒՅԹՆԵՐ
+
+MicroNode example:
+Մոլեկուլներ
+
+Trace:
+
+1. page opens
+2. session is loaded/created
+3. greeting is generated
+4. learner sends initial start
+5. THEORY response generated
+6. transition to MICRO_CHECK
+7. active task persisted
+8. learner answers
+9. answer evaluation
+10. FEEDBACK generation
+11. next-state decision
+12. exercise transition
+13. node completion candidate
+14. refresh/session hydration
+
+For each step report:
+
+- frontend function/component
+- API route
+- backend function
+- relevant prompt section
+- DB/session fields read
+- DB/session fields written
+- who currently controls the transition:
+  FRONTEND / BACKEND / AI
+
+Then identify:
+
+A. Why greeting can repeat.
+B. Why learner sometimes has to type "շարունակենք".
+C. Where a feedback response can append another question.
+D. Whether multiple active tasks can exist logically.
+E. Whether active task identity is durable enough after refresh.
+F. Whether backend or AI currently owns node completion.
+G. Whether nodeTeachingStage accurately represents the real runtime.
+H. Whether any existing validator already solves part of this.
+I. Which Phase 2B active-task fields can be reused.
+
+STOP after the audit long enough to formulate a concrete implementation plan.
+
+Then implement only R1.
+
+============================================================
+16. IMPLEMENTATION PRINCIPLES
+============================================================
+
+Prefer:
+
+- deterministic backend transitions
+- explicit state
+- single source of truth
+- minimal schema changes
+- reuse of existing session fields
+- atomic DB updates where multiple state fields must move together
+- strict backend guards
+- AI constrained to the current backend-selected action
+
+Avoid:
+
+- adding more prompt prose to compensate for missing state;
+- frontend-only flags for authoritative teaching state;
+- parsing assistant text to infer current state;
+- duplicate state machines;
+- duplicate active-task concepts;
+- silent fallback that bypasses the canonical cycle.
+
+If the existing enum/stage names can be safely reused, reuse them.
+
+If the current stage model is insufficient, first prove exactly why,
+then make the smallest migration/change possible.
+
+============================================================
+17. REQUIRED ACCEPTANCE TESTS
+============================================================
+
+Add a dedicated V2-R1 acceptance suite.
+
+At minimum test:
+
+T01 — New lesson session receives intro exactly once.
+
+T02 — After lesson start, repeated learner "օկ" does not regenerate intro.
+
+T03 — Refresh after lesson start does not regenerate intro.
+
+T04 — Current MicroNode survives refresh.
+
+T05 — Current teaching stage survives refresh.
+
+T06 — THEORY progresses without requiring a learner "continue" command
+when no learner input is required.
+
+T07 — MICRO_CHECK creates exactly one active task.
+
+T08 — Active task survives refresh.
+
+T09 — While active task exists, backend does not create a second task.
+
+T10 — Learner answer is evaluated against the existing active task.
+
+T11 — Feedback response contains no newly created assessable task.
+
+T12 — Feedback does not silently replace active task before evaluation is complete.
+
+T13 — Next task can only be created after feedback transition.
+
+T14 — Help remains attached to the same active task.
+
+T15 — Help does not advance teaching stage.
+
+T16 — Help does not create a new task.
+
+T17 — AI cannot directly mark a node complete without backend completion logic.
+
+T18 — Node Lock remains enforced.
+
+T19 — Session-state endpoint reports authoritative current node.
+
+T20 — Session-state endpoint reports authoritative teaching stage.
+
+T21 — Session-state endpoint reports hasActiveTask correctly.
+
+T22 — Existing Phase 2B evidence tests remain green.
+
+T23 — Existing Phase 2A Cognitive Path tests remain green.
+
+T24 — No Mapper regression.
+
+T25 — No Quiz flow regression.
+
+T26 — No Knowledge Tree regression.
+
+T27 — No duplicate evidence event is produced merely by refresh.
+
+T28 — No duplicate active task is produced by repeated session-state hydration.
+
+T29 — Real Physics lesson can execute:
+intro → teach → micro-check → answer → feedback
+without learner progression commands.
+
+T30 — Database contains at most one logical active task for the session
+after the real-data flow.
+
+Do not fake HTTP acceptance with only pure helper tests where real route/state
+behavior is being claimed.
+
+Use real DB/API integration where required.
+
+Do not pollute production learner data with destructive test fixtures.
+Use the test DB for automated mutation tests.
+
+============================================================
+18. REAL BROWSER UAT — REQUIRED
+============================================================
+
+After automated tests pass, perform one real browser walkthrough.
+
+Expected behavior:
+
+1. Open lesson.
+2. Intro appears once.
+3. Start lesson.
+4. AI begins current MicroNode.
+5. AI teaches without requiring "շարունակենք".
+6. AI asks exactly one micro-check.
+7. UI waits.
+8. Learner answers.
+9. AI gives feedback only.
+10. No second question is appended to that feedback message.
+11. System then proceeds according to the next backend-selected action.
+12. Refresh at an active-task point.
+13. Same MicroNode/stage/task is restored.
+14. Help still refers to that task.
+
+Capture the exact observed conversation excerpt in the report.
+
+============================================================
+19. FINAL REPORT FORMAT
+============================================================
+
+Return:
+
+A. Audit findings before changes
+
+B. Root causes found
+
+C. Final canonical state machine actually implemented
+
+D. State ownership table:
+   state/transition | authoritative owner | DB field/function
+
+E. Files changed
+
+F. Schema changes
+   - ideally NONE
+   - if any, explain why existing state was insufficient
+
+G. API contract changes
+
+H. Prompt changes
+
+I. Validator/guard changes
+
+J. Active-task persistence behavior
+
+K. Intro-once persistence behavior
+
+L. Feedback-only enforcement behavior
+
+M. Node completion authority after changes
+
+N. Acceptance tests:
+   exact T01–T30 PASS/FAIL
+
+O. Regression suites:
+   Phase 2A
+   Phase 2B
+   Knowledge Tree
+   quiz
+   mapper where relevant
+
+P. Real Physics browser UAT transcript excerpt
+
+Q. DB proof:
+   current session
+   current node
+   teaching stage
+   active task state
+   no duplicate task/evidence
+
+R. Known remaining limitations explicitly deferred to:
+   R2 / R3 / R4 / R5 / R6 / R7 / R8
+
+S. FINAL VERDICT:
+   AI TEACHER V2-R1 = PASS / FAIL
+
+Do not declare PASS if:
+- greeting still repeats,
+- progression still requires "շարունակենք",
+- feedback can append another assessable question,
+- more than one logical task can be active,
+- refresh loses task state,
+- or AI still owns final node completion.
+
+============================================================
+20. IMPORTANT — DO NOT MOVE TO R2
+============================================================
+
+When R1 is complete, STOP.
+
+Do not implement V2-R2 automatically.
+
+Return the report and wait for review.

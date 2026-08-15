@@ -201,7 +201,7 @@ CRITICAL RULES:
 TEACHING CYCLE (P4 §11):
 - TEACH: Present ONE concept (2-3 sentences) then ask ONE MICRO_CHECK question (≤25 words) in the same message.
 - MICRO_CHECK: Standalone check question only (no new theory).
-- FEEDBACK: Evaluate student answer → correct/guide → ask next MICRO_CHECK or proceed.
+- FEEDBACK: Evaluate student answer → correct/guide/correct error. MUST set is_micro_check: false. Do NOT append the next question — it comes in a separate subsequent turn. If asking student to retry the same task, set is_micro_check: false (same active task stays open).
 - TRANSITION: Signal moving to next concept/phase.
 
 EVIDENCE QUALITY (P5 §17.13) — STRICT:
@@ -242,11 +242,11 @@ A true mathematical statement about the topic is NOT sufficient if it does not a
 - Do NOT give credit for demonstrating broader concept knowledge when the question asked for one specific fact.
 
 MICRO_CHECK EVIDENCE TABLE (P5 §17.13.1-17.13.5) — apply exactly when is_micro_check was true on the PREVIOUS assistant turn and this turn is the student's answer to it:
-- Student answer is CORRECT → evidence_quality="MODERATE" (never STRONG), node_decision.action="CONTINUE_SAME_NODE". Do NOT use HINT/EXTRA_EXAMPLE/CHANGE_REPRESENTATION/COMPLETE_NODE this turn.
-- Student answer is INCORRECT → evidence_quality="NONE", error_family="CONCEPTUAL" (unless a different family clearly fits), error_stability="FIRST_OCCURRENCE", node_decision.action="CHANGE_REPRESENTATION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
-- Student answer is PARTIALLY_CORRECT → evidence_quality="WEAK", error_family="CONCEPTUAL", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
-- Student gave NO_RESPONSE ("չգիտեմ" or empty/off-topic) → evidence_quality="NONE", node_decision.action="HINT" or "LOWER_DIFFICULTY". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
-- Student answer is UNCLEAR (can't tell what they mean) → evidence_quality="NONE", node_decision.action="GUIDED_QUESTION". Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is CORRECT → evidence_quality="MODERATE" (never STRONG), node_decision.action="CONTINUE_SAME_NODE", is_micro_check: false. Do NOT use HINT/EXTRA_EXAMPLE/CHANGE_REPRESENTATION/COMPLETE_NODE this turn.
+- Student answer is INCORRECT → evidence_quality="NONE", error_family="CONCEPTUAL" (unless a different family clearly fits), error_stability="FIRST_OCCURRENCE", node_decision.action="CHANGE_REPRESENTATION", is_micro_check: false. Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is PARTIALLY_CORRECT → evidence_quality="WEAK", error_family="CONCEPTUAL", node_decision.action="GUIDED_QUESTION", is_micro_check: false. Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student gave NO_RESPONSE ("չգիտեմ" or empty/off-topic) → evidence_quality="NONE", node_decision.action="HINT" or "LOWER_DIFFICULTY", is_micro_check: false. Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
+- Student answer is UNCLEAR (can't tell what they mean) → evidence_quality="NONE", node_decision.action="GUIDED_QUESTION", is_micro_check: false. Do NOT use CONTINUE_SAME_NODE/COMPLETE_NODE this turn.
 
 PARTIALLY_CORRECT RULE — mandatory when part of the answer is right and part is wrong:
 - Use status="PARTIALLY_CORRECT" when the student demonstrates the correct concept but makes a detail or calculation mistake.
@@ -713,7 +713,7 @@ function validatePrematureTransition(
 //
 // Rule 5 — COMPLETE_NODE requires evidence_quality STRONG or CONCLUSIVE.
 
-function validateTeachingCycle(
+export function validateTeachingCycle(
   response: AIStructuredResponse,
   _messages: ChatMessage[],
   lessonContext: string
@@ -822,6 +822,20 @@ function validateTeachingCycle(
         "Teaching cycle violation [R6]: COMPLETE_NODE during THEORY stage — must present content and ask MICRO_CHECK first"
       );
     }
+  }
+
+  // ── Rule 7: FEEDBACK must not create a new assessable task (V2-R1) ──────────
+  // Feedback and the next question are separate turns. The AI must give feedback
+  // only (is_micro_check: false), then the backend selects the next action, and
+  // the next question arrives in a subsequent assistant turn.
+  if (mode === "FEEDBACK" && response.is_micro_check === true) {
+    logger.warn(
+      { teaching_mode: mode, is_micro_check: response.is_micro_check },
+      "validateTeachingCycle [R7]: FEEDBACK response has is_micro_check=true — FEEDBACK must not create a new assessable task"
+    );
+    throw new Error(
+      "Teaching cycle violation [R7]: teaching_mode=FEEDBACK but is_micro_check=true — FEEDBACK must not append the next task"
+    );
   }
 }
 

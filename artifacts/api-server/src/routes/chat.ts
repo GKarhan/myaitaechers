@@ -553,6 +553,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           );
         }
         if (teachingStage === "MICRO_CHECK") {
+          // V2-R1: if a task is already active, the student is responding to it.
+          // Force FEEDBACK-only directive so the AI cannot pack a new question.
+          const _hasActiveTaskForDirective =
+            ((session as any)?.activeTaskProvenance ?? null) !== null &&
+            ((session as any)?.activeTaskProvenance ?? "") !== "";
+          if (_hasActiveTaskForDirective) {
+            return (
+              `NODE_STAGE: MICRO_CHECK — ACTIVE TASK (student is responding)\n` +
+              `DIRECTIVE — FEEDBACK ONLY: The student has answered the active micro-check. ` +
+              `Evaluate their answer and give concise feedback. ` +
+              `MUST set teaching_mode: "FEEDBACK" and is_micro_check: false. ` +
+              `Do NOT ask a new question. Do NOT set is_micro_check: true. ` +
+              `If the student must retry, set is_micro_check: false (same active task remains open).`
+            );
+          }
           if (classExercises.length > 0) {
             const ex = classExercises[0];
             const effText = effectiveExerciseText(ex.exerciseTextVerbatim, (ex as any).exerciseTextEdited as string | null);
@@ -599,6 +614,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         const attempts = session?.nodeAttemptCount ?? 0;
         if (stage === "THEORY")     return `THEORY — present APPROVED_EXPLANATION then ask first MICRO_CHECK`;
         if (stage === "MICRO_CHECK") {
+          // V2-R1: distinguish FEEDBACK mode (active task exists) from question-asking mode
+          const _hasActiveTaskForStep =
+            ((session as any)?.activeTaskProvenance ?? null) !== null &&
+            ((session as any)?.activeTaskProvenance ?? "") !== "";
+          if (_hasActiveTaskForStep) {
+            return `MICRO_CHECK — FEEDBACK: evaluate student's answer to active task; is_micro_check: false; no new question`;
+          }
           return classExercises.length > 0
             ? `MICRO_CHECK done — present CLASS_EXERCISE verbatim via TRANSITION`
             : `MICRO_CHECK (attempt ${attempts + 1}) — ask or evaluate; COMPLETE_NODE if understood (no exercises)`;
@@ -1065,21 +1087,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         })
         .where(eq(lessonSessionsTable.id, session.id));
 
-      if (aiResult?.is_micro_check) {
-        const tmpl = aiResult.question_template ?? null;
-        const currentTemplates = session?.askedQuestionTemplates ?? [];
-        const newTemplates = tmpl && !currentTemplates.includes(tmpl)
-          ? [...currentTemplates, tmpl]
-          : currentTemplates;
-        await db
-          .update(lessonSessionsTable)
-          .set({
-            lastQuestionAsked: aiResult.student_message.slice(0, 500),
-            askedQuestionTemplates: newTemplates,
-          })
-          .where(eq(lessonSessionsTable.id, session.id));
-      }
-
       // ── Stage machine: compute and push newTeachingStage (spec-4) ──────────
       // currentStage now reads from the session (per-student), not the shared lesson_node row.
       const currentStage = session.nodeTeachingStage;
@@ -1194,6 +1201,29 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           };
         }
       }
+    }
+
+    // ── V2-R1: persist lastQuestionAsked on ANY turn where AI issues a micro-check ──
+    // Fix: previously only written inside if (wasEval), so anticipatory THEORY→MICRO_CHECK
+    // turns (wasEval=false) never wrote this field, causing the intro-repeat loop on the
+    // following student turn (lastQuestionAsked=null → AI regenerated intro).
+    if (aiResult?.is_micro_check === true) {
+      const _lqaTmpl = aiResult.question_template ?? null;
+      const _lqaCurrent: string[] = session?.askedQuestionTemplates ?? [];
+      const _lqaNew = _lqaTmpl && !_lqaCurrent.includes(_lqaTmpl)
+        ? [..._lqaCurrent, _lqaTmpl]
+        : _lqaCurrent;
+      await db
+        .update(lessonSessionsTable)
+        .set({
+          lastQuestionAsked: aiResult.student_message.slice(0, 500),
+          askedQuestionTemplates: _lqaNew,
+        })
+        .where(eq(lessonSessionsTable.id, session.id));
+      logger.info(
+        { sessionId: session.id, wasEval, questionLen: aiResult.student_message.length },
+        "V2-R1: lastQuestionAsked persisted (any is_micro_check turn, not gated by wasEval)"
+      );
     }
   }
 
@@ -1525,13 +1555,30 @@ router.get("/chat/session-state", requireAuth, async (req: AuthRequest, res) => 
                             || nodeTeachingStage === "MICRO_CHECK"
                             || nodeTeachingStage === "EXERCISE";
 
+  // V2-R1: expose current node title + objective so the frontend can render
+  // canonical teaching state without parsing chat message text.
+  const _sessionNodeId = sessionRow.currentNodeId ?? null;
+  const [_sessionNodeRow] = _sessionNodeId
+    ? await db
+        .select({ title: lessonNodesTable.title, objective: lessonNodesTable.childFriendlyExplanation })
+        .from(lessonNodesTable)
+        .where(eq(lessonNodesTable.id, _sessionNodeId))
+        .limit(1)
+    : [];
+
   res.json({
     hasActiveTask,
-    activeHelpCount:      (sessionRow as any).activeHelpCount      ?? 0,
-    activeAssistanceLevel:(sessionRow as any).activeAssistanceLevel ?? "none",
+    activeHelpCount:       (sessionRow as any).activeHelpCount       ?? 0,
+    activeAssistanceLevel: (sessionRow as any).activeAssistanceLevel ?? "none",
     nodeTeachingStage,
-    status:               sessionRow.status,
-    currentPhase:         sessionRow.currentPhase,
+    status:                sessionRow.status,
+    currentPhase:          sessionRow.currentPhase,
+    // V2-R1 canonical state additions
+    currentNodeId:         _sessionNodeId,
+    currentNodeTitle:      _sessionNodeRow?.title     ?? null,
+    nodeObjective:         _sessionNodeRow?.objective  ?? null,
+    introConfirmed:        (sessionRow as any).introConfirmed     ?? false,
+    lastQuestionAsked:     sessionRow.lastQuestionAsked           ?? null,
   });
 });
 
