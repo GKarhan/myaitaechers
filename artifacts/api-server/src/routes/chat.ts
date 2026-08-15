@@ -1118,15 +1118,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
 
     // ── V2-R2: Non-ANSWER gate ────────────────────────────────────────────────
-    // CONFUSED / REPEAT / CLARIFY: AI still generates a pedagogical response,
-    // but we force answer_evaluation to NOT_APPLICABLE so the downstream state
-    // machine never fires evidence writes or attempt-counter increments.
+    // CONFUSED / REPEAT / CLARIFY / OFF_TOPIC: AI still generates a pedagogical
+    // response (redirect, hint, re-explanation), but we force answer_evaluation
+    // to NOT_APPLICABLE so the downstream state machine never fires evidence
+    // writes or attempt-counter increments.
+    // OFF_TOPIC is included here to prevent attempt increment while still
+    // allowing the existing Node Lock redirect response from the AI to fire.
     // When a task is open, also lock node_decision to CONTINUE_SAME_NODE so
     // the node cannot be advanced by the model's output.
     if (
-      _intentResult.intent === "CONFUSED" ||
-      _intentResult.intent === "REPEAT"   ||
-      _intentResult.intent === "CLARIFY"
+      _intentResult.intent === "CONFUSED"  ||
+      _intentResult.intent === "REPEAT"    ||
+      _intentResult.intent === "CLARIFY"   ||
+      _intentResult.intent === "OFF_TOPIC"
     ) {
       (aiResult.answer_evaluation as unknown as Record<string, string>).status          = "NOT_APPLICABLE";
       (aiResult.answer_evaluation as unknown as Record<string, string>).evidence_quality = "NONE";
@@ -1219,7 +1223,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const quality     = aiResult.answer_evaluation.evidence_quality;
     const isCorrect   = status === "CORRECT" || status === "PARTIALLY_CORRECT";
     const isIncorrect = status === "INCORRECT";
-    const wasEval     = status !== "NOT_APPLICABLE";
+    // "OFF_TOPIC" answer_evaluation status (returned when AI model itself flags
+    // a scope mismatch) is also excluded from wasEval — defense-in-depth for
+    // cases where Stage B returned ANSWER but the AI model's own evaluation
+    // returns OFF_TOPIC.  Combined with the non-ANSWER gate above this ensures
+    // zero attempt increments for all non-answer interactions.
+    const wasEval     = status !== "NOT_APPLICABLE" && status !== "OFF_TOPIC";
 
     // ── Initialize hasActiveTask from existing session state ──────────────
     // Covers backward-compat with sessions created before Phase 2B (null provenance)
@@ -1262,7 +1271,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // push the stage forward immediately so the NEXT turn directive correctly
     // says "evaluate the answer" instead of "present the exercise again".
     // Phase 2B fix: also write active task identity fields (previously omitted).
-    if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
+    //
+    // V2-R2 gate: only advance on ANSWER intent.  If the student said "chgidem"
+    // (CONFUSED) / "krkni" (REPEAT) / CLARIFY / OFF_TOPIC and the AI happens to
+    // reply with TRANSITION+exercise_id (re-presenting the task), we must NOT
+    // advance the stage or set activeAttemptSequence=1 — that would register a
+    // phantom attempt and change the session teaching stage without the student
+    // having answered anything.  The anticipatory advance is only meaningful when
+    // the AI is introducing the exercise fresh to a student who is about to answer.
+    // Also exclude status="OFF_TOPIC": when Stage B returns ANSWER intent for an
+    // off-topic message and the AI flags answer_evaluation.status="OFF_TOPIC",
+    // wasEval is already false (OFF_TOPIC excluded from wasEval above) — but the
+    // anticipatory block would still fire unless we add this guard.
+    if (!wasEval && _intentResult.intent === "ANSWER" && status !== "OFF_TOPIC" &&
+        (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
         aiResult.teaching_mode === "TRANSITION" &&
         aiResult.source_fidelity.exercise_id) {
       await db

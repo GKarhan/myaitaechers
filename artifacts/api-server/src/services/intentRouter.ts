@@ -131,6 +131,22 @@ const CONFUSED_EXACT = new Set<string>([
   "\u0579\u0565\u0574 \u0570\u0561\u057d\u056f\u0561\u0576\u0578\u0582\u0574",
 ]);
 
+/**
+ * CLARIFY — substring patterns that reliably identify clarification questions.
+ * These are structural Armenian question forms that can never be genuine answers.
+ * Checked with .includes() after normalizeInput(), so they match anywhere in the message.
+ */
+const CLARIFY_CONTAINS: string[] = [
+  // "inch e nshanakum" = "what does [X] mean?" (U+056B U+0576 U+0579 U+0020 U+0567 U+0020 U+0576 U+0577 ...)
+  "\u056b\u0576\u0579 \u0567 \u0576\u0577\u0561\u0576\u0561\u056f\u0578\u0582\u0574",
+  // "inca e nshanakum" variant
+  "\u056b\u0576\u0579\u0561 \u0567 \u0576\u0577\u0561\u0576\u0561\u056f\u0578\u0582\u0574",
+  // "inch nshanakum e" word-order variant
+  "\u056b\u0576\u0579 \u0576\u0577\u0561\u0576\u0561\u056f\u0578\u0582\u0574 \u0567",
+  // "inch e se" = "what is this?" (inca e ser / inch e ser)
+  "\u056b\u0576\u0579 \u0565\u0576\u0584",  // "inch enq" = "what are we..."
+];
+
 /** REPEAT — repeat / rephrase current explanation */
 const REPEAT_EXACT = new Set<string>([
   // krkni (repeat)
@@ -178,6 +194,14 @@ function classifyDeterministic(
   // REPEAT
   if (REPEAT_EXACT.has(normalized)) {
     return { intent: "REPEAT", confidence: 1, reason: "deterministic:repeat_phrase" };
+  }
+
+  // CLARIFY — structural question phrases that are always clarifications, never answers.
+  // Substring check: these patterns cannot appear in genuine task answers.
+  for (const pattern of CLARIFY_CONTAINS) {
+    if (normalized.includes(pattern)) {
+      return { intent: "CLARIFY", confidence: 1, reason: "deterministic:clarify_question_pattern" };
+    }
   }
 
   return null; // needs Stage B

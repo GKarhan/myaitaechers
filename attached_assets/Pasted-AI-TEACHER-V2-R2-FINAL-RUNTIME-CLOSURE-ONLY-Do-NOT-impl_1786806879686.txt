@@ -1,0 +1,225 @@
+AI TEACHER V2-R2 — FINAL RUNTIME CLOSURE ONLY
+
+Do NOT implement V2-R3.
+Do NOT redesign V2-R2.
+Do NOT make unrelated code changes.
+
+The implementation report is promising, but V2-R2 cannot be marked PASS yet.
+
+Two required acceptance items were not actually completed:
+
+1. T18–T24 AI-gated tests were SKIPPED.
+   A skipped test must NOT be counted as PASS.
+
+2. The required Real Browser UAT + DB before/after proof was not provided.
+
+============================================================
+1. RUN THE REAL AI-GATED TESTS
+============================================================
+
+Run the V2-R2 suite with:
+
+RUN_AI_TESTS=1
+
+Actually execute T18–T24.
+
+Report each test individually:
+
+T18
+T19
+T20
+T21
+T22
+T23
+T24
+
+For each show:
+
+- input
+- active-task/state context
+- classified intent
+- whether Stage B AI was used
+- PASS / FAIL
+
+Do not count skipped tests as passed.
+
+If any fail:
+fix only the smallest V2-R2 root cause,
+then rerun the full suite.
+
+============================================================
+2. REAL STUDENT BROWSER UAT
+============================================================
+
+Use a real student lesson with an active assessable task.
+
+Capture the SAME active task identity before testing.
+
+Test sequentially:
+
+A. Student sends:
+«օկ»
+
+Expected:
+- not ANSWER
+- task remains active
+- no answer evidence
+- no attempt increment
+
+B. Student sends:
+«շարունակենք»
+
+Expected:
+- CONTINUE
+- same task remains active
+- no MicroNode progression
+- no answer evidence
+- no attempt increment
+
+C. Student sends:
+«չգիտեմ»
+
+Expected:
+- CONFUSED
+- same task remains active
+- pedagogical support/remediation may be returned
+- NOT incorrect evidence
+- no answer-attempt increment
+
+D. Student requests:
+«օգնի»
+
+Expected:
+- HELP
+- existing progressive Help architecture is used
+- same task identity remains active
+- help metadata may change
+- zero answer evidence
+
+E. Student asks a genuine clarification about the current task.
+
+Example:
+«իսկ մոլեկուլը ինչ է նշանակում»
+
+Expected:
+- CLARIFY
+- clarification answered
+- SAME original task remains active
+- no answer evidence
+- no answer-attempt increment
+
+F. Student asks an unrelated/off-topic question.
+
+Expected:
+- OFF_TOPIC
+- existing Node Lock / redirect behavior
+- same active task remains active
+- no evidence
+- no attempt increment
+
+G. Finally submit a genuine answer to the original task.
+
+Expected:
+- ANSWER
+- enters evaluation
+- valid answer attempt increments
+- evidence may be created
+- FEEDBACK occurs
+- only now may the teaching state progress according to V2-R1 rules
+
+============================================================
+3. DB PROOF
+============================================================
+
+For the real UAT, show DB state BEFORE and AFTER each relevant step.
+
+At minimum verify:
+
+- lesson/session id
+- current MicroNode id
+- node teaching stage
+- active task identity/provenance
+- active help count
+- attempt counter used by V2
+- evidence_events count / relevant new rows
+
+Prove specifically:
+
+READY       → 0 answer evidence
+CONTINUE    → 0 answer evidence
+CONFUSED    → 0 answer evidence
+HELP        → 0 answer evidence
+CLARIFY     → 0 answer evidence
+OFF_TOPIC   → 0 answer evidence
+
+Only genuine ANSWER may produce answer evidence.
+
+============================================================
+4. IMPORTANT CLARIFY CHECK
+============================================================
+
+Pay special attention to CLARIFY.
+
+The learner asking a question ABOUT the current task must not cause the
+original active task to be replaced.
+
+After the clarification response, prove that the original task identity
+is still active.
+
+============================================================
+5. IMPORTANT OFF_TOPIC CHECK
+============================================================
+
+Prove that OFF_TOPIC routes through the existing authoritative Node Lock
+behavior.
+
+Do not create a second redirect system.
+
+============================================================
+6. REGRESSION
+============================================================
+
+After any fix, rerun:
+
+- V2-R2 full suite with RUN_AI_TESTS=1
+- V2-R1
+- V2-R1.1
+- Phase 2B Round 2
+- api-server TypeScript
+- myaiteacher TypeScript
+
+============================================================
+7. FINAL REPORT
+============================================================
+
+Return:
+
+A. T18–T24 actual execution results
+B. Number passed / failed / skipped
+C. Real browser UAT A–G
+D. Intent classified for every UAT message
+E. Active-task persistence proof
+F. Attempt-counter proof
+G. Evidence DB proof
+H. Help integration proof
+I. CLARIFY persistence proof
+J. OFF_TOPIC / Node Lock proof
+K. Genuine ANSWER proof
+L. Regression results
+M. Files changed, if any
+N. FINAL VERDICT:
+
+AI TEACHER V2-R2 =
+PASS / PARTIAL / FAIL
+
+PASS is allowed ONLY if:
+- T18–T24 actually ran
+- zero required tests are skipped
+- real browser UAT A–G passes
+- DB proves non-answer intents create zero answer evidence
+- original active task survives HELP/CONFUSED/CLARIFY/CONTINUE/OFF_TOPIC
+- only ANSWER enters evaluation/evidence
+- all regressions remain green
+
+STOP after V2-R2 closure.
+Do NOT start V2-R3.

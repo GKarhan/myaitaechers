@@ -2024,7 +2024,7 @@ function LessonNodesPanel({
                   </p>
                   <div className="flex gap-1.5">
                     <button onClick={() => { generateCogPath(n.id, true); }} className={btnSm + " bg-amber-500 text-black text-[10px]"}>Ayn, vertasteghcel</button>
-                    <button onClick={() => setCogPathForceNode(null)} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Chegharkanel</button>
+                    <button onClick={() => setCogPathForceNode(null)} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Չեղարկել</button>
                   </div>
                 </div>
               )}
@@ -2139,8 +2139,8 @@ function LessonNodesPanel({
                           </div>
                         </div>
                         <div className="flex gap-1">
-                          <button onClick={() => saveCogLevel(level.id, n.id)} disabled={cogLevelSaving} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{cogLevelSaving ? '...' : 'Pahpanel'}</button>
-                          <button onClick={() => { setCogLevelEditId(null); setCogLevelEditForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Chegharkanel</button>
+                          <button onClick={() => saveCogLevel(level.id, n.id)} disabled={cogLevelSaving} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{cogLevelSaving ? '...' : 'Պահպանել'}</button>
+                          <button onClick={() => { setCogLevelEditId(null); setCogLevelEditForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Չեղարկել</button>
                         </div>
                       </div>
                     ) : (
@@ -2247,7 +2247,7 @@ function LessonNodesPanel({
                     />
                     <div className="flex gap-1">
                       <button onClick={() => addCogLevel(n.id)} disabled={!addLevelForm[n.id]?.cognitiveLevel || !!addLevelSaving[n.id]} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{addLevelSaving[n.id] ? '...' : 'Avel'}</button>
-                      <button onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: false })); setAddLevelForm((f) => { const nf = { ...f }; delete nf[n.id]; return nf; }); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Chegharkanel</button>
+                      <button onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: false })); setAddLevelForm((f) => { const nf = { ...f }; delete nf[n.id]; return nf; }); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Չեղարկել</button>
                     </div>
                   </div>
                 )
