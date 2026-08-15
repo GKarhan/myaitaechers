@@ -1,0 +1,1403 @@
+AI TEACHER V2
+FULL TEACHING LOGIC AUDIT & STABILIZATION
+
+ROUND 1 — FORENSIC AUDIT ONLY
+
+============================================================
+0. ABSOLUTE RULE — DO NOT MODIFY ANYTHING
+============================================================
+
+THIS ROUND IS AUDIT ONLY.
+
+DO NOT:
+- modify code
+- modify prompts
+- modify database schema
+- create migrations
+- change UI
+- change chat.ts
+- change ai.ts
+- change scoring
+- change mastery/confidence
+- change Cognitive Enrichment
+- change Phase 2B evidence architecture
+- change Knowledge Tree
+- change Mapper
+- create test data
+- "quick fix" any issue you discover
+
+We currently have evidence that the AI Teacher's overall teaching
+orchestration is not behaving reliably.
+
+We do NOT want another local patch.
+
+We first need a complete forensic model of:
+
+CURRENT IMPLEMENTATION
+vs
+INTENDED TEACHING CONTRACT
+vs
+ACTUAL RUNTIME BEHAVIOR.
+
+STOP after the audit and recommendations.
+
+
+============================================================
+1. WHY THIS AUDIT IS REQUIRED
+============================================================
+
+A real student session exposed multiple issues.
+
+Real lesson:
+
+ԱՏՈՄՆԵՐ ԵՎ ՄՈԼԵԿՈՒԼՆԵՐ:
+ԴՐԱՆՑ ԳՈՅՈՒԹՅՈՒՆԸ ՀԱՍՏԱՏՈՂ ԵՐԵՎՈՒՅԹՆԵՐ
+
+Current MicroNode:
+
+Մոլեկուլներ
+
+Observed runtime behavior included:
+
+1. Lesson introduction was shown.
+
+2. Student wrote:
+   «օկ»
+
+3. AI responded with a greeting/start message.
+
+4. Student wrote:
+   «օկ»
+
+5. AI repeated essentially the SAME greeting/start message.
+
+6. Student had to write:
+   «անցնենք դասին»
+
+7. AI finally started teaching.
+
+8. AI asked:
+   «Կարող ես բերել մոլեկուլի օրինակ...»
+
+9. Student answered:
+   «ջրի մոլեկուլ»
+
+10. AI gave feedback and immediately asked another question.
+
+11. Student wrote:
+    «չեմ կարա օգնի»
+
+12. AI gave the answer/example itself and asked the learner to try again.
+
+13. Later AI explained theory and asked:
+    «Ի՞նչ տարբերություն կա մոլեկուլի և ատոմի միջև»։
+
+14. Student answered.
+
+15. AI gave feedback and immediately asked another similar question.
+
+16. Student wrote:
+    «արի շարունակենք»
+
+17. AI interpreted this as permission to progress and introduced
+    additional content.
+
+18. AI later asked:
+    «Ի՞նչ տեսակի մոլեկուլ է NaCl...»
+
+19. Student answered incorrectly.
+
+20. AI corrected the learner and immediately asked another question.
+
+21. Student wrote:
+    «չգիտեմ դու ասա»
+
+22. AI directly explained the answer and then immediately presented
+    TWO more classification items:
+    O₃ and CH₄.
+
+Additionally:
+
+The new structured Phase 2B:
+
+💡 Օգնություն
+
+button still did NOT appear under these assessable questions in the
+real student UI, despite backend/test work.
+
+This runtime transcript is evidence.
+
+Do not dismiss these behaviors because automated tests pass.
+
+
+============================================================
+2. PRIMARY GOAL
+============================================================
+
+Determine whether the current AI Teacher architecture can reliably
+enforce a deterministic pedagogical state machine.
+
+The intended conceptual cycle is:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+But the actual implementation may contain:
+
+- prompt-driven transitions
+- backend-driven transitions
+- anticipatory transitions
+- fallback transitions
+- legacy stage logic
+- node progression logic
+- exercise progression logic
+- AI mode/action logic
+- frontend-derived behavior
+
+We need to identify ALL authorities.
+
+The audit must answer:
+
+WHO actually controls the lesson?
+
+
+============================================================
+3. CANONICAL CURRICULUM STRUCTURE
+============================================================
+
+Do not redesign this.
+
+Canonical technical hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode = atomic curriculum knowledge unit.
+
+Exercises remain attached to MicroNodes.
+
+Cognitive Enrichment is additional metadata around MicroNodes.
+
+Do not introduce Node/Subnode hierarchy.
+
+
+============================================================
+4. INTENDED AI TEACHER RESPONSIBILITY
+============================================================
+
+The AI Teacher should teach ONE current MicroNode at a time.
+
+For the current MicroNode it should:
+
+1. establish/activate relevant understanding
+2. teach a bounded concept
+3. ask ONE appropriate micro-check
+4. wait for learner response
+5. evaluate that response
+6. provide targeted feedback
+7. decide the appropriate next pedagogical action
+8. continue teaching/checking OR move toward real exercise
+9. use real source exercise when appropriate
+10. collect sufficient valid evidence
+11. only then allow backend-controlled node completion/progression
+
+The AI must not casually decide:
+
+"the student understands, let's move on"
+
+without satisfying backend/evidence rules.
+
+
+============================================================
+5. LOCKED TEACHING CYCLE
+============================================================
+
+Audit against this intended cycle:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+Important:
+
+MICRO_CHECK:
+- exactly ONE assessable prompt
+- preferably ≤25 words where pedagogically reasonable
+- must wait for student response
+- next pedagogical turn must process that response
+- cannot silently become multiple questions
+- cannot count as STRONG evidence
+
+FEEDBACK:
+- responds to the student's actual answer
+- identifies correctness/error
+- uses error taxonomy where relevant
+- selects a pedagogical action
+- should not accidentally skip required remediation
+
+TRANSITION:
+- decides whether to:
+  - continue teaching
+  - give another bounded check
+  - remediate
+  - move to real exercise
+  - move toward node completion
+
+Audit whether current code actually enforces these boundaries.
+
+
+============================================================
+6. SINGLE-QUESTION CONTRACT
+============================================================
+
+This is critical.
+
+The AI Teacher should NOT produce uncontrolled question chains.
+
+Audit whether the current architecture can enforce:
+
+ONE assessable question/task
+→ WAIT
+→ learner response
+→ FEEDBACK
+→ next pedagogical decision.
+
+Find every place where an AI response can contain:
+
+- feedback + new question
+- theory + multiple questions
+- multiple exercises
+- question + immediate answer
+- several bullet questions
+
+Determine whether this is controlled by:
+
+prompt only
+backend validator
+structured output schema
+post-processing
+or nothing.
+
+Report exact code.
+
+
+============================================================
+7. GREETING / SESSION START AUDIT
+============================================================
+
+Trace the complete session-start flow.
+
+Determine:
+
+A. Who generates the initial lesson introduction?
+
+B. Is it frontend-generated, backend-generated, DB-loaded, or AI-generated?
+
+C. What state is the session in immediately after introduction?
+
+D. What should happen when learner says:
+   «օկ»
+
+E. Why did repeated «օկ» produce repeated greeting/start messages?
+
+F. Is there an explicit:
+   INTRO / READY / STARTED
+   state?
+
+G. Can the AI know that greeting has already happened?
+
+H. Is the greeting persisted?
+
+I. Can refresh/re-entry cause greeting duplication?
+
+J. Is there any idempotency guard?
+
+Trace exact code and DB fields.
+
+
+============================================================
+8. CURRENT STATE MACHINE — FORENSIC RECONSTRUCTION
+============================================================
+
+Reconstruct the ACTUAL state machine from code.
+
+Inspect at minimum:
+
+artifacts/api-server/src/routes/chat.ts
+artifacts/api-server/src/services/ai.ts
+
+and every imported helper that influences:
+
+- mode
+- stage
+- action
+- node progression
+- exercise progression
+- evidence
+- completion
+
+Identify all states/fields including, if present:
+
+nodeTeachingStage
+currentNodeId
+currentNodeIndex
+lastQuestionAsked
+deepDiveExerciseIndex
+consecutiveCorrect
+exercise attempts
+evidenceQuality
+activeTask*
+redirect flags
+completion flags
+session mode
+teaching mode
+lesson mode
+
+For each field report:
+
+- table/in-memory location
+- writer(s)
+- reader(s)
+- allowed values
+- transition conditions
+- authoritative or advisory
+- whether AI can override it
+- whether fallback path handles it differently.
+
+
+============================================================
+9. MULTIPLE AUTHORITIES / COLLISION AUDIT
+============================================================
+
+Find every place that can change teaching progression.
+
+Examples:
+
+- AI structured response
+- chat.ts anticipatory transition
+- post-response transition
+- validator
+- fallback callAI path
+- frontend action
+- evidence handler
+- exercise handler
+- advanceNodeInSession
+- completion logic
+
+Build a matrix:
+
+AUTHORITY
+WHAT IT CAN CHANGE
+WHEN
+GUARD
+COLLISION RISK
+
+We need to know whether two different systems can advance the same
+state in one learner turn.
+
+
+============================================================
+10. ANTICIPATORY TRANSITION AUDIT
+============================================================
+
+Previous Phase 2B work discovered "anticipatory advances".
+
+Audit ALL anticipatory stage changes.
+
+For each:
+
+- exact code
+- why it exists
+- what stage it changes
+- whether it occurs BEFORE learner evidence exists
+- whether it can conflict with AI output
+- whether it can cause duplicate/skipped stages
+- whether fallback path behaves identically
+
+Do not modify.
+
+Determine whether anticipatory transitions are fundamentally safe.
+
+
+============================================================
+11. STRUCTURED AI OUTPUT CONTRACT
+============================================================
+
+Audit the exact schema returned by callAIStructured.
+
+List every field.
+
+Especially inspect fields related to:
+
+- student_message
+- mode
+- action
+- correctness
+- error family
+- evidence
+- completion
+- redirect
+- exercise
+- current/next stage
+
+Determine:
+
+A. Which fields are decisions by the AI?
+
+B. Which fields are validated by backend?
+
+C. Which fields are ignored?
+
+D. Which fields directly mutate session state?
+
+E. Which fields can contradict backend state?
+
+F. What happens on malformed structured output?
+
+G. What happens after retry?
+
+H. What happens on fallback to callAI?
+
+
+============================================================
+12. FALLBACK PATH PARITY
+============================================================
+
+This is critical.
+
+Compare:
+
+callAIStructured success path
+
+vs
+
+retry path
+
+vs
+
+callAI fallback path.
+
+For each determine whether it preserves:
+
+- Node Lock
+- teaching stage
+- active task identity
+- one-question rule
+- exercise identity
+- source fidelity
+- evidence semantics
+- help availability
+- completion guards
+- Armenian-only requirement
+
+Report every parity gap.
+
+
+============================================================
+13. PROMPT FORENSIC AUDIT
+============================================================
+
+Audit the COMPLETE AI Teacher system prompt.
+
+Do not rewrite it yet.
+
+Identify:
+
+A. duplicated rules
+
+B. conflicting rules
+
+C. repeated action definitions
+
+D. stage rules repeated in different sections
+
+E. places where the AI is told to both:
+   "ask a question"
+   and
+   "teach/explain"
+   in the same turn
+
+F. rules that encourage excessive questions
+
+G. rules that permit progression too early
+
+H. rules that may cause repeated greeting
+
+I. rules that may conflict with backend state
+
+J. rules that are already enforced deterministically in code and
+   therefore may be unnecessary prompt burden
+
+K. token/dilution risks
+
+Return exact sections and line references.
+
+
+============================================================
+14. QUESTION GENERATION AUDIT
+============================================================
+
+Trace how the AI decides to ask a question.
+
+Classify current questions into:
+
+1. rhetorical teaching question
+2. MICRO_CHECK
+3. real exercise
+4. remediation question
+5. clarification question
+6. generated equivalent task
+7. other
+
+Determine whether the backend can distinguish these.
+
+For the real transcript, classify:
+
+«Կարող ես բերել մոլեկուլի օրինակ...»
+
+«Կարո՞ղ ես մեկ այլ օրինակ բերել...»
+
+«Ի՞նչ տարբերություն կա մոլեկուլի և ատոմի միջև»
+
+«Ի՞նչ տեսակի մոլեկուլ է NaCl...»
+
+«Ինչո՞վ է տարբերվում պարզ մոլեկուլը բարդ մոլեկուլից»
+
+O₃ / CH₄ pair
+
+For each determine what the current code would believe it is.
+
+
+============================================================
+15. REPEAT QUESTION / LOOP AUDIT
+============================================================
+
+Audit existing protections against:
+
+- identical question repetition
+- semantic question repetition
+- repeated greeting
+- repeated theory
+- repeated examples
+- remediation loops
+- student repeatedly saying «օկ»
+- student saying «շարունակենք»
+- student giving non-answer responses
+
+Inspect:
+
+lastQuestionAsked
+chat history
+question fingerprints if any
+validators
+similarity checks if any
+
+Determine whether repeat prevention is deterministic or prompt-only.
+
+
+============================================================
+16. STUDENT INTENT CLASSIFICATION
+============================================================
+
+Audit how the system handles messages such as:
+
+«օկ»
+«շարունակենք»
+«արի շարունակենք»
+«չգիտեմ»
+«դու ասա»
+«չեմ կարող»
+«օգնի»
+«չհասկացա»
+«կրկնի»
+«ուրիշ օրինակ տուր»
+
+These are NOT all answers.
+
+Determine whether the system currently distinguishes:
+
+ANSWER
+READY/ACKNOWLEDGEMENT
+CONTINUE_REQUEST
+HELP_REQUEST
+CONFUSION
+REPEAT_REQUEST
+CLARIFICATION
+OFF_TOPIC
+
+If not, identify exactly where ambiguity reaches the AI.
+
+Do NOT implement a classifier yet.
+
+
+============================================================
+17. ERROR TAXONOMY → ACTION AUDIT
+============================================================
+
+Audit the existing error taxonomy and action registry.
+
+Expected examples include:
+
+CONCEPTUAL
+→ EXTRA_EXAMPLE / CONTRAST_EXAMPLE
+
+PREREQUISITE
+→ RETURN_TO_PREREQUISITE
+
+PROCEDURAL
+→ STEP_BY_STEP
+
+CALCULATION_EXECUTION
+→ VERIFY_SELECTION
+
+READING_LANGUAGE
+→ SIMPLIFY_LANGUAGE
+
+ATTENTION_RESPONSE
+→ VERIFY_SELECTION
+
+GUESSING_CONFIDENCE
+→ REQUIRE_REASONING
+
+INCOMPLETE_COMMUNICATION
+→ GUIDED_QUESTION
+
+TRANSFER_BLOOM
+→ CHANGE_REPRESENTATION
+
+COGNITIVE_LOAD_PACE
+→ LOWER_DIFFICULTY / RAISE_DIFFICULTY
+
+Determine:
+
+- whether taxonomy is actually used
+- where classification happens
+- where action is selected
+- whether action changes next stage
+- whether actions are duplicated in prompt
+- whether backend validates action-family compatibility
+- whether fallback preserves it.
+
+
+============================================================
+18. FEEDBACK CONTRACT AUDIT
+============================================================
+
+Determine what FEEDBACK is currently allowed to contain.
+
+For a correct answer:
+should it:
+- praise briefly
+- explain
+- ask another question
+- transition
+- do all of them?
+
+For incorrect answer:
+should it:
+- give answer immediately
+- hint
+- explain
+- remediate
+- retry same construct
+- generate a new question?
+
+Audit actual rules.
+
+Specifically analyze the transcript behavior:
+
+Student:
+«չգիտեմ դու ասա»
+
+AI:
+directly gives the distinction
+then immediately gives O₃ and CH₄.
+
+Determine which current rule allowed this.
+
+
+============================================================
+19. HELP SYSTEM INTEGRATION AUDIT
+============================================================
+
+Phase 2B introduced structured progressive help.
+
+Intended flow:
+
+ACTIVE TASK
+→ 💡 Օգնություն
+→ Hint 1
+→ Ավելի շատ օգնություն
+→ Hint 2
+→ Քայլային աջակցություն
+→ same task answer
+
+Audit current implementation against the AI Teacher state machine.
+
+Determine:
+
+A. what exactly qualifies as active assessable task
+
+B. when activeTaskProvenance is written
+
+C. when it is cleared
+
+D. whether MICRO_CHECK gets task identity
+
+E. whether real EXERCISE gets task identity
+
+F. whether feedback+new-question messages create correct identity
+
+G. why the real UI still failed to show the button
+
+H. whether current `hasActiveTask` is based on actual task existence
+   or merely stage inference
+
+I. whether Help can be made reliable without first stabilizing the
+   teaching cycle
+
+DO NOT fix it in this round.
+
+
+============================================================
+20. EXERCISE FLOW AUDIT
+============================================================
+
+Trace:
+
+MicroNode
+→ source exercise selection
+→ exerciseTextVerbatim
+→ presentation
+→ learner answer
+→ evaluation
+→ feedback
+→ retry/next exercise
+→ evidence
+→ completion
+
+Verify:
+
+- exercise ID survives
+- exact source text survives
+- page/id citation survives
+- AI does not rewrite source exercise when verbatim is required
+- exercise index progression is deterministic
+- one exercise cannot be skipped accidentally
+- learner can retry
+- repeated attempt identity exists
+- help does not replace the exercise.
+
+
+============================================================
+21. MICRO_CHECK VS REAL EXERCISE
+============================================================
+
+Audit the actual distinction.
+
+MICRO_CHECK:
+- AI-generated?
+- evidence strength?
+- completion capability?
+- task identity?
+- cognitive level?
+- repeat behavior?
+
+REAL EXERCISE:
+- source identity?
+- evidence strength?
+- completion capability?
+- cognitive level?
+- attempt behavior?
+
+Confirm existing locked rule:
+
+MICRO_CHECK evidence ≤ MODERATE.
+
+REAL EXERCISE may produce STRONG evidence.
+
+Find any code path violating this.
+
+
+============================================================
+22. NODE COMPLETION AUDIT
+============================================================
+
+This is critical.
+
+Trace exactly how a MicroNode becomes complete.
+
+Identify:
+
+- AI recommendation
+- evidence requirement
+- consecutiveCorrect
+- real exercise requirement
+- mastery threshold if any
+- backend validator
+- advanceNodeInSession
+- final completion writer
+
+Determine:
+
+A. Can AI declare completion?
+
+B. Can AI cause backend completion indirectly?
+
+C. Is STRONG evidence mandatory?
+
+D. Can micro-checks alone complete a node?
+
+E. Can learner saying «շարունակենք» skip evidence?
+
+F. Can stage transitions reach completion prematurely?
+
+G. Can duplicate evidence accelerate completion?
+
+
+============================================================
+23. LESSON / NODE LOCK AUDIT
+============================================================
+
+Audit current Node Lock.
+
+AI must teach only CURRENT_NODE / CURRENT_LESSON.
+
+Inspect:
+
+- current node context construction
+- all node titles supplied to model
+- drift validator
+- redirect_needed
+- student_message scope validation
+
+Determine whether AI can:
+
+- teach future MicroNode content
+- pull unrelated lesson content
+- advance itself
+- answer off-topic requests instead of redirecting
+
+Report deterministic vs prompt-only enforcement.
+
+
+============================================================
+24. SOURCE FIDELITY AUDIT
+============================================================
+
+Audit all source fidelity guarantees.
+
+Especially:
+
+exerciseTextVerbatim
+
+Expected:
+copy word-for-word and append:
+(Էջ {page}, Վ. {id})
+
+Determine:
+
+- where exactness is enforced
+- whether AI can paraphrase it
+- whether generated teaching examples are clearly separate
+- whether source exercise and AI-generated variant can be confused
+- whether fallback path preserves source fidelity.
+
+
+============================================================
+25. COGNITIVE ENRICHMENT INTEGRATION AUDIT
+============================================================
+
+Phase 2A is complete.
+
+Audit how much the AI Teacher currently knows about:
+
+- confirmed cognitive path
+- current cognitive level
+- performance objective
+- success criterion
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- target ceiling
+
+Determine whether the AI Teacher currently uses any of this.
+
+IMPORTANT:
+
+Do NOT integrate it yet.
+
+We need to stabilize teaching orchestration first.
+
+
+============================================================
+26. EVIDENCE WRITING AUDIT
+============================================================
+
+Phase 2B Round 2 added durable AI Teacher evidence.
+
+Audit:
+
+AI Teacher answer
+→ evaluation
+→ evidence_event
+→ knowledge_node
+
+Determine:
+
+- exact write timing
+- exactly-once guarantee
+- duplicate risk
+- task identity
+- assistance context
+- cognitive context
+- evidence strength
+- whether non-answer messages can accidentally create evidence
+
+Specifically test conceptually:
+
+«օկ»
+«շարունակենք»
+«չգիտեմ»
+«դու ասա»
+«օգնի»
+
+Could any of these become false evidence?
+
+
+============================================================
+27. FRONTEND CHAT UX AUDIT
+============================================================
+
+Audit student chat UI only as it relates to orchestration.
+
+Determine:
+
+- how AI messages are rendered
+- whether task/question has a distinct UI identity
+- whether Help is attached to a specific message/task
+- whether multiple buttons can appear
+- whether old tasks remain actionable
+- whether current active task is visually identifiable
+- whether loading states allow double-submit
+- whether student can submit twice
+- whether refresh restores correct task state
+
+Do NOT redesign UI yet.
+
+
+============================================================
+28. REAL TRANSCRIPT FORENSIC REPLAY
+============================================================
+
+Replay the provided real transcript against current code.
+
+For EACH student/AI turn, produce a table:
+
+TURN
+STUDENT MESSAGE
+EXPECTED INTENT
+CURRENT SESSION STAGE BEFORE
+AI MODE/ACTION
+SESSION STAGE AFTER
+ACTIVE TASK?
+EVIDENCE WRITTEN?
+EXPECTED BEHAVIOR
+ACTUAL BEHAVIOR
+DIVERGENCE
+
+Use real logs/DB where available.
+
+Do not invent unavailable values.
+
+Mark UNKNOWN where evidence is unavailable.
+
+
+============================================================
+29. REQUIRED INVARIANTS FOR AI TEACHER V2
+============================================================
+
+Evaluate whether current architecture can enforce each invariant.
+
+I01
+Exactly one current MicroNode.
+
+I02
+Exactly one authoritative teaching stage.
+
+I03
+At most one active assessable task.
+
+I04
+One assessable task → wait for learner response.
+
+I05
+Feedback processes the previous task before another task is created.
+
+I06
+A non-answer message cannot become answer evidence.
+
+I07
+Help stays attached to the same active task.
+
+I08
+Help itself creates no answer evidence.
+
+I09
+A MICRO_CHECK cannot create STRONG evidence.
+
+I10
+Node completion requires backend evidence rules.
+
+I11
+AI cannot directly advance node.
+
+I12
+Real exercise identity survives end-to-end.
+
+I13
+Source exercise text remains verbatim.
+
+I14
+Repeated greeting is impossible after session start.
+
+I15
+Repeated identical/near-identical question is prevented.
+
+I16
+Fallback path obeys the same state machine.
+
+I17
+Refresh restores active task/state.
+
+I18
+One learner submission creates at most one evidence event.
+
+I19
+Feedback cannot silently skip remediation requirements.
+
+I20
+Student "continue" cannot bypass required evidence.
+
+Mark each:
+
+ENFORCED
+PARTIAL
+NOT ENFORCED
+
+with exact code evidence.
+
+
+============================================================
+30. ARCHITECTURAL QUESTION — WHO SHOULD CONTROL WHAT?
+============================================================
+
+After the audit, recommend the cleanest authority split.
+
+Evaluate this target model:
+
+BACKEND OWNS:
+- current MicroNode
+- current stage
+- active task identity
+- whether a learner response is expected
+- whether evidence is valid
+- completion
+- node progression
+- exercise progression
+- help state
+
+AI OWNS:
+- wording of explanation
+- pedagogical example
+- micro-check content within backend constraints
+- feedback wording
+- error diagnosis proposal
+- remediation content
+
+AI MAY RECOMMEND:
+- next pedagogical action
+
+BACKEND VALIDATES/COMMITS:
+- actual transition
+
+Determine whether this is compatible with current architecture.
+
+Do NOT implement it yet.
+
+
+============================================================
+31. DESIRED V2 STATE MACHINE — RECOMMENDATION ONLY
+============================================================
+
+Based on findings, recommend a minimal deterministic state machine.
+
+Do NOT blindly accept this example, but evaluate something like:
+
+INTRO
+↓
+TEACH
+↓
+CHECK_WAITING
+↓
+FEEDBACK
+↓
+DECISION
+├─ REMEDIATE → CHECK_WAITING
+├─ TEACH_MORE → CHECK_WAITING
+├─ EXERCISE_WAITING
+└─ COMPLETE_NODE
+
+Potentially with explicit:
+
+HELP_ACTIVE
+
+only as metadata/substate of the active task, NOT a new teaching turn.
+
+Recommend exact states based on current architecture.
+
+Do not implement.
+
+
+============================================================
+32. DO WE NEED STUDENT INTENT AS A FIRST-CLASS CONCEPT?
+============================================================
+
+Evaluate whether V2 should deterministically classify incoming student
+messages BEFORE AI pedagogical evaluation.
+
+Candidate intents:
+
+ANSWER
+READY
+CONTINUE
+HELP
+CONFUSED
+REPEAT
+CLARIFY
+OFF_TOPIC
+
+Explain:
+
+- which should be deterministic
+- which may need AI classification
+- which can be derived from active-task state
+- how to prevent «օկ» from being scored as an answer
+- how to prevent «շարունակենք» from skipping a task
+
+Recommendation only.
+
+
+============================================================
+33. REQUIRED COLLISION / DUPLICATION MATRIX
+============================================================
+
+Return all duplicated or overlapping logic across:
+
+chat.ts
+ai.ts
+prompt
+validators
+frontend
+DB/session state
+
+For each:
+
+RULE
+LOCATION A
+LOCATION B
+WHICH SHOULD BE AUTHORITATIVE
+RISK
+
+Pay special attention to:
+
+- stage transitions
+- question generation
+- completion
+- redirect
+- active task
+- evidence
+- exercise progression
+- feedback
+- greeting/session start.
+
+
+============================================================
+34. TEST ARCHITECTURE AUDIT
+============================================================
+
+Audit current AI Teacher tests.
+
+Determine what they actually prove.
+
+Especially:
+
+- structured output tests
+- transition tests
+- validators
+- Phase 2B tests
+- integration tests
+- browser tests
+
+Explain why existing tests could all pass while the real transcript
+still behaved incorrectly.
+
+Recommend V2 acceptance tests but DO NOT implement them.
+
+
+============================================================
+35. NO IMPLEMENTATION IN THIS ROUND
+============================================================
+
+Do NOT:
+
+- rewrite prompt
+- rewrite chat.ts
+- add state machine
+- add intent classifier
+- fix Help
+- change evidence
+- change schema
+- change UI
+- change scoring
+
+Even if root causes appear obvious.
+
+We want one coherent stabilization plan, not another patch series.
+
+
+============================================================
+36. REQUIRED FINAL REPORT
+============================================================
+
+Return exactly these sections:
+
+A. Executive summary
+
+B. Actual current AI Teacher architecture
+
+C. Actual current state machine
+
+D. All state authorities
+
+E. Session-start / greeting findings
+
+F. TEACH findings
+
+G. MICRO_CHECK findings
+
+H. FEEDBACK findings
+
+I. TRANSITION findings
+
+J. Exercise-flow findings
+
+K. Node-completion findings
+
+L. Student-intent findings
+
+M. Repeat/loop findings
+
+N. Help integration findings
+
+O. Evidence-writing findings
+
+P. Cognitive Enrichment integration status
+
+Q. Structured-output findings
+
+R. Fallback parity findings
+
+S. Prompt collision/dilution findings
+
+T. Source-fidelity findings
+
+U. Frontend orchestration findings
+
+V. Real transcript forensic replay
+
+W. I01–I20 invariant matrix
+
+X. Collision/duplication matrix
+
+Y. Test architecture findings
+
+Z. Recommended authority split
+
+AA. Recommended AI Teacher V2 state machine
+
+AB. Recommended student-intent architecture
+
+AC. Exact implementation phases for stabilization
+
+AD. What should be DELETED / simplified / made deterministic
+
+AE. What should remain AI-controlled
+
+AF. Risks and backward compatibility
+
+AG. Final verdict:
+
+READY FOR AI TEACHER V2 STABILIZATION
+
+or
+
+BLOCKED — exact reason
+
+
+============================================================
+37. IMPLEMENTATION PLAN REQUIREMENT
+============================================================
+
+If verdict is READY, divide implementation into SMALL controlled rounds.
+
+Prefer something like:
+
+V2-R1
+Authoritative state machine + session-start stabilization
+
+V2-R2
+Student intent + active-task contract
+
+V2-R3
+TEACH / CHECK / FEEDBACK deterministic orchestration
+
+V2-R4
+Exercise + completion stabilization
+
+V2-R5
+Help + evidence reintegration
+
+V2-R6
+Prompt simplification + fallback parity
+
+V2-R7
+Real browser acceptance suite
+
+But DO NOT assume these are correct.
+
+Derive the final rounds from the forensic findings.
+
+Each round must specify:
+
+- exact scope
+- files likely affected
+- DB impact
+- regression risk
+- acceptance gate
+
+============================================================
+38. FINAL STOP
+============================================================
+
+STOP AFTER THE REPORT.
+
+DO NOT IMPLEMENT ANY FIX.
+
+Wait for approval.
+
+We will review the complete audit before changing the AI Teacher.
