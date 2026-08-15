@@ -1,0 +1,1045 @@
+TASK — PHASE 2A COGNITIVE ENRICHMENT
+TEACHER DASHBOARD SEMANTICS + UI CLEANUP
+AUDIT FIRST → MINIMAL FIX → REAL DATA VERIFICATION
+
+IMPORTANT CONTEXT
+
+The project already has:
+
+Canonical curriculum hierarchy:
+Subject → Lesson → Topic → MicroNode
+
+MicroNode is the atomic knowledge unit.
+
+Each MicroNode may contain:
+- title
+- learningObjective
+- theory/content
+- Bloom metadata
+- source page
+- exercises
+- Cognitive Path
+- generated/teacher-edited teaching content
+
+Cognitive Path has already been implemented.
+
+A Cognitive Path may contain levels such as:
+
+Հիշել → Հասկանալ → Կիրառել → Վերլուծել → Գնահատել → Ստեղծել
+
+Each cognitive level may contain:
+- cognitive level
+- performance objective
+- success criterion
+- MIE / minimum independent evidence
+- allowed interaction/task types
+- linked exercises
+- evidence-gap information
+- provenance
+- target-ceiling flag
+
+The teacher can:
+- generate/regenerate the Cognitive Path
+- edit levels
+- add applicable cognitive levels
+- delete levels
+- change/confirm target ceiling
+- link/unlink exercises
+- confirm the Cognitive Path
+
+DO NOT redesign this architecture.
+
+This task is a focused Teacher Dashboard semantic/UI cleanup.
+
+════════════════════════════════════════════════════
+PART 0 — HARD SCOPE RULES
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime behavior
+- chat.ts teaching state machine
+- V2-R1 / V2-R1.1 behavior
+- help/hint runtime
+- evidence scoring behavior
+- Confidence Model
+- mastery scoring
+- Knowledge Tree behavior
+- quiz-taking behavior
+- quiz scoring
+- mapper parsing
+- manual-map / auto-map behavior
+- source coverage logic
+- lesson mapping contract
+- cognitive-path generation algorithm unless a very small
+  canonical-order validation is required by this task
+- Phase 2 teaching-content generation
+- database schema unless audit proves it is absolutely necessary
+
+Do NOT rename persisted enum/database values merely for display.
+
+For example:
+
+multiple_choice
+
+may remain the canonical internal value.
+
+Only the teacher-facing DISPLAY LABEL should be Armenian.
+
+Do not destroy or regenerate existing real data.
+
+Do not change real learner evidence/mastery data.
+
+Do not silently modify confirmed Cognitive Paths.
+
+AUDIT FIRST.
+
+Before changing code, report the exact current implementation and
+actual field/data mapping.
+
+════════════════════════════════════════════════════
+PART 1 — AUDIT THE CURRENT TEACHER DASHBOARD
+════════════════════════════════════════════════════
+
+Inspect the real repository and identify the exact component/function
+that renders the MicroNode expanded/edit view shown in Teacher Dashboard.
+
+Likely relevant file:
+
+artifacts/myaiteacher/src/pages/teacher-dashboard.tsx
+
+but verify instead of assuming.
+
+For a real mapped MicroNode, trace every displayed field from:
+
+DB/schema
+→ API
+→ frontend type
+→ component
+→ rendered UI.
+
+Especially audit the expanded Teaching Content / MicroNode edit area
+where several large text fields currently appear without understandable
+headings.
+
+The current UI may show content conceptually similar to:
+
+MicroNode title
+
+Learning objective
+
+Topic selector
+
+Theory/content
+
+additional generated content
+
+examples
+
+misconceptions
+
+real-life examples
+
+and two numeric fields such as:
+
+2
+5
+
+DO NOT guess what these fields mean.
+
+For every visible field report:
+
+1. frontend variable/property name
+2. API property name
+3. DB column or JSON source
+4. current displayed label, if any
+5. semantic meaning
+6. whether editable
+7. whether required/optional
+8. whether it is source-derived, AI-generated, or teacher-authored
+
+I need a concrete field-mapping table BEFORE implementation.
+
+════════════════════════════════════════════════════
+PART 2 — FIX UNLABELED TEACHING-CONTENT FIELDS
+════════════════════════════════════════════════════
+
+After the audit identifies the exact meaning of each field:
+
+Every teacher-editable field in the expanded MicroNode/Teaching Content
+editor MUST have a clear visible heading/label.
+
+Do not leave unexplained textareas.
+
+Do not invent labels before tracing the underlying property.
+
+Use concise Armenian teacher-facing labels based on the real semantics.
+
+Examples ONLY if they correspond to the actual fields:
+
+🎯 Ուսուցման նպատակ
+
+📖 Տեսական բովանդակություն
+
+💡 Հիմնական գաղափար
+
+⚠️ Հաճախակի սխալ պատկերացումներ
+
+🧩 Հակաօրինակներ
+
+🌍 Իրական կյանքից օրինակներ
+
+📝 Բացատրություն
+
+etc.
+
+These examples are NOT permission to invent fields.
+
+Use the actual schema/data semantics discovered during audit.
+
+For each textarea/input:
+
+LABEL
+short optional helper text if genuinely necessary
+CONTROL
+
+The teacher must understand what they are editing without reading code.
+
+════════════════════════════════════════════════════
+PART 3 — AUDIT THE TWO UNLABELED NUMERIC FIELDS
+════════════════════════════════════════════════════
+
+The current expanded editor visibly contains two numeric values,
+for example:
+
+2
+5
+
+Their meaning is currently unclear to the teacher.
+
+Trace them completely.
+
+Report:
+
+- frontend state/property
+- API field
+- DB field
+- meaning
+- allowed range
+- default
+- validation
+- whether AI generates it
+- whether mapper creates it
+- whether teacher is supposed to edit it
+- where runtime consumes it
+
+Then make the UI explicit.
+
+Each numeric field must have:
+
+- Armenian label
+- optional concise helper text if needed
+- correct min/max constraints
+- existing validation preserved
+
+DO NOT change the semantics or values merely because the UI is unclear.
+
+If one of these fields is obsolete or unused, do NOT automatically
+delete it.
+
+Report it first and only remove it if you can prove:
+
+- no runtime consumer
+- no mapper dependency
+- no AI Teacher dependency
+- no quiz dependency
+- no Knowledge Tree dependency
+- no persistence requirement
+
+Otherwise label it correctly and preserve it.
+
+════════════════════════════════════════════════════
+PART 4 — REMOVE MANUAL COGNITIVE-LEVEL REORDERING
+════════════════════════════════════════════════════
+
+Current Cognitive Path level cards contain:
+
+↑
+↓
+
+These manual reorder controls must be removed from the Teacher UI.
+
+Reason:
+
+Cognitive levels have a canonical semantic progression.
+
+The teacher should not be able to create nonsense such as:
+
+Կիրառել → Հիշել → Հասկանալ
+
+by manually moving cards.
+
+Canonical Bloom order is:
+
+1. remember
+2. understand
+3. apply
+4. analyze
+5. evaluate
+6. create
+
+or the exact canonical internal enum/order already used by the repo.
+
+FIRST audit the actual enum/order in code.
+
+Use the repository's canonical internal values.
+
+Do not invent a parallel taxonomy.
+
+After the change:
+
+- no ↑ button
+- no ↓ button
+- no drag-and-drop cognitive-level ordering
+- no editable arbitrary sequence number
+
+The UI order must be derived from canonical cognitive rank.
+
+IMPORTANT:
+
+Do NOT remove Topic or MicroNode ordering elsewhere.
+
+This task removes ordering ONLY inside the Cognitive Path.
+
+Teacher Review ordering for Topics/MicroNodes is a separate feature
+and must remain untouched.
+
+════════════════════════════════════════════════════
+PART 5 — ENFORCE CANONICAL COGNITIVE ORDER SAFELY
+════════════════════════════════════════════════════
+
+Audit backend routes that:
+
+- generate Cognitive Path
+- fetch Cognitive Path
+- add cognitive level
+- update cognitive level
+- delete cognitive level
+- set target ceiling
+
+Determine whether arbitrary sequence values can currently create an
+invalid semantic order.
+
+If YES, make the smallest safe fix.
+
+Preferred invariant:
+
+Displayed/persisted Cognitive Path order follows canonical Bloom rank,
+not arbitrary teacher ordering.
+
+For example:
+
+remember < understand < apply < analyze < evaluate < create
+
+When a teacher adds a level:
+
+existing:
+
+Հիշել
+Հասկանալ
+Կիրառել
+
+and adds:
+
+Վերլուծել
+
+result:
+
+Հիշել
+Հասկանալ
+Կիրառել
+Վերլուծել
+
+NOT insertion at an arbitrary position.
+
+If existing paths contain valid subsets:
+
+Հիշել
+Հասկանալ
+Կիրառել
+
+that remains valid.
+
+DO NOT mechanically require all six levels.
+
+A MicroNode may legitimately have:
+
+Հիշել → Հասկանալ
+
+or:
+
+Հիշել → Հասկանալ → Կիրառել
+
+or another pedagogically valid prefix/subset according to the current
+Cognitive Enrichment contract.
+
+The target cognitive ceiling remains MicroNode-specific.
+
+Do not automatically add missing levels merely to fill Bloom's taxonomy.
+
+════════════════════════════════════════════════════
+PART 6 — KEEP “ADD COGNITIVE LEVEL”
+════════════════════════════════════════════════════
+
+The existing function conceptually shown as:
+
++ Ավելացնել ճանաչողական մակարդակ
+
+MUST remain.
+
+This is useful because AI generation may produce:
+
+Հիշել → Հասկանալ
+
+and the teacher may decide that this MicroNode should also reach:
+
+Կիրառել
+
+The teacher therefore needs to add an applicable level manually.
+
+But the add-level selector should NOT offer nonsense choices.
+
+Audit current behavior.
+
+Prefer:
+
+- levels already present are unavailable/disabled
+- only valid canonical cognitive levels are offered
+- after adding, canonical order is restored automatically
+- target ceiling semantics remain valid
+
+Example:
+
+Current:
+
+Հիշել
+Հասկանալ 🎯
+
+Teacher adds:
+
+Կիրառել
+
+The path becomes:
+
+Հիշել
+Հասկանալ
+Կիրառել
+
+Then the teacher can explicitly decide whether Կիրառել becomes the
+new target ceiling.
+
+Do NOT silently change the target ceiling merely because a new level
+was added unless that is already the established contract.
+
+════════════════════════════════════════════════════
+PART 7 — TARGET CEILING SEMANTICS AUDIT
+════════════════════════════════════════════════════
+
+The UI currently contains concepts such as:
+
+🎯 Հասկանալ
+
+and/or
+
+🎯 Թիրախային
+
+Audit exactly how target ceiling works.
+
+Verify these invariants:
+
+1. Exactly ONE cognitive level is target ceiling for a non-empty
+   confirmed Cognitive Path.
+
+2. The target ceiling means:
+
+   the highest cognitive depth the learner is expected to demonstrate
+   for THIS MicroNode.
+
+3. It is NOT:
+   - learner mastery
+   - confidence
+   - current student position
+   - authoring approval status
+
+4. Teacher can review/edit the target ceiling.
+
+5. Changing target ceiling does not reorder the path incorrectly.
+
+6. Cognitive Path confirmation validates the target ceiling.
+
+If the UI currently allows multiple target ceilings or zero target
+ceilings at confirmation time, fix that minimally.
+
+Do not change the broader Cognitive Path architecture.
+
+════════════════════════════════════════════════════
+PART 8 — AUDIT “Bloom 2” ON THE MICRONODE CARD
+════════════════════════════════════════════════════
+
+The MicroNode card currently displays something like:
+
+Bloom 2
+
+while the Cognitive Path below may show:
+
+Հիշել → Հասկանալ
+
+Audit what `Bloom 2` actually represents.
+
+Trace:
+
+frontend
+→ API
+→ DB
+→ mapper/generator
+→ runtime consumers.
+
+Determine whether it is:
+
+A. legacy targetBloomLevel
+
+B. current Cognitive Path ceiling
+
+C. mapper metadata
+
+D. something else
+
+Report whether there are now TWO competing sources of cognitive depth:
+
+lesson_nodes.targetBloomLevel
+
+versus
+
+confirmed Cognitive Path target ceiling.
+
+DO NOT silently delete or migrate anything in this task.
+
+I want an explicit architecture finding:
+
+- Are they redundant?
+- Are they intentionally different?
+- Which one is authoritative today?
+- Which runtime components consume each?
+- Could they diverge?
+
+If they can diverge, flag it as a follow-up architecture issue.
+
+Only make a UI label clarification if safe.
+
+Do NOT perform a large data migration.
+
+════════════════════════════════════════════════════
+PART 9 — INTERACTION TYPE DISPLAY LABELS
+════════════════════════════════════════════════════
+
+The system may internally use canonical values similar to:
+
+multiple_choice
+multi_select
+true_false
+matching
+classification
+ordering
+numeric_answer
+short_answer
+constructed_response
+problem_solving
+
+Keep internal values unchanged unless the repo already uses a different
+canonical enum.
+
+Teacher-facing display must use the already implemented Armenian
+translations.
+
+Do NOT redo the Armenian localization work that has already been done.
+
+Audit only for consistency:
+
+- no raw internal enum should leak into teacher-facing UI
+- persistence/API still use canonical machine values
+- display translation does not alter stored values
+
+If Armenian labels are already correct everywhere, make no change.
+
+════════════════════════════════════════════════════
+PART 10 — EVIDENCE-GAP DISPLAY SEMANTICS
+════════════════════════════════════════════════════
+
+The Cognitive Path currently displays information conceptually like:
+
+📊 Պահ. ապացույցներ: 3 · Կապված: 1 · Պակասում է: 2
+
+Audit the exact underlying fields/calculation.
+
+Verify that these numbers mean what the UI claims.
+
+Trace:
+
+required evidence count
+linked evidence/exercises count
+missing evidence count
+
+Check whether:
+
+missing = max(required - valid linked count, 0)
+
+or whatever the actual current implementation is.
+
+Do NOT change the Cognitive Evidence Model in this task.
+
+Only ensure the Teacher Dashboard accurately communicates the existing
+data.
+
+If linked exercises are counted regardless of cognitive suitability,
+report that separately.
+
+Do not silently redesign evidence qualification.
+
+════════════════════════════════════════════════════
+PART 11 — “ADDITIONAL EXERCISES” BLOCK AUDIT
+════════════════════════════════════════════════════
+
+The lesson UI currently has a block such as:
+
+📦 Լրացուցիչ վարժություններ (5)
+
+These exercises appear outside the individual MicroNode cards.
+
+Audit exactly why an exercise lands here.
+
+For each real example determine:
+
+- exercise ID
+- lesson ID
+- node/microNode linkage
+- source provenance
+- page
+- status
+- why it is not under a specific MicroNode
+
+Determine whether this block means:
+
+A. unassigned lesson exercises
+
+B. exercises mapped only to Topic/Lesson
+
+C. orphaned exercises
+
+D. intentionally shared exercises
+
+E. something else
+
+DO NOT automatically move exercises.
+
+Remember the canonical rule:
+
+Exercises can be attached to MicroNodes.
+
+But source fidelity must be preserved, and we must not invent a
+MicroNode relationship when the mapping does not support one.
+
+Report the actual semantics.
+
+If the block is really “unassigned exercises”, recommend a clearer
+teacher-facing label, but only change it if the semantics are proven.
+
+════════════════════════════════════════════════════
+PART 12 — “TESTS” BLOCK AUDIT
+════════════════════════════════════════════════════
+
+The bottom of the lesson editor currently contains something like:
+
+📝 Թեստեր (2)
+
+and may show content that looks similar to MicroNode teaching content
+rather than normal quiz cards.
+
+Audit this block completely.
+
+Determine:
+
+- component rendering it
+- API source
+- DB table/source
+- what the count `(2)` counts
+- whether these are real quizzes
+- generated teaching-content records
+- test questions
+- legacy data
+- some other entity
+
+Trace at least one real displayed item to its DB row.
+
+Do NOT rename the block based on appearance.
+
+First prove what the data actually is.
+
+If the label “Թեստեր” is semantically wrong, report the correct
+recommended label and make the minimal UI correction only if evidence
+is conclusive.
+
+Do NOT change quiz creation or quiz-taking logic.
+
+════════════════════════════════════════════════════
+PART 13 — TEACHER EDITABILITY / CONFIRMATION
+════════════════════════════════════════════════════
+
+Preserve the established rule:
+
+AI-generated Cognitive Enrichment is a draft until teacher review.
+
+Teacher must retain ability to edit relevant generated fields.
+
+Verify that the teacher can still edit:
+
+- performance objective
+- success criterion
+- MIE / required evidence parameters where currently allowed
+- interaction/task types where currently allowed
+- exercise links
+- target ceiling
+- applicable cognitive levels
+
+and can confirm the Cognitive Path.
+
+Do not introduce auto-confirmation.
+
+Do not silently overwrite teacher-authored content during normal
+regeneration.
+
+Preserve the existing 409 / force-regeneration protection.
+
+════════════════════════════════════════════════════
+PART 14 — UI CLEANUP PRINCIPLES
+════════════════════════════════════════════════════
+
+Teacher Dashboard should visually distinguish:
+
+MICRONODE CORE
+
+🎯 Ուսուցման նպատակ
+📖 Տեսական բովանդակություն
+other actual mapped/generated fields
+
+EXERCISES
+
+Վարժություններ
+source/provenance
+usage
+page
+status
+
+COGNITIVE ENRICHMENT
+
+🧠 Ճանաչողական ուղի
+current path
+status
+target ceiling
+
+Inside each cognitive level:
+
+Level name
+Target badge if applicable
+Provenance
+Performance objective
+Success criterion
+Evidence requirement
+Interaction types
+Linked exercises
+
+Do not overload the UI with technical database terminology.
+
+Do not expose internal enum strings if a teacher-friendly Armenian
+display label exists.
+
+But DO NOT redesign the whole page.
+
+This is cleanup, not a new dashboard.
+
+════════════════════════════════════════════════════
+PART 15 — DATA SAFETY
+════════════════════════════════════════════════════
+
+Before implementation record row counts for relevant tables.
+
+After implementation verify:
+
+- no MicroNodes deleted
+- no exercises deleted
+- no cognitive levels deleted unexpectedly
+- no evidence events modified
+- no learner mastery modified
+- no quiz data modified
+- no Knowledge Tree data modified
+
+Opening/editing UI must not create records automatically.
+
+Read-only page load = ZERO writes.
+
+Removing ↑/↓ controls must not modify existing Cognitive Path data
+merely by rendering the page.
+
+If canonical sequence normalization is required, it must occur only
+during an explicit cognitive-path mutation and must be deterministic.
+
+════════════════════════════════════════════════════
+PART 16 — REQUIRED ACCEPTANCE TESTS
+════════════════════════════════════════════════════
+
+Create a focused acceptance/regression suite.
+
+At minimum verify:
+
+T01 — Every editable MicroNode teaching-content field has a visible
+      meaningful label.
+
+T02 — The two previously unlabeled numeric fields now have labels
+      matching their actual semantics.
+
+T03 — Existing numeric values remain unchanged.
+
+T04 — Cognitive Path has no ↑/↓ reorder controls.
+
+T05 — Cognitive levels display in canonical cognitive order.
+
+T06 — Teacher can still add a valid cognitive level.
+
+T07 — Duplicate cognitive level cannot be added.
+
+T08 — Adding a level results in canonical ordering.
+
+T09 — Adding a level does not silently change target ceiling unless
+      current contract explicitly requires it.
+
+T10 — Exactly one target ceiling can be established.
+
+T11 — Confirmed non-empty path cannot end with zero target ceilings.
+
+T12 — Confirmed non-empty path cannot contain multiple target ceilings.
+
+T13 — Teacher can edit performance objective.
+
+T14 — Teacher can edit success criterion.
+
+T15 — Teacher can edit other currently-supported cognitive-level
+      parameters.
+
+T16 — Teacher can link an exercise.
+
+T17 — Teacher can unlink an exercise.
+
+T18 — Teacher can confirm Cognitive Path.
+
+T19 — Confirmed/teacher-edited regeneration protection still works.
+
+T20 — Interaction types persist canonical machine values.
+
+T21 — Teacher UI displays Armenian interaction labels rather than raw
+      machine enums.
+
+T22 — Evidence required/linked/missing counts are mathematically
+      consistent with current backend semantics.
+
+T23 — `Bloom 2` source is identified and documented.
+
+T24 — Additional Exercises block source/linkage semantics are identified.
+
+T25 — Tests block source/entity semantics are identified.
+
+T26 — Page load performs zero DB writes.
+
+T27 — Existing real MicroNode values survive refresh.
+
+T28 — Existing Cognitive Path survives refresh.
+
+T29 — No learner evidence/mastery data changes.
+
+T30 — Existing Phase 2A Cognitive Path tests remain green.
+
+Also run the relevant existing regression suites.
+
+Do not weaken existing tests to make this pass.
+
+════════════════════════════════════════════════════
+PART 17 — REAL-DATA VERIFICATION
+════════════════════════════════════════════════════
+
+Use a real mapped lesson already present in the DB.
+
+Prefer the existing Physics lesson shown in Teacher Dashboard:
+
+ԱՏՈՄՆԵՐ ԵՎ ՄՈԼԵԿՈՒԼՆԵՐ:
+ԴՐԱՆՑ ԳՈՅՈՒԹՅՈՒՆԸ ՀԱՍՏԱՏՈՂ ԵՐԵՎՈՒՅԹՆԵՐ
+
+Use real MicroNodes such as:
+
+Մոլեկուլներ
+Ատոմներ
+Տարրեր
+
+Verify in browser:
+
+1. Open lesson.
+2. Expand mapped lesson.
+3. Open/edit a MicroNode.
+4. Confirm every field has an understandable label.
+5. Confirm the formerly unexplained numeric values are labeled.
+6. Open Cognitive Path.
+7. Confirm ↑/↓ are gone.
+8. Confirm levels appear in canonical order.
+9. Add one valid cognitive level if safe on a test/pilot node.
+10. Refresh.
+11. Confirm order persists correctly.
+12. Confirm target ceiling is still correct.
+13. Confirm interaction labels are Armenian.
+14. Confirm evidence-gap counts render correctly.
+15. Inspect Additional Exercises.
+16. Inspect Tests block.
+17. Confirm no unrelated learner data changed.
+
+If modifying production real data is unsafe, create/use a dedicated
+test/pilot MicroNode instead of contaminating production curriculum.
+
+════════════════════════════════════════════════════
+PART 18 — REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return a formal report with these sections:
+
+A. AUDIT FINDINGS
+
+Provide exact field mapping for the expanded MicroNode editor.
+
+For every field:
+
+UI
+→ frontend property
+→ API property
+→ DB/storage
+→ semantic meaning
+
+B. NUMERIC FIELD FINDINGS
+
+Explain exactly what the previously unlabeled `2` and `5` represent.
+
+C. COGNITIVE ORDER FINDINGS
+
+State:
+
+- canonical internal cognitive enum/order
+- previous reorder behavior
+- why ↑/↓ was unsafe or unnecessary
+- exact fix
+
+D. TARGET CEILING FINDINGS
+
+Explain:
+
+- storage
+- validation
+- teacher editing
+- confirmation invariant
+
+E. BLOOM 2 FINDING
+
+Explain exactly what it is and whether it duplicates Cognitive Path
+target ceiling.
+
+Do NOT hide architectural ambiguity.
+
+F. ADDITIONAL EXERCISES FINDING
+
+Explain exactly why those exercises are outside MicroNodes.
+
+G. TESTS BLOCK FINDING
+
+Explain exactly what that block actually represents.
+
+H. FILES CHANGED
+
+List every changed file and why.
+
+I. DATABASE CHANGES
+
+Expected:
+NONE
+
+If any schema/database change was required, stop and explain why before
+making it unless absolutely unavoidable.
+
+J. ACCEPTANCE TEST RESULTS
+
+Show T01–T30 individually.
+
+K. REGRESSION RESULTS
+
+Show relevant existing Phase 2A tests.
+
+L. REAL BROWSER UAT
+
+Report actual browser verification.
+
+Do NOT mark browser UAT PASS based only on TypeScript/tests.
+
+M. DATA-SAFETY PROOF
+
+Before/after relevant row counts and confirmation that learner evidence,
+mastery, quizzes, and KT were unchanged.
+
+N. FOLLOW-UP ARCHITECTURE ISSUES
+
+Especially report:
+
+- legacy `targetBloomLevel` vs Cognitive Path ceiling
+- unassigned/shared exercise semantics
+- any mislabeled legacy “Tests” data
+
+O. FINAL VERDICT
+
+Use exactly one:
+
+PASS
+PARTIAL
+FAIL
+
+PASS only if:
+
+- audit is complete
+- UI semantics are clear
+- ↑/↓ cognitive reorder is removed
+- canonical order is enforced safely
+- target ceiling invariant is intact
+- teacher edit/confirm remains functional
+- real browser UAT is completed
+- no unrelated system behavior changed
+- no real learner data was damaged
+
+════════════════════════════════════════════════════
+IMPORTANT IMPLEMENTATION RULE
+════════════════════════════════════════════════════
+
+Do not start by redesigning.
+
+First inspect and report the current reality.
+
+Then make only the smallest changes justified by the audit.
+
+If the audit discovers that a requested UI element has a different
+semantic meaning than expected, preserve the real data semantics and
+report the discrepancy rather than forcing the assumption.
+
+Do not touch AI Teacher runtime in this task.
+
+Do not start #72/#73 or any V2-R1.1 follow-up.
+
+Finish this Teacher Dashboard cleanup independently first.
