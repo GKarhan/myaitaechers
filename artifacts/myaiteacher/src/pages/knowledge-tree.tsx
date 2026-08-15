@@ -8,16 +8,18 @@ import { useGetKnowledgeTree, getGetKnowledgeTreeQueryKey } from "@workspace/api
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
 type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
 
-// KT-1.4: roll-up fields present on Topic, Lesson, and Subject.
-// masteryPercent is null only when totalUnits === 0 (no curriculum units at all).
-// 0% means curriculum exists but mastery is 0 (distinguished from "no data").
-interface KTRollup {
-  masteryPercent:  number | null;
-  totalUnits:      number;
-  masteredCount:   number;
-  weakCount:       number;
-  inProgressCount: number;
-  notStartedCount: number;
+// KT-1.4A: coverage fields present on Topic, Lesson, and Subject.
+// coveragePercent = round(studiedCount / totalUnits * 100).
+// null only when totalUnits === 0. 0% = curriculum exists but nothing studied.
+interface KTCoverage {
+  totalUnits:       number;
+  studiedCount:     number;
+  notStudiedCount:  number;
+  coveragePercent:  number | null;
+  masteredCount:    number;
+  partialCount:     number;     // "weak" internally
+  doesNotKnowCount: number;     // "in_progress" internally
+  notStartedCount:  number;
 }
 
 interface KTMicroNode {
@@ -29,36 +31,36 @@ interface KTMicroNode {
   masteryLevel: MasteryLevel4;
 }
 
-interface KTTopic extends KTRollup {
+interface KTTopic extends KTCoverage {
   topicId: number;
   topicTitle: string;
   topicSequence: number;
   nodes: KTMicroNode[];
 }
 
-interface KTLesson extends KTRollup {
+interface KTLesson extends KTCoverage {
   lessonId: number;
   lessonTitle: string;
   lessonNumber: number | null;
   topics: KTTopic[];
   ungroupedNodes: KTMicroNode[];
-  ungroupedRollup: KTRollup;  // KT-1.4: rollup for the "Առanc khmbi" display group
+  ungroupedCoverage: KTCoverage;  // KT-1.4A: coverage for the "Առanc khmbi" display group
 }
 
-interface KTData extends KTRollup {
+interface KTData extends KTCoverage {
   subjectId: number;
   subjectName: string;
   lessons: KTLesson[];
   recommendations: Array<{ type: string; message: string; topicName: string }>;
 }
 
-/** Render a mastery percentage (null = no curriculum → "—") */
-function formatMastery(pct: number | null): string {
+/** Render a coverage percentage (null = no curriculum → "—") */
+function formatCoverage(pct: number | null): string {
   return pct !== null ? `${pct}%` : "—";
 }
 
-/** Pick a colour class for a mastery percentage */
-function masteryColour(pct: number | null): string {
+/** Pick a colour class for a coverage percentage */
+function coverageColour(pct: number | null): string {
   if (pct === null) return "text-muted-foreground";
   if (pct >= 80)    return "text-secondary";
   if (pct >= 40)    return "text-accent";
@@ -148,9 +150,9 @@ function TopicGroup({
         <span className="text-xs text-muted-foreground">
           {topic.totalUnits} հանգ.
         </span>
-        {/* KT-1.4: authoritative topic mastery % — never recalculated from filter */}
-        <span className={`text-xs font-semibold ml-2 ${masteryColour(topic.masteryPercent)}`}>
-          {formatMastery(topic.masteryPercent)}
+        {/* KT-1.4A: coverage % — invariant to UI filter */}
+        <span className={`text-xs font-semibold ml-2 ${coverageColour(topic.coveragePercent)}`}>
+          {formatCoverage(topic.coveragePercent)}
         </span>
       </button>
 
@@ -201,11 +203,11 @@ function LessonSection({
           </div>
           <div className="text-sm font-semibold text-white truncate">{lesson.lessonTitle}</div>
         </div>
-        {/* KT-1.4: authoritative lesson mastery % — never recalculated from filter */}
+        {/* KT-1.4A: coverage % — invariant to UI filter */}
         <div className="text-right shrink-0">
           <div className="text-xs text-muted-foreground">{lesson.totalUnits} հanγ.</div>
-          <div className={`text-sm font-bold ${masteryColour(lesson.masteryPercent)}`}>
-            {formatMastery(lesson.masteryPercent)}
+          <div className={`text-sm font-bold ${coverageColour(lesson.coveragePercent)}`}>
+            {formatCoverage(lesson.coveragePercent)}
           </div>
         </div>
       </button>
@@ -242,9 +244,9 @@ function LessonSection({
                 <span className="text-xs text-muted-foreground">
                   {lesson.ungroupedNodes.length} հանգ.
                 </span>
-                {/* KT-1.4: ungrouped group mastery % — from backend, invariant to filter */}
-                <span className={`text-xs font-semibold ml-2 ${masteryColour(lesson.ungroupedRollup.masteryPercent)}`}>
-                  {formatMastery(lesson.ungroupedRollup.masteryPercent)}
+                {/* KT-1.4A: ungrouped coverage % — from backend, invariant to filter */}
+                <span className={`text-xs font-semibold ml-2 ${coverageColour(lesson.ungroupedCoverage.coveragePercent)}`}>
+                  {formatCoverage(lesson.ungroupedCoverage.coveragePercent)}
                 </span>
               </button>
               {expandedTopics.has(`ungrouped-${lesson.lessonId}`) && (
@@ -423,12 +425,12 @@ export default function KnowledgeTree() {
             <div className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
               {treeData.subjectName}
             </div>
-            {/* KT-1.4: subject mastery % — authoritative, invariant to UI filter */}
+            {/* KT-1.4A: coverage % — invariant to UI filter */}
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-xs text-muted-foreground">Գիտելիքի ծառ</span>
-              {treeData.masteryPercent !== null && (
-                <span className={`text-xs font-bold ${masteryColour(treeData.masteryPercent)}`}>
-                  · Յուracum {treeData.masteryPercent}%
+              {treeData.coveragePercent !== null && (
+                <span className={`text-xs font-bold ${coverageColour(treeData.coveragePercent)}`}>
+                  · Ususumnasirvac {treeData.studiedCount}·{treeData.coveragePercent}%
                 </span>
               )}
             </div>

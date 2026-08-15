@@ -14,7 +14,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-import { getMasteryLevelFromScores, computeRollup } from "../lib/mastery";
+import { getMasteryLevelFromScores, aggregateKnowledgeCoverage } from "../lib/mastery";
 
 const router = Router();
 
@@ -129,10 +129,10 @@ router.get(
         )
       );
 
-    // Step 3: Collect per-subject node lists for roll-up.
-    // Each entry: { masteryScore (normalised to 0), masteryLevel (4-state) }
-    type NodeForRollup = { masteryScore: number; masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" };
-    const subjectNodes = new Map<number, NodeForRollup[]>();
+    // Step 3: Collect per-subject node lists for coverage aggregation (KT-1.4A).
+    // Only masteryLevel is needed — coverage does not average scores.
+    type NodeLevel = { masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" };
+    const subjectNodes = new Map<number, NodeLevel[]>();
     for (const sid of subjectMeta.keys()) {
       subjectNodes.set(sid, []);
     }
@@ -145,12 +145,9 @@ router.get(
 
       const rawLevel = getMasteryLevelFromScores(node.masteryScore, node.confidenceScore, node.dueAt ?? null);
       // needs_review folds into mastered (same 4-state policy as per-subject KT endpoint)
-      const masteryLevel = rawLevel === "needs_review" ? "mastered" : rawLevel as NodeForRollup["masteryLevel"];
+      const masteryLevel = (rawLevel === "needs_review" ? "mastered" : rawLevel) as NodeLevel["masteryLevel"];
 
-      list.push({
-        masteryScore: node.masteryScore ?? 0,   // null → 0 (not_started contributes 0)
-        masteryLevel,
-      });
+      list.push({ masteryLevel });
     }
 
     // Step 4: Build response preserving enrollment order (deduped by subjectId).
@@ -159,8 +156,8 @@ router.get(
     for (const row of validCourses) {
       if (seen.has(row.subjectId)) continue;
       seen.add(row.subjectId);
-      const rollup = computeRollup(subjectNodes.get(row.subjectId) ?? []);
-      subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, ...rollup });
+      const coverage = aggregateKnowledgeCoverage(subjectNodes.get(row.subjectId) ?? []);
+      subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, ...coverage });
     }
 
     res.json({ subjects });
@@ -412,7 +409,7 @@ router.get(
       return a - b;  // both null → sort by id
     });
 
-    // Build lessons array with roll-up at topic, lesson, and subject level
+    // Build lessons array with KT-1.4A coverage aggregation at topic, lesson level
     const lessons = sortedLessonIds.map((lessonId) => {
       const meta    = lessonMeta.get(lessonId)!;
       const buckets = lessonBuckets.get(lessonId) ?? new Map();
@@ -430,8 +427,8 @@ router.get(
             topicTitle:    topic.title,
             topicSequence: topic.sequence,
             nodes,
-            // KT-1.4: authoritative topic-level roll-up
-            ...computeRollup(nodes),
+            // KT-1.4A: authoritative topic-level coverage aggregation
+            ...aggregateKnowledgeCoverage(nodes),
           };
         })
         .filter(t => t.nodes.length > 0);  // omit topics with zero approved nodes
@@ -439,7 +436,7 @@ router.get(
       // Ungrouped nodes (topicId = null)
       const ungroupedNodes = buckets.get("ungrouped") ?? [];
 
-      // KT-1.4: lesson-level roll-up aggregates ALL child MicroNodes
+      // All child MicroNodes for this lesson
       const allLessonNodes = [
         ...topics.flatMap(t => t.nodes),
         ...ungroupedNodes,
@@ -451,10 +448,10 @@ router.get(
         lessonNumber: meta.lessonNumber,
         topics,
         ungroupedNodes,
-        // KT-1.4: authoritative roll-up for the "Առanc khmbi" (ungrouped) display group
-        ungroupedRollup: computeRollup(ungroupedNodes),
-        // KT-1.4: authoritative lesson-level roll-up (includes topics + ungrouped)
-        ...computeRollup(allLessonNodes),
+        // KT-1.4A: coverage for "Առanc khmbi" (ungrouped) display group
+        ungroupedCoverage: aggregateKnowledgeCoverage(ungroupedNodes),
+        // KT-1.4A: lesson-level coverage (topics + ungrouped)
+        ...aggregateKnowledgeCoverage(allLessonNodes),
       };
     });
 
@@ -506,17 +503,13 @@ router.get(
       console.warn(`[KT-1.3] Duplicate lessonNodeIds detected for subjectId=${subjectId}`);
     }
 
-    // KT-1.4: subject-level roll-up from all visible atomic MicroNodes
-    const allSubjectNodes = processedNodes.map(n => ({
-      masteryScore: n.masteryScore,   // already normalised to 0 for not_started
-      masteryLevel: n.masteryLevel,
-    }));
-    const subjectRollup = computeRollup(allSubjectNodes);
+    // KT-1.4A: subject-level coverage aggregation from all visible atomic MicroNodes
+    const subjectCoverage = aggregateKnowledgeCoverage(processedNodes);
 
     res.json({
       subjectId:   subject.id,
       subjectName: subject.name,
-      ...subjectRollup,
+      ...subjectCoverage,
       lessons,
       recommendations,
     });

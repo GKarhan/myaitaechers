@@ -33,76 +33,94 @@ export type MasteryLevel =
 export type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
 
 /**
- * Authoritative roll-up result returned by computeRollup().
- * masteryPercent is null only when totalUnits === 0 (no curriculum units at all).
- * 0% means curriculum exists but nothing has been mastered yet.
+ * KT-1.4A: Curriculum Coverage + Four-State Aggregation result.
+ *
+ * Two dimensions are kept separate by design:
+ *   1. COVERAGE  — how much of the curriculum the learner has actually studied
+ *   2. Four-state distribution — how well they know what they have studied
+ *
+ * Cognitive Depth (Bloom progression) is deferred to a later phase.
+ *
+ * Invariants:
+ *   totalUnits   = masteredCount + partialCount + doesNotKnowCount + notStartedCount
+ *   studiedCount = masteredCount + partialCount + doesNotKnowCount
+ *   notStudiedCount = notStartedCount
+ *   totalUnits   = studiedCount + notStudiedCount
+ *
+ * coveragePercent = null when totalUnits === 0 (no curriculum, not "0% coverage").
+ * coveragePercent = 0  when totalUnits > 0 but studiedCount === 0.
+ *
+ * Internal name → student-facing Armenian:
+ *   mastered      → Գիտի
+ *   partial       → Մasnaкi гиtи   (was "weak" internally)
+ *   doesNotKnow   → Чgитi          (was "in_progress" internally)
+ *   notStarted    → Деrrr чi ususмнасиrvel
  */
-export interface RollupResult {
-  masteryPercent: number | null;
-  totalUnits: number;
-  masteredCount: number;
-  weakCount: number;
-  inProgressCount: number;
+export interface CoverageResult {
+  totalUnits:      number;
+  studiedCount:    number;
+  notStudiedCount: number;
+  coveragePercent: number | null;   // null = zero-unit scope; 0 = nothing studied yet
+  masteredCount:   number;
+  partialCount:    number;          // "weak" internal → "Մasnaкi гиtи"
+  doesNotKnowCount: number;         // "in_progress" internal → "Чgитi"
   notStartedCount: number;
 }
 
 /**
- * Coverage-aware arithmetic mean — the ONE authoritative roll-up formula for KT-1.4.
+ * ONE authoritative aggregation helper — KT-1.4A (§15).
  *
- * Formula:
- *   effectiveMastery_i = masteryScore_i  (0 for not_started; masteryScore is pre-normalised to 0)
- *   masteryPercent     = round( Σ(effectiveMastery) / totalUnits )
+ * Coverage formula:
+ *   studiedCount    = masteredCount + partialCount + doesNotKnowCount
+ *   coveragePercent = round(studiedCount / totalUnits × 100)
  *
- * not_started nodes contribute 0 to the numerator and 1 to the denominator —
- * unstudied curriculum is always visible in the percentage ("Յուracум" = coverage).
+ * "Studied" = learner has produced legitimate learning evidence for this node.
+ * Operationally: masteryLevel ≠ not_started (i.e., the scoring engine has run at least once).
+ * not_started nodes ← no knowledge_nodes row (LEFT JOIN NULL → both scores null).
  *
- * Returns masteryPercent = null when totalUnits === 0 (zero-unit edge case §16).
- * Returns 0% when all nodes are not_started / have masteryScore 0.
- *
- * Invariant: masteredCount + weakCount + inProgressCount + notStartedCount = totalUnits.
- *
- * @param nodes  Flat list of atomic MicroNodes for a single scope (topic/lesson/subject).
- *               masteryScore must already be normalised (null → 0).
- *               masteryLevel must be one of the 4 KT states (needs_review already folded).
+ * @param nodes  Flat list of atomic MicroNodes in scope.
+ *               masteryLevel must be one of the 4 KT states (needs_review folded to mastered).
  */
-export function computeRollup(
-  nodes: ReadonlyArray<{
-    masteryScore: number;       // pre-normalised: null → 0 (see knowledge-tree.ts)
-    masteryLevel: MasteryLevel4;
-  }>,
-): RollupResult {
+export function aggregateKnowledgeCoverage(
+  nodes: ReadonlyArray<{ masteryLevel: MasteryLevel4 }>,
+): CoverageResult {
   const totalUnits = nodes.length;
   if (totalUnits === 0) {
     return {
-      masteryPercent: null,
       totalUnits: 0,
+      studiedCount: 0,
+      notStudiedCount: 0,
+      coveragePercent: null,
       masteredCount: 0,
-      weakCount: 0,
-      inProgressCount: 0,
+      partialCount: 0,
+      doesNotKnowCount: 0,
       notStartedCount: 0,
     };
   }
 
-  let sum = 0;
-  let masteredCount = 0;
-  let weakCount = 0;
-  let inProgressCount = 0;
-  let notStartedCount = 0;
+  let masteredCount    = 0;
+  let partialCount     = 0;   // weak
+  let doesNotKnowCount = 0;   // in_progress
+  let notStartedCount  = 0;
 
-  for (const { masteryScore, masteryLevel } of nodes) {
-    sum += masteryScore;
+  for (const { masteryLevel } of nodes) {
     if      (masteryLevel === "mastered")    masteredCount++;
-    else if (masteryLevel === "weak")        weakCount++;
-    else if (masteryLevel === "in_progress") inProgressCount++;
+    else if (masteryLevel === "weak")        partialCount++;
+    else if (masteryLevel === "in_progress") doesNotKnowCount++;
     else                                     notStartedCount++;
   }
 
+  const studiedCount    = masteredCount + partialCount + doesNotKnowCount;
+  const notStudiedCount = notStartedCount;
+
   return {
-    masteryPercent: Math.round(sum / totalUnits),
     totalUnits,
+    studiedCount,
+    notStudiedCount,
+    coveragePercent: Math.round(studiedCount / totalUnits * 100),
     masteredCount,
-    weakCount,
-    inProgressCount,
+    partialCount,
+    doesNotKnowCount,
     notStartedCount,
   };
 }

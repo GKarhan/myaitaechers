@@ -17,15 +17,18 @@ import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import StudentLayout from "@/components/StudentLayout";
 
+// KT-1.4A: coverage model
 interface SubjectCard {
-  subjectId:       number;
-  subjectName:     string;
-  masteryPercent:  number | null;
-  totalUnits:      number;
-  masteredCount:   number;
-  weakCount:       number;
-  inProgressCount: number;
-  notStartedCount: number;
+  subjectId:        number;
+  subjectName:      string;
+  totalUnits:       number;
+  studiedCount:     number;
+  notStudiedCount:  number;
+  coveragePercent:  number | null;   // null = no curriculum units; 0 = exists but none studied
+  masteredCount:    number;
+  partialCount:     number;          // "weak" → Մasnaкi гиtи
+  doesNotKnowCount: number;          // "in_progress" → Чgитi
+  notStartedCount:  number;
 }
 
 interface SubjectsResponse {
@@ -119,22 +122,19 @@ export default function KtSubjectSelect() {
 // ── Subject card component ────────────────────────────────────────────────────
 
 function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
-  const stateRows: { label: string; count: number; dotClass: string }[] = [
-    { label: "Գիտի",                  count: s.masteredCount,   dotClass: "bg-secondary" },
-    { label: "Մասնակի գիտի",           count: s.weakCount,       dotClass: "bg-accent" },
-    { label: "Չգիտի",                  count: s.inProgressCount, dotClass: "bg-primary" },
-    { label: "Դեռ չի ուսումնասիրվել",  count: s.notStartedCount, dotClass: "bg-destructive" },
-  ];
-
-  // Proper Armenian labels
+  // KT-1.4A: coverage model — studiedCount / totalUnits
   const rows: { label: string; count: number; dotClass: string }[] = [
-    { label: "Գիտի",                    count: s.masteredCount,   dotClass: "bg-secondary" },
-    { label: "Մասնակի գիտի",            count: s.weakCount,       dotClass: "bg-accent" },
-    { label: "Չգիտի",                   count: s.inProgressCount, dotClass: "bg-primary" },
-    { label: "Դեռ չի ուսումնասիրել",    count: s.notStartedCount, dotClass: "bg-destructive" },
+    { label: "Գիտի",                   count: s.masteredCount,    dotClass: "bg-secondary" },
+    { label: "Մասնակի գիտի",           count: s.partialCount,     dotClass: "bg-accent" },
+    { label: "Չգիտի",                  count: s.doesNotKnowCount, dotClass: "bg-primary" },
+    { label: "Դեռ չի ուսումնասիրել", count: s.notStartedCount,  dotClass: "bg-destructive" },
   ];
 
-  void stateRows; // suppress lint (using rows instead)
+  const coverageColour =
+    s.coveragePercent === null ? "text-muted-foreground" :
+    s.coveragePercent >= 80   ? "text-secondary" :
+    s.coveragePercent >= 40   ? "text-accent" :
+                                "text-primary";
 
   return (
     <div className="p-6 rounded-2xl bg-card border border-card-border flex flex-col gap-4">
@@ -142,12 +142,29 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
       <div>
         <h2 className="text-xl font-bold text-white">{s.subjectName}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Գиteliq'i miavor'ner՝{" "}
+          Գիտելիքի հանգույցներ{" "}
           <span className="text-white font-semibold">{s.totalUnits}</span>
         </p>
       </div>
 
-      {/* 4-state counts */}
+      {/* KT-1.4A: Coverage summary row */}
+      <div className="flex items-center justify-between bg-white/3 rounded-lg px-3 py-2">
+        <span className="text-xs text-muted-foreground">Սովորելու արդյունավետություն</span>
+        <div className="text-right">
+          {s.totalUnits > 0 ? (
+            <>
+              <span className="text-xs text-white/70 tabular-nums">{s.studiedCount} · </span>
+              <span className={`text-sm font-bold tabular-nums ${coverageColour}`}>
+                {s.coveragePercent}%
+              </span>
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+        </div>
+      </div>
+
+      {/* 4-state distribution */}
       <div className="space-y-1.5">
         {rows.map(({ label, count, dotClass }) => (
           <div key={label} className="flex items-center justify-between text-sm">
@@ -160,20 +177,7 @@ function SubjectCardView({ subject: s }: { subject: SubjectCard }) {
         ))}
       </div>
 
-      {/* KT-1.4: Authoritative subject mastery % */}
-      <div className="border-t border-white/5 pt-3 flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">Յուրացման աստիճան՝</span>
-        <span className={`text-sm font-bold ${
-          s.masteryPercent === null      ? "text-muted-foreground" :
-          s.masteryPercent >= 80         ? "text-secondary" :
-          s.masteryPercent >= 40         ? "text-accent" :
-                                           "text-primary"
-        }`}>
-          {s.masteryPercent !== null ? `${s.masteryPercent}%` : "—"}
-        </span>
-      </div>
-
-      {/* CTA */}
+            {/* CTA */}
       <Link
         href={`/knowledge-tree/${s.subjectId}`}
         className="block w-full text-center py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-semibold shadow-lg shadow-primary/20"

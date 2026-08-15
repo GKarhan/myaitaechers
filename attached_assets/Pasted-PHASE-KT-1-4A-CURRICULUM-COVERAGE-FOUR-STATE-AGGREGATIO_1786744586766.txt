@@ -1,0 +1,1025 @@
+PHASE KT-1.4A — CURRICULUM COVERAGE + FOUR-STATE AGGREGATION
+
+IMPORTANT PRODUCT DECISION — LOCKED
+
+We are changing the Knowledge Tree progress model.
+
+DO NOT collapse learner progress into one generic "mastery %" by simply
+averaging current masteryScore values.
+
+The product now separates TWO fundamentally different dimensions:
+
+1. CURRICULUM COVERAGE
+   How much of the curriculum the learner has actually studied.
+
+2. COGNITIVE DEPTH
+   How deeply the learner can work with each atomic knowledge unit.
+
+KT-1.4A implements ONLY dimension #1 plus the existing four-state
+distribution.
+
+Cognitive Depth will be implemented later after Phase 2 creates the
+required per-MicroNode cognitive/Bloom structure.
+
+==================================================
+0. CANONICAL MODEL — LOCKED
+==================================================
+
+Current curriculum hierarchy:
+
+Subject
+→ Lesson
+→ Knowledge Group / Topic
+→ MicroNode / Atomic Knowledge Unit
+
+Student-facing:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+Atomic curriculum unit:
+
+lesson_node / MicroNode
+
+Every aggregation in this phase must ultimately count atomic MicroNodes.
+
+Do NOT count Subject, Lesson, or Topic containers as knowledge units.
+
+Do NOT invent Node → Subnode hierarchy.
+
+==================================================
+1. FUTURE MODEL — IMPORTANT CONTEXT
+==================================================
+
+The final learner model will eventually contain separate dimensions:
+
+A. Coverage
+B. Four-state knowledge distribution
+C. Cognitive Depth
+D. Assessment confidence
+
+Later, each MicroNode may have its own applicable cognitive progression:
+
+Հիշել
+→ Հասկանալ
+→ Կիրառել
+→ Վերլուծել
+→ Գնահատել
+→ Ստեղծել
+
+But NOT every MicroNode must require all six levels.
+
+Example:
+
+MicroNode A target:
+Հիշել → Հասկանալ → Կիրառել
+
+MicroNode B target:
+Հիշել → Հասկանալ → Կիրառել → Վերլուծել → Գնահատել
+
+Later Cognitive Depth will be normalized against each node's own target
+ceiling.
+
+DO NOT IMPLEMENT THIS NOW.
+
+KT-1.4A must leave the architecture compatible with this future model.
+
+==================================================
+2. STRICT SCOPE
+==================================================
+
+Implement:
+
+- total atomic knowledge-unit counts
+- studied counts
+- not-studied counts
+- coverage percentage
+- existing four-state distributions
+
+at:
+
+Subject
+Lesson
+Knowledge Group / Topic
+
+Do NOT implement:
+
+- cognitive depth %
+- Bloom progression
+- target cognitive ceiling
+- personalized Bloom level
+- next cognitive level
+- new mastery thresholds
+- new confidence formulas
+- next-best-action
+- spaced repetition
+- AI Teacher orchestration
+- difficulty adaptation
+- workload adaptation
+
+Do NOT change:
+
+- mapping
+- quiz scoring
+- evidence generation
+- current atomic masteryScore
+- current atomic confidenceScore
+- current four-state classification unless a genuine bug is proven
+
+==================================================
+3. AUDIT FIRST — CURRENT DATA AUTHORITY
+==================================================
+
+Before modifying code, audit the current KT implementation.
+
+Inspect at minimum:
+
+- Knowledge Tree backend route
+- KT-1.3 hierarchical response
+- knowledge_nodes
+- lesson_nodes
+- evidence_events
+- existing mastery/state helper
+- /kt-subjects aggregation
+- /knowledge-tree/:subjectId aggregation
+
+Report:
+
+A. How atomic MicroNodes are identified.
+
+B. How "not_started" is currently determined.
+
+C. Whether no knowledge_nodes row means not_started.
+
+D. Exact current four-state mapping.
+
+E. Whether an existing field reliably means "student has studied this node."
+
+F. Whether merely having a knowledge_nodes row always means studied.
+
+G. Whether session start, quiz, or another process can create KN rows before
+real evidence exists.
+
+This audit is critical because COVERAGE must mean actual studied curriculum,
+not merely "database row exists."
+
+==================================================
+4. DEFINE "STUDIED" AUTHORITATIVELY
+==================================================
+
+Do NOT assume:
+
+knowledge_nodes exists = studied
+
+unless audit proves that invariant.
+
+We need one authoritative rule:
+
+STUDIED
+= learner has actually interacted with / produced legitimate learning
+evidence for this atomic knowledge unit.
+
+NOT STUDIED
+= curriculum unit exists but learner has not yet meaningfully studied it.
+
+Determine the safest existing evidence/state signal.
+
+Possible sources may include:
+
+- evidence_events
+- learner-state fields
+- mastery/confidence state
+- completed quiz evidence
+- AI Teacher evidence
+
+Use the actual architecture.
+
+Do NOT create a new evidence system in this phase.
+
+If current data cannot perfectly distinguish studied from merely initialized,
+report the limitation and use the strongest existing authoritative rule.
+
+==================================================
+5. FOUR STATES — CURRENT CONTRACT
+==================================================
+
+Keep the current student-facing four states:
+
+1. Գիտի
+2. Մասնակի գիտի
+3. Չգիտի
+4. Դեռ չի ուսումնասիրել
+
+Internal state names may remain:
+
+mastered
+weak
+in_progress
+not_started
+
+or whatever current authoritative implementation uses.
+
+Do NOT change internal state names merely for UI terminology.
+
+==================================================
+6. CORE COUNT MODEL
+==================================================
+
+For every aggregation scope calculate:
+
+totalUnits
+
+studiedCount
+
+notStudiedCount
+
+masteredCount
+
+partialCount
+
+doesNotKnowCount
+
+notStartedCount
+
+Required invariants:
+
+totalUnits =
+masteredCount
++ partialCount
++ doesNotKnowCount
++ notStartedCount
+
+AND:
+
+studiedCount =
+masteredCount
++ partialCount
++ doesNotKnowCount
+
+AND:
+
+notStudiedCount =
+notStartedCount
+
+AND:
+
+totalUnits =
+studiedCount + notStudiedCount
+
+If current four-state semantics make one of these invariants invalid,
+STOP and explain why before changing product semantics.
+
+==================================================
+7. COVERAGE FORMULA — LOCKED CONCEPT
+==================================================
+
+Coverage answers:
+
+"How much of this curriculum scope has the learner studied?"
+
+Formula:
+
+coveragePercent =
+round(
+  studiedCount / totalUnits × 100
+)
+
+Example:
+
+100 total MicroNodes
+40 studied
+60 not studied
+
+Coverage:
+
+40%
+
+This DOES NOT mean the learner knows 40%.
+
+It means:
+
+40% of the curriculum has been studied.
+
+==================================================
+8. ZERO-UNIT CASE
+==================================================
+
+If:
+
+totalUnits = 0
+
+then:
+
+coveragePercent = null
+
+UI:
+
+Ուսումնասիրված՝ —
+
+Do NOT return 0%.
+
+0% means curriculum exists but none has been studied.
+
+Null / dash means there are no atomic curriculum units in this scope.
+
+==================================================
+9. EXAMPLE — SUBJECT
+==================================================
+
+Example:
+
+Ֆիզիկա 7
+
+Ընդամենը՝ 100 գիտելիքի հանգույց
+
+Ուսումնասիրված՝ 40 · 40%
+
+Գիտի՝ 18
+Մասնակի գիտի՝ 14
+Չգիտի՝ 8
+Դեռ չի ուսումնասիրել՝ 60
+
+Important:
+
+18 + 14 + 8 = 40 studied
+
+40 + 60 = 100 total
+
+This is the desired interpretation.
+
+==================================================
+10. SAME MODEL AT EVERY PARENT LEVEL
+==================================================
+
+Use exactly the same aggregation semantics at:
+
+Subject
+
+Lesson
+
+Knowledge Group / Topic
+
+Example:
+
+Ֆիզիկա 7
+Ուսումնասիրված՝ 40%
+
+↓
+
+Դաս 4
+Ուսումնասիրված՝ 75%
+
+↓
+
+Գիտելիքի խումբ
+Ուսումնասիրված՝ 60%
+
+↓
+
+Atomic MicroNodes
+show individual four-state learner state.
+
+Do NOT introduce different formulas at different hierarchy levels.
+
+==================================================
+11. IMPORTANT — NO GENERIC "MASTERY %" YET
+==================================================
+
+Remove/defer misleading parent labels such as:
+
+Յուրացում՝ 42%
+
+if that number is currently just a naive masteryScore average.
+
+For KT-1.4A parent levels should show:
+
+Ուսումնասիրված՝ XX%
+
+and state distribution.
+
+Do NOT call coverage "Յուրացում".
+
+These are different concepts.
+
+If an existing Subject card currently says:
+
+Յուրացում՝ —
+
+replace the conceptual placeholder for now with:
+
+Ուսումնասիրված՝ XX%
+
+Do NOT invent Cognitive Depth to fill "Յուրացում".
+
+==================================================
+12. ATOMIC MICRONODE SCORES REMAIN
+==================================================
+
+Existing MicroNode-level:
+
+masteryScore
+confidenceScore
+four-state badge
+
+may remain unchanged.
+
+Example:
+
+Ֆիզիկական մարմին և նյութ
+
+Մասնակի գիտի
+Mastery: 67%
+
+That existing atomic score is still useful.
+
+But do NOT roll it upward as the new parent "coverage" metric.
+
+==================================================
+13. FUTURE COGNITIVE DEPTH — RESERVE THE MODEL
+==================================================
+
+Do not implement yet, but architecture must not block the later addition of:
+
+targetCognitiveLevels
+achievedCognitiveLevels
+targetCognitiveCeiling
+currentCognitiveLevel
+cognitiveDepthPercent
+nextCognitiveTarget
+
+Future conceptual formula:
+
+cognitiveDepthPercent =
+achieved applicable cognitive levels
+/
+target applicable cognitive levels
+× 100
+
+Examples:
+
+3 target levels:
+each represents 33.33%
+
+5 target levels:
+each represents 20%
+
+6 target levels:
+each represents 16.67%
+
+But this is FUTURE work.
+
+Do not add fake placeholder DB columns in KT-1.4A.
+
+==================================================
+14. PARENT RESPONSE SHAPE
+==================================================
+
+Update the hierarchical KT response conceptually to expose:
+
+Subject:
+
+{
+  totalUnits,
+  studiedCount,
+  notStudiedCount,
+  coveragePercent,
+
+  masteredCount,
+  partialCount,
+  doesNotKnowCount,
+  notStartedCount,
+
+  lessons: [...]
+}
+
+Lesson:
+
+{
+  totalUnits,
+  studiedCount,
+  notStudiedCount,
+  coveragePercent,
+
+  masteredCount,
+  partialCount,
+  doesNotKnowCount,
+  notStartedCount,
+
+  topics: [...]
+}
+
+Topic:
+
+{
+  totalUnits,
+  studiedCount,
+  notStudiedCount,
+  coveragePercent,
+
+  masteredCount,
+  partialCount,
+  doesNotKnowCount,
+  notStartedCount,
+
+  nodes: [...]
+}
+
+Use actual naming conventions consistently.
+
+Avoid maintaining aliases for the same meaning unless required for
+backward compatibility.
+
+==================================================
+15. ONE AUTHORITATIVE AGGREGATOR
+==================================================
+
+Create ONE shared aggregation helper.
+
+Conceptually:
+
+aggregateKnowledgeCoverage(nodes)
+
+→ {
+    totalUnits,
+    studiedCount,
+    notStudiedCount,
+    coveragePercent,
+    masteredCount,
+    partialCount,
+    doesNotKnowCount,
+    notStartedCount
+  }
+
+Use the same logic for:
+
+- Subject cards
+- Subject KT header
+- Lesson
+- Topic
+
+Do NOT duplicate formulas in React.
+
+Prefer backend authority.
+
+==================================================
+16. SUBJECT CARDS
+==================================================
+
+On:
+
+/kt-subjects
+
+Each subject card should show clearly:
+
+Ֆիզիկա 7
+
+Գիտելիքի հանգույցներ՝ 100
+
+Ուսումնասիրված՝ 40 · 40%
+
+Գիտի՝ 18
+
+Մասնակի գիտի՝ 14
+
+Չգիտի՝ 8
+
+Դեռ չի ուսումնասիրել՝ 60
+
+[Բացել գիտելիքի ծառը]
+
+Keep design compact.
+
+Do not add Cognitive Depth yet.
+
+==================================================
+17. SUBJECT KNOWLEDGE TREE HEADER
+==================================================
+
+On:
+
+/knowledge-tree/:subjectId
+
+show at Subject level:
+
+Ֆիզիկա 7
+
+Ընդամենը՝ 100
+
+Ուսումնասիրված՝ 40 · 40%
+
+Գիտի՝ 18
+Մասնակի գիտի՝ 14
+Չգիտի՝ 8
+Դեռ չի ուսումնասիրել՝ 60
+
+The numbers MUST match /kt-subjects exactly.
+
+==================================================
+18. LESSON ROW
+==================================================
+
+Each collapsible Lesson header should show compact summary.
+
+Example:
+
+Դաս 4
+Ուսումնասիրված՝ 75%
+Գիտի 6 · Մասնակի 2 · Չգիտի 1 · Չուսումնասիրված 3
+
+Do not overcrowd.
+
+Use responsive wrapping if needed.
+
+==================================================
+19. KNOWLEDGE GROUP ROW
+==================================================
+
+Each Knowledge Group should show the same compact model:
+
+Գիտելիքի խումբ
+Ուսումնասիրված՝ 60%
+
+Գիտի 3
+Մասնակի 1
+Չգիտի 1
+Չուսումնասիրված 2
+
+Again, counts derive ONLY from descendant atomic MicroNodes.
+
+==================================================
+20. FILTERS ARE VIEW-ONLY
+==================================================
+
+Existing four-state filters remain.
+
+Critical rule:
+
+filtering the visible tree MUST NOT alter:
+
+totalUnits
+studiedCount
+coveragePercent
+parent distributions
+
+Example:
+
+Physics coverage = 40%
+
+User clicks:
+
+Գիտի
+
+Only mastered MicroNodes may remain visible.
+
+BUT header still says:
+
+Ուսումնասիրված՝ 40%
+
+Do NOT recompute parent metrics from filtered nodes.
+
+==================================================
+21. HIERARCHY COLLAPSE DOES NOT ALTER METRICS
+==================================================
+
+Opening/closing:
+
+Lesson
+Topic
+
+must not alter any counts or coverage percentages.
+
+Metrics represent curriculum state, not currently mounted DOM nodes.
+
+==================================================
+22. CURRICULUM VISIBILITY CONTRACT
+==================================================
+
+Preserve KT-1.2/KT-1.3 visibility:
+
+student-visible atomic units come from legitimate curriculum:
+
+active lesson
++
+approved MicroNode
++
+student authorized/enrolled curriculum
+
+No knowledge_nodes row required.
+
+Not-started curriculum must remain visible.
+
+==================================================
+23. DATA SAFETY
+==================================================
+
+Coverage aggregation must be READ-ONLY.
+
+Viewing Knowledge Tree must create:
+
+0 knowledge_nodes
+0 evidence_events
+0 quiz rows
+0 session rows
+0 review rows
+
+Do NOT initialize learner state simply to calculate coverage.
+
+==================================================
+24. PERFORMANCE
+==================================================
+
+Do not issue separate DB queries for every:
+
+Subject
+Lesson
+Topic
+MicroNode
+
+Avoid N+1.
+
+Prefer:
+
+load authoritative visible atomic dataset
++
+learner states/evidence needed for classification
++
+aggregate in one backend pass.
+
+Report query strategy.
+
+==================================================
+25. REQUIRED SYNTHETIC TEST CASES
+==================================================
+
+CASE A
+
+100 total
+18 mastered
+14 partial
+8 doesNotKnow
+60 notStarted
+
+Expected:
+
+studied = 40
+notStudied = 60
+coverage = 40%
+
+Invariant:
+18+14+8+60 = 100
+
+--------------------------------------------------
+
+CASE B
+
+10 total
+10 mastered
+
+Expected:
+
+studied = 10
+coverage = 100%
+
+This does NOT yet mean Cognitive Depth = 100%.
+
+--------------------------------------------------
+
+CASE C
+
+10 total
+10 notStarted
+
+Expected:
+
+studied = 0
+coverage = 0%
+
+--------------------------------------------------
+
+CASE D
+
+10 total
+2 mastered
+3 partial
+1 doesNotKnow
+4 notStarted
+
+Expected:
+
+studied = 6
+coverage = 60%
+
+--------------------------------------------------
+
+CASE E
+
+0 total
+
+Expected:
+
+coverage = null
+UI = —
+
+==================================================
+26. ACCEPTANCE TESTS
+==================================================
+
+AUDIT / ATOMIC
+
+T01 Atomic MicroNode identity unchanged.
+T02 Atomic masteryScore unchanged.
+T03 Atomic confidenceScore unchanged.
+T04 Atomic four-state classification unchanged.
+
+COUNTS
+
+T05 totalUnits equals atomic visible node count.
+T06 studiedCount = mastered + partial + doesNotKnow.
+T07 notStudiedCount = notStarted.
+T08 total = studied + notStudied.
+T09 four-state counts sum to total.
+
+COVERAGE
+
+T10 Subject coverage correct.
+T11 Lesson coverage correct.
+T12 Topic coverage correct.
+T13 all-not-started = 0%.
+T14 all-studied = 100%.
+T15 zero-unit = null/no-data.
+
+CONSISTENCY
+
+T16 /kt-subjects and subject KT use identical Subject counts.
+T17 /kt-subjects and subject KT use identical coverage.
+T18 parent aggregation uses same atomic node set.
+
+FILTERING
+
+T19 filters do not change parent coverage.
+T20 filters do not change parent counts.
+
+COLLAPSE
+
+T21 collapsing hierarchy does not change metrics.
+
+VISIBILITY
+
+T22 draft/unapproved curriculum excluded.
+T23 no-KN legitimate MicroNode remains visible as not_started.
+
+READ ONLY
+
+T24 KT viewing/aggregation creates zero learner-state rows.
+
+POLLUTION
+
+T25 zero automated-test pollution.
+
+==================================================
+27. REAL PHYSICS READ-ONLY UAT
+==================================================
+
+Use the current real Physics student data READ-ONLY.
+
+Report:
+
+Subject:
+- total
+- studied
+- not studied
+- coverage %
+- mastered
+- partial
+- does not know
+- not started
+
+Then for each visible Lesson:
+same metrics.
+
+Then for each Knowledge Group:
+same metrics.
+
+Show exact atomic nodes driving one example group.
+
+Do NOT modify real learner data.
+
+==================================================
+28. MANUAL UAT FOR ME
+==================================================
+
+After implementation give me exact steps.
+
+I will test:
+
+1. Student login.
+2. Sidebar → Գիտելիքի ծառ.
+3. Subject cards appear.
+4. Physics card shows:
+   - total nodes
+   - studied
+   - coverage %
+   - 4-state distribution.
+5. Record Physics numbers.
+6. Open Physics.
+7. Subject header must show exactly the same numbers.
+8. Expand a Lesson.
+9. Lesson has its own coverage/distribution.
+10. Expand a Knowledge Group.
+11. Group has its own coverage/distribution.
+12. Inspect atomic MicroNodes.
+13. Verify state counts visually.
+14. Click Գիտի filter.
+15. Parent coverage/counts must remain unchanged.
+16. Click Մասնակի գիտի.
+17. Parent metrics remain unchanged.
+18. Return to Բոլորը.
+19. Collapse/open branches.
+20. Metrics remain unchanged.
+21. Refresh.
+22. Metrics remain deterministic.
+
+==================================================
+29. DO NOT IMPLEMENT YET — LOCKED DEFERRED MODEL
+==================================================
+
+Do NOT implement these in KT-1.4A:
+
+Cognitive Depth
+
+Հիշել
+Հասկանալ
+Կիրառել
+Վերլուծել
+Գնահատել
+Ստեղծել
+
+targetCognitiveCeiling
+
+currentCognitiveLevel
+
+nextCognitiveTarget
+
+cognitiveDepthPercent
+
+personalized difficulty
+
+personalized workload
+
+spaced repetition
+
+AI Teacher next action
+
+These will be implemented after Phase 2 supplies the necessary
+per-MicroNode cognitive structure.
+
+==================================================
+30. FINAL REPORT
+==================================================
+
+Return:
+
+A. CURRENT DATA / STATE AUDIT
+
+B. AUTHORITATIVE "STUDIED" DEFINITION
+
+C. FINAL COVERAGE FORMULA
+
+D. FOUR-STATE COUNT INVARIANTS
+
+E. SHARED AGGREGATION IMPLEMENTATION
+
+F. API RESPONSE CHANGES
+
+G. SUBJECT CARD UI
+
+H. SUBJECT / LESSON / TOPIC UI
+
+I. FILTER-INDEPENDENCE PROOF
+
+J. ZERO-WRITE PROOF
+
+K. PERFORMANCE / QUERY STRATEGY
+
+L. REAL PHYSICS RESULTS
+
+M. TEST RESULTS T01–T25
+
+N. MANUAL UAT STEPS
+
+O. DEFERRED COGNITIVE-DEPTH MODEL CONFIRMATION
+
+FINAL VERDICT:
+
+KT-1.4A = PASS — COVERAGE MODEL COMPLETE
+
+or
+
+KT-1.4A = FAIL — DO NOT PROCEED
+
+STOP.
+
+DO NOT automatically start KT-1.5.
+DO NOT implement Cognitive Depth.
