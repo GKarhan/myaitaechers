@@ -1387,7 +1387,7 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
   let finish = r.choices[0]?.finish_reason;
 
   // Retry once on API error or empty response (Gemini occasionally returns finish_reason "error")
-  if (!raw.trim() || finish === "error") {
+  if (!raw.trim() || (finish as string) === "error") {
     logger.warn({ topicTitle, topicSeq, finish }, "pass2 step2: empty/error response — retrying");
     r      = await openrouter.chat.completions.create({
       model: PASS2_STEP2_MODEL,

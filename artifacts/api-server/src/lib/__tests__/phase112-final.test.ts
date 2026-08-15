@@ -268,7 +268,7 @@ it("T04: assigning Lesson creates no fake evidence rows for student", async () =
     .where(
       and(
         eq((evidenceEventsTable as any).studentId ?? (evidenceEventsTable as any).userId, studentAId),
-        eq(evidenceEventsTable.lessonId ?? (evidenceEventsTable as any).lessonId, dynamicLessonId)
+        eq((evidenceEventsTable as any).lessonId, dynamicLessonId)
       )
     )
     .limit(1)

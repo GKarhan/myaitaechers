@@ -125,6 +125,8 @@ export function createHttpFactory(
     async exercise(lessonId, nodeId, opts = {}) {
       const [e] = await db.insert(lessonExercisesTable).values({
         lessonId,
+        exerciseId:           tag(`EX-${nextSeq()}`),
+        sequence:             nextSeq(),
         relatedNodeId:        nodeId,
         exerciseTextVerbatim: opts.text ?? tag(`Exercise_${nextSeq()}`),
         assignment:           "CLASS",

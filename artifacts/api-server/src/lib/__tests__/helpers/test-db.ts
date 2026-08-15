@@ -85,7 +85,7 @@ export function getTestDb() {
 /** Alias for ergonomics — accessed via getter so module-level is safe. */
 export const testDb = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
   get(_target, prop) {
-    return (getTestDb() as Record<string | symbol, unknown>)[prop];
+    return (getTestDb() as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 

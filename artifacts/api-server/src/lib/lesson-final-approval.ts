@@ -232,7 +232,7 @@ export async function validateLessonForFinalApproval(
     if (!node.learningObjective?.trim()) continue; // already blocked above
     const compound = detectCompoundLO(node.learningObjective);
     const mega = detectMegaNode(node.learningObjective);
-    if (compound?.isCompound) {
+    if (compound?.flagged) {
       warnings.push({
         code: "COMPOUND_LO",
         messageArm: `Haytnvum e mek ej mi kavm npatakner · «${node.title}»`,
@@ -240,7 +240,7 @@ export async function validateLessonForFinalApproval(
         nodeTitle: node.title,
       });
     }
-    if (mega?.isMegaNode) {
+    if (mega?.flagged) {
       warnings.push({
         code: "MEGA_NODE",
         messageArm: `Khorin mega-node nerazank · «${node.title}»`,

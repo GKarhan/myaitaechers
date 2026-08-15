@@ -25,7 +25,7 @@ import {
   lessonExercisesTable,
   lessonNodeDependenciesTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { refreshSequentialDependencies } from "../sequential-deps.js";
 
 // ── Safety gate — MUST be first executable statement ─────────────────────────
@@ -60,7 +60,7 @@ async function insertTempTopic(title: string, lessonId: number): Promise<number>
     .select({ maxSeq: lessonTopicsTable.sequence })
     .from(lessonTopicsTable)
     .where(eq(lessonTopicsTable.lessonId, lessonId))
-    .orderBy((t) => [{ sql: `${t.sequence} DESC` }])
+    .orderBy(sql`sequence DESC`)
     .limit(1)
     .catch(() => [{ maxSeq: 0 }]);
   const nextSeq = (max?.maxSeq ?? 0) + 1;

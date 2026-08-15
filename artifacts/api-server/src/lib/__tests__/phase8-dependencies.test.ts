@@ -226,7 +226,7 @@ test("refresh counts idempotency: first run created=2, second run deleted=2+crea
   const chain = buildSequentialChain(nodes);
   // Simulate second run: existing has the 2 sequential deps we just created
   const existing = chain.map(() => ({ type: "SEQUENTIAL" }));
-  const { deleted, created, preserved } = simulateRefresh(existing, chain);
+  const { deleted, created, preserved } = simulateRefresh(existing, chain.map(e => ({ from: e.fromNodeId, to: e.toNodeId })));
   assert.equal(deleted,   2); // remove old SEQUENTIAL
   assert.equal(created,   2); // add identical new SEQUENTIAL
   assert.equal(preserved, 0); // no non-SEQUENTIAL

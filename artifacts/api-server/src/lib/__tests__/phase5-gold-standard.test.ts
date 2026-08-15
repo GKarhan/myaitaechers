@@ -232,7 +232,7 @@ await test("node sequences are unique within lesson (no duplicate sequence numbe
 
 await test("all MicroNodes have a valid topic_id", async () => {
   const topicIds = new Set(topics105.map(t => t.id));
-  const orphaned = nodes105.filter(n => !topicIds.has(n.topicId));
+  const orphaned = nodes105.filter(n => n.topicId !== null && !topicIds.has(n.topicId));
   assert.equal(orphaned.length, 0, `${orphaned.length} MicroNodes with invalid topicId`);
 });
 

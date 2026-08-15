@@ -286,6 +286,8 @@ export function createFactory(runId: string): FixtureFactory {
         .insert(lessonExercisesTable)
         .values({
           lessonId,
+          exerciseId:           tag(`EX-${nextSeq()}`),
+          sequence:             nextSeq(),
           relatedNodeId:        nodeId,
           exerciseTextVerbatim: opts.exerciseText ?? tag(`Exercise_${nextSeq()}`),
           assignment:           opts.assignment ?? "CLASS",

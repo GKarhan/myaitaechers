@@ -495,7 +495,7 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
           correctOptionIndex:  q.correctOptionIndex,
           difficultyLevel:     q.difficultyLevel,
           sequence:            i + 1,
-          optionExplanations:  q.optionExplanations ?? null,
+          optionExplanations:  (q.optionExplanations?.map(s => s ?? "") ?? null),
         }))
       );
     }

@@ -28,3 +28,6 @@ export * from "./quizzes";
 export * from "./mapping-jobs";
 export * from "./mapping-import-log";
 export * from "./mapping-review-items";
+// Phase 2A — Cognitive Enrichment schema
+export * from "./lesson-node-cognitive-levels";
+export * from "./lesson-node-cognitive-tasks";
