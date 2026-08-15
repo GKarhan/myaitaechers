@@ -1,0 +1,732 @@
+TASK — AI TEACHER V2 — ROUND 4A.1 + 4A.2
+LEARNING BUDGET FOUNDATION + DECISION ENGINE INTEGRATION
+
+IMPLEMENTATION TASK
+
+The V2-R4A architecture/design audit is approved with the corrections
+and invariants below.
+
+Implement ONLY R4A.1 + R4A.2 in this round.
+
+DO NOT implement:
+- R4A.3 required-session completion UX / optional continuation UI
+- R4A.4 teacher configuration UI / student timer UI
+- P/readiness
+- light mode
+- cognitive-cost scoring
+- ZPD adaptation
+- Task/Kahoot UX
+- Knowledge Tree changes
+- mastery redesign
+- quiz changes
+- mapper changes
+
+Preserve all completed V2-R1 / R1.1 / R2 / R3 behavior.
+
+============================================================
+PART 0 — RE-AUDIT BEFORE WRITING
+============================================================
+
+Before changing code, re-read the actual implementation and confirm:
+
+1. lesson_sessions schema
+2. lessons schema
+3. knowledge_nodes schema
+4. chat.ts
+5. pedagogicalDecisionEngine.ts
+6. advanceNodeInSession()
+7. session creation/resume paths
+8. R3 demonstrated cognitive level writes
+9. R3 revisitRequired writes
+10. R3 remediation lifecycle
+11. current evidence-writing paths
+12. current nodeStartedAt behavior
+13. lesson_nodes.estimatedMinutes semantics
+14. existing R1/R1.1/R2/R3 tests
+
+Report any discrepancy from the R4A design BEFORE changing code.
+
+If the repository has materially changed since the design audit:
+STOP and report.
+
+Otherwise continue implementation.
+
+============================================================
+PART 1 — CORRECTION TO DESIGN REPORT
+============================================================
+
+The design report said "6 new fields total" but listed 7.
+
+The proposed fields are:
+
+lessons:
+- requiredSessionMinutes
+
+lesson_sessions:
+- requiredSessionMinutes
+- activeLearningSeconds
+- lastActivityAt
+- requiredSessionCompletedAt
+- optionalContinuation
+
+knowledge_nodes:
+- revisitReason
+
+That is 7 proposed fields.
+
+However:
+
+DO NOT mechanically add all 7 merely because they appeared in the
+design report.
+
+For R4A.1 + R4A.2, add only fields actually required by this round.
+
+Fields needed only for R4A.3 optional continuation/completion may be
+deferred if cleaner.
+
+In the final report explicitly state:
+- fields added now,
+- fields deferred,
+- fields rejected.
+
+============================================================
+PART 2 — DATABASE MIGRATION SAFETY
+============================================================
+
+If schema changes are required:
+
+1. Update canonical Drizzle/schema definitions.
+2. Create/apply the migration using the repository's established pattern.
+3. Apply it to BOTH:
+   - main/dev DB
+   - test DB
+4. Rebuild generated DB declarations/packages if required.
+5. Verify existing rows remain intact.
+6. No destructive migration.
+7. No reset/truncate/reseed.
+
+Report before/after row counts for relevant tables.
+
+============================================================
+PART 3 — REQUIRED SESSION BUDGET
+============================================================
+
+Implement the backend foundation for a required learning-time budget.
+
+Canonical distinction:
+
+lesson default
+vs
+session snapshot.
+
+The lesson may define:
+
+requiredSessionMinutes
+
+When a NEW lesson session is created:
+
+session.requiredSessionMinutes =
+    lesson.requiredSessionMinutes
+    OR approved system default if the design requires one.
+
+Once the session exists, its budget is a SNAPSHOT.
+
+Changing the lesson default later must NOT silently change the budget
+of an already-running session.
+
+If the design audit did not establish a justified system default,
+do NOT invent one.
+
+A NULL budget may mean:
+"no required time budget configured yet."
+
+Preserve that semantic explicitly.
+
+============================================================
+PART 4 — DO NOT REUSE estimatedMinutes INCORRECTLY
+============================================================
+
+lesson_nodes.estimatedMinutes is a pedagogical estimate for a MicroNode.
+
+requiredSessionMinutes is a required-session workload contract.
+
+They are NOT the same concept.
+
+Do NOT copy/sum estimatedMinutes and silently call that the required
+session budget.
+
+estimatedMinutes MAY later help local effort budgeting, but only under
+explicit policy.
+
+============================================================
+PART 5 — ACTIVE LEARNING TIME — V1
+============================================================
+
+Implement the minimum safe server-owned active-time accounting model.
+
+The design selected:
+
+TURN-BASED CAPPED INTERVALS.
+
+Concept:
+
+On a qualifying learner interaction:
+
+delta =
+    now - lastActivityAt
+
+credited =
+    min(delta, ACTIVE_INTERVAL_CAP_SECONDS)
+
+activeLearningSeconds += credited
+
+lastActivityAt = now
+
+But refine this carefully.
+
+============================================================
+PART 6 — ACTIVE INTERVAL CAP MUST BE POLICY, NOT MAGIC NUMBER
+============================================================
+
+The design proposed 180 seconds.
+
+Do NOT scatter literal 180 values through runtime code.
+
+Define one named policy constant, e.g.:
+
+ACTIVE_INTERVAL_CAP_SECONDS
+
+Initial V1 value may be 180 ONLY if consistent with the approved design.
+
+The constant must be:
+- centralized,
+- documented,
+- deterministic,
+- easy to tune later.
+
+This is a policy parameter, not learner state.
+
+============================================================
+PART 7 — DEFINE QUALIFYING ACTIVITY EXACTLY
+============================================================
+
+Do not count arbitrary HTTP requests as active learning.
+
+For R4 V1, define and document which server-observed events qualify.
+
+At minimum evaluate:
+
+- learner ANSWER
+- READY
+- CONTINUE
+- HELP
+- CONFUSED
+- REPEAT
+- CLARIFY
+- OFF_TOPIC
+- session-state GET
+- page refresh
+- frontend polling
+
+Required invariant:
+
+GET requests, refresh hydration, polling, and passive page presence
+must NOT accumulate active learning time.
+
+Prefer counting meaningful learner-originated chat/task interactions.
+
+Intent classification may affect pedagogy, but time accounting should
+not accidentally count infrastructure traffic.
+
+Document the final qualifying-event rule.
+
+============================================================
+PART 8 — FIRST ACTIVITY SEMANTICS
+============================================================
+
+Avoid this bug:
+
+Session created at 10:00.
+Learner does nothing.
+First message at 10:30.
+System credits 180 seconds of learning.
+
+That is false.
+
+Define safe first-activity semantics.
+
+Preferred direction:
+
+If lastActivityAt is NULL:
+- establish activity anchor,
+- credit 0 seconds for that first observed activity.
+
+Then future qualifying interactions can credit capped intervals.
+
+If repository evidence supports a better deterministic approach,
+document it.
+
+Do NOT credit idle time before the first learner activity.
+
+============================================================
+PART 9 — ACTIVE TIME UPDATE MUST BE SAFE
+============================================================
+
+The active-time increment and lastActivityAt update must be concurrency-safe.
+
+Avoid a read-modify-write race where two requests can overwrite
+activeLearningSeconds.
+
+Use the repository's transaction/atomic update capabilities.
+
+If PostgreSQL expression update is available, prefer an atomic increment.
+
+Document exactly how concurrent requests are handled.
+
+============================================================
+PART 10 — SESSION BUDGET DERIVATION
+============================================================
+
+Backend must be able to deterministically derive:
+
+sessionBudgetSeconds =
+    requiredSessionMinutes * 60
+
+remainingRequiredSeconds =
+    max(0, sessionBudgetSeconds - activeLearningSeconds)
+
+sessionBudgetExhausted =
+    requiredSessionMinutes IS NOT NULL
+    AND activeLearningSeconds >= sessionBudgetSeconds
+
+Do NOT persist remainingRequiredSeconds unless absolutely necessary.
+
+Prefer deriving it.
+
+Do NOT persist sessionBudgetExhausted if it is safely derivable.
+
+============================================================
+PART 11 — LOCAL MICRONODE EFFORT — R4A.2
+============================================================
+
+Integrate a LOCAL effort signal into the existing R3 Decision Engine.
+
+Goal:
+
+A learner must not remain trapped on one MicroNode/cognitive level
+simply because remediationStep < MAX_REMEDIATION_STEPS.
+
+But:
+
+DO NOT invent an arbitrary production threshold without evidence.
+
+Use the approved design and existing nodeStartedAt / estimatedMinutes
+carefully.
+
+If the audit/design established a justified V1 local budget policy,
+implement it as a centralized policy function/constant.
+
+If it did NOT establish enough information to safely choose a numeric
+local threshold:
+
+implement the Decision Engine INPUT/contract and deterministic plumbing,
+but do NOT fabricate a threshold.
+
+In that case:
+- expose localNodeBudgetExhausted as a deterministic input,
+- keep it false until an explicit policy is approved,
+- document the remaining policy gap.
+
+Correct architecture is more important than pretending we know the
+right number.
+
+============================================================
+PART 12 — DECISION ENGINE EXTENSION
+============================================================
+
+Extend the EXISTING V2-R3 Pedagogical Decision Engine.
+
+Do NOT create a second state machine.
+
+Budget must become deterministic input.
+
+At minimum support the semantic outcomes:
+
+END_REQUIRED_SESSION
+STOP_LEVEL_AND_REVISIT
+
+But implement only what R4A.1 + R4A.2 can safely support.
+
+Required ordering principle:
+
+1. Process/validate real learner evidence correctly.
+2. Preserve any newly earned cognitive confirmation.
+3. Evaluate whether required session budget is exhausted.
+4. Evaluate whether local continued remediation remains allowed.
+5. Apply R3 cognitive progression/remediation logic.
+6. MAX_REMEDIATION_STEPS remains absolute safety ceiling.
+
+IMPORTANT:
+
+Learning budget may stop remediation BEFORE
+MAX_REMEDIATION_STEPS.
+
+MAX_REMEDIATION_STEPS must never mean:
+"consume all five attempts."
+
+============================================================
+PART 13 — SESSION TIME LIMIT ≠ FAILURE
+============================================================
+
+HARD INVARIANT.
+
+TIME_BUDGET_EXHAUSTED must NEVER fabricate negative cognitive evidence.
+
+Example:
+
+Target:
+remember → understand → apply
+
+Learner demonstrated:
+remember ✓
+understand ✓
+
+Required time expires before Apply is attempted.
+
+Correct:
+
+demonstratedCognitiveLevel = understand
+apply = NOT YET EVALUATED / DEFERRED
+
+Incorrect:
+
+apply = failed
+
+Therefore on pure time exhaustion:
+
+- do not write incorrect-answer evidence,
+- do not increment failed attempt count,
+- do not lower demonstrated cognitive level,
+- do not mark an unattempted cognitive level as failed,
+- do not pretend remediation was exhausted.
+
+Add structural tests proving this.
+
+============================================================
+PART 14 — IMPORTANT REVISIT SEMANTICS
+============================================================
+
+Distinguish at least:
+
+A. REMEDIATION_EXHAUSTED
+Learner actually attempted the level and bounded remediation failed.
+
+B. LOCAL_BUDGET_EXHAUSTED
+Learner worked on the active MicroNode/level, but continuing now is
+not justified within the local effort budget.
+
+C. SESSION_TIME_LIMIT
+Overall required session ended before unfinished curriculum could be
+completed/evaluated.
+
+These are not equivalent.
+
+Rules for R4A.1 + R4A.2:
+
+REMEDIATION_EXHAUSTED:
+- revisitRequired = true
+- revisitReason = REMEDIATION_EXHAUSTED
+
+LOCAL_BUDGET_EXHAUSTED:
+- revisitRequired = true
+- revisitReason = LOCAL_BUDGET_EXHAUSTED
+
+SESSION_TIME_LIMIT:
+Do NOT automatically mark every unfinished/unvisited MicroNode as
+revisitRequired.
+
+For the currently active MicroNode, determine whether an explicit
+defer marker is necessary.
+
+Do NOT classify pure time expiry as cognitive failure.
+
+If R4A.3 is the cleaner place to persist session-limit defer state,
+defer that part and report it.
+
+============================================================
+PART 15 — revisitReason CONTRACT
+============================================================
+
+If revisitReason is added now:
+
+Do NOT leave it as uncontrolled arbitrary text.
+
+Use a typed application-level enum/union or DB enum if consistent with
+repo conventions.
+
+Initial allowed values:
+
+REMEDIATION_EXHAUSTED
+LOCAL_BUDGET_EXHAUSTED
+SESSION_TIME_LIMIT
+
+But only persist SESSION_TIME_LIMIT if the semantics are actually
+implemented in this round.
+
+Define reset rules.
+
+Example:
+
+When the learner later independently confirms the target cognitive
+level:
+
+revisitRequired = false
+revisitReason = null
+
+Ensure R3 existing revisitRequired writes are updated consistently.
+
+============================================================
+PART 16 — NODE START / LOCAL TIME SEMANTICS
+============================================================
+
+Audit nodeStartedAt carefully.
+
+If it is wall-clock based, it cannot automatically equal active
+MicroNode learning time.
+
+Example:
+
+Learner enters node, leaves browser for 20 minutes, returns.
+
+Do NOT conclude:
+"20 minutes spent actively learning this node."
+
+If local budget needs active-node time, determine whether an additional
+counter is necessary or whether R4A.2 should initially use another
+safe signal.
+
+Do not misuse nodeStartedAt merely because it exists.
+
+============================================================
+PART 17 — REQUIRED SESSION COMPLETION IS NOT FULLY IMPLEMENTED YET
+============================================================
+
+R4A.1 + R4A.2 build the foundation and engine behavior.
+
+Do NOT build the final optional-continuation UX in this round.
+
+If requiredSessionCompletedAt / optionalContinuation are only needed
+for R4A.3, defer them.
+
+However, the Decision Engine may return:
+
+END_REQUIRED_SESSION
+
+and the API may expose the deterministic budget state required by
+R4A.3.
+
+Do not create a half-working frontend flow.
+
+============================================================
+PART 18 — RESPONSE CONTRACT
+============================================================
+
+Where appropriate, expose deterministic budget information in the
+chat/session-state response so R4A.3/R4A.4 can consume it later.
+
+Candidate derived fields:
+
+requiredSessionMinutes
+activeLearningSeconds
+remainingRequiredSeconds
+sessionBudgetExhausted
+
+Do NOT expose internal implementation-only state unnecessarily.
+
+Do NOT change current frontend behavior in this round unless required
+to prevent breakage.
+
+============================================================
+PART 19 — OPTIONAL CONTINUATION IS DEFERRED
+============================================================
+
+Do NOT implement the learner's:
+
+[Ավարտել]
+[Շարունակել կամավոր]
+
+flow yet.
+
+That is R4A.3.
+
+Do not set optionalContinuation=true automatically.
+
+Do not let budget exhaustion silently convert the session into
+optional mode.
+
+R4A.2 only establishes the backend decision boundary.
+
+============================================================
+PART 20 — FUTURE P / READINESS COMPATIBILITY
+============================================================
+
+Do not implement P/readiness.
+
+But ensure the Decision Engine budget contract can later accept
+additional policy inputs such as:
+
+readinessMode
+cognitiveCost
+taskDifficulty
+observedPace
+
+without another state-machine rewrite.
+
+Current future readiness choices are conceptually:
+
+Պատրաստ եմ
+Մի քիչ հոգնած եմ
+Ուզում եմ թեթև ռեժիմ
+
+These will change teaching policy, NOT fabricate mastery/evidence.
+
+No implementation now.
+
+============================================================
+PART 21 — FUTURE ZPD COMPATIBILITY
+============================================================
+
+Do not implement ZPD adaptation yet.
+
+But preserve the architecture where future policy can choose:
+
+- lower cognitive challenge,
+- shorter task,
+- more scaffolding,
+- defer high-cost cognitive level,
+
+while evidence still records only what the learner actually
+demonstrated.
+
+============================================================
+PART 22 — TESTS — WRITE BEFORE/ALONGSIDE IMPLEMENTATION
+============================================================
+
+Create a dedicated R4A.1/R4A.2 test suite.
+
+At minimum verify:
+
+T01 — new session snapshots lesson requiredSessionMinutes correctly
+T02 — existing session budget does not change when lesson default changes
+T03 — NULL lesson budget remains unlimited/not configured
+T04 — first learner activity anchors lastActivityAt and credits 0 seconds
+T05 — second qualifying interaction accumulates capped active time
+T06 — long idle gap credits at most ACTIVE_INTERVAL_CAP_SECONDS
+T07 — GET/session-state/refresh does not add active time
+T08 — passive browser time does not add active time
+T09 — activeLearningSeconds survives refresh/resume
+T10 — remainingRequiredSeconds derives correctly
+T11 — sessionBudgetExhausted derives correctly
+T12 — time exhaustion writes no incorrect evidence
+T13 — time exhaustion does not lower demonstratedCognitiveLevel
+T14 — unattempted higher cognitive level remains unconfirmed, not failed
+T15 — MAX_REMEDIATION_STEPS remains absolute ceiling
+T16 — local budget can stop remediation earlier than MAX if enabled
+T17 — STOP_LEVEL_AND_REVISIT writes correct revisit reason
+T18 — later target confirmation clears revisitRequired + revisitReason
+T19 — budget inputs enter existing pedagogicalDecisionEngine
+T20 — no second state machine introduced
+T21 — AI output cannot override budget exhaustion
+T22 — concurrent active-time updates cannot lose credited time
+T23 — R1 regression suite green
+T24 — R1.1 regression suite green
+T25 — R2 regression suite green
+T26 — R3 regression suite green
+T27 — TypeScript api-server clean
+T28 — TypeScript frontend clean
+
+If some tests are structural rather than runtime, label them honestly.
+
+Do not claim browser UAT in this round unless actually performed.
+
+============================================================
+PART 23 — MIGRATION / DB VERIFICATION
+============================================================
+
+If DB fields are added:
+
+Verify on BOTH dev and test DB:
+
+- columns exist,
+- defaults correct,
+- existing rows preserved,
+- no unexpected NULL corruption,
+- FK integrity unaffected.
+
+Report exact migration result.
+
+============================================================
+PART 24 — NO SCOPE CREEP
+============================================================
+
+DO NOT MODIFY:
+
+- Knowledge Base Mapper
+- teacher mapping flow
+- quiz creation/taking
+- Knowledge Tree
+- mastery scoring semantics
+- Confidence Model
+- P/readiness
+- cognitive-cost formula
+- Task/Kahoot UI
+- lesson-page redesign
+- optional continuation UI
+- assignment system unless strictly required for budget snapshot plumbing
+
+Do not refactor unrelated code.
+
+============================================================
+PART 25 — FINAL REPORT
+============================================================
+
+Return:
+
+A. Pre-implementation audit result
+B. Files changed
+C. DB/schema changes
+D. Fields added now
+E. Fields deferred to R4A.3/R4A.4
+F. Active-time accounting contract
+G. Qualifying activity definition
+H. ACTIVE_INTERVAL_CAP_SECONDS implementation
+I. Session budget derivation
+J. Local MicroNode budget implementation/policy status
+K. Decision Engine changes
+L. Exact decision ordering
+M. Time Limit ≠ Failure proof
+N. RevisitReason semantics
+O. Concurrency/atomicity handling
+P. API response changes
+Q. Tests and exact pass counts
+R. R1/R1.1/R2/R3 regression results
+S. TypeScript results
+T. DB verification
+U. Known limitations / intentionally deferred work
+V. Recommended R4A.3 next step
+
+IMPORTANT FINAL VERDICT:
+
+Explicitly answer:
+
+1. Can required-session budget now be tracked reliably?
+2. Can time budget stop teaching without creating false failure evidence?
+3. Can local effort stop remediation before MAX_REMEDIATION_STEPS?
+4. Is MAX_REMEDIATION_STEPS still only a hard ceiling?
+5. Is the architecture ready for required-session completion /
+   optional continuation?
+6. Did any existing R1–R3 behavior regress?
+
+Do not start R4A.3 automatically.
+
+STOP after the report and wait for approval.

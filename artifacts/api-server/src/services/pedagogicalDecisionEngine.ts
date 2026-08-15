@@ -26,6 +26,14 @@ export type CognitiveLevel = typeof COGNITIVE_LEVEL_ORDER[number];
 /** Maximum remediation escalation steps before MARK_TARGET_NOT_REACHED fires. */
 export const MAX_REMEDIATION_STEPS = 5;
 
+/**
+ * Maximum inter-turn interval credited as active learning time (seconds).
+ * Gaps larger than this (e.g. idle browser) are capped at this value so
+ * wall-clock idle time never inflates activeLearningSeconds.
+ * Policy constant — do not scatter magic numbers through runtime code.
+ */
+export const ACTIVE_INTERVAL_CAP_SECONDS = 180;
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 /**
@@ -104,6 +112,21 @@ export interface PedagogicalDecisionInput {
    * Determines whether REVISIT_LATER or MARK_TARGET_NOT_REACHED is the outcome.
    */
   nextNodeHasCriticalDependencyOnCurrentNode: boolean;
+
+  // ── V2-R4A: Learning Budget signals (computed by chat.ts, never by AI) ───
+  /**
+   * true when activeLearningSeconds >= requiredSessionMinutes * 60.
+   * false when requiredSessionMinutes is null (no budget configured).
+   * The AI model NEVER sets this — backend deterministic code owns it.
+   */
+  sessionBudgetExhausted: boolean;
+  /**
+   * true when the local node effort budget is exhausted.
+   * V1 policy: always false — policy not yet established (see computeLocalNodeBudget).
+   * Future rounds will fill in the policy when safe to do so.
+   * The AI model NEVER sets this.
+   */
+  localNodeBudgetExhausted: boolean;
 }
 
 export type PedagogicalMetaAction =
@@ -115,7 +138,10 @@ export type PedagogicalMetaAction =
   | "ADVANCE_COGNITIVE_LEVEL" // move activeCognitiveLevelId to next level in path
   | "MARK_TARGET_NOT_REACHED" // budget exhausted; can still advance (dep not critical)
   | "REVISIT_LATER"           // budget exhausted; critical dep blocks advancement
-  | "COMPLETE_NODE";          // all levels through ceiling confirmed → advance MicroNode
+  | "COMPLETE_NODE"           // all levels through ceiling confirmed → advance MicroNode
+  // ── V2-R4A additions ──────────────────────────────────────────────────────
+  | "END_REQUIRED_SESSION"    // session time budget exhausted — stop without failure
+  | "STOP_LEVEL_AND_REVISIT"; // local node effort budget exhausted — mark revisit
 
 /** The 14-action enum from ai.ts reused by the decision engine for remediation actions. */
 export type NodeDecisionAction =
@@ -163,6 +189,14 @@ export interface PedagogicalDecision {
   targetReached: boolean;
   /** true → caller must set knowledge_nodes.revisit_required = true. */
   revisitRequired: boolean;
+  /**
+   * Why the node needs revisiting. null when revisitRequired=false.
+   * Typed at application layer. Allowed values:
+   *   REMEDIATION_EXHAUSTED  — remediationStep hit MAX_REMEDIATION_STEPS
+   *   LOCAL_BUDGET_EXHAUSTED — local node effort budget ran out
+   *   SESSION_TIME_LIMIT     — session ended (set by R4A.3, not this round)
+   */
+  revisitReason: "REMEDIATION_EXHAUSTED" | "LOCAL_BUDGET_EXHAUSTED" | "SESSION_TIME_LIMIT" | null;
 
   // ── Invariant checks ─────────────────────────────────────────────────────
   preserveActiveTask: boolean;
@@ -277,6 +311,49 @@ function mapErrorFamilyToAction(
   }
 }
 
+// ── R4A Helper functions ────────────────────────────────────────────────────
+
+/**
+ * Compute whether the session's required learning budget is exhausted.
+ *
+ * Pure function — takes direct values, no DB.
+ * Returns false when requiredSessionMinutes is null (no budget configured).
+ *
+ * Invariant: a null budget preserves pre-R4A unlimited-session semantics.
+ */
+export function computeSessionBudgetExhausted(
+  requiredSessionMinutes: number | null | undefined,
+  activeLearningSeconds: number
+): boolean {
+  if (requiredSessionMinutes == null) return false;
+  return activeLearningSeconds >= requiredSessionMinutes * 60;
+}
+
+/**
+ * Compute whether the local MicroNode effort budget is exhausted.
+ *
+ * V1 POLICY GAP — always returns false.
+ *
+ * nodeStartedAt is wall-clock, not active learning time, so it cannot safely
+ * proxy per-node active effort (see R4A design Part 16).  Until a dedicated
+ * per-node active-seconds counter is added and a justified threshold is
+ * approved, this function is a deterministic no-op.
+ *
+ * To enable this in a future round:
+ *   1. Add nodeActiveLearningSeconds to lesson_sessions.
+ *   2. Establish a justified N× multiplier of estimatedMinutes as threshold.
+ *   3. Replace the body below and remove the policy-gap note.
+ *
+ * The caller always passes the inputs so the interface is stable.
+ */
+export function computeLocalNodeBudget(
+  _nodeEstimatedMinutes: number,
+  _nodeActiveLearningSeconds: number
+): boolean {
+  // V1: policy not yet established — never blocks remediation.
+  return false;
+}
+
 // ── Main function ──────────────────────────────────────────────────────────
 
 /**
@@ -284,6 +361,13 @@ function mapErrorFamilyToAction(
  *
  * Called by chat.ts after an ANSWER has been evaluated.
  * For non-ANSWER intents the caller must return early and NOT call this.
+ *
+ * Decision ordering (Part 12 contract):
+ *  1. Validate evidence (Guards 1–2)
+ *  2. Preserve confirmed level advances (Cases A confirmed, complete/advance)
+ *  3. Session budget gate (fires only when evidence did NOT confirm)
+ *  4. Local node effort gate (fires only when session is not exhausted)
+ *  5. R3 remediation / MAX_REMEDIATION_STEPS ceiling
  */
 export function decideNextPedagogicalAction(
   input: PedagogicalDecisionInput
@@ -298,6 +382,8 @@ export function decideNextPedagogicalAction(
     remediationStep,
     nextNodeHasCriticalDependencyOnCurrentNode,
     levelEvidenceSummary,
+    sessionBudgetExhausted,
+    localNodeBudgetExhausted,
   } = input;
 
   const currentLevel    = activeCognitiveLevelRow?.cognitiveLevel ?? null;
@@ -322,6 +408,7 @@ export function decideNextPedagogicalAction(
       confirmedLevel:          null,
       targetReached:           false,
       revisitRequired:         false,
+      revisitReason:           null,
       preserveActiveTask:      true,
       mayCompleteMicroNode:    false,
       mayWriteMastery:         false,
@@ -342,6 +429,7 @@ export function decideNextPedagogicalAction(
       confirmedLevel:          null,
       targetReached:           false,
       revisitRequired:         false,
+      revisitReason:           null,
       preserveActiveTask:      true,
       mayCompleteMicroNode:    false,
       mayWriteMastery:         false,
@@ -367,7 +455,8 @@ export function decideNextPedagogicalAction(
   // ── CASE A: Correct + independent + quality meets gate ───────────────────
   if (isCorrect && independent && meetsQuality) {
     if (totalIndependentCorrect >= minRequired) {
-      // Level CONFIRMED ✅
+      // Level CONFIRMED ✅ — write evidence REGARDLESS of session budget.
+      // Invariant (Part 12, step 2): confirmed evidence is always preserved.
       const nextLvl         = nextLevel(cognitivePath, activeCognitiveLevelRow.id);
       const isAtCeiling     = activeCognitiveLevelRow.isTargetCeiling;
       const targetNowReached = isAtCeiling; // ceiling just confirmed
@@ -386,6 +475,7 @@ export function decideNextPedagogicalAction(
           confirmedLevel:          currentLevel,
           targetReached:           true,
           revisitRequired:         false,
+          revisitReason:           null,
           preserveActiveTask:      false,
           mayCompleteMicroNode:    true,  // code will call advanceNodeInSession
           mayWriteMastery:         true,
@@ -405,13 +495,38 @@ export function decideNextPedagogicalAction(
         confirmedLevel:          currentLevel,
         targetReached:           false,
         revisitRequired:         false,
+        revisitReason:           null,
         preserveActiveTask:      false, // new level → new task
         mayCompleteMicroNode:    false,
         mayWriteMastery:         false,
       };
     }
 
-    // Correct but not enough independent evidence yet — need more turns
+    // Correct but not enough independent evidence yet — need more turns.
+    // ── R4A.2 Step 3: Session budget gate ───────────────────────────────────
+    // No level was confirmed on this turn, so the budget check fires here.
+    // TIME LIMIT ≠ FAILURE — no negative evidence written.
+    if (sessionBudgetExhausted) {
+      return {
+        metaAction:              "END_REQUIRED_SESSION",
+        remediationAction:       null,
+        reasonCode:              "SESSION_BUDGET_EXHAUSTED_NEEDS_MORE_EVIDENCE",
+        currentCognitiveLevel:   currentLevel,
+        targetCognitiveLevel:    targetLevel,
+        newRemediationStep:      remediationStep, // unchanged — no failure
+        newActiveCognitiveLevelId: null,
+        levelConfirmed:          false,
+        confirmedLevel:          null,
+        targetReached:           false,
+        revisitRequired:         false, // not a failure — no revisit marker
+        revisitReason:           null,
+        preserveActiveTask:      true,
+        mayCompleteMicroNode:    false,
+        mayWriteMastery:         false,
+      };
+    }
+
+    // Need more turns — continue same level
     return {
       metaAction:              "CONTINUE_COGNITIVE_LEVEL",
       remediationAction:       "CONTINUE_SAME_NODE",
@@ -424,6 +539,7 @@ export function decideNextPedagogicalAction(
       confirmedLevel:          null,
       targetReached:           false,
       revisitRequired:         false,
+      revisitReason:           null,
       preserveActiveTask:      true, // stay on same task type
       mayCompleteMicroNode:    false,
       mayWriteMastery:         false,
@@ -432,6 +548,27 @@ export function decideNextPedagogicalAction(
 
   // ── CASE B: Correct but heavily assisted (supported success) ─────────────
   if ((isCorrect || isPartial) && !independent && meetsQuality) {
+    // ── R4A.2 Step 3: Session budget gate ────────────────────────────────────
+    if (sessionBudgetExhausted) {
+      return {
+        metaAction:              "END_REQUIRED_SESSION",
+        remediationAction:       null,
+        reasonCode:              "SESSION_BUDGET_EXHAUSTED_AFTER_HELPED_SUCCESS",
+        currentCognitiveLevel:   currentLevel,
+        targetCognitiveLevel:    targetLevel,
+        newRemediationStep:      remediationStep, // unchanged
+        newActiveCognitiveLevelId: null,
+        levelConfirmed:          false,
+        confirmedLevel:          null,
+        targetReached:           false,
+        revisitRequired:         false, // assisted success with time-out ≠ failure
+        revisitReason:           null,
+        preserveActiveTask:      true,
+        mayCompleteMicroNode:    false,
+        mayWriteMastery:         false,
+      };
+    }
+
     return {
       metaAction:              "REQUEST_INDEPENDENT_CHECK",
       remediationAction:       "CONTINUE_SAME_NODE",
@@ -444,6 +581,7 @@ export function decideNextPedagogicalAction(
       confirmedLevel:          null,
       targetReached:           false,
       revisitRequired:         false,
+      revisitReason:           null,
       preserveActiveTask:      false, // new equivalent task needed
       mayCompleteMicroNode:    false,
       mayWriteMastery:         false,
@@ -451,10 +589,64 @@ export function decideNextPedagogicalAction(
   }
 
   // ── CASE C: Incorrect / partial / poor quality → remediation ─────────────
+  //
+  // Steps 3–5 of the decision ordering apply here:
+  //   3. Session budget gate
+  //   4. Local node effort gate
+  //   5. R3 MAX_REMEDIATION_STEPS ceiling, then remediation action
+
+  // ── Step 3: Session budget gate ─────────────────────────────────────────
+  // TIME LIMIT ≠ FAILURE — do NOT write incorrect-answer evidence, do NOT
+  // increment fail count, do NOT lower demonstrated cognitive level.
+  if (sessionBudgetExhausted) {
+    return {
+      metaAction:              "END_REQUIRED_SESSION",
+      remediationAction:       null,
+      reasonCode:              "SESSION_BUDGET_EXHAUSTED_INCORRECT",
+      currentCognitiveLevel:   currentLevel,
+      targetCognitiveLevel:    targetLevel,
+      newRemediationStep:      remediationStep, // NOT incremented — time-out ≠ fail
+      newActiveCognitiveLevelId: null,
+      levelConfirmed:          false,
+      confirmedLevel:          null,
+      targetReached:           false,
+      revisitRequired:         false, // unattempted/unconfirmed ≠ failed
+      revisitReason:           null,
+      preserveActiveTask:      true,
+      mayCompleteMicroNode:    false,
+      mayWriteMastery:         false,
+    };
+  }
+
   const nextRemediationStep = remediationStep + 1;
 
+  // ── Step 4: Local node effort gate ──────────────────────────────────────
+  // Can stop remediation BEFORE MAX_REMEDIATION_STEPS.
+  // Currently always false (V1 policy gap — see computeLocalNodeBudget).
+  if (localNodeBudgetExhausted) {
+    const blocked = nextNodeHasCriticalDependencyOnCurrentNode;
+    return {
+      metaAction:              "STOP_LEVEL_AND_REVISIT",
+      remediationAction:       null,
+      reasonCode:              "LOCAL_BUDGET_EXHAUSTED",
+      currentCognitiveLevel:   currentLevel,
+      targetCognitiveLevel:    targetLevel,
+      newRemediationStep:      0,  // reset for resumed teaching
+      newActiveCognitiveLevelId: null,
+      levelConfirmed:          false,
+      confirmedLevel:          null,
+      targetReached:           false,
+      revisitRequired:         true,
+      revisitReason:           "LOCAL_BUDGET_EXHAUSTED",
+      preserveActiveTask:      blocked,
+      mayCompleteMicroNode:    !blocked,
+      mayWriteMastery:         false,
+    };
+  }
+
+  // ── Step 5: R3 hard ceiling (MAX_REMEDIATION_STEPS) ────────────────────
   if (nextRemediationStep > MAX_REMEDIATION_STEPS) {
-    // Budget exhausted — record target not reached
+    // Learner actually attempted the level and bounded remediation failed.
     const blocked = nextNodeHasCriticalDependencyOnCurrentNode;
     return {
       metaAction:              blocked ? "REVISIT_LATER" : "MARK_TARGET_NOT_REACHED",
@@ -470,6 +662,7 @@ export function decideNextPedagogicalAction(
       confirmedLevel:          null,
       targetReached:           false,
       revisitRequired:         true,  // write knowledge_nodes.revisit_required
+      revisitReason:           "REMEDIATION_EXHAUSTED",
       preserveActiveTask:      blocked, // blocked: stay; can-advance: move on
       mayCompleteMicroNode:    !blocked, // can advance to next MicroNode safely
       mayWriteMastery:         false,
@@ -494,6 +687,7 @@ export function decideNextPedagogicalAction(
     confirmedLevel:          null,
     targetReached:           false,
     revisitRequired:         false,
+    revisitReason:           null,
     preserveActiveTask:      true,
     mayCompleteMicroNode:    false,
     mayWriteMastery:         false,

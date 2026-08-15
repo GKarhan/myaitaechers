@@ -83,6 +83,9 @@ function makeInput(overrides: Partial<PedagogicalDecisionInput> = {}): Pedagogic
     levelEvidenceSummary: EMPTY_EVIDENCE,
     nextNodeId: null,
     nextNodeHasCriticalDependencyOnCurrentNode: false,
+    // V2-R4A: default to no budget (preserves all R3 tests unchanged)
+    sessionBudgetExhausted: false,
+    localNodeBudgetExhausted: false,
     ...overrides,
   };
 }

@@ -476,6 +476,9 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
 
   const now = new Date();
 
+  // V2-R4A: snapshot the lesson's requiredSessionMinutes at creation time.
+  // Once the session exists its budget contract is immutable — teacher edits
+  // to the lesson default do NOT silently change a running session's budget.
   const [session] = await db
     .insert(lessonSessionsTable)
     .values({
@@ -485,6 +488,7 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
       status: "active",
       currentNodeId: firstNode?.id ?? null,
       nodeStartedAt: firstNode ? now : null,
+      requiredSessionMinutes: (lesson as any).requiredSessionMinutes ?? null,
     })
     .returning();
 

@@ -42,6 +42,15 @@ export const knowledgeNodesTable = pgTable(
     // by Knowledge Tree and future review scheduler.
     // Cleared when demonstratedCognitiveLevel eventually reaches target ceiling.
     revisitRequired: boolean("revisit_required").notNull().default(false),
+
+    // revisitReason: WHY this node needs revisiting. Typed enum at application
+    // level. Allowed values (only valid when revisitRequired=true):
+    //   REMEDIATION_EXHAUSTED  — student tried, remediationStep hit the ceiling
+    //   LOCAL_BUDGET_EXHAUSTED — student tried, local node time budget ran out
+    //   SESSION_TIME_LIMIT     — session ended before this level was attempted
+    // null when revisitRequired=false.
+    // Cleared together with revisitRequired when target level is confirmed.
+    revisitReason: text("revisit_reason"),
   },
   (t) => [
     // One knowledge_node row per (student, lesson_node). NULLs are treated as

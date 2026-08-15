@@ -88,6 +88,29 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   // independent verification succeeds.
   // MAX_REMEDIATION_STEPS (policy constant in decision engine) = 5.
   remediationStep: integer("remediation_step").notNull().default(0),
+
+  // ── V2-R4A — Learning Budget ───────────────────────────────────────────────
+  //
+  // requiredSessionMinutes: SNAPSHOT of lessons.requiredSessionMinutes at the
+  // moment this session was created.  Isolates the student's session contract
+  // from future teacher edits.  null = no budget (pre-R4 behavior preserved).
+  requiredSessionMinutes: integer("required_session_minutes"),
+
+  // activeLearningSeconds: running accumulation of CREDITED active learning
+  // time using the turn-based capped-interval model.  Only POST /api/chat
+  // calls increment this (GET/refresh/polling never do).  Atomic SQL increment
+  // ensures concurrency safety.  Never decrements.
+  activeLearningSeconds: integer("active_learning_seconds").notNull().default(0),
+
+  // lastActivityAt: timestamp of the most recent qualifying learner interaction
+  // (i.e. when the last /api/chat response was dispatched).  Used to compute
+  // the inter-turn interval on the NEXT qualifying event.
+  // null = no qualifying event yet (first-activity anchor not yet established).
+  lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+  //
+  // Fields deferred to V2-R4A.3 (optional-continuation UX):
+  //   requiredSessionCompletedAt — when required budget was first exhausted
+  //   optionalContinuation       — student chose to continue beyond required
 });
 
 export const insertLessonSessionSchema = createInsertSchema(lessonSessionsTable).omit({ id: true, startedAt: true });

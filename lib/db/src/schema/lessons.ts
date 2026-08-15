@@ -50,6 +50,16 @@ export const lessonsTable = pgTable("lessons", {
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+  // ── V2-R4A — Learning Budget ───────────────────────────────────────────────
+  //
+  // requiredSessionMinutes: how many ACTIVE LEARNING minutes the student must
+  // accumulate before the required portion of this lesson session is complete.
+  // null = no required-session budget configured (unlimited — pre-R4 behavior).
+  // This is a DEFAULT for new sessions; each session snapshots its own copy at
+  // creation time so mid-lesson teacher edits don't affect running sessions.
+  // DISTINCT from lesson_nodes.estimatedMinutes (per-node pedagogical estimate).
+  requiredSessionMinutes: integer("required_session_minutes"),
 });
 
 export const insertLessonSchema = createInsertSchema(lessonsTable).omit({ id: true, createdAt: true });

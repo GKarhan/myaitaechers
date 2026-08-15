@@ -6,7 +6,7 @@ import {
   evidenceEventsTable, knowledgeNodesTable,
   lessonNodeCognitiveLevelsTable, helpEventsTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, gte, or, isNull } from "drizzle-orm";
+import { eq, and, asc, inArray, gte, or, isNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import {
   callAI, callAIStructured,
@@ -19,6 +19,9 @@ import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
   decideNextPedagogicalAction,
+  computeSessionBudgetExhausted,
+  computeLocalNodeBudget,
+  ACTIVE_INTERVAL_CAP_SECONDS,
   type CognitiveLevelRow,
   type LevelEvidenceSummary,
   type PedagogicalDecision,
@@ -302,6 +305,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  // V2-R4A: Capture the exact moment this qualifying event arrived.
+  // Used for active-time credit computation (inter-turn capped interval).
+  const requestReceivedAt = new Date();
   const userMessageAt = Date.now();
   let sessionId: number | null = null;
   let teachingMode = "TEACH";
@@ -348,6 +354,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeAssistanceLevel: string;
     // V2-R3: pedagogical remediation step (0 = initial, 1–5 = escalation)
     remediationStep: number;
+    // V2-R4A: learning budget fields (snapshot from lesson at session creation)
+    requiredSessionMinutes: number | null;
+    activeLearningSeconds: number;
+    lastActivityAt: Date | null;
   };
   let session: SessionRef | null = null;
 
@@ -416,8 +426,41 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeAssistanceLevel:  (sessionRow as any).activeAssistanceLevel  ?? "none",
           // V2-R3
           remediationStep:        (sessionRow as any).remediationStep        ?? 0,
+          // V2-R4A: learning budget
+          requiredSessionMinutes: (sessionRow as any).requiredSessionMinutes ?? null,
+          activeLearningSeconds:  (sessionRow as any).activeLearningSeconds  ?? 0,
+          lastActivityAt:         (sessionRow as any).lastActivityAt         ?? null,
         };
         sessionId = sessionRow.id;
+      }
+
+      // ── V2-R4A: Active-time accounting ────────────────────────────────────
+      // POST /api/chat is the ONLY qualifying event; GET requests, session-state
+      // calls, refresh hydration, and frontend polling NEVER reach this path.
+      //
+      // First-activity semantics (Part 8): if lastActivityAt IS NULL, credit 0 s
+      // and set the anchor — avoids crediting idle time before first interaction.
+      //
+      // Concurrency safety (Part 9): atomic SQL increment on active_learning_seconds
+      // (active_learning_seconds = active_learning_seconds + $credit) so concurrent
+      // requests cannot overwrite each other's increments.
+      if (session) {
+        let _activeCredit = 0;
+        if (session.lastActivityAt !== null) {
+          const deltaMs  = requestReceivedAt.getTime() - session.lastActivityAt.getTime();
+          const deltaSec = Math.floor(deltaMs / 1000);
+          _activeCredit  = Math.min(deltaSec, ACTIVE_INTERVAL_CAP_SECONDS);
+        }
+        await db
+          .update(lessonSessionsTable)
+          .set({
+            activeLearningSeconds: sql`${lessonSessionsTable.activeLearningSeconds} + ${_activeCredit}`,
+            lastActivityAt: requestReceivedAt,
+          })
+          .where(eq(lessonSessionsTable.id, session.id));
+        // Update local snapshot so budget computation on this turn sees updated value.
+        session.activeLearningSeconds += _activeCredit;
+        session.lastActivityAt = requestReceivedAt;
       }
 
       const phase        = session?.currentPhase ?? 1;
@@ -1520,6 +1563,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           };
         }
 
+        // ── V2-R4A: Compute deterministic budget signals ─────────────────────
+        // These are NEVER derived from AI output.
+        // activeLearningSeconds is already post-increment (updated above).
+        const _sessionBudgetExhausted = computeSessionBudgetExhausted(
+          session.requiredSessionMinutes,
+          session.activeLearningSeconds
+        );
+        const _localNodeBudgetExhausted = computeLocalNodeBudget(
+          currentNodeRecord?.estimatedMinutes ?? 0,
+          0 // V1: per-node active seconds not tracked yet
+        );
+
         _pedagogicalDecision = decideNextPedagogicalAction({
           lessonNodeId:    session.currentNodeId!,
           lessonId:        lessonId!,
@@ -1541,6 +1596,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           levelEvidenceSummary:    _levelEvidenceSummary,
           nextNodeId:              null,
           nextNodeHasCriticalDependencyOnCurrentNode: _nextNodeHasCriticalDep,
+          // V2-R4A
+          sessionBudgetExhausted:      _sessionBudgetExhausted,
+          localNodeBudgetExhausted:    _localNodeBudgetExhausted,
         });
 
         // Persist remediationStep + any cognitive-level advance to the session.
@@ -1746,6 +1804,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     );
   }
 
+  // ── V2-R4A: Compute derived budget fields for response ────────────────────
+  const _rsmins    = session?.requiredSessionMinutes ?? null;
+  const _als       = session?.activeLearningSeconds ?? 0;
+  const _budgetSec = _rsmins != null ? _rsmins * 60 : null;
+  const _remainSec = _budgetSec != null ? Math.max(0, _budgetSec - _als) : null;
+  const _budgetExhausted = computeSessionBudgetExhausted(_rsmins, _als);
+
   res.json({
     response:       studentMessage,
     messageId:      assistantMsg.id,
@@ -1753,6 +1818,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingMode,
     hasActiveTask,          // Phase 2B: true when a MICRO_CHECK or EXERCISE task is active
     activeHelpCount:        session ? ((session as any).activeHelpCount ?? 0) : 0,
+    // V2-R4A: deterministic budget state — for R4A.3 consumption
+    requiredSessionMinutes:  _rsmins,
+    activeLearningSeconds:   _als,
+    remainingRequiredSeconds: _remainSec,
+    sessionBudgetExhausted:  _budgetExhausted,
+    sessionDecision:         _pedagogicalDecision?.metaAction ?? null,
   });
 
   // ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence ───────────
@@ -1877,18 +1948,25 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             helpCount:        _sessionSnap.activeHelpCount,
           } as any);
 
-          // ── V2-R3: Write demonstrated_cognitive_level / revisit_required ────
+          // ── V2-R3/R4A: Write demonstrated_cognitive_level / revisit_required / revisit_reason ──
           // Applied after the evidence row is written (not before) because the
           // evidence row is the source of truth; this is a write-through cache.
+          //
+          // Reset rules (Part 15):
+          //   - levelConfirmed → clear revisitRequired + revisitReason
+          //   - revisitRequired → set revisitReason from engine (typed: REMEDIATION_EXHAUSTED | LOCAL_BUDGET_EXHAUSTED)
+          //   - END_REQUIRED_SESSION → revisitRequired=false, no reason written
           if (_pedagogicalDecision && topicId) {
             const knUpdate: Record<string, unknown> = {};
             if (_pedagogicalDecision.levelConfirmed && _pedagogicalDecision.confirmedLevel) {
               knUpdate.demonstratedCognitiveLevel = _pedagogicalDecision.confirmedLevel;
               knUpdate.revisitRequired = false; // confirmed level clears revisit flag
+              knUpdate.revisitReason   = null;  // R4A: clear reason on confirmation
               knUpdate.updatedAt = new Date();
             }
             if (_pedagogicalDecision.revisitRequired) {
               knUpdate.revisitRequired = true;
+              knUpdate.revisitReason   = _pedagogicalDecision.revisitReason ?? null;
               knUpdate.updatedAt = new Date();
             }
             if (Object.keys(knUpdate).length > 0) {
@@ -1901,7 +1979,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
                 metaAction: _pedagogicalDecision.metaAction,
                 demonstratedLevel: knUpdate.demonstratedCognitiveLevel ?? null,
                 revisitRequired: knUpdate.revisitRequired ?? null,
-              }, "V2-R3: knowledge_nodes durable state updated");
+                revisitReason:   knUpdate.revisitReason ?? null,
+              }, "V2-R3/R4A: knowledge_nodes durable state updated");
             }
           }
 
