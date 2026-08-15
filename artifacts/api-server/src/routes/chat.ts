@@ -1218,8 +1218,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   // MICRO_CHECK evidence is capped at MODERATE per spec.
   if (
     session && aiResult && lessonId &&
-    session.currentPhase >= 2 && session.currentNodeId &&
-    wasEval !== null && aiResult
+    session.currentPhase >= 2 && session.currentNodeId
   ) {
     const evtQuality  = aiResult.answer_evaluation.evidence_quality;
     const evtStatus   = aiResult.answer_evaluation.status;
@@ -1330,8 +1329,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             helpCount:        _sessionSnap.activeHelpCount,
           } as any);
 
-          // Update knowledge scoring in background
-          updateTopicScoring(topicId, _userId, { lessonId: _lessonId }).catch((err) =>
+          // Update knowledge scoring in background (no quizId — chat-sourced evidence)
+          updateTopicScoring(topicId, _userId).catch((err) =>
             logger.error({ err, topicId }, "chat evidence: scoring failed")
           );
         } catch (err) {
@@ -1341,6 +1340,118 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
   }
 });
+
+// ── Phase 2B Part 6: POST /chat/help ─────────────────────────────────────────
+// Progressive help endpoint. Derives all task identity from server-side session.
+// Help levels 1-3 never reveal the final answer. Level 4 requires explicit consent.
+// Does NOT advance teaching stage or create evidence_events.
+router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
+  const { lessonId, revealAnswer } = req.body as { lessonId?: number; revealAnswer?: boolean };
+  if (!lessonId) { res.status(400).json({ error: "lessonId required" }); return; }
+
+  const [sessionRow] = await db
+    .select()
+    .from(lessonSessionsTable)
+    .where(and(eq(lessonSessionsTable.lessonId, lessonId), eq(lessonSessionsTable.userId, req.userId!)))
+    .limit(1);
+  if (!sessionRow) { res.status(404).json({ error: "No active session for this lesson" }); return; }
+  if (sessionRow.status !== "active") { res.status(409).json({ error: "Session is not active" }); return; }
+  if (sessionRow.currentPhase < 2) { res.status(409).json({ error: "Help only available in Teaching Phase" }); return; }
+  if (!sessionRow.currentNodeId) { res.status(409).json({ error: "No current node" }); return; }
+
+  const activeProvenance = (sessionRow as any).activeTaskProvenance as string | null;
+  if (!activeProvenance) {
+    res.status(409).json({ error: "NO_ACTIVE_TASK", message: "Ալ կա ակտiv խndlaban լini" });
+    return;
+  }
+
+  const currentHelpCount = ((sessionRow as any).activeHelpCount ?? 0) as number;
+  const activeLessonExId = ((sessionRow as any).activeLessonExerciseId ?? null) as number | null;
+  const activeCogLevelId = ((sessionRow as any).activeCognitiveLevelId ?? null) as number | null;
+
+  const nextHelpLevel = Math.min(currentHelpCount + 1, 4);
+
+  if (nextHelpLevel === 4 && !revealAnswer) {
+    res.status(409).json({
+      error:     "REVEAL_REQUIRES_CONFIRMATION",
+      helpLevel: 4,
+      message:   "Arayin tesnel-u kerp hstatutyun kllini",
+    });
+    return;
+  }
+
+  let taskText: string | null = null;
+  if (activeLessonExId) {
+    const [exRow] = await db
+      .select({ verbatim: lessonExercisesTable.exerciseTextVerbatim, edited: lessonExercisesTable.exerciseTextEdited })
+      .from(lessonExercisesTable)
+      .where(eq(lessonExercisesTable.id, activeLessonExId))
+      .limit(1);
+    taskText = exRow ? (exRow.edited || exRow.verbatim) : null;
+  } else if (sessionRow.lastQuestionAsked) {
+    taskText = sessionRow.lastQuestionAsked;
+  }
+
+  const HINT_INSTRUCTIONS: Record<number, string> = {
+    1: "Give a LIGHT directional hint only. No answer steps, no solution. 1-2 sentences in Armenian.",
+    2: "Give MODERATE conceptual/procedural guidance. No worked steps, no final answer. 2-3 sentences in Armenian.",
+    3: "Give STEP-BY-STEP guidance. Walk through the approach; leave final answer for student. 3-4 sentences in Armenian.",
+    4: "Reveal the COMPLETE correct answer with explanation. Student explicitly requested full reveal. In Armenian.",
+  };
+
+  let hintContent = "";
+  try {
+    const helpPrompt = [
+      `You are an Armenian AI Teacher giving a level-${nextHelpLevel} hint.`,
+      `Task: ${taskText ?? "(no task text available)"}`,
+      `Instruction: ${HINT_INSTRUCTIONS[nextHelpLevel] ?? HINT_INSTRUCTIONS[3]}`,
+      "Reply ONLY in Armenian. Do not repeat the task verbatim.",
+    ].join("\n");
+    hintContent = await callAI(
+      [{ role: "user" as const, content: helpPrompt }],
+      "Դու AI ուսուցիչ ես։ Հայկական հուշ տուր։"
+    );
+  } catch (aiErr) {
+    logger.warn({ aiErr, sessionId: sessionRow.id }, "help endpoint: AI hint failed");
+    hintContent = "Փորձիր կրկին մտածել խնդրի մասին, կամ դիմիր ուսուցչին։";
+  }
+
+  const LEVEL_TO_ASSIST: Record<number, string> = {
+    1: "light", 2: "moderate", 3: "guided", 4: "revealed",
+  };
+
+  const [helpEvent] = await db
+    .insert(helpEventsTable)
+    .values({
+      userId:           req.userId!,
+      lessonSessionId:  sessionRow.id,
+      lessonNodeId:     sessionRow.currentNodeId,
+      lessonExerciseId: activeLessonExId,
+      quizQuestionId:   null,
+      cognitiveLevelId: activeCogLevelId,
+      helpLevel:        nextHelpLevel,
+      isAnswerReveal:   nextHelpLevel === 4,
+      hintContent,
+    } as any)
+    .returning({ id: helpEventsTable.id });
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      activeHelpCount:       currentHelpCount + 1,
+      activeAssistanceLevel: LEVEL_TO_ASSIST[nextHelpLevel] ?? "guided",
+    } as any)
+    .where(eq(lessonSessionsTable.id, sessionRow.id));
+
+  res.json({
+    success:        true,
+    helpLevel:      nextHelpLevel,
+    isAnswerReveal: nextHelpLevel === 4,
+    hintContent,
+    helpEventId:    helpEvent?.id ?? null,
+  });
+});
+
 
 router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = req.query.lessonId ? parseInt(String(req.query.lessonId), 10) : undefined;

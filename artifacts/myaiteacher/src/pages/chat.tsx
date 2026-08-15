@@ -7,6 +7,35 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
+// ── Phase 2B Part 13: Progressive Help UI ─────────────────────────────────────
+// Help levels:
+//   1 = 💡 Ուղղորդիչ հուշում    (light directional hint)
+//   2 = Ավելի շատ ուղղություն   (moderate guidance)
+//   3 = Կայելաin ajakcutyun      (step-by-step guided)
+//   4 = Տեսնել բացատրությունը   (answer reveal — requires separate confirm)
+//
+// Rules enforced here (mirroring backend):
+//   • Help button only appears while a lesson is active (lessonId set).
+//   • Cannot request help while a message is pending.
+//   • Level 4 requires an explicit second tap on the confirm button.
+//   • Help never produces a regular chat bubble — it appears as a distinct
+//     amber/help card to keep it visually separate from AI Teacher replies.
+//   • Reset on new lesson or page refresh (server holds true state).
+
+const HELP_LEVELS = [
+  null,
+  "Ռուբն հուշում",
+  "Ավելի շատ ուգնություն",
+  "Կայլական աջկակցություն",
+];
+
+const HELP_BUTTON_LABELS: Record<number, string> = {
+  0: "💡 Հուշ",
+  1: "Ավելի շատ հուշ",
+  2: "Կադամարար ածորդակ",
+  3: "Արաիլ բացատրություն",
+};
+
 export default function Chat() {
   const { user, token, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -18,6 +47,13 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Help state ─────────────────────────────────────────────────────────────
+  const [helpLevel, setHelpLevel]             = useState(0); // current level from server
+  const [helpLoading, setHelpLoading]         = useState(false);
+  const [helpError, setHelpError]             = useState<string | null>(null);
+  const [showRevealConfirm, setShowRevealConfirm] = useState(false);
+  const [helpCards, setHelpCards]             = useState<{ level: number; content: string }[]>([]);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -41,7 +77,7 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatHistory, sendMessageMutation.isPending]);
+  }, [chatHistory, sendMessageMutation.isPending, helpCards]);
 
   const handleSend = () => {
     if (!message.trim() || sendMessageMutation.isPending) return;
@@ -57,6 +93,8 @@ export default function Chat() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetChatHistoryQueryKey(historyParams) });
+          // Reset help state when student sends a new answer (implicitly new task attempt)
+          // Server tracks the real state; local state is display-only
         }
       }
     );
@@ -75,6 +113,51 @@ export default function Chat() {
     e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
   };
 
+  // ── Phase 2B: Request help ─────────────────────────────────────────────────
+  const requestHelp = async (revealAnswer = false) => {
+    if (!lessonId || helpLoading || sendMessageMutation.isPending) return;
+    if (showRevealConfirm && !revealAnswer) return;
+
+    setHelpLoading(true);
+    setHelpError(null);
+    setShowRevealConfirm(false);
+
+    try {
+      const resp = await fetch(`/api/chat/help`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token ?? ""}`,
+        },
+        body: JSON.stringify({ lessonId, revealAnswer }),
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        if (data?.error === "NO_ACTIVE_TASK") {
+          setHelpError(data.message ?? "No active task");
+        } else if (data?.error === "REVEAL_REQUIRES_CONFIRMATION") {
+          setShowRevealConfirm(true);
+          setHelpLoading(false);
+          return;
+        } else {
+          setHelpError(data?.message ?? "Help request failed");
+        }
+        setHelpLoading(false);
+        return;
+      }
+
+      const newLevel: number = data.helpLevel ?? helpLevel + 1;
+      setHelpLevel(newLevel);
+      setHelpCards((prev) => [...prev, { level: newLevel, content: data.hintContent ?? "" }]);
+    } catch {
+      setHelpError("Help request failed — please try again");
+    } finally {
+      setHelpLoading(false);
+    }
+  };
+
   if (authLoading || historyLoading) {
     return (
       <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background">
@@ -86,6 +169,9 @@ export default function Chat() {
   if (!user) return null;
 
   const messages: typeof chatHistory = chatHistory || [];
+  // Show help button if lesson is active and we haven't hit level 3 with reveal done
+  const showHelpButton = !!lessonId && helpLevel < 4;
+  const helpButtonLabel = HELP_BUTTON_LABELS[helpLevel] ?? HELP_BUTTON_LABELS[3];
 
   return (
     <div className="flex flex-col h-[100dvh] bg-background text-white">
@@ -140,6 +226,21 @@ export default function Chat() {
             })
           )}
 
+          {/* ── Help cards (Phase 2B) ─────────────────────────────────────── */}
+          {helpCards.map((card, idx) => (
+            <div
+              key={`help-${idx}`}
+              className="self-start max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-lg bg-amber-950/40 border-l-4 border-amber-400 border-y border-r border-amber-700/40"
+            >
+              <div className="text-xs font-medium text-amber-400 mb-1">
+                💡 Հուշ (Մ. {card.level})
+              </div>
+              <div className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap text-amber-100">
+                {card.content}
+              </div>
+            </div>
+          ))}
+
           {sendMessageMutation.isPending && (
             <div className="self-start max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-card-border shadow-lg rounded-bl-sm flex items-center gap-2">
               <div className="text-xs font-medium text-secondary mr-2">AI Ուսուցիչ</div>
@@ -150,19 +251,66 @@ export default function Chat() {
               </div>
             </div>
           )}
+
+          {helpLoading && (
+            <div className="self-start max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 bg-amber-950/40 border-l-4 border-amber-400 border-y border-r border-amber-700/40 flex items-center gap-2">
+              <div className="text-xs font-medium text-amber-400 mr-2">💡 Հուշ</div>
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce"></span>
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </main>
 
       {/* Input */}
       <footer className="shrink-0 p-4 border-t border-card-border bg-card/50 backdrop-blur-lg">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto space-y-2">
           {sendMessageMutation.isError && (
-            <div className="text-destructive text-sm mb-2 px-2">
+            <div className="text-destructive text-sm px-2">
               Սխալ տեղի ունեցավ։ Խնդրում ենք փորձել կրկին։
             </div>
           )}
+          {helpError && (
+            <div className="text-amber-400 text-sm px-2">{helpError}</div>
+          )}
+
+          {/* Phase 2B: reveal confirmation bar */}
+          {showRevealConfirm && (
+            <div className="flex items-center gap-2 px-2 py-2 bg-amber-950/40 border border-amber-700/40 rounded-xl text-sm text-amber-200">
+              <span className="flex-1">Ցո՞ւյց տալ ճիշտ բացատրությունը։ Սա ոչ-անկախ ապացույց կլինի։</span>
+              <button
+                onClick={() => requestHelp(true)}
+                className="shrink-0 px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium transition-colors"
+              >
+                Այո, ցույց տուր
+              </button>
+              <button
+                onClick={() => setShowRevealConfirm(false)}
+                className="shrink-0 px-3 py-1 rounded-lg bg-card border border-card-border text-muted-foreground text-xs transition-colors"
+              >
+                Չեղարկել
+              </button>
+            </div>
+          )}
+
           <div className="flex items-end gap-2 bg-background border border-card-border rounded-2xl p-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+            {/* Phase 2B: progressive help button */}
+            {showHelpButton && (
+              <button
+                onClick={() => requestHelp(false)}
+                disabled={helpLoading || sendMessageMutation.isPending}
+                title={`Հուշ ${helpLevel + 1}`}
+                className="shrink-0 px-2 h-10 flex items-center justify-center rounded-xl text-amber-400 border border-amber-700/40 bg-amber-950/30 hover:bg-amber-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-xs font-medium whitespace-nowrap"
+              >
+                {helpButtonLabel}
+              </button>
+            )}
+
             <textarea
               ref={textareaRef}
               value={message}
