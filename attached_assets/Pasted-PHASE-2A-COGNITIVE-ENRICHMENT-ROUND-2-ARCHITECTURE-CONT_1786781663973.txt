@@ -1,0 +1,798 @@
+PHASE 2A — COGNITIVE ENRICHMENT
+ROUND 2 — ARCHITECTURE CONTRACT + SCHEMA FOUNDATION
+
+IMPORTANT:
+Round 1 forensic audit is complete.
+
+Use the findings from that audit as authoritative for the current repository state.
+
+This task is NOT a redesign of the mapper, AI Teacher, quiz scoring, Knowledge Tree mastery model, or existing Phase 2 teaching-content generation.
+
+The purpose of this task is to establish the canonical Cognitive Enrichment data model on top of the existing MicroNode architecture.
+
+============================================================
+0. LOCKED ARCHITECTURAL PRINCIPLES
+============================================================
+
+The existing canonical curriculum hierarchy MUST remain unchanged:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode = lesson_nodes row = atomic curriculum knowledge unit.
+
+DO NOT introduce:
+- Node → Subnode hierarchy
+- cognitive levels as new curriculum nodes
+- exercises as nodes
+- learner-specific data into the mapping contract
+
+Exercises remain assets attached to MicroNodes.
+
+Cognitive Enrichment is an ADDITIVE pedagogical layer attached to existing MicroNodes.
+
+Existing mapping/source-fidelity architecture MUST remain intact.
+
+Existing Phase 2 teaching-content generation also remains separate:
+
+childFriendlyExplanation
+basicExamples
+commonMisconception
+nonExamples
+
+Phase 2A Cognitive Enrichment is a NEW and SEPARATE layer.
+
+============================================================
+1. ROUND-1 AUDIT FINDINGS TO TREAT AS FACTS
+============================================================
+
+The audit established:
+
+1. lesson_nodes.target_bloom_level exists but is currently effectively a placeholder.
+   Mapping currently defaults it to 1 rather than semantically deriving it.
+
+2. knowledge_nodes.bloom_level is NOT demonstrated learner cognitive level.
+   It is merely a copied snapshot of the curriculum target.
+
+3. quiz_questions currently store difficulty but NOT cognitive level.
+
+4. evidence_events currently store correctness/source/etc. but NOT cognitive level.
+
+5. Current learner evidence cannot validly prove:
+   "Student demonstrated Apply/Analyze/etc."
+
+6. Bloom/cognitive demand and task difficulty MUST remain separate dimensions.
+
+7. Existing:
+   recall_questions
+   understanding_questions
+   application_questions
+   misconception_questions
+   are unused/dead JSONB placeholders.
+
+Do NOT build the new architecture around those four columns.
+
+Do NOT delete them in this task either.
+Mark/deprecate conceptually only.
+
+============================================================
+2. CANONICAL COGNITIVE MODEL
+============================================================
+
+Use revised Bloom cognitive levels:
+
+remember
+understand
+apply
+analyze
+evaluate
+create
+
+But DO NOT assume every MicroNode needs all six levels.
+
+Each MicroNode must have its own applicable cognitive path.
+
+Examples:
+
+Definition-type MicroNode:
+remember → understand
+
+Procedural MicroNode:
+remember → understand → apply
+
+Concept requiring comparison/analysis:
+remember → understand → apply → analyze
+
+Higher-order task:
+understand → apply → analyze → evaluate
+
+Creation-oriented MicroNode:
+understand → apply → analyze → evaluate → create
+
+Therefore:
+
+applicable cognitive path ≠ always six levels.
+
+The system must support a variable path per MicroNode.
+
+One level in that path is the curriculum TARGET CEILING.
+
+Example:
+
+MicroNode: Մոլեկուլներ
+
+Applicable path:
+remember → understand → apply
+
+Target ceiling:
+apply
+
+============================================================
+3. IMPLEMENT THE CANONICAL CHILD TABLE
+============================================================
+
+Implement the Round-1 recommended architecture:
+
+lesson_node_cognitive_levels
+
+Create a proper relational child table with one row per:
+
+MicroNode × applicable cognitive level
+
+Minimum required fields:
+
+id
+lessonNodeId
+cognitiveLevel
+sequence
+isApplicable
+isTargetCeiling
+performanceObjective
+successCriterion
+provenance
+createdAt
+updatedAt
+
+Use repository naming/style conventions.
+
+cognitiveLevel must support exactly:
+
+remember
+understand
+apply
+analyze
+evaluate
+create
+
+provenance must support:
+
+source_derived
+teacher_authored
+ai_generated
+
+Add appropriate:
+
+- FK to lesson_nodes
+- uniqueness constraint preventing duplicate cognitive level for same MicroNode
+- index(es) required for node lookup
+- validation ensuring only allowed cognitive levels
+- deterministic sequence/order
+
+IMPORTANT:
+Do not invent learner-specific fields in this table.
+
+This table describes CURRICULUM cognitive structure only.
+
+============================================================
+4. TARGET CEILING CONTRACT
+============================================================
+
+Exactly one applicable cognitive level SHOULD normally be the target ceiling for an enriched MicroNode.
+
+The target ceiling means:
+
+"The highest cognitive demand that the curriculum expects the learner to demonstrate for this MicroNode."
+
+It does NOT mean:
+
+- current learner ability
+- mastery percentage
+- confidence
+- task difficulty
+
+For backward compatibility:
+
+lesson_nodes.target_bloom_level currently exists.
+
+DO NOT delete or rename it in this task.
+
+Define and document a compatibility strategy between:
+
+lesson_nodes.target_bloom_level
+
+and
+
+lesson_node_cognitive_levels.is_target_ceiling
+
+The NEW child-table structure is to become canonical for Phase 2A.
+
+Do not silently create conflicting sources of truth.
+
+Report exactly how synchronization/backward compatibility will work.
+
+============================================================
+5. PERFORMANCE OBJECTIVE PER LEVEL
+============================================================
+
+Each applicable level must support a concrete observable performance objective.
+
+Bad:
+
+"Understand molecules."
+
+Good:
+
+"Ուսանողը կարող է սեփական բառերով բացատրել, թե ինչ է մոլեկուլը և ինչ կապ ունի այն նյութի հատկությունների հետ։"
+
+The objective must describe what the learner can DO at that cognitive level.
+
+Different levels must represent genuinely different cognitive demands.
+
+Do not generate these objectives yet unless explicitly required for fixture/testing purposes.
+
+This round builds the DATA FOUNDATION.
+
+============================================================
+6. SUCCESS CRITERION PER LEVEL
+============================================================
+
+Each applicable cognitive level must support a successCriterion.
+
+This describes what counts as acceptable evidence at that level.
+
+Example:
+
+remember:
+correctly identifies/recalls the concept.
+
+understand:
+correctly explains or classifies the concept in a new wording/context.
+
+apply:
+uses the concept correctly in an appropriate new case/problem.
+
+The success criterion is curriculum/evidence design metadata.
+
+It is NOT the learner's score.
+
+============================================================
+7. EXERCISES REMAIN ATTACHED TO MICRONODES
+============================================================
+
+DO NOT restructure lesson_exercises.
+
+Existing textbook exercises remain attached to MicroNodes exactly as today.
+
+However, the architecture must now be ready to associate a task/exercise with a cognitive level.
+
+Before implementing a new linkage table, AUDIT the existing exercise schema and relationships again.
+
+Then choose the smallest normalized additive model that allows:
+
+MicroNode
+→ Cognitive Level
+→ zero or more task/exercise assets
+
+while preserving the existing:
+
+MicroNode
+→ lesson_exercises
+
+relationship.
+
+Preferred conceptual behavior:
+
+lesson_exercises remains the canonical exercise record.
+
+Cognitive Enrichment adds a LINK/ANNOTATION saying:
+
+"This exercise provides evidence for cognitive level X."
+
+Do NOT duplicate textbook exercise text into cognitive-level rows.
+
+Do NOT move exercises away from MicroNodes.
+
+============================================================
+8. SOURCE EXERCISE → AI EQUIVALENT VARIANTS
+============================================================
+
+This requirement is LOCKED for the architecture.
+
+A textbook/source exercise may serve as a SEED TASK.
+
+Example:
+
+MicroNode X
+Cognitive level = Apply
+
+Available source exercises = 1
+
+Evidence design requires = 3 independent task opportunities
+
+The future AI Teacher must be able to generate 2 additional equivalent variants.
+
+Those variants must:
+
+- assess the SAME MicroNode
+- assess the SAME cognitive level
+- assess the SAME performance objective
+- preserve the same underlying skill/demand
+- use different data/examples/context
+- NOT simply paraphrase the same answer
+- NOT change the cognitive demand
+
+Example:
+
+Source:
+solve the same type of problem with values A/B.
+
+AI variant 1:
+same underlying skill with values C/D.
+
+AI variant 2:
+same underlying skill with values E/F.
+
+Architecture must support provenance for task assets:
+
+source_derived / textbook
+ai_generated
+teacher_authored
+
+IMPORTANT:
+Do NOT implement runtime AI task generation in this round.
+
+But design the schema/contracts so this can be implemented without another schema redesign.
+
+============================================================
+9. MINIMUM INDEPENDENT EVIDENCE
+============================================================
+
+Each cognitive level must be able to define how much independent evidence is expected before that level can later be considered demonstrated.
+
+Add/support a field such as:
+
+minimumIndependentEvidence
+
+Use an integer with a sensible validation rule.
+
+This is NOT confidence.
+
+It means:
+
+"How many independent evidence opportunities should normally be available/required for this cognitive level?"
+
+Example:
+
+Apply:
+minimumIndependentEvidence = 3
+
+Available source tasks = 1
+
+Future task-generation system can infer:
+
+missing equivalent opportunities = 2
+
+DO NOT implement learner demonstrated-level calculation yet.
+
+============================================================
+10. MINIMUM-EFFORT STUDENT INTERACTION
+============================================================
+
+LOCKED DESIGN PRINCIPLE:
+
+"Minimum-effort interaction, maximum-valid evidence."
+
+The learner should write as little as reasonably necessary,
+BUT interaction convenience must never weaken the validity of evidence.
+
+Each cognitive-level design must be able to specify preferred interaction types.
+
+Support an extensible representation for interaction types such as:
+
+multiple_choice
+multi_select
+true_false
+matching
+classification
+ordering
+numeric_answer
+short_answer
+constructed_response
+problem_solving
+
+Do not assume multiple-choice is always sufficient.
+
+Examples:
+
+Remember:
+multiple_choice may be sufficient.
+
+Understand:
+classification/matching/short explanation may be required.
+
+Apply:
+learner may independently solve a problem and then:
+- enter the final numeric/text answer, OR
+- select the correct final answer,
+provided the task design still demonstrates application.
+
+Analyze/Evaluate/Create:
+may require more constructed learner output when necessary.
+
+The architecture should support preferredInteractionTypes per cognitive level.
+
+Do NOT redesign the current quiz UI in this round.
+
+============================================================
+11. INDEPENDENT PROBLEM SOLVING
+============================================================
+
+The future system MUST support tasks where:
+
+1. learner independently solves a problem;
+2. system does not require unnecessary typing;
+3. learner can submit evidence through:
+   - final answer entry, OR
+   - correct-answer selection,
+   depending on task validity;
+4. evidence still records that this was an independent problem-solving task.
+
+Therefore cognitive/task architecture must distinguish:
+
+interaction format
+
+from
+
+cognitive demand.
+
+Example:
+
+A multiple-choice response MAY still assess Apply if the learner had to independently solve a novel problem before selecting the answer.
+
+Likewise:
+
+a written response is NOT automatically a higher cognitive level.
+
+Do not infer Bloom from UI format.
+
+============================================================
+12. BLOOM ≠ DIFFICULTY ≠ INTERACTION TYPE
+============================================================
+
+These are THREE separate dimensions.
+
+A task has:
+
+A. Cognitive demand
+   remember / understand / apply / analyze / evaluate / create
+
+B. Difficulty
+   LOW / MEDIUM / HIGH
+   or the repository's canonical equivalent
+
+C. Interaction format
+   multiple_choice / numeric_answer / matching / etc.
+
+Never derive one automatically from another.
+
+Examples:
+
+HIGH-difficulty Remember is possible.
+
+LOW-difficulty Apply is possible.
+
+Multiple-choice Apply is possible.
+
+Constructed-response Remember is possible.
+
+Document this explicitly in code/schema comments where appropriate.
+
+============================================================
+13. TASK PROVENANCE
+============================================================
+
+Any future cognitive task must be traceable.
+
+Architecture must support distinguishing:
+
+textbook/source task
+AI-generated equivalent variant
+teacher-authored task
+
+For AI-generated variants, architecture should be able to retain lineage to the seed/source exercise where applicable.
+
+Example conceptually:
+
+task provenance = ai_generated
+seedExerciseId = 123
+
+Do NOT invent fake source provenance.
+
+AI-generated material must never be presented as textbook material.
+
+============================================================
+14. EVIDENCE / CONFIDENCE V2 READINESS
+============================================================
+
+DO NOT implement Confidence V2 in this task.
+
+But schema design must be compatible with future evidence carrying:
+
+cognitiveLevel
+taskDifficulty
+interactionType
+assistanceLevel
+task/exercise identity
+provenance
+correctness/quality
+timestamp
+
+The Round-1 audit recommended new evidence metadata/columns.
+
+For THIS round:
+
+First audit whether evidence_events should receive any additive columns now
+or whether that belongs in the next evidence phase.
+
+Do not modify evidence scoring behavior.
+
+If you add readiness columns:
+
+- they must be nullable/backward-compatible
+- existing evidence must remain cognitiveLevel = unknown/null
+- NEVER infer cognitive levels for historical evidence
+
+Old evidence remains valid mastery evidence,
+but NOT cognitive-depth evidence.
+
+============================================================
+15. DO NOT EQUATE TASK COUNT WITH CONFIDENCE
+============================================================
+
+LOCKED RULE:
+
+3 correct tasks ≠ automatically 100% confidence.
+
+minimumIndependentEvidence is an evidence-quantity requirement only.
+
+Future Confidence V2 will separately consider:
+
+- evidence quantity
+- evidence strength
+- diversity
+- consistency
+- assistance/hints
+- independence
+- cognitive level
+- difficulty
+- temporal stability
+
+Do not implement that formula now.
+
+============================================================
+16. LEARNER COGNITIVE STATE — NOT IN THIS ROUND
+============================================================
+
+Do NOT yet calculate or write:
+
+demonstratedCognitiveLevel
+currentCognitiveLevel
+nextTargetLevel
+cognitiveDepthPercent
+
+Those require cognitively tagged learner evidence.
+
+This round establishes curriculum architecture only.
+
+knowledge_nodes.bloom_level MUST NOT be reinterpreted as demonstrated learner level.
+
+Do not populate it with fabricated cognitive achievement.
+
+============================================================
+17. MAPPER — STRICT NON-GOAL
+============================================================
+
+Do NOT change:
+
+manual-map
+auto-map
+Text Contract
+source coverage
+source blocks
+MicroNode granularity
+exercise extraction
+mapping validation
+mapping confirmation
+
+The existing mapper remains source-faithful.
+
+Cognitive Enrichment happens AFTER mapping/teacher review.
+
+Existing MicroNodes must be enrichable without remapping.
+
+============================================================
+18. EXISTING PHASE 2 — STRICT NON-GOAL
+============================================================
+
+Do NOT change the current Phase 2 generation behavior:
+
+childFriendlyExplanation
+basicExamples
+commonMisconception
+nonExamples
+
+Phase 2A is a separate enrichment pipeline.
+
+Do not merge the prompts.
+
+Do not make Phase 2 overwrite Cognitive Enrichment.
+
+============================================================
+19. AI TEACHER / QUIZ / KT — NON-GOALS FOR THIS ROUND
+============================================================
+
+Do NOT modify runtime behavior of:
+
+chat.ts
+AI Teacher teaching cycle
+quiz generation
+quiz scoring
+mastery scoring
+Knowledge Tree four-state model
+coveragePercent
+Confidence
+Personalization Engine
+
+Do not wire cognitive progression into them yet.
+
+We are building the foundation they will consume later.
+
+============================================================
+20. REQUIRED AUDIT BEFORE WRITING SCHEMA
+============================================================
+
+Before modifying code, inspect and report:
+
+A. Exact current Drizzle schema conventions.
+B. Migration conventions.
+C. Existing enum/check patterns.
+D. lesson_exercises PK/FK types.
+E. Whether a reusable task abstraction already exists anywhere.
+F. Whether generated exercises are already stored in lesson_exercises.
+G. Existing provenance fields and allowed values.
+H. Whether evidence_events should receive readiness fields now or later.
+I. Every current consumer of lesson_nodes.target_bloom_level.
+J. Every current consumer/producer of knowledge_nodes.bloom_level.
+
+Do not guess.
+
+Then implement only after this audit.
+
+============================================================
+21. REQUIRED DELIVERABLES
+============================================================
+
+Return a formal report containing:
+
+A. Pre-implementation audit findings.
+
+B. Exact schema created.
+
+C. Exact migration created.
+
+D. Constraints/indexes.
+
+E. Cognitive-level enum/validation strategy.
+
+F. Provenance strategy.
+
+G. target_bloom_level backward-compatibility strategy.
+
+H. Exercise/task linkage design.
+
+I. AI-equivalent-variant readiness design.
+
+J. preferredInteractionTypes design.
+
+K. minimumIndependentEvidence design.
+
+L. Evidence/Confidence V2 readiness decision.
+
+M. Files changed.
+
+N. TypeScript/build results.
+
+O. Migration result.
+
+P. Tests added and exact PASS counts.
+
+Q. Confirmation that existing real MicroNodes/exercises were not remapped or modified.
+
+R. Confirmation that mapper/AI Teacher/quiz scoring/mastery scoring/KT behavior remain unchanged.
+
+============================================================
+22. REQUIRED TESTS
+============================================================
+
+At minimum verify:
+
+T01 — Existing MicroNode with no cognitive enrichment still works.
+
+T02 — One MicroNode can have Remember → Understand.
+
+T03 — Another MicroNode can have Remember → Understand → Apply.
+
+T04 — Another can include Analyze/Evaluate/Create.
+
+T05 — duplicate cognitive level for same MicroNode is rejected.
+
+T06 — exactly/at most one target ceiling according to final contract.
+
+T07 — cognitive levels preserve sequence.
+
+T08 — performanceObjective persists.
+
+T09 — successCriterion persists.
+
+T10 — provenance persists.
+
+T11 — minimumIndependentEvidence persists.
+
+T12 — preferredInteractionTypes persist.
+
+T13 — existing textbook exercise remains unchanged.
+
+T14 — exercise can be associated with cognitive level without duplicating exercise content.
+
+T15 — AI-generated task provenance can be distinguished from textbook provenance.
+
+T16 — generated variant can retain seed/source lineage if architecture implements task variants now.
+
+T17 — old evidence remains valid and cognitive-unknown.
+
+T18 — no learner cognitive level is fabricated.
+
+T19 — targetBloomLevel legacy consumer still works.
+
+T20 — no mapper regression.
+
+T21 — no current Phase 2 regression.
+
+T22 — no quiz/mastery behavior regression.
+
+T23 — no Knowledge Tree four-state regression.
+
+T24 — migration is additive and existing rows survive unchanged.
+
+T25 — test data leaves zero pollution.
+
+============================================================
+23. STOP CONDITION
+============================================================
+
+Do NOT proceed into:
+
+- AI generation of cognitive paths
+- learner demonstrated-level calculation
+- cognitive-aware quiz generation
+- AI Teacher cognitive progression
+- Confidence V2
+- KT cognitive-depth UI
+
+Those are later rounds.
+
+At the end STOP and report.
+
+Do not start the next phase automatically.
