@@ -1189,6 +1189,9 @@ function LessonNodesPanel({
         setApprovalErrors([]);
         setApprovalWarnings(data.warnings ?? []);
         setShowApprovalErrors(false);
+        // Refresh the lesson card so (l as any).status === "approved" is seen immediately
+        // and the "Հandznarar sovorgiin" button becomes clickable without a page reload.
+        qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
       } else {
         setApprovalStatus("needs_review");
         setApprovalErrors(data.errors ?? []);
