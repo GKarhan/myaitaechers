@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -104,6 +104,16 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   // 0-100 confidence in the synthesised teaching material specifically
   // (distinct from confidenceScore which measures the Pass-1 extraction).
   teachingContentConfidence: integer("teaching_content_confidence"),
+
+  // ── Phase 2A R3: Cognitive Enrichment confirmation ──────────────────────
+  // null → no cognitive path generated yet
+  // 'needs_review' → AI-generated proposal awaiting teacher confirmation
+  // 'confirmed' → teacher has explicitly confirmed the cognitive path
+  cogPathStatus: text("cog_path_status"),
+
+  // true when teaching content was generated before a cognitive path edit.
+  // Cleared when teacher regenerates teaching content after re-confirming.
+  teachingContentStale: boolean("teaching_content_stale").notNull().default(false),
 });
 
 export const insertLessonNodeSchema = createInsertSchema(lessonNodesTable).omit({

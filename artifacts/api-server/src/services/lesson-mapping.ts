@@ -1943,12 +1943,23 @@ export interface Phase2LinkedExercise {
   exerciseTextVerbatim: string;
 }
 
+// Phase 2A R3: confirmed cognitive level summary passed to the teaching content generator.
+export interface ConfirmedCogLevel {
+  cognitiveLevel:       string;
+  sequence:             number;
+  isTargetCeiling:      boolean;
+  performanceObjective: string | null;
+  successCriterion:     string | null;
+}
+
 export interface Phase2Input {
   nodeId:            number;
   title:             string;
   learningObjective: string | null;
   theoryContent:     string | null;
   blockType:         string | null;
+  /** Phase 2A R3: confirmed cognitive path — included when gate is open. */
+  cogPath?: ConfirmedCogLevel[] | null;
 }
 
 export interface Phase2GenerationResult {
@@ -1983,6 +1994,7 @@ STRICT GROUNDING RULES — violating any rule is worse than leaving a field empt
 3. basicExamples: extract or lightly simplify 2–4 concrete examples directly from the theory. Each example must be a complete, standalone statement or worked step. Preserve numbers and operations verbatim where possible.
 4. commonMisconception: state the single most likely wrong belief a grade-7 student would hold about THIS specific concept. Ground it in the definition — do not invent generic misconceptions unrelated to the source.
 5. nonExamples: provide 2–3 cases that look like they might fit the concept but do NOT satisfy its definition. Each must contrast directly with the definition in theoryContent.
+6. Cognitive alignment: when a confirmed cognitive path is provided, calibrate depth and complexity so teaching content supports learning up to (and including) the TARGET CEILING level only. Do not generate content for cognitive levels beyond the target ceiling.
 
 Return ONLY valid JSON. No markdown fences. No trailing commas.`;
 
@@ -1993,9 +2005,23 @@ function buildPhase2Prompt(
   const exList = exercises.length
     ? exercises.map((e) => `[${e.exerciseId}] ${e.exerciseTextVerbatim}`).join("\n")
     : "(none)";
+
+  let cogSection = "";
+  if (input.cogPath?.length) {
+    const ceiling = input.cogPath.find((l) => l.isTargetCeiling);
+    cogSection = `\nConfirmed Cognitive Path (${input.cogPath.length} level(s)):
+${input.cogPath.map((l) =>
+  `  [seq=${l.sequence}] ${l.cognitiveLevel.toUpperCase()}${l.isTargetCeiling ? " ← TARGET CEILING" : ""}` +
+  (l.performanceObjective ? `\n    PO: ${l.performanceObjective}` : "") +
+  (l.successCriterion     ? `\n    SC: ${l.successCriterion}`     : "")
+).join("\n")}
+
+COGNITIVE CALIBRATION: Target ceiling is "${ceiling?.cognitiveLevel ?? "unset"}". Generate teaching content that supports learners in reaching this level. Do NOT produce content aimed at higher cognitive levels.\n`;
+  }
+
   return `MicroNode id=${input.nodeId}, title="${input.title}"
 learningObjective: ${input.learningObjective ?? "(none)"}
-
+${cogSection}
 theoryContent:
 ${input.theoryContent}
 

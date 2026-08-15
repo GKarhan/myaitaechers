@@ -8,7 +8,7 @@ import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -18,6 +18,21 @@ import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js"
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 
 const router = Router();
+
+// ── Phase 2A R3 helper ────────────────────────────────────────────────────────
+// When a CONFIRMED cognitive path is edited or deleted, de-confirm it and mark
+// existing teaching content as stale (so teacher knows to regenerate).
+async function invalidateCogPathConfirmation(nodeId: number): Promise<void> {
+  const [row] = await db
+    .select({ cogPathStatus: lessonNodesTable.cogPathStatus, hasTc: lessonNodesTable.childFriendlyExplanation })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, nodeId))
+    .limit(1);
+  if (!row || row.cogPathStatus !== "confirmed") return;
+  const updates: Record<string, unknown> = { cogPathStatus: "needs_review" };
+  if (row.hasTc !== null) updates.teachingContentStale = true;
+  await db.update(lessonNodesTable).set(updates).where(eq(lessonNodesTable.id, nodeId));
+}
 
 router.post("/lessons", requireAuth, async (req: AuthRequest, res) => {
   const { subjectId, title, description, bloomLevel } = req.body as {
@@ -759,6 +774,8 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
       contentSourceType: n.contentSourceType ?? "textbook",
       createdBy: n.createdBy ?? "ai",
       sourcePage: n.sourcePage ?? null,
+      cogPathStatus: (n as any).cogPathStatus ?? null,
+      teachingContentStale: !!((n as any).teachingContentStale),
     }))
   );
 });
@@ -1229,6 +1246,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
 
 // POST /lessons/:lessonId/nodes/:nodeId/enrich
 // Selective Phase 2 enrichment for a single MicroNode.
+// Gate (Phase 2A R3): requires confirmed cognitive path before Teaching Content can be generated.
 // Runs synchronously (returns when AI is done) — designed for single-node operations.
 // Uses same don't-degrade semantics as whole-lesson generate-teaching-content.
 // Does NOT require whole-lesson final approval afterward.
@@ -1247,6 +1265,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeach
       learningObjective: lessonNodesTable.learningObjective,
       theoryContent:     lessonNodesTable.theoryContent,
       blockType:         lessonNodesTable.blockType,
+      cogPathStatus:     (lessonNodesTable as any).cogPathStatus,
     })
     .from(lessonNodesTable)
     .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
@@ -1256,6 +1275,25 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeach
     res.status(404).json({ error: "Node not found" });
     return;
   }
+
+  // Phase 2A R3 gate: cognitive path must be confirmed before Teaching Content can be generated
+  const cogStatus = (node as any).cogPathStatus as string | null;
+  if (cogStatus !== "confirmed") {
+    res.status(422).json({
+      error: "COG_PATH_NOT_CONFIRMED",
+      message: cogStatus === "needs_review"
+        ? "Նախ հաստատեք ճանաչողական ուղին (✓ Հаstatsel)"
+        : "Նախ ստեղծեք եւ հաստատեք ճանաչողական ուղին",
+    });
+    return;
+  }
+
+  // Fetch confirmed cognitive path for prompt context
+  const cogLevels = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
+    .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
 
   // Fetch exercises linked to this node
   const nodeExercises = await db
@@ -1272,9 +1310,16 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeach
   const input: Phase2Input = {
     nodeId:            node.id,
     title:             node.title,
-    learningObjective: node.learningObjective ?? null,
-    theoryContent:     node.theoryContent ?? null,
-    blockType:         node.blockType ?? null,
+    learningObjective: (node as any).learningObjective ?? null,
+    theoryContent:     (node as any).theoryContent ?? null,
+    blockType:         (node as any).blockType ?? null,
+    cogPath: cogLevels.map((l): ConfirmedCogLevel => ({
+      cognitiveLevel:       l.cognitiveLevel,
+      sequence:             l.sequence,
+      isTargetCeiling:      l.isTargetCeiling,
+      performanceObjective: l.performanceObjective ?? null,
+      successCriterion:     l.successCriterion ?? null,
+    })),
   };
   const exercises: Phase2LinkedExercise[] = nodeExercises.map((e) => ({
     exerciseId:           e.exerciseId,
@@ -1295,7 +1340,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeach
   }
 
   // Apply don't-degrade semantics: never overwrite a valid field with empty AI response
-  const phase2Updates: Record<string, unknown> = { status: "approved" as const };
+  const phase2Updates: Record<string, unknown> = { status: "approved" as const, teachingContentStale: false };
   if (result.childFriendlyExplanation?.trim())
     phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
   if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
@@ -3335,6 +3380,14 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
   const node = await getCogNode(lessonId, nodeId);
   if (!node) { res.status(404).json({ error: "Node not found" }); return; }
 
+  // Fetch cogPathStatus for this node (Phase 2A R3 confirmation state)
+  const [nodeStatusRow] = await db
+    .select({ cogPathStatus: (lessonNodesTable as any).cogPathStatus })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, nodeId))
+    .limit(1);
+  const cogPathStatus = (nodeStatusRow as any)?.cogPathStatus ?? null;
+
   // Load levels ordered by sequence
   const levels = await db
     .select()
@@ -3343,7 +3396,7 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
     .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
 
   if (levels.length === 0) {
-    res.json({ nodeId, levels: [] });
+    res.json({ nodeId, cogPathStatus, levels: [] });
     return;
   }
 
@@ -3373,6 +3426,7 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
 
   res.json({
     nodeId,
+    cogPathStatus,
     levels: levels.map((l) => ({
       ...l,
       preferredInteractionTypes: (l.preferredInteractionTypes ?? []) as string[],
@@ -3414,11 +3468,22 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
     .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
     .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
 
+  const [priorStatusRow] = await db
+    .select({ cogPathStatus: (lessonNodesTable as any).cogPathStatus, hasTc: lessonNodesTable.childFriendlyExplanation })
+    .from(lessonNodesTable)
+    .where(eq(lessonNodesTable.id, nodeId))
+    .limit(1);
+  const priorIsConfirmed = (priorStatusRow as any)?.cogPathStatus === "confirmed";
+  const priorHasTc = !!((priorStatusRow as any)?.hasTc);
+
   const hasTeacherEdits = existingLevels.some((l) => l.provenance === "teacher_authored");
-  if (hasTeacherEdits && !force) {
+  if ((hasTeacherEdits || priorIsConfirmed) && !force) {
     res.status(409).json({
       error: "TEACHER_EDITS_EXIST",
-      message: "Ուսուցիչը արդեն խմբագրել է ճանաչողական ուղին։ Վերաստեղծե՞լ և կորցնել փոփoxUtYunNere?",
+      isConfirmed: priorIsConfirmed,
+      message: priorIsConfirmed
+        ? "Oucutsichn hastatatsrel e channachogakan ughiny. Vertasteghtsele kartsne hastatumey?"
+        : "Oucutsichn ardem khmbagrel e channachogakan ughiny. Vertasteghtsele kartsne khmbaghrumnery?",
     });
     return;
   }
@@ -3501,6 +3566,11 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
       .where(eq(lessonNodesTable.id, nodeId));
   }
 
+  // Phase 2A R3: set cogPathStatus = 'needs_review'; if was confirmed + TC exists → mark stale
+  const cogStatusUpdates: Record<string, unknown> = { cogPathStatus: "needs_review" };
+  if (priorIsConfirmed && priorHasTc) cogStatusUpdates.teachingContentStale = true;
+  await db.update(lessonNodesTable).set(cogStatusUpdates).where(eq(lessonNodesTable.id, nodeId));
+
   logger.info({ lessonId, nodeId, levelCount: result.levels.length }, "cognitive path generated");
 
   // Return the freshly-persisted path (same shape as GET)
@@ -3512,12 +3582,121 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
 
   res.json({
     nodeId,
+    cogPathStatus: "needs_review",
     levels: saved.map((l) => ({
       ...l,
       preferredInteractionTypes: (l.preferredInteractionTypes ?? []) as string[],
       tasks: [],
     })),
   });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path
+// Teacher explicitly confirms the cognitive path. Requirements: ≥1 level, exactly 1 ceiling.
+// Sets cogPathStatus = 'confirmed' on lesson_nodes.
+router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const levels = await db
+    .select()
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId));
+
+  if (levels.length === 0) {
+    res.status(422).json({ error: "NO_LEVELS", message: "Channachogakan ughine bats e. Nakhapez ksteghtsi." });
+    return;
+  }
+  const ceilings = levels.filter((l) => l.isTargetCeiling);
+  if (ceilings.length !== 1) {
+    res.status(422).json({ error: "CEILING_REQUIRED", message: `Petq e lini kovki mek thirakayin macardak. Ayzhm: ${ceilings.length}.` });
+    return;
+  }
+
+  await db.update(lessonNodesTable).set({ cogPathStatus: "confirmed" } as any).where(eq(lessonNodesTable.id, nodeId));
+  res.json({ cogPathStatus: "confirmed", nodeId });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels
+// Add a single cognitive level (teacher-authored). Invalidates confirmed path.
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const { cognitiveLevel, performanceObjective, successCriterion, minimumIndependentEvidence, preferredInteractionTypes } = req.body as {
+    cognitiveLevel?: string;
+    performanceObjective?: string;
+    successCriterion?: string;
+    minimumIndependentEvidence?: number;
+    preferredInteractionTypes?: string[];
+  };
+  if (!cognitiveLevel) { res.status(400).json({ error: "cognitiveLevel required" }); return; }
+
+  const existing = await db
+    .select({ seq: lessonNodeCognitiveLevelsTable.sequence })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId));
+  const nextSeq = existing.length > 0 ? Math.max(...existing.map((r) => r.seq)) + 1 : 1;
+
+  const [inserted] = await db.insert(lessonNodeCognitiveLevelsTable).values({
+    lessonNodeId: nodeId,
+    cognitiveLevel,
+    sequence: nextSeq,
+    isApplicable: true,
+    isTargetCeiling: false,
+    performanceObjective: performanceObjective ?? null,
+    successCriterion: successCriterion ?? null,
+    provenance: "teacher_authored",
+    minimumIndependentEvidence: minimumIndependentEvidence ?? 3,
+    preferredInteractionTypes: preferredInteractionTypes ?? [],
+  }).returning();
+
+  await invalidateCogPathConfirmation(nodeId);
+
+  res.status(201).json({ ...inserted, preferredInteractionTypes: (inserted.preferredInteractionTypes ?? []) as string[], tasks: [] });
+});
+
+// POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder
+// Reorder cognitive levels by providing the new ordered level ID array.
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const node = await getCogNode(lessonId, nodeId);
+  if (!node) { res.status(404).json({ error: "Node not found" }); return; }
+
+  const { orderedLevelIds } = req.body as { orderedLevelIds?: number[] };
+  if (!Array.isArray(orderedLevelIds) || orderedLevelIds.length === 0) {
+    res.status(400).json({ error: "orderedLevelIds required" });
+    return;
+  }
+
+  // Two-pass update to avoid unique-sequence constraint violations during reorder
+  await db.transaction(async (tx) => {
+    const offset = orderedLevelIds.length + 1000;
+    for (let i = 0; i < orderedLevelIds.length; i++) {
+      await tx.update(lessonNodeCognitiveLevelsTable)
+        .set({ sequence: offset + i })
+        .where(and(eq(lessonNodeCognitiveLevelsTable.id, orderedLevelIds[i]), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)));
+    }
+    for (let i = 0; i < orderedLevelIds.length; i++) {
+      await tx.update(lessonNodeCognitiveLevelsTable)
+        .set({ sequence: i + 1 })
+        .where(and(eq(lessonNodeCognitiveLevelsTable.id, orderedLevelIds[i]), eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)));
+    }
+  });
+
+  await invalidateCogPathConfirmation(nodeId);
+  res.json({ reordered: orderedLevelIds.length });
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update
@@ -3571,6 +3750,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update",
 
   await db.update(lessonNodeCognitiveLevelsTable).set(updates).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
 
+  // Invalidate confirmation if this node's cog path was confirmed
+  await invalidateCogPathConfirmation(nodeId);
+
   const [updated] = await db
     .select()
     .from(lessonNodeCognitiveLevelsTable)
@@ -3598,6 +3780,8 @@ router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requ
     .limit(1);
   if (!level) { res.status(404).json({ error: "Level not found" }); return; }
 
+  // Invalidate confirmation before deleting (must check confirmed state first)
+  await invalidateCogPathConfirmation(nodeId);
   await db.delete(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
   res.json({ success: true });
 });

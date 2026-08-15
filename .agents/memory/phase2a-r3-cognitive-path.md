@@ -1,44 +1,106 @@
 ---
 name: Phase 2A R3 Cognitive Path
-description: Architecture and contracts for the cognitive path generation + teacher review system built in Phase 2A Round 3.
+description: Cognitive path review workflow, confirmation gate, TC staleness, add/reorder levels, routes, and test coverage.
 ---
 
-## What was built
-- `generateCognitivePath(input: CogPathInput): Promise<CogPathGenerationResult>` in `lesson-mapping.ts`
-  - Model: `deepseek/deepseek-v4-flash`, `response_format: json_object`, retry-once
-  - Returns `{ nodeId, skipped, skipReason?, levels }` — no `ok` or `error` fields
-  - Enforces exactly-one ceiling internally (doesn't throw on bad AI output)
-- 6 routes on `POST/GET /lessons/:lessonId/nodes/:nodeId/...`:
-  - `GET cognitive-path` — fetch + join tasks + exercise details
-  - `POST generate-cognitive-path` — 409 `TEACHER_EDITS_EXIST` if teacher_authored rows present and `force` not set; deletes old, inserts new, syncs `targetBloomLevel`
-  - `POST cognitive-levels/:levelId/update` — partial update, clears old ceiling before setting new one, marks `teacher_authored`
-  - `DELETE cognitive-levels/:levelId` — cascades tasks
-  - `POST cognitive-tasks` — 201 on link
-  - `DELETE cognitive-tasks/:taskId` — unlink only
+## Cognitive Path Status Machine
 
-## CogPathInput shape (required fields)
-```typescript
-{ nodeId, title, learningObjective, theoryContent, blockType,
-  subjectName, lessonTitle, topicTitle,
-  exercises: Array<{ exerciseId: string; exerciseText: string }>,  // ← exerciseText not exerciseTextVerbatim
-  childFriendlyExplanation?, basicExamples?, existingLevels? }
+`lesson_nodes` has two new columns (added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`):
+- `cog_path_status TEXT` — null → 'needs_review' → 'confirmed'
+- `teaching_content_stale BOOLEAN NOT NULL DEFAULT false`
+
+**Must apply to BOTH databases when schema changes:**
+- Main DB: `psql "$DATABASE_URL"`
+- Test DB: `psql "$TEST_DATABASE_URL"`
+
+## Routes (all under `/lessons/:lessonId/nodes/:nodeId/`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `generate-cognitive-path` | Generate or force-regenerate; sets `cogPathStatus='needs_review'` |
+| POST | `confirm-cognitive-path` | Teacher confirm; validates ≥1 level and exactly 1 ceiling |
+| GET  | `cognitive-path` | Returns levels + `cogPathStatus` from node row |
+| POST | `cognitive-levels` | Add a single level (teacher_authored) |
+| POST | `cognitive-levels/reorder` | Reorder all levels (two-pass to avoid unique constraint) |
+| POST | `cognitive-levels/:id/update` | Edit level fields; calls `invalidateCogPathConfirmation` |
+| DELETE | `cognitive-levels/:id` | Remove level; calls `invalidateCogPathConfirmation` |
+
+## Force-Regeneration Guard (generate-cognitive-path route)
+
+Before the teacher-edits check:
+1. Query `priorStatusRow` → get `cogPathStatus` and `childFriendlyExplanation` (for TC detection)
+2. `priorIsConfirmed = cogPathStatus === 'confirmed'`
+3. `priorHasTc = !!childFriendlyExplanation`
+4. Block (409) if `(hasTeacherEdits || priorIsConfirmed) && !force`
+5. Response includes `isConfirmed` flag so frontend can differentiate dialog text
+
+## invalidateCogPathConfirmation helper
+
+Located before the router in `lessons.ts`. Called by update/delete level routes.
+```
+if priorIsConfirmed && priorHasTc → sets cogPathStatus='needs_review' + teachingContentStale=true
+if priorIsConfirmed && !priorHasTc → sets cogPathStatus='needs_review' only (no stale)
+if not confirmed → no-op
 ```
 
-## Frontend (teacher-dashboard.tsx / LessonNodesPanel)
-- State: `cogPathOpen`, `cogPathData`, `cogPathLoading`, `cogPathGenerating`, `cogPathError`, `cogPathForceNode`, `cogLevelEditId`, `cogLevelEditForm`, `cogLevelSaving`
-- Local types `CogTask`, `CogLevel`, `CogPathData` defined inside component (not exported)
-- Handlers: `toggleCogPath`, `generateCogPath`, `startEditCogLevel`, `saveCogLevel`, `setCogCeiling`, `deleteCogLevel`, `linkExercise`, `unlinkTask`
-- Block inserted after "Add exercise" section in `renderNodeCard`, gated by `cogPathOpen[n.id]`
+## Teaching Content Gate (enrich route)
 
-## Test patterns
-- `test:phase2a-r3` uses same mini-runner as R2 (no Node.js built-in test runner)
-- AI tests guarded by `RUN_AI_TESTS=1`; 26/30 run unconditionally
-- Fixtures: create subject → lesson → 2 nodes → 1 exercise in `setup()`, teardown deletes lesson (cascades)
-- R2 T22/T23 are pre-existing test-DB data gaps (test DB lacks physics knowledge_nodes / evidence rows)
+`POST /lessons/:lessonId/nodes/:nodeId/enrich` is gated by `cogPathStatus === 'confirmed'`.
+- Returns 403 `COG_PATH_NOT_CONFIRMED` if not confirmed.
+- On success, fetches confirmed levels and passes as `cogPath` to `buildPhase2Prompt`.
+- On success, clears `teachingContentStale = false`.
 
-## Real-data pilot results (3 nodes)
-- Node 1293 (Grammar, 596 chars): remember→understand→🎯apply (3 levels)
-- Node 1291 (Grammar, 432 chars): remember→understand→🎯apply (3 levels)
-- Node 2021 (Molecules, 168 chars): remember→🎯understand (2 levels) — correctly fewer for thin content
+## Phase2Input / buildPhase2Prompt
 
-**Why:** Definition/concept nodes with short theory correctly get 2–3 levels, not all 6. The AI respects pedagogical density.
+`ConfirmedCogLevel` interface exported from `lesson-mapping.ts`.
+`Phase2Input.cogPath?: ConfirmedCogLevel[]` — optional; passed only when gate is open.
+`buildPhase2Prompt` adds `COGNITIVE CALIBRATION` section when `cogPath` is present.
+`PHASE2_SYSTEM` rule 6: must align TC with the target ceiling cognitive level.
+
+## Frontend (teacher-dashboard.tsx) UI States
+
+**Cog path header toggle button:**
+- Shows `✓ Hastatvel` (emerald badge) when `cogPathStatus === 'confirmed'`
+- Shows `⏳ Gashmvum e` (amber badge) when `cogPathStatus === 'needs_review'`
+
+**Cog path panel:**
+- Generate/Regenerate button always visible (when not loading)
+- **Confirm button** (`✓ Hastatsel channachogakan ughiny`): emerald, visible when `cogPathStatus === 'needs_review'` + levels exist
+- `confirmCogPath(nodeId)` handler calls `POST /confirm-cognitive-path`
+- **Force-confirm dialog**: differentiates confirmed path vs teacher-edit-only wording based on `cogPathStatus`
+- **Reorder buttons**: ↑/↓ on each level card header; calls `reorderCogLevel(nodeId, levelId, dir, levels)`
+- **Add-level form**: `+ Avel channachogakan macardak` → inline form with Bloom level select + optional PO/SC fields
+
+**Enrich node button states:**
+- STATE A (no cog path): disabled ghost + 🧠 label
+- STATE B (needs_review): disabled ghost + 🧠 label  
+- STATE C (confirmed): enabled normal
+- STATE D (confirmed + TC stale): amber ⚠️🧠 warning style
+
+## New state vars in teacher-dashboard.tsx
+
+- `cogPathConfirming: Record<number, boolean>` — per-node confirming spinner
+- `addLevelOpen: Record<number, boolean>` — inline form visibility
+- `addLevelForm: Record<number, { cognitiveLevel: string; performanceObjective: string; successCriterion: string }>` 
+- `addLevelSaving: Record<number, boolean>` — add-level save spinner
+
+## Test Coverage
+
+File: `artifacts/api-server/src/lib/__tests__/phase2a-r3-closure.test.ts`
+Runner: `pnpm run test:phase2a-r3-closure`
+Result: 30/30 passing (T01–T30)
+
+Tests cover:
+- T01–T04: cogPathStatus + teachingContentStale column basics
+- T05–T07: Confirmation validation preconditions (zero levels, no ceiling, one ceiling)
+- T08–T10: Level management (add teacher_authored, delete, reorder two-pass)
+- T11–T13: Level field updates (ceiling, MIE, interaction types)
+- T14–T15: Task link and cascade delete
+- T16–T18: TC gate states (A=null, B=needs_review, C=confirmed)
+- T19: Confirmed context (PO+SC) queryable for prompt
+- T20–T22: Staleness lifecycle (set, TC preserved, cleared on regen)
+- T23–T24: Regeneration safety (priorIsConfirmed blocks, force sets needs_review)
+- T25–T29: Other subsystems unaffected (title, sequence, LO, bloomLevel, authoring status)
+- T30: Zero test pollution (Beta node untouched)
+
+**Why:** Keep test DB migrations in sync — the `cog_path_status` + `teaching_content_stale` columns must be applied to `heliumdb_test` independently.

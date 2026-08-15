@@ -1,0 +1,404 @@
+PHASE 2A ROUND 3 — FINAL CLOSURE
+TEACHER CONFIRMATION + GENERATION ORDER GATE + FULL EDITABILITY
+
+STRICT SCOPE
+
+Round 3 core implementation already exists.
+
+Do NOT redesign the Cognitive Enrichment schema.
+Do NOT batch-enrich production lessons.
+Do NOT start learner cognitive achievement.
+Do NOT change AI Teacher runtime.
+Do NOT change quiz/mastery/confidence/Knowledge Tree logic.
+
+Close ONLY the missing Teacher Review workflow and generation dependency.
+
+==================================================
+1. AUDIT CURRENT ROUND 3 FIRST
+==================================================
+
+Before changes, report the ACTUAL current capabilities of the new
+Cognitive Enrichment UI/API.
+
+For one existing MicroNode verify whether teacher can currently:
+
+- generate path
+- regenerate path
+- edit performanceObjective
+- edit successCriterion
+- edit minimumIndependentEvidence
+- edit preferredInteractionTypes
+- add an applicable cognitive level
+- remove a cognitive level
+- reorder levels
+- change target ceiling
+- link/unlink source exercise
+- explicitly CONFIRM the cognitive path
+
+Return YES/NO for each.
+
+Do not assume functionality from backend routes alone.
+Verify actual teacher UI.
+
+==================================================
+2. EXPLICIT TEACHER CONFIRMATION
+==================================================
+
+AI-generated Cognitive Enrichment is a PROPOSAL.
+
+It must not become canonical merely because generation succeeded.
+
+Implement a clear review state:
+
+Generated / needs review
+→ Teacher edits if needed
+→ Teacher confirms
+→ Confirmed
+
+Use the existing repository status/review conventions if Round 2 schema
+already supports them.
+
+If Round 2 schema lacks the minimum state required for confirmation,
+STOP and report the exact blocker before changing schema.
+
+Required UI:
+
+AI-generated:
+«Սպասում է հաստատման»
+
+Teacher-confirmed:
+«Հաստատված»
+
+Provide an explicit:
+
+«Հաստատել ճանաչողական ուղին»
+
+action.
+
+Teacher confirmation must persist across refresh.
+
+==================================================
+3. FULL TEACHER EDITABILITY
+==================================================
+
+All generated Cognitive Enrichment fields must be teacher-controlled.
+
+Teacher must be able to edit:
+
+- applicable levels
+- level order
+- target cognitive ceiling
+- performance objective
+- success criterion
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- exercise ↔ cognitive-level linkage
+
+If any are missing in the current UI, implement them.
+
+Important invariants:
+
+- no duplicate level
+- exactly one target ceiling after confirmation
+- target must be one of applicable levels
+- order deterministic
+- removing current ceiling requires selecting another ceiling before confirm
+
+==================================================
+4. TWO-STAGE GENERATION WORKFLOW — LOCKED
+==================================================
+
+We have TWO separate enrichment generators:
+
+A. Cognitive Enrichment
+B. Additional Teaching Content
+
+They must remain separate.
+
+Required order:
+
+Mapping / MicroNode
+→ Cognitive Enrichment generation
+→ Teacher Review/Edit
+→ Cognitive Enrichment CONFIRMED
+→ Additional Teaching Content generation
+
+The existing Additional Teaching Content generator must NOT be available
+before Cognitive Enrichment is confirmed.
+
+==================================================
+5. TEACHING CONTENT BUTTON GATE
+==================================================
+
+Audit the current button that generates Phase 2 teaching content.
+
+Implement these states per MicroNode:
+
+STATE A
+No Cognitive Enrichment
+→ Teaching Content button DISABLED
+
+Explain visually:
+«Նախ ստեղծեք և հաստատեք ճանաչողական ուղին»
+
+STATE B
+Cognitive Enrichment generated but not confirmed
+→ Teaching Content button DISABLED
+
+Explain:
+«Նախ հաստատեք ճանաչողական ուղին»
+
+STATE C
+Cognitive Enrichment confirmed
+→ Teaching Content button ENABLED
+
+STATE D
+Teaching Content already exists
+→ show regeneration state according to current product behavior
+
+Do NOT hide the button entirely.
+Disabled + explanatory state is preferable.
+
+==================================================
+6. TEACHING CONTENT MUST RECEIVE CONFIRMED COGNITIVE CONTEXT
+==================================================
+
+Audit current generatePhase2Content() input.
+
+Today it uses things such as:
+- node title
+- learningObjective
+- theoryContent
+- blockType
+- exercises
+
+Update the Teaching Content generation contract so that AFTER the gate
+opens it also receives the CONFIRMED cognitive design:
+
+- applicable cognitive path
+- target cognitive ceiling
+- per-level performance objectives
+- per-level success criteria
+- relevant source exercise links
+
+The purpose:
+
+Teaching Content must answer:
+"How do we teach THIS MicroNode up to its confirmed cognitive target?"
+
+Example:
+
+If target = Understand:
+do not unnecessarily generate advanced application/analysis teaching assets.
+
+If target = Apply:
+teaching content should support progression through explanation toward
+application.
+
+IMPORTANT:
+Do not merge the two generators.
+Cognitive Enrichment remains upstream input.
+
+==================================================
+7. UPSTREAM CHANGE → DOWNSTREAM CONTENT BECOMES OUTDATED
+==================================================
+
+If teacher changes a CONFIRMED cognitive path AFTER Teaching Content
+already exists:
+
+DO NOT delete Teaching Content.
+
+DO NOT silently regenerate it.
+
+Mark it:
+
+«Պահանջվում է վերաստեղծում»
+
+or equivalent explicit stale/outdated state.
+
+Reason:
+its upstream cognitive design changed.
+
+Teacher then explicitly chooses whether to regenerate.
+
+Preserve teacher-edited existing content until teacher decides.
+
+==================================================
+8. TEACHER EDITS MUST NEVER BE SILENTLY OVERWRITTEN
+==================================================
+
+For BOTH:
+
+- Cognitive Enrichment
+- Additional Teaching Content
+
+regeneration must require explicit teacher action.
+
+If teacher-edited/confirmed data exists:
+show confirmation before replacement.
+
+No automatic destructive overwrite.
+
+==================================================
+9. SOURCE MATERIAL IMMUTABILITY
+==================================================
+
+Do not alter:
+
+- textbook theory verbatim
+- source exercises verbatim
+- source provenance
+
+Teacher edits/generated content must remain separate from immutable source truth.
+
+==================================================
+10. REAL PILOT DATA AUDIT
+==================================================
+
+The previous Round 3 report generated Cognitive Enrichment for 3 real nodes.
+
+Audit those exact records.
+
+For each report:
+
+- lessonNodeId
+- title
+- whether rows were persisted
+- current review/confirmation state
+- provenance
+- whether teacher has actually confirmed them
+
+Do NOT delete them automatically.
+
+If they are AI-generated unconfirmed proposals:
+leave them as unconfirmed and report that.
+
+Do not classify legitimate pilot enrichment as test pollution unless there
+is explicit test-only provenance.
+
+==================================================
+11. DO NOT BATCH ENRICH YET
+==================================================
+
+Do NOT implement proposed follow-up #66 yet.
+
+No full-production batch generation until this review/confirmation workflow
+and downstream gate are proven.
+
+==================================================
+12. EDGE-CASE TESTS
+==================================================
+
+Include the useful parts of proposed follow-up #68.
+
+Required tests:
+
+T01 generate → needs-review state
+T02 refresh preserves generated state
+T03 teacher edit persists
+T04 teacher confirm persists
+T05 cannot confirm with zero target ceiling
+T06 cannot confirm with multiple target ceilings
+T07 cannot confirm duplicate cognitive levels
+T08 add level
+T09 remove level
+T10 reorder levels
+T11 change target ceiling
+T12 edit minimumIndependentEvidence
+T13 edit preferredInteractionTypes
+T14 exercise link persists
+T15 exercise unlink persists
+
+GENERATION GATE
+
+T16 no cognitive path → Teaching Content disabled
+T17 unconfirmed cognitive path → disabled
+T18 confirmed cognitive path → enabled
+T19 Teaching Content generation receives confirmed cognitive context
+
+DEPENDENCY INVALIDATION
+
+T20 existing Teaching Content + cognitive path edit
+    → Teaching Content marked outdated
+T21 existing Teaching Content is NOT deleted
+T22 no automatic regeneration
+
+REGENERATION SAFETY
+
+T23 cognitive regeneration does not silently overwrite teacher-confirmed data
+T24 teaching-content regeneration does not silently overwrite teacher edits
+
+REGRESSION
+
+T25 mapper unchanged
+T26 source exercises unchanged
+T27 quiz/mastery unchanged
+T28 Knowledge Tree unchanged
+T29 Confidence unchanged
+T30 zero test pollution
+
+==================================================
+13. MANUAL UAT
+==================================================
+
+Give exact browser steps so I can test:
+
+1. Open teacher lesson.
+2. Open MicroNode.
+3. Cognitive path absent.
+4. Verify Teaching Content button disabled.
+5. Generate cognitive path.
+6. Verify it says waiting for confirmation.
+7. Edit one level.
+8. Add/remove/change level if supported.
+9. Change target ceiling.
+10. Save.
+11. Refresh — edits remain.
+12. Teaching Content still disabled.
+13. Confirm cognitive path.
+14. Teaching Content button becomes enabled.
+15. Generate Teaching Content.
+16. Verify generated content reflects confirmed target.
+17. Edit cognitive path again.
+18. Verify existing Teaching Content remains but is marked
+    «Պահանջվում է վերաստեղծում».
+19. Verify nothing was silently deleted/regenerated.
+
+==================================================
+14. FINAL REPORT
+==================================================
+
+Return:
+
+A. Capability matrix before closure
+B. Files changed
+C. Teacher confirmation model
+D. Full editability result
+E. Teaching Content gate implementation
+F. Cognitive context passed to Teaching Content generator
+G. Downstream outdated/invalidation behavior
+H. Regeneration safety
+I. Pilot data audit
+J. Tests T01–T30
+K. Manual UAT steps
+L. Regression results
+M. PASS / FAIL
+
+FINAL VERDICT:
+
+PHASE 2A ROUND 3 = CLOSED
+
+only if:
+
+- Cognitive Enrichment is teacher-reviewable and explicitly confirmed
+- all cognitive fields are editable
+- Teaching Content is disabled until cognitive confirmation
+- Teaching Content consumes confirmed cognitive context
+- upstream cognitive edits mark downstream content outdated
+- no teacher/source content is silently overwritten
+- all tests pass
+
+STOP.
+
+DO NOT batch-enrich production nodes.
+DO NOT start learner cognitive achievement.

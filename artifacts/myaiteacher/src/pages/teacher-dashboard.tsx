@@ -895,7 +895,7 @@ function LessonNodesPanel({
   // ── Phase 2A R3: Cognitive Path ────────────────────────────────────────────
   type CogTask = { id: number; cognitiveLevelId: number; lessonExerciseId: number | null; taskProvenance: string; exercise: { exerciseId: string; exerciseTextVerbatim: string; exerciseTextEdited: string | null } | null };
   type CogLevel = { id: number; cognitiveLevel: string; sequence: number; isApplicable: boolean; isTargetCeiling: boolean; provenance: string; performanceObjective: string | null; successCriterion: string | null; minimumIndependentEvidence: number; preferredInteractionTypes: string[]; tasks: CogTask[] };
-  type CogPathData = { nodeId: number; levels: CogLevel[] };
+  type CogPathData = { nodeId: number; cogPathStatus: string | null; levels: CogLevel[] };
 
   const [cogPathOpen,       setCogPathOpen]       = useState<Record<number, boolean>>({});
   const [cogPathData,       setCogPathData]       = useState<Record<number, CogPathData | null>>({});
@@ -906,6 +906,10 @@ function LessonNodesPanel({
   const [cogLevelEditId,    setCogLevelEditId]    = useState<number | null>(null);
   const [cogLevelEditForm,  setCogLevelEditForm]  = useState<{ performanceObjective: string; successCriterion: string; minimumIndependentEvidence: number; preferredInteractionTypes: string[] } | null>(null);
   const [cogLevelSaving,    setCogLevelSaving]    = useState(false);
+  const [cogPathConfirming, setCogPathConfirming] = useState<Record<number, boolean>>({});
+  const [addLevelOpen,      setAddLevelOpen]      = useState<Record<number, boolean>>({});
+  const [addLevelForm,      setAddLevelForm]      = useState<Record<number, { cognitiveLevel: string; performanceObjective: string; successCriterion: string }>>({});
+  const [addLevelSaving,    setAddLevelSaving]    = useState<Record<number, boolean>>({});
 
   const COG_LEVEL_LABELS: Record<string, string> = { remember: 'Հիշել', understand: 'Հասկանալ', apply: 'Կիրառել', analyze: 'Վերլուծել', evaluate: 'Գнахател', create: 'Ствceghтсел' };
   const ALL_INTERACTION_TYPES = ['multiple_choice','multi_select','true_false','matching','classification','ordering','numeric_answer','short_answer','constructed_response','problem_solving'];
@@ -949,7 +953,7 @@ function LessonNodesPanel({
         console.error('[cog-path] generate error response', r.status, data);
         setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? `Uхumbakutyun sxal (${r.status})` }));
       } else {
-        setCogPathData((d) => ({ ...d, [nodeId]: { nodeId, levels: data.levels ?? [] } }));
+        setCogPathData((d) => ({ ...d, [nodeId]: { nodeId, cogPathStatus: (data as any).cogPathStatus ?? 'needs_review', levels: (data as any).levels ?? [] } }));
         setCogPathForceNode(null);
       }
     } catch (err) {
@@ -1001,6 +1005,65 @@ function LessonNodesPanel({
 
   const unlinkTask = async (taskId: number, nodeId: number) => {
     await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${authToken ?? ""}` } });
+    await loadCogPath(nodeId);
+  };
+
+  // Phase 2A R3: confirm cognitive path
+  const confirmCogPath = async (nodeId: number) => {
+    if (cogPathConfirming[nodeId]) return;
+    setCogPathConfirming((c) => ({ ...c, [nodeId]: true }));
+    setCogPathError((e) => { const n = { ...e }; delete n[nodeId]; return n; });
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/confirm-cognitive-path`, {
+        method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+      });
+      const data = await r.json() as { cogPathStatus?: string; error?: string; message?: string };
+      if (r.ok) {
+        setCogPathData((d) => {
+          const prev = d[nodeId];
+          return { ...d, [nodeId]: prev ? { ...prev, cogPathStatus: 'confirmed' } : { nodeId, cogPathStatus: 'confirmed', levels: [] } };
+        });
+        refreshNodes(); // update node list so enrichNode button reflects confirmed state
+      } else {
+        setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? 'Hastatumn xalech ar' }));
+      }
+    } catch { setCogPathError((e) => ({ ...e, [nodeId]: 'Kapi sxal' })); }
+    finally { setCogPathConfirming((c) => { const n = { ...c }; delete n[nodeId]; return n; }); }
+  };
+
+  // Phase 2A R3: add a single cognitive level (teacher-authored)
+  const addCogLevel = async (nodeId: number) => {
+    const form = addLevelForm[nodeId];
+    if (!form?.cognitiveLevel) return;
+    setAddLevelSaving((s) => ({ ...s, [nodeId]: true }));
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels`, {
+        method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cognitiveLevel: form.cognitiveLevel, performanceObjective: form.performanceObjective || null, successCriterion: form.successCriterion || null }),
+      });
+      if (r.ok) {
+        setAddLevelOpen((a) => ({ ...a, [nodeId]: false }));
+        setAddLevelForm((f) => { const n = { ...f }; delete n[nodeId]; return n; });
+        await loadCogPath(nodeId);
+      } else {
+        const d = await r.json() as { error?: string };
+        setCogPathError((e) => ({ ...e, [nodeId]: d.error ?? 'Avel xalech ar' }));
+      }
+    } finally { setAddLevelSaving((s) => { const n = { ...s }; delete n[nodeId]; return n; }); }
+  };
+
+  // Phase 2A R3: reorder cognitive levels (up/down swap)
+  const reorderCogLevel = async (nodeId: number, levelId: number, direction: 'up' | 'down', levels: CogLevel[]) => {
+    const idx = levels.findIndex((l) => l.id === levelId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= levels.length) return;
+    const newLevels = [...levels];
+    [newLevels[idx], newLevels[swapIdx]] = [newLevels[swapIdx], newLevels[idx]];
+    await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/cognitive-levels/reorder`, {
+      method: 'POST', headers: { Authorization: `Bearer ${authToken ?? ""}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedLevelIds: newLevels.map((l) => l.id) }),
+    });
     await loadCogPath(nodeId);
   };
 
@@ -1690,20 +1753,36 @@ function LessonNodesPanel({
                 title="Դitel — ամovornakan deghekatvats tveyal"
               className="text-xs text-muted-foreground hover:text-primary/80 transition-colors"
               >👁</button>
-              {/* 🧠 Per-node Phase 2 enrichment */}
-              <button
-                onClick={() => enrichNode(n.id)}
-                disabled={enrichingNodeId !== null}
-                title="Harstatsnel mіаin ays MicroNode-y (Phase 2)"
-                className="text-xs text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {enrichingNodeId === n.id
-                  ? <span className="inline-block w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  : enrichNodeDone[n.id] ? "✅" : "🧠"}
-              </button>
-              {enrichNodeErrors[n.id] && (
-                <span className="text-[8px] text-red-400 leading-tight text-right max-w-[80px]" title={enrichNodeErrors[n.id]}>!</span>
-              )}
+              {/* 🧠 Per-node Phase 2 enrichment — gated by confirmed cognitive path (Phase 2A R3) */}
+              {(() => {
+                const nCPS = (n as any).cogPathStatus as string | null;
+                const nTCS = !!((n as any).teachingContentStale);
+                if (!nCPS || nCPS !== 'confirmed') {
+                  return (
+                    <span
+                      title={!nCPS ? "Նax steghtsek ev hastatatsek channachogakan ughiny" : "Նax hastatatsek channachogakan ughiny (✓ Hastatsel knopka)"}
+                      className="text-xs text-white/15 cursor-not-allowed select-none"
+                    >🧠</span>
+                  );
+                }
+                return (
+                  <>
+                    <button
+                      onClick={() => enrichNode(n.id)}
+                      disabled={enrichingNodeId !== null}
+                      title={nTCS ? "Channachogakan ughine khmbagryel e. Verasteghtsit usoumnakan bagrarik" : "Harstatsnel ays MicroNode-i usoumnakan bagrarik (Phase 2)"}
+                      className={"text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed " + (nTCS ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground hover:text-indigo-400")}
+                    >
+                      {enrichingNodeId === n.id
+                        ? <span className="inline-block w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        : enrichNodeDone[n.id] ? "✅" : (nTCS ? "⚠️🧠" : "🧠")}
+                    </button>
+                    {enrichNodeErrors[n.id] && (
+                      <span className="text-[8px] text-red-400 leading-tight text-right max-w-[80px]" title={enrichNodeErrors[n.id]}>!</span>
+                    )}
+                  </>
+                );
+              })()}
               {/* ✏️ Edit */}
               <button
                 onClick={() => startEditNode(n)}
@@ -1877,6 +1956,12 @@ function LessonNodesPanel({
                   ({cogPathData[n.id]!.levels.map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
                 </span>
               ) : null}
+              {cogPathData[n.id]?.cogPathStatus === 'confirmed' && (
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">✓ Hastatvel</span>
+              )}
+              {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
+                <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">⏳ Gashmvum e</span>
+              )}
             </span>
             <span className="text-[10px]">{cogPathOpen[n.id] ? '▲' : '▼'}</span>
           </button>
@@ -1899,7 +1984,9 @@ function LessonNodesPanel({
               {cogPathForceNode === n.id && (
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 space-y-1.5">
                   <p className="text-[10px] text-amber-300 leading-relaxed">
-                    Ուsucichn arden khmbagrel e channachogakan ughiny. Vert egh i steghetsel ev kartsnel nakhkhin khmbaghrumner?
+                    {cogPathData[n.id]?.cogPathStatus === 'confirmed'
+                      ? "Channachogakan ughiny hastatvatsel e. Vertasteghtsele kartsne hastatumey ev usoumnakan bagrarikin nshanum e pahanjanvum e?"
+                      : "Oucutsichn ardem khmbagrel e channachogakan ughiny. Vertasteghtsele kartsne khmbaghrumnery?"}
                   </p>
                   <div className="flex gap-1.5">
                     <button onClick={() => { generateCogPath(n.id, true); }} className={btnSm + " bg-amber-500 text-black text-[10px]"}>Ayn, vertasteghcel</button>
@@ -1910,7 +1997,8 @@ function LessonNodesPanel({
 
               {/* Generate / Regenerate button */}
               {cogPathForceNode !== n.id && !cogPathLoading[n.id] && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
                   <button
                     onClick={() => generateCogPath(n.id, false)}
                     disabled={!!cogPathGenerating[n.id]}
@@ -1930,6 +2018,17 @@ function LessonNodesPanel({
                     <span className="text-[9px] text-indigo-400/50">
                       🎯 {COG_LEVEL_LABELS[cogPathData[n.id]!.levels.find((l) => l.isTargetCeiling)?.cognitiveLevel ?? ''] ?? ''}
                     </span>
+                  )}
+                  </div>
+                  {/* Confirm button — shown when path exists and not yet confirmed */}
+                  {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (cogPathData[n.id]?.levels.length ?? 0) > 0 && (
+                    <button
+                      onClick={() => confirmCogPath(n.id)}
+                      disabled={!!cogPathConfirming[n.id]}
+                      className={btnSm + " bg-emerald-600/70 text-white text-[10px] hover:bg-emerald-500/80 disabled:opacity-40"}
+                    >
+                      {cogPathConfirming[n.id] ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : '✓ Hastatsel channachogakan ughiny'}
+                    </button>
                   )}
                 </div>
               )}
@@ -1957,6 +2056,18 @@ function LessonNodesPanel({
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => reorderCogLevel(n.id, level.id, 'up', cogPathData[n.id]?.levels ?? [])}
+                          disabled={level.sequence === 1}
+                          title="Vered tanel"
+                          className="text-[10px] text-white/25 hover:text-white transition-colors disabled:opacity-20"
+                        >↑</button>
+                        <button
+                          onClick={() => reorderCogLevel(n.id, level.id, 'down', cogPathData[n.id]?.levels ?? [])}
+                          disabled={level.sequence === (cogPathData[n.id]?.levels.length ?? 0)}
+                          title="Devel tanel"
+                          className="text-[10px] text-white/25 hover:text-white transition-colors disabled:opacity-20"
+                        >↓</button>
                         {!level.isTargetCeiling && (
                           <button onClick={() => setCogCeiling(level.id, n.id)} title="Sahl thirakayin macardak" className="text-[10px] text-white/30 hover:text-indigo-400 transition-colors">🎯</button>
                         )}
@@ -2074,6 +2185,50 @@ function LessonNodesPanel({
                   </div>
                 );
               })}
+
+              {/* Add cognitive level */}
+              {!cogPathLoading[n.id] && (
+                !addLevelOpen[n.id] ? (
+                  <button
+                    onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: true })); setAddLevelForm((f) => ({ ...f, [n.id]: { cognitiveLevel: '', performanceObjective: '', successCriterion: '' } })); }}
+                    className="text-[10px] text-indigo-400/40 hover:text-indigo-300 transition-colors py-0.5"
+                  >+ Avel channachogakan macardak</button>
+                ) : (
+                  <div className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 p-2 space-y-1.5">
+                    <p className="text-[10px] text-indigo-300/70 font-medium">Nor channachogakan macardak</p>
+                    <select
+                      className={fieldCls + " text-[10px]"}
+                      value={addLevelForm[n.id]?.cognitiveLevel ?? ''}
+                      onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), cognitiveLevel: e.target.value } }))}
+                    >
+                      <option value="">-- Bloom macardak --</option>
+                      {Object.entries(COG_LEVEL_LABELS)
+                        .filter(([key]) => !(cogPathData[n.id]?.levels ?? []).some((l) => l.cognitiveLevel === key))
+                        .map(([key, label]) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                    </select>
+                    <textarea
+                      className={fieldCls + " resize-none text-[10px]"}
+                      rows={2}
+                      placeholder="Kataralakan npatak (Armenian)..."
+                      value={addLevelForm[n.id]?.performanceObjective ?? ''}
+                      onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), performanceObjective: e.target.value } }))}
+                    />
+                    <textarea
+                      className={fieldCls + " resize-none text-[10px]"}
+                      rows={2}
+                      placeholder="Hajoghutyun chanabanich (Armenian)..."
+                      value={addLevelForm[n.id]?.successCriterion ?? ''}
+                      onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), successCriterion: e.target.value } }))}
+                    />
+                    <div className="flex gap-1">
+                      <button onClick={() => addCogLevel(n.id)} disabled={!addLevelForm[n.id]?.cognitiveLevel || !!addLevelSaving[n.id]} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{addLevelSaving[n.id] ? '...' : 'Avel'}</button>
+                      <button onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: false })); setAddLevelForm((f) => { const nf = { ...f }; delete nf[n.id]; return nf; }); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Chegharkanel</button>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           )}
         </div>
