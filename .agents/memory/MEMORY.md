@@ -32,3 +32,4 @@
 - [Test isolation infrastructure](test-isolation-infra.md) — heliumdb_test + safety gate + fixture factory + S1–S7 safety tests; all 10 suites migrated; pg added to api-server devDeps; runId pattern for HTTP tests.
 - [Phase 2A R3 cognitive path](phase2a-r3-cognitive-path.md) — generateCognitivePath interface, route contracts, teacher UI state/handlers, test patterns, real-data pilot results (2–3 levels for Armenian grammar/physics nodes).
 - [Phase 2B Round 2 evidence model](phase2b-round2.md) — help endpoint contract, active-task tracking rules, evidence cap rule (MICRO_CHECK→MODERATE), help_events table, FK query pattern for test DB, Unicode-in-TSX rule.
+- [V2-R3 Decision Engine](v2r3-decision-engine.md) — pure-function pedagogical decision engine; mapErrorFamilyToAction takes pre-increment step; revisitRequired gate bug fixed (quality=NONE must not block KN write).

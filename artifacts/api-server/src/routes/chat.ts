@@ -17,6 +17,12 @@ import { logger } from "../lib/logger";
 import { enforceVerbatimExercise, isExerciseDeliveryTurn, effectiveExerciseText } from "../lib/exercise-delivery";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
+import {
+  decideNextPedagogicalAction,
+  type CognitiveLevelRow,
+  type LevelEvidenceSummary,
+  type PedagogicalDecision,
+} from "../services/pedagogicalDecisionEngine.js";
 
 // ── V2-R2 shared help executor ────────────────────────────────────────────────
 // Used by both the inline HELP intent path (text-based "oghni") and the
@@ -277,6 +283,8 @@ async function advanceNodeInSession(
     activeAttemptSequence:  0,
     activeHelpCount:        0,
     activeAssistanceLevel:  "none",
+    // V2-R3: reset remediation step on node advance
+    remediationStep:        0,
   };
   await db
     .update(lessonSessionsTable)
@@ -338,6 +346,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeAttemptSequence: number;
     activeHelpCount: number;
     activeAssistanceLevel: string;
+    // V2-R3: pedagogical remediation step (0 = initial, 1–5 = escalation)
+    remediationStep: number;
   };
   let session: SessionRef | null = null;
 
@@ -355,6 +365,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
   // FIX: hoisted to outer scope so the mastery-gate 0-exercise check below can see it.
   let classExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
+  // V2-R3: hoisted so the wasEval block and fire-and-forget evidence block can both access them.
+  let _pedagogicalDecision: PedagogicalDecision | null = null;
+  let _cognitivePath: CognitiveLevelRow[] = [];
+  let _activeCognitiveLevelRow: CognitiveLevelRow | null = null;
+  let _nextNodeHasCriticalDep = false;
 
   if (lessonId) {
     const [lessonRow] = await db
@@ -399,6 +414,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeAttemptSequence:  (sessionRow as any).activeAttemptSequence  ?? 0,
           activeHelpCount:        (sessionRow as any).activeHelpCount        ?? 0,
           activeAssistanceLevel:  (sessionRow as any).activeAssistanceLevel  ?? "none",
+          // V2-R3
+          remediationStep:        (sessionRow as any).remediationStep        ?? 0,
         };
         sessionId = sessionRow.id;
       }
@@ -456,6 +473,74 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .where(eq(lessonNodesTable.id, session.currentNodeId))
           .limit(1);
         currentNodeRecord = nodeRow ?? null;
+      }
+
+      // ── V2-R3: Fetch confirmed cognitive path for current node ─────────────
+      // Used by the Pedagogical Decision Engine.  Skipped when node is null.
+      // Variables are hoisted to outer scope (_cognitivePath etc.) so the
+      // wasEval block and fire-and-forget evidence block can both access them.
+      if (session?.currentNodeId) {
+        const _nodeId = session.currentNodeId; // narrow for callbacks
+        const _sessId = session.id;
+        const _sessActiveLevelId = session.activeCognitiveLevelId;
+
+        const cogRows = await db
+          .select({
+            id:                       lessonNodeCognitiveLevelsTable.id,
+            cognitiveLevel:           lessonNodeCognitiveLevelsTable.cognitiveLevel,
+            sequence:                 lessonNodeCognitiveLevelsTable.sequence,
+            isTargetCeiling:          lessonNodeCognitiveLevelsTable.isTargetCeiling,
+            isApplicable:             lessonNodeCognitiveLevelsTable.isApplicable,
+            minimumIndependentEvidence: lessonNodeCognitiveLevelsTable.minimumIndependentEvidence,
+            preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
+            performanceObjective:     (lessonNodeCognitiveLevelsTable as any).performanceObjective,
+            successCriterion:         (lessonNodeCognitiveLevelsTable as any).successCriterion,
+          })
+          .from(lessonNodeCognitiveLevelsTable)
+          .where(and(
+            eq(lessonNodeCognitiveLevelsTable.lessonNodeId, _nodeId),
+            eq(lessonNodeCognitiveLevelsTable.isApplicable, true),
+          ))
+          .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+
+        _cognitivePath = cogRows as CognitiveLevelRow[];
+
+        // Resolve active cognitive level row from session's stored id.
+        // If not yet set but a path exists, lazily point at the first level.
+        if (_sessActiveLevelId) {
+          _activeCognitiveLevelRow = _cognitivePath.find(
+            (r) => r.id === _sessActiveLevelId
+          ) ?? null;
+        } else if (_cognitivePath.length > 0) {
+          _activeCognitiveLevelRow = _cognitivePath[0];
+          await db
+            .update(lessonSessionsTable)
+            .set({ activeCognitiveLevelId: _cognitivePath[0].id } as any)
+            .where(eq(lessonSessionsTable.id, _sessId));
+        }
+
+        // Dependency gate: does the next node have a REQUIRED+CRITICAL dep on this node?
+        const allNodesForDep = await db
+          .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence })
+          .from(lessonNodesTable)
+          .where(eq(lessonNodesTable.lessonId, lessonId!))
+          .orderBy(asc(lessonNodesTable.sequence));
+        const curSeqForDep = allNodesForDep.find((n) => n.id === _nodeId)?.sequence ?? 0;
+        const nextNodeForDep = allNodesForDep.find((n) => n.sequence > curSeqForDep);
+        if (nextNodeForDep) {
+          const [critDep] = await db
+            .select({ id: lessonNodeDependenciesTable.id })
+            .from(lessonNodeDependenciesTable)
+            .where(and(
+              eq(lessonNodeDependenciesTable.lessonId, lessonId!),
+              eq(lessonNodeDependenciesTable.fromNodeId, _nodeId),
+              eq(lessonNodeDependenciesTable.toNodeId, nextNodeForDep.id),
+              eq(lessonNodeDependenciesTable.dependencyType, "REQUIRED"),
+              eq((lessonNodeDependenciesTable as any).requiredLevel, "CRITICAL"),
+            ))
+            .limit(1);
+          _nextNodeHasCriticalDep = !!critDep;
+        }
       }
 
       topicName = currentNodeRecord?.title ?? lesson.title;
@@ -1395,6 +1480,98 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .where(eq(lessonSessionsTable.id, session.id));
       }
 
+      // ── V2-R3: Pedagogical Decision Engine ──────────────────────────────────
+      // Query historical evidence for the current cognitive level then run the
+      // pure decision function.  No DB writes inside the engine itself.
+      {
+        let _levelEvidenceSummary: LevelEvidenceSummary | null = null;
+        if (_activeCognitiveLevelRow) {
+          const QUAL_RANK: Record<string, number> = {
+            NONE: 1, WEAK: 2, MODERATE: 3, STRONG: 4, CONCLUSIVE: 5,
+          };
+          const evRows = await db
+            .select({
+              wasCorrect:     (evidenceEventsTable as any).wasCorrect,
+              helpCount:      (evidenceEventsTable as any).helpCount,
+              assistanceLevel:(evidenceEventsTable as any).assistanceLevel,
+              metadata:       evidenceEventsTable.metadata,
+            })
+            .from(evidenceEventsTable)
+            .where(and(
+              eq((evidenceEventsTable as any).lessonSessionId, session.id),
+              eq((evidenceEventsTable as any).cognitiveLevel, _activeCognitiveLevelRow.cognitiveLevel),
+              eq((evidenceEventsTable as any).wasCorrect, true),
+            ));
+          const indRows = evRows.filter((e: any) =>
+            (e.helpCount ?? 0) <= 1 &&
+            (e.assistanceLevel === "none" || e.assistanceLevel === "light") &&
+            QUAL_RANK[(e.metadata as any)?.evidence_quality ?? "NONE"] >= 3
+          );
+          const bestQual = indRows.reduce<string | null>((best: string | null, e: any) => {
+            const q: string | null = (e.metadata as any)?.evidence_quality ?? null;
+            if (!q) return best;
+            if (!best || QUAL_RANK[q] > QUAL_RANK[best]) return q;
+            return best;
+          }, null);
+          _levelEvidenceSummary = {
+            independentCorrectCount: indRows.length,
+            totalCorrectCount:       evRows.length,
+            bestQuality:             (bestQual as any) ?? null,
+          };
+        }
+
+        _pedagogicalDecision = decideNextPedagogicalAction({
+          lessonNodeId:    session.currentNodeId!,
+          lessonId:        lessonId!,
+          sessionId:       session.id,
+          userId:          req.userId!,
+          nodeTeachingStage:       session.nodeTeachingStage,
+          remediationStep:         session.remediationStep,
+          activeCognitiveLevelId:  session.activeCognitiveLevelId,
+          activeCognitiveLevelRow: _activeCognitiveLevelRow,
+          cognitivePath:           _cognitivePath,
+          answerStatus:            aiResult.answer_evaluation.status,
+          evidenceQuality:         aiResult.answer_evaluation.evidence_quality,
+          errorFamily:             (aiResult.answer_evaluation as any).error_family ?? null,
+          errorStability:          (aiResult.answer_evaluation as any).error_stability ?? null,
+          activeHelpCount:         session.activeHelpCount,
+          activeAssistanceLevel:   session.activeAssistanceLevel,
+          activeAttemptSequence:   session.activeAttemptSequence,
+          activeTaskProvenance:    session.activeTaskProvenance,
+          levelEvidenceSummary:    _levelEvidenceSummary,
+          nextNodeId:              null,
+          nextNodeHasCriticalDependencyOnCurrentNode: _nextNodeHasCriticalDep,
+        });
+
+        // Persist remediationStep + any cognitive-level advance to the session.
+        // These writes happen synchronously (before res.json) so the next turn
+        // reads the updated values immediately.
+        const dUpdates: Record<string, unknown> = {
+          remediationStep: _pedagogicalDecision.newRemediationStep,
+        };
+        if (_pedagogicalDecision.newActiveCognitiveLevelId !== null) {
+          dUpdates.activeCognitiveLevelId = _pedagogicalDecision.newActiveCognitiveLevelId;
+        }
+        await db
+          .update(lessonSessionsTable)
+          .set(dUpdates as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+
+        logger.info({
+          sessionId:          session.id,
+          nodeId:             session.currentNodeId,
+          metaAction:         _pedagogicalDecision.metaAction,
+          remediationAction:  _pedagogicalDecision.remediationAction,
+          reasonCode:         _pedagogicalDecision.reasonCode,
+          currentLevel:       _pedagogicalDecision.currentCognitiveLevel,
+          targetLevel:        _pedagogicalDecision.targetCognitiveLevel,
+          newRemediationStep: _pedagogicalDecision.newRemediationStep,
+          mayComplete:        _pedagogicalDecision.mayCompleteMicroNode,
+          levelConfirmed:     _pedagogicalDecision.levelConfirmed,
+          revisitRequired:    _pedagogicalDecision.revisitRequired,
+        }, "V2-R3 pedagogical decision");
+      }
+
       // ── Mastery gate check ───────────────────────────────────────────────
       const stageBecomesVerified = newTeachingStage === "VERIFIED";
       const noExercisesEarlyComplete =
@@ -1404,14 +1581,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         (quality === "MODERATE" || quality === "STRONG" || quality === "CONCLUSIVE") &&
         isCorrect;
 
-      const modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE";
+      // V2-R3: Code owns COMPLETE_NODE — AI's suggestion is advisory/logged only.
+      const modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE"; // advisory
+      const decisionSaysComplete = _pedagogicalDecision?.mayCompleteMicroNode ?? false;
       const hasExercisesOnThisNode = classExercises.length > 0;
       const codeGate = hasExercisesOnThisNode
         ? (newMasteryCount >= 2 && (quality === "STRONG" || quality === "CONCLUSIVE") && newConsecIncorrect < 2)
         : (newMasteryCount >= 2 && quality !== "NONE" && newConsecIncorrect < 2);
       const safetyCapHit = newAttemptCount > 6;
 
-      if (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete || (modelSaysComplete && codeGate)) {
+      if (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete || (decisionSaysComplete && codeGate)) {
         await db
           .update(lessonSessionsTable)
           .set({ askedQuestionTemplates: [] })
@@ -1464,7 +1643,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         !safetyCapHit &&
         !stageBecomesVerified &&
         !noExercisesEarlyComplete &&
-        !(modelSaysComplete && codeGate)
+        !(decisionSaysComplete && codeGate)
       ) {
         _v2r1AutoContinue = { type: "exercise" as const };
       }
@@ -1588,8 +1767,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const evtStatus   = aiResult.answer_evaluation.status;
     const evtWasEval  = evtStatus !== "NOT_APPLICABLE";
     const evtIsCorrect = evtStatus === "CORRECT" || evtStatus === "PARTIALLY_CORRECT";
-    // Only write evidence when there is an assessable answer with non-NONE quality
-    if (evtWasEval && evtQuality !== "NONE") {
+    // Fire-and-forget block runs when:
+    // 1. There is an assessable answer with non-NONE quality (evidence write), OR
+    // 2. The decision engine has state to write to knowledge_nodes (levelConfirmed or revisitRequired)
+    //    — this allows revisit_required to be set even when quality=NONE (wrong/no-quality answers).
+    const _decisionHasKNState =
+      !!(_pedagogicalDecision?.levelConfirmed || _pedagogicalDecision?.revisitRequired);
+    if (evtWasEval && (evtQuality !== "NONE" || _decisionHasKNState)) {
       const _sessionSnap = session; // capture before async
       const _lessonId    = lessonId;
       const _userId      = req.userId!;
@@ -1692,6 +1876,34 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             attemptSequence:  _sessionSnap.activeAttemptSequence || 1,
             helpCount:        _sessionSnap.activeHelpCount,
           } as any);
+
+          // ── V2-R3: Write demonstrated_cognitive_level / revisit_required ────
+          // Applied after the evidence row is written (not before) because the
+          // evidence row is the source of truth; this is a write-through cache.
+          if (_pedagogicalDecision && topicId) {
+            const knUpdate: Record<string, unknown> = {};
+            if (_pedagogicalDecision.levelConfirmed && _pedagogicalDecision.confirmedLevel) {
+              knUpdate.demonstratedCognitiveLevel = _pedagogicalDecision.confirmedLevel;
+              knUpdate.revisitRequired = false; // confirmed level clears revisit flag
+              knUpdate.updatedAt = new Date();
+            }
+            if (_pedagogicalDecision.revisitRequired) {
+              knUpdate.revisitRequired = true;
+              knUpdate.updatedAt = new Date();
+            }
+            if (Object.keys(knUpdate).length > 0) {
+              await db
+                .update(knowledgeNodesTable)
+                .set(knUpdate as any)
+                .where(eq(knowledgeNodesTable.id, topicId));
+              logger.info({
+                topicId,
+                metaAction: _pedagogicalDecision.metaAction,
+                demonstratedLevel: knUpdate.demonstratedCognitiveLevel ?? null,
+                revisitRequired: knUpdate.revisitRequired ?? null,
+              }, "V2-R3: knowledge_nodes durable state updated");
+            }
+          }
 
           // Update knowledge scoring in background (no quizId — chat-sourced evidence)
           updateTopicScoring(topicId, _userId).catch((err) =>

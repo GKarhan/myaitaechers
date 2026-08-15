@@ -78,6 +78,16 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   // Maximum help level reached during the current active task.
   // 'none' | 'light' | 'moderate' | 'guided' | 'revealed'
   activeAssistanceLevel: text("active_assistance_level").notNull().default("none"),
+
+  // ── V2-R3 — Pedagogical Decision Engine ──────────────────────────────────
+  //
+  // remediationStep: which escalation step the system is at for the CURRENT
+  // cognitive level.  0 = initial teach/check; 1–5 = escalation steps.
+  // Increments only on a failed ANSWER evaluation (not HELP/CONFUSED/etc.).
+  // Resets to 0 when: a new cognitive level activates, node advances, or an
+  // independent verification succeeds.
+  // MAX_REMEDIATION_STEPS (policy constant in decision engine) = 5.
+  remediationStep: integer("remediation_step").notNull().default(0),
 });
 
 export const insertLessonSessionSchema = createInsertSchema(lessonSessionsTable).omit({ id: true, startedAt: true });

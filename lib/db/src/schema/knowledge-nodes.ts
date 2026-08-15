@@ -26,6 +26,22 @@ export const knowledgeNodesTable = pgTable(
     status: text("status").notNull().default("not_started"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+    // ── V2-R3 — Pedagogical Decision Engine (durable cross-session learner state) ──
+    //
+    // demonstratedCognitiveLevel: highest Bloom level for which this student has
+    // accumulated sufficient INDEPENDENT evidence on this MicroNode.
+    // Allowed: remember | understand | apply | analyze | evaluate | create | null
+    // null = no level confirmed yet.
+    // Evidence in evidence_events is authoritative; this is a write-through
+    // materialized cache updated when a level is confirmed by the decision engine.
+    demonstratedCognitiveLevel: text("demonstrated_cognitive_level"),
+
+    // revisitRequired: true when the remediation budget was exhausted before the
+    // student reached the curriculum target ceiling. Must survive sessions — used
+    // by Knowledge Tree and future review scheduler.
+    // Cleared when demonstratedCognitiveLevel eventually reaches target ceiling.
+    revisitRequired: boolean("revisit_required").notNull().default(false),
   },
   (t) => [
     // One knowledge_node row per (student, lesson_node). NULLs are treated as
