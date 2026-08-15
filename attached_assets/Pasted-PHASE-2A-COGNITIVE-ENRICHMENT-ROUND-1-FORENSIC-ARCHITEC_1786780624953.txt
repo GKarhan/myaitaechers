@@ -1,0 +1,1012 @@
+PHASE 2A — COGNITIVE ENRICHMENT
+ROUND 1 — FORENSIC ARCHITECTURE & DATA AUDIT ONLY
+
+IMPORTANT:
+AUDIT ONLY.
+
+DO NOT MODIFY CODE.
+DO NOT MODIFY DB.
+DO NOT RUN MIGRATIONS.
+DO NOT CREATE TEST DATA.
+DO NOT DELETE DATA.
+DO NOT CHANGE MAPPER.
+DO NOT CHANGE AI TEACHER.
+DO NOT CHANGE QUIZ LOGIC.
+DO NOT CHANGE KNOWLEDGE TREE.
+DO NOT IMPLEMENT COGNITIVE DEPTH.
+DO NOT IMPLEMENT PERSONALIZATION.
+
+This round exists only to determine the correct architecture for
+MicroNode-level Cognitive Enrichment before implementation.
+
+==================================================
+0. LOCKED CONTEXT
+==================================================
+
+Canonical curriculum hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+Student-facing:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+Atomic knowledge unit:
+
+MicroNode = lesson_nodes row
+
+Do NOT introduce a separate Node → Subnode hierarchy.
+
+Knowledge Tree V1 is considered complete.
+
+Current learner concepts must remain distinct:
+
+Coverage
+= how much curriculum has been studied
+
+Mastery
+= how well the MicroNode is currently known
+
+Confidence
+= how trustworthy the mastery estimate is
+
+Cognitive Depth
+= at what cognitive depth the learner can demonstrate the knowledge
+
+Retention
+= how stable the knowledge is over time
+
+Future K = P × L × R
+= separate learning-efficiency model
+
+DO NOT mix these concepts.
+
+==================================================
+1. PHASE 2A PRODUCT GOAL
+==================================================
+
+The future system must be able to represent, for EACH MicroNode:
+
+A. What cognitive levels are pedagogically appropriate?
+
+B. What is the TARGET cognitive ceiling for this MicroNode?
+
+C. What does successful performance at each applicable level mean?
+
+D. What assessment/task/evidence can demonstrate each level?
+
+Example only:
+
+MicroNode:
+«Ֆիզիկական մարմին և նյութ»
+
+Possible cognitive path:
+
+1. Հիշել
+2. Հասկանալ
+3. Կիրառել
+4. Վերլուծել
+
+Target ceiling:
+Վերլուծել
+
+Another MicroNode may legitimately require only:
+
+Հիշել
+→ Հասկանալ
+→ Կիրառել
+
+DO NOT assume every MicroNode requires all six Bloom levels.
+
+Possible cognitive vocabulary to audit against:
+
+Remember / Հիշել
+Understand / Հասկանալ
+Apply / Կիրառել
+Analyze / Վերլուծել
+Evaluate / Գնահատել
+Create / Ստեղծել
+
+These are NOT yet approved DB enums.
+
+First audit what the repository already uses.
+
+==================================================
+2. CRITICAL DISTINCTION
+==================================================
+
+Audit whether the current repository distinguishes:
+
+CURRICULUM TARGET
+
+"What cognitive depth SHOULD this MicroNode reach?"
+
+from
+
+LEARNER ACHIEVEMENT
+
+"What cognitive depth has THIS student actually demonstrated?"
+
+These MUST ultimately be separate concepts.
+
+Example:
+
+MicroNode target:
+Analyze
+
+Student A demonstrated:
+Remember
+
+Student B demonstrated:
+Apply
+
+Student C demonstrated:
+Analyze
+
+Do not confuse a mapped `bloomLevel` on lesson_nodes with learner
+cognitive achievement unless the existing code explicitly proves that
+this is what it means.
+
+==================================================
+3. REPOSITORY-WIDE BLOOM / COGNITIVE SEARCH
+==================================================
+
+Search the entire repository for all relevant terms and variants:
+
+bloom
+bloomLevel
+targetBloom
+targetBloomLevel
+cognitive
+cognitiveLevel
+cognitiveDepth
+taxonomy
+remember
+understand
+apply
+analyze
+analyse
+evaluate
+create
+
+Also search Armenian equivalents if present:
+
+Հիշել
+Հասկանալ
+Կիրառել
+Վերլուծել
+Գնահատել
+Ստեղծել
+
+For EVERY meaningful occurrence report:
+
+- file
+- function/component/schema
+- exact field name
+- type
+- allowed values if defined
+- producer
+- consumer
+- whether persisted
+- whether currently active or legacy/dead code
+
+Produce a repository-wide inventory.
+
+==================================================
+4. DATABASE SCHEMA AUDIT
+==================================================
+
+Inspect actual schema/migrations for all fields related to cognitive/Bloom
+information.
+
+At minimum inspect:
+
+lesson_nodes
+lesson_exercises
+lessons
+knowledge_nodes
+evidence_events
+quiz_questions
+quiz_answers
+quiz_attempts
+
+and any other relevant tables discovered.
+
+For every cognitive-related DB field report:
+
+TABLE
+FIELD
+TYPE
+NULLABLE?
+DEFAULT?
+MEANING
+WRITTEN BY
+READ BY
+REAL VALUES CURRENTLY PRESENT
+
+Especially determine what current:
+
+lesson_nodes.bloomLevel
+or equivalent
+
+actually means.
+
+Questions to answer:
+
+1. Is it one integer?
+2. One enum?
+3. One string?
+4. Is it MicroNode-level?
+5. Is it generated during mapping?
+6. Is it generated during Phase 2?
+7. Is it teacher-editable?
+8. Is it used by AI Teacher?
+9. Is it used by quiz generation?
+10. Is it used in scoring?
+11. Is it only displayed as metadata?
+
+==================================================
+5. REAL DATA AUDIT
+==================================================
+
+Use existing real lessons READ-ONLY.
+
+Prefer at least:
+
+A. current Physics lesson used in Knowledge Tree UAT
+B. one Armenian-language lesson if available
+C. one lesson with multiple MicroNodes/exercises if available
+
+For each sampled MicroNode report:
+
+- lessonNodeId
+- title
+- Topic
+- learningObjective
+- current bloom/cognitive field(s)
+- theory/content availability
+- exercises attached
+- exercise types if available
+- source page
+- status
+- Phase 2 enrichment fields if any
+
+Then answer:
+
+Does the existing Bloom value genuinely describe the cognitive target
+of the MicroNode?
+
+Or is it only a coarse metadata label?
+
+Do not infer from the number alone.
+Trace how it was produced.
+
+==================================================
+6. MAPPING PIPELINE AUDIT
+==================================================
+
+Trace:
+
+PDF/source
+→ Pass 1
+→ Pass 2
+→ manual-map/Text Contract
+→ teacher review
+→ lesson_nodes persistence
+
+Determine whether current mapping already produces:
+
+- Bloom level
+- cognitive demand
+- difficulty
+- task type
+- learning objective
+- success criteria
+- misconceptions
+- exercises
+- exercise-to-MicroNode relation
+
+For Bloom specifically report:
+
+WHO assigns it?
+WHEN?
+FROM WHAT evidence/source?
+USING WHAT prompt/rule?
+CAN teacher change it?
+IS it source-derived or AI-inferred?
+
+Do NOT modify the mapping contract.
+
+We previously decided not to overload source-faithful mapping with
+learner-specific cognitive progression.
+
+Verify whether the current implementation respects that separation.
+
+==================================================
+7. CURRENT PHASE 2 AUDIT
+==================================================
+
+There may already be a Phase 2 "Generate Teaching Content" pipeline.
+
+Audit it carefully.
+
+Determine:
+
+1. What Phase 2 currently generates.
+2. Which lesson_nodes fields it updates.
+3. Whether Bloom is currently created/changed there.
+4. Whether theory/content is generated.
+5. Whether examples are generated.
+6. Whether misconceptions are generated.
+7. Whether exercises/tasks are generated.
+8. Whether teacher review exists after Phase 2.
+9. Whether Phase 2 is the correct architectural location for future
+   Cognitive Enrichment.
+
+IMPORTANT:
+
+Do not assume the new Phase 2A should replace current Phase 2.
+
+Report how they should relate:
+
+existing Phase 2
+vs
+proposed Cognitive Enrichment.
+
+==================================================
+8. EXERCISE / TASK ASSET AUDIT
+==================================================
+
+This is critical.
+
+We cannot claim a learner has demonstrated "Apply" or "Analyze"
+unless there is a task capable of producing that evidence.
+
+Audit current exercise/task model.
+
+Determine whether exercises currently have:
+
+- lessonNodeId / MicroNode relation
+- Bloom/cognitive level
+- difficulty
+- task type
+- source vs generated marker
+- expected answer
+- rubric
+- success criteria
+- hints/scaffolding
+- provenance
+- page/source reference
+
+Determine whether ONE MicroNode can currently have multiple exercises
+at different cognitive levels.
+
+Example future need:
+
+MicroNode X
+
+Remember:
+question/task A
+
+Understand:
+question/task B
+
+Apply:
+exercise C
+
+Analyze:
+exercise D
+
+Can the current schema represent this?
+
+YES / PARTIALLY / NO
+
+Explain exactly why.
+
+==================================================
+9. QUIZ GENERATION AUDIT
+==================================================
+
+Trace quiz creation:
+
+selected lessons/nodes
+→ question generation
+→ quiz_questions
+→ student answer
+→ scoring
+→ evidence
+
+Determine whether quiz questions currently store:
+
+- lessonNodeId
+- cognitive/Bloom level
+- difficulty
+- question type
+- provenance
+- source exercise relation
+
+Determine whether the quiz generator currently instructs the AI to
+generate questions at different Bloom levels.
+
+If yes:
+report exact behavior.
+
+If no:
+say NO.
+
+Do not change it yet.
+
+==================================================
+10. AI TEACHER AUDIT
+==================================================
+
+Trace current AI Teacher inputs and prompt.
+
+Determine whether AI Teacher receives:
+
+- current MicroNode Bloom level
+- exercise Bloom level
+- difficulty
+- learner mastery
+- learner confidence
+- cognitive target
+- cognitive achievement
+
+Determine whether any current logic already chooses:
+
+recall
+explanation
+application
+analysis
+etc.
+
+If it does:
+is this explicit structured logic or only prompt behavior?
+
+Report exact files/functions.
+
+Do NOT change chat.ts or AI Teacher.
+
+==================================================
+11. EVIDENCE MODEL AUDIT
+==================================================
+
+Inspect evidence_events and all evidence writers.
+
+Determine what is currently persisted for each evidence event:
+
+- student
+- MicroNode / knowledgeNode
+- correctness
+- score
+- source
+- timestamp
+- quiz linkage
+- exercise linkage
+- difficulty
+- Bloom/cognitive level
+- hints
+- assistance
+- attempts
+- response time
+- AI Teacher action/context
+
+Produce:
+
+AVAILABLE NOW
+MISSING
+DERIVABLE BUT NOT STORED
+SHOULD NOT BE INFERRED
+
+This is important for future:
+
+Cognitive Depth
+and
+Confidence Model V2.
+
+==================================================
+12. CAN CURRENT DATA PROVE COGNITIVE DEPTH?
+==================================================
+
+Answer explicitly:
+
+With the CURRENT system, can we validly say:
+
+"This learner has demonstrated Apply for MicroNode X"?
+
+YES / PARTIALLY / NO
+
+Then explain why.
+
+For example:
+
+Having:
+
+lesson_nodes.bloomLevel = 3
+
+does NOT automatically prove:
+
+student cognitiveLevel = Apply.
+
+The first may be curriculum metadata;
+the second requires learner evidence.
+
+Audit and state the actual situation.
+
+==================================================
+13. TARGET COGNITIVE PATH MODEL
+==================================================
+
+Without implementing anything, evaluate what the minimal future
+curriculum model needs to represent.
+
+We need to support something conceptually like:
+
+MicroNode X
+
+applicable cognitive path:
+Remember
+→ Understand
+→ Apply
+→ Analyze
+
+target ceiling:
+Analyze
+
+For each level:
+- performance objective
+- success criterion
+- task/evidence requirement
+
+But determine whether these should be:
+
+A. new columns on lesson_nodes
+B. JSON on lesson_nodes
+C. a child table
+D. existing exercise/task rows
+E. another existing structure
+
+DO NOT choose based on convenience.
+
+Compare options against:
+
+- one MicroNode having variable number of levels
+- teacher review/editing
+- task linkage
+- evidence linkage
+- future analytics
+- versioning
+- queryability
+- source/generated provenance
+- future personalization
+
+Return a recommendation, but DO NOT implement it.
+
+==================================================
+14. IMPORTANT — NOT EVERY LEVEL MUST EXIST
+==================================================
+
+Audit how we can support variable cognitive ceilings.
+
+Examples:
+
+MicroNode A:
+Remember → Understand
+
+MicroNode B:
+Remember → Understand → Apply
+
+MicroNode C:
+Remember → Understand → Apply → Analyze
+
+MicroNode D:
+Understand → Apply → Evaluate
+
+Do not hard-code:
+
+6 levels × every MicroNode.
+
+Also investigate whether prerequisites between cognitive levels should
+always be strictly sequential.
+
+Do NOT decide this silently.
+
+Report recommendation.
+
+==================================================
+15. BLOOM VS DIFFICULTY
+==================================================
+
+Audit whether current system conflates:
+
+cognitive level
+
+with
+
+difficulty.
+
+They are NOT the same.
+
+Example:
+
+A recall task can be difficult.
+An application task can be easy.
+
+Report current difficulty fields and how they are used.
+
+Future architecture must keep:
+
+COGNITIVE DEMAND
+and
+TASK DIFFICULTY
+
+as separate dimensions.
+
+==================================================
+16. BLOOM VS MASTERY
+==================================================
+
+Likewise distinguish:
+
+Mastery score
+
+from
+
+Cognitive Depth.
+
+Possible future state:
+
+Mastery = 90%
+Current cognitive level = Understand
+Target = Apply
+
+or:
+
+Mastery = 65%
+Current cognitive level = Apply
+
+depending on the future evidence model.
+
+Audit whether any current code incorrectly assumes Bloom == mastery.
+
+Do not change it in this round.
+
+==================================================
+17. TEACHER REVIEW / EDITABILITY
+==================================================
+
+Future cognitive enrichment cannot be an opaque AI truth.
+
+Audit existing Teacher Review CRUD and determine:
+
+Can the future teacher UI support editing:
+
+- applicable cognitive levels
+- target ceiling
+- per-level objective
+- linked task/evidence asset
+
+without breaking current Topic/MicroNode CRUD?
+
+Report the minimal UI extension that would eventually be needed.
+
+Do NOT build UI.
+
+==================================================
+18. SOURCE FIDELITY / PROVENANCE
+==================================================
+
+This is important because our Knowledge Base preserves textbook truth.
+
+Future cognitive enrichment may contain:
+
+SOURCE-DERIVED content
+
+and/or
+
+AI-GENERATED pedagogical enrichment.
+
+These must not be confused.
+
+Audit current provenance fields.
+
+Recommend how future cognitive level/task assets should identify:
+
+- source-derived
+- teacher-authored
+- AI-generated
+
+Do NOT modify schema.
+
+==================================================
+19. EXISTING DATA MIGRATION IMPACT
+==================================================
+
+We already have mapped lessons and real learner evidence.
+
+Audit how a future Cognitive Enrichment model would affect existing data.
+
+Answer:
+
+1. Can existing MicroNodes be enriched without remapping the textbook?
+2. Can old quizzes/evidence remain valid?
+3. What old evidence lacks cognitive metadata?
+4. Should old evidence be marked cognitiveLevel = unknown rather than
+   guessed?
+5. Would any learner mastery need recalculation?
+
+Preferred safety principle:
+
+DO NOT retroactively invent cognitive levels for old learner evidence.
+
+Report whether this is feasible.
+
+==================================================
+20. KNOWLEDGE TREE IMPACT
+==================================================
+
+Do NOT modify Knowledge Tree.
+
+Only report future impact.
+
+After Cognitive Enrichment + Cognitive Evidence exist, KT-1.4B should
+eventually be able to show:
+
+Target cognitive ceiling
+Current demonstrated cognitive level
+Cognitive Depth %
+
+Example:
+
+Target: Analyze
+Current: Apply
+Depth: 3 / 4 = 75%
+
+But Phase 2A must NOT implement this learner calculation.
+
+Report what API/data KT-1.4B will eventually need.
+
+==================================================
+21. CONFIDENCE MODEL V2 IMPACT
+==================================================
+
+We have a future Confidence Model V2.
+
+Its planned factors include:
+
+- evidence quantity
+- evidence strength
+- evidence diversity
+- consistency
+- independence/assistance
+- temporal stability
+
+Audit which Phase 2A data structures must be designed now so that
+Confidence V2 can later use:
+
+- cognitive level of task
+- task identity
+- difficulty
+- assistance/hints
+- evidence provenance
+
+Do NOT implement Confidence V2.
+
+==================================================
+22. PERSONALIZATION IMPACT
+==================================================
+
+Future Personalization Engine needs to distinguish cases like:
+
+High mastery + low confidence
+Low mastery + high confidence
+Current cognitive level below target
+Current cognitive level at target
+etc.
+
+Report what Cognitive Enrichment must expose so Personalization can
+later consume it cleanly.
+
+Do NOT implement decision rules.
+
+==================================================
+23. AI TEACHER FUTURE CONTRACT
+==================================================
+
+Report the minimal future structured context AI Teacher would need.
+
+Conceptual example:
+
+currentMicroNode
+targetCognitiveCeiling
+currentDemonstratedLevel
+nextTargetLevel
+taskDifficulty
+mastery
+confidence
+recommendedAction
+
+But separate:
+
+what Phase 2A can provide
+
+from
+
+what later learner-evidence phases must calculate.
+
+Do NOT modify AI Teacher.
+
+==================================================
+24. ARCHITECTURE OPTIONS
+==================================================
+
+After the audit, propose 2–3 viable architectures.
+
+For each include:
+
+- DB changes
+- API changes
+- Mapper impact
+- Phase 2 impact
+- Teacher Review impact
+- Quiz impact
+- AI Teacher impact
+- Evidence impact
+- Knowledge Tree impact
+- migration risk
+- implementation complexity
+
+Then recommend ONE.
+
+Do NOT implement the recommendation.
+
+==================================================
+25. REQUIRED REAL EXAMPLE
+==================================================
+
+Use one existing real Physics MicroNode.
+
+Show:
+
+CURRENT STATE
+
+What fields/data exist now?
+
+Then:
+
+FUTURE CONCEPTUAL STATE
+
+Example only, based on what is pedagogically justified:
+
+MicroNode
+Target cognitive path
+Target ceiling
+Per-level performance objectives
+Potential evidence assets
+
+IMPORTANT:
+
+Clearly mark any proposed future content as:
+
+CONCEPTUAL EXAMPLE — NOT WRITTEN TO DB
+
+Do not modify the real MicroNode.
+
+==================================================
+26. RISKS / COLLISIONS
+==================================================
+
+Explicitly search for architectural collisions involving:
+
+- existing bloomLevel
+- existing Phase 2
+- lesson exercise schema
+- quiz question schema
+- evidence_events
+- mastery scoring
+- Knowledge Tree 4-state logic
+- Teacher Review
+- legacy data
+
+Classify each:
+
+NO CONFLICT
+MINOR MIGRATION
+MAJOR CONFLICT
+UNKNOWN
+
+==================================================
+27. NO-WRITE VERIFICATION
+==================================================
+
+At the end prove this audit caused:
+
+0 schema changes
+0 migrations
+0 INSERT
+0 UPDATE
+0 DELETE
+0 real data modifications
+0 test pollution
+
+==================================================
+28. FINAL AUDIT REPORT
+==================================================
+
+Return exactly these sections:
+
+A. EXECUTIVE SUMMARY
+
+B. CURRENT COGNITIVE/BLOOM INVENTORY
+table:
+field | location | producer | consumer | meaning | active/legacy
+
+C. CURRENT DB MODEL
+
+D. REAL DATA SAMPLE
+
+E. MAPPING PIPELINE FINDINGS
+
+F. CURRENT PHASE 2 FINDINGS
+
+G. EXERCISE/TASK MODEL FINDINGS
+
+H. QUIZ PIPELINE FINDINGS
+
+I. AI TEACHER FINDINGS
+
+J. EVIDENCE MODEL FINDINGS
+
+K. CAN CURRENT SYSTEM PROVE COGNITIVE DEPTH?
+YES / PARTIALLY / NO + explanation
+
+L. TARGET VS LEARNER COGNITIVE STATE SEPARATION
+
+M. BLOOM VS DIFFICULTY
+
+N. BLOOM VS MASTERY
+
+O. TEACHER REVIEW IMPACT
+
+P. PROVENANCE / SOURCE FIDELITY
+
+Q. LEGACY DATA / MIGRATION IMPACT
+
+R. FUTURE KT-1.4B REQUIREMENTS
+
+S. FUTURE CONFIDENCE V2 REQUIREMENTS
+
+T. FUTURE PERSONALIZATION REQUIREMENTS
+
+U. FUTURE AI TEACHER CONTRACT
+
+V. ARCHITECTURE OPTIONS
+Option 1
+Option 2
+Option 3 if justified
+
+W. RECOMMENDED ARCHITECTURE
+
+X. REAL PHYSICS CONCEPTUAL EXAMPLE
+
+Y. RISKS / COLLISIONS MATRIX
+
+Z. IMPLEMENTATION PLAN PROPOSAL
+Break the future implementation into small gated phases.
+
+AA. NO-WRITE PROOF
+
+FINAL VERDICT:
+
+PHASE 2A AUDIT = COMPLETE / INCOMPLETE
+
+STOP.
+
+DO NOT IMPLEMENT ANYTHING.
+WAIT FOR TEACHER/OWNER REVIEW.
