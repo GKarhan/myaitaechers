@@ -1,0 +1,246 @@
+AUDIT APPROVED — BUT DO NOT IMPLEMENT YET.
+
+The forensic audit is accepted.
+
+The major findings are exactly the problems R3 must solve:
+- cognitive path is not controlling runtime,
+- MICRO_CHECK may advance even after incorrect answers,
+- AI still partially owns COMPLETE_NODE,
+- cognitive-level evidence requirements are not used,
+- demonstrated cognitive level and bounded remediation do not yet exist.
+
+However, I do NOT approve the proposed 5 session columns yet.
+
+Before implementation, do one final STATE-OWNERSHIP / SCHEMA DESIGN pass.
+
+==================================================
+1. DO NOT CREATE DUPLICATE SOURCES OF TRUTH
+==================================================
+
+You proposed:
+
+- activeCognitiveLevelSequence
+- demonstratedCognitiveLevelId
+- remediationStep
+- targetReached
+- revisitRequired
+
+For EACH field determine whether it is:
+
+A. transient session/runtime state,
+B. canonical learner state,
+C. derived state that should be computed from evidence,
+D. unnecessary because an authoritative existing field already exists.
+
+==================================================
+2. activeCognitiveLevelSequence
+==================================================
+
+We already have:
+
+activeCognitiveLevelId
+
+and cognitive-level rows already have sequence/order.
+
+Determine whether activeCognitiveLevelSequence is actually necessary.
+
+Prefer:
+
+activeCognitiveLevelId
+→ cognitive-level row
+→ sequence
+
+rather than maintaining two mutable sources of truth.
+
+Do NOT add activeCognitiveLevelSequence unless there is a concrete runtime
+requirement that cannot be safely satisfied from activeCognitiveLevelId.
+
+==================================================
+3. demonstratedCognitiveLevelId
+==================================================
+
+This is important long-term learner state:
+
+«Ներկայում հաստատված ճանաչողական մակարդակ»
+
+Determine whether it should:
+
+- be persisted as canonical learner state,
+- be derived from evidence_events,
+- or be persisted as a cache/materialized state while evidence remains
+  authoritative.
+
+Remember:
+
+this state must survive the current chat session and later be usable by:
+
+- Knowledge Tree
+- Confidence Model V2
+- Personalization Engine
+- revisit/review
+- future sessions
+
+Do NOT make an important learner state session-only without justification.
+
+==================================================
+4. targetReached
+==================================================
+
+Determine whether targetReached should be stored at all.
+
+It may be derivable:
+
+highest confirmed cognitive level
+vs
+MicroNode target cognitive ceiling.
+
+If it is fully deterministic from authoritative state, prefer deriving it.
+
+Do not create redundant mutable booleans unless required for performance
+or transactional correctness.
+
+==================================================
+5. revisitRequired
+==================================================
+
+This may need to survive sessions and therefore may be learner/MicroNode
+state rather than lesson-session state.
+
+Audit existing mastery / knowledge state tables before deciding.
+
+We need later to know:
+
+MicroNode target = apply
+Current demonstrated = understand
+Target not reached
+Revisit required
+
+even after the learner leaves the lesson and returns later.
+
+Find the correct authoritative home for this state.
+
+==================================================
+6. remediationStep
+==================================================
+
+This IS likely transient runtime state.
+
+Determine whether lesson_sessions is the correct home.
+
+Also define exactly:
+
+- when it increments,
+- when it resets,
+- whether HELP increments it (expected: NO),
+- whether switching cognitive level resets it,
+- whether switching MicroNode resets it,
+- whether a successful independent verification resets it.
+
+==================================================
+7. PRODUCE FINAL STATE MODEL
+==================================================
+
+Return a table:
+
+STATE
+PURPOSE
+AUTHORITATIVE SOURCE
+PERSISTED OR DERIVED
+LIFETIME
+RESET RULE
+WHY
+
+At minimum include:
+
+- current MicroNode
+- current teaching stage
+- active task
+- active cognitive level
+- demonstrated cognitive level
+- target cognitive level
+- remediation step
+- target reached
+- revisit required
+- help count
+- assistance level
+- evidence
+
+==================================================
+8. IMPORTANT ARCHITECTURAL RULE
+==================================================
+
+Evidence must remain the factual historical source.
+
+Do not create learner-state fields that can contradict evidence without
+a defined reconciliation rule.
+
+We will later build:
+
+Evidence
+→ Cognitive Depth
+→ Confidence
+→ Unified Learner State
+→ Personalization
+
+R3 must prepare for that architecture, not create competing state now.
+
+==================================================
+9. ALSO RESOLVE ONE CRITICAL SEMANTIC QUESTION
+==================================================
+
+The audit says dependency rows contain:
+
+fromNodeId
+toNodeId
+dependencyType
+requiredLevel = CRITICAL / SUPPORTING
+
+Do NOT assume this tells us which COGNITIVE LEVEL of the prerequisite
+must be demonstrated.
+
+For example:
+
+Next MicroNode depends on current MicroNode.
+
+That alone does NOT prove whether it requires:
+remember,
+understand,
+or apply.
+
+Audit whether the current dependency schema actually stores required
+COGNITIVE DEPTH.
+
+If it does not, report this explicitly.
+
+Do NOT interpret requiredLevel=CRITICAL as "requires target Bloom level"
+unless the schema/contract explicitly says so.
+
+This is important for the rule:
+
+"If next MicroNode requires the unconfirmed Apply level → block."
+
+We need a real representation of that requirement, not an invented one.
+
+==================================================
+10. OUTPUT ONLY DESIGN — NO IMPLEMENTATION
+==================================================
+
+Return:
+
+A. Final state ownership table
+B. Which proposed columns are truly required
+C. Which proposed columns should NOT be added
+D. Where demonstrated cognitive level should live
+E. Whether targetReached should be derived
+F. Where revisitRequired should live
+G. Exact remediationStep lifecycle
+H. Whether current dependency schema supports cognitive-depth prerequisites
+I. Any minimal schema gap that remains
+J. Recommended final R3 schema plan
+
+STOP.
+
+Do not migrate DB.
+Do not modify code.
+Do not implement R3 yet.
+Wait for approval.
