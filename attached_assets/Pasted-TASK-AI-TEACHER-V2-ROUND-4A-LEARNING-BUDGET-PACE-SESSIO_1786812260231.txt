@@ -1,0 +1,716 @@
+TASK — AI TEACHER V2 — ROUND 4A
+LEARNING BUDGET, PACE & SESSION COMPLETION
+ARCHITECTURE / DESIGN AUDIT FIRST — NO IMPLEMENTATION YET
+
+IMPORTANT CONTEXT
+
+V2-R1, V2-R1.1, V2-R2 and V2-R3 are complete.
+
+V2-R3 established a deterministic backend-owned pedagogical decision engine.
+
+Current relevant behavior/state includes:
+
+- Subject → Lesson → Topic → MicroNode is the canonical curriculum hierarchy.
+- MicroNode is the atomic knowledge unit.
+- lesson_sessions.currentNodeId owns the current MicroNode.
+- lesson_sessions.nodeTeachingStage owns THEORY / MICRO_CHECK / EXERCISE / VERIFIED.
+- lesson_sessions.activeCognitiveLevelId owns the current cognitive level.
+- lesson_sessions.remediationStep owns transient remediation escalation.
+- knowledge_nodes.demonstratedCognitiveLevel stores the durable highest confirmed cognitive level.
+- knowledge_nodes.revisitRequired stores durable future revisit need.
+- evidence_events is the authoritative evidence history.
+- active task / assistance / help state already exists from Phase 2B.
+- V2-R2 Intent Router ensures non-answer intents do not enter answer evaluation.
+- V2-R3 Pedagogical Decision Engine owns cognitive progression and remediation decisions.
+- AI COMPLETE_NODE is advisory only; deterministic code owns progression gates.
+
+V2-R3 currently has MAX_REMEDIATION_STEPS = 5 as a hard safety ceiling.
+
+CRITICAL NEW PRINCIPLE:
+
+MAX_REMEDIATION_STEPS must NOT mean:
+"always perform all five remediation steps before stopping."
+
+It is only an absolute upper bound.
+
+Whether teaching should continue must eventually depend on:
+- remediation count,
+- time spent,
+- remaining session time,
+- learning progress,
+- and later learner readiness / cognitive cost.
+
+Round 4A now introduces the TIME / LEARNING BUDGET layer.
+
+============================================================
+PART 0 — MANDATORY FORENSIC AUDIT
+DO NOT CHANGE CODE OR DATABASE YET
+============================================================
+
+Before proposing implementation, inspect the actual repository and report evidence.
+
+Audit at minimum:
+
+1. lesson_sessions schema
+2. lesson session creation path
+3. lesson session resume path
+4. lesson session completion/end path
+5. chat.ts
+6. pedagogicalDecisionEngine.ts
+7. advanceNodeInSession()
+8. current node completion logic
+9. current lesson completion logic
+10. student lesson/chat frontend
+11. assignment / lesson configuration models
+12. teacher-side lesson/assignment configuration UI
+13. evidence_events
+14. knowledge_nodes
+15. any existing duration / estimatedMinutes / startedAt / completedAt / timestamps
+16. any current timers or elapsed-time logic
+17. any current "lesson finished" UI/behavior
+18. any current optional continuation mechanism
+
+For every relevant field, identify:
+
+FIELD
+TABLE / SOURCE
+CURRENT SEMANTICS
+WHO WRITES IT
+WHO READS IT
+CAN R4 REUSE IT?
+WHY / WHY NOT?
+
+Do not infer from field names alone.
+Trace actual runtime reads/writes.
+
+============================================================
+PART 1 — CORE PRODUCT RULE
+============================================================
+
+AI Teacher must NOT create an unlimited lesson.
+
+A required learning session must have a predictable learning budget.
+
+The system's goal is NOT:
+
+"finish every MicroNode and reach every target cognitive level regardless
+of time."
+
+The goal is:
+
+"within the available learning budget, produce the highest-value,
+valid learning and evidence possible without trapping the learner in
+an endless remediation loop."
+
+There are TWO distinct budgets.
+
+A. SESSION BUDGET
+Total required learning time available for the lesson/session.
+
+Example:
+20 minutes
+25 minutes
+30 minutes
+
+B. LOCAL EFFORT BUDGET
+How much of that session is reasonable to spend on the current
+MicroNode / cognitive level before deferring it.
+
+These are related but NOT identical.
+
+============================================================
+PART 2 — REQUIRED SESSION VS OPTIONAL LEARNING
+============================================================
+
+The architecture must distinguish:
+
+REQUIRED SESSION
+
+from
+
+OPTIONAL CONTINUATION.
+
+Example:
+
+Teacher assigns 25 minutes.
+
+Student completes 25 minutes of required learning.
+
+The required session can end even if the entire lesson curriculum
+has not reached every target cognitive ceiling.
+
+Then UI may offer:
+
+[Ավարտել]
+[Շարունակել կամավոր]
+
+If learner continues voluntarily, that learning is valid and its
+evidence is valid.
+
+But the system must be able to distinguish required workload from
+optional continuation.
+
+Audit where this state should live.
+
+Do NOT implement yet.
+
+============================================================
+PART 3 — TIME LIMIT IS NOT FAILURE
+============================================================
+
+This invariant is mandatory.
+
+If the session budget expires before a cognitive level is evaluated:
+
+DO NOT record that cognitive level as failed.
+
+Example:
+
+Target:
+remember → understand → apply
+
+Student demonstrated:
+remember ✓
+understand ✓
+
+Session expires before Apply is attempted.
+
+Correct semantic state:
+
+demonstrated = understand
+apply = NOT YET EVALUATED / DEFERRED DUE TO SESSION LIMIT
+
+Incorrect:
+
+apply = failed
+
+Similarly:
+
+TIME_BUDGET_EXHAUSTED
+must not fabricate negative evidence.
+
+Determine whether the existing evidence/state model can represent this
+cleanly or whether a minimal explicit reason/state is needed.
+
+============================================================
+PART 4 — LOCAL MICRONODE EFFORT BUDGET
+============================================================
+
+A single difficult MicroNode must not consume the entire lesson merely
+because MAX_REMEDIATION_STEPS has not been reached.
+
+Example:
+
+Session budget = 25 minutes.
+
+Student has already spent 9 minutes on MicroNode B.
+Progress is weak.
+Several MicroNodes remain.
+Only 8 minutes remain in the required session.
+
+The system should be capable of deciding:
+
+STOP_LEVEL_AND_REVISIT
+
+instead of blindly consuming every remaining remediation step.
+
+IMPORTANT:
+
+Do NOT invent arbitrary production thresholds in this design pass.
+
+First determine what data currently exists.
+
+Report what minimal measurements would be required for a future
+decision such as:
+
+continue current level
+vs
+defer current level
+vs
+advance
+vs
+end required session.
+
+============================================================
+PART 5 — TIME ACCOUNTING SEMANTICS
+============================================================
+
+We need to avoid naive elapsed-clock bugs.
+
+Audit and propose semantics for:
+
+SESSION ELAPSED TIME
+
+versus
+
+ACTIVE LEARNING TIME.
+
+Example:
+
+Student opens the lesson, leaves the browser open for 40 minutes,
+then returns.
+
+That must NOT automatically mean the student actively studied for
+40 minutes.
+
+Investigate whether current architecture has enough signals to
+distinguish active learning from idle wall-clock time.
+
+Consider existing chat/task interactions.
+
+Do NOT build an elaborate attention tracker.
+
+Propose the minimum safe V1 semantics.
+
+Possible options to evaluate include:
+
+- wall-clock session time,
+- turn-based active intervals,
+- capped inter-turn intervals,
+- explicit pause/resume,
+- client heartbeat,
+- combinations.
+
+Compare trade-offs.
+
+We need a design that is simple enough for R4 but does not make
+obviously false time claims.
+
+============================================================
+PART 6 — TEACHER CONFIGURATION
+============================================================
+
+Audit where a teacher should eventually configure expected/required
+learning duration.
+
+Possible scopes to investigate:
+
+- Lesson default
+- Assignment-specific override
+- Session-specific override
+- Global default
+
+Do NOT assume all are needed.
+
+Find the actual repository architecture first.
+
+Recommend the minimal correct hierarchy.
+
+Example only:
+
+assignment override
+→ lesson default
+→ system default
+
+But use repository evidence before approving this.
+
+Also distinguish:
+
+estimated pedagogical duration
+
+from
+
+required student session budget.
+
+They may not be the same field.
+
+Do NOT silently reuse estimatedMinutes unless its existing semantics
+actually match.
+
+============================================================
+PART 7 — DECISION ENGINE INTEGRATION
+============================================================
+
+V2-R3 currently owns cognitive progression.
+
+R4 must NOT create a second competing pedagogical state machine.
+
+Design how Learning Budget becomes an INPUT to the existing
+Pedagogical Decision Engine.
+
+Conceptually future decisions may include:
+
+CONTINUE_COGNITIVE_LEVEL
+
+REMEDIATE
+
+VERIFY_INDEPENDENTLY
+
+ADVANCE_COGNITIVE_LEVEL
+
+COMPLETE_MICRONODE
+
+STOP_LEVEL_AND_REVISIT
+
+END_REQUIRED_SESSION
+
+OFFER_OPTIONAL_CONTINUATION
+
+But audit the current action enum / decision contract first.
+
+Recommend the smallest clean extension.
+
+The AI model must NOT decide whether time budget is exhausted.
+
+Backend deterministic code owns this.
+
+============================================================
+PART 8 — INTERACTION WITH REMEDIATION
+============================================================
+
+Current R3 remediationStep is bounded by MAX_REMEDIATION_STEPS.
+
+Design the future decision ordering.
+
+We need to know whether the logic should conceptually behave like:
+
+1. Evaluate valid evidence.
+2. Check whether cognitive level is confirmed.
+3. If not confirmed, determine whether continued remediation is still
+   pedagogically/time-budget appropriate.
+4. If yes → remediation.
+5. If no → defer/revisit.
+6. If overall required session budget is exhausted → end required session.
+
+But inspect actual R3 engine ordering before approving this.
+
+Important:
+
+MAX_REMEDIATION_STEPS remains a HARD SAFETY CEILING.
+
+Learning Budget may stop remediation EARLIER.
+
+============================================================
+PART 9 — REVISIT SEMANTICS
+============================================================
+
+Audit whether existing:
+
+knowledge_nodes.revisitRequired
+
+is sufficient for BOTH:
+
+A. remediation exhausted / learner currently unable to reach target
+
+and
+
+B. session ended before target was reached due purely to time.
+
+These are semantically different.
+
+We need to preserve that difference.
+
+Example A:
+learner attempted Apply repeatedly but did not demonstrate it.
+
+Example B:
+learner never attempted Apply because required session time ended.
+
+Both may need future work, but they are NOT equivalent evidence.
+
+Recommend whether we need:
+
+- one revisitRequired boolean + derived reason from evidence/session,
+- revisitReason,
+- deferredReason,
+- another minimal field,
+- or no schema change.
+
+Do not add anything unless necessary.
+
+============================================================
+PART 10 — SESSION COMPLETION UX
+============================================================
+
+Audit the current student chat / lesson page.
+
+Design, but DO NOT implement, the minimum future UX for:
+
+During required session:
+- optional remaining-time indicator or progress representation
+
+Near end:
+- no disruptive countdown required
+- system should finish the current reasonable interaction safely
+
+At required-session completion:
+show a clear summary such as:
+
+Այսօրվա պարտադիր ուսուցումն ավարտված է։
+
+Այսօր՝
+✓ X գիտելիքի հանգույց
+✓ Y ճանաչողական մակարդակ
+↻ Z կշարունակենք հաջորդ անգամ
+
+Then:
+
+[Ավարտել]
+[Շարունակել կամավոր]
+
+Do not redesign the whole lesson page.
+
+This task is architecture first.
+
+============================================================
+PART 11 — DO NOT BUILD P / READINESS YET
+============================================================
+
+We have already approved a later Adaptive Readiness layer.
+
+Future session-start learner choice:
+
+Ինչպե՞ս ես քեզ զգում այսօր։
+
+🟢 Պատրաստ եմ
+🟡 Մի քիչ հոգնած եմ
+🔴 Ուզում եմ թեթև ռեժիմ
+
+This future P/readiness input will affect:
+- pace,
+- workload,
+- task size,
+- scaffolding,
+- cognitive challenge attempted.
+
+But DO NOT implement it in R4A.
+
+R4 must only make the architecture ready for it.
+
+Do not create a fake motivation score.
+Do not infer emotional state.
+Do not modify mastery because of readiness.
+
+============================================================
+PART 12 — FUTURE COGNITIVE COST
+============================================================
+
+Also DO NOT implement a cognitive-cost formula yet.
+
+But ensure R4 does not assume:
+
+1 minute of Recall == 1 minute of Problem Solving.
+
+Future architecture may incorporate cognitive cost using factors such as:
+
+- cognitive level,
+- task difficulty,
+- assistance,
+- remediation,
+- learner readiness,
+- observed pace.
+
+For now, time is only one budget signal.
+
+Document where future cognitive cost would enter the decision contract
+without requiring another state-machine rewrite.
+
+============================================================
+PART 13 — REQUIRED DESIGN QUESTIONS
+============================================================
+
+Answer explicitly:
+
+Q1.
+What currently defines the beginning of a lesson session?
+
+Q2.
+What currently defines session completion?
+
+Q3.
+Is there already a reliable session startedAt?
+
+Q4.
+Can current timestamps measure active learning time safely?
+
+Q5.
+What is the minimal safe active-time model for R4?
+
+Q6.
+Where should requiredSessionMinutes live?
+
+Q7.
+Do we need lesson default + assignment override, or something else?
+
+Q8.
+Do we need new session fields such as:
+- requiredSessionMinutes
+- activeLearningSeconds
+- lastActivityAt
+- requiredSessionCompletedAt
+- optionalContinuation
+
+Evaluate each independently.
+Do not automatically approve them.
+
+Q9.
+Does revisitRequired need a reason field?
+
+Q10.
+How should time-budget exhaustion interact with
+MAX_REMEDIATION_STEPS?
+
+Q11.
+Where exactly in pedagogicalDecisionEngine should budget state enter?
+
+Q12.
+How do we guarantee TIME LIMIT ≠ FAILURE?
+
+Q13.
+How do we safely finish an active task when the time limit is reached?
+
+Q14.
+How does refresh/resume preserve the budget correctly?
+
+Q15.
+How will optional continuation be distinguished from required learning?
+
+Q16.
+What minimal changes make future P/readiness and cognitive cost easy
+to add later?
+
+============================================================
+PART 14 — REQUIRED STATE OWNERSHIP TABLE
+============================================================
+
+Return a table:
+
+STATE
+PURPOSE
+AUTHORITATIVE SOURCE
+PERSISTED OR DERIVED
+LIFETIME
+RESET RULE
+WHY
+
+Include at minimum:
+
+- required session budget
+- active learning time
+- remaining required time
+- session budget exhausted
+- required session completed
+- optional continuation mode
+- current MicroNode time/effort
+- remediation step
+- demonstrated cognitive level
+- revisit required
+- revisit/defer reason if recommended
+
+============================================================
+PART 15 — MINIMAL SCHEMA GAP
+============================================================
+
+After the audit, provide:
+
+EXISTING FIELDS WE CAN REUSE
+
+NEW FIELDS THAT ARE TRULY REQUIRED
+
+FIELDS CONSIDERED BUT REJECTED
+
+FUTURE FIELDS — NOT FOR R4
+
+For every proposed new DB field:
+
+TABLE
+COLUMN
+TYPE
+DEFAULT
+NULLABLE?
+WHO WRITES IT?
+WHO READS IT?
+RESET RULE
+WHY IT CANNOT BE DERIVED SAFELY
+
+Prefer minimal schema.
+
+Do not create a new table unless repository evidence proves it is
+necessary.
+
+============================================================
+PART 16 — PROPOSED R4 IMPLEMENTATION SPLIT
+============================================================
+
+After the audit, recommend whether implementation should be split into:
+
+R4A.1 — persistence/time accounting
+R4A.2 — decision-engine budget integration
+R4A.3 — required-session completion + optional continuation
+R4A.4 — UI
+
+or another structure if repository evidence supports something cleaner.
+
+We want small, independently testable rounds.
+
+============================================================
+PART 17 — TEST PLAN
+============================================================
+
+Design tests before implementation.
+
+Must include at least:
+
+T01 — session budget initializes correctly
+T02 — refresh does not reset consumed budget
+T03 — idle browser time is not incorrectly counted as full active learning
+T04 — normal active learning accumulates time
+T05 — remediation may stop before MAX_REMEDIATION_STEPS when local budget says stop
+T06 — MAX_REMEDIATION_STEPS still acts as absolute ceiling
+T07 — session expiration does not create incorrect evidence
+T08 — unattempted cognitive level remains NOT EVALUATED
+T09 — demonstratedCognitiveLevel remains unchanged on pure time expiry
+T10 — deferred/revisit state survives new session
+T11 — active task is not corrupted when budget expires
+T12 — required session completion is persisted
+T13 — optional continuation does not reset learner state
+T14 — evidence during optional continuation remains valid
+T15 — refresh during optional continuation preserves mode
+T16 — R1/R1.1/R2/R3 regression suites remain green
+T17 — no AI call owns or overrides budget exhaustion decision
+
+Also propose real-browser UAT scenarios.
+
+============================================================
+PART 18 — OUTPUT FORMAT
+============================================================
+
+Return exactly these sections:
+
+A. Current Runtime Audit
+B. Existing Time/Session Fields
+C. Current Session Lifecycle
+D. Active-Time Measurement Options
+E. Recommended Minimal Active-Time Model
+F. Teacher/Assignment Budget Ownership
+G. Decision Engine Integration
+H. Remediation + Budget Ordering
+I. Time Limit ≠ Failure Invariants
+J. Revisit / Defer Semantics
+K. Required vs Optional Session State
+L. State Ownership Table
+M. Minimal Schema Gap
+N. Fields Explicitly Rejected
+O. Future P/Readiness Integration Point
+P. Future Cognitive-Cost Integration Point
+Q. Proposed R4 Implementation Rounds
+R. Test Plan
+S. Risks / Edge Cases
+T. Final Recommendation
+
+STOP AFTER DESIGN.
+
+DO NOT:
+- edit code,
+- create migrations,
+- alter DB,
+- change frontend,
+- change prompts,
+- implement timer logic,
+- modify R3,
+- modify mastery,
+- modify Knowledge Tree,
+- implement readiness/P,
+- implement cognitive cost.
+
+We will review and approve the architecture before implementation.
