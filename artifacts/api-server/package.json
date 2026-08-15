@@ -27,7 +27,8 @@
     "test:integration": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase12-teacher-crud.test.ts && tsx src/mapping/__tests__/mapTextInserter.test.ts && tsx src/lib/__tests__/sequential-deps-phase18.test.ts && tsx src/lib/__tests__/quiz-lesson-links-phase19.test.ts && tsx src/lib/__tests__/kt-initialization-phase111.test.ts && tsx src/lib/__tests__/lesson-final-approval.test.ts && tsx src/lib/__tests__/quiz-creation-phase110.test.ts && tsx src/lib/__tests__/phase112-lesson-assignment.test.ts && tsx src/lib/__tests__/phase112-final.test.ts && tsx src/lib/__tests__/phase112-cleanup-quiz-completion.test.ts && tsx src/mapping/__tests__/mapTextHttp.test.ts",
     "test:ai-integration": "RUN_AI_TESTS=1 tsx src/lib/__tests__/post-phase112-authoring-simplification.test.ts && RUN_AI_TESTS=1 tsx src/lib/__tests__/phase2-generation.test.ts && RUN_AI_TESTS=1 tsx src/lib/__tests__/phase113-e2e-lifecycle.test.ts",
     "test:safety": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/test-isolation-safety.test.ts",
-    "test:kt14a": "tsx src/lib/__tests__/kt-1-4a-coverage.test.ts"
+    "test:kt14a": "tsx src/lib/__tests__/kt-1-4a-coverage.test.ts",
+    "test:kt15": "tsx src/lib/__tests__/kt-1-5-acceptance.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

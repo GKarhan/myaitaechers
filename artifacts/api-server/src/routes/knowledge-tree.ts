@@ -11,8 +11,10 @@ import {
   classesTable,
   classStudentsTable,
   reviewScheduleTable,
+  evidenceEventsTable,
+  quizzesTable,
 } from "@workspace/db";
-import { eq, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, desc, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { getMasteryLevelFromScores, aggregateKnowledgeCoverage } from "../lib/mastery";
 
@@ -162,6 +164,220 @@ router.get(
 
     res.json({ subjects });
   }
+);
+
+// ── GET /knowledge-tree/nodes/:lessonNodeId ──────────────────────────────────
+// KT-1.5: Lazy-loaded MicroNode detail panel.
+//
+// STRICTLY READ-ONLY — 0 INSERT / UPDATE on any table.
+//
+// Identity: lessonNodeId (curriculum identity; exists even without a KN row).
+// Auth chain: requireAuth → student enrolled via class_students → courses → subject.
+// Learner state: knowledge_nodes LEFT JOIN (absent → not_started, 0 mastery).
+// Evidence: evidence_events WHERE topic_id = knowledge_nodes.id (FK confirmed).
+// Evidence source: metadata->>'source' ('quiz' | else → 'lesson').
+// Review schedule: review_schedule WHERE topic_id = knowledge_nodes.id.
+//
+// MUST be registered BEFORE /:subjectId to prevent Express matching "nodes"
+// as a subjectId integer and returning 400.
+router.get(
+  "/knowledge-tree/nodes/:lessonNodeId",
+  requireAuth,
+  async (req: AuthRequest, res) => {
+    const userId = req.userId!;
+
+    // 1. Parse + validate
+    const lessonNodeId = parseInt(String(req.params.lessonNodeId), 10);
+    if (isNaN(lessonNodeId)) {
+      return res.status(400).json({ error: "Անվավեր lessonNodeId" });
+    }
+
+    // 2. Fetch curriculum identity: lesson_node + lesson + subject + topic (LEFT)
+    const nodeRows = await db
+      .select({
+        nodeId:            lessonNodesTable.id,
+        nodeTitle:         lessonNodesTable.title,
+        learningObjective: lessonNodesTable.learningObjective,
+        targetBloomLevel:  lessonNodesTable.targetBloomLevel,
+        sourcePage:        lessonNodesTable.sourcePage,
+        nodeStatus:        lessonNodesTable.status,
+        topicId:           lessonNodesTable.topicId,
+        lessonId:          lessonsTable.id,
+        lessonTitle:       lessonsTable.title,
+        lessonStatus:      lessonsTable.status,
+        subjectId:         subjectsTable.id,
+        subjectName:       subjectsTable.name,
+        topicTitle:        lessonTopicsTable.title,
+      })
+      .from(lessonNodesTable)
+      .innerJoin(lessonsTable,      eq(lessonNodesTable.lessonId,  lessonsTable.id))
+      .innerJoin(subjectsTable,     eq(lessonsTable.subjectId,     subjectsTable.id))
+      .leftJoin( lessonTopicsTable, eq(lessonNodesTable.topicId,   lessonTopicsTable.id))
+      .where(eq(lessonNodesTable.id, lessonNodeId))
+      .limit(1);
+
+    if (nodeRows.length === 0) {
+      return res.status(404).json({ error: "Հangouytsи не найден" });
+    }
+    const node = nodeRows[0];
+
+    // 3. Verify node is approved
+    if (node.nodeStatus !== "approved") {
+      return res.status(403).json({ error: "Հangouytsи не утверждён" });
+    }
+
+    // 4. Verify lesson is active
+    if (node.lessonStatus !== "active") {
+      return res.status(403).json({ error: "Даси не является активным" });
+    }
+
+    // 5. Verify student is enrolled in this subject
+    const enrollmentRows = await db
+      .select({ courseId: coursesTable.id })
+      .from(classStudentsTable)
+      .innerJoin(coursesTable, and(
+        eq(classStudentsTable.classId,    coursesTable.classId),
+        eq(coursesTable.subjectId,        node.subjectId),
+      ))
+      .where(eq(classStudentsTable.studentId, userId))
+      .limit(1);
+
+    if (enrollmentRows.length === 0) {
+      return res.status(403).json({ error: "Ոr не зарегистрирован в этом предмете" });
+    }
+
+    // 6. Get knowledge_nodes for (userId, lessonNodeId) — LEFT JOIN semantics via query
+    const knRows = await db
+      .select({
+        knId:            knowledgeNodesTable.id,
+        masteryScore:    knowledgeNodesTable.masteryScore,
+        confidenceScore: knowledgeNodesTable.confidenceScore,
+      })
+      .from(knowledgeNodesTable)
+      .where(and(
+        eq(knowledgeNodesTable.userId,        userId),
+        eq(knowledgeNodesTable.lessonNodeId,  lessonNodeId),
+      ))
+      .limit(1);
+
+    const kn = knRows[0] ?? null;
+
+    // 7. Get review_schedule via knowledge_nodes.id (topicId FK = kn.id)
+    let dueAt: Date | null = null;
+    if (kn) {
+      const rsRows = await db
+        .select({ dueAt: reviewScheduleTable.dueAt })
+        .from(reviewScheduleTable)
+        .where(and(
+          eq(reviewScheduleTable.userId,   userId),
+          eq(reviewScheduleTable.topicId,  kn.knId),
+        ))
+        .limit(1);
+      if (rsRows.length > 0) dueAt = rsRows[0].dueAt;
+    }
+
+    // 8. Compute mastery level (same function + fold as main KT tree)
+    const rawLevel    = getMasteryLevelFromScores(
+      kn?.masteryScore   ?? null,
+      kn?.confidenceScore ?? null,
+      dueAt,
+    );
+    const masteryLevel = rawLevel === "needs_review" ? "mastered" : rawLevel;
+    const masteryScore = kn?.masteryScore ?? 0;
+
+    // 9. Evidence counts (full) — evidence_events.topicId FK → knowledge_nodes.id
+    let totalEvidence  = 0;
+    let fromQuizTotal  = 0;
+    let fromLessonTotal = 0;
+    if (kn) {
+      const countRows = await db.execute<{ total: number; from_quiz: number }>(
+        sql`SELECT
+              COUNT(*)::int                                                      AS total,
+              COUNT(*) FILTER (WHERE metadata->>'source' = 'quiz')::int         AS from_quiz
+            FROM evidence_events
+            WHERE topic_id = ${kn.knId}`,
+      );
+      totalEvidence   = countRows.rows[0]?.total    ?? 0;
+      fromQuizTotal   = countRows.rows[0]?.from_quiz ?? 0;
+      fromLessonTotal = totalEvidence - fromQuizTotal;
+    }
+
+    // 10. Recent evidence (latest 10, newest-first)
+    let evidenceRows: Array<{
+      id: number; eventType: string; wasCorrect: boolean | null;
+      metadata: unknown; createdAt: Date;
+    }> = [];
+    if (kn) {
+      evidenceRows = await db
+        .select({
+          id:          evidenceEventsTable.id,
+          eventType:   evidenceEventsTable.eventType,
+          wasCorrect:  evidenceEventsTable.wasCorrect,
+          metadata:    evidenceEventsTable.metadata,
+          createdAt:   evidenceEventsTable.createdAt,
+        })
+        .from(evidenceEventsTable)
+        .where(eq(evidenceEventsTable.topicId, kn.knId))
+        .orderBy(desc(evidenceEventsTable.createdAt))
+        .limit(10);
+    }
+
+    // 11. Batch-fetch quiz titles for quiz evidence (real persisted linkage only)
+    const quizIds = [...new Set(
+      evidenceRows
+        .map(e => (e.metadata as { quizId?: number }).quizId)
+        .filter((id): id is number => typeof id === "number"),
+    )];
+    const quizTitleMap = new Map<number, string>();
+    if (quizIds.length > 0) {
+      const quizRows = await db
+        .select({ id: quizzesTable.id, title: quizzesTable.title })
+        .from(quizzesTable)
+        .where(inArray(quizzesTable.id, quizIds));
+      for (const q of quizRows) quizTitleMap.set(q.id, q.title);
+    }
+
+    // 12. Build recent evidence list (student-friendly, no raw IDs)
+    const recentEvidence = evidenceRows.map(e => {
+      const meta    = e.metadata as { quizId?: number; source?: string };
+      const isQuiz  = meta?.source === "quiz";
+      return {
+        id:         e.id,
+        eventType:  e.eventType,
+        wasCorrect: e.wasCorrect,
+        source:     isQuiz ? "quiz" : "lesson",
+        ...(isQuiz && meta.quizId != null
+          ? { quizId: meta.quizId, quizTitle: quizTitleMap.get(meta.quizId) ?? null }
+          : {}),
+        createdAt: e.createdAt,
+      };
+    });
+
+    return res.json({
+      lessonNodeId,
+      title:             node.nodeTitle,
+      learningObjective: node.learningObjective  ?? null,
+      targetBloomLevel:  node.targetBloomLevel   ?? null,
+      sourcePage:        node.sourcePage         ?? null,
+
+      subject: { id: node.subjectId, name: node.subjectName },
+      lesson:  { id: node.lessonId,  title: node.lessonTitle  },
+      topic:   (node.topicId != null && node.topicTitle != null)
+        ? { id: node.topicId, title: node.topicTitle }
+        : null,
+
+      learnerState: {
+        masteryScore,
+        confidenceScore: kn?.confidenceScore ?? null,
+        masteryLevel,
+      },
+
+      nextReviewAt: dueAt ? dueAt.toISOString() : null,
+
+      evidenceSummary: { total: totalEvidence, fromQuiz: fromQuizTotal, fromLesson: fromLessonTotal },
+      recentEvidence,
+    });
+  },
 );
 
 // ── GET /knowledge-tree/:subjectId ───────────────────────────────────────────

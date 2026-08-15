@@ -1,0 +1,843 @@
+PHASE KT-1.5 — MICRONODE DETAIL PANEL + EVIDENCE TRANSPARENCY
+KNOWLEDGE TREE V1 CLOSURE
+
+STRICT SCOPE
+
+Implement a read-only Detail Panel for the atomic Knowledge Tree unit:
+
+MicroNode / Գիտելիքի հանգույց
+
+Canonical hierarchy is already locked:
+
+Subject
+→ Lesson
+→ Knowledge Group / Topic
+→ MicroNode
+
+Student-facing:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+KT-1.3 hierarchy is complete.
+KT-1.4A coverage + four-state aggregation is complete.
+
+DO NOT:
+- redesign the Knowledge Tree hierarchy
+- change coverage formulas
+- change mastery formulas
+- change confidence formulas
+- change quiz scoring
+- change evidence generation logic
+- change mapping
+- change AI Teacher
+- implement Cognitive Depth yet
+- implement personalization actions yet
+- implement spaced repetition yet
+- implement K=P×L×R yet
+- create fake learner-state/evidence data
+
+This phase must be primarily READ-ONLY.
+
+==================================================
+1. PRODUCT GOAL
+==================================================
+
+When the student clicks a MicroNode in the Knowledge Tree,
+they should understand:
+
+1. Ի՞նչ գիտելիքի հանգույց է սա։
+2. Ի՞նչ պետք է կարողանամ անել։
+3. Ի՞նչ վիճակում եմ հիմա։
+4. Որքա՞ն է իմ mastery score-ը։
+5. Որքա՞ն վստահելի է այդ գնահատականը։
+6. Ի՞նչ evidence-ի վրա է համակարգը հիմնվել։
+7. Ե՞րբ է վերջին evidence-ը գրանցվել։
+
+The Detail Panel explains learner state.
+
+It must NOT yet decide what the learner should do next.
+
+==================================================
+2. AUDIT FIRST — NO CODE YET
+==================================================
+
+Before implementation, trace ONE real MicroNode end-to-end.
+
+Inspect at minimum:
+
+- lesson_nodes
+- knowledge_nodes
+- evidence_events
+- quiz_attempts
+- quiz_answers
+- lesson_sessions
+- chat/evidence persistence if relevant
+- review_schedule if relevant
+- existing Knowledge Tree API
+- current mastery/confidence helpers
+
+Report exact available fields from each source.
+
+Classify fields as:
+
+A. curriculum truth
+B. learner-state truth
+C. evidence/history
+D. scheduling/future-action
+
+Do NOT invent missing fields.
+
+==================================================
+3. CANONICAL NODE IDENTITY — CRITICAL
+==================================================
+
+Determine which identifier must open the Detail Panel.
+
+Likely:
+
+lessonNodeId
+
+NOT knowledgeNodeId.
+
+Reason:
+
+a curriculum MicroNode exists even when the student has never studied it
+and no knowledge_nodes row exists.
+
+Therefore a "Դեռ չի ուսումնասիրել" node MUST still open.
+
+Prefer the curriculum identity if current architecture supports it.
+
+Do NOT create a knowledge_nodes row merely to view detail.
+
+==================================================
+4. DETAIL PANEL UX
+==================================================
+
+On desktop:
+
+click MicroNode
+→ open a right-side drawer / side panel
+
+Preferred over navigating to a new page.
+
+The user must preserve:
+- current subject
+- expanded Lesson
+- expanded Knowledge Group
+- filter
+- scroll position
+
+On mobile/narrow layout:
+full-width drawer/sheet is acceptable.
+
+Required interactions:
+
+- click node → open
+- X / close button → close
+- Escape → close if current UI patterns support it
+- click another node → update panel
+- close panel → tree remains unchanged
+
+Do NOT reset scroll/filter/expansion state.
+
+==================================================
+5. PANEL HEADER
+==================================================
+
+Show:
+
+Գիտելիքի հանգույց
+
+[MicroNode title]
+
+Then compact hierarchy context:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+
+Example:
+
+Ֆիզիկա 7
+→ Դաս 1
+→ Ատոմներ և մոլեկուլներ
+
+Use actual DB hierarchy.
+
+Do NOT fabricate missing groups.
+
+==================================================
+6. LEARNING OBJECTIVE
+==================================================
+
+If authoritative learningObjective exists on lesson_nodes,
+show:
+
+🎯 Ուսուցման նպատակ
+
+Use the existing mapped/teacher-approved LO exactly.
+
+Do NOT AI-generate a new one.
+
+If absent:
+show a clean empty state or omit the section.
+
+Do NOT fabricate text.
+
+==================================================
+7. CURRENT LEARNER STATE
+==================================================
+
+Show one of exactly:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Use the SAME authoritative classification already used by the Knowledge Tree.
+
+Do NOT create another frontend classification formula.
+
+Tree state and Detail state must match exactly.
+
+==================================================
+8. ATOMIC MASTERY
+==================================================
+
+Show:
+
+Յուրացում
+XX%
+
+This is the existing atomic masteryScore.
+
+Do NOT confuse this with Subject/Lesson coverage.
+
+For an existing not_started MicroNode:
+
+if current KT atomic contract uses 0,
+show:
+
+Յուրացում՝ 0%
+
+Do NOT recalculate mastery from recent evidence in the Detail Panel.
+
+==================================================
+9. CONFIDENCE SEMANTICS
+==================================================
+
+Audit what confidenceScore really means.
+
+If it represents system confidence in the learner-state estimate,
+show:
+
+Գնահատման վստահելիություն
+XX%
+
+and a short explanatory text such as:
+
+«Ցույց է տալիս, թե որքան բավարար ապացույց ունի համակարգը այս գնահատման համար»։
+
+ONLY use this wording if audit confirms the semantics.
+
+Do NOT label it as learner self-confidence unless that is what the field actually means.
+
+Do NOT change the confidence formula.
+
+==================================================
+10. EVIDENCE SUMMARY
+==================================================
+
+Add a compact evidence summary.
+
+Use ONLY real persisted evidence source types.
+
+Conceptually:
+
+Ապացույցներ
+
+Ընդամենը՝ N
+
+Թեստերից՝ X
+Դասի ընթացքում՝ Y
+Այլ՝ Z
+
+But do NOT invent categories.
+
+Audit evidence_events source/type fields first.
+
+If the schema only supports:
+- quiz
+- lesson
+- manual
+or other exact types,
+
+render only those real types.
+
+If N = 0:
+
+«Այս հանգույցի համար դեռ գնահատման ապացույց չկա»
+
+==================================================
+11. RECENT EVIDENCE HISTORY
+==================================================
+
+Show recent evidence newest-first.
+
+Limit initial list to e.g. latest 5–10.
+
+Do NOT dump raw DB rows.
+
+Student-friendly format only.
+
+Example:
+
+14.08.2026
+Թեստ
+Ճիշտ պատասխան
+Արդյունք՝ ...
+
+13.08.2026
+Դասի ընթացքում
+...
+
+Use only real fields that exist.
+
+If more evidence exists:
+local «Ցույց տալ ավելին» is acceptable.
+
+No heavy pagination infrastructure required.
+
+==================================================
+12. QUIZ TRACEABILITY
+==================================================
+
+If an evidence event has authoritative linkage to:
+
+quiz
+quiz_attempt
+quiz_answer
+
+show a friendly source label, for example:
+
+Աղբյուր՝ «Թեստ — 14.08.2026»
+
+Do NOT expose internal IDs.
+
+Do NOT infer links by:
+- title guess
+- timestamp proximity
+- matching score
+- heuristic
+
+Only use real persisted relations.
+
+==================================================
+13. AI TEACHER EVIDENCE TRACEABILITY
+==================================================
+
+Audit whether AI Teacher lesson evidence is persisted in a form that can
+be traced to a MicroNode.
+
+If YES:
+show it as a separate real source type.
+
+If NO:
+report clearly:
+
+AI Teacher evidence is not yet traceable at MicroNode detail level.
+
+Do NOT build a new evidence pipeline in KT-1.5.
+
+That will be handled later in the AI Teacher closed-loop phase.
+
+==================================================
+14. NOT_STARTED NODE — MANDATORY CASE
+==================================================
+
+A legitimate MicroNode can exist with:
+
+active lesson
+approved node
+no knowledge_nodes row
+no evidence
+
+Clicking it MUST still open.
+
+Expected:
+
+real title
+real hierarchy
+real LO if available
+Վիճակ՝ Դեռ չի ուսումնասիրել
+Յուրացում՝ 0%
+Ապացույցներ՝ 0
+
+No DB writes.
+
+No fake KN record.
+
+No fake evidence.
+
+==================================================
+15. CURRICULUM CONTENT — KEEP IT COMPACT
+==================================================
+
+Audit available fields such as:
+
+- title
+- learningObjective
+- theory/content
+- page
+- bloomLevel
+- source metadata
+- Phase 2 fields
+
+KT-1.5 must NOT become Teacher Review.
+
+Required:
+- title
+- hierarchy
+- learning objective
+
+Optional:
+- textbook page
+- small Bloom metadata if already authoritative
+
+Do NOT show huge theory/content blocks by default.
+
+==================================================
+16. BLOOM — READ-ONLY ONLY
+==================================================
+
+If current MicroNode already has a Bloom level,
+you MAY show it as metadata.
+
+Example:
+
+Bloom մակարդակ՝ 2
+
+But DO NOT:
+
+- infer learner Bloom capability
+- calculate Cognitive Depth
+- show current cognitive level
+- show next cognitive level
+- create Remember/Understand/Apply progression yet
+
+That belongs to Phase 2A + KT-1.4B.
+
+==================================================
+17. REVIEW / RETENTION DATA
+==================================================
+
+Audit review_schedule.
+
+If there is a reliable existing next-review field,
+you MAY show read-only:
+
+Հաջորդ կրկնություն՝ [date]
+
+ONLY if semantics are already trustworthy.
+
+If legacy/incomplete:
+do not expose it yet.
+
+Report as deferred.
+
+Do NOT build spaced repetition logic here.
+
+==================================================
+18. NO NEXT-ACTION ENGINE YET
+==================================================
+
+Do NOT implement:
+
+Գիտի → կրկնություն
+Մասնակի գիտի → targeted learning
+Չգիտի → fundamental learning
+Դեռ չի ուսումնասիրել → initial teaching
+
+Do NOT add:
+«Սովորել»
+«Կրկնել»
+«Շարունակել»
+personalized action buttons yet.
+
+KT-1.5 = transparency, not orchestration.
+
+==================================================
+19. DETAIL API — LAZY LOAD
+==================================================
+
+Do NOT put full evidence history for every node into the main subject
+Knowledge Tree response.
+
+Preferred architecture:
+
+GET /api/knowledge-tree/nodes/:lessonNodeId
+
+or equivalent consistent route.
+
+Called only when a MicroNode panel opens.
+
+Conceptual response:
+
+{
+  lessonNodeId,
+  title,
+  learningObjective,
+
+  subject: {...},
+  lesson: {...},
+  topic: {...},
+
+  learnerState: {
+    masteryScore,
+    confidenceScore,
+    masteryLevel
+  },
+
+  evidenceSummary: {
+    total: N,
+    ...
+  },
+
+  recentEvidence: [...]
+}
+
+Use actual schema and existing API conventions.
+
+==================================================
+20. AUTHORIZATION — CRITICAL
+==================================================
+
+The endpoint must derive student identity from authentication.
+
+Do NOT accept studentId from frontend as authority.
+
+Verify:
+
+- authenticated user is student
+- student belongs to/enrolled in the relevant subject/course
+- lesson is active
+- MicroNode is approved
+- node belongs to requested subject
+
+Student must NOT retrieve another student's state by changing IDs.
+
+==================================================
+21. READ-ONLY GUARANTEE
+==================================================
+
+Opening/closing Detail Panel must produce:
+
+0 INSERT into knowledge_nodes
+0 INSERT into evidence_events
+0 quiz writes
+0 session writes
+0 review writes
+
+Repeated opening must remain read-only.
+
+Viewing knowledge must never generate evidence.
+
+==================================================
+22. PERFORMANCE
+==================================================
+
+Main Knowledge Tree remains lightweight.
+
+Evidence is fetched only on detail open.
+
+Avoid N+1.
+
+Opening one MicroNode:
+→ one detail payload
+
+Do not fetch all node histories during subject-tree load.
+
+Report query strategy.
+
+==================================================
+23. LOADING / ERROR / EMPTY STATES
+==================================================
+
+Panel states:
+
+Loading:
+«Բեռնվում է...»
+
+Error:
+clean Armenian message
+
+No evidence:
+«Այս հանգույցի համար դեռ գնահատման ապացույց չկա»
+
+Do NOT expose:
+- stack traces
+- raw SQL
+- raw JSON errors
+- internal IDs
+
+==================================================
+24. CONSISTENCY INVARIANT
+==================================================
+
+For the same MicroNode:
+
+Knowledge Tree state
+==
+Detail Panel state
+
+Knowledge Tree masteryScore
+==
+Detail Panel masteryScore
+
+Knowledge Tree classification
+==
+Detail Panel classification
+
+If tree says:
+
+Մասնակի գիտի · 67%
+
+Detail must show:
+
+Մասնակի գիտի · 67%
+
+No separate calculations.
+
+==================================================
+25. ACCEPTANCE TESTS
+==================================================
+
+IDENTITY
+
+T01 detail opens by canonical lessonNodeId
+T02 no-KN node opens
+T03 no fake KN created
+
+CURRICULUM
+
+T04 correct title
+T05 correct learningObjective
+T06 correct Subject/Lesson/Topic context
+
+LEARNER STATE
+
+T07 masteryScore matches tree
+T08 confidenceScore matches authoritative source
+T09 masteryLevel matches tree
+T10 not_started node shows correct zero/no-evidence state
+
+EVIDENCE
+
+T11 evidence belongs to requested MicroNode only
+T12 evidence belongs to authenticated student only
+T13 evidence count correct
+T14 recent evidence newest-first
+T15 source labels come from real persisted source types
+T16 no fabricated quiz/source linkage
+
+AUTH
+
+T17 unauthenticated request rejected
+T18 unenrolled node rejected
+T19 student cannot access another student's learner state
+
+PERFORMANCE
+
+T20 main tree endpoint does not embed full evidence history
+T21 detail is lazy-loaded
+
+READ ONLY
+
+T22 opening detail causes zero DB writes
+T23 repeated opening causes zero duplicate rows
+
+CONSISTENCY
+
+T24 tree state/mastery == panel state/mastery
+
+POLLUTION
+
+T25 zero test pollution
+
+==================================================
+26. REAL PHYSICS UAT — READ ONLY
+==================================================
+
+Use current Physics data.
+
+At least verify:
+
+A. one MicroNode with learner evidence
+B. one MicroNode with no/little evidence if available
+
+For each report:
+
+- title
+- hierarchy
+- state
+- masteryScore
+- confidenceScore
+- evidence total
+- recent evidence source
+
+Do NOT modify the real student data.
+
+==================================================
+27. MANUAL UAT STEPS FOR ME
+==================================================
+
+After implementation give exact browser steps:
+
+1. Student login
+2. Sidebar → Գիտելիքի ծառ
+3. Open Physics
+4. Expand Lesson
+5. Expand Knowledge Group
+6. Click MicroNode
+7. Detail Panel opens
+8. Verify title
+9. Verify hierarchy
+10. Verify learning objective
+11. Verify state
+12. Verify mastery
+13. Verify confidence
+14. Verify evidence total
+15. Verify recent evidence
+16. Close panel
+17. Tree remains at same scroll/filter/expansion state
+18. Open another node
+19. Panel updates
+20. Open not_started node
+21. Verify:
+    - Դեռ չի ուսումնասիրել
+    - 0% mastery
+    - 0 evidence
+22. Close/reopen repeatedly
+23. Confirm no data changed
+
+==================================================
+28. KNOWLEDGE TREE V1 CLOSURE AUDIT
+==================================================
+
+After implementation verify full canonical flow:
+
+Sidebar
+→ Գիտելիքի ծառ
+→ Subject cards
+→ Subject
+→ Lesson
+→ Knowledge Group
+→ MicroNode
+→ Detail Panel
+
+Verify:
+
+KT-1.2 navigation works
+KT-1.3 hierarchy works
+KT-1.4A coverage + four-state aggregation works
+KT-1.5 detail/evidence works
+
+All must use the same canonical MicroNode identity.
+
+==================================================
+29. V1 FINAL INVARIANTS
+==================================================
+
+Verify:
+
+1. One canonical Knowledge Tree subject route
+2. One canonical hierarchy
+3. Atomic unit = lesson_node / MicroNode
+4. No fake Node/Subnode layer
+5. No-KN nodes visible as not_started
+6. Coverage derived from atomic nodes
+7. Filters do not change coverage
+8. Detail does not recalculate mastery
+9. Detail is read-only
+10. Student sees only authorized curriculum/state
+11. No duplicate atomic units
+12. Zero test pollution
+
+==================================================
+30. DEFERRED — DO NOT IMPLEMENT
+==================================================
+
+Explicitly defer:
+
+- Cognitive Depth
+- target cognitive ceiling
+- current cognitive level
+- next cognitive target
+- personalized Bloom capability
+- difficulty adaptation
+- workload adaptation
+- next-best-action engine
+- AI Teacher launch from KT
+- spaced repetition
+- retention scheduling
+- P/L/R
+- K = P × L × R
+
+==================================================
+31. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-IMPLEMENTATION DATA AUDIT
+
+B. CANONICAL NODE IDENTITY
+
+C. DETAIL API
+- route
+- authorization
+- response shape
+- query strategy
+
+D. DETAIL PANEL UX
+
+E. MASTERY SEMANTICS
+
+F. CONFIDENCE SEMANTICS
+
+G. EVIDENCE SOURCE TYPES FOUND
+
+H. QUIZ TRACEABILITY
+
+I. AI TEACHER EVIDENCE TRACEABILITY
+
+J. REVIEW/RETENTION DATA STATUS
+
+K. REAL PHYSICS UAT
+
+L. TEST RESULTS T01–T25
+
+M. ZERO-WRITE PROOF
+
+N. KNOWLEDGE TREE V1 CLOSURE AUDIT
+
+O. MANUAL UAT STEPS
+
+P. DEFERRED ITEMS
+
+FINAL VERDICT:
+
+KT-1.5 = PASS — KNOWLEDGE TREE V1 CLOSED
+
+or
+
+KT-1.5 = FAIL — KNOWLEDGE TREE V1 NOT CLOSED
+
+STOP.
+
+Do NOT automatically start Phase 2A.

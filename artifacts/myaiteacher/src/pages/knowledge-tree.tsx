@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
+import { NodeDetailPanel } from "./node-detail-panel";
 
 // ── KT-1.3 / KT-1.4 types ────────────────────────────────────────────────────
 type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
@@ -91,11 +92,27 @@ function filterLesson(lesson: KTLesson, filter: FilterTab): KTLesson | null {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function NodeRow({ node }: { node: KTMicroNode }) {
+function NodeRow({
+  node,
+  onClick,
+  isSelected,
+}: {
+  node: KTMicroNode;
+  onClick: (id: number) => void;
+  isSelected: boolean;
+}) {
   const cfg = masteryConfig(node.masteryLevel);
   return (
-    <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl bg-card/50 border border-card-border border-l-4 ${cfg.border}`}
+    <button
+      type="button"
+      onClick={() => onClick(node.lessonNodeId)}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-card/50 border border-l-4 transition-colors text-left ${cfg.border} ${
+        isSelected
+          ? "border-white/40 ring-1 ring-primary/30"
+          : "border-card-border hover:bg-card/80"
+      }`}
+      aria-pressed={isSelected}
+      title="Բacel manatramb"
     >
       {/* State icon — distinct symbol per state (not just color) */}
       <span
@@ -123,7 +140,7 @@ function NodeRow({ node }: { node: KTMicroNode }) {
       <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium border ${cfg.badge}`}>
         {cfg.label}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -131,10 +148,14 @@ function TopicGroup({
   topic,
   isOpen,
   onToggle,
+  onNodeClick,
+  selectedNodeId,
 }: {
   topic: KTTopic;
   isOpen: boolean;
   onToggle: () => void;
+  onNodeClick: (id: number) => void;
+  selectedNodeId: number | null;
 }) {
   return (
     <div className="mb-2">
@@ -160,7 +181,12 @@ function TopicGroup({
       {isOpen && (
         <div className="ml-6 mt-1 flex flex-col gap-1.5">
           {topic.nodes.map((node) => (
-            <NodeRow key={node.lessonNodeId} node={node} />
+            <NodeRow
+              key={node.lessonNodeId}
+              node={node}
+              onClick={onNodeClick}
+              isSelected={node.lessonNodeId === selectedNodeId}
+            />
           ))}
         </div>
       )}
@@ -175,6 +201,8 @@ function LessonSection({
   onToggle,
   expandedTopics,
   onToggleTopic,
+  onNodeClick,
+  selectedNodeId,
 }: {
   lesson: KTLesson;
   lessonIndex: number;
@@ -182,6 +210,8 @@ function LessonSection({
   onToggle: () => void;
   expandedTopics: Set<string>;
   onToggleTopic: (key: string) => void;
+  onNodeClick: (id: number) => void;
+  selectedNodeId: number | null;
 }) {
   const lessonLabel = lesson.lessonNumber != null
     ? `Դաս ${lesson.lessonNumber}`
@@ -224,6 +254,8 @@ function LessonSection({
                 topic={topic}
                 isOpen={expandedTopics.has(topicKey)}
                 onToggle={() => onToggleTopic(topicKey)}
+                onNodeClick={onNodeClick}
+                selectedNodeId={selectedNodeId}
               />
             );
           })}
@@ -252,7 +284,12 @@ function LessonSection({
               {expandedTopics.has(`ungrouped-${lesson.lessonId}`) && (
                 <div className="ml-6 mt-1 flex flex-col gap-1.5">
                   {lesson.ungroupedNodes.map((node) => (
-                    <NodeRow key={node.lessonNodeId} node={node} />
+                    <NodeRow
+                      key={node.lessonNodeId}
+                      node={node}
+                      onClick={onNodeClick}
+                      isSelected={node.lessonNodeId === selectedNodeId}
+                    />
                   ))}
                 </div>
               )}
@@ -295,11 +332,24 @@ export default function KnowledgeTree() {
   // Set of expanded topic keys ("topic-{lessonId}-{topicId}" | "ungrouped-{lessonId}")
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
 
+  // ── KT-1.5: Detail panel state ─────────────────────────────────────────────
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+
+  const handleNodeClick = useCallback((id: number) => {
+    // clicking the same node again closes the panel
+    setSelectedNodeId(prev => (prev === id ? null : id));
+  }, []);
+
+  const handlePanelClose = useCallback(() => {
+    setSelectedNodeId(null);
+  }, []);
+
   // ── Reset on subject change (KT-1.2 scroll + filter + KT-1.3 expansion) ──
   useEffect(() => {
     setActiveFilter("all");
     setExpandedLessons(new Set());
     setExpandedTopics(new Set());
+    setSelectedNodeId(null);
     document.getElementById("student-main")?.scrollTo(0, 0);
   }, [subjectId]);
 
@@ -410,6 +460,7 @@ export default function KnowledgeTree() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
+    <>
     <div className="min-h-[100dvh] w-full bg-background text-white pb-20">
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <header className="border-b border-card-border bg-card/50 backdrop-blur-lg sticky top-0 z-50">
@@ -488,6 +539,8 @@ export default function KnowledgeTree() {
               onToggle={() => toggleLesson(lesson.lessonId)}
               expandedTopics={expandedTopics}
               onToggleTopic={toggleTopic}
+              onNodeClick={handleNodeClick}
+              selectedNodeId={selectedNodeId}
             />
           ))
         )}
@@ -529,5 +582,11 @@ export default function KnowledgeTree() {
 
       </div>
     </div>
+    {/* KT-1.5: MicroNode Detail Panel — lazy loaded, 0 DB writes */}
+    <NodeDetailPanel
+      lessonNodeId={selectedNodeId}
+      onClose={handlePanelClose}
+    />
+    </>
   );
 }
