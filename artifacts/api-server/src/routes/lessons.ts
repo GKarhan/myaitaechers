@@ -2451,21 +2451,29 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
   // Fetch all MicroNodes (fast DB read — done synchronously before responding)
-  const nodes = await db
+  const allNodes = await db
     .select({
-      id:                lessonNodesTable.id,
-      title:             lessonNodesTable.title,
-      learningObjective: lessonNodesTable.learningObjective,
-      theoryContent:     lessonNodesTable.theoryContent,
-      blockType:         lessonNodesTable.blockType,
-      status:            lessonNodesTable.status,
+      id:                        lessonNodesTable.id,
+      title:                     lessonNodesTable.title,
+      learningObjective:         lessonNodesTable.learningObjective,
+      theoryContent:             lessonNodesTable.theoryContent,
+      blockType:                 lessonNodesTable.blockType,
+      status:                    lessonNodesTable.status,
+      childFriendlyExplanation:  lessonNodesTable.childFriendlyExplanation,
     })
     .from(lessonNodesTable)
     .where(eq(lessonNodesTable.lessonId, lessonId))
     .orderBy(asc(lessonNodesTable.sequence));
 
-  if (nodes.length === 0) {
+  // Only process nodes that are missing Phase 2 content — never overwrite completed nodes.
+  const nodes = allNodes.filter((n) => !n.childFriendlyExplanation);
+
+  if (allNodes.length === 0) {
     res.status(400).json({ error: "No MicroNodes found — run /map first" });
+    return;
+  }
+  if (nodes.length === 0) {
+    res.status(400).json({ error: "All MicroNodes already have Phase 2 content — nothing to generate" });
     return;
   }
 

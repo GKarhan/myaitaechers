@@ -900,6 +900,8 @@ function LessonNodesPanel({
   const [enrichingNodeId, setEnrichingNodeId] = useState<number | null>(null);
   const [enrichNodeErrors, setEnrichNodeErrors] = useState<Record<number, string>>({});
   const [enrichNodeDone, setEnrichNodeDone] = useState<Record<number, boolean>>({});
+  const [bannerTriggering, setBannerTriggering] = useState(false);
+  const [bannerError, setBannerError] = useState<string | null>(null);;
 
   // ── Phase 2A R3: Cognitive Path ────────────────────────────────────────────
   type CogTask = { id: number; cognitiveLevelId: number; lessonExerciseId: number | null; taskProvenance: string; exercise: { exerciseId: string; exerciseTextVerbatim: string; exerciseTextEdited: string | null } | null };
@@ -1089,6 +1091,25 @@ function LessonNodesPanel({
       body: JSON.stringify({ orderedLevelIds: newLevels.map((l) => l.id) }),
     });
     await loadCogPath(nodeId);
+  };
+
+  const handleBannerGenerate = async () => {
+    setBannerError(null);
+    setBannerTriggering(true);
+    try {
+      const r = await fetch(`/api/lessons/${lessonId}/generate-teaching-content`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken ?? ""}` },
+      });
+      const data = await r.json();
+      if (!r.ok) { setBannerTriggering(false); setBannerError(data.error ?? "Xndiru chexavets"); return; }
+      // Invalidate the job-status query so GenerateTeachingContentButton picks up and polls
+      qc.invalidateQueries({ queryKey: ["lesson-generate-status", lessonId] });
+    } catch {
+      setBannerError("Xmbagumutyun sxal");
+    } finally {
+      setBannerTriggering(false);
+    }
   };
 
   const enrichNode = async (nodeId: number) => {
@@ -2408,15 +2429,24 @@ function LessonNodesPanel({
             const phase2Missing = nodes.filter((n) => !(n as any).childFriendlyExplanation).length;
             if (phase2Missing === 0 || nodes.length === 0) return null;
             return (
-              <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/8 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-indigo-400/80 font-medium">
-                    🧠 {phase2Missing}/{nodes.length} Գիտելիքի հանգույցներ բացակայում են
-                  </span>
-                </div>
-                <span className="text-[9px] text-indigo-400/50 italic">
-                  Steghtsir klkatsir "🧠 Ստեղծել ուսուցման բովանդակությունը"
+              <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/8 px-3 py-2 gap-3">
+                <span className="text-[10px] text-indigo-400/80 font-medium shrink-0">
+                  🧠 {phase2Missing}/{nodes.length} Գիտելիքի հանգույցներ բացակայում են
                 </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {bannerError && (
+                    <span className="text-[9px] text-red-400">{bannerError}</span>
+                  )}
+                  <button
+                    onClick={handleBannerGenerate}
+                    disabled={bannerTriggering}
+                    className="px-2 py-1 rounded-md text-[10px] font-medium text-indigo-300 border border-indigo-500/40 bg-indigo-500/15 hover:bg-indigo-500/25 hover:border-indigo-400/60 transition-colors disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {bannerTriggering
+                      ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      : "🧠 Ստեղծել ուսուցման բովանդակությունը"}
+                  </button>
+                </div>
               </div>
             );
           })()}
