@@ -1,0 +1,1152 @@
+TASK — AI TEACHER V2
+ROUND 3 — PEDAGOGICAL DECISION ENGINE
+CODE-CONTROLLED TEACHING DECISIONS + REMEDIATION BUDGET + CURRENT DEMONSTRATED COGNITIVE LEVEL
+
+IMPORTANT:
+This is the next implementation round after AI Teacher V2-R2.
+
+V2-R2 is CLOSED/PASS.
+Do NOT redesign or reimplement the intent router.
+
+The purpose of this round is different:
+
+R2 answers:
+"What did the student mean?"
+
+R3 must answer:
+"Given the student's REAL evaluated answer + learner state + current cognitive level,
+WHAT SHOULD THE TEACHER DO NEXT?"
+
+The core architectural principle is:
+
+THE AI MODEL MUST NOT OWN THE PEDAGOGICAL WORKFLOW.
+
+Backend deterministic policy/state must decide the allowed next pedagogical action.
+The AI model may generate the wording/content for that action,
+but it must not freely decide whether to:
+- advance,
+- remediate,
+- change cognitive level,
+- complete the MicroNode,
+- skip a prerequisite,
+- or declare mastery.
+
+════════════════════════════════════════════════════
+PART 0 — MANDATORY FORENSIC AUDIT FIRST
+DO NOT MODIFY CODE YET
+════════════════════════════════════════════════════
+
+Before changing anything, inspect the actual repository and report the current runtime chain.
+
+At minimum inspect:
+
+- artifacts/api-server/src/routes/chat.ts
+- artifacts/api-server/src/services/ai.ts
+- artifacts/api-server/src/services/intentRouter.ts
+- lesson/session state schema
+- lesson_nodes
+- lesson_node_cognitive_levels
+- lesson_node_dependencies / actual dependency representation
+- lesson_exercises
+- evidence_events
+- help_events
+- current scoring/mastery services
+- current cognitive-path APIs/services
+- current V2-R1 tests
+- current V2-R1.1 tests
+- current V2-R2 tests
+- Phase 2B evidence tests
+
+Determine from REAL CODE:
+
+A. What currently decides:
+- THEORY → MICRO_CHECK
+- MICRO_CHECK → EXERCISE
+- EXERCISE → completion
+- node advancement
+
+B. What currently happens after:
+- CORRECT
+- PARTIAL
+- INCORRECT
+- INVALID / NOT_APPLICABLE
+- OFF_TOPIC
+
+C. What error taxonomy/action system already exists.
+
+Search for existing concepts such as:
+- CONCEPTUAL
+- PREREQUISITE
+- PROCEDURAL
+- CALCULATION_EXECUTION
+- READING_LANGUAGE
+- ATTENTION_RESPONSE
+- GUESSING_CONFIDENCE
+- INCOMPLETE_COMMUNICATION
+- TRANSFER_BLOOM
+- COGNITIVE_LOAD_PACE
+
+and actions such as:
+- EXTRA_EXAMPLE
+- CONTRAST_EXAMPLE
+- RETURN_TO_PREREQUISITE
+- STEP_BY_STEP
+- VERIFY_SELECTION
+- SIMPLIFY_LANGUAGE
+- REQUIRE_REASONING
+- GUIDED_QUESTION
+- CHANGE_REPRESENTATION
+- LOWER_DIFFICULTY
+- RAISE_DIFFICULTY
+
+DO NOT duplicate an existing taxonomy or action registry if one already exists.
+
+D. How attempts are currently counted.
+
+E. How help/scaffolding is currently recorded.
+
+F. Whether lesson_node_cognitive_levels is currently used by chat runtime
+or only exists as teacher-side enrichment.
+
+G. How target cognitive ceiling is represented.
+
+H. Whether the runtime currently knows:
+- current cognitive level
+- demonstrated cognitive level
+- target cognitive level
+- required evidence count
+- linked exercises
+- interaction types
+
+I. How node dependencies are represented in the REAL schema.
+
+Do not invent Node/Subnode hierarchy.
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic / Knowledge Group
+→ MicroNode
+
+MicroNode = atomic knowledge unit.
+
+J. Identify exactly which existing code must be preserved from:
+- V2-R1
+- V2-R1.1
+- V2-R2
+- Phase 2B
+
+K. Identify all schema gaps BEFORE proposing migrations.
+
+FIRST OUTPUT THE AUDIT.
+
+Then implement only after the audit is complete.
+
+════════════════════════════════════════════════════
+PART 1 — CORE MODEL
+TWO DIFFERENT COGNITIVE VALUES
+════════════════════════════════════════════════════
+
+This distinction is mandatory.
+
+For every MicroNode we must distinguish:
+
+1. CURRICULUM TARGET COGNITIVE LEVEL
+
+Example:
+
+remember
+→ understand
+→ apply 🎯
+
+Target = apply.
+
+This describes what the curriculum/teacher expects.
+
+2. CURRENT DEMONSTRATED COGNITIVE LEVEL
+
+Example:
+
+remember ✅
+understand ✅
+apply ⚠ not confirmed
+
+Current demonstrated level = understand.
+
+These are NOT the same thing.
+
+Never automatically lower the curriculum target because the learner struggles.
+
+Never mark an unconfirmed target as achieved.
+
+Never interpret repeated failure as a permanent ability limit.
+
+Use the semantic concept:
+
+CURRENT DEMONSTRATED COGNITIVE LEVEL
+
+Armenian learner/teacher-facing meaning:
+
+«Ներկայում հաստատված ճանաչողական մակարդակ»
+
+This is a TEMPORARY learner state.
+
+It may increase later.
+
+════════════════════════════════════════════════════
+PART 2 — COGNITIVE PROGRESSION
+════════════════════════════════════════════════════
+
+The Cognitive Path created in Phase 2A must begin controlling runtime teaching.
+
+Example:
+
+remember
+→ understand
+→ apply 🎯
+
+The runtime must NOT jump directly from generic theory to generic exercises.
+
+It must know which cognitive level is currently being taught/evidenced.
+
+Example:
+
+CURRENT LEVEL = remember
+
+Teacher teaches/checks remember.
+
+When required evidence confirms remember:
+
+remember = CONFIRMED
+
+Then:
+
+CURRENT LEVEL = understand
+
+Teacher now teaches/checks understand.
+
+When confirmed:
+
+CURRENT LEVEL = apply
+
+Continue until target ceiling is confirmed.
+
+Do NOT allow the AI model to invent the next Bloom level.
+
+Use canonical order:
+
+remember
+understand
+apply
+analyze
+evaluate
+create
+
+but respect the actual cognitive path stored for that MicroNode.
+
+════════════════════════════════════════════════════
+PART 3 — EVIDENCE GATE FOR COGNITIVE LEVEL COMPLETION
+════════════════════════════════════════════════════
+
+A cognitive level must NOT be completed because of one model statement such as:
+
+"student understands"
+
+Completion must be code-gated using evidence.
+
+Use the existing Phase 2B evidence architecture where possible.
+
+Audit the existing fields before adding anything.
+
+At minimum the decision must be able to consider:
+
+- MicroNode
+- cognitive level
+- task identity
+- answer status/correctness
+- evidence quality/strength
+- attempt
+- help/scaffolding used
+- independence
+- task provenance
+- task diversity where available
+
+Teacher-dashboard cognitive levels already contain concepts such as:
+
+- performanceObjective
+- successCriterion
+- minimum evidence requirement
+- interactionTypes
+- linked exercises
+- target ceiling
+
+USE these existing structures.
+
+Do not create a parallel cognitive curriculum model.
+
+════════════════════════════════════════════════════
+PART 4 — INDEPENDENCE MATTERS
+════════════════════════════════════════════════════
+
+These are NOT equivalent evidence:
+
+A.
+Student answers correctly independently.
+
+B.
+Student answers correctly after Hint 1.
+
+C.
+Student answers correctly after Hint 2.
+
+D.
+Student succeeds only after step-by-step support.
+
+The system must preserve this distinction.
+
+A heavily scaffolded correct response may be useful learning evidence,
+but it must not automatically count as equivalent to independent confirmation.
+
+After substantial help, the system should normally require
+a NEW EQUIVALENT INDEPENDENT TASK before confirming the cognitive level.
+
+Do not simply repeat the exact same task and call that independent evidence.
+
+════════════════════════════════════════════════════
+PART 5 — REMEDIATION BUDGET
+NO INFINITE TEACHING LOOP
+════════════════════════════════════════════════════
+
+The AI Teacher must not retry forever.
+
+Introduce a deterministic REMEDIATION BUDGET / POLICY.
+
+IMPORTANT:
+First audit whether equivalent counters/state already exist.
+Reuse existing state where possible.
+
+The policy must represent pedagogical escalation,
+not merely "attempt 1, attempt 2, attempt 3".
+
+Conceptual sequence:
+
+INITIAL TEACH/CHECK
+
+If learner cannot demonstrate the level:
+
+1. RE-EXPLAIN / ALTERNATE REPRESENTATION
+2. DIFFERENT EXAMPLE or CONTRAST EXAMPLE
+3. GUIDED SUPPORT / PROGRESSIVE HELP
+4. PREREQUISITE CHECK or simplified diagnostic task
+5. NEW EQUIVALENT INDEPENDENT CHECK
+
+The exact action must also depend on error taxonomy.
+
+Do NOT blindly execute every step for every error.
+
+Example:
+
+CONCEPTUAL
+→ EXTRA_EXAMPLE / CONTRAST_EXAMPLE
+
+PREREQUISITE
+→ RETURN_TO_PREREQUISITE
+
+PROCEDURAL
+→ STEP_BY_STEP
+
+READING_LANGUAGE
+→ SIMPLIFY_LANGUAGE
+
+GUESSING_CONFIDENCE
+→ REQUIRE_REASONING
+
+INCOMPLETE_COMMUNICATION
+→ GUIDED_QUESTION
+
+TRANSFER_BLOOM
+→ CHANGE_REPRESENTATION
+
+COGNITIVE_LOAD_PACE
+→ LOWER_DIFFICULTY / RAISE_DIFFICULTY
+
+Reuse the actual existing taxonomy/action registry if present.
+
+════════════════════════════════════════════════════
+PART 6 — REMEDIATION EXHAUSTION
+════════════════════════════════════════════════════
+
+This is a CRITICAL rule.
+
+Suppose:
+
+Curriculum target:
+remember → understand → apply
+
+Learner successfully confirms:
+
+remember ✅
+understand ✅
+
+but repeatedly cannot independently demonstrate:
+
+apply ❌
+
+after the allowed remediation policy has been meaningfully exhausted.
+
+DO NOT:
+
+- loop forever
+- fabricate mastery
+- mark apply as confirmed
+- lower the curriculum target
+- label the learner permanently incapable
+
+Instead record conceptually:
+
+currentDemonstratedLevel = understand
+
+targetCognitiveLevel = apply
+
+targetReached = false
+
+MicroNode = PARTIALLY ACHIEVED / REVISIT REQUIRED
+
+Exact DB representation must be proposed from the existing schema.
+Do not invent columns before audit.
+
+════════════════════════════════════════════════════
+PART 7 — DEPENDENCY / PREREQUISITE GATE
+WHEN MAY WE MOVE TO THE NEXT MICRONODE?
+════════════════════════════════════════════════════
+
+Failure to reach the target does NOT automatically mean:
+
+"stay here forever"
+
+and does NOT automatically mean:
+
+"move on"
+
+Backend must decide using dependencies/prerequisites.
+
+CASE A — NEXT MICRONODE REQUIRES THE UNCONFIRMED KNOWLEDGE
+
+Example:
+
+Current node target = apply
+Learner confirmed only understand.
+
+Next node requires apply from current node.
+
+RESULT:
+
+DO NOT ADVANCE.
+
+Choose remediation / prerequisite work.
+
+CASE B — NEXT MICRONODE DOES NOT REQUIRE THAT DEPTH
+
+Current node target = apply.
+Learner confirmed understand.
+Next node can safely begin with understand.
+
+RESULT:
+
+May advance to next MicroNode.
+
+BUT current node remains:
+
+targetReached = false
+currentDemonstratedLevel = understand
+revisitRequired = true
+
+It must NOT become mastered merely because we advanced.
+
+CASE C — prerequisite itself is missing
+
+If learner fails because an earlier prerequisite MicroNode is weak:
+
+RETURN_TO_PREREQUISITE
+
+must reference the real dependency graph.
+
+Do not invent a dependency.
+
+════════════════════════════════════════════════════
+PART 8 — PEDAGOGICAL DECISION ENGINE
+════════════════════════════════════════════════════
+
+Create ONE authoritative decision layer.
+
+Suggested conceptual API:
+
+decideNextPedagogicalAction(input) → decision
+
+Do not blindly use this exact signature if repository architecture suggests a better one.
+
+The INPUT should be derived from real system state and may include:
+
+- current MicroNode
+- current teaching stage
+- current cognitive level
+- target cognitive level
+- evaluated answer
+- error family
+- evidence state
+- help/scaffolding state
+- attempt/remediation history
+- prerequisite state
+- linked exercise availability
+- required evidence count
+- current demonstrated level
+
+The OUTPUT should be a bounded enum/action object.
+
+Example actions:
+
+ADVANCE_COGNITIVE_LEVEL
+PRESENT_EQUIVALENT_CHECK
+RETEACH_ALTERNATE
+GIVE_EXTRA_EXAMPLE
+GIVE_CONTRAST_EXAMPLE
+GUIDED_SUPPORT
+CHECK_PREREQUISITE
+RETURN_TO_PREREQUISITE
+SIMPLIFY_LANGUAGE
+STEP_BY_STEP
+REQUIRE_REASONING
+CHANGE_REPRESENTATION
+LOWER_DIFFICULTY
+RAISE_DIFFICULTY
+MARK_LEVEL_CONFIRMED
+MARK_TARGET_NOT_REACHED
+ADVANCE_MICRONODE
+REVISIT_LATER
+
+These are conceptual.
+
+FIRST map them against the existing action registry.
+
+Do not create duplicate names if semantically equivalent actions already exist.
+
+The decision object should explain WHY.
+
+Example:
+
+{
+  action: "CONTRAST_EXAMPLE",
+  reasonCode: "CONCEPTUAL_ERROR",
+  currentCognitiveLevel: "understand",
+  targetCognitiveLevel: "apply",
+  remediationStep: 2,
+  preserveActiveTask: true,
+  mayWriteMastery: false
+}
+
+The AI receives the selected action and generates the pedagogical content.
+
+AI does NOT override the action.
+
+════════════════════════════════════════════════════
+PART 9 — CRITICAL INVARIANT
+INTENT ROUTER BEFORE DECISION ENGINE
+════════════════════════════════════════════════════
+
+Preserve V2-R2.
+
+Pipeline must remain conceptually:
+
+STUDENT MESSAGE
+↓
+INTENT ROUTER
+↓
+if non-ANSWER:
+    handle READY / CONTINUE / HELP / CONFUSED /
+    REPEAT / CLARIFY / OFF_TOPIC
+    WITHOUT answer evaluation
+↓
+if ANSWER:
+    EVALUATE ANSWER
+↓
+WRITE VALID EVIDENCE
+↓
+PEDAGOGICAL DECISION ENGINE
+↓
+CODE SELECTS NEXT ACTION
+↓
+AI GENERATES CONTENT FOR THAT ACTION
+↓
+UPDATE SESSION STATE
+↓
+NEXT TASK / TEACHING CONTENT
+
+Never allow HELP, CONFUSED, CLARIFY, CONTINUE, READY,
+REPEAT or OFF_TOPIC to consume remediation budget
+as if they were failed answers.
+
+HELP may update help/scaffolding state,
+but it is not an incorrect answer attempt.
+
+════════════════════════════════════════════════════
+PART 10 — ACTIVE TASK INVARIANT
+════════════════════════════════════════════════════
+
+Preserve the active task architecture.
+
+If learner answers incorrectly:
+
+Do not silently replace the task identity unless the selected pedagogical action requires a new equivalent task.
+
+If learner asks HELP:
+
+same task remains active.
+
+If learner asks CLARIFY:
+
+same task remains active.
+
+If learner says CONFUSED:
+
+same task remains active unless the decision engine explicitly transitions to a diagnostic/remediation task.
+
+Every task transition must be explicit and code-controlled.
+
+════════════════════════════════════════════════════
+PART 11 — NO FAKE SUCCESS AFTER HELP
+════════════════════════════════════════════════════
+
+Example:
+
+Task A
+↓
+learner cannot solve
+↓
+Hint 1
+↓
+Hint 2
+↓
+step-by-step
+↓
+learner finally gives correct answer
+
+Do NOT automatically conclude:
+
+LEVEL CONFIRMED
+
+Instead:
+
+supported success = learning evidence
+
+Then issue:
+
+Task B — equivalent but independent
+
+If Task B succeeds without substantial help:
+
+stronger confirmation evidence.
+
+This distinction must be represented in the decision logic.
+
+════════════════════════════════════════════════════
+PART 12 — TARGET REACHED
+════════════════════════════════════════════════════
+
+If all required cognitive levels through the target ceiling are confirmed:
+
+Example:
+
+remember ✅
+understand ✅
+apply 🎯 ✅
+
+Then and only then may the cognitive target be considered reached.
+
+After target reached:
+
+evaluate existing node completion/mastery gates.
+
+Do NOT create a second competing mastery system.
+
+Integrate with the existing node completion/scoring architecture.
+
+Cognitive target reached is an INPUT to mastery/completion,
+not necessarily a replacement for every existing mastery rule.
+
+Audit and report the integration.
+
+════════════════════════════════════════════════════
+PART 13 — TARGET NOT REACHED IS NOT "FAILED FOREVER"
+════════════════════════════════════════════════════
+
+When remediation budget is exhausted:
+
+Store/reconstruct enough state to know:
+
+- highest confirmed cognitive level
+- target level
+- target reached = false
+- revisit required
+- reason for stopping progression
+- prerequisite issue if applicable
+
+Do NOT use language or schema semantics implying fixed intelligence,
+fixed ability, or permanent learner ceiling.
+
+This is a current demonstrated state only.
+
+════════════════════════════════════════════════════
+PART 14 — TASK SELECTION
+════════════════════════════════════════════════════
+
+When selecting evidence tasks:
+
+Priority should be:
+
+1. teacher-linked/source exercise appropriate for the cognitive level
+2. other suitable source exercise
+3. AI-generated equivalent task if evidence opportunities are insufficient
+
+Preserve provenance.
+
+AI-generated task must record that it is AI-generated.
+
+If substantial help was used on Task A,
+the independent verification should preferably use Task B,
+not the exact same memorized answer.
+
+Respect interactionTypes from the cognitive level where applicable.
+
+Example:
+
+remember:
+multiple_choice / matching
+
+understand:
+classification / short_answer
+
+apply:
+problem_solving / constructed_response
+
+Do not hardcode these examples as universal rules.
+Use stored cognitive-level configuration.
+
+════════════════════════════════════════════════════
+PART 15 — DO NOT IMPLEMENT FULL CONFIDENCE V2 YET
+════════════════════════════════════════════════════
+
+Important scope boundary.
+
+We are NOT implementing the final Confidence Model V2 in this round.
+
+However, R3 must preserve the inputs that Confidence V2 will later need:
+
+- evidence quantity
+- evidence strength
+- evidence diversity
+- independence / assistance
+- consistency
+- attempts
+- cognitive level
+- task provenance
+- timestamps
+
+Do not collapse these into a single premature confidence formula.
+
+════════════════════════════════════════════════════
+PART 16 — DO NOT IMPLEMENT FULL PERSONALIZATION ENGINE YET
+════════════════════════════════════════════════════
+
+This is NOT the final personalization engine.
+
+R3 is the deterministic pedagogical decision layer for the current lesson.
+
+Do not build:
+- long-term learner traits
+- retention model
+- P/L/R
+- K efficiency
+- global personalization policy
+
+Those are later phases.
+
+════════════════════════════════════════════════════
+PART 17 — FRONTEND
+════════════════════════════════════════════════════
+
+Do NOT redesign the lesson page in this round.
+
+Only make frontend changes if they are strictly required
+to support the new runtime state.
+
+The later learner UX redesign will handle:
+
+- "Ինչ ենք սովորում"
+- cognitive progress visualization
+- centered task cards
+- Kahoot-like answer buttons
+- progressive help UI
+- richer lesson progress
+
+R3 is primarily backend decision architecture.
+
+════════════════════════════════════════════════════
+PART 18 — REQUIRED TEST MATRIX
+════════════════════════════════════════════════════
+
+Create a dedicated R3 test suite.
+
+Do not only test helper functions.
+
+Test decision outcomes and integration invariants.
+
+At minimum cover:
+
+T01
+remember correct independent + enough evidence
+→ level may confirm
+
+T02
+remember correct but heavily helped
+→ level does NOT confirm solely from that evidence
+
+T03
+helped correct
+→ request equivalent independent check
+
+T04
+independent equivalent check correct
+→ confirmation becomes possible
+
+T05
+understand incorrect + CONCEPTUAL
+→ alternate/contrast pedagogical action
+
+T06
+incorrect + PREREQUISITE
+→ prerequisite action
+
+T07
+READING_LANGUAGE
+→ simplify language
+
+T08
+PROCEDURAL
+→ step-by-step
+
+T09
+GUESSING_CONFIDENCE
+→ require reasoning
+
+T10
+INCOMPLETE_COMMUNICATION
+→ guided question
+
+T11
+TRANSFER_BLOOM
+→ change representation
+
+T12
+remediation action does not mark mastery
+
+T13
+remediation budget not exhausted
+→ remain on current cognitive level
+
+T14
+remediation budget exhausted
+→ do not loop indefinitely
+
+T15
+budget exhausted at apply,
+remember+understand confirmed
+→ current demonstrated = understand
+
+T16
+same case
+→ curriculum target remains apply
+
+T17
+same case
+→ targetReached=false
+
+T18
+same case
+→ revisitRequired=true
+
+T19
+next node depends on unconfirmed apply
+→ DO NOT ADVANCE
+
+T20
+next node does NOT depend on unconfirmed apply
+→ MAY ADVANCE
+
+T21
+advancing in T20 does NOT mark current node mastered
+
+T22
+missing prerequisite
+→ real dependency target selected
+
+T23
+HELP intent
+→ no remediation failure increment
+
+T24
+CONFUSED intent
+→ no remediation failure increment
+
+T25
+CLARIFY intent
+→ no remediation failure increment
+
+T26
+CONTINUE intent
+→ no remediation failure increment
+
+T27
+OFF_TOPIC intent
+→ no remediation failure increment
+
+T28
+REPEAT intent
+→ no remediation failure increment
+
+T29
+READY intent
+→ no remediation failure increment
+
+T30
+only ANSWER can produce evaluated remediation outcome
+
+T31
+active task preserved on HELP
+
+T32
+active task preserved on CLARIFY
+
+T33
+active task preserved on CONFUSED unless explicit diagnostic transition
+
+T34
+substantial-help success
+→ independent verification task has different task identity
+
+T35
+AI-generated equivalent task preserves provenance
+
+T36
+cognitive level order follows stored path
+
+T37
+AI cannot skip from remember directly to apply unless stored path permits it
+
+T38
+target ceiling reached only when required levels are confirmed
+
+T39
+target reached feeds existing completion gate
+
+T40
+target not reached never fabricates mastery
+
+T41
+current demonstrated level can later increase after new evidence
+
+T42
+existing V2-R2 non-answer evidence invariants remain intact
+
+T43
+existing Phase 2B evidence fields remain populated
+
+T44
+no duplicate evidence event for one evaluated turn
+
+T45
+no infinite same-action loop
+
+Add more tests where audit reveals risks.
+
+════════════════════════════════════════════════════
+PART 19 — REGRESSION SUITES
+════════════════════════════════════════════════════
+
+Run at minimum:
+
+- V2-R1
+- V2-R1.1
+- V2-R2 with RUN_AI_TESTS=1
+- Phase 2B Round 2
+- Phase 2A cognitive-path relevant tests
+- new V2-R3 suite
+- api-server TypeScript
+- myaiteacher TypeScript
+
+Do not call PASS if required tests are skipped.
+
+════════════════════════════════════════════════════
+PART 20 — REAL RUNTIME UAT
+════════════════════════════════════════════════════
+
+After automated tests pass,
+perform a real runtime UAT using a real mapped lesson/MicroNode
+with a confirmed cognitive path.
+
+Prefer an existing production-like Armenian lesson already used in prior UAT.
+
+Test at least these scenarios:
+
+SCENARIO A — successful progression
+
+remember
+→ independent success
+→ required evidence satisfied
+→ understand
+→ success
+→ next cognitive level
+
+SCENARIO B — remediation
+
+current level = understand
+→ incorrect conceptual answer
+→ code selects remediation
+→ AI performs selected remediation
+→ learner gets new check
+→ no fake mastery
+
+SCENARIO C — helped success
+
+task
+→ HELP
+→ hint
+→ correct
+→ system does NOT immediately treat as independent confirmation
+→ equivalent independent task
+→ independent success
+
+SCENARIO D — demonstrated ceiling below curriculum target
+
+target = apply
+remember confirmed
+understand confirmed
+apply repeatedly fails across bounded remediation
+→ current demonstrated = understand
+→ targetReached=false
+→ revisitRequired=true
+
+Then verify dependency behavior:
+
+- dependent next node → blocked
+- independent next node → may advance without fake mastery
+
+Capture DB BEFORE/AFTER proof.
+
+════════════════════════════════════════════════════
+PART 21 — REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return a structured final report containing:
+
+A. Audit findings
+
+B. Existing architecture reused
+
+C. Files changed
+
+D. Schema changes, if any, with justification
+
+E. Exact decision-engine API/type
+
+F. Decision action enum/registry
+
+G. Cognitive progression logic
+
+H. Evidence confirmation gate
+
+I. Assistance/independence logic
+
+J. Remediation budget logic
+
+K. Error taxonomy → action mapping
+
+L. Current demonstrated cognitive level logic
+
+M. Target-not-reached / revisit logic
+
+N. Dependency/prerequisite gate
+
+O. Active-task preservation proof
+
+P. Task provenance/task-selection proof
+
+Q. Automated test results
+
+R. Regression results
+
+S. Real runtime UAT results
+
+T. DB BEFORE/AFTER proof
+
+U. Known limitations
+
+V. FINAL VERDICT:
+PASS / FAIL
+
+════════════════════════════════════════════════════
+NON-NEGOTIABLE INVARIANTS
+════════════════════════════════════════════════════
+
+1. AI does not own workflow transitions.
+
+2. Intent Router remains before answer evaluation.
+
+3. Only ANSWER may enter answer-evaluation/remediation scoring.
+
+4. HELP is not an incorrect answer.
+
+5. CONFUSED is not an incorrect answer.
+
+6. CLARIFY is not an incorrect answer.
+
+7. OFF_TOPIC is not an incorrect answer.
+
+8. Cognitive target and current demonstrated level are separate.
+
+9. Repeated struggle does not permanently lower curriculum target.
+
+10. Heavy assistance cannot masquerade as independent mastery.
+
+11. Remediation is bounded — no infinite loop.
+
+12. Remediation exhaustion does not fabricate mastery.
+
+13. Advancing to another MicroNode does not imply mastery of the previous one.
+
+14. Dependencies/prerequisites control whether advancement is safe.
+
+15. Never invent dependencies.
+
+16. Never skip cognitive levels outside the stored Cognitive Path.
+
+17. Target cognitive level is reached only through evidence.
+
+18. Preserve source exercise verbatim rules where existing source exercises are used.
+
+19. Preserve evidence provenance.
+
+20. Do not create a second mastery system.
+
+21. Do not implement Confidence V2 yet.
+
+22. Do not implement the full Personalization Engine yet.
+
+23. Do not redesign the lesson page yet.
+
+24. Do not modify Mapper/manual-map/auto-map behavior.
+
+25. Do not weaken V2-R1/R1.1/R2 or Phase 2B invariants.
+
+START WITH PART 0 AUDIT.
+DO NOT MODIFY CODE UNTIL THE AUDIT IS COMPLETE.
