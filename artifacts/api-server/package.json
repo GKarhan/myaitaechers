@@ -33,7 +33,8 @@
     "test:phase2a-r3": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r3-acceptance.test.ts",
     "test:phase2a-r3-closure": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r3-closure.test.ts",
     "test:phase2b-round2": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2b-round2.test.ts",
-    "test:v2r1": "tsx src/lib/__tests__/v2r1-state-machine.test.ts"
+    "test:v2r1": "tsx src/lib/__tests__/v2r1-state-machine.test.ts",
+    "test:v2r1-1": "tsx src/lib/__tests__/v2r1-1-closure.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

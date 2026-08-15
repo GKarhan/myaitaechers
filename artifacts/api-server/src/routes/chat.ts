@@ -197,6 +197,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   // Phase 2B: tracks whether this response has an active assessable task
   // (MICRO_CHECK or EXERCISE stage). Sent in res.json so frontend shows/hides Help button.
   let hasActiveTask = false;
+  // V2-R1.1: set inside if (wasEval) when FEEDBACK stage machine advances MICRO_CHECK→EXERCISE.
+  // Triggers automatic exercise delivery as a second persisted message (no learner "ok" needed).
+  let _v2r1AutoContinue: { type: "exercise" } | null = null;
 
   let lessonContext = "";
   let topicName = "";
@@ -1201,6 +1204,22 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           };
         }
       }
+
+      // ── V2-R1.1: flag exercise delivery for auto-progression ─────────────────
+      // After FEEDBACK advances MICRO_CHECK→EXERCISE (class exercises exist),
+      // the exercise text must be delivered automatically — the learner must NOT need
+      // to send any "ok" or "continue" to see the exercise.
+      // Guard: mastery gate must NOT have fired (which would have advanced the node instead).
+      if (
+        newTeachingStage === "EXERCISE" &&
+        classExercises.length > 0 &&
+        !safetyCapHit &&
+        !stageBecomesVerified &&
+        !noExercisesEarlyComplete &&
+        !(modelSaysComplete && codeGate)
+      ) {
+        _v2r1AutoContinue = { type: "exercise" as const };
+      }
     }
 
     // ── V2-R1: persist lastQuestionAsked on ANY turn where AI issues a micro-check ──
@@ -1274,6 +1293,31 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .insert(chatMessagesTable)
     .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: studentMessage })
     .returning();
+
+  // ── V2-R1.1: Auto-progression — exercise delivery after FEEDBACK ──────────────
+  // The FEEDBACK turn's stage machine already advanced MICRO_CHECK→EXERCISE and set
+  // activeTaskProvenance="source_exercise" in the DB. The exercise text, however, has
+  // NOT been shown yet. Persist it as a second assistant message now (before res.json)
+  // so the history refetch renders FEEDBACK + exercise together, with no learner "ok".
+  // Safety: _v2r1AutoContinue is set at most once per learner submission; mastery gate
+  // guard ensures this never fires when the node is being completed simultaneously.
+  if (_v2r1AutoContinue?.type === "exercise" && classExercises.length > 0 && lessonId && session) {
+    const _ex  = classExercises[0];
+    const _eff = effectiveExerciseText(
+      _ex.exerciseTextVerbatim,
+      (_ex as any).exerciseTextEdited as string | null
+    );
+    const _verb = _eff.trim() ? _eff.trim() : `[${_ex.exerciseId}]`;
+    const _page = `(Էջ ${(_ex as any).sourcePage ?? "?"}, Վ. ${_ex.exerciseId})`;
+    const _exContent = `${_verb}\n${_page}`;
+    await db
+      .insert(chatMessagesTable)
+      .values({ userId: req.userId!, lessonId, role: "assistant", content: _exContent });
+    logger.info(
+      { sessionId: session.id, exerciseId: _ex.id, nodeId: session.currentNodeId },
+      "V2-R1.1: auto-progression — exercise persisted as continuation (no learner input required)"
+    );
+  }
 
   res.json({
     response:       studentMessage,

@@ -1,0 +1,531 @@
+AI TEACHER V2 — ROUND 1.1 CLOSURE
+AUTO-PROGRESSION AFTER FEEDBACK + REAL AUTHENTICATED UAT
+
+IMPORTANT:
+V2-R1 core implementation is already complete.
+
+Do NOT redesign the state machine.
+Do NOT start V2-R2.
+Do NOT add Student Intent architecture.
+Do NOT change Cognitive Enrichment.
+Do NOT change Help architecture.
+Do NOT change Confidence/Mastery.
+Do NOT change Mapper/Quiz/Knowledge Tree.
+
+This is a VERY SMALL closure task.
+
+============================================================
+0. WHY THIS TASK EXISTS
+============================================================
+
+The V2-R1 report explicitly says:
+
+After FEEDBACK with no new question,
+the student still needs to send one message
+to trigger the next teaching turn.
+
+That violates the LOCKED product rule:
+
+THE LEARNER MUST NOT NEED TO SEND
+"շարունակենք", "օկ", "հաջորդը", etc.
+when no real learner input is required.
+
+Canonical rule:
+
+NO WAITING FOR PROGRESSION COMMANDS.
+WAIT ONLY WHEN REAL LEARNER INPUT IS REQUIRED.
+
+Therefore V2-R1 is not fully closed until:
+
+FEEDBACK
+→ backend decision
+→ next non-input-required action
+
+can continue automatically.
+
+============================================================
+1. LOCKED TURN MODEL
+============================================================
+
+The canonical teaching flow is:
+
+TEACH
+→ ONE active MICRO_CHECK
+→ WAIT_FOR_ANSWER
+→ learner answers
+→ FEEDBACK ONLY
+→ BACKEND DECISION
+→ NEXT ACTION automatically
+
+The learner must only be required to act when the next state genuinely needs:
+
+- an answer
+- a choice
+- a task submission
+- Help interaction
+- another real learner input
+
+If the next action is:
+
+TEACH_MORE
+REMEDIATE
+SHOW_EXAMPLE
+EXPLAIN
+TRANSITION_TO_NEXT_TEACHING_CHUNK
+
+the system should continue automatically.
+
+If the next action creates a NEW assessable task:
+
+the system may automatically render that next task after the feedback/decision sequence,
+but it must remain a separate pedagogical step and a separate active task.
+
+Do NOT merge feedback + new question into one assistant message.
+
+============================================================
+2. IMPORTANT UX SEMANTIC
+============================================================
+
+We do NOT want:
+
+Learner answer
+→ AI FEEDBACK
+→ silence
+→ learner types "օկ"
+→ AI continues
+
+We want:
+
+Learner answer
+→ AI FEEDBACK
+→ backend commits decision
+→ system automatically produces next teaching action
+
+No progression command.
+
+However:
+
+If a new assessable question/task is created,
+the system then WAITs for the learner.
+
+============================================================
+3. AUDIT FIRST
+============================================================
+
+Before code changes, trace the exact current path after a valid learner answer:
+
+POST /chat
+→ evaluation
+→ FEEDBACK
+→ stage update
+→ response sent
+→ what mechanism currently requires the NEXT user POST
+  before teaching continues?
+
+Identify the exact first blocking point.
+
+Report:
+
+A. current state after feedback
+B. what next state/action has already been determined
+C. whether next AI content can be generated in the same HTTP request safely
+D. whether a second internal orchestration step is needed
+E. whether frontend currently assumes exactly one assistant response per POST
+F. whether chat message persistence supports multiple assistant messages
+   from one learner submission
+G. whether the cleanest implementation should:
+   1. return a structured sequence of assistant events/messages
+   2. internally generate the next non-input turn
+   3. use a separate server-driven continuation endpoint/event
+   4. another existing pattern
+
+Do not guess.
+
+============================================================
+4. DO NOT REINTRODUCE FEEDBACK + QUESTION MIXING
+============================================================
+
+This is critical.
+
+Auto-progression must NOT undo V2-R1.
+
+Forbidden:
+
+One assistant message:
+"Ճիշտ է...
+Հաջորդ հարցը՝ ...?"
+
+Allowed conceptual sequence:
+
+Assistant event/message A:
+FEEDBACK
+
+then backend DECISION
+
+then:
+
+Assistant event/message B:
+TEACH_MORE / REMEDIATION
+
+OR
+
+Assistant event/message B:
+ONE NEW MICRO_CHECK
+
+These are separate pedagogical events.
+
+If the current chat UI renders them consecutively with minimal delay,
+that is fine.
+
+But task identity must only attach to message/event B if B is assessable.
+
+============================================================
+5. SERVER-DRIVEN CONTINUATION
+============================================================
+
+Implement the smallest clean mechanism that allows the backend to continue
+through states that require NO learner input.
+
+Conceptually:
+
+while nextState.requiresLearnerInput === false:
+    perform next pedagogical step
+    persist resulting assistant message/state
+    continue
+
+STOP automatically when:
+
+- CHECK_WAITING
+- EXERCISE_WAITING
+- any state requiring actual learner input
+- terminal lesson/node state
+
+Add a hard safety bound to prevent accidental internal loops.
+
+Example:
+maximum 2–3 internal non-user continuation steps per learner submission.
+
+Do NOT allow unbounded recursive AI calls.
+
+============================================================
+6. STATE MUST DRIVE CONTINUATION
+============================================================
+
+Do NOT detect continuation need from phrases in AI text.
+
+Bad:
+if response contains "շարունակենք" → continue
+
+Good:
+backend state/action explicitly declares:
+requiresLearnerInput = false
+
+Use the authoritative V2-R1 state machine.
+
+============================================================
+7. ACTIVE TASK RULE
+============================================================
+
+At the end of auto-progression:
+
+If the system reaches a new assessable task:
+
+- exactly one active task must exist
+- task text persisted immediately
+- lastQuestionAsked updated
+- hasActiveTask = true
+- backend stops auto-progression
+- waits for learner answer
+
+If the system ends on TEACH/REMEDIATION content with no task yet,
+continue only if the next deterministic state requires no learner input.
+
+Never create two active tasks.
+
+============================================================
+8. CHAT MESSAGE PERSISTENCE
+============================================================
+
+If one learner submission causes:
+
+1. FEEDBACK message
+2. NEXT TEACHING message
+
+both assistant messages must be durably persisted in correct chronological order.
+
+Do not concatenate them into one string merely to avoid frontend changes.
+
+Each pedagogical event should remain independently inspectable.
+
+If the current schema/API absolutely cannot support this without broader work,
+STOP and report the exact blocker before creating a workaround.
+
+============================================================
+9. FRONTEND BEHAVIOR
+============================================================
+
+The learner should experience:
+
+send answer
+→ feedback appears
+→ next teaching step appears automatically
+
+No second learner message required.
+
+If the next item is a question:
+the UI then waits normally.
+
+Do NOT add the future Kahoot/task-card redesign yet.
+
+Do NOT broadly redesign chat.tsx.
+
+Only support rendering the authoritative sequence returned/persisted by backend.
+
+============================================================
+10. LOADING / DOUBLE-SUBMISSION SAFETY
+============================================================
+
+During the complete server-driven continuation sequence:
+
+- input/send remains disabled
+- learner cannot submit twice
+- no duplicate state transition
+- no duplicate evidence
+- no duplicate active task
+
+Re-enable input only when server reaches a learner-input-required state.
+
+============================================================
+11. REAL BROWSER UAT IS MANDATORY
+============================================================
+
+The previous R1 report did NOT complete authenticated Physics browser UAT.
+
+This task cannot PASS without it.
+
+Use a real student session.
+
+Preferred current real example:
+
+Subject:
+Ֆիզիկա
+
+Lesson:
+ԱՏՈՄՆԵՐ ԵՎ ՄՈԼԵԿՈՒԼՆԵՐ:
+ԴՐԱՆՑ ԳՈՅՈՒԹՅՈՒՆԸ ՀԱՍՏԱՏՈՂ ԵՐԵՎՈՒՅԹՆԵՐ
+
+MicroNode:
+Մոլեկուլներ
+
+Perform:
+
+STEP 1
+Open the lesson.
+
+Expected:
+intro appears once.
+
+STEP 2
+Start the lesson.
+
+Expected:
+AI starts teaching.
+No repeated greeting.
+
+STEP 3
+AI creates ONE micro-check.
+
+Expected:
+waits for learner.
+
+STEP 4
+Learner answers.
+
+Expected:
+FEEDBACK appears.
+
+STEP 5
+WITHOUT the learner sending ANY new message:
+
+backend automatically performs next decision/action.
+
+Expected:
+- next teaching/remediation appears automatically
+OR
+- one new assessable task appears automatically.
+
+STEP 6
+If new task appears:
+verify exactly one active task.
+
+STEP 7
+Refresh.
+
+Expected:
+same current state/task restored.
+
+============================================================
+12. NEGATIVE UAT
+============================================================
+
+Prove the learner does NOT need to send:
+
+"օկ"
+"շարունակենք"
+"արի շարունակենք"
+"հաջորդը"
+
+between FEEDBACK and the next teaching action.
+
+Record the transcript.
+
+============================================================
+13. DB STATE PROOF
+============================================================
+
+For the real UAT show:
+
+before learner answer:
+- session id
+- currentNodeId
+- teaching state
+- activeTaskProvenance
+- lastQuestionAsked
+- attempt count
+- evidence count
+
+after answer / feedback:
+- state
+- task status
+- evidence count
+
+after automatic next action:
+- state
+- whether new active task exists
+- new lastQuestionAsked if applicable
+
+Prove:
+
+one learner answer
+→ one evaluation
+→ max one evidence event
+→ zero duplicate active tasks.
+
+============================================================
+14. REQUIRED TESTS
+============================================================
+
+Add/update only closure tests necessary for this behavior.
+
+At minimum:
+
+C01 — FEEDBACK state does not require a new learner POST to progress.
+
+C02 — backend can auto-continue through a non-input TEACH action.
+
+C03 — backend stops automatically at CHECK_WAITING.
+
+C04 — backend stops automatically at EXERCISE_WAITING.
+
+C05 — FEEDBACK message and next-task message are separate events/messages.
+
+C06 — next assessable task is exactly one.
+
+C07 — active task belongs only to next assessable message.
+
+C08 — auto-progression does not duplicate evidence.
+
+C09 — auto-progression does not increment learner attempts by itself.
+
+C10 — auto-progression has a hard loop safety bound.
+
+C11 — input remains blocked during internal continuation.
+
+C12 — refresh after auto-progression restores final authoritative state.
+
+C13 — R7 still rejects FEEDBACK+new micro-check in same AI output.
+
+C14 — V2-R1 tests remain green.
+
+C15 — Phase 2B regression remains green.
+
+C16 — TypeScript api-server clean.
+
+C17 — TypeScript frontend clean.
+
+============================================================
+15. STRICT NON-GOALS
+============================================================
+
+DO NOT implement:
+
+- V2-R2 Student Intent Router
+- answer choice cards / Kahoot-like UI
+- full pedagogical decision engine
+- multi-exercise progression redesign
+- Cognitive Enrichment integration
+- Confidence V2
+- new Help behavior
+- new mastery rules
+- KT changes
+- Mapper changes
+
+============================================================
+16. FINAL REPORT
+============================================================
+
+Return:
+
+A. Exact reason a new learner POST was previously required
+
+B. Architecture chosen for server-driven continuation
+
+C. Files changed
+
+D. API/chat response changes
+
+E. Message persistence behavior
+
+F. State transitions after learner answer
+
+G. Loop-safety mechanism
+
+H. Duplicate-submission/evidence protection
+
+I. C01–C17 results
+
+J. Existing V2-R1 regression result
+
+K. Phase 2B regression result
+
+L. REAL authenticated Physics browser transcript
+
+M. DB state proof
+
+N. Explicit proof:
+   learner sent NO progression command after feedback
+
+O. Remaining R2 work
+
+P. FINAL VERDICT:
+   AI TEACHER V2-R1.1 CLOSURE = PASS / FAIL
+
+============================================================
+17. PASS CONDITION
+============================================================
+
+PASS only if this exact real flow works:
+
+TEACH
+→ ONE QUESTION
+→ WAIT
+→ LEARNER ANSWER
+→ FEEDBACK ONLY
+→ AUTOMATIC BACKEND NEXT ACTION
+→ if new question: ONE ACTIVE TASK
+→ WAIT
+
+with NO learner progression command between FEEDBACK and NEXT ACTION.
+
+STOP after report.
+Do NOT start V2-R2.
