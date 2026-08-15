@@ -49,7 +49,10 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ── Help state ─────────────────────────────────────────────────────────────
-  const [helpLevel, setHelpLevel]             = useState(0); // current level from server
+  // hasActiveTask: true when server session is in MICRO_CHECK or EXERCISE stage.
+  // Hydrated on mount from /api/chat/session-state and updated on every chat response.
+  const [hasActiveTask, setHasActiveTask]     = useState(false);
+  const [helpLevel, setHelpLevel]             = useState(0); // matches server activeHelpCount
   const [helpLoading, setHelpLoading]         = useState(false);
   const [helpError, setHelpError]             = useState<string | null>(null);
   const [showRevealConfirm, setShowRevealConfirm] = useState(false);
@@ -60,6 +63,23 @@ export default function Chat() {
       setLocation("/login");
     }
   }, [token, authLoading, setLocation]);
+
+  // ── Hydrate active-task state on mount / lessonId change ──────────────────
+  // POST /chat responses update hasActiveTask in real time, but on a hard refresh
+  // the server session still holds the true state — recover it here.
+  useEffect(() => {
+    if (!lessonId || !token) return;
+    fetch(`/api/chat/session-state?lessonId=${lessonId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { hasActiveTask?: boolean; activeHelpCount?: number } | null) => {
+        if (!data) return;
+        if (data.hasActiveTask !== undefined) setHasActiveTask(data.hasActiveTask);
+        if (data.activeHelpCount !== undefined) setHelpLevel(data.activeHelpCount);
+      })
+      .catch(() => {}); // non-critical — button hidden until next message
+  }, [lessonId, token]);
 
   const historyParams = lessonId ? { lessonId } : undefined;
   const { data: chatHistory, isLoading: historyLoading } = useGetChatHistory(historyParams, {
@@ -91,10 +111,19 @@ export default function Chat() {
     sendMessageMutation.mutate(
       { data: { message: currentMsg, lessonId } },
       {
-        onSuccess: () => {
+        onSuccess: (responseData) => {
           queryClient.invalidateQueries({ queryKey: getGetChatHistoryQueryKey(historyParams) });
-          // Reset help state when student sends a new answer (implicitly new task attempt)
-          // Server tracks the real state; local state is display-only
+          // Update hasActiveTask from server response (Phase 2B)
+          const d = responseData as { hasActiveTask?: boolean; activeHelpCount?: number } | undefined;
+          if (d?.hasActiveTask !== undefined) {
+            setHasActiveTask(d.hasActiveTask);
+            if (!d.hasActiveTask) {
+              // Task ended (e.g. node VERIFIED) — clear help state for next task
+              setHelpLevel(0);
+              setHelpCards([]);
+              setHelpError(null);
+            }
+          }
         }
       }
     );
@@ -170,7 +199,9 @@ export default function Chat() {
 
   const messages: typeof chatHistory = chatHistory || [];
   // Show help button if lesson is active and we haven't hit level 3 with reveal done
-  const showHelpButton = !!lessonId && helpLevel < 4;
+  // Show help button only when there is an active assessable task (MICRO_CHECK or EXERCISE).
+  // NOT on explanations, feedback, or when no lesson is active.
+  const showHelpButton = !!lessonId && hasActiveTask && helpLevel < 4;
   const helpButtonLabel = HELP_BUTTON_LABELS[helpLevel] ?? HELP_BUTTON_LABELS[3];
 
   return (

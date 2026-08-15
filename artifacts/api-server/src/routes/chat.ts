@@ -194,6 +194,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   const userMessageAt = Date.now();
   let sessionId: number | null = null;
   let teachingMode = "TEACH";
+  // Phase 2B: tracks whether this response has an active assessable task
+  // (MICRO_CHECK or EXERCISE stage). Sent in res.json so frontend shows/hides Help button.
+  let hasActiveTask = false;
 
   let lessonContext = "";
   let topicName = "";
@@ -940,10 +943,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
     } else if (session.nodeTeachingStage === "MICRO_CHECK") {
       // Fallback path (callAI): advance stage directly since aiResult stage-machine won't run
+      // Phase 2B fix: also write active task identity fields.
       await db
         .update(lessonSessionsTable)
-        .set({ nodeTeachingStage: "EXERCISE" })
+        .set({
+          nodeTeachingStage:      "EXERCISE",
+          activeLessonExerciseId: classExercises.length > 0 ? classExercises[0].id : null,
+          activeTaskProvenance:   "source_exercise",
+          activeAttemptSequence:  1,
+          activeHelpCount:        0,
+          activeAssistanceLevel:  "none",
+        } as any)
         .where(eq(lessonSessionsTable.id, session.id));
+      hasActiveTask = true;
       logger.info(
         { sessionId: session.id, nodeId: session.currentNodeId },
         "P11.1: direct stage advance MICRO_CHECK -> EXERCISE (callAI fallback path)"
@@ -957,6 +969,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const isCorrect   = status === "CORRECT" || status === "PARTIALLY_CORRECT";
     const isIncorrect = status === "INCORRECT";
     const wasEval     = status !== "NOT_APPLICABLE";
+
+    // ── Initialize hasActiveTask from existing session state ──────────────
+    // Covers backward-compat with sessions created before Phase 2B (null provenance)
+    // and cases where the task was set in a previous turn.
+    hasActiveTask = (session.activeTaskProvenance !== null && session.activeTaskProvenance !== "")
+      || session.nodeTeachingStage === "MICRO_CHECK"
+      || session.nodeTeachingStage === "EXERCISE";
+
     // ── Anticipatory THEORY→MICRO_CHECK stage advance ─────────────────────
     // Fixes: on the very first turn of a node, the AI delivers THEORY +
     // asks the first MICRO_CHECK in one turn. Since the student hasn't
@@ -965,11 +985,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // On the NEXT turn (student's actual answer), the directive would then
     // wrongly say "give THEORY again" instead of "evaluate the answer".
     // This block pushes the stage forward immediately, independent of wasEval.
+    // Phase 2B fix: also write active task identity fields (previously omitted).
     if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "THEORY" && aiResult.is_micro_check) {
       await db
         .update(lessonSessionsTable)
-        .set({ nodeTeachingStage: "MICRO_CHECK" })
+        .set({
+          nodeTeachingStage:      "MICRO_CHECK",
+          activeLessonExerciseId: null,
+          activeTaskProvenance:   "micro_check",
+          activeAttemptSequence:  1,
+          activeHelpCount:        0,
+          activeAssistanceLevel:  "none",
+        } as any)
         .where(eq(lessonSessionsTable.id, session.id));
+      hasActiveTask = true;
       logger.info(
         { sessionId: session.id, nodeId: session.currentNodeId },
         "teachingStage anticipatory advance: THEORY -> MICRO_CHECK"
@@ -981,13 +1010,22 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // filled exercise_id) before the student has answered anything (wasEval=false),
     // push the stage forward immediately so the NEXT turn directive correctly
     // says "evaluate the answer" instead of "present the exercise again".
+    // Phase 2B fix: also write active task identity fields (previously omitted).
     if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
         aiResult.teaching_mode === "TRANSITION" &&
         aiResult.source_fidelity.exercise_id) {
       await db
         .update(lessonSessionsTable)
-        .set({ nodeTeachingStage: "EXERCISE" })
+        .set({
+          nodeTeachingStage:      "EXERCISE",
+          activeLessonExerciseId: classExercises.length > 0 ? classExercises[0].id : null,
+          activeTaskProvenance:   "source_exercise",
+          activeAttemptSequence:  1,
+          activeHelpCount:        0,
+          activeAssistanceLevel:  "none",
+        } as any)
         .where(eq(lessonSessionsTable.id, session.id));
+      hasActiveTask = true;
       logger.info(
         { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: aiResult.source_fidelity.exercise_id },
         "teachingStage anticipatory advance: MICRO_CHECK -> EXERCISE"
@@ -1088,6 +1126,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .update(lessonSessionsTable)
           .set(activeTaskUpdate as any)
           .where(eq(lessonSessionsTable.id, session.id));
+        // Update hasActiveTask to reflect the new stage
+        hasActiveTask = newTeachingStage === "MICRO_CHECK" || newTeachingStage === "EXERCISE";
         logger.info({ sessionId: session.id, nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
       } else if (wasEval && session.activeTaskProvenance !== null) {
         // Same stage, same active task — increment attempt sequence
@@ -1206,10 +1246,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .returning();
 
   res.json({
-    response: studentMessage,
-    messageId: assistantMsg.id,
+    response:       studentMessage,
+    messageId:      assistantMsg.id,
     progressIndicator,
     teachingMode,
+    hasActiveTask,          // Phase 2B: true when a MICRO_CHECK or EXERCISE task is active
+    activeHelpCount:        session ? ((session as any).activeHelpCount ?? 0) : 0,
   });
 
   // ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence ───────────
@@ -1452,6 +1494,46 @@ router.post("/chat/help", requireAuth, async (req: AuthRequest, res) => {
   });
 });
 
+
+// ── GET /chat/session-state ─────────────────────────────────────────────────
+// Returns the current active-task state for a lesson session.
+// Used by the frontend on mount/refresh to hydrate hasActiveTask + helpLevel
+// without waiting for the first chat response.
+router.get("/chat/session-state", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = req.query.lessonId ? parseInt(String(req.query.lessonId), 10) : 0;
+  if (!lessonId || isNaN(lessonId)) {
+    res.status(400).json({ error: "lessonId required" });
+    return;
+  }
+
+  const [sessionRow] = await db
+    .select()
+    .from(lessonSessionsTable)
+    .where(and(eq(lessonSessionsTable.lessonId, lessonId), eq(lessonSessionsTable.userId, req.userId!)))
+    .limit(1);
+
+  if (!sessionRow) {
+    res.json({ hasActiveTask: false, activeHelpCount: 0, activeAssistanceLevel: "none" });
+    return;
+  }
+
+  const provenance        = (sessionRow as any).activeTaskProvenance as string | null | undefined;
+  const nodeTeachingStage = sessionRow.nodeTeachingStage ?? "THEORY";
+  // Backward-compat: treat MICRO_CHECK/EXERCISE stage as active even if provenance is null
+  // (sessions created before Phase 2B had null provenance).
+  const hasActiveTask     = (provenance !== null && provenance !== undefined && provenance !== "")
+                            || nodeTeachingStage === "MICRO_CHECK"
+                            || nodeTeachingStage === "EXERCISE";
+
+  res.json({
+    hasActiveTask,
+    activeHelpCount:      (sessionRow as any).activeHelpCount      ?? 0,
+    activeAssistanceLevel:(sessionRow as any).activeAssistanceLevel ?? "none",
+    nodeTeachingStage,
+    status:               sessionRow.status,
+    currentPhase:         sessionRow.currentPhase,
+  });
+});
 
 router.get("/chat/history", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = req.query.lessonId ? parseInt(String(req.query.lessonId), 10) : undefined;

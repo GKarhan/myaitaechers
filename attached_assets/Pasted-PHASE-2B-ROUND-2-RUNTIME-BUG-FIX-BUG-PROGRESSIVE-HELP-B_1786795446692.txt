@@ -1,0 +1,376 @@
+PHASE 2B ROUND 2 — RUNTIME BUG FIX
+
+BUG:
+PROGRESSIVE HELP BUTTON DOES NOT APPEAR IN THE REAL STUDENT AI TEACHER CHAT.
+
+IMPORTANT:
+Phase 2B Round 2 backend/schema/tests already exist.
+T01–T42 passed.
+
+DO NOT redesign Phase 2B.
+DO NOT add new architecture.
+DO NOT change Confidence/Mastery.
+DO NOT change Cognitive Enrichment.
+DO NOT change quiz flow.
+DO NOT broadly refactor chat.ts or chat.tsx.
+
+This is a REAL RUNTIME INTEGRATION BUG.
+
+============================================================
+1. REAL REPRODUCTION
+============================================================
+
+Reproduce this in the actual student AI Teacher UI.
+
+Observed real flow:
+
+Lesson:
+ԱՏՈՄՆԵՐ ԵՎ ՄՈԼԵԿՈՒԼՆԵՐ:
+ԴՐԱՆՑ ԳՈՅՈՒԹՅՈՒՆԸ ՀԱՍՏԱՏՈՂ ԵՐԵՎՈՒՅԹՆԵՐ
+
+Current MicroNode:
+Մոլեկուլներ
+
+AI Teacher asks assessable questions such as:
+
+«Ի՞նչ տարբերություն կա մոլեկուլի և ատոմի միջև»։
+
+and:
+
+«Կարո՞ղ ես օրինակ բերել մի մոլեկուլի, որը կազմված է միայն
+միատեսակ ատոմներից»։
+
+EXPECTED:
+
+When an active assessable question/task exists, the student must see:
+
+[ 💡 Օգնություն ]
+
+in the same task/question context.
+
+ACTUAL:
+
+No help button appears.
+
+The student can manually type:
+«չեմ կարա օգնի»
+
+but that only produces a normal chat response.
+
+That is NOT the Phase 2B progressive-help mechanism.
+
+============================================================
+2. AUDIT BEFORE FIX
+============================================================
+
+Before changing code, trace the REAL runtime chain:
+
+AI response
+→ backend active-task persistence
+→ lesson_sessions active-task fields
+→ API response returned to frontend
+→ frontend chat state
+→ condition controlling Help button rendering.
+
+Report the exact first broken link.
+
+Specifically inspect:
+
+BACKEND:
+- When is an AI response classified as an assessable task?
+- When are active task fields written?
+- Which exact lesson_sessions fields are written?
+- Does this happen for MICRO_CHECK?
+- Does this happen for real lesson exercises?
+- Does it happen for ordinary AI questions?
+- Are those fields actually persisted for this real session?
+
+API RESPONSE:
+- Does POST chat response expose enough state for the frontend to know
+  that an active task exists?
+- If not, how is the frontend currently supposed to discover it?
+
+FRONTEND:
+- What exact condition renders:
+  «💡 Օգնություն»?
+- Which variable/state drives that condition?
+- Is that state ever populated from the real chat response?
+- Is it stale after a new AI question?
+- Is it cleared too early?
+- Does refresh restore it?
+
+Do not guess.
+Use the real running app/session and DB where possible.
+
+============================================================
+3. IMPORTANT SEMANTIC DISTINCTION
+============================================================
+
+Do NOT show the Help button after every AI message.
+
+It should appear only when the learner has an ACTIVE ASSESSABLE TASK.
+
+Examples:
+
+TEACHING EXPLANATION:
+«Մոլեկուլը նյութի ամենափոքր մասնիկն է...»
+
+→ NO Help button.
+
+ASSESSABLE QUESTION:
+«Ի՞նչ տարբերություն կա մոլեկուլի և ատոմի միջև»։
+
+→ Help button SHOULD appear.
+
+MICRO_CHECK:
+assessable question
+
+→ Help button SHOULD appear.
+
+REAL EXERCISE:
+assessable task
+
+→ Help button SHOULD appear.
+
+FEEDBACK:
+«Ճիշտ է, Էլեն...»
+
+→ NO new Help button unless the same message also establishes
+a NEW active assessable task.
+
+If a feedback message ends with a new assessable question, that NEW
+question must become the active task and receive the Help action.
+
+============================================================
+4. SAME-TASK RULE
+============================================================
+
+The Help button must belong to the CURRENT active task.
+
+Clicking:
+
+[ 💡 Օգնություն ]
+
+must:
+
+- use the current task identity
+- keep the same MicroNode
+- keep the same cognitive level
+- keep the same exercise/task ID
+- keep the same attempt
+- NOT create a new question
+- NOT advance node_teaching_stage
+- NOT count as an answer
+- NOT create evidence_event
+
+The hint must appear visually in the context of that same task.
+
+After the hint, the student must still be able to answer the original
+question.
+
+============================================================
+5. FIX ONLY THE FIRST BROKEN LINK
+============================================================
+
+Once the exact runtime break is identified, make the MINIMUM fix.
+
+Possible examples:
+
+- backend active task is not being persisted
+- active task is persisted but omitted from API response
+- frontend receives it but does not store it
+- frontend render condition is wrong
+- active task gets cleared prematurely
+
+Do NOT implement speculative changes across all layers.
+
+Fix the actual root cause.
+
+============================================================
+6. REFRESH REQUIREMENT
+============================================================
+
+If the student refreshes while an unanswered active task exists:
+
+the current task/help availability should be recoverable from the
+server-side lesson session state.
+
+Do not make Help availability depend exclusively on transient React
+state.
+
+============================================================
+7. MANUAL TEXT "HELP" IS NOT THE FEATURE
+============================================================
+
+Do NOT treat arbitrary learner messages such as:
+
+«օգնի»
+«չեմ կարող»
+«չեմ հասկանում»
+
+as a replacement for the Help button in this task.
+
+The existing AI Teacher may naturally respond to those messages.
+
+That is separate.
+
+Phase 2B requires an explicit structured action:
+
+💡 Օգնություն
+
+because help usage must be durably recorded and associated with the
+same task.
+
+============================================================
+8. REAL BROWSER ACCEPTANCE TEST
+============================================================
+
+Automated tests are NOT sufficient for this bug.
+
+After the fix, demonstrate in the REAL student browser:
+
+STEP A
+AI Teacher gives teaching explanation.
+
+Expected:
+NO Help button.
+
+STEP B
+AI Teacher gives an assessable question.
+
+Expected:
+💡 Օգնություն appears.
+
+STEP C
+Click 💡 Օգնություն.
+
+Expected:
+- Hint 1 appears.
+- Original question remains the active task.
+- No replacement question.
+- Same MicroNode.
+- Same task identity.
+
+STEP D
+Verify DB:
+
+exactly one help_events row exists for that click.
+
+Show:
+
+user_id
+lesson_session_id
+lesson_node_id
+lesson_exercise_id
+cognitive_level_id
+task identity
+help_level
+is_answer_reveal
+created_at
+
+STEP E
+Click «Ավելի շատ օգնություն».
+
+Expected:
+- same task
+- help level 2
+- second help_events row
+- no answer reveal
+
+STEP F
+Answer the SAME original question.
+
+Verify resulting evidence_event:
+
+same learner
+same MicroNode
+same task identity
+help_count = 2
+hint_used = true
+assistance_level = 'moderate'
+
+STEP G
+Confirm help clicks themselves created ZERO evidence_events.
+
+============================================================
+9. SECOND CONTROL TEST — NO HELP
+============================================================
+
+On the next assessable question:
+
+Do NOT use Help.
+
+Answer directly.
+
+Verify evidence_event:
+
+help_count = 0
+hint_used = false
+assistance_level = 'none'
+
+This proves assisted and independent evidence are distinguishable.
+
+============================================================
+10. REGRESSION
+============================================================
+
+After the runtime fix:
+
+- Phase 2B Round 2 T01–T42 must still pass.
+- API server typecheck must pass.
+- frontend typecheck must pass.
+
+Do not alter existing expected scoring behavior.
+
+============================================================
+11. FINAL REPORT
+============================================================
+
+Return:
+
+A. Exact root cause
+
+B. Exact first broken link in:
+   backend → session → API response → frontend state → render
+
+C. Files changed
+
+D. Minimal fix made
+
+E. Real session DB active-task state BEFORE fix
+
+F. Real session DB active-task state AFTER fix
+
+G. Browser proof:
+   explanation → no button
+   question → button visible
+
+H. Help level 1 browser + DB proof
+
+I. Help level 2 browser + DB proof
+
+J. Same-task identity proof
+
+K. Final assisted-answer evidence_event row
+
+L. Final independent-answer evidence_event row
+
+M. Proof help clicks create zero evidence_events
+
+N. T01–T42 regression result
+
+O. Typecheck results
+
+P. Final verdict:
+   PASS / PARTIAL / FAIL
+
+DO NOT claim PASS based only on automated tests.
+
+PASS requires the real browser flow:
+
+ASSESSABLE QUESTION
+→ 💡 Օգնություն
+→ HINT
+→ SAME QUESTION
+→ ANSWER
+→ DURABLE ASSISTED EVIDENCE.

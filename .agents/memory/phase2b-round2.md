@@ -57,6 +57,25 @@ LIMIT 1
 - **Rule:** Armenian UI strings in the frontend must be written as actual UTF-8 characters (e.g. "Հուշ") directly in JSX, OR fix using a Node.js script with `String.fromCharCode(0x0540, ...)`.
 - For error strings that come from the API (e.g. `data.message`), prefer `data.message ?? "fallback"` over duplicating Armenian strings in the frontend.
 
+## Help Button Visibility — Fixed Runtime Bug
+
+**Root cause A — Anticipatory advances didn't write active task fields.**
+The `THEORY → MICRO_CHECK` and `MICRO_CHECK → EXERCISE` anticipatory advances (lines ~968, ~984 in chat.ts) only set `nodeTeachingStage`. They did NOT set `activeTaskProvenance`/`activeHelpCount`/etc. Fix: both advances now write all active task identity fields. Same fix applied to P11.1 callAI fallback path.
+
+**Root cause B — `res.json()` didn't include `hasActiveTask`.**
+Frontend had no way to know if the current session has an active task. Fix: `hasActiveTask` variable (bool) declared at handler scope, initialized from session state inside `if (aiResult && ...)` block, updated by every anticipatory advance and `newTeachingStage` branch. Included in `res.json()`.
+
+**Root cause C — Frontend `showHelpButton` condition was wrong.**
+Old: `!!lessonId && helpLevel < 4` (shows always during a lesson).
+New: `!!lessonId && hasActiveTask && helpLevel < 4`.
+
+**Backward compat:** Sessions created before Phase 2B have `activeTaskProvenance = null` even if `nodeTeachingStage = 'MICRO_CHECK'`. Both the initialization in `chat.ts` and the GET `/chat/session-state` endpoint treat MICRO_CHECK/EXERCISE stage as `hasActiveTask = true` even when provenance is null.
+
+## GET `/chat/session-state` Endpoint
+
+Returns `{ hasActiveTask, activeHelpCount, activeAssistanceLevel, nodeTeachingStage, status, currentPhase }`.
+Used by frontend `useEffect` on mount to hydrate `hasActiveTask` + `helpLevel` without waiting for the next chat message. Auth required (`requireAuth`).
+
 ## Test File
 
 `artifacts/api-server/src/lib/__tests__/phase2b-round2.test.ts` — T01–T42, 42/42 passing.
