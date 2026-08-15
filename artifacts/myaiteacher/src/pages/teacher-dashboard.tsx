@@ -916,16 +916,16 @@ function LessonNodesPanel({
   const CANONICAL_COG_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
   // Armenian teacher-facing labels for interaction types.
   const INTERACTION_LABELS: Record<string, string> = {
-    multiple_choice:      'Bazm entrank',
-    multi_select:         'Bazm entrank (baz.)',
-    true_false:           'Chisht / Skhalt',
-    matching:             'Hamapataskhanetsnum',
-    classification:       'Dasagruim',
-    ordering:             'Khmbagrutjun',
-    numeric_answer:       'Tvayin pataskhan',
-    short_answer:         'Kankh pataskhan',
-    constructed_response: 'Elochaguir pataskhan',
-    problem_solving:      'Khndirir lutsuum',
+    multiple_choice:      'Բազմակի ընտրություն',
+    multi_select:         'Բազմակի ընտրություն (մի քանի ճիշտ պատասխան)',
+    true_false:           'Ճիշտ / Սխալ',
+    matching:             'Համապատասխանեցում',
+    classification:       'Դասակարգում',
+    ordering:             'Հերթականության դասավորում',
+    numeric_answer:       'Թվային պատասխան',
+    short_answer:         'Կարճ պատասխան',
+    constructed_response: 'Ընդարձակ պատասխան',
+    problem_solving:      'Խնդրի լուծում',
   };
   const ALL_INTERACTION_TYPES = ['multiple_choice','multi_select','true_false','matching','classification','ordering','numeric_answer','short_answer','constructed_response','problem_solving'];
 
@@ -2413,6 +2413,8 @@ function LessonNodesPanel({
           })()}
 
           {/* ── Lesson Overview / General Theory (Step 5) ───────────────────── */}
+          {/* Block is hidden when content is empty and not in edit mode (display-only, no DB change). */}
+          {(descEditing || (lessonDescription ?? descValue)?.trim()) && (
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
               <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">📖 Տեսական մաս</p>
@@ -2456,6 +2458,7 @@ function LessonNodesPanel({
               </p>
             )}
           </div>
+          )}
 
           {/* Textbook metadata */}
           {(textbookTitle || textbookAuthor || chapterTitle) && (
