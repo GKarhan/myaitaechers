@@ -1,0 +1,347 @@
+TARGETED READ-ONLY AUDIT — WHY callAIStructured RETURNS "[1]"
+
+GOAL
+
+Find the exact root cause of the confirmed structured-output failure:
+
+callAIStructured()
+→ attempt 1 raw output: "[1]"
+→ invalid because expected structured AI object
+→ attempt 2 raw output: "[1]"
+→ invalid again
+
+We already protected Phase 2 from unstructured fallback.
+
+NOW determine WHY callAIStructured produces/receives "[1]".
+
+READ-ONLY AUDIT ONLY.
+
+NO CODE CHANGES.
+NO DB WRITES.
+NO BROWSER TEST.
+NO NEW AI REQUEST.
+
+Use existing code and existing runtime logs/evidence only.
+
+==================================================
+CONFIRMED FACTS — DO NOT RE-AUDIT
+==================================================
+
+Already confirmed:
+
+Session 51
+Lesson 579
+MicroNode 2107
+Phase 2
+Cognitive level remember
+Stage THEORY
+
+The intended structured result includes fields such as:
+
+- student_message
+- teaching_mode
+- is_micro_check
+- answer_evaluation
+- node_decision
+
+Runtime evidence already showed:
+
+callAIStructured attempt 1:
+raw "[1]"
+
+callAIStructured attempt 2:
+raw "[1]"
+
+The result is rejected because it is not the expected JSON object.
+
+We also already fixed:
+
+Phase 2 structured failure
+→ NO callAI fallback
+→ HTTP 503 STRUCTURED_AI_REQUIRED
+→ session state preserved
+
+Do not inspect those areas again unless directly required to trace "[1]".
+
+==================================================
+AUDIT TARGET
+
+Primary file:
+
+artifacts/api-server/src/services/ai.ts
+
+Only inspect other files if ai.ts directly depends on them for this structured call.
+
+We need the complete narrow pipeline:
+
+callAIStructured(...)
+→ request construction
+→ provider/model call
+→ response_format / schema configuration
+→ raw provider response
+→ content extraction
+→ JSON parsing
+→ schema validation
+
+==================================================
+QUESTION 1 — EXACT MODEL CALL
+
+Show the exact existing call used by callAIStructured.
+
+Report:
+
+- model identifier
+- provider/client used
+- messages input
+- response_format if any
+- JSON schema / structured-output configuration if any
+- temperature/max tokens or other relevant generation options
+- any wrapper/helper between callAIStructured and the provider
+
+Do not dump the full system prompt.
+
+Only report configuration relevant to structured output.
+
+==================================================
+QUESTION 2 — WHERE DOES "[1]" FIRST APPEAR?
+
+This is the most important question.
+
+Trace "[1]" backwards.
+
+Determine whether "[1]" is:
+
+A. the provider/model's actual response content,
+
+B. produced by our own response extraction code,
+
+C. produced by JSON parsing/transformation,
+
+D. produced by schema/wrapper logic,
+
+or
+
+E. impossible to determine from existing evidence.
+
+Identify the EARLIEST point where "[1]" exists.
+
+Show the smallest relevant code/log evidence.
+
+==================================================
+QUESTION 3 — RESPONSE EXTRACTION
+
+Inspect exactly how callAIStructured extracts the model response.
+
+Determine whether it reads:
+
+response.choices[0].message.content
+
+or another field.
+
+Check whether the provider may return structured data through a different field while our code reads the wrong one.
+
+Report:
+
+EXPECTED provider response location
+vs
+ACTUAL field being read.
+
+Do not speculate if code/evidence does not prove it.
+
+==================================================
+QUESTION 4 — RESPONSE_FORMAT / SCHEMA COMPATIBILITY
+
+Inspect the structured-output configuration currently sent to the model/provider.
+
+Determine:
+
+- Is native structured output actually requested?
+- Is json_object, json_schema, tool/function calling, or no native format being used?
+- Does the supplied schema expect an OBJECT at the root?
+- Is anything in the request/schema telling the model that an ARRAY is acceptable?
+- Could "[1]" satisfy any schema or format currently supplied?
+
+Answer from code only.
+
+If provider compatibility cannot be proven from repository/runtime evidence, say:
+
+UNKNOWN — provider compatibility requires external verification.
+
+Do NOT web-search in this task.
+
+==================================================
+QUESTION 5 — ZOD / VALIDATION PATH
+
+Trace what happens after raw content is received.
+
+Show the sequence only:
+
+raw content
+→ JSON.parse?
+→ object/root check?
+→ Zod parse?
+→ validation?
+→ retry?
+
+Identify the exact statement that rejects "[1]".
+
+Also determine whether retry attempt 2 sends:
+
+- exactly the same request,
+- a repair/correction prompt,
+- or modified structured instructions.
+
+This matters because two identical "[1]" responses may indicate the retry currently has no repair signal.
+
+==================================================
+QUESTION 6 — PROMPT COLLISION
+
+Do a TARGETED inspection only of instructions directly capable of causing an array/root-shape response.
+
+Search the structured system/user prompt for things like:
+
+- "return ["
+- array examples
+- numbered-array output
+- JSON array instructions
+- conflicting output-format instructions
+- examples where the entire answer is an array
+
+Do NOT audit teaching pedagogy.
+
+Report only format collisions capable of explaining "[1]".
+
+==================================================
+QUESTION 7 — PROVIDER RESPONSE OBJECT
+
+If existing logs preserve enough of the provider response object around the failed request, inspect ONLY metadata necessary to determine:
+
+- finish reason
+- content field
+- refusal/tool-call fields if applicable
+- parsed/structured field if applicable
+
+Do not expose secrets, API keys, auth headers, or unnecessary prompt content.
+
+Do not create a new provider request.
+
+==================================================
+STOP AT FIRST PROVEN ROOT CAUSE
+
+If you can prove the source of "[1]", STOP.
+
+Do not continue into unrelated architecture.
+
+If you cannot prove it, identify the smallest remaining uncertainty.
+
+==================================================
+DO NOT TOUCH
+
+Do NOT modify:
+
+- ai.ts
+- chat.ts
+- lessons.ts
+- prompts
+- schema
+- model
+- provider
+- retry logic
+- frontend
+- DB
+- Cognitive Path
+- state machine
+- exercises
+- Mapping
+
+This task is diagnosis only.
+
+==================================================
+COST CONTROL
+
+Use the minimum tool calls.
+
+Preferred order:
+
+1. Read callAIStructured in ai.ts.
+2. Read only directly referenced schema/helper definitions.
+3. Search existing logs specifically for the failed structured call / "[1]".
+4. Only inspect directly relevant prompt-format instructions if necessary.
+
+NO broad repository audit.
+NO browser.
+NO TypeScript check.
+NO AI/provider request.
+
+==================================================
+FINAL REPORT — SHORT AND EVIDENCE-BASED
+
+## A. STRUCTURED CALL
+
+Model/provider + structured-output mechanism.
+
+## B. "[1]" ORIGIN
+
+Choose exactly one:
+
+PROVIDER OUTPUT
+OUR EXTRACTION
+OUR TRANSFORMATION
+SCHEMA/WRAPPER
+UNKNOWN
+
+Give evidence.
+
+## C. EXTRACTION PATH
+
+Exact field/path being read.
+
+## D. FORMAT / SCHEMA
+
+Expected root shape and whether "[1]" is allowed.
+
+## E. VALIDATION FAILURE
+
+Exact point "[1]" is rejected.
+
+## F. RETRY
+
+Same request or repair request?
+
+## G. FORMAT COLLISION
+
+FOUND / NOT FOUND / UNKNOWN.
+
+Only show directly relevant collision if found.
+
+## H. ROOT CAUSE
+
+One precise sentence.
+
+If not provable:
+
+ROOT CAUSE NOT YET PROVEN
+
+and state the smallest missing evidence.
+
+## I. SMALLEST NEXT FIX
+
+Recommend ONE fix only, based on the proven cause.
+
+DO NOT IMPLEMENT.
+
+## J. VERDICT
+
+Choose:
+
+ROOT CAUSE CONFIRMED
+
+or
+
+ROOT CAUSE PARTIALLY CONFIRMED
+
+or
+
+INSUFFICIENT EVIDENCE
+
+Then STOP.
