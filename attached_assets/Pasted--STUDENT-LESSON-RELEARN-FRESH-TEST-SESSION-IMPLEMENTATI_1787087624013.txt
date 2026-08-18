@@ -1,0 +1,411 @@
+# STUDENT LESSON RELEARN — FRESH TEST SESSION IMPLEMENTATION
+
+## GOAL
+
+Implement the smallest safe flow for repeated AI Teacher testing from the student subject page.
+
+Desired behavior:
+
+* If the student has never started the lesson:
+
+  * show **«Սովորել»**
+  * existing start flow remains
+
+* If the student already has a lesson session:
+
+  * show **«Կրկին սովորել»**
+  * clicking it resets only the lesson-session-local runtime state and chat history
+  * then navigates to the same lesson page for a fresh run
+
+This is for our current experimental testing workflow.
+
+Do not redesign session architecture.
+
+Do not create multiple sessions yet.
+
+---
+
+# CONFIRMED AUDIT FINDINGS — DO NOT RE-AUDIT
+
+Already established:
+
+1. Student lesson-card button is in:
+
+`artifacts/myaiteacher/src/components/StudentLessonCard.tsx`
+
+2. Current button is only a `<Link>` to:
+
+`/lessons/:lessonId`
+
+3. `POST /api/lessons/:lessonId/start` reuses an existing session.
+
+4. DB schema technically allows multiple sessions, but current application logic uses one session per user+lesson.
+
+5. `chat_messages` has no session ID and is loaded by:
+
+`userId + lessonId`
+
+6. Therefore a second session alone would NOT create fresh chat history.
+
+7. Persistent learner history must remain untouched:
+
+   * `evidence_events`
+   * `knowledge_nodes`
+   * mastery / learner-state history
+
+8. Safest minimal testing solution now:
+
+   * reset existing session row in place
+   * delete only chat messages for this user+lesson
+   * preserve persistent learner evidence/mastery
+
+Do not spend tool calls proving these again.
+
+---
+
+# PART 1 — BUTTON LABEL
+
+Frontend:
+
+`artifacts/myaiteacher/src/components/StudentLessonCard.tsx`
+
+Use the already available session-status/session-existence information.
+
+Behavior:
+
+### No existing session
+
+Show:
+
+`Սովորել`
+
+Keep existing navigation/start behavior.
+
+### Existing session
+
+Show:
+
+`Կրկին սովորել`
+
+This must be an action button, because it needs to call the fresh-start endpoint before navigation.
+
+Do not redesign the lesson card.
+
+---
+
+# PART 2 — ADD ONE FRESH-START ENDPOINT
+
+Add a minimal endpoint:
+
+`POST /api/lessons/:lessonId/start-fresh`
+
+Use current authenticated `userId`.
+
+The endpoint must operate only on that user's session for that lesson.
+
+---
+
+# PART 3 — RESET ONLY SESSION-LOCAL STATE
+
+Inspect the current `lesson_sessions` schema and existing session initialization code.
+
+Do NOT invent reset fields.
+
+Reset the existing session row to the same initial/session-local values that a newly created lesson session would have.
+
+This should include all relevant runtime fields that exist in the current schema, such as where applicable:
+
+* `currentNodeId`
+* `currentPhase`
+* `nodeTeachingStage`
+* `activeCognitiveLevelId`
+* `activeLessonExerciseId`
+* active task fields
+* help/remediation counters
+* attempt/session counters
+* timing snapshot/runtime timer state
+* required-session completion state
+* optional continuation state
+* lesson/session completion state
+* other clearly session-local AI Teacher progression fields
+
+Use the actual schema/default/start-session initialization as the source of truth.
+
+Do not reset unrelated fields.
+
+---
+
+# IMPORTANT — INITIAL NODE
+
+After fresh reset, the session must restart from the lesson's correct first approved MicroNode using the same ordering logic as normal fresh session creation.
+
+Do NOT hardcode node `2107`.
+
+Do NOT hardcode Lesson `579`.
+
+The implementation must work for any lesson.
+
+---
+
+# IMPORTANT — COGNITIVE LEVEL
+
+Do not manually hardcode `remember`.
+
+Reset cognitive session state so existing runtime lazy-init/current Cognitive Path logic selects the correct first cognitive level naturally.
+
+---
+
+# PART 4 — CLEAR ONLY THIS LESSON CHAT
+
+Because `chat_messages` are keyed by user+lesson, delete only:
+
+`chat_messages`
+WHERE:
+
+* `userId = current authenticated user`
+* `lessonId = requested lesson`
+
+Do NOT delete other lesson chats.
+
+Do NOT delete another user's messages.
+
+---
+
+# PERSISTENT LEARNER HISTORY — MUST NOT TOUCH
+
+Absolutely do NOT delete, reset, or modify:
+
+* `evidence_events`
+* `knowledge_nodes`
+* mastery
+* confidence
+* Knowledge Tree
+* learner-state history
+* quiz results
+* any persistent evidence outside the lesson session/chat
+
+Fresh test session means:
+
+**fresh runtime + fresh conversation**
+
+NOT:
+
+**erase what the learner previously demonstrated**
+
+---
+
+# TRANSACTION SAFETY
+
+The fresh-start operation should be atomic.
+
+Use a DB transaction for:
+
+1. session reset/update
+2. lesson chat deletion
+
+If one fails, do not leave a half-reset state.
+
+Reuse existing DB transaction conventions in the repo.
+
+---
+
+# IF NO SESSION EXISTS
+
+`POST /start-fresh` must behave safely if the student somehow calls it without an existing session.
+
+Preferred behavior:
+
+reuse the same initialization logic as normal first-session creation, or create the initial session safely.
+
+Do not return a broken/null state.
+
+Avoid duplicating large session-creation logic if an existing helper/path can be reused cleanly.
+
+---
+
+# FRONTEND FLOW
+
+For `Կրկին սովորել`:
+
+1. Disable button while request is running.
+2. Call:
+
+`POST /api/lessons/:lessonId/start-fresh`
+
+3. On success:
+
+   * invalidate/refetch relevant lesson/session queries if needed
+   * navigate to `/lessons/:lessonId`
+
+4. On failure:
+
+   * do not navigate
+   * preserve current page
+   * use the existing error/toast pattern if available
+
+No new UI system.
+
+---
+
+# TEST FIXTURE
+
+Verify with current test lesson:
+
+Lesson `579`
+
+MicroNode currently:
+
+`Մոլեկուլների շարժումը`
+
+Do not hardcode these IDs in implementation.
+
+For a previously started test session, after clicking:
+
+`Կրկին սովորել`
+
+verify that the next run starts fresh with:
+
+* correct first MicroNode
+* session progression reset
+* cognitive level ready for fresh initialization
+* teaching stage reset
+* no previous active exercise
+* help count reset
+* fresh chat history
+
+---
+
+# VERY IMPORTANT VERIFICATION
+
+Before fresh start, capture the existing session ID.
+
+After fresh start:
+
+### Session ID
+
+Because this implementation intentionally resets the same session row in place, the session ID should remain the same.
+
+Confirm this explicitly.
+
+### Persistent evidence
+
+Confirm existing `evidence_events` count/rows are unchanged.
+
+### Knowledge/mastery
+
+Confirm `knowledge_nodes` / mastery records are unchanged.
+
+### Chat
+
+Confirm old chat rows for this user+lesson are removed.
+
+Do not generate unnecessary new AI turns just for verification.
+
+---
+
+# DO NOT CHANGE AI TEACHER LOGIC
+
+Do NOT modify:
+
+* `chat.ts` teaching logic
+* prompts
+* Cognitive Path context
+* exercise filtering
+* Decision Engine
+* state machine
+* answer evaluation
+* HELP/remediation
+* evidence scoring
+* Mapping
+* Phase 2
+* Knowledge Tree logic
+
+This task is only lesson start/relearn session control.
+
+---
+
+# NO SCHEMA CHANGE
+
+Do NOT:
+
+* add session ID to chat messages
+* add new DB tables
+* add unique constraints
+* redesign multi-session architecture
+
+Those may be considered later.
+
+---
+
+# COST CONTROL
+
+Do not run a broad audit.
+
+Use the audit findings above.
+
+Inspect only:
+
+* exact session initialization defaults
+* session schema fields needed for safe reset
+* lesson card frontend
+* relevant route/API client code
+
+Run only relevant typechecks.
+
+---
+
+# REQUIRED FINAL REPORT
+
+Keep it short.
+
+## A. FILES CHANGED
+
+Exact files.
+
+## B. BUTTON BEHAVIOR
+
+* first-time label/action
+* existing-session label/action
+
+## C. FRESH RESET
+
+List the actual session fields reset.
+
+## D. CHAT RESET
+
+Confirm exact user+lesson scoped deletion.
+
+## E. PERSISTENT HISTORY
+
+Confirm evidence/mastery untouched.
+
+## F. TRANSACTION
+
+Confirm reset + chat clear are atomic.
+
+## G. VERIFICATION
+
+For the test lesson report:
+
+* session ID before / after
+* first node after reset
+* active cognitive level state
+* teaching stage
+* active exercise
+* help/task state
+* chat count after reset
+* evidence count before / after
+
+## H. TYPECHECK
+
+PASS / FAIL.
+
+## I. RESULT
+
+`PASS — Սովորել / Կրկին սովորել fresh-session test flow implemented safely`
+
+or
+
+`FAIL — exact reason`
+
+Then STOP.

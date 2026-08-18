@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -539,6 +539,109 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     startedAt: session.startedAt.toISOString(),
     completedAt: null,
   });
+});
+
+// ── POST /lessons/:lessonId/start-fresh ──────────────────────────────────────
+// Resets the existing lesson session to a clean initial state for re-learning,
+// then clears chat history for this user+lesson. Persistent evidence/mastery
+// (evidence_events, knowledge_nodes) are NEVER touched.
+// If no session exists, falls through to normal first-session creation.
+router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+
+  // Resolve first approved MicroNode (same ordering as normal session creation)
+  const [firstNode] = await db
+    .select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.lessonId, lessonId), eq(lessonNodesTable.status, "approved")))
+    .orderBy(asc(lessonNodesTable.sequence))
+    .limit(1);
+
+  // Phase selection: same logic as first-session creation
+  const [dueTopics, priorEvidence] = await Promise.all([
+    getDueReviewTopics(req.userId!),
+    db.select({ id: evidenceEventsTable.id }).from(evidenceEventsTable)
+      .where(eq(evidenceEventsTable.userId, req.userId!)).limit(1),
+  ]);
+  const selectedInitialPhase = (dueTopics.length > 0 && priorEvidence.length > 0) ? 1 : 2;
+  const now = new Date();
+
+  // Find the existing session for this user+lesson
+  const [existing] = await db
+    .select({ id: lessonSessionsTable.id })
+    .from(lessonSessionsTable)
+    .where(and(eq(lessonSessionsTable.lessonId, lessonId), eq(lessonSessionsTable.userId, req.userId!)))
+    .limit(1);
+
+  let sessionId: number;
+
+  if (existing) {
+    // Atomically reset session + clear chat
+    await db.transaction(async (tx) => {
+      await tx.update(lessonSessionsTable)
+        .set({
+          currentPhase:           selectedInitialPhase,
+          status:                 "active",
+          masteryScore:           null,
+          currentNodeId:          firstNode?.id ?? null,
+          nodeStartedAt:          firstNode ? now : null,
+          startedAt:              now,
+          completedAt:            null,
+          nodeAttemptCount:       0,
+          lastQuestionAsked:      null,
+          askedQuestionTemplates: [],
+          reviewQuestionCount:    0,
+          deepDiveExerciseIndex:  0,
+          nodeMasteryEvidenceCount:   0,
+          nodeConsecutiveCorrect:     0,
+          nodeConsecutiveIncorrect:   0,
+          nodeLastEvidenceQuality:    null,
+          nodeTeachingStage:          "THEORY",
+          phase1ConsecutiveCorrect:   0,
+          introConfirmed:             false,
+          activeLessonExerciseId:     null,
+          activeCognitiveLevelId:     null,
+          activeTaskProvenance:       null,
+          activeAttemptSequence:      0,
+          activeHelpCount:            0,
+          activeAssistanceLevel:      "none",
+          remediationStep:            0,
+          requiredSessionMinutes:     (lesson as any).requiredSessionMinutes ?? null,
+          activeLearningSeconds:      0,
+          lastActivityAt:             null,
+          requiredSessionCompletedAt: null,
+          optionalContinuation:       false,
+        } as any)
+        .where(eq(lessonSessionsTable.id, existing.id));
+
+      await tx.delete(chatMessagesTable)
+        .where(and(
+          eq(chatMessagesTable.userId, req.userId!),
+          eq(chatMessagesTable.lessonId, lessonId),
+        ));
+    });
+    sessionId = existing.id;
+    logger.info({ sessionId, lessonId, userId: req.userId!, firstNodeId: firstNode?.id ?? null }, "start-fresh: session reset in place");
+  } else {
+    // No session yet — create a fresh one (same as /start new-session path)
+    const [session] = await db.insert(lessonSessionsTable).values({
+      userId: req.userId!,
+      lessonId,
+      currentPhase: selectedInitialPhase,
+      status: "active",
+      currentNodeId: firstNode?.id ?? null,
+      nodeStartedAt: firstNode ? now : null,
+      requiredSessionMinutes: (lesson as any).requiredSessionMinutes ?? null,
+    }).returning();
+    sessionId = session.id;
+    logger.info({ sessionId, lessonId, userId: req.userId!, firstNodeId: firstNode?.id ?? null }, "start-fresh: no existing session, created new");
+  }
+
+  res.json({ sessionId, lessonId, currentNodeId: firstNode?.id ?? null, currentPhase: selectedInitialPhase });
 });
 
 // ── V2-R4A.3: POST /lessons/:lessonId/session/finish ─────────────────────────

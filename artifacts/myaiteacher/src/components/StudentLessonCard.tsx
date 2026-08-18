@@ -1,4 +1,6 @@
-import { Link } from "wouter";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "@/lib/auth";
 import { lessonStatusBadge } from "@/lib/student-nav";
 
 export type StudentLessonCardLesson = {
@@ -37,6 +39,35 @@ export default function StudentLessonCard({
   quizzes?: LinkedQuiz[];
 }) {
   const badge = lessonStatusBadge(lesson.mySessionStatus);
+  const { token } = useAuth();
+  const [, setLocation] = useLocation();
+  const [relearnPending, setRelearnPending] = useState(false);
+  const [relearnError, setRelearnError] = useState<string | null>(null);
+
+  const hasSession = lesson.mySessionStatus != null;
+
+  const handleRelearn = async () => {
+    setRelearnPending(true);
+    setRelearnError(null);
+    try {
+      const res = await fetch(`/api/lessons/${lesson.id}/start-fresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setRelearnError((body as any)?.error ?? "Չhardvets nkartvats dasn sksnel");
+        return;
+      }
+      setLocation(`/lessons/${lesson.id}`);
+    } catch {
+      setRelearnError("Ցanцavorutyun: krknakel, kardatsek");
+    } finally {
+      setRelearnPending(false);
+    }
+  };
+
+  const btnCls = "flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <div className="rounded-2xl border border-white/10 bg-card/60 p-5 flex flex-col gap-4 hover:border-white/20 transition-colors">
@@ -62,13 +93,23 @@ export default function StudentLessonCard({
               <span>Էջ {lesson.pagesFrom ?? "?"}–{lesson.pagesTo ?? "?"}</span>
             )}
           </div>
+          {relearnError && (
+            <p className="text-xs text-red-400">{relearnError}</p>
+          )}
         </div>
-        <Link
-          href={`/lessons/${lesson.id}`}
-          className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 whitespace-nowrap shrink-0"
-        >
-          ▶ ՍԿՍԵԼ ԴԱՍԸ
-        </Link>
+        {hasSession ? (
+          <button
+            onClick={handleRelearn}
+            disabled={relearnPending}
+            className={btnCls}
+          >
+            {relearnPending ? "⏳ ..." : "↺ Կрклин совorgел"}
+          </button>
+        ) : (
+          <Link href={`/lessons/${lesson.id}`} className={btnCls}>
+            ▶ Սовorgел
+          </Link>
+        )}
       </div>
 
       {/* ── Linked tests block ──
