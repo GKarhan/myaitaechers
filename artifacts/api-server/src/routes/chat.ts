@@ -936,6 +936,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         `PHASE: ${phase} | PROGRESS: node ${currentNodeSeq}/${totalNodes} | completed: ${completedNodes}/${totalNodes}`,
         phase1ProgressLine,
         stageDirectiveLine,
+        (() => {
+          if (!_activeCognitiveLevelRow) return "";
+          const lines = [
+            `CURRENT_COGNITIVE_LEVEL: ${_activeCognitiveLevelRow.cognitiveLevel}`,
+          ];
+          const perf = (_activeCognitiveLevelRow as any).performanceObjective;
+          const succ = (_activeCognitiveLevelRow as any).successCriterion;
+          if (perf && typeof perf === "string" && perf.trim()) {
+            lines.push(`COGNITIVE_PERFORMANCE_OBJECTIVE: ${perf.trim()}`);
+          }
+          if (succ && typeof succ === "string" && succ.trim()) {
+            lines.push(`COGNITIVE_SUCCESS_CRITERION: ${succ.trim()}`);
+          }
+          return lines.join("\n");
+        })(),
         phase === 2 && currentNodeRecord
           ? [
               `TEACHING_ORDER:`,

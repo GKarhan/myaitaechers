@@ -1,0 +1,304 @@
+# STEP 2 — WIRE ACTIVE COGNITIVE LEVEL INTO AI TEACHER CONTEXT
+
+## GOAL
+
+Step 1 is complete and verified:
+
+`learningObjective → NODE_OBJECTIVE` = PASS.
+
+The P0.1 audit identified the next confirmed gap:
+
+* Cognitive Path is present in DB.
+* The current cognitive level is correctly initialized/tracked by runtime.
+* `_activeCognitiveLevelRow` already exists.
+* Cognitive Path already reaches the Decision Engine.
+* BUT the active cognitive level's instructional requirements are not included in the AI generation `lessonContext`.
+
+For this task, fix **ONLY this gap**.
+
+We want the AI model to know:
+
+1. the current cognitive level;
+2. the `performanceObjective` for that active level;
+3. the `successCriterion` for that active level.
+
+Do NOT add interaction-format logic yet.
+
+---
+
+# TARGET
+
+Use the same audited lesson/MicroNode:
+
+* Lesson ID: `579`
+* MicroNode ID: `2102`
+
+The audit established that this node has a confirmed Cognitive Path:
+
+### Level 1
+
+* cognitiveLevel: `remember`
+* sequence: `1`
+* target ceiling: `false`
+* performanceObjective: populated
+* successCriterion: populated
+
+### Level 2
+
+* cognitiveLevel: `understand`
+* sequence: `2`
+* target ceiling: `true`
+* performanceObjective: populated
+* successCriterion: populated
+
+For a fresh session, runtime initializes the active level to the first applicable level:
+
+`remember`
+
+Do not change this initialization logic.
+
+---
+
+# REQUIRED CHANGE
+
+File:
+
+`artifacts/api-server/src/routes/chat.ts`
+
+Use the already-existing `_activeCognitiveLevelRow`.
+
+Do NOT create a second Cognitive Path loader/query.
+
+Do NOT duplicate cognitive-state logic.
+
+---
+
+## 1. Add active cognitive level to AI context
+
+Add a compact block to the existing `lessonContext` so AI generation receives the active level.
+
+Conceptually:
+
+`CURRENT_COGNITIVE_LEVEL: remember`
+
+Use the actual value from `_activeCognitiveLevelRow`.
+
+Do not hardcode `remember`.
+
+---
+
+## 2. Add the active level's performance objective
+
+From the same `_activeCognitiveLevelRow`, expose its actual:
+
+`performanceObjective`
+
+Conceptually:
+
+`COGNITIVE_PERFORMANCE_OBJECTIVE: <actual value>`
+
+This must correspond ONLY to the currently active cognitive level.
+
+Do not send objectives for all cognitive levels.
+
+---
+
+## 3. Add the active level's success criterion
+
+From the same `_activeCognitiveLevelRow`, expose its actual:
+
+`successCriterion`
+
+Conceptually:
+
+`COGNITIVE_SUCCESS_CRITERION: <actual value>`
+
+Again, use ONLY the active cognitive level.
+
+---
+
+# IMPORTANT SEMANTIC SEPARATION
+
+Do not confuse these fields:
+
+`NODE_OBJECTIVE`
+= overall MicroNode learning objective.
+
+`CURRENT_COGNITIVE_LEVEL`
+= learner's current step in the MicroNode Cognitive Path.
+
+`COGNITIVE_PERFORMANCE_OBJECTIVE`
+= what the learner should demonstrate at this specific cognitive level.
+
+`COGNITIVE_SUCCESS_CRITERION`
+= what counts as successful evidence at this specific cognitive level.
+
+Keep all four concepts separate.
+
+Do not replace `NODE_OBJECTIVE`.
+
+Step 1 must remain intact.
+
+---
+
+# NULL / MISSING SAFETY
+
+Do not invent values.
+
+If there is no active cognitive level or a field is NULL/empty:
+
+* do not fabricate content;
+* preserve existing runtime behavior;
+* omit or safely handle that context line/block.
+
+Do not introduce a new generic fallback that could falsely represent a Cognitive Path requirement.
+
+---
+
+# DO NOT CHANGE
+
+For this task, do NOT modify:
+
+* Cognitive Path DB loading/query unless absolutely required to expose an already-selected field;
+* cognitive-level initialization/progression;
+* Decision Engine logic;
+* evidence scoring;
+* mastery logic;
+* `preferredInteractionTypes`;
+* question format selection;
+* micro-check format;
+* teaching state machine;
+* intent router;
+* HELP/remediation;
+* exercises/tasks;
+* Mapping;
+* Phase 2;
+* DB schema;
+* DB data;
+* frontend;
+* Step 1 `learningObjective → NODE_OBJECTIVE` behavior.
+
+No refactoring.
+
+No broad prompt redesign.
+
+---
+
+# VERIFICATION
+
+After the minimal change:
+
+## 1. TypeScript
+
+Run the relevant TypeScript/typecheck validation.
+
+Report the result.
+
+## 2. Verify node 2102
+
+Using existing DB data, confirm the active first Cognitive Path level and show the actual values for:
+
+* `cognitiveLevel`
+* `performanceObjective`
+* `successCriterion`
+
+Do not modify DB data to perform this verification.
+
+## 3. Verify resulting AI context
+
+For the first MicroNode / first cognitive level, show the resulting context lines/blocks.
+
+We expect conceptually:
+
+`NODE_OBJECTIVE: <real MicroNode learningObjective>`
+
+`CURRENT_COGNITIVE_LEVEL: remember`
+
+`COGNITIVE_PERFORMANCE_OBJECTIVE: <actual DB value for remember>`
+
+`COGNITIVE_SUCCESS_CRITERION: <actual DB value for remember>`
+
+Show the actual values, not only placeholders.
+
+## 4. Verify level isolation
+
+Confirm that the `understand` level's performance objective and success criterion are NOT sent while `remember` is active.
+
+This is important.
+
+The AI should receive requirements for the **current level only**, not the whole Cognitive Path.
+
+---
+
+# STOP CONDITION
+
+Once these three active-level fields reach AI generation context and are verified, STOP.
+
+Do NOT proceed to:
+
+* `preferredInteractionTypes`;
+* question-format enforcement;
+* correct-answer testing;
+* HELP testing;
+* cognitive progression testing;
+* remediation;
+* next MicroNode.
+
+Those are later micro-steps.
+
+---
+
+# FINAL REPORT
+
+Return only:
+
+## A. CHANGE MADE
+
+Exact file and minimal changes.
+
+## B. ACTIVE COGNITIVE DATA
+
+For MicroNode `2102`, show:
+
+* current cognitive level
+* actual performance objective
+* actual success criterion
+
+## C. AI CONTEXT AFTER FIX
+
+Show:
+
+* `NODE_OBJECTIVE`
+* `CURRENT_COGNITIVE_LEVEL`
+* `COGNITIVE_PERFORMANCE_OBJECTIVE`
+* `COGNITIVE_SUCCESS_CRITERION`
+
+## D. ISOLATION CHECK
+
+Confirm that inactive cognitive levels are not injected into AI context.
+
+## E. SCOPE CHECK
+
+Confirm no changes were made to:
+
+* preferred interaction types;
+* Decision Engine;
+* cognitive progression;
+* state machine;
+* exercises;
+* Mapping;
+* Phase 2;
+* DB/schema/data;
+* unrelated code.
+
+## F. RESULT
+
+Answer:
+
+**PASS** — active Cognitive Path level + performance objective + success criterion now reach AI generation context.
+
+or
+
+**FAIL** — give the exact reason.
+
+Then STOP.
