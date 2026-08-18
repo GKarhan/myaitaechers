@@ -1,0 +1,212 @@
+TARGETED AUDIT ONLY — INITIAL LESSON INTRO “OK” LOOP
+
+DO NOT CHANGE CODE.
+
+We are now testing the AI Teacher one runtime step at a time.
+
+Current test fixture:
+- Lesson: 579
+- Current MicroNode: 2107 — «Մոլեկուլների շարժումը»
+- Active Cognitive Level: remember
+- nodeTeachingStage: THEORY
+- session: 51
+- currentPhase: 1
+- teachingMode: TEACH
+
+Test State Bar before the turn:
+
+Node: Մոլեկուլների շարժումը [2107]
+Level: remember
+Stage: THEORY
+Ex: —
+Decision: —
+Help: 0
+Step: 1/5
+sess=51
+ph=1
+mode=TEACH
+task=✗
+
+Observed behavior:
+
+Initial AI message:
+
+«Բարև ... Այսօրվա դասի թեման է ...
+Այս դասի նպատակներն են ...
+Այս դասի ավարտին դու կսովորես ...
+Եթե պատրաստ ես սկսելու, գրիր՝ Օկ»
+
+Student sent:
+
+«օկ»
+
+AI returned THE SAME lesson introduction again and again ended with:
+
+«Եթե պատրաստ ես սկսելու, գրիր՝ Օկ»
+
+So runtime is stuck in:
+
+INTRO → OK → SAME INTRO
+
+STOP HERE.
+
+We need the exact root cause before changing anything.
+
+==================================================
+1. FIND EXACT INTRO GENERATOR
+==================================================
+
+Find the exact code path/function/template that generates this initial lesson introduction.
+
+Report:
+
+- file
+- function/block
+- exact condition that causes this intro to be returned
+- whether this message is AI-generated or deterministic/backend-generated
+
+Do not broadly audit chat.ts.
+
+Trace only this message path.
+
+==================================================
+2. TRACE THE “օկ” TURN
+==================================================
+
+Trace exactly what happens when the student sends:
+
+օկ
+
+Starting from the chat endpoint through all relevant guards/branches until the final response is produced.
+
+Identify the FIRST branch that prevents normal MicroNode teaching from starting.
+
+Report the condition and actual runtime values for session 51.
+
+==================================================
+3. WHY IS INTRO RETURNED AGAIN?
+==================================================
+
+Determine exactly why the backend believes it should send the intro again.
+
+Check only relevant state/conditions, for example if actually used:
+
+- currentPhase
+- teachingMode
+- nodeTeachingStage
+- currentNodeId
+- activeCognitiveLevelId
+- message/history state
+- session initialization/start state
+- any “lesson started / ready / greeting / intro” flag
+- any phase gate
+- any deterministic early return
+
+Do not speculate.
+
+Give code evidence.
+
+==================================================
+4. EXPECTED NEXT PATH
+==================================================
+
+Based on CURRENT architecture, identify what code path should execute after:
+
+student = «օկ»
+
+so that AI Teacher begins teaching:
+
+MicroNode 2107
+→ active level remember
+→ Stage THEORY
+
+We already confirmed that AI context can receive:
+
+- NODE_OBJECTIVE
+- CURRENT_COGNITIVE_LEVEL
+- COGNITIVE_PERFORMANCE_OBJECTIVE
+- COGNITIVE_SUCCESS_CRITERION
+- PREFERRED_INTERACTION_TYPES
+- active-level filtered exercises
+
+Do NOT re-audit those.
+
+We only need to reach that existing teaching path.
+
+==================================================
+5. CHECK WHETHER “OK” IS EVEN REQUIRED
+==================================================
+
+Determine whether the current architecture actually needs this readiness “Օկ” turn.
+
+If the intro is only a UI/backend greeting and there is no real state transition attached to “Օկ”, state that explicitly.
+
+Do NOT redesign anything yet.
+
+==================================================
+6. SMALLEST FIX
+==================================================
+
+After finding the root cause, propose ONE smallest fix.
+
+The fix must only solve:
+
+INTRO → OK → START CURRENT MICRONODE TEACHING
+
+Do not implement it.
+
+Do not touch:
+
+- Cognitive Path design
+- exercise filtering
+- Decision Engine beyond this exact routing issue
+- HELP/remediation
+- evidence/mastery
+- Mapping
+- Phase 2
+- Knowledge Tree
+- session fresh-start flow
+- frontend design
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Do not repeat previous audits.
+
+Do not inspect unrelated files.
+
+No code changes.
+No DB changes.
+No broad architecture review.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return only:
+
+A. INTRO GENERATOR
+file + function/block + condition
+
+B. “OK” RUNTIME TRACE
+short ordered path
+
+C. ROOT CAUSE
+one precise statement
+
+D. EXPECTED PATH
+what should happen after “օկ”
+
+E. IS “OK” CURRENTLY STATEFUL?
+YES / NO + reason
+
+F. SMALLEST FIX
+exact minimal code-level recommendation
+
+G. VERDICT
+PASS / GAP
+
+Then STOP.
