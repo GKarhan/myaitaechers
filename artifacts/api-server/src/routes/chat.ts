@@ -1329,14 +1329,31 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
 
   } catch (err) {
+    const structuredFailure = {
+      event:     "ai_structured_fallback",
+      userId:    req.userId,
+      lessonId,
+      sessionId: session?.id ?? null,
+      firstError: err instanceof Error ? err.message : String(err),
+    };
+
+    // Phase 2 MicroNode teaching relies on structured metadata to keep the
+    // visible task and persisted session state in sync. Do not let plain-text
+    // fallback display an untracked teaching response or micro-check.
+    if (session?.currentPhase === 2 && session.currentNodeId) {
+      logger.error(
+        structuredFailure,
+        "callAIStructured failed twice — structured response required for controlled Phase 2 teaching"
+      );
+      res.status(503).json({
+        error: "STRUCTURED_AI_REQUIRED",
+        message: "Չհաջողվեց շարունակել դասը։ Խնդրում եմ կրկին փորձել։",
+      });
+      return;
+    }
+
     logger.error(
-      {
-        event:     "ai_structured_fallback",
-        userId:    req.userId,
-        lessonId,
-        sessionId: session?.id ?? null,
-        firstError: err instanceof Error ? err.message : String(err),
-      },
+      structuredFailure,
       "callAIStructured failed twice — falling back to callAI"
     );
     try {

@@ -1,0 +1,281 @@
+TARGETED FIX ONLY — BLOCK UNSTRUCTURED FALLBACK DURING PHASE 2 CONTROLLED TEACHING
+
+GOAL
+
+We have confirmed the first real runtime break in the AI Teacher controlled teaching cycle.
+
+Current failure:
+
+callAIStructured()
+→ attempt 1 fails
+→ attempt 2 fails
+→ fallback to plain-text callAI()
+→ student receives a valid-looking MICRO_CHECK
+→ but aiResult is null
+→ no is_micro_check metadata exists
+→ deterministic THEORY → MICRO_CHECK transition does not run
+→ visible conversation and backend state diverge
+
+Confirmed runtime example:
+
+Session 51
+Lesson 579
+Node 2107
+Phase 2
+Level remember
+Stage THEORY
+
+The student saw a multiple-choice micro-check, but DB correctly remained:
+
+nodeTeachingStage = THEORY
+activeTaskProvenance = null
+activeAttemptSequence = 0
+task inactive
+
+because the visible response came from unstructured callAI fallback.
+
+This task is ONLY to prevent that state desynchronization.
+
+DO NOT investigate or fix why callAIStructured returned "[1]" yet.
+That will be the NEXT separate task.
+
+==================================================
+REQUIRED BEHAVIOR
+==================================================
+
+For controlled Phase 2 teaching turns:
+
+if callAIStructured fails after its existing retry attempts,
+
+DO NOT fall back to plain-text callAI for a student-visible teaching response.
+
+Instead:
+
+1. Preserve the current session teaching state unchanged.
+2. Do not create/open an active task.
+3. Do not advance nodeTeachingStage.
+4. Do not advance cognitive level.
+5. Do not generate evidence.
+6. Do not run any fake/inferred transition based on plain text.
+7. Return an explicit retryable error response to the frontend.
+
+The key invariant is:
+
+NO STUDENT-VISIBLE TEACHING / MICRO_CHECK RESPONSE MAY BYPASS THE STRUCTURED CONTRACT IN PHASE 2.
+
+==================================================
+SCOPE
+==================================================
+
+First inspect the existing small block around:
+
+callAIStructured(...)
+retry
+fallback to callAI(...)
+
+Do not broadly audit the repository.
+
+Implement the smallest possible guard.
+
+Use the existing phase/session variables already available in chat.ts.
+
+Preferred behavior:
+
+if the request is a controlled Phase 2 teaching turn
+and structured generation fails twice:
+
+→ log the structured failure
+→ return an error response
+→ STOP processing this turn
+
+Do not call callAI().
+
+For flows outside this controlled Phase 2 teaching path, preserve existing fallback behavior unless the existing architecture clearly requires otherwise.
+
+Do NOT globally remove callAI fallback unless absolutely necessary.
+
+==================================================
+ERROR RESPONSE
+==================================================
+
+Use the project's existing API error conventions if available nearby.
+
+Prefer an HTTP 5xx retryable response, for example 503, with a stable machine-readable code such as:
+
+STRUCTURED_AI_REQUIRED
+
+and a short Armenian user-safe message such as:
+
+«Չհաջողվեց շարունակել դասը։ Խնդրում եմ կրկին փորձել»։
+
+Do not expose provider/model/raw parsing errors to the student.
+
+If the frontend already handles non-2xx chat errors appropriately, do not modify frontend code.
+
+If it does NOT, report that fact but DO NOT modify frontend in this task.
+
+==================================================
+IMPORTANT — USER MESSAGE / CHAT HISTORY
+
+Check the existing order of operations.
+
+If the student's incoming message is inserted into chat_messages BEFORE structured generation is attempted, DO NOT redesign persistence in this task.
+
+Simply report that behavior in the final report.
+
+Do not add rollback logic unless an existing transaction already makes that trivial.
+
+The primary goal of this task is preventing an unstructured ASSISTANT teaching response from being persisted/displayed.
+
+==================================================
+STATE SAFETY
+
+On structured failure in controlled Phase 2, verify that none of these are modified by the failure path:
+
+- nodeTeachingStage
+- activeCognitiveLevelId
+- activeLessonExerciseId
+- activeTaskProvenance
+- activeAttemptSequence
+- activeHelpCount
+- activeAssistanceLevel
+- nodeAttemptCount
+- nodeMasteryEvidenceCount
+- consecutive correct/incorrect counters
+- mastery/evidence records
+
+Do not add new state machinery.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- structured output schema
+- callAIStructured parsing
+- model/provider configuration
+- prompts
+- THEORY → MICRO_CHECK transition logic
+- Decision Engine
+- Cognitive Path
+- exercise filtering
+- intro logic
+- start-fresh
+- StudentLessonCard
+- Test State Bar
+- Mapping
+- Phase 2 content
+- DB schema
+- evidence scoring
+- Knowledge Tree
+
+Especially:
+
+DO NOT attempt to fix the "[1]" response in this task.
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Do not:
+
+- run browser tests
+- generate AI teaching turns
+- perform broad repo audits
+- inspect unrelated files
+- change multiple files unless strictly necessary
+
+Expected implementation should ideally be limited to:
+
+artifacts/api-server/src/routes/chat.ts
+
+==================================================
+VERIFICATION
+==================================================
+
+Static verification only.
+
+Verify:
+
+1. Phase 2 controlled teaching still tries callAIStructured with its existing retry behavior.
+
+2. If structured generation succeeds:
+   existing normal behavior is unchanged.
+
+3. If structured generation fails after retries:
+   callAI plain-text fallback is NOT invoked for the controlled Phase 2 turn.
+
+4. No assistant teaching/check message is persisted from that fallback.
+
+5. Session teaching/task/cognitive/evidence state is not advanced by this failure path.
+
+6. Existing fallback behavior outside the protected Phase 2 path remains unchanged.
+
+7. TypeScript passes.
+
+Do NOT create a real AI request just to test failure.
+
+==================================================
+FINAL REPORT — SHORT
+==================================================
+
+Return only:
+
+## A. FILE CHANGED
+
+## B. EXACT GUARD ADDED
+
+Show the smallest relevant code snippet.
+
+## C. PHASE 2 FAILURE PATH
+
+Show:
+
+callAIStructured
+→ retry
+→ both fail
+→ explicit retryable error
+→ return
+
+Confirm:
+
+callAI NOT called.
+
+## D. SUCCESS PATH
+
+Confirm successful structured Phase 2 behavior is unchanged.
+
+## E. OTHER FLOWS
+
+Confirm whether existing callAI fallback remains unchanged outside the protected Phase 2 path.
+
+## F. STATE SAFETY
+
+Confirm no teaching/task/cognitive/evidence state advances on this failure path.
+
+Also state whether the incoming student message had already been persisted before the failure.
+
+## G. FRONTEND
+
+State whether existing frontend already handles the returned non-2xx error.
+
+Do NOT change frontend.
+
+## H. TYPECHECK
+
+PASS / FAIL
+
+## I. RESULT
+
+PASS — Phase 2 controlled teaching can no longer continue through unstructured fallback
+
+or
+
+FAIL — exact reason
+
+Then STOP.
+
+Do not investigate the "[1]" structured-output failure yet.
