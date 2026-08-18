@@ -1,0 +1,312 @@
+# TARGETED READ-ONLY AUDIT — MICRO_CHECK STATE TRANSITION
+
+## GOAL
+
+We have reached the next controlled runtime checkpoint.
+
+Visible AI behavior looked mostly correct:
+
+1. AI taught the current MicroNode.
+2. AI asked ONE remember-level multiple-choice MICRO_CHECK.
+3. Student answered correctly: `բ`
+4. AI gave correct feedback.
+5. AI immediately asked a second remember-level multiple-choice check.
+
+However, the Test State Bar still showed:
+
+`Level: remember | Stage: THEORY | Ex: — | Decision: — | Help: 0 | task=✗`
+
+We must determine whether:
+
+A. backend state actually transitioned correctly and the Test State Bar is stale/wrong,
+
+or
+
+B. backend state never performed `THEORY → MICRO_CHECK`, and the AI is only behaving correctly at the text level.
+
+READ-ONLY AUDIT ONLY.
+
+NO CODE CHANGES.
+NO DB WRITES.
+
+Use the shortest reliable path.
+
+---
+
+# CURRENT TEST FIXTURE
+
+Lesson: `579`
+
+MicroNode: `2107 — Մոլեկուլների շարժումը`
+
+Session: `51`
+
+Current intended cognitive level:
+
+`remember`
+
+Observed conversation:
+
+### Turn 1 after intro confirmation
+
+AI taught the MicroNode and asked:
+
+`Ի՞նչ կլինի, եթե սենյակում բացենք օծանելիքի սրվակը...`
+
+multiple choice.
+
+Student answered:
+
+`բ`
+
+### Next AI turn
+
+AI correctly said the answer was correct and then asked a second remember-level multiple-choice question about the copper sulfate/water example.
+
+Do NOT continue the browser test.
+
+---
+
+# CONFIRMED PREVIOUS FINDINGS — DO NOT RE-AUDIT
+
+Already confirmed:
+
+* Phase 2 fresh-start works.
+* `learningObjective → NODE_OBJECTIVE`
+* active cognitive level reaches AI
+* performance objective reaches AI
+* success criterion reaches AI
+* preferred interaction types reach AI
+* active-level exercises are filtered correctly
+* Phase 2 THEORY contract requires:
+
+  * brief theory
+  * ONE MICRO_CHECK
+  * `is_micro_check = true`
+* backend owns `THEORY → MICRO_CHECK`
+* transition trigger is structured output with:
+
+  * `is_micro_check === true`
+  * Phase >= 2
+  * current stage THEORY
+  * not evaluation turn
+
+Do not prove these again.
+
+---
+
+# QUESTION 1 — ACTUAL SESSION 51 DB STATE
+
+Read session `51` only.
+
+Report the current values of the session-local fields relevant to this checkpoint:
+
+* `currentPhase`
+* `currentNodeId`
+* `nodeTeachingStage`
+* `activeCognitiveLevelId`
+* `activeLessonExerciseId`
+* active task/provenance fields
+* active attempt sequence
+* active help count
+* active assistance level
+* any existing `hasActiveTask` source field/value
+* relevant evidence/attempt counters if stored on the session
+
+Keep the query narrow.
+
+---
+
+# QUESTION 2 — FIRST MICRO_CHECK STRUCTURED RESULT
+
+Find the server/log/runtime evidence for the AI response that contained the FIRST multiple-choice micro-check after intro confirmation.
+
+We need only the relevant structured fields:
+
+* `teaching_mode`
+* `is_micro_check`
+* `answer_evaluation.status`
+* `node_decision` if relevant
+* any field that triggered or failed to trigger the stage update
+
+Answer:
+
+> Did that AI result actually return `is_micro_check = true`?
+
+YES / NO / UNKNOWN.
+
+Use actual evidence if available.
+
+Do not generate a new AI turn.
+
+---
+
+# QUESTION 3 — DID THEORY → MICRO_CHECK EXECUTE?
+
+Trace the exact post-response condition for that first micro-check turn.
+
+Using the actual runtime values, evaluate each condition:
+
+* Phase >= 2 ?
+* currentNodeId exists ?
+* nodeTeachingStage == THEORY ?
+* `wasEval == false` ?
+* `aiResult.is_micro_check == true` ?
+
+Then state:
+
+`TRANSITION BLOCK EXECUTED`
+
+or
+
+`TRANSITION BLOCK DID NOT EXECUTE`
+
+and why.
+
+---
+
+# QUESTION 4 — WHY DOES TEST BAR SHOW THEORY / task=✗?
+
+Determine whether the Test State Bar is reading:
+
+* stale lesson-query data,
+* a field that is not updated by chat response,
+* wrong backend field,
+* or correctly reflects DB state.
+
+Trace only the existing refresh path:
+
+chat success
+→ local debug state
+→ lesson query invalidation/refetch
+→ `currentSession`
+→ Test State Bar
+
+Do not audit unrelated frontend code.
+
+---
+
+# QUESTION 5 — SECOND QUESTION BEHAVIOR
+
+The AI gave feedback for the correct answer and immediately asked a second remember-level check.
+
+Determine whether this second question came from:
+
+A. the intended state-machine cycle:
+`MICRO_CHECK answer → FEEDBACK → next check`
+
+or
+
+B. the AI simply generated feedback + another question without the backend task/state transition being active.
+
+Use code/runtime evidence.
+
+This distinction is critical.
+
+---
+
+# STOP AT FIRST CONFIRMED BREAK
+
+If backend state is correct and only the Test Bar is stale:
+
+STOP and report UI visibility bug.
+
+If backend state is still THEORY/task inactive:
+
+STOP and identify the exact first transition failure.
+
+Do NOT inspect later cognitive progression.
+
+Do NOT inspect understand level.
+
+---
+
+# DO NOT TOUCH
+
+Do NOT modify:
+
+* chat.ts
+* lessons.ts
+* frontend
+* Test State Bar
+* Cognitive Path
+* exercise filtering
+* Decision Engine
+* evidence scoring
+* HELP/remediation
+* Mapping
+* Phase 2
+* DB/schema
+
+No implementation in this task.
+
+---
+
+# COST CONTROL
+
+Use minimal reads/tool calls.
+
+Preferred order:
+
+1. session 51 DB row
+2. exact chat.ts transition block if needed
+3. exact lesson-page/Test Bar refresh path only if needed
+4. existing logs for the relevant structured AI result if available
+
+No broad repository search.
+
+No browser actions.
+
+No AI calls.
+
+---
+
+# FINAL REPORT — KEEP SHORT
+
+## A. SESSION 51 STATE
+
+Show relevant current DB values.
+
+## B. FIRST MICRO_CHECK RESULT
+
+Was `is_micro_check=true`?
+
+YES / NO / UNKNOWN.
+
+## C. THEORY → MICRO_CHECK
+
+Executed or not, with exact reason.
+
+## D. TEST BAR
+
+Correct / stale / wrong field, with evidence.
+
+## E. SECOND QUESTION
+
+State-machine controlled / AI-only behavior / unclear.
+
+## F. FIRST CONFIRMED BREAK
+
+One precise statement.
+
+## G. SMALLEST NEXT FIX
+
+Recommend ONE smallest fix only.
+
+DO NOT implement.
+
+## H. VERDICT
+
+Choose:
+
+`BACKEND PASS / UI GAP`
+
+or
+
+`BACKEND GAP`
+
+or
+
+`INSUFFICIENT EVIDENCE`
+
+Then STOP.
