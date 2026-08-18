@@ -1,0 +1,152 @@
+TARGETED FIX ONLY — START-FRESH MUST ENTER PHASE 2
+
+GOAL
+
+Our audit confirmed the first runtime routing mismatch:
+
+The experimental fresh/relearn flow currently resets the session into:
+
+currentPhase = 1
+
+But the AI Teacher MicroNode teaching contract we are testing is active only in Phase 2:
+
+THEORY
+→ brief explanation
+→ ONE MICRO_CHECK
+→ deterministic backend transition to MICRO_CHECK
+→ wait for student answer
+
+So for the experimental `Կրկին սովորել` / `start-fresh` flow, change ONLY the reset initialization so the fresh session starts in:
+
+currentPhase = 2
+
+Do not change the normal first-start `/start` flow.
+
+==================================================
+CONFIRMED FINDINGS — DO NOT RE-AUDIT
+==================================================
+
+Already confirmed:
+
+- fresh/relearn flow works
+- test state bar works
+- intro confirmation works
+- current test node = 2107
+- active cognitive level = remember
+- NODE_OBJECTIVE reaches AI
+- cognitive performance objective reaches AI
+- success criterion reaches AI
+- preferred interaction types reach AI
+- exercises are correctly filtered by active cognitive level
+
+The current failure is only that `start-fresh` creates/resets the session into Phase 1.
+
+Do not repeat those audits.
+
+==================================================
+REQUIRED CHANGE
+==================================================
+
+Find the existing:
+
+POST /api/lessons/:lessonId/start-fresh
+
+implementation.
+
+In the session reset/update values for THIS endpoint only:
+
+set:
+
+currentPhase: 2
+
+Use the existing field/type convention.
+
+Do not hardcode lesson 579 or node 2107.
+
+Do not modify normal `/start`.
+
+==================================================
+KEEP ALL OTHER RESET BEHAVIOR INTACT
+==================================================
+
+Do not change:
+
+- currentNode reset logic
+- cognitive level reset/lazy-init
+- nodeTeachingStage reset
+- active exercise reset
+- active task reset
+- help counters
+- timer/session-local state
+- chat deletion
+- evidence preservation
+- mastery preservation
+
+Only change the fresh-test phase initialization.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- chat.ts teaching logic
+- THEORY → MICRO_CHECK transition
+- prompts
+- Decision Engine
+- Cognitive Path
+- exercise filtering
+- intro logic
+- StudentLessonCard UI
+- Test State Bar
+- Mapping
+- Phase 2 teaching content
+- DB schema
+- evidence/mastery
+
+==================================================
+VERIFICATION
+==================================================
+
+Use minimum tool calls.
+
+Verify statically that:
+
+1. normal `/start` behavior is unchanged
+2. `/start-fresh` resets to `currentPhase = 2`
+3. all other reset fields remain unchanged
+4. TypeScript passes
+
+Do not run unnecessary AI/browser turns.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return only:
+
+A. FILE CHANGED
+
+B. EXACT CHANGE
+
+C. NORMAL START
+Confirm unchanged.
+
+D. START-FRESH
+Confirm currentPhase now resets to 2.
+
+E. OTHER RESET STATE
+Confirm unchanged.
+
+F. TYPECHECK
+PASS / FAIL
+
+G. RESULT
+
+PASS — experimental fresh/relearn flow now starts directly in Phase 2
+
+or
+
+FAIL — exact reason
+
+Then STOP.

@@ -561,13 +561,9 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
     .orderBy(asc(lessonNodesTable.sequence))
     .limit(1);
 
-  // Phase selection: same logic as first-session creation
-  const [dueTopics, priorEvidence] = await Promise.all([
-    getDueReviewTopics(req.userId!),
-    db.select({ id: evidenceEventsTable.id }).from(evidenceEventsTable)
-      .where(eq(evidenceEventsTable.userId, req.userId!)).limit(1),
-  ]);
-  const selectedInitialPhase = (dueTopics.length > 0 && priorEvidence.length > 0) ? 1 : 2;
+  // Fresh/relearn testing starts directly in the Phase 2 MicroNode teaching
+  // contract. Normal POST /lessons/start retains its review-phase selection.
+  const selectedInitialPhase = 2;
   const now = new Date();
 
   // Find the existing session for this user+lesson
