@@ -1,0 +1,393 @@
+TARGETED FIX ONLY — INTRO CONFIRMATION → START CURRENT MICRONODE TEACHING
+
+GOAL
+
+Fix exactly one confirmed runtime gap:
+
+INTRO → student says «Օկ» → AI repeats INTRO
+
+Required behavior:
+
+INTRO
+→ student says «Օկ»
+→ introConfirmed becomes true
+→ SAME TURN enters normal AI Teacher flow
+→ teaches CURRENT MicroNode at CURRENT Cognitive Level
+→ asks ONE appropriate MICRO_CHECK
+→ waits for student response
+
+Do NOT add an extra bridge turn.
+
+==================================================
+CONFIRMED AUDIT FINDINGS — DO NOT RE-AUDIT
+==================================================
+
+The previous targeted audit already established:
+
+File:
+artifacts/api-server/src/routes/chat.ts
+
+Deterministic intro gate:
+approximately lines 1051–1127.
+
+Gate condition:
+lessonId && lesson && session && !session.introConfirmed
+
+Current behavior:
+
+1. Initial request:
+   - introConfirmed=false
+   - deterministic lesson intro is returned
+   - no AI call
+
+2. Student sends affirmative such as:
+   «օկ»
+
+3. Backend correctly detects it as affirmative.
+
+4. Backend correctly updates:
+   introConfirmed = true
+
+5. Current code then falls through to normal AI flow.
+
+6. AI receives history approximately:
+   [assistant: deterministic INTRO]
+   [user: "օկ"]
+
+7. The AI receives no explicit signal that the intro was confirmed THIS TURN.
+
+8. It therefore mirrors/regenerates the lesson introduction.
+
+The intro gate itself is NOT firing twice.
+
+Do not spend tool calls proving these facts again.
+
+==================================================
+IMPORTANT — REJECT PREVIOUS BRIDGE PROPOSAL
+==================================================
+
+Do NOT implement:
+
+«Օկ»
+→ deterministic assistant bridge
+→ return
+→ require another student message
+→ AI teaching starts later
+
+We do NOT want an additional student turn.
+
+Required UX is:
+
+INTRO
+→ «Օկ»
+→ TEACH + MICRO_CHECK
+
+in the SAME response turn.
+
+==================================================
+IMPLEMENTATION
+==================================================
+
+Make the smallest possible change in chat.ts.
+
+When the intro gate receives an affirmative response:
+
+1. Keep the existing:
+
+introConfirmed = true
+
+DB update.
+
+2. Keep falling through to the existing normal AI flow.
+
+3. Set a request-local / transient boolean indicating:
+
+the intro was confirmed on THIS request.
+
+Example conceptually:
+
+let introConfirmedThisTurn = false;
+
+...
+
+if (isAffirmative) {
+  await ... set introConfirmed true ...
+  introConfirmedThisTurn = true;
+  // continue into normal AI flow
+}
+
+Use the cleanest minimal implementation compatible with the existing function structure.
+
+Do NOT add a DB column.
+
+Do NOT persist this transient flag.
+
+==================================================
+AI CONTEXT DIRECTIVE
+==================================================
+
+When and ONLY when:
+
+introConfirmedThisTurn === true
+
+inject a short explicit instruction into the AI system/context.
+
+It must communicate these semantics:
+
+INTRO_CONFIRMED_THIS_TURN: true
+
+The lesson introduction/readiness gate is complete.
+
+DO NOT repeat:
+- greeting
+- lesson title introduction
+- lesson-level goals/outcomes
+- readiness question
+- “Եթե պատրաստ ես, գրիր Օկ”
+- any equivalent introduction
+
+BEGIN CURRENT MICRONODE TEACHING NOW.
+
+Teach only the CURRENT_NODE using the CURRENT_COGNITIVE_LEVEL.
+
+For this turn follow the existing teaching scenario:
+TEACH → ONE MICRO_CHECK → STOP AND WAIT FOR STUDENT ANSWER.
+
+The MICRO_CHECK must follow the already supplied:
+- COGNITIVE_PERFORMANCE_OBJECTIVE
+- COGNITIVE_SUCCESS_CRITERION
+- PREFERRED_INTERACTION_TYPES
+- MICRO_CHECK_FORMAT_RULE
+- active-level exercise context
+
+Do not hardcode lesson-specific content in the directive.
+
+==================================================
+VERY IMPORTANT — DO NOT DUPLICATE EXISTING CONTEXT
+==================================================
+
+The runtime already supplies the following from previous fixes:
+
+- NODE_OBJECTIVE
+- CURRENT_COGNITIVE_LEVEL
+- COGNITIVE_PERFORMANCE_OBJECTIVE
+- COGNITIVE_SUCCESS_CRITERION
+- PREFERRED_INTERACTION_TYPES
+- MICRO_CHECK_FORMAT_RULE
+- active-cognitive-level filtered CLASS_EXERCISES
+
+Do NOT rewrite or duplicate that machinery.
+
+The new directive only tells the AI:
+
+“intro has just completed — use the existing current-node teaching context NOW.”
+
+==================================================
+CURRENT TEST FIXTURE
+==================================================
+
+Use only for verification, never hardcode:
+
+Lesson:
+579 — ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Current MicroNode:
+2107 — Մոլեկուլների շարժումը
+
+Expected initial runtime state:
+
+CURRENT_COGNITIVE_LEVEL:
+remember
+
+NODE_TEACHING_STAGE:
+THEORY
+
+Remember performance objective:
+Սովորողը կարող է թվարկել մոլեկուլների շարժման և դիֆուզիայի հիմնական փաստերը...
+
+Preferred interaction types:
+multiple_choice, true_false
+
+Remember-linked exercises:
+EX-579-1
+EX-579-2
+
+Do NOT hardcode any of these IDs or values.
+
+==================================================
+EXPECTED RESPONSE AFTER «Օկ»
+==================================================
+
+We are NOT requiring exact wording.
+
+Behaviorally, the response should look like:
+
+1. Brief teaching of CURRENT MicroNode content.
+
+For this fixture, something conceptually like:
+
+«Բոլոր նյութերը կազմված են մանրագույն մասնիկներից՝
+մոլեկուլներից։ Դրանք անընդհատ շարժվում են։
+Օծանելիքի բույրի տարածումը սենյակում դրա պարզ
+օրինակներից է...»
+
+2. Then exactly ONE remember-level MICRO_CHECK.
+
+For example a multiple-choice or true/false check compatible
+with EX-579-1 / EX-579-2.
+
+3. Then STOP.
+
+The AI must wait for the student's answer.
+
+==================================================
+MUST NOT HAPPEN
+==================================================
+
+After «Օկ», the response must NOT:
+
+- repeat the lesson introduction
+- greet the student again
+- repeat full lesson goals
+- repeat full lesson outcomes
+- ask the student to write «Օկ» again
+- jump to another MicroNode
+- jump to understand level
+- ask multiple checks
+- provide the answer to its own check
+- provide FEEDBACK before the student answers
+- complete the node
+
+==================================================
+STATE EXPECTATION
+==================================================
+
+Do NOT manually force cognitive progression.
+
+Before the student answers the MICRO_CHECK:
+
+- Current Node remains 2107
+- Cognitive Level remains remember
+- no transition to understand
+- no mastery/completion should be invented
+
+If existing state-machine logic changes THEORY → MICRO_CHECK
+as part of normal processing, preserve that behavior.
+
+Do not create a parallel state transition system.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- deterministic intro content except what is strictly required
+- lesson start/fresh-start implementation
+- StudentLessonCard
+- Test State Bar
+- Cognitive Path generation
+- Cognitive Path DB data
+- exercise-to-level linkage
+- exercise filtering
+- Decision Engine architecture
+- HELP/remediation
+- evidence scoring
+- mastery
+- Knowledge Tree
+- Mapping
+- Phase 2 content
+- DB schema
+- frontend design
+
+This is one routing/context fix only.
+
+==================================================
+COST CONTROL
+==================================================
+
+Do not perform another broad audit.
+
+Read only the exact chat.ts sections required to:
+
+1. define the transient flag in correct scope
+2. set it in affirmative intro branch
+3. inject the directive into the existing AI context/system prompt
+
+Make the minimum edit.
+
+Run only the relevant TypeScript check.
+
+Do NOT run unnecessary browser conversations or generate multiple AI turns.
+
+==================================================
+VERIFICATION
+==================================================
+
+First perform static verification.
+
+Show the resulting AI context for the affirmative intro turn and prove that it contains:
+
+- INTRO_CONFIRMED_THIS_TURN
+- current NODE_OBJECTIVE
+- CURRENT_COGNITIVE_LEVEL
+- COGNITIVE_PERFORMANCE_OBJECTIVE
+- COGNITIVE_SUCCESS_CRITERION
+- PREFERRED_INTERACTION_TYPES
+
+Also prove that the normal intro gate will not fire again after:
+introConfirmed=true.
+
+Do NOT fake a successful live AI response if one was not actually tested.
+
+We will perform the real browser behavioral test ourselves after implementation.
+
+==================================================
+REQUIRED FINAL REPORT
+==================================================
+
+Return only:
+
+A. CHANGE
+- file
+- exact minimal change
+
+B. AFFIRMATIVE FLOW
+Show:
+
+INTRO
+→ «Օկ»
+→ introConfirmed=true
+→ transient introConfirmedThisTurn=true
+→ normal AI flow
+→ current MicroNode teaching context
+
+C. AI DIRECTIVE
+Show the exact new directive injected.
+
+D. EXISTING CONTEXT PRESERVED
+Confirm:
+- NODE_OBJECTIVE
+- CURRENT_COGNITIVE_LEVEL
+- PERFORMANCE_OBJECTIVE
+- SUCCESS_CRITERION
+- PREFERRED_INTERACTION_TYPES
+- filtered active-level exercises
+
+remain intact.
+
+E. SCOPE
+Confirm no unrelated logic changed.
+
+F. TYPECHECK
+PASS / FAIL
+
+G. RESULT
+
+PASS — intro confirmation now routes the SAME turn into current MicroNode teaching
+
+or
+
+FAIL — exact reason
+
+Then STOP.

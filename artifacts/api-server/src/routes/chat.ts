@@ -322,6 +322,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let lessonContext = "";
   let topicName = "";
   let _allNodeTitles: string[] = [];
+  // True only on the turn where introConfirmed flips false→true.
+  // Used to inject a "begin teaching now" directive into lessonContext.
+  let introConfirmedThisTurn = false;
   // Hoisted so the intro gate (below) can read them outside the lessonId block
   let lesson: (typeof lessonsTable.$inferSelect) | null = null;
   let studentName: string | null = null;
@@ -996,6 +999,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         hwBlock,
         usedTemplatesBlock,
         dueReviewsLine,
+        introConfirmedThisTurn
+          ? [
+              `INTRO_CONFIRMED_THIS_TURN: true`,
+              `The lesson introduction/readiness gate has just been confirmed by the student.`,
+              `DO NOT repeat: greeting, lesson title introduction, lesson-level goals/outcomes, readiness question, or any equivalent introduction.`,
+              `BEGIN CURRENT MICRONODE TEACHING NOW using CURRENT_NODE and CURRENT_COGNITIVE_LEVEL.`,
+              `For this turn: deliver a brief theory explanation, then ask exactly ONE MICRO_CHECK following COGNITIVE_PERFORMANCE_OBJECTIVE, COGNITIVE_SUCCESS_CRITERION, PREFERRED_INTERACTION_TYPES, and MICRO_CHECK_FORMAT_RULE. Then STOP and wait for the student's answer.`,
+            ].join("\n")
+          : "",
         ``,
         `=== PHASE ${phase} GUIDANCE ===`,
         buildPhaseGuidance(phase, topicName, subjectName),
@@ -1123,6 +1135,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       .update(lessonSessionsTable)
       .set({ introConfirmed: true })
       .where(eq(lessonSessionsTable.id, session.id));
+    introConfirmedThisTurn = true;
     logger.info({ lessonId, sessionId: session.id }, "intro-gate: confirmed, proceeding to normal AI flow");
   }
   // ── End intro gate ────────────────────────────────────────────────────────────
