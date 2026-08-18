@@ -1,0 +1,256 @@
+# AI TEACHER — ACTIVE COGNITIVE LEVEL CONTEXT FIX
+
+## GOAL
+
+Make ONE small, targeted runtime fix so AI Teacher receives the instructional requirements of the **currently active Cognitive Path level**.
+
+Do not perform another broad audit.
+
+We already know from the previous forensic audit:
+
+* Cognitive Path exists in DB.
+* `_activeCognitiveLevelRow` is already resolved in `chat.ts`.
+* The active level already reaches the Decision Engine.
+* But its instructional fields do NOT reach AI generation `lessonContext`.
+* Step 1 is already fixed: real `learningObjective` now reaches AI as `NODE_OBJECTIVE`.
+
+For this task, use the existing `_activeCognitiveLevelRow` and expose only these active-level fields to AI:
+
+1. `cognitiveLevel`
+2. `performanceObjective`
+3. `successCriterion`
+4. `preferredInteractionTypes`
+
+This is a minimal wiring task, not a redesign.
+
+---
+
+# TARGET TEST NODE
+
+Use the current real test fixture:
+
+Lesson ID: `579`
+
+MicroNode:
+
+**«Մոլեկուլների շարժումը»**
+
+Do not assume its DB ID from old audit data if the mapping has changed. Resolve the current node by Lesson 579 + exact title only if needed.
+
+Its intended Cognitive Path is currently:
+
+`Հիշել → Հասկանալ 🎯`
+
+For `Հիշել`, the current UI shows:
+
+* required evidence/tasks: 2
+* linked exercises: 2
+* preferred interaction types:
+
+  * multiple choice
+  * true/false
+
+For `Հասկանալ`:
+
+* required: 3
+* linked: 3
+* preferred interaction types:
+
+  * extended/constructed response
+  * multiple choice
+
+Do NOT modify these DB records.
+
+---
+
+# REQUIRED CHANGE
+
+Primary file:
+
+`artifacts/api-server/src/routes/chat.ts`
+
+Use the existing `_activeCognitiveLevelRow`.
+
+Do NOT add another Cognitive Path query.
+
+Add a small active-cognitive-level context block to the existing AI `lessonContext`.
+
+It must expose, when available:
+
+`CURRENT_COGNITIVE_LEVEL`
+
+`COGNITIVE_PERFORMANCE_OBJECTIVE`
+
+`COGNITIVE_SUCCESS_CRITERION`
+
+`PREFERRED_INTERACTION_TYPES`
+
+Values must come from the **currently active Cognitive Path row only**.
+
+Do not inject the whole Cognitive Path.
+
+---
+
+# IMPORTANT BEHAVIOR
+
+The AI must understand:
+
+* `NODE_OBJECTIVE` = overall MicroNode learning objective.
+* `CURRENT_COGNITIVE_LEVEL` = current cognitive step.
+* `COGNITIVE_PERFORMANCE_OBJECTIVE` = what learner must demonstrate at THIS level.
+* `COGNITIVE_SUCCESS_CRITERION` = what counts as success at THIS level.
+* `PREFERRED_INTERACTION_TYPES` = allowed/preferred check/task formats for THIS level.
+
+For a MICRO_CHECK or equivalent check, instruct the AI to use one of the active level's `PREFERRED_INTERACTION_TYPES` when that list is present.
+
+Do this with the smallest possible addition to the existing context/instructions.
+
+Do NOT build a new question engine.
+
+Do NOT hardcode `remember`, multiple choice, true/false, or any test-node-specific value.
+
+When the active level later becomes `understand`, the context must automatically use the `understand` row.
+
+---
+
+# NULL SAFETY
+
+If there is no active Cognitive Path row:
+
+preserve existing behavior.
+
+If an individual field is NULL/empty:
+
+do not invent a value.
+
+Do not break lessons that do not yet have Cognitive Path data.
+
+---
+
+# DO NOT TOUCH
+
+Do NOT modify:
+
+* Cognitive Path generation
+* Cognitive Path DB records
+* cognitive progression logic
+* Decision Engine logic
+* evidence scoring
+* answer evaluation
+* intent router
+* HELP/remediation
+* state machine
+* Mapping
+* Phase 2
+* exercises or exercise selection/filtering
+* DB schema/data
+* frontend
+* unrelated prompts/code
+
+Do NOT refactor `chat.ts`.
+
+Do NOT perform another repository-wide audit.
+
+---
+
+# KEEP STEP 1 INTACT
+
+The existing fix must remain:
+
+`learningObjective → NODE_OBJECTIVE`
+
+Do not revert or replace it.
+
+---
+
+# CHEAP VERIFICATION ONLY
+
+Do not run broad test suites.
+
+Perform only:
+
+1. relevant TypeScript/typecheck;
+2. minimal DB read necessary to identify the current test node and active Cognitive Path values;
+3. static/runtime-context verification showing the resulting context values.
+
+Do not create a new lesson/session merely for verification if it causes unnecessary writes or AI calls.
+
+---
+
+# REQUIRED VERIFICATION
+
+For the current test MicroNode, show the actual resulting context for the initial active level.
+
+It should contain conceptually:
+
+`NODE_OBJECTIVE: <actual LO>`
+
+`CURRENT_COGNITIVE_LEVEL: remember`
+
+`COGNITIVE_PERFORMANCE_OBJECTIVE: <actual remember performance objective>`
+
+`COGNITIVE_SUCCESS_CRITERION: <actual remember success criterion>`
+
+`PREFERRED_INTERACTION_TYPES: <actual remember interaction types>`
+
+Verify also that while `remember` is active:
+
+* `understand` performance objective is NOT injected;
+* `understand` success criterion is NOT injected;
+* `understand` preferred interaction types are NOT injected.
+
+Also verify from the implementation that if active level later changes to `understand`, the same context builder will automatically use the `understand` row without hardcoded logic.
+
+---
+
+# STOP
+
+Once this wiring is implemented and verified, STOP.
+
+Do NOT investigate or fix linked exercises yet.
+
+Do NOT test correct answers.
+
+Do NOT test HELP.
+
+Do NOT test remediation.
+
+Do NOT continue to another AI Teacher issue.
+
+---
+
+# RESPONSE — KEEP IT SHORT
+
+Return only:
+
+## 1. CHANGE
+
+File + exact minimal change.
+
+## 2. TEST NODE
+
+Current DB MicroNode ID and active Cognitive Path values.
+
+## 3. RESULTING AI CONTEXT
+
+Show the five resulting context fields.
+
+## 4. ISOLATION
+
+Confirm only active-level data is injected and future level switching is dynamic.
+
+## 5. TYPECHECK
+
+PASS / FAIL.
+
+## 6. SCOPE
+
+List any files changed. Expected: only `chat.ts`.
+
+## 7. RESULT
+
+`PASS` or `FAIL`.
+
+Then STOP.
+
+Optimize for minimum tool calls and minimum token/cost usage. Do not re-prove findings already established above.

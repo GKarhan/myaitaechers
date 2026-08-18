@@ -943,11 +943,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ];
           const perf = (_activeCognitiveLevelRow as any).performanceObjective;
           const succ = (_activeCognitiveLevelRow as any).successCriterion;
+          const pit: unknown = _activeCognitiveLevelRow.preferredInteractionTypes;
           if (perf && typeof perf === "string" && perf.trim()) {
             lines.push(`COGNITIVE_PERFORMANCE_OBJECTIVE: ${perf.trim()}`);
           }
           if (succ && typeof succ === "string" && succ.trim()) {
             lines.push(`COGNITIVE_SUCCESS_CRITERION: ${succ.trim()}`);
+          }
+          const pitArr = Array.isArray(pit) ? (pit as string[]).filter(Boolean) : [];
+          if (pitArr.length > 0) {
+            lines.push(`PREFERRED_INTERACTION_TYPES: ${pitArr.join(", ")}`);
+            lines.push(`MICRO_CHECK_FORMAT_RULE: When asking a MICRO_CHECK question at this cognitive level, use one of the PREFERRED_INTERACTION_TYPES listed above.`);
           }
           return lines.join("\n");
         })(),
