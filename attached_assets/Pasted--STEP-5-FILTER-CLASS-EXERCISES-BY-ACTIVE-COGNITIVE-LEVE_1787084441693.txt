@@ -1,0 +1,263 @@
+# STEP 5 — FILTER CLASS EXERCISES BY ACTIVE COGNITIVE LEVEL
+
+## GOAL
+
+Fix one confirmed runtime bug:
+
+> AI Teacher currently receives all approved CLASS exercises for the current MicroNode, even when only some of them are linked to the active Cognitive Path level.
+
+For the current test node:
+
+`2107 — Մոլեկուլների շարժումը`
+
+DB linkage is already correct:
+
+* `remember` level 136 → EX-579-1, EX-579-2
+* `understand` level 137 → EX-579-3, EX-579-4, EX-579-5
+
+But `chat.ts` currently loads all 5 node exercises and injects all 5 into `CLASS_EXERCISES`.
+
+Fix ONLY this.
+
+---
+
+# REQUIRED BEHAVIOR
+
+When an active Cognitive Path level exists:
+
+`current MicroNode`
+→ `active Cognitive Level`
+→ exercises linked to that level
+→ `CLASS_EXERCISES`
+
+For node 2107:
+
+### When `remember` is active
+
+AI context must contain only:
+
+* EX-579-1
+* EX-579-2
+
+### When `understand` is active
+
+AI context must contain only:
+
+* EX-579-3
+* EX-579-4
+* EX-579-5
+
+Do NOT hardcode IDs, lesson ID, node ID, or cognitive level names.
+
+---
+
+# EXISTING DATA MODEL
+
+The previous audit confirmed:
+
+`lesson_node_cognitive_tasks.lesson_exercise_id`
+
+is the FK/link to the lesson exercise.
+
+Use the existing Cognitive Path/task linkage.
+
+No schema changes are required.
+
+---
+
+# REQUIRED CHANGE
+
+Primary file:
+
+`artifacts/api-server/src/routes/chat.ts`
+
+Use the existing `_activeCognitiveLevelRow`.
+
+Do not introduce a new cognitive-state system.
+
+Apply the smallest possible filtering logic to the existing `classExercises` path.
+
+Preferred logic:
+
+1. Load the current node's approved CLASS exercises as today.
+2. If `_activeCognitiveLevelRow` exists:
+
+   * obtain the exercise IDs linked to that active cognitive level from the existing cognitive-task table;
+   * if linked exercise rows exist for that level, filter `classExercises` to those exercise IDs only.
+3. Use the filtered result when building `CLASS_EXERCISES`.
+
+---
+
+# BACKWARD-COMPATIBLE FALLBACK
+
+This is important.
+
+Some older lessons may have:
+
+* Cognitive Path but no cognitive-task linkage;
+* or no Cognitive Path at all.
+
+Do NOT break those lessons.
+
+Use this rule:
+
+### Active cognitive level + linked exercise rows exist
+
+→ use ONLY linked exercises.
+
+### Active cognitive level exists but has 0 linked exercise rows
+
+→ preserve existing node-level CLASS exercise behavior.
+
+### No active cognitive level
+
+→ preserve existing node-level CLASS exercise behavior.
+
+Do not silently turn the exercise set into empty just because linkage has not been configured.
+
+---
+
+# DO NOT CHANGE
+
+Do NOT modify:
+
+* `learningObjective → NODE_OBJECTIVE`
+* current cognitive level context
+* performance objective context
+* success criterion context
+* preferred interaction types
+* MICRO_CHECK format rule
+* Cognitive Path generation
+* cognitive progression
+* Decision Engine
+* evidence scoring
+* answer evaluation
+* intent router
+* HELP/remediation
+* teaching state machine
+* Mapping
+* Phase 2
+* DB schema/data
+* frontend
+* quiz system
+* unrelated exercise logic
+
+No broad refactor.
+
+---
+
+# COST CONTROL
+
+Do not perform another broad audit.
+
+Use the already established runtime path.
+
+Use only the minimum DB/code reads necessary to implement and verify this fix.
+
+Do not run broad test suites.
+
+---
+
+# VERIFICATION
+
+After the fix, verify with existing DB data.
+
+## Case A — remember active
+
+For:
+
+* MicroNode 2107
+* active level 136 (`remember`)
+
+resulting `CLASS_EXERCISES` must contain exactly:
+
+* EX-579-1
+* EX-579-2
+
+and must NOT contain:
+
+* EX-579-3
+* EX-579-4
+* EX-579-5
+
+## Case B — understand active
+
+Verify logically/staticly using level 137 linkage that when it becomes active, the same implementation resolves exactly:
+
+* EX-579-3
+* EX-579-4
+* EX-579-5
+
+and not EX-579-1/2.
+
+Do not manually mutate session cognitive state just to verify Case B if that causes unnecessary writes.
+
+## Case C — fallback
+
+Verify from code that:
+
+* no linkage rows → existing node-level exercise behavior remains;
+* no active cognitive level → existing node-level exercise behavior remains.
+
+---
+
+# TYPECHECK
+
+Run only the relevant TypeScript/typecheck.
+
+Report PASS / FAIL.
+
+---
+
+# STOP
+
+Once exercise filtering is implemented and verified, STOP.
+
+Do NOT proceed to:
+
+* real lesson execution;
+* correct-answer testing;
+* HELP testing;
+* remediation;
+* progression;
+* MicroNode completion.
+
+Those are later steps.
+
+---
+
+# FINAL REPORT — KEEP SHORT
+
+## A. CHANGE
+
+Exact file and minimal change.
+
+## B. REMEMBER RESULT
+
+Which exercises reach AI context.
+
+## C. UNDERSTAND RESULT
+
+Which exercises will reach AI context when that level becomes active.
+
+## D. FALLBACK
+
+Confirm backward-compatible behavior.
+
+## E. TYPECHECK
+
+PASS / FAIL.
+
+## F. SCOPE
+
+List changed files.
+
+## G. RESULT
+
+`PASS — AI Teacher now receives only exercises linked to the active Cognitive Path level`
+
+or
+
+`FAIL — exact reason`
+
+Then STOP.

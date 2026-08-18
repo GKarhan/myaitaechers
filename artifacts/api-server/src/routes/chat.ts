@@ -5,6 +5,7 @@ import {
   lessonNodeDependenciesTable, usersTable,
   evidenceEventsTable, knowledgeNodesTable,
   lessonNodeCognitiveLevelsTable, helpEventsTable,
+  lessonNodeCognitiveTasksTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, gte, or, isNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
@@ -615,6 +616,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             eq(lessonExercisesTable.status, "approved"),
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
+        // Cognitive-level exercise filtering: if the active level has linked exercises,
+        // restrict classExercises to only those. Backward-compatible: if no tasks are
+        // linked to the active level (older lessons), the full node set is preserved.
+        if (_activeCognitiveLevelRow && classExercises.length > 0) {
+          const cogTasks = await db
+            .select({ lessonExerciseId: lessonNodeCognitiveTasksTable.lessonExerciseId })
+            .from(lessonNodeCognitiveTasksTable)
+            .where(eq(lessonNodeCognitiveTasksTable.cognitiveLevelId, _activeCognitiveLevelRow.id));
+          const linkedIds = new Set(cogTasks.map(t => t.lessonExerciseId).filter((id): id is number => id !== null));
+          if (linkedIds.size > 0) {
+            classExercises = classExercises.filter(e => linkedIds.has(e.id));
+          }
+        }
         logger.info({
           phase,
           currentNodeId: session?.currentNodeId,
