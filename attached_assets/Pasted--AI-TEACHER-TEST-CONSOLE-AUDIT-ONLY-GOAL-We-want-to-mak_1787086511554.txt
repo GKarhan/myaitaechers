@@ -1,0 +1,249 @@
+# AI TEACHER TEST CONSOLE — AUDIT ONLY
+
+## GOAL
+
+We want to make the current AI Teacher lesson page easier to test repeatedly while we debug one MicroNode cycle step by step.
+
+This is currently an experimental/internal environment used only by us.
+
+For this task, do **NOT** implement anything yet.
+
+Do a small targeted audit so the next implementation prompt can be precise and cheap.
+
+---
+
+# CURRENT PAGE
+
+The page is the student AI Teacher lesson page for:
+
+`/lessons/579`
+
+Current test lesson:
+
+**ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ**
+
+Current test MicroNode:
+
+**Մոլեկուլների շարժումը**
+
+Current Cognitive Path:
+
+`Հիշել → Հասկանալ`
+
+We want the existing chat UI to remain.
+
+Later we plan to add:
+
+1. a visible **Test State / Debug panel**
+2. a **Restart Test Session** button
+
+But this task is ONLY to inspect what already exists.
+
+---
+
+# QUESTION 1 — FIND THE ACTUAL FRONTEND COMPONENT
+
+Find the exact frontend file/component that renders the current student AI Teacher lesson page shown at:
+
+`/lessons/:lessonId`
+
+Report:
+
+* exact file path
+* main component name
+* where the lesson header/state bar is rendered
+* where chat messages are rendered
+* where a small test/debug panel could be inserted with minimal UI disruption
+
+Do not audit unrelated pages.
+
+---
+
+# QUESTION 2 — WHAT RUNTIME STATE ALREADY REACHES THE FRONTEND?
+
+Inspect only the existing API/frontend data flow for this lesson page.
+
+Determine which of the following values are already available to the frontend without backend changes:
+
+* current MicroNode
+* current cognitive level
+* target cognitive level
+* teaching state / phase
+* active exercise/task
+* performance objective
+* success criterion
+* preferred interaction types
+* required evidence count
+* current evidence count / attempts
+* student intent
+* answer evaluation
+* error family
+* selected metaAction
+* redirect flag
+* next expected state/transition
+* session id
+* current node id
+
+For each field report one of:
+
+* `AVAILABLE ON FRONTEND`
+* `AVAILABLE IN API/BACKEND BUT NOT SENT TO FRONTEND`
+* `NOT FOUND / NOT CURRENTLY EXPOSED`
+
+Do not create new fields.
+
+---
+
+# QUESTION 3 — FIND EXISTING SESSION RESTART / RESET MECHANISM
+
+Search only the existing lesson/session/chat flow.
+
+Determine whether there is already a safe mechanism to restart or recreate a lesson session.
+
+Look for things such as:
+
+* restart lesson endpoint
+* reset session endpoint
+* create new lesson session
+* abandon/restart flow
+* session reinitialization
+* existing frontend restart action
+
+Report the exact endpoint/function if one exists.
+
+Also report what it actually resets.
+
+We need to know whether it resets:
+
+* chat messages
+* currentNodeId
+* activeCognitiveLevelId
+* activeTask
+* attempts
+* evidence/session progress
+* teaching state
+* completion state
+
+Do NOT call or mutate production/test data during this audit unless a read-only inspection is sufficient.
+
+---
+
+# IMPORTANT SAFETY QUESTION
+
+If a reset/restart mechanism exists, determine whether it affects:
+
+* only the current lesson session
+
+or
+
+* persistent learner evidence/mastery/history
+
+We do NOT want a test restart button to accidentally delete long-term learner evidence/mastery unless that is explicitly intended later.
+
+Report this clearly.
+
+---
+
+# QUESTION 4 — MINIMUM TEST PANEL DATA
+
+Based only on existing runtime fields, recommend the smallest useful first version of a visible test panel.
+
+Prefer a compact first row such as:
+
+`MicroNode → Cognitive Level → Teaching State → Active Exercise → Evidence`
+
+Then list which additional existing fields could go in an expandable detail section.
+
+Do not propose new backend architecture.
+
+---
+
+# QUESTION 5 — MINIMUM IMPLEMENTATION PLAN
+
+Give the smallest implementation plan for the next task.
+
+Separate it into:
+
+### UI-only fields already available
+
+These can be shown immediately.
+
+### Fields requiring a small API exposure
+
+Only list fields that already exist in backend runtime state but are not currently sent to frontend.
+
+### Restart button
+
+State whether we can reuse an existing safe restart mechanism.
+
+If not, say:
+
+`NO SAFE EXISTING RESTART MECHANISM FOUND`
+
+and briefly identify what would need to be designed next.
+
+Do NOT design or implement the endpoint in this audit.
+
+---
+
+# DO NOT CHANGE ANYTHING
+
+No code changes.
+
+No DB writes.
+
+No session reset.
+
+No UI edits.
+
+No refactoring.
+
+No broad repository audit.
+
+Do not inspect Mapping, Phase 2, quiz, Knowledge Tree, or unrelated teacher pages.
+
+---
+
+# COST CONTROL
+
+Use the fewest tool calls necessary.
+
+Start from the known lesson route/component and existing chat/session code.
+
+Do not re-audit the Cognitive Path fixes we already completed.
+
+---
+
+# FINAL REPORT — KEEP SHORT
+
+Return only:
+
+## A. PAGE COMPONENT
+
+Exact file/component and best insertion point for the test panel.
+
+## B. AVAILABLE TEST DATA
+
+Compact table:
+
+`Field | Frontend/API status`
+
+## C. SESSION RESTART
+
+Existing mechanism: YES / NO
+
+If YES:
+
+* endpoint/function
+* what it resets
+* whether it touches persistent evidence/mastery
+
+## D. MINIMUM TEST CONSOLE
+
+What we can show immediately.
+
+## E. NEXT IMPLEMENTATION STEP
+
+Smallest recommended implementation.
+
+Then STOP.
