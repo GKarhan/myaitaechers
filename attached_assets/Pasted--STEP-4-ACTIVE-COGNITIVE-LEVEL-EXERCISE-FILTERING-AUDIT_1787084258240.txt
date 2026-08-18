@@ -1,0 +1,256 @@
+# STEP 4 — ACTIVE COGNITIVE LEVEL EXERCISE FILTERING AUDIT
+
+## GOAL
+
+Before running the real AI Teacher lesson, verify one final runtime question:
+
+> When the active Cognitive Path level is `remember`, does AI Teacher receive/use ONLY the exercises linked to `remember`, or does it receive exercises belonging to other cognitive levels too?
+
+This is a **small READ-ONLY audit**.
+
+Do NOT fix anything in this task.
+
+Do NOT perform a broad audit.
+
+Optimize for minimum tool calls, tokens, and cost.
+
+---
+
+# ALREADY VERIFIED — DO NOT RE-AUDIT
+
+These are already PASS:
+
+* `learningObjective → NODE_OBJECTIVE`
+* `CURRENT_COGNITIVE_LEVEL`
+* `COGNITIVE_PERFORMANCE_OBJECTIVE`
+* `COGNITIVE_SUCCESS_CRITERION`
+* `PREFERRED_INTERACTION_TYPES`
+* active-level isolation for those cognitive fields
+
+Do not spend time rechecking them.
+
+---
+
+# TEST FIXTURE
+
+Lesson ID:
+
+`579`
+
+Current MicroNode:
+
+`2107 — Մոլեկուլների շարժումը`
+
+This is currently the only MicroNode in the test lesson.
+
+Confirmed Cognitive Path:
+
+## Level 136 — `remember`
+
+Expected linked exercises:
+
+* `EX-579-1` — multiple choice
+* `EX-579-2` — true/false
+
+Required/linked:
+
+`2 / 2`
+
+Preferred interaction types:
+
+`multiple_choice, true_false`
+
+## Level 137 — `understand`
+
+Expected linked exercises:
+
+* `EX-579-3`
+* `EX-579-4`
+* `EX-579-5`
+
+Required/linked:
+
+`3 / 3`
+
+Preferred interaction types:
+
+`constructed_response, multiple_choice`
+
+The exact DB linkage is authoritative. If IDs/order differ from this description, report the actual DB values rather than changing anything.
+
+---
+
+# QUESTION 1 — VERIFY DB LINKAGE
+
+Using minimal read-only DB queries, verify:
+
+### remember level 136
+
+Which exercises are actually linked?
+
+### understand level 137
+
+Which exercises are actually linked?
+
+Return IDs + short titles/types only.
+
+Do not dump unrelated columns.
+
+---
+
+# QUESTION 2 — TRACE EXERCISE LOADING
+
+Inspect only the existing code path responsible for loading exercises/tasks for the current MicroNode and building AI Teacher context.
+
+Determine:
+
+1. Are exercises loaded by MicroNode only?
+2. Are they filtered by `_activeCognitiveLevelRow` / cognitive-level linkage?
+3. Are Cognitive Path task/link tables used?
+4. Which exercises are actually available to AI generation while `remember` is active?
+
+Do not inspect unrelated exercise/quiz systems.
+
+---
+
+# QUESTION 3 — WHAT DOES AI ACTUALLY SEE?
+
+For:
+
+`MicroNode 2107`
++
+`CURRENT_COGNITIVE_LEVEL = remember`
+
+show the exercise/task IDs that can reach AI generation context.
+
+We need one of these outcomes:
+
+### EXPECTED
+
+`remember → EX-579-1, EX-579-2 only`
+
+or
+
+### GAP
+
+`remember → also receives EX-579-3/4/5`
+
+or another evidence-based result.
+
+Also distinguish between:
+
+* exercises merely loaded internally;
+* exercises actually inserted into AI context;
+* exercises actually selected/eligible for the current teaching step.
+
+This distinction matters.
+
+---
+
+# QUESTION 4 — COGNITIVE PATH LINKAGE VS GENERAL NODE EXERCISES
+
+Determine whether the existing runtime respects this hierarchy:
+
+`current MicroNode`
+→ `active Cognitive Level`
+→ `exercises linked to that level`
+
+or instead effectively behaves like:
+
+`current MicroNode`
+→ `all node exercises`
+
+Give exact code evidence.
+
+---
+
+# IMPORTANT
+
+Do NOT assume that all five exercises reaching some internal query automatically means there is a bug.
+
+The important question is:
+
+> Which exercises are actually eligible/visible to AI Teacher for the active cognitive level?
+
+Follow the data far enough to answer that, then STOP.
+
+---
+
+# NO CHANGES
+
+Do NOT modify:
+
+* `chat.ts`
+* exercise queries
+* cognitive task/link tables
+* Decision Engine
+* Cognitive Path
+* state machine
+* Mapping
+* Phase 2
+* DB
+* schema
+* frontend
+* any other file
+
+Even if you find the bug, DO NOT FIX IT.
+
+---
+
+# STOP EARLY
+
+If you find clear evidence that:
+
+`remember → only its 2 linked exercises`
+
+report PASS and STOP.
+
+If you find clear evidence that:
+
+`remember → unrelated understand exercises are eligible for AI`
+
+report GAP and STOP.
+
+Do not investigate later AI Teacher behavior.
+
+---
+
+# SHORT FINAL REPORT ONLY
+
+## A. DB LINKAGE
+
+`remember → ...`
+
+`understand → ...`
+
+## B. RUNTIME PATH
+
+In a few lines:
+
+`DB → loader → cognitive filtering → AI context`
+
+Include exact relevant file/function.
+
+## C. ACTIVE REMEMBER RESULT
+
+List exactly which exercise IDs are eligible/visible to AI while `remember` is active.
+
+## D. VERDICT
+
+Choose exactly one:
+
+**PASS — active cognitive level receives only its linked exercises**
+
+or
+
+**GAP — active cognitive level is not isolated from exercises linked to other levels**
+
+or
+
+**NOT USED YET — linked cognitive exercises exist in DB but current AI Teacher runtime does not consume them**
+
+If GAP or NOT USED YET, state the **smallest required next fix**, but DO NOT implement it.
+
+Then STOP.
+
+Minimum tool calls. No broad audit. No code changes.
