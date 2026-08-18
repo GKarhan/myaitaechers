@@ -866,14 +866,39 @@ async function _attemptStructured(
     throw new Error("AI API returned no choices");
   }
 
+  const choice = response.choices[0];
+  const messageRecord = (choice?.message ?? {}) as unknown as Record<string, unknown>;
+  const hasOwnField = (field: string) => Object.prototype.hasOwnProperty.call(messageRecord, field);
+  const contentValue = messageRecord.content;
+  const logInvalidResponseDiagnostics = (failurePoint: string) => {
+    logger.warn(
+      {
+        failurePoint,
+        finishReason: choice?.finish_reason ?? null,
+        messageKeys: Object.keys(messageRecord),
+        contentPresent: contentValue !== null && contentValue !== undefined,
+        contentType: contentValue === null ? "null" : typeof contentValue,
+        contentLength: typeof contentValue === "string" ? contentValue.length : null,
+        contentPreview: typeof contentValue === "string" ? contentValue.slice(0, 200) : null,
+        refusalPresent: hasOwnField("refusal"),
+        toolCallsPresent: hasOwnField("tool_calls"),
+        functionCallPresent: hasOwnField("function_call"),
+        parsedPresent: hasOwnField("parsed"),
+      },
+      "callAIStructured: invalid provider response diagnostics"
+    );
+  };
+
   const raw = response.choices[0]?.message?.content ?? "{}";
   const trimmedRaw = raw.trim();
 
   if (trimmedRaw.length === 0) {
+    logInvalidResponseDiagnostics("empty_content");
     throw new Error("AI structured response was empty");
   }
 
   if (!trimmedRaw.startsWith("{")) {
+    logInvalidResponseDiagnostics("root_shape");
     logger.warn(
       { rawPreview: trimmedRaw.slice(0, 200), rawLength: trimmedRaw.length },
       "callAIStructured: model returned non-JSON-object response (likely a bare array/list) — failing fast"
@@ -887,6 +912,7 @@ async function _attemptStructured(
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {
+    logInvalidResponseDiagnostics("json_parse");
     logger.error({ err, raw }, "callAIStructured: JSON parse failed");
     throw new Error(`AI structured response was not valid JSON: ${String(err)}`);
   }
@@ -895,6 +921,7 @@ async function _attemptStructured(
   try {
     validated = aiStructuredResponseSchema.parse(parsed);
   } catch (err) {
+    logInvalidResponseDiagnostics("schema");
     logger.error({ err, parsed }, "callAIStructured: Zod validation failed");
     throw new Error(`AI structured response failed schema validation: ${String(err)}`);
   }
@@ -909,10 +936,15 @@ async function _attemptStructured(
     "AI STRUCTURED RESULT DEBUG"
   );
 
-  validateStructuredResponse(validated);
-  validateNodeLock(validated, lessonContext);
-  validateTeachingCycle(validated, messages, lessonContext);
-  validatePrematureTransition(validated, lessonContext);
+  try {
+    validateStructuredResponse(validated);
+    validateNodeLock(validated, lessonContext);
+    validateTeachingCycle(validated, messages, lessonContext);
+    validatePrematureTransition(validated, lessonContext);
+  } catch (err) {
+    logInvalidResponseDiagnostics("semantic_validation");
+    throw err;
+  }
   return validated;
 }
 

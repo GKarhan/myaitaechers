@@ -1,0 +1,308 @@
+TARGETED DIAGNOSTIC PATCH ONLY — STRUCTURED PROVIDER RESPONSE METADATA
+
+GOAL
+
+We have partially isolated the structured-output failure.
+
+Confirmed runtime failure:
+
+callAIStructured()
+→ provider/integration response
+→ response.choices[0].message.content
+→ content is "[1]"
+→ application rejects it because the required root is an object
+
+Current evidence is NOT sufficient to distinguish between:
+
+A. provider/model actually returning "[1]" as its content,
+
+or
+
+B. the integration/provider exposing useful structured/refusal/tool/parsed data elsewhere while our extraction reads only message.content.
+
+We need ONE small diagnostic patch so the NEXT naturally occurring structured failure gives enough safe evidence to distinguish these cases.
+
+THIS TASK IS DIAGNOSTICS ONLY.
+
+Do NOT fix the structured-output problem yet.
+
+==================================================
+CONFIRMED FINDINGS — DO NOT RE-AUDIT
+==================================================
+
+Primary file:
+
+artifacts/api-server/src/services/ai.ts
+
+Existing structured call:
+
+openrouter.chat.completions.create({
+  model: "deepseek/deepseek-chat-v3-0324",
+  max_tokens: 2200,
+  temperature: 0.5,
+  frequency_penalty: 0.3,
+  response_format: { type: "json_object" },
+  messages: [...]
+});
+
+Existing extraction:
+
+const raw = response.choices[0]?.message?.content ?? "{}";
+const trimmedRaw = raw.trim();
+
+Existing runtime evidence:
+
+rawPreview: "[1]"
+rawLength: 3
+
+Existing root check rejects it before JSON.parse:
+
+if (!trimmedRaw.startsWith("{")) {
+  throw new Error(...)
+}
+
+Already confirmed:
+
+- no local transformation creates "[1]"
+- no relevant root-array prompt collision was found
+- retry attempt 2 includes a repair instruction
+- retry still returned "[1]"
+- provider compatibility remains unproven
+
+Do NOT repeat those audits.
+
+==================================================
+REQUIRED CHANGE
+==================================================
+
+Add SAFE, FAILURE-ONLY diagnostic logging to callAIStructured.
+
+The diagnostics should execute only when the structured response is invalid / about to fail validation.
+
+Do NOT add verbose logging to successful requests.
+
+At minimum capture, when safely available:
+
+1. finish_reason
+
+2. message object keys
+
+For example, conceptually:
+
+Object.keys(message ?? {})
+
+3. content metadata:
+- whether content exists
+- content type
+- content length
+- bounded preview
+
+4. presence only — NOT full values — for fields such as:
+- refusal
+- tool_calls
+- function_call
+- parsed
+
+If other clearly relevant structured-response fields exist on the runtime message object, log their field names/presence only.
+
+==================================================
+IMPORTANT — DO NOT LEAK DATA
+==================================================
+
+Do NOT log:
+
+- API keys
+- auth headers
+- secrets
+- complete provider response
+- complete system prompt
+- complete user messages
+- complete lessonContext
+- complete student conversation
+- full tool-call arguments
+- full refusal text
+- full parsed object
+
+Content preview must be bounded.
+
+Use a small limit, preferably around 200 characters.
+
+Example concept only:
+
+contentPreview: typeof content === "string"
+  ? content.slice(0, 200)
+  : null
+
+Do not stringify the whole response.
+
+==================================================
+TYPE SAFETY
+==================================================
+
+The integration TypeScript types may not expose every possible runtime field such as:
+
+parsed
+refusal
+tool_calls
+function_call
+
+Do NOT weaken broad application types.
+
+If necessary, inspect the message object locally and use the smallest local safe record/cast required only for diagnostics.
+
+Do not modify shared schemas or integration types.
+
+==================================================
+PLACEMENT
+==================================================
+
+Prefer ONE small helper or ONE small diagnostic block inside:
+
+artifacts/api-server/src/services/ai.ts
+
+The diagnostic must run at the earliest useful failure point, before the invalid response is discarded.
+
+It must capture metadata from the ORIGINAL provider response object/message, not reconstructed data.
+
+Do not add diagnostics throughout the application.
+
+==================================================
+RETRY VISIBILITY
+==================================================
+
+If callAIStructured itself cannot distinguish attempt 1 vs attempt 2, do NOT redesign retry architecture.
+
+Existing surrounding logs already distinguish the attempts.
+
+Only ensure the diagnostic is emitted for each invalid structured response so it can be correlated with the existing attempt logs.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- model
+- provider
+- response_format
+- max_tokens
+- temperature
+- frequency_penalty
+- system prompt
+- retry correction prompt
+- structured schema
+- Zod schema
+- parser behavior
+- root-object validation
+- callAI fallback guard
+- chat.ts state machine
+- THEORY → MICRO_CHECK logic
+- Cognitive Path
+- exercise filtering
+- frontend
+- DB
+- Mapping
+- evidence/mastery
+
+Do NOT attempt to fix "[1]" in this task.
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Expected file change:
+
+artifacts/api-server/src/services/ai.ts
+
+Do not perform:
+
+- broad repository audit
+- browser test
+- AI/provider request
+- DB inspection
+
+After implementation, run only the necessary TypeScript check.
+
+==================================================
+STATIC VERIFICATION
+==================================================
+
+Verify:
+
+1. successful structured responses do not produce this diagnostic log
+
+2. invalid structured responses produce safe metadata including:
+   - finishReason
+   - messageKeys
+   - content type/presence/length
+   - bounded preview
+   - refusal presence
+   - toolCalls presence
+   - functionCall presence
+   - parsed presence
+
+3. no complete prompts/messages/provider responses are logged
+
+4. structured behavior itself is unchanged
+
+5. retry behavior is unchanged
+
+6. TypeScript passes
+
+==================================================
+FINAL REPORT — SHORT
+==================================================
+
+Return only:
+
+## A. FILE CHANGED
+
+## B. DIAGNOSTIC ADDED
+
+Show the small relevant diagnostic code.
+
+## C. FAILURE-ONLY BEHAVIOR
+
+Explain exactly when it logs.
+
+## D. CAPTURED FIELDS
+
+List the metadata captured.
+
+## E. DATA SAFETY
+
+Confirm what is deliberately NOT logged and state the preview limit.
+
+## F. BEHAVIORAL ISOLATION
+
+Confirm no changes to:
+- provider request
+- model
+- response_format
+- prompt
+- parser
+- validation
+- retry
+- teaching/state logic
+
+## G. TYPECHECK
+
+PASS / FAIL
+
+## H. NEXT TEST
+
+State exactly what runtime log evidence we should capture from ONE next failed structured request.
+
+Do NOT perform that request.
+
+## I. RESULT
+
+PASS — failure-only structured response diagnostics ready
+
+or
+
+FAIL — exact reason
+
+Then STOP.
