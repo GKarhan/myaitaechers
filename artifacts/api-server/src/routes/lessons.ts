@@ -147,6 +147,17 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
     )
     .limit(1);
 
+  // Resolve active cognitive level name for test/debug exposure
+  let _activeCognitiveLevel: string | null = null;
+  if (session && (session as any).activeCognitiveLevelId) {
+    const [cogRow] = await db
+      .select({ cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel })
+      .from(lessonNodeCognitiveLevelsTable)
+      .where(eq(lessonNodeCognitiveLevelsTable.id, (session as any).activeCognitiveLevelId))
+      .limit(1);
+    _activeCognitiveLevel = cogRow?.cognitiveLevel ?? null;
+  }
+
   res.json({
     id: lesson.id,
     subjectId: lesson.subjectId,
@@ -174,6 +185,11 @@ router.get("/lessons/:lessonId", requireAuth, async (req: AuthRequest, res) => {
           // V2-R4A.4: time fields for student countdown
           requiredSessionMinutes:  (session as any).requiredSessionMinutes  ?? null,
           activeLearningSeconds:   (session as any).activeLearningSeconds   ?? 0,
+          // Test/debug: teaching runtime state
+          nodeTeachingStage:       (session as any).nodeTeachingStage       ?? null,
+          activeCognitiveLevelId:  (session as any).activeCognitiveLevelId  ?? null,
+          activeCognitiveLevel:    _activeCognitiveLevel,
+          activeLessonExerciseId:  (session as any).activeLessonExerciseId  ?? null,
         }
       : null,
   });

@@ -1,0 +1,303 @@
+# AI TEACHER TEST STATE BAR — MINIMAL IMPLEMENTATION
+
+## GOAL
+
+Add a small visible test/debug state bar to the current AI Teacher lesson page so we can observe the runtime state while testing one MicroNode cycle.
+
+This is an experimental/internal test environment used only by us.
+
+Do NOT add session reset yet.
+
+Do NOT redesign the page.
+
+Do NOT change AI Teacher teaching logic.
+
+Keep this implementation minimal and cheap.
+
+---
+
+# CURRENT PAGE
+
+Frontend file:
+
+`artifacts/myaiteacher/src/pages/lesson-page.tsx`
+
+Component:
+
+`LessonPage`
+
+Best insertion point from the audit:
+
+Immediately after the existing `</header>` and before the scrollable chat/messages container.
+
+---
+
+# REQUIRED RESULT
+
+Add a thin always-visible debug/test bar showing the current runtime state.
+
+Primary row should show:
+
+`Node | Cognitive Level | Teaching Stage | Active Exercise | Decision | Help | Step`
+
+Example only:
+
+`Node: Մոլեկուլների շարժումը [2107] | Level: remember | Stage: MICRO_CHECK | Exercise: 940 | Decision: TEACH | Help: 0 | Step: 1/1`
+
+Use actual runtime values.
+
+Do NOT hardcode the example values.
+
+---
+
+# PART 1 — USE EXISTING FRONTEND DATA
+
+Already available on frontend — reuse these:
+
+* current node name
+* current node id
+* current phase
+* progress step / total
+* `hasActiveTask`
+* `activeHelpCount`
+* `sessionDecision`
+* `teachingMode`
+* session id
+* mastery score
+* remaining required seconds if available
+
+Do NOT create duplicate frontend state if existing state can be reused.
+
+---
+
+# PART 2 — EXPOSE ONLY 3 MISSING RUNTIME FIELDS
+
+The audit confirmed these already exist in backend session/runtime state but are not currently exposed to the lesson frontend:
+
+1. `nodeTeachingStage`
+2. `activeCognitiveLevelId` + its human-readable `cognitiveLevel`
+3. `activeLessonExerciseId`
+
+Expose only these.
+
+Do NOT expose unrelated backend internals.
+
+---
+
+# BACKEND REQUIREMENT
+
+Find the existing:
+
+`GET /lessons/:id`
+
+response that provides `currentSession`.
+
+Extend the existing response minimally so `currentSession` also includes:
+
+* `nodeTeachingStage`
+* `activeCognitiveLevelId`
+* `activeCognitiveLevel`
+* `activeLessonExerciseId`
+
+For `activeCognitiveLevel`:
+
+Resolve the cognitive-level name associated with `activeCognitiveLevelId`.
+
+Reuse existing DB tables/types.
+
+Do NOT create a new endpoint.
+
+Do NOT create a new session-state model.
+
+Do NOT modify session behavior.
+
+If `activeCognitiveLevelId` is null, return a safe null value for `activeCognitiveLevel`.
+
+---
+
+# FRONTEND TEST BAR
+
+In `lesson-page.tsx`, add a compact bar immediately below the header.
+
+Display at minimum:
+
+### Node
+
+* current node name
+* current node id
+
+### Cognitive
+
+* `activeCognitiveLevel`
+* show `—` if unavailable
+
+### Stage
+
+* `nodeTeachingStage`
+* show `—` if unavailable
+
+### Active Exercise
+
+* `activeLessonExerciseId`
+* show `—` if none
+
+### Decision
+
+* existing `sessionDecision`
+* show `—` if unavailable
+
+### Help
+
+* existing `activeHelpCount`
+
+### Step
+
+* existing progress step / total
+
+Keep it compact.
+
+No modal.
+
+No sidebar.
+
+No page redesign.
+
+---
+
+# OPTIONAL SMALL DETAILS
+
+If easy with existing frontend values, add a small expandable/details row containing:
+
+* Session ID
+* Phase
+* teachingMode
+* hasActiveTask
+* masteryScore
+* remainingRequiredSeconds
+
+Only use already available values.
+
+Do not add more backend work for these.
+
+If adding expandable details materially increases implementation complexity, skip it.
+
+The primary state bar is the priority.
+
+---
+
+# IMPORTANT — LIVE UPDATE
+
+The bar must update from the same session/chat response data already used by the page.
+
+After each AI/student turn, when existing frontend state updates, the test bar should reflect the latest values.
+
+Do NOT add polling.
+
+Do NOT create extra API traffic unless already required by the existing page flow.
+
+---
+
+# DO NOT IMPLEMENT RESET
+
+Do NOT add:
+
+* Restart button
+* session reset endpoint
+* delete session logic
+* chat deletion
+* evidence reset
+* mastery reset
+
+That will be a separate task after we decide reset semantics.
+
+---
+
+# DO NOT CHANGE AI TEACHER LOGIC
+
+Do NOT modify:
+
+* prompts
+* `NODE_OBJECTIVE`
+* Cognitive Path context
+* preferred interaction types
+* exercise filtering
+* Decision Engine
+* intent router
+* answer evaluation
+* HELP/remediation
+* state machine
+* progression
+* evidence scoring
+* Mapping
+* Phase 2
+
+This task is visibility only.
+
+---
+
+# COST CONTROL
+
+Do not perform another broad audit.
+
+Use the previous audit findings.
+
+Inspect only the exact API response and lesson page code needed for this implementation.
+
+Run only relevant TypeScript/typecheck validation.
+
+---
+
+# VERIFICATION
+
+Verify:
+
+1. Page still loads normally.
+2. Existing chat UI remains unchanged.
+3. Test bar appears immediately under the lesson header.
+4. It displays the current node.
+5. It displays current cognitive level when available.
+6. It displays `nodeTeachingStage`.
+7. It displays active exercise ID or `—`.
+8. It displays current `sessionDecision`, help count, and step.
+9. Values update with existing lesson/chat state updates.
+10. No AI Teacher behavior was changed.
+
+---
+
+# FINAL REPORT — KEEP SHORT
+
+Return only:
+
+## A. FILES CHANGED
+
+List exact files.
+
+## B. BACKEND EXPOSURE
+
+Show the fields added to `currentSession`.
+
+## C. TEST BAR
+
+Show what the primary row displays.
+
+## D. UPDATE BEHAVIOR
+
+Confirm how the bar receives updated values.
+
+## E. TYPECHECK
+
+PASS / FAIL.
+
+## F. SCOPE CHECK
+
+Confirm no reset/session deletion and no AI Teacher teaching logic changed.
+
+## G. RESULT
+
+`PASS — AI Teacher Test State Bar implemented`
+
+or
+
+`FAIL — exact reason`
+
+Then STOP.

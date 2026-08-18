@@ -132,7 +132,18 @@ export default function LessonPage() {
     optionalContinuation?: boolean;
     sessionDecision?: string | null;
     remainingRequiredSeconds?: number | null;
+    hasActiveTask?: boolean;
+    activeHelpCount?: number;
+    teachingMode?: string | null;
   };
+
+  // 🧪 Debug state: tracks last-known values from chat responses for the test bar
+  const [debugChat, setDebugChat] = useState<{
+    sessionDecision: string | null;
+    hasActiveTask: boolean;
+    activeHelpCount: number;
+    teachingMode: string | null;
+  }>({ sessionDecision: null, hasActiveTask: false, activeHelpCount: 0, teachingMode: null });
 
   // V2-R4A.4: Initialize countdown from session snapshot on page load / session change.
   // Re-runs when session ID changes (new session or resume) — not on every render.
@@ -173,6 +184,13 @@ export default function LessonPage() {
     } else if (d?.remainingRequiredSeconds === null) {
       setRemainingSeconds(null);
     }
+    // 🧪 Update debug bar from chat response fields
+    setDebugChat(prev => ({
+      sessionDecision: d?.sessionDecision !== undefined ? (d.sessionDecision ?? null) : prev.sessionDecision,
+      hasActiveTask:   typeof d?.hasActiveTask === "boolean"  ? d.hasActiveTask  : prev.hasActiveTask,
+      activeHelpCount: typeof d?.activeHelpCount === "number" ? d.activeHelpCount : prev.activeHelpCount,
+      teachingMode:    d?.teachingMode !== undefined ? (d.teachingMode ?? null) : prev.teachingMode,
+    }));
     queryClient.invalidateQueries({ queryKey: chatKey });
     queryClient.invalidateQueries({ queryKey: lessonKey });
   }, [queryClient, chatKey, lessonKey]);
@@ -483,6 +501,54 @@ export default function LessonPage() {
           </div>
         )}
       </header>
+
+      {/* 🧪 AI Teacher Test State Bar — internal debug visibility only */}
+      <div className="shrink-0 bg-yellow-950/50 border-b border-yellow-700/25 px-3 py-1 font-mono text-[10px] text-yellow-300/75 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-2.5 whitespace-nowrap min-w-0">
+          <span className="text-yellow-600/70 select-none">🧪</span>
+          <span>
+            <span className="text-yellow-500/55">Node:</span>{" "}
+            <span className="text-yellow-200/80">{progressIndicator?.current_node_name ?? (session as any)?.currentNodeId ?? "—"}</span>
+            <span className="text-yellow-600/40 ml-1">[{(session as any)?.currentNodeId ?? "—"}]</span>
+          </span>
+          <span className="text-yellow-700/50">|</span>
+          <span>
+            <span className="text-yellow-500/55">Level:</span>{" "}
+            <span className="text-yellow-200/80">{(session as any)?.activeCognitiveLevel ?? "—"}</span>
+          </span>
+          <span className="text-yellow-700/50">|</span>
+          <span>
+            <span className="text-yellow-500/55">Stage:</span>{" "}
+            <span className="text-yellow-200/80">{(session as any)?.nodeTeachingStage ?? "—"}</span>
+          </span>
+          <span className="text-yellow-700/50">|</span>
+          <span>
+            <span className="text-yellow-500/55">Ex:</span>{" "}
+            <span className="text-yellow-200/80">{(session as any)?.activeLessonExerciseId ?? "—"}</span>
+          </span>
+          <span className="text-yellow-700/50">|</span>
+          <span>
+            <span className="text-yellow-500/55">Decision:</span>{" "}
+            <span className="text-yellow-200/80">{debugChat.sessionDecision ?? "—"}</span>
+          </span>
+          <span className="text-yellow-700/50">|</span>
+          <span>
+            <span className="text-yellow-500/55">Help:</span>{" "}
+            <span className="text-yellow-200/80">{debugChat.activeHelpCount}</span>
+          </span>
+          <span className="text-yellow-700/50">|</span>
+          <span>
+            <span className="text-yellow-500/55">Step:</span>{" "}
+            <span className="text-yellow-200/80">
+              {progressIndicator ? `${progressIndicator.step}/${progressIndicator.total_steps}` : "—"}
+            </span>
+          </span>
+          <span className="text-yellow-700/50 ml-1">‹</span>
+          <span className="text-yellow-600/55">
+            sess={session?.id ?? "—"} ph={currentPhase} mode={debugChat.teachingMode ?? "—"} task={debugChat.hasActiveTask ? "✓" : "✗"}
+          </span>
+        </div>
+      </div>
 
       {/* Mastery gate message — shown when advance-phase was blocked */}
       {gateMessage && (
