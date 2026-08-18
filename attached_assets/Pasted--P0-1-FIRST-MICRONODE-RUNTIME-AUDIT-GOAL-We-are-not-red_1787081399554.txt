@@ -1,0 +1,315 @@
+# P0.1 — FIRST MICRONODE RUNTIME AUDIT
+
+## GOAL
+
+We are **not** redesigning Mapping or AI Teacher.
+
+Our goal is very specific:
+
+> Make AI Teacher use the knowledge already produced by Mapping/Teaching Content/Cognitive Path and teach according to the existing AI Teacher scenario/state machine.
+
+We will proceed in very small steps and find the **first broken point** in the chain.
+
+For this task, audit **ONE real lesson and ONLY its FIRST MicroNode**.
+
+If possible, use the real lesson:
+
+**«ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ։ ԴԻՖՈՒԶԻԱ»**
+
+If the exact title differs in DB, locate the corresponding real mapped lesson.
+
+---
+
+# STRICT SCOPE
+
+## NO CODE CHANGES
+
+Do NOT:
+
+* edit code;
+* change DB data;
+* change schema;
+* change Mapping;
+* regenerate Mapping;
+* run Phase 2 again;
+* change prompts;
+* change Decision Engine;
+* change state machine;
+* fix any bug you find;
+* inspect unrelated quiz / Knowledge Tree functionality;
+* perform a broad repository audit.
+
+This task is **READ-ONLY FORENSIC AUDIT**.
+
+Use existing code and existing DB data.
+
+Keep the investigation small to minimize Agent/tool/token cost.
+
+---
+
+# ALREADY KNOWN — DO NOT RE-AUDIT THESE FROM SCRATCH
+
+Previous code review has already established that:
+
+1. Mapping persists MicroNode/source-related data into DB.
+
+2. Current AI Teacher architecture already has code paths intended to load teaching content such as:
+
+   * theoryContent
+   * childFriendlyExplanation
+   * basicExamples
+   * realLifeExamples
+   * nonExamples
+   * commonMisconception
+   * targetBloomLevel
+   * estimatedMinutes
+   * cognitive-path information
+   * and related current-node teaching data.
+
+3. `chat.ts` builds runtime teaching context from these data.
+
+4. Cognitive Path has a runtime loading path.
+
+5. One suspicious gap has already been identified:
+   `learningObjective` exists in the mapping/DB architecture, but current `chat.ts` current-node loading/context appears not to use the real `learningObjective` directly as `NODE_OBJECTIVE`.
+
+Do NOT spend time proving these general architectural facts again.
+
+We now need **real DB + runtime evidence for one MicroNode**.
+
+---
+
+# STEP 1 — SELECT ONLY THE FIRST MICRONODE
+
+Find the target lesson in the live DB.
+
+Identify:
+
+* lesson id
+* lesson title
+* first Topic
+* first MicroNode id
+* first MicroNode title
+
+Report these values.
+
+Do not audit the other MicroNodes yet.
+
+---
+
+# STEP 2 — WHAT DATA ACTUALLY EXISTS FOR THIS MICRONODE?
+
+Read the live DB.
+
+For this ONE MicroNode, report the actual stored values relevant to AI teaching.
+
+Include, where they exist:
+
+* title
+* learningObjective
+* sourceText / source theory
+* theoryContent
+* verbatimTheoryAnchor
+* sourcePage
+* childFriendlyExplanation
+* basicExamples
+* realLifeExamples
+* nonExamples
+* commonMisconception
+* targetBloomLevel
+* estimatedMinutes
+* teachingStage
+* status/confidence
+* knowledge boundaries if stored
+* dependencies/prerequisites
+* linked exercises/tasks
+* Cognitive Path records and their relevant fields
+
+Do not hide NULL / empty values.
+
+We specifically need to know whether a field is:
+
+**POPULATED / NULL / NOT APPLICABLE**
+
+Do not dump unrelated DB columns.
+
+---
+
+# STEP 3 — FOLLOW ONLY THESE VALUES INTO AI TEACHER
+
+For the same MicroNode, trace the existing runtime path.
+
+For each relevant field from Step 2 determine:
+
+**DB value
+→ loaded by chat/runtime?
+→ inserted into lessonContext/runtime context?
+→ available to Decision Engine?
+→ available to AI generation prompt/context?**
+
+Use existing code evidence and, if necessary, minimal read-only runtime/log evidence.
+
+Produce a compact matrix:
+
+| Data | DB | Loaded | Decision Engine | AI Context | Result |
+| ---- | -- | ------ | --------------- | ---------- | ------ |
+
+Result must be one of:
+
+* `USED`
+* `AVAILABLE BUT NOT USED`
+* `MISSING IN DB`
+* `UNCLEAR — needs next micro-audit`
+
+Pay special attention to the already suspected `learningObjective` gap, but also report any other **directly evidenced** gap you encounter.
+
+---
+
+# STEP 4 — FIRST TEACHING DECISION ONLY
+
+Now inspect ONLY what happens when AI Teacher is about to start teaching this first MicroNode.
+
+Determine the actual runtime values for:
+
+* current MicroNode
+* current cognitive level
+* target/ceiling if available
+* session/teaching state
+* activeTask if one exists
+* selected metaAction / pedagogical action
+* relevant Decision Engine inputs
+* relevant Decision Engine output
+
+Then identify what teaching content/context is actually handed to AI generation for this first turn.
+
+Do NOT continue into multiple student turns.
+
+---
+
+# STEP 5 — FIRST AI TEACHER MESSAGE
+
+Inspect the first generated teacher turn for this MicroNode, if it can be reproduced safely without DB mutation.
+
+Answer:
+
+1. Is it teaching the correct MicroNode?
+2. Is it operating at the expected cognitive level?
+3. Is it using the mapped/approved teaching content that is actually available?
+4. Is the selected pedagogical action consistent with the existing scenario/state machine?
+5. Does the first turn follow the intended cycle/state rather than behaving like a generic chatbot?
+
+If reproducing the turn would require unsafe DB writes or modifying production state, do NOT do it. Report that limitation and stop at the latest read-only evidence.
+
+---
+
+# STOP AT THE FIRST CONFIRMED BREAK
+
+This is important.
+
+If you find a clear break such as:
+
+**DB has data → chat.ts does not load it**
+
+or
+
+**chat.ts loads it → lessonContext loses it**
+
+or
+
+**context contains it → Decision Engine does not receive/use it**
+
+or
+
+**Decision Engine selects the wrong action/state**
+
+or
+
+**Decision is correct → AI generation receives/uses the wrong context**
+
+then identify that as the **FIRST CONFIRMED BREAK**.
+
+Do not expand the audit into the rest of AI Teacher.
+
+We will fix/test one layer at a time.
+
+---
+
+# REQUIRED FINAL REPORT
+
+Keep the report concise.
+
+## A. TARGET
+
+Lesson:
+Topic:
+MicroNode ID:
+MicroNode title:
+
+## B. MICRONODE DATA HEALTH
+
+Briefly state what important teaching data is populated and what is missing.
+
+## C. DATA FLOW MATRIX
+
+DB → runtime → Decision Engine → AI context.
+
+## D. FIRST TEACHING DECISION
+
+Show the actual state/action/context used for the first teaching turn.
+
+## E. FIRST CONFIRMED BREAK
+
+State the earliest confirmed point where intended information or behavior is lost.
+
+For every confirmed issue provide:
+
+* exact file
+* relevant function/section
+* DB/runtime evidence
+* why it matters
+
+Do not call something a bug without evidence.
+
+## F. OTHER CONFIRMED / SUSPICIOUS FINDINGS
+
+Separate:
+
+**CONFIRMED**
+from
+**SUSPICIOUS / NOT YET PROVEN**
+
+## G. RECOMMENDED NEXT MICRO-STEP
+
+Recommend only the **smallest next action**.
+
+Examples:
+
+* wire one missing field into runtime;
+* verify one Decision Engine input;
+* verify first teacher message;
+* test one correct answer.
+
+Do NOT produce a large implementation roadmap.
+
+---
+
+# FINAL QUESTION
+
+End the report by answering:
+
+> **At the moment AI Teacher starts the first MicroNode, does it actually have the correct and sufficient mapped knowledge + cognitive state needed to teach according to our existing scenario?**
+
+Answer:
+
+**YES / PARTIALLY / NO**
+
+Then give the exact evidence-based reason in a few sentences.
+
+Remember:
+
+**NO CODE CHANGES.
+NO FIXES.
+ONE LESSON.
+ONE MICRONODE.
+FIND THE FIRST BREAK.
+STOP THERE.**
