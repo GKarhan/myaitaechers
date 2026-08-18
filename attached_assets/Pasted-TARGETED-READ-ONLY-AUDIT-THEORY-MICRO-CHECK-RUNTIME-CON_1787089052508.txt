@@ -1,0 +1,336 @@
+TARGETED READ-ONLY AUDIT — THEORY → MICRO_CHECK RUNTIME CONTRACT
+
+AUDIT ONLY.
+DO NOT CHANGE CODE.
+DO NOT CHANGE DB.
+
+GOAL
+
+We are testing the AI Teacher one runtime step at a time.
+
+We have reached the first real teaching-state question:
+
+When the session is:
+
+CURRENT_NODE = 2107
+CURRENT_COGNITIVE_LEVEL = remember
+NODE_TEACHING_STAGE = THEORY
+TEACHING_MODE = TEACH
+
+what does the CURRENT CODE actually expect to happen?
+
+Specifically:
+
+Can one AI response legally/architecturally do:
+
+THEORY delivery
+→ ONE MICRO_CHECK
+→ wait for student answer
+
+and transition the runtime state from:
+
+THEORY → MICRO_CHECK
+
+OR does the current state machine require a different sequence?
+
+We need the exact answer from current code before making another fix.
+
+==================================================
+CONFIRMED FACTS — DO NOT RE-AUDIT
+==================================================
+
+Do NOT repeat previous audits.
+
+Already confirmed:
+
+1. Fresh/relearn session flow works.
+
+2. Test State Bar works.
+
+3. Current test fixture:
+   Lesson 579
+   MicroNode 2107 — «Մոլեկուլների շարժումը»
+
+4. Current Cognitive Path level:
+   remember
+
+5. AI context already has:
+   - NODE_OBJECTIVE
+   - CURRENT_COGNITIVE_LEVEL
+   - COGNITIVE_PERFORMANCE_OBJECTIVE
+   - COGNITIVE_SUCCESS_CRITERION
+   - PREFERRED_INTERACTION_TYPES
+   - MICRO_CHECK_FORMAT_RULE
+   - active-level filtered CLASS_EXERCISES
+
+6. remember exercises are correctly isolated from understand exercises.
+
+7. Intro gate correctly persists introConfirmed=true.
+
+8. We added a request-local:
+   introConfirmedThisTurn
+
+and an explicit directive telling AI:
+
+- do not repeat intro
+- begin current MicroNode teaching now
+- brief theory
+- exactly ONE MICRO_CHECK
+- stop and wait
+
+9. Browser result after confirmation did NOT meet that target.
+
+Observed AI response:
+
+«Բարի օր, Էլեն Քարհանյան։ Շատ ուրախ եմ, որ պատրաստ ես սկսել։
+Մոլեկուլների շարժումը հիանալի թեմա է՝ լի հետաքրքիր երևույթներով։»
+
+No actual theory delivery.
+No MICRO_CHECK.
+
+Test State Bar remained:
+
+Level: remember
+Stage: THEORY
+Ex: —
+Decision: —
+Help: 0
+mode=TEACH
+task=✗
+
+==================================================
+QUESTION 1 — WHAT DOES THEORY MEAN IN CURRENT CODE?
+==================================================
+
+Find the authoritative code that handles:
+
+nodeTeachingStage === "THEORY"
+
+Report only:
+
+- file
+- function/block
+- what AI action/output is expected in THEORY
+- whether THEORY response is supposed to contain a MICRO_CHECK
+- what exact event/condition advances THEORY → MICRO_CHECK
+
+Do not infer from comments if executable code says otherwise.
+
+==================================================
+QUESTION 2 — WHO OWNS THEORY → MICRO_CHECK?
+==================================================
+
+Identify exactly which layer is responsible for changing:
+
+nodeTeachingStage:
+THEORY → MICRO_CHECK
+
+Possible examples:
+- AI structured output
+- backend deterministic logic
+- validator
+- post-response state update
+- Decision Engine
+- another mechanism
+
+Give the exact code path.
+
+We need to know:
+
+WHO changes the state,
+WHEN it changes,
+and WHAT signal triggers it.
+
+==================================================
+QUESTION 3 — STRUCTURED AI CONTRACT
+==================================================
+
+Inspect only the structured AI output fields relevant to this transition.
+
+For THEORY state, report which fields the AI is expected/allowed to return, especially if relevant:
+
+- student_message
+- teaching_action
+- next_step
+- micro_check
+- question
+- state/stage transition signal
+- metaAction
+- or actual equivalent fields in current code
+
+Do not list unrelated schema fields.
+
+Then trace how those fields are consumed by chat.ts.
+
+==================================================
+QUESTION 4 — WHY DID THIS RESPONSE PASS?
+==================================================
+
+Observed response was only:
+
+«Բարի օր... Մոլեկուլների շարժումը հիանալի թեմա է...»
+
+Yet runtime remained:
+
+Stage=THEORY
+Ex=—
+task=✗
+
+Find why the backend accepted this response instead of enforcing:
+
+brief THEORY + ONE MICRO_CHECK.
+
+Answer precisely:
+
+- Was there no validator?
+- Did structured output select an action that legally keeps THEORY?
+- Was required output ignored?
+- Did a fallback path run?
+- Did stage-transition logic never execute?
+- Something else?
+
+Use code evidence.
+
+==================================================
+QUESTION 5 — CURRENT ARCHITECTURE VS DESIRED CONTRACT
+==================================================
+
+Our desired contract for this state is:
+
+INTRO confirmed
+→ same AI turn:
+   brief teaching of CURRENT MicroNode
+   + exactly ONE current-level MICRO_CHECK
+→ backend state becomes MICRO_CHECK
+→ wait for student's answer
+
+Determine:
+
+A. Current architecture already supports this and one small missing enforcement/routing issue prevents it
+
+OR
+
+B. Current architecture intentionally separates THEORY and MICRO_CHECK into different turns
+
+OR
+
+C. Current implementation is inconsistent/partial.
+
+Choose exactly one based on executable code.
+
+==================================================
+QUESTION 6 — SMALLEST CORRECT NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Based on the actual runtime contract, propose ONE smallest fix that gets us to:
+
+current MicroNode
+→ remember THEORY
+→ ONE valid remember MICRO_CHECK
+→ wait for answer
+
+The fix must use the existing architecture rather than create a parallel state machine.
+
+Prefer deterministic backend enforcement over adding more prompt text IF the existing backend already has the required mechanism.
+
+Do not propose broad prompt rewrites.
+
+Do not redesign AI Teacher.
+
+==================================================
+IMPORTANT — DO NOT AUDIT
+==================================================
+
+Do NOT inspect/re-audit:
+
+- Mapping
+- Phase 2 generation
+- Cognitive Path generation
+- exercise linkage correctness
+- exercise filtering correctness
+- fresh-session flow
+- StudentLessonCard
+- Test State Bar
+- Knowledge Tree
+- mastery scoring
+- quiz system
+- frontend design
+- unrelated routes
+
+Do NOT investigate later stages such as understand progression yet.
+
+We are stopping at the first:
+
+THEORY → MICRO_CHECK
+
+transition.
+
+==================================================
+COST CONTROL — IMPORTANT
+==================================================
+
+Use the shortest reliable path.
+
+Start with:
+
+artifacts/api-server/src/routes/chat.ts
+
+and only inspect the exact imported schema/helper in:
+
+artifacts/api-server/src/services/ai.ts
+
+or another file IF chat.ts directly requires it to answer the questions.
+
+Do not perform a repository-wide search unless the exact symbol cannot be located from these files.
+
+Do not query DB unless a runtime value absolutely cannot be determined from the already supplied state.
+
+No browser test.
+No AI test generation.
+No code changes.
+
+The goal is minimum tool usage WITHOUT reducing confidence in the answer.
+
+==================================================
+REQUIRED FINAL REPORT
+==================================================
+
+Keep the report concise.
+
+A. THEORY CONTRACT
+- expected behavior
+- authoritative code
+
+B. THEORY → MICRO_CHECK OWNER
+- exact owner
+- exact trigger
+
+C. STRUCTURED OUTPUT PATH
+- only relevant fields
+- how chat.ts consumes them
+
+D. WHY CURRENT RESPONSE PASSED
+- precise root cause
+
+E. ARCHITECTURE VERDICT
+Choose:
+A / B / C
+and explain in 2–4 sentences.
+
+F. SMALLEST NEXT FIX
+One concrete code-level recommendation.
+NO implementation.
+
+G. NEXT TEST EXPECTATION
+After that future fix, state exactly what we should see in:
+- AI response
+- Stage
+- Ex
+- task
+
+H. VERDICT
+PASS / GAP
+
+Then STOP.
