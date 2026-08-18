@@ -373,6 +373,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingStage: string | null;
     verbatimTheoryAnchor: string | null;
     nonExamples: unknown;
+    learningObjective: string | null;
   };
   let currentNodeRecord: NodeRef | null = null;
 
@@ -516,6 +517,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             teachingStage: lessonNodesTable.teachingStage,
             verbatimTheoryAnchor: lessonNodesTable.verbatimTheoryAnchor,
             nonExamples: lessonNodesTable.nonExamples,
+            learningObjective: lessonNodesTable.learningObjective,
           })
           .from(lessonNodesTable)
           .where(eq(lessonNodesTable.id, session.currentNodeId))
@@ -842,6 +844,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       // Missing / null fields are logged as warnings and filled with a fallback.
 
       const _nodeObjective =
+        currentNodeRecord?.learningObjective?.trim() ||
         currentNodeRecord?.childFriendlyExplanation?.trim() ||
         (currentNodeRecord
           ? `Reach Bloom level ${currentNodeRecord.targetBloomLevel} understanding of «${currentNodeRecord.title}» in ~${currentNodeRecord.estimatedMinutes} min.`

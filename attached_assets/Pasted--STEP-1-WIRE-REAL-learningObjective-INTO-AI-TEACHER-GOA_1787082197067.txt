@@ -1,0 +1,147 @@
+# STEP 1 — WIRE REAL `learningObjective` INTO AI TEACHER
+
+## GOAL
+
+P0.1 forensic audit already confirmed the first concrete runtime gap:
+
+* MicroNode `2102` has a valid `learning_objective` in the live DB.
+* `chat.ts` does NOT load `lessonNodesTable.learningObjective` in `currentNodeRecord`.
+* Because of this, `_nodeObjective` currently uses `childFriendlyExplanation` as the objective.
+* The AI therefore receives teaching content as `NODE_OBJECTIVE` instead of the actual behavioral learning objective.
+
+Fix **ONLY this confirmed gap**.
+
+Do not work on Cognitive Path yet.
+
+---
+
+# REQUIRED CHANGE
+
+File:
+
+`artifacts/api-server/src/routes/chat.ts`
+
+## 1. Load the real learning objective
+
+In the existing `currentNodeRecord` / `nodeRow` select, add:
+
+`learningObjective: lessonNodesTable.learningObjective`
+
+Do not otherwise restructure the query.
+
+---
+
+## 2. Fix `_nodeObjective` priority
+
+Find the existing `_nodeObjective` construction.
+
+Change its priority so that:
+
+1. `currentNodeRecord.learningObjective` is the PRIMARY value.
+2. `childFriendlyExplanation` may remain only as a fallback if the real learning objective is absent/empty.
+3. Preserve the existing final fallback behavior if both are missing.
+
+Do not redesign the surrounding context-building logic.
+
+---
+
+# DO NOT CHANGE
+
+For this task, do NOT modify:
+
+* Cognitive Path loading
+* Cognitive Path → AI context
+* `preferredInteractionTypes`
+* `performanceObjective`
+* `successCriterion`
+* Decision Engine
+* teaching state machine
+* intent router
+* HELP/remediation logic
+* exercises/tasks
+* Mapping
+* Phase 2
+* DB schema
+* DB data
+* prompts except for the minimum existing `NODE_OBJECTIVE` value wiring required above
+* any unrelated frontend/backend code
+
+No refactoring.
+
+---
+
+# VERIFICATION
+
+After the change:
+
+### 1. TypeScript
+
+Run the relevant TypeScript/typecheck validation.
+
+Report the result.
+
+### 2. Verify the actual first MicroNode
+
+Use the same audited MicroNode:
+
+* Lesson ID: `579`
+* MicroNode ID: `2102`
+
+Verify that its DB `learning_objective` remains unchanged.
+
+### 3. Verify runtime wiring
+
+Show evidence that the resulting runtime value is now:
+
+`NODE_OBJECTIVE = actual learningObjective`
+
+and NOT:
+
+`NODE_OBJECTIVE = childFriendlyExplanation`
+
+Show the actual resulting value for MicroNode `2102`.
+
+Do not modify production DB state just to verify this.
+
+---
+
+# STOP CONDITION
+
+Once this exact wiring is fixed and verified, STOP.
+
+Do not proceed to the already-known Cognitive Path gap.
+
+Do not make any additional improvements even if you notice them.
+
+---
+
+# FINAL REPORT
+
+Return only:
+
+## A. CHANGE MADE
+
+Exact file and exact small change.
+
+## B. VERIFICATION
+
+* TypeScript result
+* DB learningObjective
+* resulting `_nodeObjective`
+* resulting `NODE_OBJECTIVE`
+
+## C. SCOPE CHECK
+
+Confirm that no Cognitive Path, Decision Engine, Mapping, exercise, state-machine, or unrelated code was changed.
+
+## D. RESULT
+
+Answer:
+
+**PASS** — real MicroNode learning objective now reaches AI Teacher as `NODE_OBJECTIVE`
+
+or
+
+**FAIL** — with the exact reason.
+
+Then STOP.
