@@ -1,0 +1,319 @@
+# STUDENT LESSON START / RELEARN SESSION AUDIT
+
+## GOAL
+
+We want the student subject page to support a clean testing/relearning flow:
+
+* Before the student has started a lesson: show **«Սովորել» / «Սկսել դասը»**
+* After the student has already started that lesson at least once: show **«Կրկին սովորել»**
+* Clicking **«Կրկին սովորել»** should start a **new lesson session** for the same lesson, from the beginning, without deleting persistent learner evidence/mastery/history.
+
+For this task:
+
+**AUDIT ONLY. NO CODE CHANGES.**
+
+Keep the audit narrow and cheap.
+
+---
+
+# CURRENT FLOW TO AUDIT
+
+Student subject page shown at:
+
+`/subjects/:subjectId`
+
+Current lesson card:
+
+**ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ**
+
+Current button:
+
+**«ՍԿՍԵԼ ԴԱՍԸ»**
+
+Clicking it opens:
+
+`/lessons/:lessonId`
+
+We need to know exactly what happens between that button and the lesson session/runtime.
+
+---
+
+# QUESTION 1 — FIND THE FRONTEND BUTTON FLOW
+
+Find the exact frontend file/component that renders the lesson card and **«ՍԿՍԵԼ ԴԱՍԸ»** button.
+
+Report:
+
+* exact file path
+* component/function
+* click handler
+* navigation target
+* whether it calls an API before navigation
+* whether it only navigates to `/lessons/:lessonId`
+
+Do not audit unrelated student pages.
+
+---
+
+# QUESTION 2 — HOW IS A LESSON SESSION CREATED OR REUSED?
+
+Trace only the backend/session path used when the student enters:
+
+`/lessons/:lessonId`
+
+Determine:
+
+* where lesson session lookup occurs
+* where a new `lesson_sessions` row is created
+* whether an existing session is reused
+* what condition causes reuse
+* whether session status/completion affects reuse
+* whether the same student + lesson can have multiple session rows
+
+Give exact file/function/query evidence.
+
+---
+
+# QUESTION 3 — DB CONSTRAINTS
+
+Inspect only the relevant schema for `lesson_sessions`.
+
+Determine:
+
+* primary key
+* student/user foreign key
+* lesson foreign key
+* whether there is a UNIQUE constraint on:
+
+  * student + lesson
+  * user + lesson
+  * another combination
+* whether DB schema already permits multiple sessions for one student + lesson
+
+Do NOT inspect unrelated tables.
+
+---
+
+# QUESTION 4 — WHAT STATE BELONGS TO A SESSION?
+
+For `lesson_sessions`, identify the fields that are session-specific and should start fresh for a new run, including where present:
+
+* currentNodeId
+* currentPhase
+* nodeTeachingStage
+* activeCognitiveLevelId
+* activeLessonExerciseId
+* activeTask / task state
+* activeHelpCount
+* attempts/session counters
+* required session timer state
+* optional continuation
+* completion timestamps
+* other clearly session-local AI Teacher state
+
+Keep this compact.
+
+---
+
+# QUESTION 5 — CHAT HISTORY OWNERSHIP
+
+Determine how `chat_messages` are connected to lesson sessions.
+
+We need to know:
+
+* are chat messages linked by session id?
+* would a new lesson session automatically produce an empty conversation?
+* or does chat history load by student + lesson independently of session?
+
+This matters for a true fresh test.
+
+Give exact code/schema evidence.
+
+---
+
+# QUESTION 6 — PERSISTENT LEARNER HISTORY
+
+Confirm which data must NOT be deleted/reset when the student clicks **«Կրկին սովորել»**.
+
+At minimum inspect the existing relationship with:
+
+* `evidence_events`
+* `knowledge_nodes`
+* mastery / learner-state data
+
+Answer:
+
+> Can we create a fresh lesson session while preserving long-term evidence/mastery history?
+
+YES / NO / PARTIALLY, with evidence.
+
+Do not redesign the learner model.
+
+---
+
+# QUESTION 7 — EXISTING START/RESTART API
+
+Check whether an existing endpoint can already create a new session intentionally.
+
+Examples:
+
+* start lesson
+* create session
+* restart lesson
+* relearn
+* new attempt
+
+If one exists, report it.
+
+If none exists, state:
+
+`NO EXPLICIT NEW-SESSION ENDPOINT FOUND`
+
+Do NOT implement one yet.
+
+---
+
+# QUESTION 8 — SMALLEST SAFE IMPLEMENTATION
+
+Based on the existing architecture, recommend the smallest safe implementation for this desired behavior:
+
+### First time
+
+Student sees:
+
+`Սովորել`
+
+Click:
+→ create/start first session
+→ navigate to `/lessons/:lessonId`
+
+### Already started before
+
+Student sees:
+
+`Կրկին սովորել`
+
+Click:
+→ create a NEW lesson session
+→ fresh session-local state
+→ fresh chat
+→ first MicroNode / first cognitive level
+→ navigate to `/lessons/:lessonId`
+
+Persistent evidence/mastery/history must remain untouched.
+
+Important:
+
+Do not assume a new endpoint is necessary if existing architecture can support it more simply.
+
+---
+
+# IMPORTANT TESTING REQUIREMENT
+
+For our current AI Teacher debugging workflow, repeated runs must be isolated.
+
+After a code fix we should be able to:
+
+`Student page → Կրկին սովորել → NEW SESSION → run the same lesson again from the start`
+
+The previous test session must not leak:
+
+* active cognitive level
+* teaching stage
+* active exercise
+* help count
+* chat history
+* session progression
+
+into the new run.
+
+---
+
+# DO NOT CHANGE ANYTHING
+
+No code changes.
+
+No DB writes.
+
+No session creation.
+
+No deletion.
+
+No reset.
+
+No frontend changes.
+
+No schema changes.
+
+No AI Teacher logic changes.
+
+No broad repository audit.
+
+---
+
+# COST CONTROL
+
+Use minimum tool calls.
+
+Inspect only:
+
+* the student lesson-card button flow
+* lesson/session creation/reuse code
+* relevant session/chat schema
+* persistent evidence relationship
+
+Do not re-audit Mapping, Cognitive Path, Test State Bar, Decision Engine, quiz, or Knowledge Tree.
+
+---
+
+# FINAL REPORT — KEEP SHORT
+
+## A. CURRENT BUTTON FLOW
+
+Exact frontend file + what the button currently does.
+
+## B. SESSION BEHAVIOR
+
+Does entering the lesson:
+
+`CREATE NEW / REUSE EXISTING / OTHER`
+
+Explain briefly.
+
+## C. MULTI-SESSION SUPPORT
+
+DB allows multiple sessions per student+lesson:
+
+`YES / NO`
+
+Include the relevant constraint evidence.
+
+## D. FRESH CHAT SUPPORT
+
+Would a new session naturally get fresh chat history:
+
+`YES / NO / PARTIALLY`
+
+## E. PERSISTENT HISTORY SAFETY
+
+Can evidence/mastery remain untouched:
+
+`YES / NO / PARTIALLY`
+
+## F. EXISTING NEW-SESSION API
+
+`YES — endpoint`
+
+or
+
+`NO EXPLICIT NEW-SESSION ENDPOINT FOUND`
+
+## G. SMALLEST RECOMMENDED IMPLEMENTATION
+
+Give only the minimum implementation needed for:
+
+`Սովորել → first session`
+
+`Կրկին սովորել → new fresh session`
+
+Then STOP.
