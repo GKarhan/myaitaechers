@@ -23,6 +23,7 @@ import {
   shouldDeliverStandaloneSourceExercise,
   type SourceExerciseResolution,
 } from "../lib/exercise-delivery";
+import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
@@ -1512,6 +1513,67 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         },
         "Objective MICRO_CHECK correctness overridden deterministically"
       );
+    }
+
+    // Active typed source exercises have a separate, database-backed correctness
+    // authority from AI-generated MICRO_CHECK payloads. This executes after the
+    // AI response is available but before every status/quality consumer below.
+    if (
+      _intentResult.intent === "ANSWER" &&
+      session?.activeTaskProvenance === "source_exercise" &&
+      session.activeLessonExerciseId != null
+    ) {
+      const [activeSourceExercise] = await db
+        .select({
+          id: lessonExercisesTable.id,
+          exerciseId: lessonExercisesTable.exerciseId,
+          interactionType: lessonExercisesTable.interactionType,
+          correctAnswer: lessonExercisesTable.correctAnswer,
+        })
+        .from(lessonExercisesTable)
+        .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
+        .limit(1);
+
+      if (activeSourceExercise) {
+        const deterministicEvaluation = evaluateDeterministicSourceExerciseAnswer({
+          learnerIntent: _intentResult.intent,
+          activeTaskProvenance: session.activeTaskProvenance,
+          activeLessonExerciseId: session.activeLessonExerciseId,
+          exerciseId: activeSourceExercise.exerciseId,
+          interactionType: activeSourceExercise.interactionType,
+          correctAnswer: activeSourceExercise.correctAnswer,
+          studentAnswer: message,
+        });
+
+        if (deterministicEvaluation) {
+          const isCorrect = deterministicEvaluation.status === "CORRECT";
+          aiResult.answer_evaluation = {
+            ...aiResult.answer_evaluation,
+            status: deterministicEvaluation.status,
+            // Source-exercise evidence retains its existing STRONG/NONE policy.
+            evidence_quality: deterministicEvaluation.evidenceQuality,
+            error_family: isCorrect ? null : aiResult.answer_evaluation.error_family,
+            error_stability: isCorrect ? null : aiResult.answer_evaluation.error_stability,
+            correct_parts: isCorrect
+              ? ["deterministic source answer matched"]
+              : [],
+            incorrect_parts: isCorrect
+              ? []
+              : ["deterministic source answer did not match"],
+          };
+          logger.info(
+            {
+              lessonExerciseId: deterministicEvaluation.lessonExerciseId,
+              exerciseId: deterministicEvaluation.exerciseId,
+              interactionType: deterministicEvaluation.interactionType,
+              normalizedAnswer: deterministicEvaluation.normalizedAnswer,
+              canonicalCorrectAnswer: deterministicEvaluation.canonicalCorrectAnswer,
+              finalStatus: deterministicEvaluation.status,
+            },
+            "Source exercise correctness overridden deterministically"
+          );
+        }
+      }
     }
 
     const finalStatus = aiResult.answer_evaluation.status;

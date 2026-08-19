@@ -34,4 +34,4 @@
 - [Phase 2B Round 2 evidence model](phase2b-round2.md) — help endpoint contract, active-task tracking rules, evidence cap rule (MICRO_CHECK→MODERATE), help_events table, FK query pattern for test DB, Unicode-in-TSX rule.
 - [V2-R3 Decision Engine](v2r3-decision-engine.md) — pure-function pedagogical decision engine; mapErrorFamilyToAction takes pre-increment step; revisitRequired gate bug fixed (quality=NONE must not block KN write).
 - [V2-R4A Learning Budget](v2r4a-budget.md) — session budget snapshot, active-time accounting (turn-based capped), budget-gate decision ordering, TIME≠FAILURE invariant, revisitReason typed enum.
-- [Source exercise activation](source-exercise-activation.md) — delivered source exercises must be activated from the eligible set and rendered by persisted activeLessonExerciseId; model IDs are requests, not authority.
+- [Source exercise activation](source-exercise-activation.md) — delivery and typed scoring use the persisted active lesson-exercise ID; model IDs are requests, not authority.
