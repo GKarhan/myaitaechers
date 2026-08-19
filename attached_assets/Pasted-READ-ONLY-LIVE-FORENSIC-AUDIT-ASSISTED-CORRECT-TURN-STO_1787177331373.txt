@@ -1,0 +1,285 @@
+READ-ONLY LIVE FORENSIC AUDIT — ASSISTED CORRECT TURN STOPS AFTER FEEDBACK
+
+DO NOT IMPLEMENT ANYTHING.
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATABASE.
+DO NOT RESET OR MUTATE SESSION 51.
+DO NOT CALL THE PROVIDER.
+DO NOT START A NEW STAGE.
+
+We have a confirmed live flow after Stage 5.3 / 5.4 / 5.5.
+
+==================================================
+LIVE STATE
+==================================================
+
+Lesson:
+ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Session: 51
+Node: 2107 — Մոլեկուլների շարժումը
+Cognitive level: remember
+
+The first exercise was:
+
+EX-579-1
+
+Learner used the new:
+
+💡 Հուշում
+
+button.
+
+The hint was shown successfully.
+
+Then learner answered:
+
+բ
+
+Server returned:
+
+Ճիշտ պատասխան է։ Շատ լավ, Էլեն։ Դու ճիշտ նշեցիր, որ
+մոլեկուլները նյութերում անընդհատ շարժվում են...
+
+Current debug state after that response:
+
+Level: remember
+Stage: VERIFIED
+Ex: —
+Decision: CONTINUE_COGNITIVE_LEVEL
+Help: 1
+mode=FEEDBACK
+task=✗
+
+Two observed symptoms:
+
+1. The flow STOPPED after FEEDBACK.
+   No next learner-answerable task appeared automatically.
+
+2. The previously displayed HELP hint disappeared after the learner answer.
+   The HELP button also disappeared because task=false.
+
+==================================================
+EXPECTED PEDAGOGICAL FLOW
+==================================================
+
+For an assisted correct answer:
+
+ACTIVE TASK
+→ learner clicks HELP
+→ helpCount increments
+→ same task remains active
+→ learner answers correctly
+→ evaluation uses persisted assistance context
+→ FEEDBACK
+→ assisted success must NOT be treated as sufficient independent mastery
+→ if cognitive-level evidence threshold is still unmet:
+     REQUEST/DELIVER NEW INDEPENDENT CHECK
+→ activate new task
+→ reset per-task HELP state for the new task
+→ learner sees new task
+→ 💡 Հուշում becomes available for that new active task
+→ wait for learner answer
+
+There must be NO artificial:
+
+"օկ"
+"շարունակել"
+"հաջորդը"
+
+turn.
+
+==================================================
+A. AUDIT THE EXACT ANSWER REQUEST
+==================================================
+
+Find the exact POST /api/chat request corresponding to learner answer:
+
+բ
+
+after HELP was used.
+
+Report:
+
+- requestId
+- HTTP status
+- sessionId
+- nodeId
+- cognitive level
+- activeHelpCount before evaluation
+- activeAssistanceLevel before evaluation
+- evaluation result
+- evidence classification
+- Decision Engine result
+- post-feedback continuation action
+- final persisted session state
+- returned assistant messages
+
+==================================================
+B. VERIFY ASSISTANCE SNAPSHOT
+==================================================
+
+Confirm whether the evaluated answer captured:
+
+helpCount = 1
+
+and the correct assistance level BEFORE any task/reset mutation.
+
+Confirm whether the resulting evidence was classified as:
+
+independent
+OR
+assisted
+
+It must not accidentally become independent evidence.
+
+==================================================
+C. VERIFY DECISION AUTHORITY
+==================================================
+
+Explain why the debug state shows:
+
+Decision: CONTINUE_COGNITIVE_LEVEL
+
+Determine whether that is:
+
+1. the authoritative Decision Engine result,
+2. only the immediate feedback action,
+3. or a stale/debug projection that does not show the actual
+   post-feedback continuation action.
+
+Specifically determine whether Stage 5.3 produced:
+
+REQUEST_INDEPENDENT_CHECK
+
+or another equivalent server-owned continuation plan.
+
+==================================================
+D. TRACE POST-FEEDBACK CONTINUATION
+==================================================
+
+Trace:
+
+evaluation
+→ evidence summary
+→ Decision Engine
+→ FEEDBACK
+→ post-feedback action
+→ runPhase2Continuation(...)
+→ task selection
+→ activation
+→ delivery
+→ response construction
+
+Identify the FIRST point where the expected new independent task was lost.
+
+Check whether:
+
+- continuation was never requested,
+- continuation was planned but not dispatched,
+- task selection returned none,
+- just-answered EX-579-1 exclusion caused no candidate,
+- EX-579-2 eligibility failed,
+- generated-task fallback failed,
+- task activated but response omitted it,
+- state was persisted incorrectly as VERIFIED/task=false,
+- frontend received the task but failed to render it.
+
+==================================================
+E. CHECK REMEMBER THRESHOLD
+==================================================
+
+Confirm the actual configured requirement for this node/level.
+
+If remember requires 2 qualifying independent evidence items:
+
+an assisted correct answer must NOT satisfy the remaining threshold by itself.
+
+Report current qualifying evidence as:
+
+x / required
+
+Do not change the threshold.
+
+==================================================
+F. HELP BUTTON BEHAVIOR
+==================================================
+
+Confirm that the button disappearing is simply caused by:
+
+task=false
+
+or identify another frontend visibility defect.
+
+Expected behavior:
+
+no active task
+→ HELP button hidden
+
+new active task
+→ HELP button visible again
+
+Therefore do NOT fix button visibility by showing HELP when no task exists.
+
+==================================================
+G. DISAPPEARING HINT
+==================================================
+
+Separately audit why the displayed hint disappeared after the learner answered.
+
+Determine whether the hint is:
+
+- persisted as a chat assistant/help message,
+- returned only transiently from POST /api/chat/help,
+- stored only in frontend local state,
+- lost when chat history/session state is refreshed.
+
+Report whether disappearing hints are intentional current behavior or a
+frontend persistence/rendering defect.
+
+IMPORTANT:
+Do not solve hint persistence by inserting a fake learner "հուշիր" message.
+
+==================================================
+H. SESSION 51 SAFETY
+==================================================
+
+READ ONLY.
+
+Do not:
+
+- send another learner message
+- click HELP
+- reset
+- continue
+- change evidence
+- change session state
+
+Use existing logs/database state only.
+
+==================================================
+RETURN
+==================================================
+
+A. EXACT ANSWER REQUEST
+B. ASSISTANCE SNAPSHOT
+C. EVIDENCE CLASSIFICATION
+D. CONFIGURED THRESHOLD / CURRENT QUALIFYING EVIDENCE
+E. AUTHORITATIVE DECISION
+F. POST-FEEDBACK CONTINUATION PLAN
+G. FIRST FAILED OWNER
+H. WHY NEXT TASK DID NOT APPEAR
+I. HELP BUTTON VISIBILITY RESULT
+J. WHY THE HINT DISAPPEARED
+K. MINIMAL FIX RECOMMENDATION
+L. REQUIRED REGRESSION TESTS
+M. SESSION 51 SAFETY
+N. VERDICT
+
+End with exactly one:
+
+ROOT CAUSE CONFIRMED — SAFE TO IMPLEMENT MINIMAL FIX
+
+or
+
+ROOT CAUSE NOT YET CONFIRMED — DO NOT IMPLEMENT
