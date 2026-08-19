@@ -1,0 +1,320 @@
+TARGETED FIX ONLY — PERSIST AND DETERMINISTICALLY EVALUATE OBJECTIVE MICRO_CHECK ANSWERS
+
+GOAL
+
+Fix the confirmed ANSWER-KEY GAP.
+
+Current confirmed problem:
+
+AI-generated multiple-choice MICRO_CHECK:
+
+Ա) ...
+Բ) correct option
+
+Student answered:
+բ
+
+But backend had NO persisted answer key.
+
+The next AI evaluation inferred correctness from chat history and incorrectly returned:
+
+INCORRECT
+
+For objective MICRO_CHECK formats, this must become deterministic.
+
+Fix ONLY this.
+
+==================================================
+1. STRUCTURED MICRO_CHECK PAYLOAD
+==================================================
+
+Primary file:
+
+artifacts/api-server/src/services/ai.ts
+
+Extend the structured response contract for objective MICRO_CHECKS with:
+
+- options
+- correct_option
+
+Use a minimal turn-aware design.
+
+Preferred semantics:
+
+multiple_choice:
+- options = structured list of visible options
+- correct_option = canonical option key
+
+true_false:
+- options may be omitted if unnecessary
+- correct_option = canonical true/false value
+
+constructed_response:
+- correct_option = null
+- existing AI-assisted evaluation remains
+
+Do NOT infer the answer key from student_message later.
+
+Use canonical values already used in the app where possible.
+
+==================================================
+2. FORMAT CONTRACT
+==================================================
+
+When interaction_type = multiple_choice:
+
+Require:
+- at least 2 structured options
+- every option has a canonical key and text
+- correct_option matches exactly one option key
+- student_message visible options must correspond to the structured options
+
+When interaction_type = true_false:
+
+Require:
+- correct_option is a canonical true/false value
+- visible question format is true/false
+
+When interaction_type = constructed_response:
+
+- correct_option must be null
+- no deterministic objective-answer comparison is required
+
+Keep this minimal.
+
+==================================================
+3. PERSIST ACTIVE MICRO_CHECK ANSWER DATA
+==================================================
+
+When a MICRO_CHECK is successfully created and activated, persist the objective-answer payload in the active session/task state.
+
+First inspect the current session schema for an existing suitable field.
+
+REUSE existing fields if available.
+
+If no suitable field exists, DO NOT silently invent a large new task model.
+
+Use the smallest safe persistence mechanism consistent with the current architecture.
+
+At minimum the next answer turn must be able to recover:
+
+- actual interaction_type
+- correct_option
+- options if multiple choice
+
+Do not rely only on chat text.
+
+==================================================
+4. DETERMINISTIC ANSWER EVALUATION
+==================================================
+
+In chat.ts, when:
+
+activeTaskProvenance = micro_check
+
+and active interaction type is objective:
+
+- multiple_choice
+- true_false
+
+normalize the student's short answer deterministically and compare it with the persisted correct answer.
+
+Examples:
+
+բ / B / b / Բ)
+→ canonical option B
+
+ճիշտ / true
+→ canonical TRUE
+
+սխալ / false
+→ canonical FALSE
+
+If exact match:
+
+answer_evaluation.status = CORRECT
+
+If exact non-match:
+
+answer_evaluation.status = INCORRECT
+
+Do not ask the model to override that result.
+
+The model may still generate the FEEDBACK wording, but correctness must be backend-owned for objective formats.
+
+==================================================
+5. CONSTRUCTED RESPONSE
+==================================================
+
+Do NOT redesign constructed-response evaluation.
+
+For:
+
+interaction_type = constructed_response
+
+keep the existing AI-assisted evaluation path using:
+
+- success criterion
+- performance objective
+- question context
+
+This task only makes objective formats deterministic.
+
+==================================================
+6. STATE / EVIDENCE INTEGRATION
+==================================================
+
+The deterministic objective result must feed the EXISTING downstream flow:
+
+- evidence quality rules
+- counters
+- Decision Engine
+- Cognitive Path progression
+- remediation
+
+Do not create a parallel progression path.
+
+Where the existing code expects answer_evaluation, inject/override only the objective correctness result in the smallest compatible way.
+
+==================================================
+7. IMPORTANT — ACTIVE TASK SAFETY
+==================================================
+
+The answer key must correspond to the exact active MICRO_CHECK.
+
+Do not allow stale answer keys from:
+
+- previous cognitive level
+- previous question
+- previous session turn
+
+Clear the persisted objective task payload when the active task is cleared, completed, or cognitive level advances.
+
+==================================================
+8. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- linked source exercise progression
+- duplicate exercise delivery
+- Cognitive Path thresholds
+- progression decision rules
+- node completion ownership
+- intent short-answer routing
+- source_fidelity
+- json_schema provider setup
+- start-fresh semantics
+- frontend
+- DB schema unless absolutely unavoidable
+
+IMPORTANT:
+If current schema has NO field capable of safely persisting the active objective task payload and a DB schema change is truly required, STOP BEFORE IMPLEMENTING SCHEMA CHANGE and report the exact smallest field(s) needed.
+
+Do not invent a schema migration without explicit confirmation.
+
+==================================================
+9. COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Inspect only:
+
+1. aiStructuredResponseSchema
+2. session/task state fields in chat.ts / lesson_sessions schema
+3. active MICRO_CHECK creation
+4. answer evaluation override point
+
+No broad audit.
+No browser.
+No provider request.
+
+==================================================
+10. STATIC VERIFICATION
+==================================================
+
+CASE A
+
+Generated multiple_choice:
+options = A/B
+correct_option = B
+student = "բ"
+
+Expected:
+CORRECT
+
+CASE B
+
+same question
+student = "ա"
+
+Expected:
+INCORRECT
+
+CASE C
+
+true_false
+correct_option = TRUE
+student = "ճիշտ"
+
+Expected:
+CORRECT
+
+CASE D
+
+constructed_response
+
+Expected:
+existing AI-assisted evaluation remains unchanged
+
+CASE E
+
+cognitive level advances / task clears
+
+Expected:
+old answer key cannot be reused
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. FILES CHANGED
+
+B. STRUCTURED OBJECTIVE PAYLOAD
+Show exact schema fields.
+
+C. ACTIVE TASK PERSISTENCE
+Where interaction_type / options / correct_option are stored.
+
+If schema change required:
+STOP and report REQUIRED SCHEMA CHANGE.
+
+D. DETERMINISTIC EVALUATION
+Show the small normalization/comparison logic.
+
+E. CONSTRUCTED RESPONSE
+Confirm unchanged.
+
+F. DOWNSTREAM INTEGRATION
+Confirm existing evidence/progression flow remains authoritative.
+
+G. STATIC CASES
+A/B/C/D/E = PASS/FAIL
+
+H. TYPECHECK
+PASS / FAIL
+
+I. RESULT
+
+PASS — objective MICRO_CHECK correctness is now backend-deterministic
+
+or
+
+BLOCKED — schema change required
+
+or
+
+FAIL — exact reason
+
+Then STOP.
