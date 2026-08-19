@@ -1,0 +1,175 @@
+READ-ONLY FORENSIC AUDIT — LATEST POST-INTRO FAILURE AFTER SERVER-OWNED THEORY ENVELOPE
+
+NO CODE CHANGES.
+NO DB WRITES.
+NO PROVIDER REQUEST.
+NO BROWSER TEST.
+
+GOAL
+
+Inspect ONLY the latest failed request for:
+
+session 51
+lesson 579
+node 2107
+Phase 2
+level remember
+Stage THEORY
+
+Student sent:
+"օկ"
+
+Frontend showed:
+"Սխալ տեղի ունեցավ։ Փորձեք կրկին։"
+
+The latest implementation claimed:
+
+- Phase-2 THEORY envelope is server-owned
+- final teaching_mode = TEACH
+- final is_micro_check = true
+- visible-task/content validators remain enforced
+
+We need to prove what actually happened on THIS request.
+
+==================================================
+A. DID SERVER ENVELOPE CANONICALIZATION RUN?
+==================================================
+
+For attempt 1 and attempt 2 report:
+
+- originalTeachingMode
+- originalIsMicroCheck
+- finalTeachingMode after server canonicalization
+- finalIsMicroCheck after server canonicalization
+- whether the log:
+  "Phase-2 THEORY envelope canonicalized by server"
+  appeared
+
+If canonicalization did NOT run, identify the first exact condition preventing it.
+
+==================================================
+B. ATTEMPT 1
+==================================================
+
+Report:
+
+- provider returned content YES/NO
+- finishReason
+- contentLength
+- root shape
+- final teaching_mode
+- final is_micro_check
+- interaction_type
+- options presence/count
+- correct_option
+- source_fidelity.type
+- bounded student_message preview
+
+Then report the FIRST exact validation failure after canonicalization.
+
+Possible categories:
+- visible-task validation
+- multiple-choice options
+- true_false format
+- constructed-response task
+- sentence limit
+- source_fidelity
+- Zod/schema
+- another exact validator
+
+==================================================
+C. ATTEMPT 2
+==================================================
+
+Same fields.
+
+Also report:
+- did retry receive attempt-1 exact failure reason? YES/NO
+- FIRST exact validation failure
+
+==================================================
+D. TERMINAL RESPONSE
+==================================================
+
+Confirm:
+
+- HTTP status
+- STRUCTURED_AI_REQUIRED yes/no
+- callAI fallback used yes/no
+
+==================================================
+E. SESSION SAFETY
+==================================================
+
+Read final persisted state:
+
+- currentPhase
+- currentNodeId
+- activeCognitiveLevelId
+- nodeTeachingStage
+- activeTaskProvenance
+- activeObjectiveTaskPayload
+- activeLessonExerciseId
+
+Expected safe state after failure:
+
+Phase 2
+Node 2107
+remember
+THEORY
+no active task
+
+==================================================
+F. DID THE SERVER-OWNED ENVELOPE FIX WORK?
+==================================================
+
+Choose:
+
+YES — envelope canonicalized correctly; failure is elsewhere
+
+NO — envelope fix did not execute / did not take effect
+
+PARTIAL — exact reason
+
+==================================================
+G. FIRST CONFIRMED ROOT CAUSE
+==================================================
+
+One precise sentence only.
+
+Do not reuse older failures unless they occurred in THIS request.
+
+==================================================
+H. SMALLEST NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest fix based only on this latest failure.
+
+If the envelope worked and failure is another repeated content-contract issue,
+say that clearly.
+
+If multiple independent content validators are now causing repeated terminal
+failures, state whether the current generated THEORY→MICRO_CHECK path is still
+too fragile for runtime use.
+
+==================================================
+I. VERDICT
+==================================================
+
+Choose exactly one:
+
+SERVER ENVELOPE NOT APPLIED
+
+SERVER ENVELOPE PASS / CONTENT VALIDATION FAILED
+
+PROVIDER FAILURE
+
+NEW VALIDATOR REGRESSION
+
+OTHER VALIDATION FAILURE
+
+INSUFFICIENT EVIDENCE
+
+Then STOP.
