@@ -1,0 +1,140 @@
+TARGETED READ-ONLY AUDIT — WHY LATEST PHASE-2 THEORY TURN RETURNED ERROR
+
+Do NOT change code.
+Do NOT write DB.
+Do NOT make an AI/provider request.
+Use only the existing server logs from the latest failed test.
+
+CONTEXT
+
+Lesson 579
+MicroNode 2107
+Session 51
+Phase 2
+Active cognitive level = remember
+
+Fresh test state before failure:
+
+Stage = THEORY
+Ex = null
+task = false
+
+Student confirmed the intro/start flow, but instead of receiving the first
+THEORY + MICRO_CHECK response, frontend displayed:
+
+«Սխալ տեղի ունեցավ։ Փորձեք կրկին։»
+
+We recently added:
+- required MICRO_CHECK `interaction_type`
+- validation against PREFERRED_INTERACTION_TYPES
+- actual-format consistency validation
+- Phase-2 structured-output fallback guard
+
+GOAL
+
+Find the exact failure of this latest request.
+
+Inspect only the relevant existing log entries for this request and the
+small validation path if necessary.
+
+Report:
+
+## A. ATTEMPT 1
+
+Did `callAIStructured()` return content?
+
+If yes:
+- bounded/raw preview already present in logs
+- interaction_type if recoverable
+- is_micro_check if recoverable
+- exact FIRST validation failure
+
+Distinguish:
+
+provider/root JSON failure
+vs Zod schema failure
+vs interaction_type validation
+vs format-consistency validation
+vs another semantic validator.
+
+## B. ATTEMPT 2
+
+Same information for the existing retry.
+
+State the exact failure reason.
+
+## C. PROVIDER DIAGNOSTICS
+
+If the new failure-only diagnostics ran, report only:
+
+- failurePoint
+- finishReason
+- messageKeys
+- contentType
+- contentLength
+- bounded contentPreview
+- refusalPresent
+- toolCallsPresent
+- functionCallPresent
+- parsedPresent
+
+Do not expose secrets/prompts/full provider payloads.
+
+## D. FALLBACK GUARD
+
+Confirm whether the final visible frontend error came from:
+
+STRUCTURED_AI_REQUIRED
+
+and confirm plain-text `callAI()` was NOT used.
+
+## E. SESSION SAFETY
+
+Confirm after the failure whether session remained:
+
+currentPhase = 2
+currentNodeId = 2107
+nodeTeachingStage = THEORY
+activeLessonExerciseId = null
+no active task
+
+Report any difference.
+
+## F. ROOT CAUSE
+
+Give ONE first confirmed cause of this request failure.
+
+Do not speculate beyond logs.
+
+## G. NEXT ACTION
+
+Recommend the smallest next action.
+
+IMPORTANT:
+Do NOT implement anything.
+
+If this was simply a transient provider/model malformed response and retry
+also failed, say so.
+
+If our new interaction_type/format validator rejected otherwise valid
+structured output, identify the exact mismatch.
+
+## H. VERDICT
+
+Use exactly one:
+
+PROVIDER/STRUCTURED OUTPUT FAILURE
+
+or
+
+NEW FORMAT VALIDATION FAILURE
+
+or
+
+OTHER VALIDATION FAILURE
+
+or
+
+INSUFFICIENT EVIDENCE
+
+Then STOP.
