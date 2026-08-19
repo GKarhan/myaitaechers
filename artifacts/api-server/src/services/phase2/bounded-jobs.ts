@@ -137,6 +137,86 @@ export function assertFeedbackDoesNotRevealHiddenContent(
 }
 
 /**
+ * Sentinel error thrown when both bounded THEORY attempts produce a response
+ * that includes a visible answerable task. Callers must catch this specific
+ * type to activate the safe node-content fallback path; all other errors remain
+ * fail-closed and must not trigger the fallback.
+ */
+export class Phase2TheoryExhaustionError extends Error {
+  constructor(public readonly originalMessage: string) {
+    super("phase2_theory_exhausted: both bounded THEORY attempts included a visible task");
+    this.name = "Phase2TheoryExhaustionError";
+  }
+}
+
+/**
+ * Node content available to buildNodeTheoryFallback. Only fields that are
+ * already approved and learner-safe may appear here — evaluator-only content
+ * (answer keys, rubrics, success criteria) must never be passed in.
+ */
+export type NodeTheoryFallbackContent = {
+  title: string;
+  learningObjective?: string | null;
+  theoryContent?: string | null;
+  childFriendlyExplanation?: string | null;
+  basicExamples?: readonly string[] | null;
+};
+
+/**
+ * Composes a short, safe Armenian theory message from approved server-owned
+ * node content. The result is validated with assertTheoryOnly before it is
+ * returned; if the composed text somehow violates the contract, this throws
+ * normally so the call site remains fail-closed for that case.
+ *
+ * This function must ONLY be called after Phase2TheoryExhaustionError — it is
+ * not a general-purpose theory generator. No AI, no provider call.
+ */
+export function buildNodeTheoryFallback(
+  node: NodeTheoryFallbackContent,
+): Phase2TheoryResult {
+  const parts: string[] = [];
+
+  // Preferred: child-friendly explanation — already written for learners.
+  if (node.childFriendlyExplanation && node.childFriendlyExplanation.trim()) {
+    parts.push(node.childFriendlyExplanation.trim());
+  } else if (node.theoryContent && node.theoryContent.trim()) {
+    // Fallback to raw theory content (approved by the teacher).
+    parts.push(node.theoryContent.trim());
+  } else {
+    // Minimal safe intro anchored to the node title.
+    parts.push(`«${node.title}» թեման։`);
+    if (node.learningObjective && node.learningObjective.trim()) {
+      parts.push(node.learningObjective.trim());
+    }
+  }
+
+  // Append basic examples if available and not already embedded.
+  if (
+    Array.isArray(node.basicExamples) &&
+    node.basicExamples.length > 0 &&
+    parts.length < 2
+  ) {
+    const examplesText = node.basicExamples
+      .filter((example) => typeof example === "string" && example.trim())
+      .slice(0, 2)
+      .join("\n");
+    if (examplesText) {
+      parts.push(examplesText);
+    }
+  }
+
+  const student_message = parts.join("\n\n");
+  const result: Phase2TheoryResult = { student_message };
+
+  // Validate the fallback with the same strict guard used for AI-generated
+  // THEORY. If somehow the approved node content contains a task marker, throw
+  // normally — the caller must not persist or continue.
+  assertTheoryOnly(result);
+
+  return result;
+}
+
+/**
  * Final learner-delivery guard: FEEDBACK may explain or encourage, but cannot
  * reverse the authoritative evaluation polarity. The server adds the visible
  * correctness acknowledgement separately.
@@ -275,27 +355,104 @@ async function runBoundedJob<T>(spec: BoundedJobSpec<T>): Promise<T> {
 const ARMENIAN_ONLY =
   "Պատասխանիր միայն հայերենով։ Մի՛ գրիր JSON-ից դուրս ոչինչ։";
 
-export function callPhase2TheoryJob(
+/**
+ * Returns true when the error is specifically an assertTheoryOnly visible-task
+ * rejection. Used to distinguish bounded THEORY exhaustion (both attempts
+ * included a task) from unrelated provider, schema, or safety failures.
+ */
+function isTheoryVisibleTaskError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message === "phase2_theory_result attempted to include a visible task"
+  );
+}
+
+/**
+ * Calls the bounded THEORY job. On both attempts the AI must return pure
+ * explanation text with no answerable task stem. If both attempts violate that
+ * contract specifically, throws Phase2TheoryExhaustionError so the caller can
+ * activate the safe node-content fallback. All other failures (provider errors,
+ * schema errors, JSON parse errors) propagate as-is so the call site stays
+ * fail-closed for unrelated problems.
+ */
+export async function callPhase2TheoryJob(
   messages: ChatMessage[],
   lessonContext: string,
 ): Promise<Phase2TheoryResult> {
-  return runBoundedJob({
-    name: "phase2_theory_result",
-    schema: phase2TheoryResultSchema,
-    maxTokens: 900,
-    messages,
-    validateResult: assertTheoryOnly,
-    systemPrompt: [
-      "Դու myaiteacher-ի THEORY job-ն ես։",
-      "Բացատրիր միայն ընթացիկ MicroNode-ի և cognitive target-ի նյութը։",
-      "Տուր կարճ, հասկանալի բացատրություն՝ առանց հարցի, ընտրանքների կամ պատասխանի բանալու։",
-      "Մի որոշիր workflow, հաջորդ քայլ, առաջընթաց, գնահատում կամ ավարտ։",
-      "Արտածիր միայն {student_message} դաշտը։",
-      ARMENIAN_ONLY,
-      "AUTHORITATIVE EDUCATIONAL CONTEXT:",
-      lessonContext,
-    ].join("\n"),
-  });
+  const systemPrompt = [
+    "Դու myaiteacher-ի THEORY job-ն ես։",
+    "Բացատրիր միայն ընթացիկ MicroNode-ի և cognitive target-ի նյութը։",
+    "Տուր կարճ, հասկանալի բացատրություն՝ առանց հարցի, ընտրանքների կամ պատասխանի բանալու։",
+    "Մի որոշիր workflow, հաջորդ քայլ, առաջընթաց, գնահատում կամ ավարտ։",
+    "Արտածիր միայն {student_message} դաշտը։",
+    ARMENIAN_ONLY,
+    "AUTHORITATIVE EDUCATIONAL CONTEXT:",
+    lessonContext,
+  ].join("\n");
+
+  // Attempt 1 — use runBoundedJob without a validateResult hook so that we can
+  // inspect the first error ourselves. We validate manually after parsing.
+  const runAttempt = async (prompt: string): Promise<Phase2TheoryResult> => {
+    const response = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 900,
+      temperature: 0.4,
+      frequency_penalty: 0.2,
+      response_format: formatForSchema("phase2_theory_result", phase2TheoryResultSchema),
+      messages: [
+        { role: "system", content: prompt },
+        ...messages,
+      ],
+    });
+    const raw = response.choices?.[0]?.message?.content;
+    if (!raw || !raw.trim()) {
+      throw new Error("phase2_theory_result returned empty content");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    } catch (err) {
+      throw new Error(`phase2_theory_result returned invalid JSON: ${String(err)}`);
+    }
+    const result = phase2TheoryResultSchema.parse(parsed);
+    // assertTheoryOnly throws "phase2_theory_result attempted to include a visible task"
+    assertTheoryOnly(result);
+    return result;
+  };
+
+  let firstError: unknown;
+  try {
+    return await runAttempt(systemPrompt);
+  } catch (err) {
+    firstError = err;
+    // Non-visible-task errors (provider, schema, JSON) are fail-closed: rethrow.
+    if (!isTheoryVisibleTaskError(err)) {
+      throw err;
+    }
+  }
+
+  // Attempt 2 — corrective retry with the specific constraint re-stated.
+  const correctionPrompt = [
+    systemPrompt,
+    "",
+    "The previous response failed bounded schema validation.",
+    "Return only one valid JSON object matching the requested contract.",
+    `Validation error: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+    "CRITICAL: Do NOT include any question mark, answerable task, or option list in student_message.",
+  ].join("\n");
+
+  try {
+    return await runAttempt(correctionPrompt);
+  } catch (secondError) {
+    // If the second attempt also produced a visible task, signal exhaustion.
+    // All other second-attempt failures are still fail-closed.
+    if (isTheoryVisibleTaskError(secondError)) {
+      throw new Phase2TheoryExhaustionError(
+        secondError instanceof Error ? secondError.message : String(secondError),
+      );
+    }
+    throw secondError;
+  }
 }
 
 export function callPhase2TaskJob(

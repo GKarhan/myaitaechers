@@ -18,10 +18,12 @@ import {
   assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertTheoryOnly,
+  buildNodeTheoryFallback,
   callPhase2EvaluationJob,
   callPhase2FeedbackJob,
   callPhase2TaskJob,
   callPhase2TheoryJob,
+  Phase2TheoryExhaustionError,
   serverOwnedFeedbackAcknowledgement,
   type Phase2EvaluationResult,
 } from "../services/phase2/bounded-jobs.js";
@@ -2007,6 +2009,82 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
       return;
     } catch (error) {
+      // Stage 5.5 — narrow fallback: both bounded THEORY attempts included a
+      // visible task. Compose safe Armenian theory from approved node content
+      // and persist it, then reuse the existing continuation to deliver the
+      // next answerable task. No evidence, mastery, or cognitive-progression
+      // side effects occur here.
+      if (error instanceof Phase2TheoryExhaustionError && currentNodeRecord) {
+        try {
+          const fallback = buildNodeTheoryFallback({
+            title: currentNodeRecord.title,
+            learningObjective: currentNodeRecord.learningObjective,
+            theoryContent: currentNodeRecord.theoryContent,
+            childFriendlyExplanation: currentNodeRecord.childFriendlyExplanation,
+            basicExamples: currentNodeRecord.basicExamples as readonly string[] | null | undefined,
+          });
+          logger.warn(
+            {
+              sessionId: session.id,
+              nodeId: session.currentNodeId,
+              originalError: error.originalMessage,
+            },
+            "Stage-5.5: both THEORY attempts included a visible task — using safe node-content fallback",
+          );
+          await db
+            .update(lessonSessionsTable)
+            .set({
+              nodeTeachingStage: "TASK_REQUIRED",
+              activeLessonExerciseId: null,
+              activeTaskProvenance: null,
+              activeObjectiveTaskPayload: null,
+              activeAttemptSequence: 0,
+              activeHelpCount: 0,
+              activeAssistanceLevel: "none",
+            } as any)
+            .where(eq(lessonSessionsTable.id, session.id));
+          const [fallbackMessage] = await db
+            .insert(chatMessagesTable)
+            .values({
+              userId: req.userId!,
+              lessonId: lessonId ?? null,
+              role: "assistant",
+              content: fallback.student_message,
+            })
+            .returning();
+          const continuation = await runPhase2Continuation("DELIVER_THEORY");
+          if (continuation) {
+            hasActiveTask = continuation.hasActiveTask;
+            respondWithPersistedPhase2Message(
+              continuation.lastContent,
+              continuation.lastMessageId,
+              continuation.teachingMode,
+              continuation.hasActiveTask,
+            );
+          } else {
+            respondWithPersistedPhase2Message(
+              fallback.student_message,
+              fallbackMessage.id,
+              "TEACH",
+              false,
+            );
+          }
+          return;
+        } catch (fallbackError) {
+          // Fallback itself failed (e.g. approved node content contained a task
+          // marker). Treat as a normal bounded failure so the route stays
+          // fail-closed.
+          logger.error(
+            {
+              sessionId: session.id,
+              err: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            },
+            "Stage-5.5: node-content fallback also failed — closing with bounded failure",
+          );
+          boundedPhase2Failure(fallbackError, "THEORY");
+          return;
+        }
+      }
       boundedPhase2Failure(error, "THEORY");
       return;
     }

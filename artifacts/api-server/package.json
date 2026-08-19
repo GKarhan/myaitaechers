@@ -51,6 +51,7 @@
     "test:stage4-1-remediation": "tsx src/lib/__tests__/stage4-1-remediation.test.ts",
     "test:stage4-1-delivery-eligibility": "tsx src/lib/__tests__/stage4-1-delivery-eligibility.test.ts",
     "test:stage5-continuation": "tsx src/services/phase2/__tests__/continuation.test.ts",
+    "test:phase2-stage55": "tsx src/services/phase2/__tests__/stage5-5-theory-fallback.test.ts",
     "test:v2r3": "tsx src/lib/__tests__/v2r3-decision-engine.test.ts",
     "test:v2r4a4": "tsx src/lib/__tests__/v2r4a4.test.ts"
   },
