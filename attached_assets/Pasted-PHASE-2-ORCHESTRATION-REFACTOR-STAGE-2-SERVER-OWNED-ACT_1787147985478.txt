@@ -1,0 +1,563 @@
+PHASE 2 ORCHESTRATION REFACTOR — STAGE 2
+SERVER-OWNED ACTION PLAN
+ONE CONTROLLED BEHAVIOR CHANGE
+
+Stage 0 regression baseline is complete.
+Stage 1 pure orchestration seam is complete and verified.
+
+Stage 2 now introduces the first intentional behavior change.
+
+==================================================
+GOAL
+==================================================
+
+Make the backend explicitly determine the current Phase-2 pedagogical action
+from authoritative server state BEFORE AI generation.
+
+Target principle:
+
+DB/session facts
+→ server action plan
+→ bounded AI job
+→ server validation
+→ persistence
+
+The AI must no longer be authoritative for deciding the workflow action.
+
+Stage 2 is NOT yet the full THEORY/task split.
+
+This stage only establishes:
+
+SERVER-OWNED ACTION PLAN
+
+and makes current AI workflow fields advisory/compatibility data where safe.
+
+==================================================
+PART 0 — AUDIT CURRENT STAGE-1 SEAM
+==================================================
+
+Before changing behavior, inspect the new Stage-1 pure orchestration module.
+
+Report:
+
+1. exact module/file/function
+2. current inputs
+3. current outputs
+4. where chat.ts invokes it
+5. which decision/policy fields it already derives
+6. which Phase-2 workflow decisions are still read from AI output
+
+Use this seam.
+Do NOT create a parallel second orchestrator.
+
+==================================================
+PART 1 — DEFINE SERVER ACTION PLAN
+==================================================
+
+Introduce one explicit pure Phase-2 action-plan type.
+
+Use repository naming conventions.
+
+Conceptually it should express actions such as:
+
+- DELIVER_THEORY
+- DELIVER_MICRO_CHECK
+- EVALUATE_ACTIVE_TASK
+- DELIVER_FEEDBACK
+- REMEDIATE
+- DELIVER_SOURCE_EXERCISE
+- ADVANCE_COGNITIVE_LEVEL
+- COMPLETE_MICRONODE
+
+BUT:
+
+Do NOT blindly add all of these if current Stage-1 logic does not support them.
+
+Derive the minimum action set from CURRENT runtime states.
+
+For each action define:
+
+- required server state
+- whether AI generation is needed
+- whether an active task may be created
+- whether evaluation is expected
+- whether progression may occur
+
+Keep the action plan pure.
+
+==================================================
+PART 2 — CURRENT STATE → ACTION
+==================================================
+
+The backend must derive the action from:
+
+- currentPhase
+- currentNodeId
+- activeCognitiveLevelId
+- nodeTeachingStage
+- activeTaskProvenance
+- activeLessonExerciseId
+- activeObjectiveTaskPayload
+- learner intent
+- evaluated/not-evaluated state where already available
+- Decision Engine result where applicable
+
+AI output must NOT determine which server action is current.
+
+Examples:
+
+Phase 2 + THEORY + no active task
+→ server action = DELIVER_THEORY
+
+Phase 2 + active MICRO_CHECK + learner ANSWER
+→ server action = EVALUATE_ACTIVE_TASK
+
+Phase 2 + active source exercise + learner ANSWER
+→ server action = EVALUATE_ACTIVE_TASK
+
+evaluated answer + Decision Engine CONTINUE_COGNITIVE_LEVEL
+→ server action = DELIVER_FEEDBACK / PREPARE_NEXT_LEARNING_ACTION
+according to current architecture
+
+ADVANCE_COGNITIVE_LEVEL
+→ server action = ADVANCE_COGNITIVE_LEVEL
+
+Do not invent transitions unsupported by current code.
+
+==================================================
+PART 3 — AI WORKFLOW FIELDS BECOME ADVISORY
+==================================================
+
+For Phase 2 only, classify current AI fields:
+
+- teaching_mode
+- is_micro_check
+- node_decision
+
+as compatibility/advisory fields, not workflow authority.
+
+Do NOT remove them from the schema yet.
+
+Do NOT change provider response format yet.
+
+Instead:
+
+- server action plan is authoritative
+- AI fields may still be validated for content compatibility
+- they must not override a contradictory server action
+
+Example:
+
+server action = DELIVER_THEORY
+
+AI returns:
+teaching_mode = FEEDBACK
+
+The backend must NOT switch workflow into FEEDBACK merely because AI said so.
+
+However:
+
+do not blindly accept feedback-only content as valid theory content.
+Content validation still applies.
+
+==================================================
+PART 4 — THEORY SERVER ACTION
+==================================================
+
+For:
+
+Phase 2
+current node exists
+active Cognitive Path exists
+nodeTeachingStage = THEORY
+no active task
+
+derive:
+
+serverAction = DELIVER_THEORY
+
+This action means:
+
+- current turn is instructional
+- no answer evaluation should be persisted from this fresh theory turn
+- no progression decision may be driven by AI metadata
+- AI generation is requested only as content for the server-selected THEORY action
+
+IMPORTANT:
+
+Do NOT fully split explanation and task generation yet.
+That is the next stage.
+
+For Stage 2, preserve current generated response shape as much as possible.
+
+The change is ownership:
+server selected THEORY action first.
+
+==================================================
+PART 5 — ACTIVE TASK SERVER ACTION
+==================================================
+
+If an active task exists and the learner gives an answer:
+
+serverAction = EVALUATE_ACTIVE_TASK
+
+The exact task authority remains:
+
+generated objective task
+→ activeObjectiveTaskPayload
+
+source exercise
+→ activeLessonExerciseId
+
+Do not modify deterministic scoring.
+
+Do not ask AI whether the current learner message belongs to the task when
+existing deterministic intent/task rules already establish it.
+
+==================================================
+PART 6 — DECISION ENGINE AUTHORITY
+==================================================
+
+After evaluation:
+
+the Pedagogical Decision Engine remains the sole progression-policy authority.
+
+AI node_decision must not determine:
+
+- cognitive-level advance
+- MicroNode completion
+- remediation transition
+- Phase advance
+
+If AI node_decision conflicts with the deterministic engine:
+
+Decision Engine wins.
+
+Preserve current behavior where this is already true.
+
+Stage 2 should make this ownership explicit through the action plan.
+
+==================================================
+PART 7 — RESPONSE METADATA
+==================================================
+
+Derive server response teachingMode from the server action plan wherever safe.
+
+Do not derive it from raw AI teaching_mode when the action plan already knows
+the workflow.
+
+Example mappings may conceptually be:
+
+DELIVER_THEORY → TEACH
+EVALUATE_ACTIVE_TASK → FEEDBACK
+ADVANCE_COGNITIVE_LEVEL → TRANSITION
+
+But preserve existing client behavior.
+
+Do not change frontend API contract.
+
+If exact mapping is ambiguous, keep current response field behavior and report
+the remaining coupling rather than guessing.
+
+==================================================
+PART 8 — CONTENT VALIDATION STILL REQUIRED
+==================================================
+
+This Stage must NOT weaken content validation.
+
+Even when the server knows the action:
+
+DELIVER_THEORY
+
+AI content must still satisfy the current relevant safety/content rules.
+
+Do not treat action ownership as content correctness.
+
+Examples:
+
+- sentence limits remain
+- Armenian/content constraints remain
+- source fidelity remains
+- visible-task validation remains where a task is proposed
+- objective options/correct answer contract remains
+
+==================================================
+PART 9 — NO NEW AI CONTRACT YET
+==================================================
+
+Do NOT yet create:
+
+- explanation-only schema
+- task-candidate-only schema
+- feedback-only schema
+
+Those belong to later stages.
+
+Keep current structured AI schema for compatibility.
+
+Stage 2 is only:
+
+SERVER ACTION FIRST
+AI CONTENT SECOND
+
+==================================================
+PART 10 — FAILURE SEMANTICS
+==================================================
+
+Failed AI generation must not mutate the server action into another action.
+
+Example:
+
+serverAction = DELIVER_THEORY
+AI generation invalid
+
+Expected:
+- session remains safely in current THEORY state
+- no active task
+- no evidence
+- no progression
+- safe failure response
+
+Do not fall back to an unrelated action.
+
+==================================================
+PART 11 — PRESERVE ALL STAGE-0 INVARIANTS
+==================================================
+
+All frozen Stage-0 invariants must remain green.
+
+Especially:
+
+- no active task without visible task
+- feedback-only cannot activate MICRO_CHECK
+- exact source exercise identity
+- deterministic correctness
+- Cognitive Path progression authority
+- no premature MicroNode completion
+- no stale previous-level exercise after cognitive advance
+- safe failure with no phantom evidence/state
+
+==================================================
+PART 12 — REQUIRED TESTS
+==================================================
+
+Add targeted action-plan tests.
+
+CASE A
+
+Phase 2 / THEORY / no active task
+
+Expected:
+server action = DELIVER_THEORY
+
+AI workflow metadata does not select another action.
+
+CASE B
+
+Phase 2 / THEORY
+AI returns teaching_mode=FEEDBACK
+
+Expected:
+server action remains DELIVER_THEORY
+
+Content may still fail validation if inappropriate.
+
+CASE C
+
+Active generated MICRO_CHECK + learner ANSWER
+
+Expected:
+server action = EVALUATE_ACTIVE_TASK
+
+CASE D
+
+Active source exercise + learner ANSWER
+
+Expected:
+server action = EVALUATE_ACTIVE_TASK
+
+CASE E
+
+Decision Engine = CONTINUE_COGNITIVE_LEVEL
+
+Expected:
+server progression/action derived from engine result,
+not AI node_decision.
+
+CASE F
+
+Decision Engine = ADVANCE_COGNITIVE_LEVEL
+
+Expected:
+action = ADVANCE_COGNITIVE_LEVEL
+same node
+next level
+Stage THEORY
+
+CASE G
+
+Decision Engine allows target-ceiling completion
+
+Expected:
+completion action allowed.
+
+CASE H
+
+AI node_decision conflicts with deterministic Decision Engine
+
+Expected:
+Decision Engine wins.
+
+CASE I
+
+AI generation fails during DELIVER_THEORY
+
+Expected:
+action does not change
+safe state preserved.
+
+CASE J
+
+Phase 1 / 3 / 4
+
+Expected:
+Stage-2 Phase-2 action-plan override does not apply.
+
+==================================================
+PART 13 — BEHAVIOR CHANGE BOUNDARY
+==================================================
+
+This Stage intentionally changes only one thing:
+
+Phase-2 workflow action ownership becomes server-owned.
+
+Do NOT intentionally change:
+
+- learner-facing wording
+- task-generation strategy
+- source-exercise selection
+- evidence thresholds
+- scoring
+- progression policy
+- provider/model
+- frontend
+- DB schema
+- mapping
+- teacher CRUD
+- quizzes
+- Knowledge Tree
+
+If learner-facing content changes incidentally due to removal of an AI workflow
+branch, report it explicitly.
+
+==================================================
+PART 14 — ARCHITECTURE MAP
+==================================================
+
+After implementation provide the actual Stage-2 flow:
+
+HTTP request
+→ session/context load
+→ server action planner
+→ bounded current AI call
+→ content validation
+→ task/evaluation authority
+→ Decision Engine
+→ state/evidence persistence
+→ response mapping
+
+For every step report:
+
+- owner
+- input
+- output
+- side effect or pure
+
+Also list any workflow authority still held by AI after Stage 2.
+
+==================================================
+PART 15 — ROLLBACK
+==================================================
+
+Use the Stage-1 seam as the rollback boundary.
+
+Do not remove legacy compatibility fields or route branches yet.
+
+The change should be reversible without DB changes.
+
+No migration.
+
+==================================================
+PART 16 — TEST / TYPECHECK
+==================================================
+
+Run:
+
+- Stage-0 full regression baseline
+- Stage-1 extraction suite
+- new Stage-2 action-plan tests
+- all affected Phase-2 suites
+- API TypeScript typecheck
+- git diff --check
+
+Do not rely only on mocked planner tests.
+Include route-level parity/authority checks where practical.
+
+==================================================
+STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED if:
+
+- server action cannot be derived unambiguously from current authoritative state
+- adopting server action would change evidence/progression semantics beyond scope
+- AI workflow metadata is still required for an unresolved safety decision
+- Stage-0 frozen invariants regress
+
+Do not patch around such a blocker.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. PRE-CHANGE STAGE-1 SEAM
+
+B. FILES CHANGED
+
+C. ACTION-PLAN CONTRACT
+
+D. STATE → ACTION RULES
+
+E. AI FIELDS NOW ADVISORY
+
+F. THEORY ACTION OWNERSHIP
+
+G. ACTIVE-TASK ACTION OWNERSHIP
+
+H. DECISION ENGINE AUTHORITY
+
+I. FAILURE SEMANTICS
+
+J. STAGE-0 / STAGE-1 REGRESSION RESULTS
+
+K. NEW STAGE-2 TESTS
+
+L. BEHAVIOR CHANGED
+Describe the one intended ownership change.
+
+M. REMAINING AI WORKFLOW AUTHORITY
+
+N. POST-CHANGE ARCHITECTURE MAP
+
+O. TYPECHECK / DIFF
+
+P. STAGE-3 READINESS
+READY / NOT READY
+
+Q. RESULT
+PASS / PARTIAL / BLOCKED
+
+Do not start Stage 3.
+Do not broaden scope.
