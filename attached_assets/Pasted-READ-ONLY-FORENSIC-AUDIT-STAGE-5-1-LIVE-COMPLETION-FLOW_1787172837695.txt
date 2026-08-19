@@ -1,0 +1,942 @@
+READ-ONLY FORENSIC AUDIT — STAGE 5.1 LIVE COMPLETION FLOW
+SESSION 51 / NODE 2107
+
+AUDIT ONLY — DO NOT IMPLEMENT ANY FIX.
+
+==================================================
+CRITICAL SCOPE
+==================================================
+
+READ-ONLY FORENSIC AUDIT ONLY.
+
+DO NOT:
+
+- change code
+- change database
+- change tests
+- restart workflows
+- call AI/provider
+- mutate session 51
+- reset session 51
+- continue the learner conversation
+- start Phase 3
+- implement a fix
+- repair evidence
+- delete messages
+- change Cognitive Path policy
+- change Decision Engine rules
+
+Use only:
+
+- current source code
+- persisted session 51 state
+- persisted chat_messages
+- persisted evidence/events
+- Cognitive Path configuration
+- lesson_exercises
+- current runtime/server logs already available
+- Stage 3/4/5/5.1 implementation
+- existing test/configuration files where useful
+
+If historical data was not persisted/logged, report:
+
+NOT RECOVERABLE
+
+Do not infer hidden runtime facts from learner-facing wording.
+
+==================================================
+LIVE TEST CONTEXT
+==================================================
+
+Lesson:
+
+ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Session:
+
+51
+
+MicroNode:
+
+2107 — Մոլեկուլների շարժումը
+
+The learner performed this live Phase-2 sequence.
+
+INITIAL:
+
+Learner:
+օկ
+
+The system automatically delivered THEORY and then:
+
+EX-579-1
+DB id = 940
+
+Question:
+
+Ո՞ր պնդումն է ճիշտ մոլեկուլների շարժման մասին։
+
+Ա) Մոլեկուլները շարժվում են միայն նյութը տաքացնելիս։
+Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։
+Գ) Մոլեկուլները շարժվում են միայն գազերում։
+Դ) Մոլեկուլները հանգիստ վիճակում ընդհանրապես չեն շարժվում։
+
+Learner deliberately answered:
+
+ա
+
+System FEEDBACK:
+
+"Պատասխանը ճիշտ չէ։ Էլեն, հիշիր օծանելիքի և պղնձարջասպի
+լուծույթի օրինակները։ Մոլեկուլները շարժվում են անընդհատ՝ անկախ
+նյութի ագրեգատային վիճակից։ Փորձիր նորից պատասխանել՝ հիմնվելով
+այս փաստերի վրա։"
+
+Learner then answered:
+
+բ
+
+System FEEDBACK:
+
+"Ճիշտ պատասխան է։ Շատ լավ, Էլեն։ Դու ճիշտ նկատեցիր, որ
+մոլեկուլները նյութերում անընդհատ շարժվում են՝ անկախ արտաքին
+պայմաններից։ Այժմ կարող ենք անցնել հաջորդ թեմային։"
+
+Immediately afterward, a separate AI Teacher message appeared:
+
+"Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։"
+
+Then the system automatically delivered:
+
+EX-579-3
+DB id = 942
+
+Question:
+
+Պղնձարջասպի լուծույթի և ջրի փորձը ինչպե՞ս է ցույց տալիս,
+որ մոլեկուլներն անընդհատ շարժվում են։
+
+Learner answered:
+
+"Ժամանակի ընթացքում պղնձարջասպի լուծույթը տարածվում է ջրի մեջ,
+որովհետև ջրի և պղնձարջասպի մոլեկուլներն անընդհատ շարժվում և
+խառնվում են իրար։"
+
+System FEEDBACK:
+
+"Ճիշտ պատասխան է։ Շատ լավ, Էլեն։ Դու ճիշտ նկատեցիր, որ
+պղնձարջասպի լուծույթի տարածումը ջրում ապացուցում է մոլեկուլների
+անընդհատ շարժումը։ Հիմա ավելի մանրամասն նկարագրիր՝ ինչպես է
+տեղի ունենում այդ շարժումը և ինչու սկզբում լուծույթը չի խառնվում
+ջրին։"
+
+Final visible state:
+
+Progress = 50%
+
+Phase 2 = completed
+Phase 3 = active/available
+
+Debug:
+
+Node: Մոլեկուլների շարժումը [—]
+Level: —
+Stage: THEORY
+Ex: —
+Decision: COMPLETE_NODE
+Help: 0
+Step: 1/1
+sess=51
+ph=3
+mode=FEEDBACK
+task=false
+
+IMPORTANT:
+
+The learner has NOT started Phase 3 after this state.
+
+Do not mutate this state.
+
+==================================================
+PRIMARY QUESTIONS
+==================================================
+
+We need to determine three things:
+
+ISSUE A
+Was COMPLETE_NODE correct and fully justified by the configured Cognitive Path
+and evidence, or did the system complete MicroNode 2107 prematurely?
+
+ISSUE B
+Why did learner-facing FEEDBACK ask another question after the backend had
+already selected COMPLETE_NODE and moved to Phase 3?
+
+ISSUE C
+Why did this standalone assistant message appear after the correct EX-579-1
+answer:
+
+"Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։"
+
+==================================================
+A. EXACT LIVE REQUEST TIMELINE
+==================================================
+
+Reconstruct the exact persisted/logged request timeline for this final live run.
+
+Start from the learner's initial "օկ" and continue through the final
+constructed-response answer.
+
+For each learner request report:
+
+- timestamp
+- learner message ID
+- learner input
+- request-start phase
+- currentNodeId
+- cognitive level
+- nodeTeachingStage
+- activeTaskProvenance
+- activeLessonExerciseId
+- activeObjectiveTaskPayload presence
+- server action before processing
+- authoritative evaluation, if applicable
+- evidence effect
+- Decision Engine result
+- bounded jobs invoked
+- continuation steps
+- assistant rows persisted
+- final state after request
+
+Do not mix this run with earlier session-51 runs.
+
+If session reset markers exist, identify the exact boundary of this run.
+
+==================================================
+B. COGNITIVE PATH CONFIGURATION
+==================================================
+
+For MicroNode 2107, retrieve the exact active Cognitive Path configuration.
+
+Report every cognitive level configured for this MicroNode in sequence.
+
+For each level report:
+
+- cognitive level ID
+- name
+- sequence/order
+- Bloom/cognitive level
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimum qualifying evidence required
+- minimum independent evidence required
+- evidence quality requirements
+- attempt/remediation limits if configured
+- advancement requirements
+- whether it is required for MicroNode completion
+
+Do not infer configuration from the visible UI.
+
+Use authoritative persisted/configured data.
+
+==================================================
+C. EXPECTED COMPLETION POLICY
+==================================================
+
+Trace the current code that determines whether MicroNode 2107 may complete.
+
+Report:
+
+FILE
+FUNCTION
+INPUTS
+CONDITIONS
+OUTPUT
+
+Answer specifically:
+
+Does COMPLETE_NODE require:
+
+- only the current cognitive level to pass?
+- all configured cognitive levels to pass?
+- target cognitive level to pass?
+- a demonstrated cognitive ceiling?
+- a minimum number of qualifying evidence events?
+- independent evidence?
+- STRONG evidence?
+- another exact combination?
+
+State the exact current policy.
+
+==================================================
+D. FULL EVIDENCE LEDGER FOR THIS LIVE RUN
+==================================================
+
+Build a read-only evidence ledger for node 2107 for this specific run.
+
+Include each relevant learner answer:
+
+1. EX-579-1 → "ա"
+2. EX-579-1 → "բ"
+3. EX-579-3 → constructed response
+
+For each report:
+
+- exercise/task
+- cognitive level at time of answer
+- attempt number
+- normalized answer where applicable
+- authoritative correctness
+- evidence quality
+- independent / assisted
+- help count
+- error family
+- evidence event ID if persisted
+- qualifying for progression YES/NO
+- effect on:
+  - attempt count
+  - qualifying evidence count
+  - consecutive correct
+  - consecutive incorrect
+  - mastery evidence
+  - demonstrated cognitive level/ceiling if applicable
+
+Also identify any PRE-EXISTING evidence from earlier session-51 runs that was
+still counted in this live run.
+
+This is critical.
+
+The UI before testing previously showed accumulated state such as:
+
+✓ 5/1
+
+Determine whether old evidence survived reset/restart and contributed to
+COMPLETE_NODE.
+
+==================================================
+E. REMEMBER LEVEL TRACE
+==================================================
+
+For the remember level:
+
+Trace:
+
+initial state
+→ learner "ա" INCORRECT
+→ remediation
+→ learner "բ" CORRECT
+→ resulting evidence/counters
+→ Decision Engine result
+→ next level/state
+
+Report exactly why the system advanced from remember to understand.
+
+Was that advancement justified by current policy?
+
+YES / NO
+
+==================================================
+F. UNDERSTAND LEVEL TRACE
+==================================================
+
+For the understand level:
+
+Trace:
+
+state before EX-579-3
+→ constructed response
+→ bounded EVALUATION
+→ validated evaluation
+→ evidence/counters
+→ Decision Engine
+→ progression plan
+
+Report:
+
+- qualifying evidence count BEFORE EX-579-3
+- qualifying evidence count contributed by EX-579-3
+- qualifying evidence count AFTER EX-579-3
+- required threshold
+- current demonstrated ceiling
+- target level
+- Decision Engine metaAction
+- mayCompleteMicroNode
+- completion reason
+
+==================================================
+G. COMPLETE_NODE ROOT TRACE
+==================================================
+
+Identify the exact point where:
+
+COMPLETE_NODE
+
+was selected.
+
+Report:
+
+- function
+- file
+- input state
+- Decision Engine output
+- progression-plan output
+- completion gate result
+- DB update owner
+- currentNodeId clearing
+- phase transition owner
+
+Then answer:
+
+Was COMPLETE_NODE selected because:
+
+1. all required Cognitive Path levels were genuinely satisfied
+2. accumulated historical evidence satisfied the gate
+3. only current level satisfaction incorrectly triggered completion
+4. stale counters/evidence triggered completion
+5. completion policy is intentionally less strict than expected
+6. another exact reason
+
+Use evidence, not assumption.
+
+==================================================
+H. HISTORICAL EVIDENCE CONTAMINATION CHECK
+==================================================
+
+Session 51 has been used repeatedly during development testing.
+
+Audit whether reset/restart operations used before this live test cleared:
+
+- chat_messages
+- active task
+- active cognitive level
+- node attempt counters
+- qualifying evidence counters
+- consecutive-correct counters
+- evidenceEvents
+- mastery state
+- demonstrated cognitive ceiling
+- completion state
+
+Report each as:
+
+CLEARED
+PRESERVED
+NOT APPLICABLE
+NOT RECOVERABLE
+
+Determine whether this test was actually a clean learning run.
+
+If not, quantify which historical state influenced progression.
+
+==================================================
+I. SHOULD NODE 2107 HAVE COMPLETED?
+==================================================
+
+Give one explicit verdict:
+
+YES — COMPLETION VALID
+
+NO — PREMATURE COMPLETION
+
+NOT PROVABLE
+
+Then explain using:
+
+configured Cognitive Path
++
+actual evidence ledger
++
+Decision Engine policy
++
+historical state
+
+Do not judge based on how many visible questions "feel" sufficient.
+
+==================================================
+J. PHASE TRANSITION TRACE
+==================================================
+
+Trace:
+
+COMPLETE_NODE
+→ node completion
+→ Phase 2 completion
+→ Phase 3 activation
+
+Report:
+
+- which function completed node 2107
+- why currentNodeId became null/—
+- why cognitive level became —
+- why nodeTeachingStage became THEORY
+- why currentPhase became 3
+- whether Phase 3 transition was automatic
+- whether this matches current approved architecture
+
+Determine whether:
+
+Stage=THEORY + ph=3 + mode=FEEDBACK
+
+is a valid transitional state or a stale mixed-state artifact.
+
+==================================================
+K. FINAL FEEDBACK INPUT
+==================================================
+
+For EX-579-3 final bounded FEEDBACK call, retrieve the exact authoritative
+inputs supplied to FEEDBACK.
+
+Report:
+
+- authoritative evaluation status
+- evidence quality
+- error family
+- Decision Engine metaAction
+- remediationAction
+- progression action
+- COMPLETE_NODE visibility to FEEDBACK
+- next server action if supplied
+- whether FEEDBACK knew the node was complete
+- whether FEEDBACK knew Phase 3 would follow
+
+Do not expose hidden rubric text.
+
+==================================================
+L. FINAL FEEDBACK OUTPUT
+==================================================
+
+The output was:
+
+"Ճիշտ պատասխան է։ Շատ լավ, Էլեն։ Դու ճիշտ նկատեցիր, որ
+պղնձարջասպի լուծույթի տարածումը ջրում ապացուցում է մոլեկուլների
+անընդհատ շարժումը։ Հիմա ավելի մանրամասն նկարագրիր՝ ինչպես է
+տեղի ունենում այդ շարժումը և ինչու սկզբում լուծույթը չի խառնվում
+ջրին։"
+
+Split this into:
+
+SERVER-OWNED ACKNOWLEDGEMENT
+
+AI-GENERATED EXPLANATION/REMEDIATION
+
+if current architecture allows exact separation.
+
+Identify exactly which component produced:
+
+"Հիմա ավելի մանրամասն նկարագրիր..."
+
+==================================================
+M. FEEDBACK MUST NOT CREATE A NEW TASK
+==================================================
+
+Audit whether bounded FEEDBACK is currently allowed to:
+
+- ask a new question
+- request another answer
+- tell learner "try again"
+- imply another task
+- append a task-like instruction
+
+Recall Stage 3 invariant:
+
+FEEDBACK = learner-facing feedback only.
+
+FEEDBACK must not create or activate the next task.
+
+Determine whether the sentence:
+
+"Հիմա ավելի մանրամասն նկարագրիր՝..."
+
+is semantically a NEW LEARNER TASK even though no active task was persisted.
+
+Return:
+
+YES
+NO
+AMBIGUOUS
+
+with code/contract evidence.
+
+==================================================
+N. FEEDBACK ACTION-CONSISTENCY VALIDATION
+==================================================
+
+Audit the current FEEDBACK validator/guard after Stage 5.1.
+
+We already added correctness-polarity protection.
+
+Determine whether it ALSO validates consistency with server action.
+
+For example:
+
+COMPLETE_NODE
+→ FEEDBACK must not ask learner to continue working on the completed task/node
+
+ADVANCE_COGNITIVE_LEVEL
+→ FEEDBACK must not imply staying on old task unless intended
+
+CONTINUE_COGNITIVE_LEVEL
+→ FEEDBACK may explain/remediate but must not invent an unpersisted task
+
+Report current enforcement:
+
+STRONG
+PARTIAL
+NONE
+
+Do not implement.
+
+==================================================
+O. FINAL FEEDBACK ROOT CAUSE
+==================================================
+
+Classify the final FEEDBACK issue:
+
+1. FEEDBACK PROMPT GAP
+   AI was not told strongly enough that COMPLETE_NODE had occurred.
+
+2. FEEDBACK INPUT GAP
+   COMPLETE_NODE / next action was not supplied to FEEDBACK.
+
+3. FEEDBACK VALIDATION GAP
+   AI received correct action but validator allowed contradictory task-like
+   wording.
+
+4. FEEDBACK COMPOSITION GAP
+   server and AI wording were combined incorrectly.
+
+5. MULTIPLE LINKED GAPS
+
+6. NO BUG
+
+7. NOT RECOVERABLE
+
+Provide direct evidence.
+
+==================================================
+P. STANDALONE "Բ)" MESSAGE — DB TRACE
+==================================================
+
+Find the exact persisted assistant row corresponding to:
+
+"Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։"
+
+Report:
+
+- chat_message ID
+- timestamp
+- role
+- exact content
+- request/turn linkage if persisted
+- metadata
+- source/exercise linkage if persisted
+- whether it was returned in the same HTTP response as FEEDBACK
+- whether it was generated during automatic continuation
+
+If no DB row exists, report that explicitly.
+
+==================================================
+Q. STANDALONE "Բ)" MESSAGE — WRITER TRACE
+==================================================
+
+Trace every possible code path that could produce exactly the correct-option
+text as a standalone assistant message.
+
+Inspect:
+
+- source exercise renderer
+- source answer feedback
+- continuation coordinator
+- deterministic evaluation response
+- FEEDBACK composition
+- answer-key rendering
+- transition rendering
+- source exercise delivery helpers
+- compatibility paths
+- frontend message splitting/rendering
+
+Identify the exact writer if evidence permits.
+
+==================================================
+R. ANSWER-KEY LEAK CHECK
+==================================================
+
+The standalone message exposed:
+
+"Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։"
+
+Determine whether this was:
+
+- intentional post-answer explanation
+- source task rendering fragment
+- evaluator-only correctAnswer leakage
+- continuation artifact
+- FEEDBACK artifact
+- frontend artifact
+- another exact source
+
+Check Stage 4/4.1 boundary invariants.
+
+Specifically answer:
+
+Did evaluator-only `correctAnswer` cross into a learner-facing payload through
+a path that Stage 4 intended to prohibit?
+
+YES / NO / NOT PROVABLE
+
+Important:
+
+Do NOT expose any additional hidden answer keys in the report.
+
+==================================================
+S. STANDALONE MESSAGE ROOT CAUSE
+==================================================
+
+Classify:
+
+1. ANSWER-KEY LEAK
+2. SOURCE RENDERING BUG
+3. CONTINUATION DOUBLE/FRAGMENT EMISSION
+4. FEEDBACK COMPOSITION BUG
+5. FRONTEND RENDERING BUG
+6. INTENDED CURRENT BEHAVIOR
+7. ANOTHER EXACT CAUSE
+8. NOT RECOVERABLE
+
+Provide evidence.
+
+==================================================
+T. ONE REQUEST → MESSAGE SEQUENCE
+==================================================
+
+For the learner's correct "բ" request, reconstruct the exact ordered assistant
+message sequence produced by the backend.
+
+Conceptually determine whether it was:
+
+learner "բ"
+→ FEEDBACK
+→ standalone "Բ)..."
+→ EX-579-3
+
+or whether frontend rendering created that appearance.
+
+Report exact backend order from persisted rows/response/logs.
+
+==================================================
+U. STAGE 5.1 CONTINUATION ACCEPTANCE
+==================================================
+
+Evaluate this live run against:
+
+U1.
+Wrong objective answer correctly evaluated.
+PASS / FAIL
+
+U2.
+Wrong answer receives correctness-consistent FEEDBACK.
+PASS / FAIL
+
+U3.
+Remediation keeps/returns learner to a real answerable task.
+PASS / FAIL
+
+U4.
+Correct answer continues automatically.
+PASS / FAIL
+
+U5.
+No artificial "օկ" required between server-owned actions.
+PASS / FAIL
+
+U6.
+Constructed response evaluated before Decision Engine.
+PASS / FAIL / NOT PROVABLE
+
+U7.
+No VERIFIED + no-task dead end.
+PASS / FAIL
+
+U8.
+Node completion obeys configured Cognitive Path.
+PASS / FAIL / NOT PROVABLE
+
+U9.
+FEEDBACK does not invent an unpersisted learner task.
+PASS / FAIL
+
+U10.
+No evaluator-only content leaks into learner messages.
+PASS / FAIL / NOT PROVABLE
+
+U11.
+One learner answer creates only intended evidence effects.
+PASS / FAIL / NOT PROVABLE
+
+==================================================
+V. ROOT-CAUSE MAP
+==================================================
+
+Create a compact map:
+
+OBSERVATION
+→ AUTHORITATIVE OWNER
+→ ACTUAL STATE
+→ ROOT CAUSE
+→ SEVERITY
+
+For:
+
+1. COMPLETE_NODE
+2. final task-like FEEDBACK
+3. standalone "Բ)" message
+
+Keep the three issues separate unless evidence proves they share a cause.
+
+==================================================
+W. SMALLEST SAFE FIX PROPOSALS
+==================================================
+
+DO NOT IMPLEMENT.
+
+Only for CONFIRMED bugs, propose the smallest fix.
+
+Preserve:
+
+- Stage 3 bounded THEORY/TASK/EVALUATION/FEEDBACK
+- Stage 4/4.1 content boundary
+- Stage 5 automatic continuation
+- Stage 5.1 correctness authority
+- deterministic evaluation
+- bounded constructed-response EVALUATION
+- Decision Engine authority
+- Cognitive Path thresholds
+- evidence semantics
+- no artificial "օկ"
+- one answer → intended evidence
+- exact source exercise identity
+- HELP safety
+
+For each:
+
+ROOT CAUSE
+→ OWNER TO CHANGE
+→ SMALLEST CHANGE
+→ REQUIRED REGRESSION TESTS
+
+Do not propose a broad rewrite.
+
+==================================================
+X. REQUIRED FUTURE REGRESSION TEST PLAN
+==================================================
+
+DO NOT ADD TESTS.
+
+Specify tests for any confirmed issue.
+
+At minimum consider:
+
+X1.
+COMPLETE_NODE only when configured completion gate is satisfied.
+
+X2.
+Historical evidence/reset semantics explicitly tested.
+
+X3.
+COMPLETE_NODE FEEDBACK cannot ask a new learner question.
+
+X4.
+FEEDBACK cannot create an unpersisted task.
+
+X5.
+Correct source answer
+→ FEEDBACK
+→ next task
+without standalone answer-key fragment.
+
+X6.
+Evaluator-only correctAnswer cannot appear as an independent learner message
+unless explicitly part of an approved learner-safe explanation contract.
+
+X7.
+Automatic continuation still works.
+
+X8.
+No VERIFIED/no-task dead end regression.
+
+X9.
+Wrong answer remediation still works.
+
+X10.
+One learner answer → intended evidence exactly once.
+
+==================================================
+Y. SEVERITY
+==================================================
+
+Rank confirmed issues:
+
+CRITICAL
+HIGH
+MEDIUM
+LOW
+
+Consider separately:
+
+- premature mastery/completion
+- evidence corruption
+- learner-facing phantom task
+- answer-key/content leakage
+- confusing extra message
+
+Do not inflate severity without evidence.
+
+==================================================
+Z. FINAL VERDICT
+==================================================
+
+Return:
+
+COMPLETION:
+VALID / PREMATURE / NOT PROVABLE
+
+FINAL FEEDBACK:
+VALID / TASK-LIKE BUG / OTHER BUG / NOT PROVABLE
+
+STANDALONE "Բ)" MESSAGE:
+INTENDED / BUG / ANSWER-KEY LEAK / NOT PROVABLE
+
+HISTORICAL EVIDENCE CONTAMINATION:
+YES / NO / NOT PROVABLE
+
+STAGE 5.1 LIVE ACCEPTANCE:
+PASS / PARTIAL / FAIL
+
+Then:
+
+IMPLEMENTATION:
+NOT PERFORMED
+
+TEST CHANGES:
+NONE
+
+DATABASE MUTATION:
+NONE
+
+SESSION 51 MUTATION:
+NONE
+
+PROVIDER CALL:
+NONE
+
+PHASE 3 STARTED:
+NO
+
+Finally provide:
+
+NEXT RECOMMENDED ACTION:
+one concise recommendation only.
+
+Then STOP.
+
+Do not implement anything.
