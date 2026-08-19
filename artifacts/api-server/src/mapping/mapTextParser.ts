@@ -39,7 +39,7 @@ function matchSectionMarker(line: string): { type: SectionType; id: string | nul
   if ((m = line.match(/^NODE (N\d+)$/)))             return { type: "NODE",         id: m[1] };
   if ((m = line.match(/^MICRONODE (MN-\d+\.\d+)$/))) return { type: "MICRONODE",    id: m[1] };
   if ((m = line.match(/^SOURCE BLOCK (B\d+)$/)))     return { type: "SOURCE_BLOCK", id: m[1] };
-  if ((m = line.match(/^EXERCISE (EX-\d+)$/)))       return { type: "EXERCISE",     id: m[1] };
+  if ((m = line.match(/^EXERCISE (EX-\d+(?:-\d+)*)$/))) return { type: "EXERCISE",   id: m[1] };
   if ((m = line.match(/^DEPENDENCY (D\d+)$/)))       return { type: "DEPENDENCY",   id: m[1] };
 
   return null;
@@ -167,11 +167,19 @@ function buildSourceBlock(raw: RawSection): ParsedSourceBlock {
 
 function buildExercise(raw: RawSection): ParsedExercise {
   const f = raw.fields;
+  const legacyText = (f["text"] ?? "").trim();
+  const verbatimText = (f["verbatimText"] ?? legacyText).trim();
+  const learnerText = (f["learnerText"] ?? legacyText).trim();
   return {
     id:               raw.id ?? "",
     sourcePage:       parseIntOrNull(f["sourcePage"] ?? ""),
     sequence:         parseIntOrNull(f["sequence"]   ?? "") ?? 0,
-    text:             (f["text"]          ?? "").trim(),
+    text:             learnerText,
+    verbatimText,
+    learnerText,
+    sourceText:       parseExplicitTextOrNull(f["sourceText"]),
+    successCriteria:  parseExplicitTextOrNull(f["successCriteria"]),
+    sourceBlockId:    parseExplicitTextOrNull(f["sourceBlockId"]),
     exerciseType:     (f["exerciseType"]  ?? "").trim(),
     difficulty:       (f["difficulty"]    ?? "").trim(),
     interactionType:  parseExplicitTextOrNull(f["interactionType"]),

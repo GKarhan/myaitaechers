@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   assertFeedbackOnly,
+  assertFeedbackDoesNotRevealHiddenContent,
   phase2EvaluationResultSchema,
   phase2FeedbackResultSchema,
   phase2TaskCandidateSchema,
@@ -44,6 +45,13 @@ function test(name: string, run: () => void): void {
 }
 
 console.log("\n▶ Phase 2 Stage 3 Bounded Jobs\n");
+
+test("Stage 4 — FEEDBACK rejects evaluator-only criteria disclosure", () => {
+  assert.throws(() => assertFeedbackDoesNotRevealHiddenContent(
+    { student_message: "Լավ սկիզբ։ Պատասխանը պետք է ներառի մոլեկուլների անկանոն շարժումը։" },
+    ["Պատասխանը պետք է ներառի մոլեկուլների անկանոն շարժումը։"],
+  ));
+});
 
 test("A — THEORY contract carries explanation text only", () => {
   const result = phase2TheoryResultSchema.parse({

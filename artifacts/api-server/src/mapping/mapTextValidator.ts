@@ -28,12 +28,13 @@ import {
   E_REF_DEP_FROM_UNKNOWN, E_REF_DEP_TO_UNKNOWN,
   E_UNREADABLE_BLOCK_REF,
   E_EX_TEXT_EMPTY, E_EX_TYPE_INVALID, E_EX_DIFFICULTY_INVALID,
-  E_EX_ANSWER_CONTRACT_INVALID,
+  E_EX_ANSWER_CONTRACT_INVALID, E_EX_LEARNER_TEXT_UNSAFE, E_EX_SOURCEBLOCK_UNKNOWN,
   E_DEP_TYPE_INVALID,
   W_SB_NEEDS_REVIEW_REF, W_SB_ORPHAN, W_EX_ORPHAN,
   W_MN_NO_SOURCES, W_RELATED_MN_EXTRA, W_EX_MULTI_RELATED,
 } from "./mapTextErrors.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
+import { resolveLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
 
 // ── Coverage computation ──────────────────────────────────────────────────────
 
@@ -187,8 +188,8 @@ export function validateParsedMapping(
       errors.push(makeError(E_SOURCEBLOCK_ID_INVALID, sb.id, `SOURCE BLOCK id "${sb.id}" must match B\\d+.`, sb._line));
   }
   for (const ex of parsed.exercises) {
-    if (!/^EX-\d+$/.test(ex.id))
-      errors.push(makeError(E_EXERCISE_ID_INVALID, ex.id, `EXERCISE id "${ex.id}" must match EX-\\d+.`, ex._line));
+    if (!/^EX-\d+(?:-\d+)*$/.test(ex.id))
+      errors.push(makeError(E_EXERCISE_ID_INVALID, ex.id, `EXERCISE id "${ex.id}" must match EX-\\d+(-\\d+)*.`, ex._line));
   }
   for (const dep of parsed.dependencies) {
     if (!/^D\d+$/.test(dep.id))
@@ -334,8 +335,30 @@ export function validateParsedMapping(
   // ── 9. EXERCISE fields ─────────────────────────────────────────────────────
 
   for (const ex of parsed.exercises) {
-    if (!ex.text)
-      errors.push(makeError(E_EX_TEXT_EMPTY, ex.id, `EXERCISE ${ex.id}: text is empty.`, ex._line));
+    if (!ex.learnerText)
+      errors.push(makeError(E_EX_TEXT_EMPTY, ex.id, `EXERCISE ${ex.id}: learnerText (or legacy text) is empty.`, ex._line));
+
+    const learnerContent = resolveLearnerExerciseContent({
+      exerciseTextVerbatim: ex.verbatimText,
+      exerciseTextEdited: ex.learnerText,
+      successCriteria: ex.successCriteria,
+      correctAnswer: ex.correctAnswer,
+    });
+    if (!learnerContent.ok)
+      errors.push(makeError(
+        E_EX_LEARNER_TEXT_UNSAFE,
+        ex.id,
+        `EXERCISE ${ex.id}: learner-facing text is unsafe (${learnerContent.issues.map((issue) => issue.code).join(", ")}).`,
+        ex._line,
+      ));
+
+    if (ex.sourceBlockId && !sbById.has(ex.sourceBlockId))
+      errors.push(makeError(
+        E_EX_SOURCEBLOCK_UNKNOWN,
+        ex.id,
+        `EXERCISE ${ex.id}: sourceBlockId "${ex.sourceBlockId}" not found.`,
+        ex._line,
+      ));
 
     if (!(EXERCISE_TYPES as readonly string[]).includes(ex.exerciseType))
       errors.push(makeError(E_EX_TYPE_INVALID, ex.id,

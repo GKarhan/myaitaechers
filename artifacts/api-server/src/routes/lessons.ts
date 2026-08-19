@@ -17,6 +17,7 @@ import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
+import { resolveLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
 
 const router = Router();
 
@@ -355,20 +356,26 @@ router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRe
       nonExamples:              Array.isArray(n.nonExamples) ? n.nonExamples : [],
       realLifeExamples:         Array.isArray((n as any).realLifeExamples) ? (n as any).realLifeExamples : [],
     })),
-    exercises: exercises.map((e) => {
-      const edited = (e as any).exerciseTextEdited as string | null | undefined;
-      return {
+    exercises: exercises.flatMap((e) => {
+      const learnerContent = resolveLearnerExerciseContent(e);
+      if (!learnerContent.ok) {
+        logger.warn({
+          lessonId,
+          exerciseId: e.id,
+          issueCodes: learnerContent.issues.map((issue) => issue.code),
+        }, "student-package: omitted unsafe exercise");
+        return [];
+      }
+      return [{
         id:                    e.id,
         relatedNodeId:         e.relatedNodeId ?? null,
         sequence:              e.sequence,
         sourcePage:            e.sourcePage ?? null,
-        exerciseTextVerbatim:  e.exerciseTextVerbatim,
-        exerciseTextEdited:    edited ?? null,
-        effectiveExerciseText: edited?.trim() ? edited.trim() : e.exerciseTextVerbatim,
-        successCriteria:       e.successCriteria ?? null,
+        exerciseText:          learnerContent.learnerText,
+        effectiveExerciseText: learnerContent.learnerText,
         difficultyLevel:       e.difficultyLevel ?? null,
         assignment:            e.assignment ?? null,
-      };
+      }];
     }),
     dependencies: deps.map((d) => ({
       fromNodeId:     d.fromNodeId,
@@ -1704,6 +1711,7 @@ router.get("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Auth
   res.json(exercises.map((e) => {
     const edited = (e as any).exerciseTextEdited as string | null | undefined;
     const effectiveText = edited?.trim() ? edited.trim() : e.exerciseTextVerbatim;
+    const learnerContent = resolveLearnerExerciseContent(e);
     return {
       id: e.id,
       lessonId: e.lessonId,
@@ -1724,6 +1732,11 @@ router.get("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Auth
       sourceType: e.sourceType ?? null,
       sourceBlockIndex: e.sourceBlockIndex ?? null,
       status: e.status ?? null,
+      learnerContentSafe: learnerContent.ok,
+      learnerContentSource: learnerContent.source,
+      learnerContentIssues: learnerContent.ok
+        ? learnerContent.reviewWarnings
+        : learnerContent.issues.map((issue) => issue.code),
     };
   }));
 });
@@ -1733,8 +1746,9 @@ router.post("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Aut
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
-  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, interactionType, correctAnswer, difficultyLevel, assignment, exercisePurpose } = req.body as {
+  const { exerciseTextVerbatim, exerciseTextEdited, relatedNodeId, sourcePage, successCriteria, interactionType, correctAnswer, difficultyLevel, assignment, exercisePurpose } = req.body as {
     exerciseTextVerbatim?: string;
+    exerciseTextEdited?: string | null;
     relatedNodeId?: number | null;
     sourcePage?: string;
     successCriteria?: string;
@@ -1762,6 +1776,22 @@ router.post("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Aut
     return;
   }
 
+  const learnerText = exerciseTextEdited?.trim() || exerciseTextVerbatim.trim();
+  const learnerContent = resolveLearnerExerciseContent({
+    exerciseTextVerbatim,
+    exerciseTextEdited: learnerText,
+    successCriteria,
+    correctAnswer: answerContract.correctAnswer,
+  });
+  if (!learnerContent.ok) {
+    res.status(422).json({
+      error: "UNSAFE_LEARNER_EXERCISE_CONTENT",
+      message: "Learner-facing exercise text contains hidden evaluator content.",
+      issues: learnerContent.issues,
+    });
+    return;
+  }
+
   const [maxRow] = await db
     .select({ maxSeq: max(lessonExercisesTable.sequence) })
     .from(lessonExercisesTable)
@@ -1777,6 +1807,7 @@ router.post("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Aut
       exerciseId,
       sequence: nextSeq,
       exerciseTextVerbatim: exerciseTextVerbatim.trim(),
+      exerciseTextEdited: learnerContent.learnerText,
       relatedNodeId: relatedNodeId ?? null,
       sourcePage: sourcePage ?? null,
       successCriteria: successCriteria ?? null,
@@ -1798,8 +1829,8 @@ router.post("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Aut
     sequence: ex.sequence,
     sourcePage: ex.sourcePage ?? null,
     exerciseTextVerbatim: ex.exerciseTextVerbatim,
-    exerciseTextEdited: null,
-    effectiveExerciseText: ex.exerciseTextVerbatim,
+    exerciseTextEdited: ex.exerciseTextEdited,
+    effectiveExerciseText: learnerContent.learnerText,
     exercisePurpose: ex.exercisePurpose ?? null,
     relatedNodeId: ex.relatedNodeId ?? null,
     successCriteria: ex.successCriteria ?? null,
@@ -1810,6 +1841,9 @@ router.post("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: Aut
     status: ex.status ?? "draft",
     sourceType: ex.sourceType ?? "manual",
     sourceBlockIndex: null,
+    learnerContentSafe: true,
+    learnerContentSource: learnerContent.source,
+    learnerContentIssues: learnerContent.reviewWarnings,
   });
 });
 
@@ -1879,6 +1913,35 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireLessonAuth
     }
   }
 
+  if (!isTextbook && exerciseTextVerbatim !== undefined && !exerciseTextVerbatim.trim()) {
+    res.status(400).json({ error: "exerciseTextVerbatim cannot be empty" });
+    return;
+  }
+
+  const candidateEdited = exerciseTextEdited !== undefined
+    ? exerciseTextEdited?.trim() || null
+    : existing.exerciseTextEdited;
+  const candidateVerbatim = !isTextbook && exerciseTextVerbatim !== undefined
+    ? exerciseTextVerbatim.trim()
+    : existing.exerciseTextVerbatim;
+  const candidateCriteria = successCriteria !== undefined
+    ? successCriteria.trim() || null
+    : existing.successCriteria;
+  const learnerContent = resolveLearnerExerciseContent({
+    exerciseTextVerbatim: candidateVerbatim,
+    exerciseTextEdited: candidateEdited,
+    successCriteria: candidateCriteria,
+    correctAnswer: answerContract.correctAnswer,
+  });
+  if (!learnerContent.ok) {
+    res.status(422).json({
+      error: "UNSAFE_LEARNER_EXERCISE_CONTENT",
+      message: "Learner-facing exercise text contains hidden evaluator content.",
+      issues: learnerContent.issues,
+    });
+    return;
+  }
+
   const patch: Record<string, unknown> = {};
 
   // Text editing: textbook → write to exerciseTextEdited; manual → allow verbatim patch
@@ -1919,6 +1982,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireLessonAuth
 
   const updatedEdited = (updated as any).exerciseTextEdited as string | null | undefined;
   const effectiveText = updatedEdited?.trim() ? updatedEdited.trim() : updated.exerciseTextVerbatim;
+  const updatedLearnerContent = resolveLearnerExerciseContent(updated);
 
   await invalidateLessonApproval(lessonId);
   res.json({
@@ -1940,6 +2004,11 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireLessonAuth
     status: updated.status ?? "draft",
     sourceType: updated.sourceType ?? null,
     sourceBlockIndex: updated.sourceBlockIndex ?? null,
+    learnerContentSafe: updatedLearnerContent.ok,
+    learnerContentSource: updatedLearnerContent.source,
+    learnerContentIssues: updatedLearnerContent.ok
+      ? updatedLearnerContent.reviewWarnings
+      : updatedLearnerContent.issues.map((issue) => issue.code),
   });
 });
 
@@ -1954,19 +2023,36 @@ router.post("/lessons/:lessonId/exercises/approve-all", requireLessonAuthor, asy
     .where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
-  // Update every non-approved exercise in this lesson atomically.
-  // "ne" (not equal) ensures already-approved exercises are not touched.
-  const updated = await db
-    .update(lessonExercisesTable)
-    .set({ status: "approved" })
+  const candidates = await db
+    .select()
+    .from(lessonExercisesTable)
     .where(and(
       eq(lessonExercisesTable.lessonId, lessonId),
       ne(lessonExercisesTable.status, "approved"),
-    ))
-    .returning({ id: lessonExercisesTable.id });
+    ));
+  const classified = candidates.map((exercise) => ({
+    exercise,
+    content: resolveLearnerExerciseContent(exercise),
+  }));
+  const safeIds = classified
+    .filter(({ content }) => content.ok)
+    .map(({ exercise }) => exercise.id);
+  const rejected = classified
+    .filter(({ content }) => !content.ok)
+    .map(({ exercise, content }) => ({
+      id: exercise.id,
+      issues: content.ok ? [] : content.issues.map((issue) => issue.code),
+    }));
+  const updated = safeIds.length === 0
+    ? []
+    : await db
+      .update(lessonExercisesTable)
+      .set({ status: "approved" })
+      .where(inArray(lessonExercisesTable.id, safeIds))
+      .returning({ id: lessonExercisesTable.id });
 
   await invalidateLessonApproval(lessonId);
-  res.json({ approvedCount: updated.length, lessonId });
+  res.json({ approvedCount: updated.length, lessonId, rejected });
 });
 
 // POST /lessons/:lessonId/exercises/:exerciseId/delete

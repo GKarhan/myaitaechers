@@ -1,12 +1,13 @@
 /**
- * P1.6B — Effective exercise text resolver.
+ * P1.6B — Authoring-view exercise text resolver.
  *
  * Single authoritative rule:
  *   exerciseTextEdited (trimmed, non-empty) → learner-facing text
  *   otherwise                               → exerciseTextVerbatim
  *
- * Use this everywhere exercise text is delivered to learners or shown as
- * the "current" wording in Teacher Review.  Never scatter this logic inline.
+ * Learner delivery must use resolveLearnerExerciseContent() from
+ * exercise-content-boundary.ts. This legacy helper remains for teacher review
+ * and non-learner compatibility paths only.
  */
 export function effectiveExerciseText(
   exerciseTextVerbatim: string,

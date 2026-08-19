@@ -1954,6 +1954,11 @@ function LessonNodesPanel({
               const isEditingEx = editingExerciseId === ex.id;
               return (
                 <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
+                  {(ex as any).learnerContentSafe === false && (
+                    <div className="mb-1.5 rounded border border-red-400/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200">
+                      Այս վարժությունը չի ցուցադրվի սովորողին, մինչև հեռացվեն պատասխանը կամ գնահատման չափանիշները սովորողի տեքստից։
+                    </div>
+                  )}
                   {isEditingEx && editExForm ? (
                     <div className="space-y-1.5">
                       {/* P1.6B: show read-only original when editing an adapted textbook exercise */}
@@ -1966,8 +1971,11 @@ function LessonNodesPanel({
                       <textarea className={fieldCls + " resize-none"} rows={3}
                         value={editExForm.exerciseTextEdited}
                         onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
-                        placeholder={(ex as any).sourceType === 'textbook' ? "Հարմարեցում (Դասագրքի բնօրինակի վրա)…" : "Վարժության բնագիր"}
+                        placeholder="Սովորողին ցուցադրվող առաջադրանքը՝ առանց պատասխանի կամ գնահատման չափանիշների"
                       />
+                      {updateEx.isError && (
+                        <p className="text-[10px] text-red-300">{updateEx.error.message}</p>
+                      )}
                       <input className={fieldCls} placeholder="Հաջողության չափանիշ / գնահատման ուղեցույց" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
                       <ExerciseAnswerFields
                         interactionType={editExForm.interactionType}
@@ -2875,6 +2883,11 @@ function LessonNodesPanel({
                       const isEditingEx = editingExerciseId === ex.id;
                       return (
                         <div key={ex.id} className="bg-black/20 rounded-lg px-2 py-1.5">
+                          {(ex as any).learnerContentSafe === false && (
+                            <div className="mb-1.5 rounded border border-red-400/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200">
+                              Այս վարժությունը չի ցուցադրվի սովորողին, մինչև հեռացվեն պատասխանը կամ գնահատման չափանիշները սովորողի տեքստից։
+                            </div>
+                          )}
                           {isEditingEx && editExForm ? (
                             <div className="space-y-1.5">
                               {/* P1.6B: show read-only original when editing an adapted textbook exercise */}
@@ -2889,8 +2902,11 @@ function LessonNodesPanel({
                                 rows={3}
                                 value={editExForm.exerciseTextEdited}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
-                                placeholder={(ex as any).sourceType === 'textbook' ? "Harmaratsume (Դասագրքի բնօրինակի վրա)…" : "Վարժության բնօրինակ"}
+                                placeholder="Սովորողին ցուցադրվող առաջադրանքը՝ առանց պատասխանի կամ գնահատման չափանիշների"
                               />
+                              {updateEx.isError && (
+                                <p className="text-[10px] text-red-300">{updateEx.error.message}</p>
+                              )}
                               <input
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
                                 placeholder="Հաջողության չափանիշ / գնահատման ուղեցույց"

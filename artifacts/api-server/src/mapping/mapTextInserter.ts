@@ -18,6 +18,7 @@ import type {
   ParsedMappingResult, ParsedMicroNode,
   ValidationIssue, InsertionResult,
 } from "./mapTextTypes.js";
+import { assertLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,27 +171,48 @@ export async function insertParsedMapping(
     // ── STEP 4: Insert EXERCISE sections as lesson_exercises ─────────────────
 
     let exSeq = 0;
+    const sourceBlockIndexById = new Map(
+      parsed.sourceBlocks.map((block, index) => [block.id, index]),
+    );
     for (const ex of parsed.exercises) {
       exSeq += 1;
 
       // relatedMicroNodes[0] → relatedNodeId FK (lesson_exercises HAS this column)
       const firstMnId   = ex.relatedMicroNodes[0] ?? null;
       const relatedDbId = firstMnId != null ? (mnIdToDbId.get(firstMnId) ?? null) : null;
+      const learnerContent = assertLearnerExerciseContent({
+        exerciseTextVerbatim: ex.verbatimText,
+        exerciseTextEdited: ex.learnerText,
+        successCriteria: ex.successCriteria,
+        correctAnswer: ex.correctAnswer,
+      });
 
       const [insertedEx] = await tx
         .insert(lessonExercisesTable)
         .values({
           lessonId,
           exerciseId:           ex.id,
-          exerciseTextVerbatim: ex.text,
+          exerciseTextVerbatim: ex.verbatimText,
+          exerciseTextEdited:   learnerContent.learnerText,
           sourcePage:           ex.sourcePage != null ? String(ex.sourcePage) : null,
+          sourceBlockIndex:     ex.sourceBlockId != null
+            ? sourceBlockIndexById.get(ex.sourceBlockId) ?? null
+            : null,
           relatedNodeId:        relatedDbId,
           sequence:             ex.sequence || exSeq,
+          difficultyLevel:      ex.difficulty === "EASY"
+            ? "LOW"
+            : ex.difficulty === "HARD"
+              ? "HIGH"
+              : "MEDIUM",
+          exercisePurpose:      ex.exerciseType,
+          assignment:           "CLASS",
           interactionType:      ex.interactionType,
           correctAnswer:        ex.correctAnswer,
-          sourceType:           "manual" as const,
+          successCriteria:      ex.successCriteria,
+          sourceType:           "textbook" as const,
           status:               "draft",
-          sourceText:           ex.text,
+          sourceText:           ex.sourceText ?? ex.verbatimText,
         })
         .returning();
 

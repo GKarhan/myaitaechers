@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "SiXpdfPUUgeksIY1iIm7t"
+uri = "file://reports/stage4-exercise-content-classification.md"
+type = "text"
+title = "Stage 4 Exercise Content Classification"
+description = "Read-only classification of all 34 development exercise rows, with blocked leaks, legacy-review status, provenance gaps, and remediation guidance."

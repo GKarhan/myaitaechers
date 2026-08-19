@@ -4,6 +4,7 @@ import {
   answerEvaluationSchema,
   type ChatMessage,
 } from "../ai.js";
+import { containsHiddenExerciseContent } from "../../lib/exercise-content-boundary.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
@@ -104,6 +105,15 @@ export function assertFeedbackOnly(result: Phase2FeedbackResult): void {
     TASK_DIRECTIVE.test(result.student_message)
   ) {
     throw new Error("phase2_feedback_result attempted to include a visible task");
+  }
+}
+
+export function assertFeedbackDoesNotRevealHiddenContent(
+  result: Phase2FeedbackResult,
+  hiddenContents: readonly (string | null | undefined)[],
+): void {
+  if (containsHiddenExerciseContent(result.student_message, hiddenContents)) {
+    throw new Error("phase2_feedback_result attempted to reveal evaluator-only exercise content");
   }
 }
 
@@ -248,17 +258,22 @@ export function callPhase2EvaluationJob(
 export function callPhase2FeedbackJob(
   messages: ChatMessage[],
   feedbackContext: string,
+  hiddenContents: readonly (string | null | undefined)[] = [],
 ): Promise<Phase2FeedbackResult> {
   return runBoundedJob({
     name: "phase2_feedback_result",
     schema: phase2FeedbackResultSchema,
     maxTokens: 900,
     messages,
-    validateResult: assertFeedbackOnly,
+    validateResult: (result) => {
+      assertFeedbackOnly(result);
+      assertFeedbackDoesNotRevealHiddenContent(result, hiddenContents);
+    },
     systemPrompt: [
       "Դու myaiteacher-ի FEEDBACK job-ն ես։",
       "Գրիր միայն learner-facing կարճ feedback՝ տրված authoritative evaluation-ի և Decision Engine action-ի հիման վրա։",
       "Մի՛ փոխիր correctness-ը, evidence quality-ն, progression-ը, completion-ը, teaching stage-ը կամ հաջորդ task-ը։",
+      "Մի՛ բացահայտիր կամ վերարտադրիր evaluator-only success criteria, rubric կամ answer key։",
       "Մի՛ ավելացրու նոր հարց, ընտրանքներ կամ առաջադրանք։",
       "Արտածիր միայն {student_message} դաշտը։",
       ARMENIAN_ONLY,

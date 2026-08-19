@@ -104,7 +104,18 @@ export interface ParsedExercise {
   id:               string;
   sourcePage:       number | null;  // optional — null → OK
   sequence:         number;
+  /** @deprecated Compatibility alias for learnerText. */
   text:             string;
+  /** Exact source exercise wording. */
+  verbatimText:     string;
+  /** Validated wording that may be delivered to a learner. */
+  learnerText:      string;
+  /** Optional surrounding source passage, kept separate from the task. */
+  sourceText:       string | null;
+  /** Evaluator-only rubric; never learner-facing. */
+  successCriteria:  string | null;
+  /** Optional provenance link to a SOURCE BLOCK section. */
+  sourceBlockId:    string | null;
   exerciseType:     string;    // validator checks ExerciseType enum
   difficulty:       string;    // validator checks Difficulty enum
   interactionType:  string | null; // multiple_choice | true_false | constructed_response

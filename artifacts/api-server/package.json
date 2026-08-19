@@ -44,6 +44,8 @@
     "test:phase2-stage1": "tsx src/lib/__tests__/phase2-stage1-extraction.test.ts",
     "test:phase2-stage2": "tsx src/lib/__tests__/phase2-stage2-action-plan.test.ts",
     "test:phase2-stage3": "tsx src/lib/__tests__/phase2-stage3-bounded-jobs.test.ts",
+    "test:stage4-content-boundary": "tsx src/lib/__tests__/exercise-content-boundary.test.ts",
+    "test:stage4-help-boundary": "tsx src/lib/__tests__/stage4-help-boundary.test.ts",
     "test:v2r3": "tsx src/lib/__tests__/v2r3-decision-engine.test.ts",
     "test:v2r4a4": "tsx src/lib/__tests__/v2r4a4.test.ts"
   },

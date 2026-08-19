@@ -27,11 +27,11 @@ import { logger } from "../lib/logger";
 import {
   enforceActiveSourceExercise,
   isExerciseDeliveryTurn,
-  effectiveExerciseText,
   resolveEligibleSourceExercise,
   shouldDeliverStandaloneSourceExercise,
   type SourceExerciseResolution,
 } from "../lib/exercise-delivery";
+import { resolveLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
 import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
@@ -61,6 +61,27 @@ import {
 export { normalizeObjectiveMicroCheckAnswer };
 
 type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
+
+function learnerExerciseText(exercise: LessonExerciseRow): string | null {
+  const content = resolveLearnerExerciseContent(exercise);
+  return content.ok ? content.learnerText : null;
+}
+
+function filterLearnerSafeExercises(
+  exercises: LessonExerciseRow[],
+  context: { lessonId: number; phase: number; assignment: "CLASS" | "HOMEWORK" },
+): LessonExerciseRow[] {
+  return exercises.filter((exercise) => {
+    const content = resolveLearnerExerciseContent(exercise);
+    if (content.ok) return true;
+    logger.warn({
+      ...context,
+      exerciseId: exercise.id,
+      issueCodes: content.issues.map((issue) => issue.code),
+    }, "chat: excluded unsafe source exercise");
+    return false;
+  });
+}
 
 function createStage3EvaluationEnvelope(
   progressIndicator: ProgressIndicator,
@@ -111,6 +132,15 @@ async function activateSourceExercise(
 ): Promise<LessonExerciseRow | null> {
   const selectedExercise = selection.selected;
   if (!selectedExercise) return null;
+  const learnerContent = resolveLearnerExerciseContent(selectedExercise);
+  if (!learnerContent.ok) {
+    logger.warn({
+      sessionId,
+      exerciseId: selectedExercise.id,
+      issueCodes: learnerContent.issues.map((issue) => issue.code),
+    }, "source exercise activation blocked by learner-content boundary");
+    return null;
+  }
 
   await db
     .update(lessonSessionsTable)
@@ -146,6 +176,30 @@ type HelpRequestResult =
   | { ok: true; hintContent: string; helpLevel: number; newHelpCount: number; helpEventId: number | null; isAnswerReveal: boolean }
   | { ok: false; errorCode: string; statusHint: number; message?: string };
 
+type HelpExerciseContent = {
+  exerciseTextVerbatim: string;
+  exerciseTextEdited: string | null;
+  successCriteria: string | null;
+  correctAnswer: string | null;
+};
+
+export function resolveHelpTaskText(
+  activeExercise: HelpExerciseContent | null,
+  lastQuestionAsked: string | null,
+):
+  | { ok: true; taskText: string | null }
+  | { ok: false; issueCodes: string[] } {
+  if (!activeExercise) return { ok: true, taskText: lastQuestionAsked };
+  const learnerContent = resolveLearnerExerciseContent(activeExercise);
+  if (!learnerContent.ok) {
+    return {
+      ok: false,
+      issueCodes: learnerContent.issues.map((issue) => issue.code),
+    };
+  }
+  return { ok: true, taskText: learnerContent.learnerText };
+}
+
 async function executeHelpRequest(
   session: {
     id: number; currentNodeId: number | null;
@@ -171,11 +225,30 @@ async function executeHelpRequest(
   let taskText: string | null = null;
   if (session.activeLessonExerciseId) {
     const [exRow] = await db
-      .select({ verbatim: lessonExercisesTable.exerciseTextVerbatim, edited: lessonExercisesTable.exerciseTextEdited })
+      .select({
+        exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim,
+        exerciseTextEdited: lessonExercisesTable.exerciseTextEdited,
+        successCriteria: lessonExercisesTable.successCriteria,
+        correctAnswer: lessonExercisesTable.correctAnswer,
+      })
       .from(lessonExercisesTable)
       .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
       .limit(1);
-    taskText = exRow ? (exRow.edited || exRow.verbatim) : null;
+    const helpTask = resolveHelpTaskText(exRow ?? null, session.lastQuestionAsked);
+    if (!helpTask.ok) {
+      logger.warn({
+        sessionId: session.id,
+        activeLessonExerciseId: session.activeLessonExerciseId,
+        issueCodes: helpTask.issueCodes,
+      }, "executeHelpRequest: unsafe active exercise blocked before hint generation");
+      return {
+        ok: false,
+        errorCode: "ACTIVE_TASK_CONTENT_UNSAFE",
+        statusHint: 409,
+        message: "Active task content is not safe for learner help.",
+      };
+    }
+    taskText = helpTask.taskText;
   } else if (session.lastQuestionAsked) {
     taskText = session.lastQuestionAsked;
   }
@@ -771,11 +844,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           phase,
           currentNodeId: session?.currentNodeId,
           classExercisesCount: classExercises.length,
-          exercises: classExercises.map(e => ({
-            exerciseId: e.exerciseId,
-            relatedNodeId: e.relatedNodeId,
-            verbatim: e.exerciseTextVerbatim?.slice(0, 80),
-          })),
+          exerciseIds: classExercises.map((exercise) => exercise.exerciseId),
         }, "Phase2 classExercises loaded");
       } else if (phase === 3) {
         // P5.2: Phase 3 (wrap-up / DEEP_DIVE) includes both:
@@ -804,6 +873,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
       }
+      classExercises = filterLearnerSafeExercises(classExercises, {
+        lessonId,
+        phase,
+        assignment: "CLASS",
+      });
 
       let homeworkExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
       if (phase >= 3) {
@@ -817,6 +891,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             eq(lessonExercisesTable.status, "approved"),
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
+        homeworkExercises = filterLearnerSafeExercises(homeworkExercises, {
+          lessonId,
+          phase,
+          assignment: "HOMEWORK",
+        });
       }
 
       let dueReviewsLine = "";
@@ -860,10 +939,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const exBlock = phase === 3 && classExercises.length > 0
         ? `\nDEEP_DIVE_EXERCISES (MANDATORY — present these textbook exercises in order; do NOT replace with AI-generated tasks; start from index ${deepDiveIdx}):\n` +
           classExercises.map((e, i) => {
-            const eff = effectiveExerciseText(e.exerciseTextVerbatim, (e as any).exerciseTextEdited as string | null);
+            const eff = learnerExerciseText(e) ?? "";
             return `[idx=${i}] [${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-              `  VERBATIM: ${eff.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
-              `  successCriteria: ${e.successCriteria ?? ""}`;
+              `  LEARNER_TASK_TEXT: ${eff.trim()}`;
           }).join("\n")
         : phase === 2 && classExercises.length > 0
         ? `\nCLASS_EXERCISE_CANDIDATES (backend owns exact text delivery):\n` +
@@ -877,10 +955,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const hwBlock = homeworkExercises.length > 0
         ? `\nHOMEWORK_TASKS (present verbatim, explain why each matters):\n` +
           homeworkExercises.map((e) => {
-            const eff = effectiveExerciseText(e.exerciseTextVerbatim, (e as any).exerciseTextEdited as string | null);
+            const eff = learnerExerciseText(e) ?? "";
             return `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-            `  VERBATIM: ${eff || "(no text — describe the task)"}\n` +
-            `  successCriteria: ${e.successCriteria ?? ""}`;
+            `  LEARNER_TASK_TEXT: ${eff}`;
           }).join("\n")
         : "";
 
@@ -1443,6 +1520,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let wasCorrect: boolean | null = null;
   let _stage3BoundedAnswerTurn = false;
   let _stage3SourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
+  let _stage3HiddenExerciseContent: string[] = [];
 
   const respondWithBoundedPhase2Message = async (
     content: string,
@@ -1557,10 +1635,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    const sourceText = effectiveExerciseText(
-      selectedExercise.exerciseTextVerbatim,
-      selectedExercise.exerciseTextEdited,
-    ).trim() || `[${selectedExercise.exerciseId}]`;
+    const sourceText = learnerExerciseText(selectedExercise);
+    if (!sourceText) {
+      res.status(409).json({
+        error: "SOURCE_EXERCISE_CONTENT_UNSAFE",
+        message: "Հաջորդ առաջադրանքը հասանելի չէ։ Խնդրում եմ կրկին փորձել։",
+      });
+      return;
+    }
     const sourcePage = selectedExercise.sourcePage ?? "?";
     await respondWithBoundedPhase2Message(
       `${sourceText}\n(Էջ ${sourcePage}, Վ. ${selectedExercise.exerciseId})`,
@@ -1647,6 +1729,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           "Keep the same active task open. Do not create or append another task.",
           `Learner message: ${message}`,
         ].join("\n"),
+        _stage3HiddenExerciseContent,
       );
       assertFeedbackOnly(feedback);
       await respondWithBoundedPhase2Message(feedback.student_message, "FEEDBACK", true);
@@ -1686,6 +1769,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               correctAnswer: lessonExercisesTable.correctAnswer,
               verbatim: lessonExercisesTable.exerciseTextVerbatim,
               edited: lessonExercisesTable.exerciseTextEdited,
+              successCriteria: lessonExercisesTable.successCriteria,
             })
             .from(lessonExercisesTable)
             .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
@@ -1693,6 +1777,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         if (!activeSourceExercise) {
           throw new Error("active source exercise was not found for evaluation");
         }
+        const learnerContent = resolveLearnerExerciseContent({
+          exerciseTextVerbatim: activeSourceExercise.verbatim,
+          exerciseTextEdited: activeSourceExercise.edited,
+          successCriteria: activeSourceExercise.successCriteria,
+          correctAnswer: activeSourceExercise.correctAnswer,
+        });
+        if (!learnerContent.ok) {
+          throw new Error(
+            `active source exercise failed learner-content boundary: ${learnerContent.issues.map((issue) => issue.code).join(", ")}`,
+          );
+        }
+        _stage3HiddenExerciseContent = [
+          activeSourceExercise.successCriteria,
+          activeSourceExercise.correctAnswer,
+        ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
         _stage3SourceExerciseForEvaluation = activeSourceExercise;
         const deterministicSourcePreview = evaluateDeterministicSourceExerciseAnswer({
           learnerIntent: _intentResult.intent,
@@ -1709,10 +1808,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             [
               lessonContext,
               "AUTHORITATIVE EVALUATION INPUT:",
-              `Task: ${effectiveExerciseText(
-                activeSourceExercise.verbatim,
-                activeSourceExercise.edited,
-              )}`,
+              `LEARNER_TASK_TEXT:\n${learnerContent.learnerText}`,
+              `EVALUATOR_ONLY_SUCCESS_CRITERIA:\n${activeSourceExercise.successCriteria?.trim() || "(not provided)"}`,
               `Interaction type: ${String(activeSourceExercise.interactionType ?? "constructed_response")}`,
               `Learner answer: ${message}`,
               "Evaluate the answer only. Do not write learner-facing feedback.",
@@ -1964,19 +2061,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       } else {
         _p11SelectedSourceExercise = activeExercise;
         _sourceExerciseActivatedThisTurn = true;
-        const verbatimEx = effectiveExerciseText(
-          activeExercise.exerciseTextVerbatim,
-          (activeExercise as any).exerciseTextEdited as string | null,
-        );
+        const verbatimEx = learnerExerciseText(activeExercise);
+        if (!verbatimEx) {
+          throw new Error("activated source exercise failed learner-content boundary");
+        }
         const enforced = enforceActiveSourceExercise(
           studentMessage,
           verbatimEx,
           classExercises
             .filter((exercise) => exercise.id !== activeExercise.id)
-            .map((exercise) => effectiveExerciseText(
-              exercise.exerciseTextVerbatim,
-              (exercise as any).exerciseTextEdited as string | null,
-            )),
+            .map((exercise) => learnerExerciseText(exercise))
+            .filter((text): text is string => text !== null),
         );
         if (enforced !== studentMessage) {
           logger.info(
@@ -2534,6 +2629,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           `Server action: ${_phase2ServerActionPlan.action}`,
           "The feedback must not include a new question, answer options, source exercise text, or a next task.",
         ].join("\n"),
+        _stage3HiddenExerciseContent,
       );
       assertFeedbackOnly(feedback);
       studentMessage = feedback.student_message;
@@ -2569,11 +2665,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session
   ) {
     const _ex = _activeSourceExercise;
-    const _eff = effectiveExerciseText(
-      _ex.exerciseTextVerbatim,
-      (_ex as any).exerciseTextEdited as string | null
-    );
-    const _verb = _eff.trim() ? _eff.trim() : `[${_ex.exerciseId}]`;
+    const _eff = learnerExerciseText(_ex);
+    if (!_eff) {
+      logger.error(
+        { sessionId: session.id, exerciseId: _ex.id },
+        "standalone source exercise continuation blocked by learner-content boundary",
+      );
+      res.status(409).json({
+        error: "SOURCE_EXERCISE_CONTENT_UNSAFE",
+        message: "Հաջորդ առաջադրանքը հասանելի չէ։ Խնդրում եմ կրկին փորձել։",
+      });
+      return;
+    }
+    const _verb = _eff.trim();
     const _page = `(Էջ ${(_ex as any).sourcePage ?? "?"}, Վ. ${_ex.exerciseId})`;
     const _exContent = `${_verb}\n${_page}`;
     await db
