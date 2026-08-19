@@ -1409,7 +1409,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   // Also advances stage MICRO_CHECK→EXERCISE (directly if aiResult is null,
   // via teaching_mode override if aiResult is non-null).
   // Does NOT change currentNodeId, mastery, attempt counters, or KB data.
+  let _p11StudentMessageBeforeDelivery: string | null = null;
+  let _p11TeachingModeBeforeDelivery: string | null = null;
+  let _p11AiTeachingModeBeforeDelivery: AIStructuredResponse["teaching_mode"] | null = null;
+  let _p11SourceExerciseIdBeforeDelivery: string | null = null;
   if (session && isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)) {
+    _p11StudentMessageBeforeDelivery = studentMessage;
+    _p11TeachingModeBeforeDelivery = teachingMode;
+    _p11AiTeachingModeBeforeDelivery = aiResult?.teaching_mode ?? null;
+    _p11SourceExerciseIdBeforeDelivery = aiResult?.source_fidelity?.exercise_id ?? null;
     const verbatimEx = effectiveExerciseText(classExercises[0].exerciseTextVerbatim, (classExercises[0] as any).exerciseTextEdited as string | null);
     const enforced = enforceVerbatimExercise(studentMessage, verbatimEx);
     if (enforced !== studentMessage) {
@@ -1756,6 +1764,32 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           levelConfirmed:     _pedagogicalDecision.levelConfirmed,
           revisitRequired:    _pedagogicalDecision.revisitRequired,
         }, "V2-R3 pedagogical decision");
+
+        // P11.1 runs from the request-start MICRO_CHECK stage, but a same-turn
+        // Cognitive Path advance has final ownership of the response state.
+        // Restore the pre-delivery feedback so no previous-level exercise leaks
+        // into a response that now starts the next level at THEORY.
+        if (
+          _pedagogicalDecision.metaAction === "ADVANCE_COGNITIVE_LEVEL" &&
+          _p11StudentMessageBeforeDelivery !== null &&
+          _p11TeachingModeBeforeDelivery !== null
+        ) {
+          studentMessage = _p11StudentMessageBeforeDelivery;
+          teachingMode = _p11TeachingModeBeforeDelivery;
+          if (aiResult) {
+            if (_p11AiTeachingModeBeforeDelivery !== null) {
+              aiResult.teaching_mode = _p11AiTeachingModeBeforeDelivery;
+            }
+            aiResult.source_fidelity = {
+              ...aiResult.source_fidelity,
+              exercise_id: _p11SourceExerciseIdBeforeDelivery,
+            };
+          }
+          logger.info(
+            { sessionId: session.id, nodeId: session.currentNodeId },
+            "Cognitive Path advance: suppressed stale P11.1 source exercise delivery"
+          );
+        }
       }
 
       // ── Mastery gate check ───────────────────────────────────────────────
@@ -1866,7 +1900,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         !safetyCapHit &&
         !stageBecomesVerified &&
         !noExercisesEarlyComplete &&
-        !(decisionSaysComplete && codeGate)
+        !(decisionSaysComplete && codeGate) &&
+        _pedagogicalDecision?.metaAction !== "ADVANCE_COGNITIVE_LEVEL"
       ) {
         _v2r1AutoContinue = { type: "exercise" as const };
       }

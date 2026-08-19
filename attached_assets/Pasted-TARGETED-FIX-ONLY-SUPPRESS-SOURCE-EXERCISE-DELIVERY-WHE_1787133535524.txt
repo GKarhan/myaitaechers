@@ -1,0 +1,212 @@
+TARGETED FIX ONLY — SUPPRESS SOURCE EXERCISE DELIVERY WHEN SAME TURN ADVANCES COGNITIVE LEVEL
+
+GOAL
+
+Fix one confirmed delivery-order bug.
+
+Current confirmed behavior:
+
+- current request begins at:
+  Phase 2
+  nodeTeachingStage = MICRO_CHECK
+  active cognitive level = remember
+
+- student answers correctly
+
+- deterministic decision engine correctly returns:
+  ADVANCE_COGNITIVE_LEVEL
+
+- backend correctly persists:
+  activeCognitiveLevelId = next level (understand)
+  nodeTeachingStage = THEORY
+  activeLessonExerciseId = null
+  task inactive
+  current node unchanged
+  phase unchanged
+
+BUT two older delivery branches still inject the previous remember-level source exercise on the same turn:
+
+1. P11.1 verbatim exercise injection
+2. V2-R1.1 standalone exercise auto-continuation
+
+This creates visible content/state desync.
+
+Fix ONLY this.
+
+==================================================
+REQUIRED BEHAVIOR
+==================================================
+
+If the finalized deterministic pedagogical decision for the current turn is:
+
+ADVANCE_COGNITIVE_LEVEL
+
+then this SAME response turn must NOT deliver any source/class exercise from the previous cognitive level.
+
+Specifically suppress:
+
+- P11.1 exercise injection into studentMessage
+- V2-R1.1 standalone auto-delivery message
+
+Expected final state after remember confirmation:
+
+currentNodeId = same node
+currentPhase = same phase
+activeCognitiveLevelId = next level
+nodeTeachingStage = THEORY
+activeLessonExerciseId = null
+task inactive
+
+Visible response should contain only appropriate feedback/transition wording.
+
+No previous-level exercise should appear.
+
+==================================================
+IMPORTANT ORDERING PRINCIPLE
+==================================================
+
+Exercise delivery must respect the finalized deterministic decision for the turn.
+
+Do NOT make delivery decisions solely from the request-start session snapshot:
+
+nodeTeachingStage = MICRO_CHECK
+
+when later in the same turn the decision engine has already chosen:
+
+ADVANCE_COGNITIVE_LEVEL
+
+Use the smallest available finalized decision/state signal.
+
+Do not redesign the whole response pipeline.
+
+==================================================
+PRIMARY FILE
+==================================================
+
+artifacts/api-server/src/routes/chat.ts
+
+Focus only on:
+
+- P11.1 exercise delivery condition
+- V2-R1.1 auto-continuation condition
+- finalized deterministic decision/metaAction
+- same-turn ADVANCE_COGNITIVE_LEVEL result
+
+==================================================
+PREFERRED FIX
+==================================================
+
+Add the smallest explicit suppression guard so both delivery branches do not run when the finalized decision is:
+
+ADVANCE_COGNITIVE_LEVEL
+
+or when the turn is otherwise known to have advanced the cognitive level.
+
+Conceptually:
+
+if (finalDecision === "ADVANCE_COGNITIVE_LEVEL") {
+  do not inject/deliver previous-level exercise
+}
+
+Use the actual existing decision variable/type.
+
+Do not hardcode lesson/node/level IDs.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- Cognitive Path thresholds
+- historical evidence behavior
+- start-fresh evidence preservation
+- progression decision engine
+- remember → understand logic
+- node completion ownership
+- linked exercise sequencing
+- classExercises ordering
+- EX-579-1 / EX-579-2 selection
+- interaction_type
+- intent routing
+- answer evaluation
+- evidence scoring
+- prompts
+- frontend
+- DB schema
+- Mapping
+
+This task is ONLY same-turn delivery suppression after cognitive advance.
+
+==================================================
+STATIC VERIFICATION
+==================================================
+
+CASE A
+
+start stage = MICRO_CHECK
+decision = ADVANCE_COGNITIVE_LEVEL
+
+Expected:
+- P11.1 does NOT inject exercise
+- V2-R1.1 does NOT create standalone exercise message
+
+CASE B
+
+start stage = MICRO_CHECK
+decision = CONTINUE_COGNITIVE_LEVEL
+exercise delivery is otherwise valid
+
+Expected:
+- existing exercise-delivery behavior remains unchanged
+
+CASE C
+
+decision = ADVANCE_COGNITIVE_LEVEL
+
+Expected final persisted state remains:
+- next cognitive level active
+- stage THEORY
+- no active exercise
+
+CASE D
+
+No cognitive advance
+
+Expected legacy/current delivery paths behave as before.
+
+Run only relevant TypeScript check.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. FILE CHANGED
+
+B. P11.1 SUPPRESSION
+Show exact small guard/change.
+
+C. V2-R1.1 SUPPRESSION
+Show exact small guard/change.
+
+D. ADVANCE PATH
+Confirm previous-level exercise cannot be delivered after ADVANCE_COGNITIVE_LEVEL.
+
+E. NON-ADVANCE PATH
+Confirm existing delivery behavior remains unchanged.
+
+F. STATIC CASES
+A/B/C/D = PASS/FAIL
+
+G. TYPECHECK
+PASS / FAIL
+
+H. RESULT
+
+PASS — same-turn cognitive advance suppresses stale previous-level exercise delivery
+
+or
+
+FAIL — exact reason
+
+Then STOP.
