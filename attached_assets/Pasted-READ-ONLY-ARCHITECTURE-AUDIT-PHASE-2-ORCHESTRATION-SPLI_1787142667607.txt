@@ -1,0 +1,479 @@
+READ-ONLY ARCHITECTURE AUDIT — PHASE 2 ORCHESTRATION SPLIT
+
+IMPORTANT:
+DO NOT MODIFY CODE.
+DO NOT MODIFY DATABASE.
+DO NOT RUN MIGRATIONS.
+DO NOT MAKE PROVIDER CALLS.
+DO NOT CHANGE PROMPTS YET.
+DO NOT IMPLEMENT THE REFACTOR YET.
+
+GOAL
+
+We are stopping incremental validation-error patching.
+
+We want to determine the smallest safe architectural refactor that changes
+Phase 2 from:
+
+one large structured AI response that partly controls teaching workflow
+
+into:
+
+BACKEND = orchestration/state/progression authority
+DB = approved educational-content authority
+AI = bounded pedagogical/content generation
+Decision Engine = progression authority
+
+This audit must use the CURRENT repository state, including all recent
+Phase-2, Cognitive Path, MICRO_CHECK, source-exercise, and deterministic
+evaluation changes.
+
+==================================================
+1. MAP THE CURRENT REAL PHASE-2 FLOW
+==================================================
+
+Trace the exact current runtime path starting from:
+
+student sends "օկ"
+
+with:
+
+currentPhase = 2
+currentNodeId != null
+nodeTeachingStage = THEORY
+activeCognitiveLevelId != null
+
+Trace through:
+
+frontend request
+→ POST /chat
+→ session load
+→ node/content load
+→ Cognitive Path load
+→ source-exercise load/filtering
+→ lessonContext construction
+→ callAIStructured()
+→ structured validation
+→ task activation
+→ response persistence
+→ learner-visible response
+
+For every important step report:
+
+- file
+- function/block
+- owner:
+  BACKEND / DB / AI / DECISION ENGINE
+- inputs
+- outputs
+- state writes
+
+Do not describe intended behavior.
+Describe CURRENT code behavior.
+
+==================================================
+2. INVENTORY EVERYTHING callAIStructured CURRENTLY OWNS
+==================================================
+
+List every meaningful field currently returned by the structured AI response.
+
+At minimum inspect:
+
+- student_message
+- teaching_mode
+- is_micro_check
+- interaction_type
+- options
+- correct_option
+- answer_evaluation
+- node_decision
+- source_fidelity
+- question_template
+- redirect fields
+- encouragement fields
+- any other active fields
+
+For each classify:
+
+A. SHOULD REMAIN AI-OWNED
+B. SHOULD BECOME BACKEND-OWNED
+C. SHOULD BE DERIVED FROM SERVER STATE
+D. LEGACY/REDUNDANT/ADVISORY
+E. NEEDS FURTHER ANALYSIS
+
+Explain why.
+
+==================================================
+3. MAP CURRENT BACKEND-OWNED PIECES
+
+Audit which parts are ALREADY deterministic/backend-owned after our recent work.
+
+At minimum:
+
+- Phase-2 THEORY envelope
+- current Phase
+- current MicroNode
+- active Cognitive Level
+- Cognitive Path progression
+- minimum evidence thresholds
+- node completion
+- source-exercise eligibility
+- exact source-exercise activation
+- activeLessonExerciseId
+- source-exercise typed answers
+- deterministic source-exercise correctness
+- activeObjectiveTaskPayload
+- deterministic objective MICRO_CHECK correctness
+- evidence writing
+- Pedagogical Decision Engine
+- remediation decisions where deterministic
+- task clearing
+- cognitive-level advance
+
+For each report:
+
+CURRENT OWNER
+AUTHORITATIVE DATA
+WRITE LOCATION
+DOWNSTREAM CONSUMERS
+
+==================================================
+4. THEORY CONTENT AUTHORITY
+==================================================
+
+For the active MicroNode, identify exactly which DB fields are available for
+teaching content.
+
+At minimum inspect:
+
+- childFriendlyExplanation
+- theoryContent
+- verbatimTheoryAnchor
+- learningObjective
+- basicExamples
+- nonExamples
+- commonMisconception
+- knowledge boundaries if available
+- Cognitive Path performanceObjective
+- successCriterion
+- preferredInteractionTypes
+
+Determine:
+
+A. Which field is currently treated as APPROVED_EXPLANATION?
+B. Which fields are authoritative source content?
+C. Which fields are AI-generated/derived mapping content?
+D. Which fields are suitable for a bounded "explanation only" AI call?
+
+Do not change mapping or DB.
+
+==================================================
+5. SOURCE EXERCISE PATH
+==================================================
+
+Audit current behavior when the active cognitive level has eligible source
+exercises.
+
+We want to know whether the backend can already do:
+
+current level
+→ eligible source exercises
+→ select exact exercise
+→ activate exact exercise
+→ render authoritative exercise text
+→ persist activeLessonExerciseId
+→ deterministic answer evaluation
+
+WITHOUT asking AI to decide exercise identity or rewrite exercise text.
+
+Report:
+
+READY
+PARTIALLY READY
+NOT READY
+
+with exact gaps.
+
+IMPORTANT:
+Do not redesign exercise sequencing in this audit.
+
+==================================================
+6. AI-GENERATED MICRO_CHECK PATH
+==================================================
+
+Audit what remains necessary when no eligible source exercise should be
+delivered.
+
+Determine whether task generation can be isolated into a bounded contract such as:
+
+INPUT:
+- learning objective
+- current cognitive level
+- performance objective
+- success criterion
+- preferred interaction types
+- approved content
+
+OUTPUT ONLY:
+- question/task text
+- interactionType
+- options if objective
+- correctOption if objective
+- questionTemplate if still required
+
+No:
+- teaching_mode decision
+- is_micro_check decision
+- node_decision
+- progression decision
+- source-exercise selection
+- answer evaluation
+
+Report exactly what current code would need to change to support this.
+
+==================================================
+7. EXPLANATION-ONLY AI PATH
+==================================================
+
+Determine the smallest possible bounded contract for:
+
+DB approved content
+→ AI pedagogical wording only
+
+Proposed responsibility:
+
+INPUT:
+- approved explanation/source-grounded theory
+- learner-appropriate context
+- current cognitive level
+- relevant objective
+
+OUTPUT:
+- explanation text only
+
+The server already knows this is a THEORY teaching action.
+
+Audit whether this can reuse:
+- current AI client
+- current model
+- current grounding data
+
+without using the full aiStructuredResponseSchema.
+
+Do not implement.
+
+==================================================
+8. FEEDBACK PATH
+==================================================
+
+Audit the current answer flow:
+
+student answer
+→ deterministic correctness where available
+→ evidence
+→ Decision Engine
+→ feedback
+
+Determine whether AI feedback can become a bounded generation step AFTER
+correctness/progression is known.
+
+For example input:
+
+- correct/incorrect
+- error family if known
+- remediation action
+- approved content
+- learner answer
+- current objective
+
+Output:
+- feedback text only
+
+Report which current fields/branches would become unnecessary if backend
+already knows the pedagogical decision.
+
+==================================================
+9. PROPOSE TARGET PHASE-2 ORCHESTRATOR
+==================================================
+
+Based ONLY on current repository capabilities, propose a target flow.
+
+Desired conceptual shape:
+
+STUDENT MESSAGE
+      ↓
+chat.ts / Phase2 Orchestrator
+      ↓
+LOAD SESSION + DB CONTENT
+      ↓
+DETERMINE SERVER ACTION
+      ↓
+THEORY?
+      ↓
+AI explanation-only
+      ↓
+BACKEND chooses next check path
+      ↓
+eligible source exercise?
+   YES                NO
+    ↓                  ↓
+DB exercise       AI task-only generation
+    ↓                  ↓
+BACKEND validates + activates exact task
+      ↓
+STUDENT ANSWERS
+      ↓
+DETERMINISTIC CORRECTNESS where typed/objective
+      ↓
+EVIDENCE
+      ↓
+PEDAGOGICAL DECISION ENGINE
+      ↓
+CONTINUE / REMEDIATE / ADVANCE / COMPLETE
+      ↓
+AI feedback-only where useful
+
+But do NOT assume this exact flow is compatible.
+
+Compare it against actual code and identify required adjustments.
+
+==================================================
+10. STATE MACHINE OWNERSHIP TABLE
+==================================================
+
+Produce a final table:
+
+CONCERN | CURRENT OWNER | TARGET OWNER | CHANGE REQUIRED?
+
+Include:
+
+- current phase
+- current node
+- cognitive level
+- teaching stage
+- explanation
+- interaction type
+- question
+- answer key
+- active task
+- source exercise identity
+- correctness
+- evidence quality
+- evidence persistence
+- remediation
+- cognitive progression
+- node completion
+- learner-facing feedback
+
+==================================================
+11. WHAT WE KEEP
+==================================================
+
+Explicitly list recent work that should NOT be discarded.
+
+At minimum inspect whether we keep:
+
+- Cognitive Path
+- Decision Engine
+- evidence pipeline
+- exact source-exercise activation
+- typed source answers
+- deterministic source-exercise evaluation
+- objective MICRO_CHECK payload
+- deterministic MICRO_CHECK evaluation
+- task/session state
+- mapper
+- teacher CRUD
+- Knowledge Tree integration
+
+Identify anything that would genuinely become obsolete.
+
+==================================================
+12. MIGRATION STRATEGY
+==================================================
+
+Propose the SMALLEST staged refactor.
+
+Do NOT propose a rewrite of chat.ts.
+
+Prefer stages such as:
+
+Stage 1 — extract server action determination
+Stage 2 — isolate THEORY explanation generation
+Stage 3 — isolate task generation/delivery
+Stage 4 — isolate feedback generation
+Stage 5 — remove obsolete AI workflow fields only after parity
+
+But adjust these stages based on actual repository evidence.
+
+For every stage state:
+
+- files likely changed
+- behavior changed
+- behavior explicitly unchanged
+- test gate
+- rollback boundary
+
+==================================================
+13. CRITICAL SAFETY REQUIREMENT
+==================================================
+
+The refactor MUST NOT weaken these invariants:
+
+- no active task without a visible answerable task
+- exact active source exercise identity
+- no AI invention of source exercise answers
+- objective correctness backend-owned
+- Cognitive Path owns cognitive progression
+- target ceiling required for MicroNode completion
+- no Phase-3 advance from legacy stage alone when Cognitive Path active
+- evidence quality rules remain authoritative
+- source verbatim fidelity remains protected
+- failed AI generation must not corrupt session state
+
+Report how each remains protected.
+
+==================================================
+14. CURRENT FAILURE ANALYSIS
+==================================================
+
+Use the latest confirmed runtime evidence:
+
+Attempt 1:
+- server envelope correct
+- 7 sentences → max-5 validation failure
+
+Attempt 2:
+- server envelope correct
+- true_false
+- no visible true/false choices
+- terminal 503
+
+Explain specifically how the proposed orchestration split would change this
+failure mode.
+
+Do not merely say "it will be more reliable."
+
+==================================================
+15. FINAL VERDICT
+==================================================
+
+Choose one:
+
+A. REFACTOR RECOMMENDED — CURRENT COMPONENTS SUPPORT IT
+
+B. REFACTOR RECOMMENDED — PREREQUISITE REQUIRED
+
+C. CURRENT ARCHITECTURE SHOULD BE KEPT
+
+D. INSUFFICIENT EVIDENCE
+
+Then provide:
+
+- exact prerequisite if any
+- smallest first implementation task
+- what NOT to change in that first task
+
+STOP AFTER THE AUDIT.
+
+DO NOT IMPLEMENT.
