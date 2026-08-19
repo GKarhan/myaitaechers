@@ -107,6 +107,8 @@ export interface ParsedExercise {
   text:             string;
   exerciseType:     string;    // validator checks ExerciseType enum
   difficulty:       string;    // validator checks Difficulty enum
+  interactionType:  string | null; // multiple_choice | true_false | constructed_response
+  correctAnswer:    string | null; // validator normalizes objective answers
   cognitiveLoad:    number | null;
   confidenceScore:  number | null;
   relatedMicroNodes: string[];

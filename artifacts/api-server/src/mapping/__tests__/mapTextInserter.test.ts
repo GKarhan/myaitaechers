@@ -77,6 +77,7 @@ title: Basic addition
 microNodeType: KNOWLEDGE
 learningObjective: Student can add two numbers
 sourceBlockIds: B1
+exerciseIds: EX-1
 confidenceScore: 90
 sourceCoverage: FULL
 status: draft${withRelatedMns ? "\nrelatedMicroNodes: MN-1.2, MN-2.1" : ""}
@@ -107,6 +108,15 @@ blockType: DEFINITION
 sourceText: Addition is the process of combining two numbers.
 sourcePage: 10
 status: EXTRACTED
+
+EXERCISE EX-1
+text: What is 2 + 3?
+exerciseType: RECALL
+difficulty: EASY
+sequence: 1
+interactionType: multiple_choice
+correctAnswer: Բ
+relatedMicroNodes: MN-1.1
 `.trim();
 }
 
@@ -238,7 +248,18 @@ async function testC2_insertSuccess(): Promise<void> {
     assert.ok(result.topicsCreated >= 1, "topicsCreated ≥ 1");
     assert.ok(result.microNodesCreated >= 1, "microNodesCreated ≥ 1");
 
-    console.log(`    ✓ topics committed: ${topics}, nodes committed: ${nodes}`);
+    const [exercise] = await db
+      .select({
+        interactionType: lessonExercisesTable.interactionType,
+        correctAnswer: lessonExercisesTable.correctAnswer,
+      })
+      .from(lessonExercisesTable)
+      .where(eq(lessonExercisesTable.lessonId, lessonId))
+      .limit(1);
+    assert.equal(exercise?.interactionType, "multiple_choice");
+    assert.equal(exercise?.correctAnswer, "B");
+
+    console.log(`    ✓ topics committed: ${topics}, nodes committed: ${nodes}, typed answer committed: B`);
   } finally {
     await cleanupLesson(lessonId);
   }

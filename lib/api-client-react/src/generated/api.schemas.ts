@@ -939,6 +939,8 @@ export interface LessonExercise {
   exercisePurpose?: string | null;
   relatedNodeId?: number | null;
   successCriteria?: string | null;
+  interactionType?: 'multiple_choice' | 'true_false' | 'constructed_response' | null;
+  correctAnswer?: string | null;
   difficultyLevel?: string | null;
   assignment?: string | null;
   /** Authoring lifecycle: "draft" | "approved" (may include legacy "reviewed"). */
@@ -953,6 +955,8 @@ export interface CreateLessonExerciseInput {
   relatedNodeId?: number | null;
   sourcePage?: string;
   successCriteria?: string;
+  interactionType?: 'multiple_choice' | 'true_false' | 'constructed_response' | null;
+  correctAnswer?: string | null;
   difficultyLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
   assignment?: 'CLASS' | 'HOMEWORK';
   exercisePurpose?: string;
@@ -970,6 +974,8 @@ export interface UpdateLessonExerciseInput {
   exerciseTextVerbatim?: string;
   relatedNodeId?: number | null;
   successCriteria?: string;
+  interactionType?: 'multiple_choice' | 'true_false' | 'constructed_response' | null;
+  correctAnswer?: string | null;
   difficultyLevel?: string;
   assignment?: string;
   exercisePurpose?: string;

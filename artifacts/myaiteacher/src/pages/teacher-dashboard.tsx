@@ -181,6 +181,81 @@ interface TextMappingPreview {
 }
 
 type ManualStep = "input" | "preview" | "error";
+type ExerciseInteractionType = "multiple_choice" | "true_false" | "constructed_response";
+
+interface ExerciseAnswerFieldsProps {
+  interactionType: ExerciseInteractionType | null;
+  correctAnswer: string;
+  inputClassName: string;
+  onChange: (interactionType: ExerciseInteractionType | null, correctAnswer: string) => void;
+}
+
+function ExerciseAnswerFields({
+  interactionType,
+  correctAnswer,
+  inputClassName,
+  onChange,
+}: ExerciseAnswerFieldsProps) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <label className="space-y-1">
+        <span className="text-[10px] text-muted-foreground/60">Փոխազդեցության տեսակ</span>
+        <select
+          className={inputClassName + " cursor-pointer"}
+          value={interactionType ?? ""}
+          onChange={(e) => {
+            const next = e.target.value as ExerciseInteractionType | "";
+            onChange(next || null, "");
+          }}
+        >
+          <option value="">Չնշված</option>
+          <option value="multiple_choice">Բազմակի ընտրություն</option>
+          <option value="true_false">Ճիշտ / սխալ</option>
+          <option value="constructed_response">Բաց պատասխան</option>
+        </select>
+      </label>
+      <label className="space-y-1">
+        <span className="text-[10px] text-muted-foreground/60">Ճիշտ պատասխան</span>
+        {interactionType === "true_false" ? (
+          <select
+            className={inputClassName + " cursor-pointer"}
+            value={correctAnswer}
+            onChange={(e) => onChange(interactionType, e.target.value)}
+          >
+            <option value="">Ընտրեք</option>
+            <option value="TRUE">Ճիշտ</option>
+            <option value="FALSE">Սխալ</option>
+          </select>
+        ) : (
+          <input
+            className={inputClassName}
+            value={interactionType === "constructed_response" ? "" : correctAnswer}
+            disabled={interactionType === null || interactionType === "constructed_response"}
+            onChange={(e) => onChange(interactionType, e.target.value)}
+            placeholder={
+              interactionType === "multiple_choice"
+                ? "A / B / C / D կամ Ա / Բ / Գ / Դ"
+                : interactionType === "constructed_response"
+                  ? "Բաց պատասխանի համար չի կիրառվում"
+                  : "Նախ ընտրեք տեսակը"
+            }
+          />
+        )}
+      </label>
+    </div>
+  );
+}
+
+function emptyExerciseCreateForm() {
+  return {
+    exerciseTextVerbatim: "",
+    successCriteria: "",
+    interactionType: null as ExerciseInteractionType | null,
+    correctAnswer: "",
+    difficultyLevel: "MEDIUM",
+    assignment: "CLASS",
+  };
+}
 
 function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
@@ -878,19 +953,17 @@ function LessonNodesPanel({
     // P1.6B: teacher edits go here; display initialized from exerciseTextEdited ?? exerciseTextVerbatim
     exerciseTextEdited: string;
     successCriteria: string;
+    interactionType: ExerciseInteractionType | null;
+    correctAnswer: string;
     difficultyLevel: string; assignment: string; relatedNodeId: number | null;
   } | null>(null);
   const [addExForNodeId, setAddExForNodeId] = useState<number | null>(null);
-  const [addExForm, setAddExForm] = useState({
-    exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
-  });
+  const [addExForm, setAddExForm] = useState(emptyExerciseCreateForm);
   // Quick-move state: which exercise is showing the "→ Տեղափ." node selector
   const [movingExerciseId, setMovingExerciseId] = useState<number | null>(null);
   // Add-to-Additional state: inline form for adding a manual exercise with relatedNodeId=null
   const [addExToAdditional, setAddExToAdditional] = useState(false);
-  const [addAdditionalForm, setAddAdditionalForm] = useState({
-    exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS",
-  });
+  const [addAdditionalForm, setAddAdditionalForm] = useState(emptyExerciseCreateForm);
 
   // POST-P1.12: Read-only node view (👁 Դител) + per-node Phase 2 enrichment (🧠)
   const [viewingNodeData, setViewingNodeData] = useState<{
@@ -1371,6 +1444,8 @@ function LessonNodesPanel({
     setEditExForm({
       exerciseTextEdited: (ex as any).exerciseTextEdited ?? ex.exerciseTextVerbatim,
       successCriteria: ex.successCriteria ?? "",
+      interactionType: ex.interactionType ?? null,
+      correctAnswer: ex.correctAnswer ?? "",
       difficultyLevel: ex.difficultyLevel ?? "MEDIUM",
       assignment: ex.assignment ?? "CLASS",
       relatedNodeId: ex.relatedNodeId ?? null,
@@ -1384,6 +1459,10 @@ function LessonNodesPanel({
       { lessonId, exerciseId: exId, data: {
         exerciseTextEdited: editExForm.exerciseTextEdited,
         successCriteria: editExForm.successCriteria,
+        interactionType: editExForm.interactionType,
+        correctAnswer: editExForm.interactionType === "constructed_response"
+          ? null
+          : editExForm.correctAnswer.trim() || null,
         difficultyLevel: editExForm.difficultyLevel,
         assignment: editExForm.assignment,
         relatedNodeId: editExForm.relatedNodeId,
@@ -1889,7 +1968,15 @@ function LessonNodesPanel({
                         onChange={(e) => setEditExForm((f) => f && { ...f, exerciseTextEdited: e.target.value })}
                         placeholder={(ex as any).sourceType === 'textbook' ? "Հարմարեցում (Դասագրքի բնօրինակի վրա)…" : "Վարժության բնագիր"}
                       />
-                      <input className={fieldCls} placeholder="Ճիշտ պատասխանի օրինակ" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
+                      <input className={fieldCls} placeholder="Հաջողության չափանիշ / գնահատման ուղեցույց" value={editExForm.successCriteria} onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })} />
+                      <ExerciseAnswerFields
+                        interactionType={editExForm.interactionType}
+                        correctAnswer={editExForm.correctAnswer}
+                        inputClassName={fieldCls}
+                        onChange={(interactionType, correctAnswer) =>
+                          setEditExForm((f) => f && { ...f, interactionType, correctAnswer })
+                        }
+                      />
                       <div className="flex gap-2">
                         <select className={fieldCls + " cursor-pointer"} value={editExForm.difficultyLevel} onChange={(e) => setEditExForm((f) => f && { ...f, difficultyLevel: e.target.value })}>
                           <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
@@ -1991,6 +2078,15 @@ function LessonNodesPanel({
           {addExForNodeId === n.id ? (
             <div className="space-y-1.5 py-1">
               <textarea className={fieldCls + " resize-none"} rows={2} placeholder="Վարժության բնագիր *" value={addExForm.exerciseTextVerbatim} onChange={(e) => setAddExForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))} />
+              <input className={fieldCls} placeholder="Հաջողության չափանիշ / գնահատման ուղեցույց" value={addExForm.successCriteria} onChange={(e) => setAddExForm((f) => ({ ...f, successCriteria: e.target.value }))} />
+              <ExerciseAnswerFields
+                interactionType={addExForm.interactionType}
+                correctAnswer={addExForm.correctAnswer}
+                inputClassName={fieldCls}
+                onChange={(interactionType, correctAnswer) =>
+                  setAddExForm((f) => ({ ...f, interactionType, correctAnswer }))
+                }
+              />
               <div className="flex gap-2">
                 <select className={fieldCls + " cursor-pointer"} value={addExForm.difficultyLevel} onChange={(e) => setAddExForm((f) => ({ ...f, difficultyLevel: e.target.value }))}>
                   <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
@@ -2000,12 +2096,12 @@ function LessonNodesPanel({
                 </select>
               </div>
               <div className="flex gap-1">
-                <button disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()} onClick={() => { createEx.mutate({ lessonId, data: { ...addExForm, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } }, { onSuccess: () => { setAddExForNodeId(null); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); refreshEx(); } }); }} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createEx.isPending ? "..." : "+ Ավելացնել"}</button>
+                <button disabled={createEx.isPending || !addExForm.exerciseTextVerbatim.trim()} onClick={() => { createEx.mutate({ lessonId, data: { ...addExForm, correctAnswer: addExForm.correctAnswer.trim() || null, relatedNodeId: n.id, difficultyLevel: addExForm.difficultyLevel as "LOW"|"MEDIUM"|"HIGH", assignment: addExForm.assignment as "CLASS"|"HOMEWORK" } }, { onSuccess: () => { setAddExForNodeId(null); setAddExForm(emptyExerciseCreateForm()); refreshEx(); } }); }} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{createEx.isPending ? "..." : "+ Ավելացնել"}</button>
                 <button onClick={() => setAddExForNodeId(null)} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => { setAddExForNodeId(n.id); setAddExForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" }); }} className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5">+ Ավելացնել վարժություն</button>
+            <button onClick={() => { setAddExForNodeId(n.id); setAddExForm(emptyExerciseCreateForm()); }} className="text-[11px] text-muted-foreground/50 hover:text-primary/70 transition-colors py-0.5">+ Ավելացնել վարժություն</button>
           )}
         </div>
 
@@ -2797,9 +2893,17 @@ function LessonNodesPanel({
                               />
                               <input
                                 className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                                placeholder="Ճիշտ պատասխանի օրինակ"
+                                placeholder="Հաջողության չափանիշ / գնահատման ուղեցույց"
                                 value={editExForm.successCriteria}
                                 onChange={(e) => setEditExForm((f) => f && { ...f, successCriteria: e.target.value })}
+                              />
+                              <ExerciseAnswerFields
+                                interactionType={editExForm.interactionType}
+                                correctAnswer={editExForm.correctAnswer}
+                                inputClassName="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+                                onChange={(interactionType, correctAnswer) =>
+                                  setEditExForm((f) => f && { ...f, interactionType, correctAnswer })
+                                }
                               />
                               {/* Step 4 — Move to node from additional */}
                               <select
@@ -2920,6 +3024,20 @@ function LessonNodesPanel({
                         onChange={(e) => setAddAdditionalForm((f) => ({ ...f, exerciseTextVerbatim: e.target.value }))}
                         autoFocus
                       />
+                      <input
+                        className="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        placeholder="Հաջողության չափանիշ / գնահատման ուղեցույց"
+                        value={addAdditionalForm.successCriteria}
+                        onChange={(e) => setAddAdditionalForm((f) => ({ ...f, successCriteria: e.target.value }))}
+                      />
+                      <ExerciseAnswerFields
+                        interactionType={addAdditionalForm.interactionType}
+                        correctAnswer={addAdditionalForm.correctAnswer}
+                        inputClassName="w-full bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+                        onChange={(interactionType, correctAnswer) =>
+                          setAddAdditionalForm((f) => ({ ...f, interactionType, correctAnswer }))
+                        }
+                      />
                       <div className="flex gap-2">
                         <select
                           className="bg-black/30 border border-white/10 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
@@ -2945,6 +3063,7 @@ function LessonNodesPanel({
                                 lessonId,
                                 data: {
                                   ...addAdditionalForm,
+                                  correctAnswer: addAdditionalForm.correctAnswer.trim() || null,
                                   relatedNodeId: null,
                                   difficultyLevel: addAdditionalForm.difficultyLevel as "LOW" | "MEDIUM" | "HIGH",
                                   assignment: addAdditionalForm.assignment as "CLASS" | "HOMEWORK",
@@ -2953,7 +3072,7 @@ function LessonNodesPanel({
                               {
                                 onSuccess: () => {
                                   setAddExToAdditional(false);
-                                  setAddAdditionalForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" });
+                                  setAddAdditionalForm(emptyExerciseCreateForm());
                                   refreshEx();
                                 },
                               }
@@ -2964,7 +3083,7 @@ function LessonNodesPanel({
                         <button
                           onClick={() => {
                             setAddExToAdditional(false);
-                            setAddAdditionalForm({ exerciseTextVerbatim: "", successCriteria: "", difficultyLevel: "MEDIUM", assignment: "CLASS" });
+                            setAddAdditionalForm(emptyExerciseCreateForm());
                           }}
                           className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
                         >Չեղարկել</button>

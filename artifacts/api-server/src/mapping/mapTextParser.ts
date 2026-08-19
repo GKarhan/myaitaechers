@@ -54,6 +54,13 @@ function parseIntOrNull(s: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+function parseExplicitTextOrNull(s: string | undefined): string | null {
+  if (s === undefined) return null;
+  const trimmed = s.trim();
+  if (!trimmed || trimmed.toLocaleLowerCase() === "null") return null;
+  return trimmed;
+}
+
 /** Parses "22-24", "22–24" (en-dash), "22—24" (em-dash), or "22" (single page). */
 function parsePageRange(s: string): { pagesFrom: number | null; pagesTo: number | null } {
   const normalized = s.replace(/[–—]/g, "-").trim();
@@ -167,6 +174,8 @@ function buildExercise(raw: RawSection): ParsedExercise {
     text:             (f["text"]          ?? "").trim(),
     exerciseType:     (f["exerciseType"]  ?? "").trim(),
     difficulty:       (f["difficulty"]    ?? "").trim(),
+    interactionType:  parseExplicitTextOrNull(f["interactionType"]),
+    correctAnswer:    parseExplicitTextOrNull(f["correctAnswer"]),
     cognitiveLoad:    f["cognitiveLoad"]  != null ? parseIntOrNull(f["cognitiveLoad"])  : null,
     confidenceScore:  f["confidenceScore"] != null ? parseIntOrNull(f["confidenceScore"]) : null,
     relatedMicroNodes: parseCSV(f["relatedMicroNodes"] ?? ""),

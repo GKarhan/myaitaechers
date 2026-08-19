@@ -62,6 +62,7 @@ export const E_UNREADABLE_BLOCK_REF     = "unreadable-block-referenced";
 export const E_EX_TEXT_EMPTY            = "ex-text-empty";
 export const E_EX_TYPE_INVALID          = "ex-type-invalid";
 export const E_EX_DIFFICULTY_INVALID    = "ex-difficulty-invalid";
+export const E_EX_ANSWER_CONTRACT_INVALID = "ex-answer-contract-invalid";
 export const E_DEP_TYPE_INVALID         = "dep-type-invalid";
 
 // ── Warning code constants ────────────────────────────────────────────────────

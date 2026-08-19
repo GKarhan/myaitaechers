@@ -19,6 +19,10 @@ export const lessonExercisesTable = pgTable("lesson_exercises", {
   relatedNodeId: integer("related_node_id")
     .references(() => lessonNodesTable.id, { onDelete: "set null" }),
   successCriteria: text("success_criteria"),
+  // Nullable typed answer metadata. Legacy rows remain null/null.
+  // successCriteria stays separate as human/rubric guidance.
+  interactionType: text("interaction_type"),
+  correctAnswer: text("correct_answer"),
   difficultyLevel: text("difficulty_level"),             // LOW | MEDIUM | HIGH
   assignment: text("assignment"),                        // CLASS | HOMEWORK
   sequence: integer("sequence").notNull(),

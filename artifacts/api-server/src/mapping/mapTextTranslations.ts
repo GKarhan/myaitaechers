@@ -57,6 +57,7 @@ export const ALL_ISSUE_TYPES: readonly string[] = [
   "ref-related-mn-unknown", "ref-dep-from-unknown", "ref-dep-to-unknown",
   "unreadable-block-referenced",
   "ex-text-empty", "ex-type-invalid", "ex-difficulty-invalid",
+  "ex-answer-contract-invalid",
   "dep-type-invalid",
   "warn-sb-needs-review-referenced", "warn-sb-orphan", "warn-ex-orphan",
   "warn-mn-no-sources", "warn-related-mn-extra", "warn-ex-multi-related",
@@ -271,6 +272,13 @@ export const ISSUE_TRANSLATIONS: Record<string, IssueTranslationFn> = {
       .replace("{id}", eid(issue))
       .replace("{received}", received)
       .replace("{expected}", expected);
+  },
+
+  "ex-answer-contract-invalid": (issue) => {
+    const reason = rx(issue.description, /answer contract invalid: (.+)\.$/);
+    return `EXERCISE {id}. պատասխանի պայմանագիրը անվավեր է՝ {reason}։`
+      .replace("{id}", eid(issue))
+      .replace("{reason}", reason);
   },
 
   "dep-type-invalid": (issue) => {

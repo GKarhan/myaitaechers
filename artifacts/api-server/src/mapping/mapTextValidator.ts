@@ -28,10 +28,12 @@ import {
   E_REF_DEP_FROM_UNKNOWN, E_REF_DEP_TO_UNKNOWN,
   E_UNREADABLE_BLOCK_REF,
   E_EX_TEXT_EMPTY, E_EX_TYPE_INVALID, E_EX_DIFFICULTY_INVALID,
+  E_EX_ANSWER_CONTRACT_INVALID,
   E_DEP_TYPE_INVALID,
   W_SB_NEEDS_REVIEW_REF, W_SB_ORPHAN, W_EX_ORPHAN,
   W_MN_NO_SOURCES, W_RELATED_MN_EXTRA, W_EX_MULTI_RELATED,
 } from "./mapTextErrors.js";
+import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
 
 // ── Coverage computation ──────────────────────────────────────────────────────
 
@@ -342,6 +344,24 @@ export function validateParsedMapping(
     if (!(DIFFICULTIES as readonly string[]).includes(ex.difficulty))
       errors.push(makeError(E_EX_DIFFICULTY_INVALID, ex.id,
         `EXERCISE ${ex.id}: difficulty "${ex.difficulty}" is invalid. Expected: ${DIFFICULTIES.join(" | ")}.`, ex._line));
+
+    const answerContract = normalizeSourceExerciseAnswerContract({
+      interactionType: ex.interactionType,
+      correctAnswer: ex.correctAnswer,
+    });
+    if (!answerContract.ok) {
+      errors.push(makeError(
+        E_EX_ANSWER_CONTRACT_INVALID,
+        ex.id,
+        `EXERCISE ${ex.id}: answer contract invalid: ${answerContract.error}.`,
+        ex._line,
+      ));
+    } else {
+      // The validator already mutates coverageAudit; canonicalizing explicit
+      // answer values here guarantees the validated object is insertion-ready.
+      ex.interactionType = answerContract.interactionType;
+      ex.correctAnswer = answerContract.correctAnswer;
+    }
 
     // relatedMicroNodes on exercise
     for (const relId of ex.relatedMicroNodes) {

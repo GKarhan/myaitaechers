@@ -186,6 +186,8 @@ export async function insertParsedMapping(
           sourcePage:           ex.sourcePage != null ? String(ex.sourcePage) : null,
           relatedNodeId:        relatedDbId,
           sequence:             ex.sequence || exSeq,
+          interactionType:      ex.interactionType,
+          correctAnswer:        ex.correctAnswer,
           sourceType:           "manual" as const,
           status:               "draft",
           sourceText:           ex.text,

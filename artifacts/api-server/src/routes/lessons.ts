@@ -1,6 +1,6 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
-import { Router, type Response } from "express";
+import { Router, type NextFunction, type Response } from "express";
 import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
@@ -16,8 +16,55 @@ import { refreshSequentialDependencies } from "../lib/sequential-deps.js";
 import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
+import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
 
 const router = Router();
+
+/**
+ * Exercise answer keys are teacher-authoring data. Keep them behind both a
+ * teacher/admin role check and lesson ownership (direct or through the course).
+ */
+function requireLessonAuthor(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): void {
+  requireTeacher(req, res, () => {
+    void (async () => {
+      const lessonId = parseInt(String(req.params.lessonId), 10);
+      if (isNaN(lessonId)) {
+        res.status(400).json({ error: "Invalid lesson id" });
+        return;
+      }
+
+      const [lesson] = await db
+        .select({
+          teacherId: lessonsTable.teacherId,
+          courseTeacherId: coursesTable.teacherId,
+        })
+        .from(lessonsTable)
+        .leftJoin(coursesTable, eq(coursesTable.id, lessonsTable.courseId))
+        .where(eq(lessonsTable.id, lessonId))
+        .limit(1);
+
+      if (!lesson) {
+        res.status(404).json({ error: "Lesson not found" });
+        return;
+      }
+
+      if (
+        req.userRole !== "admin" &&
+        lesson.teacherId !== req.userId &&
+        lesson.courseTeacherId !== req.userId
+      ) {
+        res.status(403).json({ error: "Lesson author access required" });
+        return;
+      }
+
+      next();
+    })().catch(next);
+  });
+}
 
 // ── Phase 2A R3 helper ────────────────────────────────────────────────────────
 // When a CONFIRMED cognitive path is edited or deleted, de-confirm it and mark
@@ -1644,7 +1691,7 @@ router.delete("/lessons/:lessonId/mapping", requireTeacher, async (req: AuthRequ
 // ── LESSON EXERCISES CRUD ─────────────────────────────────────────────────────
 
 // GET /lessons/:lessonId/exercises — list all exercises for this lesson
-router.get("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -1669,6 +1716,8 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest,
       exercisePurpose: e.exercisePurpose ?? null,
       relatedNodeId: e.relatedNodeId ?? null,
       successCriteria: e.successCriteria ?? null,
+      interactionType: e.interactionType ?? null,
+      correctAnswer: e.correctAnswer ?? null,
       difficultyLevel: e.difficultyLevel ?? null,
       assignment: e.assignment ?? null,
       // Provenance / review fields — included for teacher review UI
@@ -1680,15 +1729,17 @@ router.get("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest,
 });
 
 // POST /lessons/:lessonId/exercises — create a new exercise
-router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/exercises", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
-  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, difficultyLevel, assignment, exercisePurpose } = req.body as {
+  const { exerciseTextVerbatim, relatedNodeId, sourcePage, successCriteria, interactionType, correctAnswer, difficultyLevel, assignment, exercisePurpose } = req.body as {
     exerciseTextVerbatim?: string;
     relatedNodeId?: number | null;
     sourcePage?: string;
     successCriteria?: string;
+    interactionType?: string | null;
+    correctAnswer?: string | null;
     difficultyLevel?: string;
     assignment?: string;
     exercisePurpose?: string;
@@ -1696,6 +1747,18 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
 
   if (!exerciseTextVerbatim?.trim()) {
     res.status(400).json({ error: "exerciseTextVerbatim is required" });
+    return;
+  }
+
+  const answerContract = normalizeSourceExerciseAnswerContract({
+    interactionType,
+    correctAnswer,
+  });
+  if (!answerContract.ok) {
+    res.status(400).json({
+      error: "INVALID_EXERCISE_ANSWER_CONTRACT",
+      message: answerContract.error,
+    });
     return;
   }
 
@@ -1717,6 +1780,8 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
       relatedNodeId: relatedNodeId ?? null,
       sourcePage: sourcePage ?? null,
       successCriteria: successCriteria ?? null,
+      interactionType: answerContract.interactionType,
+      correctAnswer: answerContract.correctAnswer,
       difficultyLevel: difficultyLevel ?? "MEDIUM",
       assignment: assignment ?? "CLASS",
       exercisePurpose: exercisePurpose ?? "INDEPENDENT_PRACTICE",
@@ -1738,6 +1803,8 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
     exercisePurpose: ex.exercisePurpose ?? null,
     relatedNodeId: ex.relatedNodeId ?? null,
     successCriteria: ex.successCriteria ?? null,
+    interactionType: ex.interactionType ?? null,
+    correctAnswer: ex.correctAnswer ?? null,
     difficultyLevel: ex.difficultyLevel ?? null,
     assignment: ex.assignment ?? null,
     status: ex.status ?? "draft",
@@ -1747,7 +1814,7 @@ router.post("/lessons/:lessonId/exercises", requireAuth, async (req: AuthRequest
 });
 
 // POST /lessons/:lessonId/exercises/:exerciseId/update — partial update
-router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const exerciseId = parseInt(String(req.params.exerciseId), 10);
   if (isNaN(lessonId) || isNaN(exerciseId)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -1762,7 +1829,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
 
   const {
     exerciseTextVerbatim, exerciseTextEdited,
-    relatedNodeId, sourcePage, successCriteria, difficultyLevel,
+    relatedNodeId, sourcePage, successCriteria, interactionType, correctAnswer, difficultyLevel,
     assignment, exercisePurpose, status,
   } = req.body as {
     exerciseTextVerbatim?: string;
@@ -1770,6 +1837,8 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     relatedNodeId?: number | null;
     sourcePage?: string;
     successCriteria?: string;
+    interactionType?: string | null;
+    correctAnswer?: string | null;
     difficultyLevel?: string;
     assignment?: string;
     exercisePurpose?: string;
@@ -1779,6 +1848,18 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
   // Gate 1.4: only allow known lifecycle values
   if (status !== undefined && !["draft", "reviewed", "approved"].includes(status)) {
     res.status(400).json({ error: "Invalid status; allowed values: draft, reviewed, approved" }); return;
+  }
+
+  const answerContract = normalizeSourceExerciseAnswerContract({
+    interactionType: interactionType !== undefined ? interactionType : existing.interactionType,
+    correctAnswer: correctAnswer !== undefined ? correctAnswer : existing.correctAnswer,
+  });
+  if (!answerContract.ok) {
+    res.status(400).json({
+      error: "INVALID_EXERCISE_ANSWER_CONTRACT",
+      message: answerContract.error,
+    });
+    return;
   }
 
   // P1.6B: protect textbook provenance — immutable fields for textbook exercises
@@ -1821,6 +1902,10 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
 
   if (relatedNodeId !== undefined) patch.relatedNodeId = relatedNodeId;
   if (successCriteria !== undefined) patch.successCriteria = successCriteria.trim() || null;
+  if (interactionType !== undefined || correctAnswer !== undefined) {
+    patch.interactionType = answerContract.interactionType;
+    patch.correctAnswer = answerContract.correctAnswer;
+  }
   if (difficultyLevel !== undefined) patch.difficultyLevel = difficultyLevel;
   if (assignment !== undefined) patch.assignment = assignment;
   if (exercisePurpose !== undefined) patch.exercisePurpose = exercisePurpose;
@@ -1848,6 +1933,8 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
     exercisePurpose: updated.exercisePurpose ?? null,
     relatedNodeId: updated.relatedNodeId ?? null,
     successCriteria: updated.successCriteria ?? null,
+    interactionType: updated.interactionType ?? null,
+    correctAnswer: updated.correctAnswer ?? null,
     difficultyLevel: updated.difficultyLevel ?? null,
     assignment: updated.assignment ?? null,
     status: updated.status ?? "draft",
@@ -1859,7 +1946,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/update", requireAuth, asyn
 // POST /lessons/:lessonId/exercises/approve-all — bulk approve all non-approved exercises in a lesson
 // Gate 1.4: transaction-safe; only touches the current lesson's exercises.
 // Uses fail-closed logic: status === "approved" is the only eligible value.
-router.post("/lessons/:lessonId/exercises/approve-all", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/exercises/approve-all", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -1883,7 +1970,7 @@ router.post("/lessons/:lessonId/exercises/approve-all", requireAuth, async (req:
 });
 
 // POST /lessons/:lessonId/exercises/:exerciseId/delete
-router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const exerciseId = parseInt(String(req.params.exerciseId), 10);
   if (isNaN(lessonId) || isNaN(exerciseId)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -2280,6 +2367,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
             sequence:            exerciseCounter,
             // P3.4: persist the Pass-1 block index for MAPPING → SOURCE traceability
             sourceBlockIndex:    ex.blockIndex,
+            interactionType:     null,
+            correctAnswer:       null,
             sourceType:          "textbook" as const,
             status:              "draft"    as const,
             // P5.2: exercises attached to a MicroNode are CLASS exercises.
@@ -2324,6 +2413,8 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
           sequence:             exerciseCounter,
           // P3.4: persist the Pass-1 block index for MAPPING → SOURCE traceability
           sourceBlockIndex:     ex.blockIndex,
+          interactionType:      null,
+          correctAnswer:        null,
           sourceType:           "textbook" as const,
           status:               "draft"    as const,
           assignment:           additionalAssignment,
@@ -3364,6 +3455,8 @@ async function handleLegacyJsonImport(
             sourcePage:           ex.page != null ? String(ex.page) : null,
             relatedNodeId:        insertedNode.id,
             sequence:             exSeqCounter,
+            interactionType:      null,
+            correctAnswer:        null,
             sourceType:           "manual" as const,
             status:               "needs_review",
             sourceText:           ex.text,

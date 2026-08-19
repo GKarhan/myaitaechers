@@ -229,6 +229,8 @@ it("Test 10: EXERCISE section parsed correctly", () => {
     "text: What is 5 × 6?",
     "exerciseType: RECALL",
     "difficulty: MEDIUM",
+    "interactionType: multiple_choice",
+    "correctAnswer: Բ)",
     "sequence: 3",
     "sourcePage: 15",
     "confidenceScore: 85",
@@ -241,6 +243,8 @@ it("Test 10: EXERCISE section parsed correctly", () => {
   assert.equal(ex.text, "What is 5 × 6?");
   assert.equal(ex.exerciseType, "RECALL");
   assert.equal(ex.difficulty, "MEDIUM");
+  assert.equal(ex.interactionType, "multiple_choice");
+  assert.equal(ex.correctAnswer, "Բ)");
   assert.equal(ex.sequence, 3);
   assert.equal(ex.sourcePage, 15);
   assert.equal(ex.confidenceScore, 85);
