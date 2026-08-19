@@ -1,0 +1,331 @@
+READ-ONLY TARGETED AUDIT — WHY ONE CORRECT EXERCISE COMPLETED MICRONODE / PHASE 2
+
+IMPORTANT:
+READ ONLY.
+DO NOT CHANGE CODE.
+DO NOT WRITE TO DB.
+DO NOT CALL AI/provider.
+DO NOT fix the duplicate exercise-delivery issue yet.
+
+GOAL
+
+Trace the exact final turn of session 51:
+
+currentPhase = 2
+currentNodeId = 2107
+activeCognitiveLevel = remember
+nodeTeachingStage = EXERCISE
+activeLessonExerciseId = 940 / EX-579-1
+
+Student answered:
+
+բ
+
+The answer was correct.
+
+Immediately afterward the visible state became:
+
+currentPhase = 3
+currentNodeId = null
+activeCognitiveLevel = null
+nodeTeachingStage = THEORY
+activeLessonExerciseId = null
+Decision = ADVANCE_COGNITIVE_LEVEL
+task = false
+
+UI also changed from:
+
+✓ 5/1
+
+to:
+
+✓ 1/1
+
+and Phase 2 became completed.
+
+This is the exact behavior to explain.
+
+────────────────────────────────────
+A. EXACT TURN TRACE
+────────────────────────────────────
+
+Trace ONLY this final EX-579-1 answer turn through chat.ts and directly called progression/scoring functions.
+
+Show, in execution order:
+
+student "բ"
+→ intent
+→ answer evaluation
+→ evidence
+→ exercise completion
+→ node/cognitive counters
+→ node_decision
+→ cognitive-level progression
+→ currentNodeId update
+→ Phase 2 completion / Phase 3 transition
+
+For every state-changing step give:
+
+- condition
+- old value
+- new value
+- owning function/block
+
+Do not infer. Cite actual code.
+
+────────────────────────────────────
+B. EXERCISE REQUIREMENT
+────────────────────────────────────
+
+For MicroNode 2107 + cognitive level remember:
+
+Determine exactly:
+
+1. How many eligible linked exercises exist?
+2. Their DB/internal IDs.
+3. Their external exercise IDs, including EX-579-1 / EX-579-2 if applicable.
+4. Whether the runtime progression engine requires:
+   - one exercise,
+   - all linked exercises,
+   - a fixed evidence count,
+   - a mastery threshold,
+   - or something else.
+
+Most important:
+
+Does current code consider ONE correct source exercise sufficient to complete the remember cognitive level?
+
+YES / NO
+
+Show the exact condition.
+
+────────────────────────────────────
+C. WHY EX-579-2 WAS NOT SELECTED
+────────────────────────────────────
+
+After EX-579-1 was answered correctly, determine why the backend did NOT activate the next eligible linked exercise.
+
+Check whether code has:
+
+- completed exercise tracking
+- next-exercise selection
+- exclusion of already completed exercise
+- required exercise count
+- evidence count
+- attempt count
+- mastery threshold
+
+If no such progression exists, say explicitly:
+
+NO LINKED-EXERCISE SEQUENCE IMPLEMENTED
+
+if that is what the code proves.
+
+────────────────────────────────────
+D. ADVANCE_COGNITIVE_LEVEL
+────────────────────────────────────
+
+Explain exactly why:
+
+node_decision = ADVANCE_COGNITIVE_LEVEL
+
+was produced.
+
+Was this decision produced by:
+
+A. AI
+B. deterministic backend
+C. AI then validated/overridden by backend
+D. another mechanism
+
+Show the exact criterion that allowed ADVANCE_COGNITIVE_LEVEL after this answer.
+
+────────────────────────────────────
+E. REMEMBER → UNDERSTAND
+────────────────────────────────────
+
+Inspect the actual Cognitive Path for node 2107.
+
+Confirm the ordered cognitive levels that exist.
+
+Expected from previous runtime evidence:
+
+remember = 136
+understand = 137
+
+Verify from actual data/code if available without DB mutation.
+
+Then answer:
+
+When ADVANCE_COGNITIVE_LEVEL occurs at remember, what code is supposed to select the next level?
+
+Why did this runtime end with:
+
+activeCognitiveLevelId = null
+
+instead of:
+
+activeCognitiveLevelId = 137
+
+Was 137:
+- not found?
+- considered already complete?
+- filtered out?
+- never selected?
+- cleared by node completion?
+- cleared by phase completion?
+- something else?
+
+Find the FIRST exact condition responsible.
+
+────────────────────────────────────
+F. WHY currentNodeId BECAME NULL
+────────────────────────────────────
+
+Find the exact code that changed:
+
+currentNodeId: 2107 → null
+
+What condition caused node 2107 to be considered complete?
+
+Was completion based on:
+
+- one correct exercise
+- mastery evidence count
+- cognitive-level completion
+- all cognitive levels
+- node_decision
+- lesson node count
+- another rule
+
+Show the exact condition.
+
+────────────────────────────────────
+G. WHY PHASE 3 STARTED
+────────────────────────────────────
+
+Find the exact code path that changed:
+
+currentPhase: 2 → 3
+
+Was Phase 2 considered complete because:
+
+- currentNodeId became null?
+- completed node count reached total?
+- node 2107 was the only node in the Phase-2 target set?
+- another condition?
+
+Explain why UI now shows:
+
+✓ 1/1
+Phase 2 ✓
+Phase 3 active
+
+────────────────────────────────────
+H. INTENDED PROGRESSION VS CURRENT CODE
+────────────────────────────────────
+
+Compare current implementation with this desired progression:
+
+remember THEORY
+→ remember MICRO_CHECK
+→ correct
+→ source EXERCISE 1
+→ if correct and more required/eligible exercises remain:
+   activate next required exercise
+→ when remember success criterion/evidence requirement is satisfied:
+   advance to understand
+→ initialize understand THEORY
+→ continue its cognitive path
+→ only after all required cognitive levels for the MicroNode are satisfied:
+   complete MicroNode
+→ then next MicroNode
+→ only when Phase-2 target MicroNodes are complete:
+   Phase 3
+
+For an incorrect exercise answer, desired behavior is:
+
+incorrect
+→ feedback
+→ remediation appropriate to error
+→ equivalent/new check within SAME cognitive level
+→ do NOT automatically restart the entire theory
+→ do NOT advance cognitive level until success criterion is satisfied
+
+Classify current implementation:
+
+A. already matches
+B. partially matches
+C. fundamentally uses a different progression rule
+
+────────────────────────────────────
+I. SMALLEST CORRECT FIX
+────────────────────────────────────
+
+DO NOT IMPLEMENT.
+
+Based on evidence, specify the smallest architecture-consistent fix.
+
+Do not propose hardcoding:
+
+EX-579-1 → EX-579-2.
+
+The solution must be generic across lessons/MicroNodes.
+
+It should use existing:
+
+- Cognitive Path ordering
+- linked cognitive-level exercises/tasks
+- success criteria/evidence requirements
+- activeLessonExerciseId
+- existing evidence/progression state
+
+if those structures already exist.
+
+Prefer deterministic backend ownership of progression.
+
+Explicitly separate:
+
+1. what happens after CORRECT exercise
+2. what happens after INCORRECT exercise
+3. when ADVANCE_COGNITIVE_LEVEL is legal
+4. when COMPLETE_NODE is legal
+5. when Phase 2 → Phase 3 is legal
+
+────────────────────────────────────
+J. DUPLICATE EXERCISE
+────────────────────────────────────
+
+Do NOT fix it.
+
+Only state whether the duplicate EX-579-1 display appears causally related to this premature progression bug or is an independent delivery/rendering issue.
+
+One sentence only.
+
+────────────────────────────────────
+K. VERDICT
+────────────────────────────────────
+
+Choose one:
+
+PROGRESSION CORRECT
+PROGRESSION GAP
+COGNITIVE-LEVEL ADVANCE BUG
+NODE-COMPLETION BUG
+MULTIPLE LINKED GAPS
+
+Then STOP.
+
+COST CONTROL:
+
+Use the shortest path.
+
+Start with:
+- artifacts/api-server/src/routes/chat.ts
+- directly called progression/scoring helpers
+- Cognitive Path data/schema only where required
+
+Do not audit frontend except to explain already-known displayed state.
+Do not inspect Mapping.
+Do not inspect Knowledge Tree.
+Do not inspect unrelated lesson/session routes.
