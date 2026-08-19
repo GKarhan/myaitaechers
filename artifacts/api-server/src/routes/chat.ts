@@ -28,6 +28,58 @@ import {
   type PedagogicalDecision,
 } from "../services/pedagogicalDecisionEngine.js";
 
+type ActiveObjectiveTaskPayload = {
+  interactionType: "multiple_choice" | "true_false";
+  options: Array<{ key: string; text: string }> | null;
+  correctOption: string;
+};
+
+function objectivePayloadFromMicroCheck(
+  response: AIStructuredResponse
+): ActiveObjectiveTaskPayload | null {
+  if (
+    !response.is_micro_check ||
+    (response.interaction_type !== "multiple_choice" &&
+      response.interaction_type !== "true_false") ||
+    !response.correct_option
+  ) {
+    return null;
+  }
+
+  return {
+    interactionType: response.interaction_type,
+    options: response.interaction_type === "multiple_choice" ? response.options : null,
+    correctOption: response.correct_option,
+  };
+}
+
+export function normalizeObjectiveMicroCheckAnswer(
+  answer: string,
+  interactionType: ActiveObjectiveTaskPayload["interactionType"]
+): string {
+  const normalized = answer
+    .normalize("NFKC")
+    .trim()
+    .replace(/[.)\s]+$/u, "")
+    .toLocaleLowerCase();
+
+  if (interactionType === "true_false") {
+    if (["ճիշտ", "true", "այո"].includes(normalized)) return "TRUE";
+    if (["սխալ", "false", "ոչ"].includes(normalized)) return "FALSE";
+    return normalized.toUpperCase();
+  }
+
+  const optionKeyMap: Record<string, string> = {
+    a: "A", "ա": "A",
+    b: "B", "բ": "B",
+    c: "C", "գ": "C",
+    d: "D", "դ": "D",
+    e: "E", "ե": "E",
+    f: "F", "զ": "F",
+  };
+  return optionKeyMap[normalized] ?? normalized.toUpperCase();
+}
+
 // ── V2-R2 shared help executor ────────────────────────────────────────────────
 // Used by both the inline HELP intent path (text-based "oghni") and the
 // dedicated POST /chat/help route.  Never writes evidence or advances stage.
@@ -298,6 +350,7 @@ async function advanceNodeInSession(
     activeLessonExerciseId: null,
     activeCognitiveLevelId: null,
     activeTaskProvenance:   null,
+    activeObjectiveTaskPayload: null,
     activeAttemptSequence:  0,
     activeHelpCount:        0,
     activeAssistanceLevel:  "none",
@@ -367,6 +420,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeLessonExerciseId: number | null;
     activeCognitiveLevelId: number | null;
     activeTaskProvenance: string | null;
+    activeObjectiveTaskPayload: ActiveObjectiveTaskPayload | null;
     activeAttemptSequence: number;
     activeHelpCount: number;
     activeAssistanceLevel: string;
@@ -443,6 +497,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeLessonExerciseId: (sessionRow as any).activeLessonExerciseId ?? null,
           activeCognitiveLevelId: (sessionRow as any).activeCognitiveLevelId ?? null,
           activeTaskProvenance:   (sessionRow as any).activeTaskProvenance   ?? null,
+          activeObjectiveTaskPayload: (sessionRow as any).activeObjectiveTaskPayload ?? null,
           activeAttemptSequence:  (sessionRow as any).activeAttemptSequence  ?? 0,
           activeHelpCount:        (sessionRow as any).activeHelpCount        ?? 0,
           activeAssistanceLevel:  (sessionRow as any).activeAssistanceLevel  ?? "none",
@@ -1361,6 +1416,56 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
     }
 
+    if (
+      _intentResult.intent === "ANSWER" &&
+      session?.activeTaskProvenance === "micro_check" &&
+      session.activeObjectiveTaskPayload
+    ) {
+      const payload = session.activeObjectiveTaskPayload;
+      const normalizedAnswer = normalizeObjectiveMicroCheckAnswer(
+        message,
+        payload.interactionType
+      );
+      const isObjectiveAnswerCorrect =
+        normalizedAnswer === payload.correctOption;
+
+      aiResult.answer_evaluation = {
+        ...aiResult.answer_evaluation,
+        status: isObjectiveAnswerCorrect ? "CORRECT" : "INCORRECT",
+        // Objective MICRO_CHECK correctness is backend-owned. MODERATE is the
+        // existing maximum evidence quality for an independent MICRO_CHECK.
+        evidence_quality: isObjectiveAnswerCorrect ? "MODERATE" : "NONE",
+        error_family: isObjectiveAnswerCorrect
+          ? null
+          : aiResult.answer_evaluation.error_family,
+        error_stability: isObjectiveAnswerCorrect
+          ? null
+          : aiResult.answer_evaluation.error_stability,
+        correct_parts: isObjectiveAnswerCorrect
+          ? ["objective answer matched"]
+          : [],
+        incorrect_parts: isObjectiveAnswerCorrect
+          ? []
+          : ["objective answer did not match"],
+      };
+      logger.info(
+        {
+          sessionId: session.id,
+          interactionType: payload.interactionType,
+          normalizedAnswer,
+          isObjectiveAnswerCorrect,
+        },
+        "Objective MICRO_CHECK correctness overridden deterministically"
+      );
+    }
+
+    const finalStatus = aiResult.answer_evaluation.status;
+    wasCorrect = finalStatus === "CORRECT"
+      ? true
+      : finalStatus === "INCORRECT"
+        ? false
+        : null;
+
   } catch (err) {
     const structuredFailure = {
       event:     "ai_structured_fallback",
@@ -1447,6 +1552,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeTeachingStage:      "EXERCISE",
           activeLessonExerciseId: classExercises.length > 0 ? classExercises[0].id : null,
           activeTaskProvenance:   "source_exercise",
+          activeObjectiveTaskPayload: null,
           activeAttemptSequence:  1,
           activeHelpCount:        0,
           activeAssistanceLevel:  "none",
@@ -1495,6 +1601,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeTeachingStage:      "MICRO_CHECK",
           activeLessonExerciseId: null,
           activeTaskProvenance:   "micro_check",
+          activeObjectiveTaskPayload: objectivePayloadFromMicroCheck(aiResult),
           activeAttemptSequence:  1,
           activeHelpCount:        0,
           activeAssistanceLevel:  "none",
@@ -1535,6 +1642,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeTeachingStage:      "EXERCISE",
           activeLessonExerciseId: classExercises.length > 0 ? classExercises[0].id : null,
           activeTaskProvenance:   "source_exercise",
+          activeObjectiveTaskPayload: null,
           activeAttemptSequence:  1,
           activeHelpCount:        0,
           activeAssistanceLevel:  "none",
@@ -1606,18 +1714,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         if (newTeachingStage === "MICRO_CHECK") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = "micro_check";
+          activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 1;
           activeTaskUpdate.activeHelpCount        = 0;
           activeTaskUpdate.activeAssistanceLevel  = "none";
         } else if (newTeachingStage === "EXERCISE" && classExercises.length > 0) {
           activeTaskUpdate.activeLessonExerciseId = classExercises[0].id;
           activeTaskUpdate.activeTaskProvenance   = "source_exercise";
+          activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 1;
           activeTaskUpdate.activeHelpCount        = 0;
           activeTaskUpdate.activeAssistanceLevel  = "none";
         } else if (newTeachingStage === "VERIFIED") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = null;
+          activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 0;
           activeTaskUpdate.activeHelpCount        = 0;
           activeTaskUpdate.activeAssistanceLevel  = "none";
@@ -1825,6 +1936,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             nodeTeachingStage: "THEORY",
             activeLessonExerciseId: null,
             activeTaskProvenance: null,
+            activeObjectiveTaskPayload: null,
             activeAttemptSequence: 0,
             activeHelpCount: 0,
             activeAssistanceLevel: "none",

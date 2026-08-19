@@ -1,0 +1,432 @@
+TARGETED IMPLEMENTATION — PERSIST OBJECTIVE MICRO_CHECK PAYLOAD + DETERMINISTIC EVALUATION
+
+GOAL
+
+Fix the confirmed ANSWER-KEY GAP for AI-generated objective MICRO_CHECKS.
+
+Current problem:
+
+- AI generates a multiple-choice MICRO_CHECK.
+- Backend stores only the question text.
+- It does NOT persist:
+  - actual interaction type
+  - structured options
+  - correct answer key
+- On the next student turn, the model re-infers correctness from chat history.
+- This caused a visibly correct answer (`բ`) to be marked INCORRECT.
+
+We need objective MICRO_CHECK evaluation to be backend-deterministic.
+
+This task may include ONE minimal DB schema change because the audit confirmed no safe existing session field can persist the active objective task payload.
+
+==================================================
+1. DB SCHEMA — ADD ONE NULLABLE JSONB FIELD
+==================================================
+
+Find the authoritative `lesson_sessions` schema in `@workspace/db`.
+
+Add exactly one nullable JSONB field:
+
+`activeObjectiveTaskPayload`
+
+Preferred type:
+
+{
+  interactionType: "multiple_choice" | "true_false";
+  options: Array<{ key: string; text: string }> | null;
+  correctOption: string;
+} | null
+
+Use canonical interaction-type values already present in the repo.
+
+Do NOT include constructed_response in this payload.
+
+Semantics:
+
+- null = no active objective AI-generated MICRO_CHECK
+- non-null = active objective MICRO_CHECK with deterministic answer key
+
+Add the required migration using the repo's existing migration conventions.
+
+Do NOT change any other table.
+
+==================================================
+2. STRUCTURED AI RESPONSE — OBJECTIVE TASK PAYLOAD
+==================================================
+
+File:
+`artifacts/api-server/src/services/ai.ts`
+
+Extend the structured response schema minimally with fields for AI-generated objective MICRO_CHECKS.
+
+Preferred fields:
+
+- `options`
+- `correct_option`
+
+Semantics:
+
+### multiple_choice
+- `options` required
+- at least 2 options
+- each option:
+  - canonical `key`
+  - visible `text`
+- `correct_option` must match exactly one option key
+
+### true_false
+- `options` may be null
+- `correct_option` must be canonical TRUE/FALSE
+
+### constructed_response
+- `options = null`
+- `correct_option = null`
+
+Keep the existing:
+- interaction_type
+- is_micro_check
+- teaching_mode
+- source_fidelity
+- answer_evaluation
+- node_decision
+
+Do not redesign the full schema.
+
+==================================================
+3. STRUCTURED PROMPT CONTRACT
+==================================================
+
+Add only the minimum instruction needed so the model populates the new fields correctly.
+
+For objective MICRO_CHECK:
+
+- `multiple_choice`:
+  return structured options + correct_option
+- `true_false`:
+  return correct_option TRUE/FALSE
+- visible `student_message` must match the structured question/options
+
+Do not add a large prompt block.
+
+==================================================
+4. FORMAT CONSISTENCY VALIDATION
+==================================================
+
+Extend the existing MICRO_CHECK validation.
+
+For `multiple_choice`:
+
+- at least 2 structured options
+- unique canonical keys
+- correct_option matches exactly one key
+- visible student_message contains the same option labels/text sufficiently to confirm consistency
+
+For `true_false`:
+
+- correct_option is TRUE or FALSE
+- visible question presents true/false semantics
+
+For `constructed_response`:
+
+- options and correct_option must be null
+
+Keep this deterministic and simple.
+
+Do not build NLP-heavy parsing.
+
+==================================================
+5. PERSIST PAYLOAD WHEN MICRO_CHECK BECOMES ACTIVE
+==================================================
+
+File:
+`artifacts/api-server/src/routes/chat.ts`
+
+When a successful AI-generated objective MICRO_CHECK becomes the active task:
+
+persist:
+
+`session.activeObjectiveTaskPayload`
+
+using the exact structured result:
+
+- interactionType
+- options
+- correctOption
+
+This must correspond to the exact MICRO_CHECK the student sees.
+
+For constructed_response:
+store null in `activeObjectiveTaskPayload`.
+
+Do not persist payload for source exercises.
+
+==================================================
+6. DETERMINISTIC OBJECTIVE ANSWER NORMALIZATION
+==================================================
+
+Add the smallest backend helper to normalize short objective answers.
+
+Multiple choice examples:
+
+- `ա`, `Ա`, `a`, `A`, `ա)`, `A)` → canonical A
+- `բ`, `Բ`, `b`, `B`, `բ)` → canonical B
+- etc.
+
+True/false examples:
+
+- `ճիշտ`, `true` → TRUE
+- `սխալ`, `false` → FALSE
+
+Use Unicode-safe normalization.
+
+Do not broaden into free-text NLP.
+
+==================================================
+7. BACKEND-OWNED CORRECTNESS
+==================================================
+
+On an answer turn, when:
+
+- activeTaskProvenance = `micro_check`
+- `activeObjectiveTaskPayload` is non-null
+
+then correctness must be backend-owned.
+
+Compare normalized student answer with persisted `correctOption`.
+
+If match:
+- force objective correctness = CORRECT
+
+If exact non-match:
+- force objective correctness = INCORRECT
+
+The model must NOT be allowed to override that correctness result.
+
+The model may still generate FEEDBACK wording.
+
+Integrate this into the existing `answer_evaluation` flow with the smallest compatible override.
+
+Do not create a separate progression engine.
+
+==================================================
+8. EVIDENCE / DECISION ENGINE
+==================================================
+
+The deterministic result must feed the EXISTING downstream logic:
+
+- evidence quality rules
+- counters
+- Decision Engine
+- Cognitive Path progression
+- remediation
+
+Do NOT change evidence thresholds or progression rules.
+
+For objective MICRO_CHECK correctness:
+only the CORRECT/INCORRECT status becomes deterministic.
+
+Everything else remains current behavior unless directly dependent on that status.
+
+==================================================
+9. CLEAR ACTIVE OBJECTIVE PAYLOAD
+==================================================
+
+Clear `activeObjectiveTaskPayload = null` whenever the active task is no longer valid, including:
+
+- task completion
+- stage change away from MICRO_CHECK
+- cognitive level advance
+- node advance/completion
+- start-fresh reset
+- session/task clear paths
+
+Do not allow stale answer keys to survive into another question.
+
+Audit only the existing clear/reset paths needed to add this field.
+
+==================================================
+10. START-FRESH
+==================================================
+
+Update the existing `start-fresh` reset so:
+
+`activeObjectiveTaskPayload = null`
+
+No other fresh-session semantics change.
+
+Persistent evidence/mastery remains untouched.
+
+==================================================
+11. TEST STATE / FRONTEND
+==================================================
+
+Do NOT add new frontend UI.
+
+Do NOT expose the answer key to the student.
+
+The payload must remain backend-only.
+
+Do NOT add `correctOption` to lesson page API/debug bar.
+
+==================================================
+12. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- linked source exercise sequencing
+- duplicate exercise delivery
+- Cognitive Path thresholds
+- node completion rules
+- short-answer intent routing except reuse its normalization if appropriate
+- source_fidelity
+- json_schema provider setup
+- model/provider
+- Mapping
+- Knowledge Tree
+- frontend
+- quiz system
+
+This task is ONLY objective AI-generated MICRO_CHECK correctness.
+
+==================================================
+13. COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Inspect only:
+
+1. lesson_sessions schema + migration conventions
+2. aiStructuredResponseSchema
+3. existing MICRO_CHECK validation
+4. MICRO_CHECK activation state write
+5. answer_evaluation override point
+6. existing task/session clear/reset paths
+
+No broad repo audit.
+No browser test.
+No provider request.
+
+==================================================
+14. STATIC VERIFICATION
+==================================================
+
+CASE A
+
+Generated multiple_choice:
+options = A/B
+correct_option = B
+
+student = `բ`
+
+Expected:
+CORRECT
+
+CASE B
+
+same task
+student = `ա`
+
+Expected:
+INCORRECT
+
+CASE C
+
+true_false
+correct_option = TRUE
+
+student = `ճիշտ`
+
+Expected:
+CORRECT
+
+CASE D
+
+constructed_response
+
+Expected:
+no objective payload persisted
+existing AI-assisted evaluation remains unchanged
+
+CASE E
+
+cognitive level advances
+
+Expected:
+activeObjectiveTaskPayload cleared
+
+CASE F
+
+start-fresh
+
+Expected:
+activeObjectiveTaskPayload null
+
+CASE G
+
+source exercise active
+
+Expected:
+objective MICRO_CHECK payload logic does not interfere
+
+==================================================
+15. TYPECHECK / MIGRATION
+==================================================
+
+Run:
+
+- relevant DB/schema typecheck
+- API typecheck
+- migration generation/check using existing repo conventions
+
+Do not apply destructive DB changes.
+
+If migration application is required for the dev environment and existing workflow does that safely, apply only the new nullable column migration.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. FILES CHANGED
+
+B. DB FIELD
+Show exact `activeObjectiveTaskPayload` type.
+
+C. STRUCTURED RESPONSE
+Show exact `options` / `correct_option` fields.
+
+D. MICRO_CHECK ACTIVATION
+Explain how payload is persisted.
+
+E. DETERMINISTIC EVALUATION
+Show normalization/comparison logic.
+
+F. PAYLOAD CLEARING
+List clear/reset paths updated.
+
+G. DOWNSTREAM
+Confirm existing evidence/progression remains authoritative.
+
+H. STATIC CASES
+A/B/C/D/E/F/G = PASS/FAIL
+
+I. MIGRATION
+Created/applied status.
+
+J. TYPECHECK
+PASS / FAIL
+
+K. RESULT
+
+PASS — objective AI-generated MICRO_CHECK answers are now backend-deterministic
+
+or
+
+BLOCKED — exact reason
+
+or
+
+FAIL — exact reason
+
+Then STOP.

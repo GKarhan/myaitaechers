@@ -83,12 +83,19 @@ export const sourceFidelitySchema = z.object({
 
 export const interactionTypeSchema = z.enum(INTERACTION_TYPE_VALUES);
 
+const objectiveMicroCheckOptionSchema = z.object({
+  key: z.string().regex(/^[A-Z]$/, "Option key must be one uppercase Latin letter"),
+  text: z.string().min(1),
+});
+
 export const aiStructuredResponseSchema = z.object({
   student_message: z.string(),
   progress_indicator: progressIndicatorSchema,
   teaching_mode: z.enum(["TEACH", "MICRO_CHECK", "FEEDBACK", "TRANSITION"]),
   is_micro_check: z.boolean(),
   interaction_type: interactionTypeSchema.nullable().default(null),
+  options: z.array(objectiveMicroCheckOptionSchema).nullable().default(null),
+  correct_option: z.string().nullable().default(null),
   answer_evaluation: answerEvaluationSchema,
   node_decision: nodeDecisionSchema,
   source_fidelity: sourceFidelitySchema,
@@ -312,7 +319,7 @@ Use:
 
 Never return source_fidelity.type = null.
 
-MICRO_CHECK FORMAT: When is_micro_check=true, interaction_type MUST describe the actual question in student_message and match PREFERRED_INTERACTION_TYPES. multiple_choice MUST visibly include at least two answer options; true_false MUST visibly offer both true and false choices; constructed_response is for an open response. When is_micro_check=false, set interaction_type to null.
+MICRO_CHECK FORMAT: When is_micro_check=true, interaction_type MUST describe the actual question in student_message and match PREFERRED_INTERACTION_TYPES. multiple_choice MUST visibly include at least two answer options; true_false MUST visibly offer both true and false choices; constructed_response is for an open response. For multiple_choice, return options as {key:"A",text:"..."} objects and correct_option as the exact correct key. For true_false, return correct_option as TRUE or FALSE. For constructed_response and every non-MICRO_CHECK turn, return options:null and correct_option:null.
 
 IMPORTANT — teaching_mode and node_decision.action are TWO SEPARATE fields with COMPLETELY DIFFERENT allowed values. Do not confuse them.
 - teaching_mode is ALWAYS exactly one of: TEACH, MICRO_CHECK, FEEDBACK, TRANSITION.
@@ -332,6 +339,8 @@ Required JSON schema:
   "teaching_mode": "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION",
   "is_micro_check": true | false,
    "interaction_type": "multiple_choice" | "multi_select" | "true_false" | "matching" | "classification" | "ordering" | "numeric_answer" | "short_answer" | "constructed_response" | "problem_solving" | null,
+   "options": [{"key": "A", "text": "<visible option text>"}] | null,
+   "correct_option": "A" | "B" | "TRUE" | "FALSE" | null,
   "answer_evaluation": {
     "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "OFF_TOPIC" | "NOT_APPLICABLE",
     "evidence_quality": "NONE" | "WEAK" | "MODERATE" | "STRONG" | "CONCLUSIVE",
@@ -779,6 +788,24 @@ function validateMicroCheckInteractionType(
 
   const message = response.student_message;
   if (interactionType === "multiple_choice") {
+    const options = response.options;
+    if (!options || options.length < 2) {
+      throw new Error(
+        "MICRO_CHECK interaction_type multiple_choice requires at least two structured options"
+      );
+    }
+    const optionKeys = options.map((option) => option.key);
+    if (new Set(optionKeys).size !== optionKeys.length) {
+      throw new Error(
+        "MICRO_CHECK interaction_type multiple_choice requires unique option keys"
+      );
+    }
+    if (!response.correct_option || !optionKeys.includes(response.correct_option)) {
+      throw new Error(
+        "MICRO_CHECK interaction_type multiple_choice correct_option must match exactly one option key"
+      );
+    }
+
     const optionMarkers = message.match(
       /(?:^|\n)\s*(?:[A-Da-dԱ-Դա-դ]|\d{1,2})[.)]\s+/gmu
     ) ?? [];
@@ -787,9 +814,45 @@ function validateMicroCheckInteractionType(
         "MICRO_CHECK interaction_type multiple_choice requires at least two visible answer options"
       );
     }
+
+    const normalizedMessage = message
+      .normalize("NFKC")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLocaleLowerCase();
+    const armenianOptionLabels: Record<string, string> = {
+      A: "Ա", B: "Բ", C: "Գ", D: "Դ", E: "Ե", F: "Զ",
+    };
+    for (const option of options) {
+      const normalizedText = option.text
+        .normalize("NFKC")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLocaleLowerCase();
+      if (!normalizedMessage.includes(normalizedText)) {
+        throw new Error(
+          `MICRO_CHECK multiple_choice visible student_message must contain option text for key ${option.key}`
+        );
+      }
+      const visibleLabel = armenianOptionLabels[option.key] ?? option.key;
+      const labelPattern = new RegExp(
+        `(?:^|\\n)\\s*(?:${option.key}|${visibleLabel})[.)]\\s+`,
+        "mu"
+      );
+      if (!labelPattern.test(message)) {
+        throw new Error(
+          `MICRO_CHECK multiple_choice visible student_message must contain option label for key ${option.key}`
+        );
+      }
+    }
   }
 
   if (interactionType === "true_false") {
+    if (response.correct_option !== "TRUE" && response.correct_option !== "FALSE") {
+      throw new Error(
+        "MICRO_CHECK interaction_type true_false correct_option must be TRUE or FALSE"
+      );
+    }
     const offersTrue = /(?:ճի(?:՞)?շտ|true|այո)/iu.test(message);
     const offersFalse = /(?:սխալ|false|ոչ)/iu.test(message);
     if (!offersTrue || !offersFalse) {
@@ -797,6 +860,16 @@ function validateMicroCheckInteractionType(
         "MICRO_CHECK interaction_type true_false requires visible true and false choices"
       );
     }
+  }
+
+  if (
+    interactionType !== "multiple_choice" &&
+    interactionType !== "true_false" &&
+    (response.options !== null || response.correct_option !== null)
+  ) {
+    throw new Error(
+      "Non-objective MICRO_CHECK interactions must return options:null and correct_option:null"
+    );
   }
 }
 

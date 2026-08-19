@@ -67,6 +67,15 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   // Provenance of the active task: 'micro_check' | 'source_exercise' | null
   activeTaskProvenance: text("active_task_provenance"),
 
+  // Backend-only answer data for an active AI-generated objective MICRO_CHECK.
+  // null = no active objective micro-check; source exercises never use this payload.
+  activeObjectiveTaskPayload: jsonb("active_objective_task_payload")
+    .$type<{
+      interactionType: "multiple_choice" | "true_false";
+      options: Array<{ key: string; text: string }> | null;
+      correctOption: string;
+    } | null>(),
+
   // Which attempt number this is on the current active task (1-based).
   // Reset to 1 when a new task starts; incremented on each answer attempt.
   activeAttemptSequence: integer("active_attempt_sequence").notNull().default(0),

@@ -602,6 +602,7 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
           activeLessonExerciseId:     null,
           activeCognitiveLevelId:     null,
           activeTaskProvenance:       null,
+          activeObjectiveTaskPayload: null,
           activeAttemptSequence:      0,
           activeHelpCount:            0,
           activeAssistanceLevel:      "none",
