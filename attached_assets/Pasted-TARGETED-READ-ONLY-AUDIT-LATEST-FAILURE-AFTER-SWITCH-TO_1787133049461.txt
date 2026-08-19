@@ -1,0 +1,209 @@
+TARGETED READ-ONLY AUDIT — LATEST FAILURE AFTER SWITCH TO json_schema
+
+READ ONLY.
+NO CODE CHANGES.
+NO DB WRITES.
+NO AI/PROVIDER REQUEST.
+NO BROWSER TEST.
+
+GOAL
+
+We switched callAIStructured() from:
+
+response_format: { type: "json_object" }
+
+to native strict:
+
+response_format: {
+  type: "json_schema",
+  json_schema: {
+    name: "ai_teacher_response",
+    strict: true,
+    schema: aiStructuredResponseJsonSchema
+  }
+}
+
+TypeScript passed, but the very next controlled Phase-2 browser turn again returned:
+
+«Սխալ տեղի ունեցավ։ Փորձեք կրկին։»
+
+Current session remained:
+
+Lesson 579
+Node 2107
+Phase 2
+Level remember
+Stage THEORY
+Ex null
+task false
+
+We need the exact failure of THIS latest request only.
+
+==================================================
+A. DID THE PROVIDER CALL SUCCEED?
+==================================================
+
+From the latest server logs determine:
+
+1. Did openrouter.chat.completions.create() itself return successfully?
+
+Choose:
+
+- YES — provider returned a response object
+- NO — provider/API rejected the request
+- UNKNOWN
+
+If NO:
+report only:
+- HTTP/status code if available
+- provider error code/type
+- short bounded provider error message
+- whether the error specifically references:
+  - response_format
+  - json_schema
+  - schema
+  - strict
+  - model/provider support
+  - another exact field
+
+Do not expose auth/secrets.
+
+==================================================
+B. IF PROVIDER RETURNED CONTENT
+==================================================
+
+Only if the provider request succeeded, report:
+
+Attempt 1:
+- finishReason
+- contentLength
+- bounded contentPreview
+- first validation failure
+
+Attempt 2:
+- same fields
+- first validation failure
+
+Also report whether the content was:
+- valid root JSON object
+- [1]
+- empty
+- another exact shape
+
+==================================================
+C. json_schema REQUEST SHAPE
+==================================================
+
+Inspect the actual locally constructed response_format object.
+
+Report only:
+
+- type
+- json_schema.name
+- strict
+- root schema type
+- additionalProperties
+- top-level required array
+- whether every object level required by strict schema has additionalProperties:false if applicable
+
+Do NOT dump the full schema.
+
+==================================================
+D. ZOD → JSON SCHEMA COMPATIBILITY
+==================================================
+
+Inspect the generated aiStructuredResponseJsonSchema only for constructs that may be incompatible with strict provider schemas.
+
+Check specifically for:
+
+- default
+- nullable represented via anyOf
+- unions
+- enums
+- optional fields
+- unsupported metadata
+- $ref / definitions
+- additionalProperties
+- required fields
+
+Report only suspicious constructs actually present.
+
+Do not broadly audit Zod.
+
+==================================================
+E. PROVIDER/MODEL SUPPORT EVIDENCE
+==================================================
+
+From EXISTING runtime error/log evidence only, determine whether the current model/provider path actually accepted strict json_schema.
+
+Important:
+
+TypeScript support is NOT runtime support.
+
+Answer:
+
+RUNTIME SUPPORT CONFIRMED
+RUNTIME SUPPORT REJECTED
+RUNTIME SUPPORT UNKNOWN
+
+Give the exact evidence.
+
+Do not web-search in this task.
+
+==================================================
+F. FIRST CONFIRMED ROOT CAUSE
+==================================================
+
+Choose the earliest proven failure:
+
+1. provider rejected json_schema request
+2. provider accepted request but returned malformed content
+3. generated JSON Schema itself is incompatible
+4. backend validation rejected otherwise valid output
+5. another exact proven cause
+6. insufficient evidence
+
+Do not mix multiple speculative causes.
+
+==================================================
+G. SMALLEST NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest fix based on the proven cause.
+
+Examples only:
+
+- adjust generated schema shape for provider compatibility
+- revert to json_object if this provider/model rejects json_schema
+- use a model/path that runtime-confirmedly supports strict schema
+- fix a specific backend validator
+
+Choose only one based on evidence.
+
+Do not suggest prompt changes unless the failure is clearly model-output related.
+
+==================================================
+H. VERDICT
+==================================================
+
+Choose exactly one:
+
+JSON_SCHEMA REQUEST REJECTED
+
+JSON_SCHEMA ACCEPTED / MODEL OUTPUT FAILED
+
+JSON_SCHEMA SCHEMA-COMPATIBILITY GAP
+
+BACKEND VALIDATION FAILURE
+
+INSUFFICIENT EVIDENCE
+
+Then STOP.
+
+COST CONTROL:
+Use only the latest logs + services/ai.ts generated response_format/schema shape.
+No broad audit.
+No browser.
+No provider request.
