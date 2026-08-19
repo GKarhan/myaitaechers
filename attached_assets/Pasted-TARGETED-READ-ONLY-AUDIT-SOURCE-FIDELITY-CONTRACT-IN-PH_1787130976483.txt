@@ -1,0 +1,256 @@
+TARGETED READ-ONLY AUDIT — SOURCE_FIDELITY CONTRACT IN PHASE 2
+
+GOAL
+
+We have isolated the latest structured-output failure.
+
+Attempt 1 was otherwise close to correct:
+
+- teaching_mode = TEACH
+- is_micro_check = true
+- interaction_type = multiple_choice
+- visible multiple-choice format was valid
+
+But Zod rejected the response because:
+
+source_fidelity.type = null
+
+Expected enum:
+
+SOURCE_EXACT
+SOURCE_PARAPHRASED
+AI_ADAPTED
+AI_GENERATED
+
+Attempt 2 then failed for a separate reason:
+TEACH response had is_micro_check = false.
+
+We now need to understand only the source_fidelity contract.
+
+READ-ONLY AUDIT ONLY.
+NO CODE CHANGES.
+NO DB WRITES.
+NO AI/PROVIDER REQUEST.
+NO BROWSER TEST.
+
+==================================================
+CONFIRMED FACTS — DO NOT RE-AUDIT
+==================================================
+
+Already confirmed:
+
+- Phase 2 controlled structured flow works when validation passes
+- plain-text fallback is blocked
+- interaction_type enforcement is working
+- first attempt had a valid multiple-choice MICRO_CHECK
+- first attempt failed before format validation because source_fidelity.type was null
+- second attempt failed later on existing R2
+- session state remained safe
+
+Do not repeat those audits.
+
+==================================================
+QUESTION 1 — SOURCE_FIDELITY SCHEMA
+==================================================
+
+Inspect the exact structured schema in:
+
+artifacts/api-server/src/services/ai.ts
+
+Report only the source_fidelity shape:
+
+- required / optional / nullable?
+- type field required / nullable?
+- enum values
+- any other required nested fields
+
+Show the smallest relevant schema snippet.
+
+==================================================
+QUESTION 2 — INTENDED SEMANTICS
+==================================================
+
+Find the exact prompt/contract instructions that tell the AI how to populate source_fidelity.
+
+Determine what each enum means in current architecture:
+
+- SOURCE_EXACT
+- SOURCE_PARAPHRASED
+- AI_ADAPTED
+- AI_GENERATED
+
+Do not invent definitions if they are not explicitly present.
+
+If definitions are only inferable from code, label them as inference.
+
+==================================================
+QUESTION 3 — WHEN IS source_fidelity REQUIRED?
+==================================================
+
+Determine whether the CURRENT code intends source_fidelity to be mandatory for:
+
+- TEACH
+- MICRO_CHECK
+- FEEDBACK
+- TRANSITION
+- source exercise delivery
+- AI-generated micro-check
+- general conversational/help turns
+
+Answer from executable validation/schema/prompt evidence.
+
+Important question:
+
+Should a Phase-2 TEACH + AI-generated MICRO_CHECK legally return source_fidelity.type = null?
+
+YES / NO / NOT CLEAR.
+
+==================================================
+QUESTION 4 — HOW IS source_fidelity USED AFTER PARSE?
+==================================================
+
+Trace only actual consumers of source_fidelity.
+
+Determine whether it affects:
+
+- state transition
+- exercise selection
+- evidence
+- node completion
+- source grounding validation
+- logging only
+- display only
+- another proven behavior
+
+We need to know whether rejecting the entire teaching turn on null source_fidelity is behaviorally necessary.
+
+Do not audit unrelated validators.
+
+==================================================
+QUESTION 5 — PROMPT VS SCHEMA ALIGNMENT
+==================================================
+
+Determine whether the structured-output prompt clearly tells the model that:
+
+source_fidelity.type MUST always be one of the enum values
+
+and never null.
+
+If the schema requires a non-null enum but examples/instructions allow or imply null/missing, identify that exact mismatch.
+
+Search only relevant source_fidelity format instructions/examples.
+
+==================================================
+QUESTION 6 — FAILURE CLASSIFICATION
+==================================================
+
+For the observed valid-looking TEACH + MICRO_CHECK response, classify the current null as one of:
+
+A. MODEL CONTRACT VIOLATION
+Prompt clearly required a non-null enum and model violated it.
+
+B. PROMPT/SCHEMA MISMATCH
+Schema requires non-null, but prompt/examples do not clearly require it.
+
+C. SCHEMA TOO STRICT
+Current runtime semantics allow null for this type of turn, but schema forbids it.
+
+D. OTHER
+Give exact evidence.
+
+==================================================
+QUESTION 7 — SMALLEST CORRECT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest fix only.
+
+Choose based on the evidence.
+
+Examples of possible directions only:
+- make source_fidelity instruction explicit/required in the structured prompt
+- make source_fidelity.type conditionally nullable for turns where provenance is not meaningful
+- provide deterministic provenance from backend rather than asking AI to decide it
+
+But choose ONE.
+
+Do not offer multiple alternatives.
+
+Prefer the smallest fix that preserves the intended source-grounding architecture and does not weaken fidelity guarantees unnecessarily.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT inspect/change:
+
+- interaction_type
+- preferred interaction validation
+- THEORY → MICRO_CHECK
+- intent router
+- exercise progression
+- Decision Engine
+- Cognitive Path
+- start-fresh
+- frontend
+- provider/model
+- response_format
+- retry count
+- Mapping
+- DB schema
+
+Only source_fidelity.
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Preferred path:
+
+1. source_fidelity schema in services/ai.ts
+2. directly related prompt instructions/examples
+3. direct consumers/validators of source_fidelity
+
+No broad repository audit.
+No DB.
+No browser.
+No AI request.
+No TypeScript check.
+
+==================================================
+FINAL REPORT — SHORT
+==================================================
+
+## A. SCHEMA
+Exact source_fidelity contract.
+
+## B. SEMANTICS
+What the enum values mean.
+
+## C. REQUIRED WHEN?
+For which response types source_fidelity is required.
+
+## D. RUNTIME USE
+What source_fidelity actually controls.
+
+## E. PROMPT/SCHEMA ALIGNMENT
+MATCH / MISMATCH / UNCLEAR.
+
+## F. FAILURE CLASSIFICATION
+A / B / C / D.
+
+## G. SMALLEST NEXT FIX
+ONE concrete recommendation.
+NO implementation.
+
+## H. VERDICT
+SOURCE_FIDELITY CONTRACT CLEAR
+or
+SOURCE_FIDELITY CONTRACT MISALIGNED
+or
+INSUFFICIENT EVIDENCE
+
+Then STOP.
