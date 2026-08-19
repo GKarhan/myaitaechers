@@ -283,6 +283,16 @@ LESSON MAP AUTHORITY RULE — CRITICAL:
 
 OUTPUT FORMAT: Return VALID JSON ONLY. No markdown, no \`\`\`json fences, no explanatory text outside the JSON.
 
+source_fidelity.type is always required and must never be null.
+
+Use:
+- AI_GENERATED for a newly generated MICRO_CHECK or other newly generated content;
+- SOURCE_EXACT when reproducing source material exactly;
+- SOURCE_PARAPHRASED when rephrasing source material without changing its meaning;
+- AI_ADAPTED when adapting source material for teaching.
+
+Never return source_fidelity.type = null.
+
 MICRO_CHECK FORMAT: When is_micro_check=true, interaction_type MUST describe the actual question in student_message and match PREFERRED_INTERACTION_TYPES. multiple_choice MUST visibly include at least two answer options; true_false MUST visibly offer both true and false choices; constructed_response is for an open response. When is_micro_check=false, set interaction_type to null.
 
 IMPORTANT — teaching_mode and node_decision.action are TWO SEPARATE fields with COMPLETELY DIFFERENT allowed values. Do not confuse them.
