@@ -745,6 +745,7 @@ try {
   theoryOnly.options = null;
   theoryOnly.correct_option = null;
   enqueue("remember theory only", theoryOnly);
+  enqueue("remember bounded task", multipleChoiceTask("Հիշելու մակարդակ։"));
   const firstTheory = await postChat(
     baseUrl,
     successfulToken,
@@ -752,9 +753,9 @@ try {
     "պատրաստ",
   );
   assert.equal(firstTheory.response.status, 200);
-  assert.equal(providerCallCount, 1);
-  assert.equal(firstTheory.json.teachingMode, "TEACH");
-  assert.equal(firstTheory.json.hasActiveTask, false);
+  assert.equal(providerCallCount, 2);
+  assert.equal(firstTheory.json.teachingMode, "MICRO_CHECK");
+  assert.equal(firstTheory.json.hasActiveTask, true);
   assert.equal(typeof firstTheory.json.messageId, "number");
   assertNoPrivateAnswerMetadata(firstTheory.json, "POST /api/chat");
 
@@ -779,27 +780,9 @@ try {
   let session = await getSession(lesson.id, successfulStudent.userId);
   assert.equal(session.currentPhase, 2);
   assert.equal(session.currentNodeId, node.id);
-  assert.equal(session.nodeTeachingStage, "TASK_REQUIRED");
-  assert.equal(session.activeTaskProvenance, null);
-  assert.equal(session.activeCognitiveLevelId, rememberLevel.id);
-  assert.equal(session.activeAttemptSequence, 0);
-  assert.equal(session.activeObjectiveTaskPayload, null);
-  assert.equal((await waitForEvidenceCount(session.id, 0)).length, 0);
-  console.log("  ✓ server-selected THEORY action persists TASK_REQUIRED without a task");
-
-  enqueue("remember bounded task", multipleChoiceTask("Հիշելու մակարդակ։"));
-  const firstTask = await postChat(
-    baseUrl,
-    successfulToken,
-    lesson.id,
-    "շարունակել",
-  );
-  assert.equal(firstTask.response.status, 200);
-  assert.equal(firstTask.json.teachingMode, "MICRO_CHECK");
-  assert.equal(firstTask.json.hasActiveTask, true);
-  session = await getSession(lesson.id, successfulStudent.userId);
   assert.equal(session.nodeTeachingStage, "MICRO_CHECK");
   assert.equal(session.activeTaskProvenance, "micro_check");
+  assert.equal(session.activeCognitiveLevelId, rememberLevel.id);
   assert.equal(session.activeAttemptSequence, 1);
   assert.deepEqual(session.activeObjectiveTaskPayload, {
     interactionType: "multiple_choice",
@@ -811,6 +794,8 @@ try {
     ],
     correctOption: "B",
   });
+  assert.equal((await waitForEvidenceCount(session.id, 0)).length, 0);
+  console.log("  ✓ READY persists THEORY then automatically delivers exactly one bounded task");
 
   const sessionState = await requestJson(
     `${baseUrl}/api/chat/session-state?lessonId=${lesson.id}`,
@@ -851,6 +836,15 @@ try {
     "remember premature completion",
     prematureCompletionFeedback("Առաջին պատասխանը։"),
   );
+  const understandTheory = multipleChoiceTask("Հասկանալու մակարդակ։");
+  understandTheory.student_message = "Մասնիկների շարժումը կախված է նրանց ջերմային էներգիայից։";
+  understandTheory.teaching_mode = "TEACH";
+  understandTheory.is_micro_check = false;
+  understandTheory.interaction_type = null;
+  understandTheory.options = null;
+  understandTheory.correct_option = null;
+  enqueue("understand theory after evaluation", understandTheory);
+  enqueue("understand bounded task after evaluation", multipleChoiceTask("Հասկանալու մակարդակ։"));
   const objectiveJobsBeforeAnswer = boundedJobCalls.length;
   const firstAnswer = await postChat(
     baseUrl,
@@ -860,11 +854,11 @@ try {
   );
   assert.equal(firstAnswer.response.status, 200);
   assert.equal(firstAnswer.json.sessionDecision, "ADVANCE_COGNITIVE_LEVEL");
-  assert.equal(firstAnswer.json.hasActiveTask, false);
+  assert.equal(firstAnswer.json.hasActiveTask, true);
   assert.deepEqual(
     boundedJobCalls.slice(objectiveJobsBeforeAnswer),
-    ["phase2_feedback_result"],
-    "objective MICRO_CHECK must use deterministic scoring and skip EVALUATION AI",
+    ["phase2_feedback_result", "phase2_theory_result", "phase2_task_candidate"],
+    "objective MICRO_CHECK must use deterministic scoring, then continue through separate FEEDBACK, THEORY, and TASK jobs",
   );
   const objectiveFeedbackContext = boundedFeedbackContexts.at(-1) ?? "";
   assert.match(objectiveFeedbackContext, /"status":"CORRECT"/u);
@@ -880,10 +874,10 @@ try {
   session = await getSession(lesson.id, successfulStudent.userId);
   assert.equal(session.currentPhase, 2);
   assert.equal(session.currentNodeId, node.id);
-  assert.equal(session.nodeTeachingStage, "THEORY");
+  assert.equal(session.nodeTeachingStage, "MICRO_CHECK");
   assert.equal(session.activeCognitiveLevelId, understandLevel.id);
-  assert.equal(session.activeTaskProvenance, null);
-  assert.equal(session.activeObjectiveTaskPayload, null);
+  assert.equal(session.activeTaskProvenance, "micro_check");
+  assert.notEqual(session.activeObjectiveTaskPayload, null);
   const firstEvidence = await waitForEvidenceCount(session.id, 1);
   assert.equal(firstEvidence[0]?.wasCorrect, true);
   assert.equal(firstEvidence[0]?.cognitiveLevel, "remember");
@@ -894,7 +888,7 @@ try {
     "evaluated task must not create duplicate evidence",
   );
   console.log("  ✓ deterministic objective scoring overrides model authority");
-  console.log("  ✓ feedback creates no task and premature COMPLETE_NODE is denied");
+  console.log("  ✓ feedback persists separately; Cognitive Path then auto-continues through THEORY and TASK");
   console.log("  ✓ Cognitive Path advances without entering Phase 3");
   console.log("  ✓ evaluated task creates exactly one evidence event");
 

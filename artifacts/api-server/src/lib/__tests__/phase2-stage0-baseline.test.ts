@@ -631,7 +631,7 @@ test("Fixture K — legacy source rows preserve the existing AI-assisted evaluat
 test("Fixture L — student chat/session-state payloads expose no hidden answer metadata", () => {
   const normalResponse = routeSlice(
     chatRouteSource,
-    "res.json({\n    response:       studentMessage",
+    "res.json({\n    response:       responseContent",
     "// ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence",
   );
   const sessionStateResponse = routeSlice(
