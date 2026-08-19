@@ -12,6 +12,10 @@ const chatRouteSource = readFileSync(
   fileURLToPath(new URL("../../routes/chat.ts", import.meta.url)),
   "utf8"
 );
+const phase2OrchestrationSource = readFileSync(
+  fileURLToPath(new URL("../../services/phase2/orchestration.ts", import.meta.url)),
+  "utf8"
+);
 const aiServiceSource = readFileSync(
   fileURLToPath(new URL("../../services/ai.ts", import.meta.url)),
   "utf8"
@@ -186,8 +190,8 @@ test("G: existing validated activation path and objective payload remain in plac
     /if \(!wasEval && .*session\?\.nodeTeachingStage.*THEORY.*aiResult\.is_micro_check\)/su
   );
   assert.match(
-    chatRouteSource,
-    /activeObjectiveTaskPayload:\s*objectivePayloadFromMicroCheck\(aiResult\)/u
+    phase2OrchestrationSource,
+    /activeObjectiveTaskPayload:\s*objectivePayloadFromMicroCheck\(response\)/u
   );
   assert.doesNotMatch(
     chatRouteSource,

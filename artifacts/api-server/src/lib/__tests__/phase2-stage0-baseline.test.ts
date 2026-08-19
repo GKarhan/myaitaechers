@@ -25,7 +25,7 @@ import {
   type CognitiveLevelRow,
   type PedagogicalDecisionInput,
 } from "../../services/pedagogicalDecisionEngine.js";
-import { normalizeObjectiveMicroCheckAnswer } from "../../routes/chat.js";
+import { normalizeObjectiveMicroCheckAnswer } from "../../services/phase2/orchestration.js";
 import {
   enforceActiveSourceExercise,
   resolveEligibleSourceExercise,
@@ -36,6 +36,10 @@ import {
 
 const chatRouteSource = readFileSync(
   fileURLToPath(new URL("../../routes/chat.ts", import.meta.url)),
+  "utf8",
+);
+const phase2OrchestrationSource = readFileSync(
+  fileURLToPath(new URL("../../services/phase2/orchestration.ts", import.meta.url)),
   "utf8",
 );
 const lessonsRouteSource = readFileSync(
@@ -381,8 +385,8 @@ test("Fixture A — THEORY accepts a visible generated MICRO_CHECK and persists 
   assert.equal(persisted.evidenceCount, 0);
   assertResponseStateParity(canonical, persisted);
   assert.match(
-    chatRouteSource,
-    /activeObjectiveTaskPayload:\s*objectivePayloadFromMicroCheck\(aiResult\)/u,
+    phase2OrchestrationSource,
+    /activeObjectiveTaskPayload:\s*objectivePayloadFromMicroCheck\(response\)/u,
   );
 });
 
@@ -581,11 +585,11 @@ test("Fixture I — legacy VERIFIED stage cannot bypass a false Cognitive Path c
   assert.equal(decision.mayCompleteMicroNode, false);
   assert.equal(stageBecomesVerified, true);
   assert.match(
-    chatRouteSource,
+    phase2OrchestrationSource,
     /const cognitiveCompletionGate =\s*decisionSaysComplete && codeGate/u,
   );
   assert.match(
-    chatRouteSource,
+    phase2OrchestrationSource,
     /const legacyCompletionGate =\s*!hasActiveCognitivePath/u,
   );
 });

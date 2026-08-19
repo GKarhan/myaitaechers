@@ -23,70 +23,28 @@ import {
   shouldDeliverStandaloneSourceExercise,
   type SourceExerciseResolution,
 } from "../lib/exercise-delivery";
-import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
-  decideNextPedagogicalAction,
   computeSessionBudgetExhausted,
-  computeLocalNodeBudget,
   ACTIVE_INTERVAL_CAP_SECONDS,
   type CognitiveLevelRow,
-  type LevelEvidenceSummary,
   type PedagogicalDecision,
 } from "../services/pedagogicalDecisionEngine.js";
+import {
+  coordinatePedagogicalDecision,
+  deriveCognitiveAdvanceTaskReset,
+  deriveGeneratedMicroCheckActivation,
+  deriveProgressionPlan,
+  deriveTurnProgress,
+  normalizeObjectiveMicroCheckAnswer,
+  resolveAuthoritativeEvaluation,
+  summarizeLevelEvidence,
+  type ActiveObjectiveTaskPayload,
+  type AuthoritativeSourceExercise,
+} from "../services/phase2/orchestration.js";
 
-type ActiveObjectiveTaskPayload = {
-  interactionType: "multiple_choice" | "true_false";
-  options: Array<{ key: string; text: string }> | null;
-  correctOption: string;
-};
-
-function objectivePayloadFromMicroCheck(
-  response: AIStructuredResponse
-): ActiveObjectiveTaskPayload | null {
-  if (
-    !response.is_micro_check ||
-    (response.interaction_type !== "multiple_choice" &&
-      response.interaction_type !== "true_false") ||
-    !response.correct_option
-  ) {
-    return null;
-  }
-
-  return {
-    interactionType: response.interaction_type,
-    options: response.interaction_type === "multiple_choice" ? response.options : null,
-    correctOption: response.correct_option,
-  };
-}
-
-export function normalizeObjectiveMicroCheckAnswer(
-  answer: string,
-  interactionType: ActiveObjectiveTaskPayload["interactionType"]
-): string {
-  const normalized = answer
-    .normalize("NFKC")
-    .trim()
-    .replace(/[.)\s]+$/u, "")
-    .toLocaleLowerCase();
-
-  if (interactionType === "true_false") {
-    if (["ճիշտ", "true", "այո"].includes(normalized)) return "TRUE";
-    if (["սխալ", "false", "ոչ"].includes(normalized)) return "FALSE";
-    return normalized.toUpperCase();
-  }
-
-  const optionKeyMap: Record<string, string> = {
-    a: "A", "ա": "A",
-    b: "B", "բ": "B",
-    c: "C", "գ": "C",
-    d: "D", "դ": "D",
-    e: "E", "ե": "E",
-    f: "F", "զ": "F",
-  };
-  return optionKeyMap[normalized] ?? normalized.toUpperCase();
-}
+export { normalizeObjectiveMicroCheckAnswer };
 
 type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
 
@@ -1446,82 +1404,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     studentMessage = aiResult.student_message;
     teachingMode = aiResult.teaching_mode;
-    const st = aiResult.answer_evaluation.status;
-    wasCorrect = st === "CORRECT" ? true : st === "INCORRECT" ? false : null;
-
-    // ── V2-R2: Non-ANSWER gate ────────────────────────────────────────────────
-    // CONFUSED / REPEAT / CLARIFY / OFF_TOPIC: AI still generates a pedagogical
-    // response (redirect, hint, re-explanation), but we force answer_evaluation
-    // to NOT_APPLICABLE so the downstream state machine never fires evidence
-    // writes or attempt-counter increments.
-    // OFF_TOPIC is included here to prevent attempt increment while still
-    // allowing the existing Node Lock redirect response from the AI to fire.
-    // When a task is open, also lock node_decision to CONTINUE_SAME_NODE so
-    // the node cannot be advanced by the model's output.
-    if (
-      _intentResult.intent === "CONFUSED"  ||
-      _intentResult.intent === "REPEAT"    ||
-      _intentResult.intent === "CLARIFY"   ||
-      _intentResult.intent === "OFF_TOPIC"
-    ) {
-      (aiResult.answer_evaluation as unknown as Record<string, string>).status          = "NOT_APPLICABLE";
-      (aiResult.answer_evaluation as unknown as Record<string, string>).evidence_quality = "NONE";
-      wasCorrect = null;
-      if (_intentHasActiveTask) {
-        (aiResult.node_decision as Record<string, string>).action = "CONTINUE_SAME_NODE";
-      }
-      logger.info(
-        { sessionId: session?.id, intent: _intentResult.intent },
-        "V2-R2: non-ANSWER intent — answer_evaluation forced NOT_APPLICABLE, no evidence/attempt"
-      );
-    }
-
-    if (
+    const _activeObjectiveTaskPayload = (
       _intentResult.intent === "ANSWER" &&
       session?.activeTaskProvenance === "micro_check" &&
       session.activeObjectiveTaskPayload
-    ) {
-      const payload = session.activeObjectiveTaskPayload;
-      const normalizedAnswer = normalizeObjectiveMicroCheckAnswer(
-        message,
-        payload.interactionType
-      );
-      const isObjectiveAnswerCorrect =
-        normalizedAnswer === payload.correctOption;
-
-      aiResult.answer_evaluation = {
-        ...aiResult.answer_evaluation,
-        status: isObjectiveAnswerCorrect ? "CORRECT" : "INCORRECT",
-        // Objective MICRO_CHECK correctness is backend-owned. MODERATE is the
-        // existing maximum evidence quality for an independent MICRO_CHECK.
-        evidence_quality: isObjectiveAnswerCorrect ? "MODERATE" : "NONE",
-        error_family: isObjectiveAnswerCorrect
-          ? null
-          : aiResult.answer_evaluation.error_family,
-        error_stability: isObjectiveAnswerCorrect
-          ? null
-          : aiResult.answer_evaluation.error_stability,
-        correct_parts: isObjectiveAnswerCorrect
-          ? ["objective answer matched"]
-          : [],
-        incorrect_parts: isObjectiveAnswerCorrect
-          ? []
-          : ["objective answer did not match"],
-      };
-      logger.info(
-        {
-          sessionId: session.id,
-          interactionType: payload.interactionType,
-          normalizedAnswer,
-          isObjectiveAnswerCorrect,
-        },
-        "Objective MICRO_CHECK correctness overridden deterministically"
-      );
-    }
+    )
+      ? session.activeObjectiveTaskPayload
+      : null;
 
     // Active typed source exercises have a separate, database-backed correctness
-    // authority from AI-generated MICRO_CHECK payloads. This executes after the
-    // AI response is available but before every status/quality consumer below.
+    // authority from AI-generated MICRO_CHECK payloads. The route owns the read;
+    // the pure Phase 2 coordinator applies the authoritative evaluation.
+    let _activeSourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
     if (
       _intentResult.intent === "ANSWER" &&
       session?.activeTaskProvenance === "source_exercise" &&
@@ -1539,53 +1433,58 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .limit(1);
 
       if (activeSourceExercise) {
-        const deterministicEvaluation = evaluateDeterministicSourceExerciseAnswer({
-          learnerIntent: _intentResult.intent,
-          activeTaskProvenance: session.activeTaskProvenance,
-          activeLessonExerciseId: session.activeLessonExerciseId,
-          exerciseId: activeSourceExercise.exerciseId,
-          interactionType: activeSourceExercise.interactionType,
-          correctAnswer: activeSourceExercise.correctAnswer,
-          studentAnswer: message,
-        });
-
-        if (deterministicEvaluation) {
-          const isCorrect = deterministicEvaluation.status === "CORRECT";
-          aiResult.answer_evaluation = {
-            ...aiResult.answer_evaluation,
-            status: deterministicEvaluation.status,
-            // Source-exercise evidence retains its existing STRONG/NONE policy.
-            evidence_quality: deterministicEvaluation.evidenceQuality,
-            error_family: isCorrect ? null : aiResult.answer_evaluation.error_family,
-            error_stability: isCorrect ? null : aiResult.answer_evaluation.error_stability,
-            correct_parts: isCorrect
-              ? ["deterministic source answer matched"]
-              : [],
-            incorrect_parts: isCorrect
-              ? []
-              : ["deterministic source answer did not match"],
-          };
-          logger.info(
-            {
-              lessonExerciseId: deterministicEvaluation.lessonExerciseId,
-              exerciseId: deterministicEvaluation.exerciseId,
-              interactionType: deterministicEvaluation.interactionType,
-              normalizedAnswer: deterministicEvaluation.normalizedAnswer,
-              canonicalCorrectAnswer: deterministicEvaluation.canonicalCorrectAnswer,
-              finalStatus: deterministicEvaluation.status,
-            },
-            "Source exercise correctness overridden deterministically"
-          );
-        }
+        _activeSourceExerciseForEvaluation = activeSourceExercise;
       }
     }
 
-    const finalStatus = aiResult.answer_evaluation.status;
-    wasCorrect = finalStatus === "CORRECT"
-      ? true
-      : finalStatus === "INCORRECT"
-        ? false
-        : null;
+    const _authoritativeEvaluation = resolveAuthoritativeEvaluation({
+      response: aiResult,
+      learnerIntent: _intentResult.intent,
+      hasActiveTask: _intentHasActiveTask,
+      activeTaskProvenance: session?.activeTaskProvenance ?? null,
+      activeLessonExerciseId: session?.activeLessonExerciseId ?? null,
+      activeObjectiveTaskPayload: _activeObjectiveTaskPayload,
+      activeSourceExercise: _activeSourceExerciseForEvaluation,
+      studentAnswer: message,
+    });
+    aiResult = _authoritativeEvaluation.response;
+    wasCorrect = _authoritativeEvaluation.wasCorrect;
+
+    if (_authoritativeEvaluation.authority === "non_answer_gate") {
+      logger.info(
+        { sessionId: session?.id, intent: _intentResult.intent },
+        "V2-R2: non-ANSWER intent — answer_evaluation forced NOT_APPLICABLE, no evidence/attempt"
+      );
+    }
+    if (
+      _authoritativeEvaluation.authority === "objective_task" &&
+      _activeObjectiveTaskPayload
+    ) {
+      logger.info(
+        {
+          sessionId: session?.id,
+          interactionType: _activeObjectiveTaskPayload.interactionType,
+          normalizedAnswer: _authoritativeEvaluation.normalizedObjectiveAnswer,
+          isObjectiveAnswerCorrect:
+            _authoritativeEvaluation.objectiveAnswerCorrect,
+        },
+        "Objective MICRO_CHECK correctness overridden deterministically"
+      );
+    }
+    if (_authoritativeEvaluation.sourceEvaluation) {
+      const deterministicEvaluation = _authoritativeEvaluation.sourceEvaluation;
+      logger.info(
+        {
+          lessonExerciseId: deterministicEvaluation.lessonExerciseId,
+          exerciseId: deterministicEvaluation.exerciseId,
+          interactionType: deterministicEvaluation.interactionType,
+          normalizedAnswer: deterministicEvaluation.normalizedAnswer,
+          canonicalCorrectAnswer: deterministicEvaluation.canonicalCorrectAnswer,
+          finalStatus: deterministicEvaluation.status,
+        },
+        "Source exercise correctness overridden deterministically"
+      );
+    }
 
   } catch (err) {
     const structuredFailure = {
@@ -1705,16 +1604,21 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   }
 
   if (aiResult && session?.currentNodeId && session.currentPhase >= 2 && lessonId) {
-    const status      = aiResult.answer_evaluation.status;
-    const quality     = aiResult.answer_evaluation.evidence_quality;
-    const isCorrect   = status === "CORRECT" || status === "PARTIALLY_CORRECT";
-    const isIncorrect = status === "INCORRECT";
-    // "OFF_TOPIC" answer_evaluation status (returned when AI model itself flags
-    // a scope mismatch) is also excluded from wasEval — defense-in-depth for
-    // cases where Stage B returned ANSWER but the AI model's own evaluation
-    // returns OFF_TOPIC.  Combined with the non-ANSWER gate above this ensures
-    // zero attempt increments for all non-answer interactions.
-    const wasEval     = status !== "NOT_APPLICABLE" && status !== "OFF_TOPIC";
+    const _turnProgress = deriveTurnProgress({
+      evaluation: aiResult.answer_evaluation,
+      currentStage: session.nodeTeachingStage,
+      classExerciseCount: classExercises.length,
+      masteryEvidenceCount: session.nodeMasteryEvidenceCount,
+      consecutiveCorrect: session.nodeConsecutiveCorrect,
+      consecutiveIncorrect: session.nodeConsecutiveIncorrect,
+      attemptCount: session.nodeAttemptCount,
+    });
+    const {
+      status,
+      quality,
+      isCorrect,
+      wasEval,
+    } = _turnProgress;
 
     // ── Initialize hasActiveTask from existing session state ──────────────
     // Covers backward-compat with sessions created before Phase 2B (null provenance)
@@ -1733,17 +1637,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // This block pushes the stage forward immediately, independent of wasEval.
     // Phase 2B fix: also write active task identity fields (previously omitted).
     if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "THEORY" && aiResult.is_micro_check) {
+      const taskActivation = deriveGeneratedMicroCheckActivation(aiResult)!;
       await db
         .update(lessonSessionsTable)
-        .set({
-          nodeTeachingStage:      "MICRO_CHECK",
-          activeLessonExerciseId: null,
-          activeTaskProvenance:   "micro_check",
-          activeObjectiveTaskPayload: objectivePayloadFromMicroCheck(aiResult),
-          activeAttemptSequence:  1,
-          activeHelpCount:        0,
-          activeAssistanceLevel:  "none",
-        } as any)
+        .set(taskActivation as any)
         .where(eq(lessonSessionsTable.id, session.id));
       hasActiveTask = true;
       logger.info(
@@ -1807,15 +1704,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         },
         "P5/P7 decision snapshot"
       );
-      // Read per-node progress from session (relocated from lessonNodesTable)
-      const prevMastery  = session.nodeMasteryEvidenceCount;
-      const prevCC       = session.nodeConsecutiveCorrect;
-      const prevCI       = session.nodeConsecutiveIncorrect;
-
-      const newMasteryCount    = prevMastery + (quality !== "NONE" ? 1 : 0);
-      const newConsecCorrect   = isCorrect   ? prevCC + 1 : isIncorrect ? 0 : prevCC;
-      const newConsecIncorrect = isIncorrect ? prevCI + 1 : isCorrect   ? 0 : prevCI;
-      const newAttemptCount    = session.nodeAttemptCount + 1;
+      const {
+        currentStage,
+        newTeachingStage,
+        newMasteryCount,
+        newConsecutiveCorrect: newConsecCorrect,
+        newConsecutiveIncorrect: newConsecIncorrect,
+        newAttemptCount,
+      } = _turnProgress;
 
       await db
         .update(lessonSessionsTable)
@@ -1827,21 +1723,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeAttemptCount:         newAttemptCount,
         })
         .where(eq(lessonSessionsTable.id, session.id));
-
-      // ── Stage machine: compute and push newTeachingStage (spec-4) ──────────
-      // currentStage now reads from the session (per-student), not the shared lesson_node row.
-      const currentStage = session.nodeTeachingStage;
-      let newTeachingStage: string | null = null;
-
-      if (currentStage === "MICRO_CHECK") {
-        if (classExercises.length > 0) {
-          newTeachingStage = "EXERCISE";
-        }
-      } else if (currentStage === "EXERCISE") {
-        if ((quality === "STRONG" || quality === "CONCLUSIVE") && isCorrect) {
-          newTeachingStage = "VERIFIED";
-        }
-      }
 
       if (newTeachingStage) {
         // Phase 2B: update active task identity when stage transitions.
@@ -1899,11 +1780,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       // Query historical evidence for the current cognitive level then run the
       // pure decision function.  No DB writes inside the engine itself.
       {
-        let _levelEvidenceSummary: LevelEvidenceSummary | null = null;
+        let _levelEvidenceSummary = null;
         if (_activeCognitiveLevelRow) {
-          const QUAL_RANK: Record<string, number> = {
-            NONE: 1, WEAK: 2, MODERATE: 3, STRONG: 4, CONCLUSIVE: 5,
-          };
           const evRows = await db
             .select({
               wasCorrect:     (evidenceEventsTable as any).wasCorrect,
@@ -1917,66 +1795,32 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               eq((evidenceEventsTable as any).cognitiveLevel, _activeCognitiveLevelRow.cognitiveLevel),
               eq((evidenceEventsTable as any).wasCorrect, true),
             ));
-          const indRows = evRows.filter((e: any) =>
-            (e.helpCount ?? 0) <= 1 &&
-            (e.assistanceLevel === "none" || e.assistanceLevel === "light") &&
-            QUAL_RANK[(e.metadata as any)?.evidence_quality ?? "NONE"] >= 3
-          );
-          const bestQual = indRows.reduce<string | null>((best: string | null, e: any) => {
-            const q: string | null = (e.metadata as any)?.evidence_quality ?? null;
-            if (!q) return best;
-            if (!best || QUAL_RANK[q] > QUAL_RANK[best]) return q;
-            return best;
-          }, null);
-          _levelEvidenceSummary = {
-            independentCorrectCount: indRows.length,
-            totalCorrectCount:       evRows.length,
-            bestQuality:             (bestQual as any) ?? null,
-          };
+          _levelEvidenceSummary = summarizeLevelEvidence(evRows);
         }
 
-        // ── V2-R4A: Compute deterministic budget signals ─────────────────────
-        // These are NEVER derived from AI output.
-        // activeLearningSeconds is already post-increment (updated above).
-        const _sessionBudgetExhausted = computeSessionBudgetExhausted(
-          session.requiredSessionMinutes,
-          session.activeLearningSeconds
-        );
-        const _localNodeBudgetExhausted = computeLocalNodeBudget(
-          currentNodeRecord?.estimatedMinutes ?? 0,
-          0 // V1: per-node active seconds not tracked yet
-        );
-
-        // V2-R4A.3: once the learner chose optional continuation the required
-        // budget is already satisfied — do NOT let it repeatedly block teaching.
-        const _effectiveSessionBudgetExhausted =
-          _sessionBudgetExhausted && !session.optionalContinuation;
-
-        _pedagogicalDecision = decideNextPedagogicalAction({
-          lessonNodeId:    session.currentNodeId!,
-          lessonId:        lessonId!,
-          sessionId:       session.id,
-          userId:          req.userId!,
-          nodeTeachingStage:       session.nodeTeachingStage,
-          remediationStep:         session.remediationStep,
-          activeCognitiveLevelId:  session.activeCognitiveLevelId,
+        const _decisionPlan = coordinatePedagogicalDecision({
+          lessonNodeId: session.currentNodeId,
+          lessonId,
+          sessionId: session.id,
+          userId: req.userId!,
+          nodeTeachingStage: session.nodeTeachingStage,
+          remediationStep: session.remediationStep,
+          activeCognitiveLevelId: session.activeCognitiveLevelId,
           activeCognitiveLevelRow: _activeCognitiveLevelRow,
-          cognitivePath:           _cognitivePath,
-          answerStatus:            aiResult.answer_evaluation.status,
-          evidenceQuality:         aiResult.answer_evaluation.evidence_quality,
-          errorFamily:             (aiResult.answer_evaluation as any).error_family ?? null,
-          errorStability:          (aiResult.answer_evaluation as any).error_stability ?? null,
-          activeHelpCount:         session.activeHelpCount,
-          activeAssistanceLevel:   session.activeAssistanceLevel,
-          activeAttemptSequence:   session.activeAttemptSequence,
-          activeTaskProvenance:    session.activeTaskProvenance,
-          levelEvidenceSummary:    _levelEvidenceSummary,
-          nextNodeId:              null,
+          cognitivePath: _cognitivePath,
+          evaluation: aiResult.answer_evaluation,
+          activeHelpCount: session.activeHelpCount,
+          activeAssistanceLevel: session.activeAssistanceLevel,
+          activeAttemptSequence: session.activeAttemptSequence,
+          activeTaskProvenance: session.activeTaskProvenance,
+          levelEvidenceSummary: _levelEvidenceSummary,
           nextNodeHasCriticalDependencyOnCurrentNode: _nextNodeHasCriticalDep,
-          // V2-R4A / R4A.3
-          sessionBudgetExhausted:      _effectiveSessionBudgetExhausted,
-          localNodeBudgetExhausted:    _localNodeBudgetExhausted,
+          requiredSessionMinutes: session.requiredSessionMinutes,
+          activeLearningSeconds: session.activeLearningSeconds,
+          optionalContinuation: session.optionalContinuation,
+          estimatedNodeMinutes: currentNodeRecord?.estimatedMinutes ?? 0,
         });
+        _pedagogicalDecision = _decisionPlan.decision;
 
         // Persist remediationStep + any cognitive-level advance to the session.
         // These writes happen synchronously (before res.json) so the next turn
@@ -2051,43 +1895,28 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       // ── Mastery gate check ───────────────────────────────────────────────
-      const stageBecomesVerified = newTeachingStage === "VERIFIED";
-      const noExercisesEarlyComplete =
-        classExercises.length === 0 &&
-        (currentStage === "MICRO_CHECK") &&
-        newAttemptCount >= 2 &&
-        (quality === "MODERATE" || quality === "STRONG" || quality === "CONCLUSIVE") &&
-        isCorrect;
-
-      // V2-R3: Code owns COMPLETE_NODE — AI's suggestion is advisory/logged only.
-      const modelSaysComplete = aiResult.node_decision.action === "COMPLETE_NODE"; // advisory
-      const decisionSaysComplete = _pedagogicalDecision?.mayCompleteMicroNode ?? false;
-      const hasExercisesOnThisNode = classExercises.length > 0;
-      const codeGate = hasExercisesOnThisNode
-        ? (newMasteryCount >= 2 && (quality === "STRONG" || quality === "CONCLUSIVE") && newConsecIncorrect < 2)
-        : (newMasteryCount >= 2 && quality !== "NONE" && newConsecIncorrect < 2);
-      const safetyCapHit = newAttemptCount > 6;
-      const hasActiveCognitivePath =
-        _cognitivePath.length > 0 && _activeCognitiveLevelRow !== null;
+      const _progressionPlan = deriveProgressionPlan({
+        turn: _turnProgress,
+        classExerciseCount: classExercises.length,
+        cognitivePath: _cognitivePath,
+        activeCognitiveLevelRow: _activeCognitiveLevelRow,
+        decision: _pedagogicalDecision,
+      });
+      const {
+        safetyCapHit,
+        shouldResetForCognitiveAdvance,
+        shouldCompleteNode,
+        shouldAutoContinueExercise,
+      } = _progressionPlan;
 
       // Cognitive Path progression owns completion whenever a confirmed path is
       // active.  The legacy stage/safety gates must not bypass an
       // ADVANCE_COGNITIVE_LEVEL decision and complete the MicroNode early.
-      if (
-        hasActiveCognitivePath &&
-        _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL"
-      ) {
+      if (shouldResetForCognitiveAdvance) {
+        const cognitiveAdvanceReset = deriveCognitiveAdvanceTaskReset();
         await db
           .update(lessonSessionsTable)
-          .set({
-            nodeTeachingStage: "THEORY",
-            activeLessonExerciseId: null,
-            activeTaskProvenance: null,
-            activeObjectiveTaskPayload: null,
-            activeAttemptSequence: 0,
-            activeHelpCount: 0,
-            activeAssistanceLevel: "none",
-          } as any)
+          .set(cognitiveAdvanceReset as any)
           .where(eq(lessonSessionsTable.id, session.id));
         hasActiveTask = false;
         _activeLessonExerciseIdForDelivery = null;
@@ -2101,13 +1930,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         );
       }
 
-      const legacyCompletionGate =
-        !hasActiveCognitivePath &&
-        (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete);
-      const cognitiveCompletionGate =
-        decisionSaysComplete && codeGate;
-
-      if (legacyCompletionGate || cognitiveCompletionGate) {
+      if (shouldCompleteNode) {
         await db
           .update(lessonSessionsTable)
           .set({ askedQuestionTemplates: [] })
@@ -2154,15 +1977,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       // the exercise text must be delivered automatically — the learner must NOT need
       // to send any "ok" or "continue" to see the exercise.
       // Guard: mastery gate must NOT have fired (which would have advanced the node instead).
-      if (
-        newTeachingStage === "EXERCISE" &&
-        classExercises.length > 0 &&
-        !safetyCapHit &&
-        !stageBecomesVerified &&
-        !noExercisesEarlyComplete &&
-        !(decisionSaysComplete && codeGate) &&
-        _pedagogicalDecision?.metaAction !== "ADVANCE_COGNITIVE_LEVEL"
-      ) {
+      if (shouldAutoContinueExercise) {
         _v2r1AutoContinue = { type: "exercise" as const };
       }
     }
