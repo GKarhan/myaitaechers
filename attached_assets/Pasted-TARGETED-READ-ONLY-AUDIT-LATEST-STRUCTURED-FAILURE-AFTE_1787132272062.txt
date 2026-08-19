@@ -1,0 +1,154 @@
+TARGETED READ-ONLY AUDIT — LATEST STRUCTURED FAILURE AFTER PROGRESSION FIX
+
+READ ONLY.
+NO CODE CHANGES.
+NO DB WRITES.
+NO AI/PROVIDER REQUEST.
+
+GOAL
+
+Inspect ONLY the latest failed browser request that produced:
+
+«Սխալ տեղի ունեցավ։ Փորձեք կրկին։»
+
+Current state:
+
+Lesson 579
+MicroNode 2107
+Phase 2
+Level remember
+Stage THEORY
+Ex null
+task false
+
+We already know the frontend error is produced when the controlled Phase-2 structured call fails after both attempts.
+
+Do NOT re-audit:
+- progression fix
+- Cognitive Path
+- interaction_type design
+- source_fidelity contract
+- fallback guard
+- fresh-start
+- exercise filtering
+
+We only need the exact latest failure.
+
+==================================================
+A. ATTEMPT 1
+==================================================
+
+From the existing latest logs, report:
+
+- did provider return content?
+- contentLength
+- teaching_mode if parsed
+- is_micro_check if parsed
+- interaction_type if parsed
+- source_fidelity.type if parsed
+- FIRST failing validation only
+
+Classify it as:
+
+- root/object failure
+- JSON parse
+- Zod schema
+- source_fidelity
+- sentence-count/length
+- interaction_type
+- format consistency
+- Phase-2 R2
+- another exact validator
+
+Show the exact validation error.
+
+==================================================
+B. ATTEMPT 2
+==================================================
+
+Same fields for retry attempt 2.
+
+Most important:
+
+Did the retry correction include attempt 1's exact validation reason?
+
+YES / NO
+
+And what was the FIRST failure on attempt 2?
+
+==================================================
+C. FAILURE DIAGNOSTICS
+==================================================
+
+For both attempts, if available, report only:
+
+- failurePoint
+- finishReason
+- contentLength
+- bounded contentPreview
+- messageKeys
+- refusalPresent
+- toolCallsPresent
+- parsedPresent
+
+Do not expose full prompts or provider payloads.
+
+==================================================
+D. ROOT CAUSE
+==================================================
+
+Give ONE precise sentence explaining why this latest request failed after both attempts.
+
+Do not generalize from older failures.
+
+==================================================
+E. REPEAT PATTERN?
+==================================================
+
+Compare only against the immediately previous known failures.
+
+Answer:
+
+- SAME FAILURE PATTERN
+or
+- NEW FAILURE PATTERN
+
+If same, state which repeated validator is still unstable.
+
+==================================================
+F. SMALLEST ROBUST FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest fix that addresses the repeated root cause.
+
+Important principle:
+
+If this is now a recurring failure caused by the model having to satisfy too many fragile fields/format rules, prefer a deterministic/backend-owned value or conditional validation over endlessly adding prompt instructions.
+
+Do not weaken:
+- required Phase-2 MICRO_CHECK
+- interaction-type correctness
+- answer/evidence integrity
+- source exercise identity when active
+
+==================================================
+G. VERDICT
+==================================================
+
+Choose exactly one:
+
+REPEATED STRUCTURED CONTRACT FAILURE
+
+NEW STRUCTURED VALIDATION FAILURE
+
+PROVIDER OUTPUT FAILURE
+
+INSUFFICIENT EVIDENCE
+
+Then STOP.
+
+COST CONTROL:
+Use only the latest logs and directly relevant validator code.
+No broad audit.
