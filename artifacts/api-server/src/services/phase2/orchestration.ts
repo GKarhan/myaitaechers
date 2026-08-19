@@ -301,6 +301,58 @@ export function derivePhase2ServerAction(
 }
 
 /**
+ * The evaluated-turn action remains FEEDBACK/REMEDIATE so that exactly one
+ * feedback message is produced. This separate derivation determines whether a
+ * FOLLOWING server-owned action is safe after that feedback has been persisted.
+ *
+ * It is intentionally limited to the previously-invalid state: the Decision
+ * Engine says the learner must continue at the same level, but the evaluated
+ * task is closed and no learner-answerable task remains. It does not make
+ * FEEDBACK or REMEDIATE generically non-blocking.
+ */
+export function derivePostFeedbackContinuationAction(input: {
+  decision: Pick<PedagogicalDecision, "metaAction"> | null;
+  progressionPlan: Pick<
+    Phase2ProgressionPlan,
+    "shouldCompleteNode" | "shouldResetForCognitiveAdvance"
+  >;
+  hasActiveTask: boolean;
+  eligibleSourceExerciseAvailable: boolean;
+}): Phase2ServerActionPlan | null {
+  if (
+    input.decision?.metaAction !== "CONTINUE_COGNITIVE_LEVEL" ||
+    input.hasActiveTask ||
+    input.progressionPlan.shouldCompleteNode ||
+    input.progressionPlan.shouldResetForCognitiveAdvance
+  ) {
+    return null;
+  }
+
+  if (input.eligibleSourceExerciseAvailable) {
+    return makeActionPlan(
+      "DELIVER_SOURCE_EXERCISE",
+      "post_feedback_continue_level_requires_next_source_task",
+      {
+        activeTaskMayBeCreated: true,
+        responseTeachingMode: "TRANSITION",
+        taskAuthority: "active_source_exercise",
+      },
+    );
+  }
+
+  return makeActionPlan(
+    "GENERATE_TASK",
+    "post_feedback_continue_level_requires_next_generated_task",
+    {
+      aiGenerationNeeded: true,
+      activeTaskMayBeCreated: true,
+      responseTeachingMode: "MICRO_CHECK",
+      taskAuthority: "validated_ai_candidate",
+    },
+  );
+}
+
+/**
  * Keeps content validation separate from workflow ownership. It rejects AI
  * envelopes that try to manufacture a different active task than the selected
  * server action, while the existing schema/language/source validators retain

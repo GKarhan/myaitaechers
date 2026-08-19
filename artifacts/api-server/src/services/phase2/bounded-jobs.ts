@@ -80,6 +80,8 @@ export type Phase2TaskCandidate = z.infer<typeof phase2TaskCandidateSchema>;
 export type Phase2EvaluationResult = z.infer<typeof phase2EvaluationResultSchema>;
 export type Phase2FeedbackResult = z.infer<typeof phase2FeedbackResultSchema>;
 
+export type FeedbackAuthorityStatus = "CORRECT" | "INCORRECT" | "PARTIALLY_CORRECT";
+
 const VISIBLE_OPTION_MARKER = /\n\s*[A-ZԱ-Ֆ]\s*[.)]/u;
 const TASK_DIRECTIVE =
   /(?:^|[.!։]\s+)(?:խնդրում եմ\s+)?(?:ընտր(?:իր|եք)|լրաց(?:րու|րեք)|հաշվ(?:իր|եք)|գր(?:իր|եք)|գտ(?:իր|եք)|լուծ(?:իր|եք)|պատասխանի(?:ր|րեք)|նշ(?:իր|եք)|համադր(?:իր|եք)|ապացուց(?:իր|եք)|կատար(?:իր|եք)|նկարագր(?:իր|եք)|բացատր(?:իր|եք))/imu;
@@ -87,6 +89,13 @@ const TASK_DIRECTIVE =
 function hasVisibleTaskStem(text: string): boolean {
   return /[?՞]/u.test(text) || TASK_DIRECTIVE.test(text);
 }
+
+// Conservative, high-confidence learner-facing outcome claims. These do not
+// match neutral encouragement such as «ճիշտ ուղղությամբ ես մտածում».
+const EXPLICIT_CORRECTNESS_CLAIM =
+  /(?:ճիշտ\s+(?:է|պատասխան(?:ն)?(?:\s+է)?|ես\s+պատասխանել)|դու\s+(?:ճիշտ\s+)?(?:ընտրեցիր|պատասխանեցիր)|դու\s+(?:ճիշտ\s+)?ընտրել\s+ես\s+ճիշտ\s+պատասխանը)/iu;
+const EXPLICIT_INCORRECTNESS_CLAIM =
+  /(?:սխալ\s+(?:է|պատասխան(?:ն)?(?:\s+է)?|ես\s+պատասխանել)|դու\s+(?:սխալ\s+)?(?:ընտրեցիր|պատասխանեցիր)|դու\s+(?:սխալ\s+)?ընտրել\s+ես\s+սխալ\s+պատասխանը)/iu;
 
 export function assertTheoryOnly(result: Phase2TheoryResult): void {
   if (
@@ -114,6 +123,53 @@ export function assertFeedbackDoesNotRevealHiddenContent(
 ): void {
   if (containsHiddenExerciseContent(result.student_message, hiddenContents)) {
     throw new Error("phase2_feedback_result attempted to reveal evaluator-only exercise content");
+  }
+}
+
+/**
+ * Final learner-delivery guard: FEEDBACK may explain or encourage, but cannot
+ * reverse the authoritative evaluation polarity. The server adds the visible
+ * correctness acknowledgement separately.
+ */
+export function assertFeedbackMatchesAuthority(
+  result: Phase2FeedbackResult,
+  status: FeedbackAuthorityStatus,
+): void {
+  if (
+    status === "INCORRECT" &&
+    EXPLICIT_CORRECTNESS_CLAIM.test(result.student_message)
+  ) {
+    throw new Error("phase2_feedback_result contradicts authoritative INCORRECT status");
+  }
+  if (
+    status === "CORRECT" &&
+    EXPLICIT_INCORRECTNESS_CLAIM.test(result.student_message)
+  ) {
+    throw new Error("phase2_feedback_result contradicts authoritative CORRECT status");
+  }
+  if (
+    status === "PARTIALLY_CORRECT" &&
+    (
+      EXPLICIT_CORRECTNESS_CLAIM.test(result.student_message) ||
+      EXPLICIT_INCORRECTNESS_CLAIM.test(result.student_message)
+    )
+  ) {
+    throw new Error("phase2_feedback_result contradicts authoritative PARTIALLY_CORRECT status");
+  }
+}
+
+export function serverOwnedFeedbackAcknowledgement(
+  status: string,
+): string | null {
+  switch (status) {
+    case "CORRECT":
+      return "Ճիշտ պատասխան է։";
+    case "INCORRECT":
+      return "Պատասխանը ճիշտ չէ։";
+    case "PARTIALLY_CORRECT":
+      return "Պատասխանը մասամբ ճիշտ է։";
+    default:
+      return null;
   }
 }
 
@@ -273,6 +329,7 @@ export function callPhase2FeedbackJob(
       "Դու myaiteacher-ի FEEDBACK job-ն ես։",
       "Գրիր միայն learner-facing կարճ feedback՝ տրված authoritative evaluation-ի և Decision Engine action-ի հիման վրա։",
       "Մի՛ փոխիր correctness-ը, evidence quality-ն, progression-ը, completion-ը, teaching stage-ը կամ հաջորդ task-ը։",
+      "Մի՛ ասա, որ պատասխանը ճիշտ է, սխալ է, կամ մասամբ ճիշտ է. այդ acknowledgement-ը server-ն է ավելացնում։",
       "Մի՛ բացահայտիր կամ վերարտադրիր evaluator-only success criteria, rubric կամ answer key։",
       "Մի՛ ավելացրու նոր հարց, ընտրանքներ կամ առաջադրանք։",
       "Արտածիր միայն {student_message} դաշտը։",

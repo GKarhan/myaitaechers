@@ -14,12 +14,14 @@ import {
   type ChatMessage, type AIStructuredResponse, type ProgressIndicator,
 } from "../services/ai";
 import {
+  assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertTheoryOnly,
   callPhase2EvaluationJob,
   callPhase2FeedbackJob,
   callPhase2TaskJob,
   callPhase2TheoryJob,
+  serverOwnedFeedbackAcknowledgement,
   type Phase2EvaluationResult,
 } from "../services/phase2/bounded-jobs.js";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -49,6 +51,7 @@ import {
   deriveCognitiveAdvanceTaskReset,
   deriveGeneratedMicroCheckActivation,
   deriveLegacyCompletionAllowed,
+  derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
   deriveProgressionPlan,
   deriveTurnProgress,
@@ -598,6 +601,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let classExercises: (typeof lessonExercisesTable.$inferSelect)[] = [];
   // V2-R3: hoisted so the wasEval block and fire-and-forget evidence block can both access them.
   let _pedagogicalDecision: PedagogicalDecision | null = null;
+  let _postFeedbackContinuationPlan: Phase2ServerActionPlan | null = null;
+  let _postFeedbackExcludedExerciseId: number | null = null;
+  let _feedbackJobInvocationCount = 0;
   let _cognitivePath: CognitiveLevelRow[] = [];
   let _activeCognitiveLevelRow: CognitiveLevelRow | null = null;
   let _nextNodeHasCriticalDep = false;
@@ -1264,12 +1270,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     ? userMessageAt - new Date(lastAssistant.createdAt).getTime()
     : null;
 
-  await db.insert(chatMessagesTable).values({
-    userId: req.userId!,
-    lessonId: lessonId ?? null,
-    role: "user",
-    content: message,
-  });
+  const [learnerMessage] = await db
+    .insert(chatMessagesTable)
+    .values({
+      userId: req.userId!,
+      lessonId: lessonId ?? null,
+      role: "user",
+      content: message,
+    })
+    .returning();
 
   const chatHistory: ChatMessage[] = [
     ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
@@ -1620,6 +1629,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
    */
   const runPhase2Continuation = async (
     fromAction: string,
+    excludeLessonExerciseId: number | null = null,
   ): Promise<ContinuationResult> => {
     if (!lessonId || !lesson || !session) return null;
 
@@ -1701,6 +1711,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         phase: 2,
         assignment: "CLASS",
       });
+      if (excludeLessonExerciseId !== null) {
+        eligibleExercises = eligibleExercises.filter(
+          (exercise) => exercise.id !== excludeLessonExerciseId,
+        );
+      }
 
       const continuationHistory = await db
         .select({ role: chatMessagesTable.role, content: chatMessagesTable.content })
@@ -2782,6 +2797,64 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         activeCognitiveLevelRow: _activeCognitiveLevelRow,
         decision: _pedagogicalDecision,
       });
+      _postFeedbackContinuationPlan = derivePostFeedbackContinuationAction({
+        decision: _pedagogicalDecision,
+        progressionPlan: _progressionPlan,
+        hasActiveTask,
+        // Do not select source delivery if the just-answered source task was
+        // the sole eligible exercise; that safe path falls back to a bounded
+        // generated task instead of throwing or repeating the task.
+        eligibleSourceExerciseAvailable: classExercises.some(
+          (exercise) =>
+            !(
+              session.activeTaskProvenance === "source_exercise" &&
+              exercise.id === session.activeLessonExerciseId
+            ),
+        ),
+      });
+
+      // A correct/strong source task can satisfy the legacy VERIFIED condition
+      // before the Cognitive Path decision is known. When that decision says
+      // more same-level evidence is required, TASK_REQUIRED is the existing
+      // continuation-safe state; VERIFIED must not become a no-task rest state.
+      if (
+        _postFeedbackContinuationPlan !== null &&
+        _turnProgress.newTeachingStage === "VERIFIED"
+      ) {
+        _postFeedbackExcludedExerciseId =
+          session.activeTaskProvenance === "source_exercise"
+            ? session.activeLessonExerciseId
+            : null;
+        await db
+          .update(lessonSessionsTable)
+          .set({
+            nodeTeachingStage: "TASK_REQUIRED",
+            activeLessonExerciseId: null,
+            activeTaskProvenance: null,
+            activeObjectiveTaskPayload: null,
+            activeAttemptSequence: 0,
+            activeHelpCount: 0,
+            activeAssistanceLevel: "none",
+          } as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+        session.nodeTeachingStage = "TASK_REQUIRED";
+        session.activeLessonExerciseId = null;
+        session.activeTaskProvenance = null;
+        session.activeObjectiveTaskPayload = null;
+        session.activeAttemptSequence = 0;
+        session.activeHelpCount = 0;
+        session.activeAssistanceLevel = "none";
+        hasActiveTask = false;
+        logger.info(
+          {
+            sessionId: session.id,
+            nodeId: session.currentNodeId,
+            postFeedbackAction: _postFeedbackContinuationPlan.action,
+            excludedExerciseId: _postFeedbackExcludedExerciseId,
+          },
+          "Stage-5 corrected VERIFIED/no-task continuation state to TASK_REQUIRED",
+        );
+      }
       _phase2ServerActionPlan = derivePhase2ServerAction({
         currentPhase: session.currentPhase,
         currentNodeId: session.currentNodeId,
@@ -2964,6 +3037,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     aiResult
   ) {
     try {
+      _feedbackJobInvocationCount += 1;
       const feedback = await callPhase2FeedbackJob(
         chatHistory,
         [
@@ -2978,7 +3052,39 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         _stage3HiddenExerciseContent,
       );
       assertFeedbackOnly(feedback);
-      studentMessage = feedback.student_message;
+      const acknowledgement = serverOwnedFeedbackAcknowledgement(
+        aiResult.answer_evaluation.status,
+      );
+      try {
+        if (
+          aiResult.answer_evaluation.status === "CORRECT" ||
+          aiResult.answer_evaluation.status === "INCORRECT" ||
+          aiResult.answer_evaluation.status === "PARTIALLY_CORRECT"
+        ) {
+          assertFeedbackMatchesAuthority(
+            feedback,
+            aiResult.answer_evaluation.status,
+          );
+        }
+        studentMessage = acknowledgement
+          ? `${acknowledgement}\n${feedback.student_message}`
+          : feedback.student_message;
+      } catch (authorityError) {
+        logger.warn(
+          {
+            sessionId: session.id,
+            requestId: (req as any).id ?? null,
+            learnerMessageId: learnerMessage.id,
+            feedbackJobInvocationCount: _feedbackJobInvocationCount,
+            evaluationStatus: aiResult.answer_evaluation.status,
+            err: authorityError instanceof Error
+              ? authorityError.message
+              : String(authorityError),
+          },
+          "Stage-5 feedback authority guard used server fallback",
+        );
+        studentMessage = acknowledgement ?? "Շարունակենք առաջադրանքը։";
+      }
       teachingMode = "FEEDBACK";
       aiResult.student_message = studentMessage;
     } catch (error) {
@@ -2994,24 +3100,57 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let responseContent = studentMessage;
   let responseMessageId = assistantMsg.id;
   let responseTeachingMode = teachingMode;
+  if (_stage3BoundedAnswerTurn) {
+    logger.info(
+      {
+        sessionId: session?.id ?? null,
+        requestId: (req as any).id ?? null,
+        learnerMessageId: learnerMessage.id,
+        feedbackJobInvocationCount: _feedbackJobInvocationCount,
+        feedbackMessageId: assistantMsg.id,
+        postFeedbackAction: _postFeedbackContinuationPlan?.action ?? null,
+      },
+      "Stage-5 bounded feedback persisted",
+    );
+  }
 
   if (
     _stage3BoundedAnswerTurn &&
     session &&
     (
+      _postFeedbackContinuationPlan !== null ||
       _phase2ServerActionPlan.action === "DELIVER_SOURCE_EXERCISE" ||
       _phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
       _phase2ServerActionPlan.action === "COMPLETE_MICRONODE"
     )
   ) {
     try {
-      const continuation = await runPhase2Continuation(_phase2ServerActionPlan.action);
+      const continuationFromAction =
+        _postFeedbackContinuationPlan?.action ??
+        _phase2ServerActionPlan.action;
+      const continuation = await runPhase2Continuation(
+        continuationFromAction,
+        _postFeedbackExcludedExerciseId,
+      );
       if (continuation) {
         responseContent = continuation.lastContent;
         responseMessageId = continuation.lastMessageId;
         responseTeachingMode = continuation.teachingMode;
         hasActiveTask = continuation.hasActiveTask;
       }
+      logger.info(
+        {
+          sessionId: session.id,
+          requestId: (req as any).id ?? null,
+          learnerMessageId: learnerMessage.id,
+          feedbackMessageId: assistantMsg.id,
+          continuationFromAction,
+          returnedMessageId: responseMessageId,
+          returnedTeachingMode: responseTeachingMode,
+          continuationStopReason: continuation?.stopReason ?? null,
+        },
+        "Stage-5 post-feedback continuation response assembled",
+      );
     } catch (error) {
       boundedPhase2Failure(error, "THEORY");
       return;

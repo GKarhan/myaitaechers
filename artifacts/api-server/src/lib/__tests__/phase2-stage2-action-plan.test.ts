@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { AIStructuredResponse } from "../../services/ai.js";
 import {
+  derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
   validatePhase2ResponseForServerAction,
   type ActiveObjectiveTaskPayload,
@@ -161,6 +162,50 @@ test("E — Decision Engine continuation selects server-owned remediation", () =
   assert.equal(plan.action, "REMEDIATE");
   assert.equal(plan.progressionMayOccur, false);
   assert.equal(plan.activeTaskMayBeCreated, false);
+});
+
+test("E1 — same-level continuation without an active task derives a next server-owned task", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "CONTINUE_COGNITIVE_LEVEL" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: false,
+    eligibleSourceExerciseAvailable: true,
+  });
+
+  assert.equal(postFeedback?.action, "DELIVER_SOURCE_EXERCISE");
+  assert.equal(postFeedback?.activeTaskMayBeCreated, true);
+});
+
+test("E2 — an active remediation task never becomes automatic continuation", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "CONTINUE_COGNITIVE_LEVEL" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: true,
+    eligibleSourceExerciseAvailable: true,
+  });
+
+  assert.equal(postFeedback, null);
+});
+
+test("E3 — a one-source-exercise level falls back to a generated next task after that exercise is answered", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "CONTINUE_COGNITIVE_LEVEL" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: false,
+    eligibleSourceExerciseAvailable: false,
+  });
+
+  assert.equal(postFeedback?.action, "GENERATE_TASK");
+  assert.equal(postFeedback?.activeTaskMayBeCreated, true);
 });
 
 test("F — Decision Engine cognitive advance keeps node and resets level stage", () => {

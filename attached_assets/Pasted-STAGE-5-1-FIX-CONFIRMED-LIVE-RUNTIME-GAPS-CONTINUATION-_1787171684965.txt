@@ -1,0 +1,464 @@
+STAGE 5.1 — FIX CONFIRMED LIVE RUNTIME GAPS
+CONTINUATION DEAD-END + FEEDBACK AUTHORITY
+
+IMPLEMENTATION AUTHORIZED
+
+The read-only forensic audit of session 51 is accepted.
+
+Confirmed defects:
+
+1. CONTINUATION DEAD-END
+   CONTINUE_COGNITIVE_LEVEL + no active task can end in:
+   nodeTeachingStage = VERIFIED
+   active task = null
+   and Stage 5 stops even though learner input is not required.
+
+2. FEEDBACK AUTHORITY VIOLATION
+   Deterministic source evaluation correctly classified:
+
+   learner = դ
+   normalized = D
+   correctAnswer = B
+   result = INCORRECT
+
+   but bounded FEEDBACK told the learner the answer was correct.
+
+3. DUPLICATE FEEDBACK
+   Observed live, but historical root cause is not recoverable after reset.
+   Do NOT implement a speculative duplicate fix.
+
+==================================================
+SCOPE
+==================================================
+
+Fix ONLY the two confirmed defects.
+
+Do NOT redesign:
+
+- Stage 3 bounded jobs
+- Stage 4/4.1 content boundary
+- Cognitive Path thresholds
+- Decision Engine rules
+- evidence/mastery semantics
+- source-exercise identity
+- deterministic evaluation
+- HELP behavior
+- exercise sequencing
+- provider/model
+- frontend architecture
+
+Do not start Stage 6.
+
+==================================================
+PART 1 — CONTINUATION DEAD-END
+==================================================
+
+Current confirmed sequence:
+
+source exercise answer
+→ authoritative CORRECT / STRONG
+→ Decision Engine = CONTINUE_COGNITIVE_LEVEL
+→ deriveTurnProgress() writes VERIFIED
+→ active task cleared
+→ FEEDBACK
+→ Stage 5 continuation not invoked
+→ dead end
+
+This is invalid because:
+
+- same cognitive level still requires evidence
+- no active task exists
+- learner has nothing to answer
+- Stage 5 contract says stop only when real learner input is required
+
+Implement the smallest server-owned correction.
+
+Required invariant:
+
+CONTINUE_COGNITIVE_LEVEL
++
+no active learner task
++
+more evidence required
+→ must derive a valid continuation-safe next state/action
+
+It must NOT rest in:
+
+VERIFIED + no active task
+
+Possible correct destination may be:
+
+TASK_REQUIRED
+
+or another already-existing explicit server-owned continuation-safe state,
+
+but derive it from the current architecture.
+
+Do not invent a second progression system.
+
+==================================================
+PART 2 — VERIFIED SEMANTICS
+==================================================
+
+Audit every writer/reader of nodeTeachingStage = VERIFIED before changing it.
+
+Preserve VERIFIED only where it is genuinely valid, such as:
+
+- finalizing a confirmed level/node transition
+- completion flow
+- any existing valid legacy case
+
+Do not globally remove VERIFIED.
+
+Fix only the invalid case:
+
+CONTINUE_COGNITIVE_LEVEL
++
+no active task
++
+additional evidence still required
+
+That case must not become a resting VERIFIED state.
+
+==================================================
+PART 3 — CONTINUATION INVOCATION
+==================================================
+
+After authoritative evaluation + Decision Engine + FEEDBACK:
+
+if the resulting server state/action does not require learner input,
+Stage 5 continuation must continue automatically.
+
+Do NOT solve this by simply making every DELIVER_FEEDBACK or REMEDIATE action
+non-blocking.
+
+That could create loops or duplicate feedback.
+
+Instead, explicitly derive the post-feedback next server action/state.
+
+Required sequence:
+
+ANSWER
+→ authoritative evaluation
+→ Decision Engine
+→ FEEDBACK
+→ derive post-feedback server action
+→ continue only if learner input is NOT required
+→ stop at next active learner-answerable task
+
+==================================================
+PART 4 — FEEDBACK CORRECTNESS AUTHORITY
+==================================================
+
+Bounded FEEDBACK receives authoritative evaluation but currently has no
+semantic polarity enforcement.
+
+The learner-facing correctness acknowledgement must be consistent with the
+authoritative result.
+
+Required invariant:
+
+authoritative CORRECT
+→ feedback must not claim the learner is incorrect
+
+authoritative INCORRECT
+→ feedback must not claim the learner is correct
+
+Do NOT make FEEDBACK AI authoritative for correctness.
+
+==================================================
+PART 5 — SERVER-OWNED CORRECTNESS ACKNOWLEDGEMENT
+==================================================
+
+Prefer the smallest robust architecture:
+
+server owns the correctness acknowledgement
+
+and AI supplies only explanation/remediation wording.
+
+For example, conceptually:
+
+CORRECT
+→ server-controlled positive acknowledgement
+→ bounded FEEDBACK explanation
+
+INCORRECT
+→ server-controlled corrective acknowledgement
+→ bounded FEEDBACK explanation/remediation
+
+Do not hard-code awkward full feedback paragraphs if a smaller compatibility
+mechanism is possible.
+
+The key requirement is that the model cannot reverse correctness polarity.
+
+If current response composition makes server-owned acknowledgement unsafe,
+use a strict bounded FEEDBACK semantic validator instead.
+
+Choose the smallest repository-compatible solution and explain why.
+
+==================================================
+PART 6 — FEEDBACK SEMANTIC VALIDATION
+==================================================
+
+Whether or not server-owned acknowledgement is used, add a final semantic
+guard before learner delivery.
+
+At minimum detect high-confidence contradiction patterns in Armenian for:
+
+CORRECT:
+- must reject explicit wrongness claims
+
+INCORRECT:
+- must reject explicit correctness claims such as:
+  - ճիշտ է
+  - ճիշտ պատասխան
+  - դու ճիշտ ընտրեցիր
+  - դու ընտրել ես ճիշտ պատասխանը
+
+Be conservative.
+
+Do not reject generic encouragement such as:
+- լավ փորձ էր
+- ճիշտ ուղղությամբ ես մտածում
+
+unless it falsely asserts answer correctness.
+
+If contradiction is detected:
+
+→ do not deliver contradictory feedback
+→ use existing bounded retry if appropriate
+OR
+→ use a safe server-controlled fallback acknowledgement/explanation path
+
+Do not fall back to the old giant AI contract.
+
+==================================================
+PART 7 — WRONG-ANSWER EVIDENCE SAFETY
+==================================================
+
+Preserve the already-correct backend behavior:
+
+EX-579-1
+correctAnswer = B
+learner = դ
+→ normalized D
+→ INCORRECT
+→ evidence quality NONE
+→ no positive mastery evidence
+→ remediation state
+
+Do not modify deterministic scoring.
+
+==================================================
+PART 8 — DUPLICATE FEEDBACK
+==================================================
+
+Do NOT implement an unproven duplicate fix.
+
+Instead add targeted observability sufficient to diagnose a future reproduction.
+
+Server-only diagnostics should include:
+
+- request/session identifier available at runtime
+- learner turn identifier if available
+- FEEDBACK job invocation count
+- FEEDBACK chat row ID written
+- continuation step
+- response/message IDs returned
+
+Do not expose hidden metadata to learner APIs.
+
+Also add regression coverage proving the normal path writes one FEEDBACK row.
+
+==================================================
+PART 9 — REQUIRED TESTS
+==================================================
+
+A.
+Correct constructed source answer
+→ CONTINUE_COGNITIVE_LEVEL
+→ no VERIFIED/no-task dead end.
+
+B.
+CONTINUE_COGNITIVE_LEVEL + no active task
+→ valid next continuation action.
+
+C.
+Post-feedback continuation proceeds automatically
+→ stops at next real learner-answerable task.
+
+D.
+Learner input is not required in the intermediate continuation state.
+
+E.
+Continuation safety cap remains enforced.
+
+F.
+No duplicate THEORY/TASK during the repaired continuation.
+
+G.
+One learner answer → intended evidence effects only once.
+
+H.
+EX-579-1:
+correctAnswer = B
+learner = դ
+→ normalized D
+→ INCORRECT.
+
+I.
+Authoritative INCORRECT
+→ learner feedback cannot state the answer is correct.
+
+J.
+Authoritative CORRECT
+→ learner feedback cannot state the answer is incorrect.
+
+K.
+Incorrect deterministic answer creates no positive evidence.
+
+L.
+Incorrect answer still follows existing remediation policy.
+
+M.
+Correct answer still produces normal positive feedback.
+
+N.
+Normal evaluated turn persists exactly one FEEDBACK row.
+
+O.
+Continuation does not duplicate source-task delivery.
+
+==================================================
+PART 10 — LIVE REPRODUCTION / VERIFICATION
+==================================================
+
+After static/regression verification:
+
+restart affected API workflow.
+
+Run a controlled live browser test with a fresh/reset test session.
+
+Required live cases:
+
+CASE 1 — WRONG OBJECTIVE ANSWER
+
+EX-579-1 or equivalent:
+correct option != learner answer
+
+Expected:
+- learner is told the answer is incorrect
+- no false correctness claim
+- remediation path starts
+- no positive evidence
+
+CASE 2 — CORRECT CONSTRUCTED RESPONSE NEEDING MORE EVIDENCE
+
+Expected:
+- bounded EVALUATION = correct
+- Decision Engine = CONTINUE_COGNITIVE_LEVEL
+- FEEDBACK
+- automatic continuation
+- next learner-answerable task appears
+- no artificial "օկ"
+- no VERIFIED/no-task dead end
+
+CASE 3 — CORRECT OBJECTIVE ANSWER
+
+Expected:
+- exactly one FEEDBACK
+- normal continuation
+- no duplicate source task
+
+Do not use live test as substitute for automated tests.
+
+==================================================
+PART 11 — PRESERVE STAGE 4/4.1
+==================================================
+
+Do not weaken:
+
+- learner-safe source text requirement
+- blocked legacy-row policy
+- hidden successCriteria
+- hidden correctAnswer
+- HELP content boundary
+
+==================================================
+PART 12 — NO HISTORICAL REPAIR
+==================================================
+
+Do not modify session 51 historical evidence/messages.
+
+Do not delete/reset evidence.
+
+Do not repair old FEEDBACK rows.
+
+This task fixes future runtime behavior only.
+
+==================================================
+PART 13 — STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED if:
+
+- repairing continuation requires changing Decision Engine policy
+- repairing feedback requires returning correctness authority to AI
+- evidence semantics would change
+- Stage 4 content safety would weaken
+- DB migration becomes necessary
+- duplicate-feedback fix would require speculation without reproduction
+
+Do not patch around stop conditions.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE CONFIRMED ROOT CAUSES
+
+B. FILES CHANGED
+
+C. VERIFIED / CONTINUATION FIX
+
+D. POST-FEEDBACK ACTION DERIVATION
+
+E. LEARNER-INPUT-REQUIRED BEHAVIOR
+
+F. FEEDBACK CORRECTNESS AUTHORITY
+
+G. FEEDBACK SEMANTIC VALIDATION
+
+H. DETERMINISTIC SCORING PRESERVATION
+
+I. DUPLICATE FEEDBACK OBSERVABILITY
+
+J. TEST RESULTS
+
+K. LIVE WRONG-ANSWER TEST
+
+L. LIVE CONTINUE_COGNITIVE_LEVEL TEST
+
+M. LIVE DUPLICATE-FEEDBACK CHECK
+
+N. STAGE 4/4.1 REGRESSION
+
+O. EVIDENCE / MASTERY REGRESSION
+
+P. TYPECHECK / BUILD / DIFF
+
+Q. DB MIGRATION
+Expected: NONE
+
+R. REMAINING KNOWN ISSUES
+
+S. STAGE 5 LIVE ACCEPTANCE
+PASS / PARTIAL / FAIL
+
+T. RESULT
+PASS / PARTIAL / BLOCKED
+
+Do not begin Stage 6.
+Do not broaden scope.

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertFeedbackDoesNotRevealHiddenContent,
   phase2EvaluationResultSchema,
@@ -155,4 +156,50 @@ test("K — FEEDBACK contract accepts learner wording only", () => {
   assert.deepEqual(Object.keys(result), ["student_message"]);
 });
 
-console.log(`\n${passed}/11 Stage 3 bounded-job checks passed.\n`);
+test("L — INCORRECT feedback cannot claim that the learner selected the correct answer", () => {
+  assert.throws(() => assertFeedbackMatchesAuthority(
+    { student_message: "Դու ընտրել ես ճիշտ պատասխանը։" },
+    "INCORRECT",
+  ));
+});
+
+test("M — CORRECT feedback cannot claim that the learner selected the wrong answer", () => {
+  assert.throws(() => assertFeedbackMatchesAuthority(
+    { student_message: "Դու սխալ ընտրեցիր։" },
+    "CORRECT",
+  ));
+});
+
+test("N — neutral Armenian encouragement remains valid for an incorrect answer", () => {
+  assert.doesNotThrow(() => assertFeedbackMatchesAuthority(
+    { student_message: "Լավ փորձ էր։ Ճիշտ ուղղությամբ ես մտածում։" },
+    "INCORRECT",
+  ));
+});
+
+test("O — common correct-answer wording cannot bypass an incorrect authority result", () => {
+  assert.throws(() => assertFeedbackMatchesAuthority(
+    { student_message: "Ճիշտ ես պատասխանել։" },
+    "INCORRECT",
+  ));
+});
+
+test("P — common wrong-answer wording cannot bypass a correct authority result", () => {
+  assert.throws(() => assertFeedbackMatchesAuthority(
+    { student_message: "Դու սխալ պատասխանեցիր։" },
+    "CORRECT",
+  ));
+});
+
+test("Q — partial results reject absolute correct or incorrect claims from FEEDBACK", () => {
+  assert.throws(() => assertFeedbackMatchesAuthority(
+    { student_message: "Դու ճիշտ պատասխանեցիր։" },
+    "PARTIALLY_CORRECT",
+  ));
+  assert.throws(() => assertFeedbackMatchesAuthority(
+    { student_message: "Դու սխալ պատասխանեցիր։" },
+    "PARTIALLY_CORRECT",
+  ));
+});
+
+console.log(`\n${passed}/18 Stage 3 bounded-job checks passed.\n`);

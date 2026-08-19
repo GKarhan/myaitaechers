@@ -103,11 +103,11 @@ export default function StudentLessonCard({
             disabled={relearnPending}
             className={btnCls}
           >
-            {relearnPending ? "⏳ ..." : "↺ Կрклин совorgел"}
+            {relearnPending ? "⏳ ..." : "↺ Կրկին սովորել"}
           </button>
         ) : (
           <Link href={`/lessons/${lesson.id}`} className={btnCls}>
-            ▶ Սовorgел
+            ▶ Սովորել
           </Link>
         )}
       </div>
