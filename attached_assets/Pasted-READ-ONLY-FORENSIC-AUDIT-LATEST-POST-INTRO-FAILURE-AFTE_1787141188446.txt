@@ -1,0 +1,193 @@
+READ-ONLY FORENSIC AUDIT — LATEST POST-INTRO FAILURE AFTER MICRO_CHECK ACTIVATION FIX
+
+NO CODE CHANGES.
+NO DB WRITES.
+NO AI/PROVIDER REQUEST.
+NO BROWSER TEST.
+
+GOAL
+
+Inspect ONLY the latest failed request for:
+
+session 51
+lesson 579
+node 2107
+Phase 2
+level remember
+Stage THEORY
+
+Student sent:
+ok
+
+Frontend showed:
+«Սխալ տեղի ունեցավ։ Փորձեք կրկին։»
+
+We recently changed:
+- MICRO_CHECK activation ownership
+- constructed-response visible-task validation
+
+We need the exact failure of THIS request.
+
+==================================================
+A. ATTEMPT 1
+==================================================
+
+Report:
+
+- provider returned content? YES/NO
+- finishReason
+- contentLength
+- root shape
+- teaching_mode
+- is_micro_check
+- interaction_type
+- options
+- correct_option
+- source_fidelity.type
+- student_message bounded preview
+- FIRST exact validation failure
+
+Classify first failure as:
+
+- provider/root-shape
+- JSON schema
+- Zod schema
+- Phase-2 R2
+- visible-task validation
+- multiple-choice format
+- true/false format
+- constructed-response task validation
+- source_fidelity
+- sentence/length validation
+- another exact validator
+
+==================================================
+B. ATTEMPT 2
+==================================================
+
+Report the same fields.
+
+Also confirm:
+
+Did retry attempt 2 receive attempt 1's exact validation reason?
+
+YES / NO
+
+What was the FIRST exact failure on attempt 2?
+
+==================================================
+C. TERMINAL RESPONSE
+==================================================
+
+Confirm whether final response was:
+
+HTTP 503
+error = STRUCTURED_AI_REQUIRED
+
+and confirm plain-text callAI fallback was NOT used.
+
+==================================================
+D. SESSION SAFETY
+==================================================
+
+Read the final session state after failure:
+
+- currentPhase
+- currentNodeId
+- activeCognitiveLevelId
+- nodeTeachingStage
+- activeTaskProvenance
+- activeObjectiveTaskPayload
+- activeLessonExerciseId
+
+Expected if safety worked:
+
+Phase 2
+Node 2107
+remember
+THEORY
+no active task
+no objective payload
+no active exercise
+
+==================================================
+E. DID THE NEW FIX CAUSE THIS?
+==================================================
+
+Determine whether either failure was caused by the newly added:
+
+1. constructed-response visible-task validation
+2. removal of generic THEORY → MICRO_CHECK activation
+
+Answer separately:
+
+1 = YES / NO
+2 = YES / NO
+
+Give exact evidence.
+
+==================================================
+F. FAILURE PATTERN
+==================================================
+
+Compare only to the recent repeated failures.
+
+Choose:
+
+SAME RECURRING PHASE-2 MODEL CONTRACT FAILURE
+
+NEW VALIDATOR REGRESSION
+
+PROVIDER OUTPUT FAILURE
+
+OTHER
+
+==================================================
+G. ROOT CAUSE
+==================================================
+
+Give ONE precise first confirmed root cause for this exact request.
+
+Do not speculate.
+
+==================================================
+H. SMALLEST NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest robust fix.
+
+IMPORTANT:
+
+If the failure is again the model failing to satisfy the same Phase-2 THEORY
+cross-field contract despite:
+- native strict json_schema
+- explicit PHASE_2_THEORY_CONTRACT
+- validation-aware retry
+
+then say so clearly.
+
+In that case, do NOT recommend adding another prompt sentence.
+Recommend the smallest architectural way to remove that unstable semantic
+decision from the model.
+
+Do not redesign the whole AI Teacher.
+
+==================================================
+I. VERDICT
+==================================================
+
+Choose exactly one:
+
+REPEATED PHASE-2 MODEL CONTRACT FAILURE
+
+NEW VALIDATOR REGRESSION
+
+PROVIDER FAILURE
+
+OTHER VALIDATION FAILURE
+
+INSUFFICIENT EVIDENCE
+
+Then STOP.
