@@ -124,6 +124,7 @@ type ProviderQueueItem = {
 };
 
 const providerQueue: ProviderQueueItem[] = [];
+const boundedJobCalls: string[] = [];
 const originalFetch = globalThis.fetch;
 let providerCallCount = 0;
 let classifierCallCount = 0;
@@ -200,10 +201,37 @@ globalThis.fetch = (async (
     next,
     `unexpected structured AI call #${providerCallCount}; queue exhausted`,
   );
+  const schemaName = (
+    requestBody.response_format as {
+      json_schema?: { name?: string };
+    }
+  ).json_schema?.name;
+  if (schemaName?.startsWith("phase2_")) {
+    boundedJobCalls.push(schemaName);
+  }
+  const boundedResponse = (() => {
+    switch (schemaName) {
+      case "phase2_theory_result":
+      case "phase2_feedback_result":
+        return { student_message: next.response.student_message };
+      case "phase2_task_candidate":
+        return {
+          student_message: next.response.student_message,
+          interaction_type: next.response.interaction_type,
+          options: next.response.options,
+          correct_option: next.response.correct_option,
+          question_template: next.response.question_template,
+        };
+      case "phase2_evaluation_result":
+        return next.response.answer_evaluation;
+      default:
+        return next.response;
+    }
+  })();
 
   return new Response(
     JSON.stringify(
-      openAiEnvelope(JSON.stringify(next.response), next.label),
+      openAiEnvelope(JSON.stringify(boundedResponse), next.label),
     ),
     {
       status: 200,
@@ -477,6 +505,7 @@ try {
   const successfulStudent = await factory.student();
   const failingStudent = await factory.student();
   const sourceStudent = await factory.student();
+  const constructedStudent = await factory.student();
   const [teacherProfile] = await db
     .insert(teachersTable)
     .values({ userId: teacher.userId })
@@ -485,6 +514,7 @@ try {
   await factory.enrollStudent(cls.id, successfulStudent.userId);
   await factory.enrollStudent(cls.id, failingStudent.userId);
   await factory.enrollStudent(cls.id, sourceStudent.userId);
+  await factory.enrollStudent(cls.id, constructedStudent.userId);
 
   const lesson = await factory.lesson(
     teacher.userId,
@@ -647,6 +677,20 @@ try {
       activeTaskProvenance: "micro_check",
       activeAttemptSequence: 1,
     },
+    {
+      userId: constructedStudent.userId,
+      lessonId: lesson.id,
+      currentPhase: 2,
+      status: "active",
+      currentNodeId: node.id,
+      nodeStartedAt: new Date(),
+      nodeTeachingStage: "MICRO_CHECK",
+      introConfirmed: true,
+      lastQuestionAsked: "Բացատրի՛ր, թե ինչու են մոլեկուլները շարժվում։",
+      activeCognitiveLevelId: rememberLevel.id,
+      activeTaskProvenance: "constructed_response",
+      activeAttemptSequence: 1,
+    },
   ]);
 
   const appModule = await import("../../app.js");
@@ -669,6 +713,10 @@ try {
     sourceStudent.userId,
     "student",
   );
+  const constructedToken = authModule.signToken(
+    constructedStudent.userId,
+    "student",
+  );
 
   console.log("\n▶ Phase 2 Stage 0 provider-free HTTP baseline\n");
 
@@ -682,22 +730,26 @@ try {
   assert.equal(providerCallCount, 0);
   console.log("  ✓ deterministic intro creates no provider request");
 
-  const contradictoryTheoryMetadata = multipleChoiceTask("Հիշելու մակարդակ։");
-  contradictoryTheoryMetadata.teaching_mode = "FEEDBACK";
-  contradictoryTheoryMetadata.is_micro_check = false;
-  enqueue("remember task with contradictory workflow metadata", contradictoryTheoryMetadata);
-  const firstTask = await postChat(
+  const theoryOnly = multipleChoiceTask("Հիշելու մակարդակ։");
+  theoryOnly.student_message = "Մոլեկուլները մշտապես շարժվում են, և այդ շարժումն է բացատրում շատ երևույթներ։";
+  theoryOnly.teaching_mode = "TEACH";
+  theoryOnly.is_micro_check = false;
+  theoryOnly.interaction_type = null;
+  theoryOnly.options = null;
+  theoryOnly.correct_option = null;
+  enqueue("remember theory only", theoryOnly);
+  const firstTheory = await postChat(
     baseUrl,
     successfulToken,
     lesson.id,
     "պատրաստ",
   );
-  assert.equal(firstTask.response.status, 200);
+  assert.equal(firstTheory.response.status, 200);
   assert.equal(providerCallCount, 1);
-  assert.equal(firstTask.json.teachingMode, "TEACH");
-  assert.equal(firstTask.json.hasActiveTask, true);
-  assert.equal(typeof firstTask.json.messageId, "number");
-  assertNoPrivateAnswerMetadata(firstTask.json, "POST /api/chat");
+  assert.equal(firstTheory.json.teachingMode, "TEACH");
+  assert.equal(firstTheory.json.hasActiveTask, false);
+  assert.equal(typeof firstTheory.json.messageId, "number");
+  assertNoPrivateAnswerMetadata(firstTheory.json, "POST /api/chat");
 
   const publicResponseKeys = [
     "activeHelpCount",
@@ -715,14 +767,32 @@ try {
     "sessionDecision",
     "teachingMode",
   ];
-  assert.deepEqual(Object.keys(firstTask.json).sort(), publicResponseKeys);
+  assert.deepEqual(Object.keys(firstTheory.json).sort(), publicResponseKeys);
 
   let session = await getSession(lesson.id, successfulStudent.userId);
   assert.equal(session.currentPhase, 2);
   assert.equal(session.currentNodeId, node.id);
+  assert.equal(session.nodeTeachingStage, "TASK_REQUIRED");
+  assert.equal(session.activeTaskProvenance, null);
+  assert.equal(session.activeCognitiveLevelId, rememberLevel.id);
+  assert.equal(session.activeAttemptSequence, 0);
+  assert.equal(session.activeObjectiveTaskPayload, null);
+  assert.equal((await waitForEvidenceCount(session.id, 0)).length, 0);
+  console.log("  ✓ server-selected THEORY action persists TASK_REQUIRED without a task");
+
+  enqueue("remember bounded task", multipleChoiceTask("Հիշելու մակարդակ։"));
+  const firstTask = await postChat(
+    baseUrl,
+    successfulToken,
+    lesson.id,
+    "շարունակել",
+  );
+  assert.equal(firstTask.response.status, 200);
+  assert.equal(firstTask.json.teachingMode, "MICRO_CHECK");
+  assert.equal(firstTask.json.hasActiveTask, true);
+  session = await getSession(lesson.id, successfulStudent.userId);
   assert.equal(session.nodeTeachingStage, "MICRO_CHECK");
   assert.equal(session.activeTaskProvenance, "micro_check");
-  assert.equal(session.activeCognitiveLevelId, rememberLevel.id);
   assert.equal(session.activeAttemptSequence, 1);
   assert.deepEqual(session.activeObjectiveTaskPayload, {
     interactionType: "multiple_choice",
@@ -734,8 +804,6 @@ try {
     ],
     correctOption: "B",
   });
-  assert.equal((await waitForEvidenceCount(session.id, 0)).length, 0);
-  console.log("  ✓ server-selected THEORY action overrides contradictory AI workflow metadata");
 
   const sessionState = await requestJson(
     `${baseUrl}/api/chat/session-state?lessonId=${lesson.id}`,
@@ -768,7 +836,7 @@ try {
     studentPackage.json,
     "GET /api/lessons/:lessonId/student-package",
   );
-  console.log("  ✓ real THEORY response and persisted task state correspond");
+  console.log("  ✓ bounded TASK response creates exactly one persisted task");
   console.log("  ✓ chat and session-state payloads hide answer metadata");
   console.log("  ✓ student lesson/session payloads hide answer metadata");
 
@@ -776,6 +844,7 @@ try {
     "remember premature completion",
     prematureCompletionFeedback("Առաջին պատասխանը։"),
   );
+  const objectiveJobsBeforeAnswer = boundedJobCalls.length;
   const firstAnswer = await postChat(
     baseUrl,
     successfulToken,
@@ -785,6 +854,11 @@ try {
   assert.equal(firstAnswer.response.status, 200);
   assert.equal(firstAnswer.json.sessionDecision, "ADVANCE_COGNITIVE_LEVEL");
   assert.equal(firstAnswer.json.hasActiveTask, false);
+  assert.deepEqual(
+    boundedJobCalls.slice(objectiveJobsBeforeAnswer),
+    ["phase2_feedback_result"],
+    "objective MICRO_CHECK must use deterministic scoring and skip EVALUATION AI",
+  );
 
   session = await getSession(lesson.id, successfulStudent.userId);
   assert.equal(session.currentPhase, 2);
@@ -886,6 +960,7 @@ try {
   console.log("  ✓ typed source answers stay out of student lesson payloads");
 
   enqueue("conflicting source score", conflictingSourceFeedback());
+  const sourceJobsBeforeAnswer = boundedJobCalls.length;
   const sourceAnswer = await postChat(
     baseUrl,
     sourceToken,
@@ -894,6 +969,11 @@ try {
   );
   assert.equal(sourceAnswer.response.status, 200);
   assert.equal(sourceAnswer.json.hasActiveTask, false);
+  assert.deepEqual(
+    boundedJobCalls.slice(sourceJobsBeforeAnswer),
+    ["phase2_feedback_result"],
+    "typed source exercise must use deterministic scoring and skip EVALUATION AI",
+  );
   sourceSession = await getSession(
     sourceLesson.id,
     sourceStudent.userId,
@@ -917,6 +997,198 @@ try {
   console.log("  ✓ persisted source row deterministically overrides model score");
   console.log("  ✓ source evidence is written once with no identity drift");
 
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      nodeTeachingStage: "EXERCISE",
+      activeTaskProvenance: "source_exercise",
+      activeLessonExerciseId: sourceExercise2.id,
+      activeObjectiveTaskPayload: null,
+      activeAttemptSequence: 1,
+    } as any)
+    .where(eq(lessonSessionsTable.id, sourceSession.id));
+  const sourceFreeFormEvaluation = multipleChoiceTask("Ազատ աղբյուրային պատասխան");
+  sourceFreeFormEvaluation.student_message = "գնահատման ներքին payload";
+  sourceFreeFormEvaluation.answer_evaluation = {
+    status: "CORRECT",
+    evidence_quality: "MODERATE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: ["նշված տարբերակը հիմնավորված է"],
+    incorrect_parts: [],
+  };
+  enqueue("free-form typed source evaluation", sourceFreeFormEvaluation);
+  enqueue("free-form typed source feedback", prematureCompletionFeedback("Ազատ աղբյուրային պատասխան"));
+  const sourceFreeFormJobsBefore = boundedJobCalls.length;
+  const sourceFreeFormAnswer = await postChat(
+    baseUrl,
+    sourceToken,
+    sourceLesson.id,
+    "Կարծում եմ՝ Բ տարբերակն է, քանի որ այն նկարագրում է երևույթը։",
+  );
+  assert.equal(sourceFreeFormAnswer.response.status, 200);
+  assert.deepEqual(
+    boundedJobCalls.slice(sourceFreeFormJobsBefore),
+    ["phase2_evaluation_result", "phase2_feedback_result"],
+    "free-form typed source answer must use bounded EVALUATION before FEEDBACK",
+  );
+  console.log("  ✓ free-form typed source answer uses bounded EVALUATION before FEEDBACK");
+
+  await db
+    .update(lessonExercisesTable)
+    .set({
+      interactionType: "constructed_response",
+      correctAnswer: null,
+    })
+    .where(eq(lessonExercisesTable.id, sourceExercise1.id));
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      nodeTeachingStage: "EXERCISE",
+      activeTaskProvenance: "source_exercise",
+      activeLessonExerciseId: sourceExercise1.id,
+      activeObjectiveTaskPayload: null,
+      activeAttemptSequence: 1,
+    } as any)
+    .where(eq(lessonSessionsTable.id, sourceSession.id));
+  const sourceConstructedEvaluation = multipleChoiceTask("Աղբյուրային կառուցված");
+  sourceConstructedEvaluation.student_message = "գնահատման ներքին payload";
+  sourceConstructedEvaluation.answer_evaluation = {
+    status: "CORRECT",
+    evidence_quality: "MODERATE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: ["բացատրությունը համապատասխանում է կանոնին"],
+    incorrect_parts: [],
+  };
+  const sourceConstructedFeedback = multipleChoiceTask("Աղբյուրային կառուցված feedback");
+  sourceConstructedFeedback.student_message = "Բացատրությունդ ճիշտ ուղղությամբ է։";
+  enqueue("non-deterministic source evaluation", sourceConstructedEvaluation);
+  enqueue("non-deterministic source feedback", sourceConstructedFeedback);
+  const sourceConstructedJobsBefore = boundedJobCalls.length;
+  const sourceConstructedAnswer = await postChat(
+    baseUrl,
+    sourceToken,
+    sourceLesson.id,
+    "Մասնիկները շարժվում են ջերմային էներգիայի պատճառով։",
+  );
+  assert.equal(sourceConstructedAnswer.response.status, 200);
+  assert.deepEqual(
+    boundedJobCalls.slice(sourceConstructedJobsBefore),
+    ["phase2_evaluation_result", "phase2_feedback_result"],
+    "non-deterministic source answer must evaluate before FEEDBACK",
+  );
+  console.log("  ✓ non-deterministic source exercise uses bounded EVALUATION before FEEDBACK");
+
+  const constructedEvaluation = multipleChoiceTask("Կառուցված պատասխան");
+  constructedEvaluation.student_message = "գնահատման ներքին payload";
+  constructedEvaluation.answer_evaluation = {
+    status: "CORRECT",
+    evidence_quality: "MODERATE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: ["պատասխանը բացատրում է շարժումը"],
+    incorrect_parts: [],
+  };
+  constructedEvaluation.node_decision = {
+    action: "COMPLETE_NODE",
+    reason: "must be ignored by bounded evaluation",
+  };
+  const constructedFeedback = multipleChoiceTask("Կառուցված feedback");
+  constructedFeedback.student_message = "Ճիշտ ես բացատրել մասնիկների շարժումը։";
+  constructedFeedback.answer_evaluation.status = "INCORRECT";
+  enqueue("constructed bounded evaluation", constructedEvaluation);
+  enqueue("constructed bounded feedback", constructedFeedback);
+  const constructedJobsBeforeAnswer = boundedJobCalls.length;
+  const constructedAnswer = await postChat(
+    baseUrl,
+    constructedToken,
+    lesson.id,
+    "Քանի որ մասնիկները ջերմային շարժման մեջ են։",
+  );
+  assert.equal(constructedAnswer.response.status, 200);
+  assert.equal(constructedAnswer.json.teachingMode, "FEEDBACK");
+  assert.equal(constructedAnswer.json.sessionDecision, "ADVANCE_COGNITIVE_LEVEL");
+  assert.deepEqual(
+    boundedJobCalls.slice(constructedJobsBeforeAnswer),
+    ["phase2_evaluation_result", "phase2_feedback_result"],
+    "constructed answer must evaluate before Decision Engine feedback",
+  );
+  const constructedSession = await getSession(lesson.id, constructedStudent.userId);
+  assert.equal(constructedSession.nodeTeachingStage, "THEORY");
+  assert.equal(constructedSession.activeTaskProvenance, null);
+  const constructedEvidence = await waitForEvidenceCount(constructedSession.id, 1);
+  assert.equal(constructedEvidence[0]?.wasCorrect, true);
+  console.log("  ✓ constructed response uses bounded EVALUATION before FEEDBACK");
+  console.log("  ✓ evaluation and feedback cannot override server progression or correctness");
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      nodeTeachingStage: "MICRO_CHECK",
+      activeTaskProvenance: "constructed_response",
+      activeLessonExerciseId: null,
+      activeObjectiveTaskPayload: null,
+      activeAttemptSequence: 1,
+      lastQuestionAsked: "Կրկին բացատրի՛ր շարժման պատճառը։",
+    } as any)
+    .where(eq(lessonSessionsTable.id, constructedSession.id));
+  const invalidEvaluation = {
+    ...constructedEvaluation,
+    answer_evaluation: {
+      ...constructedEvaluation.answer_evaluation,
+      status: "NOT_A_CANONICAL_STATUS",
+    },
+  } as unknown as StructuredResponse;
+  enqueue("invalid constructed evaluation initial", invalidEvaluation);
+  enqueue("invalid constructed evaluation retry", invalidEvaluation);
+  const constructedJobsBeforeInvalid = boundedJobCalls.length;
+  const invalidConstructed = await postChat(
+    baseUrl,
+    constructedToken,
+    lesson.id,
+    "Անվավեր գնահատման փորձ։",
+  );
+  assert.equal(invalidConstructed.response.status, 503);
+  assert.deepEqual(
+    boundedJobCalls.slice(constructedJobsBeforeInvalid),
+    ["phase2_evaluation_result", "phase2_evaluation_result"],
+    "invalid evaluation must retry once and never invoke FEEDBACK",
+  );
+  const constructedAfterInvalid = await getSession(lesson.id, constructedStudent.userId);
+  assert.equal(constructedAfterInvalid.nodeTeachingStage, "MICRO_CHECK");
+  assert.equal(constructedAfterInvalid.activeTaskProvenance, "constructed_response");
+  assert.equal(
+    (await waitForEvidenceCount(constructedAfterInvalid.id, 1)).length,
+    1,
+    "invalid evaluation must not write a new evidence event",
+  );
+  console.log("  ✓ invalid EVALUATION fails closed without evidence, progression, or FEEDBACK");
+
+  const adversarialFeedback = multipleChoiceTask("Անվավեր feedback");
+  adversarialFeedback.student_message = "Հաշվիր 2 + 2-ը և գրիր պատասխանը։";
+  enqueue("feedback evaluation before adversarial output", constructedEvaluation);
+  enqueue("adversarial feedback initial", adversarialFeedback);
+  enqueue("adversarial feedback retry", adversarialFeedback);
+  const constructedJobsBeforeAdversarialFeedback = boundedJobCalls.length;
+  const adversarialFeedbackResponse = await postChat(
+    baseUrl,
+    constructedToken,
+    lesson.id,
+    "Նոր պատասխան։",
+  );
+  assert.equal(adversarialFeedbackResponse.response.status, 503);
+  assert.deepEqual(
+    boundedJobCalls.slice(constructedJobsBeforeAdversarialFeedback),
+    [
+      "phase2_evaluation_result",
+      "phase2_feedback_result",
+      "phase2_feedback_result",
+    ],
+    "task-shaped feedback must fail closed and never reach the learner",
+  );
+  console.log("  ✓ task-shaped FEEDBACK is rejected before delivery");
+
   const failingIntro = await postChat(
     baseUrl,
     failingToken,
@@ -938,8 +1210,14 @@ try {
       eq(chatMessagesTable.role, "assistant"),
     ));
 
-  enqueue("invalid initial", invalidTheory("Անվավեր առաջին փորձ։"));
-  enqueue("invalid retry", invalidTheory("Անվավեր կրկնափորձ։"));
+  enqueue("invalid initial", {
+    ...invalidTheory("Անվավեր առաջին փորձ։"),
+    student_message: "",
+  });
+  enqueue("invalid retry", {
+    ...invalidTheory("Անվավեր կրկնափորձ։"),
+    student_message: "",
+  });
   const failed = await postChat(
     baseUrl,
     failingToken,
@@ -980,6 +1258,41 @@ try {
     ));
   assert.equal(assistantMessagesAfter.length, assistantMessagesBefore.length);
   console.log("  ✓ invalid generation retry fails closed with no success pair");
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      nodeTeachingStage: "TASK_REQUIRED",
+      activeTaskProvenance: null,
+      activeLessonExerciseId: null,
+      activeObjectiveTaskPayload: null,
+      activeAttemptSequence: 0,
+    } as any)
+    .where(eq(lessonSessionsTable.id, failingSessionAfter.id));
+  const invalidTaskCandidate = multipleChoiceTask("Անվավեր առաջադրանքի թեկնածու");
+  invalidTaskCandidate.student_message = "Մոլեկուլները մշտապես շարժվում են։";
+  enqueue("invalid task candidate initial", invalidTaskCandidate);
+  enqueue("invalid task candidate retry", invalidTaskCandidate);
+  const invalidTaskJobsBefore = boundedJobCalls.length;
+  const invalidTaskResponse = await postChat(
+    baseUrl,
+    failingToken,
+    lesson.id,
+    "շարունակել",
+  );
+  assert.equal(invalidTaskResponse.response.status, 503);
+  assert.deepEqual(
+    boundedJobCalls.slice(invalidTaskJobsBefore),
+    ["phase2_task_candidate", "phase2_task_candidate"],
+  );
+  const failingAfterInvalidTask = await getSession(
+    lesson.id,
+    failingStudent.userId,
+  );
+  assert.equal(failingAfterInvalidTask.nodeTeachingStage, "TASK_REQUIRED");
+  assert.equal(failingAfterInvalidTask.activeTaskProvenance, null);
+  assert.equal(failingAfterInvalidTask.activeObjectiveTaskPayload, null);
+  console.log("  ✓ invalid bounded TASK fails before activation or legacy compatibility");
 
   await db
     .update(lessonSessionsTable)

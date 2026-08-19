@@ -26,6 +26,19 @@ export type DeterministicSourceExerciseEvaluation = {
 
 type CanonicalTypedAnswer = "A" | "B" | "C" | "D" | "TRUE" | "FALSE";
 
+export function canEvaluateSourceExerciseDeterministically(input: {
+  interactionType: unknown;
+  correctAnswer: unknown;
+}): boolean {
+  const contract = normalizeSourceExerciseAnswerContract(input);
+  return (
+    contract.ok &&
+    (contract.interactionType === "multiple_choice" ||
+      contract.interactionType === "true_false") &&
+    contract.correctAnswer !== null
+  );
+}
+
 /**
  * Deterministically evaluates only an active, typed source exercise.
  *
@@ -48,8 +61,16 @@ export function evaluateDeterministicSourceExerciseAnswer(
     interactionType: input.interactionType,
     correctAnswer: input.correctAnswer,
   });
+  if (!contract.ok) {
+    return null;
+  }
+  if (!canEvaluateSourceExerciseDeterministically({
+    interactionType: input.interactionType,
+    correctAnswer: input.correctAnswer,
+  })) {
+    return null;
+  }
   if (
-    !contract.ok ||
     (contract.interactionType !== "multiple_choice" &&
       contract.interactionType !== "true_false") ||
     contract.correctAnswer === null

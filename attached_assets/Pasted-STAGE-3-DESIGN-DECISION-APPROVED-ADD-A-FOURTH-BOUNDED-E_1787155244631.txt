@@ -1,0 +1,206 @@
+STAGE 3 DESIGN DECISION — APPROVED
+ADD A FOURTH BOUNDED EVALUATION JOB FOR NON-DETERMINISTIC RESPONSES
+
+The BLOCKED report is accepted.
+
+Do NOT preserve the old general structured Phase-2 contract as the normal path
+for constructed responses.
+
+Do NOT restrict the new architecture to objective questions only.
+
+We explicitly approve a fourth bounded Phase-2 AI job:
+
+EVALUATION
+
+The normal Stage-3 architecture is therefore:
+
+THEORY
+TASK
+EVALUATION
+FEEDBACK
+
+Resume Stage 3 implementation using the original approved Stage-3 brief,
+with the following amendment.
+
+==================================================
+1. FOUR BOUNDED JOBS
+==================================================
+
+Normal Phase-2 AI work must be separated into:
+
+A. THEORY
+   explanation only
+
+B. TASK
+   task generation only
+
+C. EVALUATION
+   semantic evaluation only when deterministic backend evaluation is unavailable
+
+D. FEEDBACK
+   learner-facing feedback only after authoritative evaluation and
+   Decision Engine processing
+
+The general structured AI contract must not remain the normal control path
+for new Phase-2 turns.
+
+==================================================
+2. EVALUATION JOB — PURPOSE
+==================================================
+
+The EVALUATION job exists ONLY for answers that cannot currently be scored
+deterministically.
+
+Primary case:
+
+constructed_response
+
+Also preserve only genuinely required legacy/non-deterministic cases already
+supported by the current architecture.
+
+Do not call EVALUATION AI for answers where deterministic authority exists.
+
+==================================================
+3. OBJECTIVE GENERATED MICRO_CHECK
+==================================================
+
+For:
+
+multiple_choice
+true_false
+
+use:
+
+activeObjectiveTaskPayload
+→ backend normalization
+→ deterministic correctness
+
+No EVALUATION AI call.
+
+==================================================
+4. TYPED SOURCE EXERCISE
+==================================================
+
+For machine-evaluable typed source exercises:
+
+activeLessonExerciseId
+→ exact lesson_exercises row
+→ interactionType / correctAnswer
+→ deterministic backend evaluation
+
+No EVALUATION AI call.
+
+==================================================
+5. CONSTRUCTED RESPONSE
+==================================================
+
+For constructed_response:
+
+learner answer
+→ bounded EVALUATION job
+→ validated evaluation result
+→ backend treats the validated result as the evaluation input
+→ evidence/counters
+→ Pedagogical Decision Engine
+→ authoritative server action
+→ bounded FEEDBACK job
+
+The EVALUATION job must NOT produce learner-facing feedback.
+
+==================================================
+6. EVALUATION CONTRACT
+==================================================
+
+Create the smallest bounded structured result required by current downstream
+logic.
+
+Audit the exact fields currently consumed by:
+
+- evidence calculation
+- counters
+- Pedagogical Decision Engine
+- remediation/error handling
+
+Do not blindly copy the old general response schema.
+
+Conceptually it may include only fields such as:
+
+{
+  status: "CORRECT" | "INCORRECT" | ...,
+  evidence_quality: ...,
+  error_family: ...,
+  confidence/reason fields only if existing downstream logic genuinely requires them
+}
+
+Use current canonical enums/types.
+
+Do not invent a new pedagogical taxonomy.
+
+==================================================
+7. EVALUATION INPUT
+==================================================
+
+Provide only the context required to evaluate the learner answer safely.
+
+Potential inputs include existing authoritative data:
+
+- exact task/question
+- learner answer
+- MicroNode learning objective
+- current cognitive level
+- approved theory/source grounding
+- success criteria where legitimately available
+- assistance/help context where current evaluation semantics require it
+
+Do not provide workflow authority.
+
+EVALUATION AI must NOT decide:
+
+- next cognitive level
+- node completion
+- next task
+- source exercise identity
+- teaching stage
+- Phase transition
+- learner-facing feedback wording
+
+==================================================
+8. EVALUATION VALIDATION
+==================================================
+
+The EVALUATION result must pass a bounded schema and semantic validation before
+it can affect evidence/progression.
+
+Invalid evaluation result:
+
+→ no fabricated correctness
+→ no evidence write
+→ no Decision Engine progression based on invalid evaluation
+→ controlled safe failure
+→ preserve session consistency
+
+Do not silently fall back to the old general Phase-2 contract.
+
+==================================================
+9. FEEDBACK ORDER
+==================================================
+
+Required normal order:
+
+STUDENT ANSWER
+      ↓
+DETERMINISTIC EVALUATION
+OR
+BOUNDED EVALUATION AI
+      ↓
+VALIDATED AUTHORITATIVE EVALUATION
+      ↓
+COUNTERS / EVIDENCE INPUTS
+      ↓
+PEDAGOGICAL DECISION ENGINE
+      ↓
+SERVER ACTION / PROGRESSION PLAN
+      ↓
+BOUNDED FEEDBACK AI
+      ↓
+LEARNER-FACING FEEDBACK ONLY

@@ -1,0 +1,223 @@
+FEEDBACK must receive the already-known evaluation and pedagogical action.
+
+FEEDBACK cannot change either one.
+
+==================================================
+10. THEORY → TASK STATE
+
+Continue the Stage-3 implementation of the theory/task split.
+
+The audit established that no DB migration is required.
+
+Use an explicit server-owned state for:
+
+THEORY successfully delivered
+→ TASK REQUIRED
+
+If TASK_REQUIRED in nodeTeachingStage is the safest representation after
+full code audit, use it consistently.
+
+Do NOT represent TASK_REQUIRED as an active task.
+
+Required invariant:
+
+TASK_REQUIRED
+→ activeTaskProvenance = null
+→ activeObjectiveTaskPayload = null
+→ activeLessonExerciseId = null
+
+Only a successfully validated/delivered task becomes active.
+
+==================================================
+11. TASK SELECTION
+
+When server action says a task is required:
+
+eligible source exercise available
+→ backend selects exact eligible source exercise
+→ activate exact source row
+→ backend renders verbatim task
+
+otherwise:
+
+→ bounded TASK AI job
+→ validate candidate
+→ activate generated MICRO_CHECK
+→ deliver exactly one task
+
+THEORY AI must not choose this.
+
+==================================================
+12. NO SAME-TURN THEORY + TASK
+
+Normal new Stage-3 flow must not require one AI response to produce both.
+
+THEORY response:
+→ explanation only
+→ persist TASK_REQUIRED
+→ stop
+
+The task is delivered through the subsequent server-owned task action.
+
+Preserve HTTP/client compatibility using the smallest safe implementation.
+
+Do not hide an unpersisted task inside THEORY output.
+
+==================================================
+13. FEEDBACK ONLY
+
+After an answer:
+
+FEEDBACK AI produces feedback only.
+
+It must not append or activate the next task.
+
+Next learning action is server-owned.
+
+==================================================
+14. LEGACY COMPATIBILITY
+
+Keep only the existing isolated legacy compatibility case where genuinely
+required.
+
+Do not allow new Stage-3 sessions/tasks to enter the legacy shape.
+
+Do not use legacy compatibility as a fallback when a bounded job fails.
+
+==================================================
+15. REQUIRED ADDITIONAL TESTS
+
+In addition to the original Stage-3 test matrix, add:
+
+R. CONSTRUCTED RESPONSE EVALUATION
+
+constructed_response answer
+→ bounded EVALUATION job called
+→ validated result available before Decision Engine
+→ FEEDBACK called afterward
+
+S. OBJECTIVE SKIPS EVALUATION AI
+
+multiple_choice / true_false
+→ deterministic backend evaluation
+→ EVALUATION AI not called
+
+T. TYPED SOURCE SKIPS EVALUATION AI
+
+machine-evaluable source exercise
+→ deterministic backend evaluation
+→ EVALUATION AI not called
+
+U. INVALID EVALUATION
+
+invalid EVALUATION AI result
+→ no evidence/progression
+→ no FEEDBACK pretending correctness is known
+→ controlled safe failure
+
+V. EVALUATION CANNOT PROGRESS
+
+EVALUATION output cannot directly select:
+
+cognitive advance
+completion
+next task
+
+W. FEEDBACK CANNOT RE-EVALUATE
+
+FEEDBACK receives authoritative result
+→ cannot change CORRECT to INCORRECT or vice versa
+
+X. CALL ORDER
+
+For constructed response prove:
+
+TASK ACTIVE
+→ learner ANSWER
+→ EVALUATION
+→ Decision Engine
+→ FEEDBACK
+
+not:
+
+ANSWER
+→ FEEDBACK/evaluation combined
+→ Decision Engine
+
+==================================================
+16. ARCHITECTURE ACCEPTANCE
+
+Stage 3 succeeds only if the normal new Phase-2 architecture becomes:
+
+SERVER ACTION
+↓
+one bounded job where needed
+↓
+SERVER VALIDATION / AUTHORITY
+↓
+next deterministic server step
+
+Specifically:
+
+DELIVER_THEORY
+→ THEORY job
+
+TASK_REQUIRED
+→ source exercise OR TASK job
+
+ANSWER objective
+→ deterministic evaluation
+
+ANSWER constructed
+→ EVALUATION job
+
+evaluated answer
+→ Decision Engine
+
+known pedagogical result
+→ FEEDBACK job
+
+No normal new Phase-2 turn should depend on the old giant structured response
+to determine what kind of turn occurred.
+
+==================================================
+17. SCOPE
+
+All other restrictions and STOP CONDITIONS from the original Stage-3 brief
+remain in force.
+
+This amendment changes only one design decision:
+
+A separate bounded EVALUATION job is now explicitly approved.
+
+No DB migration is approved unless a NEW exact blocker is discovered.
+
+Do not start Stage 4.
+
+==================================================
+FINAL REPORT
+
+Use the original Stage-3 final report structure, but add:
+
+I1. EVALUATION CONTRACT
+
+I2. DETERMINISTIC VS AI EVALUATION ROUTING
+
+I3. EVALUATION → DECISION ENGINE → FEEDBACK ORDER
+
+I4. EVALUATION FAILURE SEMANTICS
+
+I5. EVALUATION TEST RESULTS
+
+Then report:
+
+STAGE-4 READINESS: READY / NOT READY
+
+RESULT: PASS / PARTIAL / BLOCKED
+
+Resume implementation now.
+Do not ask for another approval unless a NEW stop condition is reached.
+
+
+
+Սա architecture-ը շատ ավելի մաքուր է դարձնում։ Վերջնական պատասխանատվությունների բաժանումը դառնում է՝ **Backend

@@ -36,3 +36,4 @@
 - [V2-R4A Learning Budget](v2r4a-budget.md) — session budget snapshot, active-time accounting (turn-based capped), budget-gate decision ordering, TIME≠FAILURE invariant, revisitReason typed enum.
 - [Source exercise activation](source-exercise-activation.md) — delivery and typed scoring use the persisted active lesson-exercise ID; model IDs are requests, not authority.
 - [Phase 2 route baseline](phase2-stage0-route-baseline.md) — provider-free real-route testing convention, isolated test-DB drift, and two known orchestration metadata gaps.
+- [Bounded Phase 2 orchestration](bounded-phase2-orchestration.md) — normal Phase 2 uses distinct THEORY, TASK, EVALUATION, and FEEDBACK jobs; legacy structured AI is compatibility-only.

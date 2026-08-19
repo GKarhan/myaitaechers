@@ -23,6 +23,7 @@ export type ActiveObjectiveTaskPayload = {
 export type Phase2ServerAction =
   | "OUTSIDE_PHASE_2"
   | "DELIVER_THEORY"
+  | "GENERATE_TASK"
   | "EVALUATE_ACTIVE_TASK"
   | "PRESERVE_ACTIVE_TASK"
   | "DELIVER_FEEDBACK"
@@ -38,6 +39,7 @@ export type Phase2TaskAuthority =
   | "validated_ai_candidate"
   | "active_objective_payload"
   | "active_source_exercise"
+  | "active_constructed_response"
   | "compatibility";
 
 export type Phase2CompatibilityKind =
@@ -50,7 +52,7 @@ export type Phase2ServerActionPlan = {
   activeTaskMayBeCreated: boolean;
   evaluationExpected: boolean;
   progressionMayOccur: boolean;
-  responseTeachingMode: "TEACH" | null;
+  responseTeachingMode: "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION" | null;
   taskAuthority: Phase2TaskAuthority;
   compatibilityKind: Phase2CompatibilityKind | null;
   nextActiveCognitiveLevelId: number | null;
@@ -77,6 +79,7 @@ export type Phase2ServerActionInput = {
     | "shouldResetForCognitiveAdvance"
     | "shouldCompleteNode"
   > | null;
+  eligibleSourceExerciseAvailable?: boolean;
 };
 
 function makeActionPlan(
@@ -178,8 +181,11 @@ export function derivePhase2ServerAction(
   const hasSourceExerciseTask =
     input.activeTaskProvenance === "source_exercise" &&
     input.activeLessonExerciseId !== null;
+  const hasConstructedResponseTask =
+    input.activeTaskProvenance === "constructed_response" &&
+    input.activeObjectiveTaskPayload === null;
   const hasAuthoritativeActiveTask =
-    hasGeneratedObjectiveTask || hasSourceExerciseTask;
+    hasGeneratedObjectiveTask || hasSourceExerciseTask || hasConstructedResponseTask;
 
   if (hasAuthoritativeActiveTask && input.learnerIntent === "ANSWER") {
     return makeActionPlan(
@@ -193,7 +199,9 @@ export function derivePhase2ServerAction(
         progressionMayOccur: true,
         taskAuthority: hasGeneratedObjectiveTask
           ? "active_objective_payload"
-          : "active_source_exercise",
+          : hasSourceExerciseTask
+            ? "active_source_exercise"
+            : "active_constructed_response",
       },
     );
   }
@@ -206,7 +214,9 @@ export function derivePhase2ServerAction(
         aiGenerationNeeded: true,
         taskAuthority: hasGeneratedObjectiveTask
           ? "active_objective_payload"
-          : "active_source_exercise",
+          : hasSourceExerciseTask
+            ? "active_source_exercise"
+            : "active_constructed_response",
       },
     );
   }
@@ -222,8 +232,37 @@ export function derivePhase2ServerAction(
       "phase2_theory_has_current_node_and_no_active_task",
       {
         aiGenerationNeeded: true,
-        activeTaskMayBeCreated: true,
+        activeTaskMayBeCreated: false,
         responseTeachingMode: "TEACH",
+        taskAuthority: "validated_ai_candidate",
+      },
+    );
+  }
+
+  if (
+    input.nodeTeachingStage === "TASK_REQUIRED" &&
+    input.activeTaskProvenance === null &&
+    input.activeLessonExerciseId === null &&
+    input.activeObjectiveTaskPayload === null
+  ) {
+    if (input.eligibleSourceExerciseAvailable) {
+      return makeActionPlan(
+        "DELIVER_SOURCE_EXERCISE",
+        "server_selected_eligible_source_exercise_for_pending_task",
+        {
+          activeTaskMayBeCreated: true,
+          responseTeachingMode: "TRANSITION",
+          taskAuthority: "active_source_exercise",
+        },
+      );
+    }
+    return makeActionPlan(
+      "GENERATE_TASK",
+      "server_requires_generated_task_without_eligible_source_exercise",
+      {
+        aiGenerationNeeded: true,
+        activeTaskMayBeCreated: true,
+        responseTeachingMode: "MICRO_CHECK",
         taskAuthority: "validated_ai_candidate",
       },
     );
@@ -274,11 +313,11 @@ export function validatePhase2ResponseForServerAction(
   if (plan.action === "DELIVER_THEORY") {
     if (
       response.teaching_mode !== "TEACH" ||
-      response.is_micro_check !== true ||
+      response.is_micro_check !== false ||
       response.answer_evaluation.status !== "NOT_APPLICABLE"
     ) {
       throw new Error(
-        "Phase-2 action/content mismatch: DELIVER_THEORY requires a TEACH envelope with a visible MICRO_CHECK and no answer evaluation",
+        "Phase-2 action/content mismatch: DELIVER_THEORY requires a theory-only TEACH envelope with no visible task or answer evaluation",
       );
     }
     return;

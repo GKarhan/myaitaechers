@@ -93,29 +93,23 @@ function test(name: string, run: () => void): void {
 
 console.log("\n▶ Phase 2 Stage 2 Server-Owned Action Plan\n");
 
-test("A — Phase 2 THEORY with no active task selects DELIVER_THEORY", () => {
+test("A — Phase 2 THEORY with no active task selects theory-only DELIVER_THEORY", () => {
   const plan = derivePhase2ServerAction(baseInput());
   assert.equal(plan.action, "DELIVER_THEORY");
   assert.equal(plan.aiGenerationNeeded, true);
-  assert.equal(plan.activeTaskMayBeCreated, true);
+  assert.equal(plan.activeTaskMayBeCreated, false);
   assert.equal(plan.evaluationExpected, false);
   assert.equal(plan.progressionMayOccur, false);
   assert.equal(plan.responseTeachingMode, "TEACH");
   assert.equal(plan.taskAuthority, "validated_ai_candidate");
 });
 
-test("B — contradictory AI teaching_mode cannot replace DELIVER_THEORY", () => {
+test("B — a visible task cannot be included in DELIVER_THEORY", () => {
   const input = baseInput();
   const plan = derivePhase2ServerAction(input);
-  const contradictory = {
-    ...validTheoryResponse(),
-    teaching_mode: "FEEDBACK" as const,
-    is_micro_check: false,
-  };
-
   assert.throws(
-    () => validatePhase2ResponseForServerAction(plan, contradictory),
-    /DELIVER_THEORY requires a TEACH envelope/,
+    () => validatePhase2ResponseForServerAction(plan, validTheoryResponse()),
+    /DELIVER_THEORY requires a theory-only TEACH envelope/,
   );
   assert.equal(derivePhase2ServerAction(input).action, "DELIVER_THEORY");
 });

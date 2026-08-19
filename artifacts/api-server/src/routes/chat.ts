@@ -13,6 +13,15 @@ import {
   callAI, callAIStructured,
   type ChatMessage, type AIStructuredResponse, type ProgressIndicator,
 } from "../services/ai";
+import {
+  assertFeedbackOnly,
+  assertTheoryOnly,
+  callPhase2EvaluationJob,
+  callPhase2FeedbackJob,
+  callPhase2TaskJob,
+  callPhase2TheoryJob,
+  type Phase2EvaluationResult,
+} from "../services/phase2/bounded-jobs.js";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
 import {
@@ -23,6 +32,7 @@ import {
   shouldDeliverStandaloneSourceExercise,
   type SourceExerciseResolution,
 } from "../lib/exercise-delivery";
+import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
@@ -51,6 +61,42 @@ import {
 export { normalizeObjectiveMicroCheckAnswer };
 
 type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
+
+function createStage3EvaluationEnvelope(
+  progressIndicator: ProgressIndicator,
+  evaluation?: Phase2EvaluationResult,
+): AIStructuredResponse {
+  return {
+    student_message: "",
+    progress_indicator: progressIndicator,
+    teaching_mode: "FEEDBACK",
+    is_micro_check: false,
+    interaction_type: null,
+    options: null,
+    correct_option: null,
+    answer_evaluation: evaluation ?? {
+      status: "NOT_APPLICABLE",
+      evidence_quality: "NONE",
+      error_family: null,
+      error_stability: null,
+      correct_parts: [],
+      incorrect_parts: [],
+    },
+    node_decision: {
+      action: "CONTINUE_SAME_NODE",
+      reason: "stage3_server_owned_evaluation_pending_decision_engine",
+    },
+    source_fidelity: {
+      type: "AI_GENERATED",
+      exercise_id: null,
+    },
+    redirect_needed: false,
+    mentions_out_of_scope_topic: false,
+    question_template: null,
+    encouragement_used: false,
+    encouragement_focus: null,
+  };
+}
 
 /**
  * The only source-exercise activation writer in chat.ts.
@@ -1359,6 +1405,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     evaluated: false,
     decision: null,
     progressionPlan: null,
+    eligibleSourceExerciseAvailable: classExercises.length > 0,
   });
   logger.info(
     {
@@ -1394,15 +1441,303 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
   let wasCorrect: boolean | null = null;
+  let _stage3BoundedAnswerTurn = false;
+  let _stage3SourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
+
+  const respondWithBoundedPhase2Message = async (
+    content: string,
+    boundedTeachingMode: "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION",
+    activeTask: boolean,
+  ) => {
+    const [assistantMsg] = await db
+      .insert(chatMessagesTable)
+      .values({
+        userId: req.userId!,
+        lessonId: lessonId ?? null,
+        role: "assistant",
+        content,
+      })
+      .returning();
+    const requiredSessionMinutes = session?.requiredSessionMinutes ?? null;
+    const activeLearningSeconds = session?.activeLearningSeconds ?? 0;
+    const budgetSeconds = requiredSessionMinutes == null
+      ? null
+      : requiredSessionMinutes * 60;
+    res.json({
+      response: content,
+      messageId: assistantMsg.id,
+      progressIndicator,
+      teachingMode: boundedTeachingMode,
+      hasActiveTask: activeTask,
+      activeHelpCount: activeTask ? 0 : (session?.activeHelpCount ?? 0),
+      requiredSessionMinutes,
+      activeLearningSeconds,
+      remainingRequiredSeconds: budgetSeconds == null
+        ? null
+        : Math.max(0, budgetSeconds - activeLearningSeconds),
+      sessionBudgetExhausted: computeSessionBudgetExhausted(
+        requiredSessionMinutes,
+        activeLearningSeconds,
+      ),
+      sessionDecision: null,
+      requiredSessionCompleted: session?.requiredSessionCompletedAt != null,
+      requiredSessionCompletedAt:
+        session?.requiredSessionCompletedAt?.toISOString() ?? null,
+      optionalContinuation: session?.optionalContinuation ?? false,
+    });
+  };
+
+  const boundedPhase2Failure = (
+    error: unknown,
+    job: "THEORY" | "TASK" | "EVALUATION" | "FEEDBACK",
+  ) => {
+    logger.error(
+      {
+        err: error instanceof Error ? error.message : String(error),
+        sessionId: session?.id ?? null,
+        action: _phase2ServerActionPlan.action,
+        job,
+      },
+      "Stage-3 bounded Phase-2 job failed",
+    );
+    res.status(503).json({
+      error: "STRUCTURED_AI_REQUIRED",
+      message: "Չհաջողվեց շարունակել դասը։ Խնդրում եմ կրկին փորձել։",
+    });
+  };
+
+  if (
+    session?.currentPhase === 2 &&
+    _phase2ServerActionPlan.action === "DELIVER_THEORY"
+  ) {
+    try {
+      const theory = await callPhase2TheoryJob(chatHistory, lessonContext);
+      assertTheoryOnly(theory);
+      const driftDetected = session.currentNodeId
+        ? validateNoScopeDrift(theory.student_message, _allNodeTitles)
+        : false;
+      if (driftDetected) {
+        throw new Error("bounded THEORY response mentioned an out-of-scope node");
+      }
+      await db
+        .update(lessonSessionsTable)
+        .set({
+          nodeTeachingStage: "TASK_REQUIRED",
+          activeLessonExerciseId: null,
+          activeTaskProvenance: null,
+          activeObjectiveTaskPayload: null,
+          activeAttemptSequence: 0,
+          activeHelpCount: 0,
+          activeAssistanceLevel: "none",
+        } as any)
+        .where(eq(lessonSessionsTable.id, session.id));
+      await respondWithBoundedPhase2Message(
+        theory.student_message,
+        "TEACH",
+        false,
+      );
+      return;
+    } catch (error) {
+      boundedPhase2Failure(error, "THEORY");
+      return;
+    }
+  }
+
+  if (
+    session?.currentPhase === 2 &&
+    _phase2ServerActionPlan.action === "DELIVER_SOURCE_EXERCISE" &&
+    session.nodeTeachingStage === "TASK_REQUIRED"
+  ) {
+    const selection = resolveEligibleSourceExercise(classExercises, null);
+    const selectedExercise = await activateSourceExercise(session.id, selection);
+    if (!selectedExercise) {
+      res.status(409).json({
+        error: "SOURCE_EXERCISE_UNAVAILABLE",
+        message: "Հաջորդ առաջադրանքը հասանելի չէ։ Խնդրում եմ կրկին փորձել։",
+      });
+      return;
+    }
+    const sourceText = effectiveExerciseText(
+      selectedExercise.exerciseTextVerbatim,
+      selectedExercise.exerciseTextEdited,
+    ).trim() || `[${selectedExercise.exerciseId}]`;
+    const sourcePage = selectedExercise.sourcePage ?? "?";
+    await respondWithBoundedPhase2Message(
+      `${sourceText}\n(Էջ ${sourcePage}, Վ. ${selectedExercise.exerciseId})`,
+      "TRANSITION",
+      true,
+    );
+    return;
+  }
+
+  if (
+    session?.currentPhase === 2 &&
+    _phase2ServerActionPlan.action === "GENERATE_TASK"
+  ) {
+    try {
+      const task = await callPhase2TaskJob(chatHistory, lessonContext);
+      const isObjective =
+        task.interaction_type === "multiple_choice" ||
+        task.interaction_type === "true_false";
+      const taskUpdate: Record<string, unknown> = {
+        nodeTeachingStage: "MICRO_CHECK",
+        activeLessonExerciseId: null,
+        activeTaskProvenance: task.interaction_type === "constructed_response"
+          ? "constructed_response"
+          : "micro_check",
+        activeObjectiveTaskPayload: isObjective
+          ? {
+              interactionType: task.interaction_type,
+              options: task.interaction_type === "multiple_choice"
+                ? task.options
+                : null,
+              correctOption: task.correct_option,
+            }
+          : null,
+        activeAttemptSequence: 1,
+        activeHelpCount: 0,
+        activeAssistanceLevel: "none",
+        lastQuestionAsked: task.student_message,
+      };
+      await db
+        .update(lessonSessionsTable)
+        .set(taskUpdate as any)
+        .where(eq(lessonSessionsTable.id, session.id));
+      const taskStem = task.interaction_type === "constructed_response"
+        ? task.student_message
+        : task.student_message
+          .split("\n")
+          .filter((line) => !/^\s*[A-ZԱ-Ֆ]\s*[.)]/u.test(line))
+          .join("\n")
+          .trim();
+      const renderedOptions = task.interaction_type === "multiple_choice"
+        ? task.options!.map((option) => `${option.key}) ${option.text}`).join("\n")
+        : task.interaction_type === "true_false"
+          ? "Ա) Ճիշտ\nԲ) Սխալ"
+          : "";
+      await respondWithBoundedPhase2Message(
+        renderedOptions
+          ? `${taskStem}\n${renderedOptions}`
+          : taskStem,
+        "MICRO_CHECK",
+        true,
+      );
+      return;
+    } catch (error) {
+      boundedPhase2Failure(error, "TASK");
+      return;
+    }
+  }
+
+  if (
+    session?.currentPhase === 2 &&
+    _phase2ServerActionPlan.action === "PRESERVE_ACTIVE_TASK"
+  ) {
+    try {
+      const feedback = await callPhase2FeedbackJob(
+        chatHistory,
+        [
+          lessonContext,
+          "AUTHORITATIVE FACTS:",
+          "The learner has an active task but did not submit an answer.",
+          "Keep the same active task open. Do not create or append another task.",
+          `Learner message: ${message}`,
+        ].join("\n"),
+      );
+      assertFeedbackOnly(feedback);
+      await respondWithBoundedPhase2Message(feedback.student_message, "FEEDBACK", true);
+      return;
+    } catch (error) {
+      boundedPhase2Failure(error, "FEEDBACK");
+      return;
+    }
+  }
+
+  if (
+    session?.currentPhase === 2 &&
+    _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" &&
+    session
+  ) {
+    try {
+      let evaluation: Phase2EvaluationResult | undefined;
+      if (session.activeTaskProvenance === "constructed_response") {
+        evaluation = await callPhase2EvaluationJob(
+          chatHistory,
+          [
+            lessonContext,
+            "AUTHORITATIVE EVALUATION INPUT:",
+            `Task: ${session.lastQuestionAsked ?? "(constructed-response task)"}`,
+            `Learner answer: ${message}`,
+            "Evaluate the answer only. Do not write learner-facing feedback.",
+          ].join("\n"),
+        );
+      } else if (session.activeTaskProvenance === "source_exercise") {
+        const [activeSourceExercise] = session.activeLessonExerciseId == null
+          ? []
+          : await db
+            .select({
+              id: lessonExercisesTable.id,
+              exerciseId: lessonExercisesTable.exerciseId,
+              interactionType: lessonExercisesTable.interactionType,
+              correctAnswer: lessonExercisesTable.correctAnswer,
+              verbatim: lessonExercisesTable.exerciseTextVerbatim,
+              edited: lessonExercisesTable.exerciseTextEdited,
+            })
+            .from(lessonExercisesTable)
+            .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
+            .limit(1);
+        if (!activeSourceExercise) {
+          throw new Error("active source exercise was not found for evaluation");
+        }
+        _stage3SourceExerciseForEvaluation = activeSourceExercise;
+        const deterministicSourcePreview = evaluateDeterministicSourceExerciseAnswer({
+          learnerIntent: _intentResult.intent,
+          activeTaskProvenance: session.activeTaskProvenance,
+          activeLessonExerciseId: session.activeLessonExerciseId,
+          exerciseId: activeSourceExercise.exerciseId,
+          interactionType: activeSourceExercise.interactionType,
+          correctAnswer: activeSourceExercise.correctAnswer,
+          studentAnswer: message,
+        });
+        if (deterministicSourcePreview === null) {
+          evaluation = await callPhase2EvaluationJob(
+            chatHistory,
+            [
+              lessonContext,
+              "AUTHORITATIVE EVALUATION INPUT:",
+              `Task: ${effectiveExerciseText(
+                activeSourceExercise.verbatim,
+                activeSourceExercise.edited,
+              )}`,
+              `Interaction type: ${String(activeSourceExercise.interactionType ?? "constructed_response")}`,
+              `Learner answer: ${message}`,
+              "Evaluate the answer only. Do not write learner-facing feedback.",
+            ].join("\n"),
+          );
+        }
+      }
+      aiResult = createStage3EvaluationEnvelope(progressIndicator, evaluation);
+      _stage3BoundedAnswerTurn = true;
+    } catch (error) {
+      boundedPhase2Failure(error, "EVALUATION");
+      return;
+    }
+  }
 
   try {
-    aiResult = await callAIStructured(chatHistory, lessonContext, {
-      currentPhase: session?.currentPhase ?? null,
-      currentNodeId: session?.currentNodeId ?? null,
-      nodeTeachingStage: session?.nodeTeachingStage ?? null,
-    });
+    if (!_stage3BoundedAnswerTurn) {
+      aiResult = await callAIStructured(chatHistory, lessonContext, {
+        currentPhase: session?.currentPhase ?? null,
+        currentNodeId: session?.currentNodeId ?? null,
+        nodeTeachingStage: session?.nodeTeachingStage ?? null,
+      });
 
-    validatePhase2ResponseForServerAction(_phase2ServerActionPlan, aiResult);
+      validatePhase2ResponseForServerAction(_phase2ServerActionPlan, aiResult);
+    }
+
+    if (!aiResult) {
+      throw new Error("No Phase-2 response was available for evaluation");
+    }
 
     {
       const _p9msg = aiResult.student_message.trimStart();
@@ -1467,8 +1802,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // Active typed source exercises have a separate, database-backed correctness
     // authority from AI-generated MICRO_CHECK payloads. The route owns the read;
     // the pure Phase 2 coordinator applies the authoritative evaluation.
-    let _activeSourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
+    let _activeSourceExerciseForEvaluation: AuthoritativeSourceExercise | null =
+      _stage3SourceExerciseForEvaluation;
     if (
+      _activeSourceExerciseForEvaluation === null &&
       _intentResult.intent === "ANSWER" &&
       session?.activeTaskProvenance === "source_exercise" &&
       session.activeLessonExerciseId != null
@@ -1587,6 +1924,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _p11AiTeachingModeBeforeDelivery: AIStructuredResponse["teaching_mode"] | null = null;
   let _p11SourceExerciseIdBeforeDelivery: string | null = null;
   if (
+    !_stage3BoundedAnswerTurn &&
     session &&
     (
       _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" ||
@@ -1804,7 +2142,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         // MICRO_CHECK is not tied to a source exercise. EXERCISE activation is
         // delegated to activateSourceExercise(), which persists the exact
         // eligible row selected for delivery.
-        const activeTaskUpdate: Record<string, unknown> = { nodeTeachingStage: newTeachingStage };
+        const stage3DefersSourceTask =
+          _stage3BoundedAnswerTurn &&
+          newTeachingStage === "EXERCISE" &&
+          classExercises.length > 0;
+        const activeTaskUpdate: Record<string, unknown> = {
+          nodeTeachingStage: stage3DefersSourceTask ? "TASK_REQUIRED" : newTeachingStage,
+        };
         if (newTeachingStage === "MICRO_CHECK") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = "micro_check";
@@ -1812,6 +2156,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeTaskUpdate.activeAttemptSequence  = 1;
           activeTaskUpdate.activeHelpCount        = 0;
           activeTaskUpdate.activeAssistanceLevel  = "none";
+        } else if (stage3DefersSourceTask) {
+          activeTaskUpdate.activeLessonExerciseId = null;
+          activeTaskUpdate.activeTaskProvenance = null;
+          activeTaskUpdate.activeObjectiveTaskPayload = null;
+          activeTaskUpdate.activeAttemptSequence = 0;
+          activeTaskUpdate.activeHelpCount = 0;
+          activeTaskUpdate.activeAssistanceLevel = "none";
+          _activeLessonExerciseIdForDelivery = null;
         } else if (newTeachingStage === "EXERCISE" && classExercises.length > 0) {
           const selection = _p11SelectedSourceExercise
             ? {
@@ -1841,7 +2193,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           .set(activeTaskUpdate as any)
           .where(eq(lessonSessionsTable.id, session.id));
         // Update hasActiveTask to reflect the new stage
-        hasActiveTask = newTeachingStage === "MICRO_CHECK" || newTeachingStage === "EXERCISE";
+        hasActiveTask = !stage3DefersSourceTask &&
+          (newTeachingStage === "MICRO_CHECK" || newTeachingStage === "EXERCISE");
         logger.info({ sessionId: session.id, nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
       } else if (wasEval && session.activeTaskProvenance !== null) {
         // Same stage, same active task — increment attempt sequence
@@ -1997,6 +2350,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         evaluated: true,
         decision: _pedagogicalDecision,
         progressionPlan: _progressionPlan,
+        eligibleSourceExerciseAvailable: classExercises.length > 0,
       });
       const { safetyCapHit } = _progressionPlan;
       logger.info(
@@ -2077,7 +2431,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       // the exercise text must be delivered automatically — the learner must NOT need
       // to send any "ok" or "continue" to see the exercise.
       // Guard: mastery gate must NOT have fired (which would have advanced the node instead).
-      if (_phase2ServerActionPlan.action === "DELIVER_SOURCE_EXERCISE") {
+      if (
+        !_stage3BoundedAnswerTurn &&
+        _phase2ServerActionPlan.action === "DELIVER_SOURCE_EXERCISE"
+      ) {
         _v2r1AutoContinue = { type: "exercise" as const };
       }
     }
@@ -2152,6 +2509,35 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .update(lessonSessionsTable)
         .set({ reviewQuestionCount: newReviewCount, phase1ConsecutiveCorrect: newPhase1CC })
         .where(eq(lessonSessionsTable.id, session.id));
+    }
+  }
+
+  if (
+    _stage3BoundedAnswerTurn &&
+    session &&
+    session.currentPhase === 2 &&
+    aiResult
+  ) {
+    try {
+      const feedback = await callPhase2FeedbackJob(
+        chatHistory,
+        [
+          lessonContext,
+          "AUTHORITATIVE FEEDBACK FACTS:",
+          `Evaluation: ${JSON.stringify(aiResult.answer_evaluation)}`,
+          `Decision Engine meta action: ${_pedagogicalDecision?.metaAction ?? "NONE"}`,
+          `Decision Engine remediation action: ${_pedagogicalDecision?.remediationAction ?? "NONE"}`,
+          `Server action: ${_phase2ServerActionPlan.action}`,
+          "The feedback must not include a new question, answer options, source exercise text, or a next task.",
+        ].join("\n"),
+      );
+      assertFeedbackOnly(feedback);
+      studentMessage = feedback.student_message;
+      teachingMode = "FEEDBACK";
+      aiResult.student_message = studentMessage;
+    } catch (error) {
+      boundedPhase2Failure(error, "FEEDBACK");
+      return;
     }
   }
 

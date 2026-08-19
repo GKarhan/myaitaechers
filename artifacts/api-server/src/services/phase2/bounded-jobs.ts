@@ -1,0 +1,269 @@
+import { openrouter } from "@workspace/integrations-openrouter-ai";
+import { z } from "zod/v4";
+import {
+  answerEvaluationSchema,
+  type ChatMessage,
+} from "../ai.js";
+
+const MODEL = "deepseek/deepseek-chat-v3-0324";
+
+export const phase2TheoryResultSchema = z.object({
+  student_message: z.string().min(1),
+});
+
+const phase2TaskInteractionTypeSchema = z.enum([
+  "multiple_choice",
+  "true_false",
+  "constructed_response",
+]);
+
+export const phase2TaskCandidateSchema = z.object({
+  student_message: z.string().min(1),
+  interaction_type: phase2TaskInteractionTypeSchema,
+  options: z.array(z.object({
+    key: z.string().regex(/^[A-Z]$/u),
+    text: z.string().min(1),
+  })).nullable(),
+  correct_option: z.string().nullable(),
+  question_template: z.string().nullable(),
+}).superRefine((candidate, ctx) => {
+  if (!hasVisibleTaskStem(candidate.student_message)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["student_message"],
+      message: "task candidate must contain an explicit visible, answerable task stem",
+    });
+  }
+  if (candidate.interaction_type === "multiple_choice") {
+    if (!candidate.options || candidate.options.length < 2) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: "multiple_choice tasks require at least two options",
+      });
+    } else if (
+      candidate.correct_option === null ||
+      !candidate.options.some((option) => option.key === candidate.correct_option)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["correct_option"],
+        message: "correct_option must match a visible option key",
+      });
+    }
+  } else if (candidate.interaction_type === "true_false") {
+    if (candidate.correct_option !== "TRUE" && candidate.correct_option !== "FALSE") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["correct_option"],
+        message: "true_false tasks require TRUE or FALSE",
+      });
+    }
+  } else if (candidate.correct_option !== null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["correct_option"],
+      message: "constructed_response tasks cannot include a deterministic answer key",
+    });
+  }
+});
+
+export const phase2EvaluationResultSchema = answerEvaluationSchema;
+
+export const phase2FeedbackResultSchema = z.object({
+  student_message: z.string().min(1),
+});
+
+export type Phase2TheoryResult = z.infer<typeof phase2TheoryResultSchema>;
+export type Phase2TaskCandidate = z.infer<typeof phase2TaskCandidateSchema>;
+export type Phase2EvaluationResult = z.infer<typeof phase2EvaluationResultSchema>;
+export type Phase2FeedbackResult = z.infer<typeof phase2FeedbackResultSchema>;
+
+const VISIBLE_OPTION_MARKER = /\n\s*[A-ZԱ-Ֆ]\s*[.)]/u;
+const TASK_DIRECTIVE =
+  /(?:^|[.!։]\s+)(?:խնդրում եմ\s+)?(?:ընտր(?:իր|եք)|լրաց(?:րու|րեք)|հաշվ(?:իր|եք)|գր(?:իր|եք)|գտ(?:իր|եք)|լուծ(?:իր|եք)|պատասխանի(?:ր|րեք)|նշ(?:իր|եք)|համադր(?:իր|եք)|ապացուց(?:իր|եք)|կատար(?:իր|եք)|նկարագր(?:իր|եք)|բացատր(?:իր|եք))/imu;
+
+function hasVisibleTaskStem(text: string): boolean {
+  return /[?՞]/u.test(text) || TASK_DIRECTIVE.test(text);
+}
+
+export function assertTheoryOnly(result: Phase2TheoryResult): void {
+  if (
+    /[?՞]/u.test(result.student_message) ||
+    VISIBLE_OPTION_MARKER.test(result.student_message) ||
+    TASK_DIRECTIVE.test(result.student_message)
+  ) {
+    throw new Error("phase2_theory_result attempted to include a visible task");
+  }
+}
+
+export function assertFeedbackOnly(result: Phase2FeedbackResult): void {
+  if (
+    /[?՞]/u.test(result.student_message) ||
+    VISIBLE_OPTION_MARKER.test(result.student_message) ||
+    TASK_DIRECTIVE.test(result.student_message)
+  ) {
+    throw new Error("phase2_feedback_result attempted to include a visible task");
+  }
+}
+
+type BoundedJobSpec<T> = {
+  name: string;
+  schema: z.ZodType<T>;
+  systemPrompt: string;
+  messages: ChatMessage[];
+  maxTokens: number;
+  validateResult?: (result: T) => void;
+};
+
+function formatForSchema<T>(name: string, schema: z.ZodType<T>) {
+  return {
+    type: "json_schema" as const,
+    json_schema: {
+      name,
+      strict: true,
+      schema: z.toJSONSchema(schema),
+    },
+  };
+}
+
+async function runBoundedJob<T>(spec: BoundedJobSpec<T>): Promise<T> {
+  const request = async (systemPrompt: string): Promise<T> => {
+    const response = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: spec.maxTokens,
+      temperature: 0.4,
+      frequency_penalty: 0.2,
+      response_format: formatForSchema(spec.name, spec.schema),
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...spec.messages,
+      ],
+    });
+
+    const raw = response.choices?.[0]?.message?.content;
+    if (!raw || !raw.trim()) {
+      throw new Error(`${spec.name} returned empty content`);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    } catch (error) {
+      throw new Error(`${spec.name} returned invalid JSON: ${String(error)}`);
+    }
+
+    const result = spec.schema.parse(parsed);
+    spec.validateResult?.(result);
+    return result;
+  };
+
+  try {
+    return await request(spec.systemPrompt);
+  } catch (firstError) {
+    const correction = [
+      spec.systemPrompt,
+      "",
+      "The previous response failed bounded schema validation.",
+      "Return only one valid JSON object matching the requested contract.",
+      `Validation error: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+    ].join("\n");
+    return request(correction);
+  }
+}
+
+const ARMENIAN_ONLY =
+  "Պատասխանիր միայն հայերենով։ Մի՛ գրիր JSON-ից դուրս ոչինչ։";
+
+export function callPhase2TheoryJob(
+  messages: ChatMessage[],
+  lessonContext: string,
+): Promise<Phase2TheoryResult> {
+  return runBoundedJob({
+    name: "phase2_theory_result",
+    schema: phase2TheoryResultSchema,
+    maxTokens: 900,
+    messages,
+    validateResult: assertTheoryOnly,
+    systemPrompt: [
+      "Դու myaiteacher-ի THEORY job-ն ես։",
+      "Բացատրիր միայն ընթացիկ MicroNode-ի և cognitive target-ի նյութը։",
+      "Տուր կարճ, հասկանալի բացատրություն՝ առանց հարցի, ընտրանքների կամ պատասխանի բանալու։",
+      "Մի որոշիր workflow, հաջորդ քայլ, առաջընթաց, գնահատում կամ ավարտ։",
+      "Արտածիր միայն {student_message} դաշտը։",
+      ARMENIAN_ONLY,
+      "AUTHORITATIVE EDUCATIONAL CONTEXT:",
+      lessonContext,
+    ].join("\n"),
+  });
+}
+
+export function callPhase2TaskJob(
+  messages: ChatMessage[],
+  lessonContext: string,
+): Promise<Phase2TaskCandidate> {
+  return runBoundedJob({
+    name: "phase2_task_candidate",
+    schema: phase2TaskCandidateSchema,
+    maxTokens: 1100,
+    messages,
+    systemPrompt: [
+      "Դու myaiteacher-ի TASK job-ն ես։",
+      "Ստեղծիր ճիշտ մեկ տեսանելի MICRO_CHECK ընթացիկ MicroNode-ի համար։",
+      "Մի՛ բացատրիր տեսություն, մի՛ գնահատիր սովորողի պատասխան, մի՛ տուր feedback և մի՛ որոշիր progression։",
+      "multiple_choice-ի դեպքում տուր առնվազն երկու ընտրանք և correct_option-ը պետք է համապատասխանի ընտրանքի key-ին։",
+      "true_false-ի դեպքում correct_option-ը պետք է լինի TRUE կամ FALSE։",
+      "constructed_response-ի դեպքում correct_option-ը պետք է լինի null։",
+      "student_message-ում գրիր միայն առաջադրանքի հարցի տեքստը, երբեք մի՛ կրկնիր ընտրանքները։",
+      "Մի՛ նշիր source exercise identity կամ textbook provenance։",
+      ARMENIAN_ONLY,
+      "AUTHORITATIVE EDUCATIONAL CONTEXT:",
+      lessonContext,
+    ].join("\n"),
+  });
+}
+
+export function callPhase2EvaluationJob(
+  messages: ChatMessage[],
+  evaluationContext: string,
+): Promise<Phase2EvaluationResult> {
+  return runBoundedJob({
+    name: "phase2_evaluation_result",
+    schema: phase2EvaluationResultSchema,
+    maxTokens: 700,
+    messages,
+    systemPrompt: [
+      "Դու myaiteacher-ի EVALUATION job-ն ես։",
+      "Գնահատիր միայն սովորողի վերջին պատասխանը տրված առաջադրանքի և չափանիշների հիման վրա։",
+      "Մի՛ գրիր feedback կամ learner-facing wording։",
+      "Մի՛ որոշիր հաջորդ task-ը, teaching stage-ը, cognitive level-ը, progression-ը կամ node completion-ը։",
+      "Օգտագործիր միայն գործող canonical status, evidence_quality, error_family և error_stability արժեքները։",
+      ARMENIAN_ONLY,
+      "EVALUATION CONTEXT:",
+      evaluationContext,
+    ].join("\n"),
+  });
+}
+
+export function callPhase2FeedbackJob(
+  messages: ChatMessage[],
+  feedbackContext: string,
+): Promise<Phase2FeedbackResult> {
+  return runBoundedJob({
+    name: "phase2_feedback_result",
+    schema: phase2FeedbackResultSchema,
+    maxTokens: 900,
+    messages,
+    validateResult: assertFeedbackOnly,
+    systemPrompt: [
+      "Դու myaiteacher-ի FEEDBACK job-ն ես։",
+      "Գրիր միայն learner-facing կարճ feedback՝ տրված authoritative evaluation-ի և Decision Engine action-ի հիման վրա։",
+      "Մի՛ փոխիր correctness-ը, evidence quality-ն, progression-ը, completion-ը, teaching stage-ը կամ հաջորդ task-ը։",
+      "Մի՛ ավելացրու նոր հարց, ընտրանքներ կամ առաջադրանք։",
+      "Արտածիր միայն {student_message} դաշտը։",
+      ARMENIAN_ONLY,
+      "FEEDBACK CONTEXT:",
+      feedbackContext,
+    ].join("\n"),
+  });
+}
