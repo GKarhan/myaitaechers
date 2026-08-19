@@ -31,7 +31,10 @@ import {
   shouldDeliverStandaloneSourceExercise,
   type SourceExerciseResolution,
 } from "../lib/exercise-delivery";
-import { resolveLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
+import {
+  isLearnerDeliveryEligible,
+  resolveLearnerExerciseContent,
+} from "../lib/exercise-content-boundary.js";
 import { evaluateDeterministicSourceExerciseAnswer } from "../lib/deterministic-source-exercise-evaluation";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
@@ -64,7 +67,7 @@ type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
 
 function learnerExerciseText(exercise: LessonExerciseRow): string | null {
   const content = resolveLearnerExerciseContent(exercise);
-  return content.ok ? content.learnerText : null;
+  return isLearnerDeliveryEligible(content) ? content.learnerText : null;
 }
 
 function filterLearnerSafeExercises(
@@ -73,12 +76,12 @@ function filterLearnerSafeExercises(
 ): LessonExerciseRow[] {
   return exercises.filter((exercise) => {
     const content = resolveLearnerExerciseContent(exercise);
-    if (content.ok) return true;
+    if (isLearnerDeliveryEligible(content)) return true;
     logger.warn({
       ...context,
       exerciseId: exercise.id,
-      issueCodes: content.issues.map((issue) => issue.code),
-    }, "chat: excluded unsafe source exercise");
+      issueCodes: content.ok ? content.reviewWarnings : content.issues.map((issue) => issue.code),
+    }, "chat: excluded learner-ineligible source exercise");
     return false;
   });
 }
@@ -133,11 +136,11 @@ async function activateSourceExercise(
   const selectedExercise = selection.selected;
   if (!selectedExercise) return null;
   const learnerContent = resolveLearnerExerciseContent(selectedExercise);
-  if (!learnerContent.ok) {
+  if (!isLearnerDeliveryEligible(learnerContent)) {
     logger.warn({
       sessionId,
       exerciseId: selectedExercise.id,
-      issueCodes: learnerContent.issues.map((issue) => issue.code),
+      issueCodes: learnerContent.ok ? learnerContent.reviewWarnings : learnerContent.issues.map((issue) => issue.code),
     }, "source exercise activation blocked by learner-content boundary");
     return null;
   }
@@ -191,10 +194,10 @@ export function resolveHelpTaskText(
   | { ok: false; issueCodes: string[] } {
   if (!activeExercise) return { ok: true, taskText: lastQuestionAsked };
   const learnerContent = resolveLearnerExerciseContent(activeExercise);
-  if (!learnerContent.ok) {
+  if (!isLearnerDeliveryEligible(learnerContent)) {
     return {
       ok: false,
-      issueCodes: learnerContent.issues.map((issue) => issue.code),
+      issueCodes: learnerContent.ok ? learnerContent.reviewWarnings : learnerContent.issues.map((issue) => issue.code),
     };
   }
   return { ok: true, taskText: learnerContent.learnerText };
@@ -1783,9 +1786,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           successCriteria: activeSourceExercise.successCriteria,
           correctAnswer: activeSourceExercise.correctAnswer,
         });
-        if (!learnerContent.ok) {
+        if (!isLearnerDeliveryEligible(learnerContent)) {
           throw new Error(
-            `active source exercise failed learner-content boundary: ${learnerContent.issues.map((issue) => issue.code).join(", ")}`,
+            `active source exercise is not learner-delivery eligible: ${
+              learnerContent.ok ? learnerContent.reviewWarnings.join(", ") : learnerContent.issues.map((issue) => issue.code).join(", ")
+            }`,
           );
         }
         _stage3HiddenExerciseContent = [

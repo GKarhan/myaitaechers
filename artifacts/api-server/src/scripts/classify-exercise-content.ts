@@ -2,7 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { db, lessonExercisesTable } from "@workspace/db";
 import { asc } from "drizzle-orm";
-import { resolveLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
+import {
+  isLearnerDeliveryEligible,
+  resolveLearnerExerciseContent,
+} from "../lib/exercise-content-boundary.js";
 
 const rows = await db
   .select()
@@ -18,9 +21,9 @@ const classified = rows.map((row) => {
     row.sourceType === "manual" ? "manual provenance review" : null,
   ].filter((value): value is string => value !== null);
   const state = !content.ok
-    ? "BLOCKED"
-    : content.source === "validated_verbatim_fallback"
-      ? "SAFE — LEGACY REVIEW"
+    ? "BLOCKED — UNSAFE"
+    : !isLearnerDeliveryEligible(content)
+      ? "BLOCKED — CONTENT REVIEW"
       : "SAFE — EDITED";
   const issues = content.ok
     ? [...content.reviewWarnings, ...provenanceIssues]
@@ -30,16 +33,17 @@ const classified = rows.map((row) => {
       ];
   const guidance = !content.ok
     ? "Rewrite exerciseTextEdited as learner-only task wording; keep rubric/answer metadata only in hidden fields."
-    : content.source === "validated_verbatim_fallback"
-      ? "Persist a teacher-reviewed exerciseTextEdited value; do not copy hidden criteria into it."
+    : !isLearnerDeliveryEligible(content)
+      ? "Persist a teacher-approved exerciseTextEdited value; this legacy fallback is intentionally unavailable to learners."
       : provenanceIssues.length > 0
         ? "Learner text is safe; review the listed provenance gaps without rewriting source material."
         : "No content-boundary action required.";
   return { row, state, issues, guidance };
 });
 
-const blocked = classified.filter((item) => item.state === "BLOCKED").length;
-const legacy = classified.filter((item) => item.state === "SAFE — LEGACY REVIEW").length;
+const blocked = classified.filter((item) => item.state.startsWith("BLOCKED")).length;
+const unsafe = classified.filter((item) => item.state === "BLOCKED — UNSAFE").length;
+const legacy = classified.filter((item) => item.state === "BLOCKED — CONTENT REVIEW").length;
 const edited = classified.filter((item) => item.state === "SAFE — EDITED").length;
 
 const lines = [
@@ -48,9 +52,9 @@ const lines = [
   "Read-only classification of existing development exercise rows. This report did not mutate database data.",
   "",
   `- Total rows: ${rows.length}`,
-  `- Blocked from learner delivery: ${blocked}`,
+  `- Blocked from learner delivery: ${blocked} (${unsafe} unsafe, ${legacy} pending content review)`,
   `- Safe edited learner text: ${edited}`,
-  `- Safe validated legacy fallback, still requiring author review: ${legacy}`,
+  `- Legacy fallback rows pending author review and blocked from delivery: ${legacy}`,
   "",
   "| DB id | Exercise id | Lesson | State | Review issues | Guidance |",
   "|---:|---|---:|---|---|---|",
@@ -60,9 +64,9 @@ const lines = [
   "",
   "## Boundary interpretation",
   "",
-  "- `BLOCKED`: excluded from student-package responses, source selection, activation, delivery, and constructed-response evaluation.",
+  "- `BLOCKED — UNSAFE`: excluded because learner text leaks evaluator-only content.",
+  "- `BLOCKED — CONTENT REVIEW`: validated legacy source fallback; unavailable to student-package responses, source selection, activation, HELP, delivery, and constructed-response evaluation until a teacher-approved `exerciseTextEdited` value exists.",
   "- `SAFE — EDITED`: learner text comes from the independently stored edited representation.",
-  "- `SAFE — LEGACY REVIEW`: historical verbatim text passed validation at read time, but a reviewed learner representation should still be persisted.",
   "- `successCriteria` and `correctAnswer` remain evaluator/backend-only and are never included in learner projections.",
   "",
 ];

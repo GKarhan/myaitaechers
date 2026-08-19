@@ -5,5 +5,19 @@ generated = []
 id = "SiXpdfPUUgeksIY1iIm7t"
 uri = "file://reports/stage4-exercise-content-classification.md"
 type = "text"
-title = "Stage 4 Exercise Content Classification"
-description = "Read-only classification of all 34 development exercise rows, with blocked leaks, legacy-review status, provenance gaps, and remediation guidance."
+title = "Current Exercise Delivery Classification"
+description = "Current learner-delivery status for all 34 exercise rows: 29 blocked pending content review and 5 safe edited rows."
+
+[[outputs]]
+id = "-zW7EBBlkeAVFQIGEHqe4"
+uri = "file://reports/stage4-1-final-report.md"
+type = "text"
+title = "Stage 4.1 Final Remediation Report"
+description = "Final audit with exact two-row data remediation, delivery-blocking policy for unapproved legacy content, verification results, and human-review requirements."
+
+[[outputs]]
+id = "pv17LonTBb7I7tWyPdmhk"
+uri = "file://reports/stage4-1-review-required.md"
+type = "text"
+title = "Stage 4.1 Human Review Queue"
+description = "All exercise rows still requiring an editorial content, evaluation, or provenance decision; no uncertain row was rewritten automatically."

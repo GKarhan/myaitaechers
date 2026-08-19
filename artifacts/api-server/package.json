@@ -46,6 +46,10 @@
     "test:phase2-stage3": "tsx src/lib/__tests__/phase2-stage3-bounded-jobs.test.ts",
     "test:stage4-content-boundary": "tsx src/lib/__tests__/exercise-content-boundary.test.ts",
     "test:stage4-help-boundary": "tsx src/lib/__tests__/stage4-help-boundary.test.ts",
+    "audit:stage4-1-dry-run": "tsx src/scripts/stage4-1-remediation-dry-run.ts",
+    "apply:stage4-1-remediation": "tsx src/scripts/stage4-1-apply-remediation.ts",
+    "test:stage4-1-remediation": "tsx src/lib/__tests__/stage4-1-remediation.test.ts",
+    "test:stage4-1-delivery-eligibility": "tsx src/lib/__tests__/stage4-1-delivery-eligibility.test.ts",
     "test:v2r3": "tsx src/lib/__tests__/v2r3-decision-engine.test.ts",
     "test:v2r4a4": "tsx src/lib/__tests__/v2r4a4.test.ts"
   },

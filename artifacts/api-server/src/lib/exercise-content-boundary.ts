@@ -168,6 +168,17 @@ export function resolveLearnerExerciseContent(
   };
 }
 
+/**
+ * A mechanically safe legacy fallback is still authoring-review content, not a
+ * learner-deliverable task. Student-facing paths must require a persisted
+ * learner representation.
+ */
+export function isLearnerDeliveryEligible(
+  resolution: LearnerExerciseContentResolution,
+): resolution is Extract<LearnerExerciseContentResolution, { ok: true }> & { source: "edited" } {
+  return resolution.ok && resolution.source === "edited";
+}
+
 export function assertLearnerExerciseContent(
   input: ExerciseContentBoundaryInput,
 ): Extract<LearnerExerciseContentResolution, { ok: true }> {

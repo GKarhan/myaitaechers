@@ -1,0 +1,642 @@
+STAGE 4.1 — EXISTING EXERCISE DATA REMEDIATION
+CLEAN EXISTING lesson_exercises UNDER THE STAGE-4 CONTENT CONTRACT
+
+IMPLEMENTATION AUTHORIZED WITH STRICT DATA-SAFETY GATES
+
+Stage 4 Content Boundary is complete.
+
+Task #92 established the learner/evaluator content boundary and must remain
+authoritative.
+
+DO NOT redesign Stage 4.
+
+DO NOT start Stage 5.
+
+The current architecture is:
+
+Stage 0 — baseline/safety                     COMPLETE
+Stage 1 — orchestration boundary              COMPLETE
+Stage 2 — server-owned action planning        COMPLETE
+Stage 3 — THEORY/TASK/EVALUATION/FEEDBACK     COMPLETE
+Stage 4 — exercise content boundary           COMPLETE
+
+This task is:
+
+Stage 4.1 — remediation of EXISTING lesson_exercises data so existing rows
+conform to the Stage-4 contract.
+
+==================================================
+0. CORE RULE
+==================================================
+
+DO NOT GENERATE OR INVENT EDUCATIONAL CONTENT.
+
+Existing data may be reorganized only when the authoritative source already
+proves the correct separation.
+
+Never invent:
+
+- learner task wording
+- correct answers
+- success criteria
+- source page
+- source quote
+- sourceBlockIndex
+- interaction type
+- provenance
+
+If a correct value cannot be proven from existing authoritative data:
+
+→ DO NOT WRITE IT
+→ classify the row as REVIEW_REQUIRED
+→ explain exactly what is missing
+
+==================================================
+1. PRE-CHANGE READ-ONLY AUDIT
+==================================================
+
+Before ANY database mutation:
+
+Load the Stage-4 classification artifact and independently verify the current
+lesson_exercises data.
+
+Confirm:
+
+- total row count
+- Stage-4 learner-safety status
+- exerciseTextVerbatim
+- exerciseTextEdited
+- successCriteria
+- correctAnswer
+- interactionType
+- sourcePage
+- sourceText
+- sourceBlockIndex
+- sourceType/status where relevant
+- related MicroNode
+- source exercise ID
+
+Explicitly inspect:
+
+lesson_exercises.id = 941
+external exercise ID = EX-579-2
+
+lesson_exercises.id = 942
+external exercise ID = EX-579-3
+
+Also identify all other rows requiring remediation or author review.
+
+Do not mutate anything yet.
+
+==================================================
+2. AUTHORITATIVE SOURCE HIERARCHY
+==================================================
+
+For every proposed correction, identify the authoritative evidence.
+
+Allowed evidence may include existing persisted:
+
+1. source-fidelity exercise text
+2. mapped source blocks
+3. mapping metadata
+4. exercise answer metadata
+5. teacher-approved edited text
+6. successCriteria
+7. correctAnswer
+8. source page/provenance metadata
+
+Do not treat AI output as source authority.
+
+Do not call the AI/provider to reconstruct missing exercise content.
+
+If textbook/source material exists in the repository/database, use the
+existing persisted source representation.
+
+==================================================
+3. STAGE-4 TARGET CONTRACT
+==================================================
+
+Existing rows must conform to:
+
+exerciseTextVerbatim
+→ source-fidelity/original representation
+→ preserve provenance
+→ NOT automatically learner-visible
+
+exerciseTextEdited
+→ learner-safe student-facing task
+→ must pass Stage-4 learner-content validation
+
+successCriteria
+→ hidden semantic evaluation guidance
+→ backend / teacher / bounded EVALUATION only
+
+correctAnswer
+→ hidden deterministic answer metadata
+→ backend / teacher only
+
+interactionType
+→ authoritative evaluation format
+
+Do not duplicate hidden evaluator information into exerciseTextEdited.
+
+==================================================
+4. CLASSIFY EVERY EXISTING ROW
+==================================================
+
+Produce a deterministic classification for all current lesson_exercises.
+
+Use these categories:
+
+A. SAFE_NO_CHANGE
+
+The row already conforms to Stage 4.
+
+B. SAFE_REMEDIATION_PROVABLE
+
+The row is currently malformed, but existing authoritative data proves the
+exact safe field-level correction.
+
+C. REVIEW_REQUIRED_CONTENT
+
+A safe learner task cannot be reconstructed without editorial judgment.
+
+D. REVIEW_REQUIRED_EVALUATION
+
+correctAnswer / successCriteria / interactionType is missing or ambiguous and
+cannot be proven.
+
+E. REVIEW_REQUIRED_PROVENANCE
+
+sourcePage / sourceText / sourceBlockIndex or other provenance cannot be
+reliably reconstructed.
+
+A row may have more than one REVIEW_REQUIRED reason.
+
+Return exact counts.
+
+==================================================
+5. SPECIAL CASE — ROW 941 / EX-579-2
+==================================================
+
+Audit exactly where the direct correct-answer disclosure occurs.
+
+Determine whether existing data proves:
+
+- the original source representation
+- the learner-visible question
+- the correct answer separately
+- interaction type
+- source page/provenance
+
+Produce BEFORE → AFTER field-level proposal.
+
+Example structure:
+
+BEFORE
+
+exerciseTextVerbatim = ...
+exerciseTextEdited = ...
+successCriteria = ...
+correctAnswer = ...
+interactionType = ...
+
+AFTER
+
+exerciseTextVerbatim = ...
+exerciseTextEdited = ...
+successCriteria = ...
+correctAnswer = ...
+interactionType = ...
+
+Explain the authority for EVERY changed value.
+
+If learner-safe text requires rewriting based on inference rather than exact
+existing evidence:
+
+DO NOT MUTATE ROW 941.
+
+Mark REVIEW_REQUIRED_CONTENT.
+
+==================================================
+6. SPECIAL CASE — ROW 942 / EX-579-3
+==================================================
+
+Audit exactly where:
+
+"Սպասվող պատասխանի հիմնական միտքը"
+
+is stored.
+
+Determine whether the existing data allows exact separation into:
+
+learner-visible question
+and
+hidden successCriteria.
+
+Produce exact BEFORE → AFTER.
+
+Preserve the original source-fidelity representation.
+
+If the existing record/source proves an exact boundary between the question
+and explicitly labelled expected-answer guidance, a deterministic structural
+split MAY be proposed.
+
+But do not paraphrase either side.
+
+No AI rewriting.
+
+If the split is ambiguous:
+
+DO NOT MUTATE ROW 942.
+
+Mark REVIEW_REQUIRED_CONTENT.
+
+==================================================
+7. PROVENANCE GAPS
+==================================================
+
+The Stage-4 audit reported existing provenance gaps.
+
+Do NOT automatically fabricate:
+
+- sourceText
+- sourcePage
+- sourceBlockIndex
+
+Attempt read-only reconstruction only when an exact persisted source block or
+mapping record proves the value.
+
+If exact provenance is provable:
+
+include it in the remediation proposal.
+
+If not:
+
+leave the field unchanged
+and classify REVIEW_REQUIRED_PROVENANCE.
+
+Provenance cleanup must never block learner-safety remediation when those are
+independent issues.
+
+==================================================
+8. DRY-RUN REMEDIATION PLAN — REQUIRED
+==================================================
+
+Before writing ANY row, generate a dry-run remediation artifact containing
+every existing lesson_exercises row.
+
+For each row include:
+
+- internal ID
+- external exercise ID
+- lesson ID
+- related MicroNode
+- current Stage-4 safety status
+- remediation classification
+- fields proposed to change
+- BEFORE values
+- AFTER values
+- evidence/authority for each change
+- unresolved issues
+- whether DB write is authorized by deterministic evidence
+
+Summarize:
+
+TOTAL
+SAFE_NO_CHANGE
+SAFE_REMEDIATION_PROVABLE
+REVIEW_REQUIRED_CONTENT
+REVIEW_REQUIRED_EVALUATION
+REVIEW_REQUIRED_PROVENANCE
+
+No DB writes may occur before this dry-run artifact exists.
+
+==================================================
+9. WRITE GATE
+==================================================
+
+After the dry-run plan is generated:
+
+Database mutation is authorized ONLY for rows classified:
+
+SAFE_REMEDIATION_PROVABLE
+
+AND only when:
+
+- every changed value is supported by authoritative existing data
+- no AI generation/inference was used
+- Stage-4 learner-content validator accepts the AFTER learner text
+- hidden evaluator content is not present in exerciseTextEdited
+- correctAnswer remains hidden
+- successCriteria remains hidden
+- source-fidelity content is preserved
+
+Do not mutate any REVIEW_REQUIRED row.
+
+==================================================
+10. TRANSACTION SAFETY
+==================================================
+
+Apply approved deterministic remediations in a database transaction.
+
+Before commit:
+
+re-read every changed row and verify:
+
+1. learner-facing text passes Stage-4 validation
+2. evaluator-only content is not exposed in learner text
+3. correctAnswer is still available where required
+4. successCriteria is still available where required
+5. exerciseTextVerbatim/source fidelity was not destructively altered
+6. row identity and MicroNode relationship are unchanged
+7. no unrelated field changed
+
+If any validation fails:
+
+ROLL BACK the transaction.
+
+==================================================
+11. NO MASS TEXT SANITIZATION
+==================================================
+
+Forbidden:
+
+- regex deleting answer sections across all rows
+- splitting every row at "Պատասխան"
+- automatically removing arbitrary sentences
+- using AI to rewrite learner prompts
+- generating successCriteria from task text
+- generating correctAnswer from textbook semantics
+- assigning pages based on guesses
+- copying exerciseTextEdited into provenance fields merely to fill nulls
+
+This is data remediation, not content generation.
+
+==================================================
+12. STUDENT EXPOSURE VERIFICATION
+==================================================
+
+After deterministic remediation, verify read-only that:
+
+- student-package exposes no correctAnswer
+- student-package exposes no successCriteria
+- unsafe/review-required exercises remain unavailable through learner delivery
+- remediated safe rows expose only learner-safe text
+
+Explicitly test rows 941 and 942 according to their final classification.
+
+If either remains REVIEW_REQUIRED:
+
+prove that Stage-4 protection continues blocking unsafe delivery.
+
+==================================================
+13. PHASE-2 DELIVERY VERIFICATION
+==================================================
+
+Do NOT run AI/provider calls merely to test this.
+
+Use provider-free route/unit/integration coverage where available.
+
+Verify:
+
+eligible source exercise
+→ exact row
+→ Stage-4 learner-safe resolver
+→ safe activation only
+
+No REVIEW_REQUIRED or contaminated row may become an active learner task.
+
+==================================================
+14. EVALUATION VERIFICATION
+==================================================
+
+For deterministically remediated rows verify:
+
+multiple_choice / true_false
+→ hidden correctAnswer remains usable
+→ deterministic scoring authority unchanged
+
+constructed_response
+→ learner-safe task text remains separate
+→ hidden successCriteria remains available to bounded EVALUATION input assembly
+
+Do not call the provider.
+
+==================================================
+15. EVIDENCE / MASTERY SAFETY
+==================================================
+
+The previously leaked exercises may have produced learner evidence before the
+Stage-4 boundary existed.
+
+READ-ONLY audit whether rows 941 or 942 have historical evidence/events or
+session attempts attributable to learner exposure of those tasks.
+
+Do NOT delete or rewrite evidence in this task.
+
+Report:
+
+- whether such evidence exists
+- affected session/evidence IDs where provable
+- whether confidence/mastery may have been influenced
+
+Classify any cleanup need separately as:
+
+EVIDENCE_REVIEW_REQUIRED
+
+Do not alter mastery/progression.
+
+==================================================
+16. REGRESSION GATE
+==================================================
+
+Run:
+
+- Stage-4 content-boundary tests
+- Stage 0–3 frozen regression matrix
+- source-exercise delivery tests
+- deterministic source-evaluation tests
+- bounded EVALUATION tests
+- student-package tests
+- teacher exercise CRUD tests
+- API typecheck
+- frontend typecheck/build where applicable
+- git diff --check
+
+Do not weaken tests.
+
+==================================================
+17. DATABASE CHANGE REPORT
+==================================================
+
+Report exact database mutations.
+
+For every changed row:
+
+- internal ID
+- external exercise ID
+- fields changed
+- BEFORE
+- AFTER
+- authority/evidence
+- validation result
+
+Also report:
+
+ROWS EXAMINED
+ROWS CHANGED
+ROWS UNCHANGED
+ROWS REVIEW_REQUIRED
+
+There must be no silent changes.
+
+==================================================
+18. REVIEW-REQUIRED ARTIFACT
+==================================================
+
+Produce a separate artifact for rows requiring human review.
+
+For each include:
+
+- exercise ID
+- lesson
+- MicroNode
+- current source text
+- current learner text
+- current hidden metadata
+- exact problem
+- missing evidence
+- what a teacher/content editor must decide
+
+Do NOT propose invented educational answers.
+
+==================================================
+19. STAGE-3 / STAGE-4 INVARIANTS
+==================================================
+
+Prove:
+
+R1. Stage-3 workflow authority remains server-owned.
+
+R2. Stage-4 learner/evaluator boundary remains enforced.
+
+R3. No correctAnswer reaches learner APIs.
+
+R4. No successCriteria reaches learner APIs.
+
+R5. Unsafe existing data cannot bypass delivery protection.
+
+R6. Source fidelity is preserved.
+
+R7. Deterministic correctness authority is unchanged.
+
+R8. Bounded EVALUATION remains semantic evaluation only.
+
+R9. FEEDBACK remains wording-only.
+
+R10. No REVIEW_REQUIRED row was automatically rewritten.
+
+==================================================
+20. STOP CONDITIONS
+==================================================
+
+STOP before mutation and report BLOCKED if:
+
+- the Stage-4 classification artifact conflicts materially with current DB
+- exact remediation would require invented educational content
+- source fidelity would be destroyed
+- a schema migration is actually required
+- safe separation cannot be proven
+- database transaction safety cannot be guaranteed
+- Stage-3 or Stage-4 architecture would need redesign
+
+Do not work around these conditions.
+
+A BLOCKED result for some rows does NOT necessarily block safe remediation of
+other independently provable rows.
+
+==================================================
+21. OUT OF SCOPE
+==================================================
+
+Do NOT:
+
+- redesign mapping architecture
+- redesign Phase 2
+- modify Cognitive Path policy
+- modify Decision Engine policy
+- change evidence/mastery semantics
+- delete historical evidence
+- change quizzes
+- change Knowledge Tree
+- change provider/model
+- start Stage 5
+- perform broad textbook remapping
+- use AI to repair educational content
+
+==================================================
+22. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE DATA AUDIT
+
+B. CLASSIFICATION SUMMARY
+
+C. DRY-RUN ARTIFACT
+
+D. ROW 941 / EX-579-2
+   exact before/after or REVIEW_REQUIRED
+
+E. ROW 942 / EX-579-3
+   exact before/after or REVIEW_REQUIRED
+
+F. PROVENANCE GAPS
+
+G. DATABASE MUTATIONS
+
+H. TRANSACTION / VALIDATION RESULTS
+
+I. STUDENT EXPOSURE VERIFICATION
+
+J. PHASE-2 DELIVERY VERIFICATION
+
+K. EVALUATION VERIFICATION
+
+L. HISTORICAL EVIDENCE AUDIT
+
+M. REVIEW_REQUIRED ARTIFACT
+
+N. REGRESSION RESULTS
+
+O. R1–R10 INVARIANTS
+   PASS / FAIL individually
+
+P. DATABASE MIGRATION
+   NONE / REQUIRED / PERFORMED
+
+Q. REMAINING HUMAN CONTENT REVIEW
+
+R. STAGE-5 READINESS
+   READY / NOT READY
+
+S. RESULT
+   PASS / PARTIAL / BLOCKED
+
+Important:
+
+A successful result does NOT require all 34 rows to be automatically repaired.
+
+The correct result may be:
+
+- some rows safely remediated
+- some rows unchanged
+- some rows explicitly REVIEW_REQUIRED
+
+Data safety is more important than automatic completion.
+
+Begin with the mandatory read-only audit and dry-run artifact.
+Only then apply deterministically proven remediations.
+Do not ask for additional approval unless a NEW stop condition is reached.

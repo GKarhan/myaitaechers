@@ -17,7 +17,10 @@ import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
-import { resolveLearnerExerciseContent } from "../lib/exercise-content-boundary.js";
+import {
+  isLearnerDeliveryEligible,
+  resolveLearnerExerciseContent,
+} from "../lib/exercise-content-boundary.js";
 
 const router = Router();
 
@@ -358,12 +361,12 @@ router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRe
     })),
     exercises: exercises.flatMap((e) => {
       const learnerContent = resolveLearnerExerciseContent(e);
-      if (!learnerContent.ok) {
+      if (!isLearnerDeliveryEligible(learnerContent)) {
         logger.warn({
           lessonId,
           exerciseId: e.id,
-          issueCodes: learnerContent.issues.map((issue) => issue.code),
-        }, "student-package: omitted unsafe exercise");
+          issueCodes: learnerContent.ok ? learnerContent.reviewWarnings : learnerContent.issues.map((issue) => issue.code),
+        }, "student-package: omitted learner-ineligible exercise");
         return [];
       }
       return [{
@@ -2035,13 +2038,13 @@ router.post("/lessons/:lessonId/exercises/approve-all", requireLessonAuthor, asy
     content: resolveLearnerExerciseContent(exercise),
   }));
   const safeIds = classified
-    .filter(({ content }) => content.ok)
+    .filter(({ content }) => isLearnerDeliveryEligible(content))
     .map(({ exercise }) => exercise.id);
   const rejected = classified
-    .filter(({ content }) => !content.ok)
+    .filter(({ content }) => !isLearnerDeliveryEligible(content))
     .map(({ exercise, content }) => ({
       id: exercise.id,
-      issues: content.ok ? [] : content.issues.map((issue) => issue.code),
+      issues: content.ok ? content.reviewWarnings : content.issues.map((issue) => issue.code),
     }));
   const updated = safeIds.length === 0
     ? []

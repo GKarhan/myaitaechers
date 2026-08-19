@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   EXERCISE_CONTENT_ISSUE,
+  isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
   validateLearnerExerciseText,
 } from "../exercise-content-boundary.js";
@@ -59,6 +60,7 @@ test("legacy verbatim is usable only after validation", () => {
     exerciseTextEdited: null,
   });
   assert.equal(safe.ok, true);
+  assert.equal(isLearnerDeliveryEligible(safe), false);
   assert.deepEqual(safe.reviewWarnings, ["learner-text-not-persisted"]);
 
   const unsafe = resolveLearnerExerciseContent({
