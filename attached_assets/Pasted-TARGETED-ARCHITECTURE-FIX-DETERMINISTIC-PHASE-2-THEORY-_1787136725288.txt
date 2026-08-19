@@ -1,0 +1,507 @@
+TARGETED ARCHITECTURE FIX — DETERMINISTIC PHASE-2 THEORY + LINKED OBJECTIVE CHECK
+
+GOAL
+
+Simplify and stabilize the first Phase-2 teaching turn.
+
+We have repeatedly confirmed that the current flow:
+
+intro confirmed
+→ Phase 2 THEORY
+→ callAIStructured()
+→ model must generate theory + MICRO_CHECK
+→ schema/semantic validation
+→ retry
+→ sometimes HTTP 503
+
+is unnecessarily fragile when the backend already has:
+
+- current MicroNode
+- approved MicroNode teaching/theory content
+- active Cognitive Path level
+- linked source exercises for that level
+- source exercise identity
+- source exercise answer data / evaluation mechanism
+
+For this specific case, make the backend own the deterministic delivery.
+
+IMPORTANT:
+
+Do NOT redesign the whole AI Teacher.
+Do NOT remove callAIStructured globally.
+Do NOT change feedback/remediation/constructed-response AI behavior.
+
+Scope only the Phase-2 THEORY entry turn when an eligible linked OBJECTIVE source exercise exists for the active Cognitive Path level.
+
+==================================================
+0. AUDIT FIRST — DO NOT ASSUME FIELD NAMES
+==================================================
+
+Before changing code, inspect only the relevant existing fields and functions.
+
+Prove:
+
+1. Where the current MicroNode's approved theory/explanation is stored and loaded.
+2. How linked exercises are filtered for:
+   - currentNodeId
+   - activeCognitiveLevelId
+3. What exact fields exist on a linked source exercise:
+   - internal ID
+   - external exercise ID
+   - verbatim text
+   - page
+   - interaction/question type if available
+   - answer key / correct answer if available
+4. Whether source exercises already have deterministic answer evaluation.
+
+IMPORTANT:
+
+If linked source exercises DO NOT contain a reliable answer key or existing deterministic evaluation mechanism, STOP before implementing and report:
+
+BLOCKED — SOURCE EXERCISE ANSWER KEY NOT AVAILABLE
+
+Do not invent an answer key with AI.
+
+==================================================
+1. TARGET FLOW
+==================================================
+
+For:
+
+currentPhase === 2
+currentNodeId exists
+nodeTeachingStage === "THEORY"
+active Cognitive Path exists
+eligible linked OBJECTIVE source exercise exists
+
+the desired flow is:
+
+INTRO
+→ student confirms readiness
+→ backend loads current MicroNode approved explanation
+→ backend loads first eligible linked objective exercise for ACTIVE cognitive level
+→ backend sends:
+
+   short approved explanation
+   +
+   exact linked exercise
+
+→ backend persists:
+
+   nodeTeachingStage = "EXERCISE"
+   activeLessonExerciseId = selected exercise internal ID
+   activeTaskProvenance = "source_exercise"
+   activeAttemptSequence = 1
+   activeHelpCount = 0
+   activeAssistanceLevel = "none"
+   activeObjectiveTaskPayload = null
+
+→ wait for student's answer
+
+No callAIStructured() is needed to generate this first theory/check response.
+
+==================================================
+2. THEORY CONTENT — SOURCE OWNED
+==================================================
+
+Use the authoritative approved MicroNode teaching/theory content already loaded by the backend.
+
+Do NOT ask AI to rewrite or regenerate it.
+
+Do NOT invent new explanation text.
+
+Keep delivery concise.
+
+If the existing approved explanation is already appropriately bounded, use it.
+
+If it contains multiple stored sections, use the existing canonical theory/explanation field intended for teaching this MicroNode.
+
+Do NOT create a new content-generation pipeline.
+
+==================================================
+3. LINKED EXERCISE SELECTION
+==================================================
+
+Select only an exercise that is:
+
+- linked to current MicroNode
+- linked/eligible for active Cognitive Path level
+- objective and deterministically evaluable
+- not already completed in the current applicable progression, IF current architecture already provides completion evidence
+
+Do NOT blindly use `classExercises[0]` if the backend can identify an already completed exercise.
+
+Prefer a deterministic selector:
+
+eligible linked exercises
+→ exclude completed/currently invalid exercises
+→ sort by existing authoritative order
+→ select first remaining
+
+Do not invent a new ordering field.
+
+==================================================
+4. IMPORTANT — DO NOT ADVANCE COGNITIVE LEVEL HERE
+==================================================
+
+Delivering the source exercise does NOT itself create evidence and does NOT confirm the cognitive level.
+
+After delivery:
+
+currentNodeId remains unchanged
+currentPhase remains 2
+activeCognitiveLevelId remains unchanged
+Stage = EXERCISE
+task = active
+
+Only the student's later answer can produce evidence/progression.
+
+==================================================
+5. STUDENT ANSWER
+==================================================
+
+When the student answers the active source exercise:
+
+reuse the EXISTING source-exercise answer evaluation path if it is deterministic.
+
+Do not route objective source-exercise correctness through the AI if the answer key is already known.
+
+Correct answer:
+
+→ existing evidence rules
+→ existing Pedagogical Decision Engine
+→ either:
+   CONTINUE_COGNITIVE_LEVEL
+   ADVANCE_COGNITIVE_LEVEL
+   COMPLETE_NODE
+   as determined by existing Cognitive Path logic
+
+Incorrect answer:
+
+→ stay on same MicroNode / cognitive level
+→ existing remediation decision
+→ do not advance level
+→ do not complete node
+
+Do NOT change thresholds.
+
+==================================================
+6. COGNITIVE LEVEL ADVANCE
+==================================================
+
+If the existing deterministic Decision Engine returns:
+
+ADVANCE_COGNITIVE_LEVEL
+
+then preserve the already-fixed behavior:
+
+currentNodeId unchanged
+currentPhase = 2
+activeCognitiveLevelId = next applicable level
+nodeTeachingStage = THEORY
+activeLessonExerciseId = null
+active task cleared
+
+The next student/teaching turn can then deterministically deliver:
+
+next-level approved theory/context
++
+next-level eligible linked objective exercise
+
+if one exists.
+
+==================================================
+7. WHEN NO ELIGIBLE OBJECTIVE SOURCE EXERCISE EXISTS
+==================================================
+
+Do NOT break other teaching modes.
+
+If the active cognitive level has no eligible deterministic linked objective exercise:
+
+fall through to the EXISTING structured AI teaching path.
+
+This preserves support for:
+
+- constructed response
+- generated micro-checks
+- higher cognitive tasks
+- feedback
+- remediation
+- other existing AI behavior
+
+So the architecture becomes:
+
+IF deterministic source-backed objective task available
+→ backend-owned delivery
+
+ELSE
+→ existing callAIStructured flow
+
+==================================================
+8. REMOVE DUPLICATE DELIVERY FOR THIS PATH
+==================================================
+
+The deterministic THEORY → EXERCISE delivery must produce exactly ONE visible exercise.
+
+For this path, prevent:
+
+- P11.1 from appending the same exercise again
+- V2-R1.1 from creating another standalone copy
+- AI from generating another MICRO_CHECK in the same turn
+
+Expected visible response:
+
+[approved theory]
+
+[one exact source exercise]
+
+STOP / wait for answer.
+
+Exactly one exercise.
+
+==================================================
+9. SOURCE FIDELITY
+==================================================
+
+Exercise text must obey the existing verbatim source-exercise rule.
+
+If `exerciseTextVerbatim` exists:
+
+copy it exactly.
+
+Append existing source reference format only once:
+
+(Էջ {page}, Վ. {exerciseId})
+
+Do not rewrite the exercise with AI.
+
+Do not duplicate the reference.
+
+==================================================
+10. ACTIVE OBJECTIVE TASK PAYLOAD
+==================================================
+
+The recently added:
+
+activeObjectiveTaskPayload
+
+is for AI-generated objective MICRO_CHECKS.
+
+For deterministic linked SOURCE exercises:
+
+activeObjectiveTaskPayload = null
+
+because source exercise identity is already represented by:
+
+activeLessonExerciseId
+activeTaskProvenance = "source_exercise"
+
+Do not mix the two task types.
+
+==================================================
+11. IMPORTANT — HISTORICAL EVIDENCE
+==================================================
+
+Do NOT change start-fresh evidence semantics in this task.
+
+Existing durable evidence may continue to count exactly as it currently does.
+
+Do NOT delete:
+- evidence_events
+- mastery
+- knowledge state
+
+This task is delivery architecture only.
+
+==================================================
+12. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- Cognitive Path thresholds
+- minimumIndependentEvidence
+- node-completion ownership
+- Knowledge Tree
+- Mapping
+- Quiz system
+- frontend
+- provider/model
+- native json_schema setup
+- AI-generated objective MICRO_CHECK answer-key implementation
+- start-fresh evidence preservation
+- Phase 1
+- Phase 3/4
+
+Do NOT add another retry.
+
+Do NOT add another large prompt rule.
+
+==================================================
+13. COST CONTROL
+==================================================
+
+Use the shortest implementation path.
+
+Inspect only:
+
+1. Phase-2 THEORY entry in chat.ts
+2. current MicroNode theory field
+3. current Cognitive Path exercise filtering
+4. source exercise fields / answer evaluation
+5. existing active-task persistence
+6. P11.1 / V2-R1.1 duplicate-delivery guards
+
+No broad audit.
+No browser.
+No provider request.
+No unrelated refactor.
+
+==================================================
+14. REQUIRED STATIC TESTS
+==================================================
+
+CASE A
+
+Phase 2
+THEORY
+remember
+eligible objective linked exercise exists
+
+Expected:
+
+NO callAIStructured for generation
+→ approved theory delivered
+→ exactly one linked exercise delivered
+→ Stage = EXERCISE
+→ Ex = selected exercise ID
+→ task = true
+
+CASE B
+
+Student answers source exercise correctly
+
+Expected:
+
+existing deterministic evaluation
+→ existing evidence
+→ existing Cognitive Path decision
+
+CASE C
+
+Student answers incorrectly
+
+Expected:
+
+same level retained
+→ remediation
+→ no cognitive advance
+
+CASE D
+
+Decision = ADVANCE_COGNITIVE_LEVEL
+
+Expected:
+
+same MicroNode
+→ next level
+→ Stage = THEORY
+→ no stale exercise/task
+
+CASE E
+
+No eligible deterministic objective source exercise
+
+Expected:
+
+existing callAIStructured teaching path remains available
+
+CASE F
+
+Deterministic source-backed delivery
+
+Expected:
+
+exactly ONE visible exercise
+→ no P11.1 duplicate
+→ no V2-R1.1 duplicate
+
+==================================================
+15. TYPECHECK
+==================================================
+
+Run API TypeScript check.
+
+No new DB migration should be necessary for this task.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. SOURCE DATA AUDIT
+
+Show exact authoritative:
+- theory field
+- exercise link/filter
+- answer-key/evaluation source
+
+If reliable source exercise evaluation is unavailable:
+STOP with BLOCKED.
+
+B. FILES CHANGED
+
+C. DETERMINISTIC ENTRY CONDITION
+
+Show exact condition deciding:
+
+backend source-backed delivery
+vs
+callAIStructured fallback
+
+D. THEORY DELIVERY
+
+Show which existing field supplies the theory.
+
+E. EXERCISE SELECTION
+
+Show deterministic selector.
+
+F. SESSION STATE
+
+Show exact writes:
+- Stage
+- Ex
+- provenance
+- task state
+
+G. ANSWER EVALUATION
+
+Confirm source exercise correctness owner.
+
+H. DUPLICATE SUPPRESSION
+
+Explain why only one exercise can appear.
+
+I. FALLBACK
+
+Confirm AI path remains for levels/tasks without eligible objective source exercise.
+
+J. STATIC CASES
+
+A/B/C/D/E/F = PASS/FAIL
+
+K. TYPECHECK
+
+PASS / FAIL
+
+L. RESULT
+
+Choose exactly one:
+
+PASS — Phase-2 source-backed objective teaching entry is deterministic
+
+BLOCKED — SOURCE EXERCISE ANSWER KEY NOT AVAILABLE
+
+FAIL — exact reason
+
+Then STOP.
