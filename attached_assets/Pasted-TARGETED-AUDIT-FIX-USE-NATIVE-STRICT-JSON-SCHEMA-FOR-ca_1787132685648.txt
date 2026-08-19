@@ -1,0 +1,226 @@
+TARGETED AUDIT + FIX — USE NATIVE STRICT JSON_SCHEMA FOR callAIStructured
+
+GOAL
+
+Stabilize the controlled Phase-2 structured AI response.
+
+Confirmed failure:
+
+callAIStructured()
+→ provider returns bare array "[1]"
+→ response_format is currently only:
+  { type: "json_object" }
+→ backend correctly rejects it because root object is required.
+
+Do NOT change model/provider first.
+Do NOT add more prompt wording first.
+
+We want to use native strict JSON Schema structured output IF the current
+OpenRouter wrapper/model path supports it.
+
+==================================================
+STEP 1 — VERIFY SUPPORT WITH MINIMUM READS
+==================================================
+
+Primary file:
+
+artifacts/api-server/src/services/ai.ts
+
+Inspect only the local OpenRouter client typings/wrapper needed to answer:
+
+Can the existing:
+
+@workspace/integrations-openrouter-ai
+
+chat.completions.create()
+
+accept:
+
+response_format: {
+  type: "json_schema",
+  json_schema: {
+    name: "...",
+    strict: true,
+    schema: ...
+  }
+}
+
+YES / NO.
+
+Do not web-search.
+Do not audit unrelated provider code.
+
+If NO:
+STOP and report the exact typing/runtime blocker.
+Do NOT change model or provider.
+
+If YES:
+continue.
+
+==================================================
+STEP 2 — BUILD MACHINE-READABLE SCHEMA
+==================================================
+
+Reuse the existing structured response contract.
+
+Do NOT invent a second independent schema by hand if an existing Zod→JSON Schema helper already exists in the repo/dependencies.
+
+Prefer:
+
+existing aiStructuredResponseSchema
+→ JSON Schema
+
+If no existing helper is available, create the smallest local JSON Schema
+matching the CURRENT structured contract only if that is safer/shorter.
+
+It must describe the root OBJECT and relevant current fields, including:
+
+- student_message
+- teaching_mode
+- is_micro_check
+- interaction_type
+- answer_evaluation
+- node_decision
+- source_fidelity
+
+Preserve current nullable/enum semantics.
+
+Do not weaken existing contract.
+
+==================================================
+STEP 3 — CHANGE ONLY callAIStructured RESPONSE FORMAT
+==================================================
+
+Replace the current:
+
+response_format: { type: "json_object" }
+
+for callAIStructured only
+
+with native strict JSON Schema structured output.
+
+Conceptually:
+
+response_format: {
+  type: "json_schema",
+  json_schema: {
+    name: "ai_teacher_response",
+    strict: true,
+    schema: <current structured response JSON schema>
+  }
+}
+
+Do NOT change plain callAI behavior.
+
+Do NOT change model unless strict schema is unsupported by the current model path.
+
+==================================================
+STEP 4 — KEEP EXISTING VALIDATION
+==================================================
+
+Keep all existing defensive validation after provider response:
+
+- root object check
+- JSON.parse
+- Zod validation
+- teaching-cycle semantic validation
+- interaction_type validation
+- format consistency
+- source_fidelity validation
+- retry behavior
+- Phase-2 no-plain-text-fallback guard
+
+Native json_schema becomes the first contract layer.
+Existing validators remain the second layer.
+
+==================================================
+STEP 5 — RETRY
+==================================================
+
+Keep the existing retry count and validation-aware retry correction.
+
+Do not add more retries.
+
+If native strict schema rejects/returns an API error,
+surface that exact development error in logs and preserve the existing
+Phase-2 safety response.
+
+==================================================
+DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- Cognitive Path
+- progression
+- linked exercise sequencing
+- duplicate exercise delivery
+- Decision Engine
+- intent routing
+- evidence/mastery
+- Mapping
+- Phase 2 content
+- frontend
+- DB schema
+- start-fresh
+- model/provider unless strict schema support is definitively unavailable
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Expected work:
+1. inspect wrapper typing/support
+2. inspect existing schema/helper
+3. make minimal services/ai.ts change
+4. run relevant TypeScript check
+
+No browser test.
+No AI/provider request unless a zero-state/non-mutating local contract check already exists.
+
+==================================================
+STATIC VERIFICATION
+==================================================
+
+Verify:
+
+1. response_format root is json_schema
+2. strict=true
+3. root schema type is object
+4. current structured fields are represented
+5. existing Zod/semantic validators remain unchanged
+6. callAI remains unchanged
+7. TypeScript passes
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. SUPPORT
+json_schema supported by current wrapper: YES / NO
+
+B. FILES CHANGED
+
+C. RESPONSE_FORMAT
+Show the small new response_format block.
+
+D. SCHEMA SOURCE
+Explain whether schema came from existing Zod conversion or local JSON Schema.
+
+E. VALIDATION LAYERS
+Confirm native schema + existing validators both remain.
+
+F. MODEL/PROVIDER
+Confirm unchanged, or state exact blocker if change was required.
+
+G. TYPECHECK
+PASS / FAIL
+
+H. RESULT
+PASS — callAIStructured now uses native strict JSON Schema
+or
+BLOCKED — exact reason
+
+Then STOP.

@@ -101,6 +101,16 @@ export const aiStructuredResponseSchema = z.object({
   encouragement_focus: z.string().nullable().default(null),      // "effort" | "strategy" | "progress" | "correctness" | null
 });
 
+const aiStructuredResponseJsonSchema = z.toJSONSchema(aiStructuredResponseSchema);
+const aiStructuredResponseFormat = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "ai_teacher_response",
+    strict: true,
+    schema: aiStructuredResponseJsonSchema,
+  },
+} as const;
+
 export type AIStructuredResponse = z.infer<typeof aiStructuredResponseSchema>;
 export type ProgressIndicator = z.infer<typeof progressIndicatorSchema>;
 
@@ -921,7 +931,7 @@ async function _attemptStructured(
     max_tokens: 2200,
     temperature: 0.5,
     frequency_penalty: 0.3,
-    response_format: { type: "json_object" } as { type: "json_object" },
+    response_format: aiStructuredResponseFormat,
     messages: [
       { role: "system", content: systemPrompt },
       ...messages,
