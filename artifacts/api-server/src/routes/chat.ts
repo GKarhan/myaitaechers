@@ -15,7 +15,14 @@ import {
 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
 import { logger } from "../lib/logger";
-import { enforceVerbatimExercise, isExerciseDeliveryTurn, effectiveExerciseText } from "../lib/exercise-delivery";
+import {
+  enforceActiveSourceExercise,
+  isExerciseDeliveryTurn,
+  effectiveExerciseText,
+  resolveEligibleSourceExercise,
+  shouldDeliverStandaloneSourceExercise,
+  type SourceExerciseResolution,
+} from "../lib/exercise-delivery";
 import { updateTopicScoring } from "../services/scoring";
 import { classifyIntent, type IntentContext, type IntentResult } from "../services/intentRouter.js";
 import {
@@ -78,6 +85,49 @@ export function normalizeObjectiveMicroCheckAnswer(
     f: "F", "զ": "F",
   };
   return optionKeyMap[normalized] ?? normalized.toUpperCase();
+}
+
+type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
+
+/**
+ * The only source-exercise activation writer in chat.ts.
+ *
+ * Callers pass a row resolved from the current eligible CLASS exercise set;
+ * this function persists that exact internal row identity before it is
+ * learner-visible as the active source-exercise task.
+ */
+async function activateSourceExercise(
+  sessionId: number,
+  selection: SourceExerciseResolution<LessonExerciseRow>,
+): Promise<LessonExerciseRow | null> {
+  const selectedExercise = selection.selected;
+  if (!selectedExercise) return null;
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      nodeTeachingStage: "EXERCISE",
+      activeLessonExerciseId: selectedExercise.id,
+      activeTaskProvenance: "source_exercise",
+      activeObjectiveTaskPayload: null,
+      activeAttemptSequence: 1,
+      activeHelpCount: 0,
+      activeAssistanceLevel: "none",
+    } as any)
+    .where(eq(lessonSessionsTable.id, sessionId));
+
+  logger.info(
+    {
+      sessionId,
+      activeLessonExerciseId: selectedExercise.id,
+      exerciseId: selectedExercise.exerciseId,
+      requestedExerciseId: selection.requestedExerciseId,
+      resolution: selection.resolution,
+    },
+    "source exercise activated from eligible set"
+  );
+
+  return selectedExercise;
 }
 
 // ── V2-R2 shared help executor ────────────────────────────────────────────────
@@ -233,17 +283,17 @@ Use DUE_REVIEWS topics (if listed above) as priority targets.`;
 Step 1. Present ONE concept from APPROVED_EXPLANATION above (2-3 sentences, plain language).
 Step 2. Immediately ask ONE MICRO_CHECK question about that concept (≤25 words).
 Step 3. Wait for student answer → FEEDBACK (correct/guide) → next concept or exercise.
-Step 4. After concepts are taught, present CLASS EXERCISES above (VERBATIM if exerciseTextVerbatim is non-empty).
+Step 4. After concepts are taught, transition to an eligible CLASS_EXERCISE using its exact source_fidelity.exercise_id. The backend, not you, renders the source exercise text.
 Step 5. Do NOT present a new exercise until student demonstrates understanding of the current one.
 NEVER give the answer directly — always hint and guide.
 
 EXERCISE TRANSITION RULE (mandatory — never skip):
-- If CLASS_EXERCISES appear in this context AND you have already asked 2 or more MICRO_CHECK questions on this node → you MUST present an exercise NOW using teaching_mode: "TRANSITION". Do NOT invent another MICRO_CHECK.
-- Present the first unused CLASS_EXERCISE VERBATIM (copy exerciseTextVerbatim exactly). Ask the student to attempt it.
+- If CLASS_EXERCISE_CANDIDATES appear in this context AND you have already asked 2 or more MICRO_CHECK questions on this node → you MUST transition to one candidate NOW using teaching_mode: "TRANSITION". Do NOT invent another MICRO_CHECK.
+- Set source_fidelity.exercise_id to the chosen eligible candidate's exact ID. Do NOT quote, paraphrase, or render any source exercise text in student_message; the backend delivers the one active exercise.
 - Only move to the next exercise after the student has attempted the current one.
 
 NO-EXERCISE COMPLETION RULE:
-- If CLASS_EXERCISES is ABSENT from this context (the node has no exercises) AND you have already asked 2+ MICRO_CHECK questions showing the student understands → set node_decision.action = "COMPLETE_NODE" to advance. Do NOT keep inventing more questions.`;
+- If CLASS_EXERCISE_CANDIDATES is ABSENT from this context (the node has no exercises) AND you have already asked 2+ MICRO_CHECK questions showing the student understands → set node_decision.action = "COMPLETE_NODE" to advance. Do NOT keep inventing more questions.`;
 
     case 3:
       return `LESSON WRAP-UP PHASE — all lesson nodes have been taught.
@@ -435,6 +485,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     optionalContinuation: boolean;
   };
   let session: SessionRef | null = null;
+  // Source-exercise identity is kept locally only as a mirror of the exact
+  // persisted activeLessonExerciseId written by activateSourceExercise().
+  let _activeLessonExerciseIdForDelivery: number | null = null;
+  let _p11SelectedSourceExercise: LessonExerciseRow | null = null;
+  let _sourceExerciseActivatedThisTurn = false;
+  let _sourceExerciseDeliveredThisTurn = false;
 
   type NodeRef = {
     id: number; title: string; theoryContent: string | null;
@@ -511,6 +567,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           optionalContinuation:        (sessionRow as any).optionalContinuation        ?? false,
         };
         sessionId = sessionRow.id;
+        _activeLessonExerciseIdForDelivery = session.activeLessonExerciseId;
       }
 
       // ── V2-R4A: Active-time accounting ────────────────────────────────────
@@ -800,12 +857,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               `  successCriteria: ${e.successCriteria ?? ""}`;
           }).join("\n")
         : phase === 2 && classExercises.length > 0
-        ? `\nCLASS_EXERCISES (use verbatim when exerciseTextVerbatim is non-empty):\n` +
+        ? `\nCLASS_EXERCISE_CANDIDATES (backend owns exact text delivery):\n` +
           classExercises.map((e) => {
-            const eff = effectiveExerciseText(e.exerciseTextVerbatim, (e as any).exerciseTextEdited as string | null);
             return `[${e.exerciseId}] page=${e.sourcePage ?? "?"} difficulty=${e.difficultyLevel ?? "?"}\n` +
-              `  VERBATIM: ${eff.trim() || "(no verbatim text — present this exercise task using successCriteria below; do NOT substitute an AI-generated exercise)"}\n` +
-              `  successCriteria: ${e.successCriteria ?? ""}`;
+              `  Do NOT quote, paraphrase, or render this exercise in student_message. ` +
+              `If you transition to it, set source_fidelity.exercise_id to this exact ID; the backend renders the exercise.`;
           }).join("\n")
         : "";
 
@@ -896,13 +952,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             );
           }
           if (classExercises.length > 0) {
-            const ex = classExercises[0];
-            const effText = effectiveExerciseText(ex.exerciseTextVerbatim, (ex as any).exerciseTextEdited as string | null);
-            const verbatim = effText.trim() ? effText : `[${ex.exerciseId}]`;
             return (
               `NODE_STAGE: MICRO_CHECK\n` +
-              `DIRECTIVE — THIS TURN YOU MUST: Present this CLASS_EXERCISE VERBATIM using teaching_mode: "TRANSITION". ` +
-              `Do NOT invent another MICRO_CHECK. Exercise: "${verbatim}"`
+              `DIRECTIVE — THIS TURN YOU MUST: Transition to one eligible CLASS_EXERCISE using teaching_mode: "TRANSITION". ` +
+              `Set source_fidelity.exercise_id to that candidate's exact ID. ` +
+              `Write only concise transition wording; do NOT quote, paraphrase, or render any exercise text. ` +
+              `The backend activates and delivers exactly one source exercise.`
             );
           }
           const attempts = session?.nodeAttemptCount ?? 0;
@@ -1507,62 +1562,79 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   }
 
   // ── Phase 11.1: Verbatim exercise delivery enforcement ─────────────────────
-  // Fires after BOTH the structured and unstructured (callAI fallback) paths.
-  // When phase=2, nodeTeachingStage=MICRO_CHECK, and CLASS exercises exist,
-  // the backend guarantees the exact exerciseTextVerbatim appears in the
-  // final student-visible response — regardless of what the model returned.
-  // Also advances stage MICRO_CHECK→EXERCISE (directly if aiResult is null,
-  // via teaching_mode override if aiResult is non-null).
-  // Does NOT change currentNodeId, mastery, attempt counters, or KB data.
+  // The resolved eligible row is activated before this request can expose it as
+  // the next answerable source exercise. P11.1 owns the primary-message
+  // delivery, so V2-R1.1 must not append a second visible copy later this turn.
   let _p11StudentMessageBeforeDelivery: string | null = null;
   let _p11TeachingModeBeforeDelivery: string | null = null;
   let _p11AiTeachingModeBeforeDelivery: AIStructuredResponse["teaching_mode"] | null = null;
   let _p11SourceExerciseIdBeforeDelivery: string | null = null;
-  if (session && isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)) {
+  if (
+    session &&
+    _intentResult.intent === "ANSWER" &&
+    (aiResult === null || aiResult.answer_evaluation.status !== "OFF_TOPIC") &&
+    isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)
+  ) {
     _p11StudentMessageBeforeDelivery = studentMessage;
     _p11TeachingModeBeforeDelivery = teachingMode;
     _p11AiTeachingModeBeforeDelivery = aiResult?.teaching_mode ?? null;
     _p11SourceExerciseIdBeforeDelivery = aiResult?.source_fidelity?.exercise_id ?? null;
-    const verbatimEx = effectiveExerciseText(classExercises[0].exerciseTextVerbatim, (classExercises[0] as any).exerciseTextEdited as string | null);
-    const enforced = enforceVerbatimExercise(studentMessage, verbatimEx);
-    if (enforced !== studentMessage) {
-      logger.info(
-        { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: classExercises[0].exerciseId },
-        "P11.1: backend injected verbatim exercise text (model omitted/paraphrased it)"
-      );
-      studentMessage = enforced;
-    }
-    // Always set teachingMode to TRANSITION for exercise delivery turns
-    teachingMode = "TRANSITION";
-    if (aiResult) {
-      // Structured path: override aiResult so anticipatory MICRO_CHECK→EXERCISE advance fires below
-      (aiResult as { teaching_mode: string }).teaching_mode = "TRANSITION";
-      if (!aiResult.source_fidelity?.exercise_id) {
-        (aiResult as unknown as { source_fidelity: { exercise_id: string | null } }).source_fidelity = {
-          ...(aiResult.source_fidelity ?? {}),
-          exercise_id: classExercises[0].exerciseId ?? null,
-        };
+    const selection = resolveEligibleSourceExercise(
+      classExercises,
+      aiResult?.source_fidelity?.exercise_id ?? null,
+    );
+    const activatedExercise = await activateSourceExercise(session.id, selection);
+
+    if (activatedExercise) {
+      _activeLessonExerciseIdForDelivery = activatedExercise.id;
+      const activeExercise = classExercises.find(
+        (exercise) => exercise.id === _activeLessonExerciseIdForDelivery,
+      ) ?? null;
+      if (!activeExercise) {
+        // Impossible when activation only accepts a current eligible row; fail
+        // closed rather than substituting a different exercise for delivery.
+        logger.error(
+          { sessionId: session.id, activeLessonExerciseId: _activeLessonExerciseIdForDelivery },
+          "P11.1: activated source exercise was not present in eligible delivery set"
+        );
+      } else {
+        _p11SelectedSourceExercise = activeExercise;
+        _sourceExerciseActivatedThisTurn = true;
+        const verbatimEx = effectiveExerciseText(
+          activeExercise.exerciseTextVerbatim,
+          (activeExercise as any).exerciseTextEdited as string | null,
+        );
+        const enforced = enforceActiveSourceExercise(
+          studentMessage,
+          verbatimEx,
+          classExercises
+            .filter((exercise) => exercise.id !== activeExercise.id)
+            .map((exercise) => effectiveExerciseText(
+              exercise.exerciseTextVerbatim,
+              (exercise as any).exerciseTextEdited as string | null,
+            )),
+        );
+        if (enforced !== studentMessage) {
+          logger.info(
+            { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: activeExercise.exerciseId },
+            "P11.1: backend injected active source exercise text"
+          );
+          studentMessage = enforced;
+        }
+        _sourceExerciseDeliveredThisTurn = true;
+        hasActiveTask = true;
+        // Always set teachingMode to TRANSITION for exercise delivery turns.
+        teachingMode = "TRANSITION";
+        if (aiResult) {
+          // The AI-provided value is a request only. Replace it with the external
+          // ID of the exact eligible row that was activated.
+          (aiResult as { teaching_mode: string }).teaching_mode = "TRANSITION";
+          (aiResult as unknown as { source_fidelity: { exercise_id: string | null } }).source_fidelity = {
+            ...(aiResult.source_fidelity ?? {}),
+            exercise_id: activeExercise.exerciseId,
+          };
+        }
       }
-    } else if (session.nodeTeachingStage === "MICRO_CHECK") {
-      // Fallback path (callAI): advance stage directly since aiResult stage-machine won't run
-      // Phase 2B fix: also write active task identity fields.
-      await db
-        .update(lessonSessionsTable)
-        .set({
-          nodeTeachingStage:      "EXERCISE",
-          activeLessonExerciseId: classExercises.length > 0 ? classExercises[0].id : null,
-          activeTaskProvenance:   "source_exercise",
-          activeObjectiveTaskPayload: null,
-          activeAttemptSequence:  1,
-          activeHelpCount:        0,
-          activeAssistanceLevel:  "none",
-        } as any)
-        .where(eq(lessonSessionsTable.id, session.id));
-      hasActiveTask = true;
-      logger.info(
-        { sessionId: session.id, nodeId: session.currentNodeId },
-        "P11.1: direct stage advance MICRO_CHECK -> EXERCISE (callAI fallback path)"
-      );
     }
   }
 
@@ -1636,23 +1708,25 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
         aiResult.teaching_mode === "TRANSITION" &&
         aiResult.source_fidelity.exercise_id) {
-      await db
-        .update(lessonSessionsTable)
-        .set({
-          nodeTeachingStage:      "EXERCISE",
-          activeLessonExerciseId: classExercises.length > 0 ? classExercises[0].id : null,
-          activeTaskProvenance:   "source_exercise",
-          activeObjectiveTaskPayload: null,
-          activeAttemptSequence:  1,
-          activeHelpCount:        0,
-          activeAssistanceLevel:  "none",
-        } as any)
-        .where(eq(lessonSessionsTable.id, session.id));
-      hasActiveTask = true;
-      logger.info(
-        { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: aiResult.source_fidelity.exercise_id },
-        "teachingStage anticipatory advance: MICRO_CHECK -> EXERCISE"
-      );
+      const selection = _p11SelectedSourceExercise
+        ? {
+            selected: _p11SelectedSourceExercise,
+            requestedExerciseId: aiResult.source_fidelity.exercise_id,
+            resolution: "requested_eligible" as const,
+          }
+        : resolveEligibleSourceExercise(classExercises, aiResult.source_fidelity.exercise_id);
+      const selectedExercise = _sourceExerciseActivatedThisTurn
+        ? selection.selected
+        : await activateSourceExercise(session.id, selection);
+      if (selectedExercise) {
+        _activeLessonExerciseIdForDelivery = selectedExercise.id;
+        _sourceExerciseActivatedThisTurn = true;
+        hasActiveTask = true;
+        logger.info(
+          { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: selectedExercise.exerciseId },
+          "teachingStage anticipatory advance: MICRO_CHECK -> EXERCISE"
+        );
+      }
     }
 
     if (wasEval) {
@@ -1706,10 +1780,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       if (newTeachingStage) {
-        // Phase 2B: also update active task identity when stage transitions.
-        // MICRO_CHECK → not tied to a specific exercise.
-        // EXERCISE    → tied to classExercises[0] (the one being delivered verbatim).
-        // VERIFIED/THEORY → clear active task (node completing or resetting).
+        // Phase 2B: update active task identity when stage transitions.
+        // MICRO_CHECK is not tied to a source exercise. EXERCISE activation is
+        // delegated to activateSourceExercise(), which persists the exact
+        // eligible row selected for delivery.
         const activeTaskUpdate: Record<string, unknown> = { nodeTeachingStage: newTeachingStage };
         if (newTeachingStage === "MICRO_CHECK") {
           activeTaskUpdate.activeLessonExerciseId = null;
@@ -1719,12 +1793,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeTaskUpdate.activeHelpCount        = 0;
           activeTaskUpdate.activeAssistanceLevel  = "none";
         } else if (newTeachingStage === "EXERCISE" && classExercises.length > 0) {
-          activeTaskUpdate.activeLessonExerciseId = classExercises[0].id;
-          activeTaskUpdate.activeTaskProvenance   = "source_exercise";
-          activeTaskUpdate.activeObjectiveTaskPayload = null;
-          activeTaskUpdate.activeAttemptSequence  = 1;
-          activeTaskUpdate.activeHelpCount        = 0;
-          activeTaskUpdate.activeAssistanceLevel  = "none";
+          const selection = _p11SelectedSourceExercise
+            ? {
+                selected: _p11SelectedSourceExercise,
+                requestedExerciseId: aiResult.source_fidelity.exercise_id,
+                resolution: "requested_eligible" as const,
+              }
+            : resolveEligibleSourceExercise(classExercises, aiResult.source_fidelity.exercise_id);
+          const selectedExercise = _sourceExerciseActivatedThisTurn
+            ? selection.selected
+            : await activateSourceExercise(session.id, selection);
+          if (selectedExercise) {
+            _activeLessonExerciseIdForDelivery = selectedExercise.id;
+            _sourceExerciseActivatedThisTurn = true;
+          }
         } else if (newTeachingStage === "VERIFIED") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = null;
@@ -1732,6 +1814,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeTaskUpdate.activeAttemptSequence  = 0;
           activeTaskUpdate.activeHelpCount        = 0;
           activeTaskUpdate.activeAssistanceLevel  = "none";
+          _activeLessonExerciseIdForDelivery = null;
         }
         await db
           .update(lessonSessionsTable)
@@ -1943,6 +2026,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           } as any)
           .where(eq(lessonSessionsTable.id, session.id));
         hasActiveTask = false;
+        _activeLessonExerciseIdForDelivery = null;
         logger.info(
           {
             sessionId: session.id,
@@ -2092,14 +2176,24 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .returning();
 
   // ── V2-R1.1: Auto-progression — exercise delivery after FEEDBACK ──────────────
-  // The FEEDBACK turn's stage machine already advanced MICRO_CHECK→EXERCISE and set
-  // activeTaskProvenance="source_exercise" in the DB. The exercise text, however, has
-  // NOT been shown yet. Persist it as a second assistant message now (before res.json)
-  // so the history refetch renders FEEDBACK + exercise together, with no learner "ok".
-  // Safety: _v2r1AutoContinue is set at most once per learner submission; mastery gate
-  // guard ensures this never fires when the node is being completed simultaneously.
-  if (_v2r1AutoContinue?.type === "exercise" && classExercises.length > 0 && lessonId && session) {
-    const _ex  = classExercises[0];
+  // P11.1 normally delivers the newly activated exercise in the primary assistant
+  // message. This retained continuation path is a fallback only: it resolves the
+  // exact persisted activeLessonExerciseId and runs only when P11.1 did not
+  // already expose that exercise on this transition.
+  const _activeSourceExercise = _activeLessonExerciseIdForDelivery == null
+    ? null
+    : classExercises.find((exercise) => exercise.id === _activeLessonExerciseIdForDelivery) ?? null;
+  if (
+    shouldDeliverStandaloneSourceExercise(
+      _v2r1AutoContinue?.type === "exercise",
+      _activeLessonExerciseIdForDelivery,
+      _sourceExerciseDeliveredThisTurn,
+    ) &&
+    _activeSourceExercise &&
+    lessonId &&
+    session
+  ) {
+    const _ex = _activeSourceExercise;
     const _eff = effectiveExerciseText(
       _ex.exerciseTextVerbatim,
       (_ex as any).exerciseTextEdited as string | null

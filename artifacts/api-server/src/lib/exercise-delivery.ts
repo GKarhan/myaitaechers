@@ -17,6 +17,82 @@ export function effectiveExerciseText(
 }
 
 /**
+ * A source exercise is selected only from the caller's already-eligible set.
+ * `exerciseId` is the external textbook identifier; `id` is the persisted
+ * lesson_exercises primary key stored on the active lesson session.
+ */
+export type EligibleSourceExercise = {
+  id: number;
+  exerciseId: string | null;
+};
+
+export type SourceExerciseResolution<T extends EligibleSourceExercise> = {
+  selected: T | null;
+  requestedExerciseId: string | null;
+  resolution:
+    | "requested_eligible"
+    | "requested_not_eligible_fallback"
+    | "first_eligible_fallback"
+    | "no_eligible_exercise";
+};
+
+/**
+ * Resolve an AI-requested external exercise ID within the current eligible
+ * CLASS exercise set. The model never gets to activate a row outside that set.
+ *
+ * A missing or ineligible request preserves the existing safe behavior by
+ * falling back to the first actual eligible row. The returned row—not the
+ * requested string—is the only identity callers may persist or deliver.
+ */
+export function resolveEligibleSourceExercise<T extends EligibleSourceExercise>(
+  eligibleExercises: readonly T[],
+  requestedExerciseId: string | null | undefined,
+): SourceExerciseResolution<T> {
+  const requested = requestedExerciseId?.trim() || null;
+  if (requested) {
+    const requestedEligibleExercise = eligibleExercises.find(
+      (exercise) => exercise.exerciseId?.trim() === requested,
+    );
+    if (requestedEligibleExercise) {
+      return {
+        selected: requestedEligibleExercise,
+        requestedExerciseId: requested,
+        resolution: "requested_eligible",
+      };
+    }
+    return {
+      selected: eligibleExercises[0] ?? null,
+      requestedExerciseId: requested,
+      resolution: eligibleExercises.length > 0
+        ? "requested_not_eligible_fallback"
+        : "no_eligible_exercise",
+    };
+  }
+
+  return {
+    selected: eligibleExercises[0] ?? null,
+    requestedExerciseId: null,
+    resolution: eligibleExercises.length > 0
+      ? "first_eligible_fallback"
+      : "no_eligible_exercise",
+  };
+}
+
+/**
+ * V2-R1.1 may deliver a standalone exercise only when P11.1 has not already
+ * placed the same active source exercise in the primary assistant message.
+ */
+export function shouldDeliverStandaloneSourceExercise(
+  hasAutoContinue: boolean,
+  activeLessonExerciseId: number | null | undefined,
+  sourceExerciseAlreadyDeliveredThisTurn: boolean,
+): boolean {
+  return hasAutoContinue
+    && activeLessonExerciseId != null
+    && !sourceExerciseAlreadyDeliveredThisTurn;
+}
+
+/**
  * Phase 11.1 — Exercise Delivery Enforcement
  *
  * Backend authority over verbatim textbook exercise delivery.
@@ -51,6 +127,34 @@ export function enforceVerbatimExercise(
   if (!v) return studentMessage;
   if (studentMessage.includes(v)) return studentMessage;
   return studentMessage.trimEnd() + "\n\n" + v;
+}
+
+/**
+ * Produce one backend-owned source-exercise delivery.
+ *
+ * Before placing the active text in the learner-visible response, remove any
+ * exact verbatim text belonging to the other currently eligible exercises.
+ * This is defense in depth for an AI response that ignored the directive not
+ * to render a source exercise itself.
+ */
+export function enforceActiveSourceExercise(
+  studentMessage: string,
+  activeExerciseText: string | null | undefined,
+  otherEligibleExerciseTexts: readonly (string | null | undefined)[],
+): string {
+  const active = activeExerciseText?.trim();
+  const otherTexts = [...new Set(
+    otherEligibleExerciseTexts
+      .map((text) => text?.trim())
+      .filter((text): text is string => Boolean(text) && text !== active),
+  )].sort((a, b) => b.length - a.length);
+
+  const withoutOtherEligibleExercises = otherTexts.reduce(
+    (message, otherText) => message.split(otherText).join(""),
+    studentMessage,
+  );
+
+  return enforceVerbatimExercise(withoutOtherEligibleExercises, active);
 }
 
 /**

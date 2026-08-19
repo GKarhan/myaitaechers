@@ -1,0 +1,442 @@
+PREREQUISITE TASK FOR #83
+EXACT SOURCE-EXERCISE ACTIVATION + DELIVERY OWNERSHIP
+
+Task #83 — deterministic source-exercise answer evaluation — is currently BLOCKED.
+
+CONFIRMED BLOCKER:
+
+The backend cannot yet guarantee that:
+
+activeLessonExerciseId
+
+is the exact source exercise actually delivered to the learner.
+
+Current code still has paths that use:
+
+classExercises[0]
+
+even when a specific exercise may have been selected/presented.
+
+This creates a dangerous mismatch:
+
+visible exercise = exercise X
+activeLessonExerciseId = exercise Y
+
+Until this is fixed, deterministic correctness evaluation MUST NOT be enabled.
+
+==================================================
+GOAL
+==================================================
+
+Establish one deterministic backend-owned invariant:
+
+THE EXACT SOURCE EXERCISE DELIVERED TO THE STUDENT
+MUST BE THE SAME EXERCISE STORED IN:
+
+activeLessonExerciseId
+
+After activation, all source-exercise delivery for that active task must use
+the persisted activeLessonExerciseId as the authority.
+
+Do NOT implement deterministic correctness evaluation yet.
+
+==================================================
+PART 0 — AUDIT FIRST
+==================================================
+
+Before changing code, trace ALL current paths that can:
+
+1. select a source exercise,
+2. set activeLessonExerciseId,
+3. set activeTaskProvenance = "source_exercise",
+4. inject source exercise text into studentMessage,
+5. create a standalone source-exercise assistant message,
+6. use classExercises[0],
+7. use source_fidelity.exercise_id,
+8. transition MICRO_CHECK → EXERCISE,
+9. transition/stay EXERCISE → EXERCISE.
+
+Report the exact branches/functions first.
+
+Then implement the smallest safe fix.
+
+Do not redesign the teaching system.
+
+==================================================
+PART 1 — SINGLE ACTIVATION AUTHORITY
+==================================================
+
+Create/use one deterministic backend activation path for a source exercise.
+
+The activation result must identify one concrete lesson_exercises row.
+
+At minimum the selected exercise must have:
+
+- internal DB id
+- external exerciseId
+- exerciseTextVerbatim / authoritative rendered text
+- sourcePage where available
+
+When source_fidelity.exercise_id explicitly identifies a valid eligible
+exercise, resolve that external exercise ID to the corresponding exercise
+inside the CURRENT eligible classExercises set.
+
+Example:
+
+source_fidelity.exercise_id = "EX-579-2"
+
+must resolve to:
+
+lesson_exercises.id = 941
+
+provided EX-579-2 is in the current eligible classExercises set.
+
+Do NOT query or activate an arbitrary exercise outside the current
+node/cognitive-level eligible set.
+
+==================================================
+PART 2 — NO SILENT classExercises[0] MISMATCH
+==================================================
+
+classExercises[0] may only be used as a fallback selection when NO specific
+eligible exercise has already been selected/identified.
+
+It must NOT overwrite or replace an already resolved specific exercise.
+
+Forbidden:
+
+AI/source selection identifies EX-579-2
+→ backend stores classExercises[0] = EX-579-1
+
+Required:
+
+AI/source selection identifies EX-579-2
+→ resolve EX-579-2 inside eligible exercises
+→ activeLessonExerciseId = EX-579-2 internal DB id
+→ delivered exercise = EX-579-2
+
+==================================================
+PART 3 — PERSIST BEFORE DELIVERY
+==================================================
+
+For source exercises, activation must establish the active task state before
+the exercise is treated as the learner's current answerable task.
+
+Persist consistently:
+
+nodeTeachingStage = EXERCISE
+activeTaskProvenance = "source_exercise"
+activeLessonExerciseId = selectedExercise.id
+
+and existing relevant attempt/help fields according to current behavior.
+
+Do NOT create a new progression model.
+
+Do NOT modify Cognitive Path rules.
+
+==================================================
+PART 4 — DELIVERY AUTHORITY
+==================================================
+
+Once:
+
+activeTaskProvenance = "source_exercise"
+activeLessonExerciseId != null
+
+the exercise delivered to the learner must be resolved from that exact
+activeLessonExerciseId.
+
+Do NOT independently select classExercises[0] again for rendering.
+
+This applies to all existing backend-owned source-exercise delivery paths,
+including the currently known:
+
+- P11.1 path
+- V2-R1.1 standalone auto-continuation path
+
+Do NOT remove these systems unless absolutely required.
+
+Make them consume the same active exercise authority instead of independently
+choosing an exercise.
+
+==================================================
+PART 5 — source_fidelity.exercise_id
+==================================================
+
+Audit its current meaning carefully.
+
+If the structured AI response supplies:
+
+source_fidelity.exercise_id
+
+for a source exercise transition, treat it only as a REQUESTED external
+exercise identity.
+
+The backend must validate it against current eligible classExercises.
+
+If matched:
+
+requested external exercise ID
+→ eligible lesson_exercises row
+→ selected internal ID
+→ activeLessonExerciseId
+
+If it does NOT match an eligible exercise:
+
+do NOT activate an arbitrary exercise under that requested identity.
+
+Use the existing safe fallback behavior only if semantically appropriate and
+report exactly what fallback remains.
+
+Do not trust arbitrary AI-provided IDs.
+
+==================================================
+PART 6 — DUPLICATE DELIVERY SAFETY
+==================================================
+
+The same activation must not cause two visible copies of the same exercise in
+one transition.
+
+We previously observed:
+
+1. exercise appended to normal assistant feedback
+2. same exercise emitted again as standalone assistant message
+
+For the same activation/turn, there must be only ONE learner-visible delivery
+of the active source exercise.
+
+Do NOT broadly redesign chat delivery.
+
+Add the smallest ownership/guard necessary so P11.1 and V2-R1.1 cannot both
+deliver the same active exercise for the same transition.
+
+IMPORTANT:
+
+This task is about delivery identity and single delivery.
+
+It is NOT yet about selecting EX-579-2 after EX-579-1 completion.
+
+==================================================
+PART 7 — DO NOT IMPLEMENT EXERCISE SEQUENCING
+==================================================
+
+Do NOT implement:
+
+EX-579-1
+→ EX-579-2
+→ EX-579-3
+
+progression in this task.
+
+That is a separate future task.
+
+This task only guarantees:
+
+selected exercise X
+→ persisted active exercise X
+→ displayed exercise X
+
+Do not add completed-exercise cursors or coverage logic.
+
+==================================================
+PART 8 — DO NOT IMPLEMENT CORRECTNESS
+==================================================
+
+Do NOT wire:
+
+lesson_exercises.interactionType
+lesson_exercises.correctAnswer
+
+into chat answer evaluation yet.
+
+Task #82 storage contract already exists.
+
+Task #83 remains blocked until THIS prerequisite passes.
+
+No deterministic source-exercise correctness override in this task.
+
+==================================================
+PART 9 — REQUIRED INVARIANTS
+==================================================
+
+After implementation prove these invariants:
+
+INVARIANT 1
+
+If EX-579-1 is activated:
+
+activeLessonExerciseId = 940
+visible exercise = EX-579-1
+
+INVARIANT 2
+
+If EX-579-2 is explicitly selected and eligible:
+
+activeLessonExerciseId = 941
+visible exercise = EX-579-2
+
+INVARIANT 3
+
+The backend cannot show EX-579-2 while:
+
+activeLessonExerciseId = 940
+
+INVARIANT 4
+
+The backend cannot show EX-579-1 while:
+
+activeLessonExerciseId = 941
+
+INVARIANT 5
+
+A single source-exercise activation produces only one learner-visible
+exercise delivery.
+
+==================================================
+PART 10 — TARGETED TESTS
+==================================================
+
+Add/run targeted static/unit tests where practical.
+
+Required cases:
+
+A.
+eligible exercises:
+940 / EX-579-1
+941 / EX-579-2
+
+requested source_fidelity.exercise_id = EX-579-1
+
+Expected:
+selected internal id = 940
+
+B.
+same eligible set
+
+requested source_fidelity.exercise_id = EX-579-2
+
+Expected:
+selected internal id = 941
+
+C.
+requested ID = EX-NOT-ELIGIBLE
+
+Expected:
+must NOT falsely bind that requested ID to classExercises[0].
+
+Report exact safe behavior.
+
+D.
+activeLessonExerciseId = 940
+
+Expected delivered exercise:
+EX-579-1 only.
+
+E.
+activeLessonExerciseId = 941
+
+Expected delivered exercise:
+EX-579-2 only.
+
+F.
+same transition reaches both P11.1 and V2-R1.1 candidate conditions
+
+Expected:
+only one visible source-exercise delivery.
+
+==================================================
+PART 11 — SESSION READ-BACK
+==================================================
+
+If a controlled non-destructive test fixture can be used, prove:
+
+after activating EX-579-1:
+
+activeTaskProvenance = source_exercise
+activeLessonExerciseId = 940
+nodeTeachingStage = EXERCISE
+
+after activating EX-579-2 in an isolated fixture:
+
+activeTaskProvenance = source_exercise
+activeLessonExerciseId = 941
+nodeTeachingStage = EXERCISE
+
+Do not mutate the real learner session merely to produce evidence if an
+isolated test is available.
+
+==================================================
+PART 12 — DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- source-exercise correctness evaluation
+- Task #82 typed-answer storage contract
+- AI-generated MICRO_CHECK deterministic answer payload
+- Cognitive Path progression
+- Pedagogical Decision Engine
+- evidence/mastery
+- Knowledge Tree
+- quiz system
+- provider/model configuration
+- mapper
+- teacher exercise CRUD
+- source-exercise sequence/completion requirements
+
+No unrelated refactor.
+
+==================================================
+PART 13 — TYPECHECK
+==================================================
+
+Run relevant:
+
+- API TypeScript check
+- targeted tests
+- git diff --check
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. PRE-CHANGE PATH AUDIT
+
+B. FILES CHANGED
+
+C. SINGLE ACTIVATION AUTHORITY
+
+D. source_fidelity.exercise_id RESOLUTION
+
+E. activeLessonExerciseId PERSISTENCE
+
+F. DELIVERY AUTHORITY
+
+G. P11.1 / V2-R1.1 DUPLICATE GUARD
+
+H. classExercises[0] REMAINING USES
+
+For every remaining use of classExercises[0] in chat.ts, report:
+- location/purpose
+- whether it can affect active source-exercise identity
+- why it is safe or still a gap
+
+I. REQUIRED INVARIANTS
+
+J. TARGETED TESTS
+
+K. SESSION/FIXTURE READ-BACK
+
+L. TYPECHECK
+
+M. UNCHANGED / OUT-OF-SCOPE
+
+N. RESULT
+
+PASS / PARTIAL / BLOCKED
+
+If BLOCKED:
+STOP and report the exact blocker.
+
+Do not implement Task #83 correctness evaluation as part of this task.
+Do not broaden scope.
