@@ -1,0 +1,465 @@
+READ-ONLY FORENSIC AUDIT — STAGE 5 LIVE FLOW
+SESSION 51 — DUPLICATE FEEDBACK + VERIFIED STOP
+
+IMPORTANT:
+READ-ONLY AUDIT ONLY.
+
+DO NOT:
+- change code
+- change database
+- change tests
+- restart workflows
+- call AI/provider
+- mutate session 51
+- continue the learner conversation
+- implement a fix
+
+We found two live runtime issues after Stage 5.
+
+==================================================
+OBSERVED LIVE FLOW
+==================================================
+
+Lesson:
+ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Session:
+51
+
+Node:
+2107 — Մոլեկուլների շարժումը
+
+Observed flow:
+
+INITIAL READY
+→ THEORY delivered
+→ source exercise EX-579-1 delivered automatically
+
+Learner:
+բ
+
+Then the SAME feedback appeared twice:
+
+"Շատ լավ, Էլեն։ Ճիշտ պատասխանն է Բ) Մոլեկուլները նյութերում
+անընդհատ շարժվում են։ Հենց այսպես՝ անկախ նրանից՝ նյութը պինդ է,
+հեղուկ, թե գազ, նրա մոլեկուլները մշտապես շարժման մեջ են։
+Հիանալի է, որ հասկացար այս կարևոր հասկացությունը։"
+
+Then the system automatically delivered:
+
+EX-579-3 / DB id 942
+
+Learner answered:
+
+"Ժամանակի ընթացքում պղնձարջասպը տարածվում է ջրի մեջ, որովհետև
+նրա և ջրի մոլեկուլները անընդհատ շարժվում և խառնվում են իրար։"
+
+AI feedback:
+
+"Շատ լավ, Էլեն։ Դու ճիշտ նկատեցիր, որ պղնձարջասպի լուծույթի և
+ջրի խառնվելը ապացուցում է մոլեկուլների շարժումը։ Հատկապես ճիշտ է,
+որ շեշտեցիր մոլեկուլների անընդհատ շարժումն ու փոխադարձ խառնվելը։
+Հիմա եկ մի փոքր ավելի մանրամասն նկարագրենք՝ ինչպես է տեղի ունենում
+այս գործընթացը։"
+
+Final debug state:
+
+currentPhase = 2
+currentNodeId = 2107
+active cognitive level = understand
+nodeTeachingStage = VERIFIED
+activeLessonExerciseId = null
+active task = false
+Decision = CONTINUE_COGNITIVE_LEVEL
+mode = FEEDBACK
+
+The system then stopped.
+
+==================================================
+GOAL
+==================================================
+
+Determine exactly:
+
+1. Why the first feedback was delivered twice.
+2. Why CONTINUE_COGNITIVE_LEVEL ended in VERIFIED with no active task and no
+   automatic next THEORY/TASK.
+3. Whether these are independent bugs or one continuation/persistence ordering
+   issue.
+
+Do not infer.
+Use exact runtime logs, persisted chat rows, session state, and current code.
+
+==================================================
+A. REQUEST TIMELINE
+==================================================
+
+Reconstruct the exact request timeline for session 51 from:
+
+learner answer "բ"
+through
+EX-579-3 delivery
+through
+constructed-response answer
+through
+final VERIFIED state.
+
+For every HTTP /chat request report:
+
+- timestamp
+- learner input
+- request-start stage
+- request-start active task
+- cognitive level
+- pre-generation server action
+- bounded AI jobs invoked
+- Decision Engine result
+- continuation steps
+- assistant messages persisted
+- final session state
+
+Do not combine multiple requests into one summary.
+
+==================================================
+B. DUPLICATE FEEDBACK — DATABASE EVIDENCE
+==================================================
+
+Inspect chat_messages for session 51 around the learner answer "բ".
+
+Determine:
+
+- Are there two separate assistant rows containing the identical feedback?
+- Or one DB row rendered twice by frontend?
+- Exact chat_message IDs
+- timestamps
+- message content
+- message type/metadata if present
+
+Classify:
+
+BACKEND DOUBLE PERSIST
+FRONTEND DOUBLE RENDER
+API RESPONSE + DB REHYDRATION DUPLICATION
+OTHER
+
+Do not guess.
+
+==================================================
+C. DUPLICATE FEEDBACK — CODE OWNERSHIP TRACE
+==================================================
+
+Trace every Stage-5 path capable of emitting/persisting FEEDBACK after an
+evaluated answer.
+
+At minimum inspect:
+
+- normal answer handler
+- bounded FEEDBACK job
+- Stage-5 continuation coordinator
+- respondWithBoundedPhase2Message(...)
+- any old V2-R1.1 / P11.1 / auto-continuation branch
+- chat_messages persistence
+- response assembly
+
+Determine whether FEEDBACK can currently be written by more than one owner.
+
+Report exact file/function/branch for every potential writer.
+
+==================================================
+D. DUPLICATE FEEDBACK — EXACT ROOT CAUSE
+==================================================
+
+For the "բ" turn choose exactly one:
+
+1. FEEDBACK AI called twice
+2. FEEDBACK AI called once, result persisted twice
+3. persisted once, returned/rendered twice
+4. two continuation branches emitted same feedback
+5. another exact cause
+
+Show evidence.
+
+==================================================
+E. CONSTRUCTED RESPONSE EVALUATION
+==================================================
+
+For the EX-579-3 answer report:
+
+- interaction type actually used
+- deterministic evaluation attempted?
+- bounded EVALUATION called?
+- evaluation status
+- evidence quality
+- error family if any
+- Decision Engine input
+- Decision Engine output
+- metaAction
+- reasonCode
+- whether evidence threshold was met
+
+Do not infer from visible feedback alone.
+
+==================================================
+F. VERIFIED STATE WRITER
+==================================================
+
+Identify exactly which code path wrote:
+
+nodeTeachingStage = VERIFIED
+
+after the constructed-response answer.
+
+Report:
+
+- previous stage
+- computed new stage
+- function/block
+- why VERIFIED was selected
+- whether Stage 5 continuation coordinator ran before or after this write
+
+==================================================
+G. CONTINUE_COGNITIVE_LEVEL CONTRACT
+==================================================
+
+For:
+
+Decision Engine = CONTINUE_COGNITIVE_LEVEL
+
+audit the intended Stage-5 behavior.
+
+Determine what the server action planner derives from:
+
+Phase 2
+same currentNodeId
+same active cognitive level
+stage = VERIFIED
+no active task
+
+What action does derivePhase2ServerAction(...) return?
+
+Report the exact action enum/value.
+
+==================================================
+H. LEARNER-INPUT-REQUIRED RULE
+==================================================
+
+Evaluate the exact final state through the Stage-5 pure learner-input-required
+rule.
+
+For:
+
+stage = VERIFIED
+Decision = CONTINUE_COGNITIVE_LEVEL
+no active task
+
+report:
+
+- next server action
+- learnerInputRequired = true/false
+- stopReason if continuation stopped
+- continuation count
+- continuation safety-cap status
+
+If the rule says learner input is required, show why.
+If it says no learner input is required, identify where continuation was lost.
+
+==================================================
+I. CONTINUATION COORDINATOR TRACE
+==================================================
+
+Trace the Stage-5 continuation coordinator after the constructed-response
+feedback.
+
+Expected conceptual behavior:
+
+CONTINUE_COGNITIVE_LEVEL
+→ next non-interactive learning action
+→ THEORY or TASK_REQUIRED as current policy dictates
+→ task
+→ stop at learner-answerable task
+
+Report actual steps executed.
+
+If it stopped immediately after FEEDBACK:
+
+identify the exact condition that terminated continuation.
+
+==================================================
+J. FEEDBACK TEXT VS SERVER ACTION
+==================================================
+
+The FEEDBACK text ended with:
+
+"Հիմա եկ մի փոքր ավելի մանրամասն նկարագրենք՝ ինչպես է տեղի ունենում
+այս գործընթացը։"
+
+Determine whether FEEDBACK was given:
+
+- authoritative server action
+- remediation action
+- next action
+- CONTINUE_COGNITIVE_LEVEL
+
+and whether the wording implied a next teaching action that the backend did
+not actually execute.
+
+Classify whether this is:
+
+CONTENT WORDING GAP
+ORCHESTRATION GAP
+BOTH
+
+==================================================
+K. VERIFIED SEMANTICS
+==================================================
+
+Audit all current meanings/usages of nodeTeachingStage = VERIFIED.
+
+Determine whether VERIFIED means:
+
+- current task verified
+- cognitive level complete
+- MicroNode complete
+- transitional state
+- legacy state
+- something else
+
+Then determine whether VERIFIED is a valid resting state under Stage 5 when:
+
+Decision = CONTINUE_COGNITIVE_LEVEL
+and learner still needs more evidence.
+
+Answer YES / NO with code evidence.
+
+==================================================
+L. COGNITIVE EVIDENCE STATUS
+==================================================
+
+For active level = understand:
+
+Report the current configured:
+
+- minimumIndependentEvidence
+- target requirements
+- historical qualifying evidence count before EX-579-3 answer
+- current answer contribution
+- total qualifying evidence after answer
+- why Decision Engine chose CONTINUE_COGNITIVE_LEVEL instead of
+  ADVANCE_COGNITIVE_LEVEL
+
+This is needed to distinguish a progression-policy issue from a continuation
+issue.
+
+==================================================
+M. STAGE-5 ACCEPTANCE CHECK
+==================================================
+
+Compare this live turn against the approved Stage-5 invariant:
+
+"stop only when real learner input is required."
+
+For the final VERIFIED / no-task state:
+
+Was real learner input required?
+
+YES / NO
+
+If NO, Stage 5 acceptance is violated.
+
+Do not implement.
+
+==================================================
+N. ARE THE TWO BUGS LINKED?
+==================================================
+
+Choose one:
+
+A. DUPLICATE FEEDBACK and VERIFIED STOP are independent
+
+B. Both originate from the same continuation/message persistence bug
+
+C. One causes the other
+
+D. Insufficient evidence
+
+Explain from actual trace.
+
+==================================================
+O. SMALLEST SAFE FIX PROPOSAL
+==================================================
+
+DO NOT IMPLEMENT.
+
+Propose the smallest safe fix for each confirmed root cause.
+
+The fix must preserve:
+
+- Stage 3 bounded jobs
+- Stage 4/4.1 content boundary
+- exact source exercise identity
+- deterministic evaluation authority
+- bounded constructed EVALUATION
+- Decision Engine authority
+- Cognitive Path thresholds
+- evidence semantics
+- one learner answer → one evidence event
+- no artificial "օկ"
+- no duplicate visible messages
+
+Do not propose a broad chat.ts rewrite.
+
+==================================================
+P. REQUIRED REGRESSION CASES FOR FUTURE FIX
+==================================================
+
+DO NOT ADD TESTS YET.
+
+Specify the exact regression tests that would be required.
+
+At minimum:
+
+P1.
+Correct source answer
+→ one FEEDBACK row only.
+
+P2.
+No FEEDBACK duplicate in API response + persisted history.
+
+P3.
+Constructed response
+→ CONTINUE_COGNITIVE_LEVEL
+→ FEEDBACK
+→ continuation proceeds automatically
+→ stops at next real learner-answerable task.
+
+P4.
+VERIFIED + CONTINUE_COGNITIVE_LEVEL + no active task
+→ cannot be a dead-end resting state.
+
+P5.
+One answer
+→ one evidence event.
+
+P6.
+No stale source task / duplicate task.
+
+P7.
+Continuation safety cap unchanged.
+
+==================================================
+Q. VERDICT
+==================================================
+
+Return one:
+
+DUPLICATE DELIVERY BUG
+CONTINUATION DEAD-END BUG
+MULTIPLE LINKED GAPS
+NO BUG
+BLOCKED — INSUFFICIENT EVIDENCE
+
+Then STOP.
+
+No implementation.
+No tests.
+No session mutation.

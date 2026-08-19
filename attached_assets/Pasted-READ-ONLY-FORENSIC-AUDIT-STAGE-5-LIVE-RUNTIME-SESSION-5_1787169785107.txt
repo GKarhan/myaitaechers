@@ -1,0 +1,1143 @@
+READ-ONLY FORENSIC AUDIT — STAGE 5 LIVE RUNTIME
+SESSION 51
+
+THREE OBSERVED ISSUES:
+1. DUPLICATE FEEDBACK
+2. CONTINUE_COGNITIVE_LEVEL → VERIFIED DEAD-END
+3. WRONG MULTIPLE-CHOICE ANSWER RECEIVED "CORRECT" FEEDBACK
+
+==================================================
+CRITICAL SCOPE
+==================================================
+
+READ-ONLY FORENSIC AUDIT ONLY.
+
+DO NOT:
+
+- change code
+- change database
+- change tests
+- restart workflows
+- call AI/provider
+- mutate session 51
+- continue the learner conversation
+- implement any fix
+- create regression tests
+- alter Stage 0–5 architecture
+- alter evidence
+- repair historical rows
+
+The purpose of this task is ONLY to determine the exact runtime/code/database
+cause of the three observed live issues.
+
+Do not infer when direct evidence is available.
+
+Use:
+
+- current source code
+- persisted lesson_sessions state
+- persisted chat_messages
+- persisted evidence/events
+- exact lesson_exercises rows
+- existing server/runtime logs
+- existing Stage 5 continuation code
+- existing bounded-job code
+
+If some historical field was not persisted or logged, explicitly report:
+
+NOT RECOVERABLE
+
+Do not reconstruct it from visible wording.
+
+==================================================
+LIVE CONTEXT
+==================================================
+
+Lesson:
+
+ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Session:
+
+51
+
+Node:
+
+2107 — Մոլեկուլների շարժումը
+
+Phase:
+
+2
+
+Stage 5 automatic continuation has already been implemented.
+
+Expected normal architecture:
+
+INITIAL READY
+→ THEORY
+→ TASK_REQUIRED
+→ TASK
+→ WAIT FOR REAL LEARNER ANSWER
+
+Then:
+
+LEARNER ANSWER
+→ authoritative evaluation
+→ evidence/counters
+→ Pedagogical Decision Engine
+→ FEEDBACK
+→ automatically continue through server-owned non-interactive actions
+→ STOP only when real learner input is required
+
+Bounded AI jobs must remain:
+
+THEORY
+TASK
+EVALUATION
+FEEDBACK
+
+==================================================
+OBSERVED LIVE FLOW — CASE 1
+DUPLICATE FEEDBACK
+==================================================
+
+The learner started the lesson.
+
+The system successfully performed:
+
+INITIAL READY
+→ THEORY
+→ EX-579-1
+
+without requiring a second artificial "օկ".
+
+Visible source exercise:
+
+EX-579-1
+DB id = 940
+
+Question:
+
+Ո՞ր պնդումն է ճիշտ մոլեկուլների շարժման մասին։
+
+Ա) Մոլեկուլները շարժվում են միայն նյութը տաքացնելիս։
+Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։
+Գ) Մոլեկուլները շարժվում են միայն գազերում։
+Դ) Մոլեկուլները հանգիստ վիճակում ընդհանրապես չեն շարժվում։
+
+In one observed run the learner answered:
+
+բ
+
+The same learner-facing feedback then appeared TWICE:
+
+"Շատ լավ, Էլեն։ Ճիշտ պատասխանն է Բ) Մոլեկուլները նյութերում
+անընդհատ շարժվում են։ Հենց այսպես՝ անկախ նրանից՝ նյութը պինդ է,
+հեղուկ, թե գազ, նրա մոլեկուլները մշտապես շարժման մեջ են։
+Հիանալի է, որ հասկացար այս կարևոր հասկացությունը։"
+
+The system then automatically delivered EX-579-3.
+
+==================================================
+OBSERVED LIVE FLOW — CASE 2
+CONSTRUCTED RESPONSE → VERIFIED DEAD-END
+==================================================
+
+The system delivered:
+
+EX-579-3
+DB id = 942
+
+Visible question:
+
+Պղնձարջասպի լուծույթի և ջրի փորձը ինչպե՞ս է ցույց տալիս,
+որ մոլեկուլներն անընդհատ շարժվում են։
+
+Learner answered:
+
+"Ժամանակի ընթացքում պղնձարջասպը տարածվում է ջրի մեջ, որովհետև
+նրա և ջրի մոլեկուլները անընդհատ շարժվում և խառնվում են իրար։"
+
+Visible FEEDBACK:
+
+"Շատ լավ, Էլեն։ Դու ճիշտ նկատեցիր, որ պղնձարջասպի լուծույթի և
+ջրի խառնվելը ապացուցում է մոլեկուլների շարժումը։ Հատկապես ճիշտ է,
+որ շեշտեցիր մոլեկուլների անընդհատ շարժումն ու փոխադարձ խառնվելը։
+Հիմա եկ մի փոքր ավելի մանրամասն նկարագրենք՝ ինչպես է տեղի ունենում
+այս գործընթացը։"
+
+Final visible debug state:
+
+Node = 2107
+Level = understand
+Stage = VERIFIED
+Ex = —
+Decision = CONTINUE_COGNITIVE_LEVEL
+Help = 0
+sess = 51
+ph = 2
+mode = FEEDBACK
+task = false
+
+The system then STOPPED.
+
+No next THEORY or TASK appeared.
+
+No artificial "օկ" was sent afterward.
+
+==================================================
+OBSERVED LIVE FLOW — CASE 3
+WRONG ANSWER RECEIVED "CORRECT" FEEDBACK
+==================================================
+
+In another live run in the same session context, the system again delivered:
+
+EX-579-1
+DB id = 940
+
+Visible question:
+
+Ո՞ր պնդումն է ճիշտ մոլեկուլների շարժման մասին։
+
+Ա) Մոլեկուլները շարժվում են միայն նյութը տաքացնելիս։
+Բ) Մոլեկուլները նյութերում անընդհատ շարժվում են։
+Գ) Մոլեկուլները շարժվում են միայն գազերում։
+Դ) Մոլեկուլները հանգիստ վիճակում ընդհանրապես չեն շարժվում։
+
+Learner deliberately answered:
+
+դ
+
+Visible FEEDBACK:
+
+"Էլեն, դու ընտրել ես ճիշտ պատասխանը:
+Մոլեկուլները նյութերում անընդհատ շարժվում են՝ անկախ արտաքին
+պայմաններից:
+Շատ լավ է, որ հասկացար այս կարևոր հասկացողությունը:
+Հիմա եկեք անցնենք հաջորդ վարժությանը:"
+
+Visible debug state afterward:
+
+Node = 2107
+Level = remember
+Stage = EXERCISE
+Ex = 940
+Decision = CONTINUE_COGNITIVE_LEVEL
+Help = 0
+sess = 51
+ph = 2
+mode = FEEDBACK
+task = true
+
+The visible option D is:
+
+"Մոլեկուլները հանգիստ վիճակում ընդհանրապես չեն շարժվում։"
+
+The visible option B is:
+
+"Մոլեկուլները նյութերում անընդհատ շարժվում են։"
+
+Therefore the learner-visible answer "դ" appears semantically incompatible
+with the feedback claiming the learner selected the correct answer.
+
+DO NOT assume the backend correctAnswer is B.
+
+Verify the exact persisted row and runtime evaluation.
+
+==================================================
+A. EXACT REQUEST TIMELINE
+==================================================
+
+Reconstruct the exact available request timeline for session 51 covering all
+three observed cases.
+
+For every relevant /chat request report separately:
+
+- timestamp
+- learner input
+- request-start phase
+- request-start node
+- request-start cognitive level
+- request-start nodeTeachingStage
+- activeTaskProvenance
+- activeLessonExerciseId
+- activeObjectiveTaskPayload presence
+- pre-generation server action
+- bounded AI jobs invoked
+- deterministic evaluator invoked, if any
+- bounded EVALUATION invoked, if any
+- authoritative evaluation result
+- Decision Engine result
+- continuation steps
+- assistant messages persisted
+- final session state
+
+Do not merge separate requests.
+
+If the same session was reset/reused between observed runs, identify that
+explicitly from logs/state.
+
+==================================================
+B. CHAT_MESSAGES — DUPLICATE FEEDBACK
+==================================================
+
+Inspect persisted chat_messages for session 51 around the correct "բ" answer.
+
+Determine whether the identical feedback exists as:
+
+- two separate assistant DB rows
+- one assistant DB row
+- no persisted row but duplicated response payload
+- another exact shape
+
+Report:
+
+- chat_message IDs
+- timestamps
+- role
+- exact/bounded content
+- relevant metadata if persisted
+
+Then classify:
+
+BACKEND DOUBLE PERSIST
+
+FRONTEND DOUBLE RENDER
+
+API RESPONSE + DB REHYDRATION DUPLICATION
+
+CONTINUATION DOUBLE EMISSION
+
+OTHER
+
+Do not guess.
+
+==================================================
+C. ALL FEEDBACK WRITERS
+==================================================
+
+Trace every current Stage-5 path capable of producing, returning, or persisting
+FEEDBACK after an evaluated learner answer.
+
+Inspect at minimum:
+
+- normal answer handler
+- bounded FEEDBACK job
+- Stage-5 continuation coordinator
+- respondWithBoundedPhase2Message(...)
+- chat_messages insert helpers
+- response assembly
+- old auto-continuation branches
+- V2-R1 / V2-R1.1 compatibility branches
+- any P11.1/source-delivery branch
+- frontend response append logic
+- frontend history rehydration logic
+
+For each potential writer/emitter report:
+
+FILE
+FUNCTION
+CONDITION
+SIDE EFFECT
+
+Determine whether FEEDBACK currently has more than one effective delivery
+owner.
+
+==================================================
+D. DUPLICATE FEEDBACK ROOT CAUSE
+==================================================
+
+For the observed correct "բ" turn, choose exactly one if evidence permits:
+
+1. FEEDBACK AI called twice
+2. FEEDBACK AI called once and persisted twice
+3. FEEDBACK persisted once but returned/rendered twice
+4. two continuation branches emitted the same FEEDBACK
+5. frontend duplicated one backend message
+6. another exact cause
+7. insufficient retained evidence
+
+Show direct evidence.
+
+==================================================
+E. EX-579-3 CONSTRUCTED RESPONSE CONTRACT
+==================================================
+
+For DB id 942 / EX-579-3 report the exact stored fields relevant to evaluation:
+
+- exerciseId
+- interactionType
+- exerciseTextEdited
+- learner-safe delivered text source
+- correctAnswer presence/absence
+- successCriteria presence/absence
+- approval/status fields
+- any evaluator-only metadata used
+
+Do not expose evaluator-only text beyond what is necessary for the audit
+report.
+
+Then report whether this exercise is:
+
+DETERMINISTICALLY EVALUABLE
+
+or
+
+REQUIRES BOUNDED EVALUATION AI
+
+according to current code.
+
+==================================================
+F. EX-579-3 AUTHORITATIVE EVALUATION
+==================================================
+
+For the learner answer:
+
+"Ժամանակի ընթացքում պղնձարջասպը տարածվում է ջրի մեջ, որովհետև
+նրա և ջրի մոլեկուլները անընդհատ շարժվում և խառնվում են իրար։"
+
+report:
+
+- deterministic evaluation attempted?
+- bounded EVALUATION AI called?
+- validated evaluation status
+- evidence_quality
+- error_family if any
+- help/assistance inputs
+- attempt sequence
+- authoritative wasCorrect
+- exact evaluation fields consumed downstream
+
+Do not infer correctness from FEEDBACK wording.
+
+==================================================
+G. EX-579-3 DECISION ENGINE TRACE
+==================================================
+
+Report the exact Decision Engine input after authoritative evaluation.
+
+Include only relevant current fields such as:
+
+- current cognitive level
+- target cognitive level
+- qualifying evidence count
+- attempt count
+- consecutive correct/incorrect
+- evidence quality
+- assistance/help
+- current demonstrated ceiling if represented
+- completion eligibility
+- remediation state
+
+Then report exact Decision Engine output:
+
+- metaAction
+- reasonCode
+- remediationAction
+- target/next cognitive level
+- mayCompleteMicroNode
+- any progression plan derived
+
+Explain why it returned:
+
+CONTINUE_COGNITIVE_LEVEL
+
+rather than:
+
+ADVANCE_COGNITIVE_LEVEL
+or
+COMPLETE_MICRONODE
+
+using current policy only.
+
+==================================================
+H. VERIFIED STATE WRITER
+==================================================
+
+Identify exactly which code path wrote:
+
+nodeTeachingStage = VERIFIED
+
+after EX-579-3.
+
+Report:
+
+- previous stage
+- authoritative evaluation state
+- function/helper
+- exact branch condition
+- derived new stage
+- DB update owner
+- ordering relative to FEEDBACK
+- ordering relative to Stage-5 continuation
+
+Determine whether VERIFIED was:
+
+- intentionally selected by current stage derivation
+- inherited legacy behavior
+- produced by progression planning
+- another exact cause
+
+==================================================
+I. VERIFIED SEMANTICS
+==================================================
+
+Audit every meaningful current use of:
+
+nodeTeachingStage = VERIFIED
+
+Determine what VERIFIED currently means in the codebase.
+
+Possible interpretations include:
+
+- current task answer verified
+- current cognitive level verified
+- MicroNode verified
+- transient post-evaluation state
+- legacy compatibility state
+
+Do not choose from this list without evidence.
+
+Then answer:
+
+Is VERIFIED a valid resting state under Stage 5 when:
+
+Decision = CONTINUE_COGNITIVE_LEVEL
+active task = false
+current cognitive level still requires more evidence
+
+YES / NO
+
+Provide code evidence.
+
+==================================================
+J. SERVER ACTION FROM FINAL VERIFIED STATE
+==================================================
+
+Using the actual current Stage-5 action planner, determine what action is
+derived from:
+
+currentPhase = 2
+currentNodeId = 2107
+currentLevel = understand
+nodeTeachingStage = VERIFIED
+activeTaskProvenance = null
+activeObjectiveTaskPayload = null
+activeLessonExerciseId = null
+Decision = CONTINUE_COGNITIVE_LEVEL
+
+Report exact action enum/value.
+
+If no valid action is derived, identify the exact gap.
+
+==================================================
+K. LEARNER-INPUT-REQUIRED RULE
+==================================================
+
+Run the final state conceptually through the current pure Stage-5
+learner-input-required rule.
+
+Report:
+
+- current server action
+- next server action
+- learnerInputRequired
+- stopReason
+- continuationCount
+- continuation safety-cap status
+
+Answer:
+
+Was genuine learner input required at the point where the live flow stopped?
+
+YES / NO
+
+If YES:
+show exactly what learner was expected to answer.
+
+If NO:
+identify where automatic continuation was lost.
+
+==================================================
+L. CONTINUATION COORDINATOR TRACE
+==================================================
+
+Trace the exact Stage-5 continuation coordinator after EX-579-3 evaluation.
+
+Expected conceptual flow under the approved Stage-5 contract:
+
+ANSWER
+→ EVALUATION
+→ Decision Engine
+→ FEEDBACK
+→ derive next server action
+→ if learner input not required, continue
+→ eventually stop at active answerable task
+
+Report the ACTUAL executed sequence.
+
+For every continuation step report:
+
+- fromAction
+- toAction
+- internalStep
+- continuationCount
+- state before
+- state after
+- stopReason
+
+If continuation stopped immediately after FEEDBACK, identify the exact
+condition.
+
+==================================================
+M. FEEDBACK WORDING VS SERVER ACTION
+==================================================
+
+EX-579-3 FEEDBACK ended with:
+
+"Հիմա եկ մի փոքր ավելի մանրամասն նկարագրենք՝ ինչպես է տեղի ունենում
+այս գործընթացը։"
+
+Determine what authoritative information FEEDBACK received:
+
+- evaluation status
+- Decision Engine metaAction
+- remediationAction
+- next server action if supplied
+
+Determine whether FEEDBACK promised/implied an immediate next teaching action
+that the backend failed to execute.
+
+Classify:
+
+CONTENT WORDING GAP
+
+ORCHESTRATION GAP
+
+BOTH
+
+NEITHER
+
+==================================================
+N. COGNITIVE EVIDENCE STATUS — UNDERSTAND
+==================================================
+
+For active cognitive level = understand report:
+
+- configured minimum independent evidence
+- other current threshold requirements
+- qualifying evidence count before EX-579-3 answer
+- contribution of EX-579-3 answer
+- qualifying evidence count afterward
+- assistance status
+- whether the evidence was independent
+- whether evidence quality qualified
+- why current level remained understand
+
+This section must distinguish:
+
+progression policy behaving correctly
+
+from
+
+continuation failing after a correct policy decision.
+
+==================================================
+O. WRONG-ANSWER CASE — EXACT EX-579-1 ROW
+==================================================
+
+Inspect:
+
+lesson_exercises.id = 940
+exerciseId = EX-579-1
+
+Report exact stored fields relevant to scoring:
+
+- interactionType
+- learner-safe exercise text
+- options if structured
+- correctAnswer
+- successCriteria presence
+- approval/status
+- normalization metadata if any
+
+Do NOT assume correctAnswer = B.
+
+Verify it from DB/current authoritative representation.
+
+==================================================
+P. WRONG-ANSWER NORMALIZATION
+==================================================
+
+For learner input:
+
+դ
+
+trace exact current normalization.
+
+Report:
+
+raw learner input
+→ normalized input
+→ option key/value selected
+
+Check Armenian input handling including:
+
+դ
+Դ
+
+and any Latin normalization if current code supports it.
+
+Then compare normalized learner answer against the exact authoritative
+correctAnswer.
+
+Report:
+
+MATCH
+or
+NO MATCH
+
+==================================================
+Q. WRONG-ANSWER DETERMINISTIC EVALUATION
+==================================================
+
+For the exact "դ" turn report:
+
+- activeLessonExerciseId
+- activeTaskProvenance
+- interactionType
+- deterministic evaluator eligibility
+- deterministic evaluator invoked?
+- normalized learner answer
+- normalized correct answer
+- comparison result
+- authoritative answer_evaluation.status
+- evidence_quality
+- wasCorrect
+- error family if any
+- attempt sequence
+- help count
+
+Then report what correctness value was actually sent into:
+
+- counters
+- evidence
+- Decision Engine
+- FEEDBACK
+
+==================================================
+R. WRONG-ANSWER DECISION ENGINE EFFECT
+==================================================
+
+For the "դ" answer report:
+
+- Decision Engine input correctness
+- resulting metaAction
+- reasonCode
+- remediationAction
+- cognitive progression effect
+- completion effect
+
+The visible debug showed:
+
+Decision = CONTINUE_COGNITIVE_LEVEL
+
+Determine whether this was based on:
+
+CORRECT
+
+or
+
+INCORRECT
+
+authoritative evaluation.
+
+Do not infer from the action name.
+
+==================================================
+S. WRONG-ANSWER EVIDENCE SAFETY
+==================================================
+
+Inspect persisted evidence/state effects from the "դ" answer.
+
+Report whether it produced:
+
+- evidence event
+- was_correct value
+- mastery contribution
+- nodeMasteryEvidenceCount change
+- nodeAttemptCount change
+- nodeConsecutiveCorrect change
+- nodeConsecutiveIncorrect change
+- cognitive-level evidence contribution
+
+If backend incorrectly treated "դ" as CORRECT, quantify the incorrect positive
+effects.
+
+Do NOT repair them.
+
+If backend correctly treated it as INCORRECT, say so explicitly.
+
+==================================================
+T. FEEDBACK INPUT FOR WRONG ANSWER
+==================================================
+
+Determine exactly what authoritative evaluation was passed into bounded
+FEEDBACK for the "դ" turn.
+
+Report:
+
+- status supplied
+- evidence quality supplied
+- server metaAction supplied
+- remediationAction supplied
+- correctness fact supplied
+- any authoritative answer/reference supplied if current contract allows it
+
+Then compare with FEEDBACK output:
+
+"Էլեն, դու ընտրել ես ճիշտ պատասխանը..."
+
+Determine whether FEEDBACK agreed with or contradicted the authoritative
+evaluation.
+
+==================================================
+U. WRONG-ANSWER ROOT CAUSE
+==================================================
+
+Classify the "դ" case as exactly one if evidence permits:
+
+1. DETERMINISTIC EVALUATION BUG
+   Backend classified the wrong option as CORRECT.
+
+2. ANSWER NORMALIZATION BUG
+   "դ" was normalized/mapped to the wrong option.
+
+3. SOURCE ANSWER-KEY BUG
+   persisted correctAnswer does not correspond to visible exercise.
+
+4. FEEDBACK AUTHORITY VIOLATION
+   backend authoritative evaluation was INCORRECT but FEEDBACK claimed CORRECT.
+
+5. MULTIPLE LINKED GAPS
+
+6. ANOTHER EXACT CAUSE
+
+7. BLOCKED — historical evidence insufficient
+
+Provide direct evidence.
+
+==================================================
+V. FEEDBACK SEMANTIC VALIDATION
+==================================================
+
+Audit the bounded FEEDBACK output validator.
+
+Determine whether current validation enforces:
+
+authoritative CORRECT
+→ learner-facing FEEDBACK cannot say answer is incorrect
+
+authoritative INCORRECT
+→ learner-facing FEEDBACK cannot say answer is correct
+
+Check Armenian semantic equivalents, not only literal English labels.
+
+Examples of contradictory wording include:
+
+"ճիշտ է"
+"ճիշտ պատասխան"
+"դու ճիշտ ընտրեցիր"
+"սխալ է"
+"սխալ պատասխան"
+
+Do not implement a new validator.
+
+Only report whether such an invariant currently exists and how strong it is.
+
+Classify:
+
+STRONG ENFORCEMENT
+PARTIAL ENFORCEMENT
+NO SEMANTIC ENFORCEMENT
+
+==================================================
+W. ACTIVE TASK CONSISTENCY AFTER WRONG ANSWER
+==================================================
+
+The visible debug after "դ" showed:
+
+Stage = EXERCISE
+Ex = 940
+task = true
+mode = FEEDBACK
+Decision = CONTINUE_COGNITIVE_LEVEL
+
+Audit whether the answered EX-579-1 task remained active after evaluation.
+
+Report:
+
+- activeLessonExerciseId after answer
+- activeTaskProvenance
+- nodeTeachingStage
+- active attempt state
+
+Determine whether keeping EX-579-1 active was:
+
+EXPECTED REMEDIATION BEHAVIOR
+
+or
+
+STALE ACTIVE TASK BUG
+
+or
+
+ANOTHER EXACT STATE
+
+This may be relevant to the continuation issue.
+
+==================================================
+X. ARE THE THREE ISSUES LINKED?
+==================================================
+
+We now have:
+
+ISSUE 1:
+duplicate FEEDBACK after correct "բ"
+
+ISSUE 2:
+CONTINUE_COGNITIVE_LEVEL → VERIFIED/no-task dead-end after EX-579-3
+
+ISSUE 3:
+wrong "դ" answer received "correct" FEEDBACK
+
+Determine whether they are:
+
+A. THREE INDEPENDENT BUGS
+
+B. ONE SHARED ROOT CAUSE
+
+C. TWO LINKED + ONE INDEPENDENT
+
+D. ONE BUG CAUSING THE OTHER TWO
+
+E. INSUFFICIENT EVIDENCE
+
+Build a small root-cause map:
+
+observed symptom
+→ writer/evaluator
+→ authoritative state
+→ confirmed root cause
+
+==================================================
+Y. STAGE-5 ACCEPTANCE CHECK
+==================================================
+
+Evaluate the live behavior against these approved invariants.
+
+INVARIANT 1:
+Stop only when real learner input is required.
+
+INVARIANT 2:
+One learner answer → one intended evidence event.
+
+INVARIANT 3:
+FEEDBACK visible exactly once.
+
+INVARIANT 4:
+FEEDBACK cannot change authoritative correctness.
+
+INVARIANT 5:
+Visible task corresponds exactly to persisted active task.
+
+INVARIANT 6:
+Decision Engine remains progression authority.
+
+INVARIANT 7:
+No artificial "օկ" is required for server-owned continuation.
+
+For each return:
+
+PASS
+FAIL
+NOT PROVABLE
+
+with evidence.
+
+==================================================
+Z. SMALLEST SAFE FIX PROPOSALS
+==================================================
+
+DO NOT IMPLEMENT.
+
+For every CONFIRMED root cause propose only the smallest safe fix.
+
+Preserve:
+
+- Stage 3 bounded THEORY/TASK/EVALUATION/FEEDBACK jobs
+- Stage 4/4.1 learner/evaluator content boundary
+- exact source exercise identity
+- deterministic objective/source evaluation authority
+- bounded EVALUATION for constructed responses
+- Decision Engine authority
+- Cognitive Path thresholds
+- evidence/mastery semantics
+- one learner answer → one evidence event
+- automatic continuation
+- no artificial "օկ"
+- HELP semantics
+- no duplicate task delivery
+
+Do not propose a broad chat.ts rewrite.
+
+For each proposed fix specify:
+
+ROOT CAUSE
+→ OWNER TO CHANGE
+→ SMALLEST BEHAVIOR CHANGE
+→ INVARIANTS PRESERVED
+
+==================================================
+AA. FUTURE REGRESSION TEST PLAN
+==================================================
+
+DO NOT ADD TESTS.
+
+Specify exact regression tests required for the future fix.
+
+At minimum:
+
+AA1.
+Correct EX-579-1 answer
+→ exactly one FEEDBACK row.
+
+AA2.
+No duplicate FEEDBACK between API response and persisted history.
+
+AA3.
+Constructed response
+→ CONTINUE_COGNITIVE_LEVEL
+→ FEEDBACK
+→ automatic continuation
+→ stop at next real learner-answerable task.
+
+AA4.
+VERIFIED + CONTINUE_COGNITIVE_LEVEL + no active task
+→ cannot become dead-end resting state.
+
+AA5.
+One learner answer
+→ one intended evidence event.
+
+AA6.
+No stale source task after evaluated answer unless explicitly required by
+remediation policy.
+
+AA7.
+Continuation safety cap unchanged.
+
+AA8.
+EX-579-1 correctAnswer verified from authoritative DB row.
+
+AA9.
+Learner answer "դ"
+→ Armenian option normalization verified.
+
+AA10.
+If correctAnswer = B:
+learner "դ"
+→ deterministic INCORRECT.
+
+AA11.
+Authoritative INCORRECT
+→ FEEDBACK cannot state learner is correct.
+
+AA12.
+Authoritative CORRECT
+→ FEEDBACK cannot state learner is incorrect.
+
+AA13.
+Wrong deterministic answer
+→ no positive mastery/correctness evidence.
+
+AA14.
+FEEDBACK semantic contradiction rejected before learner delivery.
+
+AA15.
+Correct answer still produces normal positive FEEDBACK.
+
+AA16.
+Incorrect answer follows current remediation policy without changing
+Decision Engine thresholds.
+
+AA17.
+No duplicate task/source delivery during remediation continuation.
+
+==================================================
+AB. PRIORITY / SEVERITY
+==================================================
+
+Rank confirmed bugs by severity:
+
+CRITICAL
+HIGH
+MEDIUM
+LOW
+
+Consider separately:
+
+- evidence/mastery corruption
+- learner-facing misinformation
+- orchestration dead-end
+- duplicate UI/message delivery
+
+Do not inflate severity without evidence.
+
+==================================================
+AC. FINAL VERDICT
+==================================================
+
+Return ONE overall verdict:
+
+DUPLICATE DELIVERY BUG
+
+CONTINUATION DEAD-END BUG
+
+DETERMINISTIC EVALUATION BUG
+
+ANSWER NORMALIZATION BUG
+
+FEEDBACK AUTHORITY VIOLATION
+
+MULTIPLE INDEPENDENT GAPS
+
+MULTIPLE LINKED GAPS
+
+NO BUG
+
+BLOCKED — INSUFFICIENT EVIDENCE
+
+Then provide:
+
+STAGE 5 LIVE ACCEPTANCE:
+PASS / FAIL / PARTIAL / NOT PROVABLE
+
+FIX IMPLEMENTATION:
+NOT PERFORMED
+
+DATABASE MUTATION:
+NONE
+
+SESSION MUTATION:
+NONE
+
+PROVIDER CALL:
+NONE
+
+Then STOP.
+
+Do not implement.
+Do not modify tests.
+Do not repair session 51.
+Do not continue the lesson.
