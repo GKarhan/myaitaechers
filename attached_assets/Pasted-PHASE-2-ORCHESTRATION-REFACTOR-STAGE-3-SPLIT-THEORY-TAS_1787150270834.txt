@@ -1,0 +1,895 @@
+PHASE 2 ORCHESTRATION REFACTOR — STAGE 3
+SPLIT THEORY / TASK / FEEDBACK AI CONTRACTS
+SERVER ACTION → BOUNDED AI JOB
+
+Stage 0 regression baseline is frozen and green.
+Stage 1 orchestration seam is complete.
+Stage 2 server-owned action planning is complete.
+
+Stage 2 established the core authority rule:
+
+AUTHORITATIVE SERVER STATE
+→ SERVER ACTION PLAN
+→ AI CONTENT
+→ SERVER VALIDATION
+→ TASK / EVALUATION AUTHORITY
+→ DECISION ENGINE
+→ PERSISTENCE
+
+Stage 3 now removes the next major architectural coupling:
+
+A single general structured AI response must no longer simultaneously own
+THEORY content, task creation, answer evaluation metadata, feedback wording,
+and workflow-shaped fields for all Phase-2 jobs.
+
+==================================================
+GOAL
+==================================================
+
+Split Phase-2 AI work into bounded job contracts:
+
+1. THEORY JOB
+   Explain the current MicroNode / cognitive target.
+
+2. TASK JOB
+   Produce a MICRO_CHECK candidate only when the backend has already decided
+   that a generated MICRO_CHECK is required.
+
+3. FEEDBACK JOB
+   Produce learner-facing feedback only after authoritative correctness and
+   pedagogical action are already known.
+
+The backend remains authoritative for workflow.
+
+Target architecture:
+
+STUDENT MESSAGE
+      ↓
+chat.ts
+      ↓
+LOAD AUTHORITATIVE STATE
+      ↓
+SERVER ACTION PLANNER
+      ↓
+┌─────────────────────────────┐
+│ DELIVER_THEORY              │
+│ → THEORY AI CONTRACT        │
+└─────────────────────────────┘
+      ↓
+SERVER VALIDATION
+      ↓
+THEORY RESPONSE
+      ↓
+STOP / WAIT FOR NEXT ACTION
+
+Then:
+
+SERVER ACTION PLANNER
+      ↓
+NEXT TASK REQUIRED
+      ↓
+SOURCE EXERCISE AVAILABLE?
+      │
+      ├── YES
+      │    → backend selects eligible exact source exercise
+      │    → activate exact activeLessonExerciseId
+      │    → backend renders authoritative source text
+      │
+      └── NO
+           → TASK AI CONTRACT
+           → validate candidate
+           → activate exact generated MICRO_CHECK payload
+      ↓
+STUDENT ANSWERS
+      ↓
+AUTHORITATIVE EVALUATION
+      ↓
+PEDAGOGICAL DECISION ENGINE
+      ↓
+FEEDBACK AI CONTRACT
+      ↓
+SERVER APPLIES PROGRESSION / REMEDIATION
+      ↓
+RESPONSE
+
+IMPORTANT:
+
+Do not blindly implement this diagram if the current Stage-2 architecture
+requires a smaller safe transition.
+
+Audit first.
+
+==================================================
+PART 0 — AUDIT STAGE-2 REALITY FIRST
+==================================================
+
+Before changing code, inspect the completed Stage-2 implementation.
+
+Report:
+
+1. exact server action-plan type
+2. action values currently implemented
+3. action planner owner/function
+4. pre-generation action selection point
+5. post-evaluation / Decision Engine action selection point
+6. current THEORY provider-call path
+7. current generated MICRO_CHECK creation path
+8. current source-exercise transition path
+9. current FEEDBACK provider-call path
+10. current compatibility escape hatch
+
+Confirm the final Stage-2 authority boundary.
+
+Do not rely only on the Stage-2 report.
+Inspect actual code.
+
+==================================================
+PART 1 — DEFINE THREE BOUNDED AI JOBS
+==================================================
+
+Introduce explicit Phase-2 AI job contracts.
+
+Use repository naming conventions and the smallest reasonable number of files.
+
+Conceptually:
+
+Phase2TheoryResult
+Phase2TaskCandidate
+Phase2FeedbackResult
+
+Do NOT create a giant replacement schema.
+
+Each contract must contain only fields required for that job.
+
+==================================================
+PART 2 — THEORY CONTRACT
+==================================================
+
+THEORY AI must NOT decide workflow.
+
+Input should contain only the authoritative educational/context data needed to
+explain the current target, such as existing approved fields where applicable:
+
+- current MicroNode
+- current cognitive level
+- learning objective
+- approved/student-facing explanation
+- theory content
+- verbatim grounding anchor
+- examples
+- misconception/non-example data
+- learner/session adaptation context already legitimately used
+
+Do not invent new curriculum data.
+
+Output should be minimal.
+
+Conceptually:
+
+{
+  student_message: string,
+  source_fidelity: ...
+}
+
+Only include additional fields if genuinely required for current safety
+validation.
+
+THEORY output must NOT contain authoritative:
+
+- teaching_mode
+- is_micro_check
+- node_decision
+- answer_evaluation
+- interaction_type
+- options
+- correct_option
+- progression decision
+- completion decision
+
+THEORY is explanation only.
+
+==================================================
+PART 3 — THEORY TURN MUST NOT CREATE TASK
+==================================================
+
+Required invariant:
+
+DELIVER_THEORY
+→ explanation only
+→ no active task created
+→ no answer key created
+→ no evidence created
+→ no progression
+→ no MICRO_CHECK state activation
+
+A THEORY provider failure must leave:
+
+- same node
+- same cognitive level
+- THEORY
+- no active task
+- no phantom evidence/progression
+
+Do not require THEORY output to also contain a MICRO_CHECK.
+
+This intentionally removes the old fragile contract:
+
+TEACH
++ is_micro_check=true
++ explanation
++ question
++ task metadata
+
+from the THEORY job.
+
+==================================================
+PART 4 — SERVER-OWNED NEXT LEARNING ACTION
+==================================================
+
+After THEORY has been successfully delivered, the backend must own what comes
+next.
+
+Audit current stage/session semantics before implementing this.
+
+The backend must not depend on the THEORY AI response to decide whether a task
+exists.
+
+Establish the minimum explicit server state/transition required to represent:
+
+THEORY DELIVERED
+→ NEXT CHECK/TASK REQUIRED
+
+Prefer existing stage/state fields if they can represent this safely.
+
+Do NOT add a DB migration unless absolutely required.
+
+If current nodeTeachingStage semantics can safely represent the transition,
+reuse them.
+
+If they cannot, STOP and report the exact blocker before inventing schema.
+
+==================================================
+PART 5 — SOURCE EXERCISE FIRST
+==================================================
+
+When the server has decided a task/check is required:
+
+Inspect eligible current-node/current-level source exercises using the existing
+authoritative exercise eligibility logic.
+
+If an eligible source exercise is available:
+
+BACKEND selects the exact exercise.
+
+AI must NOT select:
+
+source_fidelity.exercise_id
+
+as the authoritative identity.
+
+Required authority:
+
+eligible exercise set
+→ backend deterministic selection policy
+→ exact lesson_exercises row
+→ persist activeLessonExerciseId
+→ backend-owned verbatim delivery
+
+Preserve existing exact-source and single-delivery safeguards.
+
+Do NOT reintroduce classExercises[0] as an independent authority.
+
+If current code has an existing deterministic ordering/sequence rule, use it.
+
+Do not invent a new pedagogical exercise-ranking algorithm in this task.
+
+==================================================
+PART 6 — GENERATED MICRO_CHECK ONLY WHEN NEEDED
+==================================================
+
+Only if the server has decided a check is required AND no eligible source
+exercise is selected for that check should the TASK AI job run.
+
+The TASK AI job does one thing:
+
+GENERATE ONE MICRO_CHECK CANDIDATE.
+
+It does not teach theory.
+It does not evaluate an answer.
+It does not provide feedback.
+It does not decide progression.
+
+==================================================
+PART 7 — TASK CONTRACT
+==================================================
+
+Define a bounded generated-task result.
+
+Support only interaction types already supported by current architecture.
+
+For example:
+
+multiple_choice
+true_false
+constructed_response
+
+Use current canonical naming.
+
+Conceptually:
+
+{
+  student_message: string,
+  interaction_type: ...,
+  options: ...,
+  correct_option: ...,
+  question_template: ...,
+  source_fidelity: ...
+}
+
+But include only fields actually required by current task activation and safety
+logic.
+
+Objective tasks:
+
+multiple_choice:
+- structured options required
+- canonical correct option required
+- visible rendered options must match structured options
+
+true_false:
+- canonical TRUE/FALSE correct answer required
+- visible answer choices must be renderable/validated deterministically
+
+constructed_response:
+- no deterministic answer key
+- explicit visible answerable question/task required
+
+TASK result must NOT contain:
+
+- answer_evaluation
+- node_decision
+- teaching_mode authority
+- progression decision
+- completion decision
+
+==================================================
+PART 8 — BACKEND TASK VALIDATION AND ACTIVATION
+==================================================
+
+Generated task lifecycle:
+
+SERVER requests TASK job
+→ AI returns candidate
+→ backend validates candidate
+→ only after validation:
+   persist active task state
+→ deliver visible task
+→ STOP and wait for learner
+
+For objective generated tasks persist through the existing authority:
+
+activeObjectiveTaskPayload
+
+Do not create a second generated-task authority.
+
+For constructed response, preserve the existing safe task identity/provenance
+contract.
+
+Required invariant:
+
+NO VALID TASK
+→ NO ACTIVE TASK.
+
+==================================================
+PART 9 — ACTIVE SOURCE EXERCISE
+==================================================
+
+Source exercise lifecycle remains:
+
+backend selects exact eligible exercise
+→ activeLessonExerciseId persisted
+→ activeTaskProvenance = source_exercise
+→ authoritative source text delivered
+→ wait for learner answer
+
+Typed correctness remains:
+
+activeLessonExerciseId
+→ exact lesson_exercises row
+→ interactionType/correctAnswer
+→ deterministic backend correctness where eligible
+
+Do not change Task #82/#83 correctness behavior.
+
+==================================================
+PART 10 — ANSWER TURN
+==================================================
+
+When the learner answers an active task:
+
+Do NOT ask the general AI response to decide correctness first and then repair
+it afterward where deterministic authority exists.
+
+Use existing authoritative evaluation before FEEDBACK generation.
+
+Generated objective MICRO_CHECK:
+activeObjectiveTaskPayload
+→ deterministic correctness
+
+Typed source exercise:
+activeLessonExerciseId
+→ exact row
+→ deterministic correctness
+
+Constructed response / legacy unsupported task:
+preserve current AI-assisted evaluation behavior for now.
+
+Do not invent semantic deterministic scoring for open responses.
+
+==================================================
+PART 11 — FEEDBACK CONTRACT
+==================================================
+
+After correctness is known and the Decision Engine has produced its
+authoritative pedagogical result, call the bounded FEEDBACK AI job.
+
+The feedback AI receives facts, not authority.
+
+Input should include only what is needed, for example:
+
+- task/question
+- learner answer
+- authoritative correctness
+- correct/incorrect evidence where available
+- current concept
+- error/remediation context
+- Decision Engine pedagogical action
+- allowed feedback strategy
+- source fidelity context where needed
+
+Output should primarily be:
+
+{
+  student_message: string
+}
+
+Include minimal additional metadata only if genuinely needed for existing
+feedback safety validation.
+
+FEEDBACK AI must NOT decide:
+
+- CORRECT / INCORRECT when backend authority exists
+- evidence quality when backend authority exists
+- cognitive-level advance
+- MicroNode completion
+- next stage
+- next active task
+- source exercise identity
+
+==================================================
+PART 12 — FEEDBACK MUST NOT APPEND NEXT TASK
+==================================================
+
+Required invariant:
+
+FEEDBACK
+→ feedback only
+→ no next MICRO_CHECK appended
+→ no source exercise appended
+→ no task activation hidden behind feedback
+
+The next learning action must be a server-owned subsequent action.
+
+This preserves the already-established rule that feedback cannot manufacture
+an active MICRO_CHECK.
+
+==================================================
+PART 13 — DECISION ENGINE ORDER
+==================================================
+
+For evaluated answers, target order must be:
+
+learner answer
+→ authoritative evaluation
+→ evidence/counter inputs
+→ Pedagogical Decision Engine
+→ server progression/remediation action
+→ FEEDBACK generation using known result/action
+→ persistence according to existing safe ordering
+
+Audit existing evidence-write timing carefully.
+
+Do NOT accidentally make feedback generation authoritative for progression.
+
+Do NOT duplicate evidence writes.
+
+Do NOT change thresholds.
+
+==================================================
+PART 14 — SOURCE FIDELITY
+==================================================
+
+Preserve source fidelity.
+
+THEORY must remain grounded in approved MicroNode content.
+
+Source exercises remain verbatim backend-owned content.
+
+Generated MICRO_CHECKS may use approved node content but must not fabricate
+textbook provenance.
+
+Do not weaken existing source-fidelity validators.
+
+==================================================
+PART 15 — LEGACY COMPATIBILITY
+==================================================
+
+Stage 2 reportedly ended with one genuine legacy compatibility case:
+
+legacy MICRO_CHECK session with provenance but without persisted objective
+payload.
+
+Inspect the actual implementation.
+
+Do NOT broaden compatibility.
+
+Preserve the minimum safe legacy behavior needed for existing sessions.
+
+All new Stage-3 tasks must use the new bounded contracts.
+
+If legacy compatibility can be safely isolated behind the existing typed
+compatibility reason, keep it isolated.
+
+Do not let new sessions enter that legacy shape.
+
+==================================================
+PART 16 — CURRENT GENERAL STRUCTURED CONTRACT
+==================================================
+
+Do NOT delete the existing general structured AI contract globally.
+
+Other phases and legacy Phase-2 paths may still depend on it.
+
+Stage 3 should route NEW normal Phase-2 jobs through bounded contracts while
+keeping legacy compatibility available only where required.
+
+No Phase 1/3/4 redesign.
+
+==================================================
+PART 17 — PROMPTS
+==================================================
+
+Create separate minimal system/job instructions for:
+
+THEORY
+TASK
+FEEDBACK
+
+Do not copy the entire old giant Phase-2 prompt into each job.
+
+Each prompt should contain only rules relevant to that job.
+
+Shared safety/source rules may be factored into a small common helper if that
+matches repository conventions.
+
+Avoid duplicated conflicting instructions.
+
+==================================================
+PART 18 — RETRY / FAILURE SEMANTICS
+==================================================
+
+Each bounded job should have job-specific validation failure behavior.
+
+THEORY failure:
+→ remain safely ready to deliver THEORY
+→ no task/evidence/progression mutation
+
+TASK failure:
+→ no active task
+→ do not expose invalid task
+→ remain in safe pre-task state
+
+FEEDBACK failure:
+→ do not reverse authoritative correctness/progression
+→ preserve consistent session state
+→ return the safest existing controlled failure behavior
+
+Do not silently fall back to the old general AI contract for NEW normal
+Stage-3 jobs merely because a bounded job failed.
+
+That would recreate the old architecture.
+
+==================================================
+PART 19 — REQUIRED TESTS
+==================================================
+
+Add focused Stage-3 tests.
+
+A. THEORY CONTRACT
+
+DELIVER_THEORY
+→ theory job used
+→ explanation returned
+→ no task fields required
+→ no active task
+→ no evidence/progression
+
+B. THEORY FAILURE
+
+Invalid/provider-failed theory
+→ safe THEORY state
+→ no phantom task/evidence/progression
+
+C. THEORY DOES NOT NEED is_micro_check
+
+Valid theory response without is_micro_check
+→ accepted by bounded theory contract
+
+D. SOURCE EXERCISE SELECTION
+
+Task required + eligible source exercise
+→ backend selects exact eligible row
+→ activeLessonExerciseId matches delivered exercise
+→ AI does not select identity
+
+E. SOURCE SINGLE DELIVERY
+
+Exact source exercise appears once.
+
+F. GENERATED TASK
+
+Task required + no selected eligible source exercise
+→ bounded TASK job used
+→ valid task candidate
+→ backend validates
+→ active task persisted only after validation
+
+G. GENERATED OBJECTIVE TASK
+
+multiple_choice / true_false
+→ activeObjectiveTaskPayload stores canonical authority
+
+H. INVALID GENERATED TASK
+
+Invalid options/key/visible task
+→ rejected
+→ no active task persisted
+
+I. OBJECTIVE ANSWER
+
+learner answer
+→ deterministic correctness before feedback
+
+J. SOURCE ANSWER
+
+typed source exercise
+→ deterministic correctness before feedback
+
+K. CONSTRUCTED RESPONSE
+
+remains AI-assisted evaluation
+→ no fabricated deterministic answer key
+
+L. FEEDBACK
+
+known authoritative result
+→ bounded FEEDBACK job
+→ feedback text only
+→ no next task appended/activated
+
+M. DECISION ENGINE CONFLICT
+
+AI feedback cannot override Decision Engine action.
+
+N. ADVANCE LEVEL
+
+Decision Engine ADVANCE_COGNITIVE_LEVEL
+→ next cognitive level
+→ THEORY
+→ no stale old-level task/exercise
+
+O. COMPLETE NODE
+
+Decision Engine COMPLETE_NODE
+→ completion behavior preserved.
+
+P. LEGACY COMPATIBILITY
+
+old MICRO_CHECK provenance/no objective payload
+→ existing isolated compatibility behavior preserved
+→ new Stage-3 task creation never creates this shape
+
+Q. PHASE ISOLATION
+
+Phase 1/3/4 behavior unchanged.
+
+==================================================
+PART 20 — REGRESSION MATRIX
+==================================================
+
+Run:
+
+- full frozen Stage-0 matrix
+- Stage-1 extraction suite
+- Stage-2 action-plan suite
+- new Stage-3 suite
+- deterministic MICRO_CHECK suites
+- source-exercise activation/delivery/evaluation suites
+- Decision Engine / Cognitive Path suites
+- evidence suites
+- Phase 2A/2B acceptance suites
+- intent routing suites
+- API TypeScript typecheck
+- git diff --check
+
+Do not weaken or delete frozen tests to make Stage 3 pass.
+
+If a frozen test encodes the OLD architecture rather than an actual invariant,
+identify it explicitly before changing that assertion.
+
+==================================================
+PART 21 — RUNTIME VERIFICATION
+==================================================
+
+After static/regression verification:
+
+- restart affected API workflow
+- inspect fresh runtime logs
+- run a controlled browser smoke test
+
+At minimum verify:
+
+THEORY
+→ visible explanation only
+
+then next server-owned task action
+→ exactly one visible task
+
+then answer
+→ authoritative evaluation
+→ feedback only
+
+Do not use the smoke test as a substitute for regression tests.
+
+==================================================
+PART 22 — NO DB MIGRATION UNLESS BLOCKED
+==================================================
+
+Prefer current session fields:
+
+nodeTeachingStage
+activeTaskProvenance
+activeObjectiveTaskPayload
+activeLessonExerciseId
+activeCognitiveLevelId
+
+Do not add schema merely for architectural neatness.
+
+If a safe THEORY-delivered → task-required state cannot be represented using
+current authoritative state, STOP and report BLOCKED.
+
+Do not silently overload a field with contradictory semantics.
+
+==================================================
+PART 23 — DO NOT TOUCH
+==================================================
+
+Do NOT intentionally change:
+
+- Cognitive Path thresholds
+- mastery thresholds
+- Pedagogical Decision Engine policy
+- Knowledge Tree
+- quiz system
+- mapper
+- teacher CRUD
+- lesson-exercise typed-answer schema
+- provider/model configuration
+- frontend design
+- unrelated phases
+- model-upgrade task
+
+No unrelated refactor.
+
+==================================================
+PART 24 — ARCHITECTURE ACCEPTANCE CRITERIA
+==================================================
+
+Stage 3 succeeds only if the normal new Phase-2 path is demonstrably:
+
+SERVER ACTION
+→ ONE BOUNDED AI JOB
+→ SERVER VALIDATION/AUTHORITY
+→ SIDE EFFECTS
+
+and not:
+
+GENERAL AI RESPONSE
+→ BACKEND INTERPRETS WHAT THE AI DECIDED TO DO
+
+Specifically prove:
+
+1. THEORY AI cannot create a task.
+2. TASK AI cannot evaluate learner answers.
+3. FEEDBACK AI cannot progress the learner.
+4. Source-exercise identity is backend-owned.
+5. Deterministic correctness occurs before feedback where supported.
+6. Decision Engine remains progression authority.
+7. New normal sessions do not rely on legacy compatibility.
+
+==================================================
+STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED if:
+
+- current state cannot safely represent THEORY delivered → task required
+- source-exercise backend selection cannot be made deterministic from existing
+  eligible ordering without inventing policy
+- splitting evaluation before feedback would change evidence/progression
+  semantics beyond scope
+- bounded contracts require a DB migration not justified by current state
+- Stage-0/1/2 invariants regress
+- new normal sessions would still require AI workflow metadata to determine
+  server state
+
+Do not patch around a stop condition.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE STAGE-2 ARCHITECTURE
+
+B. FILES CHANGED
+
+C. BOUNDED AI CONTRACTS
+
+D. THEORY CONTRACT
+
+E. THEORY → NEXT-ACTION STATE
+
+F. SOURCE-EXERCISE BACKEND SELECTION
+
+G. GENERATED TASK CONTRACT
+
+H. TASK VALIDATION / ACTIVATION
+
+I. ANSWER EVALUATION ORDER
+
+J. FEEDBACK CONTRACT
+
+K. DECISION ENGINE / PROGRESSION AUTHORITY
+
+L. LEGACY COMPATIBILITY
+
+M. FAILURE SEMANTICS
+
+N. STAGE-0 / 1 / 2 REGRESSION RESULTS
+
+O. NEW STAGE-3 TEST RESULTS
+
+P. RUNTIME SMOKE TEST
+
+Q. POST-CHANGE RUNTIME ARCHITECTURE MAP
+
+R. REMAINING GENERAL-AI DEPENDENCIES
+
+S. DB MIGRATION
+Expected: NONE
+
+T. BEHAVIOR CHANGED
+Describe only intentional Stage-3 changes.
+
+U. TYPECHECK / DIFF
+
+V. STAGE-4 READINESS
+READY / NOT READY
+
+W. RESULT
+PASS / PARTIAL / BLOCKED
+
+Do not begin Stage 4.
+Do not broaden scope.
