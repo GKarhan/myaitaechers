@@ -1,0 +1,405 @@
+STAGE 5.5 — SAFE THEORY FALLBACK AFTER BOUNDED VALIDATION EXHAUSTION
+
+IMPLEMENTATION AUTHORIZED.
+
+The preceding READ-ONLY forensic audit is accepted.
+
+Confirmed root cause:
+
+Phase 2
+→ Stage = THEORY
+→ learner READY / "Օկ"
+→ server action = DELIVER_THEORY
+→ bounded THEORY attempt returns learner-task content
+→ assertTheoryOnly rejects it
+→ corrective retry also violates THEORY-only contract
+→ no safe recovery exists
+→ HTTP 503
+→ no THEORY persisted
+→ no TASK_REQUIRED transition
+→ no automatic task delivery
+
+IMPORTANT:
+
+The validator behaved correctly.
+
+DO NOT weaken or remove assertTheoryOnly().
+
+This task adds ONLY a narrow server-owned safe recovery for exhausted
+THEORY-only validation.
+
+==================================================
+0. SCOPE
+==================================================
+
+Do NOT:
+
+- change Stage 3 bounded-job architecture
+- change Stage 4 / 4.1 content boundaries
+- change Stage 5 automatic continuation
+- change Stage 5.1 correctness authority
+- change Stage 5.2 fresh-run evidence isolation
+- change Stage 5.3 HELP semantics
+- change Stage 5.4 HELP button
+- change Cognitive Path thresholds
+- change Decision Engine policy
+- change evidence/mastery semantics
+- change source-exercise selection policy
+- change provider/model
+- start Stage 6
+- mutate historical Session 51
+- delete or rewrite evidence
+
+No DB migration is authorized.
+
+==================================================
+1. KEEP THEORY VALIDATION STRICT
+==================================================
+
+Preserve current THEORY-only rules.
+
+THEORY must not include:
+
+- visible questions
+- answer options
+- learner-answerable directives
+- source exercise text
+- generated task text
+- correctness/evaluation output
+
+assertTheoryOnly(...) remains authoritative.
+
+Do not relax regex/semantic guards merely to avoid 503s.
+
+==================================================
+2. RECOVERY TRIGGER
+==================================================
+
+The safe fallback may run ONLY when:
+
+- Phase 2
+- currentNodeId exists
+- current stage = THEORY
+- no active task
+- server action = DELIVER_THEORY
+- bounded THEORY attempt failed specifically because THEORY output contained
+  learner-task content
+- corrective THEORY retry failed for the same THEORY-only content reason
+
+Do NOT use this fallback for:
+
+- schema parse failure
+- provider outage
+- unsafe learner/evaluator leakage
+- source-fidelity violation
+- scope drift
+- invalid node state
+- missing authoritative node content
+- unrelated internal errors
+
+Those must keep existing fail-closed behavior.
+
+==================================================
+3. SERVER-OWNED THEORY FALLBACK
+==================================================
+
+After the two bounded THEORY attempts are exhausted for ONLY the visible-task
+validation reason, compose a short learner-safe THEORY explanation using
+approved server-owned node content already loaded for the current MicroNode.
+
+Allowed authoritative inputs may include existing:
+
+- MicroNode learningObjective
+- approved theory/content
+- childFriendlyExplanation
+- mapped source-grounded theory
+- current cognitive-level performance objective
+- current cognitive-level success criterion only if it is already approved
+  for learner-facing theory and does not expose evaluator-only content
+
+Do NOT use:
+
+- correctAnswer
+- successCriteria if evaluator-only
+- answer key
+- expected answer
+- hidden rubric
+- source exercise answer metadata
+- AI-generated task content
+
+Do NOT call another general AI fallback.
+
+==================================================
+4. FALLBACK CONTENT CONTRACT
+==================================================
+
+The fallback must be:
+
+- Armenian
+- short
+- coherent
+- theory/explanation only
+- grounded in approved node content
+- free of questions
+- free of option markers
+- free of learner-task imperatives
+- free of evaluator-only content
+
+Run the resulting fallback through the SAME authoritative THEORY-only
+validation before persistence.
+
+If the server-generated fallback itself fails validation:
+
+→ fail closed
+→ no persistence
+→ no task activation
+→ no evidence/progression mutation
+
+==================================================
+5. PERSISTENCE ORDER
+==================================================
+
+Required order:
+
+validated server THEORY fallback
+→ persist THEORY assistant message
+→ set/derive nodeTeachingStage = TASK_REQUIRED
+→ run existing Stage-5 automatic continuation
+→ select/deliver source task or generated task
+→ stop when learner input is required
+
+Do not expose a task before its activation succeeds.
+
+==================================================
+6. AUTOMATIC CONTINUATION
+==================================================
+
+After fallback THEORY succeeds, reuse the existing continuation owner.
+
+Do NOT build a second task-delivery path.
+
+Expected flow:
+
+READY
+→ bounded THEORY attempt 1 fails task guard
+→ bounded THEORY retry fails same guard
+→ server THEORY fallback
+→ TASK_REQUIRED
+→ eligible learner-safe source exercise if available
+   OR bounded TASK generation
+→ activate
+→ deliver
+→ wait for learner answer
+
+No second "Օկ".
+
+==================================================
+7. SOURCE EXERCISE SAFETY
+==================================================
+
+Preserve Stage 4/4.1.
+
+If a source exercise is selected after fallback THEORY:
+
+- exact eligible row
+- learner-safe exerciseTextEdited
+- hidden correctAnswer/successCriteria remain hidden
+- activation before visible delivery
+- blocked legacy content stays blocked
+
+Do not change exercise eligibility.
+
+==================================================
+8. GENERATED TASK FALLBACK
+==================================================
+
+If no eligible safe source exercise exists:
+
+use the existing bounded TASK job.
+
+Do not turn THEORY fallback into task generation.
+
+Do not merge THEORY + TASK into one response contract.
+
+==================================================
+9. NO EVIDENCE SIDE EFFECT
+==================================================
+
+THEORY fallback must create:
+
+- no evidence event
+- no mastery increment
+- no attempt increment
+- no help increment
+- no cognitive progression
+
+It is explanation only.
+
+==================================================
+10. OBSERVABILITY
+==================================================
+
+Add concise server-only diagnostics for this recovery path.
+
+At minimum log:
+
+- sessionId
+- nodeId
+- cognitive level
+- THEORY attempt count
+- validation failure class
+- fallback activated = true/false
+- fallback validation result
+- next continuation action
+
+Do not log hidden evaluator data.
+
+==================================================
+11. REQUIRED TESTS
+==================================================
+
+T1.
+Phase 2 THEORY
+→ bounded THEORY returns visible task
+→ retry returns visible task
+→ server THEORY fallback succeeds
+→ HTTP response is NOT 503.
+
+T2.
+Fallback THEORY is persisted exactly once.
+
+T3.
+Fallback THEORY contains no:
+- question
+- options
+- task directive.
+
+T4.
+After fallback:
+→ TASK_REQUIRED
+→ existing automatic continuation executes.
+
+T5.
+Eligible safe source exercise exists
+→ exact source task becomes active and visible
+→ no second learner "Օկ".
+
+T6.
+No eligible safe source exercise
+→ existing bounded TASK job creates/activates one task.
+
+T7.
+Fallback THEORY creates zero evidence/mastery/help effects.
+
+T8.
+Fallback does not expose:
+- correctAnswer
+- successCriteria
+- evaluator rubric.
+
+T9.
+Provider/schema failure unrelated to THEORY-visible-task validation
+→ existing 503/fail-closed behavior remains.
+
+T10.
+Unsafe/missing authoritative node content
+→ fallback is NOT fabricated
+→ controlled failure.
+
+T11.
+Stage 5.3 HELP paths unaffected.
+
+T12.
+Stage 5.4 HELP button/session-state hydration unaffected.
+
+==================================================
+12. REGRESSION MATRIX
+==================================================
+
+Run:
+
+- API typecheck
+- frontend typecheck if shared contract touched
+- Stage 0 baseline
+- Stage 1 extraction
+- Stage 2 action-plan tests
+- Stage 3 bounded-job tests
+- Stage 4 content-boundary tests
+- Stage 4.1 eligibility tests
+- Stage 5 continuation tests
+- Stage 5.1 feedback-authority tests
+- Stage 5.2 evidence-isolation tests
+- Stage 5.3 assisted-learning tests
+- Stage 5.4 HELP UI contract tests if relevant
+- Decision Engine / Cognitive Path tests
+- source-answer contract
+- deterministic source evaluation
+- new Stage 5.5 tests
+- git diff --check
+
+Do not weaken prior tests.
+
+==================================================
+13. LIVE VERIFICATION
+==================================================
+
+After all tests pass:
+
+restart only affected workflow(s).
+
+Use a safe playable fresh session if available.
+
+Verify:
+
+learner READY / "Օկ"
+→ THEORY returned successfully
+→ no 503
+→ next real task delivered automatically
+→ no second "Օկ"
+→ no HELP state created
+→ no evidence created by THEORY
+
+Do NOT use or mutate historical Session 51 for provider-backed live testing.
+
+If no isolated safe fixture exists:
+report LIVE VERIFICATION = BLOCKED BY FIXTURE.
+
+==================================================
+14. STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED if:
+
+- no approved server-owned theory content exists for safe fallback
+- fallback would require inventing educational content
+- fallback would require evaluator-only data
+- Stage 4 content safety would weaken
+- DB migration becomes necessary
+- fallback requires restoring the old giant AI contract
+
+Do not work around these.
+
+==================================================
+15. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE ROOT CAUSE
+B. FILES CHANGED
+C. EXACT FALLBACK TRIGGER
+D. SERVER-OWNED THEORY CONTENT SOURCE
+E. THEORY VALIDATION PRESERVED
+F. FALLBACK PERSISTENCE ORDER
+G. AUTOMATIC CONTINUATION RESULT
+H. TASK-SELECTION RESULT
+I. CONTENT-BOUNDARY PRESERVATION
+J. EVIDENCE/HELP SIDE-EFFECT CHECK
+K. TEST RESULTS
+L. LIVE VERIFICATION
+M. SESSION 51 SAFETY
+N. REGRESSION STATUS
+O. RESULT: PASS / PARTIAL / BLOCKED
+P. STAGE-6 READINESS: READY / NOT READY
+
+Do not start Stage 6.
