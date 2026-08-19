@@ -20,6 +20,250 @@ export type ActiveObjectiveTaskPayload = {
   correctOption: string;
 };
 
+export type Phase2ServerAction =
+  | "OUTSIDE_PHASE_2"
+  | "DELIVER_THEORY"
+  | "EVALUATE_ACTIVE_TASK"
+  | "PRESERVE_ACTIVE_TASK"
+  | "DELIVER_FEEDBACK"
+  | "REMEDIATE"
+  | "DELIVER_SOURCE_EXERCISE"
+  | "ADVANCE_COGNITIVE_LEVEL"
+  | "COMPLETE_MICRONODE"
+  | "DEFER_TO_COMPATIBILITY";
+
+export type Phase2TaskAuthority =
+  | "none"
+  | "validated_ai_candidate"
+  | "active_objective_payload"
+  | "active_source_exercise"
+  | "compatibility";
+
+export type Phase2ServerActionPlan = {
+  action: Phase2ServerAction;
+  reasonCode: string;
+  aiGenerationNeeded: boolean;
+  activeTaskMayBeCreated: boolean;
+  evaluationExpected: boolean;
+  progressionMayOccur: boolean;
+  responseTeachingMode: "TEACH" | null;
+  taskAuthority: Phase2TaskAuthority;
+  nextActiveCognitiveLevelId: number | null;
+  nextNodeTeachingStage: "THEORY" | null;
+};
+
+export type Phase2ServerActionInput = {
+  currentPhase: number | null;
+  currentNodeId: number | null;
+  activeCognitiveLevelId: number | null;
+  nodeTeachingStage: string | null;
+  activeTaskProvenance: string | null;
+  activeLessonExerciseId: number | null;
+  activeObjectiveTaskPayload: ActiveObjectiveTaskPayload | null;
+  learnerIntent: IntentClass;
+  evaluated: boolean;
+  decision: Pick<
+    PedagogicalDecision,
+    "metaAction" | "remediationAction" | "newActiveCognitiveLevelId"
+  > | null;
+  progressionPlan: Pick<
+    Phase2ProgressionPlan,
+    | "shouldAutoContinueExercise"
+    | "shouldResetForCognitiveAdvance"
+    | "shouldCompleteNode"
+  > | null;
+};
+
+function makeActionPlan(
+  action: Phase2ServerAction,
+  reasonCode: string,
+  overrides: Partial<Omit<Phase2ServerActionPlan, "action" | "reasonCode">> = {},
+): Phase2ServerActionPlan {
+  return {
+    action,
+    reasonCode,
+    aiGenerationNeeded: false,
+    activeTaskMayBeCreated: false,
+    evaluationExpected: false,
+    progressionMayOccur: false,
+    responseTeachingMode: null,
+    taskAuthority: "none",
+    nextActiveCognitiveLevelId: null,
+    nextNodeTeachingStage: null,
+    ...overrides,
+  };
+}
+
+/**
+ * Selects the current Phase-2 workflow action from authoritative server state.
+ *
+ * This is the Stage-2 ownership boundary: AI workflow metadata is deliberately
+ * absent from the input. The caller still owns generation, persistence, and all
+ * side effects.
+ */
+export function derivePhase2ServerAction(
+  input: Phase2ServerActionInput,
+): Phase2ServerActionPlan {
+  if (input.currentPhase !== 2 || input.currentNodeId === null) {
+    return makeActionPlan(
+      "OUTSIDE_PHASE_2",
+      "phase_or_current_node_outside_phase2_action_scope",
+    );
+  }
+
+  if (input.evaluated && input.decision && input.progressionPlan) {
+    if (input.progressionPlan.shouldResetForCognitiveAdvance) {
+      return makeActionPlan(
+        "ADVANCE_COGNITIVE_LEVEL",
+        "decision_engine_selected_cognitive_advance",
+        {
+          progressionMayOccur: true,
+          nextActiveCognitiveLevelId:
+            input.decision.newActiveCognitiveLevelId,
+          nextNodeTeachingStage: "THEORY",
+        },
+      );
+    }
+
+    if (input.progressionPlan.shouldCompleteNode) {
+      return makeActionPlan(
+        "COMPLETE_MICRONODE",
+        "decision_engine_allowed_micronode_completion",
+        { progressionMayOccur: true },
+      );
+    }
+
+    if (input.progressionPlan.shouldAutoContinueExercise) {
+      return makeActionPlan(
+        "DELIVER_SOURCE_EXERCISE",
+        "server_progression_plan_selected_source_exercise_delivery",
+        {
+          activeTaskMayBeCreated: true,
+          taskAuthority: "compatibility",
+        },
+      );
+    }
+
+    if (
+      input.decision.metaAction === "CONTINUE_COGNITIVE_LEVEL" &&
+      input.decision.remediationAction !== null
+    ) {
+      return makeActionPlan(
+        "REMEDIATE",
+        "decision_engine_selected_same_level_remediation",
+      );
+    }
+
+    return makeActionPlan(
+      "DELIVER_FEEDBACK",
+      "evaluated_turn_uses_decision_engine_without_progression",
+    );
+  }
+
+  const hasGeneratedObjectiveTask =
+    input.activeTaskProvenance === "micro_check" &&
+    input.activeObjectiveTaskPayload !== null;
+  const hasSourceExerciseTask =
+    input.activeTaskProvenance === "source_exercise" &&
+    input.activeLessonExerciseId !== null;
+  const hasAuthoritativeActiveTask =
+    hasGeneratedObjectiveTask || hasSourceExerciseTask;
+
+  if (hasAuthoritativeActiveTask && input.learnerIntent === "ANSWER") {
+    return makeActionPlan(
+      "EVALUATE_ACTIVE_TASK",
+      hasGeneratedObjectiveTask
+        ? "learner_answered_active_objective_task"
+        : "learner_answered_active_source_exercise",
+      {
+        aiGenerationNeeded: true,
+        evaluationExpected: true,
+        progressionMayOccur: true,
+        taskAuthority: hasGeneratedObjectiveTask
+          ? "active_objective_payload"
+          : "active_source_exercise",
+      },
+    );
+  }
+
+  if (hasAuthoritativeActiveTask) {
+    return makeActionPlan(
+      "PRESERVE_ACTIVE_TASK",
+      "non_answer_turn_keeps_authoritative_task_open",
+      {
+        aiGenerationNeeded: true,
+        taskAuthority: hasGeneratedObjectiveTask
+          ? "active_objective_payload"
+          : "active_source_exercise",
+      },
+    );
+  }
+
+  if (
+    input.nodeTeachingStage === "THEORY" &&
+    input.activeCognitiveLevelId !== null &&
+    input.activeTaskProvenance === null &&
+    input.activeLessonExerciseId === null &&
+    input.activeObjectiveTaskPayload === null
+  ) {
+    return makeActionPlan(
+      "DELIVER_THEORY",
+      "phase2_theory_has_current_node_and_no_active_task",
+      {
+        aiGenerationNeeded: true,
+        activeTaskMayBeCreated: true,
+        responseTeachingMode: "TEACH",
+        taskAuthority: "validated_ai_candidate",
+      },
+    );
+  }
+
+  return makeActionPlan(
+    "DEFER_TO_COMPATIBILITY",
+    "current_authoritative_state_has_no_safe_stage2_action",
+    {
+      aiGenerationNeeded: true,
+      activeTaskMayBeCreated: true,
+      progressionMayOccur: true,
+      taskAuthority: "compatibility",
+    },
+  );
+}
+
+/**
+ * Keeps content validation separate from workflow ownership. It rejects AI
+ * envelopes that try to manufacture a different active task than the selected
+ * server action, while the existing schema/language/source validators retain
+ * responsibility for content quality.
+ */
+export function validatePhase2ResponseForServerAction(
+  plan: Phase2ServerActionPlan,
+  response: AIStructuredResponse,
+): void {
+  if (plan.action === "DELIVER_THEORY") {
+    if (
+      response.teaching_mode !== "TEACH" ||
+      response.is_micro_check !== true ||
+      response.answer_evaluation.status !== "NOT_APPLICABLE"
+    ) {
+      throw new Error(
+        "Phase-2 action/content mismatch: DELIVER_THEORY requires a TEACH envelope with a visible MICRO_CHECK and no answer evaluation",
+      );
+    }
+    return;
+  }
+
+  if (
+    (plan.action === "EVALUATE_ACTIVE_TASK" ||
+      plan.action === "PRESERVE_ACTIVE_TASK") &&
+    response.is_micro_check === true
+  ) {
+    throw new Error(
+      `Phase-2 action/content mismatch: ${plan.action} cannot create a new MICRO_CHECK`,
+    );
+  }
+}
+
 export type AuthoritativeSourceExercise = {
   id: number;
   exerciseId: string | null;

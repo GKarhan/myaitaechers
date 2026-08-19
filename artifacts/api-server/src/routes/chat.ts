@@ -35,13 +35,16 @@ import {
   coordinatePedagogicalDecision,
   deriveCognitiveAdvanceTaskReset,
   deriveGeneratedMicroCheckActivation,
+  derivePhase2ServerAction,
   deriveProgressionPlan,
   deriveTurnProgress,
   normalizeObjectiveMicroCheckAnswer,
   resolveAuthoritativeEvaluation,
   summarizeLevelEvidence,
+  validatePhase2ResponseForServerAction,
   type ActiveObjectiveTaskPayload,
   type AuthoritativeSourceExercise,
+  type Phase2ServerActionPlan,
 } from "../services/phase2/orchestration.js";
 
 export { normalizeObjectiveMicroCheckAnswer };
@@ -1342,6 +1345,30 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   }
   // ── End V2-R2 intent routing ──────────────────────────────────────────────────
 
+  let _phase2ServerActionPlan: Phase2ServerActionPlan = derivePhase2ServerAction({
+    currentPhase: session?.currentPhase ?? null,
+    currentNodeId: session?.currentNodeId ?? null,
+    activeCognitiveLevelId:
+      _activeCognitiveLevelRow?.id ?? session?.activeCognitiveLevelId ?? null,
+    nodeTeachingStage: session?.nodeTeachingStage ?? null,
+    activeTaskProvenance: session?.activeTaskProvenance ?? null,
+    activeLessonExerciseId: session?.activeLessonExerciseId ?? null,
+    activeObjectiveTaskPayload: session?.activeObjectiveTaskPayload ?? null,
+    learnerIntent: _intentResult.intent,
+    evaluated: false,
+    decision: null,
+    progressionPlan: null,
+  });
+  logger.info(
+    {
+      sessionId: session?.id ?? null,
+      action: _phase2ServerActionPlan.action,
+      reasonCode: _phase2ServerActionPlan.reasonCode,
+      taskAuthority: _phase2ServerActionPlan.taskAuthority,
+    },
+    "Phase-2 server action selected before AI generation",
+  );
+
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
   let wasCorrect: boolean | null = null;
@@ -1353,6 +1380,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       nodeTeachingStage: session?.nodeTeachingStage ?? null,
     });
 
+    validatePhase2ResponseForServerAction(_phase2ServerActionPlan, aiResult);
 
     {
       const _p9msg = aiResult.student_message.trimStart();
@@ -1403,7 +1431,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     }
 
     studentMessage = aiResult.student_message;
-    teachingMode = aiResult.teaching_mode;
+    teachingMode =
+      _phase2ServerActionPlan.responseTeachingMode ??
+      aiResult.teaching_mode;
     const _activeObjectiveTaskPayload = (
       _intentResult.intent === "ANSWER" &&
       session?.activeTaskProvenance === "micro_check" &&
@@ -1536,6 +1566,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _p11SourceExerciseIdBeforeDelivery: string | null = null;
   if (
     session &&
+    _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" &&
     _intentResult.intent === "ANSWER" &&
     (aiResult === null || aiResult.answer_evaluation.status !== "OFF_TOPIC") &&
     isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)
@@ -1636,17 +1667,32 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // wrongly say "give THEORY again" instead of "evaluate the answer".
     // This block pushes the stage forward immediately, independent of wasEval.
     // Phase 2B fix: also write active task identity fields (previously omitted).
-    if (!wasEval && (session?.nodeTeachingStage ?? "THEORY") === "THEORY" && aiResult.is_micro_check) {
-      const taskActivation = deriveGeneratedMicroCheckActivation(aiResult)!;
-      await db
-        .update(lessonSessionsTable)
-        .set(taskActivation as any)
-        .where(eq(lessonSessionsTable.id, session.id));
-      hasActiveTask = true;
-      logger.info(
-        { sessionId: session.id, nodeId: session.currentNodeId },
-        "teachingStage anticipatory advance: THEORY -> MICRO_CHECK"
-      );
+    const _serverAllowsGeneratedTask =
+      session.currentPhase !== 2 ||
+      _phase2ServerActionPlan.action === "DELIVER_THEORY" ||
+      _phase2ServerActionPlan.action === "DEFER_TO_COMPATIBILITY";
+    if (
+      !wasEval &&
+      _serverAllowsGeneratedTask &&
+      (session?.nodeTeachingStage ?? "THEORY") === "THEORY" &&
+      aiResult.is_micro_check
+    ) {
+      const taskActivation = deriveGeneratedMicroCheckActivation(aiResult);
+      if (taskActivation) {
+        await db
+          .update(lessonSessionsTable)
+          .set(taskActivation as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+        hasActiveTask = true;
+        logger.info(
+          {
+            sessionId: session.id,
+            nodeId: session.currentNodeId,
+            serverAction: _phase2ServerActionPlan.action,
+          },
+          "teachingStage anticipatory advance: THEORY -> MICRO_CHECK"
+        );
+      }
     }
 
     // ── Anticipatory MICRO_CHECK→EXERCISE stage advance ───────────────────
@@ -1668,8 +1714,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // wasEval is already false (OFF_TOPIC excluded from wasEval above) — but the
     // anticipatory block would still fire unless we add this guard.
     if (!wasEval && _intentResult.intent === "ANSWER" && status !== "OFF_TOPIC" &&
+        _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" &&
         (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
-        aiResult.teaching_mode === "TRANSITION" &&
         aiResult.source_fidelity.exercise_id) {
       const selection = _p11SelectedSourceExercise
         ? {
@@ -1902,17 +1948,35 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         activeCognitiveLevelRow: _activeCognitiveLevelRow,
         decision: _pedagogicalDecision,
       });
-      const {
-        safetyCapHit,
-        shouldResetForCognitiveAdvance,
-        shouldCompleteNode,
-        shouldAutoContinueExercise,
-      } = _progressionPlan;
+      _phase2ServerActionPlan = derivePhase2ServerAction({
+        currentPhase: session.currentPhase,
+        currentNodeId: session.currentNodeId,
+        activeCognitiveLevelId:
+          _activeCognitiveLevelRow?.id ?? session.activeCognitiveLevelId,
+        nodeTeachingStage: session.nodeTeachingStage,
+        activeTaskProvenance: session.activeTaskProvenance,
+        activeLessonExerciseId: session.activeLessonExerciseId,
+        activeObjectiveTaskPayload: session.activeObjectiveTaskPayload,
+        learnerIntent: _intentResult.intent,
+        evaluated: true,
+        decision: _pedagogicalDecision,
+        progressionPlan: _progressionPlan,
+      });
+      const { safetyCapHit } = _progressionPlan;
+      logger.info(
+        {
+          sessionId: session.id,
+          action: _phase2ServerActionPlan.action,
+          reasonCode: _phase2ServerActionPlan.reasonCode,
+          decisionMetaAction: _pedagogicalDecision.metaAction,
+        },
+        "Phase-2 server action selected after authoritative evaluation",
+      );
 
       // Cognitive Path progression owns completion whenever a confirmed path is
       // active.  The legacy stage/safety gates must not bypass an
       // ADVANCE_COGNITIVE_LEVEL decision and complete the MicroNode early.
-      if (shouldResetForCognitiveAdvance) {
+      if (_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL") {
         const cognitiveAdvanceReset = deriveCognitiveAdvanceTaskReset();
         await db
           .update(lessonSessionsTable)
@@ -1930,7 +1994,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         );
       }
 
-      if (shouldCompleteNode) {
+      if (_phase2ServerActionPlan.action === "COMPLETE_MICRONODE") {
         await db
           .update(lessonSessionsTable)
           .set({ askedQuestionTemplates: [] })
@@ -1977,7 +2041,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       // the exercise text must be delivered automatically — the learner must NOT need
       // to send any "ok" or "continue" to see the exercise.
       // Guard: mastery gate must NOT have fired (which would have advanced the node instead).
-      if (shouldAutoContinueExercise) {
+      if (_phase2ServerActionPlan.action === "DELIVER_SOURCE_EXERCISE") {
         _v2r1AutoContinue = { type: "exercise" as const };
       }
     }
@@ -1986,7 +2050,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // Fix: previously only written inside if (wasEval), so anticipatory THEORY→MICRO_CHECK
     // turns (wasEval=false) never wrote this field, causing the intro-repeat loop on the
     // following student turn (lastQuestionAsked=null → AI regenerated intro).
-    if (aiResult?.is_micro_check === true) {
+    const _serverAllowsQuestionPersistence =
+      session.currentPhase !== 2 ||
+      _phase2ServerActionPlan.action === "DELIVER_THEORY" ||
+      _phase2ServerActionPlan.action === "DEFER_TO_COMPATIBILITY";
+    if (
+      aiResult?.is_micro_check === true &&
+      _serverAllowsQuestionPersistence
+    ) {
       const _lqaTmpl = aiResult.question_template ?? null;
       const _lqaCurrent: string[] = session?.askedQuestionTemplates ?? [];
       const _lqaNew = _lqaTmpl && !_lqaCurrent.includes(_lqaTmpl)
