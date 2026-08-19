@@ -14,6 +14,7 @@ import {
   type ChatMessage, type AIStructuredResponse, type ProgressIndicator,
 } from "../services/ai";
 import {
+  assertFeedbackConsistentWithServerAction,
   assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertTheoryOnly,
@@ -55,6 +56,7 @@ import {
   derivePhase2ServerAction,
   deriveProgressionPlan,
   deriveTurnProgress,
+  filterEvidenceForCurrentRunNode,
   normalizeObjectiveMicroCheckAnswer,
   resolveAuthoritativeEvaluation,
   summarizeLevelEvidence,
@@ -549,6 +551,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     id: number; currentPhase: number; currentNodeId: number | null; status: string;
     lastQuestionAsked: string | null; askedQuestionTemplates: string[]; nodeAttemptCount: number;
     reviewQuestionCount: number; deepDiveExerciseIndex: number;
+    startedAt: Date | null;
     nodeStartedAt: Date | null;
     // Per-session node-progress counters (relocated from lessonNodesTable)
     nodeMasteryEvidenceCount: number;
@@ -636,6 +639,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeAttemptCount: sessionRow.nodeAttemptCount ?? 0,
           reviewQuestionCount: sessionRow.reviewQuestionCount ?? 0,
           deepDiveExerciseIndex: sessionRow.deepDiveExerciseIndex ?? 0,
+          startedAt: sessionRow.startedAt ?? null,
           nodeStartedAt: sessionRow.nodeStartedAt ?? null,
           nodeMasteryEvidenceCount: sessionRow.nodeMasteryEvidenceCount ?? 0,
           nodeConsecutiveCorrect: sessionRow.nodeConsecutiveCorrect ?? 0,
@@ -2676,6 +2680,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               helpCount:      (evidenceEventsTable as any).helpCount,
               assistanceLevel:(evidenceEventsTable as any).assistanceLevel,
               metadata:       evidenceEventsTable.metadata,
+              createdAt:      evidenceEventsTable.createdAt,
             })
             .from(evidenceEventsTable)
             .where(and(
@@ -2683,7 +2688,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               eq((evidenceEventsTable as any).cognitiveLevel, _activeCognitiveLevelRow.cognitiveLevel),
               eq((evidenceEventsTable as any).wasCorrect, true),
             ));
-          _levelEvidenceSummary = summarizeLevelEvidence(evRows);
+          _levelEvidenceSummary = summarizeLevelEvidence(
+            filterEvidenceForCurrentRunNode(evRows, {
+              currentNodeId: session.currentNodeId,
+              nodeStartedAt: session.nodeStartedAt,
+              sessionStartedAt: session.startedAt,
+            }),
+          );
         }
 
         const _decisionPlan = coordinatePedagogicalDecision({
@@ -3056,6 +3067,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         aiResult.answer_evaluation.status,
       );
       try {
+        const feedbackServerAction =
+          _postFeedbackContinuationPlan?.action ??
+          _phase2ServerActionPlan.action;
+        assertFeedbackConsistentWithServerAction(feedback, {
+          serverAction: feedbackServerAction,
+          hasActiveTask,
+        });
         if (
           aiResult.answer_evaluation.status === "CORRECT" ||
           aiResult.answer_evaluation.status === "INCORRECT" ||
@@ -3077,6 +3095,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             learnerMessageId: learnerMessage.id,
             feedbackJobInvocationCount: _feedbackJobInvocationCount,
             evaluationStatus: aiResult.answer_evaluation.status,
+            serverAction:
+              _postFeedbackContinuationPlan?.action ??
+              _phase2ServerActionPlan.action,
             err: authorityError instanceof Error
               ? authorityError.message
               : String(authorityError),

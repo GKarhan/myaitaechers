@@ -3,6 +3,8 @@ import type { AIStructuredResponse } from "../../services/ai.js";
 import {
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
+  filterEvidenceForCurrentRunNode,
+  summarizeLevelEvidence,
   validatePhase2ResponseForServerAction,
   type ActiveObjectiveTaskPayload,
   type Phase2ServerActionInput,
@@ -206,6 +208,55 @@ test("E3 — a one-source-exercise level falls back to a generated next task aft
 
   assert.equal(postFeedback?.action, "GENERATE_TASK");
   assert.equal(postFeedback?.activeTaskMayBeCreated, true);
+});
+
+test("E4 — current-run evidence excludes old reset evidence, another node, and wrong answers", () => {
+  const boundary = new Date("2026-08-20T10:00:00.000Z");
+  const rows = [
+    {
+      id: "old-same-node",
+      wasCorrect: true,
+      helpCount: 0,
+      assistanceLevel: "none",
+      metadata: { nodeId: 2107, evidence_quality: "STRONG" },
+      createdAt: new Date("2026-08-20T09:59:59.000Z"),
+    },
+    {
+      id: "other-node",
+      wasCorrect: true,
+      helpCount: 0,
+      assistanceLevel: "none",
+      metadata: { nodeId: 2108, evidence_quality: "STRONG" },
+      createdAt: new Date("2026-08-20T10:01:00.000Z"),
+    },
+    {
+      id: "wrong-live-answer",
+      wasCorrect: false,
+      helpCount: 0,
+      assistanceLevel: "none",
+      metadata: { nodeId: 2107, evidence_quality: "STRONG" },
+      createdAt: new Date("2026-08-20T10:01:00.000Z"),
+    },
+    {
+      id: "correct-live-answer",
+      wasCorrect: true,
+      helpCount: 0,
+      assistanceLevel: "none",
+      metadata: { nodeId: 2107, evidence_quality: "STRONG" },
+      createdAt: new Date("2026-08-20T10:01:01.000Z"),
+    },
+  ];
+
+  const currentRunRows = filterEvidenceForCurrentRunNode(rows, {
+    currentNodeId: 2107,
+    nodeStartedAt: boundary,
+    sessionStartedAt: new Date("2026-08-20T09:00:00.000Z"),
+  });
+  assert.deepEqual(currentRunRows.map((row) => row.id), [
+    "wrong-live-answer",
+    "correct-live-answer",
+  ]);
+  assert.equal(summarizeLevelEvidence(currentRunRows).independentCorrectCount, 1);
 });
 
 test("F — Decision Engine cognitive advance keeps node and resets level stage", () => {

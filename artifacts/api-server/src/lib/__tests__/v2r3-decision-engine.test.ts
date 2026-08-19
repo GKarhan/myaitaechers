@@ -620,6 +620,57 @@ test("T45 — currentCognitiveLevel and targetCognitiveLevel populated when path
   assert.equal(d.targetCognitiveLevel, "understand");
 });
 
+test("T46 — configured remember threshold advances only on 2/2 independent evidence", () => {
+  const remember = makeLevel({ id: 1, minimumIndependentEvidence: 2 });
+  const understand = makeCeilingLevel({ id: 2, minimumIndependentEvidence: 3 });
+  const path = [remember, understand];
+
+  const first = decideNextPedagogicalAction(makeInput({
+    cognitivePath: path,
+    activeCognitiveLevelRow: remember,
+    activeCognitiveLevelId: remember.id,
+    levelEvidenceSummary: EMPTY_EVIDENCE,
+  }));
+  assert.equal(first.metaAction, "CONTINUE_COGNITIVE_LEVEL");
+
+  const second = decideNextPedagogicalAction(makeInput({
+    cognitivePath: path,
+    activeCognitiveLevelRow: remember,
+    activeCognitiveLevelId: remember.id,
+    levelEvidenceSummary: {
+      independentCorrectCount: 1,
+      totalCorrectCount: 1,
+      bestQuality: "STRONG",
+    },
+  }));
+  assert.equal(second.metaAction, "ADVANCE_COGNITIVE_LEVEL");
+  assert.equal(second.newActiveCognitiveLevelId, understand.id);
+});
+
+test("T47 — configured target-ceiling threshold completes only on 3/3 independent evidence", () => {
+  const understand = makeCeilingLevel({
+    id: 2,
+    sequence: 1,
+    minimumIndependentEvidence: 3,
+  });
+  const path = [understand];
+  const decideAtHistoricalCount = (independentCorrectCount: number) =>
+    decideNextPedagogicalAction(makeInput({
+      cognitivePath: path,
+      activeCognitiveLevelRow: understand,
+      activeCognitiveLevelId: understand.id,
+      levelEvidenceSummary: {
+        independentCorrectCount,
+        totalCorrectCount: independentCorrectCount,
+        bestQuality: independentCorrectCount ? "STRONG" : null,
+      },
+    }));
+
+  assert.equal(decideAtHistoricalCount(0).metaAction, "CONTINUE_COGNITIVE_LEVEL");
+  assert.equal(decideAtHistoricalCount(1).metaAction, "CONTINUE_COGNITIVE_LEVEL");
+  assert.equal(decideAtHistoricalCount(2).metaAction, "COMPLETE_NODE");
+});
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 let passed = 0;

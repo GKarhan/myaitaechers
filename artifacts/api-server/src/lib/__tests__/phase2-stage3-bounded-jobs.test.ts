@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import {
+  assertFeedbackConsistentWithServerAction,
   assertFeedbackMatchesAuthority,
   assertFeedbackOnly,
   assertFeedbackDoesNotRevealHiddenContent,
+  assertTheoryOnly,
   phase2EvaluationResultSchema,
   phase2FeedbackResultSchema,
   phase2TaskCandidateSchema,
@@ -202,4 +204,24 @@ test("Q — partial results reject absolute correct or incorrect claims from FEE
   ));
 });
 
-console.log(`\n${passed}/18 Stage 3 bounded-job checks passed.\n`);
+test("R — completed-node feedback rejects an unpersisted Armenian learner directive even with a stale task mirror", () => {
+  assert.throws(() => assertFeedbackConsistentWithServerAction(
+    { student_message: "Հիմա ավելի մանրամասն նկարագրիր՝ ինչպես է տեղի ունենում շարժումը։" },
+    { serverAction: "COMPLETE_MICRONODE", hasActiveTask: true },
+  ));
+});
+
+test("S — active-task remediation still permits retry guidance", () => {
+  assert.doesNotThrow(() => assertFeedbackConsistentWithServerAction(
+    { student_message: "Փորձիր նորից պատասխանել՝ օգտագործելով այս հուշումը։" },
+    { serverAction: "REMEDIATE", hasActiveTask: true },
+  ));
+});
+
+test("T — THEORY rejects leading Latin and Armenian option fragments", () => {
+  assert.throws(() => assertTheoryOnly({ student_message: "Բ) Միայնակ տարբերակ" }));
+  assert.throws(() => assertTheoryOnly({ student_message: "A) Standalone option" }));
+  assert.throws(() => assertTheoryOnly({ student_message: "Ա. Տարբերակ" }));
+});
+
+console.log(`\n${passed}/21 Stage 3 bounded-job checks passed.\n`);

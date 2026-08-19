@@ -1,0 +1,955 @@
+STAGE 5.2 — FIX CONFIRMED LIVE-RUNTIME DEFECTS
+FRESH-RUN EVIDENCE BOUNDARY + ACTION-AWARE FEEDBACK + THEORY OUTPUT GUARD
+
+This task is authorized for IMPLEMENTATION.
+
+The previous READ-ONLY forensic audit of session 51 / node 2107 is accepted
+as the factual basis for this task.
+
+Implement ONLY the three confirmed defects from that audit.
+
+Do NOT redesign the pedagogical policy.
+Do NOT change Cognitive Path thresholds.
+Do NOT change the meaning of evidence quality.
+Do NOT change the Decision Engine taxonomy.
+Do NOT change Stage 3 bounded-job architecture.
+Do NOT weaken Stage 4 / 4.1 learner/evaluator content boundaries.
+Do NOT start Stage 6.
+Do NOT rewrite historical evidence.
+Do NOT delete durable mastery/evidence data merely to make tests pass.
+Do NOT mutate historical session 51 as part of implementation verification.
+
+The three confirmed defects are:
+
+1. Historical evidence contaminates a fresh learning run.
+2. FEEDBACK can request new learner work after COMPLETE_NODE /
+   COMPLETE_MICRONODE without an active task.
+3. bounded THEORY can accept a standalone answer-option fragment such as
+   "Բ) ..." during automatic continuation.
+
+==================================================
+0. FIRST — VERIFY CURRENT CODE, DO NOT ASSUME
+==================================================
+
+Before editing:
+
+Inspect the current implementation and verify the exact current owners of:
+
+- start-fresh / reset behavior
+- evidence-event persistence
+- historical evidence lookup used by Phase 2 progression
+- summarizeLevelEvidence()
+- coordinatePedagogicalDecision()
+- deriveProgressionPlan()
+- derivePhase2ServerAction()
+- advanceNodeInSession()
+- bounded FEEDBACK generation and validation
+- bounded THEORY generation and assertTheoryOnly()
+- runPhase2Continuation()
+- source exercise activation/delivery
+- generated task activation
+- Stage 5 automatic continuation
+
+Also inspect the relevant tests from Stages 0–5.1.
+
+Report the exact pre-change architecture briefly.
+
+Then implement the smallest safe fix.
+
+STOP and report BLOCKED if fixing any of these requires:
+
+- a DB migration,
+- deleting durable evidence/mastery,
+- changing Cognitive Path policy,
+- changing evidence semantics,
+- redesigning Stage 3 bounded jobs,
+- or weakening Stage 4 safety boundaries.
+
+Otherwise proceed directly.
+
+==================================================
+1. DEFECT A — FRESH-RUN EVIDENCE CONTAMINATION
+==================================================
+
+CONFIRMED LIVE BUG:
+
+start-fresh cleared:
+
+- chat messages
+- active task
+- active cognitive level
+- session counters
+- teaching stage
+
+but preserved durable evidence_events.
+
+The Phase-2 evidence-summary query later counted historical evidence using
+insufficient scope.
+
+In the audited session:
+
+remember required 2 independent evidence events.
+
+The fresh run contributed only:
+
+1 qualifying live answer
+
+but old qualifying session evidence was counted too.
+
+Therefore the system advanced even though the fresh run itself was only:
+
+1 / 2
+
+Likewise:
+
+understand required 3 independent evidence events.
+
+The fresh run contributed only:
+
+1 qualifying live constructed response
+
+but two old qualifying events were counted.
+
+Therefore COMPLETE_NODE occurred at what should have been:
+
+1 / 3
+
+This must be fixed.
+
+==================================================
+2. REQUIRED FRESH-RUN EVIDENCE RULE
+==================================================
+
+Durable evidence may remain stored.
+
+DO NOT delete historical evidence merely because start-fresh is used.
+
+Instead, progression for the CURRENT learning run must count only evidence
+that belongs to the authoritative current run/node boundary.
+
+The implementation must determine the smallest reliable existing boundary.
+
+Audit available fields such as:
+
+- lesson_session_id
+- node / microNode identity
+- session started_at
+- node-start boundary if persisted
+- evidence created_at
+- evidence metadata nodeId
+- any existing run/reset boundary already available
+
+Use existing authoritative state where possible.
+
+Do NOT invent an unreliable heuristic.
+
+Required semantic invariant:
+
+DURABLE EVIDENCE
+    may survive reset
+
+but
+
+CURRENT COGNITIVE PATH PROGRESSION
+    must count only qualifying evidence belonging to the current active
+    learning run and current MicroNode.
+
+At minimum, evidence from:
+
+- a previous start-fresh run,
+- another MicroNode,
+- another cognitive level,
+
+must not incorrectly satisfy the current level threshold.
+
+==================================================
+3. DO NOT CHANGE COGNITIVE PATH POLICY
+==================================================
+
+This task does NOT authorize changing configured thresholds.
+
+For node 2107 the audited configuration is:
+
+remember
+minimumIndependentEvidence = 2
+
+understand
+minimumIndependentEvidence = 3
+target ceiling = true
+
+Preserve those values.
+
+More generally:
+
+minimumIndependentEvidence remains configuration-driven.
+
+Do NOT globally hard-code "2 exercises per Bloom level".
+
+Do NOT change 3 to 2 for understand.
+
+Do NOT introduce a new universal threshold.
+
+The correct behavior is:
+
+CURRENT RUN qualifying evidence
+→ compare against existing configured minimumIndependentEvidence.
+
+==================================================
+4. REQUIRED CLEAN-RUN BEHAVIOR
+==================================================
+
+For the audited configuration:
+
+REMEMBER
+
+fresh run
+→ first qualifying correct independent evidence
+→ count = 1 / 2
+→ MUST NOT ADVANCE
+
+another qualifying independent evidence
+→ count = 2 / 2
+→ Decision Engine may advance according to existing policy
+
+UNDERSTAND
+
+fresh run at understand
+→ first qualifying evidence
+→ 1 / 3
+→ MUST NOT COMPLETE
+
+second qualifying evidence
+→ 2 / 3
+→ MUST NOT COMPLETE
+
+third qualifying evidence
+→ 3 / 3
+→ Decision Engine may COMPLETE_NODE according to existing policy
+
+Do not bypass remediation/help/evidence-quality requirements.
+
+==================================================
+5. WRONG ANSWERS MUST NOT COUNT
+==================================================
+
+Preserve the current evidence qualification semantics.
+
+An incorrect answer must not become qualifying evidence merely because a
+fresh-run boundary was introduced.
+
+For example:
+
+remember threshold = 2
+
+wrong answer
+→ 0 / 2
+
+then correct qualifying answer
+→ 1 / 2
+
+NOT:
+
+2 / 2
+
+Retries must continue to obey the current independence/help/evidence rules.
+
+==================================================
+6. NODE ISOLATION
+==================================================
+
+Evidence from another MicroNode must never satisfy the current MicroNode's
+Cognitive Path threshold.
+
+Add explicit regression coverage for this.
+
+If the current evidence schema stores node identity in metadata rather than
+a dedicated column, use the safest existing authoritative representation.
+
+Do not migrate the DB unless a genuine exact blocker is discovered.
+
+==================================================
+7. DEFECT B — FEEDBACK INVENTS NEW WORK AFTER COMPLETION
+==================================================
+
+CONFIRMED LIVE BUG:
+
+The Decision Engine produced:
+
+COMPLETE_NODE
+
+and the server action was:
+
+COMPLETE_MICRONODE
+
+but learner-facing FEEDBACK still said effectively:
+
+"Հիմա ավելի մանրամասն նկարագրիր..."
+
+This is a new learner-answerable directive.
+
+No task was activated or persisted.
+
+The node was already complete.
+
+This is forbidden.
+
+==================================================
+8. ACTION-AWARE FEEDBACK VALIDATION
+==================================================
+
+FEEDBACK already receives authoritative server information including:
+
+- authoritative evaluation
+- Decision Engine action
+- remediation action
+- server action
+
+Use that information.
+
+Add a final server-side action-aware validation layer.
+
+FEEDBACK must be consistent with the authoritative server action.
+
+For:
+
+COMPLETE_NODE
+or
+COMPLETE_MICRONODE
+
+FEEDBACK may:
+
+- acknowledge correctness,
+- briefly explain why,
+- summarize the demonstrated concept,
+- positively close the MicroNode.
+
+FEEDBACK must NOT:
+
+- ask another question,
+- ask the learner to explain more,
+- ask the learner to try again,
+- ask for another example,
+- request another response,
+- say "now answer...",
+- say "now describe...",
+- say "try...",
+- say "let's continue with another exercise...",
+  unless a real server-owned task has actually been activated and persisted.
+
+General invariant:
+
+NO ACTIVE TASK
++
+SERVER ACTION DOES NOT REQUIRE LEARNER ANSWER
+→ FEEDBACK MUST NOT CREATE LEARNER WORK.
+
+==================================================
+9. FEEDBACK MUST NOT OWN NEXT ACTION
+==================================================
+
+Preserve Stage 3/5 authority:
+
+FEEDBACK is learner-facing wording only.
+
+It cannot decide:
+
+- next task
+- next exercise
+- next cognitive level
+- completion
+- remediation state
+- source exercise identity
+- generated task activation
+- phase transition
+
+Those remain server-owned.
+
+If the bounded FEEDBACK model produces contradictory/task-like output:
+
+→ reject it
+→ use safe server-controlled fallback wording
+→ do NOT fabricate a task
+→ do NOT silently activate anything
+→ preserve authoritative state.
+
+==================================================
+10. WRONG-ANSWER FEEDBACK REMAINS ALLOWED
+==================================================
+
+Do not over-block legitimate remediation.
+
+If the learner answered incorrectly and the SAME real task remains active,
+FEEDBACK may legitimately say things such as:
+
+- rethink the same concept,
+- review a clue,
+- try the currently active task again,
+
+when consistent with the authoritative remediation/server action.
+
+The validator must distinguish:
+
+A. legitimate guidance tied to an already persisted active task
+
+from
+
+B. invented new learner work with no persisted task.
+
+Do not solve this by banning all imperative Armenian wording globally.
+
+==================================================
+11. DEFECT C — THEORY STANDALONE OPTION FRAGMENT
+==================================================
+
+CONFIRMED LIVE BUG:
+
+After a correct source answer, automatic continuation persisted an assistant
+row equivalent to:
+
+"Բ) ..."
+
+between FEEDBACK and the next source exercise.
+
+The forensic trace supports this sequence:
+
+FEEDBACK
+→ bounded THEORY continuation
+→ standalone option fragment
+→ next source task
+
+This was not intended source rendering.
+
+The current THEORY validation catches visible option markers after a newline,
+but misses a marker at the beginning of the response.
+
+Fix this boundary.
+
+==================================================
+12. THEORY-ONLY VALIDATION
+==================================================
+
+Strengthen assertTheoryOnly() or the authoritative equivalent.
+
+THEORY output must reject answer-option/task fragments appearing:
+
+- at the beginning of the output,
+- after a newline,
+- or in other obvious learner-task option-list positions already covered by
+  the current contract.
+
+At minimum reject standalone leading patterns equivalent to:
+
+A)
+B)
+C)
+D)
+
+and Armenian equivalents such as:
+
+Ա)
+Բ)
+Գ)
+Դ)
+
+including supported punctuation variants already used by the application.
+
+Do not rely only on:
+
+newline + option marker.
+
+The beginning of the string must also be guarded.
+
+==================================================
+13. THEORY MUST REMAIN THEORY ONLY
+==================================================
+
+Preserve the bounded THEORY contract.
+
+THEORY may:
+
+- explain,
+- illustrate,
+- clarify,
+- provide conceptual grounding.
+
+THEORY must NOT:
+
+- expose an answer key,
+- echo a standalone correct option as a teaching turn,
+- create a learner task,
+- contain multiple-choice answer options as a task,
+- activate a source exercise,
+- decide the next exercise,
+- decide progression.
+
+Task selection remains server-owned.
+
+==================================================
+14. INVALID THEORY OUTPUT
+==================================================
+
+If bounded THEORY fails validation:
+
+Do NOT persist the invalid fragment.
+
+Do NOT show it to the learner.
+
+Do NOT treat it as a task.
+
+Do NOT use the old giant structured Phase-2 contract as fallback.
+
+Use the existing bounded-job safe-failure semantics.
+
+If a safe bounded retry already exists and is within current architecture,
+preserve it.
+
+Do not introduce uncontrolled retry loops.
+
+==================================================
+15. AUTOMATIC CONTINUATION MUST REMAIN INTACT
+==================================================
+
+Do not regress Stage 5.
+
+The desired learner experience remains:
+
+learner answer
+→ authoritative evaluation
+→ Decision Engine
+→ FEEDBACK
+→ server-owned continuation
+→ THEORY if required
+→ server-owned TASK selection/delivery
+→ stop when real learner input is required
+
+No artificial:
+
+"օկ"
+"շարունակել"
+"հաջորդը"
+
+should be required between deterministic server-owned actions.
+
+==================================================
+16. SOURCE/TASK SAFETY MUST REMAIN INTACT
+==================================================
+
+Preserve Stage 4 / 4.1 boundaries.
+
+Do not expose:
+
+- correctAnswer
+- successCriteria
+- expected-answer rubric
+- evaluator-only content
+
+to learner-visible THEORY, TASK, FEEDBACK, HELP, or student APIs.
+
+Do not weaken learner-safe exercise resolution.
+
+Do not rewrite exercise content as part of this task.
+
+==================================================
+17. REQUIRED TEST A — START-FRESH ISOLATION
+==================================================
+
+Create a regression proving:
+
+old qualifying evidence exists for reused session
+→ start-fresh
+→ old evidence remains stored
+→ new run begins
+→ progression summary excludes old evidence
+
+Verify BOTH:
+
+durable evidence preserved
+
+AND
+
+current-run threshold count clean.
+
+==================================================
+18. REQUIRED TEST B — REMEMBER 1/2
+==================================================
+
+For node 2107-equivalent configuration:
+
+minimumIndependentEvidence = 2
+
+fresh run:
+
+one qualifying correct answer
+→ evidence count = 1
+→ no ADVANCE_COGNITIVE_LEVEL
+→ no COMPLETE_NODE
+→ learner remains in a valid answerable continuation state.
+
+==================================================
+19. REQUIRED TEST C — REMEMBER 2/2
+==================================================
+
+Second qualifying independent evidence:
+
+→ count = 2 / 2
+→ existing Decision Engine may advance to understand.
+
+Do not hard-code the decision outside the existing engine.
+
+==================================================
+20. REQUIRED TEST D — UNDERSTAND 1/3 AND 2/3
+==================================================
+
+At target ceiling understand with threshold 3:
+
+first qualifying evidence
+→ 1 / 3
+→ no COMPLETE_NODE
+
+second qualifying evidence
+→ 2 / 3
+→ no COMPLETE_NODE
+
+==================================================
+21. REQUIRED TEST E — UNDERSTAND 3/3
+==================================================
+
+Third qualifying independent evidence:
+
+→ 3 / 3
+→ existing Decision Engine may COMPLETE_NODE.
+
+Verify completion occurs only at the configured threshold.
+
+==================================================
+22. REQUIRED TEST F — WRONG ANSWER DOES NOT COUNT
+==================================================
+
+wrong answer
+→ no qualifying evidence
+
+then correct answer
+→ only one qualifying evidence
+
+Threshold must not be satisfied by attempt count alone.
+
+==================================================
+23. REQUIRED TEST G — OTHER NODE EVIDENCE
+==================================================
+
+Evidence belonging to another MicroNode in the same reused session:
+
+→ must not count toward current MicroNode progression.
+
+==================================================
+24. REQUIRED TEST H — COMPLETE FEEDBACK CANNOT CREATE TASK
+==================================================
+
+Decision Engine:
+
+COMPLETE_NODE
+
+Server action:
+
+COMPLETE_MICRONODE
+
+AI FEEDBACK candidate contains an Armenian directive equivalent to:
+
+"Հիմա ավելի մանրամասն նկարագրիր..."
+
+Expected:
+
+→ candidate rejected
+→ safe server-controlled FEEDBACK used
+→ no new active task
+→ no fake question
+→ completion remains authoritative.
+
+==================================================
+25. REQUIRED TEST I — ACTIVE-TASK REMEDIATION STILL WORKS
+==================================================
+
+Incorrect answer
++
+same task remains active
++
+authoritative remediation requires retry/guidance
+
+Expected:
+
+→ legitimate remediation FEEDBACK is allowed
+→ learner remains with the real persisted task
+→ no false positive from the new action-aware guard.
+
+==================================================
+26. REQUIRED TEST J — THEORY LEADING OPTION REJECTED
+==================================================
+
+Bounded THEORY candidate starts with:
+
+"Բ) ..."
+
+Expected:
+
+→ assertTheoryOnly fails
+→ invalid THEORY is not persisted
+→ invalid THEORY is not returned to learner.
+
+Also test:
+
+"A) ..."
+"Ա) ..."
+and at least one supported punctuation variant.
+
+==================================================
+27. REQUIRED TEST K — CONTINUATION HAS NO OPTION FRAGMENT
+==================================================
+
+Correct source answer
+→ FEEDBACK
+→ automatic continuation
+→ THEORY if required
+→ next task
+
+Assert:
+
+no standalone answer-option assistant row exists between FEEDBACK and the
+next real task.
+
+==================================================
+28. REQUIRED TEST L — STAGE 5 FLOW
+==================================================
+
+Verify automatic continuation still works:
+
+correct answer
+→ FEEDBACK
+→ server continuation
+→ next real learner-answerable task
+
+without requiring artificial acknowledgement.
+
+==================================================
+29. REQUIRED TEST M — CONTENT BOUNDARY
+==================================================
+
+Re-run Stage 4 / 4.1 safety tests.
+
+Prove the new changes do not expose:
+
+- correctAnswer
+- successCriteria
+- rubric/expected-answer content
+
+through THEORY, FEEDBACK, HELP, or task delivery.
+
+==================================================
+30. DO NOT USE SESSION 51 FOR MUTATING VERIFICATION
+==================================================
+
+Session 51 is forensic evidence.
+
+Do NOT mutate it during this task.
+
+Do NOT delete its evidence.
+
+Do NOT reset it.
+
+Do NOT send provider-backed learner turns into it.
+
+For live verification:
+
+create/use a fresh safe test session/account with the required enrollment.
+
+If live verification is blocked by unrelated access control:
+
+report the blocker.
+
+Do not bypass authorization merely to make the test pass.
+
+==================================================
+31. VERIFICATION MATRIX
+==================================================
+
+Run:
+
+- new Stage 5.2 focused tests
+- Stage 0 baseline
+- Stage 1 orchestration tests
+- Stage 2 server-action tests
+- Stage 3 bounded-job tests
+- Stage 4 content-boundary tests
+- Stage 4.1 delivery-eligibility tests
+- Stage 5 continuation tests
+- Stage 5.1 tests
+- deterministic source evaluation tests
+- Decision Engine / Cognitive Path tests
+- source-answer contract tests
+- API typecheck
+- frontend typecheck if affected
+- git diff --check
+
+Restart only the affected workflow after tests pass.
+
+Inspect fresh startup/runtime logs.
+
+==================================================
+32. LIVE ACCEPTANCE TEST
+==================================================
+
+If a safe fresh playable student session is available, verify:
+
+A. REMEMBER threshold behavior
+
+fresh run
+→ first qualifying correct evidence
+→ remains at remember if threshold = 2
+
+→ second qualifying independent evidence
+→ may advance
+
+B. UNDERSTAND threshold behavior
+
+first qualifying evidence
+→ remains understand
+
+second qualifying evidence
+→ remains understand
+
+third qualifying evidence
+→ may complete
+
+C. WRONG ANSWER
+
+wrong objective answer
+→ correctness says incorrect
+→ no qualifying evidence
+→ remediation leaves a real task
+
+D. FEEDBACK
+
+completion FEEDBACK
+→ no request for extra unpersisted learner work
+
+E. THEORY
+
+automatic continuation
+→ no standalone "Բ) ..." / answer-option fragment
+
+F. UX
+
+no artificial "օկ" required between server-owned actions.
+
+Do not expose evaluator-only content during testing.
+
+==================================================
+33. FINAL REPORT
+==================================================
+
+Return exactly these sections:
+
+A. PRE-CHANGE ROOT CAUSES
+
+For each of the 3 bugs:
+- exact owner
+- exact failure mechanism
+- affected files/functions
+
+B. FRESH-RUN EVIDENCE BOUNDARY
+
+Explain:
+- what boundary is now authoritative
+- why durable evidence remains preserved
+- why historical evidence can no longer satisfy the new run
+- how node isolation is enforced
+
+C. COGNITIVE PATH POLICY
+
+Confirm explicitly:
+- thresholds were NOT changed
+- evidence qualification semantics were NOT changed
+- Decision Engine taxonomy was NOT changed
+
+D. FEEDBACK ACTION-AWARE GUARD
+
+Explain:
+- how COMPLETE_NODE / COMPLETE_MICRONODE prevents new learner work
+- how active-task remediation remains allowed
+- fallback behavior
+
+E. THEORY VALIDATION FIX
+
+Explain:
+- how leading option fragments are rejected
+- what happens to invalid THEORY output
+- why automatic continuation still works
+
+F. FILES CHANGED
+
+Exact file list.
+
+G. TEST RESULTS
+
+Exact suites and pass/fail counts.
+
+H. LIVE VERIFICATION
+
+Report:
+- fresh session used or not
+- exact observed threshold behavior
+- wrong-answer behavior
+- FEEDBACK completion behavior
+- THEORY continuation behavior
+- any blocker
+
+I. SESSION 51 SAFETY
+
+Explicitly confirm:
+- session 51 not mutated
+- historical evidence not deleted
+- no provider turn sent to session 51
+
+J. REGRESSION STATUS
+
+Stage 0:
+Stage 1:
+Stage 2:
+Stage 3:
+Stage 4:
+Stage 4.1:
+Stage 5:
+Stage 5.1:
+Stage 5.2:
+
+K. FINAL VERDICT
+
+FRESH-RUN EVIDENCE ISOLATION: PASS / FAIL
+FEEDBACK ACTION CONSISTENCY: PASS / FAIL
+THEORY OPTION-FRAGMENT GUARD: PASS / FAIL
+AUTOMATIC CONTINUATION: PASS / FAIL
+CONTENT BOUNDARY: PASS / FAIL
+
+STAGE-6 READINESS: READY / NOT READY
+
+RESULT: PASS / PARTIAL / BLOCKED
+
+==================================================
+34. STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED before implementing a speculative workaround if:
+
+- no reliable existing fresh-run boundary can be established,
+- DB migration becomes genuinely necessary,
+- fixing the issue requires deleting durable evidence,
+- Cognitive Path semantics would have to change,
+- Decision Engine behavior would have to be redesigned,
+- Stage 3 bounded-job architecture would need redesign,
+- Stage 4 content safety would need weakening.
+
+Do not guess around these conditions.
+
+Do not start Stage 6.
+
+Proceed now.
+Do not ask for another approval unless a NEW stop condition is reached.

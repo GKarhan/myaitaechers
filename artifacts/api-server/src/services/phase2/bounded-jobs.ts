@@ -82,9 +82,19 @@ export type Phase2FeedbackResult = z.infer<typeof phase2FeedbackResultSchema>;
 
 export type FeedbackAuthorityStatus = "CORRECT" | "INCORRECT" | "PARTIALLY_CORRECT";
 
-const VISIBLE_OPTION_MARKER = /\n\s*[A-ZԱ-Ֆ]\s*[.)]/u;
+const VISIBLE_OPTION_MARKER = /(?:^|\n)\s*[A-ZԱ-Ֆ]\s*[.)]/u;
 const TASK_DIRECTIVE =
   /(?:^|[.!։]\s+)(?:խնդրում եմ\s+)?(?:ընտր(?:իր|եք)|լրաց(?:րու|րեք)|հաշվ(?:իր|եք)|գր(?:իր|եք)|գտ(?:իր|եք)|լուծ(?:իր|եք)|պատասխանի(?:ր|րեք)|նշ(?:իր|եք)|համադր(?:իր|եք)|ապացուց(?:իր|եք)|կատար(?:իր|եք)|նկարագր(?:իր|եք)|բացատր(?:իր|եք))/imu;
+const LEARNER_WORK_DIRECTIVE =
+  /(?:փորձ(?:իր|եք)|նկարագր(?:իր|եք)|բացատր(?:իր|եք)|պատասխանի(?:ր|րեք)|նշ(?:իր|եք)|գր(?:իր|եք)|լուծ(?:իր|եք)|ներկայացր(?:ու|եք)|բեր(?:իր|եք)?\s+օրինակ|աս(?:ա|եք)|ցույց\s+տուր)/iu;
+
+const FEEDBACK_ACTIONS_WITHOUT_LEARNER_INPUT = new Set([
+  "DELIVER_THEORY",
+  "DELIVER_SOURCE_EXERCISE",
+  "GENERATE_TASK",
+  "ADVANCE_COGNITIVE_LEVEL",
+  "COMPLETE_MICRONODE",
+]);
 
 function hasVisibleTaskStem(text: string): boolean {
   return /[?՞]/u.test(text) || TASK_DIRECTIVE.test(text);
@@ -155,6 +165,30 @@ export function assertFeedbackMatchesAuthority(
     )
   ) {
     throw new Error("phase2_feedback_result contradicts authoritative PARTIALLY_CORRECT status");
+  }
+}
+
+/**
+ * FEEDBACK describes an action chosen by the server; it cannot manufacture
+ * learner work when no real answerable task exists. Remediation that preserves
+ * an active task remains intentionally allowed.
+ */
+export function assertFeedbackConsistentWithServerAction(
+  result: Phase2FeedbackResult,
+  input: { serverAction: string; hasActiveTask: boolean },
+): void {
+  // Completion is authoritative even while the request-local mirror has not
+  // yet observed the session's cleared task state.
+  const completionEndsLearnerWork = input.serverAction === "COMPLETE_MICRONODE";
+  if (
+    (completionEndsLearnerWork ||
+      (!input.hasActiveTask &&
+        FEEDBACK_ACTIONS_WITHOUT_LEARNER_INPUT.has(input.serverAction))) &&
+    LEARNER_WORK_DIRECTIVE.test(result.student_message)
+  ) {
+    throw new Error(
+      "phase2_feedback_result attempted learner work without an active task",
+    );
   }
 }
 

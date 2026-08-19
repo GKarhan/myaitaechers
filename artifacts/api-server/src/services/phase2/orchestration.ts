@@ -728,6 +728,7 @@ export type EvidenceSummaryRow = {
   helpCount: number | null;
   assistanceLevel: string | null;
   metadata: unknown;
+  createdAt?: Date | null;
 };
 
 const QUALITY_RANK: Record<string, number> = {
@@ -737,6 +738,33 @@ const QUALITY_RANK: Record<string, number> = {
   STRONG: 4,
   CONCLUSIVE: 5,
 };
+
+/**
+ * Durable evidence can outlive a start-fresh reset, but it must never satisfy
+ * the current run's Cognitive Path threshold. Node identity is stored in the
+ * event metadata; nodeStartedAt is the authoritative existing boundary for the
+ * active node within this session.
+ */
+export function filterEvidenceForCurrentRunNode<T extends EvidenceSummaryRow>(
+  rows: readonly T[],
+  input: {
+    currentNodeId: number;
+    nodeStartedAt: Date | null;
+    sessionStartedAt: Date | null;
+  },
+): T[] {
+  const boundary = input.nodeStartedAt ?? input.sessionStartedAt;
+  return rows.filter((row) => {
+    const metadata = row.metadata as { nodeId?: number | string } | null;
+    if (String(metadata?.nodeId ?? "") !== String(input.currentNodeId)) {
+      return false;
+    }
+    if (boundary !== null && (row.createdAt === null || row.createdAt === undefined)) {
+      return false;
+    }
+    return boundary === null || row.createdAt!.getTime() >= boundary.getTime();
+  });
+}
 
 /**
  * Reduces already-fetched evidence rows to the Decision Engine's historical
@@ -749,6 +777,7 @@ export function summarizeLevelEvidence(
   const independentRows = rows.filter((row) => {
     const metadata = row.metadata as { evidence_quality?: string } | null;
     return (
+      row.wasCorrect === true &&
       (row.helpCount ?? 0) <= 1 &&
       (row.assistanceLevel === "none" || row.assistanceLevel === "light") &&
       QUALITY_RANK[metadata?.evidence_quality ?? "NONE"] >= 3
