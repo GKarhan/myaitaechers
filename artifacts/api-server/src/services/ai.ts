@@ -787,6 +787,19 @@ function validateMicroCheckInteractionType(
   }
 
   const message = response.student_message;
+  if (interactionType === "constructed_response") {
+    const hasQuestionOrTaskMarker =
+      /[?՞]/u.test(message) ||
+      /(?:\b(?:explain|describe|compare|identify|state|write|answer)\b|բացատր(?:իր|ել)|նկարագր(?:իր|ել)|համեմատ(?:իր|ել)|նշ(?:իր|ել)|գր(?:իր|ել)|ներկայացր(?:ու|նել)|պատասխան(?:իր|ել))/iu.test(
+        message
+      );
+    if (!hasQuestionOrTaskMarker) {
+      throw new Error(
+        "MICRO_CHECK constructed_response requires a visible question or answerable task"
+      );
+    }
+  }
+
   if (interactionType === "multiple_choice") {
     const options = response.options;
     if (!options || options.length < 2) {

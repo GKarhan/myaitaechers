@@ -1829,9 +1829,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const currentStage = session.nodeTeachingStage;
       let newTeachingStage: string | null = null;
 
-      if (currentStage === "THEORY") {
-        newTeachingStage = "MICRO_CHECK";
-      } else if (currentStage === "MICRO_CHECK") {
+      if (currentStage === "MICRO_CHECK") {
         if (classExercises.length > 0) {
           newTeachingStage = "EXERCISE";
         }

@@ -21,6 +21,14 @@ Fields reset to null/0/"none" whenever `advanceNodeInSession()` fires:
 - `activeHelpCount` — increments each help call; capped at 4 on `nextHelpLevel`
 - `activeAssistanceLevel` — `'none'` | `'light'` | `'moderate'` | `'guided'` | `'revealed'`
 
+## Micro-check activation invariant
+
+Only a response explicitly marked as a micro-check may create a new active micro-check state. Feedback-only evaluated answers must leave the session ready for a later teaching/check response, rather than manufacturing an active task from the previous stage.
+
+**Why:** A generic THEORY-to-MICRO_CHECK transition after feedback can persist `activeTaskProvenance='micro_check'` without a learner-visible question, leaving the learner unable to answer the claimed active task.
+
+**How to apply:** Use the anticipatory Phase 2 path (`is_micro_check=true`) as the sole activation authority. Validate every marked micro-check has a visible answerable task; objective checks need visible choices, while constructed responses need a clear question or task marker. Do not let evaluated FEEDBACK create a task.
+
 ## Evidence Cap Rule
 
 MICRO_CHECK-sourced evidence (`activeTaskProvenance === 'micro_check'`) is capped at `assistanceLevel = 'moderate'` in the evidence write block — even if the student requested higher help.

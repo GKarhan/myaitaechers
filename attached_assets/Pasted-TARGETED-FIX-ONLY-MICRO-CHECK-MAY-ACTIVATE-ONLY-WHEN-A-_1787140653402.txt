@@ -1,0 +1,284 @@
+TARGETED FIX ONLY — MICRO_CHECK MAY ACTIVATE ONLY WHEN A REAL TASK WAS DELIVERED
+
+GOAL
+
+Fix the confirmed state/content desynchronization.
+
+Observed runtime:
+
+AI returned:
+- teaching_mode = FEEDBACK
+- is_micro_check = false
+- visible learner-facing message = feedback only
+- no answerable question/task
+
+But backend persisted:
+
+nodeTeachingStage = MICRO_CHECK
+activeTaskProvenance = micro_check
+task = active
+
+Confirmed root cause:
+
+The generic evaluated-answer stage machine contains:
+
+if (currentStage === "THEORY") {
+  newTeachingStage = "MICRO_CHECK";
+}
+
+This creates a new active MICRO_CHECK solely from the old request-stage state,
+even when the current AI response did NOT deliver a micro-check.
+
+Fix ONLY this ownership problem and the directly related validation invariant.
+
+==================================================
+1. MICRO_CHECK ACTIVATION AUTHORITY
+==================================================
+
+For Phase-2 Cognitive Path teaching:
+
+A new MICRO_CHECK may become active only when the current response actually
+delivers a micro-check.
+
+Use the existing explicit signal:
+
+aiResult.is_micro_check === true
+
+and the existing anticipatory THEORY → MICRO_CHECK branch.
+
+Do NOT let the generic `wasEval` stage machine create MICRO_CHECK merely because:
+
+currentStage === "THEORY"
+
+Remove or guard that legacy transition so it cannot activate a task from a
+feedback-only response.
+
+==================================================
+2. FEEDBACK TURN BEHAVIOR
+==================================================
+
+For a valid evaluated answer where AI returns:
+
+teaching_mode = FEEDBACK
+is_micro_check = false
+
+the same response must remain feedback only.
+
+It must NOT:
+
+- create activeTaskProvenance = micro_check
+- set Stage = MICRO_CHECK
+- create activeObjectiveTaskPayload
+- set activeAttemptSequence for a new question
+
+If the Decision Engine says:
+
+CONTINUE_COGNITIVE_LEVEL
+
+the system should remain ready for the NEXT teaching/question turn, but no
+active answerable task exists until that next response actually delivers one.
+
+Use the smallest existing state representation consistent with the architecture.
+
+Do not invent a new stage unless necessary.
+
+==================================================
+3. EXISTING ANTICIPATORY MICRO_CHECK PATH
+==================================================
+
+Preserve the existing path that activates MICRO_CHECK when:
+
+- current stage is THEORY
+- current response actually has is_micro_check = true
+- current response contains the learner-answerable micro-check
+
+That path remains the sole owner of new micro-check activation.
+
+==================================================
+4. VISIBLE TASK VALIDATION
+==================================================
+
+Strengthen validation so EVERY response with:
+
+is_micro_check === true
+
+must contain a real learner-answerable task.
+
+This must apply regardless of teaching_mode.
+
+For multiple_choice:
+- existing visible options checks remain
+
+For true_false:
+- existing visible true/false checks remain
+
+For constructed_response:
+- require a real answerable question/task
+- a bare transition sentence such as:
+  "Հիմա փորձենք ավելի խորը հասկանալ այս երևույթը"
+  must fail validation
+
+Use the smallest deterministic rule practical.
+
+Do NOT build NLP-heavy parsing.
+
+At minimum, constructed_response must include a clear question/task marker,
+not merely a transition statement.
+
+==================================================
+5. REQUIRED INVARIANT
+==================================================
+
+After this fix, enforce:
+
+NO ACTIVE MICRO_CHECK WITHOUT A VISIBLE ANSWERABLE TASK.
+
+Equivalent invariant:
+
+Stage = MICRO_CHECK
+and/or
+activeTaskProvenance = micro_check
+
+may only exist if the learner has actually received the corresponding
+answerable question/task.
+
+==================================================
+6. CURRENT UNDERSTAND FLOW
+==================================================
+
+For the observed scenario:
+
+understand level
+student answer = correct
+Decision Engine = CONTINUE_COGNITIVE_LEVEL
+AI result = FEEDBACK
+is_micro_check = false
+
+Expected post-turn state:
+
+- same node
+- same cognitive level
+- no new active micro-check
+- no active objective payload
+- no active source exercise
+- wait for next assistant teaching/check turn
+
+Do not create a new question in the same feedback response unless the current
+teaching contract explicitly does so.
+
+==================================================
+7. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- Cognitive Path thresholds
+- Decision Engine rules
+- evidence/mastery
+- source-exercise activation/delivery
+- source-exercise deterministic correctness
+- exercise sequencing
+- AI-generated objective payload schema
+- mapping
+- teacher CRUD
+- frontend
+- DB schema
+- provider/model
+- Phase 1/3/4
+
+This task is ONLY:
+- MICRO_CHECK state ownership
+- visible-task validation
+
+==================================================
+8. STATIC TESTS
+==================================================
+
+CASE A
+
+old stage = THEORY
+wasEval = true
+AI:
+teaching_mode = FEEDBACK
+is_micro_check = false
+
+Expected:
+NO MICRO_CHECK activation
+NO active task
+
+CASE B
+
+old stage = THEORY
+AI:
+teaching_mode = TEACH
+is_micro_check = true
+valid multiple-choice question
+
+Expected:
+MICRO_CHECK activates
+
+CASE C
+
+AI:
+is_micro_check = true
+interaction_type = constructed_response
+student_message = transition sentence only, no answerable task
+
+Expected:
+validation REJECT
+
+CASE D
+
+AI:
+is_micro_check = true
+interaction_type = constructed_response
+student_message contains a real explicit question/task
+
+Expected:
+validation PASS
+
+CASE E
+
+Decision Engine = CONTINUE_COGNITIVE_LEVEL
+feedback-only response
+
+Expected:
+same cognitive level retained
+no active micro-check until subsequent valid task delivery
+
+==================================================
+9. TYPECHECK
+==================================================
+
+Run:
+- targeted teaching-cycle/state tests
+- API TypeScript check
+- git diff --check
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. FILES CHANGED
+
+B. OLD BUGGY TRANSITION
+
+C. NEW MICRO_CHECK ACTIVATION AUTHORITY
+
+D. FEEDBACK-ONLY STATE
+
+E. CONSTRUCTED-RESPONSE TASK VALIDATION
+
+F. REQUIRED INVARIANT
+
+G. STATIC CASES
+
+H. TYPECHECK
+
+I. UNCHANGED / OUT-OF-SCOPE
+
+J. RESULT
+
+PASS / PARTIAL / BLOCKED
+
+Do not broaden scope.

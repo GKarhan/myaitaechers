@@ -31,7 +31,7 @@
 - [Armenian "yev" connector codepoint](armenian-yev-connector.md) — Armenian "and" is U+0587 (single char), not Latin "yev"; COMPOUND_CONNECTORS already uses \u0587; test LOs must use \u0587 not "ev".
 - [Test isolation infrastructure](test-isolation-infra.md) — heliumdb_test + safety gate + fixture factory + S1–S7 safety tests; all 10 suites migrated; pg added to api-server devDeps; runId pattern for HTTP tests.
 - [Phase 2A R3 cognitive path](phase2a-r3-cognitive-path.md) — generateCognitivePath interface, route contracts, teacher UI state/handlers, test patterns, real-data pilot results (2–3 levels for Armenian grammar/physics nodes).
-- [Phase 2B Round 2 evidence model](phase2b-round2.md) — help endpoint contract, active-task tracking rules, evidence cap rule (MICRO_CHECK→MODERATE), help_events table, FK query pattern for test DB, Unicode-in-TSX rule.
+- [Phase 2B Round 2 evidence model](phase2b-round2.md) — active-task tracking and micro-check activation rules, help contract, evidence cap, test-DB FK query, and Unicode-in-TSX rule.
 - [V2-R3 Decision Engine](v2r3-decision-engine.md) — pure-function pedagogical decision engine; mapErrorFamilyToAction takes pre-increment step; revisitRequired gate bug fixed (quality=NONE must not block KN write).
 - [V2-R4A Learning Budget](v2r4a-budget.md) — session budget snapshot, active-time accounting (turn-based capped), budget-gate decision ordering, TIME≠FAILURE invariant, revisitReason typed enum.
 - [Source exercise activation](source-exercise-activation.md) — delivery and typed scoring use the persisted active lesson-exercise ID; model IDs are requests, not authority.
