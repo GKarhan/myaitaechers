@@ -112,13 +112,23 @@ test("T03 — answerStatus=OFF_TOPIC → NON_ANSWER", () => {
 });
 
 test("T04 — empty cognitivePath → NO_COGNITIVE_PATH", () => {
-  const d = decideNextPedagogicalAction(makeInput({
+  const noGrant = {
     cognitivePath: [],
     activeCognitiveLevelRow: null,
     activeCognitiveLevelId: null,
-  }));
+  };
+  const d = decideNextPedagogicalAction(makeInput(noGrant));
   assert.equal(d.metaAction, "NO_COGNITIVE_PATH");
   assert.equal(d.mayCompleteMicroNode, false);
+
+  const legacyGrant = decideNextPedagogicalAction(makeInput({
+    ...noGrant,
+    legacyCompletionAllowed: true,
+  }));
+  assert.equal(legacyGrant.metaAction, "COMPLETE_NODE");
+  assert.equal(legacyGrant.reasonCode, "LEGACY_COMPLETION_GATE_ALLOWED");
+  assert.equal(legacyGrant.mayCompleteMicroNode, true);
+  assert.equal(legacyGrant.mayWriteMastery, false);
 });
 
 test("T05 — activeCognitiveLevelRow=null → NO_COGNITIVE_PATH", () => {

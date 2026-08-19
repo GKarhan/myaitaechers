@@ -590,7 +590,7 @@ test("Fixture I — legacy VERIFIED stage cannot bypass a false Cognitive Path c
   );
   assert.match(
     phase2OrchestrationSource,
-    /const legacyCompletionGate =\s*!hasActiveCognitivePath/u,
+    /return\s*\(\s*!input\.hasActiveCognitivePath\s*&&/u,
   );
 });
 

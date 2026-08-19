@@ -127,6 +127,14 @@ export interface PedagogicalDecisionInput {
    * The AI model NEVER sets this.
    */
   localNodeBudgetExhausted: boolean;
+
+  /**
+   * Behavior-preserving legacy completion gate for nodes without a confirmed
+   * cognitive path. The route derives this from deterministic turn state; AI
+   * metadata never sets it. When true, the Decision Engine explicitly grants
+   * the legacy COMPLETE_NODE transition.
+   */
+  legacyCompletionAllowed?: boolean;
 }
 
 export type PedagogicalMetaAction =
@@ -417,6 +425,25 @@ export function decideNextPedagogicalAction(
 
   // ── Guard 2: no confirmed cognitive path ─────────────────────────────────
   if (cognitivePath.length === 0 || !activeCognitiveLevelRow) {
+    if (input.legacyCompletionAllowed === true) {
+      return {
+        metaAction:              "COMPLETE_NODE",
+        remediationAction:       null,
+        reasonCode:              "LEGACY_COMPLETION_GATE_ALLOWED",
+        currentCognitiveLevel:   null,
+        targetCognitiveLevel:    null,
+        newRemediationStep:      remediationStep,
+        newActiveCognitiveLevelId: null,
+        levelConfirmed:          false,
+        confirmedLevel:          null,
+        targetReached:           false,
+        revisitRequired:         false,
+        revisitReason:           null,
+        preserveActiveTask:      false,
+        mayCompleteMicroNode:    true,
+        mayWriteMastery:         false,
+      };
+    }
     return {
       metaAction:              "NO_COGNITIVE_PATH",
       remediationAction:       null,

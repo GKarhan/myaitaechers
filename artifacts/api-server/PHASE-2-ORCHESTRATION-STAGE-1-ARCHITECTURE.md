@@ -1,9 +1,11 @@
-# Phase 2 Orchestration Refactor — Stage 1 Architecture
+# Phase 2 Orchestration Refactor — Stages 1–2 Architecture
 
-Status: Stage 1 boundary extraction complete. Expected behavior change: **none**.
+Status: Stage 1 boundary extraction and Stage 2 server-owned action plan complete.
 
-This document describes the runtime and ownership after the behavior-preserving
-Stage 1 extraction. It does not introduce the target Stage 2 teaching flow.
+Stage 1 was behavior-preserving. Stage 2 intentionally changes one ownership
+boundary: the backend now selects the current Phase 2 workflow action before
+the bounded structured AI call. It does not split theory, task, and feedback
+generation into separate provider contracts.
 
 ## A. Pre-change Phase 2 ownership map
 
@@ -222,10 +224,197 @@ Provider/model-backed generation tests were not run. The Stage 0 provider-free
 HTTP harness intercepted the OpenAI-compatible boundary and exercised the real
 route against the isolated test database.
 
-## J. Stage 2 readiness
+## J. Stage 2 readiness before implementation
 
 Stage 1 exposes a testable pure seam around authoritative evaluation and
 Pedagogical Decision Engine preparation while leaving all I/O timing stable.
 That is the intended prerequisite for a later Stage 2 design.
 
-Readiness means the seam exists; it does **not** approve or begin Stage 2.
+Readiness meant the seam existed; it did not itself implement Stage 2.
+
+---
+
+# Stage 2 — Server-Owned Action Plan
+
+## K. Stage 1 seam used by Stage 2
+
+Stage 2 extends `services/phase2/orchestration.ts`; it does not add a second
+orchestrator. The existing Stage 1 functions remain responsible for task
+payload derivation, authoritative evaluation, turn progress, evidence
+summaries, Decision Engine coordination, and progression planning.
+
+The new pure entry point, `derivePhase2ServerAction`, consumes:
+
+- `currentPhase`;
+- `currentNodeId`;
+- `activeCognitiveLevelId`;
+- `nodeTeachingStage`;
+- `activeTaskProvenance`;
+- `activeLessonExerciseId`;
+- `activeObjectiveTaskPayload`;
+- learner intent;
+- evaluated/not-evaluated state;
+- the Decision Engine result and derived progression plan when available.
+
+AI `teaching_mode`, `is_micro_check`, and `node_decision` are intentionally not
+inputs to action selection.
+
+## L. Action-plan contract
+
+Every `Phase2ServerActionPlan` declares:
+
+- the selected action and a stable reason code;
+- whether another AI generation is needed;
+- whether an active task may be created;
+- whether evaluation is expected;
+- whether progression may occur;
+- a safe server-owned response `teachingMode` override, when unambiguous;
+- the task authority;
+- the next cognitive-level ID and node teaching stage for cognitive advance.
+
+The minimum action set supported by the current runtime is:
+
+| Action | Required authoritative state | AI generation | May create task | Evaluation expected | Progression may occur |
+|---|---|---:|---:|---:|---:|
+| `OUTSIDE_PHASE_2` | Phase is not 2, or there is no current node | No Stage-2 requirement | No | No | No |
+| `DELIVER_THEORY` | Phase 2, current node + cognitive level, THEORY, no active task | Yes, bounded content/task candidate | Yes, after validation | No | No |
+| `EVALUATE_ACTIVE_TASK` | Authoritative objective payload or persisted source exercise + ANSWER | Yes, bounded feedback/evaluation candidate | No | Yes | Yes, only through Decision Engine |
+| `PRESERVE_ACTIVE_TASK` | Authoritative task + non-answer intent reaching provider path | Yes | No | No | No |
+| `REMEDIATE` | Evaluated turn + Decision Engine same-level remediation | No additional call | No | Already complete | No |
+| `DELIVER_FEEDBACK` | Evaluated turn + no reset/completion/source-delivery action | No additional call | No | Already complete | No |
+| `DELIVER_SOURCE_EXERCISE` | Evaluated turn + server progression plan selects auto-delivery | No additional call | Yes | Already complete | No node/level progression |
+| `ADVANCE_COGNITIVE_LEVEL` | Decision Engine advance + progression reset gate | No additional call | No | Already complete | Yes |
+| `COMPLETE_MICRONODE` | Decision Engine explicitly grants `COMPLETE_NODE` and progression gate allows it | No additional call | No | Already complete | Yes |
+| `DEFER_TO_COMPATIBILITY` | Legacy MICRO_CHECK without a persisted objective payload | Current behavior | Possible source transition | Model-candidate legacy evaluation | Existing server policy only |
+| `INVALID_PHASE2_STATE` | Any other incomplete or inconsistent Phase-2 state | No | No | No | No |
+
+## M. State-to-action ownership
+
+1. Phase 2 + THEORY + current cognitive level + no task selects
+   `DELIVER_THEORY`.
+2. Generated objective task identity requires both `micro_check` provenance and
+   `activeObjectiveTaskPayload`.
+3. Source task identity requires both `source_exercise` provenance and
+   `activeLessonExerciseId`.
+4. An ANSWER to either authoritative task selects `EVALUATE_ACTIVE_TASK`.
+5. A non-answer that reaches the provider path selects `PRESERVE_ACTIVE_TASK`.
+6. After authoritative evaluation, `deriveProgressionPlan` and the Decision
+   Engine select remediation, feedback, source delivery, cognitive advance, or
+   MicroNode completion.
+7. A legacy MICRO_CHECK with provenance but no objective payload remains
+   `DEFER_TO_COMPATIBILITY`; this preserves the frozen source transition without
+   pretending deterministic generated-task correctness exists.
+8. THEORY without a cognitive path is still unambiguously
+   `DELIVER_THEORY`; it does not require a compatibility action.
+9. The frozen no-path completion predicate is derived from deterministic turn
+   state and passed into the Decision Engine as `legacyCompletionAllowed`. The
+   engine converts that signal into the explicit `COMPLETE_NODE` grant, so the
+   route never completes from a legacy gate alone.
+10. A completion flag cannot select `COMPLETE_MICRONODE` unless the Decision
+    Engine result is `COMPLETE_NODE`.
+11. All other malformed or partial task states select `INVALID_PHASE2_STATE`
+    and stop before provider generation.
+
+## N. AI compatibility fields after Stage 2
+
+For Phase 2:
+
+- `teaching_mode` is content/response compatibility metadata. For
+  `DELIVER_THEORY`, the server canonicalizes the envelope to `TEACH` and maps
+  the response metadata from the action plan.
+- `is_micro_check` is a validated task-candidate field, not an action selector.
+  It can activate a generated task only when `DELIVER_THEORY` or an explicit
+  compatibility action authorizes task creation.
+- `node_decision` remains in the provider schema and validation/logging path,
+  but it does not select remediation, cognitive advance, completion, or phase
+  progression.
+- `source_fidelity.exercise_id` remains an eligible-row request. It may suggest
+  a source candidate, but the backend resolver and persisted internal row ID
+  remain authoritative.
+
+`validatePhase2ResponseForServerAction` is separate from action selection. It
+rejects a theory envelope that is not canonical THEORY + visible MICRO_CHECK +
+no evaluation, and rejects a new MICRO_CHECK on active-task evaluation or
+preservation actions. Existing language, content, node-lock, visible-task,
+objective-answer, teaching-cycle, and source-fidelity validators remain active.
+
+## O. Stage 2 runtime architecture map
+
+```text
+HTTP request
+→ authoritative session/context load
+→ learner-intent classification and deterministic fast returns
+→ pure server action planner
+→ bounded existing structured AI call
+→ schema + semantic + server-action content validation
+→ authoritative task identity/evaluation resolution
+→ pure turn-progress derivation
+→ pure Pedagogical Decision Engine
+→ pure progression plan
+→ pure server action planner from evaluated state
+→ route-owned state/evidence/chat persistence
+→ response mapping
+```
+
+| Step | Owner | Input | Output | Kind |
+|---|---|---|---|---|
+| Request/auth/context | `routes/chat.ts` | HTTP request, user, lesson ID | Session, node, path, eligible exercises, history | DB reads / controller side effects |
+| Intent | `intentRouter.ts`, called by route | Message + active-task context | `IntentResult` | Pure deterministic or bounded classifier call |
+| Pre-generation action | `derivePhase2ServerAction` | Authoritative state + intent | `Phase2ServerActionPlan` | Pure |
+| Structured content | `callAIStructured` | Existing prompt/history + turn state | Canonical validated response or failure | Provider side effect + pure validation |
+| Action/content compatibility | `validatePhase2ResponseForServerAction` | Selected action + response | Accept or controlled error | Pure |
+| Task/evaluation authority | Stage 1 helpers + route source-row read | Active payload/ID, intent, candidate response | Final authoritative evaluation | Pure, except route DB read |
+| Turn policy | `deriveTurnProgress` | Final evaluation + session counters | Counter/stage intent | Pure |
+| Progression policy | Decision Engine + `deriveLegacyCompletionAllowed` + `deriveProgressionPlan` | Final evaluation, evidence/path/budgets and behavior-preserving no-path completion predicate | Deterministic pedagogical decision and gates | Pure |
+| Post-evaluation action | `derivePhase2ServerAction` | Decision + progression plan | Remediate/feedback/source/advance/complete action | Pure |
+| Persistence | `routes/chat.ts` | Pure decisions and selected identities | Session/task/chat/evidence/KN state | DB writes / side effects |
+| Response | `routes/chat.ts` | Final message, action-safe metadata, progress | Existing JSON contract | HTTP side effect |
+
+## P. Failure and rollback semantics
+
+- Invalid generation during `DELIVER_THEORY` returns the existing controlled
+  `STRUCTURED_AI_REQUIRED` failure.
+- No active task, evidence, progression, or assistant success message is
+  created on that failure.
+- A contradictory envelope does not mutate the selected server action into a
+  different workflow branch.
+- Phase 1, 3, and 4 receive `OUTSIDE_PHASE_2`, so their existing behavior is not
+  overridden.
+- `INVALID_PHASE2_STATE` returns HTTP 409 before any provider call, task
+  activation, assistant success message, evidence, or progression write.
+- No migration or schema change is involved. The Stage 1 seam is the rollback
+  boundary.
+
+Final Stage 2 verification:
+
+| Verification | Result |
+|---|---:|
+| Frozen Stage 0 matrix | 315/315 passed |
+| Stage 0 provider-free HTTP route baseline | 14/14 passed |
+| Stage 1 extraction contracts | 10/10 passed |
+| Stage 2 server-owned action plan | 12/12 passed |
+| V2-R2 learner intent | 41/41 passed |
+| Phase 2A R3 acceptance | 30/30 passed |
+| API TypeScript typecheck / `git diff --check` | passed |
+| Independent architecture review | PASS, no material findings |
+| Restarted API + student-dashboard browser smoke | passed |
+
+## Q. Remaining AI workflow coupling and next-stage readiness
+
+AI still owns content generation inside the bounded server-selected action:
+
+- THEORY explanation and generated MICRO_CHECK candidate wording;
+- interaction type, options, and correct answer for a generated objective task,
+  subject to existing validation before persistence;
+- model evaluation as a candidate where no deterministic objective/source
+  scorer applies;
+- eligible source-exercise request metadata, with server fallback and persisted
+  identity authority;
+- response `teachingMode` on actions where an exact server mapping is ambiguous
+  and changing it could affect current clients;
+- legacy MICRO_CHECK-without-payload `DEFER_TO_COMPATIBILITY`; malformed states
+  and other Phase-2 states do not receive compatibility fallback.
+
+The next full theory/task/feedback schema split is **not implemented**. It needs
+an explicit candidate-generation contract and a deliberate legacy-session
+strategy before the compatibility fields or route branches can be removed.

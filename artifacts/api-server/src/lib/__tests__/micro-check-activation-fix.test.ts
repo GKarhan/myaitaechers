@@ -187,7 +187,11 @@ test("F: Phase 1 is not affected by THEORY canonicalization", () => {
 test("G: existing validated activation path and objective payload remain in place", () => {
   assert.match(
     chatRouteSource,
-    /if \(!wasEval && .*session\?\.nodeTeachingStage.*THEORY.*aiResult\.is_micro_check\)/su
+    /const _serverAllowsGeneratedTask\s*=\s*.*DELIVER_THEORY/su
+  );
+  assert.match(
+    chatRouteSource,
+    /if \(\s*!wasEval\s*&&\s*_serverAllowsGeneratedTask\s*&&.*session\?\.nodeTeachingStage.*THEORY.*aiResult\.is_micro_check/su
   );
   assert.match(
     phase2OrchestrationSource,

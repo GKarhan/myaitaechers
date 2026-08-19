@@ -35,6 +35,7 @@ import {
   coordinatePedagogicalDecision,
   deriveCognitiveAdvanceTaskReset,
   deriveGeneratedMicroCheckActivation,
+  deriveLegacyCompletionAllowed,
   derivePhase2ServerAction,
   deriveProgressionPlan,
   deriveTurnProgress,
@@ -1368,6 +1369,27 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     },
     "Phase-2 server action selected before AI generation",
   );
+  if (_phase2ServerActionPlan.action === "INVALID_PHASE2_STATE") {
+    logger.error(
+      {
+        sessionId: session?.id ?? null,
+        currentPhase: session?.currentPhase ?? null,
+        currentNodeId: session?.currentNodeId ?? null,
+        nodeTeachingStage: session?.nodeTeachingStage ?? null,
+        activeTaskProvenance: session?.activeTaskProvenance ?? null,
+        activeLessonExerciseId: session?.activeLessonExerciseId ?? null,
+        hasObjectiveTaskPayload:
+          session?.activeObjectiveTaskPayload !== null &&
+          session?.activeObjectiveTaskPayload !== undefined,
+      },
+      "Phase-2 server action rejected inconsistent authoritative state",
+    );
+    res.status(409).json({
+      error: "INVALID_PHASE2_STATE",
+      message: "Դասի ընթացիկ վիճակը հնարավոր չէ անվտանգ շարունակել։ Խնդրում եմ կրկին սկսել դասը։",
+    });
+    return;
+  }
 
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
@@ -1566,7 +1588,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _p11SourceExerciseIdBeforeDelivery: string | null = null;
   if (
     session &&
-    _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" &&
+    (
+      _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" ||
+      _phase2ServerActionPlan.compatibilityKind ===
+        "legacy_micro_check_without_task_payload"
+    ) &&
     _intentResult.intent === "ANSWER" &&
     (aiResult === null || aiResult.answer_evaluation.status !== "OFF_TOPIC") &&
     isExerciseDeliveryTurn(session.currentPhase, session.nodeTeachingStage ?? "THEORY", classExercises.length)
@@ -1669,8 +1695,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // Phase 2B fix: also write active task identity fields (previously omitted).
     const _serverAllowsGeneratedTask =
       session.currentPhase !== 2 ||
-      _phase2ServerActionPlan.action === "DELIVER_THEORY" ||
-      _phase2ServerActionPlan.action === "DEFER_TO_COMPATIBILITY";
+      _phase2ServerActionPlan.action === "DELIVER_THEORY";
     if (
       !wasEval &&
       _serverAllowsGeneratedTask &&
@@ -1714,7 +1739,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // wasEval is already false (OFF_TOPIC excluded from wasEval above) — but the
     // anticipatory block would still fire unless we add this guard.
     if (!wasEval && _intentResult.intent === "ANSWER" && status !== "OFF_TOPIC" &&
-        _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" &&
+        (
+          _phase2ServerActionPlan.action === "EVALUATE_ACTIVE_TASK" ||
+          _phase2ServerActionPlan.compatibilityKind ===
+            "legacy_micro_check_without_task_payload"
+        ) &&
         (session?.nodeTeachingStage ?? "THEORY") === "MICRO_CHECK" &&
         aiResult.source_fidelity.exercise_id) {
       const selection = _p11SelectedSourceExercise
@@ -1865,6 +1894,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeLearningSeconds: session.activeLearningSeconds,
           optionalContinuation: session.optionalContinuation,
           estimatedNodeMinutes: currentNodeRecord?.estimatedMinutes ?? 0,
+          legacyCompletionAllowed: deriveLegacyCompletionAllowed({
+            turn: _turnProgress,
+            classExerciseCount: classExercises.length,
+            hasActiveCognitivePath:
+              _cognitivePath.length > 0 &&
+              _activeCognitiveLevelRow !== null,
+          }),
         });
         _pedagogicalDecision = _decisionPlan.decision;
 
@@ -2052,8 +2088,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // following student turn (lastQuestionAsked=null → AI regenerated intro).
     const _serverAllowsQuestionPersistence =
       session.currentPhase !== 2 ||
-      _phase2ServerActionPlan.action === "DELIVER_THEORY" ||
-      _phase2ServerActionPlan.action === "DEFER_TO_COMPATIBILITY";
+      _phase2ServerActionPlan.action === "DELIVER_THEORY";
     if (
       aiResult?.is_micro_check === true &&
       _serverAllowsQuestionPersistence

@@ -682,7 +682,10 @@ try {
   assert.equal(providerCallCount, 0);
   console.log("  ✓ deterministic intro creates no provider request");
 
-  enqueue("remember task", multipleChoiceTask("Հիշելու մակարդակ։"));
+  const contradictoryTheoryMetadata = multipleChoiceTask("Հիշելու մակարդակ։");
+  contradictoryTheoryMetadata.teaching_mode = "FEEDBACK";
+  contradictoryTheoryMetadata.is_micro_check = false;
+  enqueue("remember task with contradictory workflow metadata", contradictoryTheoryMetadata);
   const firstTask = await postChat(
     baseUrl,
     successfulToken,
@@ -732,6 +735,7 @@ try {
     correctOption: "B",
   });
   assert.equal((await waitForEvidenceCount(session.id, 0)).length, 0);
+  console.log("  ✓ server-selected THEORY action overrides contradictory AI workflow metadata");
 
   const sessionState = await requestJson(
     `${baseUrl}/api/chat/session-state?lessonId=${lesson.id}`,
@@ -976,6 +980,53 @@ try {
     ));
   assert.equal(assistantMessagesAfter.length, assistantMessagesBefore.length);
   console.log("  ✓ invalid generation retry fails closed with no success pair");
+
+  await db
+    .update(lessonSessionsTable)
+    .set({
+      nodeTeachingStage: "EXERCISE",
+      activeTaskProvenance: "source_exercise",
+      activeLessonExerciseId: null,
+      activeObjectiveTaskPayload: null,
+    } as any)
+    .where(eq(lessonSessionsTable.id, failingSessionAfter.id));
+  const providerCallsBeforeMalformedState = providerCallCount;
+  const malformedStateResponse = await postChat(
+    baseUrl,
+    failingToken,
+    lesson.id,
+    "B",
+  );
+  assert.equal(malformedStateResponse.response.status, 409);
+  assert.deepEqual(malformedStateResponse.json, {
+    error: "INVALID_PHASE2_STATE",
+    message: "Դասի ընթացիկ վիճակը հնարավոր չէ անվտանգ շարունակել։ Խնդրում եմ կրկին սկսել դասը։",
+  });
+  assert.equal(providerCallCount, providerCallsBeforeMalformedState);
+  const malformedSessionAfter = await getSession(
+    lesson.id,
+    failingStudent.userId,
+  );
+  assert.equal(malformedSessionAfter.nodeTeachingStage, "EXERCISE");
+  assert.equal(malformedSessionAfter.activeTaskProvenance, "source_exercise");
+  assert.equal(malformedSessionAfter.activeLessonExerciseId, null);
+  assert.equal(
+    (await waitForEvidenceCount(malformedSessionAfter.id, 0)).length,
+    0,
+  );
+  const assistantMessagesAfterMalformedState = await db
+    .select()
+    .from(chatMessagesTable)
+    .where(and(
+      eq(chatMessagesTable.lessonId, lesson.id),
+      eq(chatMessagesTable.userId, failingStudent.userId),
+      eq(chatMessagesTable.role, "assistant"),
+    ));
+  assert.equal(
+    assistantMessagesAfterMalformedState.length,
+    assistantMessagesAfter.length,
+  );
+  console.log("  ✓ malformed non-legacy task state fails before provider or state effects");
 
   assert.equal(providerQueue.length, 0);
   assert.ok(providerCallCount >= 6);

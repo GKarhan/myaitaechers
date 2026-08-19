@@ -30,7 +30,8 @@ export type Phase2ServerAction =
   | "DELIVER_SOURCE_EXERCISE"
   | "ADVANCE_COGNITIVE_LEVEL"
   | "COMPLETE_MICRONODE"
-  | "DEFER_TO_COMPATIBILITY";
+  | "DEFER_TO_COMPATIBILITY"
+  | "INVALID_PHASE2_STATE";
 
 export type Phase2TaskAuthority =
   | "none"
@@ -38,6 +39,9 @@ export type Phase2TaskAuthority =
   | "active_objective_payload"
   | "active_source_exercise"
   | "compatibility";
+
+export type Phase2CompatibilityKind =
+  | "legacy_micro_check_without_task_payload";
 
 export type Phase2ServerActionPlan = {
   action: Phase2ServerAction;
@@ -48,6 +52,7 @@ export type Phase2ServerActionPlan = {
   progressionMayOccur: boolean;
   responseTeachingMode: "TEACH" | null;
   taskAuthority: Phase2TaskAuthority;
+  compatibilityKind: Phase2CompatibilityKind | null;
   nextActiveCognitiveLevelId: number | null;
   nextNodeTeachingStage: "THEORY" | null;
 };
@@ -88,6 +93,7 @@ function makeActionPlan(
     progressionMayOccur: false,
     responseTeachingMode: null,
     taskAuthority: "none",
+    compatibilityKind: null,
     nextActiveCognitiveLevelId: null,
     nextNodeTeachingStage: null,
     ...overrides,
@@ -112,7 +118,10 @@ export function derivePhase2ServerAction(
   }
 
   if (input.evaluated && input.decision && input.progressionPlan) {
-    if (input.progressionPlan.shouldResetForCognitiveAdvance) {
+    if (
+      input.progressionPlan.shouldResetForCognitiveAdvance &&
+      input.decision.metaAction === "ADVANCE_COGNITIVE_LEVEL"
+    ) {
       return makeActionPlan(
         "ADVANCE_COGNITIVE_LEVEL",
         "decision_engine_selected_cognitive_advance",
@@ -125,7 +134,10 @@ export function derivePhase2ServerAction(
       );
     }
 
-    if (input.progressionPlan.shouldCompleteNode) {
+    if (
+      input.progressionPlan.shouldCompleteNode &&
+      input.decision.metaAction === "COMPLETE_NODE"
+    ) {
       return makeActionPlan(
         "COMPLETE_MICRONODE",
         "decision_engine_allowed_micronode_completion",
@@ -201,7 +213,6 @@ export function derivePhase2ServerAction(
 
   if (
     input.nodeTeachingStage === "THEORY" &&
-    input.activeCognitiveLevelId !== null &&
     input.activeTaskProvenance === null &&
     input.activeLessonExerciseId === null &&
     input.activeObjectiveTaskPayload === null
@@ -218,15 +229,35 @@ export function derivePhase2ServerAction(
     );
   }
 
+  const hasNoPersistedTaskIdentity =
+    input.activeLessonExerciseId === null &&
+    input.activeObjectiveTaskPayload === null;
+
+  if (
+    input.nodeTeachingStage === "MICRO_CHECK" &&
+    hasNoPersistedTaskIdentity &&
+    (
+      input.activeTaskProvenance === null ||
+      input.activeTaskProvenance === "micro_check"
+    )
+  ) {
+    return makeActionPlan(
+      "DEFER_TO_COMPATIBILITY",
+      "legacy_micro_check_has_no_objective_payload",
+      {
+        aiGenerationNeeded: true,
+        activeTaskMayBeCreated: true,
+        evaluationExpected: input.learnerIntent === "ANSWER",
+        progressionMayOccur: input.learnerIntent === "ANSWER",
+        taskAuthority: "compatibility",
+        compatibilityKind: "legacy_micro_check_without_task_payload",
+      },
+    );
+  }
+
   return makeActionPlan(
-    "DEFER_TO_COMPATIBILITY",
-    "current_authoritative_state_has_no_safe_stage2_action",
-    {
-      aiGenerationNeeded: true,
-      activeTaskMayBeCreated: true,
-      progressionMayOccur: true,
-      taskAuthority: "compatibility",
-    },
+    "INVALID_PHASE2_STATE",
+    "authoritative_phase2_state_is_incomplete_or_inconsistent",
   );
 }
 
@@ -672,6 +703,7 @@ export type Phase2DecisionContext = {
   activeLearningSeconds: number;
   optionalContinuation: boolean;
   estimatedNodeMinutes: number;
+  legacyCompletionAllowed?: boolean;
 };
 
 export type Phase2DecisionPlan = {
@@ -723,6 +755,7 @@ export function coordinatePedagogicalDecision(
       context.nextNodeHasCriticalDependencyOnCurrentNode,
     sessionBudgetExhausted: effectiveSessionBudgetExhausted,
     localNodeBudgetExhausted,
+    legacyCompletionAllowed: context.legacyCompletionAllowed ?? false,
   };
 
   return {
@@ -732,6 +765,35 @@ export function coordinatePedagogicalDecision(
     localNodeBudgetExhausted,
     effectiveSessionBudgetExhausted,
   };
+}
+
+/**
+ * Preserves the pre-Decision-Engine completion policy for nodes without a
+ * confirmed cognitive path, while making the engine the explicit grant owner.
+ */
+export function deriveLegacyCompletionAllowed(input: {
+  turn: Phase2TurnProgress;
+  classExerciseCount: number;
+  hasActiveCognitivePath: boolean;
+}): boolean {
+  const { turn } = input;
+  const stageBecomesVerified = turn.newTeachingStage === "VERIFIED";
+  const noExercisesEarlyComplete =
+    input.classExerciseCount === 0 &&
+    turn.currentStage === "MICRO_CHECK" &&
+    turn.newAttemptCount >= 2 &&
+    (
+      turn.quality === "MODERATE" ||
+      turn.quality === "STRONG" ||
+      turn.quality === "CONCLUSIVE"
+    ) &&
+    turn.isCorrect;
+  const safetyCapHit = turn.newAttemptCount > 6;
+
+  return (
+    !input.hasActiveCognitivePath &&
+    (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete)
+  );
 }
 
 export type Phase2ProgressionPlan = {
@@ -791,9 +853,11 @@ export function deriveProgressionPlan(input: {
   const shouldResetForCognitiveAdvance =
     hasActiveCognitivePath &&
     input.decision?.metaAction === "ADVANCE_COGNITIVE_LEVEL";
-  const legacyCompletionGate =
-    !hasActiveCognitivePath &&
-    (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete);
+  const legacyCompletionGate = deriveLegacyCompletionAllowed({
+    turn,
+    classExerciseCount: input.classExerciseCount,
+    hasActiveCognitivePath,
+  });
   const cognitiveCompletionGate = decisionSaysComplete && codeGate;
   const shouldCompleteNode =
     legacyCompletionGate || cognitiveCompletionGate;
