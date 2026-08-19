@@ -1,0 +1,802 @@
+STAGE 4 — EXERCISE CONTENT BOUNDARY
+LEARNER-VISIBLE VS EVALUATOR-ONLY CONTENT
+
+IMPLEMENTATION AUTHORIZED
+
+The completed read-only forensic audit is accepted.
+
+Final audit verdict:
+
+SYSTEMIC CONTENT-BOUNDARY GAP
+
+This is NOT a Phase-2 orchestration redesign.
+
+Stage 0, Stage 1, Stage 2, and Stage 3 architecture must remain intact.
+
+The approved Stage-3 normal flow remains:
+
+SERVER ACTION
+→ THEORY
+→ TASK_REQUIRED
+→ source exercise OR TASK
+→ learner ANSWER
+→ deterministic evaluation OR bounded EVALUATION
+→ Pedagogical Decision Engine
+→ FEEDBACK
+
+Stage 4 must fix the educational-content boundary across:
+
+Mapper
+→ lesson_exercises persistence
+→ Teacher CRUD
+→ Student API projection
+→ Phase-2 source-exercise delivery
+→ bounded semantic EVALUATION
+
+Do NOT start Stage 5 or unrelated cleanup.
+
+==================================================
+0. FIRST — PRE-CHANGE IMPLEMENTATION AUDIT
+==================================================
+
+Before modifying production behavior, verify the current implementation and
+report the exact code locations for:
+
+1. lesson_exercises schema
+2. canonical TEXT EXERCISE parser
+3. TEXT mapping validator
+4. TEXT mapping inserter
+5. mapping-result persistence paths
+6. Teacher exercise create/update API
+7. Teacher exercise editor UI
+8. student-package exercise projection
+9. effectiveExerciseText()
+10. source-exercise activation/delivery
+11. deterministic source-exercise evaluation
+12. bounded EVALUATION source-exercise input assembly
+
+Confirm whether the forensic-audit findings still match the current code.
+
+If a material architectural fact has changed since the audit, STOP and report
+the exact difference before implementing.
+
+Do not mutate data during this pre-change audit.
+
+==================================================
+1. CANONICAL CONTENT-AUDIENCE CONTRACT
+==================================================
+
+Make the content ownership explicit.
+
+The intended contract is:
+
+A. exerciseTextVerbatim
+
+Purpose:
+- source-fidelity / provenance record
+- preserve the original source exercise as faithfully as possible
+
+Audience:
+- teacher
+- audit/provenance/backend
+
+It is NOT automatically learner-safe.
+
+It must NOT be treated as inherently safe merely because it came from a
+textbook or mapper.
+
+--------------------------------------------------
+
+B. exerciseTextEdited
+
+Purpose:
+- approved learner-facing task representation
+
+Audience:
+- learner delivery
+- student-facing exercise APIs
+- bounded EVALUATION as the effective learner task
+
+This is the preferred learner-safe delivery field when present.
+
+--------------------------------------------------
+
+C. successCriteria
+
+Purpose:
+- evaluator-only semantic rubric
+- expected-response guidance
+- criteria needed to judge constructed responses
+
+Audience:
+- backend
+- teacher
+- bounded EVALUATION only
+
+MUST NOT be returned to learners.
+
+MUST NOT be appended to learner-facing task text.
+
+--------------------------------------------------
+
+D. correctAnswer
+
+Purpose:
+- canonical hidden answer metadata for deterministic evaluation
+
+Audience:
+- backend deterministic evaluator
+- teacher authoring/review
+
+MUST NOT be returned to learners.
+
+MUST NOT be embedded into learner-facing task text.
+
+--------------------------------------------------
+
+E. interactionType
+
+Purpose:
+- authoritative response/evaluation format
+
+Audience:
+- backend
+- teacher authoring
+- bounded task/evaluation logic where required
+
+Do not expose it merely because it exists.
+
+==================================================
+2. MAPPING CONTRACT — SEPARATE CONTENT CLASSES
+==================================================
+
+The forensic audit confirmed that canonical TEXT mapping currently collapses
+exercise content into one `text` field and cannot separately represent:
+
+- learner-facing prompt
+- expected answer
+- success criteria
+- rubric/evaluator guidance
+
+Fix this contract.
+
+First inspect the existing TEXT Contract conventions and preserve backward
+compatibility where safely possible.
+
+The canonical EXERCISE representation must be able to distinguish at least:
+
+- original/source exercise text
+- learner-facing task text when a safe/edited representation is supplied
+- interactionType
+- correctAnswer
+- successCriteria / semantic evaluation guidance
+- sourcePage
+- sequence
+- relatedMicroNodes
+- existing difficulty/confidence metadata
+
+Do NOT invent unnecessary pedagogical fields.
+
+Use the existing database columns wherever they already represent the intended
+concept.
+
+Do NOT introduce a DB migration merely to rename concepts.
+
+==================================================
+3. SOURCE FIDELITY MUST NOT BE DESTROYED
+==================================================
+
+Do NOT sanitize or rewrite exerciseTextVerbatim destructively.
+
+If source material literally contains:
+
+"Ճիշտ պատասխան՝ ..."
+
+or
+
+"Սպասվող պատասխանի հիմնական միտքը՝ ..."
+
+the original source-fidelity representation may preserve that fact.
+
+But that does NOT make it learner-safe.
+
+The system must separate:
+
+SOURCE RECORD
+from
+LEARNER DELIVERY
+
+Do not solve the leak by deleting provenance.
+
+==================================================
+4. LEARNER-SAFE TASK REQUIREMENT
+==================================================
+
+A source exercise must have a learner-safe representation before normal
+student delivery.
+
+The backend must not blindly assume:
+
+exerciseTextEdited || exerciseTextVerbatim
+
+is safe.
+
+Define one authoritative helper/contract for learner-facing exercise text.
+
+Avoid multiple inconsistent implementations.
+
+The helper must distinguish:
+
+- safe edited learner text
+- source/verbatim fallback eligibility
+- content that requires review because it appears to contain evaluator-only
+  answer/rubric guidance
+
+Do NOT silently remove arbitrary words from a contaminated exercise at runtime.
+
+Do NOT use naive string deletion to manufacture a question.
+
+If the backend cannot establish a learner-safe representation:
+
+→ do not deliver contaminated text
+→ do not activate an unsafe task
+→ return/use the existing controlled safe-failure behavior appropriate to the
+  route
+→ preserve session consistency
+
+No fabricated task.
+
+==================================================
+5. CONTENT-BOUNDARY VALIDATION
+==================================================
+
+Create a focused reusable validation layer for learner-facing exercise text.
+
+It must detect/flag high-confidence evaluator-only markers such as the
+confirmed cases:
+
+- "Ճիշտ պատասխան"
+- "Սպասվող պատասխան"
+- "Սպասվող պատասխանի հիմնական միտքը"
+- explicit rubric/success-criteria labels
+- equivalent canonical labels already used by the system
+
+Be conservative.
+
+Do NOT reject every occurrence of the Armenian word "պատասխան".
+
+Do NOT implement broad semantic censorship.
+
+The purpose is to catch explicit answer/rubric disclosure structures.
+
+Return structured validation results rather than scattering regex checks
+through routes.
+
+==================================================
+6. TEXT MAPPER VALIDATION
+==================================================
+
+Update canonical TEXT mapping validation so newly mapped exercises cannot
+silently collapse evaluator-only guidance into learner-facing content.
+
+Where the new mapping contract provides separate learner/evaluator fields:
+
+→ validate each by its intended audience
+→ persist them separately
+
+If an imported exercise places explicit expected-answer/rubric content inside
+the learner-facing field:
+
+→ validation error or explicit review-required condition
+→ do not silently approve it as learner-safe
+
+Preserve source-fidelity content separately.
+
+Also audit and resolve the parser limitation found in the forensic report
+regarding IDs shaped like:
+
+EX-579-3
+
+Do not broaden the grammar blindly.
+
+Support the actual canonical exercise-ID forms required by current mapping
+data and add tests.
+
+==================================================
+7. MAPPING INSERTER / PERSISTENCE
+==================================================
+
+Persist the content classes to their intended existing columns.
+
+Conceptually:
+
+source/original text
+→ exerciseTextVerbatim
+
+learner-safe edited/delivery text
+→ exerciseTextEdited
+
+semantic expected-response guidance
+→ successCriteria
+
+typed deterministic answer
+→ correctAnswer
+
+response format
+→ interactionType
+
+Do not copy hidden evaluator guidance back into learner text.
+
+Do not set sourceText equal to learner task text merely as a convenience if
+that destroys its provenance meaning.
+
+Audit the current meaning and population of sourceText before changing it.
+
+If proper sourceText backfill requires source-block information not available
+in the mapping payload, report that separately rather than inventing it.
+
+==================================================
+8. TEACHER CRUD / UI
+==================================================
+
+Teacher authoring must clearly distinguish:
+
+1. Source/original exercise
+2. Learner-facing exercise text
+3. Success criteria / expected-response guidance
+4. Correct answer
+5. Interaction type
+
+Use clear Armenian labels in the teacher UI consistent with the current
+product language.
+
+The UI should make it obvious that:
+
+- learner-facing text is visible to the student
+- success criteria are hidden from the student
+- correct answer is hidden from the student
+
+But UI labels alone are not sufficient.
+
+Backend validation must enforce the boundary.
+
+A teacher must not be able to save explicit evaluator-answer disclosure into
+the learner-facing field without receiving a validation failure/review
+warning according to the chosen safe contract.
+
+Do not weaken textbook source-fidelity protection.
+
+==================================================
+9. STUDENT-PACKAGE PROJECTION
+==================================================
+
+Fix:
+
+GET /lessons/:lessonId/student-package
+
+The learner-facing projection MUST NOT expose:
+
+- successCriteria
+- correctAnswer
+- evaluator rubric
+- expected-answer guidance
+- source/provenance fields not needed by learners
+
+Do not rely on the frontend to hide these fields.
+
+The backend response itself must omit them.
+
+For exercise text, return only the authoritative learner-safe representation
+that passed the content-boundary contract.
+
+Do not return raw verbatim text merely for convenience if it is not certified
+learner-safe.
+
+==================================================
+10. PHASE-2 SOURCE-EXERCISE DELIVERY
+==================================================
+
+Preserve Stage-3 source-exercise authority:
+
+eligible source exercises
+→ backend exact selection
+→ activeLessonExerciseId
+→ exact persisted row
+→ learner-safe task projection
+→ activation/delivery
+
+The AI must not choose source exercise identity.
+
+Before activating/delivering a source exercise:
+
+1. resolve exact eligible row
+2. resolve learner-safe task text
+3. validate learner-facing content
+4. only then activate/deliver
+
+Required invariant:
+
+NO ACTIVE SOURCE EXERCISE WITH UNSAFE LEARNER TEXT
+
+If validation fails:
+
+- no contaminated task delivery
+- no fabricated safe version
+- no false activation
+- no evidence/progression mutation
+- preserve session consistency
+- controlled safe failure
+
+==================================================
+11. DETERMINISTIC EVALUATION
+==================================================
+
+Do NOT change deterministic correctness authority.
+
+For supported typed source exercises:
+
+activeLessonExerciseId
+→ exact persisted row
+→ interactionType
+→ correctAnswer
+→ backend normalization/comparison
+
+The learner-visible text is NOT correctness authority.
+
+successCriteria is NOT deterministic correctness authority.
+
+No bounded EVALUATION AI call when deterministic authority succeeds.
+
+==================================================
+12. CONSTRUCTED-RESPONSE EVALUATION
+==================================================
+
+Fix the current semantic evaluation boundary.
+
+For constructed_response / genuinely non-deterministic source exercises:
+
+learner-safe task text
++
+learner answer
++
+hidden successCriteria where available and legitimate
++
+required learning objective / cognitive context
+→ bounded EVALUATION
+
+successCriteria must be passed as a separate evaluator-only input.
+
+It must NOT be merged into the learner-visible task string.
+
+The bounded EVALUATION job must receive only what is necessary to evaluate the
+answer.
+
+It still cannot decide:
+
+- next cognitive level
+- node completion
+- next task
+- source exercise identity
+- teaching stage
+- phase transition
+- learner-facing feedback
+
+Preserve Stage-3 order:
+
+ANSWER
+→ deterministic evaluation OR bounded EVALUATION
+→ validated authoritative evaluation
+→ counters/evidence inputs
+→ Decision Engine
+→ server action/progression plan
+→ FEEDBACK
+
+==================================================
+13. FEEDBACK
+==================================================
+
+Do not change the Stage-3 FEEDBACK authority contract.
+
+FEEDBACK receives:
+
+- already-known authoritative evaluation
+- already-known server pedagogical action
+
+FEEDBACK remains wording-only.
+
+Do not expose hidden successCriteria or correctAnswer in learner feedback.
+
+Add explicit safeguards/tests against feedback leaking evaluator-only content.
+
+==================================================
+14. EXISTING DATA — DO NOT BLINDLY MIGRATE
+==================================================
+
+The forensic audit observed:
+
+- 34 lesson_exercises rows
+- 2 confirmed learner-text leaks
+- row 941 / EX-579-2:
+  direct correct-answer disclosure
+- row 942 / EX-579-3:
+  expected-answer/rubric disclosure
+- 32 remaining rows are NOT automatically certified safe
+- 10 rows contain successCriteria
+- 7 rows lack sourcePage
+- all 34 lack sourceText
+- 14 lack sourceBlockIndex
+- 5 manual rows require provenance review
+
+Do NOT perform a blind automatic rewrite of all 34 rows.
+
+First implement the new contract and validators.
+
+Then produce a read-only migration classification/report showing for every
+existing row:
+
+- safe as-is
+- learner-text review required
+- confirmed evaluator leak
+- missing learner-safe representation
+- missing evaluator metadata
+- provenance/page issue
+
+For confirmed rows 941 and 942, propose the exact field-level correction.
+
+Do NOT mutate existing production/development exercise rows unless this task
+explicitly reaches a separately reported, reviewable migration step.
+
+The implementation and migration must be separable.
+
+==================================================
+15. REQUIRED TESTS — MAPPING
+==================================================
+
+Add focused tests proving:
+
+A. Mapping can represent source text and learner-facing text separately.
+
+B. Mapping can represent successCriteria separately.
+
+C. Mapping can represent correctAnswer separately.
+
+D. EX-579-3-style IDs parse correctly if they are part of the approved
+canonical grammar.
+
+E. Explicit expected-answer guidance in learner-facing text is rejected or
+flagged according to the new contract.
+
+F. Source/verbatim provenance remains preserved.
+
+==================================================
+16. REQUIRED TESTS — STUDENT EXPOSURE
+==================================================
+
+G. student-package does not return successCriteria.
+
+H. student-package does not return correctAnswer.
+
+I. student-package does not return evaluator rubric/expected-answer fields.
+
+J. learner-safe exercise text is returned.
+
+K. contaminated raw verbatim text is not exposed as an automatic fallback.
+
+==================================================
+17. REQUIRED TESTS — SOURCE DELIVERY
+==================================================
+
+L. Safe source exercise:
+→ exact row selected
+→ learner-safe text delivered
+→ activeLessonExerciseId correct
+
+M. Unsafe source exercise:
+→ not delivered
+→ not activated
+→ no task provenance written
+
+N. Edited safe text takes learner-delivery precedence when valid.
+
+O. Verbatim provenance remains unchanged.
+
+P. EX-579-2-style direct answer disclosure cannot reach learner chat.
+
+Q. EX-579-3-style expected-answer guidance cannot reach learner chat.
+
+==================================================
+18. REQUIRED TESTS — EVALUATION
+==================================================
+
+R. MC/TF deterministic source evaluation:
+→ correctAnswer used
+→ EVALUATION AI not called
+
+S. Constructed source response:
+→ learner-safe task supplied to EVALUATION
+→ successCriteria supplied separately
+→ learner never receives successCriteria
+
+T. Missing successCriteria:
+→ preserve existing safe semantic-evaluation behavior
+→ do not invent rubric
+
+U. Invalid bounded EVALUATION:
+→ no fabricated correctness
+→ no evidence/progression
+→ controlled safe failure
+
+==================================================
+19. REQUIRED TESTS — TEACHER CRUD
+==================================================
+
+V. Teacher can edit learner-facing task separately from success criteria.
+
+W. Teacher can edit hidden correct answer for supported typed tasks.
+
+X. Explicit answer disclosure in learner-facing text is rejected/flagged.
+
+Y. Teacher API continues preserving textbook source-fidelity rules.
+
+==================================================
+20. STAGE-3 REGRESSION GATE
+==================================================
+
+Run the complete frozen Stage 0/1/2/3 regression matrix.
+
+Specifically prove Stage 4 did NOT change:
+
+- Phase-2 server action ownership
+- THEORY bounded job
+- TASK_REQUIRED state
+- source-exercise exact identity
+- generated TASK activation
+- deterministic objective scoring
+- deterministic typed source scoring
+- bounded EVALUATION routing
+- Decision Engine authority
+- Cognitive Path progression
+- FEEDBACK authority
+- completion rules
+- evidence semantics
+- active-task invariants
+
+Do not weaken existing tests to make Stage 4 pass.
+
+==================================================
+21. REQUIRED SECURITY / CONTENT INVARIANTS
+==================================================
+
+Prove all of these:
+
+K1.
+Learner never receives correctAnswer.
+
+K2.
+Learner never receives successCriteria.
+
+K3.
+Learner never receives explicit evaluator rubric / expected-answer guidance.
+
+K4.
+Source-fidelity original content remains preserved.
+
+K5.
+Learner-facing edited content is independently validated.
+
+K6.
+Deterministic evaluation receives authoritative hidden answer metadata.
+
+K7.
+Constructed-response EVALUATION can receive hidden success criteria without
+learner exposure.
+
+K8.
+Teacher CRUD cannot silently collapse hidden evaluator content into
+learner-visible content.
+
+K9.
+Unsafe source task cannot become active.
+
+K10.
+No Stage-3 workflow authority is returned to AI.
+
+==================================================
+22. STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED before implementing speculative behavior if:
+
+- current schema cannot safely represent the required separation
+- a DB migration becomes genuinely necessary
+- source fidelity would have to be destroyed
+- existing Stage-3 evaluation/progression semantics would have to change
+- learner-safe text cannot be determined without inventing educational content
+- compatibility requires exposing hidden evaluator data to students
+- a fix would require returning workflow authority to AI
+
+Do NOT work around a stop condition.
+
+==================================================
+23. OUT OF SCOPE
+==================================================
+
+Do NOT:
+
+- redesign Phase-2 orchestration
+- change Cognitive Path thresholds
+- change mastery/evidence scoring rules
+- change Pedagogical Decision Engine policy
+- change completion rules
+- change model/provider configuration
+- change quiz system
+- change Knowledge Tree
+- change unrelated teacher CRUD
+- redesign frontend generally
+- start Stage 5
+- silently rewrite the 34 existing exercise rows
+
+==================================================
+24. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE ARCHITECTURE CONFIRMATION
+
+B. FILES CHANGED
+
+C. FINAL CONTENT-AUDIENCE CONTRACT
+
+D. MAPPING CONTRACT CHANGES
+
+E. MAPPER VALIDATION
+
+F. PERSISTENCE CHANGES
+
+G. TEACHER CRUD / UI CHANGES
+
+H. STUDENT-PACKAGE PROJECTION
+
+I. SOURCE-EXERCISE DELIVERY
+
+J. DETERMINISTIC EVALUATION
+
+K. CONSTRUCTED-RESPONSE EVALUATION
+
+L. FEEDBACK LEAK PREVENTION
+
+M. EXISTING-DATA CLASSIFICATION
+   Include all 34 rows or a machine-generated classification artifact with
+   summary counts.
+   Explicitly report rows 941 and 942.
+
+N. REQUIRED INVARIANTS K1–K10
+   PASS / FAIL individually.
+
+O. TEST RESULTS
+   Give exact suites and counts.
+
+P. STAGE-3 REGRESSION RESULTS
+
+Q. TYPECHECK / BUILD / RUNTIME
+
+R. DATABASE MIGRATION
+   NONE / REQUIRED / PERFORMED
+   Explain.
+
+S. REMAINING DATA CLEANUP
+   Separate code-contract completion from existing-row cleanup.
+
+T. RESULT
+   PASS / PARTIAL / BLOCKED
+
+U. STAGE-5 READINESS
+   READY / NOT READY
+
+Do not report PASS if learner-visible and evaluator-only content can still be
+collapsed silently through any normal new mapping, authoring, student-package,
+or Phase-2 delivery path.
+
+Begin with the required pre-change audit, then implement Stage 4 unless a NEW
+stop condition is reached.
