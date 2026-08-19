@@ -1,0 +1,209 @@
+TARGETED READ-ONLY AUDIT — WHY CORRECT MICRO_CHECK ANSWER "բ" WAS EVALUATED AS WRONG
+
+READ ONLY.
+NO CODE CHANGES.
+NO DB WRITES.
+NO AI/PROVIDER REQUEST.
+NO BROWSER TEST.
+
+GOAL
+
+Trace ONLY the latest MICRO_CHECK answer turn.
+
+Current runtime:
+
+Lesson 579
+Node 2107
+Phase 2
+Cognitive level = remember
+Stage before answer = MICRO_CHECK
+task = active
+
+AI asked:
+
+«Ո՞ր պնդումն է ճիշտ մոլեկուլների շարժման մասին․
+Ա) Մոլեկուլները շարժվում են միայն տաքացնելիս
+Բ) Մոլեկուլները միշտ շարժվում են, նույնիսկ առանց տաքացնելու»
+
+Student answered:
+
+«բ»
+
+By the visible question, Բ is clearly the correct answer.
+
+But AI replied:
+
+«Մոտ էիր, բայց ուշադիր կարդա տարբերակները...»
+
+and the runtime continued instead of treating the answer as correct.
+
+We need the exact reason.
+
+==================================================
+A. ACTUAL EVALUATION RESULT
+==================================================
+
+For this exact "բ" turn report:
+
+- intent
+- answer_evaluation.status
+- evidence_quality
+- correct_parts
+- incorrect_parts
+- teaching_mode
+- node_decision
+- any confidence/evaluation metadata available
+
+Was the answer formally evaluated as:
+
+CORRECT
+INCORRECT
+PARTIAL
+NOT_APPLICABLE
+
+Give actual runtime evidence.
+
+==================================================
+B. WHAT WAS THE ACTIVE MICRO_CHECK?
+==================================================
+
+Determine exactly what backend state was persisted when the AI generated the MICRO_CHECK.
+
+Report whether the session/task stored:
+
+- the exact question text
+- interaction_type
+- answer options
+- correct answer / answer key
+- expected answer
+- question_template
+- activeTaskProvenance
+- any task payload/reference
+
+Most important:
+
+Did backend persist that the correct option was "Բ"?
+
+YES / NO
+
+==================================================
+C. HOW IS A GENERATED MICRO_CHECK ANSWER EVALUATED?
+==================================================
+
+Trace the evaluation path for an active:
+
+activeTaskProvenance = "micro_check"
+
+Determine what data is supplied to callAIStructured / evaluator on the student's answer turn.
+
+Does the evaluator receive:
+
+1. previous assistant MICRO_CHECK text?
+2. student's answer?
+3. correct answer key?
+4. success criterion?
+5. performance objective?
+6. interaction_type?
+7. question_template?
+
+Answer YES/NO for each.
+
+==================================================
+D. WHO KNOWS THE CORRECT ANSWER?
+==================================================
+
+For AI-generated multiple-choice MICRO_CHECKS, determine whether current architecture has a deterministic correct-answer field.
+
+Choose:
+
+A. backend stores the answer key
+B. structured AI response contains an answer key but backend ignores it
+C. no answer key exists; next-turn AI infers correctness from chat/context
+D. another exact mechanism
+
+Give code/schema evidence.
+
+==================================================
+E. WHY "բ" WAS MARKED WRONG
+==================================================
+
+Find the first proven cause.
+
+Possible examples only:
+
+- generated question had no persisted answer key
+- previous question omitted from evaluation context
+- evaluator interpreted Latin/Armenian option differently
+- answer key existed but was not supplied
+- model simply evaluated inconsistently
+- another exact cause
+
+Do not speculate without evidence.
+
+==================================================
+F. MULTIPLE-CHOICE CONTRACT
+==================================================
+
+Inspect the structured MICRO_CHECK schema.
+
+Does it currently contain deterministic fields for:
+
+- options
+- correct_option / correct_answer
+- interaction_type
+
+If only `student_message` contains both question and options, say so explicitly.
+
+Do not redesign yet.
+
+==================================================
+G. SMALLEST ROBUST FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest architecture-consistent fix ensuring:
+
+AI-generated multiple-choice / true-false MICRO_CHECK
+→ backend knows the expected answer at creation time
+→ student short answer is compared against that expected answer
+→ correct/incorrect result does not depend on the model reinterpreting its own prior question.
+
+Prefer deterministic evaluation for objective formats.
+
+Do NOT redesign constructed-response evaluation.
+
+Do NOT touch exercise progression or duplicate delivery yet.
+
+==================================================
+H. DUPLICATE EXERCISE
+==================================================
+
+Do not audit it again.
+
+Only state whether it is downstream of the incorrect evaluation or an independent delivery issue.
+
+One sentence.
+
+==================================================
+I. VERDICT
+==================================================
+
+Choose:
+
+EVALUATION GAP
+ANSWER-KEY GAP
+CONTEXT GAP
+MODEL EVALUATION ERROR
+INSUFFICIENT EVIDENCE
+
+Then STOP.
+
+COST CONTROL:
+Inspect only:
+- relevant structured schema in services/ai.ts
+- active micro-check state in chat.ts/session
+- exact evaluation call/context for this turn
+- latest logs
+
+No broad audit.
