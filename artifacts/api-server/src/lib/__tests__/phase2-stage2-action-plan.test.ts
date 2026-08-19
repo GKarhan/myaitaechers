@@ -5,6 +5,7 @@ import {
   derivePhase2ServerAction,
   establishEvaluatedTurnAuthority,
   filterEvidenceForCurrentRunNode,
+  shouldPreparePostFeedbackTaskContinuation,
   summarizeLevelEvidence,
   validatePhase2ResponseForServerAction,
   type ActiveObjectiveTaskPayload,
@@ -180,6 +181,59 @@ test("E1 — same-level continuation without an active task derives a next serve
 
   assert.equal(postFeedback?.action, "DELIVER_SOURCE_EXERCISE");
   assert.equal(postFeedback?.activeTaskMayBeCreated, true);
+});
+
+test("E1a — VERIFIED with a post-feedback task plan prepares TASK_REQUIRED continuation", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "CONTINUE_COGNITIVE_LEVEL" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: false,
+    eligibleSourceExerciseAvailable: true,
+  });
+
+  assert.equal(
+    shouldPreparePostFeedbackTaskContinuation({
+      postFeedbackContinuationPlan: postFeedback,
+      hasActiveTask: false,
+      nodeTeachingStage: "VERIFIED",
+    }),
+    true,
+  );
+});
+
+test("E1b — an active task keeps the existing post-feedback retirement path", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "REQUEST_INDEPENDENT_CHECK" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: true,
+    eligibleSourceExerciseAvailable: true,
+  });
+
+  assert.equal(
+    shouldPreparePostFeedbackTaskContinuation({
+      postFeedbackContinuationPlan: postFeedback,
+      hasActiveTask: true,
+      nodeTeachingStage: "EXERCISE",
+    }),
+    true,
+  );
+});
+
+test("E1c — VERIFIED without a post-feedback plan remains completion-safe", () => {
+  assert.equal(
+    shouldPreparePostFeedbackTaskContinuation({
+      postFeedbackContinuationPlan: null,
+      hasActiveTask: false,
+      nodeTeachingStage: "VERIFIED",
+    }),
+    false,
+  );
 });
 
 test("E2 — an active remediation task never becomes automatic continuation", () => {

@@ -1,0 +1,433 @@
+IMPLEMENT CONFIRMED MINIMAL FIX ONLY
+GENERAL POST-FEEDBACK VERIFIED → TASK_REQUIRED CONTINUATION
+
+IMPORTANT:
+We now have TWO independent live reproductions of the same defect.
+
+Do NOT perform another broad audit.
+Do NOT redesign Phase 2.
+Do NOT change Decision Engine thresholds.
+Do NOT change evidence semantics.
+Do NOT change HELP semantics.
+Do NOT change Stage 5.5 THEORY fallback.
+Do NOT modify Knowledge Tree.
+Do NOT modify mapping.
+Do NOT manually repair/reset Session 51.
+
+==================================================
+CONFIRMED ROOT CAUSE FROM FORENSIC AUDIT
+==================================================
+
+The previous read-only forensic audit confirmed:
+
+After a correct answer where more evidence is still required:
+
+Decision Engine:
+CONTINUE_COGNITIVE_LEVEL
+
+Post-feedback continuation:
+DELIVER_SOURCE_EXERCISE
+
+But the answered task transitions:
+
+EXERCISE → VERIFIED
+
+and active task identity is cleared.
+
+The post-feedback task-retirement/state-transition block is gated by:
+
+_postFeedbackContinuationPlan !== null && hasActiveTask
+
+At that point hasActiveTask is already false.
+
+Therefore the persisted session remains:
+
+nodeTeachingStage = VERIFIED
+task = false
+
+runPhase2Continuation(...) reloads that state.
+
+derivePhase2ServerAction(...) cannot derive the next task from
+VERIFIED/no-task and returns:
+
+INVALID_PHASE2_STATE
+
+Therefore automatic continuation stops before the next exercise.
+
+==================================================
+NEW SECOND LIVE REPRODUCTION
+==================================================
+
+The defect has now reproduced again WITHOUT HELP.
+
+Session:
+51
+
+Node:
+2107 — Մոլեկուլների շարժումը
+
+Level:
+remember
+
+Initial flow:
+
+Օկ
+→ THEORY
+→ EX-579-1
+
+Learner answered:
+
+բ
+
+No HELP was used.
+
+Debug after correct answer:
+
+Level: remember
+Stage: VERIFIED
+Ex: —
+Decision: CONTINUE_COGNITIVE_LEVEL
+Help: 0
+mode=FEEDBACK
+task=✗
+
+Assistant FEEDBACK:
+
+"Ճիշտ պատասխան է։ Շատ լավ, Էլեն։
+Տեսնում եմ, որ հասկացար մոլեկուլների շարժման հիմնական սկզբունքը։
+Հիմա եկեք դիտարկենք մի հետաքրքիր փորձ՝ ավելի խորը հասկանալու համար։"
+
+But NO next task was delivered.
+
+The learner then manually typed:
+
+օկ
+
+and received:
+
+"Սխալ տեղի ունեցավ։ Փորձեք կրկին։"
+
+This manual "օկ" SHOULD NEVER HAVE BEEN REQUIRED.
+
+This second reproduction proves the defect is NOT HELP-specific.
+
+It affects the GENERAL transition:
+
+CORRECT ANSWER
++
+MORE EVIDENCE REQUIRED
+→ FEEDBACK
+→ NEXT TASK
+
+==================================================
+REQUIRED INVARIANT
+==================================================
+
+Implement the general invariant:
+
+IF:
+
+1. an answer has been evaluated,
+2. the authoritative Decision Engine says the current
+   cognitive level must continue,
+3. a post-feedback continuation plan requires another
+   learner-answerable task,
+4. the previous task has already been retired,
+5. the node/level is NOT being completed,
+
+THEN:
+
+the persisted teaching stage MUST become:
+
+TASK_REQUIRED
+
+before:
+
+runPhase2Continuation(...)
+
+The next task must then be delivered using the EXISTING
+continuation machinery.
+
+This rule must work regardless of whether the previous answer was:
+
+- independent correct,
+- assisted correct,
+- source exercise,
+- generated task,
+
+as long as the authoritative continuation requires another task.
+
+==================================================
+DO NOT SPECIAL-CASE HELP
+==================================================
+
+The previous reproduction had:
+
+Help: 1
+
+The new reproduction has:
+
+Help: 0
+
+Both dead-ended at:
+
+VERIFIED
+CONTINUE_COGNITIVE_LEVEL
+task=false
+
+Therefore DO NOT implement:
+
+if helpCount > 0 ...
+
+or any HELP-specific workaround.
+
+Fix the general state-transition invariant.
+
+==================================================
+EXPECTED FLOW — INDEPENDENT CORRECT
+==================================================
+
+TASK 1
+→ learner answers correctly
+→ evaluation
+→ FEEDBACK
+→ threshold still unmet
+→ CONTINUE_COGNITIVE_LEVEL
+→ retire TASK 1
+→ TASK_REQUIRED
+→ automatically select TASK 2
+→ activate TASK 2
+→ return TASK 2 to learner
+→ WAIT FOR REAL LEARNER ANSWER
+
+No artificial:
+
+"օկ"
+"շարունակել"
+"հաջորդը"
+
+==================================================
+EXPECTED FLOW — ASSISTED CORRECT
+==================================================
+
+TASK 1
+→ HELP
+→ same TASK 1
+→ learner answers correctly
+→ assisted evidence preserved
+→ FEEDBACK
+→ more evidence required
+→ TASK_REQUIRED
+→ automatically select NEW independent task
+→ reset per-task HELP state
+→ return new task
+→ WAIT FOR REAL LEARNER ANSWER
+
+Again:
+
+NO artificial acknowledgement turn.
+
+==================================================
+COMPLETION SAFETY
+==================================================
+
+Do NOT blindly convert every VERIFIED state to TASK_REQUIRED.
+
+Only do it when the authoritative post-feedback continuation
+requires another learner-answerable task.
+
+If:
+
+COMPLETE_MICRONODE
+
+or another authoritative completion result applies,
+
+VERIFIED must remain completion-safe.
+
+If:
+
+_postFeedbackContinuationPlan == null
+
+do NOT fabricate another task.
+
+Completion authority remains server-owned.
+
+==================================================
+TASK SELECTION
+==================================================
+
+The just-answered exercise must not immediately repeat.
+
+If another eligible source exercise exists:
+
+deliver it.
+
+For this lesson, after EX-579-1, EX-579-2 should be considered
+according to the existing eligibility rules.
+
+If no eligible source exercise exists:
+
+use the EXISTING bounded generated-task fallback.
+
+Do NOT weaken Stage 4 / 4.1 content eligibility.
+
+==================================================
+HELP STATE
+==================================================
+
+When a new task is activated:
+
+activeHelpCount = 0
+
+and per-task assistance state must reset.
+
+Previous evidence must retain its original assistance metadata.
+
+Do NOT rewrite historical evidence.
+
+HELP button visibility must remain authoritative:
+
+task=false
+→ HELP hidden
+
+task=true
+→ HELP visible
+
+Do NOT force HELP visible without an active task.
+
+==================================================
+HINT PERSISTENCE
+==================================================
+
+OUT OF SCOPE FOR THIS FIX.
+
+The forensic audit separately confirmed that HELP hints are stored
+in help_events but are not chat_messages, so they can disappear
+from rendered chat history.
+
+Do not modify that behavior in this task.
+
+Do not fabricate learner "հուշիր" messages.
+
+==================================================
+MANUAL "ՕԿ" AFTER FEEDBACK
+==================================================
+
+The learner manually typing "օկ" after the dead-end is a symptom,
+not the intended continuation mechanism.
+
+Do NOT solve this by teaching READY/"օկ" to recover VERIFIED state.
+
+The correct fix is:
+
+the server must never leave the learner at
+VERIFIED + CONTINUE_COGNITIVE_LEVEL + task=false
+when another task is required.
+
+==================================================
+REGRESSION TESTS
+==================================================
+
+Add focused regression coverage for:
+
+1. UNASSISTED CORRECT + MORE EVIDENCE REQUIRED
+
+helpCount=0
+
+EXERCISE
+→ CORRECT
+→ VERIFIED
+→ CONTINUE_COGNITIVE_LEVEL
+→ TASK_REQUIRED
+→ next task automatically delivered
+
+Final:
+hasActiveTask=true
+
+2. ASSISTED CORRECT + MORE EVIDENCE REQUIRED
+
+helpCount=1
+
+Same continuation behavior.
+
+Previous evidence retains assistance metadata.
+
+New task starts with helpCount=0.
+
+3. VERIFIED + CONTINUATION REQUIRES TASK
+
+Must never derive INVALID_PHASE2_STATE.
+
+4. VERIFIED + NO CONTINUATION PLAN
+
+Must NOT reset to TASK_REQUIRED.
+
+5. COMPLETE_MICRONODE
+
+Must NOT create another task.
+
+6. SOURCE TASK CONTINUATION
+
+Just-answered exercise excluded.
+
+Next eligible source exercise delivered.
+
+7. GENERATED FALLBACK
+
+No eligible source exercise
+→ existing generated-task fallback.
+
+8. NO ARTIFICIAL ACKNOWLEDGEMENT
+
+After FEEDBACK + more evidence required,
+the next answerable task must be returned automatically.
+
+No learner "օկ" is required.
+
+==================================================
+VERIFY
+==================================================
+
+Run all relevant regressions:
+
+- API typecheck
+- Stage 0 baseline
+- Stage 2 action plan
+- Stage 3 bounded jobs
+- Stage 4 content boundary
+- Stage 4.1 delivery eligibility
+- Stage 5 continuation
+- Stage 5.1
+- Stage 5.2
+- Stage 5.3 assisted learning
+- Stage 5.5 THEORY fallback
+- Decision Engine
+- deterministic/source evaluation
+- git diff --check
+
+After all tests pass:
+
+restart ONLY the affected API workflow.
+
+Do not manually mutate Session 51.
+
+==================================================
+RETURN
+==================================================
+
+A. ROOT CAUSE CONFIRMATION
+B. EXACT FILES CHANGED
+C. EXACT STATE-TRANSITION FIX
+D. WHY BOTH HELP=0 AND HELP=1 NOW WORK
+E. COMPLETION SAFETY
+F. TASK-SELECTION SAFETY
+G. HELP/EVIDENCE INTEGRITY
+H. REGRESSION RESULTS
+I. API RESTART STATUS
+J. FINAL VERDICT
+
+End with:
+
+RESULT: PASS
+
+only if all required tests pass.

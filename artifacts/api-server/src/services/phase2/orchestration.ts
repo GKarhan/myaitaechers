@@ -362,6 +362,24 @@ export function derivePostFeedbackContinuationAction(input: {
 }
 
 /**
+ * A just-answered task may already have advanced EXERCISE -> VERIFIED before
+ * post-feedback continuation runs. In that case hasActiveTask is false even
+ * though the authoritative continuation plan still requires another task.
+ * The route must retire/prepare the session as TASK_REQUIRED before reloading
+ * it through the existing continuation owner.
+ */
+export function shouldPreparePostFeedbackTaskContinuation(input: {
+  postFeedbackContinuationPlan: Phase2ServerActionPlan | null;
+  hasActiveTask: boolean;
+  nodeTeachingStage: string | null;
+}): boolean {
+  return (
+    input.postFeedbackContinuationPlan !== null &&
+    (input.hasActiveTask || input.nodeTeachingStage === "VERIFIED")
+  );
+}
+
+/**
  * Keeps content validation separate from workflow ownership. It rejects AI
  * envelopes that try to manufacture a different active task than the selected
  * server action, while the existing schema/language/source validators retain

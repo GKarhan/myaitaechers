@@ -63,6 +63,7 @@ import {
   normalizeObjectiveMicroCheckAnswer,
   resolveAuthoritativeEvaluation,
   summarizeLevelEvidence,
+  shouldPreparePostFeedbackTaskContinuation,
   validatePhase2ResponseForServerAction,
   type ActiveObjectiveTaskPayload,
   type AuthoritativeSourceExercise,
@@ -2973,10 +2974,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       // Continuing at this level, including a helped success that needs an
       // independent check, must retire the answered task before server-owned
-      // continuation can deliver a new learner-answerable task.
+      // continuation can deliver a new learner-answerable task. A successful
+      // EXERCISE answer may already have advanced the stage to VERIFIED (the
+      // DB write happened above, but session.nodeTeachingStage is not yet
+      // mirrored in memory at this point). Pass the authoritative post-advance
+      // stage from _turnProgress so the VERIFIED path is correctly detected.
+      const _postAdvanceTeachingStage =
+        _turnProgress.newTeachingStage ?? session.nodeTeachingStage;
       if (
-        _postFeedbackContinuationPlan !== null &&
-        hasActiveTask
+        shouldPreparePostFeedbackTaskContinuation({
+          postFeedbackContinuationPlan: _postFeedbackContinuationPlan,
+          hasActiveTask,
+          nodeTeachingStage: _postAdvanceTeachingStage,
+        })
       ) {
         _postFeedbackExcludedExerciseId =
           session.activeTaskProvenance === "source_exercise"
@@ -3006,7 +3016,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           {
             sessionId: session.id,
             nodeId: session.currentNodeId,
-            postFeedbackAction: _postFeedbackContinuationPlan.action,
+            postFeedbackAction: _postFeedbackContinuationPlan!.action,
             excludedExerciseId: _postFeedbackExcludedExerciseId,
           },
           "Stage-5.3 retired answered task before independent-check continuation",
