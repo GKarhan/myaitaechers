@@ -1,0 +1,201 @@
+READ-ONLY FORENSIC AUDIT — ACTIVE MICRO_CHECK WITH NO VISIBLE QUESTION
+
+Do NOT change code yet.
+Do NOT modify DB.
+Do NOT restart/reset the learner session.
+Inspect the exact latest session 51 turn only.
+
+Observed runtime state after the learner answered:
+
+"Քանի որ մոլեկուլները անընդհատ շարժվում են"
+
+Visible AI response:
+
+"Ապրես, Էլեն: Ճիշտ մտածեցիր - պղնձարջասպի լուծույթի
+մոլեկուլները շարժվում են և պատահական բախումների հետևանքով
+աստիճանաբար խառնվում են ջրի մոլեկուլների հետ:
+Հիմա փորձենք ավելի խորը հասկանալ այս երևույթը:"
+
+But debug state is:
+
+Node: 2107
+Level: understand
+Stage: MICRO_CHECK
+Ex: —
+Decision: CONTINUE_COGNITIVE_LEVEL
+mode: FEEDBACK
+task: ✓
+
+This is suspicious because the backend says an active MICRO_CHECK exists,
+but the learner-facing message contains no visible answerable question.
+
+==================================================
+A. EXACT STRUCTURED AI RESULT
+==================================================
+
+For this exact turn, report the complete relevant structured fields:
+
+- teaching_mode
+- is_micro_check
+- interaction_type
+- student_message
+- question_template
+- options
+- correct_option
+- answer_evaluation.status
+- answer_evaluation.evidence_quality
+- node_decision
+- source_fidelity
+
+Do not infer missing values.
+
+==================================================
+B. PRE-TURN STATE
+==================================================
+
+Report immediately before this learner answer:
+
+- currentPhase
+- currentNodeId
+- activeCognitiveLevelId + level name
+- nodeTeachingStage
+- activeTaskProvenance
+- activeObjectiveTaskPayload
+- activeLessonExerciseId
+- nodeAttemptCount
+- nodeMasteryEvidenceCount
+- help/assistance state
+
+==================================================
+C. POST-TURN STATE
+==================================================
+
+Report the same fields immediately after the turn.
+
+Especially prove exactly which code path changed or retained:
+
+nodeTeachingStage = MICRO_CHECK
+activeTaskProvenance = micro_check
+task = active
+
+==================================================
+D. MICRO_CHECK CREATION OWNER
+==================================================
+
+Find the exact code condition that caused this response to leave the
+session in MICRO_CHECK.
+
+Was MICRO_CHECK created because:
+
+1. aiResult.is_micro_check === true
+2. teaching_mode
+3. stage-machine logic
+4. FEEDBACK → MICRO_CHECK transition
+5. existing active task was retained
+6. another backend mechanism
+
+Quote the exact relevant condition/code.
+
+==================================================
+E. VISIBLE QUESTION VALIDATION
+==================================================
+
+Determine whether the current validators require every newly activated
+MICRO_CHECK to contain an actual learner-answerable question.
+
+Check separately for:
+
+- multiple_choice
+- true_false
+- constructed_response
+
+Important:
+
+A sentence such as:
+
+"Հիմա փորձենք ավելի խորը հասկանալ այս երևույթը"
+
+must NOT count as an answerable MICRO_CHECK.
+
+Report whether constructed_response currently has a gap allowing
+is_micro_check=true without a visible question.
+
+==================================================
+F. ACTIVE OBJECTIVE PAYLOAD
+==================================================
+
+Report whether activeObjectiveTaskPayload was created on this turn.
+
+If null, explain whether that is expected because the interaction was
+constructed_response or whether something else occurred.
+
+Do not change the objective payload architecture.
+
+==================================================
+G. CORRECT PROGRESSION CONTRACT
+==================================================
+
+For an understand-level answer that is evaluated correctly but does NOT
+yet satisfy the cognitive-level evidence threshold, determine the intended
+next behavior from existing architecture.
+
+Should it be:
+
+FEEDBACK
+→ next MICRO_CHECK/question
+→ persist MICRO_CHECK only if an actual question was delivered
+→ wait for learner answer
+
+or something else?
+
+Use the existing Cognitive Path / teaching-cycle contract as authority.
+
+==================================================
+H. FIRST CONFIRMED ROOT CAUSE
+==================================================
+
+Identify the FIRST proven cause of:
+
+Stage = MICRO_CHECK
+task = active
+
+while no visible answerable question exists.
+
+Distinguish:
+
+- model contract violation
+- validator gap
+- backend stage-transition bug
+- stale active-task state
+- response/state desynchronization
+- other
+
+==================================================
+I. SMALLEST SAFE FIX
+==================================================
+
+Propose the smallest fix only.
+
+Desired invariant:
+
+The backend must never persist/retain a newly answerable MICRO_CHECK state
+unless the learner-facing response contains the actual question/task that
+the learner is expected to answer.
+
+Do not implement yet.
+
+==================================================
+J. VERDICT
+==================================================
+
+Return exactly one:
+
+PASS
+MODEL CONTRACT GAP
+VALIDATOR GAP
+STAGE TRANSITION GAP
+STATE/CONTENT DESYNC
+MULTIPLE LINKED GAPS
+OTHER
+
+No code changes.
