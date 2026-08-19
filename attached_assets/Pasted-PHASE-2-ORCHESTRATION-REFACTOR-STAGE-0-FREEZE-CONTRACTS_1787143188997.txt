@@ -1,0 +1,544 @@
+PHASE 2 ORCHESTRATION REFACTOR — STAGE 0
+FREEZE CONTRACTS + ADD REPRESENTATIVE FIXTURES
+
+IMPORTANT
+
+This is Stage 0 of the approved staged Phase-2 orchestration refactor.
+
+DO NOT refactor chat.ts yet.
+DO NOT change production behavior.
+DO NOT change prompts.
+DO NOT change database schema.
+DO NOT change provider/model configuration.
+DO NOT change progression rules.
+DO NOT change frontend behavior.
+
+GOAL
+
+Freeze the CURRENT safe Phase-2 behavior into explicit regression fixtures/tests
+before any orchestration refactor begins.
+
+We want to guarantee that future stages preserve all recent safety-critical work.
+
+The audit concluded that the system already has strong building blocks and that
+the refactor should be staged, not rewritten.
+
+Stage 0 must create a reliable regression baseline.
+
+==================================================
+1. INVENTORY CURRENT PHASE-2 INVARIANTS
+==================================================
+
+Create a concise source-of-truth test contract for the following CURRENT invariants.
+
+Do not change their behavior.
+
+Required invariants:
+
+1. No active MICRO_CHECK without a visible answerable task.
+
+2. Feedback-only response:
+   teaching_mode = FEEDBACK
+   is_micro_check = false
+   must NOT activate a MICRO_CHECK.
+
+3. Phase 2 THEORY uses the server-owned envelope:
+   final teaching_mode = TEACH
+   final is_micro_check = true
+   but only valid learner-answerable content may activate a task.
+
+4. Failed structured generation must fail closed:
+   - no phantom task
+   - no phantom evidence
+   - no progression mutation
+   - no plain-text fallback for controlled Phase-2 teaching.
+
+5. Exact source-exercise identity:
+   selected/delivered source exercise
+   === persisted activeLessonExerciseId.
+
+6. Source-exercise delivery is single-owner:
+   no duplicate P11.1 + V2-R1.1 visible delivery.
+
+7. Typed source exercise deterministic scoring:
+   multiple_choice / true_false
+   correctness is backend-owned.
+
+8. AI-generated objective MICRO_CHECK deterministic scoring:
+   activeObjectiveTaskPayload is authoritative.
+
+9. Source and generated objective task authorities stay separate.
+
+10. Cognitive Path progression owns:
+    - current cognitive level
+    - ADVANCE_COGNITIVE_LEVEL
+    - target-ceiling completion.
+
+11. A Cognitive Path node cannot complete merely because legacy
+    stageBecomesVerified became true.
+
+12. Phase 2 → Phase 3 only occurs after legitimate MicroNode completion.
+
+13. Evidence thresholds remain authoritative.
+
+14. Time/budget exhaustion is not learner failure.
+
+15. Source exercise answer keys are never exposed to student-facing APIs.
+
+16. Source verbatim exercise text remains protected.
+
+17. Fresh/relearn reset behavior remains exactly as currently implemented:
+    session-local state resets;
+    durable learning evidence/mastery remains preserved.
+
+18. Frontend remains a thin client:
+    it sends message + lessonId;
+    backend/session state remains authoritative.
+
+==================================================
+2. REPRESENTATIVE FIXTURES
+==================================================
+
+Add representative fixtures/tests for at least these Phase-2 scenarios.
+
+Use existing test conventions and helpers wherever possible.
+
+Do NOT create browser/E2E tests if route/unit/integration tests are sufficient.
+
+--------------------------------------------------
+FIXTURE A — THEORY → VALID GENERATED MICRO_CHECK
+--------------------------------------------------
+
+State:
+
+Phase 2
+currentNodeId exists
+Cognitive Path active
+Stage = THEORY
+
+Generated candidate contains:
+- valid short explanation
+- valid multiple-choice task
+- visible options
+- valid correct option
+
+Expected:
+- response accepted
+- Stage → MICRO_CHECK
+- task active
+- activeObjectiveTaskPayload persisted
+- no evidence yet.
+
+--------------------------------------------------
+FIXTURE B — THEORY GENERATION FAILS CLOSED
+--------------------------------------------------
+
+Invalid generated content, e.g.:
+- too many sentences
+OR
+- missing visible task affordance.
+
+Expected:
+- request failure/safe result according to current contract
+- Stage remains THEORY
+- no active task
+- no objective payload
+- no exercise activation
+- no evidence/progression mutation.
+
+--------------------------------------------------
+FIXTURE C — FEEDBACK ONLY
+--------------------------------------------------
+
+Evaluated answer with:
+
+teaching_mode = FEEDBACK
+is_micro_check = false
+Decision Engine = CONTINUE_COGNITIVE_LEVEL
+
+Expected:
+- no new active task
+- cognitive level remains
+- feedback does not manufacture MICRO_CHECK.
+
+--------------------------------------------------
+FIXTURE D — ACTIVE AI-GENERATED OBJECTIVE MICROCHECK
+--------------------------------------------------
+
+Active objective task:
+multiple_choice
+correctOption = B
+
+Student:
+բ
+
+Expected:
+- backend authoritative CORRECT
+- model disagreement cannot override correctness
+- existing evidence policy consumed once.
+
+--------------------------------------------------
+FIXTURE E — ACTIVE SOURCE EXERCISE
+--------------------------------------------------
+
+Use lesson-579 fixture data if existing isolated test helpers allow it:
+
+EX-579-1
+internal ID = 940
+interactionType = multiple_choice
+correctAnswer = B
+
+Student:
+բ
+
+Expected:
+- exact ID 940 is authority
+- deterministic CORRECT
+- no classExercises[0] identity drift.
+
+--------------------------------------------------
+FIXTURE F — SOURCE EXERCISE IDENTITY
+--------------------------------------------------
+
+Eligible set:
+940 / EX-579-1
+941 / EX-579-2
+
+Explicit eligible selection:
+EX-579-2
+
+Expected:
+- activeLessonExerciseId = 941
+- delivered exercise = EX-579-2
+- never 940.
+
+--------------------------------------------------
+FIXTURE G — COGNITIVE LEVEL ADVANCE
+--------------------------------------------------
+
+Current level:
+remember
+
+Decision Engine:
+ADVANCE_COGNITIVE_LEVEL
+
+Expected:
+- same currentNodeId
+- same Phase 2
+- next activeCognitiveLevelId persists
+- Stage = THEORY
+- no stale previous-level task/exercise.
+
+--------------------------------------------------
+FIXTURE H — TARGET CEILING COMPLETION
+--------------------------------------------------
+
+Cognitive Path active.
+Target ceiling is genuinely confirmed.
+
+Expected:
+- mayCompleteMicroNode = true
+- node completion allowed
+- only then may node/phase advance.
+
+--------------------------------------------------
+FIXTURE I — NO PREMATURE NODE COMPLETION
+--------------------------------------------------
+
+Cognitive Path active.
+stageBecomesVerified = true
+but mayCompleteMicroNode = false.
+
+Expected:
+- node remains active
+- no Phase 3 advance.
+
+--------------------------------------------------
+FIXTURE J — CONSTRUCTED RESPONSE TASK VALIDATION
+--------------------------------------------------
+
+Case 1:
+is_micro_check = true
+constructed_response
+transition sentence only
+
+Expected:
+REJECT.
+
+Case 2:
+is_micro_check = true
+constructed_response
+clear visible learner task/question
+
+Expected:
+ACCEPT.
+
+--------------------------------------------------
+FIXTURE K — LEGACY SOURCE EXERCISE
+--------------------------------------------------
+
+interactionType = null
+correctAnswer = null
+
+Expected:
+- no deterministic answer inference
+- existing AI-assisted behavior preserved.
+
+--------------------------------------------------
+FIXTURE L — STUDENT DATA SAFETY
+--------------------------------------------------
+
+Student-facing lesson/chat payloads must not expose:
+- source exercise correctAnswer
+- generated objective correctOption
+- hidden answer metadata.
+
+==================================================
+3. RESPONSE / STATE PAIR FIXTURES
+==================================================
+
+Create explicit assertions pairing learner-visible response with persisted state.
+
+Examples:
+
+Visible MICRO_CHECK
+→ Stage = MICRO_CHECK
+→ active task exists.
+
+Feedback-only response
+→ no newly active task.
+
+Visible source exercise EX-X
+→ activeLessonExerciseId exactly matches EX-X internal row.
+
+No visible task
+→ must not end in active MICRO_CHECK state.
+
+This is important because the refactor will later separate content generation
+from orchestration.
+
+==================================================
+4. CURRENT CLIENT CONTRACT FIXTURE
+==================================================
+
+Freeze current client contract:
+
+POST /api/chat input remains:
+
+{
+  message,
+  lessonId
+}
+
+Client must NOT supply:
+
+- teachingMode
+- currentNodeId
+- active exercise ID
+- answer key
+- cognitive-level decision
+- evidence result.
+
+Freeze current server-derived response fields used by frontend.
+
+Do not change generated API types in this Stage unless a test fixture requires
+reading them.
+
+==================================================
+5. CURRENT STRUCTURED AI CONTRACT SNAPSHOT
+==================================================
+
+Document/test the CURRENT structured-response fields only as a compatibility
+baseline.
+
+Do NOT redesign them yet.
+
+At minimum capture:
+
+- student_message
+- teaching_mode
+- is_micro_check
+- interaction_type
+- options
+- correct_option
+- answer_evaluation
+- node_decision
+- source_fidelity
+- question_template
+- redirect flags
+- encouragement metadata
+
+Mark in test comments/documentation that this is a LEGACY/TRANSITIONAL contract
+for later refactor stages.
+
+Do not remove fields.
+
+==================================================
+6. TEST ORGANIZATION
+==================================================
+
+Prefer adding or extending targeted suites rather than one giant new test file.
+
+Reuse existing suites where appropriate:
+
+- Phase-2 safety
+- V2-R1 state machine
+- V2-R1.1 closure
+- source exercise activation
+- deterministic source exercise evaluation
+- objective MICROCHECK tests
+- Cognitive Path / Phase-2 evidence tests
+
+Add only missing parity fixtures.
+
+Do not duplicate tests that already prove an invariant.
+
+If an invariant is already fully covered, reference the existing test instead
+of rewriting it.
+
+==================================================
+7. NO BEHAVIOR CHANGES
+==================================================
+
+This is mandatory.
+
+Stage 0 may add:
+
+- tests
+- test fixtures
+- test helpers
+- comments/docs describing frozen contracts
+- minimal test-only exports if absolutely necessary
+
+Stage 0 may NOT change production behavior.
+
+If a new test exposes a CURRENT bug:
+
+DO NOT FIX IT in this Stage.
+
+Report:
+
+CURRENT GAP DISCOVERED
+
+with:
+- failing invariant
+- exact existing behavior
+- recommended later stage/task.
+
+Keep Stage 0 focused on establishing truth.
+
+==================================================
+8. REGRESSION BASELINE
+==================================================
+
+At minimum run all existing relevant suites plus new Stage-0 fixtures.
+
+The previously known suites include:
+
+- Phase-2 focused safety tests
+- V2-R1 state-machine suite
+- V2-R1.1 closure suite
+- Phase-2 evidence suite
+- source-exercise activation suite
+- typed source-answer contract tests
+- deterministic source-exercise evaluation tests
+- MICROCHECK activation tests
+
+Use actual repository test names/counts.
+
+Do not fabricate counts.
+
+==================================================
+9. TYPECHECK / DIFF
+==================================================
+
+Run:
+
+- API TypeScript typecheck
+- relevant DB/package typechecks only if test helpers touch them
+- git diff --check
+
+No workflow restart is necessary unless current repo tooling requires it for
+tests.
+
+==================================================
+10. CREATE STAGE-0 BASELINE DOCUMENT
+==================================================
+
+Create a small developer-facing document or existing project memory note named
+conceptually:
+
+Phase 2 Orchestration Refactor — Stage 0 Baseline
+
+It should contain:
+
+- frozen invariants
+- representative fixtures
+- current ownership boundaries
+- current known gaps that are NOT fixed
+- regression suites that must remain green in Stages 1–6.
+
+Keep it concise.
+Do not duplicate large code blocks.
+
+==================================================
+11. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- chat orchestration behavior
+- AI prompt behavior
+- Decision Engine
+- Cognitive Path rules
+- evidence/mastery
+- source exercise selection
+- source exercise scoring
+- objective MICROCHECK scoring
+- frontend
+- DB schema
+- mapper
+- provider/model configuration
+- Phase 1/3/4 behavior.
+
+No unrelated refactor.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. FILES CHANGED
+
+B. FROZEN INVARIANTS
+
+C. EXISTING COVERAGE REUSED
+
+D. NEW FIXTURES ADDED
+
+E. RESPONSE/STATE PARITY COVERAGE
+
+F. CLIENT CONTRACT BASELINE
+
+G. STRUCTURED AI CONTRACT SNAPSHOT
+
+H. CURRENT GAPS DISCOVERED
+If none, say NONE.
+
+I. TEST SUITES / RESULTS
+
+J. TYPECHECK / DIFF CHECK
+
+K. PRODUCTION BEHAVIOR CHANGED?
+Must be NO.
+
+L. STAGE-1 READINESS
+READY / BLOCKED
+
+M. RESULT
+PASS / PARTIAL / BLOCKED
+
+Then STOP.
+
+Do NOT begin Stage 1 automatically.
