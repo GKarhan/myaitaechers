@@ -1,0 +1,183 @@
+TARGETED FIX ONLY — SHORT CHOICE ANSWERS MUST ROUTE AS ANSWER
+
+GOAL
+
+Fix one confirmed runtime bug:
+
+During an active Phase-2 MICRO_CHECK, the student answered:
+
+բ
+
+The system classified it as:
+
+intent = CLARIFY
+
+Because of that:
+- answer_evaluation was forced to NOT_APPLICABLE
+- no evidence/attempt was recorded
+- MICRO_CHECK → EXERCISE transition did not run
+- backend later displayed EX-579-1 without activating it
+
+The FIRST break is intent classification.
+
+Fix ONLY this.
+
+==================================================
+REQUIRED BEHAVIOR
+
+When there is an active task / MICRO_CHECK and the student message is a clear short answer choice, route it deterministically as:
+
+ANSWER
+
+Do this BEFORE generic AI/LLM intent classification can misclassify it.
+
+At minimum support canonical multiple-choice responses:
+
+Armenian:
+ա
+բ
+գ
+դ
+
+Latin:
+a
+b
+c
+d
+
+Case-insensitive where relevant.
+
+Also support obvious normalized variants such as:
+
+ա)
+բ)
+գ)
+դ)
+
+A
+B
+C
+D
+
+Do not hardcode lesson/node/exercise IDs.
+
+==================================================
+TRUE/FALSE
+
+If the existing router already has a clean deterministic place for it, also treat obvious short true/false responses as ANSWER:
+
+ճիշտ
+սխալ
+true
+false
+
+But do NOT expand this task into broad NLP classification.
+
+==================================================
+SCOPE
+
+Find the existing student-intent routing logic used by chat.ts.
+
+Prefer the smallest deterministic pre-check:
+
+if active task exists
+AND normalized student message is a canonical short answer token
+→ intent = ANSWER
+
+Then preserve the existing routing for all other messages.
+
+Do NOT replace the current intent router.
+
+==================================================
+IMPORTANT
+
+This deterministic override should apply only when the runtime is actually expecting an answer, such as:
+
+- active MICRO_CHECK
+- active EXERCISE
+- or existing hasActiveTask equivalent
+
+Do NOT globally classify every standalone "բ" in every chat context as ANSWER if no task is active.
+
+Use existing session/task state.
+
+==================================================
+DO NOT TOUCH
+
+Do NOT modify:
+
+- exercise progression
+- P11.1
+- exercise cursor
+- MICRO_CHECK → EXERCISE transition logic
+- answer evaluation
+- evidence scoring
+- Cognitive Path
+- Decision Engine
+- prompts
+- Mapping
+- Phase 2 content
+- frontend
+- DB schema
+- fresh-session logic
+
+Only fix the intent classification of clear short answers.
+
+==================================================
+VERIFICATION
+
+Static verification only.
+
+Verify:
+
+CASE A
+active MICRO_CHECK + "բ"
+→ ANSWER
+
+CASE B
+active MICRO_CHECK + "B"
+→ ANSWER
+
+CASE C
+active MICRO_CHECK + "ճիշտ"
+→ ANSWER if true/false support is added
+
+CASE D
+no active task + "բ"
+→ existing normal intent-router behavior remains
+
+CASE E
+active task + "չգիտեմ հուշի"
+→ must NOT become ANSWER
+→ existing HELP/CONFUSED routing remains available
+
+Run only the relevant TypeScript check.
+
+==================================================
+FINAL REPORT
+
+A. FILES CHANGED
+
+B. DETERMINISTIC ANSWER RULE
+Show the small relevant logic.
+
+C. TASK-SCOPE GUARD
+Explain how it only applies when an answer is expected.
+
+D. STATIC CASES
+A/B/C/D/E = PASS/FAIL
+
+E. ISOLATION
+Confirm no exercise progression, evaluation, evidence, Cognitive Path, prompt, DB, or frontend logic changed.
+
+F. TYPECHECK
+PASS / FAIL
+
+G. RESULT
+PASS — canonical short answer choices are routed as ANSWER during active tasks
+
+or
+
+FAIL — exact reason
+
+Then STOP.

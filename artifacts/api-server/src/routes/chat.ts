@@ -154,6 +154,20 @@ function validateNoScopeDrift(studentMessage: string, allNodeTitles: string[]): 
   return !refersToKnownNode;
 }
 
+function normalizeShortAnswerToken(message: string): string {
+  return message
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[.,;!?։\u0589\u055b\u055c\u055d\u055e\u055f…)\]]+$/g, "")
+    .trim();
+}
+
+function isCanonicalShortAnswer(message: string): boolean {
+  const normalized = normalizeShortAnswerToken(message);
+  return /^(?:[a-dա-դ]|ճիշտ|սխալ|true|false)$/iu.test(normalized);
+}
+
 function buildPhaseGuidance(phase: number, topicName: string, subjectName: string): string {
   switch (phase) {
     case 1:
@@ -1153,28 +1167,47 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     );
 
   let _intentResult: IntentResult = { intent: "ANSWER", confidence: 0.5, reason: "pre-classification-default" };
-  try {
-    const _intentCtx: IntentContext = {
-      teachingStage:        session?.nodeTeachingStage ?? null,
-      hasActiveTask:        _intentHasActiveTask,
-      introConfirmed:       session?.introConfirmed ?? false,
-      lastQuestionAsked:    session?.lastQuestionAsked ?? null,
-      activeTaskProvenance: session?.activeTaskProvenance ?? null,
+  if (_intentHasActiveTask && isCanonicalShortAnswer(message)) {
+    _intentResult = {
+      intent: "ANSWER",
+      confidence: 1,
+      reason: "deterministic:short_answer_token",
     };
-    _intentResult = await classifyIntent(message, _intentCtx);
     logger.info(
       {
-        sessionId:     session?.id ?? null,
-        teachingStage: _intentCtx.teachingStage,
-        hasActiveTask: _intentCtx.hasActiveTask,
-        intent:        _intentResult.intent,
-        reason:        _intentResult.reason,
-        msgLen:        message.length,
+        sessionId: session?.id ?? null,
+        teachingStage: session?.nodeTeachingStage ?? null,
+        hasActiveTask: true,
+        intent: _intentResult.intent,
+        reason: _intentResult.reason,
+        msgLen: message.length,
       },
-      "V2-R2: intent classified"
+      "V2-R2: deterministic short answer routed as ANSWER"
     );
-  } catch (intentErr) {
-    logger.warn({ intentErr }, "V2-R2: classifyIntent threw unexpectedly — defaulting to ANSWER");
+  } else {
+    try {
+      const _intentCtx: IntentContext = {
+        teachingStage:        session?.nodeTeachingStage ?? null,
+        hasActiveTask:        _intentHasActiveTask,
+        introConfirmed:       session?.introConfirmed ?? false,
+        lastQuestionAsked:    session?.lastQuestionAsked ?? null,
+        activeTaskProvenance: session?.activeTaskProvenance ?? null,
+      };
+      _intentResult = await classifyIntent(message, _intentCtx);
+      logger.info(
+        {
+          sessionId:     session?.id ?? null,
+          teachingStage: _intentCtx.teachingStage,
+          hasActiveTask: _intentCtx.hasActiveTask,
+          intent:        _intentResult.intent,
+          reason:        _intentResult.reason,
+          msgLen:        message.length,
+        },
+        "V2-R2: intent classified"
+      );
+    } catch (intentErr) {
+      logger.warn({ intentErr }, "V2-R2: classifyIntent threw unexpectedly — defaulting to ANSWER");
+    }
   }
 
   // ── V2-R2: CONTINUE / READY with active task → fast-return, no task skip ────
