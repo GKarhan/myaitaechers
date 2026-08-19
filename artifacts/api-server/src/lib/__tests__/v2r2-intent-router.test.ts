@@ -88,6 +88,22 @@ await test("T04 — 'ok' normalises through lookalike substitution", async () =>
   assert.equal(r.intent, "READY");
 });
 
+await test("T04A — natural Armenian hint request during an active task routes to HELP", async () => {
+  const r = await classifyIntent("չգիտեմ միգուցե հուշես", ctx());
+  assert.equal(r.intent, "HELP");
+  assert.equal(r.reason, "deterministic:active_task_help_request");
+});
+
+await test("T04B — explicit assistance request during an active task routes to HELP", async () => {
+  const r = await classifyIntent("կարո՞ղ ես օգնիր պատասխանեմ", ctx());
+  assert.equal(r.intent, "HELP");
+});
+
+await test("T04C — conceptual clarification is not converted into HELP", async () => {
+  const r = await classifyIntent("հարցը չեմ հասկանում, ի՞նչ է նշանակում մոլեկուլ", ctx());
+  assert.notEqual(r.intent, "HELP");
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // T05–T07: CONTINUE behaviour
 // ─────────────────────────────────────────────────────────────────────────────

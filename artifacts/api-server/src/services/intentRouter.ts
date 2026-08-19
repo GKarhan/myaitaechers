@@ -119,6 +119,16 @@ const HELP_EXACT = new Set<string>([
   "help",
 ]);
 
+/**
+ * Strong Armenian assistance signals that may appear inside a natural sentence.
+ * They are intentionally applied only with an authoritative active task, so a
+ * genuine conceptual clarification remains available to the CLARIFY path.
+ */
+const ACTIVE_TASK_HELP_CONTAINS: RegExp[] = [
+  /հուշ(?:իր|ես|ում|ել)?/u,
+  /օգն(?:իր|ես|ություն)?/u,
+];
+
 /** CONFUSED — I don't know / I can't / you say it */
 const CONFUSED_EXACT = new Set<string>([
   // chgidem (I don't know)
@@ -169,7 +179,7 @@ const REPEAT_EXACT = new Set<string>([
 function classifyDeterministic(
   normalized: string,
   normalizedOk: string,
-  _ctx: IntentContext
+  ctx: IntentContext
 ): IntentResult | null {
   // READY — "ok" variants (after lookalike substitution) or known affirmative phrases
   if (normalizedOk === "ok" || READY_EXACT.has(normalized)) {
@@ -184,6 +194,16 @@ function classifyDeterministic(
   // HELP
   if (HELP_EXACT.has(normalized)) {
     return { intent: "HELP", confidence: 1, reason: "deterministic:help_phrase" };
+  }
+
+  // Natural help phrasing during a real task, e.g. «չգիտեմ միգուցե հուշես».
+  // Do this before CONFUSED/CLARIFY so an explicit request for solving support
+  // reaches the authoritative HELP executor and its durable assistance state.
+  if (
+    ctx.hasActiveTask &&
+    ACTIVE_TASK_HELP_CONTAINS.some((pattern) => pattern.test(normalized))
+  ) {
+    return { intent: "HELP", confidence: 1, reason: "deterministic:active_task_help_request" };
   }
 
   // CONFUSED
@@ -290,6 +310,7 @@ export const _test = {
   READY_EXACT,
   CONTINUE_EXACT,
   HELP_EXACT,
+  ACTIVE_TASK_HELP_CONTAINS,
   CONFUSED_EXACT,
   REPEAT_EXACT,
 };

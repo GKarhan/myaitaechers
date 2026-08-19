@@ -56,6 +56,7 @@ import {
   derivePhase2ServerAction,
   deriveProgressionPlan,
   deriveTurnProgress,
+  establishEvaluatedTurnAuthority,
   filterEvidenceForCurrentRunNode,
   normalizeObjectiveMicroCheckAnswer,
   resolveAuthoritativeEvaluation,
@@ -77,6 +78,11 @@ type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
 function learnerExerciseText(exercise: LessonExerciseRow): string | null {
   const content = resolveLearnerExerciseContent(exercise);
   return isLearnerDeliveryEligible(content) ? content.learnerText : null;
+}
+
+export function buildActiveTaskReminder(taskText: string | null): string {
+  const prefix = "Ընթացիկ առաջադրանքը դեռ բաց է։ Խնդրում եմ պատասխանել։";
+  return taskText ? `${prefix}\n${taskText}` : prefix;
 }
 
 function filterLearnerSafeExercises(
@@ -1433,12 +1439,22 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     (_intentResult.intent === "CONTINUE" || _intentResult.intent === "READY") &&
     _intentHasActiveTask
   ) {
-    const _activeQ  = session?.lastQuestionAsked;
-    // "\u0540\u0561\u0580\u0581\u0568 \u0564\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u0581 \u0565" = "Hartsе dadjord bac e" (The question is still open)
-    const taskReminder = _activeQ
-      ? `\u0540\u0561\u0580\u056e\u0568 \u0564\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u0581 \u0565.` +
-        ` \u053d\u0576\u0174\u0580\u0578\u0582\u0574 \u0565\u0574 \u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0565\u056c:\n${_activeQ}`
-      : "\u0540\u0561\u0580\u056e\u0568 \u0564\u0561\u057b\u0578\u0580\u0564 \u0562\u0561\u0581 \u0565. \u053d\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0574 \u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0565\u056c.";
+    let activeTaskText = session?.lastQuestionAsked ?? null;
+    if (session?.activeLessonExerciseId != null) {
+      const [activeExercise] = await db
+        .select({
+          exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim,
+          exerciseTextEdited: lessonExercisesTable.exerciseTextEdited,
+          successCriteria: lessonExercisesTable.successCriteria,
+          correctAnswer: lessonExercisesTable.correctAnswer,
+        })
+        .from(lessonExercisesTable)
+        .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
+        .limit(1);
+      const resolved = resolveHelpTaskText(activeExercise ?? null, null);
+      activeTaskText = resolved.ok ? resolved.taskText : null;
+    }
+    const taskReminder = buildActiveTaskReminder(activeTaskText);
     const [contMsg] = await db
       .insert(chatMessagesTable)
       .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: taskReminder })
@@ -1538,6 +1554,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
   let wasCorrect: boolean | null = null;
+  let _evaluatedTurnAuthority: ReturnType<typeof establishEvaluatedTurnAuthority> | null = null;
+  let _evaluatedTaskEvidenceContext: {
+    id: number;
+    currentNodeId: number | null;
+    nodeTeachingStage: string;
+    activeTaskProvenance: string | null;
+    activeLessonExerciseId: number | null;
+    activeCognitiveLevelId: number | null;
+    activeAttemptSequence: number;
+    activeHelpCount: number;
+    activeAssistanceLevel: string;
+  } | null = null;
   let _stage3BoundedAnswerTurn = false;
   let _stage3SourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
   let _stage3HiddenExerciseContent: string[] = [];
@@ -2304,6 +2332,25 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     });
     aiResult = _authoritativeEvaluation.response;
     wasCorrect = _authoritativeEvaluation.wasCorrect;
+    if (_stage3BoundedAnswerTurn) {
+      _evaluatedTurnAuthority = establishEvaluatedTurnAuthority(
+        aiResult.answer_evaluation,
+      );
+      logger.info(
+        {
+          sessionId: session?.id ?? null,
+          requestId: (req as any).id ?? null,
+          learnerMessageId: learnerMessage.id,
+          activeTaskProvenance: session?.activeTaskProvenance ?? null,
+          activeLessonExerciseId: session?.activeLessonExerciseId ?? null,
+          evaluationAuthority: _authoritativeEvaluation.authority,
+          evaluationStatus: _evaluatedTurnAuthority.status,
+          evidenceWasCorrect: _evaluatedTurnAuthority.evidenceWasCorrect,
+          isCorrectnessOutcome: _evaluatedTurnAuthority.isCorrectnessOutcome,
+        },
+        "Stage-5.3 authoritative evaluated-turn snapshot established",
+      );
+    }
 
     if (_authoritativeEvaluation.authority === "non_answer_gate") {
       logger.info(
@@ -2472,6 +2519,28 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       consecutiveIncorrect: session.nodeConsecutiveIncorrect,
       attemptCount: session.nodeAttemptCount,
     });
+    if (
+      _evaluatedTurnAuthority !== null &&
+      _turnProgress.status !== _evaluatedTurnAuthority.status
+    ) {
+      throw new Error("evaluated-turn status diverged before state transition");
+    }
+    if (_turnProgress.wasEval) {
+      // Capture the evaluated task before continuation can clear it. Evidence
+      // is written after res.json(), so reading the mutable session there can
+      // otherwise turn an assisted answer into false independent evidence.
+      _evaluatedTaskEvidenceContext = {
+        id: session.id,
+        currentNodeId: session.currentNodeId,
+        nodeTeachingStage: session.nodeTeachingStage,
+        activeTaskProvenance: session.activeTaskProvenance,
+        activeLessonExerciseId: session.activeLessonExerciseId,
+        activeCognitiveLevelId: session.activeCognitiveLevelId,
+        activeAttemptSequence: session.activeAttemptSequence,
+        activeHelpCount: session.activeHelpCount,
+        activeAssistanceLevel: session.activeAssistanceLevel,
+      };
+    }
     const {
       status,
       quality,
@@ -2824,13 +2893,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         ),
       });
 
-      // A correct/strong source task can satisfy the legacy VERIFIED condition
-      // before the Cognitive Path decision is known. When that decision says
-      // more same-level evidence is required, TASK_REQUIRED is the existing
-      // continuation-safe state; VERIFIED must not become a no-task rest state.
+      // Continuing at this level, including a helped success that needs an
+      // independent check, must retire the answered task before server-owned
+      // continuation can deliver a new learner-answerable task.
       if (
         _postFeedbackContinuationPlan !== null &&
-        _turnProgress.newTeachingStage === "VERIFIED"
+        hasActiveTask
       ) {
         _postFeedbackExcludedExerciseId =
           session.activeTaskProvenance === "source_exercise"
@@ -2863,7 +2931,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             postFeedbackAction: _postFeedbackContinuationPlan.action,
             excludedExerciseId: _postFeedbackExcludedExerciseId,
           },
-          "Stage-5 corrected VERIFIED/no-task continuation state to TASK_REQUIRED",
+          "Stage-5.3 retired answered task before independent-check continuation",
         );
       }
       _phase2ServerActionPlan = derivePhase2ServerAction({
@@ -3064,7 +3132,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       );
       assertFeedbackOnly(feedback);
       const acknowledgement = serverOwnedFeedbackAcknowledgement(
-        aiResult.answer_evaluation.status,
+        _evaluatedTurnAuthority?.status ?? aiResult.answer_evaluation.status,
       );
       try {
         const feedbackServerAction =
@@ -3074,14 +3142,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           serverAction: feedbackServerAction,
           hasActiveTask,
         });
-        if (
-          aiResult.answer_evaluation.status === "CORRECT" ||
-          aiResult.answer_evaluation.status === "INCORRECT" ||
-          aiResult.answer_evaluation.status === "PARTIALLY_CORRECT"
-        ) {
+        if (_evaluatedTurnAuthority?.isCorrectnessOutcome) {
           assertFeedbackMatchesAuthority(
             feedback,
-            aiResult.answer_evaluation.status,
+            _evaluatedTurnAuthority.status as "CORRECT" | "INCORRECT" | "PARTIALLY_CORRECT",
           );
         }
         studentMessage = acknowledgement
@@ -3256,9 +3320,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session.currentPhase >= 2 && session.currentNodeId
   ) {
     const evtQuality  = aiResult.answer_evaluation.evidence_quality;
-    const evtStatus   = aiResult.answer_evaluation.status;
-    const evtWasEval  = evtStatus !== "NOT_APPLICABLE";
-    const evtIsCorrect = evtStatus === "CORRECT" || evtStatus === "PARTIALLY_CORRECT";
+    const evtStatus   = _evaluatedTurnAuthority?.status ?? aiResult.answer_evaluation.status;
+    const evtWasEval  = _evaluatedTurnAuthority
+      ? _evaluatedTurnAuthority.isCorrectnessOutcome
+      : evtStatus !== "NOT_APPLICABLE" && evtStatus !== "OFF_TOPIC";
+    const evtIsCorrect = _evaluatedTurnAuthority?.evidenceWasCorrect ??
+      (evtStatus === "CORRECT" || evtStatus === "PARTIALLY_CORRECT");
     // Fire-and-forget block runs when:
     // 1. There is an assessable answer with non-NONE quality (evidence write), OR
     // 2. The decision engine has state to write to knowledge_nodes (levelConfirmed or revisitRequired)
@@ -3266,7 +3333,17 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     const _decisionHasKNState =
       !!(_pedagogicalDecision?.levelConfirmed || _pedagogicalDecision?.revisitRequired);
     if (evtWasEval && (evtQuality !== "NONE" || _decisionHasKNState)) {
-      const _sessionSnap = session; // capture before async
+      const _sessionSnap = _evaluatedTaskEvidenceContext ?? {
+        id: session.id,
+        currentNodeId: session.currentNodeId,
+        nodeTeachingStage: session.nodeTeachingStage,
+        activeTaskProvenance: session.activeTaskProvenance,
+        activeLessonExerciseId: session.activeLessonExerciseId,
+        activeCognitiveLevelId: session.activeCognitiveLevelId,
+        activeAttemptSequence: session.activeAttemptSequence,
+        activeHelpCount: session.activeHelpCount,
+        activeAssistanceLevel: session.activeAssistanceLevel,
+      };
       const _lessonId    = lessonId;
       const _userId      = req.userId!;
       (async () => {

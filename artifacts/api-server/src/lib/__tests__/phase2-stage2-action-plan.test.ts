@@ -3,6 +3,7 @@ import type { AIStructuredResponse } from "../../services/ai.js";
 import {
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
+  establishEvaluatedTurnAuthority,
   filterEvidenceForCurrentRunNode,
   summarizeLevelEvidence,
   validatePhase2ResponseForServerAction,
@@ -208,6 +209,94 @@ test("E3 — a one-source-exercise level falls back to a generated next task aft
 
   assert.equal(postFeedback?.action, "GENERATE_TASK");
   assert.equal(postFeedback?.activeTaskMayBeCreated, true);
+});
+
+test("E3A — assisted success schedules a new source task even before the answered task is cleared", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "REQUEST_INDEPENDENT_CHECK" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: true,
+    eligibleSourceExerciseAvailable: true,
+  });
+
+  assert.equal(postFeedback?.action, "DELIVER_SOURCE_EXERCISE");
+  assert.equal(postFeedback?.reasonCode, "post_feedback_independent_check_requires_next_source_task");
+});
+
+test("E3B — assisted success without another source task schedules bounded generation", () => {
+  const postFeedback = derivePostFeedbackContinuationAction({
+    decision: { metaAction: "REQUEST_INDEPENDENT_CHECK" },
+    progressionPlan: {
+      shouldCompleteNode: false,
+      shouldResetForCognitiveAdvance: false,
+    },
+    hasActiveTask: true,
+    eligibleSourceExerciseAvailable: false,
+  });
+
+  assert.equal(postFeedback?.action, "GENERATE_TASK");
+});
+
+test("E3C — a canonical evaluation status has one evidence polarity", () => {
+  assert.deepEqual(establishEvaluatedTurnAuthority({
+    status: "CORRECT",
+    evidence_quality: "STRONG",
+    error_family: null,
+    error_stability: null,
+    correct_parts: [],
+    incorrect_parts: [],
+  }), {
+    status: "CORRECT",
+    evidenceWasCorrect: true,
+    isCorrectnessOutcome: true,
+  });
+  assert.deepEqual(establishEvaluatedTurnAuthority({
+    status: "INCORRECT",
+    evidence_quality: "NONE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: [],
+    incorrect_parts: [],
+  }), {
+    status: "INCORRECT",
+    evidenceWasCorrect: false,
+    isCorrectnessOutcome: true,
+  });
+  assert.deepEqual(establishEvaluatedTurnAuthority({
+    status: "UNCLEAR",
+    evidence_quality: "NONE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: [],
+    incorrect_parts: [],
+  }), {
+    status: "UNCLEAR",
+    evidenceWasCorrect: null,
+    isCorrectnessOutcome: false,
+  });
+  assert.deepEqual(establishEvaluatedTurnAuthority({
+    status: "NO_RESPONSE",
+    evidence_quality: "NONE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: [],
+    incorrect_parts: [],
+  }), {
+    status: "NO_RESPONSE",
+    evidenceWasCorrect: null,
+    isCorrectnessOutcome: false,
+  });
+  assert.throws(() => establishEvaluatedTurnAuthority({
+    status: "NOT_APPLICABLE",
+    evidence_quality: "NONE",
+    error_family: null,
+    error_stability: null,
+    correct_parts: [],
+    incorrect_parts: [],
+  }));
 });
 
 test("E4 — current-run evidence excludes old reset evidence, another node, and wrong answers", () => {

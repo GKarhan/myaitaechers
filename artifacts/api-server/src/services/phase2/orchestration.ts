@@ -319,9 +319,14 @@ export function derivePostFeedbackContinuationAction(input: {
   hasActiveTask: boolean;
   eligibleSourceExerciseAvailable: boolean;
 }): Phase2ServerActionPlan | null {
+  const requiresIndependentCheck =
+    input.decision?.metaAction === "REQUEST_INDEPENDENT_CHECK";
+  const continuesSameLevel =
+    input.decision?.metaAction === "CONTINUE_COGNITIVE_LEVEL";
+
   if (
-    input.decision?.metaAction !== "CONTINUE_COGNITIVE_LEVEL" ||
-    input.hasActiveTask ||
+    (!requiresIndependentCheck && !continuesSameLevel) ||
+    (!requiresIndependentCheck && input.hasActiveTask) ||
     input.progressionPlan.shouldCompleteNode ||
     input.progressionPlan.shouldResetForCognitiveAdvance
   ) {
@@ -331,7 +336,9 @@ export function derivePostFeedbackContinuationAction(input: {
   if (input.eligibleSourceExerciseAvailable) {
     return makeActionPlan(
       "DELIVER_SOURCE_EXERCISE",
-      "post_feedback_continue_level_requires_next_source_task",
+      requiresIndependentCheck
+        ? "post_feedback_independent_check_requires_next_source_task"
+        : "post_feedback_continue_level_requires_next_source_task",
       {
         activeTaskMayBeCreated: true,
         responseTeachingMode: "TRANSITION",
@@ -342,7 +349,9 @@ export function derivePostFeedbackContinuationAction(input: {
 
   return makeActionPlan(
     "GENERATE_TASK",
-    "post_feedback_continue_level_requires_next_generated_task",
+    requiresIndependentCheck
+      ? "post_feedback_independent_check_requires_next_generated_task"
+      : "post_feedback_continue_level_requires_next_generated_task",
     {
       aiGenerationNeeded: true,
       activeTaskMayBeCreated: true,
@@ -408,6 +417,54 @@ export type AuthoritativeEvaluationResult = {
   objectiveAnswerCorrect: boolean | null;
   sourceEvaluation: DeterministicSourceExerciseEvaluation | null;
 };
+
+export type EvaluatedTurnAuthority = {
+  status: "CORRECT" | "INCORRECT" | "PARTIALLY_CORRECT" | "UNCLEAR" | "NO_RESPONSE";
+  evidenceWasCorrect: boolean | null;
+  isCorrectnessOutcome: boolean;
+};
+
+/**
+ * Captures the sole correctness result allowed to drive acknowledgement,
+ * evidence, decision-engine input, and task transition for an evaluated turn.
+ * UNCLEAR and NO_RESPONSE are valid non-credit evaluator outcomes: they retain
+ * bounded feedback/remediation behavior without becoming correctness evidence.
+ */
+export function establishEvaluatedTurnAuthority(
+  evaluation: AIStructuredResponse["answer_evaluation"],
+): EvaluatedTurnAuthority {
+  switch (evaluation.status) {
+    case "CORRECT":
+      return {
+        status: evaluation.status,
+        evidenceWasCorrect: true,
+        isCorrectnessOutcome: true,
+      };
+    case "INCORRECT":
+      return {
+        status: evaluation.status,
+        evidenceWasCorrect: false,
+        isCorrectnessOutcome: true,
+      };
+    case "PARTIALLY_CORRECT":
+      return {
+        status: evaluation.status,
+        evidenceWasCorrect: true,
+        isCorrectnessOutcome: true,
+      };
+    case "UNCLEAR":
+    case "NO_RESPONSE":
+      return {
+        status: evaluation.status,
+        evidenceWasCorrect: null,
+        isCorrectnessOutcome: false,
+      };
+    default:
+      throw new Error(
+        `evaluated turn did not produce a canonical correctness status: ${evaluation.status}`,
+      );
+  }
+}
 
 const NON_ANSWER_EVALUATION_INTENTS = new Set<IntentClass>([
   "CONFUSED",
@@ -640,7 +697,7 @@ export function resolveAuthoritativeEvaluation(input: {
   const finalStatus = response.answer_evaluation.status;
   return {
     response,
-    wasCorrect: finalStatus === "CORRECT"
+    wasCorrect: finalStatus === "CORRECT" || finalStatus === "PARTIALLY_CORRECT"
       ? true
       : finalStatus === "INCORRECT"
         ? false

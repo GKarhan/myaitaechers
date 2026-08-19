@@ -9,6 +9,7 @@ import {
   phase2FeedbackResultSchema,
   phase2TaskCandidateSchema,
   phase2TheoryResultSchema,
+  serverOwnedFeedbackAcknowledgement,
 } from "../../services/phase2/bounded-jobs.js";
 import {
   derivePhase2ServerAction,
@@ -224,4 +225,10 @@ test("T — THEORY rejects leading Latin and Armenian option fragments", () => {
   assert.throws(() => assertTheoryOnly({ student_message: "Ա. Տարբերակ" }));
 });
 
-console.log(`\n${passed}/21 Stage 3 bounded-job checks passed.\n`);
+test("U — server-owned acknowledgement polarity is canonical", () => {
+  assert.equal(serverOwnedFeedbackAcknowledgement("CORRECT"), "Ճիշտ պատասխան է։");
+  assert.equal(serverOwnedFeedbackAcknowledgement("INCORRECT"), "Պատասխանը ճիշտ չէ։");
+  assert.equal(serverOwnedFeedbackAcknowledgement("PARTIALLY_CORRECT"), "Պատասխանը մասամբ ճիշտ է։");
+});
+
+console.log(`\n${passed}/22 Stage 3 bounded-job checks passed.\n`);
