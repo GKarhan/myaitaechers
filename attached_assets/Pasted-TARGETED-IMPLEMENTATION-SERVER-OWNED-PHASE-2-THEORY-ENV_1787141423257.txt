@@ -1,0 +1,462 @@
+TARGETED IMPLEMENTATION — SERVER-OWNED PHASE-2 THEORY ENVELOPE
+
+GOAL
+
+Fix the repeated Phase-2 model contract failure.
+
+Confirmed recurring failure:
+
+Phase 2
+nodeTeachingStage = THEORY
+
+The backend already knows this turn must be:
+
+teaching_mode = TEACH
+is_micro_check = true
+
+But the model sometimes returns:
+
+teaching_mode = TEACH
+is_micro_check = false
+
+which triggers R2 and can lead to terminal 503 after retry.
+
+We have already tried:
+
+- explicit PHASE_2_THEORY_CONTRACT
+- native strict json_schema
+- validation-aware retry
+
+The model still sometimes violates this cross-field semantic rule.
+
+Therefore:
+
+> For Phase-2 THEORY turns, the server must own the response envelope.
+
+Do NOT add more prompt wording.
+
+==================================================
+1. SERVER AUTHORITY
+==================================================
+
+When all are true:
+
+- currentPhase === 2
+- currentNodeId exists
+- nodeTeachingStage === "THEORY"
+
+the backend knows this response contract in advance:
+
+teaching_mode = "TEACH"
+is_micro_check = true
+
+The model should no longer be authoritative for these two fields on this turn.
+
+After structured parsing succeeds, force/canonicalize:
+
+aiResult.teaching_mode = "TEACH"
+aiResult.is_micro_check = true
+
+BEFORE semantic teaching-cycle validation consumes them.
+
+Use the smallest safe insertion point.
+
+==================================================
+2. IMPORTANT — DO NOT BLINDLY ACCEPT BAD CONTENT
+==================================================
+
+Server ownership of the envelope must NOT weaken content safety.
+
+Even though:
+
+teaching_mode = TEACH
+is_micro_check = true
+
+are server-owned,
+
+the returned content must STILL pass:
+
+- valid structured root object
+- JSON parse
+- Zod schema
+- interaction_type validation
+- preferredInteractionTypes validation
+- visible task/question validation
+- multiple-choice option consistency
+- true/false visible-choice consistency
+- constructed-response visible-task validation
+- options/correct_option contract
+- source_fidelity validation
+- sentence/length validation
+- all other existing content/semantic validators that remain relevant
+
+Meaning:
+
+the server may decide THAT this turn is a TEACH + MICRO_CHECK turn,
+
+but the model must still actually provide a valid answerable task.
+
+==================================================
+3. VALIDATION ORDER
+==================================================
+
+Audit the current `_attemptStructured()` / validator order.
+
+The required order should become conceptually:
+
+provider structured response
+→ root / JSON / Zod validation
+→ Phase-2 THEORY server envelope canonicalization
+→ interaction/task/content validation
+→ remaining semantic validation
+→ success
+
+Do NOT bypass R2 globally.
+
+R2 can remain for all other contexts.
+
+For the server-owned Phase-2 THEORY state, R2 must not fail merely because
+the model returned `is_micro_check=false` before canonicalization.
+
+==================================================
+4. teaching_mode
+==================================================
+
+For Phase-2 THEORY only:
+
+final authoritative:
+teaching_mode = TEACH
+
+If model returns:
+FEEDBACK
+TRANSITION
+MICRO_CHECK
+
+the server-owned THEORY envelope should canonicalize to TEACH
+only if the content itself still satisfies the required THEORY + MICRO_CHECK
+content contract.
+
+Do NOT let a feedback-only message become valid simply by changing the enum.
+
+Example:
+
+model returns:
+"Շատ լավ, շարունակենք։"
+is_micro_check=false
+
+Server canonicalizes envelope:
+TEACH / true
+
+BUT visible-task validator sees no actual question/task
+
+→ REJECT
+
+This is required.
+
+==================================================
+5. is_micro_check
+==================================================
+
+For Phase-2 THEORY only:
+
+final authoritative:
+is_micro_check = true
+
+But task activation must still happen only after the response passes
+the visible-task / interaction-format validators.
+
+Do NOT persist MICRO_CHECK state before validation succeeds.
+
+==================================================
+6. MODEL PROMPT
+==================================================
+
+Do NOT add another long prompt instruction.
+
+Keep the existing Phase-2 THEORY contract.
+
+If a tiny wording cleanup is necessary because the model fields are now
+server-owned, keep it minimal.
+
+Do NOT remove the model fields from the schema in this task unless doing so
+is strictly necessary and clearly safer.
+
+Prefer canonicalizing the parsed result to minimize scope.
+
+==================================================
+7. SENTENCE LIMIT
+==================================================
+
+Do NOT remove or increase the existing sentence limit in this task.
+
+The latest retry failed with:
+
+student_message has 8 sentences (max 5)
+
+That is a separate content-quality validator.
+
+Keep it unchanged.
+
+If the model exceeds it:
+→ existing validation/retry behavior remains.
+
+This task fixes only the unstable TEACH/is_micro_check cross-field decision.
+
+==================================================
+8. RETRY
+==================================================
+
+Keep the existing retry count.
+
+After this change, retry should no longer be triggered solely by:
+
+TEACH + is_micro_check=false
+
+in Phase-2 THEORY, because the server owns those fields.
+
+Retry should still occur for genuine content failures such as:
+
+- no visible question/task
+- invalid interaction type
+- missing options
+- wrong correct_option
+- sentence limit
+- source-fidelity failure
+- malformed structured output
+
+==================================================
+9. OTHER STATES MUST REMAIN MODEL/CONTRACT CONTROLLED
+==================================================
+
+Do NOT apply this override to:
+
+- Phase 1
+- Phase 3
+- Phase 4
+- MICRO_CHECK stage
+- EXERCISE stage
+- FEEDBACK turns
+- TRANSITION turns
+- answer-evaluation turns
+- remediation turns
+
+Only:
+
+Phase 2 + currentNode + THEORY
+
+==================================================
+10. MICRO_CHECK ACTIVATION
+==================================================
+
+Preserve the recently fixed invariant:
+
+NO ACTIVE MICRO_CHECK WITHOUT A VISIBLE ANSWERABLE TASK.
+
+The existing anticipatory activation branch should still activate the task
+only after the finalized response passes validation.
+
+Because server-owned Phase-2 THEORY now guarantees final is_micro_check=true,
+the branch may consume that canonicalized value.
+
+Do not reintroduce the old generic THEORY → MICRO_CHECK state transition.
+
+==================================================
+11. AI-GENERATED OBJECTIVE PAYLOAD
+==================================================
+
+Preserve the existing:
+
+activeObjectiveTaskPayload
+
+behavior.
+
+If the valid Phase-2 THEORY response creates:
+
+multiple_choice / true_false
+
+persist the validated options/correct_option payload exactly as now.
+
+Do not modify objective deterministic evaluation.
+
+==================================================
+12. SOURCE EXERCISES
+==================================================
+
+Do NOT modify:
+
+- source-exercise activation
+- exact activeLessonExerciseId ownership
+- source-exercise deterministic correctness
+- exercise sequencing
+- P11.1/V2-R1.1 behavior
+
+This task is only the AI-generated Phase-2 THEORY envelope.
+
+==================================================
+13. REQUIRED STATIC TESTS
+==================================================
+
+CASE A
+
+State:
+Phase 2 / THEORY
+
+Model returns:
+teaching_mode=TEACH
+is_micro_check=false
+
+student_message contains valid multiple-choice task
+interaction_type=multiple_choice
+valid options/correct_option
+
+Expected:
+server canonicalizes:
+TEACH / true
+→ PASS
+
+CASE B
+
+Phase 2 / THEORY
+
+Model returns:
+TEACH / false
+
+student_message contains only:
+"Շատ լավ, սկսենք։"
+
+Expected:
+server canonicalizes envelope
+BUT visible-task validation rejects
+→ FAIL
+
+CASE C
+
+Phase 2 / THEORY
+
+Model returns:
+FEEDBACK / false
+
+but content contains a fully valid allowed MICRO_CHECK
+
+Expected:
+final authoritative:
+TEACH / true
+and content passes
+
+CASE D
+
+Phase 2 / THEORY
+
+valid MICRO_CHECK but 8 sentences
+
+Expected:
+sentence-limit validation still rejects
+
+CASE E
+
+Phase 2 / MICRO_CHECK stage
+
+Model returns wrong teaching_mode/is_micro_check combination
+
+Expected:
+NO server THEORY override
+existing validators remain authoritative
+
+CASE F
+
+Phase 1
+
+Expected:
+NO override
+
+CASE G
+
+Phase 2 / THEORY valid multiple-choice response
+
+Expected after success:
+existing MICRO_CHECK activation path works
+task becomes active
+objective payload persists
+
+==================================================
+14. LOGGING
+==================================================
+
+Add a small debug log only if useful:
+
+Phase-2 THEORY envelope canonicalized by server
+
+Fields:
+- originalTeachingMode
+- originalIsMicroCheck
+- finalTeachingMode
+- finalIsMicroCheck
+
+No lesson content.
+No answer keys.
+
+==================================================
+15. DO NOT TOUCH
+==================================================
+
+Do NOT change:
+
+- Cognitive Path
+- Decision Engine
+- evidence/mastery
+- answer evaluation
+- source-exercise logic
+- DB schema
+- mapping
+- frontend
+- provider/model
+- json_schema setup
+- sentence limit
+- retry count
+- other phases
+
+No unrelated refactor.
+
+==================================================
+16. TYPECHECK
+==================================================
+
+Run:
+
+- targeted structured-response / teaching-cycle tests
+- micro-check activation tests
+- API TypeScript check
+- git diff --check
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. FILES CHANGED
+
+B. PRE-CHANGE VALIDATION ORDER
+
+C. SERVER-OWNED ENVELOPE CONDITION
+
+D. CANONICALIZATION LOGIC
+
+E. CONTENT VALIDATION PRESERVED
+
+F. MICRO_CHECK ACTIVATION SAFETY
+
+G. OTHER STATES ISOLATION
+
+H. STATIC CASES
+A/B/C/D/E/F/G = PASS/FAIL
+
+I. LOGGING
+
+J. TYPECHECK
+
+K. UNCHANGED / OUT-OF-SCOPE
+
+L. RESULT
+
+PASS / PARTIAL / BLOCKED
+
+Do not broaden scope.

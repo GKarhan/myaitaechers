@@ -121,6 +121,57 @@ const aiStructuredResponseFormat = {
 export type AIStructuredResponse = z.infer<typeof aiStructuredResponseSchema>;
 export type ProgressIndicator = z.infer<typeof progressIndicatorSchema>;
 
+export interface StructuredTurnState {
+  currentPhase: number | null;
+  currentNodeId: number | null;
+  nodeTeachingStage: string | null;
+}
+
+export function isServerOwnedPhase2TheoryState(
+  turnState: StructuredTurnState | null | undefined
+): boolean {
+  return (
+    turnState?.currentPhase === 2 &&
+    turnState.currentNodeId !== null &&
+    turnState.currentNodeId !== undefined &&
+    turnState.nodeTeachingStage === "THEORY"
+  );
+}
+
+export function canonicalizePhase2TheoryEnvelope(
+  response: AIStructuredResponse,
+  turnState: StructuredTurnState | null | undefined
+): AIStructuredResponse {
+  if (!isServerOwnedPhase2TheoryState(turnState)) return response;
+  return {
+    ...response,
+    teaching_mode: "TEACH",
+    is_micro_check: true,
+  };
+}
+
+export function validateServerOwnedPhase2TheoryEnvelope(
+  response: AIStructuredResponse,
+  turnState: StructuredTurnState | null | undefined
+): void {
+  if (!isServerOwnedPhase2TheoryState(turnState)) return;
+
+  const evaluation = response.answer_evaluation;
+  const hasNoEvaluation =
+    evaluation.status === "NOT_APPLICABLE" &&
+    evaluation.evidence_quality === "NONE" &&
+    evaluation.error_family === null &&
+    evaluation.error_stability === null &&
+    evaluation.correct_parts.length === 0 &&
+    evaluation.incorrect_parts.length === 0;
+
+  if (!hasNoEvaluation) {
+    throw new Error(
+      "Phase-2 THEORY envelope requires a non-evaluated answer_evaluation before delivering a new MICRO_CHECK"
+    );
+  }
+}
+
 // ── P6 completion schema ─────────────────────────────────────────────────────
 
 export const p6ResponseSchema = z.object({
@@ -441,7 +492,7 @@ export async function callAI(
 
 // ── Structured response validation (post-Zod semantic checks) ────────────────
 
-function validateStructuredResponse(response: AIStructuredResponse): void {
+export function validateStructuredResponse(response: AIStructuredResponse): void {
   const msg = response.student_message;
 
   // A) Language check — English words and Cyrillic text are forbidden.
@@ -658,6 +709,13 @@ const PREMATURE_TRANSITION_PHRASES: string[] = [
   "\u0576\u0578\u0580 \u0564\u0561\u057d",                          // nor das      (new lesson)
 ];
 
+function hasClassExercisesInContext(lessonContext: string): boolean {
+  return (
+    /^CLASS_EXERCISE_CANDIDATES\s*\(/mu.test(lessonContext) ||
+    /^CLASS_EXERCISES\s+\(use verbatim/mu.test(lessonContext)
+  );
+}
+
 function validatePrematureTransition(
   response: AIStructuredResponse,
   lessonContext: string
@@ -686,9 +744,9 @@ function validatePrematureTransition(
   const isVerified  = nodeStage === "VERIFIED";
 
   // No-exercise early-complete path: MICRO_CHECK stage + 2+ attempts + no exercises
-  // Use the injected block header ("CLASS_EXERCISES (use verbatim") not the bare token —
-  // the phase-2 guidance prose contains "CLASS_EXERCISES" even when no exercises are present.
-  const hasExercisesInContext = lessonContext.includes("CLASS_EXERCISES (use verbatim");
+  // Match only injected exercise headers — phase guidance prose mentions exercises
+  // even when the current node has none.
+  const hasExercisesInContext = hasClassExercisesInContext(lessonContext);
   const noExerciseEarlyComplete =
     nodeStage === "MICRO_CHECK" && nodeAttempts >= 2 && !hasExercisesInContext;
 
@@ -962,9 +1020,9 @@ export function validateTeachingCycle(
   // ── Rule 5: COMPLETE_NODE requires STRONG or CONCLUSIVE evidence ───────────
   if (action === "COMPLETE_NODE" && quality !== "STRONG" && quality !== "CONCLUSIVE") {
     // Exception: no-exercise path allows MODERATE (validated more precisely in validatePrematureTransition)
-    // Use the injected block header — the phase-2 guidance prose also contains "CLASS_EXERCISES"
-    // so a bare includes() always returns true in phase 2, killing the exemption.
-    const hasExercisesR5 = lessonContext.includes("CLASS_EXERCISES (use verbatim");
+    // Match only injected exercise headers — phase guidance prose also mentions
+    // exercises when the current node has none.
+    const hasExercisesR5 = hasClassExercisesInContext(lessonContext);
     const stateR5 = lessonContext.match(/STUDENT_STATE:\s*([^\n]+)/)?.[1] ?? "";
     const nodeStageR5 = stateR5.match(/node_stage=(\w+)/)?.[1] ?? null;
     const attemptsR5 = parseInt(stateR5.match(/node_attempts=(\d+)/)?.[1] ?? "0", 10);
@@ -1019,7 +1077,8 @@ export function validateTeachingCycle(
 async function _attemptStructured(
   systemPrompt: string,
   messages: ChatMessage[],
-  lessonContext: string
+  lessonContext: string,
+  turnState: StructuredTurnState | null | undefined
 ): Promise<AIStructuredResponse> {
   const response = await openrouter.chat.completions.create({
     model: MODEL,
@@ -1101,6 +1160,22 @@ async function _attemptStructured(
     throw new Error(`AI structured response failed schema validation: ${String(err)}`);
   }
 
+  const originalTeachingMode = validated.teaching_mode;
+  const originalIsMicroCheck = validated.is_micro_check;
+  const canonicalized = canonicalizePhase2TheoryEnvelope(validated, turnState);
+  if (canonicalized !== validated) {
+    validated = canonicalized;
+    logger.debug(
+      {
+        originalTeachingMode,
+        originalIsMicroCheck,
+        finalTeachingMode: validated.teaching_mode,
+        finalIsMicroCheck: validated.is_micro_check,
+      },
+      "Phase-2 THEORY envelope canonicalized by server"
+    );
+  }
+
   logger.info(
     {
       teaching_mode:   validated.teaching_mode,
@@ -1112,6 +1187,7 @@ async function _attemptStructured(
   );
 
   try {
+    validateServerOwnedPhase2TheoryEnvelope(validated, turnState);
     validateStructuredResponse(validated);
     validateNodeLock(validated, lessonContext);
     validateTeachingCycle(validated, messages, lessonContext);
@@ -1138,7 +1214,8 @@ function buildRetryCorrection(firstError: Error): string {
 
 export async function callAIStructured(
   messages: ChatMessage[],
-  lessonContext: string
+  lessonContext: string,
+  turnState: StructuredTurnState | null | undefined = null
 ): Promise<AIStructuredResponse> {
   const baseSystem = `${STRUCTURED_SYSTEM_PROMPT}\n\n══════════════════\n${lessonContext}\n══════════════════`;
 
@@ -1164,7 +1241,7 @@ export async function callAIStructured(
   // ── Attempt 1 ────────────────────────────────────────────────────────────
   let firstError: Error;
   try {
-    const result = await _attemptStructured(baseSystem, messages, lessonContext);
+    const result = await _attemptStructured(baseSystem, messages, lessonContext, turnState);
     logger.debug("callAIStructured: attempt 1 succeeded");
     return result;
   } catch (err) {
@@ -1179,7 +1256,7 @@ export async function callAIStructured(
   logger.info("callAIStructured: retrying (attempt 2/2)");
   const retrySystem = baseSystem + buildRetryCorrection(firstError);
   try {
-    const result = await _attemptStructured(retrySystem, messages, lessonContext);
+    const result = await _attemptStructured(retrySystem, messages, lessonContext, turnState);
     logger.info("callAIStructured: retry (attempt 2) succeeded");
     return result;
   } catch (err) {

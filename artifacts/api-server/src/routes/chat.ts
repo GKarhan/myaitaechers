@@ -1389,7 +1389,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let wasCorrect: boolean | null = null;
 
   try {
-    aiResult = await callAIStructured(chatHistory, lessonContext);
+    aiResult = await callAIStructured(chatHistory, lessonContext, {
+      currentPhase: session?.currentPhase ?? null,
+      currentNodeId: session?.currentNodeId ?? null,
+      nodeTeachingStage: session?.nodeTeachingStage ?? null,
+    });
 
 
     {
