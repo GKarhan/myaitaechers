@@ -1,0 +1,289 @@
+TARGETED READ-ONLY AUDIT — WHY LINKED EXERCISE REPEATED AND SESSION STATE DID NOT ADVANCE
+
+GOAL
+
+Find the FIRST confirmed backend break after the successful Phase-2 MICRO_CHECK.
+
+Do NOT change code.
+Do NOT write to DB.
+Do NOT make AI/provider requests.
+Do NOT redesign the teaching flow.
+
+==================================================
+CONFIRMED RUNTIME
+==================================================
+
+Lesson 579
+MicroNode 2107 — «Մոլեկուլների շարժումը»
+Phase 2
+Active cognitive level = remember
+
+Remember has two linked approved exercises:
+
+EX-579-1 / DB id 940
+EX-579-2 / DB id 941
+
+Runtime sequence:
+
+1. THEORY produced a valid remember-level multiple-choice MICRO_CHECK.
+
+State bar:
+
+Level: remember
+Stage: MICRO_CHECK
+Ex: —
+task=✓
+
+2. Student answered:
+
+բ
+
+3. AI gave correct feedback and then displayed:
+
+Վարժություն 1 — Բազմակի ընտրություն
+Ո՞ր պնդումն է ճիշտ մոլեկուլների շարժման մասին...
+[EX-579-1]
+
+4. Student answered:
+
+բ
+
+5. AI gave correct feedback but displayed THE SAME:
+
+Վարժություն 1 — Բազմակի ընտրություն
+[EX-579-1]
+
+again.
+
+Current Test State Bar after this flow:
+
+Level: remember
+Stage: MICRO_CHECK
+Ex: —
+mode=TRANSITION
+task=✓
+
+So visible content is already presenting a linked CLASS exercise,
+but backend state still reports MICRO_CHECK and no active exercise ID.
+
+==================================================
+QUESTION 1 — FIRST MICRO_CHECK ANSWER
+==================================================
+
+Trace ONLY the request where the student answered the first generated MICRO_CHECK with:
+
+բ
+
+Determine:
+
+- structured `answer_evaluation.status`
+- `teaching_mode`
+- `node_decision`
+- whether the micro-check attempt/evidence counters changed
+- what deterministic backend branch executed after evaluation
+
+Then identify exactly WHY EX-579-1 appeared in the assistant response.
+
+Was EX-579-1:
+
+A. deterministically selected by backend and assigned as active exercise
+
+B. merely visible in AI context and copied/selected by the AI
+
+C. inserted through another mechanism
+
+Give exact code evidence.
+
+==================================================
+QUESTION 2 — EXPECTED MICRO_CHECK → EXERCISE TRANSITION
+==================================================
+
+Find the existing code responsible for:
+
+MICRO_CHECK
+→ EXERCISE
+
+Report its exact trigger.
+
+Specifically determine whether it should set:
+
+nodeTeachingStage = "EXERCISE"
+activeLessonExerciseId = exercise.id
+activeTaskProvenance = appropriate exercise provenance
+activeAttemptSequence
+hasActiveTask derivation
+
+Do NOT audit THEORY → MICRO_CHECK again.
+
+==================================================
+QUESTION 3 — DID THAT TRANSITION EXECUTE?
+==================================================
+
+For this runtime sequence, determine whether the deterministic:
+
+MICRO_CHECK → EXERCISE
+
+transition actually executed.
+
+Current observed state:
+
+Stage = MICRO_CHECK
+Ex = —
+task = ✓
+
+If it did not execute, identify the FIRST failed/missing condition.
+
+Do not speculate beyond available evidence.
+
+==================================================
+QUESTION 4 — WHY EX-579-1 WAS REPEATED
+==================================================
+
+Trace the next request after the student answered EX-579-1 with:
+
+բ
+
+Determine why the same exercise appeared again.
+
+Specifically inspect whether:
+
+- `activeLessonExerciseId` was null
+- backend had persisted which linked exercise was being answered
+- backend had any deterministic "next linked exercise" cursor/index
+- AI received EX-579-1 again in CLASS_EXERCISES
+- AI was free to choose the same exercise again
+
+Choose the proven root cause.
+
+==================================================
+QUESTION 5 — EXERCISE COMPLETION / NEXT EXERCISE
+==================================================
+
+Determine what CURRENT code intends after a correct linked exercise answer.
+
+For active remember level with linked exercises:
+
+940 → EX-579-1
+941 → EX-579-2
+
+Does existing code deterministically know:
+
+- which exercise was just answered?
+- whether it was correct?
+- which linked exercise should come next?
+- whether both required remember exercises/evidence have been completed?
+
+Answer each YES/NO with exact evidence.
+
+==================================================
+QUESTION 6 — STATE VS AI CONTENT OWNERSHIP
+==================================================
+
+Determine whether current architecture allows the AI to display a linked CLASS_EXERCISE before backend has actually activated it.
+
+If YES, identify the exact context/prompt path allowing that.
+
+This is important:
+
+The visible conversation must not claim the student is answering EX-579-1 while backend still has:
+
+activeLessonExerciseId = null
+nodeTeachingStage = MICRO_CHECK
+
+==================================================
+QUESTION 7 — SMALLEST CORRECT NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest architecture-consistent fix that guarantees:
+
+1. backend selects/activates a linked exercise before it is shown;
+2. `nodeTeachingStage = EXERCISE`;
+3. `activeLessonExerciseId` contains the actual exercise ID;
+4. the AI cannot independently re-select the same exercise;
+5. after a completed exercise, backend deterministically selects the next eligible linked exercise or performs the existing progression decision.
+
+Prefer deterministic backend ownership of exercise selection.
+
+Do NOT redesign the entire AI Teacher.
+
+Do NOT change:
+- mapping
+- Cognitive Path definitions
+- preferred interaction types
+- THEORY → MICRO_CHECK
+- intro
+- start-fresh
+- evidence/mastery rules unless directly required to explain this bug
+- frontend
+- DB schema
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Inspect only:
+
+1. relevant Phase-2 MICRO_CHECK evaluation/post-response block in chat.ts
+2. MICRO_CHECK → EXERCISE transition code
+3. activeLessonExerciseId / activeTaskProvenance handling
+4. CLASS_EXERCISES injection/selection code
+5. relevant session/log/DB state only if already locally accessible and necessary
+
+Do NOT:
+- broad repo audit
+- browser test
+- provider request
+- unrelated file sweep
+
+==================================================
+FINAL REPORT — SHORT
+==================================================
+
+## A. FIRST MICRO_CHECK RESULT
+Relevant structured result/state changes.
+
+## B. WHY EX-579-1 APPEARED
+A / B / C + exact evidence.
+
+## C. MICRO_CHECK → EXERCISE OWNER
+Exact deterministic trigger and expected state writes.
+
+## D. DID TRANSITION EXECUTE?
+YES / NO.
+If NO: first failed condition.
+
+## E. WHY EX-579-1 REPEATED
+One precise root cause.
+
+## F. CURRENT DETERMINISTIC KNOWLEDGE
+- knows answered exercise ID: YES/NO
+- knows correctness: YES/NO
+- knows next linked exercise: YES/NO
+- knows required linked exercises completed: YES/NO
+
+## G. STATE/CONTENT DESYNC
+Explain whether AI can currently show an exercise that backend has not activated.
+
+## H. SMALLEST NEXT FIX
+ONE concrete recommendation only.
+
+## I. NEXT TEST EXPECTATION
+
+After the future fix, expected sequence:
+
+MICRO_CHECK answer
+→ deterministic exercise activation
+→ Stage = EXERCISE
+→ Ex = 940
+→ student answers EX-579-1
+→ EX-579-1 is not repeated
+→ backend selects next eligible exercise (e.g. 941) or follows the existing progression rule
+
+## J. VERDICT
+GAP / PASS
+
+Then STOP.
