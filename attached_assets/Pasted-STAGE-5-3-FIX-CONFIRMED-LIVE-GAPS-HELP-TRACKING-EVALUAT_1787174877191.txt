@@ -1,0 +1,1147 @@
+STAGE 5.3 — FIX CONFIRMED LIVE GAPS
+HELP TRACKING + EVALUATION AUTHORITY + ASSISTED-CORRECT CONTINUATION
++ ACTIVE-TASK REMINDER
+
+IMPLEMENTATION AUTHORIZED.
+
+Continue from the CURRENT repository/workspace state.
+
+Do NOT roll back or redesign Stages 0–5.2.
+
+The preceding READ-ONLY forensic audit for:
+
+- session 51
+- node 2107
+- EX-579-3
+- lesson_exercises.id = 942
+
+confirmed MULTIPLE LINKED GAPS.
+
+This task is now authorized to implement the smallest safe fixes for those
+confirmed gaps.
+
+==================================================
+0. CRITICAL SAFETY / SCOPE
+==================================================
+
+DO NOT mutate, reset, repair, or continue historical Session 51.
+
+Session 51 is forensic evidence only.
+
+DO NOT:
+
+- reset session 51
+- delete or rewrite its chat messages
+- delete or rewrite its evidence_events
+- repair event 446
+- continue its learner conversation
+- use it for provider-backed verification
+- rewrite historical exercise data
+- rewrite lesson 579 content
+- change Cognitive Path thresholds
+- change minimumIndependentEvidence configuration
+- change evidence-quality semantics
+- change Decision Engine taxonomy
+- redesign Stage 3 bounded jobs
+- weaken Stage 4/4.1 learner/evaluator content boundary
+- remove Stage 5 automatic continuation
+- undo Stage 5.1 FEEDBACK authority
+- undo Stage 5.2 fresh-run evidence isolation
+- start Stage 6
+
+No DB migration is authorized unless a NEW exact blocker is discovered.
+
+If a migration appears necessary:
+
+STOP
+→ report exact blocker
+→ do not implement migration.
+
+==================================================
+1. CONFIRMED FORENSIC FACTS
+==================================================
+
+The read-only audit established:
+
+A.
+
+Learner said:
+
+"չգիտեմ միգուցե հուշես"
+
+while source exercise 942 / EX-579-3 was active.
+
+The request was classified as:
+
+CLARIFY
+
+not:
+
+HELP
+
+Therefore:
+
+activeHelpCount remained 0
+activeAssistanceLevel remained none
+no help_events row was created.
+
+The response was produced through:
+
+PRESERVE_ACTIVE_TASK
+→ bounded FEEDBACK
+
+instead of the existing explicit HELP execution path.
+
+B.
+
+The subsequent learner response was evaluated as an ANSWER.
+
+Persisted evidence event 446 says:
+
+was_correct = false
+quality = STRONG
+help_count = 0
+assistance_level = none
+
+But learner-visible assistant row 1113 said:
+
+"Ճիշտ պատասխան է։"
+
+This is an unacceptable authority contradiction.
+
+C.
+
+EX-579-3 remained active:
+
+nodeTeachingStage = EXERCISE
+activeLessonExerciseId = 942
+activeTaskProvenance = source_exercise
+
+No automatic next task was delivered.
+
+D.
+
+The learner manually sent:
+
+"օկ"
+
+while EX-579-3 was still active.
+
+The backend correctly did NOT treat this as an answer or progression trigger,
+but returned this malformed server-composed message:
+
+"Հարծը դաջորդ բաց ե. Խնդրում եմ պատասխանել."
+
+No provider call produced that message.
+
+E.
+
+Current understand threshold is 3 independent qualifying observations.
+
+Current-run understand qualifying evidence remained 0.
+
+Historical evidence isolation itself worked correctly.
+
+==================================================
+2. TARGET ARCHITECTURE
+==================================================
+
+Preserve the established architecture:
+
+SERVER ACTION
+↓
+bounded AI job only where needed
+↓
+SERVER VALIDATION / AUTHORITY
+↓
+Decision Engine
+↓
+server-owned next action
+↓
+automatic continuation until real learner input is required
+
+The learner must never need artificial messages such as:
+
+"օկ"
+"շարունակիր"
+"հաջորդը"
+
+to make internal orchestration continue.
+
+==================================================
+3. FIX #1 — ACTIVE-TASK HELP RECOGNITION
+==================================================
+
+Fix the confirmed HELP-routing gap.
+
+When a real learner-answerable task is active, natural Armenian requests for
+a hint/help must route to the EXISTING authoritative HELP executor rather
+than generic CLARIFY/PRESERVE_ACTIVE_TASK.
+
+At minimum cover natural forms equivalent to:
+
+- հուշիր
+- հուշե՞ս
+- հուշում տուր
+- մի քիչ հուշիր
+- օգնիր
+- օգնիր պատասխանեմ
+- չգիտեմ, հուշիր
+- չգիտեմ միգուցե հուշես
+- չեմ հասկանում, օգնիր
+- կարո՞ղ ես հուշել
+
+Do NOT solve this with only one exact string.
+
+Use the smallest robust routing mechanism compatible with the current intent
+architecture.
+
+IMPORTANT:
+
+Do not convert every CLARIFY request into HELP.
+
+True clarification must remain possible.
+
+Examples:
+
+"հարցը չեմ հասկանում, ի՞նչ է նշանակում X"
+
+may be clarification depending on current contract.
+
+But an explicit request for assistance toward solving the active task must
+be HELP.
+
+==================================================
+4. HELP AUTHORITY
+==================================================
+
+Once HELP is recognized, reuse the existing authoritative HELP path.
+
+Do not duplicate HELP state logic in chat.ts.
+
+The existing HELP executor must remain owner of:
+
+- help_events
+- activeHelpCount
+- activeAssistanceLevel
+- help/remediation metadata
+- learner-safe hint generation
+
+Required invariant:
+
+ACTIVE TASK
+→ learner requests HELP
+→ HELP executor
+→ active task remains same
+→ help event persisted
+→ help count increases
+→ assistance level becomes authoritative
+→ no mastery evidence merely because HELP was requested
+
+HELP itself must NEVER create qualifying mastery evidence.
+
+==================================================
+5. HELP → ANSWER CONTEXT
+==================================================
+
+When the learner answers after HELP, evaluation must receive/use the
+authoritative persisted assistance state.
+
+Do not reconstruct assistance from learner wording.
+
+Required:
+
+activeHelpCount
+activeAssistanceLevel
+activeAttemptSequence
+active task identity
+
+must be the server-authoritative context used for evidence qualification.
+
+Required invariant:
+
+HELP
+→ learner ANSWER
+→ evaluation
+→ evidence contains correct help/assistance context
+
+It must be impossible for:
+
+learner received real HELP
+
+but evidence records:
+
+help_count = 0
+assistance_level = none
+
+unless the help state was explicitly and correctly cleared by an established
+policy boundary.
+
+==================================================
+6. FIX #2 — ONE AUTHORITATIVE EVALUATION RESULT
+==================================================
+
+Eliminate the confirmed possibility of:
+
+learner-visible:
+"Ճիշտ պատասխան է։"
+
+while persisted evidence says:
+
+was_correct = false
+
+For every evaluated answer, one server-authoritative evaluation result must
+drive ALL of:
+
+1. learner-facing correctness acknowledgement
+2. evidence_events.wasCorrect
+3. evidence quality / qualification inputs
+4. Decision Engine input
+5. remediation/progression decision
+6. post-answer task state
+
+AI FEEDBACK must not determine correctness.
+
+FEEDBACK remains wording/explanation only.
+
+==================================================
+7. EVALUATION AUTHORITY INVARIANT
+==================================================
+
+For objective tasks:
+
+deterministic backend evaluation
+→ authoritative result
+
+For constructed-response tasks:
+
+bounded EVALUATION job
+→ validate result
+→ authoritative server result
+
+Then:
+
+authoritative evaluation
+→ Decision Engine
+→ server-owned acknowledgement polarity
+→ FEEDBACK wording
+→ evidence/state transition
+
+Never:
+
+FEEDBACK wording
+→ infer correctness
+
+Never:
+
+one result for acknowledgement
++
+another result for evidence.
+
+==================================================
+8. FAIL-CLOSED CONSISTENCY
+==================================================
+
+Before persisting learner-visible correctness feedback, ensure the
+authoritative evaluation used for:
+
+- acknowledgement
+- evidence
+- Decision Engine
+
+is the same evaluated turn/result.
+
+If the server cannot establish that consistency:
+
+FAIL CLOSED.
+
+Do NOT:
+
+- say "Ճիշտ պատասխան է"
+- say "Պատասխանը ճիշտ չէ"
+- write contradictory evidence
+- progress cognitive level
+- complete node
+- fabricate a next task
+
+Return the existing controlled safe-failure behavior.
+
+Do not expose evaluator-only fields or answer keys.
+
+==================================================
+9. OBSERVABILITY FOR EVALUATED TURN
+==================================================
+
+Add the smallest server-only diagnostic/correlation necessary to prove the
+same evaluated result drives the turn.
+
+Prefer existing IDs/metadata if sufficient.
+
+For an evaluated answer, logs/tests should be able to correlate:
+
+request
+learner message
+active task
+evaluation result
+evidence event
+Decision Engine action
+FEEDBACK acknowledgement
+post-feedback action
+returned assistant message
+
+Do NOT expose diagnostics to learner APIs.
+
+Do NOT add a DB migration merely for diagnostics unless absolutely required.
+
+==================================================
+10. FIX #3 — ASSISTED CORRECT IS NOT INDEPENDENT
+==================================================
+
+Preserve existing evidence policy:
+
+a correct answer after HELP must NOT falsely satisfy
+minimumIndependentEvidence when assistance makes it non-independent.
+
+Do NOT lower thresholds.
+
+Do NOT relabel assisted evidence as independent.
+
+For example:
+
+HELP
+→ learner gives semantically correct answer
+→ evaluation = CORRECT
+→ acknowledgement may say correct
+→ evidence records actual assistance context
+→ independent evidence gate remains unsatisfied if policy says assisted
+
+This distinction is essential:
+
+CORRECT ANSWER
+
+does NOT necessarily mean:
+
+QUALIFYING INDEPENDENT EVIDENCE.
+
+==================================================
+11. FIX #4 — NO ASSISTED-CORRECT DEAD-END
+==================================================
+
+The current live flow dead-ended after an assisted/insufficient turn.
+
+Fix this narrowly.
+
+When:
+
+- active task has been answered
+- answer is CORRECT
+- but the answer is non-independent / insufficient for the current cognitive
+  evidence requirement
+- more independent evidence is required
+
+the learner must not remain trapped on the already-answered task.
+
+Required normal behavior:
+
+ANSWERED TASK
+→ authoritative evaluation
+→ evidence written with assistance context
+→ Decision Engine determines more evidence required
+→ answered task retired/cleared
+→ server-owned continuation
+→ select/create a NEW learner-answerable task
+→ deliver it automatically
+→ stop only because learner input is now required
+
+No artificial "օկ".
+
+==================================================
+12. NEW INDEPENDENT FOLLOW-UP TASK
+==================================================
+
+The follow-up must be a real persisted/activated task.
+
+Selection order remains Stage-3/4 compliant:
+
+eligible safe source exercise available
+→ backend selects exact eligible source exercise
+→ activate
+→ render learner-safe task text
+
+otherwise:
+
+→ bounded TASK job
+→ validate
+→ activate generated MICRO_CHECK
+→ deliver exactly one task
+
+Do NOT ask THEORY AI or FEEDBACK AI to invent the next task.
+
+==================================================
+13. DO NOT IMMEDIATELY REPEAT ANSWERED SOURCE TASK
+==================================================
+
+When automatic continuation follows an answered source exercise, exclude that
+just-answered exercise from the immediate follow-up selection when the goal is
+new independent evidence.
+
+Example:
+
+EX-579-3 answered with assistance
+→ more independent evidence required
+
+must not immediately become:
+
+EX-579-3 again
+
+unless an explicit existing remediation policy specifically requires retrying
+the same task.
+
+For assisted-CORRECT / evidence-insufficient flow, prefer a new equivalent
+independent task.
+
+If no other eligible source exercise exists:
+
+→ use bounded TASK generation.
+
+==================================================
+14. THEORY / REMEDIATION AFTER WRONG ANSWER
+==================================================
+
+Do not accidentally change the wrong-answer pedagogy while fixing assisted
+correct.
+
+Existing intended behavior remains:
+
+incorrect answer
+→ authoritative incorrect evaluation
+→ appropriate FEEDBACK/remediation
+→ explanation/hint/strategy as determined by server policy
+→ learner gets another valid attempt/task according to current Decision Engine
+
+Do not turn every incorrect answer into automatic cognitive advancement.
+
+Do not mark wrong evidence as qualifying.
+
+==================================================
+15. FIX #5 — ACTIVE-TASK READY/CONTINUE REMINDER
+==================================================
+
+Repair the malformed deterministic server message:
+
+"Հարծը դաջորդ բաց ե. Խնդրում եմ պատասխանել."
+
+This is server-owned Armenian text and must be coherent.
+
+More importantly:
+
+if the learner sends READY/CONTINUE/"օկ" while a real answerable task is
+active:
+
+- do not skip the task
+- do not create evidence
+- do not progress
+- do not call provider merely to handle "օկ"
+- do not fabricate a new task
+- preserve the real active task
+
+Return a clear Armenian reminder.
+
+Prefer rendering/referencing the ACTUAL authoritative active task rather than
+depending solely on session.lastQuestionAsked.
+
+For source exercise:
+
+resolve activeLessonExerciseId
+→ learner-safe content boundary
+→ show/restate the actual active question when appropriate
+
+For generated task:
+
+resolve activeObjectiveTaskPayload
+→ show/restate actual active task safely
+
+Do not expose:
+
+- successCriteria
+- correctAnswer
+- evaluator rubric
+- hidden metadata.
+
+==================================================
+16. NO PHANTOM TASK WORDING
+==================================================
+
+Required invariant:
+
+If learner-facing text says there is a question/task to answer,
+a real authoritative active learner-answerable task must exist.
+
+Never say:
+
+"հաջորդ հարցը բաց է"
+"պատասխանեք հաջորդ հարցին"
+
+unless the actual task exists and is identifiable.
+
+If an active task exists but its visible text cannot safely be resolved:
+
+fail closed with a neutral coherent Armenian message.
+
+Do not invent task content.
+
+==================================================
+17. AUTOMATIC CONTINUATION
+==================================================
+
+Preserve Stage 5 behavior.
+
+After an evaluated answer, server orchestration should continue internally
+through safe non-interactive actions until one of these is true:
+
+A. a real learner-answerable task is delivered
+B. MicroNode/cognitive progression reaches a legitimate stopping boundary
+C. controlled safe failure occurs
+
+Do not stop merely because FEEDBACK was persisted.
+
+Do not require:
+
+"օկ"
+"շարունակիր"
+"հաջորդը"
+
+between internal server-owned steps.
+
+==================================================
+18. IMPORTANT PEDAGOGICAL FLOW
+==================================================
+
+Do NOT change the configured evidence thresholds.
+
+The current lesson may have:
+
+remember minimumIndependentEvidence = 2
+understand minimumIndependentEvidence = 3
+
+Keep configuration-driven behavior.
+
+Example:
+
+remember:
+0/2
+→ correct independent = 1/2
+→ new task
+→ correct independent = 2/2
+→ may advance
+
+understand:
+0/3
+→ qualifying correct = 1/3
+→ new task
+→ qualifying correct = 2/3
+→ new task
+→ qualifying correct = 3/3
+→ may complete/advance according to Decision Engine
+
+If a learner uses HELP:
+
+0/3
+→ HELP
+→ correct assisted answer
+→ correctness may be CORRECT
+→ independent count stays 0/3 if current policy requires independence
+→ NEW independent task automatically
+
+This task must NOT replace configuration-driven thresholds with a universal
+"two correct answers" rule.
+
+==================================================
+19. THEORY PER COGNITIVE LEVEL
+==================================================
+
+Do not change the current Stage-5.2 cognitive-level THEORY behavior in this
+task.
+
+If current accepted orchestration delivers THEORY when entering a new
+cognitive level, preserve it.
+
+This Stage 5.3 task is specifically about:
+
+HELP
+evaluation authority
+evidence consistency
+assisted continuation
+active-task reminder
+
+not a broader pedagogy redesign.
+
+==================================================
+20. CONTENT SAFETY MUST REMAIN INTACT
+==================================================
+
+All Stage 4/4.1 rules remain mandatory.
+
+Learner-visible task/hint/reminder/feedback must never expose:
+
+- correctAnswer
+- successCriteria
+- expected answer
+- evaluator rubric
+- answer key
+- hidden semantic criteria
+
+HELP must use learner-safe content.
+
+A generated independent follow-up must also pass the established content
+validation.
+
+==================================================
+21. LEGACY COMPATIBILITY
+==================================================
+
+Do not use legacy giant structured-response behavior as fallback for these
+new Stage-3/5 flows.
+
+Do not solve this by routing failed bounded jobs into legacy AI behavior.
+
+Keep only genuinely isolated pre-existing compatibility behavior.
+
+==================================================
+22. REQUIRED TESTS — HELP ROUTING
+==================================================
+
+Add focused regression coverage.
+
+H1.
+
+active source exercise
+→ learner: "չգիտեմ միգուցե հուշես"
+→ classified/routed as HELP
+→ explicit HELP executor used
+→ help event persisted
+→ activeHelpCount increments
+→ assistance becomes non-none as defined by current policy
+→ task identity preserved
+→ no mastery evidence from HELP itself
+
+H2.
+
+active generated task
+→ natural Armenian hint request
+→ same HELP authority behavior
+
+H3.
+
+true clarification request
+→ does not get blindly converted into HELP
+
+==================================================
+23. REQUIRED TESTS — POST-HELP ANSWER
+==================================================
+
+A1.
+
+HELP persisted
+→ learner answers
+→ evaluation receives authoritative help/assistance context
+
+A2.
+
+assisted CORRECT
+→ learner acknowledgement = correct
+→ evidence.wasCorrect = true
+→ evidence records assistance
+→ independent qualification = false when policy requires independence
+→ no false cognitive advancement
+
+A3.
+
+assisted INCORRECT
+→ acknowledgement = incorrect
+→ evidence.wasCorrect = false
+→ no false advancement
+
+==================================================
+24. REQUIRED TESTS — AUTHORITY CONSISTENCY
+==================================================
+
+C1.
+
+authoritative CORRECT
+→ acknowledgement polarity CORRECT
+→ evidence.wasCorrect true
+→ Decision Engine receives CORRECT
+
+C2.
+
+authoritative INCORRECT
+→ acknowledgement polarity INCORRECT
+→ evidence.wasCorrect false
+→ Decision Engine receives INCORRECT
+
+C3.
+
+No code path can produce:
+
+"Ճիշտ պատասխան է"
++
+wasCorrect=false
+
+C4.
+
+No code path can produce:
+
+"Պատասխանը ճիշտ չէ"
++
+wasCorrect=true
+
+C5.
+
+Invalid/unavailable evaluation
+→ no correctness claim
+→ no evidence/progression pretending result is known
+→ controlled safe failure
+
+==================================================
+25. REQUIRED TESTS — ASSISTED CONTINUATION
+==================================================
+
+AC1.
+
+threshold = 3
+current independent count = 0
+
+HELP
+→ CORRECT assisted answer
+→ independent count remains 0
+→ old answered task cleared
+→ new real independent task automatically delivered
+→ learner input required
+→ no "օկ"
+
+AC2.
+
+same behavior when another eligible source exercise exists.
+
+AC3.
+
+same behavior when no other source exercise exists:
+→ bounded TASK job
+→ validated generated MICRO_CHECK
+→ activated
+→ delivered
+
+AC4.
+
+just-answered source exercise is not immediately reselected.
+
+==================================================
+26. REQUIRED TESTS — ACTIVE TASK + "օկ"
+==================================================
+
+R1.
+
+active source task
+→ learner sends "օկ"
+→ no evaluation
+→ no evidence
+→ no progression
+→ no provider call
+→ task remains active
+→ coherent Armenian reminder includes/references actual safe active task
+
+R2.
+
+active generated task
+→ same invariant
+
+R3.
+
+No malformed:
+
+"Հարծը դաջորդ բաց ե..."
+
+or equivalent corrupted server string.
+
+R4.
+
+No reminder claims a nonexistent next task.
+
+==================================================
+27. REQUIRED TESTS — THRESHOLD REGRESSION
+==================================================
+
+Keep existing configured-threshold tests and explicitly prove they still pass.
+
+remember threshold = 2:
+
+1/2
+→ no advance
+
+2/2
+→ may advance
+
+understand threshold = 3:
+
+1/3
+→ no completion
+
+2/3
+→ no completion
+
+3/3
+→ may complete according to current target-ceiling Decision Engine policy
+
+Also prove:
+
+assisted correct
+→ does not increment independent count when current policy says non-independent.
+
+==================================================
+28. REQUIRED REGRESSION MATRIX
+==================================================
+
+Run at minimum:
+
+- API typecheck
+- frontend typecheck if shared contracts changed
+- Stage 0 baseline
+- Stage 1 extraction
+- Stage 2 action plan
+- Stage 3 bounded jobs
+- Stage 4 content boundary
+- Stage 4.1 delivery eligibility
+- Stage 5 continuation
+- Stage 5.1 FEEDBACK authority
+- Stage 5.2 fresh-run evidence isolation
+- Decision Engine / Cognitive Path tests
+- source-answer contract
+- deterministic source evaluation
+- new Stage 5.3 tests
+- git diff --check
+
+Do not claim PASS if required relevant tests are failing.
+
+==================================================
+29. LIVE VERIFICATION
+==================================================
+
+After tests pass:
+
+restart only the necessary workflow(s).
+
+Then use a NEW isolated enrolled test session if one is safely available.
+
+DO NOT use Session 51.
+
+Preferred live scenario:
+
+new session
+→ reach active constructed-response task
+→ learner asks "չգիտեմ միգուցե հուշես"
+→ verify HELP tracked
+→ answer correctly using hint
+→ verify assisted evidence does not falsely count as independent
+→ verify new independent task appears automatically
+→ no "օկ"
+→ answer independently
+→ verify configured threshold behavior
+
+Also test:
+
+active task
+→ "օկ"
+→ actual task remains visible/answerable
+→ no progression/evidence/provider call from the acknowledgement
+
+If no safe isolated enrolled fixture exists:
+
+DO NOT mutate shared/historical learner data.
+
+Report live verification as BLOCKED BY FIXTURE.
+
+Do not weaken the result of deterministic/regression tests, but do not claim
+provider-backed live PASS.
+
+==================================================
+30. STOP CONDITIONS
+==================================================
+
+STOP and report before implementation if:
+
+- DB migration is genuinely required
+- current schema cannot represent authoritative HELP state
+- current schema cannot represent required task transition
+- fixing this requires changing Cognitive Path thresholds
+- fixing this requires changing evidence-quality semantics
+- fixing this requires weakening Stage 4 safety
+- fixing this requires redesigning Stage 3
+- Session 51 would need mutation
+- historical evidence would need rewriting
+
+Otherwise proceed without asking for another approval.
+
+==================================================
+31. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE CONFIRMED ROOT CAUSES
+
+For each:
+
+- HELP recognition
+- assistance persistence
+- evaluation/acknowledgement contradiction
+- active-task dead-end
+- automatic continuation
+- malformed READY reminder
+
+B. FILES CHANGED
+
+Exact files and purpose.
+
+C. HELP ROUTING AFTER FIX
+
+Show:
+
+active task
+→ natural hint request
+→ HELP executor
+→ help event
+→ assistance state
+→ same task preserved
+
+D. POST-HELP EVALUATION FLOW
+
+Show:
+
+HELP
+→ ANSWER
+→ authoritative evaluation
+→ assisted evidence
+→ Decision Engine
+
+E. EVALUATION AUTHORITY
+
+Prove one result drives:
+
+acknowledgement
+evidence
+Decision Engine
+state transition
+
+F. ASSISTED-CORRECT CONTINUATION
+
+Show:
+
+assisted correct
+→ non-independent
+→ old answered task retired
+→ new independent task
+→ automatic delivery
+→ learner input required
+
+G. ACTIVE-TASK "օկ" BEHAVIOR
+
+Show:
+
+active task
+→ "օկ"
+→ no skip/evidence/progression/provider
+→ coherent real-task reminder
+
+H. THRESHOLD VERIFICATION
+
+Report:
+
+remember:
+1/2
+2/2
+
+understand:
+1/3
+2/3
+3/3
+
+and assisted-answer effect.
+
+I. CONTENT SAFETY
+
+Confirm no answer key / criteria leakage was introduced.
+
+J. TEST RESULTS
+
+Exact suite counts/results.
+
+K. LIVE VERIFICATION
+
+Report:
+
+- fresh session ID if used
+- node
+- cognitive level
+- help count
+- assistance level
+- evidence result
+- independent count
+- next task identity
+- whether automatic continuation worked
+- whether "օկ" was required
+
+L. SESSION 51 SAFETY
+
+Explicitly confirm:
+
+Session 51 mutated: NO
+Session 51 reset: NO
+event 446 rewritten: NO
+historical messages changed: NO
+
+M. REGRESSION STATUS
+
+Stage 0:
+Stage 1:
+Stage 2:
+Stage 3:
+Stage 4:
+Stage 4.1:
+Stage 5:
+Stage 5.1:
+Stage 5.2:
+Stage 5.3:
+
+N. FINAL VERDICT
+
+HELP ROUTING:
+PASS / FAIL
+
+ASSISTANCE TRACKING:
+PASS / FAIL
+
+EVALUATION AUTHORITY:
+PASS / FAIL
+
+ASSISTED-EVIDENCE SAFETY:
+PASS / FAIL
+
+AUTOMATIC INDEPENDENT FOLLOW-UP:
+PASS / FAIL
+
+ACTIVE-TASK READY GUARD:
+PASS / FAIL
+
+CONTENT BOUNDARY:
+PASS / FAIL
+
+STAGE-6 READINESS:
+READY / NOT READY
+
+RESULT:
+PASS / PARTIAL / BLOCKED
+
+Do not start Stage 6.
+
+If RESULT = PASS, STOP and wait for a new clean real-lesson test.
