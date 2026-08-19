@@ -125,6 +125,7 @@ type ProviderQueueItem = {
 
 const providerQueue: ProviderQueueItem[] = [];
 const boundedJobCalls: string[] = [];
+const boundedFeedbackContexts: string[] = [];
 const originalFetch = globalThis.fetch;
 let providerCallCount = 0;
 let classifierCallCount = 0;
@@ -208,6 +209,12 @@ globalThis.fetch = (async (
   ).json_schema?.name;
   if (schemaName?.startsWith("phase2_")) {
     boundedJobCalls.push(schemaName);
+  }
+  if (schemaName === "phase2_feedback_result") {
+    const systemMessage = (
+      requestBody.messages as Array<{ role?: string; content?: string }>
+    ).find((message) => message.role === "system");
+    boundedFeedbackContexts.push(systemMessage?.content ?? "");
   }
   const boundedResponse = (() => {
     switch (schemaName) {
@@ -858,6 +865,16 @@ try {
     boundedJobCalls.slice(objectiveJobsBeforeAnswer),
     ["phase2_feedback_result"],
     "objective MICRO_CHECK must use deterministic scoring and skip EVALUATION AI",
+  );
+  const objectiveFeedbackContext = boundedFeedbackContexts.at(-1) ?? "";
+  assert.match(objectiveFeedbackContext, /"status":"CORRECT"/u);
+  assert.match(
+    objectiveFeedbackContext,
+    /Decision Engine meta action: ADVANCE_COGNITIVE_LEVEL/u,
+  );
+  assert.match(
+    objectiveFeedbackContext,
+    /Server action: ADVANCE_COGNITIVE_LEVEL/u,
   );
 
   session = await getSession(lesson.id, successfulStudent.userId);

@@ -18,4 +18,5 @@ progression, evidence, or completion.
 tasks must not use a provenance shape that can fall through to legacy compatibility.
 Reject task-shaped THEORY/FEEDBACK and non-answerable TASK output before route side
 effects; non-deterministic source exercises use bounded EVALUATION before the
-Decision Engine.
+Decision Engine. Every FEEDBACK prompt must receive the already-authoritative
+evaluation plus server/Decision Engine action and can return learner wording only.

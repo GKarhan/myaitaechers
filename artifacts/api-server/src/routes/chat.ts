@@ -1638,7 +1638,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         chatHistory,
         [
           lessonContext,
-          "AUTHORITATIVE FACTS:",
+          "AUTHORITATIVE FEEDBACK FACTS:",
+          "Evaluation: {\"status\":\"NOT_APPLICABLE\",\"evidence_quality\":\"NONE\",\"error_family\":null,\"error_stability\":null,\"correct_parts\":[],\"incorrect_parts\":[]}",
+          "Decision Engine meta action: PRESERVE_ACTIVE_TASK",
+          "Decision Engine remediation action: NONE",
+          `Server action: ${_phase2ServerActionPlan.action}`,
           "The learner has an active task but did not submit an answer.",
           "Keep the same active task open. Do not create or append another task.",
           `Learner message: ${message}`,
