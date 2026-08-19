@@ -1,0 +1,297 @@
+READ-ONLY FORENSIC AUDIT — EX-579-3 EXPECTED ANSWER LEAK
+
+IMPORTANT:
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATABASE.
+DO NOT CALL THE AI PROVIDER.
+DO NOT CONTINUE OR MUTATE THE LEARNER SESSION.
+DO NOT IMPLEMENT A FIX.
+
+We found a real runtime issue after Stage 3.
+
+Observed session:
+
+sessionId = 51
+currentNodeId = 2107
+cognitive level = understand
+nodeTeachingStage = EXERCISE
+activeLessonExerciseId = 942
+activeTaskProvenance = source_exercise
+
+The learner saw:
+
+Վարժություն 4 — Ընդարձակ պատասխան
+
+Հարց․ Պղնձարջասպի լուծույթի և ջրի փորձը ինչպե՞ս է ցույց տալիս,
+որ մոլեկուլներն անընդհատ շարժվում են։
+
+Սպասվող պատասխանի հիմնական միտքը․
+Ժամանակի ընթացքում ջրի և պղնձարջասպի միջև սկզբնական սահմանը
+վերանում է, որովհետև դրանց մոլեկուլները անկանոն շարժվում և
+ներթափանցում են միմյանց զբաղեցրած տարածք։
+
+(Էջ ?, Վ. EX-579-3)
+
+This appears to expose expected-answer/evaluation guidance to the learner
+before the learner answers.
+
+==================================================
+A. EXACT DATABASE ROW
+==================================================
+
+Read lesson_exercises.id = 942.
+
+Report exactly:
+
+- id
+- exerciseId
+- relatedNodeId
+- exerciseTextVerbatim
+- exerciseTextEdited
+- successCriteria
+- interactionType
+- correctAnswer
+- sourcePage
+- sourceType
+- sequence
+- status
+
+Do not infer missing values.
+
+==================================================
+B. EXACT ORIGIN OF THE LEAKED TEXT
+==================================================
+
+Find exactly where this learner-visible text is stored:
+
+"Սպասվող պատասխանի հիմնական միտքը"
+
+Determine whether it comes from:
+
+1. exerciseTextVerbatim
+2. exerciseTextEdited
+3. successCriteria
+4. another DB field
+5. runtime-generated text
+6. more than one location
+
+Show exact evidence.
+
+==================================================
+C. DELIVERY TRACE
+==================================================
+
+Trace exercise 942 end-to-end:
+
+lesson_exercises row
+→ eligible exercise loading
+→ source-exercise selection
+→ activeLessonExerciseId = 942
+→ source-exercise activation
+→ delivery/rendering helper
+→ assistant message persistence
+→ frontend response
+
+Identify the exact field used as learner-visible exercise text.
+
+==================================================
+D. HIDDEN METADATA LEAK CHECK
+==================================================
+
+For current source-exercise delivery, answer YES/NO separately:
+
+Does learner-visible rendering append, merge, or expose:
+
+- successCriteria?
+- correctAnswer?
+- expected-answer text?
+- rubric/evaluator guidance?
+- teacher-only metadata?
+
+Show the responsible code path for every YES.
+
+==================================================
+E. MAPPING ORIGIN
+==================================================
+
+If the authoritative mapping input/source for EX-579-3 is still available,
+trace how this exercise originally entered lesson_exercises.
+
+Determine whether mapping represented separately:
+
+STUDENT-VISIBLE:
+- exercise/question text
+
+and
+
+EVALUATOR-ONLY:
+- expected answer
+- success criteria / rubric
+
+OR whether the expected answer was already embedded inside
+exerciseTextVerbatim / exerciseTextEdited.
+
+Do not modify mapper code or data.
+
+==================================================
+F. CURRENT CONTENT CONTRACT
+==================================================
+
+Audit whether the current architecture has an explicit enforceable boundary:
+
+STUDENT-VISIBLE:
+- question/task
+- answer options where applicable
+- source citation
+
+EVALUATOR/TEACHER-ONLY:
+- correctAnswer
+- expected answer
+- successCriteria
+- rubric
+- evaluator guidance
+
+Report whether this boundary exists in:
+
+- DB schema
+- TEXT mapping contract
+- validator
+- inserter
+- teacher CRUD
+- source-exercise delivery
+- bounded EVALUATION input
+
+==================================================
+G. EVIDENCE VALIDITY
+==================================================
+
+For this exact active exercise 942:
+
+Would accepting the learner's answer now as normal mastery evidence be
+contaminated because the expected answer was already shown?
+
+Answer:
+
+YES / NO
+
+Explain why.
+
+Do not mutate evidence or session state.
+
+==================================================
+H. EXERCISE IDENTITY CHECK
+==================================================
+
+The learner-visible text says:
+
+"Վարժություն 4"
+
+while the exercise identity is:
+
+EX-579-3
+
+Determine exactly why.
+
+Is this:
+
+- legitimate textbook numbering,
+- text embedded in the stored exercise,
+- mapper-generated numbering,
+- teacher-edited numbering,
+- or an identity mismatch?
+
+Inspect; do not guess.
+
+==================================================
+I. PAGE CITATION CHECK
+==================================================
+
+The learner sees:
+
+(Էջ ?, Վ. EX-579-3)
+
+Determine exactly why page is "?".
+
+Check:
+
+- lesson_exercises.sourcePage
+- mapping source page
+- delivery formatter
+
+Classify as:
+
+DATA MISSING
+or
+DELIVERY BUG
+or
+MAPPING LOSS
+or
+OTHER
+
+No fix.
+
+==================================================
+J. CONSTRUCTED-RESPONSE EVALUATION CHECK
+==================================================
+
+For exercise 942, determine what the new Stage-3 bounded EVALUATION job would
+receive when the learner answers.
+
+Specifically report whether it receives:
+
+- the learner-visible task
+- successCriteria
+- expected-answer guidance
+- correctAnswer
+- theory/source grounding
+
+We need to know whether evaluator-only guidance already exists separately or
+is only embedded in learner-visible exercise text.
+
+==================================================
+K. SMALLEST CORRECT FIX — PROPOSAL ONLY
+==================================================
+
+DO NOT IMPLEMENT.
+
+Based on actual evidence, propose the smallest correct fix that guarantees:
+
+Learner sees ONLY:
+- question/task
+- legitimate answer choices
+- source citation
+
+Learner NEVER sees:
+- correctAnswer
+- expected answer
+- successCriteria
+- rubric
+- evaluator-only guidance
+
+But backend / bounded EVALUATION may still receive legitimate hidden
+evaluation guidance.
+
+Preserve:
+- exact source-exercise identity
+- source fidelity
+- deterministic typed-answer evaluation
+- Stage-3 orchestration
+- Decision Engine/evidence semantics
+
+Do not redesign unrelated systems.
+
+==================================================
+L. VERDICT
+==================================================
+
+Choose exactly one:
+
+SOURCE DATA CONTRACT GAP
+DELIVERY LEAK
+MAPPING CONTRACT GAP
+MULTIPLE LINKED GAPS
+NO GAP
+
+Then STOP.
+
+Do not implement anything.

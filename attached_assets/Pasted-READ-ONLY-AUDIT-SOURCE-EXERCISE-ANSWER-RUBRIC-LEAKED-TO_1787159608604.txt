@@ -1,0 +1,231 @@
+READ-ONLY AUDIT — SOURCE EXERCISE ANSWER/RUBRIC LEAKED TO STUDENT
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE DB.
+DO NOT CALL PROVIDER.
+DO NOT CONTINUE THE LEARNER SESSION.
+
+Observed runtime:
+
+Phase 2
+Node 2107
+Level = understand
+Stage = EXERCISE
+activeLessonExerciseId = 942
+task = active
+
+Learner-visible source exercise:
+
+"Վարժություն 4 — Ընդարձակ պատասխան
+
+Հարց․ Պղնձարջասպի լուծույթի և ջրի փորձը ինչպե՞ս է ցույց տալիս,
+որ մոլեկուլներն անընդհատ շարժվում են։
+
+Սպասվող պատասխանի հիմնական միտքը․
+Ժամանակի ընթացքում ջրի և պղնձարջասպի միջև սկզբնական սահմանը
+վերանում է, որովհետև դրանց մոլեկուլները անկանոն շարժվում և
+ներթափանցում են միմյանց զբաղեցրած տարածք։
+
+(Էջ ?, Վ. EX-579-3)"
+
+This exposes the expected-answer content to the learner before evaluation.
+
+==================================================
+A. EXACT DB ROW
+==================================================
+
+Read lesson_exercises.id = 942.
+
+Report:
+
+- id
+- exerciseId
+- relatedNodeId
+- exerciseTextVerbatim
+- exerciseTextEdited
+- successCriteria
+- interactionType
+- correctAnswer
+- sourcePage
+- sourceType
+- sequence
+- status
+
+Do not infer anything.
+
+==================================================
+B. WHERE DOES THE EXPECTED ANSWER LIVE?
+==================================================
+
+Determine exactly where this text is stored:
+
+"Սպասվող պատասխանի հիմնական միտքը..."
+
+Choose exact source:
+
+- exerciseTextVerbatim
+- exerciseTextEdited
+- successCriteria
+- another DB field
+- generated at runtime
+- multiple locations
+
+Show exact evidence.
+
+==================================================
+C. DELIVERY TRACE
+==================================================
+
+Trace exercise 942 from:
+
+DB row
+→ eligible source-exercise selection
+→ activeLessonExerciseId = 942
+→ rendering/delivery helper
+→ persisted assistant chat message
+→ frontend
+
+Identify exactly which field becomes learner-visible text.
+
+==================================================
+D. DOES DELIVERY APPEND SUCCESS CRITERIA?
+==================================================
+
+Determine whether current source-exercise delivery appends or merges:
+
+- successCriteria
+- correctAnswer
+- evaluator guidance
+- answer/rubric text
+
+into the learner-visible message.
+
+Answer YES/NO for each.
+
+==================================================
+E. MAPPING ORIGIN
+==================================================
+
+Trace EX-579-3 back through the authoritative TEXT mapping representation if
+the mapping source is still available.
+
+Determine whether the mapper originally represented:
+
+1. learner-visible question/task
+
+and
+
+2. expected answer / success criterion
+
+as separate fields,
+
+or whether both were stored together inside exerciseTextVerbatim.
+
+Do not modify the mapper.
+
+==================================================
+F. STUDENT / TEACHER CONTENT BOUNDARY
+==================================================
+
+Determine whether the current architecture has an explicit rule separating:
+
+STUDENT-VISIBLE:
+- question/task text
+- options where appropriate
+- source citation
+
+TEACHER/EVALUATOR-ONLY:
+- correctAnswer
+- expected answer
+- rubric
+- successCriteria
+- answer explanation
+
+Report the current rule and any gap.
+
+==================================================
+G. EVIDENCE VALIDITY
+==================================================
+
+For this exact runtime task:
+
+Would answering it now produce contaminated evidence because the expected
+answer was already displayed?
+
+YES / NO
+
+Explain based only on current behavior.
+
+==================================================
+H. EXTERNAL-ID / LABEL CHECK
+==================================================
+
+The visible text says:
+
+"Վարժություն 4"
+
+while the backend citation says:
+
+EX-579-3
+
+Determine whether this is:
+
+- expected source numbering,
+- an edited-text label,
+- a mapping mismatch,
+- or an actual identity problem.
+
+Do not infer; inspect the stored row/source.
+
+==================================================
+I. PAGE "?" CHECK
+==================================================
+
+Determine why:
+
+(Էջ ?, Վ. EX-579-3)
+
+contains `?`.
+
+Report whether sourcePage is null/missing or whether delivery formatting fails
+to use an existing page value.
+
+No fix yet.
+
+==================================================
+J. SMALLEST CORRECT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Propose the smallest architectural fix that guarantees:
+
+Learner sees:
+- task/question only
+- answer options if needed
+- source citation
+
+Learner never sees:
+- correctAnswer
+- expected answer
+- rubric/successCriteria
+- evaluator-only guidance
+
+while the backend/EVALUATION job still receives the hidden evaluation guidance
+needed for constructed responses.
+
+Do not weaken source fidelity.
+
+==================================================
+K. VERDICT
+==================================================
+
+Choose one:
+
+SOURCE DATA CONTRACT GAP
+DELIVERY LEAK
+MAPPING CONTRACT GAP
+MULTIPLE LINKED GAPS
+NO GAP
+
+Then STOP.
