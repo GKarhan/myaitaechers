@@ -35,3 +35,4 @@
 - [V2-R3 Decision Engine](v2r3-decision-engine.md) — pure-function pedagogical decision engine; mapErrorFamilyToAction takes pre-increment step; revisitRequired gate bug fixed (quality=NONE must not block KN write).
 - [V2-R4A Learning Budget](v2r4a-budget.md) — session budget snapshot, active-time accounting (turn-based capped), budget-gate decision ordering, TIME≠FAILURE invariant, revisitReason typed enum.
 - [Source exercise activation](source-exercise-activation.md) — delivery and typed scoring use the persisted active lesson-exercise ID; model IDs are requests, not authority.
+- [Phase 2 route baseline](phase2-stage0-route-baseline.md) — provider-free real-route testing convention, isolated test-DB drift, and two known orchestration metadata gaps.
