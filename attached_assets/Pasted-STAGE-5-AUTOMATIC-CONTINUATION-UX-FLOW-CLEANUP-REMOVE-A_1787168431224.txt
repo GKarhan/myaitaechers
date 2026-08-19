@@ -1,0 +1,1099 @@
+STAGE 5 — AUTOMATIC CONTINUATION / UX FLOW CLEANUP
+REMOVE ARTIFICIAL “OK” TURNS FROM SERVER-OWNED PHASE-2 TRANSITIONS
+
+IMPLEMENTATION AUTHORIZED
+
+Stage 0 — Baseline / safety net                         COMPLETE
+Stage 1 — Phase-2 orchestration seam                    COMPLETE
+Stage 2 — Server-owned action planning                  COMPLETE
+Stage 3 — THEORY / TASK / EVALUATION / FEEDBACK split   COMPLETE
+Stage 4 — Exercise content boundary                     COMPLETE
+Stage 4.1 — Existing exercise remediation               COMPLETE
+
+Stage 5 must improve the learner-facing Phase-2 flow WITHOUT redesigning the
+architecture above.
+
+==================================================
+GOAL
+==================================================
+
+Remove artificial learner messages such as repeated:
+
+"օկ"
+
+when the backend already knows the next action and does not actually need
+learner input.
+
+Observed live runtime after Stage 3:
+
+START
+→ learner sends "օկ"
+→ THEORY explanation
+→ Stage = TASK_REQUIRED
+→ learner must send another "օկ"
+→ source exercise / generated task appears
+
+Then after an answer:
+
+learner ANSWER
+→ evaluation
+→ Decision Engine
+→ FEEDBACK
+→ cognitive level may advance
+→ learner must send another "օկ"
+→ next THEORY appears
+
+This is technically safe but pedagogically and UX-wise unnecessary.
+
+TARGET PRINCIPLE:
+
+THE LEARNER SHOULD SEND A MESSAGE ONLY WHEN THE SYSTEM ACTUALLY NEEDS
+LEARNER INPUT.
+
+Server-owned transitions should continue automatically.
+
+==================================================
+0. AUDIT FIRST — NO CHANGES YET
+==================================================
+
+Before modifying behavior, perform a read-only audit of the current Stage-5
+candidate transitions.
+
+Inspect actual current code and tests.
+
+Report exact current flow for:
+
+A. Lesson start / READY
+B. DELIVER_THEORY
+C. THEORY success → TASK_REQUIRED
+D. TASK_REQUIRED → source exercise
+E. TASK_REQUIRED → generated task
+F. learner answer → evaluation
+G. evaluation → Decision Engine
+H. Decision Engine → FEEDBACK
+I. CONTINUE_COGNITIVE_LEVEL
+J. ADVANCE_COGNITIVE_LEVEL
+K. COMPLETE_MICRONODE
+L. remediation paths
+M. HELP paths
+N. legacy compatibility paths
+
+For every transition report:
+
+- server action
+- current session stage
+- active task state
+- whether learner input is genuinely required
+- whether another HTTP/chat request is currently required
+- whether continuation could safely happen within the same backend request
+- existing side effects
+- existing persistence ordering
+
+Do not infer.
+Use current Stage-3/4/4.1 code.
+
+==================================================
+1. DEFINE “LEARNER INPUT REQUIRED”
+==================================================
+
+Introduce or explicitly derive one pure rule answering:
+
+DOES THE NEXT ACTION REQUIRE LEARNER INPUT?
+
+Examples:
+
+LEARNER INPUT REQUIRED:
+- answer an active MICRO_CHECK
+- answer an active source exercise
+- answer a constructed-response task
+- explicit learner-controlled HELP interaction
+- genuinely explicit learner confirmation where product policy requires it
+
+LEARNER INPUT NOT REQUIRED:
+- THEORY completed and server already knows TASK_REQUIRED
+- server has selected a source exercise and can deliver it
+- server must generate/deliver a MICRO_CHECK
+- cognitive level advanced and next THEORY must be delivered
+- feedback was produced and server already knows the next non-interactive action
+
+Do not use AI output to decide this.
+
+This must be derived from authoritative server action/state.
+
+==================================================
+2. TARGET CONTINUATION MODEL
+==================================================
+
+The target normal Phase-2 UX is:
+
+USER STARTS / READY
+      ↓
+THEORY
+      ↓
+TASK_REQUIRED
+      ↓
+SOURCE EXERCISE OR GENERATED TASK
+      ↓
+STOP
+      ↓
+WAIT FOR LEARNER ANSWER
+
+After answer:
+
+LEARNER ANSWER
+      ↓
+EVALUATION
+      ↓
+DECISION ENGINE
+      ↓
+FEEDBACK
+      ↓
+if same cognitive level needs another non-interactive step:
+continue automatically
+      ↓
+next THEORY or next task preparation
+      ↓
+STOP ONLY WHEN LEARNER INPUT IS NEEDED
+
+The learner must not need to send artificial "օկ" messages merely to trigger
+server-owned transitions.
+
+==================================================
+3. IMPORTANT — DO NOT COLLAPSE ARCHITECTURE
+==================================================
+
+Automatic continuation does NOT mean merging bounded AI jobs back together.
+
+Maintain:
+
+THEORY job
+TASK job
+EVALUATION job
+FEEDBACK job
+
+as separate bounded jobs.
+
+The backend may sequence multiple server-owned actions in one HTTP request or
+controlled continuation loop, but each bounded job remains independently:
+
+- invoked
+- validated
+- persisted
+- owned
+
+Do NOT recreate:
+
+one giant AI response
+→ explanation + task + evaluation + feedback.
+
+==================================================
+4. THEORY → TASK_REQUIRED AUTO-CONTINUATION
+==================================================
+
+Current live UX showed:
+
+learner "օկ"
+→ THEORY
+→ TASK_REQUIRED
+→ learner must send another "օկ"
+
+Fix this.
+
+After a valid THEORY response:
+
+1. persist/derive TASK_REQUIRED according to current safe state model
+2. determine next server action
+3. if no learner input is required:
+   continue automatically
+
+Then:
+
+A. eligible source exercise exists
+→ resolve exact eligible row
+→ validate Stage-4 learner-safe content
+→ activate exact source exercise
+→ deliver it
+
+OR
+
+B. no eligible source exercise selected
+→ call bounded TASK job
+→ validate task
+→ activate task
+→ deliver task
+
+STOP only once an answerable task is active and visible.
+
+==================================================
+5. RESPONSE SHAPE FOR THEORY + TASK
+==================================================
+
+Do not hide the architecture by concatenating unsafe content arbitrarily.
+
+The final learner-facing response may contain:
+
+THEORY explanation
++
+clearly separated task
+
+if both were produced through independent bounded jobs in the same server
+request.
+
+Preserve chat-history semantics.
+
+Audit current chat_messages persistence model before implementation.
+
+Decide whether to persist:
+
+A. two separate assistant chat_messages:
+   THEORY
+   TASK
+
+or
+
+B. one assistant response composed from two validated components
+
+Prefer the option that preserves current chat-history and future evaluation
+identity most safely.
+
+Do not guess.
+
+Report the chosen model and why.
+
+==================================================
+6. TASK ACTIVATION ORDER
+==================================================
+
+Required invariant:
+
+VISIBLE TASK
+must correspond exactly to
+PERSISTED ACTIVE TASK.
+
+For generated task:
+
+validated TASK candidate
+→ persist activeObjectiveTaskPayload
+→ persist activeTaskProvenance
+→ stage MICRO_CHECK
+→ then expose learner-visible task
+
+For source exercise:
+
+safe exact row
+→ persist activeLessonExerciseId
+→ persist source provenance/task state
+→ stage EXERCISE
+→ then expose learner-visible task
+
+Do not expose task text before activation succeeds.
+
+If activation fails:
+→ do not display task
+→ do not create phantom task
+
+==================================================
+7. ANSWER → FEEDBACK → NEXT ACTION
+==================================================
+
+Current live UX showed:
+
+learner answer
+→ feedback
+→ cognitive advance
+→ learner sends "օկ"
+→ next theory
+
+Fix this.
+
+After learner answer:
+
+1. authoritative evaluation
+2. counters/evidence inputs
+3. Decision Engine
+4. server progression action
+5. bounded FEEDBACK
+6. persist progression/state exactly as current architecture requires
+
+Then determine:
+
+DOES NEXT SERVER ACTION REQUIRE LEARNER INPUT?
+
+If NO:
+continue automatically.
+
+Examples:
+
+ADVANCE_COGNITIVE_LEVEL
+→ next level
+→ THEORY
+→ then TASK_REQUIRED
+→ then task
+→ STOP at active answerable task
+
+CONTINUE_COGNITIVE_LEVEL where next action is THEORY
+→ THEORY
+→ task
+→ STOP at answerable task
+
+If YES:
+stop and wait.
+
+==================================================
+8. FEEDBACK MUST REMAIN FEEDBACK ONLY
+==================================================
+
+Automatic continuation must NOT let FEEDBACK AI append the next question.
+
+The server may display:
+
+feedback
+then
+next theory/task
+
+but they must come from separate server-owned actions / bounded jobs.
+
+Required invariant:
+
+FEEDBACK AI output itself
+contains feedback only.
+
+No workflow authority returns to FEEDBACK AI.
+
+==================================================
+9. REMEDIATION PATHS
+==================================================
+
+Audit every current remediation action.
+
+Examples may include:
+
+- EXTRA_EXAMPLE
+- CONTRAST_EXAMPLE
+- RETURN_TO_PREREQUISITE
+- STEP_BY_STEP
+- VERIFY_SELECTION
+- SIMPLIFY_LANGUAGE
+- REQUIRE_REASONING
+- GUIDED_QUESTION
+- CHANGE_REPRESENTATION
+- LOWER_DIFFICULTY
+- RAISE_DIFFICULTY
+- existing current action set
+
+For each classify:
+
+A. server can automatically deliver remediation content/task
+B. learner input required
+C. requires bounded THEORY/TASK/FEEDBACK job
+D. must stop after visible question
+
+Do not automatically continue through a learner-answerable remediation task.
+
+The continuation loop must stop exactly when learner input is required.
+
+==================================================
+10. HELP PATH
+==================================================
+
+Do not automatically consume learner HELP turns.
+
+HELP is learner-driven.
+
+Preserve:
+
+- explicit HELP intent
+- active task identity
+- Stage-4 safe content boundary
+- help count
+- assistance level
+- evidence-strength implications
+
+After HELP response:
+
+if the system asks the learner to answer the existing/new task
+→ STOP and wait.
+
+Do not auto-answer or auto-progress.
+
+==================================================
+11. CONTINUATION LOOP
+==================================================
+
+Implement one controlled backend continuation mechanism rather than scattered
+recursive calls or ad-hoc auto-send branches.
+
+Use current repository conventions.
+
+Conceptually:
+
+while (
+  phase2ActionIsServerOwned &&
+  !nextActionRequiresLearnerInput &&
+  continuationBudgetNotExceeded
+) {
+  execute next server action
+  validate result
+  persist state
+  derive next action
+}
+
+Then return once:
+
+- learner input required
+- completion reached
+- controlled failure occurs
+- safety budget reached
+
+Do not literally use a while loop if a different bounded approach is safer in
+the current codebase.
+
+The key is one explicit continuation owner.
+
+==================================================
+12. CONTINUATION SAFETY CAP
+==================================================
+
+Introduce a deterministic maximum internal continuation count for one HTTP
+request.
+
+This protects against accidental loops such as:
+
+THEORY
+→ TASK_REQUIRED
+→ THEORY
+→ TASK_REQUIRED
+→ ...
+
+The cap must be implementation safety only.
+
+It must NOT:
+
+- mark learner incorrect
+- create evidence
+- complete a MicroNode
+- advance cognitive level
+- trigger Phase 3
+
+If hit:
+
+→ fail closed or stop safely
+→ preserve consistent persisted state
+→ log diagnostic
+
+Do not use learner-facing blame language.
+
+==================================================
+13. NO DOUBLE EVIDENCE
+==================================================
+
+Automatic continuation may execute multiple server-owned actions within one
+request.
+
+Evidence must still be written exactly once per actual learner answer/evidence
+event.
+
+THEORY, TASK generation, task activation, FEEDBACK, and automatic continuation
+must not independently create mastery evidence.
+
+Required invariant:
+
+ONE LEARNER ANSWER
+→ at most one intended evidence event for that evaluation path.
+
+Audit asynchronous evidence writing carefully.
+
+==================================================
+14. NO DOUBLE CHAT MESSAGES / DUPLICATE DELIVERY
+==================================================
+
+We previously had duplicate source exercise delivery.
+
+Stage 5 must preserve single-delivery safeguards.
+
+If one HTTP request performs:
+
+THEORY
+→ TASK
+
+ensure:
+
+- theory shown once
+- task shown once
+- source citation once
+- no P11.1/V2-R1.1-style second copy
+- no duplicate assistant rows caused by continuation owner overlap
+
+Remove obsolete duplicate auto-continuation paths only if the new continuation
+owner fully replaces them and regression coverage proves parity.
+
+Do not delete legacy branches blindly.
+
+==================================================
+15. SOURCE EXERCISE CONTENT BOUNDARY
+==================================================
+
+Preserve Stage 4/4.1.
+
+Only Stage-4 deliverable learner-safe exercises may be selected/activated.
+
+Current Stage 4.1 final classification:
+
+- 5 SAFE — EDITED learner exercises
+- 29 BLOCKED — CONTENT REVIEW
+
+Automatic continuation must NOT make blocked legacy rows deliverable.
+
+TASK_REQUIRED with only blocked source candidates:
+
+→ do not activate blocked source row
+→ proceed according to existing generated TASK policy if allowed
+OR
+→ safe controlled result if no valid task path exists
+
+Do not weaken Stage-4 eligibility merely to make continuation smoother.
+
+==================================================
+16. SOURCE EXERCISE SEQUENCING
+==================================================
+
+Do NOT invent a new exercise sequencing policy in Stage 5.
+
+Use the current authoritative eligible selection/order rule.
+
+If multiple eligible safe exercises exist, preserve current selection behavior.
+
+If existing architecture still lacks “completed exercise IDs” sequencing,
+report that as an unchanged limitation.
+
+Do not expand Stage 5 into exercise-sequencing redesign.
+
+==================================================
+17. COGNITIVE PATH ADVANCE
+==================================================
+
+Preserve:
+
+Decision Engine
+→ ADVANCE_COGNITIVE_LEVEL
+→ same currentNodeId
+→ next activeCognitiveLevelId
+→ stage THEORY
+→ clear stale task/exercise
+
+Stage 5 then MAY automatically continue:
+
+THEORY
+→ TASK_REQUIRED
+→ task
+
+within the same learner-answer response cycle.
+
+But the Decision Engine remains the only progression authority.
+
+==================================================
+18. MICRONODE COMPLETION
+==================================================
+
+Preserve:
+
+COMPLETE_MICRONODE only when deterministic completion gate and Decision Engine
+allow it.
+
+If MicroNode completes:
+
+A. next MicroNode exists
+→ existing node-advance logic runs
+→ decide whether next non-interactive introduction/theory should auto-continue
+  according to current product semantics
+
+B. no next MicroNode
+→ Phase transition according to existing completion logic
+
+Do not redefine completion semantics in Stage 5.
+
+==================================================
+19. PHASE TRANSITIONS
+==================================================
+
+Stage 5 scope is Phase 2 UX continuation.
+
+Do NOT broadly redesign Phase 1, 3, or 4.
+
+If Phase 2 completion transitions to Phase 3:
+
+preserve current Phase-3 entry behavior.
+
+Do not automatically consume Phase-3 learner actions unless already safe and
+explicitly current behavior.
+
+==================================================
+20. FRONTEND
+==================================================
+
+Prefer backend-owned continuation.
+
+Do NOT implement frontend fake messages such as automatically sending "օկ".
+
+Forbidden workaround:
+
+frontend detects TASK_REQUIRED
+→ silently POSTs "օկ"
+
+That would preserve the bad conceptual architecture.
+
+Instead:
+
+one real learner request
+→ backend executes server-owned internal transitions
+→ backend returns the resulting learner-visible outputs.
+
+Frontend may need minimal support to render multiple assistant messages/components
+from one request only if the current API cannot safely express the output.
+
+If API change is needed:
+- keep it minimal
+- preserve backward compatibility where possible
+- update generated client types
+- add tests
+
+Do not redesign chat UI.
+
+==================================================
+21. CLIENT INPUT CONTRACT
+==================================================
+
+Learner client must remain authoritative only for actual learner input.
+
+It must not send:
+
+- server action
+- teaching stage
+- cognitive level
+- active exercise ID
+- task identity
+- progression decision
+- hidden metadata
+
+Backend remains state authority.
+
+==================================================
+22. READY / START FLOW
+==================================================
+
+Audit the initial lesson "Սկսել" / READY semantics.
+
+Do not remove the learner's intentional first readiness action if product UX
+requires it.
+
+The target may remain:
+
+learner clicks/starts
+→ sends initial READY/"օկ"
+→ lesson begins
+
+What Stage 5 removes are the repeated artificial continuation "օկ" messages
+after the lesson is already underway.
+
+Explicitly distinguish:
+
+INITIAL READY
+from
+ARTIFICIAL CONTINUATION ACKNOWLEDGEMENT.
+
+==================================================
+23. LIVE TARGET EXPERIENCE
+==================================================
+
+Expected learner UX should become similar to:
+
+AI:
+[THEORY explanation]
+
+AI:
+[task]
+
+Learner:
+[answer]
+
+AI:
+[feedback]
+
+AI:
+[next-level THEORY, if automatically continuing]
+
+AI:
+[next task]
+
+Learner:
+[answer]
+
+The learner does NOT write:
+
+"օկ"
+"օկ"
+"օկ"
+
+between server-owned transitions.
+
+Exact message grouping may differ based on current chat architecture, but
+learner-input semantics must follow this rule.
+
+==================================================
+24. FAILURE SEMANTICS
+==================================================
+
+If an internal continuation action fails:
+
+THEORY failure
+→ no task activated
+→ remain safely recoverable
+
+TASK generation failure
+→ no task activated
+→ no phantom learner requirement
+
+source activation failure
+→ no unsafe task exposure
+
+FEEDBACK failure
+→ do not reverse authoritative evaluation/progression
+
+continuation-cap failure
+→ no learner-failure evidence
+→ no completion
+
+No old general AI fallback for normal Stage-3 jobs.
+
+==================================================
+25. REQUIRED TESTS — THEORY AUTO-CONTINUATION
+==================================================
+
+A.
+Initial READY
+→ THEORY
+→ TASK_REQUIRED
+→ safe source task
+→ response reaches active EXERCISE
+without a second learner "օկ".
+
+B.
+Initial READY
+→ THEORY
+→ TASK_REQUIRED
+→ no eligible source task
+→ bounded generated TASK
+→ active MICRO_CHECK
+without a second learner "օկ".
+
+C.
+THEORY invalid
+→ no TASK continuation
+→ no active task
+→ safe state.
+
+==================================================
+26. REQUIRED TESTS — ANSWER AUTO-CONTINUATION
+==================================================
+
+D.
+Learner correct answer
+→ evaluation
+→ Decision Engine CONTINUE_COGNITIVE_LEVEL
+→ FEEDBACK
+→ next server-owned non-interactive action continues automatically
+→ stop at next learner-answerable task.
+
+E.
+Learner correct answer
+→ ADVANCE_COGNITIVE_LEVEL
+→ FEEDBACK
+→ next level THEORY
+→ TASK_REQUIRED
+→ next task
+without learner "օկ".
+
+F.
+Learner incorrect answer
+→ remediation
+→ FEEDBACK/remediation content
+→ stop exactly when learner must answer.
+
+==================================================
+27. REQUIRED TESTS — NO DUPLICATION
+==================================================
+
+G.
+THEORY and following source exercise each visible exactly once.
+
+H.
+Generated task visible exactly once.
+
+I.
+FEEDBACK visible exactly once.
+
+J.
+No duplicate chat_messages rows from continuation branches.
+
+K.
+Source citation appears once.
+
+==================================================
+28. REQUIRED TESTS — EVIDENCE
+==================================================
+
+L.
+One learner answer
+→ exactly one evidence event.
+
+M.
+Automatic THEORY/TASK/FEEDBACK continuation
+→ zero additional evidence.
+
+N.
+Continuation safety cap
+→ zero learner-failure evidence.
+
+==================================================
+29. REQUIRED TESTS — STAGE 4 CONTENT SAFETY
+==================================================
+
+O.
+TASK_REQUIRED with blocked legacy source row
+→ row not activated/delivered.
+
+P.
+TASK_REQUIRED with safe edited source row
+→ row can activate normally.
+
+Q.
+HELP on active task remains content-safe.
+
+R.
+student package still hides successCriteria/correctAnswer.
+
+==================================================
+30. REQUIRED TESTS — COGNITIVE PROGRESSION
+==================================================
+
+S.
+ADVANCE_COGNITIVE_LEVEL
+→ next level
+→ no stale old-level exercise.
+
+T.
+mayCompleteMicroNode=false
+→ automatic continuation cannot complete node.
+
+U.
+target ceiling confirmed
+→ completion behavior unchanged.
+
+V.
+Phase 2 → Phase 3 semantics unchanged.
+
+==================================================
+31. REQUIRED TESTS — INITIAL READY
+==================================================
+
+W.
+Initial learner READY remains supported.
+
+X.
+Artificial continuation acknowledgements are not required after initial start.
+
+Y.
+A literal learner "օկ" sent while an active task is waiting must NOT be
+mistaken for a server continuation request if it should instead be treated
+according to current task/intent rules.
+
+==================================================
+32. OBSERVABILITY
+==================================================
+
+Add concise server-only diagnostics for internal continuation.
+
+Example conceptual fields:
+
+- sessionId
+- fromAction
+- toAction
+- internalStep
+- continuationCount
+- stopReason:
+  LEARNER_INPUT_REQUIRED
+  COMPLETE
+  FAILURE
+  SAFETY_CAP
+
+Do not expose hidden pedagogical metadata to learner responses.
+
+Avoid noisy logs.
+
+==================================================
+33. REGRESSION MATRIX
+==================================================
+
+Run:
+
+- Stage 0 frozen baseline
+- Stage 1 orchestration tests
+- Stage 2 server-action tests
+- Stage 3 bounded-job tests
+- Stage 4 content-boundary tests
+- Stage 4.1 delivery eligibility/remediation tests
+- source activation/delivery tests
+- deterministic source evaluation
+- generated MICROCHECK evaluation
+- bounded EVALUATION
+- Decision Engine
+- Cognitive Path
+- evidence tests
+- HELP tests
+- intent routing
+- student package
+- teacher CRUD if touched
+- API TypeScript typecheck
+- frontend TypeScript/build if touched
+- git diff --check
+
+Do not weaken prior invariants.
+
+==================================================
+34. LIVE RUNTIME VERIFICATION
+==================================================
+
+After automated checks:
+
+restart affected workflows
+inspect fresh logs
+run controlled student browser test
+
+Use a safe lesson/session.
+
+Verify actual visible sequence:
+
+START
+→ THEORY
+→ TASK
+
+without extra learner "օկ"
+
+then:
+
+ANSWER
+→ FEEDBACK
+→ next THEORY/TASK as appropriate
+
+without extra learner "օկ".
+
+Verify debug state at each meaningful stop:
+
+- active task only when visible
+- correct cognitive level
+- exact exercise ID
+- no duplicate task
+- no unexpected Phase transition
+
+==================================================
+35. OUT OF SCOPE
+==================================================
+
+Do NOT:
+
+- redesign mapping
+- rewrite exercise data
+- change Stage-4 review status
+- change exercise selection policy
+- change Cognitive Path thresholds
+- change mastery/evidence semantics
+- change Decision Engine policy
+- change answer correctness rules
+- redesign AI prompts beyond what continuation wiring strictly requires
+- change provider/model
+- redesign frontend chat UI
+- change Knowledge Tree
+- change quiz system
+- start Stage 6
+
+==================================================
+36. STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED if:
+
+- safe automatic continuation requires fake frontend learner messages
+- chat persistence cannot represent multiple bounded outputs safely
+- evidence would duplicate
+- task activation would precede visible task validation
+- server action cannot determine whether learner input is required
+- continuation would alter Cognitive Path/Decision Engine policy
+- Stage-4 blocked content would need to become deliverable
+- Phase 1/3/4 semantics would need redesign
+- DB migration becomes necessary
+
+Do not patch around a stop condition.
+
+==================================================
+37. FINAL REPORT
+==================================================
+
+Return:
+
+A. PRE-CHANGE CONTINUATION AUDIT
+
+B. FILES CHANGED
+
+C. LEARNER-INPUT-REQUIRED RULE
+
+D. CONTINUATION OWNER
+
+E. THEORY → TASK AUTO-CONTINUATION
+
+F. ANSWER → FEEDBACK → NEXT-ACTION AUTO-CONTINUATION
+
+G. MESSAGE PERSISTENCE MODEL
+
+H. TASK ACTIVATION ORDER
+
+I. REMEDIATION / HELP BEHAVIOR
+
+J. CONTINUATION SAFETY CAP
+
+K. DUPLICATE-DELIVERY PREVENTION
+
+L. EVIDENCE WRITE GUARANTEE
+
+M. STAGE-4 CONTENT-BOUNDARY PRESERVATION
+
+N. COGNITIVE PATH / COMPLETION PRESERVATION
+
+O. CLIENT/API CHANGES
+
+P. TEST RESULTS
+   exact suites/counts
+
+Q. LIVE BROWSER TEST
+
+R. OBSERVED BEFORE/AFTER UX
+
+S. REMAINING ARTIFICIAL LEARNER ACKNOWLEDGEMENTS
+   list any intentionally retained
+
+T. STAGE 0–4.1 REGRESSION STATUS
+
+U. TYPECHECK / BUILD / DIFF
+
+V. DATABASE MIGRATION
+   expected NONE
+
+W. RESULT
+   PASS / PARTIAL / BLOCKED
+
+X. STAGE-6 READINESS
+   READY / NOT READY
+
+Do not begin Stage 6.
+
+Begin with the required read-only audit.
+Then implement only if no STOP CONDITION is reached.
