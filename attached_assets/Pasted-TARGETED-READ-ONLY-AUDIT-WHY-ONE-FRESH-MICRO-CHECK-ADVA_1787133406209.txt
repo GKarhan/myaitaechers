@@ -1,0 +1,246 @@
+TARGETED READ-ONLY AUDIT — WHY ONE FRESH MICRO_CHECK ADVANCED REMEMBER → UNDERSTAND
+
+READ ONLY.
+NO CODE CHANGES.
+NO DB WRITES.
+NO AI/PROVIDER REQUEST.
+NO BROWSER TEST.
+
+GOAL
+
+Trace ONLY the latest successful turn in session 51.
+
+Observed flow:
+
+Phase 2
+Node 2107
+Level remember
+Stage MICRO_CHECK
+task = true
+
+Student answered:
+"b"
+
+Immediately afterward the Test State Bar became:
+
+Node = 2107
+Level = understand
+Stage = THEORY
+Ex = null
+Decision = ADVANCE_COGNITIVE_LEVEL
+task = false
+Phase = 2
+
+But the visible assistant response also delivered EX-579-1 twice.
+
+We need to determine exactly:
+
+1. why remember was already considered confirmed after this answer;
+2. whether fresh/relearn reset actually cleared the relevant evidence/progression state;
+3. why a remember source exercise was delivered after backend had already advanced to understand;
+4. which delivery branch produced each duplicate EX-579-1.
+
+==================================================
+A. PRE-TURN STATE
+==================================================
+
+Recover the session state immediately BEFORE the student's latest "b":
+
+- currentPhase
+- currentNodeId
+- activeCognitiveLevelId
+- nodeTeachingStage
+- activeTaskProvenance
+- activeAttemptSequence
+- nodeAttemptCount
+- nodeMasteryEvidenceCount
+- nodeConsecutiveCorrect
+- nodeConsecutiveIncorrect
+- nodeLastEvidenceQuality
+- activeLessonExerciseId
+- help/assistance state
+
+Do not infer if logs/DB evidence is unavailable.
+
+==================================================
+B. MICRO_CHECK EVALUATION
+==================================================
+
+For this exact "b" turn report:
+
+- intent
+- answer_evaluation.status
+- evidence_quality
+- independent/not independent
+- interaction_type if available
+- teaching_mode
+- is_micro_check
+- node_decision
+- helpCount / assistanceLevel used by decision engine
+
+==================================================
+C. REMEMBER THRESHOLD CALCULATION
+==================================================
+
+For cognitive level remember / row 136 report:
+
+- minimumIndependentEvidence
+- historical independent correct evidence count used by
+  decideNextPedagogicalAction()
+- whether current "b" was added to that count
+- resulting totalIndependentCorrect
+- exact condition that produced ADVANCE_COGNITIVE_LEVEL
+
+IMPORTANT:
+
+Identify every evidence item/count contributing to the threshold.
+
+If one qualifying historical evidence existed before this fresh run,
+identify its source and whether it came from:
+
+- current fresh/relearn session
+- previous session/runtime
+- durable evidence_events history
+- quiz/history
+- another source
+
+==================================================
+D. START-FRESH RESET SEMANTICS
+==================================================
+
+Inspect POST /lessons/:lessonId/start-fresh only as needed.
+
+Does start-fresh reset:
+
+1. session-local counters?
+2. durable evidence history?
+3. cognitive-level completion/evidence used by the decision engine?
+
+Answer each separately.
+
+We intentionally preserve mastery/evidence unless existing design says otherwise,
+so DO NOT assume historical evidence should be deleted.
+
+The key question is:
+
+Does "fresh/relearn" mean:
+A) fresh conversation/session state but prior valid learning evidence still counts,
+or
+B) fresh cognitive-path assessment where prior evidence must not count?
+
+Report CURRENT CODE behavior only.
+
+==================================================
+E. WHY EX-579-1 WAS DELIVERED AFTER ADVANCE
+==================================================
+
+Trace response construction order for this same turn.
+
+Backend had already decided:
+
+ADVANCE_COGNITIVE_LEVEL
+remember → understand
+Stage reset → THEORY
+activeLessonExerciseId → null
+
+Yet visible response contained:
+
+EX-579-1
+
+Explain exactly which branch injected it and whether that branch evaluated:
+
+- old request/session stage = MICRO_CHECK
+or
+- newly persisted stage = THEORY
+
+Identify the exact stale-state/read-order cause if present.
+
+==================================================
+F. DUPLICATE EX-579-1
+==================================================
+
+The visible conversation contains EX-579-1 twice:
+
+1. appended to the feedback/transition response
+2. a second standalone assistant exercise message with
+   "(Էջ ?, Վ. EX-579-1)"
+
+Identify the owner of EACH copy.
+
+For each copy report:
+
+- AI-generated or backend-injected
+- exact branch/function
+- whether it writes a separate chat_messages row
+- why both branches were allowed on the same turn
+
+==================================================
+G. CORRECT PROGRESSION CONTRACT
+==================================================
+
+Do NOT invent a new pedagogical policy.
+
+Based on current Cognitive Path configuration and current code, state what the
+intended deterministic sequence SHOULD be if remember requires 2 independent
+correct evidences.
+
+Distinguish these two possibilities:
+
+CASE 1:
+Historical valid evidence is intentionally allowed to count.
+Then one new micro-check may legitimately become the second evidence and
+ADVANCE_COGNITIVE_LEVEL may be correct.
+
+CASE 2:
+start-fresh is intended to require fresh evidence for this run.
+Then advancement after one fresh micro-check is premature.
+
+Determine which interpretation CURRENT architecture implements.
+
+==================================================
+H. FIRST CONFIRMED BUG
+==================================================
+
+Separate progression correctness from delivery correctness.
+
+Report independently:
+
+PROGRESSION:
+PASS / GAP / AMBIGUOUS
+
+DELIVERY:
+PASS / GAP
+
+Even if ADVANCE_COGNITIVE_LEVEL was legitimate, delivering EX-579-1 after
+advancing to understand may still be a bug.
+
+==================================================
+I. SMALLEST NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend the smallest fix for the first PROVEN bug only.
+
+Prefer fixing deterministic backend ownership/order rather than adding AI prompt rules.
+
+Do not redesign linked-exercise sequencing yet unless this exact failure requires it.
+
+==================================================
+J. VERDICT
+==================================================
+
+Return one concise verdict:
+
+PROGRESSION GAP
+DELIVERY GAP
+PROGRESSION + DELIVERY GAP
+or
+NO GAP
+
+Then STOP.
+
+COST CONTROL:
+Use only chat.ts, start-fresh route, decision-engine code/config, session 51
+state/logs, and relevant evidence rows.
+Minimum reads/tool calls.
