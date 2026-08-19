@@ -1,0 +1,279 @@
+TARGETED READ-ONLY AUDIT — WHY REMEMBER MICRO_CHECK FORMAT WAS NOT ENFORCED
+
+GOAL
+
+We have reached the next controlled runtime checkpoint.
+
+Current browser result:
+
+Session 51
+Lesson 579
+MicroNode 2107 — «Մոլեկուլների շարժումը»
+Phase 2
+Active Cognitive Level: remember
+Stage transitioned correctly to MICRO_CHECK
+task=✓
+
+AI response after intro confirmation:
+
+«Բոլոր նյութերը կազմված են մանրագույն մասնիկներից...
+Ի՞նչ ես կարծում, ինչո՞ւ է դա տեղի ունենում»:
+
+This is an open-ended explanatory question.
+
+But the active cognitive level context already contained:
+
+PREFERRED_INTERACTION_TYPES:
+multiple_choice, true_false
+
+and:
+
+MICRO_CHECK_FORMAT_RULE:
+When asking a MICRO_CHECK question at this cognitive level,
+use one of the PREFERRED_INTERACTION_TYPES listed above.
+
+So the state transition worked, but the generated question format did not respect the active-level format.
+
+READ-ONLY AUDIT ONLY.
+
+NO CODE CHANGES.
+NO DB WRITES.
+NO NEW AI REQUEST.
+
+==================================================
+CONFIRMED FACTS — DO NOT RE-AUDIT
+==================================================
+
+Already confirmed:
+
+- structured AI path succeeded on this turn
+- THEORY → MICRO_CHECK backend transition executed
+- Stage is now MICRO_CHECK
+- task=✓
+- current cognitive level remains remember
+- active-level context contains:
+  - NODE_OBJECTIVE
+  - CURRENT_COGNITIVE_LEVEL
+  - COGNITIVE_PERFORMANCE_OBJECTIVE
+  - COGNITIVE_SUCCESS_CRITERION
+  - PREFERRED_INTERACTION_TYPES
+  - MICRO_CHECK_FORMAT_RULE
+- remember preferred interaction types are:
+  - multiple_choice
+  - true_false
+- exercise filtering by cognitive level already works
+
+Do not re-audit those.
+
+==================================================
+QUESTION 1 — STRUCTURED OUTPUT FOR THIS TURN
+==================================================
+
+Inspect the actual structured result/log for the successful turn that produced:
+
+«Ի՞նչ ես կարծում, ինչո՞ւ է դա տեղի ունենում»:
+
+Report only the relevant fields:
+
+- teaching_mode
+- is_micro_check
+- student_message
+- any question/task type field if one exists
+- answer_evaluation status
+- node_decision if relevant
+
+We need to know whether the structured schema contains any explicit field describing the interaction/question format.
+
+==================================================
+QUESTION 2 — IS FORMAT REPRESENTED IN THE SCHEMA?
+==================================================
+
+Inspect the structured AI schema in:
+
+artifacts/api-server/src/services/ai.ts
+
+Determine whether there is an explicit field such as:
+
+- question_type
+- interaction_type
+- task_type
+- response_type
+- micro_check_type
+
+or equivalent.
+
+Answer:
+
+YES — exact field
+
+or
+
+NO — format exists only inside student_message/prompt instructions
+
+Do not list unrelated schema fields.
+
+==================================================
+QUESTION 3 — WHAT DOES VALIDATION ENFORCE?
+==================================================
+
+Inspect only the validators relevant to MICRO_CHECK.
+
+Determine what they currently validate.
+
+For example:
+
+- is_micro_check === true
+- teaching_mode
+- word count
+- answer evaluation status
+- one-question rule
+- format/type consistency
+- cognitive-level consistency
+
+Specifically answer:
+
+> Is there any deterministic validator that checks the generated MICRO_CHECK against PREFERRED_INTERACTION_TYPES?
+
+YES / NO
+
+Give exact code evidence.
+
+==================================================
+QUESTION 4 — CAN BACKEND KNOW THE ACTUAL FORMAT?
+==================================================
+
+Determine whether current backend code can reliably infer from the structured result that the generated question is:
+
+- multiple choice
+- true/false
+- constructed/open response
+
+without parsing natural-language student_message.
+
+If there is no explicit structured field, say so.
+
+Do NOT propose brittle text parsing as the primary architecture unless existing code already does it.
+
+==================================================
+QUESTION 5 — LINKED EXERCISE ROLE
+==================================================
+
+For this THEORY → MICRO_CHECK turn, determine whether the AI is:
+
+A. expected to generate a new micro-check using the preferred format,
+
+or
+
+B. expected to choose one of the active-level linked exercises,
+
+or
+
+C. either behavior is currently allowed.
+
+Give exact code/prompt evidence.
+
+This is important because active exercise ID remained:
+
+Ex: —
+
+Do not audit exercise filtering again.
+
+==================================================
+QUESTION 6 — WHY DID OPEN-ENDED QUESTION PASS?
+==================================================
+
+Give the exact reason this response was accepted.
+
+Choose the closest evidence-based explanation:
+
+A. format is only a prompt preference and not deterministically validated
+
+B. schema has a format field but it is ignored
+
+C. validator exists but has a bug
+
+D. another proven reason
+
+==================================================
+QUESTION 7 — SMALLEST CORRECT NEXT FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+Recommend ONE smallest architecture-consistent fix that guarantees:
+
+when active level preferred interaction types are:
+
+multiple_choice, true_false
+
+a MICRO_CHECK cannot be accepted as an open-ended explanatory question.
+
+Prefer a structured/deterministic solution over adding more prompt emphasis.
+
+Important:
+- do not redesign the whole question engine
+- do not change cognitive progression
+- do not change exercise filtering
+- do not touch later FEEDBACK behavior
+- stop at MICRO_CHECK format correctness
+
+If the current structured schema lacks a format field, say whether the smallest robust fix is to add one and validate it against the active level.
+
+If linked exercises are already intended to be authoritative, say whether deterministic selection from the linked set is smaller/safer.
+
+Choose ONE recommended fix, not multiple alternatives.
+
+==================================================
+COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Start with:
+- the relevant structured-result log for this turn
+- services/ai.ts schema
+- the relevant MICRO_CHECK validator in chat.ts or ai.ts
+
+Only inspect exercise-selection code if required for Question 5.
+
+No broad audit.
+No browser test.
+No code change.
+No DB write.
+
+==================================================
+FINAL REPORT — SHORT
+==================================================
+
+## A. ACTUAL STRUCTURED RESULT
+Relevant fields only.
+
+## B. FORMAT FIELD IN SCHEMA
+YES / NO.
+
+## C. FORMAT VALIDATION
+YES / NO + exact evidence.
+
+## D. BACKEND FORMAT KNOWLEDGE
+Can current backend reliably know the actual format? YES / NO.
+
+## E. LINKED EXERCISE ROLE
+A / B / C + short evidence.
+
+## F. ROOT CAUSE
+One precise sentence.
+
+## G. SMALLEST NEXT FIX
+One concrete recommendation only.
+
+## H. NEXT TEST EXPECTATION
+After that future fix, for remember level we should see:
+- Stage = MICRO_CHECK
+- task = ✓
+- question format = multiple_choice or true_false
+- no open-ended “why” question
+
+## I. VERDICT
+GAP / PASS
+
+Then STOP.
