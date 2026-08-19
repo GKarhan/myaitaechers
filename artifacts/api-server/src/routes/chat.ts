@@ -1775,8 +1775,45 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         ? (newMasteryCount >= 2 && (quality === "STRONG" || quality === "CONCLUSIVE") && newConsecIncorrect < 2)
         : (newMasteryCount >= 2 && quality !== "NONE" && newConsecIncorrect < 2);
       const safetyCapHit = newAttemptCount > 6;
+      const hasActiveCognitivePath =
+        _cognitivePath.length > 0 && _activeCognitiveLevelRow !== null;
 
-      if (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete || (decisionSaysComplete && codeGate)) {
+      // Cognitive Path progression owns completion whenever a confirmed path is
+      // active.  The legacy stage/safety gates must not bypass an
+      // ADVANCE_COGNITIVE_LEVEL decision and complete the MicroNode early.
+      if (
+        hasActiveCognitivePath &&
+        _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL"
+      ) {
+        await db
+          .update(lessonSessionsTable)
+          .set({
+            nodeTeachingStage: "THEORY",
+            activeLessonExerciseId: null,
+            activeTaskProvenance: null,
+            activeAttemptSequence: 0,
+            activeHelpCount: 0,
+            activeAssistanceLevel: "none",
+          } as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+        hasActiveTask = false;
+        logger.info(
+          {
+            sessionId: session.id,
+            nodeId: session.currentNodeId,
+            nextCognitiveLevelId: _pedagogicalDecision.newActiveCognitiveLevelId,
+          },
+          "Cognitive Path advance: reset stage to THEORY without completing node"
+        );
+      }
+
+      const legacyCompletionGate =
+        !hasActiveCognitivePath &&
+        (safetyCapHit || stageBecomesVerified || noExercisesEarlyComplete);
+      const cognitiveCompletionGate =
+        decisionSaysComplete && codeGate;
+
+      if (legacyCompletionGate || cognitiveCompletionGate) {
         await db
           .update(lessonSessionsTable)
           .set({ askedQuestionTemplates: [] })

@@ -1,0 +1,190 @@
+TARGETED FIX ONLY — COGNITIVE PATH MUST OWN NODE COMPLETION
+
+GOAL
+
+Fix one confirmed progression bug:
+
+For MicroNode 2107, after the second qualifying remember-level evidence:
+
+- Decision Engine correctly returned:
+  ADVANCE_COGNITIVE_LEVEL
+- next level 137 / understand was correctly selected
+- mayCompleteMicroNode = false
+
+BUT older logic also saw:
+
+stageBecomesVerified = true
+
+and independently called:
+
+advanceNodeInSession()
+
+That immediately:
+- cleared activeCognitiveLevelId
+- set currentNodeId = null
+- advanced Phase 2 → Phase 3
+
+This bypassed the Cognitive Path decision.
+
+Fix ONLY this conflict.
+
+==================================================
+REQUIRED BEHAVIOR
+
+When a MicroNode has an active Cognitive Path:
+
+1. `stageBecomesVerified` must NOT independently complete/advance the node.
+
+2. Node completion must be controlled by the deterministic Cognitive Path decision.
+
+If decision = ADVANCE_COGNITIVE_LEVEL:
+- keep currentNodeId unchanged
+- keep currentPhase unchanged
+- persist next activeCognitiveLevelId
+- reset nodeTeachingStage to THEORY for the next cognitive level
+- do NOT call advanceNodeInSession()
+
+If decision indicates current level is not yet complete:
+- stay in current cognitive level
+- do not complete the node
+
+Only when deterministic logic says:
+`mayCompleteMicroNode = true`
+or the existing equivalent target-ceiling completion condition
+may the node be advanced/completed.
+
+==================================================
+CURRENT TEST FIXTURE
+
+Lesson 579
+MicroNode 2107
+
+Cognitive Path:
+
+136 remember
+→ 137 understand (target ceiling)
+
+Observed correct decision:
+
+ADVANCE_COGNITIVE_LEVEL
+next level = 137
+mayComplete = false
+
+Expected result after remember is confirmed:
+
+currentNodeId = 2107
+currentPhase = 2
+activeCognitiveLevelId = 137
+nodeTeachingStage = THEORY
+activeLessonExerciseId = null
+task inactive until next teaching turn
+
+Do NOT hardcode these IDs in logic.
+
+==================================================
+PRIMARY CODE AREA
+
+artifacts/api-server/src/routes/chat.ts
+
+Focus only on:
+
+- `stageBecomesVerified`
+- deterministic pedagogical decision result
+- cognitive-level advance write
+- `advanceNodeInSession()` call condition
+
+The key fix should prevent this old condition:
+
+`stageBecomesVerified`
+
+from bypassing Cognitive Path progression when a Cognitive Path is active.
+
+==================================================
+IMPORTANT
+
+Preserve existing behavior for lessons/nodes WITHOUT a Cognitive Path.
+
+Do not globally remove `stageBecomesVerified` node advancement if legacy/non-cognitive-path flows still depend on it.
+
+Use the existing `_cognitivePath` / active Cognitive Path state to scope the new behavior.
+
+==================================================
+DO NOT TOUCH
+
+Do NOT modify:
+
+- linked exercise sequencing
+- EX-579-1 → EX-579-2 logic
+- duplicate exercise delivery
+- interaction_type
+- short-answer intent routing
+- THEORY → MICRO_CHECK
+- evidence thresholds
+- Decision Engine rules
+- Mapping
+- Phase 2 content
+- frontend
+- DB schema
+- start-fresh
+- Knowledge Tree
+
+This task is ONLY node-completion ownership.
+
+==================================================
+VERIFICATION
+
+Static verification:
+
+CASE A — Cognitive Path active, decision = ADVANCE_COGNITIVE_LEVEL
+
+Expected:
+- node stays active
+- next cognitive level persists
+- stage resets to THEORY
+- no advanceNodeInSession()
+
+CASE B — Cognitive Path active, mayCompleteMicroNode = false
+
+Expected:
+- node cannot complete from stageBecomesVerified alone
+
+CASE C — Cognitive Path active, target ceiling confirmed / mayCompleteMicroNode = true
+
+Expected:
+- node completion remains allowed
+
+CASE D — no Cognitive Path
+
+Expected:
+- legacy stageBecomesVerified behavior remains unchanged
+
+Run only relevant TypeScript check.
+
+==================================================
+FINAL REPORT
+
+A. FILE CHANGED
+
+B. EXACT COMPLETION-GATE CHANGE
+
+C. ADVANCE_COGNITIVE_LEVEL PATH
+
+D. COMPLETE_NODE PATH
+
+E. LEGACY / NO-COGNITIVE-PATH BEHAVIOR
+
+F. STATIC CASES
+A/B/C/D = PASS/FAIL
+
+G. TYPECHECK
+PASS / FAIL
+
+H. RESULT
+
+PASS — active Cognitive Path now owns cognitive progression and node completion
+
+or
+
+FAIL — exact reason
+
+Then STOP.
