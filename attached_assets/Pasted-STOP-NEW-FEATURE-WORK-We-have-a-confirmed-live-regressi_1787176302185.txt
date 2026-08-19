@@ -1,0 +1,172 @@
+STOP NEW FEATURE WORK.
+
+We have a confirmed live regression immediately after the Stage 5.4 work.
+
+READ-ONLY FORENSIC AUDIT FIRST.
+Do not implement anything until the exact failing owner is identified.
+
+LIVE FAILURE
+
+Lesson:
+ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Current debug state before learner input:
+
+Node: Մոլեկուլների շարժումը [2107]
+Level: remember
+Stage: THEORY
+Ex: —
+Decision: —
+Help: 0
+sess=51
+ph=2
+mode=TEACH
+task=✗
+
+Learner sends:
+
+Օկ
+
+Frontend returns:
+
+Սխալ տեղի ունեցավ։ Փորձեք կրկին։
+
+IMPORTANT:
+This failure happens BEFORE an active task exists.
+Therefore do not assume this is a HELP-button problem.
+
+==================================================
+SAFETY
+==================================================
+
+Do NOT:
+- reset Session 51
+- delete or modify evidence
+- mutate DB manually
+- change Cognitive Path thresholds
+- change Decision Engine policy
+- change Stage 4 content boundary
+- change Stage 5.3 HELP semantics
+- start Stage 6
+- implement speculative fixes
+
+Use Session 51 only as read-only forensic evidence.
+
+==================================================
+AUDIT THE EXACT FAILED REQUEST
+==================================================
+
+1. Inspect API/server logs for the exact request triggered by the learner's
+   "Օկ".
+
+2. Report:
+   - endpoint
+   - HTTP status
+   - exception/error message
+   - stack trace owner
+   - requestId if available
+   - session id
+   - current node id
+   - cognitive level
+   - stage/mode before failure
+
+3. Trace the request through:
+
+   chat route
+   → intent classification
+   → current Phase 2 state
+   → THEORY action planning
+   → bounded THEORY job
+   → THEORY validation
+   → persistence
+   → automatic continuation
+   → source/generated task selection
+   → response construction
+
+4. Identify the FIRST failing function/guard.
+
+Do not report downstream symptoms as root cause.
+
+==================================================
+SPECIAL CHECKS
+==================================================
+
+Because recent changes touched Stage 5.2–5.4, explicitly verify:
+
+A. THEORY leading-option guard
+- Did valid THEORY get falsely rejected?
+
+B. Automatic continuation
+- Did THEORY succeed but next-task creation/delivery fail?
+
+C. Exercise content boundary
+- Was the next source exercise considered ineligible?
+- If so, did generated-task fallback execute correctly?
+
+D. Fresh-run evidence boundary
+- Did current run/node evidence filtering throw or produce an invalid state?
+
+E. Stage 5.3 assisted-learning changes
+- Is any help/assistance snapshot code incorrectly running when:
+  activeHelpCount = 0
+  active task = false
+  stage = THEORY?
+
+F. Stage 5.4 frontend
+- Confirm whether the new HELP-button/session-state synchronization changed
+  the normal chat request or state hydration path.
+- The HELP button must not affect ordinary "Օկ" submission.
+
+G. Response contract
+- Did backend return a valid response that frontend rejected?
+- Or did backend itself return 4xx/5xx?
+
+==================================================
+IMPORTANT THEORY BEHAVIOR
+==================================================
+
+At this state:
+
+remember
+Stage = THEORY
+task = false
+
+the expected controlled flow is:
+
+learner starts
+→ server delivers valid THEORY
+→ THEORY persisted
+→ automatic continuation
+→ server selects/delivers learner-answerable task
+→ response succeeds
+
+No artificial second "Օկ" should be required.
+
+==================================================
+RETURN ONLY THIS AUDIT
+==================================================
+
+A. EXACT FAILED REQUEST
+B. HTTP STATUS + ERROR
+C. STACK TRACE / FIRST FAILING OWNER
+D. STATE BEFORE FAILURE
+E. THEORY RESULT
+F. AUTOMATIC CONTINUATION RESULT
+G. TASK-SELECTION RESULT
+H. CONTENT-BOUNDARY RESULT
+I. STAGE 5.3 INTERACTION
+J. STAGE 5.4 INTERACTION
+K. ROOT CAUSE
+L. MINIMAL FIX RECOMMENDATION
+M. REGRESSION TEST REQUIRED
+N. VERDICT
+
+End with exactly one:
+
+ROOT CAUSE CONFIRMED — SAFE TO IMPLEMENT MINIMAL FIX
+
+or
+
+ROOT CAUSE NOT YET CONFIRMED — DO NOT IMPLEMENT
+
+Do not change code in this task.
