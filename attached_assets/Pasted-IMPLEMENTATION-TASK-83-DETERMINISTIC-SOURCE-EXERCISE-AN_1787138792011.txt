@@ -1,0 +1,653 @@
+IMPLEMENTATION TASK #83 — DETERMINISTIC SOURCE-EXERCISE ANSWER EVALUATION
+
+Task #82 is complete and verified.
+
+CONFIRMED STORAGE CONTRACT:
+
+lesson_exercises now has:
+
+- interactionType
+- correctAnswer
+
+Supported values:
+
+1. multiple_choice
+   - correctAnswer = canonical A/B/C/D
+
+2. true_false
+   - correctAnswer = canonical TRUE/FALSE
+
+3. constructed_response
+   - correctAnswer = null
+   - successCriteria remains the AI-assisted evaluation guidance
+
+Legacy exercises may have:
+
+interactionType = null
+correctAnswer = null
+
+Reusable backend answer normalization already exists from Task #82.
+
+Verified lesson-579 fixtures:
+
+EX-579-1
+internal id = 940
+interactionType = multiple_choice
+correctAnswer = B
+
+EX-579-2
+internal id = 941
+interactionType = true_false
+correctAnswer = TRUE
+
+IMPORTANT:
+This task is ONLY about deterministic correctness evaluation
+for an ACTIVE source exercise.
+
+Do not redesign source-exercise progression or delivery.
+
+==================================================
+PART 0 — AUDIT FIRST
+==================================================
+
+Before changing code, inspect the current live source-exercise
+answer path in:
+
+artifacts/api-server/src/routes/chat.ts
+
+and the Task #82 reusable normalization helper.
+
+Identify exactly:
+
+1. How an active source exercise is identified.
+2. Where activeLessonExerciseId is read.
+3. Where the current lesson_exercises row is available/loaded.
+4. Where AI answer_evaluation is received.
+5. Where answer_evaluation.status and evidence_quality are consumed.
+6. Where session counters are updated.
+7. Where evidence is written.
+8. Where the Pedagogical Decision Engine consumes correctness.
+9. Whether any existing deterministic override already exists for
+   AI-generated objective MICRO_CHECKs and whether its pattern can be
+   safely reused without merging the two task types.
+
+Report the audit internally before implementation.
+
+If the current architecture cannot reliably associate the student's
+answer with the exact activeLessonExerciseId, STOP and report BLOCKED.
+
+Do not guess.
+
+==================================================
+PART 1 — AUTHORITY RULE
+==================================================
+
+For an ACTIVE source exercise:
+
+activeTaskProvenance = "source_exercise"
+AND
+activeLessonExerciseId != null
+
+load/use the exact active lesson_exercises row.
+
+If that exercise has:
+
+interactionType = multiple_choice
+AND
+correctAnswer != null
+
+OR:
+
+interactionType = true_false
+AND
+correctAnswer != null
+
+then BACKEND DETERMINISTIC COMPARISON is authoritative for correctness.
+
+The AI MUST NOT be authoritative for CORRECT vs INCORRECT
+for these objective source exercises.
+
+==================================================
+PART 2 — NORMALIZATION
+==================================================
+
+Reuse the canonical normalization implementation created in Task #82.
+
+Do NOT create a second competing normalization system.
+
+Required behavior includes:
+
+multiple_choice:
+
+ա / Ա / a / A / Ա) / A) → A
+բ / Բ / b / B / Բ) / B) → B
+գ / Գ / c / C / Գ) / C) → C
+դ / Դ / d / D / Դ) / D) → D
+
+true_false:
+
+ճիշտ / true / այո → TRUE
+սխալ / false / ոչ → FALSE
+
+Do not perform semantic inference.
+
+==================================================
+PART 3 — DETERMINISTIC EVALUATION
+==================================================
+
+For an objective ACTIVE source exercise:
+
+1. Normalize the student's answer.
+2. Compare it with the stored canonical correctAnswer.
+3. Override correctness deterministically.
+
+Example:
+
+EX-579-1:
+correctAnswer = B
+
+student:
+բ
+
+normalized:
+B
+
+result:
+CORRECT
+
+Student:
+ա
+
+normalized:
+A
+
+result:
+INCORRECT
+
+For EX-579-2:
+
+correctAnswer = TRUE
+
+student:
+ճիշտ
+
+normalized:
+TRUE
+
+result:
+CORRECT
+
+student:
+սխալ
+
+normalized:
+FALSE
+
+result:
+INCORRECT
+
+==================================================
+PART 4 — EVIDENCE QUALITY
+==================================================
+
+Preserve the existing source-exercise evidence-strength policy.
+
+Do NOT invent a new evidence policy.
+
+If the existing architecture treats an independently answered
+source exercise as STRONG evidence, preserve that behavior.
+
+The deterministic backend override changes only correctness authority.
+
+It must not weaken or strengthen evidence merely because correctness
+is now backend-determined.
+
+Help/assistance rules must remain unchanged.
+
+==================================================
+PART 5 — AI ROLE AFTER DETERMINISTIC RESULT
+==================================================
+
+The AI may continue generating:
+
+- feedback wording
+- explanation
+- remediation wording
+- encouragement
+- pedagogical action suggestions where currently allowed
+
+But for an objective typed source exercise, the AI must NOT override
+the backend correctness result.
+
+Example:
+
+Backend determines:
+
+CORRECT
+
+AI returns:
+
+INCORRECT
+
+Final authoritative status MUST be:
+
+CORRECT
+
+Likewise:
+
+Backend determines:
+
+INCORRECT
+
+AI returns:
+
+CORRECT
+
+Final authoritative status MUST be:
+
+INCORRECT
+
+The existing downstream code must consume the backend-authoritative
+status.
+
+Do not create a second progression path.
+
+==================================================
+PART 6 — UNRECOGNIZED OBJECTIVE ANSWER
+==================================================
+
+IMPORTANT:
+
+If the active source exercise is typed objective
+(multiple_choice or true_false), but the student's message cannot be
+normalized into a valid answer token:
+
+DO NOT silently mark it INCORRECT.
+
+Example:
+
+active exercise:
+multiple_choice
+correctAnswer = B
+
+student:
+"չգիտեմ, հուշի"
+
+This is not equivalent to answer A/C/D.
+
+Preserve the existing intent/help/confusion behavior.
+
+The deterministic correctness override should run only when the
+student has actually supplied a normalizable objective answer.
+
+Do not convert HELP/CONFUSED/CLARIFY messages into incorrect answers.
+
+==================================================
+PART 7 — CONSTRUCTED RESPONSE
+==================================================
+
+For:
+
+interactionType = constructed_response
+correctAnswer = null
+
+do NOT perform deterministic equality comparison.
+
+Preserve the existing AI-assisted evaluation path using the existing
+successCriteria/context.
+
+Do not change constructed-response evaluation in this task.
+
+==================================================
+PART 8 — LEGACY UNTYPED SOURCE EXERCISES
+==================================================
+
+For legacy source exercises with:
+
+interactionType = null
+correctAnswer = null
+
+preserve the current behavior.
+
+Do NOT infer a correct answer.
+
+Do NOT parse successCriteria at runtime to manufacture an answer key.
+
+Do NOT derive an answer from exercise text.
+
+Do NOT call another AI/provider to create an answer.
+
+==================================================
+PART 9 — EXACT ACTIVE EXERCISE ONLY
+==================================================
+
+The answer key MUST come only from:
+
+activeLessonExerciseId
+
+Do NOT use:
+
+- classExercises[0]
+- first exercise in the node
+- exercise text matching
+- successCriteria parsing
+- Cognitive Path task ordering guesses
+
+Correctness must be evaluated against the exact active source
+exercise.
+
+This is critical.
+
+==================================================
+PART 10 — EXISTING AI-GENERATED MICRO_CHECK LOGIC
+==================================================
+
+Do not break or replace the already implemented deterministic
+AI-generated objective MICRO_CHECK path using:
+
+activeObjectiveTaskPayload
+
+Keep the two authorities separate:
+
+AI-generated objective MICRO_CHECK
+→ activeObjectiveTaskPayload
+
+source exercise
+→ activeLessonExerciseId
+→ lesson_exercises.interactionType
+→ lesson_exercises.correctAnswer
+
+Do not copy source-exercise answer keys into
+activeObjectiveTaskPayload.
+
+==================================================
+PART 11 — DOWNSTREAM SINGLE SOURCE OF TRUTH
+==================================================
+
+After deterministic source-exercise evaluation, the existing
+downstream pipeline must receive the authoritative result exactly once.
+
+It must continue through the existing:
+
+answer evaluation
+→ counters
+→ evidence
+→ Pedagogical Decision Engine
+→ Cognitive Path progression
+
+Do NOT add parallel:
+
+- evidence writes
+- counter updates
+- mastery writes
+- progression logic
+- node completion logic
+
+The deterministic result must feed the existing pipeline.
+
+==================================================
+PART 12 — DO NOT MODIFY PROGRESSION
+==================================================
+
+Do NOT fix or redesign in this task:
+
+- EX-579-1 → EX-579-2 sequencing
+- completed-exercise tracking
+- classExercises[0] selection
+- P11.1
+- V2-R1.1
+- source-exercise delivery
+- duplicate exercise display
+- cognitive-level thresholds
+- node completion
+- ADVANCE_COGNITIVE_LEVEL logic
+- COMPLETE_NODE logic
+
+Those are separate tasks.
+
+This task answers only:
+
+"Given the exact active typed source exercise and a student answer,
+can the backend determine CORRECT/INCORRECT reliably?"
+
+==================================================
+PART 13 — DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- DB schema
+- Task #82 migration/backfill
+- TEXT mapper
+- teacher exercise CRUD
+- Knowledge Tree
+- quiz system
+- Cognitive Path configuration
+- Pedagogical Decision Engine
+- provider/model configuration
+- Phase-2 teaching contract
+- AI-generated MICRO_CHECK schema
+- activeObjectiveTaskPayload schema
+- frontend
+
+No unrelated refactor.
+
+==================================================
+PART 14 — REQUIRED STATIC TESTS
+==================================================
+
+Add targeted tests/assertions.
+
+A.
+
+Active source exercise:
+EX-579-1
+interactionType = multiple_choice
+correctAnswer = B
+
+student = "բ"
+
+Expected:
+CORRECT
+
+B.
+
+Same exercise:
+
+student = "B)"
+
+Expected:
+CORRECT
+
+C.
+
+Same exercise:
+
+student = "ա"
+
+Expected:
+INCORRECT
+
+D.
+
+Active source exercise:
+EX-579-2
+interactionType = true_false
+correctAnswer = TRUE
+
+student = "ճիշտ"
+
+Expected:
+CORRECT
+
+E.
+
+Same exercise:
+
+student = "սխալ"
+
+Expected:
+INCORRECT
+
+F.
+
+Objective source exercise,
+AI says INCORRECT,
+backend comparison says CORRECT.
+
+Expected final authoritative:
+CORRECT
+
+G.
+
+Objective source exercise,
+AI says CORRECT,
+backend comparison says INCORRECT.
+
+Expected final authoritative:
+INCORRECT
+
+H.
+
+constructed_response + correctAnswer=null
+
+Expected:
+deterministic comparison NOT used;
+existing AI evaluation preserved.
+
+I.
+
+legacy:
+interactionType=null
+correctAnswer=null
+
+Expected:
+existing evaluation preserved;
+no inference.
+
+J.
+
+Objective source exercise,
+student = "չգիտեմ, հուշի"
+
+Expected:
+do NOT force INCORRECT;
+preserve existing HELP/CONFUSED routing.
+
+K.
+
+activeLessonExerciseId points to exercise 941,
+while classExercises[0] is exercise 940.
+
+Expected:
+evaluation uses 941 only.
+
+This case is mandatory.
+
+==================================================
+PART 15 — CONTROLLED LESSON-579 VERIFICATION
+==================================================
+
+After static tests pass, verify the intended runtime contract for
+the two approved fixtures without changing progression rules.
+
+Required observations:
+
+EX-579-1 active:
+student "բ"
+→ normalized B
+→ backend authoritative CORRECT
+
+EX-579-1 active:
+student "ա"
+→ normalized A
+→ backend authoritative INCORRECT
+
+EX-579-2 active:
+student "ճիշտ"
+→ normalized TRUE
+→ backend authoritative CORRECT
+
+Do not fabricate runtime evidence.
+
+If running these requests would mutate a real learner session and no
+safe isolated test session exists, do NOT perform live requests.
+Report runtime verification as NOT RUN and rely on isolated/static
+tests.
+
+==================================================
+PART 16 — LOGGING
+==================================================
+
+Add only minimal safe diagnostic logging if needed.
+
+For objective source-exercise evaluation it is acceptable to log:
+
+- activeLessonExerciseId
+- exerciseId
+- interactionType
+- normalized student answer
+- whether deterministic comparison was used
+- resulting CORRECT/INCORRECT
+
+Do NOT log unnecessary lesson content.
+
+Do NOT expose correctAnswer to the frontend.
+
+Do NOT include answer keys in student-facing API responses.
+
+==================================================
+PART 17 — TYPECHECK
+==================================================
+
+Run:
+
+- relevant targeted tests
+- API TypeScript check
+- any directly affected package check
+
+No frontend check is required unless frontend was unexpectedly changed,
+which should not happen.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. FILES CHANGED
+
+B. PRE-IMPLEMENTATION TRACE
+- exact active source-exercise answer path
+- where deterministic override was inserted
+
+C. AUTHORITY RULE
+
+D. NORMALIZATION
+
+E. OBJECTIVE SOURCE-EXERCISE EVALUATION
+
+F. CONSTRUCTED / LEGACY FALLBACK
+
+G. DOWNSTREAM PIPELINE
+
+H. AI-GENERATED MICRO_CHECK ISOLATION
+
+I. STATIC TESTS
+
+J. LESSON-579 VERIFICATION
+
+K. LOGGING / DATA SAFETY
+
+L. TYPECHECK
+
+M. UNCHANGED / OUT-OF-SCOPE
+
+N. RESULT
+
+PASS / PARTIAL / BLOCKED
+
+If BLOCKED:
+stop and report the exact blocker.
+
+Do not broaden scope.
