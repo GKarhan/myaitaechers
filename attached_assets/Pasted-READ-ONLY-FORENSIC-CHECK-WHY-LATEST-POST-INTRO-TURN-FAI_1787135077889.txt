@@ -1,0 +1,215 @@
+READ-ONLY FORENSIC CHECK — WHY LATEST POST-INTRO TURN FAILED
+
+GOAL
+
+Find the exact first failure for the LATEST request in session 51:
+
+Phase 2
+Node 2107
+Level remember
+Stage THEORY
+
+Student sent:
+ok
+
+Frontend showed:
+«Սխալ տեղի ունեցավ։ Փորձեք կրկին։»
+
+IMPORTANT:
+The new objective MICRO_CHECK payload implementation has just been added.
+Do NOT change code yet.
+
+We need to know whether the failure is caused by:
+- provider output
+- JSON schema
+- new options/correct_option schema
+- visible-format consistency validation
+- Phase-2 THEORY contract
+- source_fidelity
+- sentence limit
+- another validator
+
+==================================================
+1. FIND THE EXACT LATEST REQUEST
+==================================================
+
+Inspect existing API/runtime logs only.
+
+Identify the latest session 51 post-intro `ok` request where:
+
+currentPhase = 2
+currentNodeId = 2107
+activeCognitiveLevel = remember
+nodeTeachingStage = THEORY
+
+Do not make a new provider request.
+
+==================================================
+2. ATTEMPT 1
+==================================================
+
+Report:
+
+- did provider return content?
+- finishReason
+- contentLength
+- root shape
+- teaching_mode
+- is_micro_check
+- interaction_type
+- options
+- correct_option
+- source_fidelity.type
+
+Then identify the FIRST exact failure.
+
+Give:
+- failurePoint
+- exact validator/error
+- exact offending field/value
+
+==================================================
+3. ATTEMPT 2
+==================================================
+
+Report the same fields:
+
+- provider content?
+- finishReason
+- contentLength
+- root shape
+- teaching_mode
+- is_micro_check
+- interaction_type
+- options
+- correct_option
+- source_fidelity.type
+
+Then identify the FIRST exact failure.
+
+Also confirm whether retry attempt 2 received the exact attempt-1 validation reason.
+
+==================================================
+4. NEW OBJECTIVE CONTRACT CHECK
+==================================================
+
+Specifically determine whether the newly added contract caused the failure.
+
+Check:
+
+A.
+interaction_type = multiple_choice
+→ options present and valid?
+
+B.
+correct_option present?
+
+C.
+correct_option matches exactly one option key?
+
+D.
+visible student_message options match structured options?
+
+E.
+Did validation fail because Armenian visible labels such as:
+
+Ա)
+Բ)
+
+do not match canonical structured keys:
+
+A
+B
+
+?
+
+Do not speculate.
+Report actual runtime evidence.
+
+==================================================
+5. FALLBACK GUARD
+==================================================
+
+Confirm whether final frontend error came from:
+
+STRUCTURED_AI_REQUIRED / HTTP 503
+
+and confirm plain-text callAI fallback was NOT used.
+
+==================================================
+6. SESSION SAFETY
+==================================================
+
+Confirm final persisted state after failure:
+
+currentPhase
+currentNodeId
+activeCognitiveLevelId
+nodeTeachingStage
+activeTaskProvenance
+activeObjectiveTaskPayload
+activeLessonExerciseId
+
+Confirm no failed MICRO_CHECK answer key was persisted.
+
+==================================================
+7. ROOT CAUSE
+==================================================
+
+State ONE first confirmed root cause for this exact request.
+
+Do not propose multiple hypothetical causes.
+
+==================================================
+8. SMALLEST NEXT FIX
+==================================================
+
+Only after proving the root cause, state the smallest fix.
+
+Prefer fixing a real contract/validator mismatch over weakening validation.
+
+Do NOT implement it.
+
+==================================================
+9. COST CONTROL
+==================================================
+
+No code changes.
+No DB writes.
+No browser.
+No provider/AI request.
+No broad audit.
+
+Use existing logs + current relevant code only.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. ATTEMPT 1
+
+B. ATTEMPT 2
+
+C. OBJECTIVE PAYLOAD VALIDATION
+
+D. FALLBACK GUARD
+
+E. SESSION SAFETY
+
+F. FIRST CONFIRMED ROOT CAUSE
+
+G. SMALLEST NEXT FIX
+
+H. VERDICT
+
+Choose one:
+
+PROVIDER FAILURE
+JSON SCHEMA FAILURE
+OBJECTIVE PAYLOAD CONTRACT FAILURE
+VISIBLE FORMAT VALIDATION FAILURE
+PHASE-2 CONTRACT FAILURE
+OTHER VALIDATION FAILURE
+UNKNOWN
+
+Then STOP.
