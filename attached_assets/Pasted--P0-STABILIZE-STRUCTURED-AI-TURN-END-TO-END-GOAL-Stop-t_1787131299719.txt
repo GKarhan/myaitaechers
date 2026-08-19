@@ -1,0 +1,429 @@
+# P0 — STABILIZE STRUCTURED AI TURN END-TO-END
+
+## GOAL
+
+Stop the repeated Phase-2 structured-output failures and make the FIRST controlled teaching turn reliably succeed.
+
+We have already spent multiple small audits isolating individual symptoms.
+
+For THIS task:
+
+> Diagnose the LATEST failed structured request, identify the real first failure in attempt 1 and attempt 2, and implement the SMALLEST robust fix necessary so a Phase-2 THEORY turn can reliably produce a valid structured response.
+
+This is a **diagnose + fix** task.
+
+Do not stop after another audit unless the root cause genuinely cannot be determined from available evidence.
+
+Keep scope limited to the structured AI generation/validation pipeline.
+
+---
+
+# CURRENT CONTROLLED TEST
+
+Lesson:
+
+`579 — ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ`
+
+MicroNode:
+
+`2107 — Մոլեկուլների շարժումը`
+
+Expected fresh state:
+
+* Phase = 2
+* Cognitive level = remember
+* Stage = THEORY
+* active exercise = null
+* no active task yet
+
+Expected successful first AI turn:
+
+`brief THEORY explanation`
+→ `ONE valid remember MICRO_CHECK`
+→ `interaction_type = multiple_choice OR true_false`
+→ structured output passes validation
+→ backend changes Stage to MICRO_CHECK
+→ task becomes active
+→ wait for student's answer
+
+Current browser behavior:
+
+The deterministic lesson intro appears correctly.
+
+Then the first controlled AI teaching request fails and frontend shows:
+
+`Սխալ տեղի ունեցավ։ Փորձեք կրկին։`
+
+The Test State Bar remains:
+
+`Stage: THEORY`
+`Ex: —`
+`task=✗`
+
+---
+
+# ALREADY FIXED — DO NOT RE-AUDIT
+
+These are already implemented and should remain:
+
+1. `learningObjective → NODE_OBJECTIVE`
+
+2. Active cognitive context:
+
+   * CURRENT_COGNITIVE_LEVEL
+   * COGNITIVE_PERFORMANCE_OBJECTIVE
+   * COGNITIVE_SUCCESS_CRITERION
+   * PREFERRED_INTERACTION_TYPES
+
+3. MICRO_CHECK interaction format enforcement.
+
+4. Active cognitive-level exercise filtering.
+
+5. Intro confirmation routes into same-turn teaching.
+
+6. Fresh/relearn test flow starts in Phase 2.
+
+7. Plain-text fallback is blocked for controlled Phase-2 teaching.
+
+8. Failure-only provider diagnostics exist.
+
+9. `source_fidelity.type` prompt guidance now explicitly says:
+
+   * AI_GENERATED
+   * SOURCE_EXACT
+   * SOURCE_PARAPHRASED
+   * AI_ADAPTED
+   * never null
+
+10. Short canonical answers like `բ` route deterministically as ANSWER during an active task.
+
+Do not spend time reproving these.
+
+---
+
+# STEP 1 — READ THE LATEST FAILED REQUEST LOGS
+
+Use the most recent failed browser request only.
+
+Extract attempt 1 and attempt 2.
+
+For EACH attempt identify the FIRST failure category:
+
+* provider/root JSON
+* JSON parse
+* Zod schema
+* interaction_type validation
+* MICRO_CHECK format validation
+* source_fidelity
+* teaching-cycle semantic validation
+* another exact validator
+
+Report the exact failing field/value.
+
+Do not inspect older failures unless needed for comparison.
+
+---
+
+# STEP 2 — DETERMINE WHETHER THIS IS A CONTRACT DESIGN PROBLEM
+
+Inspect only:
+
+`artifacts/api-server/src/services/ai.ts`
+
+and the directly relevant validation code.
+
+We now have many fields in one global structured response.
+
+Determine whether the current schema/prompt forces the model to correctly populate fields that are:
+
+* irrelevant to the current turn,
+* ambiguous for the current turn,
+* or duplicated with backend-known state.
+
+Focus on fields actually causing failures.
+
+Do NOT redesign the whole schema.
+
+---
+
+# STEP 3 — FIX THE ROOT CAUSE, NOT THE LATEST SYMPTOM
+
+Apply the smallest robust fix.
+
+Important principle:
+
+> If the backend already knows a value deterministically, do not require the model to guess it merely to satisfy the schema.
+
+Likewise:
+
+> Fields that are meaningful only for certain response types should not unnecessarily invalidate unrelated turns.
+
+However, do NOT weaken important teaching/state guarantees.
+
+Must remain strictly enforced:
+
+* root structured object
+* valid teaching_mode
+* Phase-2 THEORY must produce a MICRO_CHECK
+* `is_micro_check = true` when required
+* interaction_type must match active Cognitive Path
+* actual question format must match interaction_type
+* answer/evidence rules when evaluating an answer
+* source exercise identity when a real source exercise is active
+
+Use conditional validation where appropriate rather than making every field universally fragile.
+
+---
+
+# SOURCE FIDELITY SPECIFIC RULE
+
+We already learned:
+
+`source_fidelity.type` currently has no downstream state-machine consumer.
+
+`source_fidelity.exercise_id` DOES matter for source-exercise transitions.
+
+Preserve provenance information, but do not let a provenance field that the backend can safely determine or that is irrelevant to the current turn unnecessarily crash an otherwise valid controlled teaching response.
+
+If the latest failure again involves `source_fidelity.type`, choose the smallest architecture-consistent solution.
+
+For example, if appropriate from existing architecture:
+
+* deterministically default an AI-created MICRO_CHECK to `AI_GENERATED`, OR
+* make provenance validation conditional while preserving `exercise_id` requirements for real source exercises.
+
+Choose ONE based on evidence.
+
+Do not blindly make everything nullable.
+
+---
+
+# RETRY MUST ACTUALLY REPAIR THE FAILURE
+
+Inspect the current retry correction.
+
+If attempt 1 fails because of a specific schema/semantic field, ensure attempt 2 receives enough information to correct THAT failure.
+
+Do not create a new retry loop.
+
+Maximum remains the existing retry count.
+
+If the retry currently only says generic:
+
+`Return valid JSON matching schema`
+
+and the failure evidence shows that is insufficient, make the smallest useful repair instruction that includes the actual validation error.
+
+Prefer:
+
+`Previous response failed because: <bounded validation reason>. Correct that field and return the complete valid JSON object.`
+
+Do NOT send stack traces or huge prompts.
+
+---
+
+# STRUCTURED SCHEMA — KEEP IT TURN-AWARE
+
+Check whether fields should be conditionally required.
+
+Examples of the intended principle:
+
+### THEORY + MICRO_CHECK
+
+Must provide:
+
+* student_message
+* teaching_mode
+* is_micro_check
+* interaction_type
+* non-evaluative answer_evaluation state
+* required provenance only as appropriate
+
+### FEEDBACK
+
+Should not fail merely because a MICRO_CHECK-only field has no meaningful value.
+
+### TRANSITION
+
+Should not require irrelevant question-format data.
+
+Do not perform a broad schema rewrite.
+
+Only correct requirements that are demonstrably causing the structured response to fail.
+
+---
+
+# DO NOT CHANGE
+
+Do NOT modify:
+
+* Mapping
+* Phase 2 content generation
+* Cognitive Path generation
+* exercise-level linkage
+* exercise filtering
+* intent short-answer fix
+* StudentLessonCard
+* fresh-session behavior
+* Test State Bar
+* Knowledge Tree
+* mastery algorithms
+* frontend UI
+* DB schema
+* model/provider unless current evidence proves provider incompatibility is the actual root cause
+
+Do not switch models as a first reaction.
+
+---
+
+# COST CONTROL
+
+This task must remain narrow.
+
+Use:
+
+1. latest failed request logs
+2. `services/ai.ts`
+3. directly relevant validator code
+
+Avoid broad repository exploration.
+
+No DB audit unless necessary.
+
+No frontend audit.
+
+No Mapping audit.
+
+---
+
+# VERIFICATION
+
+After the fix:
+
+## Static/type verification
+
+Run relevant TypeScript checks.
+
+## Structured contract verification
+
+Verify at minimum these cases:
+
+### Case 1 — valid THEORY + MICRO_CHECK
+
+Phase 2 / remember:
+
+* TEACH
+* is_micro_check=true
+* interaction_type=multiple_choice
+* actual options present
+  → PASS
+
+### Case 2 — wrong interaction type
+
+remember + constructed_response
+→ REJECT
+
+### Case 3 — missing required MICRO_CHECK
+
+Phase-2 THEORY + is_micro_check=false
+→ REJECT
+
+### Case 4 — irrelevant optional/conditional field
+
+A valid turn must not fail solely because a field irrelevant to that response type is null/missing, if the corrected contract says it is not required.
+
+### Case 5 — source exercise
+
+When a real source exercise is active, exercise identity/provenance requirements remain enforced.
+
+---
+
+# ONE CONTROLLED RUNTIME CHECK IS ALLOWED
+
+After implementation and typecheck, you MAY perform at most ONE minimal structured call/test only if the existing environment allows it safely and cheaply.
+
+Do not run a full lesson.
+
+Goal only:
+
+prove that a Phase-2 THEORY request produces a valid structured object instead of immediate schema failure.
+
+If performing that call would mutate learner/session state or incur unnecessary complexity, skip it and report that browser UAT is required.
+
+---
+
+# REQUIRED FINAL REPORT
+
+Keep it concise.
+
+## A. LATEST FAILURE
+
+Attempt 1:
+`exact first failure`
+
+Attempt 2:
+`exact first failure`
+
+## B. ROOT CAUSE
+
+One precise explanation of why the structured turn remained unstable.
+
+## C. FIX
+
+Exact files and minimal changes.
+
+Explain whether the fix involved:
+
+* conditional schema
+* deterministic default
+* improved retry repair
+* or another proven correction
+
+## D. GUARANTEES PRESERVED
+
+Confirm that these remain enforced:
+
+* structured object
+* Phase-2 MICRO_CHECK requirement
+* interaction type
+* format consistency
+* answer/evidence rules
+* source exercise identity where required
+
+## E. RETRY
+
+Explain how attempt 2 now receives a useful repair signal if attempt 1 fails.
+
+## F. STATIC CASES
+
+Case 1 = PASS/FAIL
+Case 2 = PASS/FAIL
+Case 3 = PASS/FAIL
+Case 4 = PASS/FAIL
+Case 5 = PASS/FAIL
+
+## G. TYPECHECK
+
+PASS / FAIL
+
+## H. RUNTIME CHECK
+
+RUN / NOT RUN
+
+If run: exact result only.
+
+## I. RESULT
+
+Choose:
+
+`PASS — structured Phase-2 teaching turn stabilized`
+
+or
+
+`PARTIAL — exact remaining blocker`
+
+or
+
+`FAIL — exact reason`
+
+Then STOP.

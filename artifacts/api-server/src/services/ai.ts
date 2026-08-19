@@ -1020,8 +1020,16 @@ async function _attemptStructured(
 
 // ── callAIStructured (max 2 attempts, 1 retry on schema/parse/empty/deviation) ─
 
-const RETRY_CORRECTION =
-  "\n\nPrevious response failed schema validation. Return ONLY valid JSON matching the required schema.";
+function buildRetryCorrection(firstError: Error): string {
+  const reason = firstError.message.replace(/\s+/g, " ").slice(0, 500);
+  return (
+    "\n\nPrevious response failed validation because: " +
+    `${reason}\n` +
+    "Correct that specific issue while preserving the complete teaching contract, " +
+    "including the required Phase-2 MICRO_CHECK, active-level interaction_type, " +
+    "and actual question-format consistency. Return ONLY the complete valid JSON object."
+  );
+}
 
 export async function callAIStructured(
   messages: ChatMessage[],
@@ -1064,7 +1072,7 @@ export async function callAIStructured(
 
   // ── Attempt 2 (retry) ─────────────────────────────────────────────────────
   logger.info("callAIStructured: retrying (attempt 2/2)");
-  const retrySystem = baseSystem + RETRY_CORRECTION;
+  const retrySystem = baseSystem + buildRetryCorrection(firstError);
   try {
     const result = await _attemptStructured(retrySystem, messages, lessonContext);
     logger.info("callAIStructured: retry (attempt 2) succeeded");
