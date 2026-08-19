@@ -1,0 +1,567 @@
+READ-ONLY FORENSIC AUDIT — HELP → ASSISTED CORRECT → ACTIVE TASK DEAD-END
+SESSION 51 / EX-579-3
+
+IMPORTANT:
+AUDIT ONLY.
+
+DO NOT:
+- change code
+- change database
+- change tests
+- restart workflows
+- call provider
+- mutate session 51
+- reset session 51
+- continue the learner chat
+- implement a fix
+
+==================================================
+LIVE OBSERVED FLOW
+==================================================
+
+Lesson:
+ՄՈԼԵԿՈՒԼՆԵՐԻ ՇԱՐԺՈՒՄԸ: ԴԻՖՈՒԶԻԱ
+
+Session:
+51
+
+Node:
+2107
+
+Cognitive level:
+understand
+
+Active source exercise:
+DB id = 942
+EX-579-3
+
+Visible question:
+
+"Պղնձարջասպի լուծույթի և ջրի փորձը ինչպե՞ս է ցույց տալիս,
+որ մոլեկուլներն անընդհատ շարժվում են։"
+
+Learner:
+
+"չգիտեմ միգուցե հուշես"
+
+AI Teacher gave a hint/explanation:
+
+"Եկեք հիշենք փորձը՝ պղնձարջասպի լուծույթը ջրի մեջ լցնելիս։
+Սկզբում սահմանը պարզ երևում էր, բայց մի քանի օր հետո այն չքացավ,
+և ամբողջ հեղուկը միատարր դարձավ։ Սա ցույց է տալիս, որ
+պղնձարջասպի և ջրի մոլեկուլները շարժվում էին՝ խառնվելով միմյանց հետ։"
+
+Learner then answered:
+
+"հասկացա քանի որ տարբեր գույները լուծույթների խառնվեցին
+ուրեմն մոլեկուլները շարժվում են"
+
+AI Teacher:
+
+"Ճիշտ պատասխան է։"
+
+Nothing else was automatically delivered.
+
+Learner then manually sent:
+
+"օկ"
+
+AI Teacher responded:
+
+"Հարծը դաջորդ բաց ե. Խնդրում եմ պատասխանել."
+
+Current visible debug:
+
+Level = understand
+Stage = EXERCISE
+Ex = 942
+Decision = —
+Help = 0
+sess = 51
+ph = 2
+mode = TEACH
+task = true
+
+==================================================
+GOAL
+==================================================
+
+Determine exactly:
+
+1. Was "չգիտեմ միգուցե հուշես" classified as HELP?
+2. Was help_count / assistance level actually persisted?
+3. How was the subsequent correct answer evaluated?
+4. Should that answer qualify as independent evidence?
+5. Why did EX-579-3 remain active after the correct answer?
+6. Why did automatic continuation not create a new independent task?
+7. Why did manual "օկ" get processed while a real task was still active?
+8. Where did the malformed response come from?
+
+Do not assume the intended policy.
+Trace current code and persisted state first.
+
+==================================================
+A. EXACT MESSAGE TIMELINE
+==================================================
+
+Read the persisted chat rows for this exact sequence.
+
+Report for each:
+
+- message ID
+- timestamp
+- role
+- content
+- available metadata
+
+Identify exact rows for:
+
+- EX-579-3 delivery
+- "չգիտեմ միգուցե հուշես"
+- hint response
+- learner correct response
+- "Ճիշտ պատասխան է։"
+- manual "օկ"
+- malformed final assistant message
+
+==================================================
+B. HELP INTENT CLASSIFICATION
+==================================================
+
+Trace how:
+
+"չգիտեմ միգուցե հուշես"
+
+was classified.
+
+Report:
+
+- detected intent
+- intent classifier/path
+- HELP = true/false
+- was answer evaluation skipped?
+- active task before/after
+- help count before/after
+- assistance level before/after
+- remediation/help state before/after
+
+The visible debug now shows:
+
+Help = 0
+
+Determine whether:
+
+1. HELP was never recognized
+2. HELP was recognized but later reset
+3. UI debug is reading the wrong field
+4. another exact cause
+
+==================================================
+C. HINT RESPONSE OWNER
+==================================================
+
+Identify exactly which path generated the hint.
+
+Was it:
+
+- explicit HELP handler
+- bounded FEEDBACK
+- bounded THEORY
+- preserve-active-task path
+- remediation
+- general AI compatibility path
+- another exact owner
+
+Report the exact function/file.
+
+==================================================
+D. ACTIVE TASK DURING HELP
+==================================================
+
+For EX-579-3, report the authoritative state after the hint:
+
+- nodeTeachingStage
+- activeTaskProvenance
+- activeLessonExerciseId
+- activeAttemptSequence
+- activeHelpCount
+- activeAssistanceLevel
+- activeObjectiveTaskPayload
+
+Determine whether the source exercise was intentionally preserved as active.
+
+==================================================
+E. SUBSEQUENT LEARNER ANSWER
+==================================================
+
+For:
+
+"հասկացա քանի որ տարբեր գույները լուծույթների խառնվեցին
+ուրեմն մոլեկուլները շարժվում են"
+
+report:
+
+- detected intent
+- evaluated as answer YES/NO
+- deterministic evaluation attempted?
+- bounded EVALUATION called?
+- authoritative status
+- evidence quality
+- help/assistance context supplied to evaluation
+- attempt sequence
+- wasCorrect
+- evidence event written or not
+- qualifying independent evidence YES/NO
+
+Do not infer from "Ճիշտ պատասխան է։"
+
+==================================================
+F. ASSISTED-EVIDENCE POLICY
+==================================================
+
+Audit the exact current policy for a correct answer after HELP.
+
+Report whether current evidence qualification allows:
+
+help_count = 0
+help_count = 1
+help_count > 1
+
+and how:
+
+activeAssistanceLevel
+NONE / LIGHT / other levels
+
+affect qualifying independent evidence.
+
+Answer:
+
+Should this exact post-hint correct answer count toward
+minimumIndependentEvidence under CURRENT code?
+
+YES / NO / NOT PROVABLE
+
+Then separately report whether that matches the intended policy already
+encoded in the project.
+
+Do not redesign policy.
+
+==================================================
+G. WHY TASK 942 REMAINED ACTIVE
+==================================================
+
+Identify the exact writer/path responsible for the final persisted state:
+
+Stage = EXERCISE
+activeLessonExerciseId = 942
+task = true
+
+after the learner had received:
+
+"Ճիշտ պատասխան է։"
+
+Classify:
+
+1. EXPECTED — assisted success intentionally keeps same task active
+2. EXPECTED — remediation requires retry of same task
+3. BUG — correct evaluated answer should have cleared task
+4. BUG — should have generated a new independent equivalent task
+5. state update was skipped
+6. another exact cause
+
+Show code evidence.
+
+==================================================
+H. WHAT SHOULD HAPPEN AFTER ASSISTED CORRECT?
+==================================================
+
+From CURRENT server policy, derive the expected next action after:
+
+active source task
+→ learner HELP
+→ learner answer CORRECT
+→ evidence is non-independent / insufficient
+
+Should the server:
+
+A. keep the same exact task active?
+B. clear it and deliver a new equivalent independent task?
+C. deliver THEORY/remediation first, then a new task?
+D. another current behavior?
+
+Do not invent a pedagogical policy.
+Derive from current orchestration/Decision Engine contracts.
+
+==================================================
+I. AUTOMATIC CONTINUATION TRACE
+==================================================
+
+Trace Stage 5/5.1/5.2 continuation after the correct post-hint answer.
+
+Report:
+
+- Decision Engine action
+- remediationAction
+- post-feedback action
+- learnerInputRequired
+- continuation invoked YES/NO
+- continuation step count
+- stopReason
+- why no next task appeared
+
+If continuation stopped because the old source task was still active,
+show the exact condition.
+
+==================================================
+J. MANUAL "օկ" WHILE ACTIVE TASK
+==================================================
+
+The learner should not have needed to send "օկ".
+
+But once it was sent while:
+
+Stage = EXERCISE
+Ex = 942
+task = true
+
+determine how it was classified.
+
+Report:
+
+- intent
+- was it treated as ANSWER?
+- HELP?
+- READY?
+- CONTINUE?
+- another type?
+
+Determine whether the backend currently has a guard preventing artificial
+continuation acknowledgement while an active answerable task exists.
+
+Expected Stage-5 invariant:
+
+active learner-answerable task
+→ arbitrary "օկ" must not act as an internal continuation trigger.
+
+Audit current behavior.
+
+==================================================
+K. MALFORMED MESSAGE ORIGIN
+==================================================
+
+Trace the exact assistant message:
+
+"Հարծը դաջորդ բաց ե. Խնդրում եմ պատասխանել."
+
+Report:
+
+- persisted chat_message ID
+- exact raw persisted content
+- which bounded job/path produced it
+- server action
+- teaching mode
+- whether provider output is retained
+- whether it was a fallback
+- whether it was generated from malformed Armenian AI output
+- whether server composed any portion of it
+
+Classify:
+
+THEORY OUTPUT
+FEEDBACK OUTPUT
+TASK OUTPUT
+HELP OUTPUT
+COMPATIBILITY OUTPUT
+SERVER FALLBACK
+OTHER
+
+==================================================
+L. TASK VISIBILITY INVARIANT
+==================================================
+
+At the time the malformed message said effectively:
+
+"the next question is open, please answer"
+
+was there an actual new persisted learner-answerable task?
+
+Report:
+
+- activeLessonExerciseId
+- activeObjectiveTaskPayload
+- activeTaskProvenance
+- actual learner-visible question
+- whether exact task identity changed
+
+If no new task existed, classify this as:
+
+PHANTOM TASK WORDING
+
+==================================================
+M. UNDERSTAND EVIDENCE COUNT
+==================================================
+
+Using the new Stage-5.2 fresh-run evidence boundary, report for the CURRENT
+run only:
+
+- understand threshold
+- qualifying evidence count before HELP
+- contribution of the post-hint correct answer
+- qualifying evidence count after
+- why current level did or did not advance
+
+Historical pre-reset evidence must not be included.
+
+==================================================
+N. DESIRED INVARIANT CHECK
+==================================================
+
+Evaluate these existing architecture invariants:
+
+N1.
+HELP does not itself create mastery evidence.
+
+N2.
+A correct answer after HELP is scored with the correct assistance context.
+
+N3.
+Insufficient/assisted evidence cannot falsely confirm the cognitive level.
+
+N4.
+After an assisted correct answer, learner receives a clear next real task
+when more independent evidence is required.
+
+N5.
+No artificial "օկ" is required.
+
+N6.
+An active task cannot coexist with wording referring to a different
+unpersisted "next question."
+
+N7.
+Learner-visible Armenian output must be coherent and usable.
+
+Return PASS / FAIL / NOT PROVABLE for each.
+
+==================================================
+O. ROOT-CAUSE MAP
+==================================================
+
+Map:
+
+SYMPTOM
+→ AUTHORITATIVE OWNER
+→ ACTUAL STATE
+→ ROOT CAUSE
+→ SEVERITY
+
+For:
+
+1. Help count showing 0
+2. Correct post-hint answer
+3. EX-579-3 remaining active
+4. No automatic next task
+5. Manual "օկ" being required
+6. malformed assistant message
+
+Determine whether these are:
+
+- one shared root cause
+- multiple linked gaps
+- independent issues
+
+==================================================
+P. SMALLEST SAFE FIX — PROPOSAL ONLY
+==================================================
+
+DO NOT IMPLEMENT.
+
+For each confirmed bug propose the smallest fix preserving:
+
+- Stage 3 bounded jobs
+- Stage 4/4.1 content safety
+- Stage 5 automatic continuation
+- Stage 5.1 FEEDBACK authority
+- Stage 5.2 fresh-run evidence boundary
+- Cognitive Path thresholds
+- Decision Engine policy
+- evidence semantics
+- HELP semantics
+- source-exercise identity
+- no artificial "օկ"
+
+Do not propose a broad chat.ts rewrite.
+
+==================================================
+Q. FUTURE REGRESSION TEST PLAN
+==================================================
+
+DO NOT ADD TESTS.
+
+Specify exact tests, at minimum:
+
+Q1.
+HELP on active constructed/source exercise increments/persists help state.
+
+Q2.
+Post-hint correct answer receives assistance context.
+
+Q3.
+Assisted correct answer does not falsely satisfy independent-evidence gate.
+
+Q4.
+If more independent evidence is needed:
+→ current answered task does not become a silent dead end
+→ next real task is delivered automatically.
+
+Q5.
+No artificial "օկ" required.
+
+Q6.
+"օկ" while active task cannot trigger fake continuation.
+
+Q7.
+No phantom "next question" wording without a persisted task.
+
+Q8.
+Learner-visible Armenian fallback/message is coherent.
+
+Q9.
+One answer → intended evidence effects only.
+
+Q10.
+Stage 5.2 fresh-run evidence isolation remains intact.
+
+==================================================
+R. FINAL VERDICT
+==================================================
+
+Return ONE:
+
+HELP STATE BUG
+ASSISTED-EVIDENCE ROUTING BUG
+ACTIVE-TASK CLEARING BUG
+AUTOMATIC CONTINUATION BUG
+PHANTOM TASK WORDING BUG
+MULTIPLE LINKED GAPS
+NO BUG
+BLOCKED — INSUFFICIENT EVIDENCE
+
+Then report:
+
+STAGE 5.2 LIVE ACCEPTANCE:
+PASS / PARTIAL / FAIL
+
+IMPLEMENTATION:
+NOT PERFORMED
+
+DATABASE MUTATION:
+NONE
+
+SESSION 51 MUTATION:
+NONE
+
+PROVIDER CALL:
+NONE
+
+Then STOP.
