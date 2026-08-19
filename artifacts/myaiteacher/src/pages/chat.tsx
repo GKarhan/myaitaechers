@@ -30,10 +30,10 @@ const HELP_LEVELS = [
 ];
 
 const HELP_BUTTON_LABELS: Record<number, string> = {
-  0: "💡 Հուշ",
-  1: "Ավելի շատ հուշ",
-  2: "Կադամարար ածորդակ",
-  3: "Արաիլ բացատրություն",
+  0: "💡 Հուշում",
+  1: "Ավելի շատ հուշում",
+  2: "Քայլ առ քայլ աջակցություն",
+  3: "Բացատրություն",
 };
 
 export default function Chat() {
@@ -47,6 +47,7 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const helpRequestInFlightRef = useRef(false);
 
   // ── Help state ─────────────────────────────────────────────────────────────
   // hasActiveTask: true when server session is in MICRO_CHECK or EXERCISE stage.
@@ -144,10 +145,11 @@ export default function Chat() {
 
   // ── Phase 2B: Request help ─────────────────────────────────────────────────
   const requestHelp = async (revealAnswer = false) => {
-    if (!lessonId || helpLoading || sendMessageMutation.isPending) return;
+    if (!lessonId || helpLoading || helpRequestInFlightRef.current || sendMessageMutation.isPending) return;
     if (showRevealConfirm && !revealAnswer) return;
 
     setHelpLoading(true);
+    helpRequestInFlightRef.current = true;
     setHelpError(null);
     setShowRevealConfirm(false);
 
@@ -183,6 +185,7 @@ export default function Chat() {
     } catch {
       setHelpError("Help request failed — please try again");
     } finally {
+      helpRequestInFlightRef.current = false;
       setHelpLoading(false);
     }
   };

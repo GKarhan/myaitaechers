@@ -1,0 +1,247 @@
+STAGE 5.4 — ADD EXPLICIT HELP BUTTON TO ACTIVE TASK UI
+
+IMPLEMENTATION AUTHORIZED.
+
+This is a small frontend/backend-integration task only.
+
+Do NOT redesign Phase 2.
+Do NOT change Stage 5.3 assisted-learning semantics.
+Do NOT change Cognitive Path thresholds.
+Do NOT change evidence/mastery logic.
+Do NOT change Decision Engine policy.
+Do NOT change HELP backend authority.
+Do NOT start Stage 6.
+
+==================================================
+GOAL
+==================================================
+
+When a learner has a real active answerable task, show a visible:
+
+💡 Հուշում
+
+button/action.
+
+The learner should not need to type:
+
+- հուշիր
+- օգնիր
+- չգիտեմ, հուշե՞ս
+
+The existing text-based HELP recognition remains as fallback.
+
+==================================================
+REQUIRED FLOW
+==================================================
+
+ACTIVE TASK
+→ learner clicks [💡 Հուշում]
+→ frontend sends explicit HELP action/request
+→ existing authoritative executeHelpRequest(...) flow
+→ help_events persisted
+→ activeHelpCount +1
+→ activeAssistanceLevel updated
+→ bounded learner-safe hint generated
+→ same active task remains active
+→ learner answers normally
+
+The HELP button must NOT:
+
+- create evidence
+- evaluate the answer
+- advance mastery
+- change cognitive level
+- change task identity
+- generate a new task
+- send a fake learner chat message like "հուշիր"
+
+==================================================
+UI RULE
+==================================================
+
+Show the button only when a real active learner-answerable task exists.
+
+Examples:
+
+- active source exercise → show
+- active generated MICRO_CHECK → show
+- no active task → hide
+- THEORY only → hide
+- FEEDBACK only → hide
+- completed node → hide
+
+Use current authoritative task state from the existing API/session data.
+
+Do not infer task activity from visible text.
+
+==================================================
+FRONTEND BEHAVIOR
+==================================================
+
+On click:
+
+1. disable the button while request is pending
+2. call the existing HELP endpoint/action directly
+3. render the returned assistant hint
+4. keep the current task visible and active
+5. re-enable according to current help policy/state
+
+Do not locally increment help count.
+Backend remains authority.
+
+Do not locally synthesize hint text.
+
+==================================================
+LABEL
+==================================================
+
+Use Armenian learner-facing label:
+
+💡 Հուշում
+
+Optional tooltip/subtext if the existing UI pattern supports it:
+
+«Ստանալ փոքր հուշում»
+
+Keep it compact.
+
+==================================================
+HELP COUNT / LIMIT
+==================================================
+
+If the backend currently exposes enough state to know HELP availability or
+limit, respect it.
+
+Do not invent a frontend-only help limit.
+
+If the backend rejects further HELP according to current policy:
+→ show the existing safe backend response/state
+→ do not bypass it.
+
+==================================================
+TEXT HELP FALLBACK
+==================================================
+
+Preserve Stage 5.3 natural-language HELP routing.
+
+Typing:
+
+"հուշիր"
+"օգնիր"
+etc.
+
+must still work.
+
+The button is the preferred UX path, not the only path.
+
+==================================================
+CONTENT SAFETY
+==================================================
+
+Preserve Stage 4/4.1 boundaries.
+
+The HELP response must never expose:
+
+- correctAnswer
+- successCriteria
+- answer key
+- evaluator rubric
+- hidden expected answer
+
+Use the existing authoritative HELP backend path only.
+
+==================================================
+REQUIRED TESTS
+==================================================
+
+A.
+Active source exercise
+→ Help button visible.
+
+B.
+Active generated task
+→ Help button visible.
+
+C.
+No active task
+→ Help button hidden.
+
+D.
+Click Help
+→ explicit HELP request
+→ no fake learner "հուշիր" message inserted.
+
+E.
+Click Help
+→ backend help count increments.
+
+F.
+Click Help
+→ same task identity remains active.
+
+G.
+Click Help
+→ no evidence/mastery/progression created from the HELP action.
+
+H.
+After hint, learner answer uses persisted assistance context.
+
+I.
+Text-based "հուշիր" fallback still works.
+
+J.
+Double-click/pending state cannot send duplicate HELP requests accidentally.
+
+==================================================
+LIVE VERIFICATION
+==================================================
+
+Use a safe fresh playable student session if available.
+
+Verify:
+
+task appears
+→ 💡 Հուշում visible
+→ click
+→ hint appears
+→ same task remains
+→ learner answers
+→ assisted context is preserved
+→ no artificial "օկ"
+
+Do not use or mutate historical Session 51.
+
+==================================================
+FILES / SCOPE
+==================================================
+
+First identify the exact student lesson/chat component and existing HELP API
+client path.
+
+Prefer minimal changes.
+
+Likely areas may include:
+- student lesson/chat page
+- shared chat composer/action controls
+- API client hook/action for HELP
+
+Do not touch unrelated Knowledge Tree, quiz, teacher dashboard, or mapping code.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+A. FILES CHANGED
+B. HELP BUTTON LOCATION
+C. ACTIVE-TASK VISIBILITY RULE
+D. HELP REQUEST PATH
+E. BACKEND AUTHORITY PRESERVED
+F. TASK IDENTITY PRESERVED
+G. TEST RESULTS
+H. LIVE VERIFICATION
+I. SESSION 51 SAFETY
+J. RESULT: PASS / PARTIAL / BLOCKED
+
+Do not start Stage 6.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { shouldShowExplicitHelpAction } from "@/lib/help-action-state";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetLessonDetail, getGetLessonDetailQueryKey,
@@ -78,8 +79,16 @@ export default function LessonPage() {
   // V2-R4A.4: display countdown (seconds). null = no timer configured.
   // Decrements locally every second; resyncs from backend on every chat response.
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  // Stage 5.4: server-owned active-task/help state for the explicit HELP action.
+  const [hasActiveTask, setHasActiveTask] = useState(false);
+  const [activeHelpCount, setActiveHelpCount] = useState(0);
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [helpError, setHelpError] = useState<string | null>(null);
+  const [showRevealConfirm, setShowRevealConfirm] = useState(false);
+  const [helpCards, setHelpCards] = useState<Array<{ level: number; content: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const helpRequestInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !token) setLocation("/login");
@@ -117,6 +126,13 @@ export default function LessonPage() {
   // Optimistic local override: once user chose "continue" don't wait for refetch
   const isOptionalContinuation = serverOptionalContinuation || localOptContinuation;
   const showCompletionCard = !isCompleted && serverRequiredCompleted && !isOptionalContinuation;
+  const showHelpButton = shouldShowExplicitHelpAction({
+    isCompleted,
+    currentPhase,
+    hasActiveTask,
+    activeHelpCount,
+    showCompletionCard,
+  });
   // Sync local state from server on refresh (keeps state correct after page reload)
   useEffect(() => {
     if (serverOptionalContinuation) setLocalOptContinuation(true);
@@ -136,6 +152,27 @@ export default function LessonPage() {
     activeHelpCount?: number;
     teachingMode?: string | null;
   };
+
+  // Hydrate from the authoritative session state on load and after navigation.
+  // The visibility of HELP must never be inferred from visible conversation text.
+  useEffect(() => {
+    if (!token || !lessonId || !hasSession) return;
+    fetch(`/api/chat/session-state?lessonId=${lessonId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: {
+        hasActiveTask?: boolean;
+        activeHelpCount?: number;
+      } | null) => {
+        if (!data) return;
+        if (typeof data.hasActiveTask === "boolean") setHasActiveTask(data.hasActiveTask);
+        if (typeof data.activeHelpCount === "number") setActiveHelpCount(data.activeHelpCount);
+      })
+      .catch(() => {
+        // Keep the action hidden until a later server response supplies state.
+      });
+  }, [token, lessonId, hasSession]);
 
   // 🧪 Debug state: tracks last-known values from chat responses for the test bar
   const [debugChat, setDebugChat] = useState<{
@@ -191,6 +228,18 @@ export default function LessonPage() {
       activeHelpCount: typeof d?.activeHelpCount === "number" ? d.activeHelpCount : prev.activeHelpCount,
       teachingMode:    d?.teachingMode !== undefined ? (d.teachingMode ?? null) : prev.teachingMode,
     }));
+    if (typeof d?.hasActiveTask === "boolean") {
+      setHasActiveTask(d.hasActiveTask);
+      if (!d.hasActiveTask) {
+        setActiveHelpCount(0);
+        setHelpCards([]);
+        setHelpError(null);
+        setShowRevealConfirm(false);
+      }
+    }
+    if (typeof d?.activeHelpCount === "number") {
+      setActiveHelpCount(d.activeHelpCount);
+    }
     queryClient.invalidateQueries({ queryKey: chatKey });
     queryClient.invalidateQueries({ queryKey: lessonKey });
   }, [queryClient, chatKey, lessonKey]);
@@ -316,6 +365,76 @@ export default function LessonPage() {
       { onSuccess: handleChatSuccess }
     );
   };
+
+  // Uses the existing authoritative endpoint directly. This intentionally does
+  // not send a fabricated learner message such as «հուշիր».
+  const requestHelp = useCallback(async (revealAnswer = false) => {
+    if (
+      !lessonId ||
+      !token ||
+      helpLoading ||
+      helpRequestInFlightRef.current ||
+      sendMessage.isPending ||
+      !hasActiveTask
+    ) return;
+    if (showRevealConfirm && !revealAnswer) return;
+
+    setHelpLoading(true);
+    helpRequestInFlightRef.current = true;
+    setHelpError(null);
+    setShowRevealConfirm(false);
+    try {
+      const response = await fetch("/api/chat/help", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ lessonId, revealAnswer }),
+      });
+      const data = await response.json() as {
+        error?: string;
+        message?: string;
+        helpLevel?: number;
+        hintContent?: string;
+      };
+
+      if (!response.ok) {
+        if (data.error === "REVEAL_REQUIRES_CONFIRMATION") {
+          setShowRevealConfirm(true);
+        } else {
+          setHelpError(data.message ?? "Հուշում ստանալ չհաջողվեց։");
+          if (data.error === "NO_ACTIVE_TASK") setHasActiveTask(false);
+        }
+        return;
+      }
+
+      if (typeof data.helpLevel === "number") setActiveHelpCount(data.helpLevel);
+      const hintContent = data.hintContent;
+      if (hintContent) {
+        setHelpCards((previous) => [
+          ...previous,
+          {
+            level: data.helpLevel ?? activeHelpCount + 1,
+            content: hintContent,
+          },
+        ]);
+      }
+    } catch {
+      setHelpError("Հուշում ստանալ չհաջողվեց։");
+    } finally {
+      helpRequestInFlightRef.current = false;
+      setHelpLoading(false);
+    }
+  }, [
+    lessonId,
+    token,
+    helpLoading,
+    sendMessage.isPending,
+    hasActiveTask,
+    showRevealConfirm,
+    activeHelpCount,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -691,6 +810,20 @@ export default function LessonPage() {
             );
           })}
 
+          {helpCards.map((card, idx) => (
+            <div
+              key={`help-${idx}`}
+              className="self-start max-w-[85%] rounded-2xl border-y border-r border-amber-700/40 border-l-4 border-amber-400 bg-amber-950/40 p-4 shadow-md"
+            >
+              <div className="mb-1 text-xs font-semibold text-amber-400">
+                💡 Հուշում · {card.level}
+              </div>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed text-amber-100 sm:text-base">
+                {card.content}
+              </div>
+            </div>
+          ))}
+
           {sendMessage.isPending && (
             <div className="self-start max-w-[85%] rounded-2xl p-4 bg-card border-l-4 border-secondary border-y border-r border-white/10 shadow-lg rounded-bl-sm flex items-center gap-2">
               <div className="text-xs font-semibold text-secondary mr-1">AI Ուսուցիչ</div>
@@ -753,7 +886,43 @@ export default function LessonPage() {
           {sendMessage.isError && (
             <p className="text-red-400 text-xs mb-2 px-1">Սխալ տեղի ունեցավ։ Փորձեք կրկին։</p>
           )}
+          {helpError && (
+            <p className="mb-2 px-1 text-xs text-amber-400">{helpError}</p>
+          )}
+          {showRevealConfirm && (
+            <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-700/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+              <span className="flex-1">Ցո՞ւյց տալ ճիշտ բացատրությունը։ Սա ոչ-անկախ ապացույց կլինի։</span>
+              <button
+                type="button"
+                onClick={() => requestHelp(true)}
+                disabled={helpLoading}
+                className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+              >
+                Այո
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRevealConfirm(false)}
+                disabled={helpLoading}
+                className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-muted-foreground disabled:opacity-50"
+              >
+                Չեղարկել
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2 bg-background border border-white/10 rounded-2xl p-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
+            {showHelpButton && (
+              <button
+                type="button"
+                onClick={() => requestHelp(false)}
+                disabled={helpLoading || sendMessage.isPending}
+                title="Ստանալ փոքր հուշում"
+                aria-label="Ստանալ փոքր հուշում"
+                className="shrink-0 h-10 rounded-xl border border-amber-700/40 bg-amber-950/30 px-3 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-900/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {helpLoading ? "⏳" : "💡 Հուշում"}
+              </button>
+            )}
             <textarea
               ref={textareaRef}
               value={message}
