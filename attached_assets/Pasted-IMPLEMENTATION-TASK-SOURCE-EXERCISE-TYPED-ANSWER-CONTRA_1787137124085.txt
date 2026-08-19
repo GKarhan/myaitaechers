@@ -1,0 +1,465 @@
+IMPLEMENTATION TASK — SOURCE EXERCISE TYPED ANSWER CONTRACT
++ MAPPER PRESERVATION
++ REVIEWED LESSON-579 BACKFILL
+
+We completed the read-only audit.
+
+CONFIRMED FACTS:
+
+1. lesson_exercises currently has no typed:
+   - interactionType
+   - correctAnswer
+
+2. successCriteria is free-form human/rubric text and MUST remain separate.
+
+3. The authoritative TEXT mapper currently cannot preserve:
+   - interactionType
+   - correctAnswer
+
+4. Existing lesson 579 exercises contain explicit answer information:
+
+EX-579-1
+successCriteria = "Ճիշտ պատասխան՝ Բ"
+
+EX-579-2
+successCriteria = "Ճիշտ պատասխան՝ Ճիշտ"
+
+These are explicit stored answers.
+Do NOT infer any answer from subject knowledge.
+
+5. We do NOT need structured options JSONB in this task.
+The authoritative source exercise text remains the rendering authority.
+
+==================================================
+SCOPE
+==================================================
+
+Implement the smallest end-to-end typed answer contract:
+
+lesson_exercises:
+- interactionType
+- correctAnswer
+
+Then preserve these fields through:
+- TEXT mapping contract/types
+- parser
+- validator
+- inserter
+- teacher exercise CRUD
+- automatic mapping insertion where applicable
+
+Finally perform ONLY the explicitly authorized reviewed backfill for:
+- EX-579-1
+- EX-579-2
+
+Do NOT implement general automatic backfill.
+
+IMPORTANT:
+Do not modify chat.ts source-exercise evaluation yet.
+Storage and authoring contract first.
+
+==================================================
+PART 1 — DB SCHEMA
+==================================================
+
+Add nullable fields to lesson_exercises:
+
+interactionType: text | null
+correctAnswer: text | null
+
+Use the repository's existing schema conventions.
+
+Create the next proper migration.
+
+Do not add:
+- options JSONB
+- generic metadata JSONB
+- evaluator JSON
+- rubric JSON
+
+Keep existing:
+
+successCriteria
+
+unchanged.
+
+==================================================
+PART 2 — CANONICAL INTERACTION TYPES
+==================================================
+
+For this task support only:
+
+multiple_choice
+true_false
+constructed_response
+
+Do not invent additional machine-evaluable types.
+
+Contract:
+
+multiple_choice:
+- correctAnswer REQUIRED
+- canonical answer key must be a normalized option token
+
+true_false:
+- correctAnswer REQUIRED
+- canonical stored value:
+  TRUE
+  FALSE
+
+constructed_response:
+- correctAnswer MUST be null
+- successCriteria remains the AI-assisted evaluation guidance
+
+Nullable legacy rows are allowed:
+
+interactionType = null
+correctAnswer = null
+
+because existing lessons may not yet have typed answer metadata.
+
+==================================================
+PART 3 — NORMALIZATION
+==================================================
+
+Create one reusable backend normalization rule.
+
+For multiple-choice answer keys normalize equivalent labels:
+
+ա / Ա / a / A / Ա) / A) → A
+բ / Բ / b / B / Բ) / B) → B
+գ / Գ / c / C / Գ) / C) → C
+դ / Դ / d / D / Դ) / D) → D
+
+Use the same canonical representation consistently.
+
+For true/false:
+
+ճիշտ / true / այո → TRUE
+սխալ / false / ոչ → FALSE
+
+Do not perform semantic inference.
+
+Normalization must operate only on explicit answer values.
+
+==================================================
+PART 4 — TEXT MAPPING CONTRACT
+==================================================
+
+Extend ParsedExercise with:
+
+interactionType
+correctAnswer
+
+Update the authoritative TEXT mapping exercise contract accordingly.
+
+An EXERCISE may now include:
+
+interactionType: multiple_choice | true_false | constructed_response
+correctAnswer: <explicit answer or null>
+
+Validation rules:
+
+A. multiple_choice
+   interactionType = multiple_choice
+   correctAnswer required and normalizable
+
+B. true_false
+   interactionType = true_false
+   correctAnswer required and normalizable to TRUE/FALSE
+
+C. constructed_response
+   interactionType = constructed_response
+   correctAnswer must be null
+
+D. legacy/missing metadata
+   preserve compatibility where required by existing mapping flows;
+   do not fabricate answer metadata.
+
+IMPORTANT:
+If the source/mapping does not explicitly provide the answer,
+do NOT infer it.
+
+==================================================
+PART 5 — PARSER / VALIDATOR / INSERTER
+==================================================
+
+Update:
+
+mapTextTypes.ts
+mapTextParser.ts
+mapTextValidator.ts
+mapTextInserter.ts
+
+Prove:
+
+TEXT mapping
+→ ParsedExercise
+→ validation
+→ lesson_exercises.interactionType
+→ lesson_exercises.correctAnswer
+
+No silent dropping of these fields.
+
+Also audit the previously confirmed currently parsed-but-not-inserted fields:
+
+exerciseType
+difficulty
+cognitiveLoad
+confidenceScore
+
+Do NOT expand scope by fixing them unless required for this task.
+
+Just report their unchanged status.
+
+==================================================
+PART 6 — AUTOMATIC MAPPING PATH
+==================================================
+
+Inspect the existing automatic lesson-mapping exercise insertion path.
+
+If its generated mapping representation ALREADY has explicit answer/type data,
+preserve it into the new fields.
+
+If it does NOT have explicit answer data:
+
+store:
+
+interactionType = null
+correctAnswer = null
+
+Do NOT ask AI to invent the answer as part of this task.
+
+Do NOT introduce a new provider call.
+
+==================================================
+PART 7 — TEACHER REVIEW CRUD
+==================================================
+
+Teacher exercise editing already exists.
+
+Extend the existing exercise create/edit flow minimally so teacher can set:
+
+Interaction type:
+- Բազմակի ընտրություն
+- Ճիշտ / սխալ
+- Բաց պատասխան
+
+Correct answer:
+
+For multiple_choice:
+- explicit answer key
+
+For true_false:
+- TRUE/FALSE represented appropriately in Armenian UI
+
+For constructed_response:
+- correctAnswer disabled/cleared
+- successCriteria remains editable
+
+Do not redesign the exercise editor.
+
+Persist → refresh → read-back must preserve both fields.
+
+==================================================
+PART 8 — LESSON 579 REVIEWED BACKFILL
+==================================================
+
+ONLY these two existing exercises are authorized.
+
+EX-579-1:
+
+interactionType = multiple_choice
+correctAnswer = B
+
+Reason:
+existing stored successCriteria explicitly says:
+"Ճիշտ պատասխան՝ Բ"
+
+EX-579-2:
+
+interactionType = true_false
+correctAnswer = TRUE
+
+Reason:
+existing stored successCriteria explicitly says:
+"Ճիշտ պատասխան՝ Ճիշտ"
+
+Do NOT backfill any other exercise.
+
+Do NOT infer anything from exercise subject matter.
+
+Use a controlled migration/update consistent with repository conventions.
+
+==================================================
+PART 9 — DO NOT MODIFY CHAT EVALUATION YET
+==================================================
+
+IMPORTANT.
+
+Do NOT modify:
+
+chat.ts source-exercise correctness evaluation
+
+in this task.
+
+Do NOT wire the new correctAnswer into live teaching yet.
+
+Reason:
+
+We first want to prove the storage contract independently.
+
+After this task passes, the next task will wire:
+
+active source exercise
+→ interactionType
+→ correctAnswer
+→ deterministic backend evaluation.
+
+==================================================
+PART 10 — DO NOT TOUCH
+==================================================
+
+Do NOT change:
+
+- Cognitive Path progression
+- Pedagogical Decision Engine
+- AI-generated MICRO_CHECK objective payload
+- evidence/mastery behavior
+- Knowledge Tree
+- quiz system
+- provider/model configuration
+- Phase-2 teaching cycle
+- source-exercise selection/progression
+- P11.1
+- V2-R1.1
+
+No unrelated refactor.
+
+==================================================
+PART 11 — TESTS
+==================================================
+
+Run targeted tests/static assertions.
+
+Required cases:
+
+A.
+multiple_choice + correctAnswer=Բ
+→ stored canonical B
+
+B.
+multiple_choice + correctAnswer=B)
+→ stored canonical B
+
+C.
+true_false + correctAnswer=Ճիշտ
+→ stored canonical TRUE
+
+D.
+true_false + correctAnswer=սխալ
+→ stored canonical FALSE
+
+E.
+constructed_response + non-null correctAnswer
+→ validation failure
+
+F.
+constructed_response + null correctAnswer
+→ accepted
+
+G.
+legacy exercise with both new fields null
+→ remains readable / compatible
+
+H.
+TEXT mapping containing interactionType + correctAnswer
+→ parser preserves
+→ validator accepts
+→ inserter writes
+
+I.
+teacher edit
+→ save
+→ read-back preserves fields
+
+==================================================
+PART 12 — DB VERIFICATION
+==================================================
+
+After migration/backfill, READ and report:
+
+EX-579-1:
+- id
+- exerciseId
+- interactionType
+- correctAnswer
+- successCriteria
+
+EX-579-2:
+- id
+- exerciseId
+- interactionType
+- correctAnswer
+- successCriteria
+
+Expected:
+
+EX-579-1:
+interactionType = multiple_choice
+correctAnswer = B
+
+EX-579-2:
+interactionType = true_false
+correctAnswer = TRUE
+
+successCriteria must remain unchanged.
+
+==================================================
+PART 13 — TYPECHECK
+==================================================
+
+Run relevant:
+
+- DB/schema build/typecheck
+- API TypeScript check
+- frontend TypeScript check if teacher UI changed
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. FILES CHANGED
+
+B. DB SCHEMA
+
+C. MIGRATION
+
+D. NORMALIZATION
+
+E. TEXT MAPPER CONTRACT
+
+F. PARSER / VALIDATOR / INSERTER
+
+G. AUTO-MAPPING BEHAVIOR
+
+H. TEACHER REVIEW
+
+I. LESSON-579 BACKFILL
+
+J. DB READ-BACK
+
+K. STATIC TESTS
+
+L. TYPECHECK
+
+M. UNCHANGED / OUT-OF-SCOPE ITEMS
+
+N. RESULT
+
+PASS / PARTIAL / BLOCKED
+
+If BLOCKED:
+stop and report the exact blocker.
+
+Do not broaden scope.
