@@ -1,0 +1,338 @@
+STAGE 1 — EXTRACT PHASE-2 ORCHESTRATION BOUNDARIES
+BEHAVIOR-PRESERVING REFACTOR ONLY
+
+Stage 0 regression baseline is complete and verified.
+
+We are now starting Stage 1 of the approved Phase-2 architecture migration.
+
+==================================================
+GOAL
+==================================================
+
+Create explicit backend orchestration boundaries for Phase 2 without
+changing current production behavior.
+
+This is a structural refactor only.
+
+We are preparing the codebase for the target architecture:
+
+STUDENT MESSAGE
+→ chat route
+→ load session + authoritative DB content
+→ backend determines current action
+→ THEORY
+→ CHECK/TASK
+→ deterministic evaluation where available
+→ evidence
+→ Pedagogical Decision Engine
+→ progression/remediation
+→ FEEDBACK
+
+Do NOT implement that new behavior yet.
+
+Stage 1 only creates clean code boundaries around the existing behavior.
+
+==================================================
+PART 0 — AUDIT FIRST
+==================================================
+
+Before changing code, inspect the current Phase-2 flow in:
+
+artifacts/api-server/src/routes/chat.ts
+
+and all directly related helpers/services.
+
+Identify the exact current code ownership for:
+
+1. Phase-2 request/session context loading
+2. THEORY response preparation
+3. MICRO_CHECK activation
+4. source-exercise selection/activation/delivery
+5. answer evaluation
+6. deterministic MICRO_CHECK evaluation
+7. deterministic source-exercise evaluation
+8. evidence preparation/writing
+9. Pedagogical Decision Engine invocation
+10. Cognitive Path progression
+11. remediation/action selection
+12. FEEDBACK response handling
+13. stage/task persistence
+
+Report the current boundaries before implementation.
+
+Do not invent architecture that is not supported by the repository.
+
+==================================================
+PART 1 — CREATE PHASE-2 ORCHESTRATION MODULE
+==================================================
+
+Extract Phase-2 orchestration responsibilities from chat.ts into a
+dedicated backend module or small set of tightly scoped modules,
+following existing repository conventions.
+
+Prefer a structure conceptually similar to:
+
+phase2/
+  context
+  task
+  evaluation
+  progression
+  orchestration
+
+BUT:
+
+Do not mechanically create these exact files if the repository's
+existing conventions suggest a better minimal structure.
+
+The important requirement is responsibility separation, not file count.
+
+==================================================
+PART 2 — CHAT ROUTE RESPONSIBILITY
+==================================================
+
+After Stage 1, chat.ts should remain the HTTP/controller boundary.
+
+For Phase 2 it should primarily:
+
+1. receive request
+2. authenticate / validate request
+3. load or delegate loading of required context
+4. call the Phase-2 orchestration boundary
+5. persist/delegate persistence as currently required
+6. return the response
+
+Do NOT rewrite unrelated Phase 1/3/4 behavior.
+
+Do NOT perform a broad chat.ts cleanup.
+
+==================================================
+PART 3 — PRESERVE CURRENT AUTHORITIES
+==================================================
+
+Do not change the authority model established by previous tasks.
+
+Preserve:
+
+AI-generated MICRO_CHECK:
+activeObjectiveTaskPayload
+→ deterministic objective correctness
+
+Source exercise:
+activeLessonExerciseId
+→ exact lesson_exercises row
+→ typed interactionType/correctAnswer
+→ deterministic correctness where eligible
+
+Source-exercise activation:
+exact active exercise identity remains authoritative.
+
+Do not reintroduce classExercises[0] as an independent delivery authority.
+
+==================================================
+PART 4 — PRESERVE CURRENT PHASE-2 SAFETY
+==================================================
+
+Preserve all current safety invariants, including:
+
+- no active MICRO_CHECK without a visible answerable task
+- feedback-only response cannot manufacture a MICRO_CHECK
+- failed structured response cannot persist phantom task state
+- controlled Phase 2 does not fall back to unsafe plain-text AI
+- same-turn cognitive advance cannot deliver stale previous-level exercise
+- source exercise is delivered exactly once
+- exact activeLessonExerciseId owns source-exercise evaluation
+- deterministic objective correctness overrides AI correctness
+- evidence/progression consume final authoritative correctness
+
+==================================================
+PART 5 — NO BEHAVIOR CHANGE
+==================================================
+
+This Stage MUST NOT intentionally change:
+
+- prompt content
+- provider/model configuration
+- response schema
+- Phase-2 teaching sequence
+- THEORY wording
+- MICRO_CHECK generation behavior
+- exercise selection rules
+- correctness rules
+- evidence rules
+- Cognitive Path thresholds
+- Pedagogical Decision Engine rules
+- remediation behavior
+- completion behavior
+- frontend behavior
+- DB schema
+- mapper
+- teacher CRUD
+- quizzes
+- Knowledge Tree
+
+If extracting a block would require changing behavior, leave that block
+in place and report it as a remaining coupling.
+
+Do not force the extraction.
+
+==================================================
+PART 6 — SIDE-EFFECT BOUNDARIES
+==================================================
+
+While extracting, make side effects explicit.
+
+Clearly distinguish:
+
+PURE / COMPUTATION:
+- normalization
+- eligibility
+- decision preparation
+- state derivation
+
+SIDE EFFECTS:
+- DB reads
+- DB writes
+- AI/provider calls
+- chat-message writes
+- evidence writes
+
+Do not duplicate a side effect between chat.ts and the new module.
+
+There must remain one effective owner for each write.
+
+==================================================
+PART 7 — TEST AGAINST STAGE-0 BASELINE
+==================================================
+
+Run the complete Stage-0 regression baseline.
+
+Every frozen invariant must still pass.
+
+Also add focused tests proving that extraction itself does not change:
+
+A. THEORY successful response/state
+
+B. structured THEORY failure leaves safe state
+
+C. objective MICRO_CHECK activation
+
+D. deterministic MICRO_CHECK correctness
+
+E. exact source-exercise activation
+
+F. deterministic source-exercise correctness
+
+G. feedback-only CONTINUE_COGNITIVE_LEVEL does not create phantom task
+
+H. ADVANCE_COGNITIVE_LEVEL resets to next level / THEORY / no stale task
+
+I. source exercise remains single-delivery
+
+J. existing remediation path remains behaviorally equivalent
+
+==================================================
+PART 8 — NO FAKE ABSTRACTION
+==================================================
+
+Do not merely wrap the existing giant chat.ts block in a function and
+call that orchestration.
+
+Stage 1 succeeds only if meaningful responsibility boundaries are
+created.
+
+At the same time, do not over-engineer.
+
+Prefer the smallest extraction that makes the next stages possible.
+
+==================================================
+PART 9 — REQUIRED FINAL ARCHITECTURE MAP
+==================================================
+
+After implementation, report the actual Phase-2 runtime path in this
+form:
+
+HTTP REQUEST
+→ ...
+→ ...
+→ AI/provider call
+→ ...
+→ evaluation
+→ ...
+→ evidence
+→ ...
+→ progression
+→ ...
+→ response
+
+For every step identify:
+
+- owning file/function
+- input
+- output
+- whether it is pure or side-effecting
+
+Also report what Phase-2 logic still remains inside chat.ts and why.
+
+==================================================
+PART 10 — TYPECHECK / VERIFICATION
+==================================================
+
+Run:
+
+- Stage-0 frozen regression suite
+- all affected Phase-2 tests
+- API TypeScript typecheck
+- git diff --check
+
+Restart the API only if required by the normal workflow.
+
+==================================================
+STOP CONDITIONS
+==================================================
+
+STOP and report BLOCKED if:
+
+- preserving behavior requires changing a frozen Stage-0 invariant
+- extraction would create duplicate DB/evidence/task writes
+- an authority boundary cannot be identified safely
+- current tests reveal an unresolved behavioral ambiguity
+
+Do not solve such a blocker by silently redesigning behavior.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. PRE-CHANGE PHASE-2 OWNERSHIP MAP
+
+B. FILES CHANGED
+
+C. NEW ORCHESTRATION BOUNDARIES
+
+D. CHAT.TS RESPONSIBILITIES AFTER EXTRACTION
+
+E. SIDE-EFFECT OWNERSHIP
+
+F. AUTHORITY INVARIANTS PRESERVED
+
+G. STAGE-0 REGRESSION RESULTS
+
+H. NEW EXTRACTION TESTS
+
+I. TYPECHECK
+
+J. REMAINING PHASE-2 LOGIC IN CHAT.TS
+
+K. POST-CHANGE RUNTIME ARCHITECTURE MAP
+
+L. BEHAVIOR CHANGED?
+Expected: NO
+
+M. STAGE-2 READINESS
+READY / NOT READY
+
+N. RESULT
+PASS / PARTIAL / BLOCKED
+
+Do not begin Stage 2.
+Do not broaden scope.
