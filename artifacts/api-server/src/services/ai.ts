@@ -1,4 +1,5 @@
 import { openrouter } from "@workspace/integrations-openrouter-ai";
+import { INTERACTION_TYPE_VALUES } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { z } from "zod/v4";
 
@@ -80,11 +81,14 @@ export const sourceFidelitySchema = z.object({
   exercise_id: z.string().nullable(),
 });
 
+export const interactionTypeSchema = z.enum(INTERACTION_TYPE_VALUES);
+
 export const aiStructuredResponseSchema = z.object({
   student_message: z.string(),
   progress_indicator: progressIndicatorSchema,
   teaching_mode: z.enum(["TEACH", "MICRO_CHECK", "FEEDBACK", "TRANSITION"]),
   is_micro_check: z.boolean(),
+  interaction_type: interactionTypeSchema.nullable().default(null),
   answer_evaluation: answerEvaluationSchema,
   node_decision: nodeDecisionSchema,
   source_fidelity: sourceFidelitySchema,
@@ -279,6 +283,8 @@ LESSON MAP AUTHORITY RULE — CRITICAL:
 
 OUTPUT FORMAT: Return VALID JSON ONLY. No markdown, no \`\`\`json fences, no explanatory text outside the JSON.
 
+MICRO_CHECK FORMAT: When is_micro_check=true, interaction_type MUST describe the actual question in student_message and match PREFERRED_INTERACTION_TYPES. multiple_choice MUST visibly include at least two answer options; true_false MUST visibly offer both true and false choices; constructed_response is for an open response. When is_micro_check=false, set interaction_type to null.
+
 IMPORTANT — teaching_mode and node_decision.action are TWO SEPARATE fields with COMPLETELY DIFFERENT allowed values. Do not confuse them.
 - teaching_mode is ALWAYS exactly one of: TEACH, MICRO_CHECK, FEEDBACK, TRANSITION.
 - node_decision.action is the pedagogical action and is one of the 14 values in the ERROR FAMILY → ACTION MAP above (CONTINUE_SAME_NODE, COMPLETE_NODE, GUIDED_QUESTION, HINT, EXTRA_EXAMPLE, CONTRAST_EXAMPLE, CHANGE_REPRESENTATION, STEP_BY_STEP, SIMPLIFY_LANGUAGE, LOWER_DIFFICULTY, RAISE_DIFFICULTY, RETURN_TO_PREREQUISITE, VERIFY_SELECTION, REQUIRE_REASONING).
@@ -296,6 +302,7 @@ Required JSON schema:
   },
   "teaching_mode": "TEACH" | "MICRO_CHECK" | "FEEDBACK" | "TRANSITION",
   "is_micro_check": true | false,
+   "interaction_type": "multiple_choice" | "multi_select" | "true_false" | "matching" | "classification" | "ordering" | "numeric_answer" | "short_answer" | "constructed_response" | "problem_solving" | null,
   "answer_evaluation": {
     "status": "CORRECT" | "PARTIALLY_CORRECT" | "INCORRECT" | "UNCLEAR" | "NO_RESPONSE" | "OFF_TOPIC" | "NOT_APPLICABLE",
     "evidence_quality": "NONE" | "WEAK" | "MODERATE" | "STRONG" | "CONCLUSIVE",
@@ -713,6 +720,57 @@ function validatePrematureTransition(
 //
 // Rule 5 — COMPLETE_NODE requires evidence_quality STRONG or CONCLUSIVE.
 
+function preferredInteractionTypesFromContext(lessonContext: string): string[] {
+  const line = lessonContext.match(/^PREFERRED_INTERACTION_TYPES:\s*(.+)$/m)?.[1];
+  return line
+    ? line.split(",").map((type) => type.trim()).filter(Boolean)
+    : [];
+}
+
+function validateMicroCheckInteractionType(
+  response: AIStructuredResponse,
+  lessonContext: string
+): void {
+  if (!response.is_micro_check) return;
+
+  const interactionType = response.interaction_type;
+  if (!interactionType) {
+    throw new Error("MICRO_CHECK requires a non-null interaction_type");
+  }
+
+  const preferredInteractionTypes = preferredInteractionTypesFromContext(lessonContext);
+  if (
+    preferredInteractionTypes.length > 0 &&
+    !preferredInteractionTypes.includes(interactionType)
+  ) {
+    throw new Error(
+      `MICRO_CHECK interaction_type "${interactionType}" is not allowed by PREFERRED_INTERACTION_TYPES`
+    );
+  }
+
+  const message = response.student_message;
+  if (interactionType === "multiple_choice") {
+    const optionMarkers = message.match(
+      /(?:^|\n)\s*(?:[A-Da-dԱ-Դա-դ]|\d{1,2})[.)]\s+/gmu
+    ) ?? [];
+    if (optionMarkers.length < 2) {
+      throw new Error(
+        "MICRO_CHECK interaction_type multiple_choice requires at least two visible answer options"
+      );
+    }
+  }
+
+  if (interactionType === "true_false") {
+    const offersTrue = /(?:ճի(?:՞)?շտ|true|այո)/iu.test(message);
+    const offersFalse = /(?:սխալ|false|ոչ)/iu.test(message);
+    if (!offersTrue || !offersFalse) {
+      throw new Error(
+        "MICRO_CHECK interaction_type true_false requires visible true and false choices"
+      );
+    }
+  }
+}
+
 export function validateTeachingCycle(
   response: AIStructuredResponse,
   _messages: ChatMessage[],
@@ -837,6 +895,8 @@ export function validateTeachingCycle(
       "Teaching cycle violation [R7]: teaching_mode=FEEDBACK but is_micro_check=true — FEEDBACK must not append the next task"
     );
   }
+
+  validateMicroCheckInteractionType(response, lessonContext);
 }
 
 // ── callAIStructured inner attempt (single API call + parse + validate) ───────

@@ -1,0 +1,343 @@
+TARGETED FIX ONLY — ENFORCE MICRO_CHECK INTERACTION TYPE AGAINST ACTIVE COGNITIVE LEVEL
+
+GOAL
+
+Fix the confirmed MICRO_CHECK format GAP.
+
+Current confirmed runtime:
+
+Phase 2
+MicroNode 2107
+Active cognitive level = remember
+Preferred interaction types:
+
+["multiple_choice", "true_false"]
+
+The structured AI successfully produced a MICRO_CHECK, but asked an open-ended question:
+
+«Ի՞նչ ես կարծում, ինչո՞ւ է դա տեղի ունենում։»
+
+The backend accepted it because:
+
+- `is_micro_check` exists
+- but structured output has NO explicit interaction-format field
+- `PREFERRED_INTERACTION_TYPES` is currently prompt guidance only
+- no deterministic validator compares the generated MICRO_CHECK format with the active cognitive level
+
+Implement the smallest robust fix.
+
+Do NOT redesign the teaching flow.
+
+==================================================
+1. ADD STRUCTURED interaction_type
+==================================================
+
+Primary file:
+
+artifacts/api-server/src/services/ai.ts
+
+Extend the existing structured AI response schema with:
+
+interaction_type
+
+Use the SAME canonical values already used by Cognitive Path / preferredInteractionTypes.
+
+At minimum the currently used values must include:
+
+- multiple_choice
+- true_false
+- constructed_response
+
+First inspect the existing canonical interaction-type definitions if they already exist.
+
+REUSE an existing enum/type if available.
+
+Do NOT create competing naming conventions.
+
+Do NOT rename existing DB values.
+
+The structured field must allow the backend to deterministically know what interaction format the AI generated.
+
+Do not infer the format from `student_message`.
+
+==================================================
+2. PROMPT CONTRACT
+==================================================
+
+Update only the relevant structured-output contract so the model must return `interaction_type`.
+
+For a MICRO_CHECK:
+
+`interaction_type` MUST describe the actual format of the question contained in `student_message`.
+
+Examples of semantics:
+
+multiple_choice
+→ student_message must actually contain a multiple-choice question with answer options.
+
+true_false
+→ student_message must actually contain a true/false question.
+
+constructed_response
+→ student_message expects an open/free response.
+
+Do NOT add long new prompt sections.
+
+Keep this concise.
+
+==================================================
+3. VALIDATE AGAINST ACTIVE COGNITIVE LEVEL
+==================================================
+
+Primary runtime file:
+
+artifacts/api-server/src/routes/chat.ts
+
+At the existing Phase-2 structured validation point, when:
+
+`aiResult.is_micro_check === true`
+
+and an active cognitive level exists with non-empty:
+
+`preferredInteractionTypes`
+
+require:
+
+`aiResult.interaction_type ∈ preferredInteractionTypes`
+
+Conceptually:
+
+if (
+  aiResult.is_micro_check &&
+  preferredInteractionTypes.length > 0 &&
+  !preferredInteractionTypes.includes(aiResult.interaction_type)
+) {
+  throw validation error
+}
+
+Use the actual existing variables/types.
+
+Do NOT hardcode:
+
+remember
+multiple_choice
+true_false
+MicroNode 2107
+Lesson 579
+
+The validation must work generically for every cognitive level.
+
+==================================================
+4. IMPORTANT — ACTUAL FORMAT CONSISTENCY
+==================================================
+
+Do not create a fake fix where the model can return:
+
+interaction_type = "multiple_choice"
+
+while `student_message` is still:
+
+«Ինչո՞ւ է դա տեղի ունենում»։
+
+Add the smallest deterministic consistency validation practical for the currently supported formats.
+
+At minimum:
+
+- `multiple_choice` must contain visible answer options
+- `true_false` must clearly present a true/false choice
+- `constructed_response` may contain an open question
+
+Reuse any existing question-format validator/helper if one exists.
+
+Do NOT build a large NLP parser.
+
+Keep validation simple and deterministic.
+
+If the existing code already has a canonical representation/helper that makes this check safer, reuse it.
+
+==================================================
+5. RETRY BEHAVIOR
+==================================================
+
+Format validation failure must use the EXISTING structured retry mechanism.
+
+Expected:
+
+structured response
+→ interaction_type invalid for active level
+OR interaction_type inconsistent with actual question
+→ structured validation failure
+→ existing retry
+→ corrected structured response
+
+Do NOT add another AI call or a new retry loop.
+
+Existing Phase-2 rule remains:
+
+if structured generation ultimately fails,
+do NOT fall back to student-visible plain-text `callAI`.
+
+==================================================
+6. NON-MICRO_CHECK COMPATIBILITY
+==================================================
+
+Do not accidentally break FEEDBACK, TRANSITION, or other structured responses that are not asking a MICRO_CHECK.
+
+Choose the smallest schema design that preserves those flows.
+
+If making `interaction_type` globally required would force meaningless values on non-question responses, use the smallest conditional/nullable design and enforce presence when:
+
+`is_micro_check === true`
+
+The deterministic runtime validator is authoritative.
+
+==================================================
+7. DO NOT CHANGE
+==================================================
+
+Do NOT change:
+
+- Cognitive Path progression
+- THEORY → MICRO_CHECK transition
+- active-task creation
+- linked exercise selection
+- exercise filtering
+- number of micro-checks before exercise stage
+- FEEDBACK logic
+- remediation
+- evidence/mastery
+- Decision Engine
+- lesson intro
+- start-fresh
+- frontend
+- DB schema
+- Mapping
+- provider/model
+- response_format
+- fallback guard
+
+This task is ONLY:
+
+structured interaction type
++
+deterministic MICRO_CHECK format enforcement.
+
+==================================================
+8. COST CONTROL
+==================================================
+
+Use minimum tool calls.
+
+Inspect only:
+
+1. structured response schema/prompt in services/ai.ts
+2. existing interaction-type definitions if needed
+3. relevant MICRO_CHECK validation path in chat.ts
+
+Do not perform:
+
+- broad repo audit
+- browser test
+- DB inspection
+- provider/AI request
+
+After implementation run only the necessary TypeScript check.
+
+==================================================
+9. STATIC VERIFICATION
+==================================================
+
+Verify statically:
+
+CASE A
+
+preferredInteractionTypes:
+["multiple_choice", "true_false"]
+
+AI:
+interaction_type = "constructed_response"
+
+Expected:
+REJECT
+
+CASE B
+
+preferredInteractionTypes:
+["multiple_choice", "true_false"]
+
+AI:
+interaction_type = "multiple_choice"
+
+but student_message contains no answer options.
+
+Expected:
+REJECT
+
+CASE C
+
+preferredInteractionTypes:
+["multiple_choice", "true_false"]
+
+AI:
+interaction_type = "multiple_choice"
+
+and student_message contains a real multiple-choice question/options.
+
+Expected:
+PASS
+
+CASE D
+
+preferredInteractionTypes:
+["constructed_response", "multiple_choice"]
+
+AI:
+interaction_type = "constructed_response"
+
+and student_message contains an open-response question.
+
+Expected:
+PASS
+
+Also confirm existing non-MICRO_CHECK structured responses remain valid.
+
+==================================================
+FINAL REPORT — SHORT
+==================================================
+
+Return only:
+
+## A. FILES CHANGED
+
+## B. STRUCTURED FIELD
+Show exact `interaction_type` schema/type.
+
+## C. ACTIVE-LEVEL VALIDATION
+Show the relevant small validation block.
+
+## D. FORMAT CONSISTENCY
+Explain how multiple_choice / true_false / constructed_response are checked.
+
+## E. RETRY PATH
+Confirm invalid format enters the existing structured retry path.
+
+## F. STATIC CASES
+A = PASS/FAIL
+B = PASS/FAIL
+C = PASS/FAIL
+D = PASS/FAIL
+
+## G. ISOLATION
+Confirm no teaching-cycle, Cognitive Path, exercise-selection, DB, frontend, or evidence logic changed.
+
+## H. TYPECHECK
+PASS / FAIL
+
+## I. RESULT
+PASS — MICRO_CHECK interaction format is now deterministically enforced
+
+or
+
+FAIL — exact reason
+
+Then STOP.
