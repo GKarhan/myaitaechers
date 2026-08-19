@@ -1,0 +1,324 @@
+READ-ONLY TARGETED AUDIT — SOURCE EXERCISE MACHINE-READABLE ANSWER CONTRACT
+
+GOAL
+
+We confirmed:
+
+lesson_exercises stores:
+- exercise identity
+- verbatim/edited exercise text
+- successCriteria
+- node link
+- sequence
+- provenance
+- approval state
+
+but does NOT store:
+- interaction type
+- structured options
+- correct answer / answer key
+- deterministic evaluator metadata
+
+Before adding schema fields, determine the smallest correct end-to-end contract.
+
+IMPORTANT:
+READ-ONLY ONLY.
+Do not change code.
+Do not change DB.
+Do not generate migrations.
+Do not call AI/provider.
+Do not perform browser tests.
+
+We specifically need to determine whether answer information already exists earlier in the textbook/mapping pipeline and is currently being discarded.
+
+==================================================
+1. AUTHORITATIVE lesson_exercises SCHEMA
+==================================================
+
+Inspect the actual lesson_exercises schema.
+
+Report all fields relevant to:
+
+- exercise text
+- source identity/page
+- exercise/task type
+- answer/solution
+- success criteria
+- metadata
+- provenance
+- teacher edits
+
+Explicitly confirm whether any existing JSON/metadata field could safely hold structured answer information.
+
+Do not assume a new column is necessary until this is proven.
+
+==================================================
+2. MAPPING CONTRACT
+==================================================
+
+Inspect the CURRENT authoritative TEXT mapping contract/parser/inserter for exercises.
+
+Determine what an EXERCISE/QUESTION/ACTIVITY/TASK can currently contain.
+
+Specifically search for concepts equivalent to:
+
+- answer
+- correctAnswer
+- correctOption
+- solution
+- expectedAnswer
+- answerKey
+- options
+- choices
+- interactionType
+- questionType
+- successCriteria
+
+Report the exact current fields.
+
+==================================================
+3. SOURCE → MAPPER → DB TRACE
+==================================================
+
+Trace one mapped exercise conceptually through:
+
+textbook/source block
+→ TEXT mapping representation
+→ parser
+→ validator
+→ DB insert
+→ lesson_exercises
+
+Determine:
+
+A. Can the mapper currently represent an answer key?
+
+B. Can it represent multiple-choice options structurally?
+
+C. Can it represent interaction type?
+
+D. If source material contains an answer/solution, is it preserved?
+
+E. Is any answer information currently discarded during parsing/insertion?
+
+Give exact code evidence.
+
+==================================================
+4. EXISTING LESSON 579 DATA
+==================================================
+
+READ ONLY.
+
+Inspect the existing records for:
+
+EX-579-1
+EX-579-2
+
+Report only relevant fields:
+
+- id
+- exerciseId
+- exerciseTextVerbatim
+- exerciseTextEdited
+- successCriteria
+- sourcePage
+- sourceType
+- any metadata field
+- cognitive-task links
+
+Then determine whether the correct answer can be recovered deterministically from existing stored data.
+
+Do NOT infer the answer from subject knowledge.
+
+Answer only:
+
+YES — explicitly stored
+
+or
+
+NO — not explicitly stored
+
+==================================================
+5. QUIZ SYSTEM — REUSE ANALYSIS
+==================================================
+
+Inspect only the relevant quiz question answer contract.
+
+We already know quiz_questions has `correctOptionIndex`.
+
+Determine whether its existing representation can be reused conceptually for lesson_exercises.
+
+Do NOT connect the tables.
+
+Report:
+
+- how quiz options are represented
+- how correct answer is represented
+- whether it supports only multiple choice or additional types
+
+We want consistency where sensible, not coupling.
+
+==================================================
+6. REQUIRED TASK TYPES
+==================================================
+
+Based on the ACTUAL current mapper/data, identify the minimum answer contract needed for source exercises.
+
+Distinguish:
+
+OBJECTIVE:
+- multiple_choice
+- true_false
+- any other machine-evaluable type actually present
+
+NON-OBJECTIVE:
+- constructed/open response
+- explanatory/problem-solving tasks that require rubric/success criteria
+
+Do not invent task types not found in current architecture/data.
+
+==================================================
+7. PROPOSE SMALLEST SCHEMA
+==================================================
+
+DO NOT IMPLEMENT.
+
+After the audit, propose the smallest safe schema.
+
+Prefer explicit typed fields over a large generic blob IF that matches existing DB conventions.
+
+Possible conceptual shape:
+
+interactionType
+
+options:
+[
+  { key, text }
+]
+
+correctOption / correctAnswer
+
+But DO NOT blindly use this shape.
+
+Derive the recommendation from actual repository evidence.
+
+For constructed response, determine whether existing `successCriteria` is sufficient for AI-assisted evaluation or whether an expected-answer/rubric field already exists upstream.
+
+==================================================
+8. MAPPING IMPACT
+==================================================
+
+This is critical.
+
+State whether implementing deterministic source-exercise evaluation requires:
+
+A. DB schema only
+
+B. DB schema + mapper/parser/inserter
+
+C. DB schema + manual mapping TEXT Contract update + parser/validator/inserter
+
+D. another combination
+
+If existing source mapping currently loses answer information, explicitly say so.
+
+Also distinguish:
+
+- future newly mapped lessons
+- already mapped existing lessons
+
+Explain whether existing exercises would require remapping/backfill to obtain answer keys.
+
+==================================================
+9. TEACHER REVIEW IMPACT
+==================================================
+
+Determine whether Teacher Review currently edits lesson exercises or only MicroNode content.
+
+Do not implement UI.
+
+State whether a future teacher-facing answer-key editor would be required for:
+
+- correcting mapped answer keys
+- manually supplying answer keys for old exercises
+
+This is an audit question only.
+
+==================================================
+10. DO NOT TOUCH
+==================================================
+
+Do NOT modify:
+
+- chat.ts
+- ai.ts
+- Cognitive Path
+- lesson progression
+- objective micro-check payload
+- quiz system
+- Knowledge Tree
+- frontend
+- DB
+- migrations
+
+No implementation.
+
+==================================================
+11. COST CONTROL
+==================================================
+
+Use minimum inspection.
+
+Inspect only:
+
+1. lesson_exercises schema
+2. authoritative TEXT mapping exercise contract/parser/validator/inserter
+3. EX-579-1 / EX-579-2 stored rows
+4. quiz_questions answer representation
+5. relevant Teacher Review exercise capability if easily identifiable
+
+No broad repository audit.
+
+==================================================
+FINAL REPORT
+==================================================
+
+A. CURRENT LESSON_EXERCISE SCHEMA
+
+B. CURRENT MAPPING EXERCISE CONTRACT
+
+C. SOURCE → MAPPER → DB TRACE
+
+D. EX-579-1 / EX-579-2
+
+E. QUIZ ANSWER CONTRACT
+
+F. REQUIRED SOURCE TASK TYPES
+
+G. SMALLEST RECOMMENDED SCHEMA
+
+H. MAPPING PIPELINE IMPACT
+
+I. EXISTING DATA / BACKFILL IMPACT
+
+J. TEACHER REVIEW IMPACT
+
+K. IMPLEMENTATION SCOPE
+
+State exact files/components that would need modification.
+
+L. VERDICT
+
+Choose one:
+
+SCHEMA ONLY
+
+SCHEMA + MAPPER
+
+SCHEMA + MAPPER + BACKFILL
+
+EXISTING FIELD CAN BE REUSED
+
+OTHER — explain
+
+Then STOP.
