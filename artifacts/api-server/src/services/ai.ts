@@ -218,6 +218,15 @@ TEACHING CYCLE (P4 §11):
 - FEEDBACK: Evaluate student answer → correct/guide/correct error. MUST set is_micro_check: false. Do NOT append the next question — it comes in a separate subsequent turn. If asking student to retry the same task, set is_micro_check: false (same active task stays open).
 - TRANSITION: Signal moving to next concept/phase.
 
+PHASE_2_THEORY_CONTRACT:
+teaching_mode MUST be TEACH.
+is_micro_check MUST be true.
+student_message MUST contain:
+1) brief theory explanation
+2) exactly one MICRO_CHECK
+interaction_type MUST match PREFERRED_INTERACTION_TYPES.
+Then stop and wait.
+
 EVIDENCE QUALITY (P5 §17.13) — STRICT:
 - Student answers MICRO_CHECK correctly → evidence_quality = "MODERATE" (NEVER "STRONG" from MICRO_CHECK alone)
 - Student solves a practical exercise successfully → evidence_quality = "STRONG"
