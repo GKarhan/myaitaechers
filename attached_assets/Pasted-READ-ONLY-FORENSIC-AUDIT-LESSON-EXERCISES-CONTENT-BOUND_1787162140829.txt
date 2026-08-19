@@ -1,0 +1,538 @@
+READ-ONLY FORENSIC AUDIT — LESSON_EXERCISES CONTENT BOUNDARY
+
+IMPORTANT:
+This task is READ-ONLY AUDIT ONLY.
+
+DO NOT:
+- change code
+- change database
+- change schema
+- modify Stage 3
+- add tests
+- implement fixes
+- call the AI/provider
+- mutate learner sessions
+- restart or alter production behavior
+
+The previous EX-579-3 / lesson_exercises.id=942 audit confirmed that
+learner-visible exercise text can contain evaluator-only guidance such as:
+
+"Սպասվող պատասխանի հիմնական միտքը"
+
+It also found that successCriteria may be exposed through student-facing
+data paths.
+
+We now need a SYSTEM-WIDE forensic audit of the lesson_exercises content
+contract before implementing any fix.
+
+==================================================
+GOAL
+==================================================
+
+Determine exactly how exercise content flows through:
+
+SOURCE / MAPPING
+→ PARSER / VALIDATOR
+→ DB
+→ TEACHER AUTHORING / EDITING
+→ STUDENT PACKAGE
+→ PHASE-2 SOURCE EXERCISE SELECTION
+→ STUDENT DELIVERY
+→ DETERMINISTIC EVALUATION
+→ BOUNDED EVALUATION AI
+
+We need to establish a strict future boundary between:
+
+A. learner-visible content
+
+and
+
+B. evaluator-only / teacher-only content.
+
+Do not assume what any field means.
+Prove actual behavior from code and DB.
+
+==================================================
+A. DATABASE CONTRACT
+==================================================
+
+Audit the actual lesson_exercises schema.
+
+Report every relevant field, including at minimum:
+
+- id
+- exerciseId
+- relatedNodeId
+- exerciseTextVerbatim
+- exerciseTextEdited
+- interactionType
+- correctAnswer
+- successCriteria
+- sourcePage
+- sourceType
+- sourceText
+- sourceBlockIndex
+- sequence
+- status
+
+For each field report:
+
+1. Intended meaning if documented
+2. Actual writers
+3. Actual readers
+4. Whether it can reach the learner
+5. Whether it reaches deterministic evaluation
+6. Whether it reaches bounded EVALUATION AI
+7. Whether teacher UI/API can modify it
+
+Do not infer undocumented semantics.
+
+==================================================
+B. CURRENT CONTENT CLASSES
+==================================================
+
+Determine whether the current architecture explicitly distinguishes:
+
+1. SOURCE-FIDELITY CONTENT
+   Original textbook/source exercise.
+
+2. LEARNER-VISIBLE CONTENT
+   What the student is actually allowed to see.
+
+3. EVALUATOR-ONLY CONTENT
+   Expected answer, rubric, success criteria, scoring guidance.
+
+4. MACHINE-EVALUABLE ANSWER METADATA
+   correct option / TRUE-FALSE / canonical answer.
+
+5. TEACHER-ONLY CONTENT
+   Notes or metadata that should not reach the learner.
+
+For every class report:
+
+- where it is stored
+- whether separation is explicit
+- whether separation is enforced
+- where boundaries can currently leak
+
+==================================================
+C. MAPPING CONTRACT
+==================================================
+
+Audit the current TEXT/manual mapping contract and parser.
+
+For EXERCISE / QUESTION / ACTIVITY / TASK determine exactly what fields the
+mapping format supports.
+
+Especially determine whether it can separately represent:
+
+- original source text
+- learner-visible prompt
+- interaction type
+- answer options
+- correct answer
+- expected answer
+- success criteria
+- rubric
+- evaluator guidance
+- source page
+- source quote/provenance
+
+Trace:
+
+mapping text
+→ parser
+→ validator
+→ inserter
+→ lesson_exercises columns
+
+Identify any information that is collapsed into a single `text` field.
+
+==================================================
+D. TEACHER AUTHORING / CRUD
+==================================================
+
+Audit every API/UI path that can create or modify lesson_exercises.
+
+Determine:
+
+- which fields teacher can edit
+- whether learner-visible and evaluator-only fields are visually separated
+- whether API validation enforces that separation
+- whether expected-answer/rubric text can be entered into learner-visible text
+- whether edits can destroy source fidelity
+- whether exerciseTextVerbatim is truly immutable/verbatim in practice
+
+Do not change anything.
+
+==================================================
+E. STUDENT-FACING API EXPOSURE
+==================================================
+
+Audit ALL student-facing endpoints and response projections that may expose
+lesson_exercises.
+
+At minimum inspect:
+
+- student-package
+- lesson/session loading
+- Phase-2 chat delivery
+- any exercise-taking/student endpoint using lesson_exercises
+
+For every exposed field classify:
+
+SAFE FOR STUDENT
+or
+SHOULD BE HIDDEN
+or
+CONTEXT DEPENDENT
+
+Specifically check for exposure of:
+
+- successCriteria
+- correctAnswer
+- expected-answer text
+- rubric
+- evaluator notes
+- teacher-only metadata
+
+==================================================
+F. SOURCE-EXERCISE DELIVERY
+==================================================
+
+Trace exact runtime delivery:
+
+eligible exercises
+→ selection
+→ activeLessonExerciseId
+→ exact DB row
+→ effectiveExerciseText(...)
+→ formatting
+→ chat_messages
+→ frontend
+
+Determine exactly when:
+
+exerciseTextVerbatim
+
+versus
+
+exerciseTextEdited
+
+is shown.
+
+Explain the actual precedence rule.
+
+Determine whether delivery itself has any concept of
+"learner-safe exercise text".
+
+==================================================
+G. DETERMINISTIC EVALUATION
+==================================================
+
+For:
+
+- multiple_choice
+- true_false
+- any other deterministic typed source exercise
+
+trace exactly what data is used to evaluate correctness.
+
+Determine whether deterministic scoring needs:
+
+- learner-visible text
+- correctAnswer
+- successCriteria
+- evaluator guidance
+
+Identify the minimum hidden metadata required.
+
+==================================================
+H. CONSTRUCTED-RESPONSE EVALUATION
+==================================================
+
+Trace the Stage-3 bounded EVALUATION path for constructed responses.
+
+Report exactly what EVALUATION AI receives today:
+
+- task text
+- learner answer
+- learning objective
+- cognitive level
+- successCriteria
+- correctAnswer
+- theory
+- source grounding
+- chat history
+- assistance/help context
+- any other relevant data
+
+Then answer:
+
+Does the evaluator currently receive a genuinely hidden rubric/criterion?
+
+Or is evaluator guidance sometimes embedded in the same text already shown
+to the learner?
+
+==================================================
+I. DATA QUALITY SCAN
+==================================================
+
+Perform READ-ONLY database queries to determine whether EX-579-3/id=942 is
+isolated or systemic.
+
+Search lesson_exercises for likely evaluator-guidance markers inside
+learner-visible fields.
+
+Include Armenian and relevant English patterns where useful, such as
+concepts equivalent to:
+
+- Սպասվող պատասխան
+- Սպասվող պատասխանի հիմնական միտքը
+- Ճիշտ պատասխան
+- Պատասխան
+- Գնահատման չափանիշ
+- success criteria
+- expected answer
+- correct answer
+- rubric
+
+Be careful:
+A word such as "Պատասխան" may legitimately occur in an exercise.
+Do not automatically classify every match as a leak.
+
+Return:
+
+- total lesson_exercises count
+- number of suspicious rows
+- categories/patterns
+- representative examples
+- whether issue appears isolated or systemic
+
+READ ONLY.
+
+==================================================
+J. SOURCE FIDELITY VS LEARNER SAFETY
+==================================================
+
+Analyze the architectural conflict:
+
+We need to preserve the original source exercise exactly for provenance,
+but we must not expose answer/rubric material to the learner.
+
+Determine whether the existing fields can safely support:
+
+exerciseTextVerbatim
+= immutable original source record
+
+exerciseTextEdited
+= learner-safe delivery version
+
+successCriteria
+= hidden semantic evaluation guidance
+
+correctAnswer
+= hidden deterministic answer metadata
+
+Do NOT implement this model yet.
+
+Report whether this can be achieved with the CURRENT schema.
+
+If not, identify the exact blocker.
+
+Do not propose a DB migration unless the current schema genuinely cannot
+represent the required separation.
+
+==================================================
+K. REQUIRED INVARIANTS
+==================================================
+
+Evaluate whether the current system enforces each invariant:
+
+K1.
+Learner never receives correctAnswer.
+
+K2.
+Learner never receives successCriteria.
+
+K3.
+Learner never receives evaluator rubric/expected-answer guidance.
+
+K4.
+Source-fidelity original text is preserved.
+
+K5.
+Learner-visible edited text cannot accidentally contain hidden evaluator
+guidance.
+
+K6.
+Deterministic evaluation receives authoritative answer metadata.
+
+K7.
+Constructed-response EVALUATION receives legitimate evaluator guidance
+without exposing it to learner.
+
+K8.
+Teacher editing cannot accidentally collapse hidden and visible content.
+
+For each return:
+
+PASS
+PARTIAL
+FAIL
+
+with exact evidence.
+
+==================================================
+L. RECOMMENDED TARGET CONTRACT
+==================================================
+
+Based ONLY on the audit evidence, propose the smallest clean content contract.
+
+For each field define its future authority and audience.
+
+Example conceptual model only:
+
+SOURCE ORIGINAL
+exerciseTextVerbatim
+→ source fidelity / teacher / audit
+→ not automatically student-visible if unsafe
+
+LEARNER TASK
+exerciseTextEdited
+→ learner-safe task text
+→ student delivery
+
+DETERMINISTIC ANSWER
+correctAnswer
+→ backend only
+
+SEMANTIC RUBRIC
+successCriteria
+→ bounded EVALUATION only
+
+But do not assume this exact model is correct.
+Derive the recommendation from the actual repository.
+
+Also specify where enforcement would eventually be required:
+
+- mapper
+- validator
+- inserter
+- teacher CRUD
+- student-package
+- Phase-2 delivery
+- bounded EVALUATION
+
+NO IMPLEMENTATION.
+
+==================================================
+M. EXISTING DATA MIGRATION IMPACT
+==================================================
+
+Without modifying data, determine whether adopting the recommended contract
+would require cleanup/migration of existing lesson_exercises rows.
+
+Classify existing rows conceptually into:
+
+1. already safe
+2. learner text contains hidden evaluator guidance
+3. evaluator metadata missing
+4. source provenance/page missing
+5. ambiguous/manual rows requiring review
+
+Estimate counts where read-only DB evidence allows.
+
+Do not modify records.
+
+==================================================
+N. STAGE-3 COMPATIBILITY
+==================================================
+
+Confirm whether the recommended content-boundary fix can be implemented
+without changing the approved Stage-3 orchestration:
+
+THEORY
+→ TASK_REQUIRED
+→ source exercise OR TASK job
+→ ANSWER
+→ deterministic evaluation OR bounded EVALUATION
+→ Decision Engine
+→ FEEDBACK
+
+The content fix should not move workflow authority back to AI.
+
+Identify any exact conflict if one exists.
+
+==================================================
+O. FINAL ROOT-CAUSE CLASSIFICATION
+==================================================
+
+Classify the problem as one or more of:
+
+- MAPPING CONTRACT GAP
+- DATA MODEL GAP
+- VALIDATION GAP
+- AUTHORING GAP
+- STUDENT API EXPOSURE
+- DELIVERY GAP
+- EVALUATION INPUT GAP
+- EXISTING DATA QUALITY ISSUE
+- SOURCE PROVENANCE GAP
+
+Separate:
+
+PRIMARY ROOT CAUSE
+
+from
+
+SECONDARY EXPOSURE PATHS.
+
+==================================================
+P. FINAL VERDICT
+==================================================
+
+Return exactly one:
+
+CONTENT CONTRACT SOUND
+
+or
+
+ISOLATED BAD DATA
+
+or
+
+SYSTEMIC CONTENT-BOUNDARY GAP
+
+or
+
+BLOCKED — INSUFFICIENT EVIDENCE
+
+==================================================
+OUTPUT
+==================================================
+
+Return sections A–P.
+
+Include exact:
+
+- files
+- functions
+- endpoints
+- schema fields
+- DB evidence
+- counts where available
+
+Clearly distinguish:
+
+OBSERVED
+INFERRED
+NOT PROVEN
+
+At the end provide:
+
+RECOMMENDED NEXT IMPLEMENTATION SCOPE
+
+but DO NOT implement it.
+
+STOP after the report.
