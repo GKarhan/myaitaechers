@@ -1,0 +1,945 @@
+PACKAGE 1C — MAPPING WORKFLOW + UNIFIED ACCORDION UI
+GOAL/OUTCOME REVIEW GATE + CONSOLIDATED TEACHER MAPPING VIEW
+
+IMPLEMENTATION TASK
+
+CONTEXT
+
+Package 1A is complete:
+- canonical Lesson Outcomes
+- Outcome↔MicroNode relation
+- REQUIRED/SUPPORTING
+- required cognitive depth
+- legacy lessonOutcomes compatibility
+
+Package 1B is complete:
+- structured MicroNode Teaching Package
+- approval/provenance
+- optional cognitive-level applicability
+- teacher CRUD/review
+- exercises remain in their existing canonical task architecture
+
+DO NOT redesign or undo 1A or 1B.
+
+This task has TWO tightly related goals:
+
+A. implement the final C1 Mapping workflow around Goal/Outcome review;
+B. consolidate the existing teacher Mapping screen into a clearer
+   accordion-based hierarchy WITHOUT a broad visual redesign.
+
+This task does NOT implement Structured TEXT Import v2.
+That is Package 1D.
+
+════════════════════════════════════════════════════
+0 — FROZEN PRODUCT DECISION
+════════════════════════════════════════════════════
+
+The approved Mapping workflow is:
+
+Teacher may optionally provide:
+- Lesson Goal
+- draft Lesson Outcomes
+
+BUT teacher-entered Goal/Outcomes are INPUT/DRAFT,
+not automatically the final canonical curriculum definition.
+
+The system/AI MUST still inspect the source lesson.
+
+If teacher Goal/Outcomes exist:
+
+source lesson
++ teacher draft Goal/Outcomes
+
+→ AI/source-aware analysis
+
+→ proposed revised/completed Goal
+→ proposed revised/completed Outcomes
+
+The proposal may:
+- preserve good teacher wording
+- improve wording
+- add missing outcomes
+- merge duplicated outcomes
+- split an outcome that is too broad
+- flag coverage gaps
+
+BUT AI MUST NOT approve curriculum outcomes.
+
+If teacher Goal/Outcomes do NOT exist:
+
+source lesson
+→ AI proposes Lesson Goal + Lesson Outcomes.
+
+IN BOTH CASES:
+
+AI proposal
+→ Teacher Review
+→ teacher may edit/add/delete/reorder
+→ Teacher explicitly CONFIRMS
+
+ONLY AFTER CONFIRMATION:
+
+→ detailed Topic/MicroNode Mapping may proceed.
+
+This approval gate is mandatory for the NEW canonical workflow.
+
+Do not silently overwrite teacher input.
+
+Do not silently approve AI proposals.
+
+════════════════════════════════════════════════════
+1 — PRIMARY WORKFLOW
+════════════════════════════════════════════════════
+
+Implement the workflow conceptually as:
+
+STEP 1
+Lesson source is available.
+
+STEP 2
+Teacher draft Goal/Outcomes may or may not exist.
+
+STEP 3
+Generate/analyze proposed Goal + Outcomes.
+
+STEP 4
+Teacher Review Gate.
+
+STEP 5
+Teacher confirms canonical Goal + Outcomes.
+
+STEP 6
+Only now allow detailed Mapping generation/confirmation:
+- Topics
+- MicroNodes
+- Outcome↔MicroNode alignment
+- required cognitive depth
+- existing Cognitive Path
+- Teaching Package
+- exercises/tasks
+
+Do not allow NEW canonical detailed mapping to reach final approved state
+while Goal/Outcomes remain unconfirmed.
+
+Legacy lessons must continue working through compatibility rules.
+
+Do NOT retroactively block all legacy lessons.
+
+════════════════════════════════════════════════════
+2 — IMPORTANT GENERATION BOUNDARY
+════════════════════════════════════════════════════
+
+Do NOT implement a second competing mapper.
+
+Reuse the existing mapping generation infrastructure.
+
+The change is workflow orchestration and approval authority.
+
+If current automatic mapping currently generates Goal/Outcomes together
+with Topics/MicroNodes in one call, inspect the safest minimal way to
+introduce the review gate.
+
+Preferred direction:
+
+PASS A
+→ source analysis
+→ Goal/Outcomes proposal
+
+Teacher confirms
+
+PASS B
+→ detailed Mapping generation using APPROVED Goal/Outcomes as constraints
+
+If safely splitting the existing AI mapping call requires a larger
+rewrite, preserve the existing generator internally but DO NOT persist
+or approve detailed mapping before Goal/Outcome confirmation.
+
+Explain the chosen implementation.
+
+Key invariant:
+
+Detailed Mapping must ultimately be constrained by the teacher-approved
+canonical Goal/Outcomes.
+
+════════════════════════════════════════════════════
+3 — GOAL/OUTCOME COVERAGE RULE
+════════════════════════════════════════════════════
+
+AI/system analysis should compare proposed Goal/Outcomes against the
+source lesson.
+
+Its job is to help detect:
+
+- missing important curriculum content
+- overly broad outcome
+- overly narrow outcome
+- duplicate outcome
+- outcome not supported by source
+- lesson content not represented by any outcome
+
+Do NOT build a new scientific semantic-scoring engine in this task.
+
+Use the existing AI/mapping mechanism where appropriate.
+
+The result shown to teacher should be proposal/warnings,
+not automatic authority.
+
+Teacher confirmation remains final.
+
+════════════════════════════════════════════════════
+4 — CANONICAL GOAL
+════════════════════════════════════════════════════
+
+Lesson Goal remains one lesson-level pedagogical goal.
+
+Teacher may:
+- enter it manually
+- edit it
+- accept AI revision
+- replace it
+
+AI may propose a revised Goal after source analysis.
+
+Do not create competing Goal sources in the UI.
+
+After confirmation, there must be one clearly authoritative
+teacher-approved Lesson Goal used by mapping.
+
+Preserve legacy fields for compatibility where required.
+
+════════════════════════════════════════════════════
+5 — CANONICAL OUTCOMES
+════════════════════════════════════════════════════
+
+Package 1A canonical Outcomes are the authoritative Outcome objects.
+
+Do not create another Outcome storage path.
+
+Teacher review must operate on those canonical Outcome records.
+
+Long-term UI must not present:
+
+"old outcomes"
+AND
+"canonical outcomes"
+
+as two competing curriculum definitions.
+
+Legacy lessonOutcomes may remain in storage for compatibility,
+but the teacher UI for canonicalized lessons must clearly use the
+Package 1A canonical Outcomes.
+
+If legacy text needs migration:
+use the explicit existing draft/backfill mechanism,
+never silent destructive conversion.
+
+════════════════════════════════════════════════════
+6 — GOAL/OUTCOME STATUS / GATE
+════════════════════════════════════════════════════
+
+Add the smallest explicit state necessary to know whether canonical
+Goal/Outcomes have passed teacher review.
+
+Reuse existing approval/status conventions if possible.
+
+The system must be able to answer:
+
+- Goal/Outcomes not yet reviewed
+- proposed/draft
+- teacher confirmed / canonical ready
+
+Do NOT over-engineer a new workflow engine.
+
+But do not infer confirmation merely because text exists.
+
+A teacher confirmation action must be explicit.
+
+If confirmed Goal/Outcomes are edited later:
+
+mark downstream curriculum readiness stale / requiring review
+using the safest existing invalidation pattern.
+
+Do NOT silently keep old Outcome↔MicroNode mappings as unquestionably
+valid after material Outcome meaning changes.
+
+For this package:
+- detect the need for re-review
+- surface warning/status
+- do not automatically remap everything.
+
+════════════════════════════════════════════════════
+7 — DETAILED MAPPING GATE
+════════════════════════════════════════════════════
+
+For NEW canonical mapping flow:
+
+Detailed mapping generation/confirmation must be disabled or blocked
+until Goal/Outcomes are teacher-confirmed.
+
+Teacher should see a clear message such as:
+
+"Նախ հաստատեք դասի նպատակը և վերջնարդյունքները"
+
+After confirmation:
+
+"Շարունակել քարտեզագրումը"
+
+becomes available.
+
+Server must enforce this.
+
+Do not rely only on frontend disabling.
+
+Legacy compatibility:
+existing lessons must not suddenly become unusable merely because they
+predate the new gate.
+
+Use an explicit compatibility rule.
+
+════════════════════════════════════════════════════
+8 — FINAL MAPPING INFORMATION ARCHITECTURE
+════════════════════════════════════════════════════
+
+Do NOT perform a broad design rewrite.
+
+Reuse current teacher dashboard, cards, typography, buttons,
+edit patterns, and existing data components.
+
+Reorganize the Mapping section into a clearer accordion hierarchy.
+
+Target structure:
+
+1. 🎯 Դասի նպատակ և վերջնարդյունքներ ▼
+
+   - Lesson Goal
+   - canonical Lesson Outcomes
+   - proposal/review status
+   - edit/add/delete/reorder
+   - teacher confirm
+   - coverage/warning messages
+
+2. 📚 Topic 1 ▼
+
+   2.1 🧩 MicroNode 1 ▼
+
+       A. Հիմնական գիտելիք ▼
+          - title
+          - learning objective
+          - source content / source reference
+          - knowledge boundary
+          - status
+          - Outcome links
+          - required/supporting context where useful
+
+       B. Ուսուցման նյութ ▼
+          - Package 1B Teaching Package
+          - main explanation
+          - facts/rules
+          - examples
+          - counterexamples
+          - misconceptions
+          - alternative explanations
+          - guiding questions
+          - hints
+          - resources
+
+       C. Ճանաչողական ուղի ▼
+          - existing Package/C2 Cognitive Path
+          - levels
+          - target
+          - performance objective
+          - success criterion
+          - current evidence minimum/requirement display
+          - task links
+
+       D. Վարժություններ ▼
+          - exercises linked to this MicroNode
+          - cognitive-level relationship where available
+          - existing edit/link/unlink controls
+
+   2.2 🧩 MicroNode 2 ▼
+       same structure
+
+3. 📚 Topic 2 ▼
+   ...
+
+4. 📋 Բոլոր վարժությունները ▼
+   - global lesson exercise/task management
+   - unlinked exercises
+   - existing bulk linking/management where already supported
+
+5. ✅ Validation / Approval ▼
+   - mapping warnings
+   - unlinked approved MicroNodes
+   - missing required Outcome relations
+   - Cognitive Path readiness warnings
+   - Teaching Package readiness warnings if available
+   - final approval controls already supported by current system
+
+════════════════════════════════════════════════════
+9 — ACCORDION BEHAVIOR
+════════════════════════════════════════════════════
+
+The goal is usability, not fancy animation.
+
+Use current component patterns where possible.
+
+Required behavior:
+
+- Topic collapsible
+- MicroNode collapsible
+- major MicroNode subsections collapsible
+- only a manageable amount of content expanded at once
+- current edit/add/delete controls remain available
+- no data is hidden permanently behind icon-only UI
+- current teacher can still scan the lesson structure quickly
+
+Do not create a new page unless absolutely necessary.
+
+Prefer reorganizing the current Mapping block.
+
+Do not remove useful current functionality.
+
+════════════════════════════════════════════════════
+10 — EXERCISE DISPLAY MODEL
+════════════════════════════════════════════════════
+
+Frozen decision:
+
+Exercises/tasks remain stored in their existing canonical architecture.
+
+Do NOT move them into Teaching Package.
+
+UI behavior is hybrid:
+
+A. Under each MicroNode:
+show exercises linked to that MicroNode,
+including Cognitive Level linkage where available.
+
+B. At lesson level:
+retain one "Բոլոր վարժությունները" section for:
+- all exercises
+- unlinked exercises
+- adding
+- bulk management
+- linking/relinking
+
+This is presentation reuse of the same task data,
+NOT duplication of exercise records.
+
+AI Teacher future selection should eventually be based on:
+
+MicroNode
++ Cognitive Level
++ eligible/approved task
+
+but do not change AI Teacher now.
+
+════════════════════════════════════════════════════
+11 — TEACHING PACKAGE UI INTEGRATION
+════════════════════════════════════════════════════
+
+Package 1B currently has its own compact review surface.
+
+Do not rebuild its backend.
+
+Reuse its existing APIs and components where possible.
+
+Move/embed its presentation logically under:
+
+MicroNode
+→ Ուսուցման նյութ
+
+Preserve:
+- CRUD
+- approval
+- provenance
+- cognitive applicability
+- ordering
+- primary explanation rules
+
+Do not duplicate Teaching Package state in frontend.
+
+════════════════════════════════════════════════════
+12 — COGNITIVE PATH UI INTEGRATION
+════════════════════════════════════════════════════
+
+Do NOT redesign Cognitive Path behavior.
+
+Reuse the existing:
+- generate
+- edit
+- add level
+- delete level
+- reorder
+- target ceiling
+- confirm
+- linked-task controls
+
+Present it under each MicroNode as:
+
+"Ճանաչողական ուղի"
+
+This package is a UI/workflow consolidation,
+not C2 semantic Evidence Requirement Profile implementation.
+
+Do not yet replace current evidence-count semantics.
+
+That is a later C2 package.
+
+════════════════════════════════════════════════════
+13 — TOPIC / MICRONODE CRUD
+════════════════════════════════════════════════════
+
+Preserve current Topic and MicroNode CRUD/reorder capabilities.
+
+After UI consolidation teacher must still be able to:
+
+- add Topic
+- edit Topic
+- delete Topic safely
+- reorder Topics
+
+and:
+
+- add MicroNode
+- edit MicroNode
+- delete MicroNode safely
+- reorder MicroNodes
+- attach MicroNode to correct Topic
+
+Do not regress Phase 1.1 / 1.2 functionality.
+
+Ordering must persist after refresh.
+
+════════════════════════════════════════════════════
+14 — OUTCOME LINKS INSIDE MICRONODE
+════════════════════════════════════════════════════
+
+Package 1A Outcome↔MicroNode relations remain canonical.
+
+Under MicroNode "Հիմնական գիտելիք" teacher should be able to see:
+
+- linked Outcome(s)
+- REQUIRED / SUPPORTING
+- required cognitive depth
+
+Reuse Package 1A edit controls or embed them cleanly.
+
+Do not create a second relation-management implementation.
+
+════════════════════════════════════════════════════
+15 — SOURCE FIDELITY
+════════════════════════════════════════════════════
+
+Do not hide or replace source traceability.
+
+Teacher must still be able to understand:
+
+- source page
+- source block / source text where available
+- what mapped content came from source
+- what teaching content is derivative
+
+Source Content
+≠
+Teaching Package.
+
+Keep that distinction visible enough for review.
+
+════════════════════════════════════════════════════
+16 — MAPPING VALIDATION SUMMARY
+════════════════════════════════════════════════════
+
+Create or consolidate a teacher-visible validation summary.
+
+Reuse existing validators where possible.
+
+At minimum surface:
+
+- Goal/Outcomes not confirmed
+- canonical Outcome without REQUIRED MicroNode
+- approved MicroNode without Outcome link
+- required cognitive depth incompatible with current Cognitive Path
+- missing Topic ownership if canonical rules require it
+- unapproved/draft critical items where applicable
+- unlinked exercises, if current workflow treats this as warning
+- Teaching Package absence as WARNING initially, not necessarily blocker
+
+Do not invent blockers beyond frozen contracts.
+
+Differentiate:
+
+ERROR
+WARNING
+INFO
+
+where current project conventions allow it.
+
+════════════════════════════════════════════════════
+17 — FINAL APPROVAL
+════════════════════════════════════════════════════
+
+Do not redesign the entire approval architecture.
+
+Preserve current final approval behavior.
+
+But the canonical C1 readiness check for NEW canonical lessons should
+include:
+
+- Goal/Outcomes teacher-confirmed
+- Outcomes structurally valid
+- REQUIRED Outcome↔MicroNode coverage
+- MicroNode approval state
+- required cognitive depth compatibility
+
+Teaching Package completeness may initially be a warning unless current
+product rules already make a specific item mandatory.
+
+Do not retroactively block legacy lessons.
+
+════════════════════════════════════════════════════
+18 — AI GENERATION / COST CONTROL
+════════════════════════════════════════════════════
+
+Use AI only where already required for source-aware Goal/Outcome proposal
+or existing mapping generation.
+
+Do not add repeated AI calls simply to render/review the Mapping page.
+
+After Goal/Outcome proposal exists, teacher edits are deterministic.
+
+Runtime page load must not call AI.
+
+Reopening accordions must not call AI.
+
+Reordering must not call AI.
+
+CRUD must not call AI.
+
+RUNTIME AI MINIMIZATION RULE:
+
+If a decision can be stored or made deterministically in Mapping,
+Cognitive Path, DB, or backend logic, do not delegate it to LLM.
+
+════════════════════════════════════════════════════
+19 — SERVER AUTHORITY
+════════════════════════════════════════════════════
+
+Server must enforce:
+
+- teacher/admin authorization
+- lesson ownership
+- Goal/Outcome confirmation gate
+- valid canonical Outcome IDs
+- valid MicroNode ownership
+- Outcome relation validity
+- required cognitive-depth compatibility
+- ordering normalization
+- final readiness checks
+
+Do not trust frontend-only workflow state.
+
+════════════════════════════════════════════════════
+20 — LEGACY COMPATIBILITY
+════════════════════════════════════════════════════
+
+Do NOT break existing lessons.
+
+Legacy lesson:
+- can continue to render
+- can continue to use existing mapped data
+- can be intentionally migrated/canonicalized later
+
+Canonical lesson:
+- uses Goal/Outcome review gate
+- uses Package 1A canonical Outcomes
+- uses Package 1B Teaching Package
+- uses existing Topics/MicroNodes/Cognitive Paths/tasks
+
+Do not silently transform all legacy lessons.
+
+No destructive migration in this package.
+
+════════════════════════════════════════════════════
+21 — IMPORTANT INVALIDATION RULE
+════════════════════════════════════════════════════
+
+If a teacher materially edits a CONFIRMED canonical Outcome after detailed
+mapping already exists:
+
+Do NOT automatically delete downstream mapping.
+
+Do NOT silently keep everything marked unquestionably valid.
+
+Instead:
+
+- preserve downstream data
+- mark/reveal that Outcome alignment needs review
+- surface affected MicroNode relations
+- require teacher re-review/reconfirmation
+
+Use the smallest current project-compatible mechanism.
+
+Same principle for a material Goal change if it affects mapping
+readiness.
+
+Do not build complex version diffing.
+
+════════════════════════════════════════════════════
+22 — TESTS
+════════════════════════════════════════════════════
+
+Add focused workflow/UI/backend tests.
+
+A. GOAL/OUTCOME GATE
+
+Test:
+- teacher draft exists → AI proposal may revise
+- no teacher draft → AI proposal generated
+- proposal is NOT auto-approved
+- detailed mapping blocked before teacher confirmation
+- detailed mapping allowed after confirmation
+- server enforces gate
+
+B. CANONICAL OUTCOMES
+
+- canonical Outcome CRUD remains intact
+- order persists
+- Outcome↔MicroNode remains intact
+- REQUIRED/SUPPORTING remains intact
+- required depth remains intact
+
+C. INVALIDATION
+
+- confirmed Outcome edited materially
+→ existing mapping preserved
+→ review warning/status produced
+
+D. ACCORDION DATA
+
+Ensure the consolidated UI reads existing canonical data without
+duplicating it:
+- Topic
+- MicroNode
+- Teaching Package
+- Cognitive Path
+- exercises
+- Outcome relations
+
+E. CRUD REGRESSION
+
+- Topic add/edit/delete/reorder
+- MicroNode add/edit/delete/reorder
+- persistence after refresh
+
+F. TEACHING PACKAGE REGRESSION
+
+Run Package 1B focused tests.
+
+G. PACKAGE 1A REGRESSION
+
+Run Package 1A tests.
+
+H. COGNITIVE PATH REGRESSION
+
+Run existing Cognitive Path suite.
+
+I. EXERCISE REGRESSION
+
+Verify no exercise/task IDs or links are recreated or duplicated.
+
+J. LEARNER/RUNTIME REGRESSION
+
+Explicitly verify no changes to:
+- Evidence
+- Learner Model
+- Knowledge Tree semantics
+- Quiz behavior
+- AI Teacher behavior
+- sessions
+
+════════════════════════════════════════════════════
+23 — BROWSER VERIFICATION
+════════════════════════════════════════════════════
+
+Use disposable teacher-authoring test data only.
+
+Do NOT alter historical learner sessions.
+
+Browser verify:
+
+1. open lesson Mapping
+2. Goal/Outcome block visible
+3. teacher confirmation gate works
+4. Topic accordion opens/closes
+5. MicroNode accordion opens/closes
+6. Main Knowledge subsection visible
+7. Teaching Package visible/editable
+8. Cognitive Path visible/editable
+9. linked exercises visible
+10. Outcome links visible
+11. reorder persists
+12. refresh preserves state/data
+13. Validation/Approval summary visible
+
+Clean up disposable browser-test data afterward.
+
+════════════════════════════════════════════════════
+24 — REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return:
+
+A. WORKFLOW IMPLEMENTED
+
+Show exact final flow:
+
+Source
++ optional Teacher Draft Goal/Outcomes
+→ AI proposal
+→ Teacher Review
+→ Teacher Confirm
+→ Detailed Mapping
+→ Validation
+→ Approval
+
+B. FILES CHANGED
+
+For each:
+- why
+- important symbols/components/routes
+
+C. UI STRUCTURE
+
+Show final hierarchy actually implemented.
+
+D. DATA REUSE
+
+Explain which existing structures power:
+- Outcomes
+- Topics
+- MicroNodes
+- Teaching Package
+- Cognitive Path
+- Exercises
+
+E. SERVER GATES
+
+List actual server-enforced gates.
+
+F. LEGACY COMPATIBILITY
+
+Explain how legacy lessons continue to work.
+
+G. INVALIDATION
+
+Explain what happens when confirmed Goal/Outcome changes.
+
+H. TEST RESULTS
+
+Exact counts.
+
+I. BROWSER RESULT
+
+What was manually verified.
+
+J. REGRESSION STATUS
+
+Explicitly report:
+- Package 1A
+- Package 1B
+- Cognitive Path
+- exercises/tasks
+- Quiz
+- Evidence
+- Learner Model
+- Knowledge Tree
+- AI Teacher
+- sessions
+
+K. NEXT GAPS
+
+Only list Package 1D / C2 next-step gaps.
+
+Do not implement them.
+
+════════════════════════════════════════════════════
+25 — ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+Package 1C PASS requires:
+
+[ ] Teacher draft Goal/Outcomes are optional input, not final authority.
+
+[ ] AI/source analysis occurs whether teacher draft exists or not.
+
+[ ] AI proposal is teacher-reviewable.
+
+[ ] AI proposal is never automatically approved.
+
+[ ] Teacher explicit confirmation is required.
+
+[ ] NEW canonical detailed mapping cannot be finalized before
+    Goal/Outcome confirmation.
+
+[ ] Detailed mapping uses confirmed canonical Outcomes.
+
+[ ] No duplicate Outcome source is created.
+
+[ ] Package 1A remains canonical.
+
+[ ] Package 1B remains canonical.
+
+[ ] Mapping UI is consolidated mainly through accordions,
+    not rebuilt as an unrelated new product.
+
+[ ] Topic/MicroNode CRUD and ordering still work.
+
+[ ] Teaching Package appears under MicroNode.
+
+[ ] Cognitive Path appears under MicroNode.
+
+[ ] MicroNode-linked exercises appear under MicroNode.
+
+[ ] All exercises remain manageable at lesson level too.
+
+[ ] Outcome links/depth are visible.
+
+[ ] Validation summary exists.
+
+[ ] Confirmed Outcome edits create review-needed state,
+    not destructive remapping.
+
+[ ] Legacy lessons remain usable.
+
+[ ] AI Teacher runtime behavior is unchanged.
+
+[ ] Learner Evidence/state is unchanged.
+
+[ ] Tests pass.
+
+If any gate fails:
+STOP and report blocker.
+
+Do not continue to Package 1D.
+
+════════════════════════════════════════════════════
+26 — STOP RULE
+════════════════════════════════════════════════════
+
+When Package 1C is complete:
+
+STOP.
+
+Do NOT continue into:
+
+- Structured TEXT Import v2
+- Evidence Requirement Profile
+- C3 Unified Evidence
+- C4 Learner Model
+- C5 Knowledge Tree refactor
+- C6 Recommendation Engine
+- AI Teacher runtime re-alignment
+
+Return evidence and wait for review.
