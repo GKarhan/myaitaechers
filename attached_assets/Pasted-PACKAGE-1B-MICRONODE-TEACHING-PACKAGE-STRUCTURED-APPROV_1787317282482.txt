@@ -1,0 +1,955 @@
+PACKAGE 1B — MICRONODE TEACHING PACKAGE
+STRUCTURED, APPROVED, REUSABLE TEACHING CONTENT
+
+IMPLEMENTATION TASK — ADDITIVE EXTENSION
+
+CONTEXT
+
+Package 1A is complete.
+
+The system now has the C1 curriculum foundation for:
+
+Lesson
+→ canonical Lesson Outcomes
+→ Outcome↔MicroNode alignment
+→ REQUIRED/SUPPORTING
+→ required cognitive depth
+→ existing MicroNode Cognitive Path
+
+Do NOT redesign or undo Package 1A.
+
+This package implements the next C1 layer:
+
+MicroNode
+→ structured Teaching Package
+
+The Teaching Package exists so that future AI Teacher runtime behavior
+can rely primarily on pre-generated / teacher-reviewed / approved
+teaching content instead of inventing the lesson dynamically.
+
+IMPORTANT:
+
+This task builds the CONTENT FOUNDATION.
+
+It does NOT change AI Teacher runtime behavior yet.
+
+It does NOT implement the final Mapping accordion redesign yet.
+
+It does NOT implement Structured TEXT Import yet.
+
+════════════════════════════════════════════════════
+0 — GOAL
+════════════════════════════════════════════════════
+
+For every MicroNode, provide a structured, persistent, teacher-reviewable
+Teaching Package.
+
+The package must be capable of storing reusable pedagogical content such
+as:
+
+1. MAIN_EXPLANATION
+2. KEY_FACT
+3. RULE_OR_FORMULA
+4. EXAMPLE
+5. COUNTEREXAMPLE
+6. MISCONCEPTION
+7. ALTERNATIVE_EXPLANATION
+8. GUIDING_QUESTION
+9. HINT
+10. RESOURCE
+
+Do NOT store the entire Teaching Package as one large undifferentiated
+text blob.
+
+Teaching Package items must be independently manageable and reusable.
+
+The architecture must support future AI Teacher logic such as:
+
+MicroNode MN7
++ Cognitive Level UNDERSTAND
+→ use approved explanation A
+→ use example B
+→ if misconception X appears, use contrast/counterexample C
+→ if learner needs help, use hint H1
+→ then select an eligible task
+
+But DO NOT implement that runtime selection logic in this task.
+
+════════════════════════════════════════════════════
+1 — NON-NEGOTIABLE SCOPE
+════════════════════════════════════════════════════
+
+IN SCOPE:
+
+- Teaching Package persistence
+- Teaching Package item types
+- MicroNode ownership
+- optional Cognitive Level applicability
+- provenance
+- approval/status
+- ordering
+- teacher CRUD
+- safe reuse of existing mapped content
+- minimal API support
+- minimal teacher-review UI
+- compatibility with existing mapping data
+- validation
+- focused tests
+
+OUT OF SCOPE:
+
+- AI Teacher runtime behavior
+- chat.ts teaching flow
+- AI Teacher prompt redesign
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree
+- C6 Recommendations
+- Quiz/Test changes
+- Evidence Requirement Profile
+- final Mapping accordion redesign
+- Goal/Outcome workflow redesign
+- Structured TEXT Import v2
+- automatic full lesson remapping
+- Journal/Homework/Today/Planning
+- learner sessions
+- mastery/confidence changes
+- P/L/R/K
+
+DO NOT touch those areas.
+
+════════════════════════════════════════════════════
+2 — AUDIT BEFORE CODE
+════════════════════════════════════════════════════
+
+Before implementing, inspect current structures that may already contain
+some of this content.
+
+Especially inspect current MicroNode / mapping fields for concepts such
+as:
+
+- theory/content
+- childFriendlyExplanation
+- sourceContent
+- knowledgeBoundary
+- misconceptions
+- examples
+- teaching content
+- generated content
+- resources
+- exercise/task content
+- Cognitive Path level-specific content
+
+Also inspect Phase 2 / additional-material structures already present in
+the teacher Mapping UI.
+
+GOAL:
+
+Do not duplicate existing normalized structures unnecessarily.
+
+For every existing relevant structure decide internally:
+
+REUSE
+EXTEND
+COMPATIBILITY
+or
+LEGACY-LATER
+
+Do not delete legacy fields in this package.
+
+If existing content can safely seed Teaching Package items, preserve its
+provenance and do not silently remove the original data.
+
+════════════════════════════════════════════════════
+3 — CANONICAL TEACHING PACKAGE ITEM
+════════════════════════════════════════════════════
+
+Use the smallest clean representation consistent with current project
+schema conventions.
+
+Each Teaching Package item must conceptually support at minimum:
+
+- stable identity
+- lessonId or safely derivable lesson ownership
+- microNodeId
+- type
+- content
+- order
+- status/approval
+- provenance
+- optional cognitiveLevel applicability
+- timestamps using existing conventions
+
+Do NOT over-engineer.
+
+Avoid unnecessary polymorphic architecture if a simpler structure fits
+the current codebase.
+
+But do not collapse all pedagogical types into one text field.
+
+════════════════════════════════════════════════════
+4 — ITEM TYPES
+════════════════════════════════════════════════════
+
+Support these canonical pedagogical item types:
+
+MAIN_EXPLANATION
+
+Purpose:
+The primary approved explanation of the MicroNode.
+
+KEY_FACT
+
+Purpose:
+Important fact/definition/property the learner should retain.
+
+RULE_OR_FORMULA
+
+Purpose:
+Rule, formula, algorithmic principle, grammatical rule, etc.
+
+EXAMPLE
+
+Purpose:
+Positive worked/conceptual example.
+
+COUNTEREXAMPLE
+
+Purpose:
+Contrast/non-example/counterexample useful for concept boundaries and
+misconception correction.
+
+MISCONCEPTION
+
+Purpose:
+A known likely learner misconception or error pattern.
+
+ALTERNATIVE_EXPLANATION
+
+Purpose:
+A second explanation strategy if the main explanation does not work.
+
+GUIDING_QUESTION
+
+Purpose:
+A question used to guide learner reasoning without directly giving the
+answer.
+
+HINT
+
+Purpose:
+Progressive assistance/scaffolding.
+
+RESOURCE
+
+Purpose:
+Supporting resource/material/reference.
+
+Do NOT add dozens of types in this package.
+
+If current repository evidence shows one additional type is essential,
+document why before adding it.
+
+════════════════════════════════════════════════════
+5 — MAIN EXPLANATION RULE
+════════════════════════════════════════════════════
+
+A MicroNode should be able to have one PRIMARY approved
+MAIN_EXPLANATION.
+
+It may also have alternative explanations.
+
+Do not represent every explanation as MAIN_EXPLANATION.
+
+If multiple MAIN_EXPLANATION drafts exist during review, the system must
+still be able to identify which approved one is primary.
+
+Use the simplest implementation compatible with current schema
+conventions.
+
+Do not automatically replace an approved explanation when a new draft is
+created.
+
+════════════════════════════════════════════════════
+6 — COGNITIVE LEVEL APPLICABILITY
+════════════════════════════════════════════════════
+
+Teaching Package items are MicroNode-owned.
+
+However, some items may be especially appropriate for a particular
+Cognitive Level.
+
+Examples:
+
+MAIN_EXPLANATION
+→ may apply generally to the MicroNode
+
+EXAMPLE
+→ may be useful for UNDERSTAND
+
+GUIDING_QUESTION
+→ may target APPLY
+
+HINT
+→ may support APPLY
+
+RESOURCE
+→ may support ANALYZE
+
+Therefore support:
+
+MicroNode-wide item
+OR
+item applicable to a specific cognitive level.
+
+Do NOT duplicate the entire Teaching Package per Cognitive Level.
+
+Do NOT make Cognitive Level mandatory for every item.
+
+If referencing current Cognitive Path rows directly would be fragile
+because those rows can be regenerated/deleted, use a stable cognitive
+level semantic identifier consistent with Package 1A's approach.
+
+Inspect lifecycle before deciding.
+
+════════════════════════════════════════════════════
+7 — PROVENANCE
+════════════════════════════════════════════════════
+
+Every Teaching Package item must have traceable provenance.
+
+Support at minimum the conceptual distinction:
+
+SOURCE_MATERIAL
+TEACHER_CREATED
+AI_GENERATED
+AI_GENERATED_TEACHER_APPROVED
+
+If current project already has compatible provenance vocabulary, reuse or
+map cleanly rather than creating competing semantics.
+
+IMPORTANT:
+
+AI-generated content is NOT automatically equivalent to approved
+content.
+
+Teacher approval must be explicit.
+
+Future runtime generation will be a separate category/process and is NOT
+implemented here.
+
+Do not label existing source textbook content as AI-generated.
+
+════════════════════════════════════════════════════
+8 — STATUS / APPROVAL
+════════════════════════════════════════════════════
+
+Teaching Package items must support review state.
+
+Use current project status conventions where possible.
+
+Conceptually we need at least:
+
+DRAFT
+APPROVED
+
+and safe handling of rejected/removed content if existing conventions
+already support it.
+
+Future AI Teacher must eventually prefer APPROVED content.
+
+But do NOT change AI Teacher in this task.
+
+Teacher must be able to:
+
+- review item
+- edit item
+- approve item
+- return/edit draft
+- delete where safe
+
+Do not silently approve generated material.
+
+════════════════════════════════════════════════════
+9 — SOURCE CONTENT VS TEACHING CONTENT
+════════════════════════════════════════════════════
+
+Do NOT confuse:
+
+SOURCE CONTENT
+
+with
+
+TEACHING CONTENT.
+
+Source content preserves fidelity to the textbook/source.
+
+Teaching Package represents pedagogically usable material derived from or
+added around that source.
+
+Do not move sourceContent/sourceQuote/sourceBlock data into Teaching
+Package and then remove the source representation.
+
+The source remains authoritative for source fidelity.
+
+Teaching Package may reference or derive from it.
+
+Where technically reasonable, preserve source reference/provenance.
+
+════════════════════════════════════════════════════
+10 — KNOWLEDGE BOUNDARY
+════════════════════════════════════════════════════
+
+knowledgeBoundary remains part of the MicroNode contract.
+
+Do NOT replace it with Teaching Package content.
+
+Teaching Package items must remain within the MicroNode knowledge
+boundary.
+
+Add server-side validation where deterministic validation is possible.
+
+Do NOT attempt unreliable semantic AI validation in this task.
+
+The UI should make knowledgeBoundary visible enough during Teaching
+Package review that the teacher can detect scope drift.
+
+════════════════════════════════════════════════════
+11 — MISCONCEPTION MODEL
+════════════════════════════════════════════════════
+
+MISCONCEPTION is not merely another explanation.
+
+It represents:
+
+- likely incorrect understanding
+- common error
+- conceptual confusion
+- incorrect rule/association
+
+Keep it structured as its own item type.
+
+For this package, content text is sufficient.
+
+Do NOT build automatic misconception detection yet.
+
+Do NOT modify AI Teacher error taxonomy yet.
+
+Future AI Teacher will be able to match observed learner errors against
+approved misconceptions.
+
+════════════════════════════════════════════════════
+12 — HINT MODEL
+════════════════════════════════════════════════════
+
+Multiple HINT items may exist for a MicroNode / Cognitive Level.
+
+They must support ordering.
+
+Example:
+
+Hint 1
+→ light cue
+
+Hint 2
+→ stronger scaffold
+
+Hint 3
+→ guided support
+
+Do not require the current runtime AI Teacher to use them yet.
+
+The data model should simply make ordered progressive hints possible.
+
+════════════════════════════════════════════════════
+13 — EXAMPLES / COUNTEREXAMPLES
+════════════════════════════════════════════════════
+
+EXAMPLE and COUNTEREXAMPLE must remain distinct types.
+
+This is important for future remediation.
+
+A COUNTEREXAMPLE may be used to clarify a knowledge boundary or correct a
+conceptual misconception.
+
+Multiple examples/counterexamples may exist.
+
+They must be independently editable, orderable, approvable, and
+optionally cognitive-level-specific.
+
+════════════════════════════════════════════════════
+14 — RESOURCES
+════════════════════════════════════════════════════
+
+RESOURCE must support the content currently practical for this codebase.
+
+Before adding schema, inspect whether existing resource/material
+structures already exist.
+
+Prefer reuse.
+
+A resource may conceptually represent:
+
+- teacher note
+- supplemental text
+- diagram/image reference
+- external or internal material reference
+- approved supporting material
+
+Do NOT build a full media asset management system in this package.
+
+Do NOT introduce external upload infrastructure unless already available
+and directly reusable.
+
+For now implement the minimum durable representation needed by the
+existing app.
+
+════════════════════════════════════════════════════
+15 — EXERCISES / TASKS — IMPORTANT BOUNDARY
+════════════════════════════════════════════════════
+
+Do NOT move exercises into the Teaching Package table merely because
+exercises are pedagogical material.
+
+The project already has:
+
+lesson_exercises
+lesson_node_cognitive_tasks
+
+and existing MicroNode/Cognitive Level task linkage.
+
+Preserve those as the canonical task/exercise system.
+
+Teaching Package and Exercises are related but distinct.
+
+Conceptually:
+
+MicroNode
+├── Teaching Package
+│   ├── explanation
+│   ├── examples
+│   ├── misconceptions
+│   ├── hints
+│   └── resources
+│
+└── Tasks / Exercises
+    └── existing exercise/task architecture
+
+Later Mapping UI may DISPLAY them together under the same MicroNode.
+
+But do not merge their persistence models.
+
+════════════════════════════════════════════════════
+16 — FUTURE BOUNDED VARIANT SUPPORT
+════════════════════════════════════════════════════
+
+We have a frozen product requirement:
+
+When approved exercises/material are exhausted or more equivalent
+practice is required, future AI may create a bounded equivalent variant.
+
+For exercises this may mean, for example:
+
+same structure / same learning intent / same cognitive demand
+with changed numbers, names, or surface details,
+but no substantive curriculum change.
+
+DO NOT implement runtime generation now.
+
+However, avoid a data design that makes future provenance impossible.
+
+Future generated variants must be able to trace back to their approved
+parent/template.
+
+If a minimal nullable parent/reference field is clearly appropriate and
+consistent with current architecture, it may be added.
+
+Do not build the generation engine.
+
+════════════════════════════════════════════════════
+17 — EXISTING CONTENT MIGRATION / SEEDING
+════════════════════════════════════════════════════
+
+Do NOT bulk-create duplicated Teaching Package items blindly.
+
+First identify which current fields actually correspond to canonical
+Teaching Package types.
+
+Examples:
+
+existing theory/content
+→ MAY seed MAIN_EXPLANATION
+
+existing known misconception data
+→ MAY seed MISCONCEPTION
+
+existing child-friendly explanation
+→ MAY seed MAIN_EXPLANATION or ALTERNATIVE_EXPLANATION depending on
+semantics
+
+But this must be evidence-based.
+
+Rules:
+
+1. Preserve original fields during compatibility period.
+2. Preserve provenance.
+3. Do not silently approve uncertain mappings.
+4. Avoid duplicate items when migration/backfill is rerun.
+5. Make backfill idempotent where possible.
+6. Do not remap/recreate MicroNodes.
+7. Do not change existing exercises.
+
+If semantic mapping is uncertain:
+leave it untouched and report it.
+
+════════════════════════════════════════════════════
+18 — TEACHER REVIEW UI — MINIMUM FOR 1B
+════════════════════════════════════════════════════
+
+Do NOT implement the final Mapping accordion redesign yet.
+
+Reuse the current Mapping/Teacher Review interface.
+
+For each MicroNode provide a minimal Teaching Package review surface.
+
+Teacher should be able to:
+
+- see Teaching Package items
+- see item type
+- see approval status
+- see provenance
+- see optional Cognitive Level
+- add item
+- edit item
+- delete item
+- approve item
+- reorder same-category items where ordering matters
+- change Cognitive Level applicability where valid
+
+The teacher must also be able to see the MicroNode's:
+
+- title
+- learning objective
+- knowledge boundary
+
+while reviewing Teaching Package content.
+
+Do not clutter the main page unnecessarily.
+
+A collapsible sub-block is acceptable.
+
+Final visual consolidation comes in Package 1C.
+
+════════════════════════════════════════════════════
+19 — API / SERVER AUTHORITY
+════════════════════════════════════════════════════
+
+Use current backend conventions.
+
+All Teaching Package writes must validate:
+
+- authenticated authorized teacher/admin
+- valid lesson
+- valid MicroNode
+- MicroNode belongs to lesson
+- valid item type
+- valid status transition
+- valid Cognitive Level if supplied
+- valid ordering
+- valid parent/template reference if supplied
+
+Do not trust frontend IDs.
+
+Do not allow cross-lesson ownership.
+
+Use transactions where multi-row reorder/update requires atomicity.
+
+════════════════════════════════════════════════════
+20 — ORDERING
+════════════════════════════════════════════════════
+
+Ordering must persist.
+
+For ordered collections, normalize sequence:
+
+1,2,3,4...
+
+No gaps.
+
+At minimum ordering matters for:
+
+- HINT progression
+- multiple EXAMPLE items
+- multiple COUNTEREXAMPLE items
+- GUIDING_QUESTION items
+- ALTERNATIVE_EXPLANATION items
+- RESOURCE display
+
+If one global item order is cleaner with the current UI/data model, it is
+acceptable as long as deterministic display ordering is preserved.
+
+Do not introduce complex drag-and-drop unless current components already
+make it trivial.
+
+Arrow-based reorder or existing reorder patterns are acceptable for this
+package.
+
+════════════════════════════════════════════════════
+21 — VALIDATION
+════════════════════════════════════════════════════
+
+Implement deterministic structural validation.
+
+At minimum detect:
+
+- invalid MicroNode
+- cross-lesson ownership
+- invalid item type
+- invalid Cognitive Level
+- invalid status
+- duplicate primary approved MAIN_EXPLANATION if architecture requires
+  exactly one primary
+- broken parent/template reference
+- ordering integrity issues
+
+Do NOT attempt AI semantic quality scoring.
+
+Do NOT block legacy lessons because they do not yet have a complete
+Teaching Package.
+
+Teaching Package readiness is additive for now.
+
+════════════════════════════════════════════════════
+22 — TESTS
+════════════════════════════════════════════════════
+
+Add focused tests.
+
+At minimum:
+
+A. CRUD
+
+- create item
+- edit item
+- delete item
+- read back after persistence
+
+B. TYPES
+
+Verify all canonical item types are accepted.
+
+Reject invalid type.
+
+C. OWNERSHIP
+
+Reject cross-lesson / invalid MicroNode ownership.
+
+D. APPROVAL
+
+- draft remains draft
+- explicit approve works
+- AI-generated content is not silently approved
+- teacher-approved generated content has correct provenance/status
+
+E. COGNITIVE LEVEL
+
+- MicroNode-wide item works
+- Cognitive-Level-specific item works
+- invalid level rejected
+
+F. ORDER
+
+- multiple hints preserve normalized order
+- reorder persists
+- read-back returns deterministic order
+
+G. PRIMARY EXPLANATION
+
+Verify primary approved MAIN_EXPLANATION rule.
+
+H. COMPATIBILITY
+
+Confirm unchanged:
+
+- existing MicroNodes
+- canonical Outcomes from Package 1A
+- Outcome↔MicroNode relations
+- Cognitive Paths
+- exercises
+- lesson_node_cognitive_tasks
+- existing learner Evidence/state
+- Knowledge Tree
+- AI Teacher sessions
+
+I. MIGRATION/BACKFILL
+
+If implemented:
+
+- idempotent rerun
+- no duplicate Teaching Package items
+- original legacy field preserved
+- provenance preserved
+
+════════════════════════════════════════════════════
+23 — REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Run:
+
+1. workspace/type checks
+2. Package 1A tests
+3. existing Cognitive Path acceptance tests
+4. Package 1B focused tests
+
+If an existing suite fails because of this package:
+
+STOP and fix only the regression caused by Package 1B.
+
+Do not opportunistically fix unrelated legacy failures.
+
+Report unrelated pre-existing failures separately.
+
+════════════════════════════════════════════════════
+24 — REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return:
+
+A. FILES CHANGED
+
+For every file:
+- purpose
+- symbols changed
+
+B. DB DESIGN
+
+Show exact Teaching Package representation:
+
+MicroNode
+→ Teaching Package Item
+→ type
+→ status
+→ provenance
+→ optional Cognitive Level
+→ order
+
+Explain why the chosen design fits the existing architecture.
+
+C. REUSE / COMPATIBILITY
+
+List:
+
+- existing structures reused
+- existing legacy fields preserved
+- any content backfilled
+- anything intentionally left unmigrated
+
+D. UI EVIDENCE
+
+Show exactly how teacher can:
+
+- view
+- add
+- edit
+- approve
+- delete
+- reorder
+
+Teaching Package items.
+
+E. API VALIDATION
+
+List server-side validation implemented.
+
+F. TEST RESULTS
+
+Exact pass/fail counts.
+
+G. REGRESSION CHECK
+
+Explicitly confirm status of:
+
+- Package 1A canonical Outcomes
+- Outcome↔MicroNode
+- Cognitive Path
+- exercises/tasks
+- Quiz
+- Evidence
+- Learner Model
+- Knowledge Tree
+- AI Teacher
+- existing sessions
+
+H. REMAINING GAPS
+
+Only list gaps for later packages.
+
+Do not implement them.
+
+════════════════════════════════════════════════════
+25 — ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+Package 1B PASS requires:
+
+[ ] Teaching Package is structured, not one large text blob.
+
+[ ] Items have stable identity.
+
+[ ] Items belong to MicroNode.
+
+[ ] Canonical item types are supported.
+
+[ ] Optional Cognitive Level applicability works.
+
+[ ] Provenance is preserved.
+
+[ ] AI-generated does NOT mean automatically approved.
+
+[ ] Teacher can explicitly approve content.
+
+[ ] Ordered hints/examples/etc. persist correctly.
+
+[ ] Source content remains distinct from teaching content.
+
+[ ] knowledgeBoundary remains distinct and preserved.
+
+[ ] Exercises remain in existing task/exercise architecture.
+
+[ ] Package 1A remains intact.
+
+[ ] Existing Cognitive Path remains intact.
+
+[ ] Existing learner data remains intact.
+
+[ ] Existing AI Teacher runtime behavior remains unchanged.
+
+[ ] Tests pass.
+
+If any gate fails:
+
+STOP and report the blocker.
+
+Do not proceed to Package 1C.
+
+════════════════════════════════════════════════════
+26 — STOP RULE
+════════════════════════════════════════════════════
+
+When Package 1B is complete:
+
+STOP.
+
+Do NOT continue into:
+
+- final Mapping UI redesign
+- Goal/Outcome generation/review workflow
+- Structured TEXT Import
+- Evidence Requirement Profile
+- C3
+- C4
+- C5
+- C6
+- AI Teacher runtime integration
+
+Return implementation evidence and wait for review.
