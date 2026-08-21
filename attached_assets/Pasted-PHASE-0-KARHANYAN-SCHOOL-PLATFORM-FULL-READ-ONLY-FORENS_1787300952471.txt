@@ -1,0 +1,1198 @@
+PHASE 0 — KARHANYAN SCHOOL PLATFORM
+FULL READ-ONLY FORENSIC AUDIT
+TARGET-vs-CURRENT GAP MATRIX
+
+IMPORTANT:
+This is AUDIT ONLY.
+
+DO NOT:
+- edit code
+- create code
+- delete code
+- run migrations
+- change database data
+- change schema
+- modify frontend
+- modify backend
+- modify prompts
+- modify AI Teacher behavior
+- fix bugs
+- refactor
+- create implementation tasks
+- restart/reset learner sessions
+- alter Session 51 or any historical learner session
+
+You may inspect:
+- repository/codebase
+- frontend
+- backend/API
+- services
+- database schema
+- relevant DB records read-only
+- existing tests
+- existing routes
+- current data flows
+- AI integration
+- evidence/scoring logic
+- current UI architecture
+
+The goal is NOT to implement anything.
+
+The goal is to determine exactly WHAT EXISTS NOW,
+WHAT IS PARTIAL,
+WHAT IS ARCHITECTURALLY WRONG,
+WHAT IS MISSING,
+and WHAT IS LEGACY.
+
+════════════════════════════════════════════
+0. TARGET ARCHITECTURE
+════════════════════════════════════════════
+
+Use this as the target model against which the current platform
+must be audited.
+
+Core learning loop:
+
+Curriculum
+→ Knowledge Mapping
+→ Teaching / Learning
+→ Assessment
+→ Evidence
+→ Learner Model
+→ Knowledge Tree
+→ Personalization
+→ Next Best Action
+→ Learning again
+
+Across the whole learning system:
+
+Learning Telemetry
+→ Longitudinal Data
+→ future P(t), L(t), R(t)
+→ future K(t) = P(t) × L(t) × R(t)
+
+IMPORTANT:
+
+We are NOT implementing P/L/R/K now.
+
+We only need to determine whether the current architecture captures
+the raw telemetry necessary to calculate these scientifically later.
+
+Canonical knowledge hierarchy:
+
+Subject
+→ Lesson
+→ Topic / Knowledge Group
+→ MicroNode
+
+MicroNode = one atomic learning objective.
+
+Student-facing Armenian hierarchy:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+════════════════════════════════════════════
+1. AUDIT METHOD
+════════════════════════════════════════════
+
+For EACH block below trace, where applicable:
+
+Frontend
+→ API route
+→ backend/service
+→ database/schema
+→ data write
+→ data read
+→ downstream consumer
+
+Do not infer behavior from filenames alone.
+
+Verify actual implementation.
+
+For every important conclusion provide concrete evidence:
+
+- file path
+- relevant function/component/route name
+- DB table/column if applicable
+- API endpoint if applicable
+- relevant test if applicable
+
+Do NOT paste huge code blocks.
+
+Short evidence references are enough.
+
+════════════════════════════════════════════
+2. STATUS CLASSIFICATION
+════════════════════════════════════════════
+
+Every block MUST receive exactly one primary status:
+
+READY
+PARTIAL
+WRONG ARCHITECTURE
+MISSING
+LEGACY
+
+Definitions:
+
+READY
+= already substantially matches the target architecture.
+
+PARTIAL
+= useful implementation exists but important functionality or
+integration is missing.
+
+WRONG ARCHITECTURE
+= implementation exists but its underlying model conflicts with
+the target architecture and should not simply be extended.
+
+MISSING
+= no meaningful implementation exists.
+
+LEGACY
+= implementation exists but appears superseded, duplicated,
+or should probably be retired after dependency verification.
+
+Do not classify based on UI appearance alone.
+
+════════════════════════════════════════════
+3. CHANGE SIZE
+════════════════════════════════════════════
+
+Estimate change size for each block:
+
+NONE
+SMALL
+MEDIUM
+LARGE
+FOUNDATIONAL
+
+This is architectural change size, not development-time estimation.
+
+Do NOT estimate hours/days.
+
+════════════════════════════════════════════
+4. SEPTEMBER PRIORITY
+════════════════════════════════════════════
+
+Use:
+
+P0 = architecture blocker
+P1 = September MUST
+P2 = September SHOULD
+LATER = after September / research
+
+Current target priority:
+
+Admin                         P1
+Roles / Permissions           P1
+Journal                       P1
+Homework                      P1
+Teacher Workspace             P1
+Student "Այսօր" Dashboard     P1
+
+Mapping                       P0
+Cognitive Path                P0
+Evidence Engine               P0
+Learner Model                 P0
+Telemetry                     P0/P1
+
+Knowledge Tree                P1
+Tests                         P1
+Test → Learning Loop          P1
+
+Traditional Lesson Planning   P1
+Hybrid Lesson Planning        P1
+
+Reporting                     P1
+
+Flashcards                    P2
+Quick Practice                P2
+
+AI Teacher final production   LATER
+Parent Portal                 LATER
+P/L/R/K calculation           LATER
+
+IMPORTANT:
+AI Teacher currently exists and must still be audited.
+"LATER" means final production hardening is later,
+not that its existing implementation should be ignored.
+
+════════════════════════════════════════════
+5. BLOCK 1 — ADMIN
+════════════════════════════════════════════
+
+Audit current Admin architecture.
+
+Determine:
+
+- current Admin pages
+- current Admin capabilities
+- school/class/teacher/student management
+- existing analytics/reporting
+- current role model
+- authorization model
+- whether Super Admin / Director / Deputy Director /
+  other admin roles can be represented
+- whether permissions are granular or hardcoded
+
+Identify what can remain unchanged.
+
+════════════════════════════════════════════
+6. BLOCK 2 — ROLES / PERMISSIONS
+════════════════════════════════════════════
+
+Audit:
+
+- user roles
+- DB representation
+- backend authorization
+- frontend route protection
+- role-specific access
+- whether multiple admin roles are possible
+- whether Parent role exists
+- whether permissions are role-based or individually configurable
+
+Do NOT propose implementation yet.
+
+════════════════════════════════════════════
+7. BLOCK 3 — JOURNAL
+════════════════════════════════════════════
+
+Target journal is NOT a traditional numeric-grade book.
+
+Target functionality:
+
+- present / absent
+- optional late status
+- engagement / participation note
+- behavior / pedagogical note
+- teacher free note where appropriate
+- lesson/day context
+- assigned homework
+- optional academic snapshot derived automatically from learning data
+- link/drill-down to Knowledge Tree
+
+IMPORTANT:
+
+Numeric academic grading is NOT currently part of the target Journal.
+
+Determine:
+
+- whether Journal already exists
+- attendance implementation
+- existing grading implementation
+- behavior/comments fields
+- homework linkage
+- lesson/date/class linkage
+- whether Knowledge Tree/evidence data can already be connected
+- what current structures could be reused
+
+════════════════════════════════════════════
+8. BLOCK 4 — HOMEWORK
+════════════════════════════════════════════
+
+Audit current homework architecture.
+
+Determine:
+
+- assignment creation
+- teacher assignment
+- class/student targeting
+- due date
+- completion/submission
+- student visibility
+- lesson/MicroNode relationship
+- evidence generation, if any
+- current connection to AI Teacher or tests
+
+════════════════════════════════════════════
+9. BLOCK 5 — TEACHER WORKSPACE
+════════════════════════════════════════════
+
+Audit existing Teacher Dashboard.
+
+Map current capabilities:
+
+- subjects/classes
+- lessons
+- mapping
+- tests
+- students
+- results
+- Knowledge Tree
+- homework
+- journal
+- lesson planning
+- analytics
+
+Identify which existing UI areas are reusable.
+
+Do not redesign UI.
+
+════════════════════════════════════════════
+10. BLOCK 6 — STUDENT "ԱՅՍՕՐ" DASHBOARD
+════════════════════════════════════════════
+
+Target:
+
+When student logs in, the main page should answer:
+
+«Ի՞նչ պետք է անեմ այսօր»։
+
+Potential sources:
+
+- today's lessons
+- assignments
+- homework
+- assigned tests
+- flashcards
+- practice
+- later Next Best Action recommendations
+
+Audit current Student Dashboard/navigation.
+
+Determine:
+
+- what already exists
+- whether a central student home exists
+- what APIs/data sources already provide these items
+- what is missing
+
+IMPORTANT:
+"Thisօր" should aggregate existing authoritative data.
+It should not become a duplicate data store.
+
+════════════════════════════════════════════
+11. BLOCK 7 — KNOWLEDGE MAPPING
+════════════════════════════════════════════
+
+THIS IS A FOUNDATIONAL AUDIT.
+
+Canonical hierarchy:
+
+Subject
+→ Lesson
+→ Topic / Knowledge Group
+→ MicroNode
+
+Verify actual DB/API/UI hierarchy.
+
+For MicroNode determine whether current system supports:
+
+- atomic learning objective
+- title
+- learningObjective
+- source content
+- source/page provenance
+- target cognitive level
+- Cognitive Path
+- level-specific teaching content
+- performance objective
+- success criterion
+- evidence requirements
+- eligible task types
+- exercises/tasks
+- prerequisites/dependencies
+- misconceptions
+- knowledge boundaries
+- teacher approval/status
+- ordering
+
+Audit BOTH:
+- automatic mapping
+- manual mapping / teacher review
+
+Determine whether current mapping output is actually sufficient
+to drive Tests, Knowledge Tree and AI Teacher deterministically.
+
+Identify duplicated or conflicting representations.
+
+════════════════════════════════════════════
+12. BLOCK 8 — COGNITIVE PATH
+════════════════════════════════════════════
+
+THIS IS FOUNDATIONAL.
+
+Audit current implementation of:
+
+Remember
+→ Understand
+→ Apply
+→ Analyze
+→ Evaluate
+→ Create
+
+Do not assume every MicroNode needs every level.
+
+Verify:
+
+- target cognitive level
+- current cognitive-level records
+- level ordering
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes / eligible task types
+- required evidence
+- attached exercises
+- progression rules
+
+VERY IMPORTANT:
+
+Audit whether the current architecture incorrectly assumes:
+
+"Cognitive Level = fixed number of exercises"
+
+Especially inspect Remember.
+
+Target semantic principle:
+
+Remember should verify recognition / recall / reproduction
+of the mapped knowledge:
+
+- fact
+- definition
+- rule
+- term
+- formula
+- quantity/value
+
+It should NOT automatically require two ordinary exercises.
+
+Understand should verify actual understanding:
+explanation, distinction, reasoning, relation, example recognition.
+
+Apply should verify application of knowledge in an appropriate
+task/new situation.
+
+Report exactly where current implementation conflicts with this.
+
+════════════════════════════════════════════
+13. BLOCK 9 — UNIFIED EVIDENCE ENGINE
+════════════════════════════════════════════
+
+THIS IS FOUNDATIONAL.
+
+Find ALL sources currently capable of producing learning evidence:
+
+- Quiz/Test
+- AI Teacher
+- exercises
+- human teacher
+- practice
+- flashcards
+- hybrid lesson
+- retention checks
+- anything else
+
+Determine whether they use ONE authoritative evidence model
+or multiple independent scoring/mastery systems.
+
+For current evidence events determine whether they preserve:
+
+Student
+MicroNode
+Cognitive Level
+Result
+Correctness
+Assistance
+Evidence Quality
+Source
+Timestamp
+Task identity
+Attempt identity
+
+Also inspect:
+
+- mastery calculation
+- confidence calculation
+- evidence aggregation
+- asynchronous processing
+- duplicate evidence risk
+- assisted vs independent evidence
+
+Identify competing sources of truth.
+
+════════════════════════════════════════════
+14. BLOCK 10 — LEARNER MODEL
+════════════════════════════════════════════
+
+THIS IS FOUNDATIONAL.
+
+Determine whether a canonical learner-state model currently exists.
+
+For each Student × MicroNode, target model should eventually support:
+
+- curriculum target cognitive level
+- current demonstrated cognitive ceiling
+- level-by-level state
+- mastery
+- confidence
+- evidence
+- assistance
+- attempt history
+- last activity
+- retention
+- remediation history
+
+IMPORTANT:
+
+Target = Apply
+Demonstrated = Understand
+
+must NOT become:
+
+"MicroNode fully mastered."
+
+Determine how current system represents this today.
+
+Identify whether Knowledge Tree, quiz scoring and AI Teacher
+derive learner state from the same authority.
+
+════════════════════════════════════════════
+15. BLOCK 11 — KNOWLEDGE TREE
+════════════════════════════════════════════
+
+Target visible states:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Hierarchy:
+
+Subject
+→ Lesson
+→ Knowledge Group
+→ MicroNode
+
+Audit:
+
+- frontend
+- APIs
+- DB/read models
+- scoring source
+- refresh/update behavior
+- evidence integration
+- asynchronous updates
+- drill-down
+- cognitive depth support
+
+Determine exactly:
+
+What makes a MicroNode become:
+
+Գիտի?
+Մասնակի գիտի?
+Չգիտի?
+Դեռ չի ուսումնասիրել?
+
+Verify actual code — do not rely on prior assumptions.
+
+Check whether Knowledge Tree is truly a projection of Learner Model
+or currently has separate scoring logic.
+
+════════════════════════════════════════════
+16. BLOCK 12 — TEST / ASSESSMENT SYSTEM
+════════════════════════════════════════════
+
+Audit:
+
+- quiz creation
+- lesson selection
+- multi-lesson selection
+- MicroNode selection
+- question generation
+- question count logic
+- question → MicroNode linkage
+- question → Cognitive Level linkage
+- scoring
+- attempts
+- quiz answers
+- evidence creation
+- Knowledge Tree update
+- teacher results
+- student results
+
+Determine whether current test results can produce diagnosis such as:
+
+MN1 → Գիտի
+MN2 → Մասնակի գիտի
+MN3 → Չգիտի
+
+instead of only total score.
+
+Identify architectural gaps.
+
+════════════════════════════════════════════
+17. BLOCK 13 — TEST → LEARNING LOOP
+════════════════════════════════════════════
+
+Audit whether after a test the system can currently support:
+
+- test from previous mistakes
+- test from "Չգիտի"
+- test from "Մասնակի գիտի"
+- targeted MicroNode retest
+- learning recommendation
+- Knowledge Tree update after retest
+
+Target loop:
+
+Test
+→ Diagnosis
+→ Targeted Learning
+→ Retest
+→ New Evidence
+→ Learner Model
+→ Knowledge Tree Update
+
+Determine what already exists and what is missing.
+
+════════════════════════════════════════════
+18. BLOCK 14 — FLASHCARDS
+════════════════════════════════════════════
+
+Audit whether any flashcard architecture exists.
+
+Potential target generation sources:
+
+- Lesson
+- MicroNode
+- mistakes
+- Չգիտի
+- Մասնակի գիտի
+
+Determine:
+
+- current implementation
+- reusable content structures
+- whether flashcards could be mapped to MicroNode/Cognitive Level
+- whether any current evidence architecture could accept flashcard evidence
+
+Do not implement.
+
+════════════════════════════════════════════
+19. BLOCK 15 — QUICK PRACTICE
+════════════════════════════════════════════
+
+Audit whether a lightweight targeted practice mechanism already exists
+outside full quizzes and AI Teacher.
+
+Determine reusable exercise/task architecture.
+
+Do not implement.
+
+════════════════════════════════════════════
+20. BLOCK 16 — TRADITIONAL LESSON PLANNING
+════════════════════════════════════════════
+
+Audit whether lesson planning currently exists.
+
+Target teacher flow:
+
+Class
+→ Subject
+→ Lesson
+→ Traditional lesson
+
+Potential plan:
+
+Goal
+→ Prior knowledge activation
+→ Explanation
+→ Example
+→ Practice
+→ Check
+→ Summary
+→ Homework
+
+Teacher should eventually be able to:
+
+create
+→ edit
+→ approve
+→ use
+
+Determine what already exists.
+
+════════════════════════════════════════════
+21. BLOCK 17 — HYBRID LESSON PLANNING
+════════════════════════════════════════════
+
+Audit current architecture for hybrid teaching.
+
+Target concept:
+
+Human Teacher
+→ whole-class instruction
+
+AI / individual activity
+→ personalized learning
+
+Student
+→ independent work
+
+Human Teacher
+→ targeted intervention
+
+Test / Practice
+→ individual check
+
+Human Teacher
+→ synthesis
+
+Determine whether current architecture already exposes enough
+learner/node/task/evidence state for a future live teacher view:
+
+- current MicroNode
+- current Cognitive Level
+- progress
+- difficulty
+- help request
+- human intervention need
+
+Do not build it.
+
+════════════════════════════════════════════
+22. BLOCK 18 — REPORTING / ANALYTICS
+════════════════════════════════════════════
+
+Audit existing reporting.
+
+Determine what can currently be viewed by:
+
+Student
+Teacher
+Admin/Director
+
+Potential drill-down:
+
+School
+→ Grade
+→ Class
+→ Subject
+→ Lesson
+→ Knowledge Group
+→ MicroNode
+
+Separate:
+
+operational school reporting
+
+from
+
+future scientific learning-effectiveness analytics.
+
+════════════════════════════════════════════
+23. BLOCK 19 — LEARNING TELEMETRY
+════════════════════════════════════════════
+
+THIS IS FOUNDATIONAL.
+
+Audit current database/events/logging to determine whether we already
+capture the raw data required for future longitudinal analysis.
+
+Check each item explicitly:
+
+- student
+- session
+- lesson
+- MicroNode
+- cognitive level
+- timestamp
+- task identity
+- task start
+- task end
+- response latency
+- attempt count
+- correctness/result
+- help count
+- assistance level
+- teaching strategy/intervention
+- remediation strategy
+- task difficulty
+- evidence quality
+- evidence source
+- demonstrated cognitive level
+- target cognitive level
+- progression
+- session readiness
+- workload
+- completion
+- later retention evidence
+
+For EACH field report:
+
+EXISTS
+PARTIAL
+MISSING
+or DERIVABLE
+
+and identify the actual source/table/field when it exists.
+
+Do NOT invent P/L/R formulas.
+
+════════════════════════════════════════════
+24. BLOCK 20 — AI TEACHER
+════════════════════════════════════════════
+
+Audit current AI Teacher only to determine architectural fit.
+
+Do NOT continue feature development.
+
+Trace:
+
+Mapping
+→ Cognitive Path
+→ Backend decision/state
+→ AI generation
+→ Task
+→ Evaluation
+→ Evidence
+→ Progression
+→ Learner Model / Knowledge Tree
+
+Determine what authority currently belongs to:
+
+Backend
+Database
+AI model
+
+Target direction:
+
+Backend/Mapping/Learner Model should own:
+
+- current MicroNode
+- current Cognitive Level
+- stage
+- required evidence
+- active task
+- assistance
+- progression
+- remediation
+- next level
+- next MicroNode
+- completion
+
+AI should primarily provide:
+
+- explanation
+- alternative explanation
+- example
+- contrast example
+- hint
+- feedback wording
+- semantic evaluation where necessary
+- bounded equivalent task generation where necessary
+
+Identify places where AI currently has too much authority.
+
+Also identify whether current AI Teacher bugs are actually caused by:
+
+Mapping
+Cognitive Path
+Evidence
+Learner Model
+or AI orchestration itself.
+
+════════════════════════════════════════════
+25. BLOCK 21 — PARENT PORTAL
+════════════════════════════════════════════
+
+Parent implementation is LATER,
+but audit whether any parent role/data relationship already exists.
+
+Future target:
+
+Parent ↔ Child
+
+Parent can see:
+
+- journal/attendance/homework as permitted
+- Knowledge Tree
+- progress
+
+Parent must NOT see internal AI/debug data.
+
+Only report architectural readiness.
+
+════════════════════════════════════════════
+26. BLOCK 22 — P/L/R/K READINESS
+════════════════════════════════════════════
+
+DO NOT calculate P, L, R or K.
+
+Audit only whether future calculation is scientifically possible
+from the data currently being captured.
+
+P(t) future observable candidates:
+
+- session readiness
+- workload tolerance
+- response pace/latency
+- assistance
+- attempts
+- cognitive cost
+- difficulty tolerance
+- persistence
+- completion
+- progression
+
+L(t) requires knowing intervention/teaching strategy, such as:
+
+- human explanation
+- AI explanation
+- example
+- contrast example
+- step-by-step
+- hint
+- remediation
+- traditional lesson
+- hybrid lesson
+- flashcards
+- practice
+- testing
+
+R(t) requires delayed evidence:
+
+- later quiz
+- later flashcard
+- repetition
+- later AI check
+- reuse of prior knowledge in later work
+
+Report current readiness only.
+
+════════════════════════════════════════════
+27. REQUIRED OUTPUT — PART A
+EXECUTIVE FINDINGS
+════════════════════════════════════════════
+
+First give a concise executive summary:
+
+1. What is already strong/reusable?
+2. What are the biggest architectural blockers?
+3. Which current systems have competing sources of truth?
+4. Which blocks are currently most likely to create downstream rework?
+5. What should absolutely NOT be extended before contracts are frozen?
+
+No implementation yet.
+
+════════════════════════════════════════════
+28. REQUIRED OUTPUT — PART B
+MASTER GAP MATRIX
+════════════════════════════════════════════
+
+Return ONE table with exactly these columns:
+
+| Block | Current Status | Frontend | Backend | DB | Main Gap | Change Size | Dependencies | September Priority |
+
+Rows:
+
+1. Admin
+2. Roles / Permissions
+3. Journal
+4. Homework
+5. Teacher Workspace
+6. Student "Այսօր"
+7. Mapping
+8. Cognitive Path
+9. Evidence Engine
+10. Learner Model
+11. Knowledge Tree
+12. Tests
+13. Test → Learning
+14. Flashcards
+15. Quick Practice
+16. Traditional Lesson Planning
+17. Hybrid Lesson Planning
+18. Reporting
+19. Telemetry
+20. AI Teacher
+21. Parent
+22. P/L/R/K Readiness
+
+Current Status MUST be one of:
+
+READY
+PARTIAL
+WRONG ARCHITECTURE
+MISSING
+LEGACY
+
+Change Size MUST be one of:
+
+NONE
+SMALL
+MEDIUM
+LARGE
+FOUNDATIONAL
+
+Do not omit any row.
+
+════════════════════════════════════════════
+29. REQUIRED OUTPUT — PART C
+FOUNDATIONAL CONTRACT AUDIT
+════════════════════════════════════════════
+
+Give a deeper audit of ONLY these five contracts:
+
+C1 — Knowledge Mapping
+C2 — Cognitive Path
+C3 — Evidence
+C4 — Learner Model
+C5 — Telemetry
+
+For each:
+
+A. What exists now
+B. Authoritative DB tables
+C. Authoritative backend/service logic
+D. Current consumers
+E. Duplicated/conflicting logic
+F. Missing fields/semantics
+G. Whether current architecture can be retained
+H. What must be decided BEFORE implementation
+
+Do NOT design the final replacement yet.
+
+════════════════════════════════════════════
+30. REQUIRED OUTPUT — PART D
+DATA FLOW MAP
+════════════════════════════════════════════
+
+Map the REAL current data flows.
+
+At minimum:
+
+Mapping
+→ AI Teacher
+
+Mapping
+→ Quiz
+
+Quiz Answer
+→ Evidence
+→ Knowledge Tree
+
+AI Teacher Answer
+→ Evidence
+→ Knowledge Tree
+
+Homework
+→ current result/evidence path if any
+
+Teacher action
+→ learner state if any
+
+Telemetry
+→ where it is currently stored
+
+For every arrow mark:
+
+WORKING
+PARTIAL
+BROKEN
+MISSING
+or DUPLICATED
+
+════════════════════════════════════════════
+31. REQUIRED OUTPUT — PART E
+DATABASE INVENTORY
+════════════════════════════════════════════
+
+List ONLY learning/school-management tables relevant to this audit.
+
+For each:
+
+Table
+Purpose
+Primary owner/block
+Important relations
+Current consumers
+Potential duplication/conflict
+Keep / Review / Likely Legacy
+
+Do not dump full schemas unless necessary.
+
+════════════════════════════════════════════
+32. REQUIRED OUTPUT — PART F
+SEPTEMBER DEPENDENCY MAP
+════════════════════════════════════════════
+
+Do NOT create implementation tasks yet.
+
+Based on evidence, show dependency order.
+
+Example structure only:
+
+FOUNDATION
+A → B → C
+
+then
+
+SCHOOL OPERATIONS
+...
+
+then
+
+LEARNING FEATURES
+...
+
+The order must come from the actual repository audit,
+not from assumptions.
+
+Identify which September features can be developed independently
+and which MUST wait for foundational contracts.
+
+════════════════════════════════════════════
+33. REQUIRED OUTPUT — PART G
+CRITICAL QUESTIONS FOR US
+════════════════════════════════════════════
+
+At the end list ONLY architectural/product decisions that cannot
+be answered from the repository.
+
+Do not ask questions whose answers can be found in code or DB.
+
+For each unresolved question explain:
+
+- why the repository cannot answer it
+- which contract/block it affects
+- what downstream decision depends on it
+
+This section is important because we will answer these questions
+together BEFORE implementation.
+
+════════════════════════════════════════════
+34. FINAL RULE
+════════════════════════════════════════════
+
+STOP AFTER THE AUDIT.
+
+Do NOT:
+
+- fix anything
+- create implementation tasks
+- propose code patches
+- change schema
+- implement UI
+- modify AI Teacher
+- run migrations
+
+We will review the audit manually first.
+
+The next phase will begin only after we approve:
+
+C1 Mapping
+C2 Cognitive Path
+C3 Evidence
+C4 Learner Model
+C5 Telemetry
+
+and freeze the architecture.
