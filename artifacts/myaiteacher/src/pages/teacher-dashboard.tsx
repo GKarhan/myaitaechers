@@ -2636,7 +2636,7 @@ function LessonNodesPanel({
               <p className="text-xs text-white/70">
                 {requiredSessionMinutes != null
                   ? `${requiredSessionMinutes} rop.`
-                  : <span className="text-muted-foreground/40 italic">Chsahmanvatsi e</span>}
+                  : <span className="text-muted-foreground/40 italic">Սահմանված չէ</span>}
               </p>
             )}
           </div>

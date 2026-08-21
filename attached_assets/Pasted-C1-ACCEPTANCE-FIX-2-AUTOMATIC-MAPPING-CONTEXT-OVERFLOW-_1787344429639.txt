@@ -1,0 +1,504 @@
+C1 ACCEPTANCE FIX #2
+AUTOMATIC MAPPING CONTEXT OVERFLOW — FORENSIC AUDIT + MINIMAL FIX
+
+We are continuing the REAL C1 end-to-end acceptance test.
+
+Acceptance Fix #1 has PASSED in the real browser flow:
+
+- source-based Goal proposal works
+- complete Goal/Outcome draft import works
+- teacher confirmation works with zero MicroNodes
+- canonical Goal exists
+- 3 canonical Outcomes exist
+- Goal/Outcomes are teacher-confirmed
+- detailed mapping is now correctly eligible
+
+DO NOT change that workflow.
+
+We have now found the NEXT real blocker.
+
+════════════════════════════════════════════════════
+1 — OBSERVED REAL FAILURE
+════════════════════════════════════════════════════
+
+Real lesson:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Topic:
+Բնական թվերը և կոորդինատային ճառագայթը
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+approximately pages 10–11
+
+Goal/Outcomes are already teacher-confirmed.
+
+When the teacher clicks:
+
+🗺️ Ավտոմատ
+
+automatic detailed mapping fails with:
+
+400 This endpoint's maximum context length is 163840 tokens.
+However, you requested about 184160 tokens
+(176160 of text input, 8000 in the output).
+
+Therefore:
+
+- mapping did NOT complete
+- no valid MicroNode mapping was produced
+- this is a C1 acceptance BLOCKER
+
+════════════════════════════════════════════════════
+2 — IMPORTANT: DO NOT APPLY A BLIND FIX
+════════════════════════════════════════════════════
+
+DO NOT simply:
+
+- switch to a larger-context model
+- truncate arbitrary source text
+- reduce source fidelity
+- remove mapping requirements
+- remove the canonical Goal/Outcomes
+- reduce output quality
+- silently drop source blocks
+- use context compression as a workaround
+- rewrite the whole mapper
+
+FIRST perform a forensic audit of the exact mapping request.
+
+We need to know WHY a very small lesson is producing approximately
+176,160 input tokens.
+
+That size is suspicious and likely indicates unnecessary or duplicated
+context.
+
+════════════════════════════════════════════════════
+3 — FORENSIC AUDIT REQUIRED
+════════════════════════════════════════════════════
+
+Trace the exact code path executed by:
+
+teacher
+→ 🗺️ Ավտոմատ
+→ mapping API route
+→ mapping service
+→ AI request
+
+Identify:
+
+A. exact frontend action/API endpoint
+
+B. exact backend route
+
+C. exact mapping function(s)
+
+D. exact AI model call
+
+E. every major component inserted into the prompt/request
+
+For the failing real lesson, measure BEFORE the AI call:
+
+- system/instruction prompt size
+- mapping contract/schema size
+- lesson source size
+- number of source blocks
+- source page range actually included
+- confirmed Goal/Outcomes size
+- existing mapping/context size
+- exercises size
+- any Teaching Package data included
+- any Cognitive Path data included
+- any PDF/full-book content included
+- conversation/history if any
+- duplicate content
+- requested max output tokens
+
+Return approximate character/token contribution for each major component.
+
+Do not guess.
+
+Instrument/log safely if necessary.
+
+Do not log sensitive learner data.
+
+════════════════════════════════════════════════════
+4 — VERIFY SOURCE SCOPE
+════════════════════════════════════════════════════
+
+This lesson is only approximately pages 10–11.
+
+Verify whether automatic mapping is accidentally sending:
+
+- the entire textbook
+- all extracted PDF pages
+- all source blocks for the book
+- unrelated lessons
+- duplicated source text
+- both raw PDF text AND duplicated extracted blocks
+- old mapping outputs
+- Teaching Package content that does not belong in mapping generation
+- Cognitive Path content that should be generated downstream
+- repeated prompt/contract text
+
+The mapper should receive the complete SOURCE required for THIS lesson,
+not unrelated book content.
+
+IMPORTANT:
+
+Do not solve this by losing legitimate source coverage.
+
+The target is:
+
+FULL RELEVANT LESSON SOURCE
+not
+FULL TEXTBOOK SOURCE.
+
+════════════════════════════════════════════════════
+5 — CHECK FOR DUPLICATION
+════════════════════════════════════════════════════
+
+Explicitly inspect whether the same lesson content appears multiple times
+inside the final AI request.
+
+Examples:
+
+- sourceText repeated through multiple objects
+- raw pages + source blocks containing identical text
+- prompt embeds serialized lesson object containing source again
+- confirmed Goal/Outcomes repeated unnecessarily
+- mapping contract repeated
+- previous AI proposal included even though canonical Goal/Outcomes are
+  already confirmed
+- existing mapping serialized back into a fresh mapping request
+
+Report any duplication found.
+
+════════════════════════════════════════════════════
+6 — CANONICAL INPUT BOUNDARY
+════════════════════════════════════════════════════
+
+For NEW detailed mapping after Goal/Outcome confirmation, the mapper
+should conceptually need only the authoritative inputs required to
+produce canonical mapping.
+
+Expected core inputs are approximately:
+
+1. lesson metadata
+2. complete relevant lesson source
+3. teacher-confirmed canonical Lesson Goal
+4. teacher-confirmed canonical Outcomes
+5. mapping contract/instructions required for:
+   - Topics
+   - atomic MicroNodes
+   - source traceability
+   - Outcome alignment
+   - required cognitive depth
+   - exercises/source activities preservation
+   - dependencies/knowledge boundaries where defined
+
+Do not automatically include downstream/runtime state unless the mapping
+contract genuinely requires it.
+
+In particular, inspect whether these are unnecessarily entering the
+mapping-generation request:
+
+- learner state
+- Knowledge Tree
+- Evidence
+- AI Teacher session state
+- chat history
+- generated Teaching Package
+- generated Cognitive Path
+- quizzes
+- unrelated lessons
+
+They must not be present without a concrete mapping reason.
+
+════════════════════════════════════════════════════
+7 — FIX PRINCIPLE
+════════════════════════════════════════════════════
+
+After identifying the ROOT CAUSE, apply the smallest architectural fix.
+
+Preferred order:
+
+1. remove accidental duplicate context
+2. scope source to the exact lesson/page/source-block range
+3. remove unrelated downstream/runtime data
+4. avoid serializing redundant representations of the same source
+5. make request-size checking explicit before the model call
+
+Do NOT degrade source fidelity.
+
+Do NOT silently truncate required lesson source.
+
+If the complete legitimate source for a genuinely large lesson still
+cannot fit safely, STOP and report that separately.
+
+Do not invent a lossy truncation strategy in this task.
+
+════════════════════════════════════════════════════
+8 — ADD A PRE-FLIGHT CONTEXT BUDGET CHECK
+════════════════════════════════════════════════════
+
+Add a lightweight deterministic pre-flight guard before the mapping AI
+call.
+
+It should be able to detect when the assembled request is too large for
+the configured model/context budget.
+
+The guard should produce a controlled application error instead of
+forwarding an obviously oversized request and exposing the raw provider
+400 error to the teacher.
+
+Do not hardcode assumptions if the project already exposes model/context
+configuration.
+
+Keep implementation minimal.
+
+Teacher-facing error should be understandable and Armenian if this UI
+normally uses Armenian.
+
+Do not display raw provider internals such as:
+
+"176160 input + 8000 output"
+
+as the main teacher-facing error.
+
+Server logs may retain useful diagnostic information.
+
+════════════════════════════════════════════════════
+9 — PRESERVE CONFIRMED GOAL/OUTCOMES
+════════════════════════════════════════════════════
+
+The teacher has already confirmed canonical Goal/Outcomes.
+
+A failed detailed mapping attempt MUST NOT:
+
+- reset confirmation
+- delete Goal
+- delete Outcomes
+- revert them to draft
+- duplicate them
+- modify their text
+
+Mapping retry must reuse the same teacher-confirmed canonical
+Goal/Outcomes.
+
+════════════════════════════════════════════════════
+10 — ATOMIC MAPPING FAILURE
+════════════════════════════════════════════════════
+
+Verify failure behavior.
+
+If the AI mapping call fails:
+
+- do not leave partially inserted Topics
+- do not leave partially inserted MicroNodes
+- do not leave broken Outcome relations
+- do not leave partial exercises
+- do not corrupt existing canonical authoring state
+
+The mapping write should remain atomic according to the existing
+architecture.
+
+If current behavior already guarantees this, prove it rather than
+rewriting it.
+
+════════════════════════════════════════════════════
+11 — REAL LESSON RETEST
+════════════════════════════════════════════════════
+
+After the fix, use the SAME real acceptance lesson:
+
+Մաթեմատիկա 5
+→ Շենքերի համարակալումը
+→ §1.1
+→ approximately pages 10–11
+
+Do NOT switch to an easier synthetic lesson.
+
+Use the already teacher-confirmed canonical Goal/Outcomes.
+
+Run:
+
+🗺️ Ավտոմատ
+
+Expected:
+
+- no context overflow
+- detailed mapping completes
+- Topics created
+- MicroNodes created
+- source references preserved
+- canonical Goal/Outcomes unchanged
+- Outcome relations available for subsequent validation
+- no partial/duplicate data
+
+Record request-size diagnostics before and after the fix.
+
+We specifically want evidence such as:
+
+BEFORE:
+~176k input tokens
+
+AFTER:
+X input tokens
+
+and WHY it dropped.
+
+════════════════════════════════════════════════════
+12 — CONTENT QUALITY IS NOT YET PASS
+════════════════════════════════════════════════════
+
+Important:
+
+If automatic mapping successfully completes after this fix,
+DO NOT declare C1 Mapping fully accepted.
+
+This task only removes the context-overflow blocker.
+
+After successful generation, we will manually inspect:
+
+- Topics
+- MicroNode granularity
+- source coverage
+- source fidelity
+- Outcome↔MicroNode coverage
+- REQUIRED/SUPPORTING
+- required cognitive depth
+- Teaching Package
+- Cognitive Path
+- exercises/tasks
+- validation/final approval
+
+Do not hide content-quality problems behind "request succeeded".
+
+════════════════════════════════════════════════════
+13 — REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add focused regression coverage for:
+
+A. lesson-scoped source selection
+
+B. no accidental duplicate source payload
+
+C. confirmed Goal/Outcomes included once as authoritative curriculum
+   constraints
+
+D. unrelated downstream/runtime state excluded
+
+E. oversized request intercepted by pre-flight guard
+
+F. provider raw context-limit error not exposed directly to teacher
+
+G. failed mapping leaves no partial canonical mapping
+
+H. confirmed Goal/Outcomes survive mapping failure unchanged
+
+I. successful retry does not duplicate mapping records
+
+Then run relevant existing:
+
+- Package 1A
+- Package 1B
+- Package 1C
+- mapping tests
+- Cognitive Path regressions
+
+Do not modify unrelated behavior merely to make tests pass.
+
+════════════════════════════════════════════════════
+14 — REQUIRED REPORT
+════════════════════════════════════════════════════
+
+Return:
+
+A. ROOT CAUSE
+
+Exact reason this small lesson assembled ~176k input tokens.
+
+B. REQUEST COMPOSITION — BEFORE
+
+Show major components and approximate size.
+
+C. FILES CHANGED
+
+D. FIX IMPLEMENTED
+
+Explain exactly what was removed/scoped/deduplicated.
+
+E. REQUEST COMPOSITION — AFTER
+
+Show new approximate input size.
+
+F. SOURCE FIDELITY
+
+Prove the complete relevant lesson source is still included.
+
+G. FAILURE ATOMICITY
+
+H. GOAL/OUTCOME PRESERVATION
+
+I. TEST RESULTS
+
+J. REAL BROWSER RETEST
+
+K. GENERATED MAPPING COUNTS
+
+Return:
+- Topic count
+- MicroNode count
+- exercise/task count
+- Outcome relation count
+
+L. REMAINING C1 ISSUES
+
+Do not implement unrelated improvements.
+
+════════════════════════════════════════════════════
+15 — ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS this fix only if:
+
+[ ] Exact ~176k root cause identified.
+
+[ ] No blind model/context-size workaround used.
+
+[ ] Full relevant lesson source preserved.
+
+[ ] Unrelated source/context removed.
+
+[ ] Duplicate source/context removed if found.
+
+[ ] Confirmed Goal/Outcomes preserved.
+
+[ ] Pre-flight size protection exists.
+
+[ ] Failed mapping is atomic.
+
+[ ] Same real lesson maps successfully.
+
+[ ] Request size is documented before/after.
+
+[ ] Package 1A/1B/1C regressions remain green.
+
+[ ] No AI Teacher / Evidence / Learner Model / KT / Quiz changes.
+
+If any item fails:
+
+STOP and report the blocker.
+
+Do NOT proceed to Package 1D.
+
+Do NOT declare C1 Mapping frozen.
