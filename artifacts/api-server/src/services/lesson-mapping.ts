@@ -13,6 +13,7 @@ import { logger } from "../lib/logger";
 import { validateSourceCoverage, type CoverageValidationResult } from "../lib/coverage-validator.js";
 import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
 import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
+import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
 
 // ── Activity preservation helpers ─────────────────────────────────────────────
 
@@ -209,6 +210,88 @@ export function normalizeActivityPlacements(
 }
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
+export const PASS1_CONTEXT_WINDOW_TOKENS = 163_840;
+export const PASS1_MAX_OUTPUT_TOKENS = 8_000;
+// Armenian textbook text tokenizes more densely than English. This deliberately
+// conservative upper-bound catches requests before the provider rejects them.
+const CONSERVATIVE_CHARS_PER_TOKEN = 1.2;
+
+export interface MappingContextDiagnostics {
+  stage: "pass1-text";
+  model: string;
+  contextWindowTokens: number;
+  requestedOutputTokens: number;
+  estimatedInputTokens: number;
+  estimatedTotalTokens: number;
+  components: {
+    systemInstructionChars: number;
+    lessonMetadataChars: number;
+    lessonSourceChars: number;
+    confirmedGoalChars: number;
+    confirmedOutcomeChars: number;
+    existingMappingChars: number;
+    exercisesChars: number;
+    teachingPackageChars: number;
+    cognitivePathChars: number;
+    historyChars: number;
+  };
+}
+
+export interface VisionMappingContextDiagnostics {
+  stage: "pass1-vision";
+  model: string;
+  contextWindowTokens: number;
+  requestedOutputTokens: number;
+  estimatedInputTokens: number;
+  estimatedTotalTokens: number;
+  components: {
+    systemInstructionChars: number;
+    lessonMetadataChars: number;
+    imageCount: number;
+    reservedImageInputTokens: number;
+    confirmedGoalChars: number;
+    confirmedOutcomeChars: number;
+    existingMappingChars: number;
+    exercisesChars: number;
+    teachingPackageChars: number;
+    cognitivePathChars: number;
+    historyChars: number;
+  };
+}
+
+export class MappingContextBudgetError extends Error {
+  readonly teacherMessage =
+    "Դասի աղբյուրի ծավալը գերազանցում է քարտեզագրման թույլատրելի սահմանը։ Ստուգեք էջերի միջակայքը և փորձեք կրկին։";
+
+  constructor(readonly diagnostics: MappingContextDiagnostics | VisionMappingContextDiagnostics) {
+    super("Mapping request exceeds the configured context budget");
+    this.name = "MappingContextBudgetError";
+  }
+}
+
+export class MappingSourceTruncatedError extends Error {
+  readonly teacherMessage =
+    "Դասի աղբյուրի ամբողջական քաղարկումը չհաջողվեց։ Փոխեք էջերի միջակայքը կամ ստուգեք աղբյուրը և փորձեք կրկին։";
+
+  constructor() {
+    super("Pass 1 provider response was truncated before all source blocks were extracted");
+    this.name = "MappingSourceTruncatedError";
+  }
+}
+
+export function getTeacherFacingMappingFailure(error: unknown): string {
+  if (error instanceof MappingContextBudgetError) return error.teacherMessage;
+  if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/maximum context length|context length|too many tokens|context window/i.test(message)) {
+    return "Քարտեզագրման հարցումը չափազանց մեծ է։ Ստուգեք դասի էջերի միջակայքը և փորձեք կրկին։";
+  }
+  return "Քարտեզագրումը չհաջողվեց։ Խնդրում ենք փորձել կրկին։";
+}
+
+export function assertPass1ResponseComplete(finishReason: string | null | undefined): void {
+  if (finishReason === "length") throw new MappingSourceTruncatedError();
+}
 
 /**
  * Extracts the real textbook text for a specific page range from a PDF
@@ -220,9 +303,13 @@ export async function extractPdfPageRange(
   pagesFrom: number,
   pagesTo: number
 ): Promise<string> {
+  const range = validateRequiredLessonPageRange(pagesFrom, pagesTo);
+  if (!range.valid) {
+    throw new Error(range.error);
+  }
   const dataBuffer = fs.readFileSync(filePath);
   const pageNumbers: number[] = [];
-  for (let p = pagesFrom; p <= pagesTo; p++) pageNumbers.push(p);
+  for (let p = range.pagesFrom; p <= range.pagesTo; p++) pageNumbers.push(p);
 
   const parser = new PDFParse({ data: dataBuffer });
   try {
@@ -250,6 +337,129 @@ export interface LessonMappingInput {
   lessonText: string; // the real extracted textbook text for this lesson's pages
   teacherGoal?: string | null;       // teacher's draft goal — refine against text, don't silently overwrite
   teacherOutcomes?: string[] | null; // teacher's draft outcomes — refine if present, derive if absent
+}
+
+export function buildPass1TextRequest(input: LessonMappingInput): {
+  userPrompt: string;
+  diagnostics: MappingContextDiagnostics;
+} {
+  const metadataLines = [
+    `SUBJECT: ${input.subjectName}`,
+    `LESSON TITLE: ${input.lessonTitle}`,
+    input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`     : "",
+    input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}`   : "",
+    input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`    : "",
+    input.pagesFrom && input.pagesTo
+      ? `PAGES: ${input.pagesFrom}–${input.pagesTo}` : "",
+    "",
+    "TEXTBOOK TEXT FROM THESE PAGES:",
+  ].filter(Boolean);
+  const metadataText = metadataLines.join("\n");
+  const lessonSource = input.lessonText || "(no text extracted from PDF)";
+  const userPrompt = `${metadataText}\n${lessonSource}`;
+  const components = {
+    systemInstructionChars: PASS1_SYSTEM_PROMPT.length,
+    lessonMetadataChars: metadataText.length,
+    lessonSourceChars: lessonSource.length,
+    // Pass 1 intentionally receives no curriculum/runtime state: it is a
+    // verbatim source extraction boundary. Confirmed constraints enter Pass 2.
+    confirmedGoalChars: 0,
+    confirmedOutcomeChars: 0,
+    existingMappingChars: 0,
+    exercisesChars: 0,
+    teachingPackageChars: 0,
+    cognitivePathChars: 0,
+    historyChars: 0,
+  };
+  const estimatedInputTokens = Math.ceil(
+    (components.systemInstructionChars + userPrompt.length) / CONSERVATIVE_CHARS_PER_TOKEN,
+  );
+  return {
+    userPrompt,
+    diagnostics: {
+      stage: "pass1-text",
+      model: MODEL,
+      contextWindowTokens: PASS1_CONTEXT_WINDOW_TOKENS,
+      requestedOutputTokens: PASS1_MAX_OUTPUT_TOKENS,
+      estimatedInputTokens,
+      estimatedTotalTokens: estimatedInputTokens + PASS1_MAX_OUTPUT_TOKENS,
+      components,
+    },
+  };
+}
+
+export function assertPass1ContextBudget(diagnostics: MappingContextDiagnostics): void {
+  logger.info({ mappingContext: diagnostics }, "lesson mapping context preflight");
+  if (diagnostics.estimatedTotalTokens > diagnostics.contextWindowTokens) {
+    throw new MappingContextBudgetError(diagnostics);
+  }
+}
+
+/**
+ * Vision providers bill/count image input differently from text. The mapping
+ * path is intentionally bounded to two pages (or one fallback page), and
+ * reserves this conservative per-page allowance before every provider call.
+ */
+const VISION_PAGE_INPUT_TOKEN_RESERVATION = 8_192;
+
+export function buildVisionContextDiagnostics(
+  model: string,
+  headerText: string,
+  imageCount: number,
+  requestedOutputTokens: number,
+): VisionMappingContextDiagnostics {
+  const components = {
+    systemInstructionChars: PASS1_SYSTEM_PROMPT.length,
+    lessonMetadataChars: headerText.length,
+    imageCount,
+    reservedImageInputTokens: imageCount * VISION_PAGE_INPUT_TOKEN_RESERVATION,
+    // Vision Pass 1 has the same pure-source boundary as text Pass 1.
+    confirmedGoalChars: 0,
+    confirmedOutcomeChars: 0,
+    existingMappingChars: 0,
+    exercisesChars: 0,
+    teachingPackageChars: 0,
+    cognitivePathChars: 0,
+    historyChars: 0,
+  };
+  const estimatedInputTokens = Math.ceil(
+    (components.systemInstructionChars + components.lessonMetadataChars) / CONSERVATIVE_CHARS_PER_TOKEN,
+  ) + components.reservedImageInputTokens;
+  return {
+    stage: "pass1-vision",
+    model,
+    contextWindowTokens: PASS1_CONTEXT_WINDOW_TOKENS,
+    requestedOutputTokens,
+    estimatedInputTokens,
+    estimatedTotalTokens: estimatedInputTokens + requestedOutputTokens,
+    components,
+  };
+}
+
+export function assertVisionContextBudget(diagnostics: VisionMappingContextDiagnostics): void {
+  logger.info({ mappingContext: diagnostics }, "lesson mapping vision context preflight");
+  if (diagnostics.estimatedTotalTokens > diagnostics.contextWindowTokens) {
+    throw new MappingContextBudgetError(diagnostics);
+  }
+}
+
+export function buildPass1RetryDiagnostics(
+  diagnostics: MappingContextDiagnostics,
+  retryInstruction: string,
+): MappingContextDiagnostics {
+  const estimatedInputTokens = Math.ceil(
+    (
+      diagnostics.components.systemInstructionChars
+      + diagnostics.components.lessonMetadataChars
+      + diagnostics.components.lessonSourceChars
+      + retryInstruction.length
+    ) / CONSERVATIVE_CHARS_PER_TOKEN,
+  );
+  return {
+    ...diagnostics,
+    estimatedInputTokens,
+    estimatedTotalTokens: estimatedInputTokens + diagnostics.requestedOutputTokens,
+  };
 }
 
 export interface LessonMappingResult {
@@ -427,18 +637,8 @@ function normalisePass1(raw: unknown): Pass1Result {
 export async function extractBlocksWithAI(
   input: LessonMappingInput
 ): Promise<Pass1Result> {
-  const userPrompt = [
-    `SUBJECT: ${input.subjectName}`,
-    `LESSON TITLE: ${input.lessonTitle}`,
-    input.chapterTitle   ? `CHAPTER: ${input.chapterTitle}`     : "",
-    input.textbookTitle  ? `TEXTBOOK: ${input.textbookTitle}`   : "",
-    input.textbookAuthor ? `AUTHOR: ${input.textbookAuthor}`    : "",
-    input.pagesFrom && input.pagesTo
-      ? `PAGES: ${input.pagesFrom}–${input.pagesTo}` : "",
-    "",
-    "TEXTBOOK TEXT FROM THESE PAGES:",
-    input.lessonText || "(no text extracted from PDF)",
-  ].filter(Boolean).join("\n");
+  const { userPrompt, diagnostics } = buildPass1TextRequest(input);
+  assertPass1ContextBudget(diagnostics);
 
   function extractJSON(raw: string): Pass1Result | null {
     const stripped = raw.replace(/```json\s*|```/g, "").trim();
@@ -450,7 +650,7 @@ export async function extractBlocksWithAI(
 
   const r1 = await openrouter.chat.completions.create({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: PASS1_MAX_OUTPUT_TOKENS,
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [
@@ -459,23 +659,29 @@ export async function extractBlocksWithAI(
     ],
   });
   const raw1 = r1.choices[0]?.message?.content ?? "";
+  assertPass1ResponseComplete(r1.choices[0]?.finish_reason);
   let parsed = extractJSON(raw1);
 
   if (!parsed) {
     logger.warn({ raw: raw1.slice(0, 200) }, "pass1 text: first attempt not valid JSON — retrying");
+    const retryInstruction =
+      'Your previous response was not valid JSON. Return ONLY a valid JSON object with a "blocks" array, nothing else.';
+    // Do not resend raw1: it can be up to the output ceiling and would expand
+    // the retry past the original context budget without adding source evidence.
+    assertPass1ContextBudget(buildPass1RetryDiagnostics(diagnostics, retryInstruction));
     const r2 = await openrouter.chat.completions.create({
       model: MODEL,
-      max_tokens: 8000,
+      max_tokens: PASS1_MAX_OUTPUT_TOKENS,
       temperature: 0,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: PASS1_SYSTEM_PROMPT },
         { role: "user",   content: userPrompt },
-        { role: "assistant", content: raw1 },
-        { role: "user",   content: 'Your response was not valid JSON. Return ONLY a valid JSON object with a "blocks" array, nothing else.' },
+        { role: "user",   content: retryInstruction },
       ],
     });
     const raw2 = r2.choices[0]?.message?.content ?? "";
+    assertPass1ResponseComplete(r2.choices[0]?.finish_reason);
     parsed = extractJSON(raw2);
     if (!parsed) throw new Error("Pass 1 text extraction: response not valid JSON after retry");
   }
@@ -503,9 +709,9 @@ export async function extractBlocksWithVision(
   type ContentPart = TextPart | ImagePart;
 
   /** Strip markdown fences, try direct parse, then bracket-search.
-   *  When `truncated=true` (model hit max_tokens), also attempts to recover
-   *  any complete block objects before the cut-off point. */
-  function extractJSON(raw: string, truncated = false): Pass1Result | null {
+   *  Truncated responses are never recovered: complete-looking early blocks
+   *  cannot prove that the page source was fully extracted. */
+  function extractJSON(raw: string): Pass1Result | null {
     const stripped = raw.replace(/```json\s*|```\s*/g, "").trim();
 
     // 1. Direct parse
@@ -514,36 +720,6 @@ export async function extractBlocksWithVision(
     // 2. First {...} block (handles leading prose)
     const m = stripped.match(/\{[\s\S]*\}/);
     if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
-
-    // 3. Truncation recovery: scan for individually complete block objects
-    if (truncated) {
-      const blocksIdx = stripped.indexOf('"blocks"');
-      if (blocksIdx >= 0) {
-        const arrStart = stripped.indexOf('[', blocksIdx);
-        if (arrStart >= 0) {
-          const blocks: unknown[] = [];
-          let depth = 0;
-          let blockStart = -1;
-          for (let i = arrStart; i < stripped.length; i++) {
-            if (stripped[i] === '{') {
-              if (depth === 0) blockStart = i;
-              depth++;
-            } else if (stripped[i] === '}') {
-              depth--;
-              if (depth === 0 && blockStart >= 0) {
-                try { blocks.push(JSON.parse(stripped.slice(blockStart, i + 1))); } catch { /* skip */ }
-                blockStart = -1;
-              }
-            }
-          }
-          if (blocks.length > 0) {
-            logger.warn({ recoveredBlocks: blocks.length, chunkTruncated: true },
-              "pass1 vision: recovered partial blocks from truncated response");
-            return { blocks } as Pass1Result;
-          }
-        }
-      }
-    }
 
     return null;
   }
@@ -599,6 +775,9 @@ export async function extractBlocksWithVision(
         })),
       ];
 
+      assertVisionContextBudget(
+        buildVisionContextDiagnostics(VISION_MODEL, headerText, chunkImages.length, PASS1_MAX_TOKENS),
+      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r1 = await openrouter.chat.completions.create({
         model: VISION_MODEL,
@@ -642,6 +821,9 @@ export async function extractBlocksWithVision(
             { type: "image_url", image_url: { url: `data:image/png;base64,${chunkImages[pi]}` } },
           ];
 
+          assertVisionContextBudget(
+            buildVisionContextDiagnostics(VISION_MODEL, subHeader, 1, PASS1_MAX_TOKENS),
+          );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const rSub = await openrouter.chat.completions.create({
             model: VISION_MODEL,
@@ -657,7 +839,7 @@ export async function extractBlocksWithVision(
           if (subTruncated) {
             logger.warn({ subLabel }, "pass1 vision: 1-page sub-chunk also truncated (very dense page)");
           }
-          const subParsed = extractJSON(rawSub, subTruncated);
+          const subParsed = subTruncated ? null : extractJSON(rawSub);
           if (subParsed) {
             const subNorm = normalisePass1(subParsed);
             logger.info({ subLabel, blockCount: subNorm.blocks.length }, "pass1 vision: 1-page sub-chunk extracted");
@@ -695,11 +877,26 @@ export async function extractBlocksWithVision(
 
       } else {
         // ── Normal path: try direct JSON parse ────────────────────────────────
-        parsed = extractJSON(raw1, false);
+        parsed = extractJSON(raw1);
 
         if (!parsed) {
           // Not truncated but invalid JSON — retry once with correction prompt
           logger.warn({ chunkLabel, raw: raw1.slice(0, 200) }, "pass1 vision: chunk not valid JSON — retrying");
+          const retryInstruction =
+            'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.';
+          const retryHeader = `${headerText}\n\n${retryInstruction}`;
+          const retryContent: ContentPart[] = [
+            { type: "text", text: retryHeader },
+            ...chunkImages.map((b64): ImagePart => ({
+              type: "image_url",
+              image_url: { url: `data:image/png;base64,${b64}` },
+            })),
+          ];
+          // As with text Pass 1, omit the malformed model output from the
+          // retry so the retry is independently within its preflight budget.
+          assertVisionContextBudget(
+            buildVisionContextDiagnostics(VISION_MODEL, retryHeader, chunkImages.length, PASS1_MAX_TOKENS),
+          );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const r2 = await openrouter.chat.completions.create({
             model: VISION_MODEL,
@@ -707,17 +904,15 @@ export async function extractBlocksWithVision(
             temperature: 0,
             messages: [
               { role: "system", content: PASS1_SYSTEM_PROMPT },
-              { role: "user",   content } as any,
-              { role: "assistant", content: raw1 },
-              { role: "user",   content: 'Output ONLY a raw JSON object with a "blocks" array — no markdown fences, no ```json, no text before or after the JSON.' },
+              { role: "user",   content: retryContent } as any,
             ],
           });
           const raw2          = r2.choices[0]?.message?.content ?? "";
           const wasTruncated2 = r2.choices[0]?.finish_reason === "length";
           if (wasTruncated2) {
-            logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — attempting partial recovery");
+            logger.warn({ chunkLabel }, "pass1 vision: retry also hit max_tokens — using 1-page fallback");
           }
-          parsed = extractJSON(raw2, wasTruncated2);
+          parsed = wasTruncated2 ? null : extractJSON(raw2);
 
           if (!parsed) {
             // Both attempts failed — 1-page fallback as last resort.
@@ -1357,13 +1552,16 @@ async function organizeTopicMicroNodes(
   topicTitle: string,
   topicIndices: number[],
   blocks: Pass1Block[],
-  topicSeq: number
+  topicSeq: number,
+  curriculumConstraints: string,
 ): Promise<{ microNodes: Pass2MicroNode[]; unmappedIndices: number[]; additionalExercises: Pass2Exercise[] }> {
   const blockLines = topicIndices.map((i) => fmtPass2Block(i, blocks[i])).join("\n");
 
   const userPrompt = `Topic ${topicSeq}: «${topicTitle}»
 Block indices to account for: [${topicIndices.join(", ")}]
 (Every index above must appear in your output.)
+
+${curriculumConstraints}
 
 BLOCKS:
 ${blockLines}
@@ -1709,9 +1907,33 @@ Return only the findings array — empty array if no issues.`;
  *
  * Validated on lesson 68 (83 blocks): 83/83 coverage, 0 empty sourceBlockIndices.
  */
+export interface Pass2LessonInfo {
+  lessonTitle: string;
+  pagesFrom?: number | null;
+  pagesTo?: number | null;
+  teacherGoal?: string | null;
+  teacherOutcomes?: readonly string[] | null;
+}
+
+export function buildPass2CurriculumConstraints(lessonInfo: Pass2LessonInfo): string {
+  const goal = lessonInfo.teacherGoal?.trim() ?? "";
+  const outcomes = (lessonInfo.teacherOutcomes ?? [])
+    .map((outcome) => outcome.trim())
+    .filter(Boolean);
+  if (!goal && outcomes.length === 0) return "";
+  return [
+    "TEACHER-CONFIRMED CURRICULUM CONSTRAINTS:",
+    goal ? `LESSON GOAL: ${goal}` : "",
+    outcomes.length > 0
+      ? `REQUIRED OUTCOMES:\n${outcomes.map((outcome, index) => `${index + 1}. ${outcome}`).join("\n")}`
+      : "",
+    "Use these constraints when naming and writing MicroNode learning objectives. Do not invent or alter them.",
+  ].filter(Boolean).join("\n");
+}
+
 export async function runPass2Pipeline(
   blocks: Pass1Block[],
-  lessonInfo: { lessonTitle: string; pagesFrom?: number | null; pagesTo?: number | null }
+  lessonInfo: Pass2LessonInfo,
 ): Promise<Pass2Result> {
   logger.info({ blockCount: blocks.length }, "pass2: starting pipeline");
 
@@ -1823,9 +2045,10 @@ export async function runPass2Pipeline(
   logger.info({ groupCount: mergedGroups.length }, "pass2 step1c: groups after hasRealTheory merge");
 
   // Step 2: organise each topic into MicroNodes (all groups in parallel)
+  const curriculumConstraints = buildPass2CurriculumConstraints(lessonInfo);
   const topicResults = await Promise.all(
     mergedGroups.map((g, i) =>
-      organizeTopicMicroNodes(g.title, g.indices, blocks, i + 1)
+      organizeTopicMicroNodes(g.title, g.indices, blocks, i + 1, curriculumConstraints)
     )
   );
 

@@ -7,7 +7,8 @@
 - [KT-1.4 roll-up contract](kt14-rollup.md) — computeRollup() in mastery.ts; coverage-aware mean; masteryPercent=null when totalUnits=0; needs_review folds to mastered; filter must NOT change displayed %; /subjects and /:subjectId use same computeRollup.
 - [Lesson exercise CRUD](lesson-exercise-crud.md) — exercise routes added to lessons.ts; API client hooks added manually to api.ts (not generated); new types in api.schemas.ts must stay in sync.
 - [Chunked vision mapping](chunked-vision-mapping.md) — 3 pages/chunk, 32k tokens/chunk; retry still needed on chunk 2; output diverse but verbatim diverges from ground truth (ArmSCII font OCR limit).
-- [Pass 1 vision token budget](pass1-vision-token-budget.md) — pages 22-23 and 26-27 exceed 32k tokens at 2 pages/chunk; truncation recovery works but misses mid-page exercises; 1-page fallback needed for dense pages.
+- [Pass 1 vision token budget](pass1-vision-token-budget.md) — dense 2-page chunks can hit 32k output; discard truncated output and use a 1-page fallback/manual review.
+- [PDF partial-range safety](pdf-partial-range-safety.md) — pdf-parse treats an empty requested-page list as the full document; validate ordered ranges before extraction.
 - [Phase 2 pipeline](phase2-pipeline.md) — Pass1/Pass2/Phase2 full pipeline; hasRealTheory merge-pass; background job arch (mapping_jobs table, setImmediate, poll GET /lessons/jobs/:jobId); frontend polling pattern in LessonMapButton.
 - [Pass1 vision chunk resilience](pass1-vision-chunk-resilience.md) — never throw inside the chunk loop; JSON-parse failures after retry must use 1-page fallback; zero blocks on fallback → skippedPageRanges (not throw). Only throw when ALL chunks produce zero blocks.
 - [Manual Map Contract v1.2](manual-map-contract-v1-2.md) — TEXT-format deterministic pipeline (parser→validator→inserter); route auto-detects format; dryRun=true=preview, dryRun=false=REPLACE; legacy JSON path frozen.

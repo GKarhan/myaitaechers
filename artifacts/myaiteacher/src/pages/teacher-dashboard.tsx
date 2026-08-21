@@ -257,6 +257,24 @@ function emptyExerciseCreateForm() {
   };
 }
 
+function getLessonPageRangeInputError(pagesFrom: string, pagesTo: string): string | null {
+  const from = pagesFrom.trim();
+  const to = pagesTo.trim();
+  if (!from && !to) return null;
+  const fromNumber = Number(from);
+  const toNumber = Number(to);
+  if (
+    !Number.isInteger(fromNumber)
+    || !Number.isInteger(toNumber)
+    || fromNumber < 1
+    || toNumber < 1
+    || fromNumber > toNumber
+  ) {
+    return "Էջերի միջակայքը սխալ է։ Նշեք դրական ամբողջ թվեր, և սկզբի էջը չպետք է մեծ լինի ավարտի էջից։";
+  }
+  return null;
+}
+
 function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; courseId: number; isMapped: boolean }) {
   const qc = useQueryClient();
   const { token } = useAuth();
@@ -2567,7 +2585,7 @@ function LessonNodesPanel({
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">⏱ Պarтадир usustsyan zhamanak</p>
+              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">⏱ Պարտադիր ուսուցման ժամանակ</p>
               {!rsmEditing && (
                 <button
                   onClick={() => { setRsmValue(requiredSessionMinutes != null ? String(requiredSessionMinutes) : ""); setRsmEditing(true); setRsmError(null); }}
@@ -4787,6 +4805,11 @@ export default function TeacherDashboard() {
     e.preventDefault();
     if (!selectedCourse) return;
     setLessonError(null);
+    const pageRangeError = getLessonPageRangeInputError(lessonForm.pagesFrom, lessonForm.pagesTo);
+    if (pageRangeError) {
+      setLessonError(pageRangeError);
+      return;
+    }
     createLesson.mutate(
       {
         data: {
@@ -4832,6 +4855,12 @@ export default function TeacherDashboard() {
   const handleUpdateLesson = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editLesson) return;
+    setLessonError(null);
+    const pageRangeError = getLessonPageRangeInputError(editLesson.pagesFrom, editLesson.pagesTo);
+    if (pageRangeError) {
+      setLessonError(pageRangeError);
+      return;
+    }
     updateLesson.mutate(
       {
         id: editLesson.id,
@@ -4864,6 +4893,10 @@ export default function TeacherDashboard() {
             qc.invalidateQueries({
               queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
             });
+        },
+        onError: (err: unknown) => {
+          const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
+          setLessonError(d?.error ?? "Դասի փոփոխությունը չհաջողվեց");
         },
       },
     );
@@ -5946,6 +5979,9 @@ export default function TeacherDashboard() {
                     <h3 className="font-semibold text-sm text-white/90">
                       Խմբագրել դասը
                     </h3>
+                    {lessonError && (
+                      <p className="text-xs text-red-400">{lessonError}</p>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="sm:col-span-2">
                         <label className="text-xs text-muted-foreground mb-1 block">

@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -18,6 +18,7 @@ import { validateKnowledgeBaseLesson } from "../lib/kb-validator.js";
 import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
+import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
 import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
@@ -3610,9 +3611,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     return;
   }
 
-  if (!lesson.pagesFrom || !lesson.pagesTo) {
+  const pageRange = validateRequiredLessonPageRange(lesson.pagesFrom, lesson.pagesTo);
+  if (!pageRange.valid) {
     res.status(400).json({
-      error: "Այս դասին սահմանված չեն էջերի սկիզբն ու ավարտը",
+      error: pageRange.error,
     });
     return;
   }
@@ -3652,7 +3654,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .where(eq(mappingJobsTable.id, job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
-    const lessonText = await extractPdfPageRange(filePath, lesson.pagesFrom!, lesson.pagesTo!);
+    const lessonText = await extractPdfPageRange(filePath, pageRange.pagesFrom, pageRange.pagesTo);
 
     const confirmedOutcomes = lesson.goalOutcomeReviewStatus === "confirmed"
       ? await db.select({ outcomeText: lessonOutcomesTable.outcomeText })
@@ -3665,8 +3667,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       chapterTitle:  lesson.chapterTitle  ?? null,
       textbookTitle: lesson.textbookTitle ?? null,
       textbookAuthor: lesson.textbookAuthor ?? null,
-      pagesFrom:     lesson.pagesFrom,
-      pagesTo:       lesson.pagesTo,
+      pagesFrom:     pageRange.pagesFrom,
+      pagesTo:       pageRange.pagesTo,
       teacherGoal:   lesson.lessonGoal ?? null,
       // Canonical records constrain new detailed mapping only after explicit
       // confirmation. Legacy lessons retain their historical JSON compatibility.
@@ -3696,8 +3698,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
     const pass2 = await runPass2Pipeline(pass1.blocks, {
       lessonTitle: lesson.title,
-      pagesFrom:   lesson.pagesFrom ?? undefined,
-      pagesTo:     lesson.pagesTo   ?? undefined,
+      pagesFrom:   pageRange.pagesFrom,
+      pagesTo:     pageRange.pagesTo,
+      teacherGoal: baseInput.teacherGoal,
+      teacherOutcomes: baseInput.teacherOutcomes,
     });
 
     await db.update(mappingJobsTable)
@@ -4069,7 +4073,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     await db.update(mappingJobsTable)
       .set({
         status: "failed",
-        error: err instanceof Error ? err.message : "Lesson mapping failed, please retry",
+        error: getTeacherFacingMappingFailure(err),
         updatedAt: new Date(),
       })
       .where(eq(mappingJobsTable.id, job.id))

@@ -7,6 +7,7 @@ import { db, usersTable, teachersTable, classesTable, classStudentsTable, lesson
 import { eq, and, inArray, avg, count, desc, ne, sql } from "drizzle-orm";
 import { requireTeacher, requireAuth, type AuthRequest } from "../middlewares/auth";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
+import { validateOptionalLessonPageRange } from "../lib/lesson-page-range.js";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -168,6 +169,8 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
     textbookResourceId?: number; lessonGoal?: string; lessonOutcomes?: string[];
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
+  const pageRange = validateOptionalLessonPageRange(pagesFrom, pagesTo);
+  if (!pageRange.valid) { res.status(400).json({ error: pageRange.error }); return; }
   let resolvedSubjectId = subjectId;
   if (!resolvedSubjectId) {
     const { subjectsTable } = await import("@workspace/db");
@@ -179,7 +182,7 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, classId: classId ?? null,
     courseId: courseId ?? null,
-    lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,
+    lessonNumber: lessonNumber ?? null, pagesFrom: pageRange.pagesFrom, pagesTo: pageRange.pagesTo,
     month: month ?? null, day: day ?? null,
     textbookAuthor: textbookAuthor ?? null, textbookTitle: textbookTitle ?? null,
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
@@ -194,6 +197,13 @@ router.post("/teacher/lessons", requireTeacher, async (req: AuthRequest, res) =>
 router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existingLesson] = await db.select({
+    pagesFrom: lessonsTable.pagesFrom,
+    pagesTo: lessonsTable.pagesTo,
+  }).from(lessonsTable)
+    .where(and(eq(lessonsTable.id, id), eq(lessonsTable.teacherId, req.userId!)))
+    .limit(1);
+  if (!existingLesson) { res.status(404).json({ error: "Das chi gtnvel" }); return; }
   const { title, description, bloomLevel, content, lessonNumber, pagesFrom, pagesTo, month, day, textbookAuthor, textbookTitle, chapterTitle, paragraphNumber, textbookResourceId, lessonGoal, lessonOutcomes, requiredSessionMinutes } = req.body as {
     title?: string; description?: string; bloomLevel?: number; content?: string;
     lessonNumber?: number; pagesFrom?: number; pagesTo?: number; month?: number; day?: number;
@@ -208,6 +218,14 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
       res.status(400).json({ error: "requiredSessionMinutes must be a positive integer" }); return;
     }
   }
+  const rangeWasChanged = pagesFrom !== undefined || pagesTo !== undefined;
+  // Validate the effective stored pair on every save. This prevents a legacy
+  // malformed range from being preserved by an unrelated lesson edit.
+  const pageRange = validateOptionalLessonPageRange(
+    pagesFrom !== undefined ? pagesFrom : existingLesson.pagesFrom,
+    pagesTo !== undefined ? pagesTo : existingLesson.pagesTo,
+  );
+  if (!pageRange.valid) { res.status(400).json({ error: pageRange.error }); return; }
   // If a resource is being linked/changed, derive title/author from it
   let resolvedTextbookTitle = textbookTitle;
   let resolvedTextbookAuthor = textbookAuthor;
@@ -230,8 +248,7 @@ router.put("/teacher/lessons/:id", requireTeacher, async (req: AuthRequest, res)
       ...(bloomLevel && { bloomLevel }),
       ...(content !== undefined && { content }),
       ...(lessonNumber !== undefined && { lessonNumber }),
-      ...(pagesFrom !== undefined && { pagesFrom }),
-      ...(pagesTo !== undefined && { pagesTo }),
+      ...(rangeWasChanged && { pagesFrom: pageRange.pagesFrom, pagesTo: pageRange.pagesTo }),
       ...(month !== undefined && { month }),
       ...(day !== undefined && { day }),
       ...(resolvedTextbookAuthor !== undefined && { textbookAuthor: resolvedTextbookAuthor }),
@@ -644,6 +661,8 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     textbookResourceId?: number; lessonGoal?: string; lessonOutcomes?: string[];
   };
   if (!title) { res.status(400).json({ error: "title partadir e" }); return; }
+  const pageRange = validateOptionalLessonPageRange(pagesFrom, pagesTo);
+  if (!pageRange.valid) { res.status(400).json({ error: pageRange.error }); return; }
 
   // Always derive subjectId from the course — never trust the request body
   const [parentCourse] = await db.select({ subjectId: coursesTable.subjectId }).from(coursesTable).where(eq(coursesTable.id, courseId)).limit(1);
@@ -674,7 +693,7 @@ router.post("/teacher/courses/:courseId/lessons", requireTeacher, async (req: Au
     subjectId: parentCourse.subjectId, title,
     description: description ?? "", bloomLevel: bloomLevel ?? 1, content: content ?? "",
     teacherId: req.userId!, courseId,
-    lessonNumber: lessonNumber ?? null, pagesFrom: pagesFrom ?? null, pagesTo: pagesTo ?? null,
+    lessonNumber: lessonNumber ?? null, pagesFrom: pageRange.pagesFrom, pagesTo: pageRange.pagesTo,
     textbookAuthor: resolvedTextbookAuthor, textbookTitle: resolvedTextbookTitle,
     chapterTitle: chapterTitle ?? null, paragraphNumber: paragraphNumber ?? null,
     textbookResourceId: textbookResourceId ?? null,
