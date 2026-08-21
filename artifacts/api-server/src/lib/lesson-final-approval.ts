@@ -128,6 +128,20 @@ export async function validateLessonForFinalApproval(
     (n) => phase2MissingFields(n as any).length === 0
   );
 
+  // Package 1C: legacy lessons retain their established approval behavior.
+  // Once a teacher explicitly starts canonical Goal/Outcome review, however,
+  // final approval cannot bypass the same explicit confirmation that protects
+  // detailed mapping generation.
+  if (
+    (lesson as any).goalOutcomeReviewStatus !== "legacy" &&
+    (lesson as any).goalOutcomeReviewStatus !== "confirmed"
+  ) {
+    errors.push({
+      code: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
+      messageArm: "Դասի նպատակը և վերջնարդյունքները պետք է ուսուցչի կողմից հաստատվեն մինչև վերջնական հաստատումը։",
+    });
+  }
+
   // ── A: Learning Objectives ──────────────────────────────────────────────────
   const missingLONodes = approvedNodes.filter((n) => !isLOValid(n.learningObjective));
   for (const node of missingLONodes) {

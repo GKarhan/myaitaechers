@@ -37,6 +37,17 @@ export const lessonsTable = pgTable("lessons", {
   // AI-generated lesson mapping fields
   lessonGoal: text("lesson_goal"),
   lessonOutcomes: jsonb("lesson_outcomes").notNull().default([]),
+  // Package 1C authoring gate. Existing lessons default to "legacy" so their
+  // established mapping and learner delivery remain usable until a teacher
+  // explicitly begins canonical Goal/Outcome review.
+  goalOutcomeReviewStatus: text("goal_outcome_review_status").notNull().default("legacy"),
+  // A source-aware AI proposal is deliberately separate from the confirmed
+  // lesson goal and canonical outcome rows. It is never learner-facing and is
+  // only applied by an explicit teacher action.
+  goalOutcomeProposal: jsonb("goal_outcome_proposal"),
+  goalOutcomeConfirmedAt: timestamp("goal_outcome_confirmed_at", { withTimezone: true }),
+  goalOutcomeConfirmedBy: integer("goal_outcome_confirmed_by")
+    .references(() => usersTable.id, { onDelete: "set null" }),
   coreIdea: text("core_idea"),
   coreProblem: text("core_problem"),
   essentialQuestion: text("essential_question"),

@@ -7,6 +7,7 @@ import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
 import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
+import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
@@ -97,6 +98,63 @@ function requireLessonAuthor(
 type OutcomeRole = "REQUIRED" | "SUPPORTING";
 const OUTCOME_ROLES: readonly OutcomeRole[] = ["REQUIRED", "SUPPORTING"];
 const OUTCOME_STATUSES = ["draft", "reviewed", "approved"] as const;
+type GoalOutcomeReviewStatus = "legacy" | "draft" | "proposed" | "confirmed" | "needs_review";
+const GOAL_OUTCOME_REVIEW_STATUSES: readonly GoalOutcomeReviewStatus[] = [
+  "legacy", "draft", "proposed", "confirmed", "needs_review",
+];
+
+function getGoalOutcomeReviewStatus(lesson: Record<string, unknown>): GoalOutcomeReviewStatus {
+  const value = lesson.goalOutcomeReviewStatus;
+  return typeof value === "string" && GOAL_OUTCOME_REVIEW_STATUSES.includes(value as GoalOutcomeReviewStatus)
+    ? value as GoalOutcomeReviewStatus
+    : "legacy";
+}
+
+function requiresGoalOutcomeConfirmation(lesson: Record<string, unknown>): boolean {
+  const status = getGoalOutcomeReviewStatus(lesson);
+  return status !== "legacy" && status !== "confirmed";
+}
+
+async function markGoalOutcomeReviewStale(lessonId: number): Promise<void> {
+  const [lesson] = await db.select({
+    status: lessonsTable.goalOutcomeReviewStatus,
+  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) return;
+  const status = getGoalOutcomeReviewStatus({ goalOutcomeReviewStatus: lesson.status });
+  // A teacher's first canonical Outcome edit intentionally opts a lesson into
+  // the review workflow. Legacy lessons are otherwise never retroactively gated.
+  if (status === "legacy") {
+    await db.update(lessonsTable).set({
+      goalOutcomeReviewStatus: "draft",
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    }).where(eq(lessonsTable.id, lessonId));
+    return;
+  }
+  if (status === "confirmed") {
+    await db.update(lessonsTable).set({
+      goalOutcomeReviewStatus: "needs_review",
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    }).where(eq(lessonsTable.id, lessonId));
+  }
+}
+
+function parseGoalOutcomeProposal(raw: string): { lessonGoal: string; outcomes: string[] } | null {
+  const stripped = raw.replace(/```json\s*|```/gi, "").trim();
+  const candidate = stripped.match(/\{[\s\S]*\}/)?.[0] ?? stripped;
+  try {
+    const value = JSON.parse(candidate) as { lessonGoal?: unknown; outcomes?: unknown };
+    const lessonGoal = typeof value.lessonGoal === "string" ? value.lessonGoal.trim() : "";
+    const outcomes = Array.isArray(value.outcomes)
+      ? [...new Set(value.outcomes.filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim()).filter(Boolean))].slice(0, 12)
+      : [];
+    return lessonGoal && outcomes.length > 0 ? { lessonGoal, outcomes } : null;
+  } catch {
+    return null;
+  }
+}
 
 function parsePositiveInt(value: unknown): number | null {
   const parsed = Number.parseInt(String(value), 10);
@@ -118,6 +176,8 @@ async function getCanonicalOutcomeBundle(lessonId: number) {
     db.select({
       id: lessonsTable.id,
       legacyOutcomes: lessonsTable.lessonOutcomes,
+      goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+      goalOutcomeConfirmedAt: lessonsTable.goalOutcomeConfirmedAt,
     }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
     db.select().from(lessonOutcomesTable)
       .where(eq(lessonOutcomesTable.lessonId, lessonId))
@@ -126,6 +186,7 @@ async function getCanonicalOutcomeBundle(lessonId: number) {
       id: lessonNodesTable.id,
       sequence: lessonNodesTable.sequence,
       title: lessonNodesTable.title,
+      topicId: lessonNodesTable.topicId,
       status: lessonNodesTable.status,
       targetBloomLevel: lessonNodesTable.targetBloomLevel,
       cogPathStatus: lessonNodesTable.cogPathStatus,
@@ -192,6 +253,7 @@ async function getCanonicalOutcomeBundle(lessonId: number) {
         id: node.id,
         title: node.title,
         sequence: node.sequence,
+        topicId: node.topicId,
         status: node.status,
         cogPathStatus: node.cogPathStatus,
         capacity: capacity ? {
@@ -209,6 +271,11 @@ async function getCanonicalOutcomeBundle(lessonId: number) {
   return {
     lessonId,
     legacyOutcomes: normalizeLegacyOutcomes(lesson.legacyOutcomes),
+    goalOutcomeReview: {
+      status: getGoalOutcomeReviewStatus(lesson),
+      requiresConfirmation: requiresGoalOutcomeConfirmation(lesson),
+      confirmedAt: lesson.goalOutcomeConfirmedAt?.toISOString() ?? null,
+    },
     canonicalEnabled: outcomes.length > 0,
     outcomes: outcomes.map((outcome) => ({
       id: outcome.id,
@@ -227,6 +294,7 @@ async function getCanonicalOutcomeBundle(lessonId: number) {
         id: node.id,
         title: node.title,
         sequence: node.sequence,
+        topicId: node.topicId,
         status: node.status,
         cogPathStatus: node.cogPathStatus,
         capacity: capacity ? {
@@ -419,7 +487,7 @@ router.post("/lessons", requireAuth, async (req: AuthRequest, res) => {
   });
 });
 
-router.post("/lessons/:lessonId/delete", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
     res.status(400).json({ error: "Invalid lesson id" });
@@ -1296,6 +1364,193 @@ router.get("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, asyn
   res.json(bundle);
 });
 
+// ── Package 1C — Goal/Outcome review gate ─────────────────────────────────────
+// These routes are deliberately authoring-only. A proposal is source-aware, but
+// it is not canonical until a teacher explicitly applies and confirms it.
+router.get("/lessons/:lessonId/goal-outcome-review", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select({
+    id: lessonsTable.id,
+    lessonGoal: lessonsTable.lessonGoal,
+    goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+    goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
+    goalOutcomeConfirmedAt: lessonsTable.goalOutcomeConfirmedAt,
+  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  const status = getGoalOutcomeReviewStatus(lesson);
+  res.json({
+    lessonId,
+    lessonGoal: lesson.lessonGoal ?? "",
+    status,
+    requiresConfirmation: requiresGoalOutcomeConfirmation(lesson),
+    proposal: lesson.goalOutcomeProposal ?? null,
+    confirmedAt: lesson.goalOutcomeConfirmedAt?.toISOString() ?? null,
+    compatibility: status === "legacy" ? "legacy_mapping_remains_usable" : "canonical_review_active",
+  });
+});
+
+router.post("/lessons/:lessonId/goal-outcome-review/draft", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const lessonGoal = typeof req.body?.lessonGoal === "string" ? req.body.lessonGoal.trim() : null;
+  if (!lessonId || lessonGoal === null) {
+    res.status(400).json({ error: "lessonGoal must be a string" }); return;
+  }
+  const [current] = await db.select({
+    goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!current) { res.status(404).json({ error: "Lesson not found" }); return; }
+  const currentStatus = getGoalOutcomeReviewStatus(current);
+  const nextStatus: GoalOutcomeReviewStatus = currentStatus === "confirmed" ? "needs_review" : "draft";
+  await db.update(lessonsTable).set({
+    lessonGoal,
+    goalOutcomeReviewStatus: nextStatus,
+    goalOutcomeConfirmedAt: null,
+    goalOutcomeConfirmedBy: null,
+  }).where(eq(lessonsTable.id, lessonId));
+  res.json({ lessonId, lessonGoal, status: nextStatus, requiresConfirmation: true });
+});
+
+router.post("/lessons/:lessonId/goal-outcome-review/proposal", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (!lesson.textbookResourceId || !lesson.pagesFrom || !lesson.pagesTo) {
+    res.status(409).json({
+      error: "SOURCE_CONTEXT_REQUIRED",
+      message: "Աղբյուրային առաջարկի համար դասագրքի ֆայլը և էջերի տիրույթը պետք է սահմանված լինեն։",
+    });
+    return;
+  }
+  const [[resource], [subject]] = await Promise.all([
+    db.select({ fileUrl: resourcesTable.fileUrl }).from(resourcesTable)
+      .where(eq(resourcesTable.id, lesson.textbookResourceId)).limit(1),
+    db.select({ name: subjectsTable.name }).from(subjectsTable)
+      .where(eq(subjectsTable.id, lesson.subjectId)).limit(1),
+  ]);
+  if (!resource?.fileUrl) { res.status(409).json({ error: "SOURCE_CONTEXT_REQUIRED" }); return; }
+
+  try {
+    const sourceText = await extractPdfPageRange(
+      resolveUploadedFilePath(resource.fileUrl), lesson.pagesFrom, lesson.pagesTo,
+    );
+    if (!sourceText.trim()) { res.status(422).json({ error: "SOURCE_TEXT_UNAVAILABLE" }); return; }
+    const existingOutcomes = await db.select({
+      outcomeText: lessonOutcomesTable.outcomeText,
+    }).from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId))
+      .orderBy(asc(lessonOutcomesTable.sequence));
+    const response = await openrouter.chat.completions.create({
+      model: "deepseek/deepseek-chat-v3-0324",
+      max_tokens: 1800,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "You are a curriculum source analyst. Return only JSON with lessonGoal (one Armenian sentence) and outcomes (2-8 Armenian observable learner outcomes). Analyze the provided source; teacher drafts are optional context and never authoritative. Do not create topics, micro-nodes, exercises, or approval decisions.",
+        },
+        {
+          role: "user",
+          content: [
+            `SUBJECT: ${subject?.name ?? ""}`,
+            `LESSON: ${lesson.title}`,
+            `PAGES: ${lesson.pagesFrom}-${lesson.pagesTo}`,
+            `OPTIONAL TEACHER GOAL DRAFT: ${lesson.lessonGoal ?? "(none)"}`,
+            `OPTIONAL EXISTING OUTCOME DRAFTS: ${existingOutcomes.map((row) => row.outcomeText).join(" | ") || "(none)"}`,
+            "SOURCE TEXT:",
+            sourceText.slice(0, 24000),
+          ].join("\n"),
+        },
+      ],
+    });
+    const proposal = parseGoalOutcomeProposal(response.choices[0]?.message?.content ?? "");
+    if (!proposal) {
+      res.status(502).json({ error: "INVALID_GOAL_OUTCOME_PROPOSAL" }); return;
+    }
+    const storedProposal = { ...proposal, generatedAt: new Date().toISOString(), source: "textbook_pages" };
+    await db.update(lessonsTable).set({
+      goalOutcomeProposal: storedProposal as any,
+      goalOutcomeReviewStatus: "proposed",
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    }).where(eq(lessonsTable.id, lessonId));
+    res.json({ lessonId, status: "proposed", proposal: storedProposal });
+  } catch (error) {
+    logger.error({ error, lessonId }, "goal/outcome source proposal failed");
+    res.status(502).json({ error: "GOAL_OUTCOME_PROPOSAL_FAILED" });
+  }
+});
+
+router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const result = await db.transaction(async (tx) => {
+    const [lesson] = await tx.select({
+      goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    const proposal = lesson?.goalOutcomeProposal as { lessonGoal?: unknown; outcomes?: unknown } | null;
+    const lessonGoal = typeof proposal?.lessonGoal === "string" ? proposal.lessonGoal.trim() : "";
+    const outcomes = Array.isArray(proposal?.outcomes)
+      ? proposal.outcomes.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+      : [];
+    if (!lesson || !lessonGoal || outcomes.length === 0) throw new Error("NO_VALID_PROPOSAL");
+    const existing = await tx.select({
+      outcomeText: lessonOutcomesTable.outcomeText,
+      sequence: lessonOutcomesTable.sequence,
+    }).from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
+    const existingTexts = new Set(existing.map((row) => row.outcomeText.trim()));
+    const missing = outcomes.filter((outcome) => !existingTexts.has(outcome));
+    if (missing.length) {
+      const nextSequence = Math.max(0, ...existing.map((row) => row.sequence)) + 1;
+      await tx.insert(lessonOutcomesTable).values(missing.map((outcomeText, index) => ({
+        lessonId, outcomeText, sequence: nextSequence + index, status: "draft", provenance: "mapping_import",
+      })));
+    }
+    await tx.update(lessonsTable).set({
+      lessonGoal,
+      goalOutcomeReviewStatus: "draft",
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    }).where(eq(lessonsTable.id, lessonId));
+    return { lessonGoal, createdCount: missing.length };
+  }).catch((error: unknown) => {
+    if (error instanceof Error && error.message === "NO_VALID_PROPOSAL") return null;
+    throw error;
+  });
+  if (!result) { res.status(409).json({ error: "NO_VALID_GOAL_OUTCOME_PROPOSAL" }); return; }
+  res.json({ lessonId, status: "draft", ...result, requiresConfirmation: true });
+});
+
+router.post("/lessons/:lessonId/goal-outcome-review/confirm", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const confirmed = await db.transaction(async (tx) => {
+    const [lesson] = await tx.select({
+      lessonGoal: lessonsTable.lessonGoal,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    const outcomes = await tx.select({ id: lessonOutcomesTable.id })
+      .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
+    if (!lesson?.lessonGoal?.trim() || outcomes.length === 0) return false;
+    await tx.update(lessonOutcomesTable).set({ status: "approved", updatedAt: new Date() })
+      .where(eq(lessonOutcomesTable.lessonId, lessonId));
+    await tx.update(lessonsTable).set({
+      goalOutcomeReviewStatus: "confirmed",
+      goalOutcomeConfirmedAt: new Date(),
+      goalOutcomeConfirmedBy: req.userId ?? null,
+    }).where(eq(lessonsTable.id, lessonId));
+    return true;
+  });
+  if (!confirmed) {
+    res.status(422).json({
+      error: "GOAL_AND_CANONICAL_OUTCOMES_REQUIRED",
+      message: "Հաստատման համար լրացրեք դասի նպատակը և առնվազն մեկ կանոնական վերջնարդյունք։",
+    });
+    return;
+  }
+  res.json({ lessonId, status: "confirmed", requiresConfirmation: false });
+});
+
 router.post("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parsePositiveInt(req.params.lessonId);
   const outcomeText = typeof req.body?.outcomeText === "string" ? req.body.outcomeText.trim() : "";
@@ -1323,6 +1578,7 @@ router.post("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, asy
     }).returning();
     return created;
   });
+  await markGoalOutcomeReviewStale(lessonId);
 
   res.status(201).json({
     id: outcome.id,
@@ -1358,6 +1614,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/update", requireAuth, requir
     .where(and(eq(lessonOutcomesTable.id, outcomeId), eq(lessonOutcomesTable.lessonId, lessonId)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Outcome not found" }); return; }
+  await markGoalOutcomeReviewStale(lessonId);
   res.json(updated);
 });
 
@@ -1390,6 +1647,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/delete", requireAuth, requir
   }
 
   await db.delete(lessonOutcomesTable).where(eq(lessonOutcomesTable.id, outcomeId));
+  await markGoalOutcomeReviewStale(lessonId);
   res.json({ deleted: true, id: outcomeId, removedAlignmentCount: approvedRelations.length });
 });
 
@@ -1432,6 +1690,7 @@ router.post("/lessons/:lessonId/outcomes/reorder", requireAuth, requireLessonAut
         .where(eq(lessonOutcomesTable.lessonId, lessonId))
         .orderBy(asc(lessonOutcomesTable.sequence));
     });
+    await markGoalOutcomeReviewStale(lessonId);
     res.json(updated);
   } catch (error) {
     if (error instanceof Error && error.message === "OUTCOME_ORDER_CHANGED") {
@@ -1447,7 +1706,10 @@ router.post("/lessons/:lessonId/outcomes/backfill-legacy", requireAuth, requireL
   if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const missing = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
-    const [lesson] = await tx.select({ legacyOutcomes: lessonsTable.lessonOutcomes }).from(lessonsTable)
+    const [lesson] = await tx.select({
+      legacyOutcomes: lessonsTable.lessonOutcomes,
+      goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+    }).from(lessonsTable)
       .where(eq(lessonsTable.id, lessonId)).limit(1);
     if (!lesson) throw new Error("LESSON_NOT_FOUND");
     const existing = await tx.select().from(lessonOutcomesTable)
@@ -1464,6 +1726,14 @@ router.post("/lessons/:lessonId/outcomes/backfill-legacy", requireAuth, requireL
         status: "draft",
         provenance: "legacy_backfill",
       })));
+      const status = getGoalOutcomeReviewStatus(lesson);
+      if (status === "legacy" || status === "confirmed") {
+        await tx.update(lessonsTable).set({
+          goalOutcomeReviewStatus: status === "legacy" ? "draft" : "needs_review",
+          goalOutcomeConfirmedAt: null,
+          goalOutcomeConfirmedBy: null,
+        }).where(eq(lessonsTable.id, lessonId));
+      }
     }
     return toCreate;
   }).catch((error: unknown) => {
@@ -1530,6 +1800,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments", requireAuth, re
     requiredCognitiveDepth: requiredDepth,
   }).onConflictDoNothing().returning();
   if (!alignment) { res.status(409).json({ error: "OUTCOME_NODE_ALIGNMENT_ALREADY_EXISTS" }); return; }
+  await markGoalOutcomeReviewStale(lessonId);
   res.status(201).json({
     alignment,
     warnings: getAlignmentWarnings(role, requiredDepth, capacity),
@@ -1549,6 +1820,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments/:alignmentId/dele
     ))
     .returning({ id: lessonOutcomeNodeAlignmentsTable.id });
   if (!deleted) { res.status(404).json({ error: "Alignment not found" }); return; }
+  await markGoalOutcomeReviewStale(lessonId);
   res.json({ deleted: true, id: alignmentId });
 });
 
@@ -1557,13 +1829,33 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
   if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const bundle = await getCanonicalOutcomeBundle(lessonId);
   if (!bundle) { res.status(404).json({ error: "Lesson not found" }); return; }
+  const review = bundle.goalOutcomeReview;
+  const errors: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
+  const warnings: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
+  const info: Array<{ code: string; message: string }> = [];
+  if (review.requiresConfirmation) {
+    errors.push({
+      code: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
+      message: "Նպատակը և վերջնարդյունքները դեռ ուսուցչի հաստատման են սպասում։",
+    });
+  } else if (review.status === "legacy") {
+    warnings.push({
+      code: "LEGACY_GOAL_OUTCOME_COMPATIBILITY",
+      message: "Այս դասը պահպանում է նախկին քարտեզագրման համատեղելիությունը, մինչև կանոնական վերանայումը սկսելը։",
+    });
+  }
   if (!bundle.canonicalEnabled) {
-    res.json({ canonicalEnabled: false, errors: [], warnings: [], summary: { approvedNodes: 0, outcomes: 0 } });
+    res.json({
+      canonicalEnabled: false,
+      goalOutcomeReview: review,
+      errors,
+      warnings,
+      info,
+      summary: { approvedNodes: 0, outcomes: 0, alignedNodes: 0 },
+    });
     return;
   }
 
-  const errors: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
-  const warnings: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
   const alignedNodeIds = new Set<number>();
   for (const outcome of bundle.outcomes) {
     const required = outcome.alignments.filter((alignment) => alignment.role === "REQUIRED");
@@ -1587,10 +1879,51 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
       errors.push({ code: "APPROVED_NODE_WITHOUT_OUTCOME", nodeId: node.id, message: "Հաստատված MicroNode-ը կապված չէ որևէ վերջնարդյունքի հետ։" });
     }
   }
+  const [unlinkedExercises, teachingItems] = await Promise.all([
+    db.select({ id: lessonExercisesTable.id }).from(lessonExercisesTable)
+      .where(and(eq(lessonExercisesTable.lessonId, lessonId), sql`${lessonExercisesTable.relatedNodeId} IS NULL`)),
+    db.select({ lessonNodeId: lessonNodeTeachingPackageItemsTable.lessonNodeId })
+      .from(lessonNodeTeachingPackageItemsTable)
+      .where(eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId)),
+  ]);
+  const nodesWithTeachingItems = new Set(teachingItems.map((item) => item.lessonNodeId));
+  for (const node of bundle.nodes) {
+    if (node.topicId === null) {
+      warnings.push({
+        code: "MICRONODE_WITHOUT_TOPIC",
+        nodeId: node.id,
+        message: "MicroNode-ը դեռ թեմայի չի կցված։",
+      });
+    }
+    if (node.status !== "approved") {
+      info.push({
+        code: "DRAFT_MICRONODE",
+        message: `«${node.title}» MicroNode-ը դեռ draft/review վիճակում է։`,
+      });
+    }
+    if (!nodesWithTeachingItems.has(node.id)) {
+      warnings.push({
+        code: "TEACHING_PACKAGE_ABSENT",
+        nodeId: node.id,
+        message: `«${node.title}» MicroNode-ի Teaching Package-ը դեռ դատարկ է։`,
+      });
+    }
+  }
+  if (unlinkedExercises.length > 0) {
+    warnings.push({
+      code: "UNLINKED_EXERCISES",
+      message: `${unlinkedExercises.length} վարժություն MicroNode-ի չի կցված և պահպանված է որպես lesson-level վարժություն։`,
+    });
+  }
+  if (bundle.nodes.length === 0) {
+    info.push({ code: "NO_DETAILED_MAPPING", message: "Մանրամասն քարտեզագրում դեռ չկա։" });
+  }
   res.json({
     canonicalEnabled: true,
+    goalOutcomeReview: review,
     errors,
     warnings,
+    info,
     summary: {
       approvedNodes: bundle.nodes.filter((node) => node.status === "approved").length,
       outcomes: bundle.outcomes.length,
@@ -1975,7 +2308,7 @@ router.post("/lessons/:lessonId/teaching-package/backfill-existing", requireAuth
 });
 
 // GET /lessons/:lessonId/nodes — list all nodes for this lesson, ordered by sequence
-router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
     res.status(400).json({ error: "Invalid lesson id" });
@@ -2017,7 +2350,7 @@ router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res
 });
 
 // POST /lessons/:lessonId/nodes — create a new node (sequence auto-assigned)
-router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
     res.status(400).json({ error: "Invalid lesson id" });
@@ -2082,7 +2415,7 @@ router.post("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, re
 });
 
 // POST /lessons/:lessonId/nodes/:nodeId/update — partial update
-router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId = parseInt(String(req.params.nodeId), 10);
   if (isNaN(lessonId) || isNaN(nodeId)) {
@@ -2203,7 +2536,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, async (req: 
 // POST /lessons/:lessonId/nodes/approve-all — set all draft/needs_review nodes to approved
 // P6.6: Convenience bulk approval — does NOT run Phase 2.
 // P8:   After approval, always rebuilds SEQUENTIAL dependencies for the lesson.
-router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -2255,7 +2588,7 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, async (req: Aut
 // POST /lessons/:lessonId/refresh-dependencies — explicit sequential dependency refresh
 // P8: Standalone route for rebuilding SEQUENTIAL deps on an already-approved lesson.
 // Preserves REQUIRED / CONCEPTUAL / other dep types.
-router.post("/lessons/:lessonId/refresh-dependencies", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/refresh-dependencies", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -2269,7 +2602,7 @@ router.post("/lessons/:lessonId/refresh-dependencies", requireAuth, requireTeach
 
 // POST /lessons/:lessonId/topics/:topicId/update — partial update for topic title
 // P6.3: Minimal topic editability — title only for v1.
-router.post("/lessons/:lessonId/topics/:topicId/update", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/topics/:topicId/update", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const topicId  = parseInt(String(req.params.topicId),  10);
   if (isNaN(lessonId) || isNaN(topicId)) {
@@ -2312,7 +2645,7 @@ router.post("/lessons/:lessonId/topics/:topicId/update", requireAuth, async (req
 
 // POST /lessons/:lessonId/topics — create a new topic
 // Auto-assigns next available sequence; returns the new topic row.
-router.post("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const { title, description } = req.body as { title?: string; description?: string };
@@ -2335,7 +2668,7 @@ router.post("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, r
 // POST /lessons/:lessonId/topics/:topicId/delete — delete a topic
 // lesson_nodes.topic_id FK onDelete: SET NULL — nodes in this topic become standalone.
 // Exercises are untouched (they reference lesson_nodes, not topics).
-router.post("/lessons/:lessonId/topics/:topicId/delete", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/topics/:topicId/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const topicId  = parseInt(String(req.params.topicId),  10);
   if (isNaN(lessonId) || isNaN(topicId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -2355,7 +2688,7 @@ router.post("/lessons/:lessonId/topics/:topicId/delete", requireAuth, async (req
 // POST /lessons/:lessonId/topics/reorder — bulk reorder topics (normalized, transactional)
 // Payload: { orderedTopicIds: number[] } — must include ALL topic IDs for this lesson.
 // Normalizes sequences to 1, 2, 3, … contiguous integers.
-router.post("/lessons/:lessonId/topics/reorder", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/topics/reorder", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -2401,7 +2734,7 @@ router.post("/lessons/:lessonId/topics/reorder", requireAuth, async (req: AuthRe
 // POST /lessons/:lessonId/nodes/reorder — bulk reorder nodes (normalized, transactional + dep sync)
 // Payload: { orderedNodeIds: number[] } — must include ALL node IDs for this lesson.
 // Normalizes sequences to 1, 2, 3, … then rebuilds SEQUENTIAL deps (preserves REQUIRED/other).
-router.post("/lessons/:lessonId/nodes/reorder", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/reorder", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -2450,7 +2783,7 @@ router.post("/lessons/:lessonId/nodes/reorder", requireAuth, async (req: AuthReq
 
 // POST /lessons/:lessonId/nodes/:nodeId/delete — delete a node
 // lesson_sessions.currentNodeId has onDelete: "set null" so no manual cleanup needed
-router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId = parseInt(String(req.params.nodeId), 10);
   if (isNaN(lessonId) || isNaN(nodeId)) {
@@ -2486,7 +2819,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, async (req: 
 // Runs synchronously (returns when AI is done) — designed for single-node operations.
 // Uses same don't-degrade semantics as whole-lesson generate-teaching-content.
 // Does NOT require whole-lesson final approval afterward.
-router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId = parseInt(String(req.params.nodeId), 10);
   if (isNaN(lessonId) || isNaN(nodeId)) {
@@ -2604,7 +2937,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireTeach
 
 // DELETE /lessons/:lessonId/mapping — delete entire lesson mapping (nodes, topics, exercises, deps)
 // Lesson row itself is NOT deleted — only the mapping data.
-router.delete("/lessons/:lessonId/mapping", requireTeacher, async (req: AuthRequest, res) => {
+router.delete("/lessons/:lessonId/mapping", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
     res.status(400).json({ error: "Invalid lesson id" });
@@ -3058,7 +3391,7 @@ router.post("/lessons/:lessonId/exercises/:exerciseId/delete", requireLessonAuth
 // ── TOPICS & MAPPING REPORT ───────────────────────────────────────────────────
 
 // GET /lessons/:lessonId/topics — ordered list of topics for the lesson
-router.get("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -3081,7 +3414,7 @@ router.get("/lessons/:lessonId/topics", requireAuth, async (req: AuthRequest, re
 // Runs full deterministic validation; if errors === 0, sets lesson status → 'approved'.
 // Returns { approved, lessonId, errors[], warnings[], summary } always.
 // On validation failure: 422 with errors. On success: 200 with approved: true.
-router.post("/lessons/:lessonId/final-approve", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -3121,7 +3454,7 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireTeacher, asy
 // GET /lessons/:lessonId/kb-validate — Phase 9 Knowledge Base Validation
 //   Deterministic, read-only structural check. Zero AI calls. Zero DB writes.
 //   Returns whether the lesson is structurally sound and ready for AI Teacher.
-router.get("/lessons/:lessonId/kb-validate", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/kb-validate", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const result = await validateKnowledgeBaseLesson(lessonId);
@@ -3135,7 +3468,7 @@ router.get("/lessons/:lessonId/kb-validate", requireAuth, requireTeacher, async 
 // GET /lessons/:lessonId/mapping-report — quality report from the last /map run
 //   If stored metadata exists (from a fresh /map run), returns it directly.
 //   Otherwise computes a best-effort report from current DB state.
-router.get("/lessons/:lessonId/mapping-report", requireAuth, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/mapping-report", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -3202,7 +3535,7 @@ router.get("/lessons/:lessonId/mapping-report", requireAuth, async (req: AuthReq
 //
 //   Old functions extractBlocksWithAI / extractBlocksWithVision are preserved
 //   below for reference but are no longer called from this route.
-router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
     res.status(400).json({ error: "Invalid lesson id" });
@@ -3217,6 +3550,13 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
 
   if (!lesson) {
     res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+  if (requiresGoalOutcomeConfirmation(lesson)) {
+    res.status(409).json({
+      error: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
+      message: "Նախ հաստատեք դասի նպատակը և վերջնարդյունքները, ապա ստեղծեք մանրամասն քարտեզագրումը։",
+    });
     return;
   }
 
@@ -3271,6 +3611,11 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
     const lessonText = await extractPdfPageRange(filePath, lesson.pagesFrom!, lesson.pagesTo!);
 
+    const confirmedOutcomes = lesson.goalOutcomeReviewStatus === "confirmed"
+      ? await db.select({ outcomeText: lessonOutcomesTable.outcomeText })
+        .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId))
+        .orderBy(asc(lessonOutcomesTable.sequence))
+      : [];
     const baseInput = {
       subjectName:   subject?.name ?? "",
       lessonTitle:   lesson.title,
@@ -3280,9 +3625,11 @@ router.post("/lessons/:lessonId/map", requireTeacher, async (req: AuthRequest, r
       pagesFrom:     lesson.pagesFrom,
       pagesTo:       lesson.pagesTo,
       teacherGoal:   lesson.lessonGoal ?? null,
-      teacherOutcomes: Array.isArray(lesson.lessonOutcomes)
-        ? (lesson.lessonOutcomes as string[])
-        : null,
+      // Canonical records constrain new detailed mapping only after explicit
+      // confirmation. Legacy lessons retain their historical JSON compatibility.
+      teacherOutcomes: confirmedOutcomes.length > 0
+        ? confirmedOutcomes.map((outcome) => outcome.outcomeText)
+        : Array.isArray(lesson.lessonOutcomes) ? (lesson.lessonOutcomes as string[]) : null,
     };
 
     // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
@@ -3717,7 +4064,7 @@ router.get("/lessons/jobs/:jobId", requireAuth, requireTeacher, async (req: Auth
 // POST /lessons/:lessonId/generate-teaching-content
 // Teacher-triggered after reviewing Pass 1+2 structure. Responds immediately
 // with { jobId } and processes AI calls inside setImmediate.
-router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -3920,7 +4267,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
 // ── GET /lessons/:lessonId/map-status ─────────────────────────────────────────
 // Lesson-centric poll endpoint: returns the most recent 'map' job for this
 // lesson so the teacher UI can resume progress display after navigation-away.
-router.get("/lessons/:lessonId/map-status", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/map-status", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -3945,7 +4292,7 @@ router.get("/lessons/:lessonId/map-status", requireAuth, requireTeacher, async (
 
 // ── GET /lessons/:lessonId/generate-status ────────────────────────────────────
 // Same pattern for Phase 2 (generate_teaching_content jobs).
-router.get("/lessons/:lessonId/generate-status", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/generate-status", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -3971,7 +4318,7 @@ router.get("/lessons/:lessonId/generate-status", requireAuth, requireTeacher, as
 // ── P6: One-time lesson completion summary + homework presentation ─────────────
 // POST /lessons/:lessonId/p6-summary
 // Called once per lesson when the student reaches phase 4.
-router.post("/lessons/:lessonId/p6-summary", requireAuth, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/p6-summary", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
 
@@ -4592,9 +4939,20 @@ async function handleLegacyJsonImport(
 
 // ── Route: POST /lessons/:lessonId/manual-map ─────────────────────────────────
 
-router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/manual-map", requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select({
+    goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (requiresGoalOutcomeConfirmation(lesson)) {
+    res.status(409).json({
+      error: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
+      message: "Նախ հաստատեք դասի նպատակը և վերջնարդյունքները, ապա ներմուծեք մանրամասն քարտեզագրումը։",
+    });
+    return;
+  }
 
   const { rawText, format, dryRun } = req.body as { rawText?: string; format?: string; dryRun?: boolean };
   if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
@@ -4623,7 +4981,7 @@ router.post("/lessons/:lessonId/manual-map", requireTeacher, async (req: AuthReq
 // Phase 1.9 — return quizzes linked to a lesson via quiz_lesson_links.
 // Teacher-only. Returns metadata suitable for the Lesson card / authoring UI.
 // Each quiz appears exactly once regardless of how many lessons it links to.
-router.get("/lessons/:lessonId/quizzes", requireTeacher, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/quizzes", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) {
     res.status(400).json({ error: "Invalid lesson id" });
@@ -4741,7 +5099,7 @@ async function getCogNode(lessonId: number, nodeId: number) {
 
 // GET /lessons/:lessonId/nodes/:nodeId/cognitive-path
 // Returns all cognitive levels for a MicroNode with their linked exercises.
-router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -4820,7 +5178,7 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
 // Body: { force?: boolean }
 //   force=false (default): returns 409 if teacher-authored rows exist
 //   force=true: replaces all existing levels (use after explicit teacher confirmation)
-router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -4963,7 +5321,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
 // POST /lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path
 // Teacher explicitly confirms the cognitive path. Requirements: ≥1 level, exactly 1 ceiling.
 // Sets cogPathStatus = 'confirmed' on lesson_nodes.
-router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -4992,7 +5350,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAu
 
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels
 // Add a single cognitive level (teacher-authored). Invalidates confirmed path.
-router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -5035,7 +5393,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, re
 
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder
 // Reorder cognitive levels by providing the new ordered level ID array.
-router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -5070,7 +5428,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder", require
 
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update
 // Partial update of a cognitive level (marks it teacher_authored).
-router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   const levelId  = parseInt(String(req.params.levelId),  10);
@@ -5133,7 +5491,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update",
 
 // DELETE /lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId
 // Remove a cognitive level (and cascade-deletes its linked tasks).
-router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   const levelId  = parseInt(String(req.params.levelId),  10);
@@ -5158,7 +5516,7 @@ router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requ
 // POST /lessons/:lessonId/nodes/:nodeId/cognitive-tasks
 // Link an existing lesson_exercise to a cognitive level of this node.
 // Body: { cognitiveLevelId: number, lessonExerciseId: number }
-router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
@@ -5209,7 +5567,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, req
 
 // DELETE /lessons/:lessonId/nodes/:nodeId/cognitive-tasks/:taskId
 // Unlink a task annotation (does NOT delete the exercise itself).
-router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks/:taskId", requireAuth, requireTeacher, async (req: AuthRequest, res) => {
+router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks/:taskId", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   const nodeId   = parseInt(String(req.params.nodeId),   10);
   const taskId   = parseInt(String(req.params.taskId),   10);

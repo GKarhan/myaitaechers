@@ -12,6 +12,8 @@ import {
   lessonsTable,
   lessonNodesTable,
   lessonExercisesTable,
+  subjectsTable,
+  usersTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { validateLessonForFinalApproval } from "../lesson-final-approval.js";
@@ -20,11 +22,8 @@ import { makeRunId, runTag } from "./helpers/run-id.js";
 // ── Run ID ─────────────────────────────────────────────────────────────────────
 const RUN_ID = makeRunId();
 
-const BEARER = jwt.sign(
-  { userId: 1, role: "teacher" },
-  process.env.SESSION_SECRET ?? "myaiteacher-secret",
-  { expiresIn: "1h" },
-) as string;
+let BEARER = "";
+let OTHER_TEACHER_BEARER = "";
 
 const BASE = "http://localhost:8080/api";
 
@@ -66,15 +65,42 @@ async function restoreExercise(snap: ExRow): Promise<void> {
 
 // ── Dynamic fixture setup ──────────────────────────────────────────────────────
 
-// We need a lesson with a valid subjectId. Use subjectId=1 (always exists).
-const SUBJECT_ID = 1;
+const [testTeacher] = await db.insert(usersTable).values({
+  username: runTag(RUN_ID, "approval_teacher"),
+  passwordHash: "test-only-password-hash",
+  fullName: "Final approval test teacher",
+  role: "teacher",
+}).returning({ id: usersTable.id });
+const [testSubject] = await db.insert(subjectsTable).values({
+  name: runTag(RUN_ID, "approval_subject"),
+}).returning({ id: subjectsTable.id });
+const [otherTeacher] = await db.insert(usersTable).values({
+  username: runTag(RUN_ID, "other_teacher"),
+  passwordHash: "test-only-password-hash",
+  fullName: "Unrelated test teacher",
+  role: "teacher",
+}).returning({ id: usersTable.id });
+const TEST_TEACHER_ID = testTeacher.id;
+const OTHER_TEACHER_ID = otherTeacher.id;
+const SUBJECT_ID = testSubject.id;
+BEARER = jwt.sign(
+  { userId: TEST_TEACHER_ID, role: "teacher" },
+  process.env.SESSION_SECRET ?? "myaiteacher-secret",
+  { expiresIn: "1h" },
+) as string;
+OTHER_TEACHER_BEARER = jwt.sign(
+  { userId: OTHER_TEACHER_ID, role: "teacher" },
+  process.env.SESSION_SECRET ?? "myaiteacher-secret",
+  { expiresIn: "1h" },
+) as string;
 
 // Create the dynamic lesson
 const [dynLesson] = await db.insert(lessonsTable).values({
   title: runTag(RUN_ID, "approval_lesson"),
   subjectId: SUBJECT_ID,
-  teacherId: 1,
+  teacherId: TEST_TEACHER_ID,
   status: "draft",
+  lessonOutcomes: ["Legacy outcome for Package 1C confirmation regression"],
   mappingMetadata: { sourceExerciseCount: 2 },
 }).returning({ id: lessonsTable.id });
 
@@ -370,6 +396,32 @@ it("I2: invalidateLessonApproval DID revert when everApproved=false (backward-co
   }
 });
 
+it("C1: a different teacher cannot mutate this lesson's MicroNodes", async () => {
+  const r = await fetch(`${BASE}/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${OTHER_TEACHER_BEARER}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Unauthorized update" }),
+  });
+  assert.equal(r.status, 403, "Unrelated teachers must be denied before an authoring mutation");
+});
+
+it("C2: legacy Outcome backfill invalidates a confirmed Goal/Outcome review", async () => {
+  await db.update(lessonsTable).set({
+    goalOutcomeReviewStatus: "confirmed",
+    goalOutcomeConfirmedAt: new Date(),
+  } as never).where(eq(lessonsTable.id, LESSON_ID));
+
+  const r = await apiPost(`/lessons/${LESSON_ID}/outcomes/backfill-legacy`);
+  assert.equal(r.status, 201, "Legacy backfill should create its missing draft Outcome");
+  assert.equal(r.body.createdCount, 1);
+  const [lesson] = await db.select({
+    reviewStatus: lessonsTable.goalOutcomeReviewStatus,
+    confirmedAt: lessonsTable.goalOutcomeConfirmedAt,
+  }).from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+  assert.equal(lesson?.reviewStatus, "needs_review");
+  assert.equal(lesson?.confirmedAt, null);
+});
+
 // ── Runner ─────────────────────────────────────────────────────────────────────
 
 let passed = 0;
@@ -393,6 +445,9 @@ try {
 } finally {
   // Cascade delete removes nodes and exercises automatically (FK onDelete: "cascade")
   await db.delete(lessonsTable).where(eq(lessonsTable.id, LESSON_ID));
+  await db.delete(subjectsTable).where(eq(subjectsTable.id, SUBJECT_ID));
+  await db.delete(usersTable).where(eq(usersTable.id, TEST_TEACHER_ID));
+  await db.delete(usersTable).where(eq(usersTable.id, OTHER_TEACHER_ID));
   console.log(`  [cleanup] Dynamic lesson ${LESSON_ID} (${RUN_ID}) deleted.`);
 }
 

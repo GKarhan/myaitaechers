@@ -2406,8 +2406,8 @@ function LessonNodesPanel({
         >
           <span className="font-medium tracking-wide">
             {(nodes.length > 0 || exercises.length > 0)
-              ? `🗺️ Քարտեզագրված դաս (${nodes.length} գիտելիքի հանգույց · ${exercises.length} վարժություն)`
-              : "🗺️ Քարտեզագրված դաս"}
+              ? `🗺️ Մանրամասն քարտեզագրում · Թեմաներ / MicroNode-եր / աղբյուր / ուղի / վարժություններ (${nodes.length} · ${exercises.length})`
+              : "🗺️ Մանրամասն քարտեզագրում · Թեմաներ / MicroNode-եր / աղբյուր / ուղի / վարժություններ"}
           </span>
           <span>{open ? "▲" : "▼"}</span>
         </button>
@@ -2504,6 +2504,12 @@ function LessonNodesPanel({
 
       {open && (
         <div className="px-4 pb-4 space-y-3">
+          <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Քարտեզագրման կառուցվածք</p>
+            <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+              Թեմա → MicroNode → աղբյուրային կոնտեքստ → ճանաչողական ուղի → կցված վարժություններ։ Չկցված վարժությունները պահպանվում են առանձին՝ առանց կրկնօրինակելու։
+            </p>
+          </div>
           {/* P1.7: Validation error/warning panel */}
           {showApprovalErrors && (approvalErrors.length > 0 || approvalWarnings.length > 0) && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5">
@@ -3331,40 +3337,167 @@ function LessonNodesPanel({
   );
 }
 function LessonGoalOutcomesPanel({
+  lessonId,
   lessonGoal,
   lessonOutcomes,
 }: {
+  lessonId: number;
   lessonGoal: string;
   lessonOutcomes: string[];
 }) {
+  const { token } = useAuth();
   const [open, setOpen] = useState(false);
+  const [goalDraft, setGoalDraft] = useState(lessonGoal ?? "");
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  type ReviewState = {
+    lessonGoal: string;
+    status: "legacy" | "draft" | "proposed" | "confirmed" | "needs_review";
+    requiresConfirmation: boolean;
+    confirmedAt: string | null;
+    proposal: { lessonGoal: string; outcomes: string[]; generatedAt?: string } | null;
+    compatibility: string;
+  };
+  const reviewQuery = useQuery({
+    queryKey: ["goal-outcome-review", lessonId],
+    enabled: open && !!token,
+    queryFn: async () => {
+      const response = await fetch(`/api/lessons/${lessonId}/goal-outcome-review`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց բեռնել նպատակի վերանայումը։");
+      return response.json() as Promise<ReviewState>;
+    },
+  });
+  const review = reviewQuery.data;
+  const request = async (path: string, body?: Record<string, unknown>) => {
+    const response = await fetch(`/api/lessons/${lessonId}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const data = await response.json().catch(() => ({})) as { error?: string; message?: string };
+    if (!response.ok) throw new Error(data.message ?? data.error ?? "Գործողությունը չհաջողվեց։");
+    return data;
+  };
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      await reviewQuery.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Գործողությունը չհաջողվեց։");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="border-t border-white/8">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
       >
-        <span className="font-medium tracking-wide">🎯 Նպատակ/Վերջնարդյունք</span>
+        <span className="font-medium tracking-wide">🎯 Նպատակ և վերջնարդյունքներ</span>
         <span>{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <div className="px-4 pb-4 space-y-2">
-          <div>
-            <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Նպատակ</div>
-            <p className="text-xs text-white">{lessonGoal}</p>
-          </div>
-          {lessonOutcomes.length > 0 && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Ուսուցչի սևագիրը կարող է օգնել վերլուծությանը, բայց աղբյուրային առաջարկն ու ձեր հստակ հաստատումն են բացում նոր մանրամասն քարտեզագրումը։
+          </p>
+          {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
+          {reviewQuery.isLoading && <p className="text-xs text-muted-foreground">Բեռնվում է…</p>}
+          {review && (
+            <>
+              <div className={`rounded border px-2.5 py-2 text-[11px] ${
+                review.status === "confirmed"
+                  ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
+                  : review.status === "legacy"
+                    ? "border-amber-400/25 bg-amber-400/10 text-amber-100"
+                    : "border-blue-400/25 bg-blue-400/10 text-blue-100"
+              }`}>
+                {review.status === "confirmed"
+                  ? "✅ Նպատակն ու կանոնական վերջնարդյունքները հաստատված են։"
+                  : review.status === "legacy"
+                    ? "ℹ️ Legacy համատեղելիության ռեժիմ. նախկին քարտեզագրումը չի փոխվել։"
+                    : "⚠️ Նպատակի/վերջնարդյունքների վերանայում է պահանջվում՝ մինչև նոր մանրամասն քարտեզագրումը։"}
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-secondary/70 font-medium">Դասի նպատակ</span>
+                  {!editingGoal && (
+                    <button onClick={() => { setGoalDraft(review.lessonGoal); setEditingGoal(true); }} className="text-[10px] text-muted-foreground hover:text-white">✏️ Խմբագրել</button>
+                  )}
+                </div>
+                {editingGoal ? (
+                  <div className="space-y-1.5">
+                    <textarea
+                      rows={2}
+                      value={goalDraft}
+                      onChange={(event) => setGoalDraft(event.target.value)}
+                      placeholder="Ուսուցչի նպատակային սևագիր (ընտրովի)"
+                      className="w-full rounded border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white"
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        disabled={busy}
+                        onClick={() => void run(async () => {
+                          await request("/goal-outcome-review/draft", { lessonGoal: goalDraft });
+                          setEditingGoal(false);
+                        })}
+                        className="rounded bg-primary/20 px-2 py-1 text-[10px] text-primary disabled:opacity-50"
+                      >Պահպանել</button>
+                      <button onClick={() => setEditingGoal(false)} className="rounded bg-white/5 px-2 py-1 text-[10px] text-muted-foreground">Չեղարկել</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-white">{review.lessonGoal || <span className="italic text-muted-foreground">Նպատակ դեռ չկա</span>}</p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  disabled={busy}
+                  onClick={() => void run(() => request("/goal-outcome-review/proposal"))}
+                  className="rounded border border-blue-400/30 bg-blue-400/10 px-2 py-1 text-[10px] text-blue-100 hover:bg-blue-400/20 disabled:opacity-50"
+                >✨ Աղբյուրից առաջարկել</button>
+                {review.proposal && (
+                  <button
+                    disabled={busy}
+                    onClick={() => void run(() => request("/goal-outcome-review/apply-proposal"))}
+                    className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
+                  >Ներմուծել որպես draft</button>
+                )}
+                {review.requiresConfirmation && (
+                  <button
+                    disabled={busy}
+                    onClick={() => void run(() => request("/goal-outcome-review/confirm"))}
+                    className="rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-400/20 disabled:opacity-50"
+                  >✅ Հաստատել Goal/Outcomes</button>
+                )}
+              </div>
+              {review.proposal && (
+                <div className="rounded border border-blue-400/20 bg-blue-400/[0.05] p-2 space-y-1.5">
+                  <p className="text-[10px] font-medium text-blue-200">Աղբյուրային AI առաջարկ — դեռ draft է</p>
+                  <p className="text-[11px] text-white/90">{review.proposal.lessonGoal}</p>
+                  <ul className="list-disc list-inside text-[11px] text-white/75">
+                    {review.proposal.outcomes.map((outcome, index) => <li key={index}>{outcome}</li>)}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+          {lessonOutcomes.length > 0 && !review && (
             <div>
-              <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Վերջնարդյունքներ</div>
+              <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Նախկին վերջնարդյունքներ</div>
               <ul className="list-disc list-inside space-y-0.5">
-                {lessonOutcomes.map((o, i) => (
-                  <li key={i} className="text-xs text-white">
-                    {o}
-                  </li>
-                ))}
+                {lessonOutcomes.map((outcome, index) => <li key={index} className="text-xs text-white">{outcome}</li>)}
               </ul>
             </div>
           )}
+          {review?.confirmedAt && <p className="text-[10px] text-emerald-300/70">Վերջին հաստատումը՝ {new Date(review.confirmedAt).toLocaleString()}</p>}
         </div>
       )}
     </div>
@@ -3500,7 +3633,7 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
         onClick={() => setOpen((value) => !value)}
         className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
       >
-        <span className="font-medium tracking-wide">🎯 C1․ կանոնական վերջնարդյունքներ</span>
+        <span className="font-medium tracking-wide">↳ Կանոնական վերջնարդյունքներ և MicroNode կապեր</span>
         <span>{open ? "▲" : "▼"}</span>
       </button>
       {open && (
@@ -3734,6 +3867,68 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function ValidationApprovalSummaryPanel({ lessonId }: { lessonId: number }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const readinessQuery = useQuery({
+    queryKey: ["mapping-validation-summary", lessonId],
+    enabled: open && !!token,
+    queryFn: async () => {
+      const response = await fetch(`/api/lessons/${lessonId}/outcomes/readiness`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց բեռնել վավերացման ամփոփումը։");
+      return response.json() as Promise<{
+        canonicalEnabled: boolean;
+        errors: Array<{ code: string; message: string }>;
+        warnings: Array<{ code: string; message: string }>;
+        info?: Array<{ code: string; message: string }>;
+        summary: { outcomes: number; approvedNodes: number; alignedNodes: number };
+      }>;
+    },
+  });
+  const report = readinessQuery.data;
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">✅ Վավերացում և վերջնական հաստատում</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-2">
+          <p className="text-[11px] text-muted-foreground">Սա ընթերցման ամփոփում է․ վերջնական հաստատման գործողությունը գտնվում է քարտեզագրման վերնագրի մոտ։</p>
+          {readinessQuery.isLoading && <p className="text-xs text-muted-foreground">Բեռնվում է…</p>}
+          {readinessQuery.isError && <p className="text-xs text-destructive">Չհաջողվեց բեռնել վավերացման տվյալները։</p>}
+          {report && (
+            <>
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className="rounded bg-white/5 px-2 py-1 text-white/75">Վերջնարդյունք՝ {report.summary.outcomes}</span>
+                <span className="rounded bg-white/5 px-2 py-1 text-white/75">Կցված MicroNode՝ {report.summary.alignedNodes}</span>
+                <span className="rounded bg-white/5 px-2 py-1 text-white/75">Հաստատված MicroNode՝ {report.summary.approvedNodes}</span>
+              </div>
+              {report.errors.length === 0 && (
+                <p className="text-[11px] text-emerald-300">Այս շերտում արգելափակող խնդիր չկա։</p>
+              )}
+              {report.errors.map((issue, index) => (
+                <p key={`${issue.code}-${index}`} className="rounded border border-red-400/20 bg-red-400/5 px-2 py-1 text-[10px] text-red-200">⛔ {issue.message}</p>
+              ))}
+              {report.warnings.map((issue, index) => (
+                <p key={`${issue.code}-${index}`} className="rounded border border-amber-400/20 bg-amber-400/5 px-2 py-1 text-[10px] text-amber-100">⚠️ {issue.message}</p>
+              ))}
+              {(report.info ?? []).map((issue, index) => (
+                <p key={`${issue.code}-${index}`} className="rounded border border-blue-400/15 bg-blue-400/[0.04] px-2 py-1 text-[10px] text-blue-100">ℹ️ {issue.message}</p>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -6167,18 +6362,16 @@ export default function TeacherDashboard() {
                                   </button>
                                 </div>
                               </div>
-                              {(l as any).lessonGoal && (
-                                <LessonGoalOutcomesPanel
-                                  lessonGoal={(l as any).lessonGoal}
-                                  lessonOutcomes={
-                                    Array.isArray((l as any).lessonOutcomes)
-                                      ? (l as any).lessonOutcomes
-                                      : []
-                                  }
-                                />
-                              )}
+                              <LessonGoalOutcomesPanel
+                                lessonId={l.id}
+                                lessonGoal={(l as any).lessonGoal ?? ""}
+                                lessonOutcomes={
+                                  Array.isArray((l as any).lessonOutcomes)
+                                    ? (l as any).lessonOutcomes
+                                    : []
+                                }
+                              />
                               <CanonicalOutcomesPanel lessonId={l.id} />
-                               <TeachingPackagePanel lessonId={l.id} />
                               <LessonNodesPanel
                                 lessonId={l.id}
                                 courseId={selectedCourse!.id}
@@ -6194,6 +6387,8 @@ export default function TeacherDashboard() {
                                 requiredSessionMinutes={(l as any).requiredSessionMinutes ?? null}
                                 onOpenResults={(quizId) => { setResultsFrom("allQuizzes"); setResultsQuizId(quizId); }}
                               />
+                              <TeachingPackagePanel lessonId={l.id} />
+                              <ValidationApprovalSummaryPanel lessonId={l.id} />
                             </div>
                           </div>
                         );
