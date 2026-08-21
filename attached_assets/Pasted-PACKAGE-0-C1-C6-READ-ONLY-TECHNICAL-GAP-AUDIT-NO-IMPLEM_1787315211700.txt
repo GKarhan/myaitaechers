@@ -1,0 +1,931 @@
+PACKAGE 0 — C1–C6 READ-ONLY TECHNICAL GAP AUDIT
+NO IMPLEMENTATION. NO CODE CHANGES. NO DB WRITES.
+
+GOAL
+
+We have now frozen the learning-core architecture.
+
+Before any new implementation, audit the CURRENT repository, frontend,
+backend, database schema, APIs, runtime ownership, and existing logic
+against the frozen C1–C6 contracts below.
+
+The purpose is NOT to redesign the product.
+
+The purpose is to answer, with repository/database evidence:
+
+1. What already exists and can be reused?
+2. What exists but has the wrong semantics?
+3. What is legacy and should eventually be retired?
+4. What is missing?
+5. What schema/API/frontend changes are actually required?
+6. What migrations would be required?
+7. What are the smallest safe implementation packages?
+8. What dependency order avoids rework?
+
+IMPORTANT:
+This is READ-ONLY.
+Do not edit files.
+Do not create migrations.
+Do not modify DB data.
+Do not reset/create learner sessions.
+Do not run any mutating endpoint.
+Do not implement fixes.
+Do not create feature tasks unless explicitly required by the workspace;
+if task bookkeeping is unavoidable, create only one audit task.
+Do not touch or mutate historical learner sessions.
+
+════════════════════════════════════════════════════
+SECTION 0 — EFFICIENCY RULES
+════════════════════════════════════════════════════
+
+Use the shortest technical path.
+
+First inspect:
+
+A. database/schema definitions
+B. backend routes/services that own mapping, cognitive path, evidence,
+   learner state, knowledge tree, quizzes/tests
+C. frontend pages/components that expose those systems
+
+Do NOT read unrelated files deeply.
+
+Use repository search/grep first.
+Open full files only when they are actual owners of relevant logic.
+
+Do not repeat the same findings in multiple sections.
+
+Do not speculate.
+Every important "CURRENT" claim must cite:
+- file path + symbol/function/table, or
+- DB table/column evidence.
+
+If something cannot be confirmed, write:
+NOT CONFIRMED.
+
+Do not propose a rewrite when an existing structure can be extended safely.
+
+Prefer:
+REUSE → EXTEND → MIGRATE
+over:
+REBUILD.
+
+════════════════════════════════════════════════════
+SECTION 1 — FROZEN ARCHITECTURE
+DO NOT REDESIGN THESE CONTRACTS
+════════════════════════════════════════════════════
+
+The contracts below are product decisions.
+Audit implementation against them.
+
+────────────────────────────────────────────────────
+C1 — MAPPING CONTRACT
+────────────────────────────────────────────────────
+
+Canonical hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode = atomic, independently assessable knowledge unit with one
+clear learning objective.
+
+Lesson must preserve the large pedagogical picture:
+
+Lesson Goal
+→ measurable Lesson Outcomes
+→ Topics
+→ MicroNodes
+
+Each curriculum-relevant MicroNode must be explicitly traceable to at
+least one Lesson Outcome.
+
+Outcome ↔ MicroNode relation must be able to express:
+
+- REQUIRED
+- SUPPORTING
+- required cognitive depth
+
+MicroNode canonical passport includes conceptually:
+
+- title
+- learningObjective
+- sourceContent
+- sourcePage/sourceBlock
+- knowledgeBoundary
+- Topic
+- Outcome links
+- targetCognitiveLevel
+- status/approval
+- order
+- provenance
+
+Each MicroNode must also support a Teaching Package sufficient for
+predictable low-generation teaching:
+
+- main explanation
+- key facts/rules/formulas
+- examples
+- counterexamples / contrast examples where relevant
+- known misconceptions
+- alternative explanations
+- guiding questions
+- hint bank
+- teaching resources
+- exercises/tasks
+
+AI Teacher should reuse approved teaching content whenever possible,
+not invent the lesson at runtime.
+
+Approved content authority must be distinguishable conceptually:
+
+- source material
+- teacher-created
+- AI-generated + teacher-approved
+- bounded runtime equivalent variant
+
+Source Coverage must remain auditable.
+
+Teacher Review must ultimately allow CRUD/reorder/review/approval across
+the important mapping layers.
+
+MAPPING CREATION CHANNELS:
+
+All must converge to the SAME canonical mapping contract:
+
+1. internal AI mapping
+2. external AI → structured TEXT import
+3. teacher manual authoring
+
+External TEXT import target flow:
+
+structured TEXT
+→ deterministic parse
+→ structural validation
+→ semantic validation
+→ preview
+→ teacher review
+→ confirm
+→ transactional DB write
+
+External temporary IDs are NOT DB IDs.
+
+Do not make JSON the required human/external-AI interchange contract.
+
+────────────────────────────────────────────────────
+C2 — COGNITIVE PATH CONTRACT
+────────────────────────────────────────────────────
+
+Cognitive Path is NOT a list of exercises.
+
+It represents cognitive progression for a MicroNode.
+
+Supported conceptual levels:
+
+Remember
+→ Understand
+→ Apply
+→ Analyze
+→ Evaluate
+→ Create
+
+A MicroNode has a curriculum Target Cognitive Level.
+
+Target must be approved during mapping/review.
+Runtime AI must NOT invent or change it.
+
+Teacher must be able to:
+- change target
+- add/remove levels
+- add higher enrichment levels
+
+Distinguish:
+
+REQUIRED/TARGET level
+vs
+ENRICHMENT level
+
+For each cognitive level the system must support conceptually:
+
+- level-specific teaching content
+- performance objective
+- success criterion
+- Evidence Requirement Profile
+- eligible task types
+
+IMPORTANT:
+
+Remember ≠ automatically 2 exercises.
+Understand ≠ automatically 3 exercises.
+
+Evidence Requirement is semantic, not simply a count.
+
+It should be able to represent:
+
+- required cognitive operation
+- required independence
+- success criterion coverage
+- acceptable task/task-family types
+- minimum evidence quality
+- confirmation policy
+
+Higher-level evidence may support lower-level requirements ONLY when
+the task actually demonstrates them.
+
+Lower-level evidence never automatically confirms a higher level.
+
+Assisted success ≠ independent confirmation.
+
+Remediation is bounded.
+
+────────────────────────────────────────────────────
+C3 — UNIFIED EVIDENCE CONTRACT
+────────────────────────────────────────────────────
+
+All learning/assessment systems must converge into ONE evidence model.
+
+Evidence producers include at least current/future:
+
+- Quiz/Test
+- AI Teacher
+- Quick Practice
+- Flashcards when evidence-eligible
+- Homework when evidence-eligible
+- Human Teacher structured observation
+- traditional/hybrid learning activities
+- retention checks
+
+Evidence producer ≠ mastery authority.
+
+Canonical evidence identity must conceptually resolve to:
+
+Learner
++ MicroNode
++ Cognitive Level
++ Task/Activity
++ Attempt
++ Source/Provenance
+
+Canonical result statuses:
+
+- CORRECT
+- PARTIAL
+- INCORRECT
+- UNCLEAR
+- NO_RESPONSE
+
+UNCLEAR and NO_RESPONSE are NOT automatically "does not know".
+
+Evidence must preserve assistance context:
+
+- independent vs assisted
+- help count
+- assistance level/type
+- attempt identity/history
+
+Evidence Strength belongs to the evidence event.
+
+Confidence does NOT.
+
+Evidence Strength conceptually depends on components such as:
+
+- cognitive alignment
+- success-criterion coverage
+- independence
+- task diagnostic quality / guessability
+- response evidence quality
+
+Evidence history must be append-only/auditable.
+
+New evidence must not overwrite historical evidence.
+
+Task provenance should be traceable:
+
+- SOURCE_EXERCISE
+- TEACHER_CREATED
+- APPROVED_GENERATED
+- BOUNDED_VARIANT
+
+Bounded variants should preserve parent/template relation.
+
+Minimum telemetry should be captured now where technically appropriate:
+
+- readiness
+- timestamps
+- response latency
+- attempts
+- hints/help
+- assistance
+- strategy
+- task difficulty/context
+- workload/context
+- completion
+- progression
+- retention-check timestamps
+
+Do NOT calculate P/L/R/K now.
+
+We only need raw longitudinal observables preserved.
+
+────────────────────────────────────────────────────
+C4 — LEARNER MODEL CONTRACT
+────────────────────────────────────────────────────
+
+Atomic learner knowledge model:
+
+Learner × MicroNode
+
+Learner state is NOT one mastery percentage.
+
+Keep conceptually separate:
+
+- Coverage
+- Target Cognitive Level
+- per-level Cognitive State
+- Current Demonstrated Ceiling
+- 4-state MicroNode Mastery
+- Confidence
+- Assistance Profile
+- Reconfirmation Requirement
+- Unresolved Requirement
+- retention context
+
+Per-level states:
+
+- NOT_ATTEMPTED
+- IN_PROGRESS
+- PARTIAL
+- ASSISTED
+- CONFIRMED
+- RECONFIRMATION_REQUIRED
+
+Current Demonstrated Ceiling:
+
+highest currently CONFIRMED cognitive level.
+
+Example:
+
+Target = Apply
+Remember = CONFIRMED
+Understand = CONFIRMED
+Apply = ASSISTED
+
+Then:
+
+Demonstrated Ceiling = Understand
+
+and target is NOT mastered.
+
+Canonical 4-state MicroNode mastery:
+
+1. Գիտի
+2. Մասնակի գիտի
+3. Չգիտի
+4. Դեռ չի ուսումնասիրել
+
+Canonical semantics:
+
+Գիտի
+= curriculum Target Cognitive Level CONFIRMED.
+
+Մասնակի գիտի
+= meaningful lower knowledge exists but target is not confirmed.
+
+Չգիտի
+= studied/evaluated and sufficient evidence shows even the necessary
+  foundational requirement is currently not confirmed.
+
+Դեռ չի ուսումնասիրել
+= insufficient learning exposure/evidence.
+
+One incorrect answer ≠ Չգիտի.
+
+One later incorrect answer must NOT immediately erase a previous
+CONFIRMED state.
+
+Conflicting recent evidence may lead to:
+
+RECONFIRMATION_REQUIRED.
+
+Confidence ≠ mastery.
+
+Remediation budget exhaustion must preserve the real demonstrated
+ceiling; never fabricate mastery.
+
+AGGREGATION:
+
+MicroNode remains atomic source of truth.
+
+Topic/Outcome/Lesson do not create independent evidence.
+
+Outcome achievement derives from REQUIRED MicroNode × required
+cognitive depth.
+
+Some integrative Outcomes may require integrated evidence.
+
+Lesson Coverage ≠ Lesson Mastery.
+
+Lesson Mastery should derive from required Lesson Outcomes, not a
+simple average percentage.
+
+────────────────────────────────────────────────────
+C5 — KNOWLEDGE TREE CONTRACT
+────────────────────────────────────────────────────
+
+Knowledge Tree is a presentation/diagnostic projection of C4.
+
+It must NOT own separate mastery/scoring logic.
+
+Main hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+Lesson Outcomes are a complementary achievement view, NOT necessarily
+another hierarchy level between Lesson and Topic.
+
+Student view should remain simple.
+
+Teacher view should be diagnostic.
+
+Knowledge Tree must support:
+
+- the 4 learner states
+- Lesson Outcome state
+- Target vs Demonstrated Ceiling
+- Topic/MicroNode drill-down
+- teacher evidence drill-down
+- individual learner diagnosis
+- whole-class diagnosis
+- Outcome-level class diagnosis
+- cognitive-level gaps
+
+Teacher must NOT directly overwrite mastery from Knowledge Tree.
+
+Teacher observation must enter through C3 Evidence.
+
+Knowledge Tree must produce/represent four learning queues:
+
+Գիտի
+→ Retention / Repetition queue
+
+Մասնակի գիտի
+→ Targeted Learning queue
+
+Չգիտի
+→ Foundational Learning queue
+
+Դեռ չի ուսումնասիրել
+→ New Learning queue
+
+Queues must be dynamic based on new C4 state.
+
+Past knowledge does not "disappear" after mastery.
+Mastered knowledge enters retention/repetition lifecycle.
+
+C5 answers:
+WHERE ARE THE GAPS?
+
+It does NOT decide the final intervention.
+
+────────────────────────────────────────────────────
+C6 — RECOMMENDATION / PERSONALIZATION CONTRACT
+────────────────────────────────────────────────────
+
+C6 answers:
+
+WHAT SHOULD HAPPEN NEXT?
+
+C6 must NOT calculate mastery.
+
+Recommendation scope:
+
+- INDIVIDUAL
+- GROUP
+- CLASS
+
+Main learning directions:
+
+Գիտի
+→ Retention
+
+Մասնակի գիտի
+→ Targeted Learning
+
+Չգիտի
+→ Foundational Learning
+
+Դեռ չի ուսումնասիրել
+→ New Learning
+
+But recommendation must also consider:
+
+- Target Cognitive Level
+- Demonstrated Ceiling
+- unresolved requirement
+- assistance profile
+- confidence
+- prerequisite state
+- Outcome REQUIRED/SUPPORTING role
+- evidence recency/history
+- reconfirmation state
+
+Priority:
+
+- HIGH
+- MEDIUM
+- LOW
+- NONE
+
+NONE is valid:
+no intervention may currently be required.
+
+Blocking prerequisites should be handled before dependent targets.
+
+Grouping must be based on meaningful shared learning need, not merely
+the same "partial" label.
+
+Approved-content-first policy:
+
+1. existing approved content
+2. teacher-created approved content
+3. constrained generated equivalent only when needed
+
+Bounded generation must preserve:
+
+- MicroNode
+- knowledge boundary
+- cognitive level
+- performance objective
+- success criterion
+- task intent
+- approximate difficulty
+
+System recommends.
+Teacher decides/edits/postpones/rejects in teacher workflows.
+
+Teacher decision alone does NOT change learner state.
+
+Keep conceptually separate:
+
+Recommendation
+vs
+Actual Intervention.
+
+Future traceability must support:
+
+Before State
+→ Recommendation
+→ Teacher Decision
+→ Intervention
+→ New Evidence
+→ After State
+
+C6 recommendation decisions should initially be deterministic/rule-based
+whenever possible.
+
+Do NOT use LLM where deterministic state/rule logic is sufficient.
+
+════════════════════════════════════════════════════
+SECTION 2 — REQUIRED AUDIT
+════════════════════════════════════════════════════
+
+Audit CURRENT implementation against the contracts above.
+
+Do this in the dependency order:
+
+C1
+→ C2
+→ C3
+→ C4
+→ C5
+→ C6
+
+For EACH important contract requirement, determine:
+
+STATUS:
+- ALREADY_ALIGNED
+- REUSABLE_WITH_SMALL_EXTENSION
+- PARTIAL
+- WRONG_SEMANTICS
+- DUPLICATE_AUTHORITY
+- LEGACY_TO_RETIRE
+- MISSING
+- NOT_CONFIRMED
+
+Then identify:
+
+1. Current DB owner
+2. Current backend owner
+3. Current frontend owner
+4. Existing reusable structures
+5. Semantic conflict
+6. Missing fields/tables/relations
+7. Migration need
+8. API change need
+9. UI change need
+10. Risk to existing data/features
+
+Do NOT implement.
+
+════════════════════════════════════════════════════
+SECTION 3 — SPECIAL DUPLICATE-AUTHORITY AUDIT
+════════════════════════════════════════════════════
+
+Explicitly search for places where multiple subsystems independently
+calculate/write/derive:
+
+- mastery
+- confidence
+- learner status
+- Knowledge Tree status
+- cognitive progression
+- lesson completion
+- node completion
+
+Especially compare:
+
+Quiz/Test
+AI Teacher/chat
+scoring services
+Knowledge Tree
+learner/knowledge-node persistence
+lesson-session progression
+
+For every duplicate authority found, report:
+
+A. current owners
+B. what each one currently writes/derives
+C. whether their semantics disagree
+D. which authority should survive under C1–C6
+E. safest migration/retirement path
+
+Do not remove anything yet.
+
+════════════════════════════════════════════════════
+SECTION 4 — DB / DATA MODEL AUDIT
+════════════════════════════════════════════════════
+
+Provide an evidence-backed map of existing relevant tables.
+
+At minimum inspect structures representing:
+
+- subjects
+- lessons
+- topics
+- lesson nodes / MicroNodes
+- mapping metadata/source blocks
+- cognitive levels/path
+- cognitive tasks
+- exercises
+- dependencies
+- outcomes/goals if any
+- evidence events
+- learner knowledge/mastery
+- quiz/question/attempt/answer data
+- lesson sessions/chat evidence
+- telemetry
+- users/roles if directly relevant to ownership
+
+For each table, report:
+
+KEEP
+EXTEND
+MIGRATE
+LEGACY
+or
+NOT_RELEVANT_TO_C1_C6
+
+Do NOT propose new tables unless existing storage cannot represent the
+contract cleanly.
+
+════════════════════════════════════════════════════
+SECTION 5 — C1+C2 IMPLEMENTATION-READINESS AUDIT
+════════════════════════════════════════════════════
+
+The first future implementation package will be C1 + C2.
+
+Therefore answer very concretely:
+
+1. Can the current schema represent Lesson Goal + multiple Outcomes?
+2. Can Outcome → MicroNode relation be explicit?
+3. Can that relation store REQUIRED/SUPPORTING?
+4. Can required cognitive depth be represented cleanly?
+5. Is Topic → MicroNode canonical and persistent?
+6. Is knowledgeBoundary represented?
+7. Is source provenance represented?
+8. Is Teaching Package structured or only mixed into generic text?
+9. Are examples/misconceptions/alternative explanations/hints/resources
+   separately representable?
+10. Can teacher CRUD all these parts?
+11. Can automatic mapping and manual/external TEXT import converge to
+    one canonical structure?
+12. What current parser/import code can be reused?
+13. What must change for the new Structured TEXT Contract?
+14. How is target cognitive level currently stored?
+15. How are cognitive levels ordered?
+16. Can teacher add Analyze/Evaluate/Create?
+17. Can required vs enrichment levels be represented?
+18. How are performanceObjective and successCriterion stored?
+19. How is evidence requirement currently represented?
+20. What currently enforces requiredEvidenceCount?
+21. What must change to support semantic Evidence Requirement Profile?
+22. How are task types tied to cognitive levels?
+23. What is the minimum safe C1+C2 implementation sequence?
+
+════════════════════════════════════════════════════
+SECTION 6 — C3+C4 READINESS AUDIT
+════════════════════════════════════════════════════
+
+Do NOT implement C3/C4 yet.
+
+Only determine whether the current system can support the frozen
+contracts.
+
+Evidence:
+
+- Is evidence directly linked to student?
+- MicroNode?
+- cognitive level?
+- task?
+- attempt?
+- source?
+- assistance?
+- timestamp?
+- evaluator/provenance?
+
+Identify indirect joins that are fragile.
+
+Learner Model:
+
+- What table currently owns mastery/confidence?
+- Can it represent per-cognitive-level state?
+- Can it distinguish target vs demonstrated ceiling?
+- Can it represent ASSISTED?
+- Can it represent RECONFIRMATION_REQUIRED?
+- Can it preserve historical evidence while recomputing current state?
+- Where is the current 3/3, 2/3, 1/3, 0/3 logic implemented?
+- Which current status logic conflicts with the new target-aware model?
+
+════════════════════════════════════════════════════
+SECTION 7 — C5+C6 READINESS AUDIT
+════════════════════════════════════════════════════
+
+Knowledge Tree:
+
+- Does current frontend/backend calculate its own mastery?
+- Where?
+- What current UI can be reused?
+- Can it display Lesson Outcomes?
+- Can it display Target vs Ceiling?
+- Is whole-class diagnostic already partly present?
+- Is Evidence drill-down possible with current APIs?
+- What would need to change for the four dynamic learning queues?
+
+Recommendations:
+
+- Does any recommendation/next-action logic already exist?
+- Is it deterministic or AI-owned?
+- Can unresolved requirement be represented?
+- Can prerequisite state currently be queried efficiently?
+- Can existing approved exercises/resources be resolved by
+  MicroNode + Cognitive Level?
+- What current structures can support future individual/group/class
+  recommendation?
+- What is truly missing?
+
+════════════════════════════════════════════════════
+SECTION 8 — TELEMETRY AUDIT
+════════════════════════════════════════════════════
+
+Telemetry is CROSS-CUTTING, not C6.
+
+Audit whether the system currently captures real values for:
+
+- readiness
+- task start/end
+- response latency
+- attempts
+- correctness/result
+- helpCount
+- assistance level/type
+- teaching/remediation strategy
+- task difficulty
+- workload/session duration
+- completion
+- progression
+- retention/recheck timestamp
+- intervention identity if any
+
+Distinguish:
+
+FIELD EXISTS BUT NOT POPULATED
+vs
+ACTUALLY POPULATED
+vs
+MISSING.
+
+Do not calculate P/L/R/K.
+
+Only identify raw-data capture gaps.
+
+════════════════════════════════════════════════════
+SECTION 9 — REQUIRED FINAL OUTPUT
+════════════════════════════════════════════════════
+
+Return ONE report with these sections.
+
+A. EXECUTIVE VERDICT
+
+Maximum 15 lines.
+
+Answer:
+
+- How much of C1–C6 can be reused?
+- Which 3–6 gaps are foundational blockers?
+- Is the architecture mainly EXTENSION or REBUILD?
+- Is C1+C2 safe to implement first?
+
+B. CONTRACT MATRIX
+
+Use this exact table structure:
+
+| Contract | Requirement | Current State | DB Evidence | Backend Evidence | Frontend Evidence | Classification | Reuse? | Gap | Migration Needed? | Owner Files |
+
+Do not include trivial rows.
+Include architecture-significant rows.
+
+C. DUPLICATE AUTHORITY MATRIX
+
+| Concern | Current Owners | Conflict | Frozen Owner | Retirement/Migration Path |
+
+At minimum check:
+mastery, confidence, KT status, progression, lesson completion.
+
+D. DB KEEP / EXTEND / MIGRATE MATRIX
+
+| Table / Structure | Current Role | C1–C6 Role | Verdict | Required Change |
+
+E. C1+C2 FIRST IMPLEMENTATION PACKAGE
+
+Give the smallest safe ordered sequence.
+
+For each step:
+
+STEP #
+Goal
+Existing code reused
+DB change
+Backend change
+Frontend change
+Migration risk
+Acceptance gate
+
+Do NOT implement it.
+
+F. LATER DEPENDENCIES
+
+Show what MUST wait for C1+C2.
+
+At minimum:
+C3
+C4
+C5
+Tests 2.0
+C6
+AI Teacher re-alignment
+
+G. DO-NOT-TOUCH LIST
+
+Explicitly list currently working areas that should NOT be changed during
+the first C1+C2 implementation package.
+
+H. FINAL VERDICT
+
+Choose exactly one:
+
+1. SAFE TO IMPLEMENT C1+C2 WITH SMALL EXTENSIONS
+2. SAFE TO IMPLEMENT C1+C2 WITH CONTROLLED SCHEMA MIGRATION
+3. BLOCKED — FOUNDATION MUST BE CORRECTED FIRST
+
+Then explain the top reasons in no more than 10 bullets.
+
+════════════════════════════════════════════════════
+SECTION 10 — IMPORTANT STOP RULE
+════════════════════════════════════════════════════
+
+When the audit is complete:
+
+STOP.
+
+Do not implement.
+Do not fix.
+Do not migrate.
+Do not restart services merely to apply changes.
+Do not change UI.
+Do not continue into C1 implementation.
+
+Return the report and wait for review.
