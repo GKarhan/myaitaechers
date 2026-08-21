@@ -1,0 +1,1078 @@
+C1 ACCEPTANCE FIX #4
+SOURCE COVERAGE + ATOMIC MICRONODE GENERATION + OUTCOME ALIGNMENT
+
+We are continuing the REAL C1 Mapping acceptance process.
+
+This task is about MAPPING CONTENT QUALITY and COVERAGE.
+
+Do NOT treat this as another technical crash fix.
+
+════════════════════════════════════════════════════
+0. ESTABLISHED STATE — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+The following work is complete and must remain intact.
+
+Task #108:
+- AI Goal/Outcome proposal
+- canonical draft import
+- explicit teacher confirmation
+- Goal/Outcome confirmation works before MicroNodes
+
+Task #109:
+- lesson-scoped source extraction
+- invalid page-range protection
+- context overflow protection
+- truncation protection
+- confirmed Goal/Outcomes passed into detailed mapping
+
+Task #110:
+- Pass 2 count-only/source-safe diagnostics
+- provider/parser/validation/normalization boundaries
+- malformed provider JSON diagnostics
+- zero-valid-MicroNode protection
+- zero-MicroNode result fails BEFORE deleting existing mapping
+- diagnostics do not retain raw provider content, textbook text,
+  learner data, generated titles, or arbitrary provider JSON keys
+
+Task #110 controlled retry established:
+
+- provider emitted 1 MicroNode candidate for one Topic
+- provider emitted 0 MicroNode candidates for another Topic
+- parser did NOT remove valid candidates
+- normalization did NOT remove valid candidates
+
+Therefore:
+
+DO NOT reopen parser-loss debugging without new evidence.
+
+Preserve all #108/#109/#110 safeguards.
+
+════════════════════════════════════════════════════
+1. REAL ACCEPTANCE LESSON
+════════════════════════════════════════════════════
+
+Continue using the SAME real lesson.
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Topic:
+Բնական թվերը և կոորդինատային ճառագայթը
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Pages:
+10–11
+
+Development lesson:
+lesson 611
+
+Known controlled mapping state:
+
+- Pass 1 source blocks: approximately 42
+- Topics: 2
+- MicroNodes: 1
+- Exercises/tasks: 0
+- approximately 38 instructional source blocks remained unmapped
+
+Do not use a synthetic lesson as the final acceptance proof.
+
+════════════════════════════════════════════════════
+2. CURRENT C1 BLOCKER
+════════════════════════════════════════════════════
+
+The mapper now technically executes.
+
+But the generated curriculum map is severely under-mapped.
+
+A result approximately like:
+
+42 source blocks
+→ 2 Topics
+→ 1 MicroNode
+→ ~38 instructional blocks unresolved
+
+is NOT an acceptable detailed curriculum map.
+
+The goal is NOT simply to increase MicroNode count.
+
+The goal is:
+
+FULL RELEVANT SOURCE COVERAGE
++
+CORRECT PEDAGOGICAL GRANULARITY
++
+CONFIRMED OUTCOME COVERAGE.
+
+════════════════════════════════════════════════════
+3. CANONICAL HIERARCHY
+════════════════════════════════════════════════════
+
+Do not invent another hierarchy.
+
+Canonical hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode is the atomic curriculum knowledge/learning unit.
+
+It must be suitable later for:
+
+- AI Teacher instruction
+- cognitive progression
+- exercise/task selection
+- evidence collection
+- learner mastery
+- Knowledge Tree
+- personalization
+
+Do NOT introduce Node/Subnode or another competing schema.
+
+════════════════════════════════════════════════════
+4. CRITICAL DISTINCTION
+SOURCE BLOCK ≠ MICRONODE
+════════════════════════════════════════════════════
+
+Do NOT implement:
+
+1 source block = 1 MicroNode.
+
+Source blocks are evidence/source units.
+
+MicroNodes are pedagogical knowledge units.
+
+Several related source blocks may support ONE MicroNode.
+
+Example conceptually:
+
+definition
++ explanation
++ example
++ representation
+
+may collectively support one atomic learning objective.
+
+Conversely, one large source block may contain several independently
+teachable objectives and may need multiple MicroNodes.
+
+Therefore:
+
+42 source blocks DOES NOT mean 42 MicroNodes.
+
+The correct MicroNode count must emerge from lesson semantics.
+
+════════════════════════════════════════════════════
+5. PHASE A — READ-ONLY CONTRACT AUDIT FIRST
+════════════════════════════════════════════════════
+
+BEFORE changing code or prompts, audit the current Pass 2 mapping
+contract.
+
+Inspect exactly how the current implementation determines:
+
+- Topic boundaries
+- which source blocks belong to each Topic
+- MicroNode generation
+- MicroNode granularity
+- sourceBlock ownership
+- unmappedBlocks
+- learningObjective
+- source traceability
+- exercises/tasks
+- Outcome relations
+- REQUIRED/SUPPORTING
+- required cognitive depth
+- coverage/readiness
+
+Inspect:
+
+A. Pass 2 system instructions
+
+B. Topic-generation prompt
+
+C. MicroNode-generation prompt
+
+D. AI output schema
+
+E. Zod/TypeScript parser schema
+
+F. normalization
+
+G. validation
+
+H. coverage calculation
+
+I. persistence
+
+J. final readiness
+
+Identify the exact CONTRACT GAP that allows a Topic with meaningful
+instructional source to return zero MicroNodes and still leave most
+source content unresolved.
+
+Do NOT modify implementation until this gap is evidence-based.
+
+════════════════════════════════════════════════════
+6. CLASSIFY THE REAL 42 SOURCE BLOCKS
+════════════════════════════════════════════════════
+
+For lesson 611, classify the existing Pass 1 source blocks.
+
+Do NOT print long textbook content.
+
+Return safe structural evidence only.
+
+Classify every relevant readable block into:
+
+A. INSTRUCTIONAL
+
+Examples where applicable:
+- concept
+- definition
+- rule
+- explanation
+- relationship
+- procedure
+- meaningful example
+- mathematical representation
+- instructional table
+- important observation
+- objective-related knowledge
+- misconception/counterexample
+
+B. PRACTICE / ASSESSMENT
+
+Examples:
+- exercise
+- question
+- activity
+- learner task
+- practice problem
+
+C. NON-INSTRUCTIONAL / STRUCTURAL
+
+Examples:
+- page furniture
+- repeated heading/footer
+- decorative fragment
+- navigation artifact
+- non-semantic extraction fragment
+
+D. UNREADABLE / UNRESOLVED
+
+according to the existing source coverage contract.
+
+Return counts:
+
+- total relevant blocks
+- instructional
+- practice/assessment
+- non-instructional
+- unreadable
+- currently MicroNode-owned
+- currently exercise-owned
+- currently unresolved instructional
+
+Do NOT classify genuine instructional material as non-instructional
+simply to improve coverage.
+
+════════════════════════════════════════════════════
+7. EXPLICIT SOURCE DISPOSITION
+════════════════════════════════════════════════════
+
+After detailed mapping, every relevant readable source block must have
+an explicit disposition.
+
+Conceptually:
+
+SOURCE BLOCK
+→ MICRONODE_OWNED
+
+OR
+
+→ EXERCISE_TASK_OWNED
+
+OR
+
+→ NON_INSTRUCTIONAL(reason)
+
+OR
+
+→ UNRESOLVED(reason)
+
+There must be no silent disappearance.
+
+Multiple related source blocks may belong to one MicroNode.
+
+A source block may support multiple MicroNodes only when pedagogically
+justified.
+
+UNRESOLVED instructional content must affect mapping readiness.
+
+════════════════════════════════════════════════════
+8. MICRONODE CONTRACT
+════════════════════════════════════════════════════
+
+Each MicroNode must represent ONE clear teachable and assessable
+learning objective / knowledge unit.
+
+Each MicroNode must answer:
+
+"What single thing should the learner know, understand, or be able to
+do after learning this unit?"
+
+If the answer contains several independently teachable objectives,
+the MicroNode is probably too broad.
+
+If multiple MicroNodes merely repeat fragments of one objective,
+they are probably over-split.
+
+Use existing canonical fields.
+
+At minimum preserve the existing equivalent of:
+
+- MicroNode ID
+- Topic ownership
+- title
+- learningObjective
+- sourceBlock references
+- source page/reference
+- status/confidence where already required
+- required cognitive information where currently defined
+
+Do NOT create new persistence fields when equivalent canonical fields
+already exist.
+
+════════════════════════════════════════════════════
+9. FIX UNDER-MAPPING AT THE GENERATION CONTRACT
+════════════════════════════════════════════════════
+
+Pass 2 must explicitly be responsible for producing enough atomic
+MicroNodes to account for the instructional knowledge of the Topic.
+
+The prompt/contract must NOT permit:
+
+Topic contains meaningful instructional blocks
+→ zero MicroNodes
+→ silently continue.
+
+For each Topic, Pass 2 must know:
+
+- Topic sourceBlock IDs
+- instructional block IDs
+- practice/assessment block IDs where relevant
+- confirmed Goal/Outcomes constraints
+- what source blocks remain uncovered
+
+Require the model to account for instructional content through
+semantically grouped MicroNodes.
+
+Do NOT tell the model to maximize node count.
+
+Do NOT tell it to create one node per block.
+
+════════════════════════════════════════════════════
+10. TOPIC WITH ZERO MICRONODES
+════════════════════════════════════════════════════
+
+If a generated Topic contains meaningful instructional source blocks
+but provider returns zero valid MicroNodes:
+
+do NOT accept that Topic as complete.
+
+Implement ONE targeted repair attempt.
+
+The repair request must be narrow and include only what is required:
+
+- Topic context
+- relevant Topic source blocks
+- instructional sourceBlock IDs
+- confirmed Goal/Outcomes as constraints where necessary
+- previous structural result/count
+- uncovered instructional sourceBlock IDs
+
+Explicitly tell the repair generation:
+
+- produce pedagogically atomic MicroNodes
+- account for the uncovered instructional content
+- do not create one node per block
+- do not fabricate content
+
+Maximum:
+
+ONE repair attempt per affected Topic/generation unit.
+
+NO uncontrolled retry loops.
+
+If repair still produces zero valid MicroNodes:
+
+mapping must fail / remain review-required.
+
+Do NOT fabricate server-side MicroNodes from Topic titles.
+
+════════════════════════════════════════════════════
+11. SUBSTANTIAL UNDER-COVERAGE REPAIR
+════════════════════════════════════════════════════
+
+Zero nodes is not the only failure.
+
+Example:
+
+Topic has many meaningful instructional blocks
+but one tiny MicroNode covers only a small subset.
+
+After first-pass MicroNode generation, calculate which instructional
+source blocks remain unresolved for that Topic.
+
+If substantial instructional content remains unresolved because the
+generated node set is clearly incomplete, the SAME single targeted
+repair mechanism may be used to ask the model to account for the
+remaining content.
+
+Do not create a second retry after that.
+
+Do not repeatedly regenerate already valid MicroNodes.
+
+Repair should focus on UNCOVERED instructional content.
+
+════════════════════════════════════════════════════
+12. COVERAGE-AWARE GENERATION
+════════════════════════════════════════════════════
+
+Pass 2 must operate with explicit source coverage awareness.
+
+For each generation/repair unit track:
+
+- relevant sourceBlock IDs
+- instructional sourceBlock IDs
+- already covered instructional block IDs
+- unresolved instructional block IDs
+
+The model should return sourceBlock ownership for each MicroNode.
+
+The server must deterministically recompute coverage from returned
+ownership.
+
+Do NOT trust an AI-generated percentage.
+
+Coverage is server-derived.
+
+════════════════════════════════════════════════════
+13. C1 SOURCE COVERAGE GATE
+════════════════════════════════════════════════════
+
+Reuse/extend the existing coverageAudit architecture if available.
+
+Do NOT create a competing coverage system.
+
+Final mapping readiness must distinguish:
+
+- total relevant readable blocks
+- instructional blocks
+- covered instructional blocks
+- practice/assessment blocks preserved
+- legitimate non-instructional blocks
+- unresolved instructional blocks
+- unreadable blocks
+
+The important final invariant is:
+
+UNRESOLVED READABLE INSTRUCTIONAL BLOCKS = 0
+
+for final canonical approval.
+
+Legitimate non-instructional blocks do NOT require fake MicroNodes.
+
+Unreadable blocks must follow existing C1 coverage rules.
+
+Do not achieve zero unresolved blocks through dishonest classification.
+
+════════════════════════════════════════════════════
+14. STRUCTURAL GENERATION VS FINAL APPROVAL
+════════════════════════════════════════════════════
+
+Automatic mapping may produce a result that requires teacher review.
+
+Do NOT auto-approve.
+
+Distinguish:
+
+MAPPING GENERATED
+from
+MAPPING READY FOR FINAL APPROVAL.
+
+If instructional coverage is unresolved:
+
+do not mark final readiness PASS.
+
+Teacher should be able to see the unresolved coverage reason.
+
+════════════════════════════════════════════════════
+15. CONFIRMED GOAL/OUTCOMES REMAIN AUTHORITATIVE
+════════════════════════════════════════════════════
+
+Do NOT regenerate or modify the teacher-confirmed:
+
+- Lesson Goal
+- canonical Outcomes
+
+Detailed mapping must satisfy BOTH:
+
+SOURCE COVERAGE
+
+AND
+
+CONFIRMED CURRICULUM OUTCOME COVERAGE.
+
+Source-only mapping is insufficient.
+
+Outcome-only mapping that ignores source is also insufficient.
+
+Use:
+
+SOURCE
++
+CONFIRMED GOAL/OUTCOMES
+
+together.
+
+════════════════════════════════════════════════════
+16. OUTCOME → MICRONODE ALIGNMENT
+════════════════════════════════════════════════════
+
+Once valid MicroNodes exist, evaluate canonical Outcomes against the
+MicroNode set using the Package 1A canonical relation model:
+
+Outcome
+→ REQUIRED / SUPPORTING
+→ MicroNode
+→ required cognitive depth
+
+Definitions:
+
+REQUIRED:
+The learner cannot demonstrate the Outcome without this MicroNode.
+
+SUPPORTING:
+The MicroNode meaningfully supports the Outcome but is not independently
+necessary for demonstrating it.
+
+Do NOT mark every relation REQUIRED.
+
+Do NOT create meaningless relations merely to satisfy validation.
+
+Every canonical Outcome must ultimately have appropriate REQUIRED
+coverage for final mapping readiness.
+
+════════════════════════════════════════════════════
+17. REQUIRED COGNITIVE DEPTH
+════════════════════════════════════════════════════
+
+Preserve the existing cognitive depth scale:
+
+- Հիշել
+- Հասկանալ
+- Կիրառել
+- Վերլուծել
+- Գնահատել
+- Ստեղծել
+
+Required cognitive depth must be based on what the confirmed Outcome
+requires from the linked MicroNode.
+
+Do NOT assign the same level to every relation automatically.
+
+Do NOT modify Cognitive Path runtime behavior in this task.
+
+════════════════════════════════════════════════════
+18. EXERCISES / QUESTIONS / ACTIVITIES / TASKS
+════════════════════════════════════════════════════
+
+The latest controlled run reported zero exercises.
+
+Audit the actual Pass 1 source classification.
+
+Determine whether pages 10–11 contain genuine:
+
+- exercises
+- questions
+- activities
+- learner tasks
+- practice problems
+
+If none exist:
+zero exercises is valid.
+
+If any exist:
+they must be preserved according to the existing C1 exercise/task
+architecture.
+
+Do NOT fabricate exercises.
+
+Do NOT convert practice items into fake theory MicroNodes simply to
+achieve coverage.
+
+If an exercise can be confidently linked to a MicroNode:
+link it.
+
+If the source exercise is valid but linkage is ambiguous:
+preserve it as an unlinked canonical exercise for teacher review.
+
+Do not drop it.
+
+════════════════════════════════════════════════════
+19. SOURCE FIDELITY
+════════════════════════════════════════════════════
+
+Preserve Task #109 lesson-scoped extraction.
+
+Do NOT send the entire textbook.
+
+Do NOT truncate legitimate relevant lesson source.
+
+Do NOT replace source content with AI-generated summaries before
+mapping.
+
+MicroNodes must retain traceability to the sourceBlock IDs/pages that
+support them.
+
+Source evidence and AI-generated teaching enrichment remain separate.
+
+════════════════════════════════════════════════════
+20. TEACHING PACKAGE BOUNDARY
+════════════════════════════════════════════════════
+
+Do NOT use Package 1B Teaching Package content to fake source coverage.
+
+First establish:
+
+Topic
+→ MicroNode
+→ source ownership
+→ Outcome alignment.
+
+Teaching Package remains downstream enrichment of a valid MicroNode.
+
+Do not redesign Package 1B.
+
+════════════════════════════════════════════════════
+21. COGNITIVE PATH BOUNDARY
+════════════════════════════════════════════════════
+
+Do NOT redesign Cognitive Path.
+
+This task should provide valid MicroNodes and required-depth inputs that
+Cognitive Path can use later.
+
+Preserve existing Cognitive Path behavior and regressions.
+
+════════════════════════════════════════════════════
+22. ATOMIC REPLACEMENT SAFETY
+════════════════════════════════════════════════════
+
+Preserve #110 safety.
+
+Before destructive replacement of an existing mapping, validate the
+candidate result.
+
+At minimum:
+
+- ≥1 valid MicroNode overall
+- every instructional Topic has valid MicroNode coverage
+- source ownership structure is valid
+- catastrophic unresolved state is rejected
+
+A failed/incomplete candidate mapping must NOT delete a previously valid
+mapping.
+
+Use existing transaction/replacement architecture.
+
+No partial Topic/MicroNode persistence on failure.
+
+════════════════════════════════════════════════════
+23. JOB STATUS MUST BE TRUTHFUL
+════════════════════════════════════════════════════
+
+Do NOT mark a mapping fully successful/final-ready merely because the
+provider returned valid JSON.
+
+Provider success
+≠
+curriculum mapping success.
+
+If meaningful instructional source remains unresolved after the allowed
+repair:
+
+mapping must be failed/incomplete/review-required according to the
+closest existing project status semantics.
+
+Reuse existing status mechanisms where possible.
+
+Do not over-engineer a new workflow engine.
+
+════════════════════════════════════════════════════
+24. REAL RETEST — SAME LESSON
+════════════════════════════════════════════════════
+
+After the evidence-based correction, use the SAME lesson:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+Շենքերի համարակալումը
+§1.1
+pages 10–11
+lesson 611
+
+Use the SAME teacher-confirmed canonical Goal/Outcomes.
+
+Before retry:
+document the current incomplete mapping state.
+
+Then perform ONE normal automatic mapping.
+
+Do NOT manually create MicroNodes.
+
+Do NOT hardcode lesson-specific output.
+
+Return these server-derived counts:
+
+- total relevant source blocks
+- instructional source blocks
+- practice/assessment blocks
+- non-instructional blocks
+- unreadable blocks
+- Topic count
+- MicroNode count
+- exercise/task count
+- covered instructional blocks
+- unresolved instructional blocks
+- canonical Outcome count
+- REQUIRED relation count
+- SUPPORTING relation count
+- mapping job status
+
+════════════════════════════════════════════════════
+25. REQUIRED HUMAN-READABLE MAPPING AUDIT
+════════════════════════════════════════════════════
+
+For the resulting REAL lesson mapping, return a compact teacher-readable
+audit.
+
+Do NOT reproduce long copyrighted textbook passages.
+
+For each Topic:
+
+TOPIC
+- title
+- sourceBlock count
+- MicroNode count
+
+For each MicroNode:
+
+MICRONODE
+- title
+- learningObjective
+- source page(s)
+- sourceBlock IDs
+- related canonical Outcome(s)
+- REQUIRED/SUPPORTING role
+- required cognitive depth
+- attached exercise/task count
+- confidence/status
+
+Then return:
+
+UNRESOLVED SOURCE
+
+For each unresolved block:
+- sourceBlock ID
+- page
+- block type
+- safe reason unresolved
+
+Do not include long sourceText.
+
+We need this report for HUMAN curriculum review.
+
+════════════════════════════════════════════════════
+26. QUALITY SANITY CHECK
+════════════════════════════════════════════════════
+
+Before reporting READY FOR REVIEW, perform a sanity check:
+
+A. Are any MicroNodes obvious duplicates?
+
+B. Are any MicroNodes so broad that they contain multiple independent
+learning objectives?
+
+C. Are any MicroNodes trivial fragments that should be merged?
+
+D. Does every MicroNode have real source support?
+
+E. Do the MicroNodes collectively cover the instructional source?
+
+F. Do the MicroNodes collectively support the confirmed Outcomes?
+
+G. Were real exercises/tasks preserved if present?
+
+Do NOT silently rewrite questionable curriculum during this sanity check.
+
+Report warnings for human review.
+
+════════════════════════════════════════════════════
+27. DO NOT AUTO-APPROVE
+════════════════════════════════════════════════════
+
+Even if:
+
+unresolved instructional blocks = 0
+
+DO NOT final-approve the mapping automatically.
+
+Return:
+
+READY FOR MANUAL C1 CONTENT REVIEW
+
+The human reviewer will inspect:
+
+- Topic correctness
+- MicroNode granularity
+- source fidelity
+- Outcome alignment
+- cognitive depth
+- exercises
+- Teaching Package
+- Cognitive Path
+- validation
+
+Only after human review can C1 become frozen.
+
+════════════════════════════════════════════════════
+28. REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add focused provider-free tests proving:
+
+A. Multiple related instructional blocks can map to one MicroNode.
+
+B. One MicroNode can own multiple sourceBlock IDs.
+
+C. Instructional blocks cannot silently disappear.
+
+D. Legitimate non-instructional blocks do not require fake MicroNodes.
+
+E. Practice/assessment blocks are preserved separately.
+
+F. Instructional Topic + zero MicroNodes triggers exactly one targeted
+repair attempt or controlled failure.
+
+G. Repair is limited to one attempt.
+
+H. Failed repair does not fabricate MicroNodes.
+
+I. Substantial unresolved instructional coverage affects readiness.
+
+J. Coverage is calculated server-side, not trusted from AI percentage.
+
+K. Confirmed Goal/Outcomes remain unchanged.
+
+L. Outcome↔MicroNode REQUIRED/SUPPORTING relations remain valid.
+
+M. Required cognitive depth persists.
+
+N. Incomplete replacement preserves prior valid mapping.
+
+O. Task #109 context/preflight/truncation safeguards remain intact.
+
+P. Task #110 diagnostics/privacy/parser/zero-node safeguards remain
+intact.
+
+Run relevant existing suites:
+
+- Package 1A
+- Package 1B
+- Package 1C
+- automatic mapping
+- mapping context guards
+- Pass 2 diagnostics
+- final approval
+- Cognitive Path
+
+Do not weaken existing tests to make the new tests pass.
+
+════════════════════════════════════════════════════
+29. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime/chat behavior
+- Evidence
+- Learner Model
+- Knowledge Tree runtime semantics
+- Recommendation/Personalization
+- Quiz flow
+- scoring
+- student sessions
+- manual TEXT mapping
+- Package 1D
+- unrelated teacher UI
+
+Do NOT:
+
+- change model merely to generate more nodes
+- create one MicroNode per source block
+- hardcode MicroNodes for lesson 611
+- create a new hierarchy
+- weaken Task #109 safeguards
+- weaken Task #110 safeguards
+- auto-approve generated mapping
+
+════════════════════════════════════════════════════
+30. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. ROOT CAUSE OF UNDER-MAPPING
+
+Why did the real lesson produce only one MicroNode?
+
+B. CURRENT PASS 2 CONTRACT GAP
+
+What exact generation/coverage behavior allowed it?
+
+C. REAL SOURCE CLASSIFICATION
+
+- total
+- instructional
+- practice/assessment
+- non-instructional
+- unreadable
+- unresolved before fix
+
+D. FILES CHANGED
+
+E. MINIMAL FIX
+
+F. FINAL MICRONODE GENERATION RULE
+
+G. SOURCE OWNERSHIP RULE
+
+H. TARGETED REPAIR BEHAVIOR
+
+I. COVERAGE GATE
+
+J. OUTCOME ALIGNMENT
+
+K. REQUIRED COGNITIVE DEPTH
+
+L. EXERCISE/TASK FINDING
+
+M. ATOMICITY / REPLACEMENT SAFETY
+
+N. REAL LESSON RETEST COUNTS
+
+O. REAL LESSON MAPPING AUDIT
+
+Return the Topic/MicroNode structure required in Section 25.
+
+P. QUALITY WARNINGS
+
+Q. TEST RESULTS
+
+R. REGRESSION STATUS
+
+S. REMAINING C1 ISSUES
+
+T. VERDICT
+
+Use ONLY one of:
+
+READY FOR MANUAL C1 CONTENT REVIEW
+
+or
+
+C1 FIX #4 BLOCKED
+
+Do NOT return C1 FROZEN.
+
+════════════════════════════════════════════════════
+31. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+Fix #4 passes only if:
+
+[ ] Under-mapping root cause is evidence-based.
+
+[ ] Pass 2 has explicit instructional coverage responsibility.
+
+[ ] No one-block-one-MicroNode shortcut is used.
+
+[ ] Relevant instructional source is explicitly accounted for.
+
+[ ] Legitimate non-instructional blocks may remain without fake nodes.
+
+[ ] No instructional Topic silently succeeds with zero MicroNodes.
+
+[ ] At most one targeted repair is used.
+
+[ ] Failed repair does not fabricate nodes.
+
+[ ] MicroNodes are atomic teachable/assessable units.
+
+[ ] MicroNodes retain source traceability.
+
+[ ] Coverage is recomputed server-side.
+
+[ ] Unresolved readable instructional content blocks final readiness.
+
+[ ] Teacher-confirmed Goal remains unchanged.
+
+[ ] Teacher-confirmed Outcomes remain unchanged.
+
+[ ] Outcomes receive meaningful MicroNode coverage.
+
+[ ] REQUIRED/SUPPORTING relations are semantically justified.
+
+[ ] Required cognitive depth is persisted.
+
+[ ] Real source exercises/tasks are preserved if present.
+
+[ ] No exercises are fabricated if absent.
+
+[ ] Incomplete mapping cannot destroy prior valid mapping.
+
+[ ] Same real lesson is remapped without hardcoded content.
+
+[ ] Human-readable Topic/MicroNode audit is returned.
+
+[ ] Task #109 safeguards remain green.
+
+[ ] Task #110 safeguards remain green.
+
+[ ] Relevant C1 regressions pass.
+
+If any acceptance item fails:
+
+STOP.
+
+Return:
+
+C1 FIX #4 BLOCKED
+
+with the exact remaining blocker.
+
+Do NOT proceed to Package 1D.
+
+Do NOT declare C1 Mapping complete/frozen.
