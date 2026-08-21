@@ -3543,13 +3543,16 @@ type MappingAuditReport = {
       requiredAlignments: number;
       supportingAlignments: number;
       requiresTeacherReview: boolean;
+      reviewedAt?: string | null;
     };
   };
 };
 
 function MappingAuditPanel({ lessonId }: { lessonId: number }) {
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [confirmingReview, setConfirmingReview] = useState(false);
   const auditQuery = useQuery({
     queryKey: ["lesson-mapping-audit", lessonId],
     enabled: open && !!token,
@@ -3564,6 +3567,19 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
   const report = auditQuery.data;
   const coverage = report?.quality?.instructionalCoverage;
   const alignment = report?.quality?.outcomeAlignmentAudit;
+  const confirmOutcomeReview = async () => {
+    setConfirmingReview(true);
+    try {
+      const response = await fetch(`/api/lessons/${lessonId}/outcome-alignment-review/confirm`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց հաստատել վերջնարդյունքների կապերի վերանայումը։");
+      await queryClient.invalidateQueries({ queryKey: ["lesson-mapping-audit", lessonId] });
+    } finally {
+      setConfirmingReview(false);
+    }
+  };
   return (
     <div className="border-t border-white/8">
       <button
@@ -3600,7 +3616,18 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
               {alignment && (
                 <div className="rounded border border-blue-400/20 bg-blue-400/[0.05] p-2 text-[10px] text-blue-100">
                   Վերջնարդյունքների կապեր՝ {alignment.persistedAlignments} ({alignment.requiredAlignments} REQUIRED, {alignment.supportingAlignments} SUPPORTING) ·
-                  {alignment.requiresTeacherReview ? " ուսուցչի վերանայում է պահանջվում" : " վերանայում սպասվող չէ"}
+                  {alignment.requiresTeacherReview
+                    ? " ուսուցչի վերանայում է պահանջվում"
+                    : ` վերանայված${alignment.reviewedAt ? `՝ ${new Date(alignment.reviewedAt).toLocaleString()}` : ""}`}
+                  {alignment.requiresTeacherReview && (
+                    <button
+                      disabled={confirmingReview}
+                      onClick={() => void confirmOutcomeReview()}
+                      className="ml-2 rounded border border-blue-300/30 bg-blue-300/10 px-1.5 py-0.5 text-[10px] text-blue-50 hover:bg-blue-300/20 disabled:opacity-50"
+                    >
+                      {confirmingReview ? "Հաստատվում է…" : "Վերանայեցի կապերը"}
+                    </button>
+                  )}
                 </div>
               )}
             </>

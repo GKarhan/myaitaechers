@@ -177,4 +177,74 @@ const diagnostics: Pass2Diagnostics = {
   console.log("  ✓ confirmed outcomes receive traceable atomic alignment proposals");
 }
 
-console.log("\nPass 2 diagnostics: 6/6 passing");
+{
+  const actionOnlyOverlap = buildAutomaticOutcomeAlignmentPlan(
+    ["Սովորողը կբացատրի կոտորակները։"],
+    [{
+      sequence: 1,
+      microNodes: [{
+        title: "Տասնորդական թվեր",
+        learningObjective: "Սովորողը կարող է բացատրել տասնորդական թվերը։",
+        microNodeType: "knowledge",
+        sourceBlockIndices: [0],
+        exercises: [],
+        supportingMaterialIndices: [],
+      }],
+    }],
+  );
+  const genericOnlyOverlap = buildAutomaticOutcomeAlignmentPlan(
+    ["Սովորողը կկիրառի կանոնը։"],
+    [{
+      sequence: 1,
+      microNodes: [{
+        title: "Այլ կանոն",
+        learningObjective: "Սովորողը կարող է կիրառել կանոնը։",
+        microNodeType: "knowledge",
+        sourceBlockIndices: [0],
+        exercises: [],
+        supportingMaterialIndices: [],
+      }],
+    }],
+  );
+  const sameFutureActionOnlyOverlap = buildAutomaticOutcomeAlignmentPlan(
+    ["Սովորողը կբացատրի։"],
+    [{
+      sequence: 1,
+      microNodes: [{
+        title: "Ատոմային հանգույց",
+        learningObjective: "Սովորողը կբացատրի։",
+        microNodeType: "knowledge",
+        sourceBlockIndices: [0],
+        exercises: [],
+        supportingMaterialIndices: [],
+      }],
+    }],
+  );
+  for (const genericTerm of ["թվերը", "դասերը", "նյութերը"]) {
+    const genericInflectionOnlyOverlap = buildAutomaticOutcomeAlignmentPlan(
+      [`Սովորողը կբացատրի ${genericTerm}։`],
+      [{
+        sequence: 1,
+        microNodes: [{
+          title: "Ընդհանուր թեմա",
+          learningObjective: `Սովորողը կբացատրի ${genericTerm}։`,
+          microNodeType: "knowledge",
+          sourceBlockIndices: [0],
+          exercises: [],
+          supportingMaterialIndices: [],
+        }],
+      }],
+    );
+    assert.deepEqual(genericInflectionOnlyOverlap.unresolvedOutcomeIndexes, [0]);
+    assert.equal(genericInflectionOnlyOverlap.proposals.length, 0);
+  }
+  assert.deepEqual(actionOnlyOverlap.unresolvedOutcomeIndexes, [0]);
+  assert.equal(actionOnlyOverlap.proposals.length, 0);
+  assert.deepEqual(genericOnlyOverlap.unresolvedOutcomeIndexes, [0]);
+  assert.equal(genericOnlyOverlap.proposals.length, 0);
+  assert.deepEqual(sameFutureActionOnlyOverlap.unresolvedOutcomeIndexes, [0]);
+  assert.equal(sameFutureActionOnlyOverlap.proposals.length, 0);
+  console.log("  ✓ action-only and generic-term-only overlaps cannot create REQUIRED relations");
+}
+
+console.log("\nPass 2 diagnostics: 7/7 passing");

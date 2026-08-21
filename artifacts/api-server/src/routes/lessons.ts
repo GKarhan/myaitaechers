@@ -1863,6 +1863,39 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments/:alignmentId/dele
   res.json({ deleted: true, id: alignmentId });
 });
 
+// Automatic mapping can suggest only concept-grounded relations. A teacher must
+// explicitly review that generated set before final approval is allowed to rely
+// on it; manual alignment editing remains available above.
+router.post("/lessons/:lessonId/outcome-alignment-review/confirm", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const [lesson] = await db.select({
+    mappingMetadata: lessonsTable.mappingMetadata,
+  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  const metadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
+  const audit = metadata?.quality?.outcomeAlignmentAudit;
+  if (!audit || audit.persistedAlignments <= 0) {
+    res.status(409).json({ error: "NO_AUTOMATIC_OUTCOME_ALIGNMENTS_TO_REVIEW" });
+    return;
+  }
+  const reviewedAt = new Date().toISOString();
+  const nextMetadata = {
+    ...metadata,
+    quality: {
+      ...(metadata.quality ?? {}),
+      outcomeAlignmentAudit: {
+        ...audit,
+        requiresTeacherReview: false,
+        reviewedAt,
+        reviewedBy: req.userId,
+      },
+    },
+  };
+  await db.update(lessonsTable).set({ mappingMetadata: nextMetadata }).where(eq(lessonsTable.id, lessonId));
+  res.json({ reviewedAt });
+});
+
 router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parsePositiveInt(req.params.lessonId);
   if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -4053,6 +4086,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           requiredAlignments: persistedOutcomeAlignments.filter((alignment) => alignment.role === "REQUIRED").length,
           supportingAlignments: persistedOutcomeAlignments.filter((alignment) => alignment.role === "SUPPORTING").length,
           requiresTeacherReview: persistedOutcomeAlignments.length > 0,
+          reviewedAt: null,
+          reviewedBy: null,
         },
         granularityFindings: pass2.granularityFindings,
         pass2Diagnostics: pass2.diagnostics,

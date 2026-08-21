@@ -2308,13 +2308,53 @@ const OUTCOME_STOP_WORDS = new Set([
   "սովորողը", "կարող", "կլինի", "պետք", "է", "են", "մասին", "հետ", "մեջ", "որ", "և", "ու",
 ]);
 
+const OUTCOME_ACTION_STEMS = [
+  "բացատր", "նկարագր", "մեկնաբան", "կիրառ", "լուծ", "օգտագործ", "որոշ",
+  "վերլուծ", "համեմատ", "տարբերակ", "գնահատ", "հիմնավոր", "ստեղծ", "նախագծ",
+  "կազմ", "կատար", "ճանաչ", "ցույց", "գտ",
+];
+const OUTCOME_GENERIC_CONCEPT_STEMS = [
+  "կանոն", "թվ", "առաջադր", "վարժ", "դաս", "նյութ", "հասկաց",
+  "օրինակ", "պատասխան", "եղանակ",
+];
+
+function normalizeArmenianConceptToken(token: string): string {
+  const normalized = token.toLocaleLowerCase("hy-AM").trim();
+  // Retain a conservative root alongside the original token so inflected forms
+  // such as «համարակալման» and «համարակալում» can meet, while unrelated
+  // short words cannot be collapsed into false matches.
+  for (const suffix of ["ություններ", "ության", "ումներին", "ումների", "ման", "ումով", "ում", "ների", "ները", "երի", "ներ", "ը"]) {
+    if (normalized.endsWith(suffix) && normalized.length - suffix.length >= 4) {
+      return normalized.slice(0, -suffix.length);
+    }
+  }
+  return normalized;
+}
+
 function outcomeTokens(value: string): Set<string> {
-  return new Set(
-    value.toLocaleLowerCase("hy-AM")
-      .split(/[^\p{L}\p{N}]+/u)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 3 && !OUTCOME_STOP_WORDS.has(token)),
-  );
+  const tokens = value
+    .toLocaleLowerCase("hy-AM")
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !OUTCOME_STOP_WORDS.has(token));
+  return new Set(tokens.flatMap((token) => [token, normalizeArmenianConceptToken(token)]));
+}
+
+function isOutcomeConceptToken(token: string): boolean {
+  const normalized = normalizeArmenianConceptToken(token);
+  if (OUTCOME_GENERIC_CONCEPT_STEMS.some(
+    (stem) => token.startsWith(stem) || normalized.startsWith(stem),
+  )) return false;
+  // Armenian future forms often carry a leading «կ» (կբացատրի, կկիրառի).
+  // Test both the original and that future-prefix form against action stems;
+  // otherwise a shared verb could masquerade as the required shared concept.
+  const forms = [token, normalized]
+    .flatMap((value) => [value, value.startsWith("կ") ? value.slice(1) : value]);
+  return !forms.some((value) => OUTCOME_ACTION_STEMS.some((stem) => value.startsWith(stem)));
+}
+
+function outcomeConceptTokens(value: string): Set<string> {
+  return new Set([...outcomeTokens(value)].filter(isOutcomeConceptToken));
 }
 
 export function deriveOutcomeCognitiveDepth(
@@ -2332,7 +2372,8 @@ export function deriveOutcomeCognitiveDepth(
 /**
  * Deterministic first-pass alignment avoids treating ungrounded provider prose
  * as a curriculum decision. A proposal exists only when an Outcome and an
- * atomic objective share meaningful source-language terminology.
+ * atomic objective share a specific source-language concept. Action verbs and
+ * generic curriculum words cannot establish a REQUIRED relation by themselves.
  */
 export function buildAutomaticOutcomeAlignmentPlan(
   outcomes: readonly string[],
@@ -2341,17 +2382,17 @@ export function buildAutomaticOutcomeAlignmentPlan(
   const candidates = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => ({
     topicSequence: topic.sequence,
     microNodeIndex,
-    tokens: outcomeTokens(`${node.title} ${node.learningObjective}`),
+    conceptTokens: outcomeConceptTokens(`${node.title} ${node.learningObjective}`),
   })));
   const proposals: AutomaticOutcomeAlignmentProposal[] = [];
   const unresolvedOutcomeIndexes: number[] = [];
 
   outcomes.forEach((outcome, outcomeIndex) => {
-    const tokens = outcomeTokens(outcome);
+    const concepts = outcomeConceptTokens(outcome);
     const ranked = candidates
       .map((candidate) => ({
         ...candidate,
-        score: [...tokens].filter((token) => candidate.tokens.has(token)).length,
+        score: [...concepts].filter((token) => candidate.conceptTokens.has(token)).length,
       }))
       .filter((candidate) => candidate.score > 0)
       .sort((a, b) => b.score - a.score || a.topicSequence - b.topicSequence || a.microNodeIndex - b.microNodeIndex);

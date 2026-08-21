@@ -159,6 +159,17 @@ export async function validateLessonForFinalApproval(
       count: unresolved,
     });
   }
+  const outcomeAlignmentAudit = metadata?.quality?.outcomeAlignmentAudit;
+  if (
+    outcomeAlignmentAudit?.persistedAlignments > 0 &&
+    outcomeAlignmentAudit.requiresTeacherReview === true &&
+    !outcomeAlignmentAudit.reviewedAt
+  ) {
+    errors.push({
+      code: "AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED",
+      messageArm: "Ավտոմատ ստեղծված Outcome–MicroNode կապերը պետք է ուսուցչի կողմից վերանայվեն մինչև վերջնական հաստատումը։",
+    });
+  }
 
   // Package 1C: legacy lessons retain their established approval behavior.
   // Once a teacher explicitly starts canonical Goal/Outcome review, however,
