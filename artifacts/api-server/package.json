@@ -33,6 +33,7 @@
     "test:phase2a-r2": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r2-schema.test.ts",
     "test:phase2a-r3": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r3-acceptance.test.ts",
     "test:phase2a-r3-closure": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r3-closure.test.ts",
+    "test:c1-outcomes": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/canonical-lesson-outcomes.test.ts",
     "test:phase2b-round2": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2b-round2.test.ts",
     "test:v2r2": "tsx src/lib/__tests__/v2r2-intent-router.test.ts",
     "test:v2r4a": "tsx src/lib/__tests__/v2r4a-budget.test.ts",

@@ -3371,6 +3371,373 @@ function LessonGoalOutcomesPanel({
   );
 }
 
+type CanonicalOutcomeAlignment = {
+  id: number;
+  lessonNodeId: number;
+  role: "REQUIRED" | "SUPPORTING";
+  requiredCognitiveDepth: string;
+  node: {
+    id: number;
+    title: string;
+    sequence: number;
+    status: string;
+    cogPathStatus: string | null;
+    capacity: { depth: string; source: string; isConfirmed: boolean } | null;
+  } | null;
+  warnings: string[];
+  isDepthWithinCapacity: boolean;
+};
+
+type CanonicalOutcomeBundle = {
+  legacyOutcomes: string[];
+  canonicalEnabled: boolean;
+  outcomes: Array<{
+    id: number;
+    outcomeText: string;
+    sequence: number;
+    status: string;
+    provenance: string;
+    alignments: CanonicalOutcomeAlignment[];
+  }>;
+  nodes: Array<{
+    id: number;
+    title: string;
+    sequence: number;
+    status: string;
+    cogPathStatus: string | null;
+    capacity: { depth: string; source: string; isConfirmed: boolean } | null;
+    alignmentCount: number;
+  }>;
+};
+
+const COGNITIVE_DEPTH_LABELS: Record<string, string> = {
+  remember: "Հիշել",
+  understand: "Հասկանալ",
+  apply: "Կիրառել",
+  analyze: "Վերլուծել",
+  evaluate: "Գնահատել",
+  create: "Ստեղծել",
+};
+const COGNITIVE_DEPTHS = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
+
+/**
+ * A deliberately narrow C1 authoring panel. It is kept separate from legacy
+ * lessonOutcomes display so teachers can review and migrate old lessons without
+ * changing student delivery or silently inferring outcome-to-node relations.
+ */
+function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [newOutcome, setNewOutcome] = useState("");
+  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<{ errors: Array<{ code: string; message: string }>; warnings: Array<{ code: string; message: string }>; canonicalEnabled: boolean } | null>(null);
+  const [attachNode, setAttachNode] = useState<Record<number, string>>({});
+  const [attachRole, setAttachRole] = useState<Record<number, "REQUIRED" | "SUPPORTING">>({});
+  const [attachDepth, setAttachDepth] = useState<Record<number, string>>({});
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; text: string; approvedNodeCount: number } | null>(null);
+
+  const outcomeQuery = useQuery({
+    queryKey: ["canonical-lesson-outcomes", lessonId],
+    enabled: open && !!token,
+    queryFn: async () => {
+      const response = await fetch(`/api/lessons/${lessonId}/outcomes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց բեռնել վերջնարդյունքները։");
+      return response.json() as Promise<CanonicalOutcomeBundle>;
+    },
+  });
+  const refresh = () => outcomeQuery.refetch();
+
+  const request = async (path: string, body?: Record<string, unknown>) => {
+    const response = await fetch(`/api/lessons/${lessonId}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok) {
+      const requestError = new Error(
+        typeof data.message === "string" ? data.message
+          : typeof data.error === "string" ? data.error
+          : "Գործողությունը չհաջողվեց։",
+      );
+      Object.assign(requestError, { status: response.status, payload: data });
+      throw requestError;
+    }
+    return data;
+  };
+
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Գործողությունը չհաջողվեց։");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bundle = outcomeQuery.data;
+  const moveOutcome = (outcomeId: number, direction: -1 | 1) => {
+    if (!bundle) return;
+    const currentIndex = bundle.outcomes.findIndex((outcome) => outcome.id === outcomeId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= bundle.outcomes.length) return;
+    const ordered = bundle.outcomes.map((outcome) => outcome.id);
+    [ordered[currentIndex], ordered[nextIndex]] = [ordered[nextIndex], ordered[currentIndex]];
+    void run(async () => { await request("/outcomes/reorder", { orderedOutcomeIds: ordered }); });
+  };
+
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">🎯 C1․ կանոնական վերջնարդյունքներ</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Վերջնարդյունքները և դրանց MicroNode կապերը խմբագրի հաստատում են պահանջում․ համակարգը ինքնուրույն կապեր չի ենթադրում։
+          </p>
+          {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
+          {outcomeQuery.isLoading && <div className="text-xs text-muted-foreground">Բեռնվում է…</div>}
+          {bundle && (
+            <>
+              {!bundle.canonicalEnabled && bundle.legacyOutcomes.length > 0 && (
+                <div className="rounded border border-amber-400/25 bg-amber-400/10 p-2.5 text-[11px] text-amber-100 space-y-2">
+                  <p>Գտնվել են {bundle.legacyOutcomes.length} հին JSON վերջնարդյունքներ։ Դրանք դեռ կանոնական կապեր չունեն։</p>
+                  <button
+                    disabled={busy}
+                    onClick={() => void run(async () => { await request("/outcomes/backfill-legacy"); })}
+                    className="rounded bg-amber-400/20 px-2 py-1 font-medium text-amber-100 hover:bg-amber-400/30 disabled:opacity-50"
+                  >
+                    Տեղափոխել որպես draft
+                  </button>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  value={newOutcome}
+                  onChange={(event) => setNewOutcome(event.target.value)}
+                  placeholder="Նոր չափելի վերջնարդյունք…"
+                  className="min-w-0 flex-1 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white placeholder:text-muted-foreground"
+                />
+                <button
+                  disabled={busy || !newOutcome.trim()}
+                  onClick={() => void run(async () => {
+                    await request("/outcomes", { outcomeText: newOutcome.trim() });
+                    setNewOutcome("");
+                  })}
+                  className="rounded bg-primary/20 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/30 disabled:opacity-50"
+                >
+                  Ավելացնել
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {bundle.outcomes.length === 0 && (
+                  <div className="rounded border border-dashed border-white/15 p-3 text-center text-xs text-muted-foreground">
+                    Կանոնական վերջնարդյունք դեռ չկա։
+                  </div>
+                )}
+                {bundle.outcomes.map((outcome, index) => {
+                  const selectedNodeId = attachNode[outcome.id] ?? "";
+                  const selectedRole = attachRole[outcome.id] ?? "REQUIRED";
+                  const selectedDepth = attachDepth[outcome.id] ?? "understand";
+                  return (
+                    <div key={outcome.id} className="rounded border border-white/10 bg-white/[0.025] p-2.5 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <div className="pt-0.5 flex flex-col gap-0.5">
+                          <button disabled={busy || index === 0} onClick={() => moveOutcome(outcome.id, -1)} className="text-[10px] text-muted-foreground hover:text-white disabled:opacity-30">▲</button>
+                          <button disabled={busy || index === bundle.outcomes.length - 1} onClick={() => moveOutcome(outcome.id, 1)} className="text-[10px] text-muted-foreground hover:text-white disabled:opacity-30">▼</button>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          {editing?.id === outcome.id ? (
+                            <input
+                              autoFocus
+                              value={editing.text}
+                              onChange={(event) => setEditing({ id: outcome.id, text: event.target.value })}
+                              className="w-full rounded border border-white/15 bg-black/20 px-2 py-1 text-xs text-white"
+                            />
+                          ) : (
+                            <p className="text-xs leading-relaxed text-white">{outcome.outcomeText}</p>
+                          )}
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                            <select
+                              value={outcome.status}
+                              onChange={(event) => void run(async () => {
+                                await request(`/outcomes/${outcome.id}/update`, { status: event.target.value });
+                              })}
+                              className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-[10px] text-secondary"
+                            >
+                              <option value="draft">draft</option>
+                              <option value="reviewed">reviewed</option>
+                              <option value="approved">approved</option>
+                            </select>
+                            <span className="text-muted-foreground">{outcome.provenance === "legacy_backfill" ? "հին տվյալից" : "ուսուցչի"}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          {editing?.id === outcome.id ? (
+                            <button
+                              disabled={busy || !editing.text.trim()}
+                              onClick={() => void run(async () => {
+                                await request(`/outcomes/${outcome.id}/update`, { outcomeText: editing.text.trim() });
+                                setEditing(null);
+                              })}
+                              className="rounded bg-teal-400/15 px-1.5 py-1 text-[10px] text-teal-200 disabled:opacity-50"
+                            >Պահ.</button>
+                          ) : (
+                            <button onClick={() => setEditing({ id: outcome.id, text: outcome.outcomeText })} className="rounded bg-white/5 px-1.5 py-1 text-[10px] text-muted-foreground hover:text-white">✎</button>
+                          )}
+                          <button
+                            disabled={busy}
+                            onClick={() => void run(async () => {
+                              try {
+                                await request(`/outcomes/${outcome.id}/delete`);
+                              } catch (err) {
+                                const requestError = err as Error & { status?: number; payload?: { approvedNodeCount?: number } };
+                                if (requestError.status === 409) {
+                                  setPendingDelete({ id: outcome.id, text: outcome.outcomeText, approvedNodeCount: requestError.payload?.approvedNodeCount ?? 0 });
+                                  return;
+                                }
+                                throw err;
+                              }
+                            })}
+                            className="rounded bg-red-400/10 px-1.5 py-1 text-[10px] text-red-200 hover:bg-red-400/20 disabled:opacity-50"
+                          >🗑</button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 pl-5">
+                        {outcome.alignments.map((alignment) => (
+                          <div key={alignment.id} className="flex items-center justify-between gap-2 rounded bg-black/15 px-2 py-1 text-[10px]">
+                            <div className="min-w-0">
+                              <span className={alignment.role === "REQUIRED" ? "text-amber-200" : "text-teal-200"}>{alignment.role}</span>
+                              <span className="mx-1 text-muted-foreground">·</span>
+                              <span className="text-white">{alignment.node?.title ?? "Ջնջված MicroNode"}</span>
+                              <span className="ml-1 text-muted-foreground">→ {COGNITIVE_DEPTH_LABELS[alignment.requiredCognitiveDepth] ?? alignment.requiredCognitiveDepth}</span>
+                              {alignment.warnings.length > 0 && <span className="ml-1 text-amber-300">⚠</span>}
+                            </div>
+                            <button
+                              disabled={busy}
+                              onClick={() => void run(async () => {
+                                await request(`/outcomes/${outcome.id}/alignments/${alignment.id}/delete`);
+                              })}
+                              className="text-red-200 hover:text-red-100 disabled:opacity-50"
+                            >Հեռացնել</button>
+                          </div>
+                        ))}
+                        {outcome.alignments.some((alignment) => alignment.warnings.length > 0) && (
+                          <p className="text-[10px] text-amber-200">⚠ REQUIRED կապերի համար նախ հաստատեք MicroNode-ի ճանաչողական ուղին։</p>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-1 pl-5">
+                        <select
+                          value={selectedNodeId}
+                          onChange={(event) => setAttachNode((state) => ({ ...state, [outcome.id]: event.target.value }))}
+                          className="min-w-0 rounded border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-white"
+                        >
+                          <option value="">MicroNode կապել…</option>
+                          {bundle.nodes.map((node) => (
+                            <option key={node.id} value={node.id}>
+                              #{node.sequence} {node.title} {node.capacity ? `(${COGNITIVE_DEPTH_LABELS[node.capacity.depth]})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <select value={selectedRole} onChange={(event) => setAttachRole((state) => ({ ...state, [outcome.id]: event.target.value as "REQUIRED" | "SUPPORTING" }))} className="rounded border border-white/10 bg-black/20 px-1 py-1 text-[10px] text-white">
+                          <option value="REQUIRED">REQUIRED</option>
+                          <option value="SUPPORTING">SUPPORTING</option>
+                        </select>
+                        <select value={selectedDepth} onChange={(event) => setAttachDepth((state) => ({ ...state, [outcome.id]: event.target.value }))} className="rounded border border-white/10 bg-black/20 px-1 py-1 text-[10px] text-white">
+                          {COGNITIVE_DEPTHS.map((depth) => <option key={depth} value={depth}>{COGNITIVE_DEPTH_LABELS[depth]}</option>)}
+                        </select>
+                        <button
+                          disabled={busy || !selectedNodeId}
+                          onClick={() => void run(async () => {
+                            await request(`/outcomes/${outcome.id}/alignments`, {
+                              lessonNodeId: Number(selectedNodeId),
+                              role: selectedRole,
+                              requiredCognitiveDepth: selectedDepth,
+                            });
+                          })}
+                          className="rounded bg-primary/15 px-1.5 py-1 text-[10px] text-primary hover:bg-primary/25 disabled:opacity-50"
+                        >Կապել</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {bundle.canonicalEnabled && (
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={() => void run(async () => {
+                      const result = await (async () => {
+                        const response = await fetch(`/api/lessons/${lessonId}/outcomes/readiness`, { headers: { Authorization: `Bearer ${token ?? ""}` } });
+                        if (!response.ok) throw new Error("Չհաջողվեց ստուգել պատրաստվածությունը։");
+                        return response.json() as Promise<typeof readiness>;
+                      })();
+                      setReadiness(result);
+                    })}
+                    className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] text-primary hover:bg-primary/20 disabled:opacity-50"
+                  >Ստուգել C1 պատրաստվածությունը</button>
+                  {readiness && <span className={readiness.errors.length === 0 ? "text-[11px] text-teal-300" : "text-[11px] text-amber-200"}>
+                    {readiness.errors.length === 0 ? "Պատրաստ է" : `${readiness.errors.length} խնդիր`}
+                  </span>}
+                </div>
+              )}
+              {readiness && (readiness.errors.length > 0 || readiness.warnings.length > 0) && (
+                <ul className="space-y-1 rounded border border-amber-400/20 bg-amber-400/5 p-2 text-[10px] text-amber-100">
+                  {[...readiness.errors, ...readiness.warnings].map((issue, index) => <li key={`${issue.code}-${index}`}>• {issue.message}</li>)}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(value) => { if (!value) setPendingDelete(null); }}>
+        <AlertDialogContent className="bg-[#0f1117] border border-white/10 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm">Ջնջե՞լ վերջնարդյունքը</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground">
+              «{pendingDelete?.text}» վերջնարդյունքի հետ կջնջվեն նաև {pendingDelete?.approvedNodeCount ?? 0} հաստատված MicroNode-ի կապերը։
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white text-xs">Չեղարկել</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                const candidate = pendingDelete;
+                if (!candidate) return;
+                void run(async () => {
+                  await request(`/outcomes/${candidate.id}/delete`, { confirmApprovedRelationRemoval: true });
+                  setPendingDelete(null);
+                });
+              }}
+              className="bg-destructive text-white hover:bg-destructive/90 text-xs"
+            >Ջնջել կապերով</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 export default function TeacherDashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -5503,6 +5870,7 @@ export default function TeacherDashboard() {
                                   }
                                 />
                               )}
+                              <CanonicalOutcomesPanel lessonId={l.id} />
                               <LessonNodesPanel
                                 lessonId={l.id}
                                 courseId={selectedCourse!.id}

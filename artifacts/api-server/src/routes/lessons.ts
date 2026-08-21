@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type NextFunction, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -21,6 +21,14 @@ import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
 } from "../lib/exercise-content-boundary.js";
+import {
+  deriveNodeCognitiveCapacity,
+  buildTemporarySequencePlan,
+  getAlignmentWarnings,
+  isCognitiveDepth,
+  isDepthWithinCapacity,
+  type CognitiveDepth,
+} from "../lib/lesson-outcome-validation.js";
 
 const router = Router();
 
@@ -68,6 +76,155 @@ function requireLessonAuthor(
       next();
     })().catch(next);
   });
+}
+
+// ── Package 1A / C1 canonical outcome helpers ─────────────────────────────────
+// These are intentionally authoring-only. They neither alter final approval nor
+// lesson delivery: legacy lessons keep their existing learner-facing behavior.
+type OutcomeRole = "REQUIRED" | "SUPPORTING";
+const OUTCOME_ROLES: readonly OutcomeRole[] = ["REQUIRED", "SUPPORTING"];
+const OUTCOME_STATUSES = ["draft", "reviewed", "approved"] as const;
+
+function parsePositiveInt(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeLegacyOutcomes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(
+    value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )];
+}
+
+async function getCanonicalOutcomeBundle(lessonId: number) {
+  const [lessonRows, outcomes, nodes, alignments, cognitiveLevels] = await Promise.all([
+    db.select({
+      id: lessonsTable.id,
+      legacyOutcomes: lessonsTable.lessonOutcomes,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
+    db.select().from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, lessonId))
+      .orderBy(asc(lessonOutcomesTable.sequence)),
+    db.select({
+      id: lessonNodesTable.id,
+      sequence: lessonNodesTable.sequence,
+      title: lessonNodesTable.title,
+      status: lessonNodesTable.status,
+      targetBloomLevel: lessonNodesTable.targetBloomLevel,
+      cogPathStatus: lessonNodesTable.cogPathStatus,
+    }).from(lessonNodesTable)
+      .where(eq(lessonNodesTable.lessonId, lessonId))
+      .orderBy(asc(lessonNodesTable.sequence)),
+    db.select().from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
+    db.select({
+      lessonNodeId: lessonNodeCognitiveLevelsTable.lessonNodeId,
+      cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+      isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+      isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
+    }).from(lessonNodeCognitiveLevelsTable)
+      .innerJoin(lessonNodesTable, eq(lessonNodesTable.id, lessonNodeCognitiveLevelsTable.lessonNodeId))
+      .where(eq(lessonNodesTable.lessonId, lessonId)),
+  ]);
+
+  const lesson = lessonRows[0];
+  if (!lesson) return null;
+
+  const levelsByNode = new Map<number, typeof cognitiveLevels>();
+  for (const level of cognitiveLevels) {
+    const existing = levelsByNode.get(level.lessonNodeId) ?? [];
+    existing.push(level);
+    levelsByNode.set(level.lessonNodeId, existing);
+  }
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const capacityByNode = new Map(nodes.map((node) => [
+    node.id,
+    deriveNodeCognitiveCapacity({
+      targetBloomLevel: node.targetBloomLevel,
+      cogPathStatus: node.cogPathStatus,
+      levels: levelsByNode.get(node.id) ?? [],
+    }),
+  ]));
+  const alignmentsByOutcome = new Map<number, typeof alignments>();
+  for (const alignment of alignments) {
+    const existing = alignmentsByOutcome.get(alignment.lessonOutcomeId) ?? [];
+    existing.push(alignment);
+    alignmentsByOutcome.set(alignment.lessonOutcomeId, existing);
+  }
+
+  const serializeAlignment = (alignment: (typeof alignments)[number]) => {
+    const node = nodeById.get(alignment.lessonNodeId);
+    const capacity = capacityByNode.get(alignment.lessonNodeId);
+    const role = alignment.role as OutcomeRole;
+    const requiredDepth = alignment.requiredCognitiveDepth as CognitiveDepth;
+    const warnings = capacity && isCognitiveDepth(requiredDepth)
+      ? getAlignmentWarnings(role, requiredDepth, capacity)
+      : ["INVALID_PERSISTED_ALIGNMENT_DEPTH"];
+
+    return {
+      id: alignment.id,
+      lessonId: alignment.lessonId,
+      lessonOutcomeId: alignment.lessonOutcomeId,
+      lessonNodeId: alignment.lessonNodeId,
+      role,
+      requiredCognitiveDepth: requiredDepth,
+      createdAt: alignment.createdAt.toISOString(),
+      updatedAt: alignment.updatedAt.toISOString(),
+      node: node ? {
+        id: node.id,
+        title: node.title,
+        sequence: node.sequence,
+        status: node.status,
+        cogPathStatus: node.cogPathStatus,
+        capacity: capacity ? {
+          depth: capacity.depth,
+          source: capacity.source,
+          isConfirmed: capacity.source === "confirmed_path",
+        } : null,
+      } : null,
+      warnings,
+      isDepthWithinCapacity: !!capacity && isCognitiveDepth(requiredDepth)
+        && isDepthWithinCapacity(requiredDepth, capacity),
+    };
+  };
+
+  return {
+    lessonId,
+    legacyOutcomes: normalizeLegacyOutcomes(lesson.legacyOutcomes),
+    canonicalEnabled: outcomes.length > 0,
+    outcomes: outcomes.map((outcome) => ({
+      id: outcome.id,
+      lessonId: outcome.lessonId,
+      outcomeText: outcome.outcomeText,
+      sequence: outcome.sequence,
+      status: outcome.status,
+      provenance: outcome.provenance,
+      createdAt: outcome.createdAt.toISOString(),
+      updatedAt: outcome.updatedAt.toISOString(),
+      alignments: (alignmentsByOutcome.get(outcome.id) ?? []).map(serializeAlignment),
+    })),
+    nodes: nodes.map((node) => {
+      const capacity = capacityByNode.get(node.id);
+      return {
+        id: node.id,
+        title: node.title,
+        sequence: node.sequence,
+        status: node.status,
+        cogPathStatus: node.cogPathStatus,
+        capacity: capacity ? {
+          depth: capacity.depth,
+          source: capacity.source,
+          isConfirmed: capacity.source === "confirmed_path",
+        } : null,
+        alignmentCount: alignments.filter((alignment) => alignment.lessonNodeId === node.id).length,
+      };
+    }),
+  };
 }
 
 // ── Phase 2A R3 helper ────────────────────────────────────────────────────────
@@ -995,6 +1152,319 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
 });
 
 // ── LESSON NODES CRUD ────────────────────────────────────────────────────────
+
+// ── Package 1A — Canonical Lesson Outcomes (C1 authoring boundary) ───────────
+
+router.get("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const bundle = await getCanonicalOutcomeBundle(lessonId);
+  if (!bundle) { res.status(404).json({ error: "Lesson not found" }); return; }
+  res.json(bundle);
+});
+
+router.post("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const outcomeText = typeof req.body?.outcomeText === "string" ? req.body.outcomeText.trim() : "";
+  const status = req.body?.status;
+  if (!lessonId || !outcomeText) {
+    res.status(400).json({ error: "outcomeText is required" }); return;
+  }
+  if (status !== undefined && !(OUTCOME_STATUSES as readonly string[]).includes(status)) {
+    res.status(400).json({ error: "Invalid outcome status" }); return;
+  }
+
+  // Serialize sequence allocation per lesson so simultaneous teacher requests
+  // cannot both claim max(sequence) + 1.
+  const outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const [maxRow] = await tx.select({ value: max(lessonOutcomesTable.sequence) })
+      .from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, lessonId));
+    const [created] = await tx.insert(lessonOutcomesTable).values({
+      lessonId,
+      outcomeText,
+      sequence: (maxRow?.value ?? 0) + 1,
+      status: status ?? "draft",
+      provenance: "teacher_authored",
+    }).returning();
+    return created;
+  });
+
+  res.status(201).json({
+    id: outcome.id,
+    lessonId: outcome.lessonId,
+    outcomeText: outcome.outcomeText,
+    sequence: outcome.sequence,
+    status: outcome.status,
+    provenance: outcome.provenance,
+  });
+});
+
+router.post("/lessons/:lessonId/outcomes/:outcomeId/update", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const outcomeId = parsePositiveInt(req.params.outcomeId);
+  if (!lessonId || !outcomeId) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (req.body?.outcomeText !== undefined) {
+    if (typeof req.body.outcomeText !== "string" || !req.body.outcomeText.trim()) {
+      res.status(400).json({ error: "outcomeText cannot be empty" }); return;
+    }
+    patch.outcomeText = req.body.outcomeText.trim();
+  }
+  if (req.body?.status !== undefined) {
+    if (!(OUTCOME_STATUSES as readonly string[]).includes(req.body.status)) {
+      res.status(400).json({ error: "Invalid outcome status" }); return;
+    }
+    patch.status = req.body.status;
+  }
+  if (Object.keys(patch).length === 1) { res.status(400).json({ error: "No fields to update" }); return; }
+
+  const [updated] = await db.update(lessonOutcomesTable).set(patch)
+    .where(and(eq(lessonOutcomesTable.id, outcomeId), eq(lessonOutcomesTable.lessonId, lessonId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Outcome not found" }); return; }
+  res.json(updated);
+});
+
+router.post("/lessons/:lessonId/outcomes/:outcomeId/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const outcomeId = parsePositiveInt(req.params.outcomeId);
+  if (!lessonId || !outcomeId) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  const [outcome] = await db.select({ id: lessonOutcomesTable.id })
+    .from(lessonOutcomesTable)
+    .where(and(eq(lessonOutcomesTable.id, outcomeId), eq(lessonOutcomesTable.lessonId, lessonId)))
+    .limit(1);
+  if (!outcome) { res.status(404).json({ error: "Outcome not found" }); return; }
+
+  const approvedRelations = await db.select({ nodeId: lessonNodesTable.id, nodeTitle: lessonNodesTable.title })
+    .from(lessonOutcomeNodeAlignmentsTable)
+    .innerJoin(lessonNodesTable, eq(lessonNodesTable.id, lessonOutcomeNodeAlignmentsTable.lessonNodeId))
+    .where(and(
+      eq(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, outcomeId),
+      eq(lessonNodesTable.status, "approved"),
+    ));
+  if (approvedRelations.length > 0 && req.body?.confirmApprovedRelationRemoval !== true) {
+    res.status(409).json({
+      error: "APPROVED_NODE_ALIGNMENT_CONFIRMATION_REQUIRED",
+      message: "Այս վերջնարդյունքը հեռացնելը կապերը կջնջի հաստատված MicroNode-ներից։",
+      approvedNodeCount: approvedRelations.length,
+      approvedNodes: approvedRelations,
+    });
+    return;
+  }
+
+  await db.delete(lessonOutcomesTable).where(eq(lessonOutcomesTable.id, outcomeId));
+  res.json({ deleted: true, id: outcomeId, removedAlignmentCount: approvedRelations.length });
+});
+
+router.post("/lessons/:lessonId/outcomes/reorder", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const orderedOutcomeIds = req.body?.orderedOutcomeIds;
+  if (!lessonId || !Array.isArray(orderedOutcomeIds) || new Set(orderedOutcomeIds).size !== orderedOutcomeIds.length) {
+    res.status(400).json({ error: "orderedOutcomeIds must be a duplicate-free array" }); return;
+  }
+  try {
+    const updated = await db.transaction(async (tx) => {
+      // Hold the same parent-row lock used by creation/backfill so the supplied
+      // full ordering remains authoritative while it is normalized.
+      await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+      const existing = await tx.select({
+        id: lessonOutcomesTable.id,
+        sequence: lessonOutcomesTable.sequence,
+      }).from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
+      if (existing.length !== orderedOutcomeIds.length || orderedOutcomeIds.some((id) => !existing.some((row) => row.id === id))) {
+        throw new Error("OUTCOME_ORDER_CHANGED");
+      }
+
+      const sequencePlan = buildTemporarySequencePlan(
+        existing.map((outcome) => outcome.sequence),
+        orderedOutcomeIds,
+      );
+      // First move every row out of 1…N. This makes an adjacent swap safe with
+      // PostgreSQL's immediate unique constraint; only then assign final order.
+      for (const step of sequencePlan) {
+        await tx.update(lessonOutcomesTable)
+          .set({ sequence: step.temporarySequence, updatedAt: new Date() })
+          .where(eq(lessonOutcomesTable.id, step.id));
+      }
+      for (const step of sequencePlan) {
+        await tx.update(lessonOutcomesTable)
+          .set({ sequence: step.finalSequence, updatedAt: new Date() })
+          .where(eq(lessonOutcomesTable.id, step.id));
+      }
+      return tx.select().from(lessonOutcomesTable)
+        .where(eq(lessonOutcomesTable.lessonId, lessonId))
+        .orderBy(asc(lessonOutcomesTable.sequence));
+    });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof Error && error.message === "OUTCOME_ORDER_CHANGED") {
+      res.status(409).json({ error: "OUTCOME_ORDER_CHANGED", message: "Վերջնարդյունքների ցանկը փոխվել է․ բեռնել և փորձել կրկին։" });
+      return;
+    }
+    throw error;
+  }
+});
+
+router.post("/lessons/:lessonId/outcomes/backfill-legacy", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const missing = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const [lesson] = await tx.select({ legacyOutcomes: lessonsTable.lessonOutcomes }).from(lessonsTable)
+      .where(eq(lessonsTable.id, lessonId)).limit(1);
+    if (!lesson) throw new Error("LESSON_NOT_FOUND");
+    const existing = await tx.select().from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, lessonId));
+    const legacy = normalizeLegacyOutcomes(lesson.legacyOutcomes);
+    const existingTexts = new Set(existing.map((outcome) => outcome.outcomeText.trim()));
+    const toCreate = legacy.filter((outcome) => !existingTexts.has(outcome));
+    if (toCreate.length > 0) {
+      const nextSequence = Math.max(0, ...existing.map((outcome) => outcome.sequence)) + 1;
+      await tx.insert(lessonOutcomesTable).values(toCreate.map((outcomeText, index) => ({
+        lessonId,
+        outcomeText,
+        sequence: nextSequence + index,
+        status: "draft",
+        provenance: "legacy_backfill",
+      })));
+    }
+    return toCreate;
+  }).catch((error: unknown) => {
+    if (error instanceof Error && error.message === "LESSON_NOT_FOUND") return null;
+    throw error;
+  });
+  if (missing === null) { res.status(404).json({ error: "Lesson not found" }); return; }
+  res.status(201).json({
+    createdCount: missing.length,
+    note: "Legacy outcomes were copied as draft records; no MicroNode relations were inferred.",
+  });
+});
+
+router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const outcomeId = parsePositiveInt(req.params.outcomeId);
+  const nodeId = parsePositiveInt(req.body?.lessonNodeId);
+  const role = req.body?.role;
+  const requiredDepth = req.body?.requiredCognitiveDepth;
+  if (!lessonId || !outcomeId || !nodeId) { res.status(400).json({ error: "Valid lessonNodeId is required" }); return; }
+  if (!OUTCOME_ROLES.includes(role)) { res.status(400).json({ error: "role must be REQUIRED or SUPPORTING" }); return; }
+  if (!isCognitiveDepth(requiredDepth)) { res.status(400).json({ error: "Invalid requiredCognitiveDepth" }); return; }
+
+  const [outcomeRows, nodeRows, levels] = await Promise.all([
+    db.select({ id: lessonOutcomesTable.id }).from(lessonOutcomesTable)
+      .where(and(eq(lessonOutcomesTable.id, outcomeId), eq(lessonOutcomesTable.lessonId, lessonId))).limit(1),
+    db.select({
+      id: lessonNodesTable.id,
+      targetBloomLevel: lessonNodesTable.targetBloomLevel,
+      cogPathStatus: lessonNodesTable.cogPathStatus,
+    }).from(lessonNodesTable)
+      .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId))).limit(1),
+    db.select({
+      cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+      isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+      isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
+    }).from(lessonNodeCognitiveLevelsTable)
+      .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId)),
+  ]);
+  const outcome = outcomeRows[0];
+  const node = nodeRows[0];
+  if (!outcome) { res.status(404).json({ error: "Outcome not found in this lesson" }); return; }
+  if (!node) { res.status(400).json({ error: "MicroNode must belong to the same lesson" }); return; }
+
+  const capacity = deriveNodeCognitiveCapacity({
+    targetBloomLevel: node.targetBloomLevel,
+    cogPathStatus: node.cogPathStatus,
+    levels,
+  });
+  if (!isDepthWithinCapacity(requiredDepth, capacity)) {
+    res.status(409).json({
+      error: "REQUIRED_DEPTH_EXCEEDS_NODE_CAPACITY",
+      message: `Requested depth ${requiredDepth} exceeds this MicroNode target ${capacity.depth}.`,
+      capacity,
+    });
+    return;
+  }
+
+  const [alignment] = await db.insert(lessonOutcomeNodeAlignmentsTable).values({
+    lessonId,
+    lessonOutcomeId: outcomeId,
+    lessonNodeId: nodeId,
+    role,
+    requiredCognitiveDepth: requiredDepth,
+  }).onConflictDoNothing().returning();
+  if (!alignment) { res.status(409).json({ error: "OUTCOME_NODE_ALIGNMENT_ALREADY_EXISTS" }); return; }
+  res.status(201).json({
+    alignment,
+    warnings: getAlignmentWarnings(role, requiredDepth, capacity),
+  });
+});
+
+router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments/:alignmentId/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const outcomeId = parsePositiveInt(req.params.outcomeId);
+  const alignmentId = parsePositiveInt(req.params.alignmentId);
+  if (!lessonId || !outcomeId || !alignmentId) { res.status(400).json({ error: "Invalid ids" }); return; }
+  const [deleted] = await db.delete(lessonOutcomeNodeAlignmentsTable)
+    .where(and(
+      eq(lessonOutcomeNodeAlignmentsTable.id, alignmentId),
+      eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId),
+      eq(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, outcomeId),
+    ))
+    .returning({ id: lessonOutcomeNodeAlignmentsTable.id });
+  if (!deleted) { res.status(404).json({ error: "Alignment not found" }); return; }
+  res.json({ deleted: true, id: alignmentId });
+});
+
+router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const bundle = await getCanonicalOutcomeBundle(lessonId);
+  if (!bundle) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (!bundle.canonicalEnabled) {
+    res.json({ canonicalEnabled: false, errors: [], warnings: [], summary: { approvedNodes: 0, outcomes: 0 } });
+    return;
+  }
+
+  const errors: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
+  const warnings: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
+  const alignedNodeIds = new Set<number>();
+  for (const outcome of bundle.outcomes) {
+    const required = outcome.alignments.filter((alignment) => alignment.role === "REQUIRED");
+    if (required.length === 0) {
+      errors.push({ code: "OUTCOME_WITHOUT_REQUIRED_NODE", outcomeId: outcome.id, message: "Յուրաքանչյուր վերջնարդյունք պետք է ունենա առնվազն մեկ REQUIRED MicroNode։" });
+    }
+    for (const alignment of outcome.alignments) {
+      alignedNodeIds.add(alignment.lessonNodeId);
+      if (!alignment.isDepthWithinCapacity) {
+        errors.push({ code: "REQUIRED_DEPTH_EXCEEDS_NODE_CAPACITY", outcomeId: outcome.id, nodeId: alignment.lessonNodeId, message: "Պահանջվող ճանաչողական խորությունը գերազանցում է MicroNode-ի թիրախը։" });
+      }
+      for (const warning of alignment.warnings) {
+        const issue = { code: warning, outcomeId: outcome.id, nodeId: alignment.lessonNodeId, message: "MicroNode-ի ճանաչողական ուղին դեռ վերջնականապես հաստատված չէ։" };
+        if (warning === "REQUIRED_DEPTH_NEEDS_CONFIRMED_PATH") errors.push(issue);
+        else warnings.push(issue);
+      }
+    }
+  }
+  for (const node of bundle.nodes.filter((node) => node.status === "approved")) {
+    if (!alignedNodeIds.has(node.id)) {
+      errors.push({ code: "APPROVED_NODE_WITHOUT_OUTCOME", nodeId: node.id, message: "Հաստատված MicroNode-ը կապված չէ որևէ վերջնարդյունքի հետ։" });
+    }
+  }
+  res.json({
+    canonicalEnabled: true,
+    errors,
+    warnings,
+    summary: {
+      approvedNodes: bundle.nodes.filter((node) => node.status === "approved").length,
+      outcomes: bundle.outcomes.length,
+      alignedNodes: alignedNodeIds.size,
+    },
+  });
+});
 
 // GET /lessons/:lessonId/nodes — list all nodes for this lesson, ordered by sequence
 router.get("/lessons/:lessonId/nodes", requireAuth, async (req: AuthRequest, res) => {
