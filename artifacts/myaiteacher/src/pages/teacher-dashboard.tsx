@@ -3738,6 +3738,313 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
   );
 }
 
+type TeachingPackageItem = {
+  id: number;
+  itemType: string;
+  content: string;
+  cognitiveLevel: string | null;
+  status: string;
+  provenance: string;
+  isPrimary: boolean;
+  sequence: number;
+  resource: { id: number; title: string; fileUrl: string | null } | null;
+};
+
+type TeachingPackageBundle = {
+  knowledgeBoundaries: string[];
+  nodes: Array<{
+    id: number;
+    sequence: number;
+    title: string;
+    learningObjective: string | null;
+    status: string;
+    knowledgeBoundaries: string[];
+    items: TeachingPackageItem[];
+  }>;
+};
+
+const TEACHING_PACKAGE_TYPES = [
+  "MAIN_EXPLANATION", "KEY_FACT", "RULE_OR_FORMULA", "EXAMPLE", "COUNTEREXAMPLE",
+  "MISCONCEPTION", "ALTERNATIVE_EXPLANATION", "GUIDING_QUESTION", "HINT", "RESOURCE",
+];
+const TEACHING_PACKAGE_TYPE_LABELS: Record<string, string> = {
+  MAIN_EXPLANATION: "Հիմնական բացատրություն",
+  KEY_FACT: "Հիմնական փաստ",
+  RULE_OR_FORMULA: "Կանոն / բանաձև",
+  EXAMPLE: "Օրինակ",
+  COUNTEREXAMPLE: "Հակաօրինակ",
+  MISCONCEPTION: "Տարածված թյուրըմբռնում",
+  ALTERNATIVE_EXPLANATION: "Այլ բացատրություն",
+  GUIDING_QUESTION: "Ուղղորդող հարց",
+  HINT: "Հուշում",
+  RESOURCE: "Աջակցող նյութ",
+};
+const TEACHING_PACKAGE_PROVENANCE_LABELS: Record<string, string> = {
+  source_material: "աղբյուրից",
+  teacher_created: "ուսուցչի",
+  ai_generated: "AI draft",
+  ai_generated_teacher_approved: "AI, ուսուցիչը հաստատել է",
+};
+
+/**
+ * Package 1B authoring panel. It reads and writes the normalized Teaching
+ * Package only; current student/AI Teacher delivery stays untouched.
+ */
+function TeachingPackagePanel({ lessonId }: { lessonId: number }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [openNodes, setOpenNodes] = useState<Record<number, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [addingForNode, setAddingForNode] = useState<number | null>(null);
+  const [newItem, setNewItem] = useState({ itemType: "MAIN_EXPLANATION", content: "", cognitiveLevel: "" });
+  const [editing, setEditing] = useState<{ nodeId: number; itemId: number; content: string } | null>(null);
+
+  const teachingPackageQuery = useQuery({
+    queryKey: ["micro-node-teaching-package", lessonId],
+    enabled: open && !!token,
+    queryFn: async () => {
+      const response = await fetch(`/api/lessons/${lessonId}/teaching-package`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց բեռնել ուսուցման փաթեթը։");
+      return response.json() as Promise<TeachingPackageBundle>;
+    },
+  });
+  const refresh = () => teachingPackageQuery.refetch();
+
+  const request = async (path: string, body?: Record<string, unknown>) => {
+    const response = await fetch(`/api/lessons/${lessonId}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok) {
+      throw new Error(
+        typeof data.message === "string" ? data.message
+          : typeof data.error === "string" ? data.error
+          : "Գործողությունը չհաջողվեց։",
+      );
+    }
+    return data;
+  };
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Գործողությունը չհաջողվեց։");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bundle = teachingPackageQuery.data;
+  const moveItem = (nodeId: number, item: TeachingPackageItem, direction: -1 | 1) => {
+    const node = bundle?.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    const sameType = node.items.filter((candidate) => candidate.itemType === item.itemType);
+    const index = sameType.findIndex((candidate) => candidate.id === item.id);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= sameType.length) return;
+    const orderedItemIds = sameType.map((candidate) => candidate.id);
+    [orderedItemIds[index], orderedItemIds[nextIndex]] = [orderedItemIds[nextIndex], orderedItemIds[index]];
+    void run(async () => {
+      await request(`/nodes/${nodeId}/teaching-package/reorder`, { itemType: item.itemType, orderedItemIds });
+    });
+  };
+
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">C1․ MicroNode ուսուցման փաթեթ</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Այստեղ պահվում է վերաօգտագործելի ուսուցման նյութը։ Այն դեռ չի փոխում AI ուսուցչի կամ սովորողի ընթացիկ հոսքը։
+          </p>
+          {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
+          {teachingPackageQuery.isLoading && <div className="text-xs text-muted-foreground">Բեռնվում է…</div>}
+          {bundle && (
+            <>
+              {bundle.nodes.some((node) => node.items.length === 0) && (
+                <div className="flex items-center justify-between gap-2 rounded border border-amber-400/20 bg-amber-400/5 p-2 text-[11px] text-amber-100">
+                  <span>Գոյություն ունեցող քարտեզագրված նյութը կարող եք տեղափոխել միայն որպես վերանայվող draft տարրեր։</span>
+                  <button
+                    disabled={busy}
+                    onClick={() => void run(async () => { await request("/teaching-package/backfill-existing"); })}
+                    className="shrink-0 rounded bg-amber-400/15 px-2 py-1 font-medium hover:bg-amber-400/25 disabled:opacity-50"
+                  >Ստեղծել draft-եր</button>
+                </div>
+              )}
+              {bundle.nodes.length === 0 && (
+                <div className="rounded border border-dashed border-white/15 p-3 text-center text-xs text-muted-foreground">
+                  Նախ ստեղծեք MicroNode-ներ։
+                </div>
+              )}
+              {bundle.nodes.map((node) => {
+                const nodeIsOpen = !!openNodes[node.id];
+                return (
+                  <div key={node.id} className="rounded border border-white/10 bg-white/[0.025]">
+                    <button
+                      onClick={() => setOpenNodes((state) => ({ ...state, [node.id]: !state[node.id] }))}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                    >
+                      <span className="min-w-0 text-xs text-white"><span className="mr-1.5 text-muted-foreground">#{node.sequence}</span>{node.title}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{node.items.length} նյութ · {nodeIsOpen ? "▲" : "▼"}</span>
+                    </button>
+                    {nodeIsOpen && (
+                      <div className="space-y-3 border-t border-white/8 p-3">
+                        <div className="rounded bg-black/15 p-2 text-[10px] leading-relaxed text-muted-foreground">
+                          <p><span className="text-white/80">Նպատակ՝ </span>{node.learningObjective || "նշված չէ"}</p>
+                          <p className="mt-1"><span className="text-white/80">Գիտելիքի սահման՝ </span>{node.knowledgeBoundaries.length > 0 ? node.knowledgeBoundaries.join(" · ") : "դասի համար նշված սահման չկա"}</p>
+                        </div>
+                        <div className="space-y-2">
+                          {TEACHING_PACKAGE_TYPES.map((itemType) => {
+                            const items = node.items.filter((item) => item.itemType === itemType);
+                            if (items.length === 0) return null;
+                            return (
+                              <div key={itemType} className="space-y-1">
+                                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{TEACHING_PACKAGE_TYPE_LABELS[itemType]}</p>
+                                {items.map((item, index) => (
+                                  <div key={item.id} className="rounded border border-white/8 bg-black/15 p-2">
+                                    <div className="flex items-start gap-2">
+                                      <div className="pt-0.5 flex flex-col">
+                                        <button disabled={busy || index === 0} onClick={() => moveItem(node.id, item, -1)} className="text-[10px] text-muted-foreground hover:text-white disabled:opacity-30">▲</button>
+                                        <button disabled={busy || index === items.length - 1} onClick={() => moveItem(node.id, item, 1)} className="text-[10px] text-muted-foreground hover:text-white disabled:opacity-30">▼</button>
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        {editing?.itemId === item.id ? (
+                                          <textarea
+                                            autoFocus
+                                            value={editing.content}
+                                            onChange={(event) => setEditing({ nodeId: node.id, itemId: item.id, content: event.target.value })}
+                                            className="min-h-16 w-full rounded border border-white/15 bg-black/20 px-2 py-1 text-xs text-white"
+                                          />
+                                        ) : <p className="whitespace-pre-wrap text-xs leading-relaxed text-white">{item.content}</p>}
+                                        <div className="mt-1.5 flex flex-wrap gap-1 text-[10px]">
+                                          <span className={item.status === "approved" ? "text-teal-300" : "text-amber-200"}>{item.status}</span>
+                                          <span className="text-muted-foreground">· {TEACHING_PACKAGE_PROVENANCE_LABELS[item.provenance] ?? item.provenance}</span>
+                                          {item.cognitiveLevel && <span className="text-muted-foreground">· {COGNITIVE_DEPTH_LABELS[item.cognitiveLevel] ?? item.cognitiveLevel}</span>}
+                                          {item.isPrimary && <span className="text-primary">· առաջնային</span>}
+                                        </div>
+                                      </div>
+                                      <div className="flex shrink-0 gap-1">
+                                        {editing?.itemId === item.id ? (
+                                          <button disabled={busy || !editing.content.trim()} onClick={() => void run(async () => {
+                                            await request(`/nodes/${node.id}/teaching-package/${item.id}/update`, { content: editing.content.trim() });
+                                            setEditing(null);
+                                          })} className="rounded bg-teal-400/15 px-1.5 py-1 text-[10px] text-teal-200 disabled:opacity-50">Պահ.</button>
+                                        ) : (
+                                          <button disabled={busy} onClick={() => setEditing({ nodeId: node.id, itemId: item.id, content: item.content })} className="rounded bg-white/5 px-1.5 py-1 text-[10px] text-muted-foreground hover:text-white">Խմբ.</button>
+                                        )}
+                                        <button disabled={busy} onClick={() => {
+                                          if (confirm("Ջնջե՞լ այս ուսուցման նյութը։")) void run(async () => {
+                                            await request(`/nodes/${node.id}/teaching-package/${item.id}/delete`);
+                                          });
+                                        }} className="rounded bg-red-400/10 px-1.5 py-1 text-[10px] text-red-200 hover:bg-red-400/20 disabled:opacity-50">Ջնջ.</button>
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-5">
+                                      {item.status !== "approved" ? (
+                                        <>
+                                          <select
+                                            disabled={busy}
+                                            value={item.status}
+                                            onChange={(event) => void run(async () => {
+                                              await request(`/nodes/${node.id}/teaching-package/${item.id}/update`, { status: event.target.value });
+                                            })}
+                                            className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-[10px] text-white"
+                                          >
+                                            <option value="draft">draft</option>
+                                            <option value="reviewed">reviewed</option>
+                                          </select>
+                                          <button disabled={busy} onClick={() => void run(async () => {
+                                            await request(`/nodes/${node.id}/teaching-package/${item.id}/approve`, {
+                                              makePrimary: item.itemType === "MAIN_EXPLANATION" ? item.isPrimary : false,
+                                            });
+                                          })} className="rounded bg-teal-400/15 px-1.5 py-0.5 text-[10px] text-teal-200 hover:bg-teal-400/25 disabled:opacity-50">Հաստատել</button>
+                                        </>
+                                      ) : (
+                                        <button disabled={busy} onClick={() => void run(async () => {
+                                          await request(`/nodes/${node.id}/teaching-package/${item.id}/update`, { status: "draft" });
+                                        })} className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-white disabled:opacity-50">Վերադարձնել draft</button>
+                                      )}
+                                      {item.itemType === "MAIN_EXPLANATION" && !item.isPrimary && (
+                                        <button disabled={busy} onClick={() => void run(async () => {
+                                          const path = item.status === "approved"
+                                            ? `/nodes/${node.id}/teaching-package/${item.id}/update`
+                                            : `/nodes/${node.id}/teaching-package/${item.id}/approve`;
+                                          await request(path, item.status === "approved" ? { isPrimary: true } : { makePrimary: true });
+                                        })} className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/25 disabled:opacity-50">Դարձնել առաջնային</button>
+                                      )}
+                                      <select
+                                        disabled={busy}
+                                        value={item.cognitiveLevel ?? ""}
+                                        onChange={(event) => void run(async () => {
+                                          await request(`/nodes/${node.id}/teaching-package/${item.id}/update`, { cognitiveLevel: event.target.value || null });
+                                        })}
+                                        className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-[10px] text-white"
+                                      >
+                                        <option value="">MicroNode-ի համար</option>
+                                        {COGNITIVE_DEPTHS.map((depth) => <option key={depth} value={depth}>{COGNITIVE_DEPTH_LABELS[depth]}</option>)}
+                                      </select>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {addingForNode === node.id ? (
+                          <div className="space-y-2 rounded border border-primary/20 bg-primary/[0.04] p-2">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <select value={newItem.itemType} onChange={(event) => setNewItem((state) => ({ ...state, itemType: event.target.value }))} className="rounded border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-white">
+                                {TEACHING_PACKAGE_TYPES.map((itemType) => <option key={itemType} value={itemType}>{TEACHING_PACKAGE_TYPE_LABELS[itemType]}</option>)}
+                              </select>
+                              <select value={newItem.cognitiveLevel} onChange={(event) => setNewItem((state) => ({ ...state, cognitiveLevel: event.target.value }))} className="rounded border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-white">
+                                <option value="">MicroNode-ի համար</option>
+                                {COGNITIVE_DEPTHS.map((depth) => <option key={depth} value={depth}>{COGNITIVE_DEPTH_LABELS[depth]}</option>)}
+                              </select>
+                            </div>
+                            <textarea value={newItem.content} onChange={(event) => setNewItem((state) => ({ ...state, content: event.target.value }))} placeholder="Նոր ուսուցման նյութ…" className="min-h-16 w-full rounded border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white placeholder:text-muted-foreground" />
+                            <div className="flex gap-1.5">
+                              <button disabled={busy || !newItem.content.trim()} onClick={() => void run(async () => {
+                                await request(`/nodes/${node.id}/teaching-package`, {
+                                  itemType: newItem.itemType,
+                                  content: newItem.content.trim(),
+                                  cognitiveLevel: newItem.cognitiveLevel || null,
+                                });
+                                setAddingForNode(null);
+                                setNewItem({ itemType: "MAIN_EXPLANATION", content: "", cognitiveLevel: "" });
+                              })} className="rounded bg-primary/20 px-2 py-1 text-[10px] text-primary hover:bg-primary/30 disabled:opacity-50">Ավելացնել draft</button>
+                              <button disabled={busy} onClick={() => setAddingForNode(null)} className="rounded bg-white/5 px-2 py-1 text-[10px] text-muted-foreground hover:text-white">Չեղարկել</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button disabled={busy} onClick={() => { setAddingForNode(node.id); setNewItem({ itemType: "MAIN_EXPLANATION", content: "", cognitiveLevel: "" }); }} className="rounded border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50">Նյութ ավելացնել</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TeacherDashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -5871,6 +6178,7 @@ export default function TeacherDashboard() {
                                 />
                               )}
                               <CanonicalOutcomesPanel lessonId={l.id} />
+                               <TeachingPackagePanel lessonId={l.id} />
                               <LessonNodesPanel
                                 lessonId={l.id}
                                 courseId={selectedCourse!.id}

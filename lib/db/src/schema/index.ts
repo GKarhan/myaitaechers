@@ -23,6 +23,7 @@ export * from "./student-profile";
 export * from "./lesson-topics";
 export * from "./lesson-nodes";
 export * from "./lesson-outcomes";
+export * from "./lesson-node-teaching-package-items";
 export * from "./lesson-exercises";
 export * from "./lesson-node-dependencies";
 export * from "./quizzes";

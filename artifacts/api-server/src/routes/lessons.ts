@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type NextFunction, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -29,6 +29,19 @@ import {
   isDepthWithinCapacity,
   type CognitiveDepth,
 } from "../lib/lesson-outcome-validation.js";
+import {
+  getDeterministicTeachingPackageSeedCandidates,
+  isStableCognitiveLevel,
+  isServerControlledTeachingPackageProvenance,
+  isTeachingPackageItemType,
+  isTeachingPackageProvenance,
+  isTeachingPackageStatus,
+  provenanceAfterExplicitTeachingPackageApproval,
+  requiresExplicitTeachingPackageApproval,
+  TEACHING_PACKAGE_ITEM_TYPES,
+  type TeachingPackageItemType,
+  type TeachingPackageProvenance,
+} from "../lib/teaching-package.js";
 
 const router = Router();
 
@@ -225,6 +238,126 @@ async function getCanonicalOutcomeBundle(lessonId: number) {
       };
     }),
   };
+}
+
+// ── Package 1B / C1 MicroNode Teaching Package helpers ────────────────────────
+// Teaching Package rows are authoring data only. They intentionally do not
+// participate in current AI Teacher delivery, lesson approval, learner evidence,
+// or the existing exercise/task selection pipeline.
+function normalizeKnowledgeBoundaries(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+function parseOptionalPositiveInt(value: unknown): number | null | "invalid" {
+  if (value === undefined || value === null || value === "") return null;
+  return parsePositiveInt(value) ?? "invalid";
+}
+
+async function getTeachingPackageBundle(lessonId: number) {
+  const [lessonRows, nodes, itemRows] = await Promise.all([
+    db.select({
+      id: lessonsTable.id,
+      knowledgeBoundaries: lessonsTable.knowledgeBoundaries,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
+    db.select({
+      id: lessonNodesTable.id,
+      sequence: lessonNodesTable.sequence,
+      title: lessonNodesTable.title,
+      learningObjective: lessonNodesTable.learningObjective,
+      status: lessonNodesTable.status,
+    }).from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId))
+      .orderBy(asc(lessonNodesTable.sequence)),
+    db.select({
+      id: lessonNodeTeachingPackageItemsTable.id,
+      lessonNodeId: lessonNodeTeachingPackageItemsTable.lessonNodeId,
+      itemType: lessonNodeTeachingPackageItemsTable.itemType,
+      content: lessonNodeTeachingPackageItemsTable.content,
+      cognitiveLevel: lessonNodeTeachingPackageItemsTable.cognitiveLevel,
+      status: lessonNodeTeachingPackageItemsTable.status,
+      provenance: lessonNodeTeachingPackageItemsTable.provenance,
+      isPrimary: lessonNodeTeachingPackageItemsTable.isPrimary,
+      resourceId: lessonNodeTeachingPackageItemsTable.resourceId,
+      sequence: lessonNodeTeachingPackageItemsTable.sequence,
+      createdAt: lessonNodeTeachingPackageItemsTable.createdAt,
+      updatedAt: lessonNodeTeachingPackageItemsTable.updatedAt,
+      resourceTitle: resourcesTable.title,
+      resourceUrl: resourcesTable.fileUrl,
+    }).from(lessonNodeTeachingPackageItemsTable)
+      .leftJoin(resourcesTable, eq(resourcesTable.id, lessonNodeTeachingPackageItemsTable.resourceId))
+      .where(eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId))
+      .orderBy(
+        asc(lessonNodeTeachingPackageItemsTable.lessonNodeId),
+        asc(lessonNodeTeachingPackageItemsTable.itemType),
+        asc(lessonNodeTeachingPackageItemsTable.sequence),
+      ),
+  ]);
+  const lesson = lessonRows[0];
+  if (!lesson) return null;
+  const itemsByNode = new Map<number, typeof itemRows>();
+  for (const item of itemRows) {
+    const existing = itemsByNode.get(item.lessonNodeId) ?? [];
+    existing.push(item);
+    itemsByNode.set(item.lessonNodeId, existing);
+  }
+  const knowledgeBoundaries = normalizeKnowledgeBoundaries(lesson.knowledgeBoundaries);
+  return {
+    lessonId,
+    // Existing mapping stores boundaries at lesson scope. They are deliberately
+    // visible beside every MicroNode review rather than copied or replaced.
+    knowledgeBoundaries,
+    nodes: nodes.map((node) => ({
+      ...node,
+      knowledgeBoundaries,
+      items: (itemsByNode.get(node.id) ?? []).map((item) => ({
+        ...item,
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+        resource: item.resourceId && item.resourceTitle
+          ? { id: item.resourceId, title: item.resourceTitle, fileUrl: item.resourceUrl }
+          : null,
+      })),
+    })),
+  };
+}
+
+async function getTeachingPackageNode(lessonId: number, nodeId: number) {
+  const [node] = await db.select({
+    id: lessonNodesTable.id,
+    lessonId: lessonNodesTable.lessonId,
+  }).from(lessonNodesTable)
+    .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
+    .limit(1);
+  return node ?? null;
+}
+
+async function isApplicableTeachingPackageCognitiveLevel(
+  lessonNodeId: number,
+  cognitiveLevel: string | null,
+): Promise<boolean> {
+  if (!cognitiveLevel) return true;
+  const [row] = await db.select({ id: lessonNodeCognitiveLevelsTable.id })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(and(
+      eq(lessonNodeCognitiveLevelsTable.lessonNodeId, lessonNodeId),
+      eq(lessonNodeCognitiveLevelsTable.cognitiveLevel, cognitiveLevel),
+      eq(lessonNodeCognitiveLevelsTable.isApplicable, true),
+    ))
+    .limit(1);
+  return !!row;
+}
+
+async function resourceBelongsToLessonCourse(lessonId: number, resourceId: number): Promise<boolean> {
+  const [row] = await db.select({
+    lessonCourseId: lessonsTable.courseId,
+    resourceCourseId: resourcesTable.courseId,
+  }).from(lessonsTable)
+    .innerJoin(resourcesTable, eq(resourcesTable.id, resourceId))
+    .where(eq(lessonsTable.id, lessonId))
+    .limit(1);
+  return !!row && row.lessonCourseId !== null && row.lessonCourseId === row.resourceCourseId;
 }
 
 // ── Phase 2A R3 helper ────────────────────────────────────────────────────────
@@ -1463,6 +1596,381 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
       outcomes: bundle.outcomes.length,
       alignedNodes: alignedNodeIds.size,
     },
+  });
+});
+
+// ── Package 1B / C1 MicroNode Teaching Package ────────────────────────────────
+router.get("/lessons/:lessonId/teaching-package", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const bundle = await getTeachingPackageBundle(lessonId);
+  if (!bundle) { res.status(404).json({ error: "Lesson not found" }); return; }
+  res.json(bundle);
+});
+
+router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const nodeId = parsePositiveInt(req.params.nodeId);
+  const itemType = req.body?.itemType;
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  const status = req.body?.status ?? "draft";
+  const provenance = req.body?.provenance ?? "teacher_created";
+  const cognitiveLevel = req.body?.cognitiveLevel ?? null;
+  const isPrimary = req.body?.isPrimary ?? false;
+  const resourceId = parseOptionalPositiveInt(req.body?.resourceId);
+  if (!lessonId || !nodeId || !content) { res.status(400).json({ error: "Valid node and non-empty content are required" }); return; }
+  if (!isTeachingPackageItemType(itemType)) { res.status(400).json({ error: "Invalid Teaching Package item type" }); return; }
+  if (!isTeachingPackageStatus(status)) { res.status(400).json({ error: "Invalid Teaching Package status" }); return; }
+  if (!isTeachingPackageProvenance(provenance)) { res.status(400).json({ error: "Invalid Teaching Package provenance" }); return; }
+  if (isServerControlledTeachingPackageProvenance(provenance)) {
+    res.status(400).json({ error: "AI_APPROVED_PROVENANCE_IS_SERVER_CONTROLLED" }); return;
+  }
+  if (cognitiveLevel !== null && !isStableCognitiveLevel(cognitiveLevel)) {
+    res.status(400).json({ error: "Invalid cognitive level" }); return;
+  }
+  if (typeof isPrimary !== "boolean" || (isPrimary && itemType !== "MAIN_EXPLANATION")) {
+    res.status(400).json({ error: "Only MAIN_EXPLANATION may be primary" }); return;
+  }
+  if (resourceId === "invalid") { res.status(400).json({ error: "resourceId must be a positive integer or null" }); return; }
+  if (requiresExplicitTeachingPackageApproval(provenance, status)) {
+    res.status(400).json({ error: "AI-generated material must be explicitly approved" }); return;
+  }
+  const node = await getTeachingPackageNode(lessonId, nodeId);
+  if (!node) { res.status(400).json({ error: "MicroNode must belong to the same lesson" }); return; }
+  if (!(await isApplicableTeachingPackageCognitiveLevel(nodeId, cognitiveLevel))) {
+    res.status(409).json({ error: "COGNITIVE_LEVEL_NOT_APPLICABLE_TO_NODE" }); return;
+  }
+  if (resourceId && !(await resourceBelongsToLessonCourse(lessonId, resourceId))) {
+    res.status(400).json({ error: "Resource must belong to this lesson's course" }); return;
+  }
+
+  try {
+    const item = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} AND lesson_id = ${lessonId} FOR UPDATE`);
+      if (isPrimary && status === "approved") {
+        const [existingPrimary] = await tx.select({ id: lessonNodeTeachingPackageItemsTable.id })
+          .from(lessonNodeTeachingPackageItemsTable)
+          .where(and(
+            eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+            eq(lessonNodeTeachingPackageItemsTable.itemType, "MAIN_EXPLANATION"),
+            eq(lessonNodeTeachingPackageItemsTable.status, "approved"),
+            eq(lessonNodeTeachingPackageItemsTable.isPrimary, true),
+          ))
+          .limit(1);
+        if (existingPrimary) throw new Error("PRIMARY_EXPLANATION_EXISTS");
+      }
+      const [maxRow] = await tx.select({ value: max(lessonNodeTeachingPackageItemsTable.sequence) })
+        .from(lessonNodeTeachingPackageItemsTable)
+        .where(and(
+          eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+          eq(lessonNodeTeachingPackageItemsTable.itemType, itemType),
+        ));
+      const [created] = await tx.insert(lessonNodeTeachingPackageItemsTable).values({
+        lessonId,
+        lessonNodeId: nodeId,
+        itemType,
+        content,
+        cognitiveLevel,
+        status,
+        provenance,
+        isPrimary,
+        resourceId,
+        sequence: (maxRow?.value ?? 0) + 1,
+      }).returning();
+      return created;
+    });
+    res.status(201).json(item);
+  } catch (error) {
+    if (error instanceof Error && error.message === "PRIMARY_EXPLANATION_EXISTS") {
+      res.status(409).json({ error: "PRIMARY_APPROVED_MAIN_EXPLANATION_EXISTS", message: "Այս MicroNode-ի համար արդեն կա առաջնային հաստատված բացատրություն։" });
+      return;
+    }
+    throw error;
+  }
+});
+
+router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/:itemId/update", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const nodeId = parsePositiveInt(req.params.nodeId);
+  const itemId = parsePositiveInt(req.params.itemId);
+  if (!lessonId || !nodeId || !itemId) { res.status(400).json({ error: "Invalid ids" }); return; }
+  const node = await getTeachingPackageNode(lessonId, nodeId);
+  if (!node) { res.status(400).json({ error: "MicroNode must belong to the same lesson" }); return; }
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (req.body?.content !== undefined) {
+    if (typeof req.body.content !== "string" || !req.body.content.trim()) {
+      res.status(400).json({ error: "content cannot be empty" }); return;
+    }
+    patch.content = req.body.content.trim();
+  }
+  if (req.body?.cognitiveLevel !== undefined) {
+    const cognitiveLevel = req.body.cognitiveLevel === null || req.body.cognitiveLevel === "" ? null : req.body.cognitiveLevel;
+    if (cognitiveLevel !== null && !isStableCognitiveLevel(cognitiveLevel)) {
+      res.status(400).json({ error: "Invalid cognitive level" }); return;
+    }
+    if (!(await isApplicableTeachingPackageCognitiveLevel(nodeId, cognitiveLevel))) {
+      res.status(409).json({ error: "COGNITIVE_LEVEL_NOT_APPLICABLE_TO_NODE" }); return;
+    }
+    patch.cognitiveLevel = cognitiveLevel;
+  }
+  if (req.body?.status !== undefined) {
+    if (!isTeachingPackageStatus(req.body.status)) { res.status(400).json({ error: "Invalid Teaching Package status" }); return; }
+    if (req.body.status === "approved") {
+      res.status(400).json({ error: "Use the explicit approve action" }); return;
+    }
+    patch.status = req.body.status;
+  }
+  if (req.body?.isPrimary !== undefined) {
+    if (typeof req.body.isPrimary !== "boolean") { res.status(400).json({ error: "isPrimary must be boolean" }); return; }
+    patch.isPrimary = req.body.isPrimary;
+  }
+  if (req.body?.resourceId !== undefined) {
+    const resourceId = parseOptionalPositiveInt(req.body.resourceId);
+    if (resourceId === "invalid") { res.status(400).json({ error: "resourceId must be a positive integer or null" }); return; }
+    if (resourceId && !(await resourceBelongsToLessonCourse(lessonId, resourceId))) {
+      res.status(400).json({ error: "Resource must belong to this lesson's course" }); return;
+    }
+    patch.resourceId = resourceId;
+  }
+  if (Object.keys(patch).length === 1) { res.status(400).json({ error: "No fields to update" }); return; }
+
+  try {
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} AND lesson_id = ${lessonId} FOR UPDATE`);
+      const [item] = await tx.select().from(lessonNodeTeachingPackageItemsTable)
+        .where(and(
+          eq(lessonNodeTeachingPackageItemsTable.id, itemId),
+          eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId),
+          eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+        ))
+        .limit(1);
+      if (!item) throw new Error("TEACHING_ITEM_NOT_FOUND");
+      const nextPrimary = patch.isPrimary === undefined ? item.isPrimary : patch.isPrimary === true;
+      const nextStatus = typeof patch.status === "string" ? patch.status : item.status;
+      if (nextPrimary && item.itemType !== "MAIN_EXPLANATION") throw new Error("PRIMARY_TYPE_INVALID");
+      if (nextPrimary && nextStatus === "approved") {
+        const [existingPrimary] = await tx.select({ id: lessonNodeTeachingPackageItemsTable.id })
+          .from(lessonNodeTeachingPackageItemsTable)
+          .where(and(
+            eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+            eq(lessonNodeTeachingPackageItemsTable.itemType, "MAIN_EXPLANATION"),
+            eq(lessonNodeTeachingPackageItemsTable.status, "approved"),
+            eq(lessonNodeTeachingPackageItemsTable.isPrimary, true),
+            ne(lessonNodeTeachingPackageItemsTable.id, itemId),
+          ))
+          .limit(1);
+        if (existingPrimary) throw new Error("PRIMARY_EXPLANATION_EXISTS");
+      }
+      const [result] = await tx.update(lessonNodeTeachingPackageItemsTable).set(patch)
+        .where(eq(lessonNodeTeachingPackageItemsTable.id, itemId)).returning();
+      return result;
+    });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof Error && error.message === "TEACHING_ITEM_NOT_FOUND") {
+      res.status(404).json({ error: "Teaching Package item not found" }); return;
+    }
+    if (error instanceof Error && error.message === "PRIMARY_TYPE_INVALID") {
+      res.status(400).json({ error: "Only MAIN_EXPLANATION may be primary" }); return;
+    }
+    if (error instanceof Error && error.message === "PRIMARY_EXPLANATION_EXISTS") {
+      res.status(409).json({ error: "PRIMARY_APPROVED_MAIN_EXPLANATION_EXISTS" }); return;
+    }
+    throw error;
+  }
+});
+
+router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/:itemId/approve", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const nodeId = parsePositiveInt(req.params.nodeId);
+  const itemId = parsePositiveInt(req.params.itemId);
+  const makePrimary = req.body?.makePrimary;
+  if (!lessonId || !nodeId || !itemId) { res.status(400).json({ error: "Invalid ids" }); return; }
+  if (makePrimary !== undefined && typeof makePrimary !== "boolean") {
+    res.status(400).json({ error: "makePrimary must be boolean" }); return;
+  }
+  try {
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} AND lesson_id = ${lessonId} FOR UPDATE`);
+      const [item] = await tx.select().from(lessonNodeTeachingPackageItemsTable)
+        .where(and(
+          eq(lessonNodeTeachingPackageItemsTable.id, itemId),
+          eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId),
+          eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+        ))
+        .limit(1);
+      if (!item) throw new Error("TEACHING_ITEM_NOT_FOUND");
+      const nextPrimary = makePrimary === undefined ? item.isPrimary : makePrimary;
+      if (nextPrimary && item.itemType !== "MAIN_EXPLANATION") throw new Error("PRIMARY_TYPE_INVALID");
+      if (nextPrimary) {
+        const [existingPrimary] = await tx.select({ id: lessonNodeTeachingPackageItemsTable.id })
+          .from(lessonNodeTeachingPackageItemsTable)
+          .where(and(
+            eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+            eq(lessonNodeTeachingPackageItemsTable.itemType, "MAIN_EXPLANATION"),
+            eq(lessonNodeTeachingPackageItemsTable.status, "approved"),
+            eq(lessonNodeTeachingPackageItemsTable.isPrimary, true),
+            ne(lessonNodeTeachingPackageItemsTable.id, itemId),
+          ))
+          .limit(1);
+        if (existingPrimary) throw new Error("PRIMARY_EXPLANATION_EXISTS");
+      }
+      const [result] = await tx.update(lessonNodeTeachingPackageItemsTable).set({
+        status: "approved",
+        isPrimary: nextPrimary,
+        provenance: provenanceAfterExplicitTeachingPackageApproval(item.provenance as TeachingPackageProvenance),
+        updatedAt: new Date(),
+      }).where(eq(lessonNodeTeachingPackageItemsTable.id, itemId)).returning();
+      return result;
+    });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof Error && error.message === "TEACHING_ITEM_NOT_FOUND") {
+      res.status(404).json({ error: "Teaching Package item not found" }); return;
+    }
+    if (error instanceof Error && error.message === "PRIMARY_TYPE_INVALID") {
+      res.status(400).json({ error: "Only MAIN_EXPLANATION may be primary" }); return;
+    }
+    if (error instanceof Error && error.message === "PRIMARY_EXPLANATION_EXISTS") {
+      res.status(409).json({ error: "PRIMARY_APPROVED_MAIN_EXPLANATION_EXISTS" }); return;
+    }
+    throw error;
+  }
+});
+
+router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/:itemId/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const nodeId = parsePositiveInt(req.params.nodeId);
+  const itemId = parsePositiveInt(req.params.itemId);
+  if (!lessonId || !nodeId || !itemId) { res.status(400).json({ error: "Invalid ids" }); return; }
+  const [deleted] = await db.delete(lessonNodeTeachingPackageItemsTable)
+    .where(and(
+      eq(lessonNodeTeachingPackageItemsTable.id, itemId),
+      eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId),
+      eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+    ))
+    .returning({ id: lessonNodeTeachingPackageItemsTable.id });
+  if (!deleted) { res.status(404).json({ error: "Teaching Package item not found" }); return; }
+  res.json({ deleted: true, id: itemId });
+});
+
+router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/reorder", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  const nodeId = parsePositiveInt(req.params.nodeId);
+  const itemType = req.body?.itemType;
+  const orderedItemIds = req.body?.orderedItemIds;
+  if (!lessonId || !nodeId || !isTeachingPackageItemType(itemType)
+    || !Array.isArray(orderedItemIds)
+    || !orderedItemIds.every((id) => Number.isInteger(id))
+    || new Set(orderedItemIds).size !== orderedItemIds.length) {
+    res.status(400).json({ error: "itemType and a duplicate-free integer orderedItemIds array are required" }); return;
+  }
+  try {
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} AND lesson_id = ${lessonId} FOR UPDATE`);
+      const existing = await tx.select({
+        id: lessonNodeTeachingPackageItemsTable.id,
+        sequence: lessonNodeTeachingPackageItemsTable.sequence,
+      }).from(lessonNodeTeachingPackageItemsTable)
+        .where(and(
+          eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId),
+          eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+          eq(lessonNodeTeachingPackageItemsTable.itemType, itemType),
+        ));
+      if (existing.length !== orderedItemIds.length || orderedItemIds.some((id) => !existing.some((item) => item.id === id))) {
+        throw new Error("TEACHING_ITEM_ORDER_CHANGED");
+      }
+      const sequencePlan = buildTemporarySequencePlan(existing.map((item) => item.sequence), orderedItemIds);
+      for (const step of sequencePlan) {
+        await tx.update(lessonNodeTeachingPackageItemsTable).set({
+          sequence: step.temporarySequence,
+          updatedAt: new Date(),
+        }).where(eq(lessonNodeTeachingPackageItemsTable.id, step.id));
+      }
+      for (const step of sequencePlan) {
+        await tx.update(lessonNodeTeachingPackageItemsTable).set({
+          sequence: step.finalSequence,
+          updatedAt: new Date(),
+        }).where(eq(lessonNodeTeachingPackageItemsTable.id, step.id));
+      }
+      return tx.select().from(lessonNodeTeachingPackageItemsTable)
+        .where(and(
+          eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId),
+          eq(lessonNodeTeachingPackageItemsTable.lessonNodeId, nodeId),
+          eq(lessonNodeTeachingPackageItemsTable.itemType, itemType),
+        ))
+        .orderBy(asc(lessonNodeTeachingPackageItemsTable.sequence));
+    });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof Error && error.message === "TEACHING_ITEM_ORDER_CHANGED") {
+      res.status(409).json({ error: "TEACHING_ITEM_ORDER_CHANGED", message: "Նյութերի ցանկը փոխվել է․ բեռնել և փորձել կրկին։" }); return;
+    }
+    throw error;
+  }
+});
+
+router.post("/lessons/:lessonId/teaching-package/backfill-existing", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const nodes = await tx.select({
+      id: lessonNodesTable.id,
+      theoryContent: lessonNodesTable.theoryContent,
+      childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+      basicExamples: lessonNodesTable.basicExamples,
+      realLifeExamples: lessonNodesTable.realLifeExamples,
+      commonMisconception: lessonNodesTable.commonMisconception,
+      nonExamples: lessonNodesTable.nonExamples,
+      contentSourceType: lessonNodesTable.contentSourceType,
+      createdBy: lessonNodesTable.createdBy,
+    }).from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+    const existing = await tx.select({
+      lessonNodeId: lessonNodeTeachingPackageItemsTable.lessonNodeId,
+      itemType: lessonNodeTeachingPackageItemsTable.itemType,
+      sourceItemKey: lessonNodeTeachingPackageItemsTable.sourceItemKey,
+      sequence: lessonNodeTeachingPackageItemsTable.sequence,
+    }).from(lessonNodeTeachingPackageItemsTable)
+      .where(eq(lessonNodeTeachingPackageItemsTable.lessonId, lessonId));
+    const existingKeys = new Set(existing
+      .filter((item): item is typeof item & { sourceItemKey: string } => !!item.sourceItemKey)
+      .map((item) => `${item.lessonNodeId}:${item.sourceItemKey}`));
+    const nextSequence = new Map<string, number>();
+    for (const item of existing) {
+      const key = `${item.lessonNodeId}:${item.itemType}`;
+      nextSequence.set(key, Math.max(nextSequence.get(key) ?? 0, item.sequence));
+    }
+    const toInsert: Array<{
+      lessonId: number; lessonNodeId: number; itemType: TeachingPackageItemType;
+      content: string; sourceItemKey: string; provenance: TeachingPackageProvenance; sequence: number;
+    }> = [];
+    for (const node of nodes) {
+      for (const candidate of getDeterministicTeachingPackageSeedCandidates(node)) {
+        if (existingKeys.has(`${node.id}:${candidate.sourceItemKey}`)) continue;
+        const orderKey = `${node.id}:${candidate.itemType}`;
+        const sequence = (nextSequence.get(orderKey) ?? 0) + 1;
+        nextSequence.set(orderKey, sequence);
+        toInsert.push({
+          lessonId,
+          lessonNodeId: node.id,
+          itemType: candidate.itemType,
+          content: candidate.content,
+          sourceItemKey: candidate.sourceItemKey,
+          provenance: candidate.provenance,
+          sequence,
+        });
+      }
+    }
+    if (toInsert.length > 0) {
+      await tx.insert(lessonNodeTeachingPackageItemsTable).values(toInsert);
+    }
+    return { createdCount: toInsert.length, scannedNodeCount: nodes.length };
+  });
+  res.status(201).json({
+    ...result,
+    note: "Only deterministic existing fields were copied as draft Teaching Package items; original MicroNode fields remain unchanged.",
   });
 });
 

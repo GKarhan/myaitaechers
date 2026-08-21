@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -114,7 +114,11 @@ export const lessonNodesTable = pgTable("lesson_nodes", {
   // true when teaching content was generated before a cognitive path edit.
   // Cleared when teacher regenerates teaching content after re-confirming.
   teachingContentStale: boolean("teaching_content_stale").notNull().default(false),
-});
+}, (t) => [
+  // Supports composite ownership FKs from child authoring tables. `id` remains
+  // the primary key; this protects denormalized lesson references from drift.
+  uniqueIndex("lesson_nodes_id_lesson_uidx").on(t.id, t.lessonId),
+]);
 
 export const insertLessonNodeSchema = createInsertSchema(lessonNodesTable).omit({
   id: true,
