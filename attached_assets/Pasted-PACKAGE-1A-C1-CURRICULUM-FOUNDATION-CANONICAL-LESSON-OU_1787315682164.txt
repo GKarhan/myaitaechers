@@ -1,0 +1,695 @@
+PACKAGE 1A — C1 CURRICULUM FOUNDATION
+CANONICAL LESSON OUTCOMES + OUTCOME↔MICRONODE ALIGNMENT
++ C1→C2 REQUIRED COGNITIVE DEPTH
+
+IMPLEMENTATION TASK — CONTROLLED ADDITIVE MIGRATION
+
+GOAL
+
+Implement the minimum safe C1 curriculum foundation identified by the
+Package 0 read-only audit.
+
+We are NOT rebuilding Mapping.
+We are NOT rebuilding Cognitive Path.
+We are NOT changing Evidence, Learner Model, Knowledge Tree, Quiz,
+AI Teacher runtime behavior, recommendations, or school operations.
+
+The purpose of this task is to establish a durable curriculum chain:
+
+Lesson Goal
+→ Lesson Outcomes
+→ Topic
+→ MicroNode
+→ required cognitive depth
+→ existing MicroNode Cognitive Path
+
+After this task, a lesson outcome must be a durable curriculum object,
+not merely an anonymous string inside lessonOutcomes JSON.
+
+Every approved curriculum MicroNode must be able to explicitly support
+one or more Lesson Outcomes.
+
+The Outcome↔MicroNode relation must express:
+
+- REQUIRED
+- SUPPORTING
+- required cognitive depth
+
+Existing lessons and existing Cognitive Paths MUST continue working.
+
+════════════════════════════════════════════════════
+0 — NON-NEGOTIABLE SCOPE
+════════════════════════════════════════════════════
+
+IN SCOPE:
+
+1. Canonical Lesson Outcome persistence
+2. Outcome ↔ MicroNode relation
+3. REQUIRED / SUPPORTING role
+4. Required cognitive depth on the relation
+5. Compatibility with existing lessonOutcomes JSON
+6. Minimal backend CRUD/read support needed for these structures
+7. Minimal teacher review UI for Lesson Outcomes and MicroNode alignment
+8. Validation required for NEW/UPDATED C1 data
+9. Migration/backfill strategy that does not destroy legacy data
+10. Tests for this package
+
+OUT OF SCOPE:
+
+- Teaching Package redesign
+- examples/misconceptions/hints/resources redesign
+- structured TEXT import redesign
+- automatic mapper redesign beyond the minimum compatibility needed
+- Evidence Requirement Profile
+- C3 Unified Evidence
+- C4 Learner Model
+- Knowledge Tree changes
+- Tests 2.0
+- Recommendation Engine
+- Progress recommendations
+- AI Teacher behavior
+- scoring
+- mastery/confidence semantics
+- Journal
+- Homework
+- Student Today
+- Planning
+- Reporting
+- P/L/R/K
+- broad UI redesign
+
+DO NOT touch these areas unless compilation requires a purely mechanical
+type compatibility adjustment.
+
+Do not modify historical learner evidence.
+
+Do not reset/recreate learner sessions.
+
+Do not touch Session 51.
+
+Do not reinterpret existing mastery or completion data.
+
+════════════════════════════════════════════════════
+1 — PRESERVE CURRENT ARCHITECTURE
+════════════════════════════════════════════════════
+
+Package 0 established that the current system contains reusable
+foundations.
+
+Preserve:
+
+- lessons
+- lesson_topics
+- lesson_nodes
+- lesson_node_dependencies
+- lesson_node_cognitive_levels
+- lesson_node_cognitive_tasks
+- lesson_exercises
+- current Phase 1 mapping/approval workflow
+- current Cognitive Path generation/edit/confirm workflow
+
+Do NOT replace these tables/workflows.
+
+Use:
+
+REUSE
+→ EXTEND
+→ COMPATIBILITY MIGRATE
+
+not:
+
+REBUILD.
+
+Current lessonOutcomes JSON must NOT be deleted.
+
+It remains available during migration/compatibility.
+
+════════════════════════════════════════════════════
+2 — CANONICAL LESSON OUTCOME
+════════════════════════════════════════════════════
+
+Introduce the smallest clean normalized representation for a durable
+Lesson Outcome.
+
+Before coding, inspect existing naming/schema conventions and reuse them.
+
+Do not create redundant concepts if an existing suitable table exists.
+
+A canonical Lesson Outcome must be able to represent at minimum:
+
+- stable DB identity
+- lessonId
+- outcome text
+- order/sequence
+- status/approval state
+- provenance/source where current project conventions allow it
+- timestamps using existing conventions
+
+IMPORTANT:
+
+Do not over-engineer versioning in this task.
+
+If full revision/version history requires a separate architecture layer,
+leave it for later.
+
+But outcome identity must remain stable enough for MicroNodes to
+reference it.
+
+Lesson Goal remains lesson-level.
+
+Do not unnecessarily normalize Lesson Goal in this task unless the
+current schema technically requires it.
+
+════════════════════════════════════════════════════
+3 — OUTCOME ↔ MICRONODE RELATION
+════════════════════════════════════════════════════
+
+Implement an explicit persistent relation between:
+
+Lesson Outcome
+↔
+MicroNode / lesson_node
+
+A MicroNode may support MORE THAN ONE Outcome.
+
+An Outcome may require MORE THAN ONE MicroNode.
+
+Therefore do NOT implement a single outcomeId directly on lesson_nodes
+unless repository evidence proves that it can safely represent the
+many-to-many contract.
+
+The relation must support:
+
+A. role
+
+Allowed values:
+
+REQUIRED
+SUPPORTING
+
+Meaning:
+
+REQUIRED
+= this MicroNode is necessary for confirming the Outcome.
+
+SUPPORTING
+= this MicroNode contributes to the Outcome but is not independently
+required for Outcome confirmation.
+
+B. required cognitive depth
+
+The relation must identify the cognitive depth required from this
+MicroNode for THIS Outcome.
+
+Example:
+
+Outcome O1
+→ MicroNode MN1
+→ REQUIRED
+→ required depth = UNDERSTAND
+
+Outcome O1
+→ MicroNode MN2
+→ REQUIRED
+→ required depth = APPLY
+
+Outcome O2
+→ MicroNode MN2
+→ SUPPORTING
+→ required depth = UNDERSTAND
+
+Do not store this as uncontrolled display text if an existing Cognitive
+Level identity can be safely referenced.
+
+Prefer referencing the existing Cognitive Path / cognitive-level model
+where technically appropriate.
+
+But avoid creating a fragile FK if Cognitive Path rows can be
+regenerated/deleted during teacher editing.
+
+You MUST inspect this lifecycle before choosing the exact FK design.
+
+The persisted curriculum requirement must survive ordinary Cognitive
+Path editing safely.
+
+════════════════════════════════════════════════════
+4 — IMPORTANT C1 ↔ C2 RULE
+════════════════════════════════════════════════════
+
+Do NOT merge Lesson Outcomes and Cognitive Paths.
+
+They have different responsibilities.
+
+C1 says:
+
+WHAT curriculum outcome must be achieved?
+
+C2 says:
+
+HOW DEEP must this MicroNode be demonstrated and through what cognitive
+path?
+
+Canonical ownership:
+
+Lesson Outcome
+↔ MicroNode
+↔ required cognitive depth
+
+MicroNode
+→ its existing ordered Cognitive Path
+
+The current Cognitive Path remains MicroNode-scoped.
+
+Do NOT duplicate the entire Cognitive Path per Outcome.
+
+If one MicroNode supports multiple Outcomes with different required
+depths, the Outcome↔MicroNode relation stores the relevant required
+depth.
+
+Example:
+
+MN7 Cognitive Path:
+
+Remember
+→ Understand
+→ Apply
+→ Analyze
+
+O1 requires MN7 through Apply.
+
+O2 uses MN7 only as Supporting through Understand.
+
+This must be representable without duplicating MN7 or its Cognitive Path.
+
+════════════════════════════════════════════════════
+5 — TARGET COGNITIVE LEVEL CONSISTENCY
+════════════════════════════════════════════════════
+
+The current system already has target ceiling / target Cognitive Path
+semantics.
+
+Do NOT redesign them in this task.
+
+However, after introducing Outcome-required depth, detect semantic
+inconsistencies.
+
+Example:
+
+MicroNode Cognitive Path target ceiling = UNDERSTAND
+
+but a REQUIRED Outcome relation says:
+
+required depth = APPLY
+
+This is invalid.
+
+Implement validation/warning using the safest current project pattern.
+
+Required rule:
+
+For every REQUIRED Outcome↔MicroNode relation:
+
+MicroNode approved/target Cognitive Path must be capable of reaching
+the required cognitive depth.
+
+Do NOT automatically raise the target.
+
+Do NOT let AI silently change it.
+
+Teacher must resolve the inconsistency.
+
+SUPPORTING relation should also reference a valid existing/allowed
+cognitive depth, but it does not independently determine Outcome
+mastery.
+
+════════════════════════════════════════════════════
+6 — LEGACY lessonOutcomes COMPATIBILITY
+════════════════════════════════════════════════════
+
+Current lessons.lessonOutcomes JSON contains useful existing content.
+
+DO NOT:
+
+- delete it
+- overwrite it destructively
+- silently reinterpret it
+- make legacy lessons unusable immediately
+
+Implement a controlled compatibility strategy.
+
+Desired behavior:
+
+NEW/UPDATED canonical lessons:
+→ use canonical Outcome objects and relations.
+
+LEGACY lesson:
+→ continues to render/work from existing lessonOutcomes JSON until
+canonicalized/backfilled.
+
+Where safe, provide a controlled backfill path that can convert existing
+lessonOutcomes strings into canonical Outcome records.
+
+IMPORTANT:
+
+Backfilled outcomes must initially be reviewable.
+
+Do NOT invent Outcome↔MicroNode relations from text similarity and mark
+them approved automatically.
+
+If automatic assistance is used at all later, it may propose relations,
+but teacher approval is required.
+
+For this task prefer deterministic backfill of Outcome identity only.
+
+No destructive cutover.
+
+════════════════════════════════════════════════════
+7 — TEACHER REVIEW UI — MINIMUM ONLY
+════════════════════════════════════════════════════
+
+Do NOT redesign the whole Mapping page yet.
+
+We have separately decided that the final Mapping UI will later use a
+mostly accordion-based structure:
+
+Lesson Goal / Outcomes
+→ Topics
+→ MicroNodes
+   → core knowledge
+   → teaching material
+   → Cognitive Path
+   → exercises/resources
+
+But that larger UI consolidation is NOT this task.
+
+For Package 1A implement only the minimum teacher-review surface needed
+to manage the new C1 data safely.
+
+Teacher must be able to:
+
+1. see Lesson Goal
+2. see canonical Lesson Outcomes
+3. add an Outcome
+4. edit Outcome text
+5. delete an Outcome safely
+6. reorder Outcomes
+7. see which Outcomes a MicroNode supports
+8. attach a MicroNode to an Outcome
+9. remove the relation
+10. choose REQUIRED or SUPPORTING
+11. choose required cognitive depth
+12. see a warning if required depth conflicts with the MicroNode
+    Cognitive Path/target
+
+Reuse current teacher-dashboard patterns.
+
+Do not perform a broad visual redesign.
+
+Do not change unrelated mapping blocks.
+
+════════════════════════════════════════════════════
+8 — DELETE / EDIT SAFETY
+════════════════════════════════════════════════════
+
+Outcome deletion must be safe.
+
+Do not leave orphan relations.
+
+Follow existing transaction/FK conventions.
+
+If deleting an Outcome would remove relations from approved MicroNodes,
+the teacher must receive an explicit warning/confirmation according to
+existing UI patterns.
+
+Editing Outcome text must NOT create a new Outcome identity unless the
+project's current conventions explicitly require replacement semantics.
+
+Reordering Outcomes must persist and normalize order:
+
+1, 2, 3, 4...
+
+No gaps.
+
+════════════════════════════════════════════════════
+9 — APPROVAL / VALIDATION
+════════════════════════════════════════════════════
+
+Do NOT retroactively block every legacy lesson.
+
+Introduce validation in a compatibility-safe manner.
+
+For NEW canonical C1 lessons / lessons explicitly migrated into the new
+contract:
+
+Every approved curriculum MicroNode must have at least one valid Outcome
+relation.
+
+Every REQUIRED relation must have:
+
+- valid Outcome
+- valid MicroNode
+- REQUIRED role
+- required cognitive depth
+
+Required cognitive depth must be compatible with the MicroNode's
+available/approved Cognitive Path.
+
+An Outcome should have at least one REQUIRED MicroNode before being
+considered curriculum-ready.
+
+SUPPORTING-only Outcome is not enough for final curriculum readiness.
+
+Do not change learner-facing availability globally until compatibility
+behavior is verified.
+
+════════════════════════════════════════════════════
+10 — API DESIGN
+════════════════════════════════════════════════════
+
+Use current route/service conventions.
+
+Do not create many tiny endpoints if existing lesson update/review
+patterns can be extended cleanly.
+
+But keep server authority.
+
+Frontend must not directly construct invalid curriculum relations.
+
+All writes must validate:
+
+- same lesson ownership
+- valid Outcome
+- valid MicroNode
+- valid role
+- valid cognitive depth
+- authorization
+
+Preserve current teacher/admin authorization conventions.
+
+════════════════════════════════════════════════════
+11 — MIGRATION SAFETY
+════════════════════════════════════════════════════
+
+This is a CONTROLLED ADDITIVE MIGRATION.
+
+Required rules:
+
+- no destructive schema migration
+- no deletion of legacy outcome JSON
+- no deletion/recreation of MicroNodes
+- no Cognitive Path recreation merely for migration
+- no learner-state rewrite
+- no Evidence rewrite
+- no session rewrite
+
+If a DB migration is required:
+
+1. make it additive
+2. preserve existing IDs
+3. preserve existing mapped lessons
+4. preserve current Cognitive Paths
+5. preserve current exercises/task links
+6. make rollback risk explicit
+
+Do not bulk infer approved Outcome↔MicroNode mappings.
+
+════════════════════════════════════════════════════
+12 — TESTS
+════════════════════════════════════════════════════
+
+Add focused tests for this package.
+
+At minimum verify:
+
+A. Canonical Outcome CRUD
+
+- create
+- edit
+- delete
+- reorder
+- persistence after refresh/read-back
+
+B. Outcome↔MicroNode
+
+- one Outcome → many MicroNodes
+- one MicroNode → many Outcomes
+- REQUIRED
+- SUPPORTING
+- required cognitive depth
+- unlink
+
+C. Validation
+
+- cross-lesson relation rejected
+- invalid role rejected
+- invalid cognitive depth rejected
+- REQUIRED depth above available/approved Cognitive Path detected
+- canonical approved MicroNode with no Outcome relation detected
+- Outcome with no REQUIRED MicroNode detected
+
+D. Compatibility
+
+- legacy lessonOutcomes still readable
+- legacy lesson is not accidentally blocked
+- existing Cognitive Paths remain unchanged
+- existing exercises remain unchanged
+- existing learner state/evidence remains unchanged
+
+E. Ordering
+
+Outcome reorder:
+
+1,2,3,4
+→ move #4 before #2
+→
+1,2,3,4 normalized in the NEW logical order.
+
+════════════════════════════════════════════════════
+13 — REQUIRED IMPLEMENTATION EVIDENCE
+════════════════════════════════════════════════════
+
+When finished, return:
+
+1. FILES CHANGED
+
+For each file:
+- why changed
+- main symbols added/modified
+
+2. DB CHANGE
+
+Show:
+- new/extended structures
+- columns
+- FKs
+- indexes
+- constraints
+- migration behavior
+
+3. C1 DATA FLOW
+
+Show exact implemented flow:
+
+Lesson
+→ Outcome
+→ Outcome↔MicroNode
+→ required cognitive depth
+→ existing Cognitive Path
+
+4. LEGACY COMPATIBILITY
+
+Explain exactly how existing lessonOutcomes JSON continues to work.
+
+5. UI EVIDENCE
+
+Show how teacher can:
+
+- manage Outcomes
+- attach MicroNodes
+- choose REQUIRED/SUPPORTING
+- choose required depth
+- see conflict warnings
+
+6. TEST RESULTS
+
+Give exact pass/fail results.
+
+7. REGRESSION CHECK
+
+Explicitly confirm whether these remained unchanged:
+
+- existing Mapping workflow
+- Cognitive Path data
+- exercises/task links
+- Quiz
+- Evidence
+- Learner Model
+- Knowledge Tree
+- AI Teacher
+- sessions
+
+8. REMAINING GAPS
+
+Only list gaps belonging to the NEXT packages.
+
+Do not implement them.
+
+════════════════════════════════════════════════════
+14 — ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+Package 1A is PASS only if all are true:
+
+[ ] Lesson Outcomes have durable DB identity.
+
+[ ] Existing lessonOutcomes JSON has NOT been destructively removed.
+
+[ ] Outcome↔MicroNode is explicit and persistent.
+
+[ ] Many-to-many is supported.
+
+[ ] Relation supports REQUIRED/SUPPORTING.
+
+[ ] Relation supports required cognitive depth.
+
+[ ] Required depth is checked against the MicroNode Cognitive Path.
+
+[ ] Teacher can review/edit the new curriculum relations.
+
+[ ] Existing Cognitive Paths remain intact.
+
+[ ] Existing exercises remain intact.
+
+[ ] Existing learner evidence/state remains intact.
+
+[ ] Legacy lessons continue working.
+
+[ ] Tests pass.
+
+If any gate fails:
+
+STOP and report the blocker.
+
+Do not proceed to Package 1B.
+
+════════════════════════════════════════════════════
+15 — STOP RULE
+════════════════════════════════════════════════════
+
+After Package 1A is complete:
+
+STOP.
+
+Do NOT continue into:
+
+- Teaching Package
+- Mapping UI redesign
+- Structured TEXT Import
+- Evidence Requirement Profile
+- C3
+- C4
+- C5
+- C6
+- AI Teacher changes
+
+Return implementation evidence and wait for review.
