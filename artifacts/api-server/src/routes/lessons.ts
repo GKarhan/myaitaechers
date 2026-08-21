@@ -98,6 +98,7 @@ function requireLessonAuthor(
 type OutcomeRole = "REQUIRED" | "SUPPORTING";
 const OUTCOME_ROLES: readonly OutcomeRole[] = ["REQUIRED", "SUPPORTING"];
 const OUTCOME_STATUSES = ["draft", "reviewed", "approved"] as const;
+const TEACHER_EDITABLE_OUTCOME_STATUSES = ["draft", "reviewed"] as const;
 type GoalOutcomeReviewStatus = "legacy" | "draft" | "proposed" | "confirmed" | "needs_review";
 const GOAL_OUTCOME_REVIEW_STATUSES: readonly GoalOutcomeReviewStatus[] = [
   "legacy", "draft", "proposed", "confirmed", "needs_review",
@@ -1486,13 +1487,21 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
   const lessonId = parsePositiveInt(req.params.lessonId);
   if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const result = await db.transaction(async (tx) => {
+    // Serialize imports per lesson, so double clicks and parallel tabs cannot
+    // allocate duplicate sequences from the same source proposal.
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
     const [lesson] = await tx.select({
       goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
+      lessonGoal: lessonsTable.lessonGoal,
+      goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
     }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
     const proposal = lesson?.goalOutcomeProposal as { lessonGoal?: unknown; outcomes?: unknown } | null;
     const lessonGoal = typeof proposal?.lessonGoal === "string" ? proposal.lessonGoal.trim() : "";
     const outcomes = Array.isArray(proposal?.outcomes)
-      ? proposal.outcomes.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+      ? [...new Set(proposal.outcomes
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean))]
       : [];
     if (!lesson || !lessonGoal || outcomes.length === 0) throw new Error("NO_VALID_PROPOSAL");
     const existing = await tx.select({
@@ -1500,6 +1509,22 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
       sequence: lessonOutcomesTable.sequence,
     }).from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
     const existingTexts = new Set(existing.map((row) => row.outcomeText.trim()));
+    const proposedTexts = new Set(outcomes);
+    const canonicalGoal = lesson.lessonGoal?.trim() ?? "";
+    const hasConflictingGoal = canonicalGoal.length > 0 && canonicalGoal !== lessonGoal;
+    const hasConflictingOutcome = existing.some((row) => !proposedTexts.has(row.outcomeText.trim()));
+    const reviewStatus = getGoalOutcomeReviewStatus(lesson);
+    const proposalIsNotCurrent = reviewStatus !== "proposed" && reviewStatus !== "draft";
+    const missingFromPreviouslyAppliedDraft = reviewStatus === "draft"
+      && outcomes.some((outcome) => !existingTexts.has(outcome));
+    if (
+      hasConflictingGoal
+      || hasConflictingOutcome
+      || proposalIsNotCurrent
+      || missingFromPreviouslyAppliedDraft
+    ) {
+      return { conflict: true as const };
+    }
     const missing = outcomes.filter((outcome) => !existingTexts.has(outcome));
     if (missing.length) {
       const nextSequence = Math.max(0, ...existing.map((row) => row.sequence)) + 1;
@@ -1513,12 +1538,19 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
       goalOutcomeConfirmedAt: null,
       goalOutcomeConfirmedBy: null,
     }).where(eq(lessonsTable.id, lessonId));
-    return { lessonGoal, createdCount: missing.length };
+    return { conflict: false as const, lessonGoal, createdCount: missing.length, outcomeCount: outcomes.length };
   }).catch((error: unknown) => {
     if (error instanceof Error && error.message === "NO_VALID_PROPOSAL") return null;
     throw error;
   });
   if (!result) { res.status(409).json({ error: "NO_VALID_GOAL_OUTCOME_PROPOSAL" }); return; }
+  if (result.conflict) {
+    res.status(409).json({
+      error: "CANONICAL_DRAFT_CONFLICT",
+      message: "Կանոնական սևագիրը արդեն տարբերվում է առաջարկից։ Խմբագրեք այն ձեռքով, որպեսզի ուսուցչի փոփոխությունները չվերագրվեն։",
+    });
+    return;
+  }
   res.json({ lessonId, status: "draft", ...result, requiresConfirmation: true });
 });
 
@@ -1560,6 +1592,9 @@ router.post("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, asy
   }
   if (status !== undefined && !(OUTCOME_STATUSES as readonly string[]).includes(status)) {
     res.status(400).json({ error: "Invalid outcome status" }); return;
+  }
+  if (status === "approved") {
+    res.status(409).json({ error: "OUTCOME_APPROVAL_REQUIRES_GOAL_OUTCOME_CONFIRMATION" }); return;
   }
 
   // Serialize sequence allocation per lesson so simultaneous teacher requests
@@ -1605,6 +1640,9 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/update", requireAuth, requir
   if (req.body?.status !== undefined) {
     if (!(OUTCOME_STATUSES as readonly string[]).includes(req.body.status)) {
       res.status(400).json({ error: "Invalid outcome status" }); return;
+    }
+    if (!(TEACHER_EDITABLE_OUTCOME_STATUSES as readonly string[]).includes(req.body.status)) {
+      res.status(409).json({ error: "OUTCOME_APPROVAL_REQUIRES_GOAL_OUTCOME_CONFIRMATION" }); return;
     }
     patch.status = req.body.status;
   }
@@ -1857,9 +1895,10 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
   }
 
   const alignedNodeIds = new Set<number>();
+  const hasDetailedMapping = bundle.nodes.length > 0;
   for (const outcome of bundle.outcomes) {
     const required = outcome.alignments.filter((alignment) => alignment.role === "REQUIRED");
-    if (required.length === 0) {
+    if (hasDetailedMapping && required.length === 0) {
       errors.push({ code: "OUTCOME_WITHOUT_REQUIRED_NODE", outcomeId: outcome.id, message: "Յուրաքանչյուր վերջնարդյունք պետք է ունենա առնվազն մեկ REQUIRED MicroNode։" });
     }
     for (const alignment of outcome.alignments) {
@@ -1917,6 +1956,10 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
   }
   if (bundle.nodes.length === 0) {
     info.push({ code: "NO_DETAILED_MAPPING", message: "Մանրամասն քարտեզագրում դեռ չկա։" });
+    info.push({
+      code: "MICRONODE_ALIGNMENT_DEFERRED",
+      message: "MicroNode կապերը կստեղծվեն և կստուգվեն մանրամասն քարտեզագրումից հետո։",
+    });
   }
   res.json({
     canonicalEnabled: true,

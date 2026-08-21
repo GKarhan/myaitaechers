@@ -5,12 +5,15 @@
  *   DATABASE_URL=$TEST_DATABASE_URL pnpm --filter @workspace/api-server run test:c1-review-workflow
  */
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
 import {
   lessonNodesTable,
   lessonOutcomesTable,
   lessonsTable,
   subjectsTable,
+  usersTable,
 } from "@workspace/db";
 import { validateLessonForFinalApproval } from "../lesson-final-approval.js";
 import { assertTestDb, closeTestDb, getTestDb } from "./helpers/test-db.js";
@@ -20,15 +23,26 @@ const db = getTestDb();
 const runId = `c1-review-${Date.now()}`;
 let subjectId = 0;
 let lessonId = 0;
+let proposalLessonId = 0;
+let teacherId = 0;
+let server: import("node:http").Server | undefined;
 
 try {
   const [subject] = await db.insert(subjectsTable).values({ name: `${runId}-subject` })
     .returning({ id: subjectsTable.id });
   subjectId = subject.id;
+  const [teacher] = await db.insert(usersTable).values({
+    username: `${runId}-teacher`,
+    passwordHash: "test-only",
+    fullName: "C1 Review Teacher",
+    role: "teacher",
+  }).returning({ id: usersTable.id });
+  teacherId = teacher.id;
   const [lesson] = await db.insert(lessonsTable).values({
     subjectId,
     title: `${runId}-lesson`,
     lessonGoal: "Սովորողը կկիրառի կանոնը։",
+    teacherId,
   }).returning({ id: lessonsTable.id });
   lessonId = lesson.id;
   const [node] = await db.insert(lessonNodesTable).values({
@@ -80,8 +94,144 @@ try {
   assert.equal(persistedNode.theoryContent, "Պահպանվող աղբյուրային բովանդակություն");
   assert.equal(persistedOutcome.outcomeText, "Սովորողը կարող է կիրառել կանոնը։");
   console.log("  ✓ Package 1C confirmation blocks approval without remapping or duplicating data");
+
+  // Provider-free acceptance coverage: proposal generation itself has a source/AI
+  // dependency, so seed the exact persisted proposal returned by that route and
+  // exercise every teacher-controlled route that follows it.
+  const proposalGoal = "Սովորողը կբացատրի և կկիրառի աղբյուրային կանոնները։";
+  const proposalOutcomes = [
+    "Սովորողը կճանաչի հիմնական հասկացությունները։",
+    "Սովորողը կբացատրի կանոնի քայլերը։",
+    "Սովորողը կկիրառի կանոնը պարզ օրինակում։",
+    "Սովորողը կտարբերի ճիշտ և սխալ կիրառումները։",
+    "Սովորողը կստուգի իր լուծման հիմնավորումը։",
+  ];
+  const [proposalLesson] = await db.insert(lessonsTable).values({
+    subjectId,
+    teacherId,
+    title: `${runId}-proposal-lesson`,
+    goalOutcomeProposal: {
+      lessonGoal: proposalGoal,
+      outcomes: proposalOutcomes,
+      generatedAt: new Date().toISOString(),
+      source: "textbook_pages",
+    },
+    goalOutcomeReviewStatus: "proposed",
+  }).returning({ id: lessonsTable.id });
+  proposalLessonId = proposalLesson.id;
+
+  const appModule = await import("../../app.js");
+  const authModule = await import("../../middlewares/auth.js");
+  server = appModule.default.listen(0);
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  const baseUrl = `http://127.0.0.1:${port}/api/lessons/${proposalLessonId}`;
+  const token = authModule.signToken(teacherId, "teacher");
+  const request = async (path: string, init: RequestInit = {}) => {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        ...init.headers,
+      },
+    });
+    return { response, body: await response.json() as Record<string, unknown> };
+  };
+
+  const imported = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
+  assert.equal(imported.response.status, 200, "a complete source proposal imports into canonical drafts");
+  assert.equal(imported.body.createdCount, proposalOutcomes.length);
+  assert.equal(imported.body.status, "draft");
+  const [importedLesson] = await db.select({
+    lessonGoal: lessonsTable.lessonGoal,
+    status: lessonsTable.goalOutcomeReviewStatus,
+  }).from(lessonsTable).where(eq(lessonsTable.id, proposalLessonId));
+  const importedOutcomes = await db.select({
+    outcomeText: lessonOutcomesTable.outcomeText,
+    status: lessonOutcomesTable.status,
+  }).from(lessonOutcomesTable)
+    .where(eq(lessonOutcomesTable.lessonId, proposalLessonId))
+    .orderBy(lessonOutcomesTable.sequence);
+  assert.equal(importedLesson.lessonGoal, proposalGoal);
+  assert.equal(importedLesson.status, "draft");
+  assert.deepEqual(importedOutcomes.map((outcome) => outcome.outcomeText), proposalOutcomes);
+  assert.equal(importedOutcomes.every((outcome) => outcome.status === "draft"), true);
+
+  const repeatedImport = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
+  assert.equal(repeatedImport.response.status, 200, "the unchanged import is idempotent");
+  assert.equal(repeatedImport.body.createdCount, 0);
+  const [persistedProposalOutcome] = await db.select({ id: lessonOutcomesTable.id })
+    .from(lessonOutcomesTable)
+    .where(eq(lessonOutcomesTable.lessonId, proposalLessonId))
+    .orderBy(lessonOutcomesTable.sequence)
+    .limit(1);
+  const approvedStatusAttempt = await request(`/outcomes/${persistedProposalOutcome.id}/update`, {
+    method: "POST",
+    body: JSON.stringify({ status: "approved" }),
+  });
+  assert.equal(approvedStatusAttempt.response.status, 409, "an Outcome status cannot bypass confirmation");
+
+  const mappingBeforeConfirmation = await request("/map", { method: "POST" });
+  assert.equal(mappingBeforeConfirmation.response.status, 409);
+  assert.equal(mappingBeforeConfirmation.body.error, "GOAL_OUTCOME_CONFIRMATION_REQUIRED");
+
+  const preMappingReadiness = await request("/outcomes/readiness");
+  assert.equal(preMappingReadiness.response.status, 200);
+  assert.equal(
+    (preMappingReadiness.body.errors as Array<{ code: string }>).some((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE"),
+    false,
+    "zero MicroNodes cannot block pre-mapping confirmation",
+  );
+
+  const confirmedReview = await request("/goal-outcome-review/confirm", { method: "POST" });
+  assert.equal(confirmedReview.response.status, 200, "Goal plus canonical Outcomes can be confirmed without MicroNodes");
+  const [confirmedLesson] = await db.select({
+    status: lessonsTable.goalOutcomeReviewStatus,
+    confirmedAt: lessonsTable.goalOutcomeConfirmedAt,
+  }).from(lessonsTable).where(eq(lessonsTable.id, proposalLessonId));
+  assert.equal(confirmedLesson.status, "confirmed");
+  assert.ok(confirmedLesson.confirmedAt);
+  const confirmedOutcomes = await db.select({ status: lessonOutcomesTable.status })
+    .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, proposalLessonId));
+  assert.equal(confirmedOutcomes.every((outcome) => outcome.status === "approved"), true);
+
+  const mappingAfterConfirmation = await request("/map", { method: "POST" });
+  assert.notEqual(
+    mappingAfterConfirmation.body.error,
+    "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
+    "detailed mapping becomes eligible after explicit confirmation",
+  );
+
+  await db.insert(lessonNodesTable).values({
+    lessonId: proposalLessonId,
+    sequence: 1,
+    title: `${runId}-post-mapping-node`,
+    status: "draft",
+  });
+  const postMappingReadiness = await request("/outcomes/readiness");
+  assert.equal(
+    (postMappingReadiness.body.errors as Array<{ code: string }>).filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
+    proposalOutcomes.length,
+    "required MicroNode coverage remains a post-mapping readiness rule",
+  );
+  const finalApprovalReadiness = await validateLessonForFinalApproval(proposalLessonId);
+  assert.equal(
+    finalApprovalReadiness.errors.filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
+    proposalOutcomes.length,
+    "final approval also blocks mapped lessons missing REQUIRED Outcome coverage",
+  );
+
+  await request(`/outcomes/${persistedProposalOutcome.id}/delete`, { method: "POST" });
+  const importAfterTeacherRemoval = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
+  assert.equal(importAfterTeacherRemoval.response.status, 409);
+  assert.equal(importAfterTeacherRemoval.body.error, "CANONICAL_DRAFT_CONFLICT");
+  console.log("  ✓ C1 proposal import, confirmation, mapping gates, and readiness use the corrected workflow");
 } finally {
+  if (server) await new Promise<void>((resolve, reject) => server!.close((error) => error ? reject(error) : resolve()));
   if (lessonId) await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId)).catch(() => {});
+  if (proposalLessonId) await db.delete(lessonsTable).where(eq(lessonsTable.id, proposalLessonId)).catch(() => {});
   if (subjectId) await db.delete(subjectsTable).where(eq(subjectsTable.id, subjectId)).catch(() => {});
+  if (teacherId) await db.delete(usersTable).where(eq(usersTable.id, teacherId)).catch(() => {});
   await closeTestDb();
 }

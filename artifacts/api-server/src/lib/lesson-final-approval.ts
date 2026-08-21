@@ -5,7 +5,15 @@
  * Never calls AI. Reads only persisted DB state.
  * Returns { errors, warnings } — errors block approval, warnings do not.
  */
-import { db, lessonsTable, lessonNodesTable, lessonTopicsTable, lessonExercisesTable } from "@workspace/db";
+import {
+  db,
+  lessonsTable,
+  lessonNodesTable,
+  lessonTopicsTable,
+  lessonExercisesTable,
+  lessonOutcomesTable,
+  lessonOutcomeNodeAlignmentsTable,
+} from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import { detectCompoundLO, detectMegaNode } from "./granularity-heuristics.js";
 
@@ -121,6 +129,17 @@ export async function validateLessonForFinalApproval(
     .from(lessonExercisesTable)
     .where(eq(lessonExercisesTable.lessonId, lessonId));
 
+  const [canonicalOutcomes, outcomeAlignments] = await Promise.all([
+    db.select({ id: lessonOutcomesTable.id })
+      .from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, lessonId)),
+    db.select({
+      lessonOutcomeId: lessonOutcomeNodeAlignmentsTable.lessonOutcomeId,
+      role: lessonOutcomeNodeAlignmentsTable.role,
+    }).from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
+  ]);
+
   const approvedNodes = nodes.filter((n) => n.status === "approved");
   const sourceExercises = exercises.filter((e) => e.sourceType === "textbook");
   const draftSourceExercises = sourceExercises.filter((e) => e.status !== "approved");
@@ -140,6 +159,28 @@ export async function validateLessonForFinalApproval(
       code: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
       messageArm: "Դասի նպատակը և վերջնարդյունքները պետք է ուսուցչի կողմից հաստատվեն մինչև վերջնական հաստատումը։",
     });
+  }
+
+  // Goal/Outcome confirmation deliberately happens before detailed mapping.
+  // Once mapping has produced MicroNodes, though, final approval must require
+  // every canonical Outcome to have a REQUIRED mapping relation.
+  if (
+    (lesson as any).goalOutcomeReviewStatus === "confirmed" &&
+    nodes.length > 0
+  ) {
+    const requiredOutcomeIds = new Set(
+      outcomeAlignments
+        .filter((alignment) => alignment.role === "REQUIRED")
+        .map((alignment) => alignment.lessonOutcomeId),
+    );
+    for (const outcome of canonicalOutcomes) {
+      if (!requiredOutcomeIds.has(outcome.id)) {
+        errors.push({
+          code: "OUTCOME_WITHOUT_REQUIRED_NODE",
+          messageArm: "Յուրաքանչյուր վերջնարդյունք պետք է ունենա առնվազն մեկ REQUIRED MicroNode՝ վերջնական հաստատումից առաջ։",
+        });
+      }
+    }
   }
 
   // ── A: Learning Objectives ──────────────────────────────────────────────────

@@ -3346,6 +3346,7 @@ function LessonGoalOutcomesPanel({
   lessonOutcomes: string[];
 }) {
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState(lessonGoal ?? "");
   const [editingGoal, setEditingGoal] = useState(false);
@@ -3386,7 +3387,10 @@ function LessonGoalOutcomesPanel({
     setError(null);
     try {
       await action();
-      await reviewQuery.refetch();
+      await Promise.all([
+        reviewQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["canonical-lesson-outcomes", lessonId] }),
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Գործողությունը չհաջողվեց։");
     } finally {
@@ -3639,7 +3643,7 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
       {open && (
         <div className="px-4 pb-4 space-y-3">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Վերջնարդյունքները և դրանց MicroNode կապերը խմբագրի հաստատում են պահանջում․ համակարգը ինքնուրույն կապեր չի ենթադրում։
+            Վերջնարդյունքները խմբագրի հաստատում են պահանջում․ MicroNode կապերը կստեղծվեն և կստուգվեն մանրամասն քարտեզագրումից հետո։
           </p>
           {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
           {outcomeQuery.isLoading && <div className="text-xs text-muted-foreground">Բեռնվում է…</div>}
@@ -3706,17 +3710,13 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
                             <p className="text-xs leading-relaxed text-white">{outcome.outcomeText}</p>
                           )}
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
-                            <select
-                              value={outcome.status}
-                              onChange={(event) => void run(async () => {
-                                await request(`/outcomes/${outcome.id}/update`, { status: event.target.value });
-                              })}
-                              className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-[10px] text-secondary"
-                            >
-                              <option value="draft">draft</option>
-                              <option value="reviewed">reviewed</option>
-                              <option value="approved">approved</option>
-                            </select>
+                            <span className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-secondary">
+                              {outcome.status === "approved"
+                                ? "Հաստատված՝ Goal/Outcomes հաստատմամբ"
+                                : outcome.status === "reviewed"
+                                  ? "Վերանայված"
+                                  : "Սևագիր"}
+                            </span>
                             <span className="text-muted-foreground">{outcome.provenance === "legacy_backfill" ? "հին տվյալից" : "ուսուցչի"}</span>
                           </div>
                         </div>
