@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, MappingPass2ParserError, MappingZeroMicroNodesError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -3657,7 +3657,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const lessonText = await extractPdfPageRange(filePath, pageRange.pagesFrom, pageRange.pagesTo);
 
     const confirmedOutcomes = lesson.goalOutcomeReviewStatus === "confirmed"
-      ? await db.select({ outcomeText: lessonOutcomesTable.outcomeText })
+      ? await db.select({
+        id: lessonOutcomesTable.id,
+        outcomeText: lessonOutcomesTable.outcomeText,
+      })
         .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId))
         .orderBy(asc(lessonOutcomesTable.sequence))
       : [];
@@ -3707,6 +3710,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     // invariant runs before any destructive replacement so a failed detailed
     // map cannot erase a previously valid lesson map.
     assertDetailedMappingHasMicroNodes(pass2);
+    const outcomeAlignmentPlan = buildAutomaticOutcomeAlignmentPlan(
+      confirmedOutcomes.map((outcome) => outcome.outcomeText),
+      pass2.topics,
+    );
+    if (confirmedOutcomes.length > 0 && outcomeAlignmentPlan.unresolvedOutcomeIndexes.length > 0) {
+      throw new MappingOutcomeAlignmentError(outcomeAlignmentPlan.unresolvedOutcomeIndexes);
+    }
 
     await db.update(mappingJobsTable)
       .set({ progress: "Saving results to database...", updatedAt: new Date() })
@@ -3729,7 +3739,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const reviewItems: { nodeId: number; nodeTitle: string; reason: string }[] = [];
 
     const topicRows: { id: number; sequence: number; title: string }[] = [];
-    const nodeRows:  { id: number; topicId: number; title: string; sequence: number }[] = [];
+    const nodeRows:  { id: number; topicId: number; topicSequence: number; microNodeIndex: number; title: string; sequence: number }[] = [];
     // Sequence bug fix: lesson-wide counter so MicroNode sequence is unique across
     // all topics (previously reset per topic, giving every first node sequence=1).
     let mnSeq = 0;
@@ -3747,7 +3757,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
       topicRows.push({ id: insertedTopic.id, sequence: topic.sequence, title: topic.title });
 
-      for (const mn of topic.microNodes) {
+      for (const [microNodeIndex, mn] of topic.microNodes.entries()) {
         mnSeq += 1;
 
         // Combine source-block texts as theoryContent / verbatimTheoryAnchor
@@ -3763,6 +3773,12 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         const primaryBlock = sourceBlocks[0] ?? null;
 
         // 2. Insert the MicroNode
+        const requiredDepths = outcomeAlignmentPlan.proposals
+          .filter((proposal) =>
+            proposal.topicSequence === topic.sequence && proposal.microNodeIndex === microNodeIndex,
+          )
+          .map((proposal) => COGNITIVE_LEVEL_TO_BLOOM_INT[proposal.requiredCognitiveDepth] ?? 1);
+        const targetBloomLevel = Math.max(1, ...requiredDepths);
         const [insertedNode] = await db
           .insert(lessonNodesTable)
           .values({
@@ -3784,7 +3800,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             sourceBlockIndices:  mn.sourceBlockIndices as any,
             status:              "draft" as const,
             createdBy:           "ai"   as const,
-            targetBloomLevel:    1,
+            targetBloomLevel,
             estimatedMinutes:    5,
           })
           .returning();
@@ -3792,6 +3808,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         nodeRows.push({
           id:       insertedNode.id,
           topicId:  insertedTopic.id,
+          topicSequence: topic.sequence,
+          microNodeIndex,
           title:    mn.title,
           sequence: mnSeq,
         });
@@ -3886,6 +3904,29 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         });
         totalExercises += 1;
       }
+    }
+
+    // Canonical Goal/Outcomes are immutable mapping constraints. The automatic
+    // map writes only traceable, draft-node relations; it never changes Outcome
+    // text/status or approves a node/lesson. Teachers can still review or edit
+    // every persisted relation in the existing canonical Outcome panel.
+    const nodeByMapPosition = new Map(
+      nodeRows.map((node) => [`${node.topicSequence}:${node.microNodeIndex}`, node]),
+    );
+    const persistedOutcomeAlignments = outcomeAlignmentPlan.proposals.flatMap((proposal) => {
+      const outcome = confirmedOutcomes[proposal.outcomeIndex];
+      const node = nodeByMapPosition.get(`${proposal.topicSequence}:${proposal.microNodeIndex}`);
+      if (!outcome || !node) return [];
+      return [{
+        lessonId,
+        lessonOutcomeId: outcome.id,
+        lessonNodeId: node.id,
+        role: proposal.role,
+        requiredCognitiveDepth: proposal.requiredCognitiveDepth,
+      }];
+    });
+    if (persistedOutcomeAlignments.length > 0) {
+      await db.insert(lessonOutcomeNodeAlignmentsTable).values(persistedOutcomeAlignments);
     }
 
     // ── P5.1 — Activity placement validation ──────────────────────────────────
@@ -3999,6 +4040,20 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         activityIssues,
         reviewItems,
         coverageValidation: pass2.coverageValidation,
+        instructionalCoverage: pass2.instructionalCoverage,
+        sourceAudit: {
+          dispositions: pass2.instructionalCoverage.blocks,
+          dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
+          unresolvedInstructionalBlocks: pass2.instructionalCoverage.unresolvedInstructionalIndices.length,
+          unresolvedActivityBlocks: pass2.instructionalCoverage.unresolvedActivityIndices.length,
+        },
+        outcomeAlignmentAudit: {
+          confirmedOutcomes: confirmedOutcomes.length,
+          persistedAlignments: persistedOutcomeAlignments.length,
+          requiredAlignments: persistedOutcomeAlignments.filter((alignment) => alignment.role === "REQUIRED").length,
+          supportingAlignments: persistedOutcomeAlignments.filter((alignment) => alignment.role === "SUPPORTING").length,
+          requiresTeacherReview: persistedOutcomeAlignments.length > 0,
+        },
         granularityFindings: pass2.granularityFindings,
         pass2Diagnostics: pass2.diagnostics,
       },
@@ -4040,6 +4095,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           microNodesCreated:    totalNodes,
           exercisesCreated:     totalExercises,
           unmappedBlocks:       pass2.unmappedBlockIndices.length,
+          instructionalCoverageValid: pass2.instructionalCoverage.valid,
           mappingReport,
           // P3.3: persist full Pass-1 block array so any missingIndices can later
           // be resolved to their original blockType / sourceText / page metadata.
@@ -4082,7 +4138,22 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           reason: "ZERO_MICRONODES_PRE_PERSISTENCE",
           diagnostics: err.diagnostics,
         }
-      : err instanceof MappingPass2ParserError
+        : err instanceof MappingInstructionalCoverageError
+          ? {
+              progress: "Readable instructional source remained unresolved after the targeted repair; existing mapping was preserved.",
+              reason: "INSTRUCTIONAL_SOURCE_COVERAGE_FAILED_PRE_PERSISTENCE",
+              diagnostics: {
+                instructionalCoverage: err.coverage,
+                pass2Diagnostics: err.diagnostics,
+              },
+            }
+        : err instanceof MappingOutcomeAlignmentError
+          ? {
+              progress: "Confirmed Outcomes could not be matched to MicroNodes; existing mapping was preserved.",
+              reason: "OUTCOME_ALIGNMENT_FAILED_PRE_PERSISTENCE",
+              diagnostics: { unresolvedOutcomeIndexes: err.unresolvedOutcomeIndexes },
+            }
+        : err instanceof MappingPass2ParserError
         ? {
             progress: "Pass 2 response could not be parsed; existing mapping was preserved.",
             reason: "PASS2_JSON_PARSE_FAILED_PRE_PERSISTENCE",

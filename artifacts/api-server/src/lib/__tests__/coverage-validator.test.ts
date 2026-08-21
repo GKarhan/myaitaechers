@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import {
+  validateInstructionalCoverage,
   validateSourceCoverage,
   type ValidatorTopic,
 } from "../coverage-validator.js";
@@ -196,6 +197,42 @@ it("Test 7 (CRITICAL): unmappedBlocks=0 but block 3 is genuinely missing", () =>
   assert.equal(result.coveragePercent, 75);
   assert.deepEqual(result.duplicateIndices, []);
   assert.deepEqual(result.invalidIndices,   []);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 8: placement coverage must not turn instructional unmapped source into
+// semantic coverage. This is the C1 Acceptance Fix #4 regression.
+// ─────────────────────────────────────────────────────────────────────────────
+it("Test 8: readable instructional blocks require a MicroNode owner", () => {
+  const blocks = [
+    { blockType: "OBJECTIVE", sourceText: "Շենքերի համարակալումը", sourcePage: 10 },
+    { blockType: "RULE", sourceText: "Փողոցի մի կողմի շենքերը համարակալվում են զույգ թվերով։", sourcePage: 10 },
+    { blockType: "EXERCISE", sourceText: "Որոշիր տան համարը։", sourcePage: 10 },
+    { blockType: "IMAGE", sourceText: "Փողոցի նկար", sourcePage: 10 },
+  ];
+  const topics = [
+    topic(
+      [mn("Զույգ համարներ", [1], [2])],
+      [0, 3],
+    ),
+  ];
+  const result = validateInstructionalCoverage(blocks, topics);
+  assert.equal(result.valid, true);
+  assert.equal(result.readableInstructionalBlocks, 1);
+  assert.equal(result.microNodeOwnedInstructionalBlocks, 1);
+  assert.equal(result.dispositionCounts.LEGITIMATE_NON_INSTRUCTIONAL, 2);
+  assert.equal(result.dispositionCounts.UNREADABLE, 0);
+});
+
+it("Test 9: instructional content in unmappedBlocks fails the strict gate", () => {
+  const blocks = [
+    { blockType: "RULE", sourceText: "Յուրաքանչյուր կողմ ունի իր համարակալման կանոնը։", sourcePage: 10 },
+  ];
+  const result = validateInstructionalCoverage(blocks, [topic([], [0])]);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.unresolvedInstructionalIndices, [0]);
+  assert.equal(result.blocks[0].disposition, "UNRESOLVED");
+  assert.equal(result.blocks[0].reason, "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

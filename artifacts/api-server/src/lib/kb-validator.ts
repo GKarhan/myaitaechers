@@ -24,6 +24,8 @@ export interface KbCoverageGate {
   coveragePercent: number;
   /** Block indices missing from coverage (empty when not persisted in metadata). */
   missingSourceBlocks: number[];
+  /** Readable instructional blocks that do not have a MicroNode owner. */
+  unresolvedInstructionalBlocks?: number;
   /** Human-readable note for architecture gaps (e.g. missing metadata). */
   note?: string;
 }
@@ -122,11 +124,20 @@ export function gateSourceCoverage(mappingMetadata: unknown): KbCoverageGate {
       note: "Coverage validation absent from mapping_metadata — architecture gap.",
     };
   }
+  const instructional = meta?.quality?.instructionalCoverage;
+  const unresolvedInstructionalBlocks = Array.isArray(instructional?.unresolvedInstructionalIndices)
+    ? instructional.unresolvedInstructionalIndices.length
+    : 0;
+  const instructionalValid = instructional === undefined || instructional?.valid === true;
   return {
-    valid: cv.valid === true,
+    valid: cv.valid === true && instructionalValid,
     coveragePercent: typeof cv.coveragePercent === "number" ? cv.coveragePercent : 0,
     // Exact missing indices are not persisted; only the validity flag is stored.
     missingSourceBlocks: Array.isArray(cv.missingIndices) ? cv.missingIndices : [],
+    unresolvedInstructionalBlocks,
+    note: !instructionalValid
+      ? `${unresolvedInstructionalBlocks} readable instructional source block(s) are not owned by a MicroNode.`
+      : undefined,
   };
 }
 

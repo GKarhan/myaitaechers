@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   assertDetailedMappingHasMicroNodes,
+  buildAutomaticOutcomeAlignmentPlan,
   getPass2MicroNodeRejectionReasons,
   getTeacherFacingMappingFailure,
   inspectPass2Step2Response,
@@ -141,4 +142,39 @@ const diagnostics: Pass2Diagnostics = {
   console.log("  ✓ valid candidates remain counted after normalization");
 }
 
-console.log("\nPass 2 diagnostics: 5/5 passing");
+{
+  const plan = buildAutomaticOutcomeAlignmentPlan(
+    [
+      "Սովորողը կբացատրի զույգ համարների կանոնը։",
+      "Սովորողը կկիրառի շենքերի համարակալման կանոնը։",
+    ],
+    [{
+      sequence: 1,
+      microNodes: [
+        {
+          title: "Զույգ համարների կանոն",
+          learningObjective: "Սովորողը կարող է բացատրել զույգ համարների կանոնը։",
+          microNodeType: "knowledge",
+          sourceBlockIndices: [0],
+          exercises: [],
+          supportingMaterialIndices: [],
+        },
+        {
+          title: "Շենքերի համարակալում",
+          learningObjective: "Սովորողը կարող է կիրառել շենքերի համարակալման կանոնը։",
+          microNodeType: "skill",
+          sourceBlockIndices: [1],
+          exercises: [],
+          supportingMaterialIndices: [],
+        },
+      ],
+    }],
+  );
+  assert.deepEqual(plan.unresolvedOutcomeIndexes, []);
+  assert.equal(plan.proposals.filter((proposal) => proposal.role === "REQUIRED").length, 2);
+  assert.equal(plan.proposals[0].requiredCognitiveDepth, "understand");
+  assert.equal(plan.proposals[1].requiredCognitiveDepth, "apply");
+  console.log("  ✓ confirmed outcomes receive traceable atomic alignment proposals");
+}
+
+console.log("\nPass 2 diagnostics: 6/6 passing");

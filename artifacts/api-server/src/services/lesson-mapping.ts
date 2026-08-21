@@ -10,7 +10,12 @@ const { PDFParse } = _require("pdf-parse") as {
 };
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { logger } from "../lib/logger";
-import { validateSourceCoverage, type CoverageValidationResult } from "../lib/coverage-validator.js";
+import {
+  validateInstructionalCoverage,
+  validateSourceCoverage,
+  type CoverageValidationResult,
+  type InstructionalCoverageResult,
+} from "../lib/coverage-validator.js";
 import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
 import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
@@ -289,10 +294,32 @@ export class MappingZeroMicroNodesError extends Error {
   }
 }
 
+export class MappingInstructionalCoverageError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը չի ընդգրկել բոլոր ընթեռնելի ուսումնական նյութերը։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ ստուգել աղբյուրը։";
+
+  constructor(readonly coverage: InstructionalCoverageResult, readonly diagnostics: Pass2Diagnostics) {
+    super("Detailed mapping left readable instructional source without a MicroNode owner");
+    this.name = "MappingInstructionalCoverageError";
+  }
+}
+
+export class MappingOutcomeAlignmentError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը չի կարողացել համապատասխանեցնել բոլոր հաստատված վերջնարդյունքները MicroNode-ներին։ Արդյունքը չի պահպանվել։";
+
+  constructor(readonly unresolvedOutcomeIndexes: number[]) {
+    super("Confirmed outcomes could not be matched to generated MicroNode objectives");
+    this.name = "MappingOutcomeAlignmentError";
+  }
+}
+
 export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingContextBudgetError) return error.teacherMessage;
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
+  if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
+  if (error instanceof MappingOutcomeAlignmentError) return error.teacherMessage;
   if (error instanceof MappingPass2ParserError) return error.teacherMessage;
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (/maximum context length|context length|too many tokens|context window/i.test(message)) {
@@ -1019,6 +1046,8 @@ export interface Pass2TopicResult {
   sequence: number;
   title: string;
   topicType: string;   // "grammar" | "enrichment" | …
+  /** The Step 1 source indices this Topic is responsible for. */
+  inputBlockIndices?: number[];
   microNodes: Pass2MicroNode[];
   unmappedBlockIndices: number[];
   /** Exercises that practice a skill for which no instructional source block exists in
@@ -1059,6 +1088,13 @@ export interface Pass2TopicDiagnostics {
   rejectedMicroNodeCount: number;
   rejectionCounts: Partial<Record<Pass2MicroNodeRejectionReason, number>>;
   postNormalizationMicroNodeCount: number;
+  instructionalCoverage?: {
+    readableInstructionalBlocks: number;
+    microNodeOwnedInstructionalBlocks: number;
+    unresolvedInstructionalBlocks: number;
+    targetedRepair: "NOT_NEEDED" | "RESOLVED" | "UNRESOLVED" | "FAILED";
+    targetedRepairRecoveredBlocks: number;
+  };
 }
 
 export interface Pass2Diagnostics {
@@ -1205,6 +1241,9 @@ export interface Pass2Result {
   unmappedBlockIndices: number[];
   /** Deterministic source-coverage validation result. Independent of AI self-report. */
   coverageValidation: CoverageValidationResult;
+  /** Strict readable-instruction coverage; unlike placement coverage, an
+   * `unmapped` block cannot satisfy this gate. */
+  instructionalCoverage: InstructionalCoverageResult;
   /**
    * Phase 4 — semantic granularity findings from Pass 2B.
    * Advisory only: do NOT gate the mapping status on these.
@@ -1873,6 +1912,118 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
   };
 }
 
+type TopicRepairResult = {
+  attempted: boolean;
+  recoveredBlockCount: number;
+  failed: boolean;
+};
+
+/**
+ * One bounded repair pass for source blocks the initial response left without a
+ * MicroNode owner. It receives only the affected blocks plus compact existing
+ * objective labels, so it cannot become a second full-lesson mapping pass.
+ */
+async function repairTopicInstructionalCoverage(
+  topic: Pass2TopicResult,
+  blocks: Pass1Block[],
+  topicSeq: number,
+  curriculumConstraints: string,
+): Promise<TopicRepairResult> {
+  const before = validateInstructionalCoverage(blocks, [topic]);
+  const unresolved = before.unresolvedInstructionalIndices
+    .filter((index) => (topic.inputBlockIndices ?? []).includes(index));
+  if (unresolved.length === 0) return { attempted: false, recoveredBlockCount: 0, failed: false };
+
+  const existingNodes = topic.microNodes.map((node, index) =>
+    `Existing MicroNode ${index}: ${node.title} — ${node.learningObjective}`,
+  ).join("\n") || "(none)";
+  const blockLines = unresolved.map((index) => fmtPass2Block(index, blocks[index])).join("\n");
+  const prompt = `Repair ONE Topic's missing instructional ownership. This is a bounded repair, not a new lesson map.
+Topic ${topicSeq}: «${topic.title}»
+
+${curriculumConstraints}
+
+Existing MicroNodes (you may add a missing source block to one of these):
+${existingNodes}
+
+Readable instructional blocks that still require exactly one MicroNode owner:
+${blockLines}
+
+Return ONLY JSON in this exact shape:
+{
+  "existingAssignments": [{"microNodeIndex": 0, "sourceBlockIndices": [12]}],
+  "microNodes": [{
+    "title": "Հայերեն ատոմային վերնագիր",
+    "learningObjective": "Սովորողը կարող է կատարել մեկ չափելի գործողություն։",
+    "microNodeType": "knowledge",
+    "sourceBlockIndices": [13]
+  }]
+}
+
+Use existingAssignments whenever an existing objective genuinely owns the source block.
+Create a new MicroNode only for a distinct independently teachable objective.
+Every listed block must appear exactly once. Do not return exercises, unmapped blocks,
+supporting material, source text, or any indices not listed above.`;
+
+  try {
+    const response = await openrouter.chat.completions.create({
+      model: PASS2_STEP2_MODEL,
+      max_tokens: 2000,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "You repair atomic curriculum source ownership. Return only valid JSON." },
+        { role: "user", content: prompt },
+      ],
+    });
+    const parsed = asRecord(parsePass2JSON(response.choices[0]?.message?.content ?? ""));
+    if (!parsed) return { attempted: true, recoveredBlockCount: 0, failed: true };
+
+    const eligible = new Set(unresolved);
+    const accepted = new Set<number>();
+    const assignments = Array.isArray(parsed.existingAssignments) ? parsed.existingAssignments : [];
+    for (const candidate of assignments) {
+      const value = asRecord(candidate);
+      const target = value?.microNodeIndex;
+      const indices = Array.isArray(value?.sourceBlockIndices) ? value!.sourceBlockIndices : [];
+      if (typeof target !== "number" || !Number.isInteger(target) || target < 0 || target >= topic.microNodes.length) continue;
+      for (const index of indices) {
+        if (typeof index !== "number" || !eligible.has(index) || accepted.has(index)) continue;
+        topic.microNodes[target].sourceBlockIndices.push(index);
+        accepted.add(index);
+      }
+    }
+
+    const newNodes = Array.isArray(parsed.microNodes) ? parsed.microNodes : [];
+    for (const candidate of newNodes) {
+      const value = asRecord(candidate) ?? {};
+      const indices = Array.isArray(value.sourceBlockIndices)
+        ? value.sourceBlockIndices.filter((index): index is number =>
+          typeof index === "number" && eligible.has(index) && !accepted.has(index))
+        : [];
+      const node: Pass2MicroNode = {
+        title: typeof value.title === "string" ? value.title.trim() : "",
+        learningObjective: typeof value.learningObjective === "string" ? value.learningObjective.trim() : "",
+        microNodeType: value.microNodeType === "skill" ? "skill" : "knowledge",
+        sourceBlockIndices: indices,
+        exercises: [],
+        supportingMaterialIndices: [],
+      };
+      if (getPass2MicroNodeRejectionReasons(node).length > 0) continue;
+      topic.microNodes.push(node);
+      for (const index of indices) accepted.add(index);
+    }
+    if (accepted.size > 0) {
+      topic.unmappedBlockIndices = topic.unmappedBlockIndices
+        .filter((index) => !accepted.has(index));
+    }
+    return { attempted: true, recoveredBlockCount: accepted.size, failed: false };
+  } catch (error) {
+    logger.warn({ topicSeq, unresolvedBlockCount: unresolved.length, error }, "pass2 coverage repair failed");
+    return { attempted: true, recoveredBlockCount: 0, failed: true };
+  }
+}
+
 // ── Pass 2B: Semantic granularity review ──────────────────────────────────────
 //
 // A single AI call over ALL MicroNodes from ALL topics simultaneously.
@@ -2140,6 +2291,96 @@ export function buildPass2CurriculumConstraints(lessonInfo: Pass2LessonInfo): st
   ].filter(Boolean).join("\n");
 }
 
+export type AutomaticOutcomeAlignmentProposal = {
+  outcomeIndex: number;
+  topicSequence: number;
+  microNodeIndex: number;
+  role: "REQUIRED" | "SUPPORTING";
+  requiredCognitiveDepth: "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create";
+};
+
+export type AutomaticOutcomeAlignmentPlan = {
+  proposals: AutomaticOutcomeAlignmentProposal[];
+  unresolvedOutcomeIndexes: number[];
+};
+
+const OUTCOME_STOP_WORDS = new Set([
+  "սովորողը", "կարող", "կլինի", "պետք", "է", "են", "մասին", "հետ", "մեջ", "որ", "և", "ու",
+]);
+
+function outcomeTokens(value: string): Set<string> {
+  return new Set(
+    value.toLocaleLowerCase("hy-AM")
+      .split(/[^\p{L}\p{N}]+/u)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3 && !OUTCOME_STOP_WORDS.has(token)),
+  );
+}
+
+export function deriveOutcomeCognitiveDepth(
+  outcome: string,
+): AutomaticOutcomeAlignmentProposal["requiredCognitiveDepth"] {
+  const normalized = outcome.toLocaleLowerCase("hy-AM");
+  if (/(ստեղծ|նախագծ|կազմ)/u.test(normalized)) return "create";
+  if (/(գնահատ|հիմնավոր|դատող)/u.test(normalized)) return "evaluate";
+  if (/(վերլուծ|համեմատ|տարբերակ)/u.test(normalized)) return "analyze";
+  if (/(կիրառ|լուծ|օգտագործ|որոշ)/u.test(normalized)) return "apply";
+  if (/(բացատր|նկարագր|մեկնաբան)/u.test(normalized)) return "understand";
+  return "remember";
+}
+
+/**
+ * Deterministic first-pass alignment avoids treating ungrounded provider prose
+ * as a curriculum decision. A proposal exists only when an Outcome and an
+ * atomic objective share meaningful source-language terminology.
+ */
+export function buildAutomaticOutcomeAlignmentPlan(
+  outcomes: readonly string[],
+  topics: ReadonlyArray<Pick<Pass2TopicResult, "sequence" | "microNodes">>,
+): AutomaticOutcomeAlignmentPlan {
+  const candidates = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => ({
+    topicSequence: topic.sequence,
+    microNodeIndex,
+    tokens: outcomeTokens(`${node.title} ${node.learningObjective}`),
+  })));
+  const proposals: AutomaticOutcomeAlignmentProposal[] = [];
+  const unresolvedOutcomeIndexes: number[] = [];
+
+  outcomes.forEach((outcome, outcomeIndex) => {
+    const tokens = outcomeTokens(outcome);
+    const ranked = candidates
+      .map((candidate) => ({
+        ...candidate,
+        score: [...tokens].filter((token) => candidate.tokens.has(token)).length,
+      }))
+      .filter((candidate) => candidate.score > 0)
+      .sort((a, b) => b.score - a.score || a.topicSequence - b.topicSequence || a.microNodeIndex - b.microNodeIndex);
+    if (ranked.length === 0) {
+      unresolvedOutcomeIndexes.push(outcomeIndex);
+      return;
+    }
+    const depth = deriveOutcomeCognitiveDepth(outcome);
+    const strongest = ranked[0];
+    proposals.push({
+      outcomeIndex,
+      topicSequence: strongest.topicSequence,
+      microNodeIndex: strongest.microNodeIndex,
+      role: "REQUIRED",
+      requiredCognitiveDepth: depth,
+    });
+    for (const candidate of ranked.slice(1).filter((candidate) => candidate.score === strongest.score)) {
+      proposals.push({
+        outcomeIndex,
+        topicSequence: candidate.topicSequence,
+        microNodeIndex: candidate.microNodeIndex,
+        role: "SUPPORTING",
+        requiredCognitiveDepth: depth,
+      });
+    }
+  });
+  return { proposals, unresolvedOutcomeIndexes };
+}
+
 export async function runPass2Pipeline(
   blocks: Pass1Block[],
   lessonInfo: Pass2LessonInfo,
@@ -2284,6 +2525,7 @@ export async function runPass2Pipeline(
     sequence:              i + 1,
     title:                 g.title,
     topicType:             g.topicType,
+    inputBlockIndices:     [...g.indices],
     microNodes:            topicResults[i].microNodes,
     unmappedBlockIndices:  topicResults[i].unmappedIndices,
     additionalExercises:   topicResults[i].additionalExercises,
@@ -2343,6 +2585,45 @@ export async function runPass2Pipeline(
     }
   }
 
+  // Source coverage has a stricter meaning than placement coverage: a readable
+  // instructional block in `unmappedBlockIndices` must be repaired or fail
+  // before the route can replace an existing map. Each affected Topic receives
+  // exactly one narrow repair call; no repair can broaden to another Topic.
+  const repairResults = await Promise.all(
+    topics.map((topic, index) =>
+      repairTopicInstructionalCoverage(topic, blocks, index + 1, curriculumConstraints),
+    ),
+  );
+  recordPass2PostNormalizationCounts(topics, topicDiagnostics);
+  const instructionalCoverage = validateInstructionalCoverage(blocks, topics);
+  for (let index = 0; index < topics.length; index++) {
+    const topicIndices = new Set(topics[index].inputBlockIndices ?? []);
+    const records = instructionalCoverage.blocks.filter((record) => topicIndices.has(record.blockIndex));
+    const unresolvedInstructional = records.filter(
+      (record) => record.disposition === "UNRESOLVED" &&
+        record.reason === "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED",
+    ).length;
+    topicDiagnostics[index].instructionalCoverage = {
+      readableInstructionalBlocks: records.filter((record) =>
+        record.disposition === "MICRONODE_OWNED" ||
+        (record.disposition === "UNRESOLVED" &&
+          record.reason === "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED"),
+      ).length,
+      microNodeOwnedInstructionalBlocks: records.filter(
+        (record) => record.disposition === "MICRONODE_OWNED",
+      ).length,
+      unresolvedInstructionalBlocks: unresolvedInstructional,
+      targetedRepair: !repairResults[index].attempted
+        ? "NOT_NEEDED"
+        : repairResults[index].failed
+          ? "FAILED"
+          : unresolvedInstructional === 0
+            ? "RESOLVED"
+            : "UNRESOLVED",
+      targetedRepairRecoveredBlocks: repairResults[index].recoveredBlockCount,
+    };
+  }
+
   const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
   const diagnostics: Pass2Diagnostics = {
     detectedGroupCount: groups.length,
@@ -2369,6 +2650,8 @@ export async function runPass2Pipeline(
       coverage:        `${coverageValidation.coveredBlocks}/${coverageValidation.totalBlocks}`,
       coveragePercent: coverageValidation.coveragePercent,
       valid:           coverageValidation.valid,
+      instructionalCoverageValid: instructionalCoverage.valid,
+      unresolvedInstructional: instructionalCoverage.unresolvedInstructionalIndices.length,
       missingIndices:  coverageValidation.missingIndices,
       duplicateIndices: coverageValidation.duplicateIndices,
       invalidIndices:  coverageValidation.invalidIndices,
@@ -2393,8 +2676,25 @@ export async function runPass2Pipeline(
   if (coverageValidation.invalidIndices.length > 0) {
     logger.warn({ invalidIndices: coverageValidation.invalidIndices }, "pass2: block indices outside Pass1 bounds detected");
   }
+  if (!instructionalCoverage.valid) {
+    logger.warn(
+      {
+        unresolvedInstructional: instructionalCoverage.unresolvedInstructionalIndices,
+        unresolvedActivities: instructionalCoverage.unresolvedActivityIndices,
+      },
+      "pass2: readable instructional source remains unresolved after bounded repair",
+    );
+    throw new MappingInstructionalCoverageError(instructionalCoverage, diagnostics);
+  }
 
-  return { topics, unmappedBlockIndices: allUnmapped, coverageValidation, granularityFindings, diagnostics };
+  return {
+    topics,
+    unmappedBlockIndices: allUnmapped,
+    coverageValidation,
+    instructionalCoverage,
+    granularityFindings,
+    diagnostics,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

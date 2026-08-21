@@ -1818,10 +1818,10 @@ function LessonNodesPanel({
                     />
                   </div>
                   <div>
-                    <p className="text-[9px] text-white/40 mb-0.5">⏱ Gnahatvats roghe (rop.)</p>
+                    <p className="text-[9px] text-white/40 mb-0.5">⏱ Gnahatvats roghe (րոպե)</p>
                     <input
                       className={fieldCls}
-                      placeholder="rop."
+                      placeholder="րոպե"
                       type="number" min={1}
                       value={editNodeForm.estimatedMinutes}
                       onChange={(e) => setEditNodeForm((f) => f && { ...f, estimatedMinutes: e.target.value })}
@@ -2596,7 +2596,7 @@ function LessonNodesPanel({
             </div>
             {rsmEditing ? (
               <div className="space-y-1.5">
-                <p className="text-[10px] text-muted-foreground/60">Սahmanec ayzh dasi partadir usutsmyan tevolutyunə rponerov.</p>
+                <p className="text-[10px] text-muted-foreground/60">Սահմանել դասի տևողությունը րոպեներով.</p>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number" min="1" step="1" placeholder="25"
@@ -2604,7 +2604,7 @@ function LessonNodesPanel({
                     value={rsmValue}
                     onChange={(e) => { setRsmValue(e.target.value); setRsmError(null); }}
                   />
-                  <span className="text-xs text-muted-foreground/60">rop.</span>
+                  <span className="text-xs text-muted-foreground/60">րոպե</span>
                 </div>
                 {rsmError && <p className="text-[10px] text-destructive">{rsmError}</p>}
                 <div className="flex gap-1">
@@ -2643,17 +2643,17 @@ function LessonNodesPanel({
                       } finally { setRsmSaving(false); }
                     }}
                     className="px-2 py-1 text-[11px] rounded bg-primary text-black font-medium disabled:opacity-40"
-                  >{rsmSaving ? "..." : "Hastatеl"}</button>
+                  >{rsmSaving ? "..." : "Հաստատել"}</button>
                   <button
                     onClick={() => { setRsmEditing(false); setRsmError(null); }}
                     className="px-2 py-1 text-[11px] rounded bg-white/10 text-muted-foreground"
-                  >Chegharкel</button>
+                  >Չեղարկել</button>
                 </div>
               </div>
             ) : (
               <p className="text-xs text-white/70">
                 {requiredSessionMinutes != null
-                  ? `${requiredSessionMinutes} rop.`
+                  ? `${requiredSessionMinutes} րոպե`
                   : <span className="text-muted-foreground/40 italic">Սահմանված չէ</span>}
               </p>
             )}
@@ -3520,6 +3520,91 @@ function LessonGoalOutcomesPanel({
             </div>
           )}
           {review?.confirmedAt && <p className="text-[10px] text-emerald-300/70">Վերջին հաստատումը՝ {new Date(review.confirmedAt).toLocaleString()}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type MappingAuditReport = {
+  generatedAt?: string;
+  counts?: { pass1BlocksExtracted?: number; topicsCreated?: number; microNodesCreated?: number; exercisesCreated?: number };
+  quality?: {
+    instructionalCoverage?: {
+      valid: boolean;
+      readableInstructionalBlocks: number;
+      microNodeOwnedInstructionalBlocks: number;
+      unresolvedInstructionalIndices: number[];
+      dispositionCounts: Record<string, number>;
+    };
+    outcomeAlignmentAudit?: {
+      confirmedOutcomes: number;
+      persistedAlignments: number;
+      requiredAlignments: number;
+      supportingAlignments: number;
+      requiresTeacherReview: boolean;
+    };
+  };
+};
+
+function MappingAuditPanel({ lessonId }: { lessonId: number }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const auditQuery = useQuery({
+    queryKey: ["lesson-mapping-audit", lessonId],
+    enabled: open && !!token,
+    queryFn: async () => {
+      const response = await fetch(`/api/lessons/${lessonId}/mapping-report`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Չհաջողվեց բեռնել աղբյուրային աուդիտը։");
+      return response.json() as Promise<MappingAuditReport>;
+    },
+  });
+  const report = auditQuery.data;
+  const coverage = report?.quality?.instructionalCoverage;
+  const alignment = report?.quality?.outcomeAlignmentAudit;
+  return (
+    <div className="border-t border-white/8">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+      >
+        <span className="font-medium tracking-wide">🔎 Աղբյուրի և քարտեզի աուդիտ</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-2">
+          {auditQuery.isLoading && <p className="text-xs text-muted-foreground">Բեռնվում է…</p>}
+          {auditQuery.isError && <p className="text-xs text-destructive">Չհաջողվեց բեռնել աուդիտը։</p>}
+          {report && !coverage && (
+            <p className="text-[11px] text-muted-foreground">Այս դասի համար դեռ նոր աղբյուրային աուդիտ չկա։</p>
+          )}
+          {coverage && (
+            <>
+              <div className={`rounded border p-2 text-[11px] ${
+                coverage.valid
+                  ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
+                  : "border-red-400/30 bg-red-400/10 text-red-100"
+              }`}>
+                {coverage.valid
+                  ? "✅ Բոլոր ընթեռնելի ուսումնական հատվածները ունեն MicroNode պատասխանատու։"
+                  : `⛔ ${coverage.unresolvedInstructionalIndices.length} ուսումնական հատված դեռ պատասխանատու չունի։`}
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                <span className="rounded bg-white/5 px-2 py-1">Աղբյուրային բլոկներ՝ {report.counts?.pass1BlocksExtracted ?? "—"}</span>
+                <span className="rounded bg-white/5 px-2 py-1">Ուսումնական՝ {coverage.readableInstructionalBlocks}</span>
+                <span className="rounded bg-white/5 px-2 py-1">MicroNode-ով՝ {coverage.microNodeOwnedInstructionalBlocks}</span>
+                <span className="rounded bg-white/5 px-2 py-1">Կառուցվածքային/տեսողական՝ {(coverage.dispositionCounts.LEGITIMATE_NON_INSTRUCTIONAL ?? 0) + (coverage.dispositionCounts.UNREADABLE ?? 0)}</span>
+              </div>
+              {alignment && (
+                <div className="rounded border border-blue-400/20 bg-blue-400/[0.05] p-2 text-[10px] text-blue-100">
+                  Վերջնարդյունքների կապեր՝ {alignment.persistedAlignments} ({alignment.requiredAlignments} REQUIRED, {alignment.supportingAlignments} SUPPORTING) ·
+                  {alignment.requiresTeacherReview ? " ուսուցչի վերանայում է պահանջվում" : " վերանայում սպասվող չէ"}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -6407,6 +6492,7 @@ export default function TeacherDashboard() {
                                     : []
                                 }
                               />
+                              <MappingAuditPanel lessonId={l.id} />
                               <CanonicalOutcomesPanel lessonId={l.id} />
                               <LessonNodesPanel
                                 lessonId={l.id}

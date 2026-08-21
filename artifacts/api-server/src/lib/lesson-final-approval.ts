@@ -146,6 +146,19 @@ export async function validateLessonForFinalApproval(
   const phase2CompleteNodes = approvedNodes.filter(
     (n) => phase2MissingFields(n as any).length === 0
   );
+  const metadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
+  const instructionalCoverage = metadata?.quality?.instructionalCoverage;
+
+  if (instructionalCoverage && instructionalCoverage.valid !== true) {
+    const unresolved = Array.isArray(instructionalCoverage.unresolvedInstructionalIndices)
+      ? instructionalCoverage.unresolvedInstructionalIndices.length
+      : 0;
+    errors.push({
+      code: "UNRESOLVED_INSTRUCTIONAL_SOURCE",
+      messageArm: `Ընթեռնելի ուսումնական աղբյուրից ${unresolved} հատված MicroNode-ի պատասխանատու չունի։`,
+      count: unresolved,
+    });
+  }
 
   // Package 1C: legacy lessons retain their established approval behavior.
   // Once a teacher explicitly starts canonical Goal/Outcome review, however,
