@@ -1,0 +1,736 @@
+C1 ACCEPTANCE FIX #3
+PASS 2 PRODUCES TOPICS BUT ZERO MICRONODES — FORENSIC AUDIT + MINIMAL FIX
+
+We are continuing the REAL end-to-end C1 Mapping acceptance test.
+
+Task #108 is complete:
+- AI Goal/Outcome proposal works
+- full proposal imports into canonical draft
+- teacher confirmation works before MicroNodes
+- confirmed canonical Goal/Outcomes are authoritative
+
+Task #109 is complete:
+- automatic mapping context-overflow root cause was identified
+- invalid stored range 10 → 1 caused full-book extraction
+- lesson range was repaired to 10 → 11
+- full relevant lesson source is now scoped correctly
+- request size dropped from the faulty ~203k-token estimate to ~10.6k
+- context/preflight/truncation protections are in place
+- teacher-confirmed canonical Goal/Outcomes are now forwarded to Pass 2
+
+DO NOT reopen or redesign those fixes unless direct evidence shows a
+regression.
+
+════════════════════════════════════════════════════
+1. CURRENT REAL ACCEPTANCE BLOCKER
+════════════════════════════════════════════════════
+
+Use the SAME real acceptance lesson:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Topic:
+Բնական թվերը և կոորդինատային ճառագայթը
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Pages:
+10–11
+
+Known development lesson:
+lesson 611
+
+Known successful recovery mapping job:
+job 85
+
+The automatic mapping request now completes without context overflow.
+
+However the resulting detailed mapping is:
+
+Topics: 2
+MicroNodes: 0
+Exercises/tasks: 0
+
+This is NOT an acceptable C1 mapping.
+
+A successful provider/API call is not equivalent to a successful
+curriculum mapping.
+
+C1 requires atomic MicroNodes.
+
+════════════════════════════════════════════════════
+2. PRIMARY QUESTION
+════════════════════════════════════════════════════
+
+Find EXACTLY where the MicroNodes disappear.
+
+Do NOT assume the AI failed.
+
+Trace the complete data path:
+
+relevant lesson source
+→ Pass 1 request
+→ Pass 1 raw model response
+→ Pass 1 parsed/validated output
+→ Pass 2 request
+→ Pass 2 raw model response
+→ Pass 2 parsed output
+→ normalization/transformation
+→ validation
+→ DB insertion/transaction
+→ API response
+→ teacher UI
+
+We need to determine which of these is true:
+
+A. Pass 1 failed to produce source/content blocks needed for MicroNodes.
+
+B. Pass 2 prompt did not actually require MicroNodes correctly.
+
+C. Pass 2 model response contained zero MicroNodes.
+
+D. Pass 2 response DID contain MicroNodes, but parsing lost them.
+
+E. Parsing preserved them, but normalization/transformation dropped them.
+
+F. Validator rejected/dropped them.
+
+G. Persistence failed to insert them.
+
+H. They exist in DB but API/UI does not expose them.
+
+I. Some schema/contract mismatch exists between old/new mapping formats.
+
+Do not guess.
+
+Prove the exact boundary.
+
+════════════════════════════════════════════════════
+3. READ-ONLY FORENSIC PASS FIRST
+════════════════════════════════════════════════════
+
+BEFORE modifying code, inspect the real job 85 and lesson 611.
+
+Return evidence for each stage.
+
+For Pass 1 inspect:
+
+- exact relevant source page range
+- extracted source character count
+- number of source blocks
+- block types
+- block IDs
+- source pages
+- whether page 10 and page 11 are both represented
+- whether exercises/questions/activities were detected
+- whether any source content was marked unreadable
+- raw response structure
+- parsed response structure
+
+For Pass 2 inspect:
+
+- exact prompt/schema/contract used
+- confirmed canonical Goal
+- confirmed canonical Outcomes
+- whether they were included exactly once
+- Pass 1 content supplied to Pass 2
+- raw Pass 2 response structure
+- parsed Pass 2 response structure
+
+Then inspect:
+
+- normalization
+- validation
+- DB transaction
+- lesson Topics
+- lesson MicroNodes
+- exercises
+- Outcome relations
+
+Do not modify anything until this forensic trace identifies the first
+incorrect boundary.
+
+════════════════════════════════════════════════════
+4. PRESERVE FORENSIC EVIDENCE
+════════════════════════════════════════════════════
+
+If raw historical provider responses for job 85 are not persisted,
+do NOT pretend they are available.
+
+State explicitly what historical evidence exists and what does not.
+
+If necessary, run ONE controlled diagnostic mapping attempt using the
+same repaired lesson/source and temporary safe instrumentation.
+
+Instrumentation may record:
+
+- counts
+- IDs
+- object keys
+- array lengths
+- statuses
+- character/token estimates
+- validation errors
+
+Do NOT dump full copyrighted textbook source into logs.
+
+Do NOT log learner/private data.
+
+If raw AI output is needed for diagnosis, use the minimum safe
+development-only diagnostic representation required and remove unsafe
+logging afterward.
+
+════════════════════════════════════════════════════
+5. CANONICAL HIERARCHY
+════════════════════════════════════════════════════
+
+Do not invent another hierarchy.
+
+The canonical project hierarchy is:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+MicroNode is the atomic knowledge/learning unit.
+
+A Topic is NOT a substitute for a MicroNode.
+
+A lesson with:
+
+2 Topics
+0 MicroNodes
+
+must NOT be treated as a successful detailed mapping.
+
+════════════════════════════════════════════════════
+6. MICRONODE GRANULARITY CONTRACT
+════════════════════════════════════════════════════
+
+Each MicroNode must represent ONE clear, teachable, assessable learning
+objective / knowledge unit.
+
+Do not create huge chapter-like MicroNodes merely to make the count
+non-zero.
+
+Do not create one MicroNode per paragraph mechanically.
+
+Granularity must support later:
+
+- AI Teacher instruction
+- cognitive progression
+- exercises
+- evidence
+- learner mastery
+- Knowledge Tree
+- personalization
+
+For this lesson, derive MicroNodes only from the actual source and
+teacher-confirmed curriculum constraints.
+
+Do NOT invent unrelated curriculum content.
+
+════════════════════════════════════════════════════
+7. SOURCE COVERAGE REMAINS MANDATORY
+════════════════════════════════════════════════════
+
+The fix must NOT solve zero MicroNodes by ignoring parts of the source.
+
+All relevant readable source content from pages 10–11 must remain
+accounted for.
+
+Preserve:
+
+- source blocks
+- source page references
+- source fidelity
+- real exercises/questions/activities/tasks
+- dependencies when genuinely supported
+- knowledge boundaries/misconceptions when supported by source/contract
+
+Do not fabricate exercises.
+
+Do not silently drop source blocks because they are difficult to map.
+
+════════════════════════════════════════════════════
+8. CONFIRMED GOAL/OUTCOMES ARE CONSTRAINTS
+════════════════════════════════════════════════════
+
+The teacher-confirmed canonical Goal and Outcomes must remain unchanged.
+
+They are authoritative curriculum constraints for detailed mapping.
+
+Do NOT regenerate them.
+
+Do NOT overwrite them.
+
+Do NOT create duplicate Outcome storage.
+
+Pass 2 should use them to help determine:
+
+- what knowledge units are necessary
+- which MicroNodes support which Outcomes
+- required cognitive depth
+
+But Goal/Outcomes must not replace source-grounded mapping.
+
+Source + confirmed curriculum constraints work together.
+
+════════════════════════════════════════════════════
+9. CHECK PASS 1 / PASS 2 RESPONSIBILITIES
+════════════════════════════════════════════════════
+
+Explicitly document what the current implementation expects from:
+
+PASS 1
+
+and
+
+PASS 2.
+
+We need to know:
+
+Does Pass 1 only extract/source-structure content?
+
+Does Pass 1 create preliminary learning units?
+
+Does Pass 2 create Topics/MicroNodes?
+
+Does Pass 2 only reorganize structures produced by Pass 1?
+
+Where are exercises attached?
+
+Where are Outcome relations generated?
+
+Where is cognitive depth assigned?
+
+Compare actual implementation behavior with the intended C1 pipeline.
+
+If responsibilities are ambiguous or contradictory, identify the
+smallest contract correction required.
+
+Do not redesign the whole mapper.
+
+════════════════════════════════════════════════════
+10. SCHEMA / FORMAT AUDIT
+════════════════════════════════════════════════════
+
+Inspect the exact TypeScript/Zod/interfaces/JSON schemas used between:
+
+- AI output
+- Pass 1 parser
+- Pass 2 parser
+- canonical mapping representation
+- DB insertion
+
+Look specifically for naming/shape mismatches such as:
+
+nodes vs microNodes
+topics[].nodes
+topics[].microNodes
+lessonNodes
+subnodes
+children
+learningUnits
+knowledgeNodes
+
+or legacy/new format collisions.
+
+Verify that the AI prompt requests the SAME structural shape that the
+parser expects.
+
+Verify that the parser produces the SAME structural shape that the
+inserter expects.
+
+Do not add compatibility aliases blindly.
+
+If a schema mismatch is the root cause, make one canonical boundary and
+test it.
+
+════════════════════════════════════════════════════
+11. VALIDATION MUST NOT SILENTLY DROP MICRONODES
+════════════════════════════════════════════════════
+
+Inspect all filtering/validation logic.
+
+A malformed MicroNode must not simply disappear without diagnostic
+evidence.
+
+If a MicroNode is rejected, capture a structured reason such as:
+
+- missing title
+- missing learningObjective
+- invalid sourceBlock reference
+- invalid page
+- invalid Bloom/cognitive value
+- duplicate ID
+- unsupported relation
+- schema mismatch
+
+If ALL candidate MicroNodes are rejected, mapping must FAIL clearly.
+
+It must NOT report successful mapping with Topics only.
+
+════════════════════════════════════════════════════
+12. ZERO-MICRONODE SUCCESS MUST BECOME IMPOSSIBLE
+════════════════════════════════════════════════════
+
+Regardless of the root cause, add a deterministic invariant at the
+appropriate server boundary:
+
+If detailed automatic mapping finishes with:
+
+MicroNode count = 0
+
+then the mapping job must NOT be marked successfully complete.
+
+Return/record a controlled mapping failure requiring review.
+
+Do NOT persist/approve a Topic-only mapping as valid detailed mapping.
+
+If atomic transaction architecture already allows this, use it.
+
+Do not corrupt previously valid mapping data.
+
+Teacher-facing message should be clear Armenian, e.g. conceptually:
+
+«Քարտեզագրումը չի ստեղծել գիտելիքի հանգույցներ։ Արդյունքը չի պահպանվել։
+Խնդրում ենք կրկին փորձել կամ ստուգել աղբյուրային նյութը»։
+
+Use the project's actual terminology/style.
+
+════════════════════════════════════════════════════
+13. EXERCISES / TASKS
+════════════════════════════════════════════════════
+
+The same run produced:
+
+Exercises/tasks = 0
+
+Determine whether:
+
+A. pages 10–11 genuinely contain no exercise/question/activity/task,
+
+OR
+
+B. source extraction detected them but later stages dropped them,
+
+OR
+
+C. the current mapper does not preserve them correctly.
+
+Do not force a non-zero exercise count if the source contains none.
+
+But if the source contains real exercises/questions/activities/tasks,
+they must be preserved according to the mapping contract.
+
+Provide evidence either way.
+
+════════════════════════════════════════════════════
+14. OUTCOME → MICRONODE RELATIONS
+════════════════════════════════════════════════════
+
+After valid MicroNodes exist, inspect/generate the canonical relations:
+
+Outcome
+→ REQUIRED or SUPPORTING
+→ MicroNode
+→ required cognitive depth
+
+Do not manually fabricate relations merely to satisfy validation.
+
+Relations must be supported by:
+
+- confirmed Outcome meaning
+- MicroNode learning objective/content
+- required cognitive depth
+
+At final mapping readiness:
+
+every required canonical Outcome must have appropriate REQUIRED
+MicroNode coverage according to existing C1 rules.
+
+This remains a post-mapping validation concern.
+
+════════════════════════════════════════════════════
+15. MINIMAL FIX ONLY AFTER ROOT CAUSE
+════════════════════════════════════════════════════
+
+Once the first incorrect boundary is proven, implement the smallest
+architectural correction.
+
+Examples:
+
+IF AI output contains MicroNodes but parser drops them
+→ fix parser/schema boundary.
+
+IF prompt requests wrong structure
+→ fix prompt/schema contract.
+
+IF normalization drops them
+→ fix normalization.
+
+IF validator rejects valid nodes
+→ fix validator.
+
+IF DB insertion ignores them
+→ fix persistence.
+
+IF UI alone fails to display persisted nodes
+→ fix API/UI read path.
+
+Do NOT simultaneously rewrite multiple layers unless evidence proves
+multiple independent faults.
+
+════════════════════════════════════════════════════
+16. REAL RETEST — SAME LESSON
+════════════════════════════════════════════════════
+
+After the minimal fix, retest the SAME lesson:
+
+Մաթեմատիկա 5
+Շենքերի համարակալումը
+§1.1
+pages 10–11
+lesson 611
+
+Use the same teacher-confirmed Goal/Outcomes.
+
+Do not use a synthetic lesson as the acceptance proof.
+
+Before retry:
+
+verify current incomplete Topic-only state and ensure retry semantics
+will not create duplicates.
+
+Then run automatic mapping.
+
+Expected minimum structural result:
+
+- ≥1 Topic
+- ≥1 valid atomic MicroNode
+
+Exercise count may be zero ONLY if the source genuinely contains no
+exercise/task.
+
+Also verify:
+
+- source references exist
+- source coverage is preserved
+- Goal unchanged
+- Outcomes unchanged
+- no duplicate Topics
+- no duplicate MicroNodes
+- Outcome relations are persisted or available according to current C1
+  architecture
+- mapping job state is truthful
+
+════════════════════════════════════════════════════
+17. DO NOT DECLARE CONTENT QUALITY PASS YET
+════════════════════════════════════════════════════
+
+Even if MicroNodes are successfully generated after the fix:
+
+DO NOT declare C1 Mapping frozen.
+
+After this task we will manually audit the actual generated content for:
+
+- Topic correctness
+- MicroNode granularity
+- learning objectives
+- source fidelity
+- complete source coverage
+- exercise preservation
+- Outcome coverage
+- REQUIRED/SUPPORTING relations
+- cognitive depth
+- Teaching Package
+- Cognitive Path
+- final validation
+
+This task only fixes the structural zero-MicroNode blocker.
+
+════════════════════════════════════════════════════
+18. REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add focused tests proving:
+
+A. Pass 1 valid source survives into Pass 2.
+
+B. Pass 2 schema requires/accepts canonical MicroNode structure.
+
+C. AI-produced MicroNodes survive parsing.
+
+D. MicroNodes survive normalization.
+
+E. valid MicroNodes survive validation.
+
+F. valid MicroNodes persist to DB.
+
+G. zero-MicroNode detailed mapping cannot be marked successful.
+
+H. validation rejection provides diagnostic reasons.
+
+I. confirmed Goal/Outcomes remain unchanged.
+
+J. retry does not duplicate Topic/MicroNode records.
+
+K. exercises/tasks are preserved when present.
+
+L. Outcome relation behavior remains compatible.
+
+Then run relevant existing:
+
+- Package 1A canonical Outcomes
+- Package 1B Teaching Package
+- Package 1C mapping tests
+- context/preflight suite from Task #109
+- final approval tests
+- Cognitive Path tests
+
+Do not modify unrelated tests just to obtain green results.
+
+════════════════════════════════════════════════════
+19. NO-SCOPE-DRIFT RULE
+════════════════════════════════════════════════════
+
+Do NOT modify:
+
+- AI Teacher runtime/chat behavior
+- Evidence Contract
+- Learner Model
+- Knowledge Tree
+- Recommendation/Personalization
+- Quiz flow
+- student session logic
+- scoring
+- unrelated teacher dashboard features
+- manual mapping workflow
+
+Do NOT start Package 1D.
+
+Do NOT redesign the Mapping UI.
+
+Do NOT change model merely to make the test pass.
+
+Do NOT weaken Task #109 context/truncation safeguards.
+
+════════════════════════════════════════════════════
+20. REQUIRED REPORT
+════════════════════════════════════════════════════
+
+Return exactly these sections:
+
+A. ROOT CAUSE
+
+Where did the MicroNodes first disappear?
+
+B. FORENSIC PIPELINE
+
+For each stage:
+- source
+- Pass 1 raw
+- Pass 1 parsed
+- Pass 2 input
+- Pass 2 raw
+- Pass 2 parsed
+- normalized
+- validated
+- persisted
+- API/UI
+
+show counts and the first incorrect boundary.
+
+C. PASS 1 / PASS 2 RESPONSIBILITIES
+
+State actual responsibilities after inspection.
+
+D. SCHEMA FINDINGS
+
+Show exact relevant structural shapes/names.
+
+E. FILES CHANGED
+
+F. MINIMAL FIX
+
+G. ZERO-MICRONODE INVARIANT
+
+Explain how Topic-only success is now prevented.
+
+H. SOURCE COVERAGE
+
+I. EXERCISE/TASK FINDING
+
+Were there real source exercises/tasks?
+If yes, how many were preserved?
+If no, provide evidence.
+
+J. GOAL/OUTCOME PRESERVATION
+
+K. REAL LESSON RETEST
+
+Return:
+- Topic count
+- MicroNode count
+- exercise/task count
+- Outcome relation count
+- mapping job status
+
+L. TEST RESULTS
+
+M. REGRESSION STATUS
+
+N. REMAINING C1 ISSUES
+
+Do not hide unresolved issues.
+
+════════════════════════════════════════════════════
+21. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS Fix #3 only if:
+
+[ ] The first MicroNode-loss boundary is proven.
+
+[ ] Root cause is evidence-based, not guessed.
+
+[ ] Minimal fix addresses that exact boundary.
+
+[ ] Full relevant source remains preserved.
+
+[ ] Teacher-confirmed Goal remains unchanged.
+
+[ ] Teacher-confirmed Outcomes remain unchanged.
+
+[ ] Same real lesson maps to ≥1 valid atomic MicroNode.
+
+[ ] Topic-only / zero-MicroNode mapping cannot report success.
+
+[ ] No silent validator dropping remains for all-node failure.
+
+[ ] Retry does not duplicate canonical mapping records.
+
+[ ] Exercise/task behavior is explained and correct.
+
+[ ] Relevant regressions pass.
+
+[ ] Task #109 safeguards remain intact.
+
+If any acceptance item fails:
+
+STOP.
+
+Report the blocker.
+
+Do NOT proceed to Package 1D.
+
+Do NOT declare C1 Mapping complete or frozen.
