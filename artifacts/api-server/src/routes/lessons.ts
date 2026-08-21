@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourceScopeError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -19,6 +19,13 @@ import { validateLessonForFinalApproval } from "../lib/lesson-final-approval.js"
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import { normalizeSourceExerciseAnswerContract } from "../lib/source-exercise-answer.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
+import {
+  buildLessonSourceSet,
+  applyVisionTitleAnchor,
+  assignTextBlocksToPhysicalPages,
+  formatExtractedPagesForPass1,
+  validateBlocksAgainstLessonSourceSet,
+} from "../lib/lesson-source-set.js";
 import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
@@ -2985,8 +2992,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     return;
   }
 
-  // Apply don't-degrade semantics: never overwrite a valid field with empty AI response
-  const phase2Updates: Record<string, unknown> = { status: "approved" as const, teachingContentStale: false };
+  // Generation produces a draft candidate. It is never an approval action:
+  // teacher review remains the only way source-grounded teaching content becomes authority.
+  const phase2Updates: Record<string, unknown> = { status: "needs_review" as const, teachingContentStale: false };
   if (result.childFriendlyExplanation?.trim())
     phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
   if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
@@ -3000,6 +3008,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     .update(lessonNodesTable)
     .set(phase2Updates)
     .where(eq(lessonNodesTable.id, nodeId));
+  await invalidateLessonApproval(lessonId);
 
   // Return the freshly-saved node for immediate UI update
   const [updated] = await db
@@ -3552,9 +3561,47 @@ router.get("/lessons/:lessonId/mapping-report", requireAuth, requireLessonAuthor
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
-  // Stored at /map time → return immediately (exact pass1 count + coverage available)
+  // Stored map diagnostics remain immutable, while delivery-review state is
+  // calculated live so the teacher sees whether later Phase 2 candidates still
+  // need approval.
   if (lesson.mappingMetadata) {
-    res.json(lesson.mappingMetadata);
+    const [nodes, exercises] = await Promise.all([
+      db.select({
+        status: lessonNodesTable.status,
+        childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+        basicExamples: lessonNodesTable.basicExamples,
+        commonMisconception: lessonNodesTable.commonMisconception,
+        nonExamples: lessonNodesTable.nonExamples,
+      }).from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId)),
+      db.select({ sourceType: lessonExercisesTable.sourceType })
+        .from(lessonExercisesTable)
+        .where(eq(lessonExercisesTable.lessonId, lessonId)),
+    ]);
+    const hasTeachingCandidate = (node: typeof nodes[number]) =>
+      !!node.childFriendlyExplanation ||
+      (Array.isArray(node.basicExamples) && node.basicExamples.length > 0) ||
+      !!node.commonMisconception ||
+      (Array.isArray(node.nonExamples) && node.nonExamples.length > 0);
+    const teachingCandidates = nodes.filter(hasTeachingCandidate);
+    const report = lesson.mappingMetadata as Record<string, any>;
+    res.json({
+      ...report,
+      quality: {
+        ...(report.quality ?? {}),
+        exerciseProvenance: {
+          total: exercises.length,
+          textbookSourced: exercises.filter((exercise) => exercise.sourceType === "textbook").length,
+          unverified: exercises.filter((exercise) => exercise.sourceType !== "textbook").length,
+        },
+        teachingContentReview: {
+          draftCandidates: teachingCandidates.filter((node) => node.status === "needs_review").length,
+          approvedCandidates: teachingCandidates.filter((node) => node.status === "approved").length,
+          candidatesWithoutReview: teachingCandidates.filter((node) =>
+            node.status !== "needs_review" && node.status !== "approved",
+          ).length,
+        },
+      },
+    });
     return;
   }
 
@@ -3687,7 +3734,28 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .where(eq(mappingJobsTable.id, job.id));
 
     const filePath  = resolveUploadedFilePath(resource.fileUrl!);
-    const lessonText = await extractPdfPageRange(filePath, pageRange.pagesFrom, pageRange.pagesTo);
+    const extractedPages = await extractPdfPages(filePath, pageRange.pagesFrom, pageRange.pagesTo);
+    const lessonText = formatExtractedPagesForPass1(extractedPages);
+    let sourceSet = buildLessonSourceSet({
+      resourceId: resource.id,
+      resourceFileUrl: resource.fileUrl!,
+      pagesFrom: pageRange.pagesFrom,
+      pagesTo: pageRange.pagesTo,
+      lessonTitle: lesson.title,
+      extractedPages,
+    });
+    const useVision = isGarbledText(lessonText);
+    if (!useVision && !sourceSet.titleMatch.valid) {
+      throw new MappingSourceScopeError({
+        valid: false,
+        checkedBlockCount: 0,
+        invalidBlockIndices: [],
+        invalidPageCount: 0,
+        unverifiableTextCount: 0,
+        reasonCodes: ["SOURCE_TEXT_NOT_IN_SELECTED_PAGE"],
+        sourceSet,
+      });
+    }
 
     const confirmedOutcomes = lesson.goalOutcomeReviewStatus === "confirmed"
       ? await db.select({
@@ -3715,7 +3783,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
     let pass1: Pass1Result;
-    if (isGarbledText(lessonText)) {
+    if (useVision) {
       logger.info(
         { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
         "lesson mapping: garbled text — using vision-based Pass 1"
@@ -3725,6 +3793,22 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       pass1 = await extractBlocksWithVision(baseInput, pageImages);
     } else {
       pass1 = await extractBlocksWithAI({ ...baseInput, lessonText });
+      pass1 = {
+        ...pass1,
+        blocks: assignTextBlocksToPhysicalPages(extractedPages, pass1.blocks),
+      };
+    }
+    if (useVision) {
+      sourceSet = applyVisionTitleAnchor(sourceSet, lesson.title, pass1.blocks);
+    }
+    const sourceScope = validateBlocksAgainstLessonSourceSet(
+      sourceSet,
+      extractedPages,
+      pass1.blocks,
+      { verifyTextContent: !useVision },
+    );
+    if (!sourceScope.valid) {
+      throw new MappingSourceScopeError({ ...sourceScope, sourceSet });
     }
     logger.info({ lessonId, blockCount: pass1.blocks.length }, "lesson mapping Pass 1 complete");
     await db.update(mappingJobsTable)
@@ -3852,7 +3936,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         if (!hasContent || !mn.learningObjective) {
           reviewItems.push({
             nodeId:    insertedNode.id,
-            nodeTitle: mn.title,
+            nodeTitle: "—",
             reason:    !mn.learningObjective
               ? "Missing learning objective"
               : "Missing or very short theory content",
@@ -3994,7 +4078,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       reviewItems.push({
         nodeId:    null as unknown as number,
         nodeTitle: `Pages ${skipped.from}–${skipped.to}`,
-        reason:    skipped.reason,
+        reason:    "PASS1_PAGE_REQUIRES_MANUAL_REVIEW",
       });
     }
 
@@ -4025,8 +4109,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     for (const gf of pass2.granularityFindings) {
       reviewItems.push({
         nodeId:    null as unknown as number,
-        nodeTitle: gf.microNodeTitle,
-        reason:    `[${gf.issue} · ${gf.confidence}] ${gf.reason}${gf.suggestedAction ? ` — ${gf.suggestedAction}` : ""}`,
+        nodeTitle: "—",
+        reason:    `SEMANTIC_GRANULARITY_REVIEW:${gf.issue}:${gf.confidence}`,
       });
     }
     const granularityIssues = pass2.granularityFindings.length;
@@ -4038,8 +4122,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     for (const af of activityFindings) {
       reviewItems.push({
         nodeId:    null as unknown as number,
-        nodeTitle: af.microNodeTitle,
-        reason:    formatActivityFinding(af),
+        nodeTitle: "—",
+        reason:    `ACTIVITY_PLACEMENT_REVIEW:${af.issue}`,
       });
     }
     const activityIssues = activityIssuesRaw;
@@ -4075,6 +4159,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         coverageValidation: pass2.coverageValidation,
         instructionalCoverage: pass2.instructionalCoverage,
         sourceAudit: {
+          sourceSet,
+          sourceScope,
           dispositions: pass2.instructionalCoverage.blocks,
           dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
           unresolvedInstructionalBlocks: pass2.instructionalCoverage.unresolvedInstructionalIndices.length,
@@ -4089,7 +4175,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           reviewedAt: null,
           reviewedBy: null,
         },
-        granularityFindings: pass2.granularityFindings,
+        granularityFindings: pass2.granularityFindings.map((finding) => ({
+          issue: finding.issue,
+          confidence: finding.confidence,
+          reasonCode: "SEMANTIC_GRANULARITY_REVIEW",
+          hasMergeTarget: !!finding.mergeIntoMicroNodeTitle,
+        })),
+        granularityConsolidation: pass2.granularityConsolidation,
         pass2Diagnostics: pass2.diagnostics,
       },
     };
@@ -4132,16 +4224,21 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           unmappedBlocks:       pass2.unmappedBlockIndices.length,
           instructionalCoverageValid: pass2.instructionalCoverage.valid,
           mappingReport,
-          // P3.3: persist full Pass-1 block array so any missingIndices can later
-          // be resolved to their original blockType / sourceText / page metadata.
-          pass1Blocks:          pass1.blocks,
+          // Keep job polling source-safe too. Raw textbook/provider text never
+          // belongs in a job result or teacher audit response.
+          pass1BlockAudit:      pass1.blocks.map((block, blockIndex) => ({
+            blockIndex,
+            blockType: block.blockType,
+            sourcePage: block.sourcePage,
+            sourceParagraph: block.sourceParagraph ?? null,
+            hasBoundingBox: block.sourceBoundingBox !== null,
+          })),
           topics: topicRows.map((t) => ({
             id:       t.id,
             sequence: t.sequence,
-            title:    t.title,
             nodes:    nodeRows
               .filter((n) => n.topicId === t.id)
-              .map((n) => ({ id: n.id, sequence: n.sequence, title: n.title })),
+              .map((n) => ({ id: n.id, sequence: n.sequence })),
           })),
           pass2Diagnostics:     pass2.diagnostics,
         } as any,
@@ -4360,16 +4457,17 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
             skipReason: result.skipReason,
           });
         } else if (result.skipped) {
-          // Source content too thin — mark accordingly
+          // Source content too thin or generated claims were not grounded.
+          // Neither case can become approved authority automatically.
           await db
             .update(lessonNodesTable)
-            .set({ status: "needs_source_content" })
+            .set({ status: result.groundingAudit ? "needs_review" : "needs_source_content" })
             .where(eq(lessonNodesTable.id, result.nodeId));
 
           summaryRows.push({
             nodeId:     result.nodeId,
             title:      nodeTitle,
-            status:     "needs_source_content",
+            status:     result.groundingAudit ? "needs_review" : "needs_source_content",
             confidence: null,
             sourceType: "—",
             skipReason: result.skipReason,
@@ -4379,7 +4477,12 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           // never overwrite a non-empty field with an empty/null AI response.
           // This preserves Phase 2 data from a prior run when the AI returns
           // a partial result (e.g. empty basicExamples for a borderline-thin node).
-          const phase2Updates: Record<string, unknown> = { status: "approved" as const };
+          // Generated teaching material is an explicit review candidate, never
+          // a shortcut to approving the MicroNode or the lesson.
+          const phase2Updates: Record<string, unknown> = {
+            status: "needs_review" as const,
+            teachingContentStale: false,
+          };
           if (result.childFriendlyExplanation?.trim())
             phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
           if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
@@ -4397,7 +4500,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           summaryRows.push({
             nodeId:     result.nodeId,
             title:      nodeTitle,
-            status:     "approved",
+            status:     "needs_review",
             confidence: null,
             sourceType: "textbook",
           });
@@ -4405,7 +4508,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       }
     }
 
-    const approved              = summaryRows.filter((r) => r.status === "approved").length;
+    const approved              = 0;
+    const needsReviewCount      = summaryRows.filter((r) => r.status === "needs_review").length;
     const needsSourceCount      = summaryRows.filter((r) => r.status === "needs_source_content").length;
     const skippedReviewCount    = summaryRows.filter((r) => r.status === "skipped_needs_review").length;
 
@@ -4417,6 +4521,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           lessonTitle:         lesson.title,
           totalNodes:          nodes.length,
           approved,
+          needsReview:          needsReviewCount,
           needsSourceContent:  needsSourceCount,
           skippedNeedsReview:  skippedReviewCount,
           summary:             summaryRows,
@@ -4425,8 +4530,9 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       })
       .where(eq(mappingJobsTable.id, job.id));
 
+    await invalidateLessonApproval(lessonId);
     logger.info(
-      { jobId: job.id, lessonId, total: nodes.length, approved, needsSource: needsSourceCount, skippedReview: skippedReviewCount },
+      { jobId: job.id, lessonId, total: nodes.length, approved, needsReview: needsReviewCount, needsSource: needsSourceCount, skippedReview: skippedReviewCount },
       "phase2 teaching content generation job completed"
     );
   } catch (err) {

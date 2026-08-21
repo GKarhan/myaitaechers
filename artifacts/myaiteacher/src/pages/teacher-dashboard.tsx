@@ -3545,6 +3545,42 @@ type MappingAuditReport = {
       requiresTeacherReview: boolean;
       reviewedAt?: string | null;
     };
+    sourceAudit?: {
+      sourceSet?: {
+        resourceId: number;
+        pagesFrom: number;
+        pagesTo: number;
+        pages: Array<{ pageNumber: number; characterCount: number }>;
+        titleMatch: {
+          valid: boolean;
+          matchedTokenCount: number;
+          requiredTokenCount: number;
+          tableOfContentsPageCount: number;
+        };
+      };
+      sourceScope?: {
+        valid: boolean;
+        checkedBlockCount: number;
+        invalidBlockIndices: number[];
+        invalidPageCount: number;
+        unverifiableTextCount: number;
+      };
+    };
+    granularityConsolidation?: {
+      beforeMicroNodeCount: number;
+      afterMicroNodeCount: number;
+      mergedMicroNodeCount: number;
+    };
+    exerciseProvenance?: {
+      total: number;
+      textbookSourced: number;
+      unverified: number;
+    };
+    teachingContentReview?: {
+      draftCandidates: number;
+      approvedCandidates: number;
+      candidatesWithoutReview: number;
+    };
   };
 };
 
@@ -3567,6 +3603,11 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
   const report = auditQuery.data;
   const coverage = report?.quality?.instructionalCoverage;
   const alignment = report?.quality?.outcomeAlignmentAudit;
+  const sourceSet = report?.quality?.sourceAudit?.sourceSet;
+  const sourceScope = report?.quality?.sourceAudit?.sourceScope;
+  const consolidation = report?.quality?.granularityConsolidation;
+  const exerciseProvenance = report?.quality?.exerciseProvenance;
+  const teachingContentReview = report?.quality?.teachingContentReview;
   const confirmOutcomeReview = async () => {
     setConfirmingReview(true);
     try {
@@ -3613,6 +3654,53 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
                 <span className="rounded bg-white/5 px-2 py-1">MicroNode-ով՝ {coverage.microNodeOwnedInstructionalBlocks}</span>
                 <span className="rounded bg-white/5 px-2 py-1">Կառուցվածքային/տեսողական՝ {(coverage.dispositionCounts.LEGITIMATE_NON_INSTRUCTIONAL ?? 0) + (coverage.dispositionCounts.UNREADABLE ?? 0)}</span>
               </div>
+              {sourceSet && sourceScope && (
+                <div className={`rounded border p-2 text-[10px] ${
+                  sourceSet.titleMatch.valid && sourceScope.valid
+                    ? "border-emerald-400/20 bg-emerald-400/5 text-emerald-100"
+                    : "border-amber-400/30 bg-amber-400/10 text-amber-100"
+                }`}>
+                  <div className="font-medium">
+                    Աղբյուրի շրջանակ՝ ռեսուրս #{sourceSet.resourceId} · PDF էջեր {sourceSet.pagesFrom}–{sourceSet.pagesTo}
+                    {sourceSet.titleMatch.valid && sourceScope.valid ? " · հաստատված" : " · վերանայում է պահանջվում"}
+                  </div>
+                  <div className="mt-1 opacity-85">
+                    Ստուգված բլոկներ՝ {sourceScope.checkedBlockCount} · Չհաստատված՝ {sourceScope.invalidBlockIndices.length} ·
+                    Բովանդակության էջեր՝ {sourceSet.titleMatch.tableOfContentsPageCount}
+                  </div>
+                </div>
+              )}
+              {consolidation && (
+                <div className="rounded border border-violet-400/20 bg-violet-400/[0.05] p-2 text-[10px] text-violet-100">
+                  MicroNode մանրացում՝ {consolidation.beforeMicroNodeCount} → {consolidation.afterMicroNodeCount}
+                  {consolidation.mergedMicroNodeCount > 0
+                    ? ` · ${consolidation.mergedMicroNodeCount} հիմնավորված միավորում`
+                    : " · ավտոմատ միավորում չի պահանջվել"}
+                </div>
+              )}
+              {exerciseProvenance && (
+                <div className={`rounded border p-2 text-[10px] ${
+                  exerciseProvenance.unverified === 0
+                    ? "border-emerald-400/20 bg-emerald-400/5 text-emerald-100"
+                    : "border-amber-400/30 bg-amber-400/10 text-amber-100"
+                }`}>
+                  Վարժությունների աղբյուր՝ {exerciseProvenance.textbookSourced}/{exerciseProvenance.total} դասագրքից
+                  {exerciseProvenance.unverified > 0
+                    ? ` · ${exerciseProvenance.unverified} պահանջում է ստուգում`
+                    : " · բոլորն ունեն հաստատված աղբյուր"}
+                </div>
+              )}
+              {teachingContentReview && (
+                <div className="rounded border border-amber-400/25 bg-amber-400/[0.06] p-2 text-[10px] text-amber-100">
+                  Ուսուցման փաթեթի վերանայում՝ {teachingContentReview.draftCandidates} սևագիր թեկնածու
+                  {teachingContentReview.approvedCandidates > 0
+                    ? ` · ${teachingContentReview.approvedCandidates} ուսուցչի կողմից հաստատված`
+                    : " · գեներացումը ինքնուրույն հաստատում չէ"}
+                  {teachingContentReview.candidatesWithoutReview > 0
+                    ? ` · ${teachingContentReview.candidatesWithoutReview} այլ կարգավիճակով`
+                    : ""}
+                </div>
+              )}
               {alignment && (
                 <div className="rounded border border-blue-400/20 bg-blue-400/[0.05] p-2 text-[10px] text-blue-100">
                   Վերջնարդյունքների կապեր՝ {alignment.persistedAlignments} ({alignment.requiredAlignments} REQUIRED, {alignment.supportingAlignments} SUPPORTING) ·

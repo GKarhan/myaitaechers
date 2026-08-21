@@ -22,6 +22,8 @@ import { detectCycle } from "./sequential-deps";
 export interface KbCoverageGate {
   valid: boolean;
   coveragePercent: number;
+  /** True only when the selected resource/pages and all persisted blocks were source-scoped. */
+  sourceScopeValid?: boolean;
   /** Block indices missing from coverage (empty when not persisted in metadata). */
   missingSourceBlocks: number[];
   /** Readable instructional blocks that do not have a MicroNode owner. */
@@ -125,17 +127,23 @@ export function gateSourceCoverage(mappingMetadata: unknown): KbCoverageGate {
     };
   }
   const instructional = meta?.quality?.instructionalCoverage;
+  const sourceScope = meta?.quality?.sourceAudit?.sourceScope;
+  const sourceSet = meta?.quality?.sourceAudit?.sourceSet;
   const unresolvedInstructionalBlocks = Array.isArray(instructional?.unresolvedInstructionalIndices)
     ? instructional.unresolvedInstructionalIndices.length
     : 0;
   const instructionalValid = instructional === undefined || instructional?.valid === true;
+  const sourceScopeValid = sourceScope?.valid === true && sourceSet?.titleMatch?.valid === true;
   return {
-    valid: cv.valid === true && instructionalValid,
+    valid: cv.valid === true && instructionalValid && sourceScopeValid,
     coveragePercent: typeof cv.coveragePercent === "number" ? cv.coveragePercent : 0,
+    sourceScopeValid,
     // Exact missing indices are not persisted; only the validity flag is stored.
     missingSourceBlocks: Array.isArray(cv.missingIndices) ? cv.missingIndices : [],
     unresolvedInstructionalBlocks,
-    note: !instructionalValid
+    note: !sourceScopeValid
+      ? "Selected textbook resource/pages have no verified Source Set."
+      : !instructionalValid
       ? `${unresolvedInstructionalBlocks} readable instructional source block(s) are not owned by a MicroNode.`
       : undefined,
   };

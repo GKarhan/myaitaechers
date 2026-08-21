@@ -19,6 +19,10 @@ import {
 import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
 import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
+import {
+  validateTeachingContentGrounding,
+  type TeachingContentGroundingAudit,
+} from "../lib/teaching-content-grounding.js";
 
 // ── Activity preservation helpers ─────────────────────────────────────────────
 
@@ -304,6 +308,16 @@ export class MappingInstructionalCoverageError extends Error {
   }
 }
 
+export class MappingSourceScopeError extends Error {
+  readonly teacherMessage =
+    "Դասի ընտրված էջերը չեն հաստատվել որպես տվյալ դասի աղբյուր։ Ստուգեք դասագիրքը և PDF-ի ֆիզիկական էջերի միջակայքը։";
+
+  constructor(readonly audit: unknown) {
+    super("Mapping source set is outside the verified lesson scope");
+    this.name = "MappingSourceScopeError";
+  }
+}
+
 export class MappingOutcomeAlignmentError extends Error {
   readonly teacherMessage =
     "Քարտեզագրումը չի կարողացել համապատասխանեցնել բոլոր հաստատված վերջնարդյունքները MicroNode-ներին։ Արդյունքը չի պահպանվել։";
@@ -319,6 +333,7 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
+  if (error instanceof MappingSourceScopeError) return error.teacherMessage;
   if (error instanceof MappingOutcomeAlignmentError) return error.teacherMessage;
   if (error instanceof MappingPass2ParserError) return error.teacherMessage;
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -346,14 +361,29 @@ export async function extractPdfPageRange(
   if (!range.valid) {
     throw new Error(range.error);
   }
-  const dataBuffer = fs.readFileSync(filePath);
-  const pageNumbers: number[] = [];
-  for (let p = range.pagesFrom; p <= range.pagesTo; p++) pageNumbers.push(p);
+  const pages = await extractPdfPages(filePath, range.pagesFrom, range.pagesTo);
+  return pages.map((page) => page.text).join("\n\n").trim();
+}
 
-  const parser = new PDFParse({ data: dataBuffer });
+export type ExtractedPdfPage = { pageNumber: number; text: string };
+
+/** Extract pages independently so the selected physical PDF identity survives
+ * beyond an aggregate string and can validate every Pass 1 block. */
+export async function extractPdfPages(
+  filePath: string,
+  pagesFrom: number,
+  pagesTo: number,
+): Promise<ExtractedPdfPage[]> {
+  const range = validateRequiredLessonPageRange(pagesFrom, pagesTo);
+  if (!range.valid) throw new Error(range.error);
+  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
   try {
-    const result = await parser.getText({ partial: pageNumbers });
-    return result.text.trim();
+    const pages: ExtractedPdfPage[] = [];
+    for (let pageNumber = range.pagesFrom; pageNumber <= range.pagesTo; pageNumber++) {
+      const result = await parser.getText({ partial: [pageNumber] });
+      pages.push({ pageNumber, text: result.text.trim() });
+    }
+    return pages;
   } finally {
     await parser.destroy();
   }
@@ -610,6 +640,14 @@ STRICT RULES — follow every one without exception:
    Extract and classify each block in the order it appears on the page: top-to-bottom, left-to-right.
    Section headings and titles should be extracted as OBJECTIVE or NOTE blocks — not skipped.
 
+5. PHYSICAL PDF PAGE PROVENANCE.
+   Text input is divided by server markers in the exact form [PDF PAGE N].
+   sourcePage MUST be the N from the marker immediately above the block. Never
+   use a printed textbook page number, footer number, chapter number, or exercise
+   number as sourcePage.
+   Example: if a block is below [PDF PAGE 11] but the printed footer says "37",
+   return "sourcePage": 11 — not 37.
+
 sourceBoundingBox: for vision (image) input, provide approximate pixel coordinates {x, y, w, h} of the block on the page image. Use null if uncertain.
 sourceParagraph: paragraph number, section label, or exercise number visible on the page. Use null if not applicable.`;
 
@@ -642,7 +680,7 @@ const VALID_BLOCK_TYPES = new Set<string>([
   "NOTE", "ACTIVITY", "HOMEWORK",
 ]);
 
-function normalisePass1(raw: unknown): Pass1Result {
+function normalisePass1(raw: unknown, sourcePageOverride?: number): Pass1Result {
   const obj = raw as { blocks?: unknown[] };
   const blocks: Pass1Block[] = (Array.isArray(obj?.blocks) ? obj.blocks : [])
     .map((b) => {
@@ -654,8 +692,11 @@ function normalisePass1(raw: unknown): Pass1Result {
           : "NOTE",
         sourceText: typeof block.sourceText === "string"
           ? block.sourceText.trim() : "",
-        sourcePage: typeof block.sourcePage === "number" && block.sourcePage > 0
-          ? Math.round(block.sourcePage) : 0,
+        sourcePage: sourcePageOverride ?? (
+          typeof block.sourcePage === "number" && block.sourcePage > 0
+            ? Math.round(block.sourcePage)
+            : 0
+        ),
         sourceParagraph: typeof block.sourceParagraph === "string" && block.sourceParagraph.trim()
           ? block.sourceParagraph.trim() : null,
         sourceBoundingBox:
@@ -736,7 +777,9 @@ export async function extractBlocksWithAI(
  *  Armenian language textbook pages have many verbatim exercises, so even
  *  16 000 tokens weren't enough for 3 pages.  2 pages keeps output comfortably
  *  below the 32 000-token ceiling. */
-const PASS1_CHUNK_PAGES = 2;
+// One image per request is intentionally slower than two-page batching, but it
+// lets the server (rather than the model) assign an unambiguous physical page.
+const PASS1_CHUNK_PAGES = 1;
 const PASS1_MAX_TOKENS  = 32000;
 
 export async function extractBlocksWithVision(
@@ -880,7 +923,7 @@ export async function extractBlocksWithVision(
           }
           const subParsed = subTruncated ? null : extractJSON(rawSub);
           if (subParsed) {
-            const subNorm = normalisePass1(subParsed);
+            const subNorm = normalisePass1(subParsed, subPage);
             logger.info({ subLabel, blockCount: subNorm.blocks.length }, "pass1 vision: 1-page sub-chunk extracted");
             subBlocks.push(...subNorm.blocks);
           } else {
@@ -972,7 +1015,7 @@ export async function extractBlocksWithVision(
         }
       }
 
-      const chunkBlocks = normalisePass1(parsed).blocks;
+      const chunkBlocks = normalisePass1(parsed, chunkFrom).blocks;
       logger.info({ chunkLabel, blockCount: chunkBlocks.length }, "pass1 vision: chunk extracted");
       return { blocks: chunkBlocks, skipped };
     })
@@ -1233,6 +1276,72 @@ export interface GranularityFinding {
   reason: string;
   /** Optional concrete recommendation (e.g. "Split into 2: … / …" or "Merge with: …"). */
   suggestedAction?: string;
+  /** Required only for a HIGH-confidence OVER_SPLIT finding that can be safely merged. */
+  mergeIntoMicroNodeTitle?: string;
+}
+
+export interface GranularityConsolidation {
+  beforeMicroNodeCount: number;
+  afterMicroNodeCount: number;
+  mergedMicroNodeCount: number;
+  /** Source-safe audit: titles/reasons only; never source text. */
+  actions: Array<{
+    topicSequence: number;
+    keptMicroNodeTitle: string;
+    removedMicroNodeTitle: string;
+    reason: "HIGH_CONFIDENCE_OVER_SPLIT";
+  }>;
+}
+
+/**
+ * Applies one bounded merge pass from explicit HIGH-confidence Pass 2B
+ * findings. It never guesses a target, never crosses Topics, and preserves all
+ * source/exercise/supporting indices before deterministic validators rerun.
+ */
+export function consolidateHighConfidenceOverSplits(
+  topics: Pass2TopicResult[],
+  findings: ReadonlyArray<GranularityFinding>,
+): GranularityConsolidation {
+  const beforeMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
+  const actions: GranularityConsolidation["actions"] = [];
+
+  for (const topic of topics) {
+    const applicable = findings.filter((finding) =>
+      finding.topicTitle === topic.title &&
+      finding.issue === "OVER_SPLIT" &&
+      finding.confidence === "HIGH" &&
+      !!finding.mergeIntoMicroNodeTitle,
+    );
+    for (const finding of applicable) {
+      const sourceIndex = topic.microNodes.findIndex((node) => node.title === finding.microNodeTitle);
+      const targetIndex = topic.microNodes.findIndex((node) => node.title === finding.mergeIntoMicroNodeTitle);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) continue;
+
+      const source = topic.microNodes[sourceIndex];
+      const target = topic.microNodes[targetIndex];
+      target.sourceBlockIndices = [...new Set([...target.sourceBlockIndices, ...source.sourceBlockIndices])];
+      target.exercises = [...target.exercises, ...source.exercises];
+      target.supportingMaterialIndices = [...new Set([
+        ...target.supportingMaterialIndices,
+        ...source.supportingMaterialIndices,
+      ])];
+      topic.microNodes.splice(sourceIndex, 1);
+      actions.push({
+        topicSequence: topic.sequence,
+        keptMicroNodeTitle: target.title,
+        removedMicroNodeTitle: source.title,
+        reason: "HIGH_CONFIDENCE_OVER_SPLIT",
+      });
+    }
+  }
+
+  const afterMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
+  return {
+    beforeMicroNodeCount,
+    afterMicroNodeCount,
+    mergedMicroNodeCount: beforeMicroNodeCount - afterMicroNodeCount,
+    actions,
+  };
 }
 
 export interface Pass2Result {
@@ -1250,6 +1359,8 @@ export interface Pass2Result {
    * Empty when review AI call fails or finds no issues.
    */
   granularityFindings: GranularityFinding[];
+  /** One bounded pre-persistence merge pass applied only to explicit HIGH findings. */
+  granularityConsolidation: GranularityConsolidation;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
   diagnostics: Pass2Diagnostics;
 }
@@ -2112,7 +2223,8 @@ OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary.
       "issue": "MEGA_NODE",
       "confidence": "HIGH",
       "reason": "Armenian-language explanation for the teacher",
-      "suggestedAction": "Split into 2: [Title A] / [Title B]"
+      "suggestedAction": "Split into 2: [Title A] / [Title B]",
+      "mergeIntoMicroNodeTitle": "exact existing MicroNode title (OVER_SPLIT only)"
     }
   ]
 }
@@ -2243,6 +2355,7 @@ Return only the findings array — empty array if no issues.`;
         confidence:       item.confidence as GranularityFinding["confidence"],
         reason:           String(item.reason),
         ...(item.suggestedAction ? { suggestedAction: String(item.suggestedAction) } : {}),
+        ...(item.mergeIntoMicroNodeTitle ? { mergeIntoMicroNodeTitle: String(item.mergeIntoMicroNodeTitle) } : {}),
       });
     }
 
@@ -2678,12 +2791,15 @@ export async function runPass2Pipeline(
     },
   };
 
-  // Pass 2B — semantic granularity review (Phase 4).
-  // Runs AFTER Step 2, BEFORE coverage validation.
-  // Returns [] on any failure — never blocks the mapping.
+  // Pass 2B produces semantic findings. A single bounded merge pass may apply
+  // only explicit HIGH-confidence OVER_SPLIT actions with a known target.
   const granularityFindings = await runGranularityReview(topics, blocks);
+  const granularityConsolidation = consolidateHighConfidenceOverSplits(topics, granularityFindings);
+  recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
-  // Deterministic source-coverage validation (independent of AI self-report)
+  // Deterministic ownership validation is rerun after consolidation. A merge is
+  // safe only if it preserves one valid owner for every source and activity.
+  const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics);
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
 
   logger.info(
@@ -2691,8 +2807,9 @@ export async function runPass2Pipeline(
       coverage:        `${coverageValidation.coveredBlocks}/${coverageValidation.totalBlocks}`,
       coveragePercent: coverageValidation.coveragePercent,
       valid:           coverageValidation.valid,
-      instructionalCoverageValid: instructionalCoverage.valid,
-      unresolvedInstructional: instructionalCoverage.unresolvedInstructionalIndices.length,
+       instructionalCoverageValid: postConsolidationInstructionalCoverage.valid,
+       unresolvedInstructional: postConsolidationInstructionalCoverage.unresolvedInstructionalIndices.length,
+       granularityConsolidation,
       missingIndices:  coverageValidation.missingIndices,
       duplicateIndices: coverageValidation.duplicateIndices,
       invalidIndices:  coverageValidation.invalidIndices,
@@ -2717,23 +2834,24 @@ export async function runPass2Pipeline(
   if (coverageValidation.invalidIndices.length > 0) {
     logger.warn({ invalidIndices: coverageValidation.invalidIndices }, "pass2: block indices outside Pass1 bounds detected");
   }
-  if (!instructionalCoverage.valid) {
+  if (!postConsolidationInstructionalCoverage.valid) {
     logger.warn(
       {
-        unresolvedInstructional: instructionalCoverage.unresolvedInstructionalIndices,
-        unresolvedActivities: instructionalCoverage.unresolvedActivityIndices,
+        unresolvedInstructional: postConsolidationInstructionalCoverage.unresolvedInstructionalIndices,
+        unresolvedActivities: postConsolidationInstructionalCoverage.unresolvedActivityIndices,
       },
       "pass2: readable instructional source remains unresolved after bounded repair",
     );
-    throw new MappingInstructionalCoverageError(instructionalCoverage, diagnostics);
+    throw new MappingInstructionalCoverageError(postConsolidationInstructionalCoverage, diagnostics);
   }
 
   return {
     topics,
     unmappedBlockIndices: allUnmapped,
     coverageValidation,
-    instructionalCoverage,
+    instructionalCoverage: postConsolidationInstructionalCoverage,
     granularityFindings,
+    granularityConsolidation,
     diagnostics,
   };
 }
@@ -2776,6 +2894,7 @@ export interface Phase2GenerationResult {
   basicExamples:             string[];
   commonMisconception:       string;
   nonExamples:               string[];
+  groundingAudit?:          TeachingContentGroundingAudit;
 }
 
 const WEAK_SOURCE_PATTERNS = [
@@ -2910,13 +3029,32 @@ export async function generatePhase2Content(
     };
   }
 
-  return {
-    nodeId:                   input.nodeId,
-    skipped:                  false,
+  const candidate = {
     childFriendlyExplanation: typeof parsed.childFriendlyExplanation === "string" ? parsed.childFriendlyExplanation : "",
     basicExamples:            extractStringArray(parsed.basicExamples),
     commonMisconception:      typeof parsed.commonMisconception === "string" ? parsed.commonMisconception : "",
     nonExamples:              extractStringArray(parsed.nonExamples),
+  };
+  const groundingAudit = validateTeachingContentGrounding(input.theoryContent, candidate);
+  if (!groundingAudit.valid) {
+    logger.warn(
+      { nodeId: input.nodeId, issueCounts: groundingAudit.issueCounts },
+      "phase2: generated teaching content rejected by source-grounding boundary",
+    );
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipReason: "generated teaching content includes claims not supported by the source",
+      ...candidate,
+      groundingAudit,
+    };
+  }
+
+  return {
+    nodeId: input.nodeId,
+    skipped: false,
+    ...candidate,
+    groundingAudit,
   };
 }
 

@@ -101,7 +101,15 @@ const [dynLesson] = await db.insert(lessonsTable).values({
   teacherId: TEST_TEACHER_ID,
   status: "draft",
   lessonOutcomes: ["Legacy outcome for Package 1C confirmation regression"],
-  mappingMetadata: { sourceExerciseCount: 2 },
+  mappingMetadata: {
+    sourceExerciseCount: 2,
+    quality: {
+      sourceAudit: {
+        sourceSet: { titleMatch: { valid: true } },
+        sourceScope: { valid: true },
+      },
+    },
+  },
 }).returning({ id: lessonsTable.id });
 
 const LESSON_ID = dynLesson.id;
@@ -309,6 +317,24 @@ it("G2: MISSING_PHASE2 blocks final-approve → 422", async () => {
     assert.equal(body.approved, false);
     assert.ok(
       (body.errors as Array<{ code: string }>).some((e) => e.code === "MISSING_PHASE2"),
+    );
+  } finally {
+    await restoreNode(snap!);
+  }
+});
+
+it("H1: needs_review teaching candidate blocks final-approve → 422", async () => {
+  const snap = await getNode(NODE.id);
+  assert.ok(snap);
+  try {
+    await db.update(lessonNodesTable)
+      .set({ status: "needs_review" })
+      .where(eq(lessonNodesTable.id, NODE.id));
+    const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(status, 422);
+    assert.ok(
+      (body.errors as Array<{ code: string }>).some((error) => error.code === "UNREVIEWED_MICRONODES"),
+      "Expected UNREVIEWED_MICRONODES to block final approval",
     );
   } finally {
     await restoreNode(snap!);

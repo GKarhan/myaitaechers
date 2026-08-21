@@ -43,3 +43,4 @@
 - [Canonical outcome alignment](canonical-outcome-alignment.md) — Outcome depth is a stable Bloom value, not a Cognitive Path row FK; legacy JSON stays readable and is only explicitly backfilled.
 - [Pass 2 structural diagnostics](pass2-structural-diagnostics.md) — count-only Step 2 traces distinguish provider omissions from parser or normalization loss before mapping rows are replaced.
 - [Instructional source coverage](instructional-source-coverage.md) — structural placement is not teaching coverage; unreadable/structural source is safe to exclude, but readable instruction needs MicroNode ownership before replacement.
+- [Verified lesson source sets](verified-lesson-source-sets.md) — map physical PDF pages only; text and vision sources use distinct provenance checks, and final approval fails closed without verified scope.

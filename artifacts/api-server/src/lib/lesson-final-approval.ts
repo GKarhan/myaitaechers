@@ -148,6 +148,29 @@ export async function validateLessonForFinalApproval(
   );
   const metadata = (lesson.mappingMetadata ?? {}) as Record<string, any>;
   const instructionalCoverage = metadata?.quality?.instructionalCoverage;
+  const sourceScope = metadata?.quality?.sourceAudit?.sourceScope;
+  const sourceSet = metadata?.quality?.sourceAudit?.sourceSet;
+
+  if (sourceScope?.valid !== true || sourceSet?.titleMatch?.valid !== true) {
+    errors.push({
+      code: "UNVERIFIED_LESSON_SOURCE_SCOPE",
+      messageArm: "Դասի քարտեզի աղբյուրը չի հաստատվել ընտրված դասագրքի և PDF-ի էջերի համար։",
+    });
+  }
+  if (nodes.length === 0) {
+    errors.push({
+      code: "NO_MICRONODES",
+      messageArm: "Դասը պետք է ունենա առնվազն մեկ MicroNode՝ վերջնական հաստատման համար։",
+    });
+  }
+  const unreviewedNodes = nodes.filter((node) => node.status !== "approved");
+  if (unreviewedNodes.length > 0) {
+    errors.push({
+      code: "UNREVIEWED_MICRONODES",
+      messageArm: `${unreviewedNodes.length} MicroNode դեռ ուսուցչի կողմից հաստատված չէ։`,
+      count: unreviewedNodes.length,
+    });
+  }
 
   if (instructionalCoverage && instructionalCoverage.valid !== true) {
     const unresolved = Array.isArray(instructionalCoverage.unresolvedInstructionalIndices)
