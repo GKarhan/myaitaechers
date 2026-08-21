@@ -41,3 +41,4 @@
 - [Exercise content boundary](exercise-content-boundary.md) — only validated learner text may cross student/Phase-2 boundaries; criteria and answer keys stay evaluator/backend-only.
 - [Stage 5 continuation](stage5-continuation.md) — server-owned no-input actions may chain only to the first persisted learner-answerable task; bounded jobs remain separate.
 - [Canonical outcome alignment](canonical-outcome-alignment.md) — Outcome depth is a stable Bloom value, not a Cognitive Path row FK; legacy JSON stays readable and is only explicitly backfilled.
+- [Pass 2 structural diagnostics](pass2-structural-diagnostics.md) — count-only Step 2 traces distinguish provider omissions from parser or normalization loss before mapping rows are replaced.

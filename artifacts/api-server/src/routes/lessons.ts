@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, MappingPass2ParserError, MappingZeroMicroNodesError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -3703,6 +3703,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       teacherGoal: baseInput.teacherGoal,
       teacherOutcomes: baseInput.teacherOutcomes,
     });
+    // A Topic is an organisational label, not an atomic learning unit. This
+    // invariant runs before any destructive replacement so a failed detailed
+    // map cannot erase a previously valid lesson map.
+    assertDetailedMappingHasMicroNodes(pass2);
 
     await db.update(mappingJobsTable)
       .set({ progress: "Saving results to database...", updatedAt: new Date() })
@@ -3996,6 +4000,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         reviewItems,
         coverageValidation: pass2.coverageValidation,
         granularityFindings: pass2.granularityFindings,
+        pass2Diagnostics: pass2.diagnostics,
       },
     };
 
@@ -4047,6 +4052,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
               .filter((n) => n.topicId === t.id)
               .map((n) => ({ id: n.id, sequence: n.sequence, title: n.title })),
           })),
+          pass2Diagnostics:     pass2.diagnostics,
         } as any,
         updatedAt: new Date(),
       })
@@ -4070,10 +4076,30 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     );
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
+    const preservedDiagnosticFailure = err instanceof MappingZeroMicroNodesError
+      ? {
+          progress: "Detailed mapping produced zero valid MicroNodes; existing mapping was preserved.",
+          reason: "ZERO_MICRONODES_PRE_PERSISTENCE",
+          diagnostics: err.diagnostics,
+        }
+      : err instanceof MappingPass2ParserError
+        ? {
+            progress: "Pass 2 response could not be parsed; existing mapping was preserved.",
+            reason: "PASS2_JSON_PARSE_FAILED_PRE_PERSISTENCE",
+            diagnostics: err.diagnostics,
+          }
+        : null;
     await db.update(mappingJobsTable)
       .set({
         status: "failed",
         error: getTeacherFacingMappingFailure(err),
+        ...(preservedDiagnosticFailure ? {
+          progress: preservedDiagnosticFailure.progress,
+          result: {
+            reason: preservedDiagnosticFailure.reason,
+            pass2Diagnostics: preservedDiagnosticFailure.diagnostics,
+          } as any,
+        } : {}),
         updatedAt: new Date(),
       })
       .where(eq(mappingJobsTable.id, job.id))

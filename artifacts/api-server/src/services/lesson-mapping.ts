@@ -279,9 +279,21 @@ export class MappingSourceTruncatedError extends Error {
   }
 }
 
+export class MappingZeroMicroNodesError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը չի ստեղծել գիտելիքի մանր հանգույցներ։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ ստուգել աղբյուրային նյութը։";
+
+  constructor(readonly diagnostics: unknown) {
+    super("Detailed mapping produced zero valid MicroNodes before persistence");
+    this.name = "MappingZeroMicroNodesError";
+  }
+}
+
 export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingContextBudgetError) return error.teacherMessage;
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
+  if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
+  if (error instanceof MappingPass2ParserError) return error.teacherMessage;
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (/maximum context length|context length|too many tokens|context window/i.test(message)) {
     return "Քարտեզագրման հարցումը չափազանց մեծ է։ Ստուգեք դասի էջերի միջակայքը և փորձեք կրկին։";
@@ -1016,6 +1028,160 @@ export interface Pass2TopicResult {
   additionalExercises: Pass2Exercise[];
 }
 
+export const PASS2_MICRONODE_REJECTION_REASONS = [
+  "MISSING_MICRONODES_ARRAY",
+  "INVALID_MICRONODE_NO_SOURCE_BLOCKS",
+  "INVALID_MICRONODE_EMPTY_TITLE",
+  "INVALID_MICRONODE_EMPTY_OBJECTIVE",
+  "INVALID_BLOCK_INDEX",
+] as const;
+
+export type Pass2MicroNodeRejectionReason =
+  typeof PASS2_MICRONODE_REJECTION_REASONS[number];
+
+/**
+ * Count-only Step 2 diagnostics. Never retain provider responses, source text,
+ * learner data, or generated MicroNode/exercise text.
+ */
+export interface Pass2TopicDiagnostics {
+  topicSequence: number;
+  inputBlockCount: number;
+  response: {
+    expectedKeysPresent: Record<"microNodes" | "unmappedBlocks" | "additionalExercises", boolean>;
+    unexpectedTopLevelKeyCount: number;
+    arrayLengths: Record<"microNodes" | "unmappedBlocks" | "additionalExercises", number>;
+    finishReason: string | null;
+    retried: boolean;
+    parserStatus: "PARSED" | "FAILED";
+  };
+  candidateMicroNodeCount: number;
+  acceptedMicroNodeCount: number;
+  rejectedMicroNodeCount: number;
+  rejectionCounts: Partial<Record<Pass2MicroNodeRejectionReason, number>>;
+  postNormalizationMicroNodeCount: number;
+}
+
+export interface Pass2Diagnostics {
+  detectedGroupCount: number;
+  groupsAfterTheoryMergeCount: number;
+  topics: Pass2TopicDiagnostics[];
+  totals: {
+    candidateMicroNodes: number;
+    acceptedBeforeNormalization: number;
+    acceptedAfterNormalization: number;
+    rejectedMicroNodes: number;
+  };
+}
+
+export class MappingPass2ParserError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը չի կարողացել մշակել AI-ի պատասխանը։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
+
+  constructor(readonly diagnostics: Pass2Diagnostics) {
+    super("Pass 2 provider response could not be parsed before persistence");
+    this.name = "MappingPass2ParserError";
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function inspectPass2Step2Response(
+  value: unknown,
+  finishReason: string | null | undefined,
+  retried: boolean,
+  parserStatus: "PARSED" | "FAILED" = "PARSED",
+): Pass2TopicDiagnostics["response"] {
+  const record = asRecord(value);
+  const expectedKeys = ["microNodes", "unmappedBlocks", "additionalExercises"] as const;
+  const arrayLength = (key: "microNodes" | "unmappedBlocks" | "additionalExercises") =>
+    Array.isArray(record?.[key]) ? record![key].length : 0;
+  return {
+    expectedKeysPresent: {
+      microNodes: Object.hasOwn(record ?? {}, "microNodes"),
+      unmappedBlocks: Object.hasOwn(record ?? {}, "unmappedBlocks"),
+      additionalExercises: Object.hasOwn(record ?? {}, "additionalExercises"),
+    },
+    unexpectedTopLevelKeyCount: Object.keys(record ?? {})
+      .filter((key) => !expectedKeys.includes(key as typeof expectedKeys[number])).length,
+    arrayLengths: {
+      microNodes: arrayLength("microNodes"),
+      unmappedBlocks: arrayLength("unmappedBlocks"),
+      additionalExercises: arrayLength("additionalExercises"),
+    },
+    finishReason: finishReason ?? null,
+    retried,
+    parserStatus,
+  };
+}
+
+export type Pass2Step2ParseAttempt =
+  | { ok: true; parsedValue: unknown; response: Pass2TopicDiagnostics["response"] }
+  | { ok: false; response: Pass2TopicDiagnostics["response"] };
+
+/**
+ * Converts a provider response into a parsed value or a count-only parser-failure
+ * diagnostic. It intentionally does not retain the raw response or parse error.
+ */
+export function safelyParsePass2Step2Response(
+  raw: string,
+  finishReason: string | null | undefined,
+  retried: boolean,
+): Pass2Step2ParseAttempt {
+  try {
+    const parsedValue = parsePass2JSON(raw);
+    return {
+      ok: true,
+      parsedValue,
+      response: inspectPass2Step2Response(parsedValue, finishReason, retried, "PARSED"),
+    };
+  } catch {
+    return {
+      ok: false,
+      response: inspectPass2Step2Response(undefined, finishReason, retried, "FAILED"),
+    };
+  }
+}
+
+class Pass2Step2ParserError extends Error {
+  constructor(readonly diagnostics: Pass2TopicDiagnostics) {
+    super("Pass 2 topic response could not be parsed");
+    this.name = "Pass2Step2ParserError";
+  }
+}
+
+export function getPass2MicroNodeRejectionReasons(
+  microNode: Pick<Pass2MicroNode, "title" | "learningObjective" | "sourceBlockIndices">,
+): Pass2MicroNodeRejectionReason[] {
+  const reasons: Pass2MicroNodeRejectionReason[] = [];
+  if (microNode.sourceBlockIndices.length === 0) reasons.push("INVALID_MICRONODE_NO_SOURCE_BLOCKS");
+  if (!microNode.title.trim()) reasons.push("INVALID_MICRONODE_EMPTY_TITLE");
+  if (!microNode.learningObjective.trim()) reasons.push("INVALID_MICRONODE_EMPTY_OBJECTIVE");
+  if (microNode.sourceBlockIndices.some((index) => !Number.isInteger(index) || index < 0)) {
+    reasons.push("INVALID_BLOCK_INDEX");
+  }
+  return reasons;
+}
+
+export function recordPass2PostNormalizationCounts(
+  topics: Pick<Pass2TopicResult, "microNodes">[],
+  topicDiagnostics: Pass2TopicDiagnostics[],
+): void {
+  for (let index = 0; index < topicDiagnostics.length; index++) {
+    topicDiagnostics[index].postNormalizationMicroNodeCount = topics[index]?.microNodes.length ?? 0;
+  }
+}
+
+export function assertDetailedMappingHasMicroNodes(
+  result: Pick<Pass2Result, "topics" | "diagnostics">,
+): void {
+  const microNodeCount = result.topics.reduce((total, topic) => total + topic.microNodes.length, 0);
+  if (microNodeCount === 0) throw new MappingZeroMicroNodesError(result.diagnostics);
+}
+
 // ── Phase 4: Granularity review types ────────────────────────────────────────
 
 /**
@@ -1045,6 +1211,8 @@ export interface Pass2Result {
    * Empty when review AI call fails or finds no issues.
    */
   granularityFindings: GranularityFinding[];
+  /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
+  diagnostics: Pass2Diagnostics;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1554,7 +1722,12 @@ async function organizeTopicMicroNodes(
   blocks: Pass1Block[],
   topicSeq: number,
   curriculumConstraints: string,
-): Promise<{ microNodes: Pass2MicroNode[]; unmappedIndices: number[]; additionalExercises: Pass2Exercise[] }> {
+): Promise<{
+  microNodes: Pass2MicroNode[];
+  unmappedIndices: number[];
+  additionalExercises: Pass2Exercise[];
+  diagnostics: Pass2TopicDiagnostics;
+}> {
   const blockLines = topicIndices.map((i) => fmtPass2Block(i, blocks[i])).join("\n");
 
   const userPrompt = `Topic ${topicSeq}: «${topicTitle}»
@@ -1583,6 +1756,7 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
   });
   let raw    = r.choices[0]?.message?.content ?? "";
   let finish = r.choices[0]?.finish_reason;
+  let retried = false;
 
   // Retry once on API error or empty response (Gemini occasionally returns finish_reason "error")
   if (!raw.trim() || (finish as string) === "error") {
@@ -1595,41 +1769,67 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
     });
     raw    = r.choices[0]?.message?.content ?? "";
     finish = r.choices[0]?.finish_reason;
+    retried = true;
   }
 
   logger.info({ topicTitle, topicSeq, finish }, "pass2 step2: MicroNode org complete");
 
-  const parsed = parsePass2JSON(raw) as {
-    microNodes: {
-      title: string;
-      learningObjective: string;
-      microNodeType: string;
-      sourceBlockIndices: number[];
-      exercises: { blockIndex: number; sourceParagraph?: string | null }[];
-      supportingMaterialIndices: number[];
-    }[];
-    unmappedBlocks: { blockIndex: number; reason: string }[];
-    additionalExercises?: { blockIndex: number; reason?: string }[];
+  const parseAttempt = safelyParsePass2Step2Response(raw, finish, retried);
+  if (!parseAttempt.ok) {
+    throw new Pass2Step2ParserError({
+      topicSequence: topicSeq,
+      inputBlockCount: topicIndices.length,
+      response: parseAttempt.response,
+      candidateMicroNodeCount: 0,
+      acceptedMicroNodeCount: 0,
+      rejectedMicroNodeCount: 0,
+      rejectionCounts: {},
+      postNormalizationMicroNodeCount: 0,
+    });
+  }
+  const parsedValue = parseAttempt.parsedValue;
+  const parsed = asRecord(parsedValue) ?? {};
+  const response = parseAttempt.response;
+  const rejectionCounts: Partial<Record<Pass2MicroNodeRejectionReason, number>> = {};
+  const countRejection = (reason: Pass2MicroNodeRejectionReason) => {
+    rejectionCounts[reason] = (rejectionCounts[reason] ?? 0) + 1;
   };
+  if (!Array.isArray(parsed.microNodes)) countRejection("MISSING_MICRONODES_ARRAY");
 
-  const rawMicroNodes: Pass2MicroNode[] = (parsed.microNodes ?? []).map((mn) => ({
-    title:                   mn.title ?? "",
-    learningObjective:       mn.learningObjective ?? "",
-    microNodeType:           mn.microNodeType === "skill" ? "skill" : "knowledge",
-    sourceBlockIndices:      Array.isArray(mn.sourceBlockIndices) ? mn.sourceBlockIndices : [],
-    exercises:               (mn.exercises ?? []).map((e) => ({
-      blockIndex:     e.blockIndex,
-      sourceParagraph: e.sourceParagraph ?? null,
-    })),
-    supportingMaterialIndices: Array.isArray(mn.supportingMaterialIndices)
-      ? mn.supportingMaterialIndices : [],
-  }));
+  const rawMicroNodes: Pass2MicroNode[] = (Array.isArray(parsed.microNodes) ? parsed.microNodes : [])
+    .map((value) => {
+      const mn = asRecord(value) ?? {};
+      const exercises = Array.isArray(mn.exercises) ? mn.exercises : [];
+      return {
+        title: typeof mn.title === "string" ? mn.title : "",
+        learningObjective: typeof mn.learningObjective === "string" ? mn.learningObjective : "",
+        microNodeType: mn.microNodeType === "skill" ? "skill" : "knowledge",
+        sourceBlockIndices: Array.isArray(mn.sourceBlockIndices)
+          ? mn.sourceBlockIndices.filter((index): index is number => typeof index === "number")
+          : [],
+        exercises: exercises.map((value) => {
+          const exercise = asRecord(value) ?? {};
+          return {
+            blockIndex: typeof exercise.blockIndex === "number" ? exercise.blockIndex : Number.NaN,
+            sourceParagraph: typeof exercise.sourceParagraph === "string" ? exercise.sourceParagraph : null,
+          };
+        }),
+        supportingMaterialIndices: Array.isArray(mn.supportingMaterialIndices)
+          ? mn.supportingMaterialIndices.filter((index): index is number => typeof index === "number")
+          : [],
+      };
+    });
 
-  // Collect additional exercises from model output first
-  const additionalExercises: Pass2Exercise[] = (parsed.additionalExercises ?? []).map((e) => ({
-    blockIndex:      e.blockIndex,
-    sourceParagraph: null,
-  }));
+  // Collect additional exercises from model output first.
+  const additionalExercises: Pass2Exercise[] = (
+    Array.isArray(parsed.additionalExercises) ? parsed.additionalExercises : []
+  ).map((value) => {
+    const exercise = asRecord(value) ?? {};
+    return {
+      blockIndex: typeof exercise.blockIndex === "number" ? exercise.blockIndex : Number.NaN,
+      sourceParagraph: null,
+    };
+  });
 
   // Server-side safety net: strip any MicroNode that violates a structural invariant.
   // Invariants (all three must hold):
@@ -1640,18 +1840,11 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
   // textbook content is lost. Coverage logic is unaffected.
   const microNodes: Pass2MicroNode[] = [];
   for (const mn of rawMicroNodes) {
-    const emptySourceBlocks  = mn.sourceBlockIndices.length === 0;
-    const emptyTitle         = !mn.title.trim();
-    const emptyLO            = !mn.learningObjective.trim();
-
-    if (emptySourceBlocks || emptyTitle || emptyLO) {
-      const violated = [
-        emptySourceBlocks  && "sourceBlockIndices",
-        emptyTitle         && "title",
-        emptyLO            && "learningObjective",
-      ].filter(Boolean);
+    const reasons = getPass2MicroNodeRejectionReasons(mn);
+    if (reasons.length > 0) {
+      for (const reason of reasons) countRejection(reason);
       logger.warn(
-        { title: mn.title, exerciseCount: mn.exercises.length, violated },
+        { topicSeq, exerciseCount: mn.exercises.length, rejectionReasons: reasons },
         "pass2 step2: safety-net — invalid MicroNode stripped; exercises moved to additionalExercises"
       );
       additionalExercises.push(...mn.exercises);
@@ -1660,8 +1853,24 @@ Remember: exercises attach to the MicroNode whose objective they practice — no
     }
   }
 
-  const unmappedIndices = (parsed.unmappedBlocks ?? []).map((u) => u.blockIndex);
-  return { microNodes, unmappedIndices, additionalExercises };
+  const unmappedIndices = (Array.isArray(parsed.unmappedBlocks) ? parsed.unmappedBlocks : [])
+    .map((value) => asRecord(value)?.blockIndex)
+    .filter((index): index is number => typeof index === "number");
+  return {
+    microNodes,
+    unmappedIndices,
+    additionalExercises,
+    diagnostics: {
+      topicSequence: topicSeq,
+      inputBlockCount: topicIndices.length,
+      response,
+      candidateMicroNodeCount: rawMicroNodes.length,
+      acceptedMicroNodeCount: microNodes.length,
+      rejectedMicroNodeCount: rawMicroNodes.length - microNodes.length,
+      rejectionCounts,
+      postNormalizationMicroNodeCount: microNodes.length,
+    },
+  };
 }
 
 // ── Pass 2B: Semantic granularity review ──────────────────────────────────────
@@ -2046,11 +2255,30 @@ export async function runPass2Pipeline(
 
   // Step 2: organise each topic into MicroNodes (all groups in parallel)
   const curriculumConstraints = buildPass2CurriculumConstraints(lessonInfo);
-  const topicResults = await Promise.all(
-    mergedGroups.map((g, i) =>
-      organizeTopicMicroNodes(g.title, g.indices, blocks, i + 1, curriculumConstraints)
-    )
-  );
+  let topicResults: Awaited<ReturnType<typeof organizeTopicMicroNodes>>[];
+  try {
+    topicResults = await Promise.all(
+      mergedGroups.map((g, i) =>
+        organizeTopicMicroNodes(g.title, g.indices, blocks, i + 1, curriculumConstraints)
+      )
+    );
+  } catch (error) {
+    if (error instanceof Pass2Step2ParserError) {
+      const parserDiagnostics: Pass2Diagnostics = {
+        detectedGroupCount: groups.length,
+        groupsAfterTheoryMergeCount: mergedGroups.length,
+        topics: [error.diagnostics],
+        totals: {
+          candidateMicroNodes: 0,
+          acceptedBeforeNormalization: 0,
+          acceptedAfterNormalization: 0,
+          rejectedMicroNodes: 0,
+        },
+      };
+      throw new MappingPass2ParserError(parserDiagnostics);
+    }
+    throw error;
+  }
 
   const topics: Pass2TopicResult[] = mergedGroups.map((g, i) => ({
     sequence:              i + 1,
@@ -2060,6 +2288,7 @@ export async function runPass2Pipeline(
     unmappedBlockIndices:  topicResults[i].unmappedIndices,
     additionalExercises:   topicResults[i].additionalExercises,
   }));
+  const topicDiagnostics = topicResults.map((result) => result.diagnostics);
 
   // ── Activity normalization: enforce "exactly one canonical placement" invariant ─
   //
@@ -2081,6 +2310,7 @@ export async function runPass2Pipeline(
   //    → Rescued to additionalExercises of last topic.
   {
     const norm = normalizeActivityPlacements(topics, blocks);
+    recordPass2PostNormalizationCounts(topics, topicDiagnostics);
     if (norm.evictedFromSource.length > 0) {
       logger.warn(
         { evictedFromSource: norm.evictedFromSource },
@@ -2114,6 +2344,17 @@ export async function runPass2Pipeline(
   }
 
   const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
+  const diagnostics: Pass2Diagnostics = {
+    detectedGroupCount: groups.length,
+    groupsAfterTheoryMergeCount: mergedGroups.length,
+    topics: topicDiagnostics,
+    totals: {
+      candidateMicroNodes: topicDiagnostics.reduce((total, topic) => total + topic.candidateMicroNodeCount, 0),
+      acceptedBeforeNormalization: topicDiagnostics.reduce((total, topic) => total + topic.acceptedMicroNodeCount, 0),
+      acceptedAfterNormalization: topicDiagnostics.reduce((total, topic) => total + topic.postNormalizationMicroNodeCount, 0),
+      rejectedMicroNodes: topicDiagnostics.reduce((total, topic) => total + topic.rejectedMicroNodeCount, 0),
+    },
+  };
 
   // Pass 2B — semantic granularity review (Phase 4).
   // Runs AFTER Step 2, BEFORE coverage validation.
@@ -2135,6 +2376,7 @@ export async function runPass2Pipeline(
       categoryCounts:  coverageValidation.categoryCounts,
       topicsCreated:   topics.length,
       microNodes:      topics.reduce((s, t) => s + t.microNodes.length, 0),
+      diagnostics,
     },
     "pass2: pipeline complete"
   );
@@ -2152,7 +2394,7 @@ export async function runPass2Pipeline(
     logger.warn({ invalidIndices: coverageValidation.invalidIndices }, "pass2: block indices outside Pass1 bounds detected");
   }
 
-  return { topics, unmappedBlockIndices: allUnmapped, coverageValidation, granularityFindings };
+  return { topics, unmappedBlockIndices: allUnmapped, coverageValidation, granularityFindings, diagnostics };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
