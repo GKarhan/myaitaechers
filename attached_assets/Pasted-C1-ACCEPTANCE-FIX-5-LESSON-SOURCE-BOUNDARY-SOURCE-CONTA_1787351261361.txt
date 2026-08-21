@@ -1,0 +1,1353 @@
+C1 ACCEPTANCE FIX #5
+LESSON SOURCE BOUNDARY + SOURCE CONTAMINATION
++ SOURCE-GROUNDED TEACHING CONTENT
++ STRICT MICRONODE GRANULARITY CONTROL
+
+We are continuing the REAL C1 acceptance process.
+
+DO NOT proceed to Package 1D.
+DO NOT declare C1 frozen.
+
+The previous Fix #4 improved:
+- instructional source coverage
+- bounded repair
+- MicroNode generation
+- Outcome alignment
+- readiness gating
+- zero-node safety
+- diagnostic safety
+
+However, the real lesson acceptance test exposed THREE serious C1 issues:
+
+1. SOURCE CONTAMINATION
+2. OVER-SPLITTING / EXCESS MICRONODE GENERATION
+3. UNSUPPORTED FACTUAL STRENGTHENING IN GENERATED TEACHING CONTENT
+
+This task must address all three without reopening completed safeguards.
+
+════════════════════════════════════════════════════
+0. ESTABLISHED STATE — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+The following work is already complete and must remain intact.
+
+Task #108:
+- AI Goal/Outcome proposal
+- canonical draft import
+- explicit teacher confirmation
+- Goal/Outcome confirmation before detailed mapping
+
+Task #109:
+- lesson-scoped source extraction
+- invalid page-range protection
+- context overflow protection
+- text/vision truncation protection
+- confirmed Goal/Outcomes passed into detailed mapping
+
+Task #110:
+- Pass 2 structural diagnostics
+- parser-failure diagnostics
+- privacy-safe diagnostics
+- zero-valid-MicroNode protection
+- failed candidate mapping cannot delete a valid prior map
+
+Fix #4 / Task #112:
+- instructional source classification
+- strict coverage/readiness
+- bounded repair
+- automatic Outcome alignment
+- REQUIRED/SUPPORTING
+- cognitive depth
+- teacher review requirement
+- false-positive Outcome-alignment protections
+- source-safe audit panel
+
+DO NOT weaken or redesign these.
+
+════════════════════════════════════════════════════
+1. REAL ACCEPTANCE EVIDENCE
+════════════════════════════════════════════════════
+
+Real lesson:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Selected pages:
+10–12
+
+The confirmed Lesson Goal and Outcomes were appropriate for:
+
+- building-numbering principles
+- locating addresses
+- odd/even side arrangement
+- numbering new buildings
+- simple applications/problems
+
+However, one automatic detailed mapping generated 18 MicroNodes.
+
+Only approximately 3–4 of those MicroNodes were actually relevant to
+this lesson.
+
+Unrelated generated MicroNodes included content such as:
+
+- Թվի վերլուծումը պարզ արտադրիչների
+- ԱՄԸԲ / ԱՓԸԲ related content
+- Բաժիններ և կոտորակներ
+- Թվի մաս հաշվելը
+- Կոտորակների պատկերում
+- Կոտորակների հավասարություն
+- Կոտորակների համեմատում
+- Խառը թվեր
+- Կոտորակների բազմապատկում
+- Կոտորակների գումարում/հանում
+- Հակադարձ թիվ / կոտորակների բաժանում
+- Դաս 5.8
+- Դաս 6.1–6.12
+
+These do NOT belong to §1.1 “Շենքերի համարակալումը”.
+
+Yet they were persisted as source-backed MicroNodes for the selected
+lesson.
+
+This proves:
+
+HIGH SOURCE COVERAGE
+does NOT guarantee
+VALID LESSON SOURCE SCOPE.
+
+════════════════════════════════════════════════════
+2. REAL TEACHING-CONTENT GROUNDING FAILURE
+════════════════════════════════════════════════════
+
+After manually removing unrelated MicroNodes, one valid MicroNode was:
+
+“Նոր շենքերի համարակալումը”
+
+The source states conceptually:
+
+when a new building is built between already numbered buildings,
+existing numbers are not changed;
+for example, a new building between 5 and 7 may receive address 5/1.
+
+Generated Phase 2 / Teaching Package content included a stronger claim
+conceptually equivalent to:
+
+“5/2 is wrong because 5/1 is correct.”
+
+The source does NOT establish the universal rule that 5/2 can never be
+valid in all such addressing situations.
+
+Therefore the generated teaching content strengthened a source example
+into an unsupported factual rule.
+
+This must be prevented.
+
+════════════════════════════════════════════════════
+3. STOP RULE BEFORE CODE
+════════════════════════════════════════════════════
+
+FIRST perform a READ-ONLY forensic audit.
+
+Do NOT immediately:
+
+- edit prompts
+- switch models
+- truncate source
+- change PDF offsets
+- clear all caches globally
+- regenerate the lesson
+- hardcode lesson-specific rules
+- force a fixed MicroNode count
+- remove coverage gates
+
+Prove the FIRST boundary where unrelated lesson content enters the
+selected lesson pipeline.
+
+Also prove why the current generation contract allowed excessive
+MicroNode creation.
+
+Only then apply the smallest evidence-based fix.
+
+════════════════════════════════════════════════════
+4. TRACE THE SOURCE PIPELINE
+════════════════════════════════════════════════════
+
+Trace exactly:
+
+lesson
+→ selected resource/PDF
+→ pagesFrom/pagesTo
+→ logical page → actual PDF page/index
+→ extracted page source
+→ Pass 1 source blocks
+→ cached/intermediate source representation
+→ Pass 2 Topic input
+→ Pass 2 MicroNode input
+→ source ownership
+→ persistence
+
+For the contamination failure determine:
+
+A. Was the wrong PDF/resource used?
+
+B. Were logical textbook page numbers confused with PDF indexes?
+
+C. Did the selected page extraction itself contain unrelated lessons?
+
+D. Did Pass 1 inject unrelated book-wide material?
+
+E. Did a cache reuse data from another page range/lesson/resource?
+
+F. Did a cache identity omit:
+   - resource ID
+   - source hash
+   - page range
+   - lesson ID
+   - extraction version
+   or another required scope component?
+
+G. Were old source blocks reused from previous mapping attempts?
+
+H. Did Pass 2 receive blocks outside the validated lesson range?
+
+I. Were AI-generated page numbers trusted as source provenance?
+
+J. Did any fallback expand lesson source back to book-level content?
+
+Do not guess.
+
+Find the FIRST contamination boundary.
+
+════════════════════════════════════════════════════
+5. REQUIRED PAGE-LEVEL FORENSIC EVIDENCE
+════════════════════════════════════════════════════
+
+For a recreated/clean equivalent lesson using the same resource/pages,
+inspect the exact selected pages.
+
+Return source-safe evidence only.
+
+For each selected page:
+
+- resource ID
+- requested logical textbook page
+- actual PDF page/index
+- extracted character count
+- source block count
+- block type counts
+- safe heading/identifier if needed to verify lesson identity
+
+Do NOT reproduce long copyrighted source text.
+
+Compare:
+
+EXTRACTED SELECTED PAGE SOURCE
+
+vs
+
+PASS 1 BLOCKS.
+
+If unrelated headings/content are absent from extraction but appear in
+Pass 1:
+contamination occurs after extraction.
+
+If unrelated content already appears in extraction:
+investigate page indexing/resource selection.
+
+════════════════════════════════════════════════════
+6. STRICT SOURCE PROVENANCE INVARIANT
+════════════════════════════════════════════════════
+
+Every source-backed SourceBlock must be provably derived from the
+selected lesson source.
+
+Canonical provenance must resolve to:
+
+resource
++ actual selected page/index
++ source block identity
++ extracted source representation
+
+A source-backed MicroNode must NOT cite a block that cannot be proven to
+originate from the selected lesson source.
+
+Never trust AI-generated page numbers as provenance authority.
+
+Page/resource provenance must be server/extraction-derived.
+
+════════════════════════════════════════════════════
+7. SOURCE ORIGIN VALIDATION
+════════════════════════════════════════════════════
+
+Reuse the existing C1 source-fidelity contract where possible.
+
+For readable text blocks:
+
+validate that their canonical source text/fragment is actually present
+within the selected extracted source representation.
+
+If an AI-produced/source-structured block cannot be traced to the
+selected lesson source:
+
+reject or quarantine it.
+
+Do not persist it as valid source-backed curriculum.
+
+For image/vision structures where exact substring matching is not
+possible:
+
+use the existing safe provenance path and explicit review semantics.
+
+Do NOT weaken Task #109 truncation/vision safeguards.
+
+════════════════════════════════════════════════════
+8. CACHE / INTERMEDIATE SAFETY
+════════════════════════════════════════════════════
+
+Audit every reusable cache/intermediate involved in:
+
+- extraction
+- source blocks
+- mapping Pass 1
+- mapping Pass 2
+
+Reusable data must not cross incompatible source scopes.
+
+At minimum, cache identity must safely distinguish incompatible:
+
+- resource/book
+- source file version/hash
+- page range
+- lesson/source scope
+- extraction/mapping version where necessary
+
+Do NOT introduce unnecessary new caching architecture.
+
+If the root cause is a cache-key defect:
+fix only that boundary and add a regression.
+
+Do not globally delete data merely to hide the problem.
+
+════════════════════════════════════════════════════
+9. VALIDATED LESSON SOURCE SET
+════════════════════════════════════════════════════
+
+Before Pass 2:
+
+the backend must possess a validated lesson-scoped Source Set.
+
+Conceptually:
+
+VALIDATED LESSON SOURCE SET
+=
+only blocks proven to belong to the selected lesson source scope.
+
+Only this set may enter:
+
+Topic generation
+→ MicroNode generation
+→ source coverage
+→ exercise extraction/linking
+→ Outcome alignment.
+
+If provenance is unresolved:
+
+that block must NOT count as valid instructional coverage.
+
+════════════════════════════════════════════════════
+10. TWO-DIMENSION C1 COVERAGE
+════════════════════════════════════════════════════
+
+C1 coverage must verify TWO separate dimensions.
+
+A. SOURCE SCOPE VALIDITY
+
+Are these actually blocks from the selected lesson source?
+
+B. SOURCE COVERAGE
+
+Have the valid lesson blocks been correctly accounted for?
+
+Therefore final readiness requires conceptually:
+
+SOURCE_SCOPE_VALID = true
+
+AND
+
+UNRESOLVED_READABLE_INSTRUCTIONAL_BLOCKS = 0
+
+A contaminated Source Set with 100% ownership MUST NOT pass.
+
+════════════════════════════════════════════════════
+11. SOURCE BLOCK CLASSIFICATION
+════════════════════════════════════════════════════
+
+Classify validated source blocks into:
+
+A. INSTRUCTIONAL
+
+Examples where applicable:
+- concept
+- definition
+- rule
+- explanation
+- procedure
+- meaningful example
+- mathematical representation
+- instructional table
+- important observation
+- misconception/counterexample
+- curriculum-relevant narrative
+
+B. PRACTICE / ASSESSMENT
+
+- exercise
+- question
+- activity
+- learner task
+- practice problem
+
+C. STRUCTURAL / NON-INSTRUCTIONAL
+
+- page furniture
+- repeated header/footer
+- decorative fragment
+- navigation artifact
+- extraction artifact with no curriculum meaning
+
+D. UNREADABLE / UNRESOLVED
+
+Do not classify real instructional material as structural merely to
+improve readiness.
+
+════════════════════════════════════════════════════
+12. SOURCE BLOCK ≠ MICRONODE
+════════════════════════════════════════════════════
+
+This remains a mandatory rule.
+
+Do NOT implement:
+
+1 source block = 1 MicroNode.
+
+Source blocks are evidence/source units.
+
+MicroNodes are pedagogical knowledge units.
+
+Multiple related source blocks may belong to ONE MicroNode.
+
+One large source block may contain multiple independent objectives and
+may justify multiple MicroNodes.
+
+The correct node count must emerge from lesson semantics.
+
+════════════════════════════════════════════════════
+13. STRICT OVER-SPLITTING / UNDER-SPLITTING GATE
+════════════════════════════════════════════════════
+
+Source coverage MUST NOT be achieved by creating unnecessary MicroNodes.
+
+The mapper must aim for:
+
+THE SMALLEST PEDAGOGICALLY COMPLETE SET OF ATOMIC MICRONODES
+
+that fully represents the lesson's instructional knowledge.
+
+Important:
+
+“smallest” does NOT mean arbitrarily few nodes.
+
+It means:
+
+no two MicroNodes should remain separate if they represent the same
+underlying teachable/assessable objective.
+
+Before persistence, run a granularity sanity pass.
+
+For every proposed pair/group of MicroNodes ask:
+
+1. Do they teach the same core concept/rule/skill?
+
+2. Do they differ only because the source appears in different:
+   - paragraphs
+   - examples
+   - tables
+   - story fragments
+   - source blocks
+   - representations?
+
+3. Would they normally be taught together?
+
+4. Would they normally be assessed together?
+
+5. Would mastering one substantially demonstrate the other?
+
+6. Are their learningObjectives near-duplicates?
+
+7. Is one merely a narrow fragment/example/context of the other?
+
+If YES:
+
+merge them unless there is a clear pedagogical reason to keep them
+separate.
+
+Conversely:
+
+split a MicroNode when it contains multiple independently teachable and
+independently assessable objectives.
+
+Examples, stories, representations, headings, and contextual fragments
+normally SUPPORT a MicroNode.
+
+They must NOT automatically become MicroNodes.
+
+Do NOT create a MicroNode merely to give a source block an owner.
+
+Coverage is measured through SOURCE OWNERSHIP,
+not by maximizing MicroNode count.
+
+════════════════════════════════════════════════════
+14. MICRONODE NECESSITY TEST
+════════════════════════════════════════════════════
+
+Every proposed final MicroNode must pass ALL:
+
+A. DISTINCT OBJECTIVE
+
+It represents one learning objective meaningfully distinct from other
+MicroNodes.
+
+B. TEACHABLE
+
+It reasonably deserves its own explanation/instructional treatment.
+
+C. ASSESSABLE
+
+It can be independently checked through evidence.
+
+D. CURRICULUM RELEVANT
+
+It contributes to:
+- confirmed Lesson Goal/Outcome(s),
+or
+- a necessary prerequisite explicitly contained in the selected lesson.
+
+E. SOURCE GROUNDED
+
+It is supported by the validated selected lesson Source Set.
+
+If a proposed MicroNode fails any condition:
+
+merge it
+OR remove it
+OR flag it for teacher review.
+
+Do NOT persist obvious duplicate/trivial nodes as final-ready mapping.
+
+════════════════════════════════════════════════════
+15. GRANULARITY CONSOLIDATION
+════════════════════════════════════════════════════
+
+After initial MicroNode generation but BEFORE destructive persistence:
+
+perform one bounded granularity consolidation pass.
+
+Inputs may include:
+
+- generated MicroNode titles
+- learningObjectives
+- owned sourceBlock IDs
+- confirmed Outcomes
+- Topic ownership
+
+The purpose is ONLY to detect:
+
+- near duplicates
+- source-fragment over-splitting
+- example-as-node mistakes
+- story/context-as-node mistakes
+- broad multi-objective nodes
+
+Do NOT use an uncontrolled iterative rewrite.
+
+Maximum:
+ONE consolidation pass.
+
+Server must still deterministically validate source ownership afterward.
+
+════════════════════════════════════════════════════
+16. GRANULARITY AUDIT OUTPUT
+════════════════════════════════════════════════════
+
+For the clean real retest return:
+
+- proposed MicroNode count before consolidation
+- final MicroNode count after consolidation
+- number merged
+- number removed
+- number split if any
+- safe reason counts
+
+For each final MicroNode provide:
+
+- title
+- learningObjective
+- why pedagogically distinct
+- sourceBlock IDs
+- source page(s)
+- canonical Outcome(s)
+- REQUIRED/SUPPORTING relation
+- required cognitive depth
+
+Do NOT expose long source passages.
+
+════════════════════════════════════════════════════
+17. TOPIC WITH ZERO MICRONODES
+════════════════════════════════════════════════════
+
+Preserve Fix #4/#110 behavior.
+
+If a Topic contains meaningful validated instructional source but
+returns zero valid MicroNodes:
+
+do NOT accept it.
+
+Allow at most ONE targeted repair attempt for that Topic.
+
+Repair input must be narrow:
+
+- Topic context
+- relevant validated source blocks
+- uncovered instructional block IDs
+- confirmed Goal/Outcomes if needed
+- previous structural result
+
+Repair must explicitly request:
+
+- atomic pedagogical MicroNodes
+- source coverage
+- no one-block-one-node behavior
+- no fabricated content
+
+If repair still fails:
+
+mapping remains incomplete/review-required.
+
+Do not fabricate MicroNodes server-side.
+
+════════════════════════════════════════════════════
+18. EXERCISE PROVENANCE
+════════════════════════════════════════════════════
+
+The manually cleaned real lesson preserved 6 valid textbook exercises.
+
+Preserve this architecture.
+
+Exercise/task blocks must obey the SAME lesson-source scope rule.
+
+Do not import exercises from unrelated lessons.
+
+Do not fabricate exercises to improve counts.
+
+If confidently linked:
+attach to MicroNode.
+
+If real but ambiguous:
+preserve as unlinked canonical exercise for teacher review.
+
+Never drop a valid source exercise silently.
+
+════════════════════════════════════════════════════
+19. CONFIRMED GOAL/OUTCOMES REMAIN AUTHORITATIVE
+════════════════════════════════════════════════════
+
+Do NOT regenerate or modify confirmed:
+
+- Lesson Goal
+- canonical Outcomes
+
+Detailed mapping must satisfy BOTH:
+
+VALIDATED SOURCE COVERAGE
+
+AND
+
+CONFIRMED CURRICULUM OUTCOME COVERAGE.
+
+Source-only mapping is insufficient.
+
+Outcome-only mapping that ignores selected source is also insufficient.
+
+════════════════════════════════════════════════════
+20. OUTCOME → MICRONODE ALIGNMENT
+════════════════════════════════════════════════════
+
+Preserve the Package 1A relation model:
+
+Outcome
+→ REQUIRED / SUPPORTING
+→ MicroNode
+→ required cognitive depth
+
+Do NOT mark everything REQUIRED.
+
+Do NOT create relations from:
+
+- generic action-word overlap
+- generic nouns
+- morphology artifacts
+- loose lexical similarity
+
+Preserve the Task #112 false-positive protections.
+
+Generated alignments remain teacher-reviewable.
+
+Final approval must require the existing explicit teacher review gate.
+
+════════════════════════════════════════════════════
+21. TEACHING PACKAGE FACTUAL-GROUNDING CONTRACT
+════════════════════════════════════════════════════
+
+Now fix the second major issue.
+
+Teaching Package may:
+
+- simplify
+- paraphrase
+- explain
+- reorganize explanation
+- create pedagogical examples
+- create hints
+- create guiding questions
+- create counterexamples where logically justified
+
+Teaching Package must NOT:
+
+- transform one source example into a universal rule
+- invent factual restrictions
+- invent exceptions
+- claim something is impossible unless source/rule proves it
+- exceed the MicroNode knowledge boundary
+- strengthen certainty beyond approved source
+
+Core rule:
+
+GENERATED TEACHING CONTENT MUST NOT BE MORE FACTUALLY SPECIFIC,
+MORE NORMATIVE,
+OR STRONGER
+THAN THE APPROVED SOURCE / KNOWLEDGE BOUNDARY SUPPORTS.
+
+════════════════════════════════════════════════════
+22. TYPE-SPECIFIC GROUNDING RULES
+════════════════════════════════════════════════════
+
+MAIN_EXPLANATION
+
+Must preserve approved meaning.
+
+KEY_FACT
+
+Must be directly supported by source or explicit teacher-approved
+knowledge.
+
+RULE_OR_FORMULA
+
+Must be directly supported.
+Do not infer a universal rule from an example.
+
+EXAMPLE
+
+May change surface details only when the established rule supports the
+variation.
+
+COUNTEREXAMPLE
+
+Must be logically provable as a non-example from the approved rule.
+
+MISCONCEPTION
+
+May represent a plausible learner error, but its correction must be
+source/knowledge grounded.
+
+ALTERNATIVE_EXPLANATION
+
+May change explanatory strategy, not factual meaning.
+
+GUIDING_QUESTION
+
+May guide reasoning without introducing unsupported premises.
+
+HINT
+
+May scaffold without inventing new curriculum rules.
+
+RESOURCE
+
+Preserve existing provenance/approval rules.
+
+════════════════════════════════════════════════════
+23. REAL GROUNDING FAILURE REGRESSION
+════════════════════════════════════════════════════
+
+Add an explicit test for this failure class.
+
+Approved source meaning:
+
+“Between buildings 5 and 7, a newly constructed building may receive
+address 5/1 so existing addresses do not need to change.”
+
+Generated teaching content MUST NOT automatically infer:
+
+“5/2 is universally invalid.”
+
+unless an approved rule/source explicitly establishes that.
+
+The system should:
+
+- reject/flag the unsupported stronger claim
+OR
+- leave it as uncertain draft requiring explicit teacher review
+
+It must never become approved authority automatically.
+
+════════════════════════════════════════════════════
+24. BOUNDED GENERATED VARIANTS
+════════════════════════════════════════════════════
+
+Preserve Runtime AI Minimization.
+
+Generated variants may alter:
+
+- numbers
+- names
+- surface context
+
+ONLY when the change preserves:
+
+- MicroNode objective
+- knowledge boundary
+- source rule
+- cognitive level
+- performance objective
+- success criterion
+- task intent
+- approximate difficulty
+
+If uncertain:
+
+do not assert.
+
+Prefer teacher review over fabricated certainty.
+
+════════════════════════════════════════════════════
+25. DRAFT / APPROVAL SAFETY
+════════════════════════════════════════════════════
+
+AI-generated teaching content remains DRAFT.
+
+Do not auto-approve.
+
+Teacher approval remains explicit.
+
+If grounding confidence is uncertain:
+
+DRAFT
++
+review warning.
+
+Future AI Teacher must eventually consume APPROVED content preferentially.
+
+Do not modify AI Teacher runtime now.
+
+════════════════════════════════════════════════════
+26. PHASE 2 VS CANONICAL TEACHING PACKAGE
+════════════════════════════════════════════════════
+
+Audit the relationship between:
+
+Phase 2 — Ուսումնական բովանդակություն
+
+and
+
+C1 — MicroNode ուսուցման փաթեթ.
+
+Do NOT create two competing final teaching-content authorities.
+
+Package 1B Teaching Package is intended to be the canonical structured
+reusable content store.
+
+Preferred flow:
+
+existing/generated Phase 2 content
+→ reviewable candidate/draft
+→ canonical Teaching Package item(s)
+→ teacher approval
+→ future AI Teacher consumption
+
+Do NOT destructively remove Phase 2 compatibility in this task.
+
+Document the actual current flow.
+
+If “Ստեղծել draft-եր” seeds canonical Teaching Package from compatible
+Phase 2 content:
+
+it must:
+- preserve provenance
+- preserve type
+- avoid duplicates
+- remain draft
+- require explicit teacher approval
+
+════════════════════════════════════════════════════
+27. UI BLOCK SEMANTICS
+════════════════════════════════════════════════════
+
+Do NOT broadly redesign UI in this task.
+
+Preserve and verify these blocks.
+
+A. ⏱ Պարտադիր ուսուցման ժամանակ
+
+Meaning:
+optional lesson/planning metadata.
+
+It is NOT a C1 source correctness requirement.
+
+“Սահմանված չէ” must NOT block Mapping/C1 readiness.
+
+Later this may move visually toward planning.
+
+B. 🔎 Աղբյուրի և քարտեզի աուդիտ
+
+Meaning:
+C1 source-scope + source-coverage + Outcome-alignment audit.
+
+Improve semantics so it clearly distinguishes:
+
+- selected source scope
+- source scope validity
+- source block count
+- instructional count
+- MicroNode-owned instructional count
+- practice/assessment count
+- structural/visual count
+- unresolved count
+- source-scope errors
+- Outcome alignment review status
+
+C. C1․ MicroNode ուսուցման փաթեթ
+
+Meaning:
+canonical structured reusable teaching content from Package 1B.
+
+“Ստեղծել draft-եր” must create reviewable canonical drafts only.
+
+D. ✅ Վավերացում և վերջնական հաստատում
+
+Meaning:
+final C1 readiness/approval summary.
+
+Must honor:
+
+- source scope validity
+- instructional coverage
+- Outcome coverage
+- teacher review requirements
+
+Do not make mandatory teaching time a blocker.
+
+════════════════════════════════════════════════════
+28. CLEAN REAL RETEST
+════════════════════════════════════════════════════
+
+The user intentionally deleted the prior bad mapping.
+
+Do NOT restore deleted mapping automatically.
+
+After implementing this fix:
+
+use a clean/recreated real lesson with:
+
+- correct resource
+- correct pages
+- confirmed Goal/Outcomes
+
+Run ONE normal automatic mapping.
+
+Before persistence prove:
+
+- Source Set belongs only to selected lesson source
+- no unrelated lesson headings/content
+- no unrelated exercises
+- MicroNodes pass granularity gate
+- source ownership is valid
+- instructional coverage is truthful
+- Outcome links are meaningful
+
+Do NOT hardcode the expected number of MicroNodes.
+
+════════════════════════════════════════════════════
+29. REAL MAPPING AUDIT OUTPUT
+════════════════════════════════════════════════════
+
+Return for the real clean mapping:
+
+SOURCE
+
+- selected resource
+- selected pages
+- validated source block count
+- instructional count
+- practice/assessment count
+- structural/visual count
+- unresolved count
+- source-scope error count
+
+GRANULARITY
+
+- proposed MicroNodes before consolidation
+- final MicroNodes
+- merged count
+- removed count
+- split count
+
+TOPICS
+
+For each Topic:
+- title
+- source block count
+- MicroNode count
+
+MICRONODES
+
+For each:
+- title
+- learningObjective
+- why distinct
+- source pages
+- sourceBlock IDs
+- Outcome links
+- REQUIRED/SUPPORTING
+- required cognitive depth
+- attached exercise count
+- draft/approval status
+
+UNRESOLVED SOURCE
+
+For each:
+- block ID
+- page
+- block type
+- safe unresolved reason
+
+Do NOT print long source passages.
+
+════════════════════════════════════════════════════
+30. TEACHING PACKAGE RETEST
+════════════════════════════════════════════════════
+
+For at least one valid MicroNode:
+
+generate Phase 2 / teaching content.
+
+Verify:
+
+- explanation stays within approved meaning
+- examples remain valid
+- counterexamples are logically supported
+- misconception corrections are supported
+- no unsupported universal rules
+- no factual strengthening
+- generated content remains draft
+
+Return a compact grounding audit.
+
+════════════════════════════════════════════════════
+31. SOURCE-SCOPE REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add focused tests:
+
+1. Blocks outside selected pages cannot enter Pass 2.
+
+2. Wrong-resource blocks cannot enter the validated lesson Source Set.
+
+3. Source-backed text blocks must trace to actual selected extracted
+   source.
+
+4. Cache/intermediate reuse cannot cross incompatible:
+   - resource
+   - source version
+   - page range
+   - lesson/source scope
+
+5. AI-generated page numbers cannot create provenance.
+
+6. Contaminated Source Set fails readiness.
+
+7. 100% ownership of contaminated blocks does NOT equal valid C1
+   coverage.
+
+8. Exercises from unrelated lessons are rejected.
+
+9. Task #109 context/truncation guards remain intact.
+
+10. Task #110 diagnostic/parser/zero-node safeguards remain intact.
+
+11. Task #112 strict coverage/outcome safeguards remain intact.
+
+════════════════════════════════════════════════════
+32. GRANULARITY REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add focused tests:
+
+1. Multiple related source blocks may map to one MicroNode.
+
+2. Example + explanation + representation of the same objective do NOT
+   require separate MicroNodes.
+
+3. Near-duplicate learningObjectives are consolidated.
+
+4. Story/context fragment does not become a MicroNode without an
+   independent learning objective.
+
+5. Heading alone does not become a MicroNode.
+
+6. One broad node containing multiple independent assessable objectives
+   is flagged/split.
+
+7. Coverage remains complete after consolidation.
+
+8. Granularity consolidation is bounded to one pass.
+
+9. No hardcoded MicroNode count.
+
+════════════════════════════════════════════════════
+33. TEACHING-GROUNDING TESTS
+════════════════════════════════════════════════════
+
+Add focused tests:
+
+1. source-supported paraphrase accepted as draft
+
+2. source-supported example accepted as draft
+
+3. unsupported stronger KEY_FACT rejected/flagged
+
+4. unsupported RULE rejected/flagged
+
+5. unsupported COUNTEREXAMPLE rejected/flagged
+
+6. unsupported misconception correction rejected/flagged
+
+7. uncertain generated content never auto-approved
+
+8. Phase 2 → Teaching Package draft seeding preserves provenance
+
+9. seeding is idempotent / does not duplicate
+
+10. teacher approval remains mandatory
+
+════════════════════════════════════════════════════
+34. REGRESSION SUITES
+════════════════════════════════════════════════════
+
+Run relevant existing suites:
+
+- Package 1A
+- Package 1B
+- Package 1C
+- automatic mapping
+- mapping context/preflight
+- Pass 2 diagnostics
+- source coverage
+- final approval
+- canonical Outcomes
+- Cognitive Path
+
+Do not weaken tests to obtain green results.
+
+════════════════════════════════════════════════════
+35. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime/chat
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree runtime semantics
+- C6 Recommendation Engine
+- Quiz
+- scoring
+- student sessions
+- Package 1D Structured TEXT/manual mapping
+
+DO NOT:
+
+- switch models as a shortcut
+- hardcode this lesson
+- hardcode an expected MicroNode count
+- use one-source-block-one-node
+- remove coverage gates
+- auto-approve generated teaching content
+- broadly redesign the teacher dashboard
+
+════════════════════════════════════════════════════
+36. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. SOURCE CONTAMINATION ROOT CAUSE
+
+Where did unrelated lesson content first enter?
+
+B. PAGE / RESOURCE FORENSIC TRACE
+
+C. CACHE / INTERMEDIATE FINDING
+
+D. SOURCE-SCOPE INVARIANT IMPLEMENTED
+
+E. OVER-SPLITTING ROOT CAUSE
+
+Why could unrelated/source-fragment content become excess MicroNodes?
+
+F. GRANULARITY CONTRACT IMPLEMENTED
+
+G. FILES CHANGED
+
+H. SOURCE SCOPE vs SOURCE COVERAGE
+
+I. EXERCISE PROVENANCE
+
+J. OUTCOME ALIGNMENT STATUS
+
+K. TEACHING PACKAGE GROUNDING ROOT CAUSE
+
+L. GROUNDING CONTRACT IMPLEMENTED
+
+M. PHASE 2 vs CANONICAL TEACHING PACKAGE
+
+N. UI BLOCK SEMANTICS
+
+Explain:
+- Mandatory Teaching Time
+- Source/Mapping Audit
+- C1 Teaching Package
+- Final Validation
+
+O. TEST RESULTS
+
+P. REGRESSION STATUS
+
+Q. CLEAN REAL MAPPING RETEST
+
+Include Section 29 structure.
+
+R. TEACHING PACKAGE RETEST
+
+S. REMAINING C1 ISSUES
+
+T. VERDICT
+
+Use ONLY:
+
+READY FOR MANUAL C1 FINAL REVIEW
+
+or
+
+C1 FIX #5 BLOCKED
+
+Do NOT return C1 FROZEN.
+
+════════════════════════════════════════════════════
+37. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS only if:
+
+[ ] Source contamination root cause is proven.
+
+[ ] Unrelated lesson content cannot enter validated Source Set.
+
+[ ] Source provenance is server-verifiable.
+
+[ ] Coverage distinguishes source-scope validity from ownership.
+
+[ ] Contaminated source cannot pass with 100% ownership.
+
+[ ] Exercises obey the selected lesson scope.
+
+[ ] Over-splitting is explicitly prevented.
+
+[ ] No one-source-block-one-node shortcut exists.
+
+[ ] Multiple related blocks can belong to one MicroNode.
+
+[ ] Every final MicroNode passes:
+    distinct
+    teachable
+    assessable
+    curriculum-relevant
+    source-grounded
+
+[ ] Granularity consolidation is bounded.
+
+[ ] Correct MicroNode count emerges semantically, not from hardcoding.
+
+[ ] Confirmed Goal remains unchanged.
+
+[ ] Confirmed Outcomes remain unchanged.
+
+[ ] Outcome links remain semantically justified.
+
+[ ] REQUIRED/SUPPORTING protections remain intact.
+
+[ ] Required cognitive depth persists.
+
+[ ] Teaching content cannot strengthen source facts/rules without support.
+
+[ ] Unsupported counterexamples/misconceptions are rejected/flagged.
+
+[ ] AI teaching content remains draft until teacher approval.
+
+[ ] Phase 2 / Teaching Package authority is clarified.
+
+[ ] Mandatory Teaching Time does not block C1.
+
+[ ] Source Audit reflects source scope AND source coverage.
+
+[ ] #109 safeguards remain green.
+
+[ ] #110 safeguards remain green.
+
+[ ] Task #112 safeguards remain green.
+
+[ ] Clean real mapping retest passes.
+
+[ ] Teaching Package grounding retest passes.
+
+If any item fails:
+
+STOP.
+
+Return:
+
+C1 FIX #5 BLOCKED
+
+Explain the exact remaining blocker.
+
+Do NOT proceed to Package 1D.
+
+Do NOT declare C1 frozen.
