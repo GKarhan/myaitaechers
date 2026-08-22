@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourceScopeError, MappingSourceAlignmentError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -4255,6 +4255,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           hasMergeTarget: !!finding.mergeIntoMicroNodeTitle,
         })),
         granularityConsolidation: pass2.granularityConsolidation,
+        duplicateResolution: {
+          candidatePairCount: pass2.duplicateResolution.candidatePairCount,
+          resolvedDistinctCount: pass2.duplicateResolution.resolvedDistinctCount,
+          mergedCount: pass2.duplicateResolution.mergedCount,
+          unresolvedPairCount: pass2.duplicateResolution.unresolvedPairIds.length,
+          rejectedDecisionCount: pass2.duplicateResolution.rejectedDecisionCount,
+        },
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignment: {
           valid: pass2.sourceAlignment.valid,
@@ -4352,6 +4359,20 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           reason: "ZERO_MICRONODES_PRE_PERSISTENCE",
           diagnostics: err.diagnostics,
         }
+        : err instanceof MappingSourcePlacementError
+          ? {
+              progress: "Source placement validation failed before persistence; existing mapping was preserved.",
+              reason: "SOURCE_PLACEMENT_FAILED_PRE_PERSISTENCE",
+              diagnostics: {
+                missingCount: err.coverage.missingIndices.length,
+                duplicateCount: err.coverage.duplicateIndices.length,
+                invalidCount: err.coverage.invalidIndices.length,
+                emptyMicroNodeCount: err.coverage.emptyMicroNodeTitles.length,
+                missingIndices: err.coverage.missingIndices,
+                duplicateIndices: err.coverage.duplicateIndices,
+                invalidIndices: err.coverage.invalidIndices,
+              },
+            }
         : err instanceof MappingInstructionalCoverageError
           ? {
               progress: "Readable instructional source remained unresolved after the targeted repair; existing mapping was preserved.",
@@ -4378,6 +4399,18 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
               progress: "MicroNode objective/source alignment needs correction; existing mapping was preserved.",
               reason: "MICRONODE_SOURCE_ALIGNMENT_FAILED_PRE_PERSISTENCE",
               diagnostics: err.alignment,
+            }
+        : err instanceof MappingGranularityReviewError
+          ? {
+              progress: "Duplicate or over-split MicroNode review remained unresolved; existing mapping was preserved.",
+              reason: "DUPLICATE_MICRONODE_REVIEW_FAILED_PRE_PERSISTENCE",
+              diagnostics: {
+                candidatePairCount: err.duplicateResolution.candidatePairCount,
+                resolvedDistinctCount: err.duplicateResolution.resolvedDistinctCount,
+                mergedCount: err.duplicateResolution.mergedCount,
+                unresolvedPairIds: err.duplicateResolution.unresolvedPairIds,
+                rejectedDecisionCount: err.duplicateResolution.rejectedDecisionCount,
+              },
             }
         : null;
     await db.update(mappingJobsTable)

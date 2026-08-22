@@ -16,7 +16,7 @@ import {
   type CoverageValidationResult,
   type InstructionalCoverageResult,
 } from "../lib/coverage-validator.js";
-import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
+import { detectCompoundLO } from "../lib/granularity-heuristics.js";
 import {
   classifyMicroNodeSourceAlignment,
   pedagogicalNearDuplicate,
@@ -308,6 +308,16 @@ export class MappingZeroMicroNodesError extends Error {
   }
 }
 
+export class MappingSourcePlacementError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ վերանայել աղբյուրը։";
+
+  constructor(readonly coverage: CoverageValidationResult) {
+    super("Detailed mapping contains invalid source placements before persistence");
+    this.name = "MappingSourcePlacementError";
+  }
+}
+
 export class MappingInstructionalCoverageError extends Error {
   readonly teacherMessage =
     "Քարտեզագրումը չի ընդգրկել բոլոր ընթեռնելի ուսումնական նյութերը։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ ստուգել աղբյուրը։";
@@ -324,6 +334,16 @@ export class MappingSourceAlignmentError extends Error {
   constructor(readonly alignment: Pass2SourceAlignment) {
     super("Detailed mapping contains MicroNodes without sufficient owned-source support");
     this.name = "MappingSourceAlignmentError";
+  }
+}
+
+export class MappingGranularityReviewError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը պարունակում է կրկնվող կամ չափազանց մասնատված MicroNode-ներ, որոնք պահանջում են վերանայում։ Արդյունքը չի պահպանվել։";
+
+  constructor(readonly duplicateResolution: DuplicateResolutionAudit) {
+    super("Detailed mapping contains unresolved duplicate or over-split MicroNode suspicion");
+    this.name = "MappingGranularityReviewError";
   }
 }
 
@@ -351,8 +371,10 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingContextBudgetError) return error.teacherMessage;
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
+  if (error instanceof MappingSourcePlacementError) return error.teacherMessage;
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
   if (error instanceof MappingSourceAlignmentError) return error.teacherMessage;
+  if (error instanceof MappingGranularityReviewError) return error.teacherMessage;
   if (error instanceof MappingSourceScopeError) return error.teacherMessage;
   if (error instanceof MappingOutcomeAlignmentError) return error.teacherMessage;
   if (error instanceof MappingPass2ParserError) return error.teacherMessage;
@@ -1111,6 +1133,8 @@ export interface Pass2Exercise {
 }
 
 export interface Pass2MicroNode {
+  /** Server-owned identity, stable only for this in-memory Pass 2 run. */
+  candidateId?: string;
   title: string;
   learningObjective: string;
   microNodeType: "knowledge" | "skill";
@@ -1306,6 +1330,8 @@ export function assertDetailedMappingHasMicroNodes(
 export interface GranularityFinding {
   topicTitle: string;
   microNodeTitle: string;
+  /** Provider actions must use this server-issued identity, never titles alone. */
+  microNodeId?: string;
   issue: "MEGA_NODE" | "OVER_SPLIT" | "EXERCISE_MISMATCH";
   confidence: "HIGH" | "MEDIUM";
   /** Armenian-language explanation for the teacher. */
@@ -1314,12 +1340,19 @@ export interface GranularityFinding {
   suggestedAction?: string;
   /** Required only for a HIGH-confidence OVER_SPLIT finding that can be safely merged. */
   mergeIntoMicroNodeTitle?: string;
+  /** Provider actions must use this server-issued identity, never titles alone. */
+  mergeIntoMicroNodeId?: string;
 }
 
 export interface GranularityConsolidation {
   beforeMicroNodeCount: number;
   afterMicroNodeCount: number;
   mergedMicroNodeCount: number;
+  /**
+   * Internal stable-identity record of the exact pair resolved by an explicit
+   * HIGH OVER_SPLIT merge. It is used to preserve unrelated duplicate edges.
+   */
+  resolvedCandidatePairs: Array<{ candidateAId: string; candidateBId: string }>;
   /** Source-safe audit: titles/reasons only; never source text. */
   actions: Array<{
     topicSequence: number;
@@ -1337,9 +1370,11 @@ export interface GranularityConsolidation {
 export function consolidateHighConfidenceOverSplits(
   topics: Pass2TopicResult[],
   findings: ReadonlyArray<GranularityFinding>,
+  options: { requireStableIds?: boolean } = {},
 ): GranularityConsolidation {
   const beforeMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
   const actions: GranularityConsolidation["actions"] = [];
+  const resolvedCandidatePairs: GranularityConsolidation["resolvedCandidatePairs"] = [];
 
   for (const topic of topics) {
     const applicable = findings.filter((finding) =>
@@ -1349,8 +1384,15 @@ export function consolidateHighConfidenceOverSplits(
       !!finding.mergeIntoMicroNodeTitle,
     );
     for (const finding of applicable) {
-      const sourceIndex = topic.microNodes.findIndex((node) => node.title === finding.microNodeTitle);
-      const targetIndex = topic.microNodes.findIndex((node) => node.title === finding.mergeIntoMicroNodeTitle);
+      if (options.requireStableIds && (!finding.microNodeId || !finding.mergeIntoMicroNodeId)) {
+        continue;
+      }
+      const sourceIndex = finding.microNodeId
+        ? topic.microNodes.findIndex((node) => node.candidateId === finding.microNodeId)
+        : topic.microNodes.findIndex((node) => node.title === finding.microNodeTitle);
+      const targetIndex = finding.mergeIntoMicroNodeId
+        ? topic.microNodes.findIndex((node) => node.candidateId === finding.mergeIntoMicroNodeId)
+        : topic.microNodes.findIndex((node) => node.title === finding.mergeIntoMicroNodeTitle);
       if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) continue;
 
       const source = topic.microNodes[sourceIndex];
@@ -1362,6 +1404,12 @@ export function consolidateHighConfidenceOverSplits(
         ...source.supportingMaterialIndices,
       ])];
       topic.microNodes.splice(sourceIndex, 1);
+      if (finding.microNodeId && finding.mergeIntoMicroNodeId) {
+        resolvedCandidatePairs.push({
+          candidateAId: finding.microNodeId,
+          candidateBId: finding.mergeIntoMicroNodeId,
+        });
+      }
       actions.push({
         topicSequence: topic.sequence,
         keptMicroNodeTitle: target.title,
@@ -1376,6 +1424,7 @@ export function consolidateHighConfidenceOverSplits(
     beforeMicroNodeCount,
     afterMicroNodeCount,
     mergedMicroNodeCount: beforeMicroNodeCount - afterMicroNodeCount,
+    resolvedCandidatePairs,
     actions,
   };
 }
@@ -1435,6 +1484,7 @@ export function applyBoundedSourceReallocation(
   topics: Pass2TopicResult[],
   blocks: ReadonlyArray<Pass1Block>,
   decisions: ReadonlyArray<SourceReallocationDecision>,
+  options: { requireStableIds?: boolean } = {},
 ): SourceReallocationResult {
   const result: SourceReallocationResult = {
     attempted: decisions.length > 0,
@@ -1454,8 +1504,16 @@ export function applyBoundedSourceReallocation(
 
   for (const decision of decisions) {
     if (decision.action === "KEEP_CURRENT" || decision.action === "NO_VALID_SUPPORT_FOUND") continue;
-    const topic = topics.find((candidate) => candidate.title === decision.topicTitle);
-    const target = topic?.microNodes.find((node) => node.title === decision.microNodeTitle);
+    if (options.requireStableIds && (decision.topicSequence === undefined || !decision.microNodeId)) {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+    const topic = decision.topicSequence !== undefined
+      ? topics.find((candidate) => candidate.sequence === decision.topicSequence)
+      : topics.find((candidate) => candidate.title === decision.topicTitle);
+    const target = decision.microNodeId
+      ? topic?.microNodes.find((node) => node.candidateId === decision.microNodeId)
+      : topic?.microNodes.find((node) => node.title === decision.microNodeTitle);
     if (!topic || !target || classifyMicroNodeSourceAlignment(
       target.learningObjective,
       target.sourceBlockIndices.map((index) => blocks[index]).filter((block): block is Pass1Block => !!block),
@@ -1504,14 +1562,12 @@ export interface Pass2Result {
   /** Strict readable-instruction coverage; unlike placement coverage, an
    * `unmapped` block cannot satisfy this gate. */
   instructionalCoverage: InstructionalCoverageResult;
-  /**
-   * Phase 4 — semantic granularity findings from Pass 2B.
-   * Advisory only: do NOT gate the mapping status on these.
-   * Empty when review AI call fails or finds no issues.
-   */
+  /** Phase 4 semantic findings for teacher review. */
   granularityFindings: GranularityFinding[];
-  /** One bounded pre-persistence merge pass applied only to explicit HIGH findings. */
+  /** Bounded pre-persistence merges applied only to explicit HIGH decisions. */
   granularityConsolidation: GranularityConsolidation;
+  /** Duplicate suspicion audit; unresolved pairs block persistence. */
+  duplicateResolution: DuplicateResolutionAudit;
   sourceAlignment: Pass2SourceAlignment;
   sourceReallocation: SourceReallocationResult;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
@@ -2296,7 +2352,8 @@ supporting material, source text, or any indices not listed above.`;
 //
 // RULES:
 //   • Never modifies topics[], nodes, sourceBlockIndices, or coverageValidation.
-//   • Returns [] on any failure — mapping must never be blocked by this step.
+//   • Returns [] on review failure. Existing duplicate suspicions then fail closed
+//     rather than being silently persisted.
 //   • Runs AFTER Step 2 and BEFORE coverageValidation (purely additive).
 
 const PASS2B_REVIEW_SYSTEM = `You are a curriculum quality reviewer. You receive a compact
@@ -2361,7 +2418,7 @@ DO NOT flag exercises that test the exact skill, a sub-skill, or a direct prereq
 HEURISTIC SIGNALS PROVIDED:
 The input includes pre-computed heuristic flags:
   • compoundLO: true  — regex detected a possible compound connector between two verb phrases
-  • duplicateCandidates: [{titleA, titleB, similarity}] — token-overlap detected possible duplicates
+  • duplicateCandidates: [{candidateAId, candidateBId}] — server-identified possible duplicates
 
 These signals are SUGGESTIONS. You must apply semantic judgment — do NOT automatically
 report MEGA_NODE just because compoundLO is true, or OVER_SPLIT just because similarity > 0.
@@ -2373,16 +2430,31 @@ OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary.
     {
       "topicTitle": "exact topic title from input",
       "microNodeTitle": "exact MicroNode title from input",
+      "microNodeId": "server candidateId from input",
       "issue": "MEGA_NODE",
       "confidence": "HIGH",
       "reason": "Armenian-language explanation for the teacher",
       "suggestedAction": "Split into 2: [Title A] / [Title B]",
-      "mergeIntoMicroNodeTitle": "exact existing MicroNode title (OVER_SPLIT only)"
+      "mergeIntoMicroNodeTitle": "exact existing MicroNode title (OVER_SPLIT only)",
+      "mergeIntoMicroNodeId": "server candidateId (OVER_SPLIT only)"
+    }
+  ],
+  "duplicateResolutions": [
+    {
+      "candidateAId": "server candidateId from duplicateCandidates",
+      "candidateBId": "server candidateId from duplicateCandidates",
+      "decision": "DISTINCT",
+      "confidence": "HIGH"
     }
   ]
 }
 
 findings may be an empty array [] if no issues found.
+For EVERY duplicateCandidates pair, return exactly one duplicateResolutions entry:
+  • DISTINCT only when the objectives are clearly independently assessable.
+  • MERGE only for the SAME TOPIC and only when they are truly the same objective;
+    include keepCandidateId for the one existing MicroNode that should remain.
+  • REVIEW_REQUIRED when uncertain. Never use titles to identify an action.
 Allowed issue values: "MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH" only.
 Allowed confidence values: "HIGH", "MEDIUM" only.
 reason MUST be in Armenian.
@@ -2390,6 +2462,7 @@ suggestedAction is optional.`;
 
 /** Compact per-MicroNode representation sent to Pass 2B. */
 interface GranularityReviewMicroNode {
+  candidateId: string;
   title: string;
   learningObjective: string;
   sourceBlockTypes: string[];
@@ -2402,10 +2475,255 @@ interface GranularityReviewMicroNode {
 }
 
 interface GranularityReviewTopic {
+  sequence: number;
   title: string;
   microNodes: GranularityReviewMicroNode[];
-  /** Pairs flagged by detectDuplicateLOs within this topic. */
-  duplicateCandidates: Array<{ titleA: string; titleB: string; similarity: number }>;
+  /** Heuristic signals within this topic; semantic review remains authoritative. */
+  duplicateCandidates: Array<{ candidateAId: string; candidateBId: string; similarity: number }>;
+}
+
+export interface DuplicateSuspicion {
+  candidateAId: string;
+  candidateBId: string;
+  topicASequence: number;
+  topicBSequence: number;
+}
+
+export interface DuplicateResolution {
+  candidateAId: string;
+  candidateBId: string;
+  decision: "DISTINCT" | "MERGE" | "REVIEW_REQUIRED";
+  confidence: "HIGH" | "MEDIUM";
+  /** Required only for a same-topic HIGH MERGE decision. */
+  keepCandidateId?: string;
+}
+
+export interface MalformedDuplicateResolutionEntry {
+  candidateAId: string;
+  candidateBId: string;
+}
+
+export interface ParsedDuplicateResolutions {
+  resolutions: DuplicateResolution[];
+  malformedEntries: MalformedDuplicateResolutionEntry[];
+}
+
+/**
+ * Preserve malformed provider entries as audit failures instead of dropping
+ * them. The persistence gate must see any ambiguous duplicate-review output.
+ */
+export function parseDuplicateResolutions(value: unknown): ParsedDuplicateResolutions {
+  const resolutions: DuplicateResolution[] = [];
+  const malformedEntries: MalformedDuplicateResolutionEntry[] = [];
+  if (!Array.isArray(value)) return { resolutions, malformedEntries };
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      malformedEntries.push({ candidateAId: "<missing>", candidateBId: "<missing>" });
+      continue;
+    }
+    const entry = item as Record<string, unknown>;
+    const candidateAId = typeof entry.candidateAId === "string" ? entry.candidateAId : "<missing>";
+    const candidateBId = typeof entry.candidateBId === "string" ? entry.candidateBId : "<missing>";
+    const decision = String(entry.decision);
+    const confidence = String(entry.confidence);
+    if (
+      candidateAId === "<missing>" ||
+      candidateBId === "<missing>" ||
+      !["DISTINCT", "MERGE", "REVIEW_REQUIRED"].includes(decision) ||
+      !["HIGH", "MEDIUM"].includes(confidence)
+    ) {
+      malformedEntries.push({ candidateAId, candidateBId });
+      continue;
+    }
+    resolutions.push({
+      candidateAId,
+      candidateBId,
+      decision: decision as DuplicateResolution["decision"],
+      confidence: confidence as DuplicateResolution["confidence"],
+      ...(typeof entry.keepCandidateId === "string" ? { keepCandidateId: entry.keepCandidateId } : {}),
+    });
+  }
+  return { resolutions, malformedEntries };
+}
+
+export interface DuplicateResolutionAudit {
+  candidatePairCount: number;
+  resolvedDistinctCount: number;
+  mergedCount: number;
+  unresolvedPairIds: Array<{ candidateAId: string; candidateBId: string }>;
+  rejectedDecisionCount: number;
+  actions: GranularityConsolidation["actions"];
+}
+
+function candidatePairKey(a: string, b: string): string {
+  return [a, b].sort().join("|");
+}
+
+/** Compact, complete duplicate-review contract, including cross-topic pairs. */
+export function buildDuplicateReviewCandidates(
+  suspicions: ReadonlyArray<DuplicateSuspicion>,
+): Array<{
+  candidateAId: string;
+  candidateBId: string;
+  topicASequence: number;
+  topicBSequence: number;
+}> {
+  return suspicions.map((suspicion) => ({
+    candidateAId: suspicion.candidateAId,
+    candidateBId: suspicion.candidateBId,
+    topicASequence: suspicion.topicASequence,
+    topicBSequence: suspicion.topicBSequence,
+  }));
+}
+
+/** Returns deterministic, title-independent candidates across every topic. */
+export function collectDuplicateSuspicions(
+  topics: ReadonlyArray<Pass2TopicResult>,
+): DuplicateSuspicion[] {
+  const nodes = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => ({
+    candidateId: node.candidateId ?? `t${topic.sequence}:n${microNodeIndex}`,
+    topicSequence: topic.sequence,
+    title: node.title,
+    learningObjective: node.learningObjective,
+  })));
+  const suspicions: DuplicateSuspicion[] = [];
+  for (let left = 0; left < nodes.length; left++) {
+    for (let right = left + 1; right < nodes.length; right++) {
+      if (!pedagogicalNearDuplicate(nodes[left], nodes[right])) continue;
+      suspicions.push({
+        candidateAId: nodes[left].candidateId,
+        candidateBId: nodes[right].candidateId,
+        topicASequence: nodes[left].topicSequence,
+        topicBSequence: nodes[right].topicSequence,
+      });
+    }
+  }
+  return suspicions;
+}
+
+/**
+ * Applies only explicit HIGH-confidence same-topic merges. Every other candidate
+ * must be explicitly classified HIGH DISTINCT; otherwise it remains a hard
+ * pre-persistence review failure.
+ */
+export function resolveDuplicateSuspicions(
+  topics: Pass2TopicResult[],
+  suspicions: ReadonlyArray<DuplicateSuspicion>,
+  resolutions: ReadonlyArray<DuplicateResolution>,
+  explicitlyMergedPairs: ReadonlyArray<{ candidateAId: string; candidateBId: string }> = [],
+  malformedEntries: ReadonlyArray<MalformedDuplicateResolutionEntry> = [],
+): DuplicateResolutionAudit {
+  const candidateKeys = new Set(suspicions.map((suspicion) =>
+    candidatePairKey(suspicion.candidateAId, suspicion.candidateBId),
+  ));
+  const byPair = new Map<string, DuplicateResolution>();
+  const invalidCandidateKeys = new Set<string>();
+  const invalidEntries: Array<{ candidateAId: string; candidateBId: string }> = [];
+  let rejectedDecisionCount = malformedEntries.length;
+  for (const entry of malformedEntries) {
+    const pairKey = candidatePairKey(entry.candidateAId, entry.candidateBId);
+    invalidEntries.push(entry);
+    if (candidateKeys.has(pairKey)) invalidCandidateKeys.add(pairKey);
+  }
+  for (const resolution of resolutions) {
+    const pairKey = candidatePairKey(resolution.candidateAId, resolution.candidateBId);
+    if (!candidateKeys.has(pairKey)) {
+      rejectedDecisionCount++;
+      invalidEntries.push({
+        candidateAId: resolution.candidateAId,
+        candidateBId: resolution.candidateBId,
+      });
+      continue;
+    }
+    if (byPair.has(pairKey)) {
+      // Reversed IDs normalize to the same key. Any repeated response is
+      // ambiguous untrusted output, even if its values happen to match.
+      rejectedDecisionCount++;
+      invalidCandidateKeys.add(pairKey);
+      continue;
+    }
+    byPair.set(pairKey, resolution);
+  }
+  const audit: DuplicateResolutionAudit = {
+    candidatePairCount: suspicions.length,
+    resolvedDistinctCount: 0,
+    mergedCount: 0,
+    unresolvedPairIds: [],
+    rejectedDecisionCount,
+    actions: [],
+  };
+  const explicitMergeKeys = new Set(explicitlyMergedPairs.map((pair) =>
+    candidatePairKey(pair.candidateAId, pair.candidateBId),
+  ));
+  const unresolvedKeys = new Set<string>();
+  const addUnresolved = (candidateAId: string, candidateBId: string) => {
+    const pairKey = candidatePairKey(candidateAId, candidateBId);
+    if (unresolvedKeys.has(pairKey)) return;
+    unresolvedKeys.add(pairKey);
+    audit.unresolvedPairIds.push({ candidateAId, candidateBId });
+  };
+  const findNode = (candidateId: string) => {
+    for (const topic of topics) {
+      const index = topic.microNodes.findIndex((node) => node.candidateId === candidateId);
+      if (index >= 0) return { topic, index, node: topic.microNodes[index] };
+    }
+    return null;
+  };
+
+  for (const suspicion of suspicions) {
+    const pairKey = candidatePairKey(suspicion.candidateAId, suspicion.candidateBId);
+    const left = findNode(suspicion.candidateAId);
+    const right = findNode(suspicion.candidateBId);
+    if (invalidCandidateKeys.has(pairKey)) {
+      addUnresolved(suspicion.candidateAId, suspicion.candidateBId);
+      continue;
+    }
+    // Consolidation resolves only the exact pair it merged. Any other edge
+    // touching a removed candidate remains a hard review failure.
+    if (!left || !right) {
+      if (!explicitMergeKeys.has(pairKey)) {
+        addUnresolved(suspicion.candidateAId, suspicion.candidateBId);
+      }
+      continue;
+    }
+    const resolution = byPair.get(pairKey);
+    if (resolution?.decision === "DISTINCT" && resolution.confidence === "HIGH") {
+      audit.resolvedDistinctCount++;
+      continue;
+    }
+    if (
+      resolution?.decision === "MERGE" &&
+      resolution.confidence === "HIGH" &&
+      left.topic === right.topic &&
+      (resolution.keepCandidateId === left.node.candidateId || resolution.keepCandidateId === right.node.candidateId)
+    ) {
+      const target = resolution.keepCandidateId === left.node.candidateId ? left : right;
+      const source = target === left ? right : left;
+      target.node.sourceBlockIndices = [...new Set([...target.node.sourceBlockIndices, ...source.node.sourceBlockIndices])];
+      target.node.exercises = [...target.node.exercises, ...source.node.exercises];
+      target.node.supportingMaterialIndices = [...new Set([
+        ...target.node.supportingMaterialIndices,
+        ...source.node.supportingMaterialIndices,
+      ])];
+      target.topic.microNodes.splice(source.index, 1);
+      audit.mergedCount++;
+      audit.actions.push({
+        topicSequence: target.topic.sequence,
+        keptMicroNodeTitle: target.node.title,
+        removedMicroNodeTitle: source.node.title,
+        reason: "NEAR_DUPLICATE_OBJECTIVE",
+      });
+      continue;
+    }
+    if (resolution) audit.rejectedDecisionCount++;
+    addUnresolved(suspicion.candidateAId, suspicion.candidateBId);
+  }
+  // Unknown IDs/pairs are untrusted provider output. Do not ignore them:
+  // fail the entire review contract closed before any automatic persistence.
+  for (const entry of invalidEntries) {
+    addUnresolved(entry.candidateAId, entry.candidateBId);
+  }
+  return audit;
 }
 
 export type SourceReallocationAction =
@@ -2418,6 +2736,10 @@ export type SourceReallocationAction =
 export interface SourceReallocationDecision {
   topicTitle: string;
   microNodeTitle: string;
+  /** Server-issued topic identity for production semantic-review actions. */
+  topicSequence?: number;
+  /** Server-issued MicroNode identity for production semantic-review actions. */
+  microNodeId?: string;
   action: SourceReallocationAction;
   sourceBlockIndices: number[];
   reason: string;
@@ -2426,6 +2748,8 @@ export interface SourceReallocationDecision {
 export interface SemanticReviewResult {
   findings: GranularityFinding[];
   sourceReallocations: SourceReallocationDecision[];
+  duplicateResolutions: DuplicateResolution[];
+  malformedDuplicateResolutionEntries: MalformedDuplicateResolutionEntry[];
 }
 
 /**
@@ -2440,7 +2764,9 @@ async function runGranularityReview(
   topics: Pass2TopicResult[],
   blocks: Pass1Block[],
   sourceAlignment: Pass2SourceAlignment,
+  duplicateSuspicions: ReadonlyArray<DuplicateSuspicion>,
 ): Promise<SemanticReviewResult> {
+  const duplicateReviewCandidates = buildDuplicateReviewCandidates(duplicateSuspicions);
   // Build compact topic representation with heuristic signals
   const reviewTopics: GranularityReviewTopic[] = topics.map((topic) => {
     const mnRepresentations: GranularityReviewMicroNode[] = topic.microNodes.map((mn) => {
@@ -2449,6 +2775,7 @@ async function runGranularityReview(
         .map((i) => blocks[i]?.blockType ?? "UNKNOWN")
         .filter(Boolean);
       return {
+        candidateId:         mn.candidateId ?? `t${topic.sequence}:n${topic.microNodes.indexOf(mn)}`,
         title:              mn.title,
         learningObjective:  mn.learningObjective,
         sourceBlockTypes,
@@ -2463,24 +2790,32 @@ async function runGranularityReview(
       };
     });
 
-    const duplicateCandidates = detectDuplicateLOs(
-      topic.microNodes.map((mn) => ({ title: mn.title, learningObjective: mn.learningObjective })),
-    );
-
     return {
+      sequence:           topic.sequence,
       title:              topic.title,
       microNodes:         mnRepresentations,
-      duplicateCandidates: duplicateCandidates.map((c) => ({
-        titleA:     c.titleA,
-        titleB:     c.titleB,
-        similarity: c.similarity,
-      })),
+      duplicateCandidates: duplicateSuspicions
+        // Per-topic signals retain same-topic context. The full flat contract
+        // below includes every pair, including cross-topic candidates.
+        .filter((candidate) => candidate.topicASequence === topic.sequence)
+        .map((candidate) => ({
+          candidateAId: candidate.candidateAId,
+          candidateBId: candidate.candidateBId,
+          similarity: 1,
+        })),
     };
   });
 
   // Skip the AI call if there are no MicroNodes at all
   const totalMicroNodes = reviewTopics.reduce((s, t) => s + t.microNodes.length, 0);
-  if (totalMicroNodes === 0) return { findings: [], sourceReallocations: [] };
+  if (totalMicroNodes === 0) {
+    return {
+      findings: [],
+      sourceReallocations: [],
+      duplicateResolutions: [],
+      malformedDuplicateResolutionEntries: [],
+    };
+  }
 
   const repairTopics = reviewTopics
     .filter((topic) => topic.microNodes.some((node) => node.needsSourceRepair))
@@ -2505,6 +2840,9 @@ async function runGranularityReview(
 TOPICS AND MICRONODES:
 ${JSON.stringify(reviewTopics, null, 2)}
 
+DUPLICATE CANDIDATES (complete contract; includes cross-topic pairs):
+${JSON.stringify(duplicateReviewCandidates, null, 2)}
+
 Apply the MEGA_NODE, OVER_SPLIT, and EXERCISE_MISMATCH criteria from the system prompt.
 Pay special attention to MicroNodes where compoundLO=true and duplicate candidate pairs.
 
@@ -2523,13 +2861,23 @@ Return only this JSON shape:
   "sourceReallocations": [{
     "topicTitle": "exact topic title",
     "microNodeTitle": "exact MicroNode title",
+    "topicSequence": 1,
+    "microNodeId": "t1:n0",
     "action": "ADD_SUPPORTING_BLOCKS",
     "sourceBlockIndices": [12],
     "reason": "Հայերեն պատճառ"
+  }],
+  "duplicateResolutions": [{
+    "candidateAId": "t1:n0",
+    "candidateBId": "t1:n1",
+    "decision": "DISTINCT",
+    "confidence": "HIGH"
   }]
 }
 Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NO_VALID_SUPPORT_FOUND.
-Every sourceBlockIndices value must come from the listed validated source blocks.`;
+Every sourceBlockIndices value must come from the listed validated source blocks.
+Return one duplicateResolutions entry for every duplicateCandidates pair, including
+cross-topic pairs. Do not infer actions from titles.`;
 
   try {
     const r = await openrouter.chat.completions.create({
@@ -2545,16 +2893,27 @@ Every sourceBlockIndices value must come from the listed validated source blocks
     const raw = r.choices[0]?.message?.content ?? "";
     if (!raw.trim()) {
       logger.warn({ totalMicroNodes }, "pass2b granularity review: empty response — returning no findings");
-      return { findings: [], sourceReallocations: [] };
+      return {
+        findings: [],
+        sourceReallocations: [],
+        duplicateResolutions: [],
+        malformedDuplicateResolutionEntries: [],
+      };
     }
 
     const parsed = parsePass2JSON(raw) as {
       findings?: unknown[];
       sourceReallocations?: unknown[];
+      duplicateResolutions?: unknown[];
     };
     if (!parsed || !Array.isArray(parsed.findings)) {
       logger.warn({ totalMicroNodes }, "pass2b granularity review: invalid JSON schema — returning no findings");
-      return { findings: [], sourceReallocations: [] };
+      return {
+        findings: [],
+        sourceReallocations: [],
+        duplicateResolutions: [],
+        malformedDuplicateResolutionEntries: [],
+      };
     }
 
     const VALID_ISSUES   = new Set(["MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH"]);
@@ -2581,6 +2940,8 @@ Every sourceBlockIndices value must come from the listed validated source blocks
         reason:           String(item.reason),
         ...(item.suggestedAction ? { suggestedAction: String(item.suggestedAction) } : {}),
         ...(item.mergeIntoMicroNodeTitle ? { mergeIntoMicroNodeTitle: String(item.mergeIntoMicroNodeTitle) } : {}),
+        ...(item.microNodeId ? { microNodeId: String(item.microNodeId) } : {}),
+        ...(item.mergeIntoMicroNodeId ? { mergeIntoMicroNodeId: String(item.mergeIntoMicroNodeId) } : {}),
       });
     }
 
@@ -2598,6 +2959,10 @@ Every sourceBlockIndices value must come from the listed validated source blocks
         sourceReallocations.push({
           topicTitle: value.topicTitle,
           microNodeTitle: value.microNodeTitle,
+          ...(typeof value.topicSequence === "number" && Number.isInteger(value.topicSequence)
+            ? { topicSequence: value.topicSequence }
+            : {}),
+          ...(typeof value.microNodeId === "string" ? { microNodeId: value.microNodeId } : {}),
           action,
           sourceBlockIndices: indices,
           reason: value.reason,
@@ -2605,15 +2970,33 @@ Every sourceBlockIndices value must come from the listed validated source blocks
       }
     }
 
+    const parsedDuplicateResolutions = parseDuplicateResolutions(parsed.duplicateResolutions);
+    const duplicateResolutions = parsedDuplicateResolutions.resolutions;
+
     logger.info(
-      { findingCount: findings.length, totalMicroNodes },
+      {
+        findingCount: findings.length,
+        duplicateResolutionCount: duplicateResolutions.length,
+        malformedDuplicateResolutionCount: parsedDuplicateResolutions.malformedEntries.length,
+        totalMicroNodes,
+      },
       "pass2b granularity review: complete",
     );
-    return { findings, sourceReallocations };
+    return {
+      findings,
+      sourceReallocations,
+      duplicateResolutions,
+      malformedDuplicateResolutionEntries: parsedDuplicateResolutions.malformedEntries,
+    };
 
   } catch (err) {
-    logger.warn({ err }, "pass2b granularity review: AI call failed — returning no findings (mapping unaffected)");
-    return { findings: [], sourceReallocations: [] };
+    logger.warn({ err }, "pass2b granularity review: AI call failed — duplicate candidates will fail closed");
+    return {
+      findings: [],
+      sourceReallocations: [],
+      duplicateResolutions: [],
+      malformedDuplicateResolutionEntries: [],
+    };
   }
 }
 
@@ -2781,6 +3164,32 @@ export function buildAutomaticOutcomeAlignmentPlan(
   return { proposals, unresolvedOutcomeIndexes };
 }
 
+/**
+ * The route deletes old Topics/MicroNodes only after runPass2Pipeline resolves.
+ * Keeping all hard gates in this pure assertion makes that replacement boundary
+ * explicit and provider-free testable.
+ */
+export function assertPass2PersistenceGates(input: {
+  coverageValidation: CoverageValidationResult;
+  instructionalCoverage: InstructionalCoverageResult;
+  sourceAlignment: Pass2SourceAlignment;
+  duplicateResolution: DuplicateResolutionAudit;
+  diagnostics: Pass2Diagnostics;
+}): void {
+  if (!input.coverageValidation.valid) {
+    throw new MappingSourcePlacementError(input.coverageValidation);
+  }
+  if (!input.instructionalCoverage.valid) {
+    throw new MappingInstructionalCoverageError(input.instructionalCoverage, input.diagnostics);
+  }
+  if (!input.sourceAlignment.valid) {
+    throw new MappingSourceAlignmentError(input.sourceAlignment);
+  }
+  if (input.duplicateResolution.unresolvedPairIds.length > 0) {
+    throw new MappingGranularityReviewError(input.duplicateResolution);
+  }
+}
+
 export async function runPass2Pipeline(
   blocks: Pass1Block[],
   lessonInfo: Pass2LessonInfo,
@@ -2930,6 +3339,11 @@ export async function runPass2Pipeline(
     unmappedBlockIndices:  topicResults[i].unmappedIndices,
     additionalExercises:   topicResults[i].additionalExercises,
   }));
+  for (const topic of topics) {
+    topic.microNodes.forEach((node, microNodeIndex) => {
+      node.candidateId = `t${topic.sequence}:n${microNodeIndex}`;
+    });
+  }
   const topicDiagnostics = topicResults.map((result) => result.diagnostics);
 
   // ── Activity normalization: enforce "exactly one canonical placement" invariant ─
@@ -3038,15 +3452,40 @@ export async function runPass2Pipeline(
   };
 
   // Pass 2B produces semantic findings. A single bounded merge pass may apply
-  // only explicit HIGH-confidence OVER_SPLIT actions with a known target.
+  // only explicit HIGH-confidence actions with a known server-issued target.
   const initialSourceAlignment = validatePass2SourceAlignment(topics, blocks);
-  const semanticReview = await runGranularityReview(topics, blocks, initialSourceAlignment);
+  const duplicateSuspicions = collectDuplicateSuspicions(topics);
+  const semanticReview = await runGranularityReview(
+    topics,
+    blocks,
+    initialSourceAlignment,
+    duplicateSuspicions,
+  );
   const granularityFindings = semanticReview.findings;
-  const granularityConsolidation = consolidateHighConfidenceOverSplits(topics, granularityFindings);
+  const explicitConsolidation = consolidateHighConfidenceOverSplits(
+    topics,
+    granularityFindings,
+    { requireStableIds: true },
+  );
+  const duplicateResolution = resolveDuplicateSuspicions(
+    topics,
+    duplicateSuspicions,
+    semanticReview.duplicateResolutions,
+    explicitConsolidation.resolvedCandidatePairs,
+    semanticReview.malformedDuplicateResolutionEntries,
+  );
+  const granularityConsolidation: GranularityConsolidation = {
+    beforeMicroNodeCount: explicitConsolidation.beforeMicroNodeCount,
+    afterMicroNodeCount: topics.reduce((sum, topic) => sum + topic.microNodes.length, 0),
+    mergedMicroNodeCount: explicitConsolidation.mergedMicroNodeCount + duplicateResolution.mergedCount,
+    resolvedCandidatePairs: explicitConsolidation.resolvedCandidatePairs,
+    actions: [...explicitConsolidation.actions, ...duplicateResolution.actions],
+  };
   const sourceReallocation = applyBoundedSourceReallocation(
     topics,
     blocks,
     semanticReview.sourceReallocations,
+    { requireStableIds: true },
   );
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
@@ -3064,6 +3503,13 @@ export async function runPass2Pipeline(
        instructionalCoverageValid: postConsolidationInstructionalCoverage.valid,
        unresolvedInstructional: postConsolidationInstructionalCoverage.unresolvedInstructionalIndices.length,
        granularityConsolidation,
+        duplicateResolution: {
+          candidatePairCount: duplicateResolution.candidatePairCount,
+          resolvedDistinctCount: duplicateResolution.resolvedDistinctCount,
+          mergedCount: duplicateResolution.mergedCount,
+          unresolvedPairCount: duplicateResolution.unresolvedPairIds.length,
+          rejectedDecisionCount: duplicateResolution.rejectedDecisionCount,
+        },
        sourceReallocation,
       missingIndices:  coverageValidation.missingIndices,
       duplicateIndices: coverageValidation.duplicateIndices,
@@ -3097,11 +3543,14 @@ export async function runPass2Pipeline(
       },
       "pass2: readable instructional source remains unresolved after bounded repair",
     );
-    throw new MappingInstructionalCoverageError(postConsolidationInstructionalCoverage, diagnostics);
   }
-  if (!sourceAlignment.valid) {
-    throw new MappingSourceAlignmentError(sourceAlignment);
-  }
+  assertPass2PersistenceGates({
+    coverageValidation,
+    instructionalCoverage: postConsolidationInstructionalCoverage,
+    sourceAlignment,
+    duplicateResolution,
+    diagnostics,
+  });
 
   return {
     topics,
@@ -3110,6 +3559,7 @@ export async function runPass2Pipeline(
     instructionalCoverage: postConsolidationInstructionalCoverage,
     granularityFindings,
     granularityConsolidation,
+    duplicateResolution,
     sourceAlignment,
     sourceReallocation,
     diagnostics,
