@@ -1,0 +1,461 @@
+TASK #117 — C1 FINAL FORENSIC AUDIT:
+PASS 2 MICRONODE GRANULARITY + SOURCE GROUNDING
+
+IMPORTANT:
+This is an AUDIT-FIRST task.
+
+Do NOT change production code yet.
+Do NOT redesign the mapping architecture.
+Do NOT weaken any previously accepted C1 safeguards.
+Do NOT proceed to Package 1D.
+Do NOT modify Cognitive Path or C1 Teaching Package behavior.
+Do NOT declare C1 frozen.
+
+We are at the final acceptance stage of C1 automatic mapping.
+
+═══════════════════════════════════════════════════
+CONTEXT — ALREADY ACCEPTED WORK
+═══════════════════════════════════════════════════
+
+The following work has already been implemented and must be preserved:
+
+1. Goal / Outcome workflow:
+   source-based AI proposal
+   → canonical draft import
+   → teacher review
+   → explicit Goal/Outcome confirmation
+   → detailed mapping allowed.
+
+2. Zero-node / destructive replacement protection:
+   an invalid or zero-valid-MicroNode mapping must fail
+   BEFORE existing Topics/MicroNodes/exercises are deleted.
+
+3. Count-only, source-safe Pass 2 diagnostics.
+
+4. Strict readable instructional source coverage.
+
+5. Structural / visual / non-instructional material is not automatically
+   turned into a MicroNode merely for coverage.
+
+6. Exercises/questions/activities remain real exercise items and must not
+   become artificial MicroNodes merely to satisfy coverage.
+
+7. Outcome → MicroNode alignment exists and requires teacher review.
+
+8. Fix #6A:
+   bounded same-lesson semantic source reallocation during Pass 2B,
+   followed by deterministic support/coverage revalidation.
+
+9. Fix #7 / Task #116:
+   physical PDF page provenance has been hardened.
+   Do NOT weaken the physical-page/source-scope gate.
+
+The remaining question is specifically whether Pass 2 produces the RIGHT
+pedagogically atomic MicroNodes and assigns the RIGHT validated source
+support to them.
+
+═══════════════════════════════════════════════════
+THE OBSERVED FAILURE PATTERN
+═══════════════════════════════════════════════════
+
+In previous real Math 5 mapping tests, the system sometimes produced too
+many MicroNodes or semantically questionable MicroNodes.
+
+Example lesson:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+«Շենքերի համարակալումը»
+physical textbook scope around pages 11–12.
+
+After teacher review, the pedagogically meaningful structure appeared to
+be approximately:
+
+1. Շենքերի հասցեների կարևորությունը
+2. Նոր շենքերի համարակալումը
+3. Շենքերի համարակալման սկզբունքները
+
+The teacher manually removed additional generated nodes that did not
+represent independent pedagogically atomic learning objectives.
+
+IMPORTANT:
+Do NOT hard-code “3 MicroNodes” for this lesson.
+
+The correct number must emerge from the instructional content.
+
+The issue is that source coverage must NOT be achieved by creating one
+MicroNode per source block, paragraph, image caption, exercise, narrative
+fragment, or arbitrary semantic fragment.
+
+At the same time, meaningful instructional content must NOT disappear
+just because several source blocks belong to one MicroNode.
+
+═══════════════════════════════════════════════════
+CANONICAL MICRONODE RULE
+═══════════════════════════════════════════════════
+
+A MicroNode represents ONE pedagogically atomic learnable objective.
+
+It is NOT:
+
+- one source block;
+- one paragraph;
+- one page;
+- one image;
+- one caption;
+- one exercise;
+- one story fragment;
+- one Outcome;
+- one arbitrary concept noun.
+
+Multiple source blocks MAY belong to the same MicroNode.
+
+One source block must have canonical instructional ownership according
+to the accepted ownership rules, while supporting relations may exist
+where the current contract explicitly permits them.
+
+Do NOT create additional MicroNodes merely to make source coverage reach
+100%.
+
+Coverage must be achieved by correct semantic ownership, not node
+inflation.
+
+═══════════════════════════════════════════════════
+PART A — TRACE THE REAL PASS 2 PIPELINE
+═══════════════════════════════════════════════════
+
+Trace the current production code from validated Pass 1 Source Set to
+persisted MicroNodes.
+
+Identify the exact functions/files responsible for:
+
+1. building Pass 2 provider context;
+2. asking the provider to propose Topics/MicroNodes;
+3. parsing provider output;
+4. normalizing MicroNodes;
+5. consolidating/merging candidates;
+6. assigning source block ownership/support;
+7. Pass 2B semantic review;
+8. Fix #6A bounded source reallocation;
+9. instructional coverage validation;
+10. persistence.
+
+Return the actual function names and file paths.
+
+Do not infer from comments alone.
+Trace the executable path.
+
+═══════════════════════════════════════════════════
+PART B — FIND WHERE NODE INFLATION CAN OCCUR
+═══════════════════════════════════════════════════
+
+Audit every stage where one pedagogical concept could become multiple
+MicroNodes.
+
+Specifically inspect whether any logic effectively encourages:
+
+source block → MicroNode
+
+instead of:
+
+atomic learning objective → MicroNode
+                         ↘ multiple supporting source blocks
+
+Check for:
+
+- provider prompt wording;
+- chunk-by-chunk generation;
+- topic-local generation without global lesson awareness;
+- one-node-per-block assumptions;
+- normalization behavior;
+- duplicate detection;
+- consolidation thresholds;
+- title similarity heuristics;
+- objective similarity heuristics;
+- source ownership reconciliation;
+- repair behavior;
+- coverage repair accidentally generating nodes;
+- cross-topic semantic review limitations.
+
+For every possible inflation point report:
+
+FUNCTION
+CURRENT BEHAVIOR
+RISK
+EVIDENCE
+SEVERITY
+
+═══════════════════════════════════════════════════
+PART C — AUDIT SOURCE GROUNDING
+═══════════════════════════════════════════════════
+
+For every generated MicroNode, determine how the server proves that its
+learning objective is actually supported by the assigned validated
+source blocks.
+
+We need to distinguish:
+
+A. DIRECT INSTRUCTIONAL SUPPORT
+The source actually teaches the MicroNode objective.
+
+B. SUPPORTING CONTEXT
+The source supports understanding but does not independently teach the
+objective.
+
+C. STRUCTURAL / VISUAL MATERIAL
+Heading, navigation, decorative material, diagram/image support, etc.
+
+D. EXERCISE / ACTIVITY
+Must remain an exercise/activity unless it contains genuinely separate
+instructional content under the accepted contract.
+
+E. UNSUPPORTED
+The MicroNode objective cannot be justified from the validated source.
+
+Check whether current code can accidentally accept:
+
+- title-only similarity;
+- generic Armenian terms;
+- action-verb similarity;
+- same-page proximity;
+- same-topic proximity;
+- weak lexical overlap;
+- Outcome similarity without textbook support;
+
+as sufficient source grounding.
+
+Outcome alignment MUST NOT substitute for source grounding.
+
+═══════════════════════════════════════════════════
+PART D — PEDAGOGICAL ATOMICITY TEST
+═══════════════════════════════════════════════════
+
+Define and test a deterministic/server-checkable concept of MicroNode
+atomicity as far as practical.
+
+We do NOT expect the server to perfectly understand pedagogy without AI.
+
+But the architecture must detect obvious bad structures.
+
+Audit whether we currently detect:
+
+1. two MicroNodes with effectively the same learning objective;
+2. one MicroNode that is merely a narrower paraphrase of another;
+3. a MicroNode created only from an example;
+4. a MicroNode created only from a narrative/story fragment;
+5. a MicroNode created only from an exercise;
+6. a MicroNode with no direct instructional source support;
+7. multiple MicroNodes competing for the same instructional source
+   because generation was fragmented.
+
+Do NOT implement speculative heuristics yet.
+
+First report what is already protected and what is not.
+
+═══════════════════════════════════════════════════
+PART E — EXERCISE PRESERVATION
+═══════════════════════════════════════════════════
+
+Verify that real textbook exercises/questions/activities:
+
+- remain separate exercise records;
+- retain source page/provenance;
+- can attach to the appropriate MicroNode;
+- do not automatically create additional MicroNodes;
+- are not silently lost during consolidation/reallocation;
+- are not duplicated when source ownership changes.
+
+Report evidence from current code/tests.
+
+═══════════════════════════════════════════════════
+PART F — OUTCOME ALIGNMENT BOUNDARY
+═══════════════════════════════════════════════════
+
+Verify the intended direction:
+
+confirmed canonical Outcome
+        ↓
+reviewable alignment
+        ↓
+already source-grounded MicroNode
+
+NOT:
+
+Outcome
+  ↓
+invent MicroNode merely because an Outcome exists
+
+And NOT:
+
+Outcome similarity
+  ↓
+declare weakly grounded MicroNode valid
+
+Report whether current implementation fully preserves this boundary.
+
+═══════════════════════════════════════════════════
+PART G — PROVIDER-FREE FORENSIC FIXTURES
+═══════════════════════════════════════════════════
+
+Without changing production behavior, create or use provider-free
+fixtures to reproduce the structural cases.
+
+At minimum test:
+
+CASE 1 — MULTIPLE BLOCKS / ONE OBJECTIVE
+Several instructional source blocks teach one atomic concept.
+Expected:
+one MicroNode may own/use multiple source blocks.
+
+CASE 2 — TWO REAL OBJECTIVES
+Source genuinely teaches two independently assessable concepts.
+Expected:
+two MicroNodes.
+
+CASE 3 — NARRATIVE + RULE
+Narrative introduces a concept and a later block explicitly teaches the
+rule.
+Expected:
+do not automatically create a separate narrative MicroNode unless it
+has an independent learning objective.
+
+CASE 4 — EXAMPLE + RULE
+Example illustrates a rule.
+Expected:
+example alone does not require another MicroNode.
+
+CASE 5 — EXERCISE
+Question practices an existing concept.
+Expected:
+exercise record, not a new MicroNode.
+
+CASE 6 — DUPLICATE PROVIDER NODES
+Provider returns two differently worded nodes with the same pedagogical
+objective.
+Report what current normalization/consolidation does.
+
+CASE 7 — UNSUPPORTED NODE
+Provider invents a plausible lesson-related objective unsupported by the
+validated Source Set.
+Expected:
+must fail/reject that MicroNode, not preserve it merely because it
+matches the lesson or Outcome.
+
+CASE 8 — SOURCE REALLOCATION
+A valid instructional block is initially attached to the wrong
+MicroNode.
+Expected:
+Fix #6A may reallocate it once within the validated same-lesson source
+set, followed by deterministic revalidation.
+
+Do not call the external AI provider for these fixtures.
+
+═══════════════════════════════════════════════════
+PART H — DO NOT RUN A LIVE REMAP YET
+═══════════════════════════════════════════════════
+
+For this forensic round:
+
+DO NOT map a real lesson.
+DO NOT delete/recreate user lessons.
+DO NOT modify existing mappings.
+DO NOT use provider calls merely to investigate.
+
+We first need the architecture diagnosis.
+
+═══════════════════════════════════════════════════
+REQUIRED FINAL REPORT
+═══════════════════════════════════════════════════
+
+Return exactly these sections:
+
+1. EXECUTIVE VERDICT
+
+Choose one:
+
+A. PASS 2 GRANULARITY/GROUNDING IS SAFE
+B. PARTIALLY SAFE — SPECIFIC GAPS REMAIN
+C. UNSAFE FOR C1 FREEZE
+
+2. REAL PASS 2 EXECUTION PATH
+
+File/function sequence from validated Source Set to persistence.
+
+3. MICRONODE INFLATION FINDINGS
+
+For each finding:
+- file
+- function
+- behavior
+- evidence
+- severity
+
+4. SOURCE GROUNDING FINDINGS
+
+Explain exactly how direct support is currently established and where
+false grounding can still occur.
+
+5. PEDAGOGICAL ATOMICITY FINDINGS
+
+What is enforced and what is not.
+
+6. EXERCISE PRESERVATION FINDINGS
+
+7. OUTCOME ALIGNMENT BOUNDARY
+
+8. PROVIDER-FREE FIXTURE RESULTS
+
+Give PASS/FAIL for Cases 1–8.
+
+9. ROOT CAUSE
+
+State the smallest root cause(s) explaining the previously observed
+over-generation / questionable MicroNodes.
+
+10. MINIMAL FIX PLAN
+
+Only if gaps exist.
+
+For each proposed fix state:
+
+FIX ID
+EXACT BOUNDARY
+WHY NEEDED
+FILES/FUNCTIONS
+WHAT MUST NOT CHANGE
+TEST REQUIRED
+
+Do NOT implement the fix in this task unless explicitly asked after the
+audit.
+
+11. C1 STATUS
+
+Choose exactly:
+
+READY FOR FINAL C1 ACCEPTANCE TEST
+
+or
+
+NOT READY — FIXES REQUIRED
+
+═══════════════════════════════════════════════════
+NON-NEGOTIABLE SAFETY RULES
+═══════════════════════════════════════════════════
+
+- No production code changes in this audit.
+- No database mutation.
+- No real lesson remap.
+- No weakening of Fix #5/#6A/#7 safeguards.
+- No raw textbook/source text in persistent diagnostics.
+- No learner data in diagnostics.
+- No Package 1D work.
+- No Cognitive Path redesign.
+- No Teaching Package redesign.
+- No C1 freeze declaration.
+
+The goal is NOT to make the tests green at any cost.
+
+The goal is to determine whether the current automatic mapping can
+reliably produce the smallest correct set of pedagogically atomic,
+source-grounded MicroNodes while preserving complete instructional
+coverage and real exercises.
