@@ -1,0 +1,482 @@
+FINAL C1 BLOCKER FIX — MAKE PASS 1 RELIABLE AND REACH PASS 2
+
+Do not perform another broad audit.
+
+The blocker is already identified.
+
+CURRENT CONFIRMED FAILURE
+
+Real lesson:
+- Մաթեմատիկա 5
+- Սմբատ Գոգյան
+- §1.2 Բնական թվերի շարքը
+- resource #19
+- physical PDF pages 14–15
+
+Current Pass 1 behavior:
+
+PAGE 14
+- server extraction works
+- provider returns valid structured output
+- 12 blocks
+- schema validation PASS
+
+PAGE 15
+- server extraction works
+- provider returns substantial content
+- finish_reason = stop
+- attempt 1 = invalid JSON
+- bounded retry = invalid JSON
+- failure:
+  PASS1_MALFORMED_RESPONSE_PRE_VERIFICATION
+
+Therefore:
+
+SOURCE VERIFICATION is not reached.
+PASS 2 is not reached.
+
+This is now the blocker preventing us from moving forward.
+
+==================================================
+GOAL
+==================================================
+
+FIX this blocker.
+
+Pass 1 must reliably produce valid, non-empty structured blocks for
+readable textbook pages.
+
+Required final pipeline:
+
+server-extracted PDF page
+→ Pass 1
+→ valid structured blocks
+→ deterministic source verification
+→ Pass 2
+
+The task is complete only when the real lesson reaches Pass 2.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Work only on the Pass 1 provider/structured-output boundary.
+
+Do NOT modify:
+
+- PDF page selection
+- lesson page numbers
+- lesson title
+- resource
+- physical-page extraction
+- deterministic source binding
+- source provenance rules
+- source coverage rules
+- Task #124 atomic MicroNode logic
+- Topic/MicroNode granularity
+- exercise ownership
+- Outcomes
+- Outcome alignment
+- Cognitive Path
+- Teaching Package
+- Phase 2 content rules
+- AI Teacher
+- quizzes
+- Knowledge Tree
+- DB schema
+- final approval architecture
+
+Do not start Package 1D.
+
+==================================================
+1. FIX THE MALFORMED STRUCTURED RESPONSE
+==================================================
+
+The current OpenRouter / DeepSeek Pass 1 boundary is not sufficiently
+reliable for the real page:
+
+deepseek/deepseek-chat-v3-0324
+
+with strict structured JSON output.
+
+Page 15 produced invalid JSON twice despite:
+
+- content being present;
+- finish_reason = stop;
+- sufficient output length;
+- one bounded retry.
+
+Do not add more retries.
+
+Do not accept malformed JSON.
+
+Do not weaken validation.
+
+Instead, make Pass 1 use a structured-output strategy that reliably
+returns the required schema.
+
+Choose the SMALLEST reliable solution.
+
+Allowed solutions include:
+
+A. Correct the current provider request/schema configuration if the
+current model can reliably honor it.
+
+OR
+
+B. Simplify the Pass 1 structured-output schema/request if unnecessary
+schema complexity is causing malformed responses, while preserving all
+information required by the mapping pipeline.
+
+OR
+
+C. If the current DeepSeek/OpenRouter model is demonstrably unreliable
+for this strict structured-output requirement, use a more reliable
+structured-output-capable model for PASS 1 ONLY.
+
+Do NOT change the model used by unrelated AI features.
+
+The model boundary must remain isolated to Pass 1.
+
+==================================================
+2. PREFER RELIABILITY OVER PROVIDER-SPECIFIC HACKS
+==================================================
+
+Pass 1 is an extraction stage.
+
+Its job is not creative generation.
+
+Required characteristics are:
+
+- deterministic behavior;
+- valid structured output;
+- grounded source extraction;
+- predictable schema adherence.
+
+Therefore prioritize schema reliability over creativity.
+
+Do not add brittle cleanup code for individual malformed provider
+responses.
+
+Forbidden examples:
+
+- manually adding missing braces;
+- regex-repairing arbitrary JSON;
+- silently dropping malformed blocks;
+- extracting partial arrays from broken output and continuing;
+- accepting provider text without schema validation.
+
+Malformed output must never reach Pass 2.
+
+==================================================
+3. KEEP THE PASS 1 CONTRACT MINIMAL
+==================================================
+
+Review the fields Pass 1 actually needs downstream.
+
+If the current schema asks the provider for fields that can be derived
+deterministically server-side, remove those unnecessary generation
+requirements from Pass 1.
+
+Do not make the provider regenerate information the server already
+knows.
+
+For example, server-known provenance such as the current physical page
+must remain authoritative server data whenever possible.
+
+The provider should return only the minimum structured classification /
+segmentation data required by the mapping pipeline.
+
+However:
+
+Do not perform a broad Pass 1 architecture rewrite.
+
+Only simplify what directly improves reliable structured extraction.
+
+==================================================
+4. STRUCTURED OUTPUT MUST BE ENFORCED
+==================================================
+
+A successful readable-page Pass 1 response must contain:
+
+{
+  "blocks": [...]
+}
+
+Requirements:
+
+- blocks exists;
+- blocks is an array;
+- blocks is non-empty for readable instructional source;
+- every block satisfies the required schema;
+- unexpected/malformed response fails explicitly.
+
+The local validator remains authoritative even if the provider claims
+schema compliance.
+
+Never convert:
+
+{}
+or
+{"blocks":[]}
+or malformed JSON
+
+into successful extraction for a readable page.
+
+==================================================
+5. PROVIDER-BOUNDARY TEST BEFORE REAL MAPPING
+==================================================
+
+Before another real mapping run, test the FINAL Pass 1 implementation
+directly.
+
+Use synthetic, non-copyrighted Armenian source text.
+
+Test at least:
+
+A. short instructional paragraph;
+
+B. longer instructional paragraph;
+
+C. paragraph + several numbered exercises/questions;
+
+D. Armenian punctuation and Unicode;
+
+E. content long enough to produce multiple blocks.
+
+Use the SAME production:
+
+- Pass 1 function;
+- provider/model;
+- response format;
+- schema;
+- parser;
+- validator.
+
+Run enough synthetic cases to establish that structured output is
+reliable, but do not create an open-ended stress test.
+
+Required:
+
+ALL synthetic cases return valid schema-compliant non-empty blocks.
+
+If the selected Pass 1 model/provider cannot do this reliably:
+
+do not use it for Pass 1.
+
+Choose a structured-output-capable alternative for Pass 1 only and
+rerun the same synthetic gate.
+
+==================================================
+6. PROVIDER-FREE REGRESSIONS
+==================================================
+
+All existing tests must remain green.
+
+At minimum verify:
+
+- valid structured response → PASS
+- {} → FAIL
+- blocks: [] on readable source → FAIL
+- malformed JSON → FAIL
+- schema-invalid object → FAIL
+- unexpected properties → FAIL
+- wrong source page → FAIL
+- provider paraphrase/source mismatch → FAIL
+- one bounded retry behavior remains correct
+- failure before persistence preserves previous mapping
+- source/provenance tests remain green
+- Task #124 atomicity tests remain green
+
+Do not weaken tests to make the fix pass.
+
+==================================================
+7. TYPECHECK / BUILD
+==================================================
+
+Before real acceptance:
+
+- API typecheck PASS
+- relevant web typecheck PASS if touched
+- API build PASS
+- relevant C1/source tests PASS
+- Task #124 tests PASS
+
+Restart the API with the final code.
+
+Check startup logs.
+
+==================================================
+8. REAL ACCEPTANCE RUN
+==================================================
+
+After the synthetic provider gate and regressions pass, perform ONE
+automatic mapping run on:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+§1.2 Բնական թվերի շարքը
+resource #19
+physical PDF pages 14–15
+
+Resolve the current lesson ID from the DB immediately before running.
+
+Do not change:
+
+- pages;
+- title;
+- resource;
+- Goal;
+- Outcomes;
+- lesson metadata.
+
+Do not manually seed blocks.
+
+Do not bypass Pass 1.
+
+Do not bypass source verification.
+
+==================================================
+9. REQUIRED ACCEPTANCE
+==================================================
+
+The required result is:
+
+PAGE 14:
+PASS 1 valid blocks > 0
+
+PAGE 15:
+PASS 1 valid blocks > 0
+
+THEN:
+
+SOURCE VERIFICATION: PASS
+
+THEN:
+
+PASS 2 REACHED: YES
+
+If mapping completes, also report only:
+
+- Topic count
+- MicroNode count
+- exercise count
+- Additional/unassigned exercise count
+- atomicity validation status
+
+Do not tune the resulting mapping in this task.
+
+We will manually review it afterward.
+
+==================================================
+10. IF CURRENT MODEL IS THE BLOCKER
+==================================================
+
+If evidence confirms that:
+
+deepseek/deepseek-chat-v3-0324
+
+cannot reliably satisfy the Pass 1 structured-output contract through
+the current OpenRouter path:
+
+DO NOT spend more time building workarounds around malformed output.
+
+Use a reliable structured-output-capable model for PASS 1 ONLY.
+
+Keep the model selection explicit and isolated.
+
+Do not change models globally.
+
+Then run the synthetic gate again before the real lesson.
+
+The goal is a reliable extraction pipeline, not loyalty to a specific
+Pass 1 model.
+
+==================================================
+11. STOP RULE
+==================================================
+
+Do not create another long chain of C1 improvements.
+
+This task should end in one of two states.
+
+SUCCESS:
+
+PASS 1 RELIABLE
+SOURCE VERIFICATION PASS
+PASS 2 REACHED
+
+OR, only if an external provider limitation makes completion impossible:
+
+PASS 1 PROVIDER BLOCKED
+
+with the exact external blocker.
+
+Do not start another unrelated fix.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. PASS 1 FIX
+   - what was changed
+
+2. PASS 1 MODEL
+   - final model/provider used
+   - whether model changed for Pass 1
+
+3. SYNTHETIC GATE
+   - cases tested
+   - pass/fail
+
+4. REGRESSIONS
+   - relevant suites and results
+
+5. REAL LESSON
+
+Report:
+
+PAGE 14 PASS 1 BLOCKS: N
+PAGE 15 PASS 1 BLOCKS: N
+
+SOURCE VERIFICATION: PASS / FAIL
+
+PASS 2 REACHED: YES / NO
+
+If completed:
+
+TOPICS: N
+MICRONODES: N
+EXERCISES: N
+ADDITIONAL EXERCISES: N
+ATOMICITY: PASS / FAIL
+
+6. TASK #124
+   - confirm atomic MicroNode logic was not redesigned
+
+7. VERDICT
+
+Exactly one:
+
+PASS 1 FIXED — REAL LESSON REACHED PASS 2
+
+or
+
+PASS 1 PROVIDER BLOCKED
+
+==================================================
+AFTER SUCCESS
+==================================================
+
+STOP.
+
+Do not improve anything else.
+
+Do not start Package 1D.
+
+Do not freeze C1.
+
+We will manually inspect the resulting real mapping and then move to the
+next planned phase.

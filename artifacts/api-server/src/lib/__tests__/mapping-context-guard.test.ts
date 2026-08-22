@@ -94,6 +94,7 @@ function fakePass1Client(contents: string[]): { client: Pass1CompletionClient; g
   const { userPrompt, diagnostics } = buildPass1TextRequest(mappingInput(source));
   assert.equal(userPrompt.split(source).length - 1, 1, "lesson source appears exactly once");
   assert.equal(diagnostics.components.lessonSourceChars, source.length);
+  assert.equal(diagnostics.model, "openai/gpt-5.4-mini");
   assert.equal(diagnostics.components.confirmedGoalChars, 0);
   assert.equal(diagnostics.components.confirmedOutcomeChars, 0);
   assert.equal(diagnostics.components.existingMappingChars, 0);

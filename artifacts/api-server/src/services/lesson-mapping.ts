@@ -230,6 +230,10 @@ export function normalizeActivityPlacements(
 }
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
+// Pass 1 is an extraction boundary and needs predictable structured-output
+// adherence. Keep this model selection isolated; unrelated mapping/runtime
+// stages continue using their existing model constants.
+const PASS1_TEXT_MODEL = "openai/gpt-5.4-mini";
 export const PASS1_CONTEXT_WINDOW_TOKENS = 163_840;
 export const PASS1_MAX_OUTPUT_TOKENS = 8_000;
 // Armenian textbook text tokenizes more densely than English. This deliberately
@@ -645,7 +649,7 @@ export function buildPass1TextRequest(input: LessonMappingInput): {
     userPrompt,
     diagnostics: {
       stage: "pass1-text",
-      model: MODEL,
+      model: PASS1_TEXT_MODEL,
       contextWindowTokens: PASS1_CONTEXT_WINDOW_TOKENS,
       requestedOutputTokens: PASS1_MAX_OUTPUT_TOKENS,
       estimatedInputTokens,
@@ -1207,7 +1211,7 @@ function logPass1ResponseShape(
   logger.info({
     pass1ProviderResponse: {
       attempt,
-      model: MODEL,
+      model: PASS1_TEXT_MODEL,
       requestMode: "chat.completions",
       structuredOutputMode: "json_schema.strict",
       finishReason: response.choices[0]?.finish_reason ?? null,
@@ -1252,7 +1256,7 @@ export async function extractBlocksWithAI(
   }
   const client = options.completionClient ?? (openrouter as unknown as Pass1CompletionClient);
   const request = {
-    model: MODEL,
+    model: PASS1_TEXT_MODEL,
     max_tokens: PASS1_MAX_OUTPUT_TOKENS,
     temperature: 0,
     response_format: { type: "json_schema", json_schema: PASS1_RESPONSE_JSON_SCHEMA },
@@ -1285,7 +1289,7 @@ export async function extractBlocksWithAI(
     // the retry past the original context budget without adding source evidence.
     assertPass1ContextBudget(buildPass1RetryDiagnostics(diagnostics, retryInstruction));
     const r2 = await client.chat.completions.create({
-      model: MODEL,
+      model: PASS1_TEXT_MODEL,
       max_tokens: PASS1_MAX_OUTPUT_TOKENS,
       temperature: 0,
       response_format: { type: "json_schema", json_schema: PASS1_RESPONSE_JSON_SCHEMA },
