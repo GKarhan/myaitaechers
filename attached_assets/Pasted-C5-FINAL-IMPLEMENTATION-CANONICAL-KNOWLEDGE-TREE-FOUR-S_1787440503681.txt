@@ -1,0 +1,1151 @@
+C5 — FINAL IMPLEMENTATION
+CANONICAL KNOWLEDGE TREE FOUR-STATE CLASSIFIER
+C2 TARGET + C3 EVIDENCE + C4 DEMONSTRATED CEILING
+
+EXECUTE THIS IMPLEMENTATION NOW.
+
+This is the FINAL C5 implementation task.
+
+Do NOT perform another broad architecture audit.
+Do NOT redesign C1–C4.
+Do NOT start C6 Personalization.
+Do NOT start C7 AI Teacher runtime redesign.
+Do NOT redesign quizzes.
+Do NOT redesign scoring/mastery/confidence.
+Do NOT modify lesson mapping.
+
+Implement the smallest safe change required to make Knowledge Tree
+trustworthy under the already accepted C1–C4 architecture.
+
+════════════════════════════════════════════════════
+0. ACCEPTED ARCHITECTURE — DO NOT REDEFINE
+════════════════════════════════════════════════════
+
+C1:
+Subject → Lesson → Topic → atomic MicroNode.
+
+C2:
+Each MicroNode may have an accepted ordered Cognitive Path containing:
+- Cognitive Level IDs
+- sequence/order
+- curriculum target Cognitive Level
+- minimumIndependentEvidence
+- performance objectives
+- success criteria
+
+C3:
+Canonical evidence contains trustworthy:
+- learner
+- MicroNode
+- Cognitive Level
+- task identity
+- correctness
+- qualification
+- assistance
+- evidence quality
+
+C4:
+ONE canonical shared learner cognitive-ceiling projector already exists.
+
+It persists trustworthy learner × MicroNode state including:
+
+- demonstrated_cognitive_level_id
+- demonstrated cognitive level compatibility snapshot/name
+- update timestamp/context
+
+C4 already enforces:
+
+- C3-qualified evidence
+- Cognitive-Level-ID based evaluation
+- minimumIndependentEvidence
+- accepted C2 path order
+- contiguous progression
+- monotonic ceiling
+- shared Chat + Quiz projection
+
+DO NOT recreate any of this logic in C5.
+
+C5 MUST CONSUME C4.
+
+════════════════════════════════════════════════════
+1. CURRENT C5 PROBLEM — CONFIRMED BY AUDIT
+════════════════════════════════════════════════════
+
+Current Knowledge Tree still classifies primarily using:
+
+mastery_score
+confidence_score
+due/review state
+getMasteryLevelFromScores()
+
+This is no longer sufficient as the canonical knowledge-state classifier.
+
+Confirmed problems:
+
+1. MASTERED can be returned without demonstrating the C2 curriculum target.
+
+2. PARTIAL does not preserve actual cognitive depth.
+
+3. NOT_STUDIED currently approximates:
+   no knowledge_nodes row
+   OR null scores.
+
+   That is NOT equivalent to:
+   learner never meaningfully studied/attempted the MicroNode.
+
+4. Attempted-but-insufficiently-known is not reliably distinguished
+   from never studied.
+
+5. KT does not consume:
+   C2 target Cognitive Level ID
+   +
+   C4 demonstrated Cognitive Level ID.
+
+6. There is no ONE canonical backend four-state classifier.
+
+Fix these issues now.
+
+════════════════════════════════════════════════════
+2. REQUIRED CANONICAL FOUR STATES
+════════════════════════════════════════════════════
+
+Every visible approved learner × MicroNode must resolve to exactly ONE:
+
+MASTERED
+→ Գիտի
+
+PARTIAL
+→ Մասնակի գիտի
+
+NOT_KNOWN
+→ Չգիտի
+
+NOT_STUDIED
+→ Դեռ չի ուսումնասիրել
+
+The backend must be authoritative.
+
+Frontend MUST NOT independently reproduce the classification algorithm.
+
+════════════════════════════════════════════════════
+3. IMPLEMENT ONE CANONICAL BACKEND CLASSIFIER
+════════════════════════════════════════════════════
+
+Create/reuse the smallest appropriate backend module/function for:
+
+classifyLearnerMicroNodeKnowledgeState(...)
+
+Exact naming may follow project conventions.
+
+Do not create parallel classifiers in multiple routes.
+
+The classifier must consume canonical existing data.
+
+Minimum inputs/concepts:
+
+- MicroNode identity
+- accepted C2 Cognitive Path
+- C2 target Cognitive Level ID
+- C4 demonstrated Cognitive Level ID
+- meaningful learner attempt/coverage signal
+- mastery/confidence only as supporting compatibility metrics
+
+The classifier must return a stable canonical result usable by:
+
+- KT tree route
+- KT subject summary/counts
+- KT MicroNode detail
+- future consumers
+
+Prefer one shared function/service.
+
+════════════════════════════════════════════════════
+4. CANONICAL CLASSIFICATION RULE
+════════════════════════════════════════════════════
+
+Implement this rule unless actual schema constraints require the
+smallest equivalent safe adaptation.
+
+────────────────────────────────────────
+A. NOT_STUDIED — Դեռ չի ուսումնասիրել
+────────────────────────────────────────
+
+Meaning:
+
+There is NO meaningful learner attempt/interaction/evidence for this
+MicroNode.
+
+Do NOT define NOT_STUDIED merely as:
+
+knowledge_nodes row absent
+
+or:
+
+mastery_score == null && confidence_score == null.
+
+A learner may have attempted the MicroNode and still have no score.
+
+────────────────────────────────────────
+B. NOT_KNOWN — Չգիտի
+────────────────────────────────────────
+
+Meaning:
+
+A meaningful learner attempt exists,
+
+BUT
+
+no accepted Cognitive Level has been sufficiently demonstrated by C4.
+
+Typical canonical condition:
+
+meaningfulAttempt == true
+AND
+demonstrated_cognitive_level_id == null
+
+This state means:
+
+studied/attempted
+but insufficient knowledge demonstrated.
+
+────────────────────────────────────────
+C. PARTIAL — Մասնակի գիտի
+────────────────────────────────────────
+
+Meaning:
+
+C4 has a valid demonstrated Cognitive Level,
+
+BUT
+
+the learner has not yet reached the MicroNode's C2 curriculum target.
+
+Compare using the ACCEPTED C2 PATH ORDER.
+
+Do NOT compare raw Bloom numbers blindly.
+
+Example:
+
+Accepted path:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY
+→ ANALYZE(target)
+
+Demonstrated = UNDERSTAND
+
+Result:
+
+PARTIAL
+
+Demonstrated = APPLY
+
+Result:
+
+PARTIAL
+
+But preserve the demonstrated ID so these two learner states remain
+cognitively distinguishable even though both render as:
+
+Մասնակի գիտի
+
+────────────────────────────────────────
+D. MASTERED — Գիտի
+────────────────────────────────────────
+
+Meaning:
+
+C4 demonstrated ceiling has reached the MicroNode's C2 curriculum target.
+
+Use accepted C2 path identity/order.
+
+Canonical condition conceptually:
+
+demonstrated path position >= target path position
+
+Because C4 is contiguous and monotonic, reaching target means the
+required accepted path through target has been demonstrated.
+
+MASTERED MUST NOT be granted merely because:
+
+mastery >= 80
+confidence >= 50
+
+or another legacy score threshold passes.
+
+════════════════════════════════════════════════════
+5. C2 PATH SAFETY
+════════════════════════════════════════════════════
+
+DO NOT assume Cognitive Paths always start at REMEMBER.
+
+DO NOT compare raw Bloom numeric values as the authoritative rule.
+
+Use accepted C2 Cognitive Path:
+
+- Cognitive Level IDs
+- sequence/order
+- target designation
+
+If target and demonstrated IDs belong to the accepted path:
+
+compare their path positions.
+
+If demonstrated == target:
+
+MASTERED.
+
+If demonstrated precedes target:
+
+PARTIAL.
+
+If C4 demonstrated is null but meaningful attempt exists:
+
+NOT_KNOWN.
+
+If no meaningful attempt exists:
+
+NOT_STUDIED.
+
+════════════════════════════════════════════════════
+6. MISSING / INVALID C2 PATH — FAIL SAFE
+════════════════════════════════════════════════════
+
+Do NOT fabricate MASTERED/PARTIAL when an approved MicroNode lacks a
+usable accepted C2 path or target.
+
+Inspect existing C2 validation/state conventions and use the smallest
+safe behavior.
+
+Requirements:
+
+- no fake Bloom numeric fallback
+- no arbitrary target inference
+- no mastery/confidence override creating canonical MASTERED
+- expose enough diagnostic metadata to identify the curriculum-state problem
+
+Prefer a safe unresolved/diagnostic internal condition while preserving
+the public four-state contract only where classification is actually
+supported.
+
+If the current approved curriculum guarantees valid accepted C2 paths,
+assert/test that prerequisite.
+
+Do not redesign C2.
+
+════════════════════════════════════════════════════
+7. IMPLEMENT MEANINGFUL COVERAGE / ATTEMPT RESOLUTION
+════════════════════════════════════════════════════
+
+We must reliably distinguish:
+
+NEVER STUDIED
+
+from
+
+ATTEMPTED BUT NOT KNOWN.
+
+Implement the smallest shared resolver needed.
+
+Conceptually:
+
+hasMeaningfulLearnerAttempt(userId, lessonNodeId)
+
+Use existing data wherever possible.
+
+Meaningful attempt may include:
+
+1. canonical C3 Chat answer evidence for this MicroNode
+2. canonical C3 Quiz answer evidence for this MicroNode
+3. other actual learner answer/attempt evidence already tied reliably
+   to this MicroNode
+4. legacy learner evidence ONLY when it can safely establish that the
+   learner attempted this MicroNode
+
+IMPORTANT:
+
+Legacy evidence may establish:
+
+STUDIED / attempted
+
+but MUST NOT establish:
+
+demonstrated Cognitive Level
+PARTIAL
+MASTERED
+
+unless C4 has already accepted/projected it under C3/C4 rules.
+
+Ungraded/incorrect evidence may still prove:
+
+the learner attempted the MicroNode.
+
+It does NOT prove knowledge.
+
+Do not count unrelated lesson-level events, system messages,
+teacher messages, passive page views, or ambiguous evidence as a
+meaningful MicroNode attempt.
+
+Keep this resolver deterministic.
+
+No AI call.
+
+════════════════════════════════════════════════════
+8. COVERAGE AND KNOWLEDGE ARE DIFFERENT DIMENSIONS
+════════════════════════════════════════════════════
+
+Expose/derive coverage separately.
+
+At minimum:
+
+coverageState:
+STUDIED
+NOT_STUDIED
+
+knowledgeState:
+MASTERED
+PARTIAL
+NOT_KNOWN
+NOT_STUDIED
+
+Expected relationship:
+
+NOT_STUDIED
+→ coverage = NOT_STUDIED
+
+NOT_KNOWN
+→ coverage = STUDIED
+
+PARTIAL
+→ coverage = STUDIED
+
+MASTERED
+→ coverage = STUDIED
+
+Do not use mastery=0 as a proxy for NOT_STUDIED.
+
+════════════════════════════════════════════════════
+9. MASTERY / CONFIDENCE — KEEP BUT DEMOTE
+════════════════════════════════════════════════════
+
+DO NOT delete:
+
+- mastery_score
+- confidence_score
+- scoring.ts
+- existing quiz scoring
+- review scheduling
+- compatibility status fields
+
+They remain useful.
+
+But for the canonical C5 four-state Knowledge Tree classifier:
+
+C2 target
++
+C3 evidence
++
+C4 demonstrated ceiling
++
+meaningful coverage
+
+are authoritative.
+
+mastery/confidence are SUPPORTING METRICS.
+
+They MUST NOT override contradictory canonical cognitive state.
+
+Examples:
+
+mastery=90
+confidence=90
+C4 demonstrated < C2 target
+
+→ NOT MASTERED
+→ PARTIAL
+
+mastery=90
+confidence=90
+C4 demonstrated=null
+meaningful attempt=true
+
+→ NOT_KNOWN
+
+C4 demonstrated == target
+mastery=60
+
+→ MASTERED for canonical KT knowledge state
+
+while mastery=60 may still be returned/displayed as supporting metric.
+
+Do NOT rewrite the scoring engine in C5.
+
+════════════════════════════════════════════════════
+10. KNOWLEDGE TREE API CONTRACT
+════════════════════════════════════════════════════
+
+Update the canonical KT API response so each MicroNode can expose at
+least:
+
+lessonNodeId
+
+knowledgeState:
+MASTERED | PARTIAL | NOT_KNOWN | NOT_STUDIED
+
+coverageState:
+STUDIED | NOT_STUDIED
+
+targetCognitiveLevel:
+- id
+- name/label if available
+- path sequence/order if useful
+
+demonstratedCognitiveLevel:
+- id
+- name/label if available
+- path sequence/order if useful
+- null when none demonstrated
+
+remainingGap:
+small deterministic metadata derived from accepted C2 path.
+
+At minimum it should allow the system to distinguish:
+
+Target = ANALYZE
+Demonstrated = UNDERSTAND
+
+from:
+
+Target = ANALYZE
+Demonstrated = APPLY.
+
+Also retain supporting:
+
+masteryScore
+confidenceScore
+
+where currently available.
+
+Do not expose unnecessary C3 raw evidence payloads.
+
+A small attempt/evidence summary is acceptable if useful.
+
+════════════════════════════════════════════════════
+11. REMAINING COGNITIVE GAP
+════════════════════════════════════════════════════
+
+Do NOT build C6 personalization.
+
+But expose enough deterministic C2/C4 data for C6 later.
+
+Example:
+
+Accepted path:
+
+REMEMBER
+UNDERSTAND
+APPLY
+ANALYZE
+
+Target = ANALYZE
+Demonstrated = UNDERSTAND
+
+remainingGap may represent:
+
+APPLY
+ANALYZE
+
+Use IDs/order from the accepted path.
+
+Do not generate instructional recommendations here.
+
+C5 only exposes learner state.
+
+════════════════════════════════════════════════════
+12. HIERARCHY + COUNTS
+════════════════════════════════════════════════════
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+Student-facing:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+All four-state counts MUST use the SAME canonical backend classifier.
+
+No separate mastery-threshold count logic.
+
+For every applicable hierarchy level expose/count:
+
+MASTERED
+PARTIAL
+NOT_KNOWN
+NOT_STUDIED
+TOTAL
+
+Requirements:
+
+MASTERED + PARTIAL + NOT_KNOWN + NOT_STUDIED == TOTAL
+
+for the same visible node scope.
+
+Atomic MicroNodes must be counted exactly once.
+
+Topic-less nodes remain in existing ungrouped handling.
+
+Do not redesign the hierarchy.
+
+Do not solve zero-node curriculum presentation unless required to keep
+existing behavior correct.
+
+════════════════════════════════════════════════════
+13. FRONTEND
+════════════════════════════════════════════════════
+
+Keep the existing four Armenian user-facing blocks:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Frontend should render backend canonical knowledgeState.
+
+Remove/bypass duplicated frontend state derivation if any exists.
+
+Do NOT create a new complex UI.
+
+Preserve existing tree/detail design as much as possible.
+
+In MicroNode detail, if easy and consistent with current UI, expose:
+
+Թիրախային մակարդակ
+Հաստատված մակարդակ
+
+and optionally a compact remaining-gap representation.
+
+But this visual addition is secondary.
+
+Correct classification is mandatory.
+
+Do NOT implement C6 action-selection logic.
+
+Do NOT implement C7 AI Teacher runtime behavior.
+
+════════════════════════════════════════════════════
+14. ACTION BUTTONS — KEEP C6/C7 OUT
+════════════════════════════════════════════════════
+
+The approved conceptual mapping remains:
+
+Գիտի
+→ Կրկնություն
+
+Մասնակի գիտի
+→ Սովորել
+
+Չգիտի
+→ Լիարժեք սովորել
+
+Դեռ չի ուսումնասիրել
+→ Սովորել նախնական
+
+BUT:
+
+C5 does NOT need to implement the personalization decision engine.
+
+C5 does NOT need to redesign AI Teacher launch modes.
+
+If current recommendation labels already exist, keep them compatible.
+
+Do not expand scope.
+
+C6 will own next-action selection.
+
+C7 will own AI Teacher runtime behavior.
+
+════════════════════════════════════════════════════
+15. REFRESH / CACHE CONSISTENCY
+════════════════════════════════════════════════════
+
+Fix the small C5 refresh issue found by audit.
+
+After relevant Chat/Quiz completion and canonical learner-state update,
+Knowledge Tree data must not remain indefinitely stale.
+
+Use the smallest existing React Query mechanism:
+
+invalidate/refetch the relevant existing keys such as:
+
+- KT subject summaries
+- Knowledge Tree subject/tree
+- node detail
+
+Do NOT create a new event bus.
+
+Do NOT create realtime infrastructure.
+
+Do NOT create websocket infrastructure.
+
+Preserve existing async scoring behavior.
+
+C4 canonical state should become visible after normal query refresh.
+
+════════════════════════════════════════════════════
+16. LEGACY PROGRESS ENDPOINTS
+════════════════════════════════════════════════════
+
+Audit found conflicting legacy progress semantics.
+
+Do NOT broadly rewrite unrelated progress architecture.
+
+But ensure canonical Knowledge Tree routes use the new shared classifier.
+
+If legacy endpoints are still used by the current KT frontend:
+
+adapt them minimally or route them through the shared classifier.
+
+If they are not used by KT:
+
+leave them intact and document them as compatibility/legacy.
+
+Do not create two competing canonical classifiers.
+
+════════════════════════════════════════════════════
+17. DATA / SCHEMA POLICY
+════════════════════════════════════════════════════
+
+Prefer NO migration if current schema can support C5.
+
+Existing important data already includes:
+
+knowledge_nodes:
+- lesson_node_id
+- demonstrated_cognitive_level_id
+- mastery/confidence
+
+lesson_node_cognitive_levels:
+- accepted path
+- target
+- sequence
+- minimumIndependentEvidence
+
+evidence_events:
+- learner
+- lesson node
+- cognitive level
+- correctness
+- qualification
+- task identity
+- quality
+
+Use existing data.
+
+Only add schema if absolutely impossible otherwise.
+
+If schema change is required:
+
+STOP before migration and explain why.
+
+Do not casually add duplicate learner-state columns.
+
+════════════════════════════════════════════════════
+18. REGRESSION TESTS — REQUIRED
+════════════════════════════════════════════════════
+
+Add focused provider-free tests for the shared C5 classifier.
+
+At minimum test:
+
+CASE 1 — NEVER STUDIED
+
+No meaningful attempt.
+No demonstrated level.
+
+Expected:
+NOT_STUDIED
+coverage NOT_STUDIED.
+
+────────────────────────────────────────
+
+CASE 2 — ATTEMPTED, ALL WRONG / NO DEMONSTRATED LEVEL
+
+Meaningful attempt exists.
+C4 demonstrated level = null.
+
+Expected:
+NOT_KNOWN
+coverage STUDIED.
+
+────────────────────────────────────────
+
+CASE 3 — PARTIAL AT FIRST ACCEPTED LEVEL
+
+Target = ANALYZE.
+Demonstrated = UNDERSTAND.
+
+Expected:
+PARTIAL.
+
+────────────────────────────────────────
+
+CASE 4 — PARTIAL AT HIGHER LEVEL
+
+Target = ANALYZE.
+Demonstrated = APPLY.
+
+Expected:
+PARTIAL.
+
+Ensure demonstrated IDs remain different from CASE 3.
+
+────────────────────────────────────────
+
+CASE 5 — MASTERED
+
+Target = ANALYZE.
+Demonstrated = ANALYZE.
+
+Expected:
+MASTERED.
+
+────────────────────────────────────────
+
+CASE 6 — LEGACY HIGH SCORE MUST NOT OVERRIDE C4
+
+mastery = 100
+confidence = 100
+meaningful attempt = true
+C4 demonstrated = UNDERSTAND
+target = ANALYZE
+
+Expected:
+PARTIAL
+NOT MASTERED.
+
+────────────────────────────────────────
+
+CASE 7 — LOW SCORE MUST NOT OVERRIDE TARGET DEMONSTRATION
+
+mastery = 60
+C4 demonstrated = target
+
+Expected:
+MASTERED canonical KT state.
+
+────────────────────────────────────────
+
+CASE 8 — ATTEMPT EVIDENCE WITHOUT SCORE
+
+Meaningful MicroNode answer exists.
+mastery/confidence null.
+C4 demonstrated null.
+
+Expected:
+NOT_KNOWN
+NOT NOT_STUDIED.
+
+────────────────────────────────────────
+
+CASE 9 — LEGACY EVIDENCE AS COVERAGE ONLY
+
+Reliable legacy MicroNode attempt exists,
+but no C4-qualified demonstrated level.
+
+Expected:
+STUDIED + NOT_KNOWN.
+
+Legacy evidence must NOT establish PARTIAL/MASTERED.
+
+────────────────────────────────────────
+
+CASE 10 — PATH STARTS ABOVE REMEMBER
+
+Accepted path:
+UNDERSTAND → APPLY → ANALYZE
+
+Target = ANALYZE
+Demonstrated = APPLY
+
+Expected:
+PARTIAL.
+
+No REMEMBER assumption.
+
+────────────────────────────────────────
+
+CASE 11 — COUNTS
+
+Create a synthetic hierarchy with:
+
+1 MASTERED
+1 PARTIAL
+1 NOT_KNOWN
+1 NOT_STUDIED
+
+Expected:
+total = 4
+all category counts = 1
+sum = total.
+
+────────────────────────────────────────
+
+CASE 12 — MISSING C2 TARGET/PATH
+
+Verify safe behavior.
+
+Must NOT fabricate MASTERED using mastery/confidence.
+
+────────────────────────────────────────
+
+CASE 13 — CHAT/QUIZ PARITY
+
+Equivalent C4 learner state produced through Chat or Quiz must classify
+identically in KT.
+
+════════════════════════════════════════════════════
+19. EXISTING REGRESSION GATES
+════════════════════════════════════════════════════
+
+Run the relevant existing suites for:
+
+C2
+C3
+C4
+Knowledge Tree
+Quiz/scoring compatibility
+Chat learner-state compatibility
+
+Do not weaken existing tests merely to make C5 pass.
+
+If an existing test asserts old mastery-based KT semantics:
+
+determine whether it is:
+
+A) legitimately obsolete because C5 intentionally changes canonical KT
+classification
+
+or
+
+B) detecting an unintended regression.
+
+Update only A.
+
+Document every intentionally updated expectation.
+
+Run:
+
+API typecheck
+Web typecheck
+API build
+Web production build
+
+Use the required environment variables for the existing Vite build
+rather than treating missing PORT as a code failure.
+
+════════════════════════════════════════════════════
+20. DEVELOPMENT DB ACCEPTANCE TRACE
+════════════════════════════════════════════════════
+
+After provider-free tests pass, perform READ-ONLY development DB
+verification first.
+
+Find existing suitable learner/MicroNode data if available.
+
+Do NOT fabricate production data.
+
+Do NOT modify lesson 644.
+
+If complete existing data is available, trace:
+
+learner
+→ MicroNode
+→ C2 accepted target
+→ meaningful attempt
+→ C4 demonstrated level
+→ C5 classification
+→ KT API representation.
+
+If no complete real learner row exists:
+
+do NOT create fake production evidence merely to satisfy this trace.
+
+Use:
+- deterministic tests,
+- route-level tests,
+- existing partial DB evidence,
+
+and explicitly report that real DB acceptance data was unavailable.
+
+A missing real fixture is not permission to mutate curriculum/student
+data.
+
+════════════════════════════════════════════════════
+21. FINAL C5 ACCEPTANCE CRITERIA
+════════════════════════════════════════════════════
+
+C5 is COMPLETE only if all are true:
+
+[ ] ONE shared backend four-state classifier exists.
+
+[ ] KT no longer uses mastery/confidence as the authoritative canonical
+    four-state classifier.
+
+[ ] MASTERED requires C4 demonstrated ceiling to reach C2 target.
+
+[ ] PARTIAL means demonstrated ceiling exists below target.
+
+[ ] NOT_KNOWN means meaningful attempt exists but no accepted level is
+    sufficiently demonstrated.
+
+[ ] NOT_STUDIED means no meaningful attempt exists.
+
+[ ] Legacy evidence may establish coverage only where safely attributable.
+
+[ ] C2 accepted path order is used instead of blind Bloom numeric
+    comparison.
+
+[ ] KT API exposes target and demonstrated Cognitive Level identity.
+
+[ ] Cognitive depth is preserved even when multiple levels display as
+    PARTIAL.
+
+[ ] Hierarchy counts use the same canonical classifier.
+
+[ ] Four-state counts sum exactly to total MicroNodes in scope.
+
+[ ] Frontend renders backend canonical state.
+
+[ ] mastery/confidence remain available as supporting metrics.
+
+[ ] Existing scoring behavior is not unnecessarily rewritten.
+
+[ ] KT refresh/cache issue is minimally fixed.
+
+[ ] C2/C3/C4 regressions remain green.
+
+[ ] C5 focused tests pass.
+
+[ ] Typechecks pass.
+
+[ ] Builds pass.
+
+[ ] No C6 personalization implementation was added.
+
+[ ] No C7 AI Teacher runtime redesign was added.
+
+════════════════════════════════════════════════════
+22. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. IMPLEMENTED FILES
+
+For each changed file:
+- path
+- exact purpose
+
+B. CANONICAL CLASSIFIER
+
+Show:
+- inputs
+- classification rule
+- C2 path comparison method
+- output contract
+
+C. MEANINGFUL ATTEMPT RESOLVER
+
+Explain:
+- which evidence counts
+- which evidence does not count
+- legacy behavior
+
+D. API CHANGES
+
+Show the final KT MicroNode response shape.
+
+E. FRONTEND CHANGES
+
+Show how the four Armenian states are rendered.
+
+F. COUNTS / HIERARCHY
+
+Show that:
+MASTERED + PARTIAL + NOT_KNOWN + NOT_STUDIED = TOTAL.
+
+G. MASTERY / CONFIDENCE COMPATIBILITY
+
+Confirm they remain supporting metrics and do not override C4.
+
+H. REFRESH FIX
+
+Explain the minimal query invalidation/refetch behavior.
+
+I. TEST RESULTS
+
+Report:
+- C5 focused tests
+- C4
+- C3
+- C2
+- KT regressions
+- Quiz/scoring regressions
+- Chat regressions
+- API typecheck
+- Web typecheck
+- API build
+- Web build
+
+J. DEVELOPMENT DB TRACE
+
+Report actual available evidence only.
+
+K. SCOPE CHECK
+
+Explicitly confirm:
+
+- C1 unchanged
+- C2 architecture unchanged
+- C3 architecture unchanged
+- C4 projector unchanged except shared consumption if necessary
+- scoring engine not redesigned
+- quiz flow not redesigned
+- C6 not implemented
+- C7 not implemented
+- lesson 644 not modified
+
+L. FINAL VERDICT
+
+Return exactly one:
+
+C5 COMPLETE — CANONICAL FOUR-STATE KNOWLEDGE TREE VERIFIED
+
+or
+
+C5 BLOCKED — <smallest exact remaining blocker>
+
+════════════════════════════════════════════════════
+STOP CONDITION
+════════════════════════════════════════════════════
+
+If C5 acceptance passes:
+
+STOP.
+
+Do NOT automatically begin C6.
+
+Do NOT automatically begin C7.
+
+Do NOT add optional enhancements.
+
+We will review the C5 result before continuing.
