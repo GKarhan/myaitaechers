@@ -9,6 +9,9 @@
 export interface CreateLessonNodeInput {
   title: string;
   theoryContent?: string;
+  topicId?: number | null;
+  learningObjective?: string;
+  status?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
 }

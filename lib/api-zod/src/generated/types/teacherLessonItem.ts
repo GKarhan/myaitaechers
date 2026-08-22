@@ -22,7 +22,8 @@ export interface TeacherLessonItem {
   textbookAuthor?: string | null;
   textbookTitle?: string | null;
   chapterTitle?: string | null;
-  paragraphNumber?: string | null;
+  paragraphNumber?: string;
+  textbookResourceId?: number | null;
   status: string;
   assignedAt?: Date | null;
   completedAt?: Date | null;

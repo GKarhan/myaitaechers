@@ -11,6 +11,7 @@ export interface ClassItem {
   name: string;
   grade: string;
   teacherId: number;
+  subjectIds?: number[];
   teacherName?: string;
   createdAt: Date;
 }

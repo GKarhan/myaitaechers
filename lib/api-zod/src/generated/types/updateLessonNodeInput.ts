@@ -9,6 +9,15 @@
 export interface UpdateLessonNodeInput {
   title?: string;
   theoryContent?: string;
+  verbatimTheoryAnchor?: string | null;
+  learningObjective?: string;
+  commonMisconception?: string | null;
+  childFriendlyExplanation?: string | null;
+  basicExamples?: string[];
+  nonExamples?: string[];
+  realLifeExamples?: string[];
+  topicId?: number | null;
+  status?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
 }

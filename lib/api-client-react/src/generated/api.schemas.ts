@@ -34,6 +34,7 @@ export interface ClassItem {
   name: string;
   grade: string;
   teacherId: number;
+  subjectIds?: number[];
   teacherName?: string;
   createdAt: string;
 }
@@ -78,6 +79,7 @@ export interface CreateClassInput {
   name: string;
   grade?: string;
   teacherId: number;
+  subjectIds?: number[];
 }
 
 export interface CreateStudentInput {
@@ -112,6 +114,7 @@ export interface UpdateClassInput {
   name?: string;
   grade?: string;
   teacherId?: number;
+  subjectIds?: number[];
 }
 
 export interface ScheduleItem {
@@ -141,6 +144,7 @@ export interface CourseItem {
   teacherId?: number | null;
   name: string;
   description?: string;
+  subjectId?: number;
   lessonCount?: number;
   createdAt: string;
 }
@@ -148,6 +152,7 @@ export interface CourseItem {
 export interface CreateCourseInput {
   name: string;
   description?: string;
+  subjectId?: number;
 }
 
 export interface ResourceItem {
@@ -209,7 +214,8 @@ export interface TeacherLessonItem {
   textbookAuthor?: string | null;
   textbookTitle?: string | null;
   chapterTitle?: string | null;
-  paragraphNumber?: string | null;
+  paragraphNumber?: string;
+  textbookResourceId?: number | null;
   status: string;
   assignedAt?: string | null;
   completedAt?: string | null;
@@ -220,6 +226,8 @@ export interface CreateTeacherLessonInput {
   subjectId?: number;
   classId?: number;
   courseId?: number;
+  textbookResourceId?: number | null;
+  lessonGoal?: string;
   title: string;
   description?: string;
   bloomLevel?: number;
@@ -745,6 +753,8 @@ export interface UpdateLessonInput {
   month?: number;
   day?: number;
   courseId?: number;
+  textbookResourceId?: number | null;
+  lessonGoal?: string;
   textbookAuthor?: string | null;
   textbookTitle?: string | null;
   chapterTitle?: string | null;
@@ -846,6 +856,9 @@ export interface LessonNode {
   sequence: number;
   title: string;
   theoryContent?: string | null;
+  verbatimTheoryAnchor?: string | null;
+  learningObjective?: string | null;
+  status?: string;
   targetBloomLevel?: number | null;
   estimatedMinutes?: number | null;
 }
@@ -853,6 +866,9 @@ export interface LessonNode {
 export interface CreateLessonNodeInput {
   title: string;
   theoryContent?: string;
+  topicId?: number | null;
+  learningObjective?: string;
+  status?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
 }
@@ -860,6 +876,15 @@ export interface CreateLessonNodeInput {
 export interface UpdateLessonNodeInput {
   title?: string;
   theoryContent?: string;
+  verbatimTheoryAnchor?: string | null;
+  learningObjective?: string;
+  commonMisconception?: string | null;
+  childFriendlyExplanation?: string | null;
+  basicExamples?: string[];
+  nonExamples?: string[];
+  realLifeExamples?: string[];
+  topicId?: number | null;
+  status?: string;
   targetBloomLevel?: number;
   estimatedMinutes?: number;
 }

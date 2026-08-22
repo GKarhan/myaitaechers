@@ -56,7 +56,7 @@ export function useDeleteLessonExercise() {
   return useMutation({
     mutationKey: ["deleteLessonExercise"],
     mutationFn: ({ lessonId, exerciseId }: LessonExerciseInput) =>
-      customFetch(`/api/lessons/${lessonId}/exercises/${exerciseId}`, { method: "DELETE" }),
+      customFetch(`/api/lessons/${lessonId}/exercises/${exerciseId}/delete`, { method: "POST" }),
   });
 }
 
@@ -83,7 +83,7 @@ export function useDeleteLessonTopic() {
   return useMutation({
     mutationKey: ["deleteLessonTopic"],
     mutationFn: ({ lessonId, topicId }: LessonId & { topicId: number }) =>
-      customFetch(`/api/lessons/${lessonId}/topics/${topicId}`, { method: "DELETE" }),
+      customFetch(`/api/lessons/${lessonId}/topics/${topicId}/delete`, { method: "POST" }),
   });
 }
 

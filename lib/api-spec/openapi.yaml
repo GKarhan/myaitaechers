@@ -2640,6 +2640,10 @@ components:
           type: string
         teacherId:
           type: integer
+        subjectIds:
+          type: array
+          items:
+            type: integer
         teacherName:
           type: string
         createdAt:
@@ -2731,6 +2735,10 @@ components:
           type: string
         teacherId:
           type: integer
+        subjectIds:
+          type: array
+          items:
+            type: integer
 
     CreateStudentInput:
       type: object
@@ -2791,6 +2799,10 @@ components:
           type: string
         teacherId:
           type: integer
+        subjectIds:
+          type: array
+          items:
+            type: integer
 
     ScheduleItem:
       type: object
@@ -2848,6 +2860,8 @@ components:
           type: string
         description:
           type: string
+        subjectId:
+          type: integer
         lessonCount:
           type: integer
         createdAt:
@@ -2862,6 +2876,8 @@ components:
           type: string
         description:
           type: string
+        subjectId:
+          type: integer
 
     ResourceItem:
       type: object
@@ -3003,6 +3019,8 @@ components:
           nullable: true
         paragraphNumber:
           type: string
+        textbookResourceId:
+          type: integer
           nullable: true
         status:
           type: string
@@ -3028,6 +3046,11 @@ components:
           type: integer
         courseId:
           type: integer
+        textbookResourceId:
+          type: integer
+          nullable: true
+        lessonGoal:
+          type: string
         title:
           type: string
         description:
@@ -4034,6 +4057,11 @@ components:
           type: integer
         courseId:
           type: integer
+        textbookResourceId:
+          type: integer
+          nullable: true
+        lessonGoal:
+          type: string
         textbookAuthor:
           type: string
           nullable: true
@@ -4237,6 +4265,14 @@ components:
         theoryContent:
           type: string
           nullable: true
+        verbatimTheoryAnchor:
+          type: string
+          nullable: true
+        learningObjective:
+          type: string
+          nullable: true
+        status:
+          type: string
         targetBloomLevel:
           type: integer
           nullable: true
@@ -4252,6 +4288,13 @@ components:
           type: string
         theoryContent:
           type: string
+        topicId:
+          type: integer
+          nullable: true
+        learningObjective:
+          type: string
+        status:
+          type: string
         targetBloomLevel:
           type: integer
         estimatedMinutes:
@@ -4263,6 +4306,34 @@ components:
         title:
           type: string
         theoryContent:
+          type: string
+        verbatimTheoryAnchor:
+          type: string
+          nullable: true
+        learningObjective:
+          type: string
+        commonMisconception:
+          type: string
+          nullable: true
+        childFriendlyExplanation:
+          type: string
+          nullable: true
+        basicExamples:
+          type: array
+          items:
+            type: string
+        nonExamples:
+          type: array
+          items:
+            type: string
+        realLifeExamples:
+          type: array
+          items:
+            type: string
+        topicId:
+          type: integer
+          nullable: true
+        status:
           type: string
         targetBloomLevel:
           type: integer

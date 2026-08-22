@@ -12,6 +12,9 @@ export interface LessonNode {
   sequence: number;
   title: string;
   theoryContent?: string | null;
+  verbatimTheoryAnchor?: string | null;
+  learningObjective?: string | null;
+  status?: string;
   targetBloomLevel?: number | null;
   estimatedMinutes?: number | null;
 }

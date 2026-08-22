@@ -9,4 +9,5 @@
 export interface CreateCourseInput {
   name: string;
   description?: string;
+  subjectId?: number;
 }

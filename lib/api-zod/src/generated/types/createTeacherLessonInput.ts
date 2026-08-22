@@ -10,6 +10,8 @@ export interface CreateTeacherLessonInput {
   subjectId?: number;
   classId?: number;
   courseId?: number;
+  textbookResourceId?: number | null;
+  lessonGoal?: string;
   title: string;
   description?: string;
   bloomLevel?: number;

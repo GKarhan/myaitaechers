@@ -12,6 +12,7 @@ export interface CourseItem {
   teacherId?: number | null;
   name: string;
   description?: string;
+  subjectId?: number;
   lessonCount?: number;
   createdAt: Date;
 }
