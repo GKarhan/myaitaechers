@@ -1,0 +1,112 @@
+URGENT REGRESSION FIX — “ՍՈՎՈՐՈՂԻՆ ՀԱՆՁՆԱՐԱՐԵԼ” BUTTON IS INACTIVE
+
+We are pausing C6 briefly to fix one concrete existing workflow regression.
+
+CURRENT CONTEXT
+- Lesson 644: Մաթեմատիկա 5 / Բնական թվերի շարքը
+- Mapping exists.
+- MicroNodes exist.
+- Exercises exist and are approved.
+- Cognitive Paths exist/are approved for the relevant nodes.
+- A quiz/test also exists.
+- C1–C5 work must NOT be redesigned.
+
+PROBLEM
+The teacher-facing “Սովորողին հանձնարարել” / assign-to-student button is inactive/disabled or otherwise cannot be used.
+
+GOAL
+Restore the existing assignment workflow with the smallest correct fix.
+
+DO NOT redesign assignment UX.
+DO NOT redesign C1–C5.
+DO NOT change Knowledge Tree classification.
+DO NOT change scoring/mastery.
+DO NOT change AI Teacher.
+DO NOT weaken validation gates just to enable the button.
+
+STEP 1 — FORENSIC AUDIT FIRST
+
+Find the exact UI component that renders the assignment button.
+
+Trace:
+
+UI button
+→ disabled condition
+→ lesson/quiz readiness data
+→ frontend query/state
+→ assignment endpoint/hook
+→ backend validation
+→ DB persistence.
+
+Report the exact reason the button is currently inactive.
+
+Specifically inspect whether it depends on any stale/legacy field or readiness rule that changed during C1–C5, including things such as:
+- lesson status
+- final approval
+- mapping readiness
+- MicroNode approval
+- Cognitive Path readiness
+- exercise readiness
+- quiz existence/status
+- student/class selection
+- old mastery/Knowledge Tree fields
+- generated OpenAPI/client changes from C5
+- missing/renamed API response fields.
+
+Do not guess.
+
+STEP 2 — FIX ONLY THE ACTUAL ROOT CAUSE
+
+Once identified, make the smallest correct change necessary so a genuinely assignable lesson/test can be assigned.
+
+Important:
+Do NOT simply remove `disabled`.
+The button must still remain disabled when the real required prerequisites are missing.
+
+If the button uses an obsolete readiness condition, replace it with the current canonical condition rather than bypassing validation.
+
+STEP 3 — VERIFY THE FULL WORKFLOW
+
+Using the current development data, verify:
+
+1. Teacher can reach the relevant assignment UI.
+2. For a valid ready item, “Սովորողին հանձնարարել” is enabled.
+3. Clicking it opens/continues the existing assignment flow.
+4. Student/class selection works if part of the existing flow.
+5. Assignment request reaches the backend.
+6. Assignment persists in DB.
+7. Refresh does not lose the assignment.
+8. The assigned item becomes visible to the intended student through the existing student workflow.
+
+Also verify one negative case:
+an actually non-ready item must still NOT be assignable.
+
+If current data prevents a safe end-to-end write test, do not fabricate production-like learner evidence. Verify as far as possible and state exactly what remains unverified.
+
+STEP 4 — REGRESSION SAFETY
+
+Run the relevant:
+- frontend typecheck
+- backend typecheck
+- build
+- assignment-related tests
+- C5/Knowledge Tree regression if touched
+- quiz regression if quiz assignment is touched
+
+Do not modify unrelated code.
+
+FINAL REPORT — SHORT
+
+Return only:
+
+1. ROOT CAUSE
+2. FILES CHANGED
+3. EXACT FIX
+4. BUTTON ENABLED: YES/NO
+5. ASSIGNMENT PERSISTENCE VERIFIED: YES/NO
+6. STUDENT VISIBILITY VERIFIED: YES/NO
+7. REGRESSIONS: PASS/FAIL
+8. ANY REMAINING BLOCKER
+
+This is a narrow regression fix.
+Do not start C6 or any other roadmap work.
