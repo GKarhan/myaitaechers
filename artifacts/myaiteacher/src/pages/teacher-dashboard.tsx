@@ -3546,7 +3546,16 @@ function LessonGoalOutcomesPanel({
 
 type MappingAuditReport = {
   generatedAt?: string;
-  counts?: { pass1BlocksExtracted?: number; topicsCreated?: number; microNodesCreated?: number; exercisesCreated?: number };
+  counts?: {
+    providerBlocksExtracted?: number;
+    verifiedSourceBlocks?: number;
+    quarantinedSourceBlocks?: number;
+    pass1BlocksExtracted?: number;
+    pass2InputBlocks?: number;
+    topicsCreated?: number;
+    microNodesCreated?: number;
+    exercisesCreated?: number;
+  };
   quality?: {
     instructionalCoverage?: {
       valid: boolean;
@@ -3582,6 +3591,12 @@ type MappingAuditReport = {
         invalidBlockIndices: number[];
         invalidPageCount: number;
         unverifiableTextCount: number;
+      };
+      physicalPageProvenance?: {
+        providerBlockCount?: number;
+        verifiedBlockCount?: number;
+        quarantinedBlockCount?: number;
+        pass2InputBlockCount?: number;
       };
     };
     granularityConsolidation?: {
@@ -3623,6 +3638,7 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
   const alignment = report?.quality?.outcomeAlignmentAudit;
   const sourceSet = report?.quality?.sourceAudit?.sourceSet;
   const sourceScope = report?.quality?.sourceAudit?.sourceScope;
+  const sourceVerification = report?.quality?.sourceAudit?.physicalPageProvenance;
   const consolidation = report?.quality?.granularityConsolidation;
   const exerciseProvenance = report?.quality?.exerciseProvenance;
   const teachingContentReview = report?.quality?.teachingContentReview;
@@ -3667,7 +3683,14 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
                   : `⛔ ${coverage.unresolvedInstructionalIndices.length} ուսումնական հատված դեռ պատասխանատու չունի։`}
               </div>
               <div className="flex flex-wrap gap-1.5 text-[10px]">
-                <span className="rounded bg-white/5 px-2 py-1">Աղբյուրային բլոկներ՝ {report.counts?.pass1BlocksExtracted ?? "—"}</span>
+                <span className="rounded bg-white/5 px-2 py-1">Աղբյուրային բլոկներ՝ {sourceVerification?.providerBlockCount ?? report.counts?.providerBlocksExtracted ?? report.counts?.pass1BlocksExtracted ?? "—"}</span>
+                {sourceVerification && (
+                  <>
+                    <span className="rounded bg-emerald-400/10 px-2 py-1 text-emerald-100">Հաստատված՝ {sourceVerification.verifiedBlockCount ?? "—"}</span>
+                    <span className="rounded bg-amber-400/10 px-2 py-1 text-amber-100">Մեկուսացված՝ {sourceVerification.quarantinedBlockCount ?? "—"}</span>
+                    <span className="rounded bg-white/5 px-2 py-1">Pass 2 մուտք՝ {sourceVerification.pass2InputBlockCount ?? "—"}</span>
+                  </>
+                )}
                 <span className="rounded bg-white/5 px-2 py-1">Ուսումնական՝ {coverage.readableInstructionalBlocks}</span>
                 <span className="rounded bg-white/5 px-2 py-1">MicroNode-ով՝ {coverage.microNodeOwnedInstructionalBlocks}</span>
                 <span className="rounded bg-white/5 px-2 py-1">Կառուցվածքային/տեսողական՝ {(coverage.dispositionCounts.LEGITIMATE_NON_INSTRUCTIONAL ?? 0) + (coverage.dispositionCounts.UNREADABLE ?? 0)}</span>

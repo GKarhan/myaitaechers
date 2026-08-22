@@ -40,11 +40,24 @@ export type TextPageBindingAudit = {
   verificationMode: "TEXT_CONTENT";
   selectedPhysicalPages: number[];
   blockCount: number;
+  providerBlockCount: number;
+  verifiedBlockCount: number;
+  quarantinedBlockCount: number;
   exactOrNormalizedMatchCount: number;
   contextResolvedAmbiguousCount: number;
   correctedProviderPageLabelCount: number;
   ambiguousProvenanceCount: number;
   unverifiedProvenanceCount: number;
+  quarantinedBlockIndices: number[];
+  quarantinedBlocks: Array<{
+    providerBlockIndex: number;
+    physicalPageContext: number | null;
+    reason: "SOURCE_TEXT_NOT_CONTAINED" | "AMBIGUOUS_SOURCE_PROVENANCE";
+  }>;
+  quarantineReasonCounts: {
+    SOURCE_TEXT_NOT_CONTAINED: number;
+    AMBIGUOUS_SOURCE_PROVENANCE: number;
+  };
 };
 
 type SourceBlock = {
@@ -225,6 +238,12 @@ export function bindTextBlocksToPhysicalPages<T extends SourceBlock>(
   let correctedProviderPageLabelCount = 0;
   let ambiguousProvenanceCount = 0;
   let unverifiedProvenanceCount = 0;
+  const quarantinedBlockIndices: number[] = [];
+  const quarantinedBlocks: TextPageBindingAudit["quarantinedBlocks"] = [];
+  const quarantineReasonCounts = {
+    SOURCE_TEXT_NOT_CONTAINED: 0,
+    AMBIGUOUS_SOURCE_PROVENANCE: 0,
+  };
 
   const candidates = blocks.map((block) => {
     const sourceText = comparableText(block.sourceText);
@@ -278,8 +297,22 @@ export function bindTextBlocksToPhysicalPages<T extends SourceBlock>(
       }
     } else if (matches.length > 1) {
       ambiguousProvenanceCount++;
+      quarantinedBlockIndices.push(index);
+      quarantinedBlocks.push({
+        providerBlockIndex: index,
+        physicalPageContext: pageTexts.length === 1 ? pageTexts[0].pageNumber : null,
+        reason: "AMBIGUOUS_SOURCE_PROVENANCE",
+      });
+      quarantineReasonCounts.AMBIGUOUS_SOURCE_PROVENANCE++;
     } else {
       unverifiedProvenanceCount++;
+      quarantinedBlockIndices.push(index);
+      quarantinedBlocks.push({
+        providerBlockIndex: index,
+        physicalPageContext: pageTexts.length === 1 ? pageTexts[0].pageNumber : null,
+        reason: "SOURCE_TEXT_NOT_CONTAINED",
+      });
+      quarantineReasonCounts.SOURCE_TEXT_NOT_CONTAINED++;
     }
 
     return { ...block, sourcePage: physicalPage };
@@ -291,13 +324,32 @@ export function bindTextBlocksToPhysicalPages<T extends SourceBlock>(
       verificationMode: "TEXT_CONTENT",
       selectedPhysicalPages: pageTexts.map((page) => page.pageNumber),
       blockCount: blocks.length,
+      providerBlockCount: blocks.length,
+      verifiedBlockCount: blocks.length - quarantinedBlockIndices.length,
+      quarantinedBlockCount: quarantinedBlockIndices.length,
       exactOrNormalizedMatchCount,
       contextResolvedAmbiguousCount,
       correctedProviderPageLabelCount,
       ambiguousProvenanceCount,
       unverifiedProvenanceCount,
+      quarantinedBlockIndices,
+      quarantinedBlocks,
+      quarantineReasonCounts,
     },
   };
+}
+
+/**
+ * Only blocks with server-proven physical-page ownership may enter Pass 2.
+ * Blocks with sourcePage=0 remain available to count-only quarantine diagnostics
+ * but are not part of the canonical Pass 1 source universe.
+ */
+export function filterVerifiedTextBlocks<T extends SourceBlock>(
+  boundBlocks: ReadonlyArray<T>,
+): T[] {
+  return boundBlocks.filter((block) =>
+    Number.isInteger(block.sourcePage) && block.sourcePage > 0,
+  );
 }
 
 /** Backward-compatible block-only view for pure callers. */

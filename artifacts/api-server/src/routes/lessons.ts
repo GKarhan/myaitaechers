@@ -23,6 +23,7 @@ import {
   buildLessonSourceSet,
   applyVisionTitleAnchor,
   bindTextBlocksToPhysicalPages,
+  filterVerifiedTextBlocks,
   formatExtractedPagesForPass1,
   validateBlocksAgainstLessonSourceSet,
 } from "../lib/lesson-source-set.js";
@@ -3747,6 +3748,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
   // ── Process asynchronously after HTTP response is sent ────────────────────
   setImmediate(async () => {
+  let physicalPageProvenance: Record<string, unknown> | null = null;
   try {
     await db.update(mappingJobsTable)
       .set({ status: "running", progress: "Pass 1: Extracting content blocks from PDF...", updatedAt: new Date() })
@@ -3818,7 +3820,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       // sourceText must still be contained in that exact server page.
       const pageResults: Array<{
         result: Pass1Result;
-        blocks: Pass1Result["blocks"];
+        verifiedBlocks: Pass1Result["blocks"];
         audit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"];
       }> = [];
       for (const page of extractedPages) {
@@ -3829,15 +3831,24 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           lessonText: formatExtractedPagesForPass1([page]),
         }, { sourcePageOverride: page.pageNumber });
         const bound = bindTextBlocksToPhysicalPages([page], result.blocks);
-        pageResults.push({ result, blocks: bound.blocks, audit: bound.audit });
+        pageResults.push({
+          result,
+          verifiedBlocks: filterVerifiedTextBlocks(bound.blocks),
+          audit: bound.audit,
+        });
       }
       pass1 = {
-        blocks: pageResults.flatMap((item) => item.blocks),
+        // Quarantined provider candidates deliberately never become Pass 2
+        // source. The remaining blocks preserve only server-proven page ownership.
+        blocks: pageResults.flatMap((item) => item.verifiedBlocks),
       };
       textPageBindingAudit = {
         verificationMode: "TEXT_CONTENT",
         selectedPhysicalPages: extractedPages.map((page) => page.pageNumber),
         blockCount: pageResults.reduce((sum, item) => sum + item.audit.blockCount, 0),
+        providerBlockCount: pageResults.reduce((sum, item) => sum + item.audit.providerBlockCount, 0),
+        verifiedBlockCount: pass1.blocks.length,
+        quarantinedBlockCount: pageResults.reduce((sum, item) => sum + item.audit.quarantinedBlockCount, 0),
         exactOrNormalizedMatchCount: pageResults.reduce((sum, item) => sum + item.audit.exactOrNormalizedMatchCount, 0),
         contextResolvedAmbiguousCount: pageResults.reduce((sum, item) => sum + item.audit.contextResolvedAmbiguousCount, 0),
         correctedProviderPageLabelCount: pageResults.reduce(
@@ -3846,26 +3857,76 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         ),
         ambiguousProvenanceCount: pageResults.reduce((sum, item) => sum + item.audit.ambiguousProvenanceCount, 0),
         unverifiedProvenanceCount: pageResults.reduce((sum, item) => sum + item.audit.unverifiedProvenanceCount, 0),
+        quarantinedBlockIndices: pageResults.flatMap((item, pageIndex) => {
+          const offset = pageResults
+            .slice(0, pageIndex)
+            .reduce((sum, previous) => sum + previous.audit.providerBlockCount, 0);
+          return item.audit.quarantinedBlockIndices.map((blockIndex) => offset + blockIndex);
+        }),
+        quarantinedBlocks: pageResults.flatMap((item) =>
+          item.audit.quarantinedBlocks,
+        ),
+        quarantineReasonCounts: pageResults.reduce(
+          (counts, item) => ({
+            SOURCE_TEXT_NOT_CONTAINED:
+              counts.SOURCE_TEXT_NOT_CONTAINED + item.audit.quarantineReasonCounts.SOURCE_TEXT_NOT_CONTAINED,
+            AMBIGUOUS_SOURCE_PROVENANCE:
+              counts.AMBIGUOUS_SOURCE_PROVENANCE + item.audit.quarantineReasonCounts.AMBIGUOUS_SOURCE_PROVENANCE,
+          }),
+          { SOURCE_TEXT_NOT_CONTAINED: 0, AMBIGUOUS_SOURCE_PROVENANCE: 0 },
+        ),
       };
     }
     if (useVision) {
       sourceSet = applyVisionTitleAnchor(sourceSet, lesson.title, pass1.blocks);
     }
-    const physicalPageProvenance = textPageBindingAudit ?? {
+    physicalPageProvenance = textPageBindingAudit ?? {
       verificationMode: "VISION_PAGE" as const,
       selectedPhysicalPages: extractedPages.map((page) => page.pageNumber),
       blockCount: pass1.blocks.length,
+      providerBlockCount: pass1.blocks.length,
+      verifiedBlockCount: pass1.blocks.length,
+      quarantinedBlockCount: 0,
       exactOrNormalizedMatchCount: 0,
       contextResolvedAmbiguousCount: 0,
       correctedProviderPageLabelCount: 0,
       ambiguousProvenanceCount: 0,
       unverifiedProvenanceCount: 0,
+      quarantinedBlockIndices: [],
+      quarantinedBlocks: [],
+      quarantineReasonCounts: {
+        SOURCE_TEXT_NOT_CONTAINED: 0,
+        AMBIGUOUS_SOURCE_PROVENANCE: 0,
+      },
       serverAssignedBlockCount: pass1.blocks.length,
     };
+    const pass2InputBlockCount = pass1.blocks.length;
+    physicalPageProvenance = {
+      ...physicalPageProvenance,
+      pass2InputBlockCount,
+    };
     logger.info(
-      { lessonId, blockCount: pass1.blocks.length, physicalPageProvenance },
+      {
+        lessonId,
+        providerBlockCount: physicalPageProvenance.providerBlockCount,
+        verifiedBlockCount: physicalPageProvenance.verifiedBlockCount,
+        quarantinedBlockCount: physicalPageProvenance.quarantinedBlockCount,
+        pass2InputBlockCount,
+        physicalPageProvenance,
+      },
       "lesson mapping Pass 1 provenance binding complete",
     );
+    if (pass1.blocks.length === 0) {
+      throw new MappingSourceScopeError({
+        valid: false,
+        checkedBlockCount: 0,
+        invalidBlockIndices: [],
+        invalidPageCount: 0,
+        unverifiableTextCount: Number(physicalPageProvenance.quarantinedBlockCount ?? 0),
+        reasonCodes: ["SOURCE_TEXT_NOT_IN_SELECTED_PAGE"],
+        physicalPageProvenance,
+      });
+    }
     const sourceScope = validateBlocksAgainstLessonSourceSet(
       sourceSet,
       extractedPages,
@@ -4207,7 +4268,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       pagesTo:      lesson.pagesTo    ?? null,
       generatedAt:  new Date().toISOString(),
       counts: {
+        providerBlocksExtracted: Number(physicalPageProvenance.providerBlockCount ?? pass1.blocks.length),
+        verifiedSourceBlocks: Number(physicalPageProvenance.verifiedBlockCount ?? pass1.blocks.length),
+        quarantinedSourceBlocks: Number(physicalPageProvenance.quarantinedBlockCount ?? 0),
         pass1BlocksExtracted: pass1.blocks.length,
+        pass2InputBlocks: Number(physicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
         topicsCreated:        pass2.topics.length,
         microNodesCreated:    totalNodes,
         exercisesCreated:     totalExercises,
@@ -4283,6 +4348,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     logger.info(
       {
         lessonId,
+        providerBlocks:  physicalPageProvenance.providerBlockCount,
+        verifiedBlocks:  physicalPageProvenance.verifiedBlockCount,
+        quarantinedBlocks: physicalPageProvenance.quarantinedBlockCount,
+        pass2InputBlocks: physicalPageProvenance.pass2InputBlockCount,
         pass1Blocks:     pass1.blocks.length,
         topicsCreated:   pass2.topics.length,
         microNodes:      totalNodes,
@@ -4306,7 +4375,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         result: {
           // P3.1: surface coverage validity at the top level for easy polling
           coverageValid:        pass2.coverageValidation.valid,
+          providerBlocksExtracted: Number(physicalPageProvenance.providerBlockCount ?? pass1.blocks.length),
+          verifiedSourceBlocks: Number(physicalPageProvenance.verifiedBlockCount ?? pass1.blocks.length),
+          quarantinedSourceBlocks: Number(physicalPageProvenance.quarantinedBlockCount ?? 0),
           pass1BlocksExtracted: pass1.blocks.length,
+          pass2InputBlocks:      Number(physicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
           topicsCreated:        pass2.topics.length,
           microNodesCreated:    totalNodes,
           exercisesCreated:     totalExercises,
@@ -4353,7 +4426,15 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     );
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
-    const preservedDiagnosticFailure = err instanceof MappingZeroMicroNodesError
+    const preservedDiagnosticFailure = err instanceof MappingSourceScopeError
+      ? {
+          progress: "Verified source blocks could not establish a usable lesson source set; existing mapping was preserved.",
+          reason: "SOURCE_SCOPE_FAILED_PRE_PASS2",
+          diagnostics: {
+            sourceScopeFailure: true,
+          },
+        }
+      : err instanceof MappingZeroMicroNodesError
       ? {
           progress: "Detailed mapping produced zero valid MicroNodes; existing mapping was preserved.",
           reason: "ZERO_MICRONODES_PRE_PERSISTENCE",
@@ -4422,6 +4503,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           result: {
             reason: preservedDiagnosticFailure.reason,
             pass2Diagnostics: preservedDiagnosticFailure.diagnostics,
+            ...(physicalPageProvenance
+              ? { sourceVerificationAudit: physicalPageProvenance }
+              : {}),
           } as any,
         } : {}),
         updatedAt: new Date(),

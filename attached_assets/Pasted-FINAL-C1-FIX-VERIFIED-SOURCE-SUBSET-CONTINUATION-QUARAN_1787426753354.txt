@@ -1,0 +1,926 @@
+FINAL C1 FIX — VERIFIED SOURCE SUBSET CONTINUATION
+QUARANTINE UNVERIFIED PASS 1 BLOCKS WITHOUT WEAKENING SOURCE SAFETY
+
+SCOPE
+
+Fix ONLY the currently proven source-verification failure.
+
+Do NOT redesign C1.
+Do NOT reopen PDF page indexing.
+Do NOT change Goal/Outcomes.
+Do NOT weaken source containment.
+Do NOT proceed to Package 1D.
+Do NOT declare C1 frozen.
+
+════════════════════════════════════════════════════
+0. PROVEN REAL FAILURE
+════════════════════════════════════════════════════
+
+Current real lesson:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Բնական թվերի շարքը
+
+Current selected PDF physical pages:
+14–15
+
+Current real mapping audit:
+
+Physical page 14:
+Pass 1 blocks = 19
+Verified = 17
+Rejected/unverified = 2
+
+Physical page 15:
+Pass 1 blocks = 16
+Verified = 16
+Rejected/unverified = 0
+
+TOTAL:
+Pass 1 blocks = 35
+Verified = 33
+Unverified = 2
+
+Already proven:
+
+- PDF page extraction = PASS
+- physical-page selection = PASS
+- lesson title anchor = PASS
+- title token match = 3/3
+- continuation page handling = PASS
+- paragraphNumber 2.1 vs textbook 1.2 = NOT the source-verification cause
+- 33 blocks are deterministically grounded
+- 2 provider blocks from physical page 14 cannot be contained in the
+  server-extracted page text
+- those 2 receive invalid/no physical provenance
+- current source-scope gate therefore rejects the ENTIRE mapping
+- Pass 2 is never reached
+
+Do not investigate these already-proven areas again unless a regression
+test directly contradicts the evidence.
+
+════════════════════════════════════════════════════
+1. PROBLEM
+════════════════════════════════════════════════════
+
+The current policy effectively behaves as:
+
+35 provider blocks
++
+33 verified
++
+2 unverified
+=
+reject entire lesson before Pass 2.
+
+This is unnecessarily all-or-nothing.
+
+But the opposite behavior would also be unsafe:
+
+33 verified
++
+2 unverified
+=
+allow all 35 into Pass 2.
+
+That is FORBIDDEN.
+
+We need a third behavior:
+
+VERIFIED SOURCE SUBSET CONTINUATION.
+
+Only deterministically verified source blocks may continue.
+
+Unverified blocks must be quarantined/excluded.
+
+Then the existing downstream instructional coverage system must determine
+whether the verified subset is sufficient to produce a complete mapping.
+
+════════════════════════════════════════════════════
+2. CANONICAL RULE
+════════════════════════════════════════════════════
+
+A provider-generated Pass 1 block that cannot be deterministically
+verified against the server-extracted selected-page source MUST NEVER:
+
+- become a validated source block;
+- receive fabricated physical provenance;
+- enter Pass 2;
+- support a MicroNode;
+- support an exercise;
+- support an Outcome relation;
+- satisfy source coverage;
+- appear as verified textbook content.
+
+However:
+
+the existence of one or more unverified provider blocks does NOT by
+itself require rejecting the entire lesson BEFORE Pass 2.
+
+Instead:
+
+Pass 1 provider output
+        ↓
+deterministic verification
+        ↓
+VERIFIED BLOCKS ───────→ validated Source Set → Pass 2
+        │
+UNVERIFIED BLOCKS ─────→ quarantine/exclude
+        ↓
+safe count-only diagnostics
+
+Then downstream deterministic coverage validation decides whether the
+remaining verified source is sufficient.
+
+════════════════════════════════════════════════════
+3. IMPORTANT — THIS IS NOT A RELAXED SOURCE GATE
+════════════════════════════════════════════════════
+
+Do NOT change the definition of VERIFIED.
+
+Do NOT make fuzzy containment broadly permissive.
+
+Do NOT accept approximate provider paraphrases as source.
+
+Do NOT invent page provenance.
+
+Do NOT use AI confidence as source verification.
+
+Do NOT let the provider decide whether its own block is trustworthy.
+
+The two currently rejected blocks remain rejected unless they satisfy the
+existing deterministic source-verification contract.
+
+This fix changes ONLY:
+
+WHAT HAPPENS AFTER A BLOCK FAILS VERIFICATION.
+
+Old behavior:
+one failed block may kill entire candidate Source Set.
+
+New behavior:
+failed block is excluded;
+verified subset may continue;
+later coverage gates decide completeness.
+
+════════════════════════════════════════════════════
+4. TRACE CURRENT HARD-FAIL BOUNDARY FIRST
+════════════════════════════════════════════════════
+
+Before editing, identify the exact executable boundary where:
+
+bindTextBlocksToPhysicalPages()
+or equivalent
+
+marks unmatched blocks with source page 0 / invalid provenance,
+
+and:
+
+validateBlocksAgainstLessonSourceSet()
+or equivalent
+
+turns those individual block failures into a whole-mapping
+MappingSourceScopeError.
+
+Report internally:
+
+- file
+- function
+- input count
+- verified count
+- unverified count
+- exact whole-map rejection condition
+
+Then make the narrowest possible change.
+
+════════════════════════════════════════════════════
+5. BUILD TWO EXPLICIT SETS
+════════════════════════════════════════════════════
+
+After deterministic Pass 1 source verification, construct conceptually:
+
+verifiedBlocks[]
+
+unverifiedBlocks[]
+
+A block belongs to verifiedBlocks ONLY if it satisfies all existing
+required source/provenance checks.
+
+A block belongs to unverifiedBlocks if its provider-generated content
+cannot be deterministically grounded.
+
+Only:
+
+verifiedBlocks[]
+
+may enter the canonical validated Source Set used by Pass 2.
+
+════════════════════════════════════════════════════
+6. QUARANTINE CONTRACT
+════════════════════════════════════════════════════
+
+Unverified blocks are quarantine data, NOT mapping source.
+
+Prefer NOT to persist their raw text.
+
+Safe diagnostics may retain only structural information such as:
+
+- physical extraction page context if server-known
+- provider block ordinal/index
+- block type/category if already safe and controlled
+- fixed rejection reason code
+
+Examples:
+
+SOURCE_TEXT_NOT_CONTAINED
+INVALID_PROVIDER_SOURCE_BLOCK
+UNVERIFIED_SOURCE_CONTENT
+
+Do NOT retain:
+
+- raw rejected provider text
+- arbitrary provider JSON
+- long textbook excerpts
+- learner data
+- generated arbitrary keys
+
+The existing privacy/source-safe diagnostic rules remain mandatory.
+
+════════════════════════════════════════════════════
+7. MINIMUM VERIFIED SOURCE REQUIREMENT
+════════════════════════════════════════════════════
+
+Do NOT continue if filtering leaves no usable verified source.
+
+Hard fail before Pass 2 if:
+
+verifiedBlocks.length === 0
+
+Also fail if the verified subset cannot establish the existing lesson
+anchor/source-scope requirements.
+
+The existing title/source-set rules remain applicable to the VERIFIED
+subset.
+
+════════════════════════════════════════════════════
+8. PASS 2 INPUT
+════════════════════════════════════════════════════
+
+Pass 2 must receive ONLY the verified canonical Source Set.
+
+For the current real case, conceptually:
+
+provider blocks = 35
+verified = 33
+quarantined = 2
+
+Pass 2 input source blocks = 33
+
+NOT 35.
+
+The two unverified blocks must be impossible for the model to see as
+authoritative textbook source during Pass 2.
+
+════════════════════════════════════════════════════
+9. DO NOT ASSUME THE 33 BLOCKS ARE SUFFICIENT
+════════════════════════════════════════════════════
+
+This is critical.
+
+33/35 verified does NOT automatically mean mapping is acceptable.
+
+The two excluded blocks may contain important instructional content.
+
+Therefore after Pass 2:
+
+run the EXISTING strict source coverage / instructional coverage system
+against the verified source universe.
+
+Do not calculate quality merely as:
+
+33 / 35.
+
+The question is:
+
+Does every readable, verified instructional source block have correct
+pedagogical disposition/ownership?
+
+AND
+
+Does exclusion of the unverified provider candidates leave unresolved
+instructional source according to deterministic source evidence?
+
+If coverage cannot be proven:
+
+FAIL CLOSED.
+
+════════════════════════════════════════════════════
+10. SOURCE UNIVERSE MUST REMAIN SERVER-BASED
+════════════════════════════════════════════════════
+
+Do not define lesson completeness from provider block count alone.
+
+The authoritative source is still the server-extracted selected PDF page
+content / validated source representation.
+
+Provider blocks are extraction candidates.
+
+Therefore:
+
+provider failed to emit/verify a block
+
+must not automatically imply:
+
+source content does not exist.
+
+Preserve the existing Fix #4/#5/#6 source coverage architecture that
+checks readable instructional source and ownership.
+
+This fix must integrate with it, not replace it.
+
+════════════════════════════════════════════════════
+11. TARGETED REPAIR REMAINS BOUNDED
+════════════════════════════════════════════════════
+
+If existing C1 architecture already has bounded repair/reallocation
+behavior for unresolved instructional coverage, preserve it.
+
+Do NOT introduce an unlimited retry loop.
+
+Do NOT ask Pass 1 repeatedly until every provider candidate verifies.
+
+Do NOT add a second general-purpose AI repair architecture.
+
+The verified subset proceeds into the existing bounded C1 repair path.
+
+If strict instructional coverage still cannot be achieved:
+
+mapping fails safely.
+
+════════════════════════════════════════════════════
+12. EXERCISES / QUESTIONS / ACTIVITIES
+════════════════════════════════════════════════════
+
+An unverified provider block must not create or support an exercise.
+
+However, ensure this does not accidentally delete a real exercise that is
+independently recoverable from verified source.
+
+Existing exercise-preservation logic remains authoritative.
+
+Required behavior:
+
+verified real exercise
+→ preserve
+
+unverified provider-only exercise candidate
+→ exclude
+
+exercise independently recovered from verified source
+→ preserve
+
+Do not fabricate missing exercise text.
+
+════════════════════════════════════════════════════
+13. MICRONODE SUPPORT
+════════════════════════════════════════════════════
+
+Every generated MicroNode must still satisfy the existing direct source
+support rules.
+
+A quarantined block cannot:
+
+- support a MicroNode;
+- satisfy sourceSupport;
+- provide sourceQuote;
+- satisfy coverage;
+- justify a learning objective.
+
+If Pass 2 creates a MicroNode dependent on excluded source:
+
+existing support validation must reject it.
+
+Do not weaken that validator.
+
+════════════════════════════════════════════════════
+14. OUTCOME ALIGNMENT
+════════════════════════════════════════════════════
+
+Outcome→MicroNode alignment remains downstream of valid MicroNodes.
+
+Quarantined blocks cannot directly or indirectly satisfy an Outcome.
+
+Do not modify:
+
+- confirmed Goal/Outcomes;
+- Outcome wording;
+- Outcome approval state;
+- teacher review requirements.
+
+Only MicroNodes that survive existing source support validation may be
+aligned.
+
+════════════════════════════════════════════════════
+15. COGNITIVE PATH / TEACHING PACKAGE
+════════════════════════════════════════════════════
+
+Do NOT modify Cognitive Path or Teaching Package behavior.
+
+They remain downstream.
+
+No quarantined source content may leak into either system.
+
+This task ends at safe mapping/source continuation.
+
+════════════════════════════════════════════════════
+16. TRANSACTIONAL SAFETY
+════════════════════════════════════════════════════
+
+Preserve the current non-destructive replacement rule.
+
+If:
+
+verified subset continuation succeeds
+but
+Pass 2 / coverage / support validation later fails
+
+then existing Topics/MicroNodes/exercises must remain untouched.
+
+Do not delete old mapping until the complete new candidate passes all
+required pre-persistence gates.
+
+════════════════════════════════════════════════════
+17. DIAGNOSTICS
+════════════════════════════════════════════════════
+
+Extend/reuse safe count-only diagnostics.
+
+For each mapping attempt record conceptually:
+
+providerBlockCount
+verifiedBlockCount
+quarantinedBlockCount
+
+and fixed rejection reason counts, e.g.:
+
+SOURCE_TEXT_NOT_CONTAINED = 2
+
+Also record:
+
+pass2InputBlockCount
+
+Expected invariant:
+
+pass2InputBlockCount === verifiedBlockCount
+
+Never:
+
+pass2InputBlockCount === providerBlockCount
+
+when unverified blocks exist.
+
+No raw source text in diagnostics.
+
+════════════════════════════════════════════════════
+18. MAPPING REPORT
+════════════════════════════════════════════════════
+
+If useful, expose a compact teacher/debug audit such as:
+
+Source extraction:
+35 candidates
+
+Verified source:
+33
+
+Excluded as unverified:
+2
+
+Then separately:
+
+Instructional coverage:
+PASS / FAIL
+
+Do not imply that excluded provider blocks are automatically lost
+curriculum content.
+
+Do not show raw rejected text.
+
+Do not clutter the normal UI if an existing audit surface can display
+these counts.
+
+════════════════════════════════════════════════════
+19. PROVIDER-FREE TEST — ALL VERIFIED
+════════════════════════════════════════════════════
+
+Input:
+
+35 provider blocks
+35 verified
+0 unverified
+
+Expected:
+
+Pass 2 receives all 35.
+
+Behavior remains equivalent to current successful path.
+
+════════════════════════════════════════════════════
+20. PROVIDER-FREE TEST — PARTIAL VERIFIED
+════════════════════════════════════════════════════
+
+Input:
+
+35 provider blocks
+33 verified
+2 unverified
+
+Expected:
+
+- no whole-map pre-Pass-2 rejection solely because of the 2;
+- Pass 2 receives exactly 33;
+- quarantined blocks receive no valid source role;
+- diagnostics report 35 / 33 / 2.
+
+════════════════════════════════════════════════════
+21. PROVIDER-FREE TEST — ZERO VERIFIED
+════════════════════════════════════════════════════
+
+Input:
+
+10 provider blocks
+0 verified
+10 unverified
+
+Expected:
+
+hard fail before Pass 2.
+
+No persistence.
+
+════════════════════════════════════════════════════
+22. PROVIDER-FREE TEST — UNVERIFIED FABRICATION
+════════════════════════════════════════════════════
+
+Provider emits a fabricated source block.
+
+Expected:
+
+- block fails containment;
+- block quarantined;
+- never reaches Pass 2;
+- never supports a MicroNode;
+- raw text not persisted in diagnostics.
+
+════════════════════════════════════════════════════
+23. PROVIDER-FREE TEST — QUARANTINED EXERCISE
+════════════════════════════════════════════════════
+
+Provider emits an exercise candidate that cannot be grounded.
+
+Expected:
+
+it cannot become a canonical exercise.
+
+If equivalent exercise exists independently in verified source, existing
+exercise extraction/preservation may recover it.
+
+════════════════════════════════════════════════════
+24. PROVIDER-FREE TEST — COVERAGE FAILURE AFTER FILTERING
+════════════════════════════════════════════════════
+
+Verified subset reaches Pass 2.
+
+But strict instructional coverage cannot be satisfied.
+
+Expected:
+
+mapping fails before destructive persistence.
+
+Old mapping preserved.
+
+This proves subset continuation does NOT bypass completeness.
+
+════════════════════════════════════════════════════
+25. PROVIDER-FREE TEST — COVERAGE PASS AFTER FILTERING
+════════════════════════════════════════════════════
+
+Some provider candidates are quarantined.
+
+But verified source + resulting MicroNodes satisfy all existing strict
+instructional coverage/support rules.
+
+Expected:
+
+candidate mapping may proceed normally.
+
+Do not require provider candidate count to equal verified block count.
+
+════════════════════════════════════════════════════
+26. PROVIDER-FREE TEST — MICRONODE REFERENCES EXCLUDED SOURCE
+════════════════════════════════════════════════════
+
+Pass 2 attempts to create a MicroNode whose only support is a quarantined
+block.
+
+Expected:
+
+MicroNode fails existing direct-source-support validation.
+
+No persistence.
+
+════════════════════════════════════════════════════
+27. PROVIDER-FREE TEST — OLD MAP PRESERVATION
+════════════════════════════════════════════════════
+
+Existing valid mapping exists.
+
+New attempt:
+
+33 verified
+2 quarantined
+
+Pass 2 later fails.
+
+Expected:
+
+old Topics/MicroNodes/exercises remain unchanged.
+
+════════════════════════════════════════════════════
+28. PROVIDER-FREE TEST — PRIVACY
+════════════════════════════════════════════════════
+
+Unverified block contains unique sensitive/raw marker text.
+
+After failure/diagnostic persistence:
+
+search diagnostics/log-safe persisted structures.
+
+Expected:
+
+unique raw marker text is absent.
+
+Only fixed codes/counts/indices may remain.
+
+════════════════════════════════════════════════════
+29. REGRESSION SUITES
+════════════════════════════════════════════════════
+
+After focused tests pass, run the existing relevant suites:
+
+- physical-page selection/provenance
+- Fix #7 provenance
+- Fix #5 source-scope
+- Pass 1 source-boundary
+- source containment
+- source coverage / instructional coverage
+- Pass 2 diagnostics/privacy
+- zero-node protection
+- Fix #6 grounding/granularity
+- Fix #6A source reallocation
+- Task #118/#119 hardening
+- canonical Goal/Outcome
+- Outcome alignment
+- Cognitive Path
+- Teaching Package
+- final approval
+- API TypeScript typecheck
+- Web TypeScript typecheck
+
+Use isolated test DB/server where database-backed tests require it.
+
+Do not weaken an existing test to make this change pass.
+
+════════════════════════════════════════════════════
+30. REAL LESSON RETEST
+════════════════════════════════════════════════════
+
+Only after provider-free tests pass:
+
+use CURRENT real lesson ID 641.
+
+Do NOT recreate it.
+Do NOT delete it.
+Do NOT change Goal/Outcomes.
+Do NOT change page range.
+Do NOT change paragraphNumber as part of this task.
+
+Run automatic mapping ONCE.
+
+Expected source stage:
+
+provider candidates ≈ current observed result
+
+verified subset continues
+
+unverified candidates are excluded
+
+Pass 2 may now be reached.
+
+Do not force success if later C1 gates correctly reject the mapping.
+
+════════════════════════════════════════════════════
+31. REAL RETEST EVIDENCE
+════════════════════════════════════════════════════
+
+Report count-only evidence:
+
+Physical page 14:
+provider blocks:
+verified:
+quarantined:
+
+Physical page 15:
+provider blocks:
+verified:
+quarantined:
+
+TOTAL:
+provider:
+verified:
+quarantined:
+
+Then:
+
+Pass 2 input block count:
+Pass 2 reached YES/NO
+
+If Pass 2 reached:
+
+generated Topic count:
+generated MicroNode count:
+generated exercise count:
+
+Then existing validation:
+
+direct source support:
+PASS/FAIL
+
+instructional coverage:
+PASS/FAIL
+
+duplicate/over-split:
+PASS/FAIL
+
+Outcome alignment generation:
+PASS/FAIL / NOT REACHED
+
+Do not print long textbook text.
+
+════════════════════════════════════════════════════
+32. IMPORTANT — DO NOT AUTO-APPROVE
+════════════════════════════════════════════════════
+
+If the real mapping succeeds:
+
+leave everything in the normal generated/review state.
+
+Do NOT approve:
+
+- MicroNodes;
+- exercises;
+- Outcome relations;
+- Cognitive Paths;
+- Teaching Package;
+- final mapping.
+
+We need to inspect the raw result manually.
+
+════════════════════════════════════════════════════
+33. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- PDF page semantics
+- PDF indexing
+- printed-page resolution
+- lesson page range
+- lesson paragraphNumber
+- Goal generation
+- Goal confirmation
+- Outcome generation
+- Outcome confirmation
+- MicroNode atomicity requirements
+- duplicate/over-split policy
+- direct source support definition
+- Fix #6A semantic reallocation architecture
+- Cognitive Path
+- Teaching Package
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- learner model
+- manual mapping
+- Package 1D
+
+This task is ONLY:
+
+UNVERIFIED PASS 1 BLOCK
+→ QUARANTINE/EXCLUDE
+
+VERIFIED PASS 1 BLOCK
+→ VALIDATED SOURCE SET
+→ PASS 2
+
+then existing strict C1 validation.
+
+════════════════════════════════════════════════════
+34. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. ROOT CAUSE
+
+Explain why 2 unverified blocks currently reject all 33 verified blocks.
+
+B. OLD FAILURE POLICY
+
+Show the previous all-or-nothing boundary.
+
+C. NEW VERIFIED-SUBSET POLICY
+
+Explain verified vs quarantined handling.
+
+D. SAFETY INVARIANTS
+
+Confirm unverified content can never:
+
+- enter Pass 2;
+- support MicroNodes;
+- create exercises;
+- satisfy coverage;
+- leak into diagnostics.
+
+E. FILES/FUNCTIONS CHANGED
+
+F. DB/SCHEMA CHANGES
+
+State explicitly if NONE.
+
+G. FOCUSED TEST RESULTS
+
+Sections 19–28 PASS/FAIL.
+
+H. REGRESSION RESULTS
+
+I. REAL LESSON SOURCE COUNTS
+
+Page 14:
+provider / verified / quarantined
+
+Page 15:
+provider / verified / quarantined
+
+Total:
+provider / verified / quarantined
+
+J. PASS 2
+
+Reached YES/NO
+
+Input verified block count:
+
+K. GENERATED RAW MAPPING
+
+Topics:
+MicroNodes:
+Exercises:
+
+L. EXISTING C1 VALIDATION
+
+Direct support:
+Instructional coverage:
+Duplicate/over-split:
+Outcome alignment:
+
+M. REMAINING BLOCKER, IF ANY
+
+State the exact later gate.
+
+Do not call a later C1 failure a source-verification failure if verified
+subset continuation worked correctly.
+
+N. VERDICT
+
+Use exactly ONE:
+
+VERIFIED SOURCE SUBSET FIXED — RAW MAPPING READY FOR USER REVIEW
+
+or
+
+VERIFIED SOURCE SUBSET FIXED — LATER C1 GATE BLOCKED MAPPING
+
+or
+
+VERIFIED SOURCE SUBSET STILL BLOCKED
+
+Do NOT declare C1 frozen.
+Do NOT proceed to Package 1D.
