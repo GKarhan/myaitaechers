@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1HasBlocks, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -3841,6 +3841,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         // Quarantined provider candidates deliberately never become Pass 2
         // source. The remaining blocks preserve only server-proven page ownership.
         blocks: pageResults.flatMap((item) => item.verifiedBlocks),
+        emptyOrNonInstructionalSourcePages: pageResults.flatMap(
+          (item) => item.result.emptyOrNonInstructionalSourcePages ?? [],
+        ),
       };
       textPageBindingAudit = {
         verificationMode: "TEXT_CONTENT",
@@ -3917,9 +3920,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       "lesson mapping Pass 1 provenance binding complete",
     );
     // A zero-block provider response is an extraction failure, not evidence that
-    // the verified PDF is outside the lesson scope. This keeps source-scope
-    // diagnostics meaningful and blocks the empty candidate before Pass 2.
-    assertPass1HasBlocks(pass1.blocks);
+    // the verified PDF is outside the lesson scope. An entirely empty physical
+    // range is reported separately and also never reaches Pass 2.
+    assertPass1AggregateHasBlocks(
+      pass1.blocks,
+      pass1.emptyOrNonInstructionalSourcePages ?? [],
+      extractedPages.length,
+    );
     const sourceScope = validateBlocksAgainstLessonSourceSet(
       sourceSet,
       extractedPages,
@@ -4434,10 +4441,29 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           diagnostics: { sourceExtractionComplete: false },
         }
       : err instanceof MappingPass1EmptyExtractionError
+      && err.sourceState === "EMPTY_OR_NONINSTRUCTIONAL_PAGE"
+      ? {
+          progress: "Selected source pages contained no readable instructional content; existing mapping was preserved.",
+          reason: "PASS1_VALID_EMPTY_SOURCE_PRE_PASS2",
+          diagnostics: { sourceExtractionComplete: true, sourceState: err.sourceState },
+        }
+      : err instanceof MappingPass1EmptyExtractionError
       ? {
           progress: "Pass 1 returned no usable source blocks; existing mapping was preserved.",
           reason: "PASS1_EMPTY_EXTRACTION_PRE_VERIFICATION",
+          diagnostics: { sourceExtractionComplete: false, sourceState: err.sourceState },
+        }
+      : err instanceof MappingPass1MalformedResponseError
+      ? {
+          progress: "Pass 1 returned malformed structured output; existing mapping was preserved.",
+          reason: "PASS1_MALFORMED_RESPONSE_PRE_VERIFICATION",
           diagnostics: { sourceExtractionComplete: false },
+        }
+      : err instanceof MappingPass1SchemaValidationError
+      ? {
+          progress: "Pass 1 structured output did not satisfy the required schema; existing mapping was preserved.",
+          reason: "PASS1_SCHEMA_VALIDATION_FAILED_PRE_VERIFICATION",
+          diagnostics: { sourceExtractionComplete: false, validationIssueCodes: err.issueCodes },
         }
       : err instanceof MappingSourceScopeError
       ? {

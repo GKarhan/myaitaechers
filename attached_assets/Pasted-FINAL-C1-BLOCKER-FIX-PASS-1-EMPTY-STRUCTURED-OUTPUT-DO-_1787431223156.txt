@@ -1,0 +1,704 @@
+FINAL C1 BLOCKER — FIX PASS 1 EMPTY STRUCTURED OUTPUT
+DO NOT TOUCH SOURCE PAGES OR TASK #124
+
+We have now isolated the remaining blocker.
+
+CURRENT REAL ACCEPTANCE TARGET
+
+Textbook:
+- Մաթեմատիկա 5
+- Author: Սմբատ Գոգյան
+
+Lesson:
+- §1.2 Բնական թվերի շարքը
+- Resource: #19
+- Selected physical PDF pages: 14–15
+- Current real lesson ID must be resolved from the DB before any live run.
+  Do not assume an old ID.
+
+IMPORTANT CONFIRMED FACTS FROM THE PREVIOUS AUDIT
+
+The following are already established:
+
+1. The selected source pages are correct.
+2. Server-side PDF extraction works.
+3. The lesson title/source metadata is correct.
+4. The server extracted valid, non-empty text.
+5. The latest acceptance run failed BEFORE source verification.
+6. Pass 1 returned no usable blocks.
+7. The bounded Pass 1 responses were structurally empty:
+   {}
+8. The resulting failure reason was:
+
+PASS1_EMPTY_EXTRACTION_PRE_VERIFICATION
+
+9. Pass 2 was NOT reached.
+10. No mapping was persisted.
+11. Existing mapping was preserved.
+12. Source/provenance fail-closed behavior is working correctly.
+
+Therefore this task is NOT another PDF/source-page task.
+
+The narrow blocker is:
+
+VALID SERVER-EXTRACTED SOURCE TEXT
+→ Pass 1 provider call
+→ {}
+→ 0 blocks
+→ pipeline stops.
+
+==================================================
+PRIMARY GOAL
+==================================================
+
+Find the exact reason Pass 1 produces or becomes `{}` despite receiving
+valid server-extracted textbook text.
+
+Then make the MINIMUM proven fix necessary so:
+
+valid extracted source
+→ Pass 1 returns valid non-empty structured blocks
+→ deterministic source verification runs
+→ Pass 2 is reached.
+
+Do not weaken source provenance to achieve this.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+This task is ONLY about:
+
+Pass 1 request
+→ AI/provider call
+→ structured-output contract
+→ raw response handling
+→ parsing/validation
+→ blocks[]
+
+DO NOT change:
+
+- selected PDF pages;
+- physical-page logic;
+- lesson title;
+- paragraphNumber;
+- source-scope rules;
+- deterministic containment/binding;
+- source coverage rules;
+- Task #124 atomic MicroNode logic;
+- MicroNode granularity;
+- Topic generation;
+- exercise ownership;
+- Outcome alignment;
+- Cognitive Path;
+- Phase 2 teaching-content generation;
+- AI Teacher/chat;
+- quizzes;
+- Knowledge Tree;
+- Goal/Outcomes;
+- final approval architecture;
+- database schema.
+
+Do not start Package 1D.
+
+Do not perform unrelated cleanup.
+
+==================================================
+PART 1 — FORENSIC TRACE BEFORE CODE CHANGES
+==================================================
+
+Do NOT edit first.
+
+Trace the exact current Pass 1 execution path.
+
+Identify and report the exact files/functions responsible for:
+
+1. building Pass 1 input;
+2. building Pass 1 system/user prompts;
+3. selecting the model/provider;
+4. defining the structured-output schema;
+5. calling the provider;
+6. setting max output tokens / completion limits;
+7. receiving the provider response;
+8. extracting structured content;
+9. parsing JSON;
+10. schema validation;
+11. converting parsed output into blocks[];
+12. retry behavior;
+13. translating failure into
+   PASS1_EMPTY_EXTRACTION_PRE_VERIFICATION.
+
+Draw the actual current flow:
+
+server page text
+→ prompt
+→ provider request
+→ provider response
+→ parser
+→ validator
+→ blocks[]
+
+Do not infer it from comments.
+Inspect the actual runtime code.
+
+==================================================
+PART 2 — DETERMINE WHERE `{}` IS CREATED
+==================================================
+
+This is the most important requirement.
+
+You must prove which of these is happening:
+
+CASE A
+The provider/model literally returns `{}`.
+
+CASE B
+The provider returns useful content, but our response extraction reduces
+it to `{}`.
+
+CASE C
+The provider returns JSON, but schema parsing/validation strips or
+rejects blocks and the fallback becomes `{}`.
+
+CASE D
+The provider response is truncated because of output/token limits.
+
+CASE E
+The structured-output schema/provider configuration is incompatible
+with the selected model/provider.
+
+CASE F
+The request schema is technically valid but encourages/permits an empty
+object or empty block list.
+
+CASE G
+The retry path is incorrectly transforming the first failure into `{}`.
+
+CASE H
+A different proven cause.
+
+DO NOT GUESS.
+
+Produce evidence for the actual case.
+
+==================================================
+PART 3 — SAFE TEMPORARY DIAGNOSTICS
+==================================================
+
+We need enough diagnostics to identify the boundary, but textbook/source
+text must remain protected.
+
+For debugging, add temporary or development-only SAFE diagnostics if
+necessary.
+
+Allowed diagnostics:
+
+- provider/model name;
+- request mode;
+- structured-output mode;
+- response finish reason;
+- response object keys;
+- whether content exists;
+- content length;
+- whether parsed JSON exists;
+- parsed top-level keys;
+- whether blocks exists;
+- blocks count;
+- schema-validation success/failure;
+- validation issue codes/paths;
+- retry number;
+- token usage/counts if available;
+- truncation/length finish reason;
+- provider error code.
+
+DO NOT persist or log:
+
+- raw textbook page text;
+- full prompts containing textbook text;
+- raw provider response containing textbook content;
+- individual source blocks;
+- secrets/API keys/tokens.
+
+If raw response inspection is absolutely necessary during local forensic
+debugging, inspect it only transiently/in memory and do not persist or
+print textbook text in durable logs.
+
+==================================================
+PART 4 — AUDIT THE STRUCTURED-OUTPUT CONTRACT
+==================================================
+
+Inspect the exact Pass 1 response schema.
+
+Determine:
+
+1. Is `blocks` REQUIRED?
+
+2. Does the schema allow:
+   {} ?
+
+3. Does it allow:
+   { "blocks": [] } ?
+
+4. Does the provider/model support the structured-output mechanism being
+   used?
+
+5. Is strict JSON schema mode actually supported through the current
+   Replit/OpenRouter/provider path?
+
+6. Are required fields expressed correctly?
+
+7. Is `additionalProperties` or equivalent configuration causing an
+   unexpected result?
+
+8. Are optional/default fields causing the parser to accept an empty
+   response?
+
+9. Does the Zod/JSON-schema conversion preserve required arrays?
+
+10. Is the response schema too large or unnecessarily complex for Pass 1?
+
+11. Is the model being asked to reproduce too much source text inside
+    structured output?
+
+12. Could output token limits truncate the response?
+
+13. Is there a mismatch between provider SDK response shape and our
+    extraction code?
+
+Do not redesign the schema unless evidence requires it.
+
+==================================================
+PART 5 — CHECK THE PROVIDER CALL ITSELF
+==================================================
+
+Inspect the actual model configuration used by Pass 1.
+
+Report:
+
+- provider/model;
+- structured-output configuration;
+- response format;
+- max output/completion tokens;
+- temperature if relevant;
+- timeout;
+- retry count;
+- any provider-specific compatibility wrapper.
+
+Check whether the currently configured model/provider reliably supports
+the exact response-format/schema mechanism we are using.
+
+IMPORTANT:
+
+Do NOT simply switch models because `{}` occurred.
+
+A model/provider change is allowed ONLY if you prove that the current
+model/provider does not correctly support the required structured-output
+contract and there is no smaller compatibility fix.
+
+==================================================
+PART 6 — AUDIT THE PROMPT CONTRACT
+==================================================
+
+Inspect the Pass 1 prompt.
+
+The prompt must explicitly require a non-empty block result whenever
+readable source text is supplied.
+
+It must NOT make `{}` a reasonable successful response.
+
+If readable source text exists, the contract should be conceptually:
+
+{
+  "blocks": [...]
+}
+
+with at least one grounded block unless the page is genuinely
+non-instructional/empty.
+
+But DO NOT solve this merely by writing:
+"never return empty".
+
+The schema/parser/provider contract must also enforce the behavior.
+
+Determine whether the prompt:
+
+- conflicts with the schema;
+- contains too many competing instructions;
+- asks for unsupported output;
+- asks the model to reproduce excessive verbatim source;
+- encourages omission when uncertain;
+- has a source-length/output-length mismatch.
+
+Make only evidence-based prompt changes.
+
+==================================================
+PART 7 — PARSER MUST NEVER TURN FAILURE INTO SUCCESS
+==================================================
+
+Audit the parser/fallback behavior carefully.
+
+Forbidden behavior:
+
+invalid response
+→ {}
+→ accepted as successful structured output.
+
+Also forbidden:
+
+schema failure
+→ blocks: []
+→ normal success.
+
+The parser must distinguish:
+
+VALID_NONEMPTY_EXTRACTION
+
+from:
+
+EMPTY_PROVIDER_RESPONSE
+
+MALFORMED_PROVIDER_RESPONSE
+
+SCHEMA_VALIDATION_FAILED
+
+TRUNCATED_PROVIDER_RESPONSE
+
+VALID_BUT_EMPTY_PAGE
+
+and other relevant states.
+
+A provider failure must remain an explicit failure.
+
+Do not silently coerce it into `{}`.
+
+==================================================
+PART 8 — VALID EMPTY PAGE VS BROKEN EXTRACTION
+==================================================
+
+Preserve an important distinction.
+
+A genuinely empty/non-instructional physical page MAY legitimately
+produce no instructional blocks.
+
+But our real page is known to contain readable lesson content.
+
+Therefore:
+
+server extracted substantial readable text
++
+Pass 1 returns zero usable blocks
+
+must NOT be treated as normal successful extraction.
+
+Use deterministic server-side evidence to distinguish:
+
+genuinely empty/non-readable page
+
+from:
+
+provider failed to extract readable page.
+
+==================================================
+PART 9 — BOUNDED RETRY ONLY
+==================================================
+
+Do not create an open retry loop.
+
+Maximum:
+
+initial Pass 1 attempt
++
+ONE bounded corrective/schema-completion retry.
+
+The second request must address the proven failure class.
+
+Examples:
+
+- malformed structured response;
+- missing required blocks field;
+- empty extraction despite substantial readable source;
+- truncated structured response, if safely retryable.
+
+If the second attempt still fails:
+
+FAIL CLOSED.
+
+Do not continue to Pass 2.
+
+==================================================
+PART 10 — PROVIDER-FREE REGRESSION TESTS
+==================================================
+
+Before another real mapping run, add focused tests.
+
+At minimum:
+
+A. Valid provider response with non-empty blocks
+→ parsed correctly.
+
+B. Literal {}
+→ explicit EMPTY/MALFORMED failure, never successful blocks[].
+
+C. {"blocks":[]}
+with substantial readable source
+→ explicit extraction failure.
+
+D. Missing blocks field
+→ schema failure.
+
+E. Malformed JSON
+→ explicit parsing/schema failure.
+
+F. Useful provider response must not be accidentally converted to {}.
+
+G. Truncated response / length finish reason
+→ explicit failure/retry classification.
+
+H. First empty response + second valid response
+→ bounded retry succeeds.
+
+I. First empty response + second empty response
+→ fail closed after exactly one retry.
+
+J. Provider paraphrase/source mismatch
+→ existing deterministic binding still rejects it.
+
+K. Wrong physical page
+→ existing provenance gate still rejects it.
+
+L. Failure before persistence
+→ previous mapping remains intact.
+
+M. Task #124 atomic mapping tests remain green.
+
+==================================================
+PART 11 — TEST THE PROVIDER BOUNDARY SEPARATELY
+==================================================
+
+Before consuming the ONE real mapping acceptance run, perform the
+smallest possible controlled provider-boundary test if the architecture
+allows it.
+
+Use a synthetic/non-copyrighted short Armenian sample created for the
+test, NOT the real textbook page.
+
+Example conceptually:
+
+"Արամն ունի 3 մատիտ։ Նա ստացավ ևս 2 մատիտ։"
+
+Use the SAME:
+
+- model;
+- provider;
+- structured-output configuration;
+- Pass 1 schema;
+- parser.
+
+Verify that the provider returns the expected top-level structure and
+non-empty blocks.
+
+This is NOT the real lesson acceptance run.
+
+Do not persist this as lesson mapping.
+
+Required result:
+
+PROVIDER STRUCTURED OUTPUT CONTRACT:
+PASS / FAIL
+
+If this synthetic provider-boundary test still returns `{}`:
+
+STOP.
+
+Do NOT consume another real lesson mapping run.
+
+Fix/investigate the provider boundary first.
+
+==================================================
+PART 12 — TYPECHECK / REGRESSION GATE
+==================================================
+
+Before the live lesson run, all relevant checks must pass:
+
+- API typecheck;
+- web typecheck if touched;
+- Pass 1 focused tests;
+- source-binding tests;
+- source-scope/provenance tests;
+- C1 mapping regressions;
+- Task #124 atomicity regressions.
+
+Restart the affected service and inspect startup/runtime logs.
+
+==================================================
+PART 13 — REAL ACCEPTANCE RUN
+==================================================
+
+ONLY if:
+
+1. root cause is proven;
+2. provider-free tests pass;
+3. provider-boundary synthetic test passes;
+4. service is running final code;
+
+then perform exactly ONE new automatic mapping run.
+
+Target:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+§1.2 Բնական թվերի շարքը
+resource #19
+physical PDF pages 14–15
+
+Resolve the current lesson ID immediately before the run.
+
+DO NOT:
+
+- change the page range;
+- change the lesson title;
+- change Goal/Outcomes;
+- manually modify mapping;
+- manually seed blocks;
+- bypass Pass 1;
+- bypass source verification;
+- retry the real mapping if it fails;
+- delete the lesson.
+
+==================================================
+PART 14 — LIVE ACCEPTANCE EVIDENCE
+==================================================
+
+Report only safe structural diagnostics.
+
+PASS 1:
+
+- server extracted character count per page;
+- provider attempt count;
+- finish reason;
+- response content present: YES/NO;
+- parsed object present: YES/NO;
+- blocks count;
+- schema validation: PASS/FAIL.
+
+SOURCE VERIFICATION:
+
+- provider blocks;
+- verified blocks;
+- quarantined/rejected blocks;
+- source verification PASS/FAIL.
+
+PIPELINE:
+
+PASS 2 REACHED: YES/NO
+
+If Pass 2 succeeds, report:
+
+- Topics count;
+- MicroNodes count;
+- exercises count;
+- Additional exercises count;
+- atomicity validation status.
+
+Do not include raw textbook content.
+
+==================================================
+PART 15 — IMPORTANT STOP RULE
+==================================================
+
+If the single real run fails:
+
+STOP.
+
+Do NOT:
+
+- run it again;
+- make another speculative patch;
+- change pages;
+- weaken source verification;
+- switch models without evidence;
+- continue into Task #124 quality tuning.
+
+Return the exact remaining failure boundary.
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return exactly these sections:
+
+A. ROOT CAUSE
+
+State exactly where `{}` originated.
+
+B. PASS 1 EXECUTION PATH
+
+List the relevant files/functions and actual flow.
+
+C. PROVIDER / STRUCTURED-OUTPUT FINDINGS
+
+Include:
+
+- model/provider;
+- schema mechanism;
+- parser behavior;
+- token/output findings;
+- retry findings.
+
+D. FILES CHANGED
+
+E. FIX IMPLEMENTED
+
+F. WHY THIS FIX IS SAFE
+
+G. PROVIDER-FREE REGRESSION RESULTS
+
+H. SYNTHETIC PROVIDER-BOUNDARY RESULT
+
+Exactly:
+
+PROVIDER STRUCTURED OUTPUT CONTRACT: PASS
+
+or
+
+PROVIDER STRUCTURED OUTPUT CONTRACT: FAIL
+
+I. REAL LESSON ACCEPTANCE
+
+Include:
+
+PASS 1 BLOCKS: N
+SOURCE VERIFICATION: PASS / FAIL
+PASS 2 REACHED: YES / NO
+
+and safe counts.
+
+J. TASK #124 STATUS
+
+Confirm that atomic MicroNode logic was not redesigned or tuned in this
+task.
+
+K. FINAL VERDICT
+
+Exactly one:
+
+PASS 1 FIXED — REAL LESSON REACHED PASS 2
+
+or
+
+PASS 1 PROVIDER CONTRACT STILL BLOCKED
+
+==================================================
+ABSOLUTE STOP
+==================================================
+
+After reporting:
+
+STOP.
+
+Do not start another C1 improvement.
+Do not start Package 1D.
+Do not freeze C1.
+
+If the real lesson reaches Pass 2 successfully, we will manually inspect
+the generated mapping before deciding the next step.

@@ -45,4 +45,4 @@
 - [Instructional source coverage](instructional-source-coverage.md) — structural placement is not teaching coverage; unreadable/structural source is safe to exclude, but readable instruction needs MicroNode ownership before replacement.
 - [Verified lesson source sets](verified-lesson-source-sets.md) — map physical PDF pages only; text and vision sources use distinct provenance checks, and final approval fails closed without verified scope.
 - [Verified source subset continuation](verified-source-subset-continuation.md) — quarantine unverified Pass 1 candidates; only server-verified blocks enter Pass 2 and downstream C1 gates still decide persistence.
-- [Pass 1 empty provider output](pass1-empty-provider-output.md) — DeepSeek can return `{}` twice for a valid short PDF page; treat it as explicit extraction failure, never source-scope failure.
+- [Pass 1 structured output](pass1-empty-provider-output.md) — generic JSON mode permits empty objects; enforce a strict non-empty schema locally and at the provider boundary.

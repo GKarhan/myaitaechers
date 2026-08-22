@@ -1,10 +1,10 @@
 ---
-name: Pass 1 empty provider output
-description: Observed provider behavior and the fail-closed handling required for empty structured Pass 1 responses.
+name: Pass 1 structured output
+description: Durable contract for non-empty Pass 1 structured output and safe empty-page handling.
 ---
 
-For text Pass 1, a provider response with no usable `blocks` is an extraction failure, even when its JSON syntax is valid. It must not be reclassified as a PDF source-scope or title-anchor failure, and it must never continue into Pass 2.
+Text Pass 1 must use a strict response schema requiring a non-empty `blocks` array, and independently validate that contract locally before normalisation. A generic JSON-object mode is insufficient because it permits empty objects.
 
-**Why:** During acceptance against a short, server-extracted physical PDF page, the configured DeepSeek provider returned an empty JSON object on the initial request and on the one bounded schema-completion retry. The server source text and context budget were valid. Treating that result as source-scope failure would falsely implicate verified PDF provenance.
+**Why:** Provider-side structured-output enforcement can vary by model and gateway. Local validation prevents malformed, unknown-field, or empty output from being silently coerced into valid-looking extraction state.
 
-**How to apply:** Preserve the distinct `PASS1_EMPTY_EXTRACTION_PRE_VERIFICATION` diagnostic. A future remediation may change the provider's structured-output contract, but must keep immutable server page input, deterministic binding, quarantine rules, and the bounded/no-until-match retry policy.
+**How to apply:** Preserve the distinct malformed/schema/empty extraction diagnostics, immutable server page input, deterministic binding, quarantine rules, and one corrective retry. A deterministically empty/non-instructional physical page is a separate pre-Pass-2 outcome, not a provider failure.

@@ -309,9 +309,29 @@ export class MappingPass1EmptyExtractionError extends Error {
   readonly teacherMessage =
     "Դասի աղբյուրից բովանդակության բլոկներ չստացվեցին։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
 
-  constructor() {
+  constructor(readonly sourceState: "SUBSTANTIAL_SOURCE" | "EMPTY_OR_NONINSTRUCTIONAL_PAGE" = "SUBSTANTIAL_SOURCE") {
     super("Pass 1 provider response contained no usable source blocks");
     this.name = "MappingPass1EmptyExtractionError";
+  }
+}
+
+export class MappingPass1MalformedResponseError extends Error {
+  readonly teacherMessage =
+    "Դասի աղբյուրի կառուցվածքային պատասխանը չստացվեց։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
+
+  constructor() {
+    super("Pass 1 provider response was not valid JSON");
+    this.name = "MappingPass1MalformedResponseError";
+  }
+}
+
+export class MappingPass1SchemaValidationError extends Error {
+  readonly teacherMessage =
+    "Դասի աղբյուրի կառուցվածքային պատասխանը չի համապատասխանել պահանջվող ձևաչափին։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
+
+  constructor(readonly issueCodes: string[]) {
+    super(`Pass 1 provider response failed schema validation: ${issueCodes.join(", ")}`);
+    this.name = "MappingPass1SchemaValidationError";
   }
 }
 
@@ -439,6 +459,8 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingContextBudgetError) return error.teacherMessage;
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
   if (error instanceof MappingPass1EmptyExtractionError) return error.teacherMessage;
+  if (error instanceof MappingPass1MalformedResponseError) return error.teacherMessage;
+  if (error instanceof MappingPass1SchemaValidationError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
   if (error instanceof MappingSourcePlacementError) return error.teacherMessage;
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
@@ -465,6 +487,26 @@ export function assertPass1ResponseComplete(finishReason: string | null | undefi
 /** Empty Pass 1 output is never an empty-but-valid source set. */
 export function assertPass1HasBlocks(blocks: ReadonlyArray<Pass1Block>): void {
   if (blocks.length === 0) throw new MappingPass1EmptyExtractionError();
+}
+
+/**
+ * An entirely blank/non-instructional selected range cannot enter Pass 2, but
+ * is not a provider extraction failure. Mixed ranges may still continue if a
+ * substantial page produced a verified block.
+ */
+export function assertPass1AggregateHasBlocks(
+  blocks: ReadonlyArray<Pass1Block>,
+  emptyOrNonInstructionalSourcePages: ReadonlyArray<number>,
+  selectedPageCount: number,
+): void {
+  if (blocks.length > 0) return;
+  if (
+    selectedPageCount > 0
+    && new Set(emptyOrNonInstructionalSourcePages).size === selectedPageCount
+  ) {
+    throw new MappingPass1EmptyExtractionError("EMPTY_OR_NONINSTRUCTIONAL_PAGE");
+  }
+  assertPass1HasBlocks(blocks);
 }
 
 /**
@@ -758,6 +800,9 @@ OUTPUT: Respond with ONLY valid JSON — no commentary, no markdown fences, no e
   ]
 }
 
+When supplied page text contains readable instructional content, "blocks" MUST contain at least one block.
+The top-level object MUST contain exactly the "blocks" field. Never return {} and never return an empty "blocks" array for a readable page.
+
 Valid blockType values (pick the one that best describes each block):
   DEFINITION  — a formal definition of a concept or term
   RULE        — a stated grammar, math, or subject rule or principle
@@ -822,6 +867,8 @@ export interface Pass1Block {
 
 export interface Pass1Result {
   blocks: Pass1Block[];
+  /** Physical pages with deterministically insufficient readable text. */
+  emptyOrNonInstructionalSourcePages?: number[];
   /** Number of positive provider page labels replaced by a known server page. */
   providerPageLabelCorrectionCount?: number;
   /** Page ranges that failed to extract (even after 1-page fallback) and were
@@ -837,6 +884,242 @@ const VALID_BLOCK_TYPES = new Set<string>([
   "WARNING", "EXCEPTION", "TABLE", "IMAGE", "CAPTION",
   "NOTE", "ACTIVITY", "HOMEWORK",
 ]);
+
+const PASS1_BLOCK_TYPE_VALUES = [
+  "DEFINITION", "RULE", "EXAMPLE", "EXERCISE", "OBJECTIVE", "WARNING",
+  "EXCEPTION", "TABLE", "IMAGE", "CAPTION", "NOTE", "ACTIVITY", "HOMEWORK",
+] as const;
+
+/**
+ * The provider receives a deliberately small schema. Generic json_object mode
+ * accepts {}, which is not a valid Pass 1 extraction for readable source text.
+ * The same constraints are also checked locally before normalisation.
+ */
+export const PASS1_RESPONSE_JSON_SCHEMA = {
+  name: "pass1_source_blocks",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["blocks"],
+    properties: {
+      blocks: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "blockType",
+            "sourceText",
+            "sourcePage",
+            "sourceParagraph",
+            "sourceBoundingBox",
+          ],
+          properties: {
+            blockType: { type: "string", enum: PASS1_BLOCK_TYPE_VALUES },
+            sourceText: { type: "string", minLength: 1 },
+            sourcePage: { type: "integer", minimum: 1 },
+            sourceParagraph: { type: ["string", "null"] },
+            sourceBoundingBox: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              required: ["x", "y", "w", "h"],
+              properties: {
+                x: { type: "number" },
+                y: { type: "number" },
+                w: { type: "number" },
+                h: { type: "number" },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+export type Pass1ResponseState =
+  | "VALID_NONEMPTY_EXTRACTION"
+  | "EMPTY_PROVIDER_RESPONSE"
+  | "MALFORMED_PROVIDER_RESPONSE"
+  | "SCHEMA_VALIDATION_FAILED";
+
+export type Pass1ResponseInspection = {
+  state: Pass1ResponseState;
+  parsedObjectPresent: boolean;
+  topLevelKeys: string[];
+  blocksPresent: boolean;
+  blocksCount: number | null;
+  issueCodes: string[];
+  result: Pass1Result | null;
+};
+
+function extractPass1JSON(raw: string): unknown | null {
+  const stripped = raw.replace(/```json\s*|```/g, "").trim();
+  try { return JSON.parse(stripped); } catch { /* fall through */ }
+  const match = stripped.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch { /* fall through */ }
+  }
+  return null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * A source page is safely skippable only when the server extracted no content
+ * after its physical-page marker. Do not use length/token heuristics here:
+ * a short heading, rule, or exercise is still source evidence and must reach
+ * the strict Pass 1 contract.
+ */
+export function hasSubstantialReadablePass1Source(text: string): boolean {
+  const withoutMarkers = text.replace(/\[\s*PDF PAGE \d+\s*\]/giu, " ");
+  return withoutMarkers.trim().length > 0;
+}
+
+/**
+ * Validates every field before normalisation so a malformed provider object can
+ * never be silently converted to an empty/partially-defaulted blocks array.
+ */
+export function inspectPass1StructuredResponse(
+  raw: string,
+  sourcePageOverride?: number,
+): Pass1ResponseInspection {
+  const parsed = extractPass1JSON(raw);
+  if (parsed === null) {
+    return {
+      state: "MALFORMED_PROVIDER_RESPONSE",
+      parsedObjectPresent: false,
+      topLevelKeys: [],
+      blocksPresent: false,
+      blocksCount: null,
+      issueCodes: ["INVALID_JSON"],
+      result: null,
+    };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      state: "SCHEMA_VALIDATION_FAILED",
+      parsedObjectPresent: false,
+      topLevelKeys: [],
+      blocksPresent: false,
+      blocksCount: null,
+      issueCodes: ["TOP_LEVEL_OBJECT_REQUIRED"],
+      result: null,
+    };
+  }
+
+  const object = parsed as Record<string, unknown>;
+  const topLevelKeys = Object.keys(object).sort();
+  if (topLevelKeys.length === 0) {
+    return {
+      state: "EMPTY_PROVIDER_RESPONSE",
+      parsedObjectPresent: true,
+      topLevelKeys,
+      blocksPresent: false,
+      blocksCount: null,
+      issueCodes: ["EMPTY_OBJECT"],
+      result: null,
+    };
+  }
+  if (!Array.isArray(object.blocks)) {
+    return {
+      state: "SCHEMA_VALIDATION_FAILED",
+      parsedObjectPresent: true,
+      topLevelKeys,
+      blocksPresent: false,
+      blocksCount: null,
+      issueCodes: ["BLOCKS_ARRAY_REQUIRED"],
+      result: null,
+    };
+  }
+  if (topLevelKeys.some((key) => key !== "blocks")) {
+    return {
+      state: "SCHEMA_VALIDATION_FAILED",
+      parsedObjectPresent: true,
+      topLevelKeys,
+      blocksPresent: true,
+      blocksCount: object.blocks.length,
+      issueCodes: ["UNEXPECTED_TOP_LEVEL_PROPERTY"],
+      result: null,
+    };
+  }
+  if (object.blocks.length === 0) {
+    return {
+      state: "EMPTY_PROVIDER_RESPONSE",
+      parsedObjectPresent: true,
+      topLevelKeys,
+      blocksPresent: true,
+      blocksCount: 0,
+      issueCodes: ["BLOCKS_MIN_ITEMS"],
+      result: null,
+    };
+  }
+
+  const issueCodes: string[] = [];
+  object.blocks.forEach((candidate, index) => {
+    const prefix = `BLOCK_${index}`;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      issueCodes.push(`${prefix}_OBJECT_REQUIRED`);
+      return;
+    }
+    const block = candidate as Record<string, unknown>;
+    const allowedBlockKeys = new Set([
+      "blockType",
+      "sourceText",
+      "sourcePage",
+      "sourceParagraph",
+      "sourceBoundingBox",
+    ]);
+    if (Object.keys(block).some((key) => !allowedBlockKeys.has(key))) {
+      issueCodes.push(`${prefix}_UNEXPECTED_PROPERTY`);
+    }
+    if (!VALID_BLOCK_TYPES.has(String(block.blockType ?? ""))) issueCodes.push(`${prefix}_BLOCK_TYPE`);
+    if (typeof block.sourceText !== "string" || block.sourceText.trim().length === 0) issueCodes.push(`${prefix}_SOURCE_TEXT`);
+    if (!Number.isInteger(block.sourcePage) || (block.sourcePage as number) < 1) issueCodes.push(`${prefix}_SOURCE_PAGE`);
+    if (!(typeof block.sourceParagraph === "string" || block.sourceParagraph === null)) issueCodes.push(`${prefix}_SOURCE_PARAGRAPH`);
+    const box = block.sourceBoundingBox;
+    if (box !== null) {
+      if (!box || typeof box !== "object" || Array.isArray(box)) {
+        issueCodes.push(`${prefix}_BOUNDING_BOX`);
+      } else {
+        const values = box as Record<string, unknown>;
+        const allowedBoxKeys = new Set(["x", "y", "w", "h"]);
+        if (Object.keys(values).some((key) => !allowedBoxKeys.has(key))) {
+          issueCodes.push(`${prefix}_BOUNDING_BOX_UNEXPECTED_PROPERTY`);
+        }
+        if (!["x", "y", "w", "h"].every((key) => isFiniteNumber(values[key]))) {
+          issueCodes.push(`${prefix}_BOUNDING_BOX`);
+        }
+      }
+    }
+  });
+  if (issueCodes.length > 0) {
+    return {
+      state: "SCHEMA_VALIDATION_FAILED",
+      parsedObjectPresent: true,
+      topLevelKeys,
+      blocksPresent: true,
+      blocksCount: object.blocks.length,
+      issueCodes,
+      result: null,
+    };
+  }
+
+  const result = normalisePass1(parsed, sourcePageOverride);
+  return {
+    state: result.blocks.length > 0 ? "VALID_NONEMPTY_EXTRACTION" : "EMPTY_PROVIDER_RESPONSE",
+    parsedObjectPresent: true,
+    topLevelKeys,
+    blocksPresent: true,
+    blocksCount: result.blocks.length,
+    issueCodes: result.blocks.length > 0 ? [] : ["NORMALISATION_EMPTY"],
+    result: result.blocks.length > 0 ? result : null,
+  };
+}
 
 /**
  * Normalizes a provider response. Vision callers pass the physical page being
@@ -885,43 +1168,115 @@ export function normalisePass1(raw: unknown, sourcePageOverride?: number): Pass1
 
 // ── Pass 1 text path ──────────────────────────────────────────────────────────
 
+type Pass1ProviderResponse = {
+  choices: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
+  }>;
+  usage?: {
+    prompt_tokens?: number | null;
+    completion_tokens?: number | null;
+    total_tokens?: number | null;
+  };
+};
+
+export type Pass1CompletionClient = {
+  chat: {
+    completions: {
+      create: (request: unknown) => Promise<Pass1ProviderResponse>;
+    };
+  };
+};
+
+function pass1FailureForInspection(inspection: Pass1ResponseInspection): Error {
+  if (inspection.state === "MALFORMED_PROVIDER_RESPONSE") {
+    return new MappingPass1MalformedResponseError();
+  }
+  if (inspection.state === "SCHEMA_VALIDATION_FAILED") {
+    return new MappingPass1SchemaValidationError(inspection.issueCodes);
+  }
+  return new MappingPass1EmptyExtractionError();
+}
+
+function logPass1ResponseShape(
+  attempt: 1 | 2,
+  response: Pass1ProviderResponse,
+  raw: string,
+  inspection: Pass1ResponseInspection,
+): void {
+  logger.info({
+    pass1ProviderResponse: {
+      attempt,
+      model: MODEL,
+      requestMode: "chat.completions",
+      structuredOutputMode: "json_schema.strict",
+      finishReason: response.choices[0]?.finish_reason ?? null,
+      contentPresent: raw.length > 0,
+      contentLength: raw.length,
+      parsedObjectPresent: inspection.parsedObjectPresent,
+      topLevelKeys: inspection.topLevelKeys,
+      blocksPresent: inspection.blocksPresent,
+      blocksCount: inspection.blocksCount,
+      schemaValidation: inspection.state === "VALID_NONEMPTY_EXTRACTION" ? "PASS" : "FAIL",
+      responseState: inspection.state,
+      validationIssueCodes: inspection.issueCodes,
+      usage: response.usage ? {
+        promptTokens: response.usage.prompt_tokens ?? null,
+        completionTokens: response.usage.completion_tokens ?? null,
+        totalTokens: response.usage.total_tokens ?? null,
+      } : null,
+    },
+  }, "pass1 text: provider response shape");
+}
+
 export async function extractBlocksWithAI(
   input: LessonMappingInput,
-  options: { sourcePageOverride?: number } = {},
+  options: {
+    sourcePageOverride?: number;
+    completionClient?: Pass1CompletionClient;
+  } = {},
 ): Promise<Pass1Result> {
   const { userPrompt, diagnostics } = buildPass1TextRequest(input);
   assertPass1ContextBudget(diagnostics);
-
-  function extractJSON(raw: string): Pass1Result | null {
-    const stripped = raw.replace(/```json\s*|```/g, "").trim();
-    try { return JSON.parse(stripped); } catch { /* fall through */ }
-    const m = stripped.match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
-    return null;
+  if (!hasSubstantialReadablePass1Source(input.lessonText)) {
+    logger.info(
+      { sourceState: "EMPTY_OR_NONINSTRUCTIONAL_PAGE", sourceCharacterCount: input.lessonText.length },
+      "pass1 text: skipping provider call for an empty/non-instructional page",
+    );
+    return {
+      blocks: [],
+      emptyOrNonInstructionalSourcePages: options.sourcePageOverride === undefined
+        ? []
+        : [options.sourcePageOverride],
+    };
   }
-
-  const r1 = await openrouter.chat.completions.create({
+  const client = options.completionClient ?? (openrouter as unknown as Pass1CompletionClient);
+  const request = {
     model: MODEL,
     max_tokens: PASS1_MAX_OUTPUT_TOKENS,
     temperature: 0,
-    response_format: { type: "json_object" },
+    response_format: { type: "json_schema", json_schema: PASS1_RESPONSE_JSON_SCHEMA },
     messages: [
       { role: "system", content: PASS1_SYSTEM_PROMPT },
       { role: "user",   content: userPrompt },
     ],
-  });
+  };
+  const r1 = await client.chat.completions.create(request);
   const raw1 = r1.choices[0]?.message?.content ?? "";
   assertPass1ResponseComplete(r1.choices[0]?.finish_reason);
-  let parsed = extractJSON(raw1);
-  let result = parsed ? normalisePass1(parsed, options.sourcePageOverride) : null;
+  let inspection = inspectPass1StructuredResponse(raw1, options.sourcePageOverride);
+  logPass1ResponseShape(1, r1, raw1, inspection);
 
-  if (!result || result.blocks.length === 0) {
-    const retryInstruction = parsed
-      ? 'Your previous response contained no usable source blocks. Return ONLY a valid JSON object with a non-empty "blocks" array. Copy only verbatim text from the supplied page.'
-      : 'Your previous response was not valid JSON. Return ONLY a valid JSON object with a "blocks" array, nothing else.';
+  if (inspection.state !== "VALID_NONEMPTY_EXTRACTION") {
+    const retryInstruction = inspection.state === "MALFORMED_PROVIDER_RESPONSE"
+      ? 'Your previous response was not valid JSON. Return ONLY a valid JSON object that satisfies the required response schema.'
+      : inspection.state === "SCHEMA_VALIDATION_FAILED"
+      ? 'Your previous response did not satisfy the required JSON schema. Return exactly one object with a non-empty "blocks" array and every required field on each block.'
+      : 'Your previous response contained no usable source blocks. Return exactly one JSON object with a non-empty "blocks" array. Copy only verbatim text from the supplied page.';
     logger.warn(
       {
-        responseShape: parsed ? "EMPTY_OR_UNUSABLE_BLOCKS" : "INVALID_JSON",
+        responseState: inspection.state,
+        validationIssueCodes: inspection.issueCodes,
         responseCharCount: raw1.length,
       },
       "pass1 text: retrying one invalid extraction response",
@@ -929,11 +1284,11 @@ export async function extractBlocksWithAI(
     // Do not resend raw1: it can be up to the output ceiling and would expand
     // the retry past the original context budget without adding source evidence.
     assertPass1ContextBudget(buildPass1RetryDiagnostics(diagnostics, retryInstruction));
-    const r2 = await openrouter.chat.completions.create({
+    const r2 = await client.chat.completions.create({
       model: MODEL,
       max_tokens: PASS1_MAX_OUTPUT_TOKENS,
       temperature: 0,
-      response_format: { type: "json_object" },
+      response_format: { type: "json_schema", json_schema: PASS1_RESPONSE_JSON_SCHEMA },
       messages: [
         { role: "system", content: PASS1_SYSTEM_PROMPT },
         { role: "user",   content: userPrompt },
@@ -942,15 +1297,15 @@ export async function extractBlocksWithAI(
     });
     const raw2 = r2.choices[0]?.message?.content ?? "";
     assertPass1ResponseComplete(r2.choices[0]?.finish_reason);
-    parsed = extractJSON(raw2);
-    if (!parsed) throw new Error("Pass 1 text extraction: response not valid JSON after retry");
-    result = normalisePass1(parsed, options.sourcePageOverride);
-    assertPass1HasBlocks(result.blocks);
+    inspection = inspectPass1StructuredResponse(raw2, options.sourcePageOverride);
+    logPass1ResponseShape(2, r2, raw2, inspection);
+    if (inspection.state !== "VALID_NONEMPTY_EXTRACTION") {
+      throw pass1FailureForInspection(inspection);
+    }
   }
 
-  // The first attempt was non-empty, or the single bounded retry above proved
-  // that the same immutable server page can produce usable candidate blocks.
-  assertPass1HasBlocks(result.blocks);
+  const result = inspection.result;
+  if (!result) throw pass1FailureForInspection(inspection);
   logger.info({ blockCount: result.blocks.length }, "pass1 text: extraction complete");
   return result;
 }
