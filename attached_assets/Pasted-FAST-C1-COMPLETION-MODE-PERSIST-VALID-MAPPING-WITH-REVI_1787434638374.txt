@@ -1,0 +1,361 @@
+FAST C1 COMPLETION MODE — PERSIST VALID MAPPING WITH REVIEW-REQUIRED NODES
+
+GOAL
+
+We need to stop blocking the whole lesson because one generated
+MicroNode is not source-aligned.
+
+This is a pragmatic teacher-review workflow.
+
+Do NOT try to perfect C1 further.
+
+Do NOT add more repair architecture.
+
+Do NOT weaken source verification for valid nodes.
+
+We want:
+
+VALID SOURCE
+→ PASS 1
+→ PASS 2
+→ persist all valid mapping
+→ preserve unresolved node as review-required draft
+→ teacher can fix/delete/edit it manually later.
+
+==================================================
+CURRENT REAL STATE
+==================================================
+
+Real lesson:
+Մաթեմատիկա 5
+§1.2 Բնական թվերի շարքը
+resource #19
+PDF pages 14–15
+
+Current pipeline already has:
+
+- Pass 1 PASS
+- source verification PASS
+- Pass 2 reached
+- source coverage valid
+- most MicroNodes source-aligned
+
+Remaining blocker:
+
+one generated MicroNode may be:
+
+PARTIAL
+or
+INSUFFICIENT
+or
+HEADING_ONLY
+
+and current logic rejects the ENTIRE mapping before persistence.
+
+We no longer want that all-or-nothing behavior.
+
+==================================================
+NEW POLICY
+==================================================
+
+If the lesson candidate has:
+
+- valid verified source;
+- successful Pass 1;
+- successful Pass 2;
+- at least one valid MicroNode;
+- no source/provenance fabrication;
+- no out-of-scope source;
+- no destructive DB inconsistency;
+
+then persist the mapping even if one or more MicroNodes fail
+source-alignment.
+
+BUT:
+
+a non-sufficient MicroNode must NOT be treated as approved/confirmed.
+
+Persist it explicitly as:
+
+draft
++
+needs_review
++
+source_alignment_status =
+PARTIAL / INSUFFICIENT / HEADING_ONLY / UNRESOLVED
+
+Use existing status fields if possible.
+
+Do NOT invent a schema migration unless absolutely necessary.
+
+==================================================
+VALID MICRONODES
+==================================================
+
+MicroNodes with:
+
+SUFFICIENT source alignment
+
+persist normally as draft/reviewable generated nodes.
+
+They retain:
+
+- title
+- learningObjective
+- source refs
+- exercises
+- Topic
+- Outcome proposals
+- generated metadata
+
+==================================================
+NON-SUFFICIENT MICRONODES
+==================================================
+
+For a MicroNode with:
+
+PARTIAL
+INSUFFICIENT
+HEADING_ONLY
+UNREADABLE
+or other non-sufficient alignment
+
+persist it only as REVIEW REQUIRED.
+
+Required behavior:
+
+- do not mark approved;
+- do not mark confirmed;
+- do not let it satisfy final C1 approval;
+- do not let it satisfy Outcome REQUIRED coverage automatically;
+- do not use it as trusted AI Teacher source until teacher review fixes
+  or approves it;
+- surface its alignment problem in the teacher UI.
+
+The teacher must be able to:
+
+- edit objective;
+- change source;
+- delete node;
+- merge/split manually;
+- keep it as draft;
+- resolve alignment later.
+
+==================================================
+DO NOT DISCARD THE WHOLE MAP
+==================================================
+
+Remove the current lesson-level rule:
+
+one non-sufficient MicroNode
+→ reject all persistence.
+
+Replace it with:
+
+valid mapping candidate
+→ persist
+
+non-sufficient node
+→ persist as needs_review
+
+final approval
+→ remains blocked until unresolved nodes are fixed or explicitly
+reviewed according to the existing teacher-review rules.
+
+==================================================
+SOURCE SAFETY MUST REMAIN
+==================================================
+
+Do NOT allow:
+
+- fabricated source;
+- unverified PDF content;
+- neighboring-page content;
+- sourcePage 0;
+- provider-only source claims;
+- raw malformed source blocks.
+
+If a MicroNode has no valid source at all:
+
+it may persist as draft only if its source problem is explicitly
+recorded and it cannot be used as trusted instructional content.
+
+If existing schema cannot safely represent such a node, omit the source
+relation and mark the node needs_review.
+
+Do NOT fabricate source ownership.
+
+==================================================
+EXERCISES
+==================================================
+
+Preserve all verified textbook exercises.
+
+If a failing MicroNode cannot safely own an exercise:
+
+move/preserve that exercise as Additional/Unassigned.
+
+Do not delete it.
+
+==================================================
+OUTCOMES
+==================================================
+
+Persist Outcome proposals only where safe.
+
+A non-sufficient MicroNode must not automatically satisfy a REQUIRED
+Outcome relation.
+
+If needed:
+
+- keep relation draft;
+- mark review required;
+- or leave Outcome unresolved.
+
+Teacher can repair later.
+
+==================================================
+FINAL APPROVAL GATE
+==================================================
+
+IMPORTANT:
+
+We are relaxing ONLY THE PERSISTENCE GATE.
+
+We are NOT relaxing FINAL APPROVAL.
+
+Final approval must still block if:
+
+- unresolved source alignment exists;
+- review-required MicroNodes remain;
+- required Outcome coverage is unresolved;
+- other existing final-readiness blockers remain.
+
+This gives us:
+
+AUTO MAPPING CAN COMPLETE
+
+while
+
+FINAL C1 APPROVAL REMAINS SAFE.
+
+==================================================
+UI
+==================================================
+
+Show a clear badge on unresolved generated MicroNodes:
+
+⚠ Աղբյուրի համապատասխանությունը պահանջում է վերանայում
+
+or equivalent.
+
+Also show summary in mapping audit:
+
+Source-aligned MicroNodes: X
+Needs review: Y
+
+Do not redesign the dashboard.
+
+==================================================
+TRANSACTIONAL SAFETY
+==================================================
+
+Persist the mapping atomically.
+
+Do not partially write Topics, then fail halfway through nodes/exercises.
+
+The complete candidate should persist in one transaction with review
+statuses.
+
+==================================================
+TESTS
+==================================================
+
+Add focused tests:
+
+1. all MicroNodes SUFFICIENT
+→ persist normally
+
+2. 3 SUFFICIENT + 1 PARTIAL
+→ mapping persists
+→ PARTIAL node = needs_review
+→ final approval blocked
+
+3. 3 SUFFICIENT + 1 HEADING_ONLY
+→ mapping persists
+→ heading-only node = needs_review
+→ no fake source approval
+
+4. unsupported node cannot satisfy REQUIRED Outcome
+
+5. exercise from unresolved node is preserved as Additional/Unassigned
+when necessary
+
+6. fabricated/unverified source still blocks or is excluded according to
+existing source-safety rules
+
+7. final approval remains blocked while unresolved node exists
+
+8. teacher edit/delete can resolve the node later
+
+9. refresh preserves mapping and review statuses
+
+==================================================
+REAL ACCEPTANCE RUN
+==================================================
+
+After focused tests/typechecks pass:
+
+Run ONE real mapping for the current lesson:
+
+Մաթեմատիկա 5
+§1.2 Բնական թվերի շարքը
+resource #19
+PDF pages 14–15
+
+Expected:
+
+PERSISTENCE: PASS
+
+Even if one node remains PARTIAL/INSUFFICIENT.
+
+Report:
+
+TOPICS: N
+MICRONODES: N
+SOURCE-ALIGNED: N
+NEEDS REVIEW: N
+EXERCISES: N
+ADDITIONAL EXERCISES: N
+SOURCE COVERAGE: N/N
+FINAL APPROVAL READY: YES/NO
+
+Expected final approval readiness may be NO.
+
+That is acceptable.
+
+==================================================
+STOP RULE
+==================================================
+
+If mapping persists:
+
+STOP.
+
+Do not attempt more automatic repair.
+
+Do not improve C1 further.
+
+The next step is teacher/manual review.
+
+==================================================
+VERDICT
+==================================================
+
+Return exactly one:
+
+C1 MAPPING PERSISTED — REVIEW-REQUIRED NODES ALLOWED
+
+or
+
+C1 MAPPING PERSISTENCE STILL BLOCKED
