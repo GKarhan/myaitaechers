@@ -1,0 +1,492 @@
+FINAL BLOCKER — C1 SOURCE VERIFICATION REGRESSION
+REAL LESSON MUST REACH PASS 2
+
+We have completed Task #124 "Make mapped knowledge atomic".
+
+DO NOT reopen, redesign, or extend Task #124.
+
+The immediate blocker is now very narrow:
+
+REAL LESSON:
+- Textbook: Մաթեմատիկա 5
+- Author: Սմբատ Գոգյան
+- Lesson title: Բնական թվերի շարքը
+- Section: §1.2
+- Selected PDF pages in the current application: 14–15
+- Resource: resource #19
+- Current lesson is the existing real teacher lesson in the development DB.
+  Resolve its current ID from the database/title/resource instead of
+  assuming an old lesson ID.
+
+CURRENT UI ERROR:
+
+"Ընտրված PDF էջերի բովանդակությունը չհաջողվեց վստահորեն հաստատել
+որպես այս դասի աղբյուր։"
+
+This same lesson/source was already demonstrated to contain the correct
+lesson content on the selected pages.
+
+Earlier audit evidence also established:
+
+- title/source anchor passed;
+- the lesson title matched;
+- the selected resource was correct;
+- most/all extracted blocks could be grounded;
+- failures occurred because one or a small number of provider-produced
+  blocks could not be deterministically contained in server-extracted
+  page text;
+- the source gate then rejected the entire mapping before Pass 2.
+
+After Task #124, the same source-alignment/source-verification blocker is
+still preventing the new atomic mapping logic from being exercised.
+
+==================================================
+PRIMARY GOAL
+==================================================
+
+Find and fix the ROOT CAUSE of this source-verification regression so
+this legitimate lesson can safely pass source verification and reach
+Pass 2.
+
+Acceptance is NOT:
+
+- weakening source safety;
+- ignoring rejected blocks;
+- changing pages until the gate passes;
+- retrying the provider until output happens to match;
+- manually editing mapping data;
+- bypassing the source gate.
+
+Acceptance is:
+
+VERIFIED REAL SOURCE
+→ deterministic safe source binding
+→ source verification PASS
+→ Pass 2 actually reached.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+This task is ONLY about the source verification / source binding path.
+
+DO NOT change:
+
+- Task #124 atomic MicroNode logic
+- granularity rules
+- missing-node detection
+- exercise→MicroNode ownership logic
+- Outcome alignment logic
+- Cognitive Path
+- Phase 2 teaching-content generation
+- AI Teacher/chat
+- quizzes
+- Knowledge Tree
+- Goal/Outcome content
+- lesson pages merely to make the test pass
+- database schema
+- final approval architecture
+
+Do not start Package 1D.
+
+Do not perform unrelated cleanup/refactoring.
+
+==================================================
+1. AUDIT BEFORE EDITING
+==================================================
+
+Before changing code, trace the exact current flow from:
+
+selected lesson pages
+→ server PDF page extraction
+→ Pass 1 provider extraction
+→ provider block normalization
+→ physical-page/source binding
+→ source-set validation
+→ MappingSourceScopeError / source-alignment failure
+→ Pass 2
+
+Identify the exact files/functions involved.
+
+Also inspect the relevant changes from the recent C1 source hardening /
+provenance work and determine whether this is:
+
+A. an actual regression introduced by those changes;
+
+B. a pre-existing provider-normalization mismatch now exposed by the
+strict gate;
+
+C. incorrect PDF-page extraction;
+
+D. incorrect normalization/containment;
+
+E. provider-generated reconstruction/paraphrase being treated as if it
+were verbatim source;
+
+F. another proven cause.
+
+Do not guess.
+
+Report evidence.
+
+==================================================
+2. REPRODUCE THE FAILURE READ-ONLY FIRST
+==================================================
+
+Use the current real lesson/resource metadata.
+
+Before triggering another live mapping, inspect existing source-safe
+diagnostics/logs/job records.
+
+Determine:
+
+- selected PDF pages;
+- extracted page count;
+- Pass 1 block count;
+- verified block count;
+- rejected/unbound block count;
+- page distribution;
+- reason code for rejected blocks;
+- whether title anchor passes;
+- whether source extraction itself is correct.
+
+Do NOT expose textbook text in persistent diagnostics.
+
+For local debugging only, if necessary, compare the rejected provider
+block against the server-extracted page in memory and determine the
+specific mismatch class.
+
+Examples:
+
+- whitespace;
+- Armenian punctuation;
+- soft hyphen;
+- line-break/hyphenation;
+- Unicode normalization;
+- OCR/PDF glyph normalization;
+- ligature;
+- punctuation spacing;
+- provider paraphrase;
+- provider merged blocks;
+- provider invented text;
+- incorrect physical page.
+
+Classify the real mismatch.
+
+==================================================
+3. CRITICAL SAFETY RULE
+==================================================
+
+DO NOT solve this by allowing arbitrary semantic similarity.
+
+Source provenance must remain deterministic and fail-closed.
+
+A provider block may be bound to a physical PDF page only when its
+content can be proven to originate from that verified page under a
+bounded deterministic normalization rule.
+
+Forbidden shortcuts include:
+
+- fuzzy embedding similarity;
+- LLM judgment saying "this looks like the same text";
+- accepting a block merely because its topic matches;
+- assigning unmatched blocks to the selected page by default;
+- accepting sourcePage=0;
+- dropping rejected instructional blocks and continuing silently;
+- broadening the page range;
+- weakening Fix #5 provenance protection.
+
+==================================================
+4. DETERMINE WHETHER PASS 1 SHOULD BE THE
+SOURCE OF VERBATIM BLOCK TEXT AT ALL
+==================================================
+
+Audit an architectural question before implementing the repair:
+
+If the server already has deterministic extracted text for each physical
+PDF page, determine whether Pass 1 should be allowed to reconstruct the
+source text that later must be verified by exact containment.
+
+If the current design is:
+
+PDF text
+→ provider
+→ provider reproduces source block text
+→ server tries to prove provider reproduction equals PDF text
+
+then determine whether this unnecessary round-trip is itself the root
+cause.
+
+If so, prefer a safer architecture:
+
+SERVER-EXTRACTED VERIFIED PAGE TEXT
+= provenance authority
+
+AI/provider
+= classification / structural interpretation only
+
+The provider should reference bounded source spans/indices or return
+classification metadata, while the authoritative source text is taken
+from the verified server extraction.
+
+Do this ONLY if the audit proves it is the minimal safe fix.
+
+Do not perform a broad Pass 1 rewrite unless required.
+
+==================================================
+5. BOUNDED NORMALIZATION
+==================================================
+
+If the real problem is deterministic representation mismatch rather than
+architecture, implement only the minimum justified normalization.
+
+Allowed examples, if proven necessary:
+
+- Unicode NFC/NFKC normalization;
+- deterministic whitespace collapsing;
+- line-break normalization;
+- PDF line-end hyphenation reconstruction;
+- Armenian punctuation spacing normalization;
+- known PDF extraction artifacts that preserve the exact textual
+  meaning/content.
+
+Every accepted normalization must:
+
+1. be deterministic;
+2. preserve textual identity;
+3. have a regression fixture;
+4. NOT convert paraphrases into matches;
+5. NOT allow unrelated source text to bind.
+
+==================================================
+6. BLOCK-LEVEL FAILURE POLICY
+==================================================
+
+Audit the current all-or-nothing behavior.
+
+A single unverified provider block must NOT automatically destroy a
+legitimate mapping merely because the provider emitted a redundant,
+structural, or malformed reconstruction.
+
+BUT:
+
+an unverified INSTRUCTIONAL block must never be silently discarded.
+
+Implement/retain a safe distinction if architecture supports it:
+
+VERIFIED instructional block
+→ allowed into Pass 2
+
+verified structural/visual block
+→ legitimate supporting disposition
+
+provider-only block that cannot be grounded
+→ rejected provider artifact
+
+However, continuing is allowed only when the authoritative verified
+source itself is still completely accounted for.
+
+The system must validate SOURCE COVERAGE from the authoritative PDF
+source, not infer completeness merely from provider block count.
+
+If an ungrounded provider artifact corresponds to source instruction
+that is otherwise missing from verified extraction/classification,
+mapping must fail closed.
+
+==================================================
+7. NO FALSE SUCCESS
+==================================================
+
+Do not declare this fixed because unit tests pass.
+
+The actual acceptance condition is the real lesson reaching Pass 2.
+
+But before the live run, all provider-free regressions must pass.
+
+==================================================
+8. REQUIRED REGRESSION TESTS
+==================================================
+
+Add focused provider-free tests for at least:
+
+A. exact source block → PASS
+
+B. harmless whitespace/newline representation difference → PASS
+
+C. proven PDF hyphenation/Unicode artifact, if relevant to the real bug
+→ PASS
+
+D. provider paraphrase → REJECT
+
+E. provider invented sentence → REJECT
+
+F. wrong physical page → REJECT
+
+G. block from neighboring page outside selected range → REJECT
+
+H. title anchor valid + continuation page without repeated title
+→ PASS
+
+I. one rejected provider artifact must not falsely imply that verified
+source instruction disappeared
+
+J. real instructional source missing from authoritative coverage
+→ FAIL CLOSED
+
+K. failed verification must preserve the previous mapping transactionally
+
+Also rerun the existing source/provenance and C1 hardening suites.
+
+==================================================
+9. REAL LESSON ACCEPTANCE — EXACTLY ONE NEW RUN
+==================================================
+
+Only after tests/typechecks pass:
+
+Run automatic mapping exactly ONCE on the current real lesson:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+§1.2 Բնական թվերի շարքը
+selected PDF pages 14–15
+resource #19
+
+Resolve the current lesson ID rather than assuming 641/642.
+
+Do not:
+
+- change pages;
+- change title;
+- change Goal/Outcomes;
+- manually edit mapping;
+- delete the lesson;
+- retry if it fails.
+
+Record only safe diagnostics.
+
+Required evidence:
+
+SOURCE:
+- selected page range
+- extracted physical pages
+- Pass 1 block count
+- verified/unverified counts
+- source anchor status
+- source coverage status
+
+PIPELINE:
+- source verification PASS/FAIL
+- PASS 2 REACHED: YES/NO
+
+If Pass 2 is reached and mapping succeeds, additionally report:
+
+- Topic count
+- MicroNode count
+- exercise count
+- Additional exercise count
+- atomicity validation status
+
+Do NOT begin manually fixing the resulting mapping in this task.
+
+Task #124 quality will be evaluated separately after source verification
+is proven operational.
+
+==================================================
+10. ACCEPTANCE GATE
+==================================================
+
+PASS only if ALL are true:
+
+1. Root cause is explicitly identified with code/data evidence.
+
+2. Source/provenance safety remains fail-closed.
+
+3. No arbitrary fuzzy/semantic source matching is introduced.
+
+4. Existing source/provenance regressions pass.
+
+5. Existing Task #124 atomic mapping logic is untouched except for any
+strictly necessary integration compatibility.
+
+6. Real lesson source verification passes.
+
+7. Real lesson reaches Pass 2.
+
+8. No manual metadata/page workaround was used.
+
+9. Failed mapping paths still preserve prior mapping.
+
+If the real lesson still fails before Pass 2:
+
+DO NOT make another speculative fix.
+DO NOT retry the live mapping.
+
+Return:
+
+SOURCE VERIFICATION STILL BLOCKED
+
+with:
+
+- exact failing stage;
+- exact safe reason code;
+- verified/unverified counts;
+- proven root cause or remaining unknown;
+- smallest next investigation required.
+
+==================================================
+11. FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. ROOT CAUSE
+
+B. FILES / FUNCTIONS CHANGED
+
+C. WHY THE PREVIOUS FIX DID NOT SOLVE THIS REAL CASE
+
+D. SOURCE-VERIFICATION CONTRACT AFTER FIX
+
+E. NORMALIZATION / BINDING CHANGE
+
+F. SAFETY PROPERTIES PRESERVED
+
+G. REGRESSION RESULTS
+
+H. REAL LESSON ACCEPTANCE RESULT
+
+Include:
+
+SOURCE VERIFICATION: PASS / FAIL
+PASS 2 REACHED: YES / NO
+
+and safe counts.
+
+I. TASK #124 STATUS
+
+Explicitly state that atomic MicroNode logic was not redesigned in this
+task.
+
+J. VERDICT
+
+Exactly one:
+
+SOURCE VERIFICATION FIXED — READY TO EVALUATE TASK #124 MAPPING
+
+or
+
+SOURCE VERIFICATION STILL BLOCKED
+
+==================================================
+STOP CONDITION
+==================================================
+
+After this task:
+
+STOP.
+
+Do not proceed to another C1 improvement.
+Do not start Package 1D.
+Do not freeze C1 automatically.
+
+We will manually inspect the resulting real mapping first.
