@@ -1,0 +1,1193 @@
+TASK #118 — C1 FINAL MAPPING HARDENING
+HARD SOURCE PLACEMENT GATE
++ STRONGER DIRECT SOURCE SUPPORT
++ DUPLICATE/OVER-SPLIT REVIEW GATE
++ CLEAN END-TO-END ACCEPTANCE RETEST
+
+This is the FINAL targeted implementation task before manual C1 final
+acceptance review.
+
+DO NOT proceed to Package 1D.
+DO NOT declare C1 frozen automatically.
+
+The previous audit established:
+
+C1 STATUS:
+NOT READY — FIXES REQUIRED
+
+Three acceptance-critical gaps remain:
+
+A. Source placement validity is detected but is not always a hard
+   pre-persistence failure.
+
+B. MicroNode source grounding is still primarily lexical and can accept
+   broad topical overlap without proving that the source actually teaches
+   the objective.
+
+C. Duplicate / over-split MicroNodes can still persist when deterministic
+   suspicion exists but Pass 2B provider review fails to return an exact
+   HIGH-confidence merge finding.
+
+This task must close ONLY those three gaps, preserve all previous C1
+safeguards, and then run the required clean disposable end-to-end
+acceptance test.
+
+════════════════════════════════════════════════════
+0. PRESERVE ALL ACCEPTED PRIOR WORK
+════════════════════════════════════════════════════
+
+Preserve all completed work from:
+
+Task #108
+Task #109
+Task #110
+Task #112 / Fix #4
+Task #114 / Fix #5
+Fix #6
+Fix #6A
+Task #116 / Fix #7
+
+In particular preserve:
+
+- Goal/Outcome proposal → draft → teacher confirmation
+- confirmed canonical Goal/Outcomes authority
+- server-authoritative physical PDF page provenance
+- one-physical-page text Pass 1 extraction
+- vision page authority
+- source containment validation
+- validated lesson Source Set
+- source-scope gate
+- full-book fallback protection
+- context/truncation protection
+- zero-MicroNode false-success protection
+- non-destructive mapping replacement
+- instructional source coverage
+- exercise preservation/provenance
+- bounded Pass 2B semantic review
+- bounded source reallocation
+- source-support statuses
+- Outcome alignment review
+- Cognitive Path grounding
+- unsupported 24→26 failure protection
+- unsupported 7/2 extrapolation protection
+- Teaching Package draft/approval grounding
+- final-approval fail-closed behavior
+
+DO NOT weaken or redesign these.
+
+════════════════════════════════════════════════════
+1. VERIFIED ROOT CAUSES FROM THE FORENSIC AUDIT
+════════════════════════════════════════════════════
+
+The audit established these exact implementation gaps.
+
+ROOT CAUSE A — PLACEMENT VALIDITY
+
+`validateSourceCoverage` already detects:
+
+- missing source-block placement
+- duplicate ownership
+- invalid/out-of-range indices
+- empty MicroNodes
+
+BUT:
+
+`runPass2Pipeline` currently calculates/logs that invalidity without always
+throwing before persistence.
+
+This is unacceptable for canonical mapping.
+
+ROOT CAUSE B — SOURCE GROUNDING
+
+`classifyMicroNodeSourceAlignment` is intentionally a deterministic
+lexical safety screen, not true objective-to-source entailment.
+
+Current SUFFICIENT classification can be reached through broad concept
+token overlap.
+
+This may reject many bad nodes, but it can still accept a plausible
+same-topic objective not actually taught by the owned source.
+
+ROOT CAUSE C — DUPLICATE / OVER-SPLIT MICRONODES
+
+The current system has:
+
+- lexical near-duplicate candidate detection
+- provider semantic review
+- explicit HIGH OVER_SPLIT consolidation
+
+BUT:
+
+if deterministic duplicate suspicion exists and provider review does not
+return the exact expected HIGH finding / title target, duplicate candidates
+may survive.
+
+The system must fail/review suspicious duplication rather than silently
+persist it.
+
+════════════════════════════════════════════════════
+2. IMPLEMENTATION PRINCIPLE
+════════════════════════════════════════════════════
+
+Do NOT try to make the mapper "smarter" by adding aggressive automatic
+merging.
+
+The final architecture should be conservative:
+
+DETERMINISTIC INVALIDITY
+→ HARD FAIL
+
+SEMANTIC UNCERTAINTY
+→ REVIEW REQUIRED / FAIL CLOSED
+
+HIGH-CONFIDENCE SAFE CONSOLIDATION
+→ MERGE
+
+NEVER:
+
+uncertain
+→ silently persist
+
+and NEVER:
+
+uncertain
+→ speculative automatic merge
+
+════════════════════════════════════════════════════
+3. FIX A — HARD SOURCE PLACEMENT GATE
+════════════════════════════════════════════════════
+
+At the final Pass 2 pre-persistence boundary:
+
+`validateSourceCoverage(...)`
+
+must become authoritative.
+
+If it reports invalid canonical placement due to:
+
+- missing required source placement
+- duplicate canonical ownership where duplication is forbidden
+- invalid sourceBlock index
+- out-of-range sourceBlock reference
+- empty MicroNode source ownership
+- other existing canonical placement errors
+
+then:
+
+STOP MAPPING BEFORE DESTRUCTIVE REPLACEMENT.
+
+Throw/return the existing controlled mapping-validation failure style.
+
+Do NOT merely log a warning.
+
+Do NOT delete the previous valid mapping.
+
+Do NOT persist partial Topics/MicroNodes/exercises.
+
+════════════════════════════════════════════════════
+4. STRUCTURAL / VISUAL MATERIAL MUST REMAIN LEGITIMATE
+════════════════════════════════════════════════════
+
+Do not make the placement gate naïvely require every source block to belong
+to a MicroNode.
+
+Preserve existing classifications:
+
+- instructional
+- practice/assessment
+- structural/visual
+- unreadable/unresolved
+
+Legitimate structural/visual blocks may remain outside MicroNode theory
+ownership according to the existing contract.
+
+The hard gate applies to INVALID canonical placement, not to legitimate
+non-instructional material.
+
+════════════════════════════════════════════════════
+5. EXERCISE PLACEMENT SAFETY
+════════════════════════════════════════════════════
+
+Preserve:
+
+EXERCISE / ACTIVITY / HOMEWORK
+→ canonical exercise path
+
+not theory ownership.
+
+After normalization/reallocation/consolidation:
+
+verify every real practice block has exactly one safe disposition:
+
+- attached canonical exercise
+OR
+- unlinked/additional canonical exercise for review
+
+It must not:
+
+- disappear
+- duplicate
+- become theory simply to satisfy placement
+
+If rescue-to-topic behavior remains:
+
+it may preserve the exercise record,
+but topic placement must not create false MicroNode ownership.
+
+════════════════════════════════════════════════════
+6. FIX B — STRONGER DIRECT SOURCE SUPPORT
+════════════════════════════════════════════════════
+
+Strengthen source grounding without pretending deterministic lexical code
+can perfectly understand pedagogy.
+
+The system must distinguish:
+
+1. DIRECT SUPPORT
+
+The source actually teaches, states, explains, defines, demonstrates, or
+establishes the MicroNode objective.
+
+2. SUPPORTING CONTEXT
+
+The source is relevant/motivational/contextual but does not independently
+establish the objective.
+
+3. INSUFFICIENT
+
+The source shares topic words but does not teach the claimed objective.
+
+4. UNREADABLE
+
+Cannot serve as authority.
+
+Do NOT treat:
+
+two shared concept words
+
+as sufficient final proof by itself.
+
+════════════════════════════════════════════════════
+7. DIRECT-SUPPORT DECISION CONTRACT
+════════════════════════════════════════════════════
+
+For a MicroNode to receive automatic:
+
+SOURCE_SUPPORT = SUFFICIENT
+
+require evidence stronger than broad lexical overlap.
+
+Use the current architecture's safest bounded combination of:
+
+- objective concept structure
+- owned validated source
+- source block type/function
+- direct rule/explanation/definition evidence
+- bounded semantic review if needed
+- Fix #6A same-lesson reallocation evidence
+
+Lexical normalization may identify candidate support.
+
+Lexical matching MUST NOT alone be final authority.
+
+════════════════════════════════════════════════════
+8. DO NOT REQUIRE VERBATIM OBJECTIVE TEXT
+════════════════════════════════════════════════════
+
+Valid pedagogical paraphrase must still work.
+
+Example:
+
+Source:
+explains that left-side buildings have odd numbers and right-side buildings
+have even numbers.
+
+MicroNode objective:
+learner can explain the odd/even side-of-street numbering rule.
+
+This must be eligible for SUFFICIENT support even if wording differs.
+
+Do not require exact substring equality between learningObjective and
+textbook source.
+
+════════════════════════════════════════════════════
+9. WRONG-RULE / SAME-TOPIC PROTECTION
+════════════════════════════════════════════════════
+
+A source may mention the same broad topic while not teaching the objective.
+
+Example:
+
+Objective:
+determine how a new building between existing buildings receives an
+address.
+
+Owned source:
+story showing why knowing an address is important.
+
+Both concern addresses.
+
+But the source does NOT establish the new-building numbering rule.
+
+Expected:
+
+NOT SUFFICIENT.
+
+Likewise:
+
+Outcome similarity must NEVER substitute for textbook/source support.
+
+════════════════════════════════════════════════════
+10. HEADING / TITLE PROTECTION
+════════════════════════════════════════════════════
+
+Preserve and strengthen the existing heading-only rule.
+
+A heading may organize material.
+
+It does not automatically ground a substantive learning objective.
+
+Example:
+
+“Բնական թվերը և կոորդինատային ճառագայթը”
+
+does not prove:
+
+“learner can analyze odd/even building distribution”.
+
+Heading-only support must not become SUFFICIENT merely through shared
+tokens.
+
+════════════════════════════════════════════════════
+11. NARRATIVE / EXAMPLE PEDAGOGICAL ROLE
+════════════════════════════════════════════════════
+
+Do not broadly reject narratives or examples.
+
+Instead distinguish pedagogical role.
+
+Narrative may directly support:
+
+- motivation
+- importance
+- problem situation
+- contextual understanding
+
+Example may directly support:
+
+- applying/illustrating an already established rule
+
+But narrative/example alone must not silently become authority for a
+different rule.
+
+If a rule/explanation block exists elsewhere in the validated lesson:
+
+Fix #6A may reallocate/add it.
+
+If no direct support exists:
+
+the MicroNode must remain review-required / invalid.
+
+════════════════════════════════════════════════════
+12. SEMANTIC REVIEW BOUNDING
+════════════════════════════════════════════════════
+
+Do NOT add uncontrolled provider calls.
+
+Reuse the existing single bounded semantic review architecture where
+possible.
+
+Maximum semantic behavior per mapping remains bounded.
+
+Do not create:
+
+grounding review
+→ repair
+→ review
+→ repair
+→ review loops.
+
+Semantic reviewer proposes evidence.
+
+Server validates result.
+
+Server remains authoritative.
+
+════════════════════════════════════════════════════
+13. SOURCE SUPPORT FINAL STATES
+════════════════════════════════════════════════════
+
+Final node source-support state must remain conceptually:
+
+SUFFICIENT
+
+PARTIAL
+
+INSUFFICIENT
+
+UNREADABLE
+
+Only SUFFICIENT may proceed automatically toward final-ready mapping.
+
+PARTIAL:
+requires review/correction.
+
+INSUFFICIENT:
+cannot become final-ready.
+
+UNREADABLE:
+cannot become factual authority.
+
+Do not redefine these statuses unnecessarily.
+
+════════════════════════════════════════════════════
+14. FIX C — DUPLICATE / OVER-SPLIT REVIEW GATE
+════════════════════════════════════════════════════
+
+Do NOT introduce aggressive automatic merging.
+
+Use the existing deterministic near-duplicate detector as a:
+
+SUSPICION SIGNAL.
+
+Then use existing bounded semantic review to decide if safe consolidation
+exists.
+
+Three possible outcomes:
+
+A. SAFE HIGH-CONFIDENCE OVER-SPLIT
+
+→ merge using existing safe consolidation.
+
+B. CLEARLY DISTINCT
+
+→ preserve both.
+
+C. SUSPICIOUS BUT NOT SAFELY RESOLVED
+
+→ do NOT silently persist both.
+
+→ return REVIEW_REQUIRED / controlled mapping failure before persistence.
+
+This is the key new gate.
+
+════════════════════════════════════════════════════
+15. CROSS-TOPIC DUPLICATE AWARENESS
+════════════════════════════════════════════════════
+
+The forensic audit found topic-local generation can create lesson-wide
+duplicate objectives.
+
+Therefore duplicate suspicion must not be blind to Topic boundaries.
+
+Do NOT automatically merge across Topics.
+
+But before persistence:
+
+detect whether MicroNodes across different Topics appear to represent the
+same pedagogical objective.
+
+If suspicious:
+
+semantic review may classify:
+
+- distinct because Topic context genuinely differs
+OR
+- duplicate/over-split
+
+If safe cross-topic consolidation is not supported by current architecture:
+
+do NOT invent it.
+
+Instead:
+FAIL / REVIEW REQUIRED.
+
+Teacher can resolve Topic structure.
+
+════════════════════════════════════════════════════
+16. SAME-TITLE / TITLE-TARGET SAFETY
+════════════════════════════════════════════════════
+
+Do not rely on exact title strings as the sole identity of a consolidation
+target.
+
+If duplicate titles exist:
+
+the merge/review result must reference a stable candidate identity/index,
+or use the safest existing internal identity.
+
+Do NOT allow:
+
+title collision
+→ wrong node merged.
+
+If the current semantic review format cannot safely identify a unique
+target:
+
+do not merge.
+
+Fail/review instead.
+
+Prefer no schema migration if an in-memory stable index can solve it.
+
+════════════════════════════════════════════════════
+17. MICRONODE ATOMICITY FINAL GATE
+════════════════════════════════════════════════════
+
+Before persistence, every final MicroNode must pass:
+
+A. DISTINCT
+
+No unresolved duplicate/near-duplicate objective remains.
+
+B. TEACHABLE
+
+Represents coherent instructional knowledge.
+
+C. ASSESSABLE
+
+Can be independently checked.
+
+D. CURRICULUM RELEVANT
+
+Supported by lesson source and/or necessary source-contained prerequisite.
+
+E. SOURCE GROUNDED
+
+Has SUFFICIENT direct instructional support.
+
+Do not invent a numeric node count target.
+
+════════════════════════════════════════════════════
+18. MANY SOURCE BLOCKS → ONE MICRONODE
+════════════════════════════════════════════════════
+
+Preserve this core contract.
+
+Examples:
+
+definition
++ explanation
++ example
++ diagram explanation
++ contextual paragraph
+
+may all support one MicroNode.
+
+Do not create extra MicroNodes merely because the source is split into
+several blocks.
+
+Coverage is source ownership/disposition.
+
+It is NOT MicroNode count.
+
+════════════════════════════════════════════════════
+19. ONE SOURCE BLOCK MAY CONTAIN MULTIPLE OBJECTIVES
+════════════════════════════════════════════════════
+
+Do not over-correct toward too few nodes.
+
+If a source block genuinely contains multiple independently teachable and
+assessable objectives:
+
+multiple MicroNodes may be justified.
+
+Atomicity is semantic.
+
+Not source-block cardinality.
+
+════════════════════════════════════════════════════
+20. OUTCOME ALIGNMENT BOUNDARY
+════════════════════════════════════════════════════
+
+Preserve direction:
+
+confirmed Outcome
+→ reviewable relation
+→ already valid source-grounded MicroNode
+
+Outcome alignment may NOT:
+
+- create a MicroNode
+- rescue weak source grounding
+- turn PARTIAL into SUFFICIENT
+- prove atomicity
+
+Reconcile Outcome relations only AFTER final node set is established.
+
+Remove stale relations to merged/rejected nodes.
+
+Do NOT auto-review Outcome alignments.
+
+════════════════════════════════════════════════════
+21. COGNITIVE PATH — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+Preserve Fix #6 Cognitive Path grounding.
+
+No redesign.
+
+After final valid MicroNodes exist, existing Cognitive Path safeguards
+remain responsible for:
+
+- grounding
+- 24→26 rejection
+- unsupported 7/2 rejection
+- explicit review/confirmation
+- final approval gate
+
+Only regression-test them.
+
+════════════════════════════════════════════════════
+22. TEACHING PACKAGE — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+Preserve existing Teaching Package grounding/draft/approval rules.
+
+No redesign.
+
+Only ensure merged/rejected MicroNodes do not leave orphaned authoritative
+content.
+
+Existing draft reconciliation rules should remain.
+
+Never auto-approve.
+
+════════════════════════════════════════════════════
+23. HARD PRE-PERSISTENCE ORDER
+════════════════════════════════════════════════════
+
+Before any destructive mapping replacement, candidate mapping must pass in
+this order conceptually:
+
+1. source scope valid
+
+2. physical provenance valid
+
+3. source block structure valid
+
+4. exercise/activity normalization valid
+
+5. instructional coverage repair
+
+6. bounded granularity review
+
+7. safe consolidation
+
+8. bounded source reallocation
+
+9. HARD source placement validation
+
+10. HARD direct source-support validation
+
+11. HARD unresolved duplicate/atomicity validation
+
+12. instructional source coverage validation
+
+13. candidate result structurally valid
+
+ONLY THEN:
+
+delete/replace prior mapping.
+
+Do not persist first and clean later.
+
+════════════════════════════════════════════════════
+24. FAILURE MUST PRESERVE OLD VALID MAP
+════════════════════════════════════════════════════
+
+If ANY new hard gate fails:
+
+- do not delete prior Topics
+- do not delete prior MicroNodes
+- do not delete prior exercises
+- do not alter confirmed Goal/Outcomes
+- do not write partial replacement
+
+Return controlled safe diagnostics/review state.
+
+Preserve current transactional safety.
+
+════════════════════════════════════════════════════
+25. PROVIDER-FREE FIX A TESTS
+════════════════════════════════════════════════════
+
+Add tests proving each placement invalidity blocks before persistence:
+
+1. missing instructional placement
+
+2. duplicate canonical ownership where invalid
+
+3. out-of-range source index
+
+4. empty MicroNode source ownership
+
+5. invalid source reference
+
+6. legitimate structural block does NOT trigger false failure
+
+7. canonical exercise disposition does NOT trigger false theory failure
+
+════════════════════════════════════════════════════
+26. PROVIDER-FREE FIX B TESTS
+════════════════════════════════════════════════════
+
+Add direct source-support tests:
+
+1. direct rule + paraphrased objective → SUFFICIENT
+
+2. direct explanation + objective → SUFFICIENT
+
+3. heading-only same-topic → NOT SUFFICIENT
+
+4. narrative-only wrong rule → NOT SUFFICIENT
+
+5. example illustrating established rule → valid supporting evidence
+
+6. broad same-topic lexical overlap without objective support
+   → NOT SUFFICIENT
+
+7. generic Armenian concept overlap
+   → NOT automatically SUFFICIENT
+
+8. unsupported objective
+   → FAIL / review
+
+9. Fix #6A valid same-lesson reallocation can move/add the direct source and
+   become SUFFICIENT after deterministic revalidation
+
+10. Outcome overlap does not change source-support classification
+
+════════════════════════════════════════════════════
+27. PROVIDER-FREE FIX C TESTS
+════════════════════════════════════════════════════
+
+Add duplicate/atomicity tests:
+
+1. exact duplicate objective
+
+2. Armenian paraphrase near-duplicate
+
+3. one narrower restatement of another
+
+4. same concept derived from different source blocks
+
+5. same concept created in two Topics
+
+6. truly independent objectives remain separate
+
+7. provider review gives explicit safe HIGH merge
+   → merge
+
+8. deterministic suspicion + provider says distinct with evidence
+   → preserve
+
+9. deterministic suspicion + provider returns nothing/malformed/uncertain
+   → mapping REVIEW/FAIL, do not persist duplicates
+
+10. duplicate title collision cannot merge wrong target
+
+11. merge preserves all valid source ownership
+
+12. merge/rejection reconciles exercises
+
+13. merge/rejection reconciles Outcome relations
+
+════════════════════════════════════════════════════
+28. TEST OLD MAP PRESERVATION
+════════════════════════════════════════════════════
+
+Add a provider-free/in-process test:
+
+Existing valid mapping exists.
+
+New candidate fails:
+
+- placement gate
+OR
+- direct-support gate
+OR
+- unresolved-duplicate gate.
+
+Expected:
+
+old valid mapping remains unchanged.
+
+No destructive replacement occurs.
+
+════════════════════════════════════════════════════
+29. RUN ALL RELEVANT REGRESSIONS
+════════════════════════════════════════════════════
+
+Run at minimum:
+
+- Task #118 focused tests
+- Fix #5 source-boundary suite
+- Fix #7 provenance suite
+- source coverage suite
+- Pass 2 diagnostics suite
+- Fix #6 granularity/grounding suite
+- Fix #6A reallocation suite
+- canonical Outcome/alignment suite
+- Cognitive Path suite
+- Teaching Package grounding suite
+- final approval suite
+- API TypeScript typecheck
+- Web TypeScript typecheck
+
+Use the correct isolated test database where required.
+
+Do not weaken tests.
+
+If an existing harness has an environment mismatch:
+
+report it clearly.
+
+Do not count a test as PASS unless it actually exercised the intended code.
+
+════════════════════════════════════════════════════
+30. CLEAN DISPOSABLE END-TO-END ACCEPTANCE RETEST
+════════════════════════════════════════════════════
+
+ONLY after all provider-free regressions pass:
+
+run ONE clean disposable end-to-end mapping.
+
+Use the established real acceptance source:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Verified physical PDF pages:
+11–12
+
+Use:
+
+- existing verified resource
+- isolated disposable lesson
+- same confirmed Goal/Outcomes shape
+- normal authenticated mapping endpoint
+
+DO NOT modify the user's real lesson.
+
+DO NOT delete the user's real mapping.
+
+Clean up disposable test data afterward.
+
+════════════════════════════════════════════════════
+31. LIVE RETEST — REQUIRED PIPELINE EVIDENCE
+════════════════════════════════════════════════════
+
+Report safe counts only.
+
+SOURCE
+
+- selected physical pages
+- Pass 1 block count
+- verified block count
+- ambiguous provenance count
+- unverified provenance count
+- instructional count
+- practice count
+- structural/visual count
+
+PASS 2
+
+- Topic count
+- initial proposed MicroNode count
+- duplicate-suspicion groups
+- semantic review findings
+- merged count
+- unresolved duplicate count
+- source reallocations
+- placement-validation status
+- direct source-support status
+- unresolved instructional count
+- final MicroNode count
+- exercise count
+- Outcome relation count
+
+Do NOT output long source text.
+
+════════════════════════════════════════════════════
+32. LIVE RETEST — FINAL MICRONODE REPORT
+════════════════════════════════════════════════════
+
+For each final MicroNode return:
+
+- title
+- learningObjective
+- Topic
+- source page(s)
+- sourceBlock IDs
+- direct source-support status
+- why pedagogically distinct
+- exercise count
+- related Outcome(s)
+- REQUIRED/SUPPORTING
+- required cognitive depth
+- review status
+
+Do NOT print long textbook passages.
+
+Do NOT claim quality merely from count.
+
+════════════════════════════════════════════════════
+33. LIVE RETEST — HUMAN-REVIEW WARNINGS
+════════════════════════════════════════════════════
+
+Before declaring READY FOR MANUAL C1 FINAL REVIEW, run a compact sanity
+check:
+
+A. Any remaining duplicate/near-duplicate MicroNodes?
+
+B. Any node based mainly on a heading?
+
+C. Any node based mainly on an irrelevant narrative?
+
+D. Any node with only weak lexical grounding?
+
+E. Any example/context fragment incorrectly promoted to a node?
+
+F. Any exercise converted into a MicroNode?
+
+G. Any valid textbook exercise missing?
+
+H. Any Outcome relation attached to a weakly supported node?
+
+If any remain:
+
+do NOT report READY.
+
+Return BLOCKED.
+
+════════════════════════════════════════════════════
+34. COGNITIVE PATH RETEST
+════════════════════════════════════════════════════
+
+For the final valid MicroNodes, generate/reuse the required clean
+Cognitive Path acceptance evidence.
+
+Verify:
+
+- performance objectives remain grounded
+- success criteria remain grounded
+- higher Bloom levels increase cognitive demand, not factual scope
+- 24-and-28 → 26 failure class remains rejected
+- unsupported 7/2 extrapolation remains rejected
+- generated paths remain teacher-reviewable
+
+Do NOT auto-confirm merely to pass final readiness.
+
+════════════════════════════════════════════════════
+35. FINAL C1 READINESS BEHAVIOR
+════════════════════════════════════════════════════
+
+The system must fail closed until all teacher review gates are satisfied.
+
+Correct live outcome may be:
+
+MAPPING STRUCTURALLY READY
+BUT WAITING FOR TEACHER REVIEW
+
+That is acceptable.
+
+Do not auto-approve:
+
+- MicroNodes
+- Outcome links
+- Cognitive Paths
+- exercises
+- Teaching Package
+
+merely to produce green readiness.
+
+════════════════════════════════════════════════════
+36. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime/chat
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree
+- C6 Recommendation / Personalization
+- Quiz creation
+- Quiz scoring
+- student sessions
+- Package 1D Structured TEXT/manual mapping
+- unrelated teacher dashboard UI
+- model selection
+
+DO NOT:
+
+- hardcode the Math 5 lesson
+- hardcode MicroNode count
+- hardcode titles
+- weaken source gates
+- broaden source scope
+- fabricate source
+- fabricate exercises
+- create uncontrolled semantic loops
+- use Outcomes as source proof
+- auto-merge uncertain nodes
+- auto-approve review gates
+
+════════════════════════════════════════════════════
+37. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. FIX A — HARD PLACEMENT GATE
+
+What changed and exact pre-persistence boundary.
+
+B. FIX B — DIRECT SOURCE SUPPORT
+
+How SUFFICIENT is now determined and why lexical overlap alone is not
+authority.
+
+C. FIX C — DUPLICATE / OVER-SPLIT GATE
+
+How suspicious duplicates are handled without unsafe auto-merging.
+
+D. FILES CHANGED
+
+E. DB / SCHEMA CHANGES
+
+State explicitly if none.
+
+F. TASK #118 FOCUSED TEST RESULTS
+
+G. EXISTING C1 REGRESSION STATUS
+
+H. CLEAN RETEST — SOURCE / PROVENANCE
+
+I. CLEAN RETEST — PASS 2 STRUCTURE
+
+J. CLEAN RETEST — FINAL MICRONODES
+
+Use Section 32 format.
+
+K. CLEAN RETEST — EXERCISES
+
+L. CLEAN RETEST — OUTCOME ALIGNMENT
+
+M. CLEAN RETEST — COGNITIVE PATH
+
+N. HUMAN-REVIEW SANITY CHECK
+
+Return PASS/FAIL for Section 33 A–H.
+
+O. OLD-MAPPING PRESERVATION TEST
+
+P. FINAL READINESS BEHAVIOR
+
+Q. REMAINING C1 ISSUES
+
+R. VERDICT
+
+Use ONLY:
+
+READY FOR MANUAL C1 FINAL REVIEW
+
+or
+
+C1 TASK #118 BLOCKED
+
+Do NOT return C1 FROZEN.
+
+════════════════════════════════════════════════════
+38. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS only if ALL are true:
+
+[ ] Invalid source placement is now a hard pre-persistence failure.
+
+[ ] Missing ownership cannot silently persist.
+
+[ ] Invalid indices cannot silently persist.
+
+[ ] Invalid duplicate ownership cannot silently persist.
+
+[ ] Empty source-backed MicroNodes cannot silently persist.
+
+[ ] Legitimate structural/visual source remains allowed.
+
+[ ] Exercises remain exercises.
+
+[ ] Lexical overlap alone is not final source-grounding authority.
+
+[ ] Valid paraphrased direct support still passes.
+
+[ ] Heading-only support fails.
+
+[ ] Narrative→wrong-rule support fails.
+
+[ ] Generic same-topic overlap cannot rescue an unsupported node.
+
+[ ] Fix #6A can repair source ownership only using validated same-lesson
+    source.
+
+[ ] Unsupported objective cannot become final-ready.
+
+[ ] Deterministic duplicate suspicion is an actual gate.
+
+[ ] No unsafe automatic merge is introduced.
+
+[ ] Safe HIGH-confidence merge still works.
+
+[ ] Unresolved suspected duplicate cannot silently persist.
+
+[ ] Cross-topic duplicate suspicion is reviewed/fails closed.
+
+[ ] Title collision cannot merge the wrong MicroNode.
+
+[ ] Source ownership remains complete after merge/rejection.
+
+[ ] Exercises reconcile after merge/rejection.
+
+[ ] Outcome relations reconcile after merge/rejection.
+
+[ ] Existing valid mapping survives failed replacement.
+
+[ ] Fix #5 source scope remains green.
+
+[ ] Fix #7 page provenance remains green.
+
+[ ] Fix #6 Cognitive Path grounding remains green.
+
+[ ] Fix #6A reallocation remains green.
+
+[ ] Teaching Package grounding remains green.
+
+[ ] Clean disposable end-to-end retest completes.
+
+[ ] Human sanity check A–H all PASS.
+
+If ANY item fails:
+
+STOP.
+
+Return:
+
+C1 TASK #118 BLOCKED
+
+State the exact remaining blocker.
+
+DO NOT create another broad architecture task automatically.
+
+DO NOT proceed to Package 1D.
+
+DO NOT declare C1 frozen.
