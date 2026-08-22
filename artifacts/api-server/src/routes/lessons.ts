@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1HasBlocks, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -3916,17 +3916,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       },
       "lesson mapping Pass 1 provenance binding complete",
     );
-    if (pass1.blocks.length === 0) {
-      throw new MappingSourceScopeError({
-        valid: false,
-        checkedBlockCount: 0,
-        invalidBlockIndices: [],
-        invalidPageCount: 0,
-        unverifiableTextCount: Number(physicalPageProvenance.quarantinedBlockCount ?? 0),
-        reasonCodes: ["SOURCE_TEXT_NOT_IN_SELECTED_PAGE"],
-        physicalPageProvenance,
-      });
-    }
+    // A zero-block provider response is an extraction failure, not evidence that
+    // the verified PDF is outside the lesson scope. This keeps source-scope
+    // diagnostics meaningful and blocks the empty candidate before Pass 2.
+    assertPass1HasBlocks(pass1.blocks);
     const sourceScope = validateBlocksAgainstLessonSourceSet(
       sourceSet,
       extractedPages,
@@ -4434,7 +4427,19 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     );
   } catch (err) {
     logger.error({ err, lessonId, jobId: job.id }, "lesson mapping job failed");
-    const preservedDiagnosticFailure = err instanceof MappingSourceScopeError
+    const preservedDiagnosticFailure = err instanceof MappingSourceTruncatedError
+      ? {
+          progress: "Pass 1 source extraction was incomplete; existing mapping was preserved.",
+          reason: "PASS1_SOURCE_TRUNCATED_PRE_VERIFICATION",
+          diagnostics: { sourceExtractionComplete: false },
+        }
+      : err instanceof MappingPass1EmptyExtractionError
+      ? {
+          progress: "Pass 1 returned no usable source blocks; existing mapping was preserved.",
+          reason: "PASS1_EMPTY_EXTRACTION_PRE_VERIFICATION",
+          diagnostics: { sourceExtractionComplete: false },
+        }
+      : err instanceof MappingSourceScopeError
       ? {
           progress: "Verified source blocks could not establish a usable lesson source set; existing mapping was preserved.",
           reason: "SOURCE_SCOPE_FAILED_PRE_PASS2",

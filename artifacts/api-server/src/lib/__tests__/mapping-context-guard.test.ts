@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   assertPass1ContextBudget,
+  assertPass1HasBlocks,
   assertPass1ResponseComplete,
   assertVisionContextBudget,
   buildPass1RetryDiagnostics,
@@ -10,6 +11,7 @@ import {
   extractPdfPageRange,
   getTeacherFacingMappingFailure,
   MappingContextBudgetError,
+  MappingPass1EmptyExtractionError,
   MappingSourceTruncatedError,
 } from "../../services/lesson-mapping.js";
 import {
@@ -130,4 +132,19 @@ function mappingInput(lessonText: string) {
   console.log("  ✓ valid-looking output is rejected when the provider marks it truncated");
 }
 
-console.log("\nMapping context guard: 8/8 passing");
+{
+  assert.doesNotThrow(() => assertPass1HasBlocks([{
+    blockType: "RULE",
+    sourceText: "Ստուգելի կանոն",
+    sourcePage: 14,
+    sourceParagraph: null,
+    sourceBoundingBox: null,
+  }]));
+  assert.throws(() => assertPass1HasBlocks([]), MappingPass1EmptyExtractionError);
+  const teacherError = getTeacherFacingMappingFailure(new MappingPass1EmptyExtractionError());
+  assert.match(teacherError, /բլոկներ/u);
+  assert.doesNotMatch(teacherError, /PDF էջերի բովանդակությունը/u);
+  console.log("  ✓ empty Pass 1 output is explicit and never misclassified as source scope");
+}
+
+console.log("\nMapping context guard: 9/9 passing");

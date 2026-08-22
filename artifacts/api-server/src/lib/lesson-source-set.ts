@@ -96,9 +96,12 @@ function comparableText(value: string): string {
     // pdf-parse and providers may disagree only about a visual line-wrap or
     // Armenian ligature. Remove those presentation differences before checking
     // the original server-extracted text; do not apply semantic stemming here.
+    // A soft hyphen at a PDF line end is a visual wrap marker, not a word
+    // boundary. Join it before stripping format characters; otherwise
+    // "բացթողում­\nների" becomes the different text "բացթողում ների".
+    .replace(/([\p{L}\p{N}])[-\u00AD\u2010-\u2015]\s*\r?\n\s*([\p{L}\p{N}])/gu, "$1$2")
     .replace(/\u0565\u0582/gu, "\u0587")
     .replace(/[\u00AD\u200B\u200C\u200D\u2060]/gu, "")
-    .replace(/([\p{L}\p{N}])[-\u2010-\u2015]\s*\n\s*([\p{L}\p{N}])/gu, "$1$2")
     .toLocaleLowerCase("hy-AM")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")

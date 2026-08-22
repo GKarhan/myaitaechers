@@ -299,6 +299,22 @@ export class MappingSourceTruncatedError extends Error {
   }
 }
 
+/**
+ * A syntactically valid provider payload with no usable source blocks is not a
+ * source-scope failure: the server did read the selected pages, but Pass 1 did
+ * not extract evidence from them. Keep this separate so it cannot be mistaken
+ * for a rejected PDF or relaxed into an empty Pass 2 input.
+ */
+export class MappingPass1EmptyExtractionError extends Error {
+  readonly teacherMessage =
+    "Դասի աղբյուրից բովանդակության բլոկներ չստացվեցին։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
+
+  constructor() {
+    super("Pass 1 provider response contained no usable source blocks");
+    this.name = "MappingPass1EmptyExtractionError";
+  }
+}
+
 export class MappingZeroMicroNodesError extends Error {
   readonly teacherMessage =
     "Քարտեզագրումը չի ստեղծել գիտելիքի մանր հանգույցներ։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ ստուգել աղբյուրային նյութը։";
@@ -422,6 +438,7 @@ export class MappingOutcomeAlignmentError extends Error {
 export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingContextBudgetError) return error.teacherMessage;
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
+  if (error instanceof MappingPass1EmptyExtractionError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
   if (error instanceof MappingSourcePlacementError) return error.teacherMessage;
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
@@ -443,6 +460,11 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
 
 export function assertPass1ResponseComplete(finishReason: string | null | undefined): void {
   if (finishReason === "length") throw new MappingSourceTruncatedError();
+}
+
+/** Empty Pass 1 output is never an empty-but-valid source set. */
+export function assertPass1HasBlocks(blocks: ReadonlyArray<Pass1Block>): void {
+  if (blocks.length === 0) throw new MappingPass1EmptyExtractionError();
 }
 
 /**
@@ -891,11 +913,19 @@ export async function extractBlocksWithAI(
   const raw1 = r1.choices[0]?.message?.content ?? "";
   assertPass1ResponseComplete(r1.choices[0]?.finish_reason);
   let parsed = extractJSON(raw1);
+  let result = parsed ? normalisePass1(parsed, options.sourcePageOverride) : null;
 
-  if (!parsed) {
-    logger.warn({ raw: raw1.slice(0, 200) }, "pass1 text: first attempt not valid JSON — retrying");
-    const retryInstruction =
-      'Your previous response was not valid JSON. Return ONLY a valid JSON object with a "blocks" array, nothing else.';
+  if (!result || result.blocks.length === 0) {
+    const retryInstruction = parsed
+      ? 'Your previous response contained no usable source blocks. Return ONLY a valid JSON object with a non-empty "blocks" array. Copy only verbatim text from the supplied page.'
+      : 'Your previous response was not valid JSON. Return ONLY a valid JSON object with a "blocks" array, nothing else.';
+    logger.warn(
+      {
+        responseShape: parsed ? "EMPTY_OR_UNUSABLE_BLOCKS" : "INVALID_JSON",
+        responseCharCount: raw1.length,
+      },
+      "pass1 text: retrying one invalid extraction response",
+    );
     // Do not resend raw1: it can be up to the output ceiling and would expand
     // the retry past the original context budget without adding source evidence.
     assertPass1ContextBudget(buildPass1RetryDiagnostics(diagnostics, retryInstruction));
@@ -914,9 +944,13 @@ export async function extractBlocksWithAI(
     assertPass1ResponseComplete(r2.choices[0]?.finish_reason);
     parsed = extractJSON(raw2);
     if (!parsed) throw new Error("Pass 1 text extraction: response not valid JSON after retry");
+    result = normalisePass1(parsed, options.sourcePageOverride);
+    assertPass1HasBlocks(result.blocks);
   }
 
-  const result = normalisePass1(parsed, options.sourcePageOverride);
+  // The first attempt was non-empty, or the single bounded retry above proved
+  // that the same immutable server page can produce usable candidate blocks.
+  assertPass1HasBlocks(result.blocks);
   logger.info({ blockCount: result.blocks.length }, "pass1 text: extraction complete");
   return result;
 }

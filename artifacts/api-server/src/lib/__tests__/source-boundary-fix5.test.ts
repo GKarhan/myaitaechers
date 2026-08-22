@@ -110,6 +110,57 @@ const lessonPages = [{
 }
 
 {
+  const physicalPages = [{
+    pageNumber: 14,
+    text: "եւ\u00ad\nթվային\u200b ճառագայթը սկսվում է զրոյից։",
+  }];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [{
+    sourcePage: 14,
+    sourceText: "ևթվային ճառագայթը սկսվում է զրոյից։",
+  }]);
+  assert.equal(bound.blocks[0].sourcePage, 14);
+  console.log("  ✓ Armenian ligature, soft hyphen, and zero-width PDF artifacts retain identity-only binding");
+}
+
+{
+  const physicalPages = [{ pageNumber: 14, text: "Բնական թվերը օգտագործվում են առարկաները հաշվելու համար։" }];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [{
+    sourcePage: 14,
+    sourceText: "Առարկաները բնական թվերով են հաշվում։",
+  }]);
+  assert.equal(bound.blocks[0].sourcePage, 0);
+  assert.equal(bound.audit.quarantineReasonCounts.SOURCE_TEXT_NOT_CONTAINED, 1);
+  console.log("  ✓ provider paraphrase remains unbound despite the same topic");
+}
+
+{
+  const selectedPage = [{ pageNumber: 14, text: "Բնական թվերի շարքը սկսվում է մեկից։" }];
+  const bound = bindTextBlocksToPhysicalPages(selectedPage, [{
+    sourcePage: 15,
+    sourceText: "Հաջորդ էջի վարժությունը այստեղ չէ։",
+  }]);
+  assert.equal(bound.blocks[0].sourcePage, 0);
+  console.log("  ✓ neighboring-page text outside the selected range remains unbound");
+}
+
+{
+  const continuationPages = [
+    { pageNumber: 14, text: "1.2 Բնական թվերի շարքը։ Բնական թվերը հաշվում են առարկաները։" },
+    { pageNumber: 15, text: "ՎԱՐԺՈՒԹՅՈՒՆՆԵՐ։ Հաջորդող թիվը որոշիր։" },
+  ];
+  const sourceSet = buildLessonSourceSet({
+    resourceId: 19,
+    resourceFileUrl: "/uploads/math5.pdf",
+    pagesFrom: 14,
+    pagesTo: 15,
+    lessonTitle: "Բնական թվերի շարքը",
+    extractedPages: continuationPages,
+  });
+  assert.equal(sourceSet.titleMatch.valid, true);
+  console.log("  ✓ title anchor remains valid when a continuation page does not repeat it");
+}
+
+{
   const physicalPages = [
     { pageNumber: 11, text: "Կրկնվող վերնագիր։ Առաջին եզակի բացատրություն։" },
     { pageNumber: 12, text: "Կրկնվող վերնագիր։ Երկրորդ եզակի բացատրություն։" },
@@ -260,4 +311,4 @@ const lessonPages = [{
   console.log("  ✓ only explicit HIGH same-topic over-splits consolidate without losing sources");
 }
 
-console.log("\nFix #5/Fix #7 source boundary: 14/14 passing");
+console.log("\nFix #5/Fix #7 source boundary: 18/18 passing");
