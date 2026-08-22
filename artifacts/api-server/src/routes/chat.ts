@@ -73,6 +73,7 @@ import {
   MAX_PHASE2_INTERNAL_CONTINUATIONS,
   nextPhase2ActionRequiresLearnerInput,
 } from "../services/phase2/continuation.js";
+import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 
 export { normalizeObjectiveMicroCheckAnswer };
 
@@ -606,6 +607,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     verbatimTheoryAnchor: string | null;
     nonExamples: unknown;
     learningObjective: string | null;
+    cogPathStatus: string | null;
   };
   let currentNodeRecord: NodeRef | null = null;
 
@@ -756,6 +758,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             verbatimTheoryAnchor: lessonNodesTable.verbatimTheoryAnchor,
             nonExamples: lessonNodesTable.nonExamples,
             learningObjective: lessonNodesTable.learningObjective,
+            cogPathStatus: lessonNodesTable.cogPathStatus,
           })
           .from(lessonNodesTable)
           .where(eq(lessonNodesTable.id, session.currentNodeId))
@@ -770,7 +773,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       if (session?.currentNodeId) {
         const _nodeId = session.currentNodeId; // narrow for callbacks
         const _sessId = session.id;
-        const _sessActiveLevelId = session.activeCognitiveLevelId;
+        let _sessActiveLevelId = session.activeCognitiveLevelId;
 
         const cogRows = await db
           .select({
@@ -791,16 +794,43 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           ))
           .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
 
-        _cognitivePath = cogRows as CognitiveLevelRow[];
+        const pathAcceptance = assessAcceptedCognitivePath({
+          cogPathStatus: currentNodeRecord?.cogPathStatus ?? null,
+          theoryContent: currentNodeRecord?.theoryContent ?? null,
+          learningObjective: currentNodeRecord?.learningObjective ?? null,
+          levels: cogRows,
+        });
+        _cognitivePath = pathAcceptance.accepted ? cogRows as CognitiveLevelRow[] : [];
+        if (!pathAcceptance.accepted) {
+          _activeCognitiveLevelRow = null;
+          if (_sessActiveLevelId) {
+            await db
+              .update(lessonSessionsTable)
+              .set({ activeCognitiveLevelId: null } as any)
+              .where(eq(lessonSessionsTable.id, _sessId));
+          }
+          _sessActiveLevelId = null;
+          if (session) session.activeCognitiveLevelId = null;
+          logger.info({
+            sessionId: _sessId,
+            lessonNodeId: _nodeId,
+            cogPathStatus: currentNodeRecord?.cogPathStatus ?? null,
+            reason: pathAcceptance.reason,
+            groundingStatus: pathAcceptance.grounding?.status ?? null,
+          }, "chat: modern Cognitive Path rejected; using legacy fallback");
+        }
 
         // Resolve active cognitive level row from session's stored id.
-        // If not yet set but a path exists, lazily point at the first level.
+        // A stale level ID is repaired to the accepted path's first level.
         if (_sessActiveLevelId) {
           _activeCognitiveLevelRow = _cognitivePath.find(
             (r) => r.id === _sessActiveLevelId
           ) ?? null;
-        } else if (_cognitivePath.length > 0) {
+        }
+        if (!_activeCognitiveLevelRow && _cognitivePath.length > 0) {
           _activeCognitiveLevelRow = _cognitivePath[0];
+          _sessActiveLevelId = _activeCognitiveLevelRow.id;
+          if (session) session.activeCognitiveLevelId = _activeCognitiveLevelRow.id;
           await db
             .update(lessonSessionsTable)
             .set({ activeCognitiveLevelId: _cognitivePath[0].id } as any)
@@ -1512,7 +1542,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     currentPhase: session?.currentPhase ?? null,
     currentNodeId: session?.currentNodeId ?? null,
     activeCognitiveLevelId:
-      _activeCognitiveLevelRow?.id ?? session?.activeCognitiveLevelId ?? null,
+      _activeCognitiveLevelRow?.id ?? null,
     nodeTeachingStage: session?.nodeTeachingStage ?? null,
     activeTaskProvenance: session?.activeTaskProvenance ?? null,
     activeLessonExerciseId: session?.activeLessonExerciseId ?? null,
@@ -1689,6 +1719,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
           learningObjective: lessonNodesTable.learningObjective,
           basicExamples: lessonNodesTable.basicExamples,
+          cogPathStatus: lessonNodesTable.cogPathStatus,
         })
         .from(lessonNodesTable)
         .where(eq(lessonNodesTable.id, freshSession.currentNodeId))
@@ -1699,6 +1730,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .select({
           id: lessonNodeCognitiveLevelsTable.id,
           cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+          sequence: lessonNodeCognitiveLevelsTable.sequence,
+          isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+          isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
           performanceObjective: (lessonNodeCognitiveLevelsTable as any).performanceObjective,
           successCriterion: (lessonNodeCognitiveLevelsTable as any).successCriterion,
           preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
@@ -1709,11 +1743,32 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           eq(lessonNodeCognitiveLevelsTable.isApplicable, true),
         ))
         .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
-      let activeLevel = cognitivePath.find(
+      const pathAcceptance = assessAcceptedCognitivePath({
+        cogPathStatus: freshNode.cogPathStatus,
+        theoryContent: freshNode.theoryContent,
+        learningObjective: freshNode.learningObjective,
+        levels: cognitivePath,
+      });
+      const acceptedCognitivePath = pathAcceptance.accepted ? cognitivePath : [];
+      if (!pathAcceptance.accepted && (freshSession as any).activeCognitiveLevelId) {
+        await db
+          .update(lessonSessionsTable)
+          .set({ activeCognitiveLevelId: null } as any)
+          .where(eq(lessonSessionsTable.id, freshSession.id));
+        logger.info({
+          sessionId: freshSession.id,
+          lessonNodeId: freshNode.id,
+          cogPathStatus: freshNode.cogPathStatus,
+          reason: pathAcceptance.reason,
+          groundingStatus: pathAcceptance.grounding?.status ?? null,
+        }, "chat continuation: modern Cognitive Path rejected; using legacy fallback");
+        (freshSession as any).activeCognitiveLevelId = null;
+      }
+      let activeLevel = acceptedCognitivePath.find(
         (level) => level.id === (freshSession as any).activeCognitiveLevelId,
       ) ?? null;
-      if (!activeLevel && cognitivePath[0]) {
-        activeLevel = cognitivePath[0];
+      if (!activeLevel && acceptedCognitivePath[0]) {
+        activeLevel = acceptedCognitivePath[0];
         await db
           .update(lessonSessionsTable)
           .set({ activeCognitiveLevelId: activeLevel.id } as any)

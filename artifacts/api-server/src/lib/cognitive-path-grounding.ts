@@ -7,6 +7,29 @@ export type CognitivePathGroundingAudit = {
   issueCounts: Record<string, number>;
 };
 
+export type CognitivePathAcceptanceLevel = {
+  cognitiveLevel: string;
+  sequence: number;
+  isApplicable: boolean;
+  isTargetCeiling: boolean;
+  performanceObjective: string | null;
+  successCriterion: string | null;
+  preferredInteractionTypes: unknown;
+};
+
+export type CognitivePathAcceptance = {
+  accepted: boolean;
+  reason:
+    | "ACCEPTED"
+    | "PATH_NOT_CONFIRMED"
+    | "NO_APPLICABLE_LEVELS"
+    | "TARGET_CEILING_INVALID"
+    | "LEVEL_ORDER_INVALID"
+    | "INTERACTION_TYPES_INVALID"
+    | "GROUNDING_NOT_ACCEPTED";
+  grounding: CognitivePathGroundingAudit | null;
+};
+
 const ALLOWED_INTERACTIONS = new Set([
   "multiple_choice", "multi_select", "true_false", "matching", "classification",
   "ordering", "numeric_answer", "short_answer", "constructed_response", "problem_solving",
@@ -43,4 +66,77 @@ export function validateCognitivePathGrounding(
     .some((code) => issueCounts[code]);
   const review = !!issueCounts.LOW_SOURCE_ANCHOR;
   return { status: invalid ? "INVALID" : review ? "REVIEW_REQUIRED" : "GROUNDED", valid: !invalid, issueCounts };
+}
+
+/**
+ * Single runtime acceptance contract for a modern Cognitive Path.
+ *
+ * A path may influence learner delivery only after the teacher confirms it and
+ * its current persisted fields still pass strict GROUNDED validation. Keeping
+ * this check pure makes every consumer fail closed in the same way.
+ */
+export function assessAcceptedCognitivePath(input: {
+  cogPathStatus: string | null | undefined;
+  theoryContent: string | null | undefined;
+  learningObjective: string | null | undefined;
+  levels: ReadonlyArray<CognitivePathAcceptanceLevel>;
+}): CognitivePathAcceptance {
+  if (input.cogPathStatus !== "confirmed") {
+    return { accepted: false, reason: "PATH_NOT_CONFIRMED", grounding: null };
+  }
+
+  const applicableLevels = input.levels.filter((level) => level.isApplicable);
+  if (applicableLevels.length === 0) {
+    return { accepted: false, reason: "NO_APPLICABLE_LEVELS", grounding: null };
+  }
+  if (applicableLevels.filter((level) => level.isTargetCeiling).length !== 1) {
+    return { accepted: false, reason: "TARGET_CEILING_INVALID", grounding: null };
+  }
+  if (applicableLevels.some((level, index) =>
+    index > 0 && level.sequence <= applicableLevels[index - 1].sequence,
+  )) {
+    return { accepted: false, reason: "LEVEL_ORDER_INVALID", grounding: null };
+  }
+  if (applicableLevels.some((level) =>
+    !Array.isArray(level.preferredInteractionTypes) ||
+    level.preferredInteractionTypes.some((kind) => typeof kind !== "string"),
+  )) {
+    return { accepted: false, reason: "INTERACTION_TYPES_INVALID", grounding: null };
+  }
+
+  const grounding = validateCognitivePathGrounding(
+    input.theoryContent,
+    input.learningObjective,
+    applicableLevels.map((level) => ({
+      performanceObjective: level.performanceObjective,
+      successCriterion: level.successCriterion,
+      preferredInteractionTypes: level.preferredInteractionTypes as string[],
+    })),
+  );
+  if (grounding.status !== "GROUNDED") {
+    return { accepted: false, reason: "GROUNDING_NOT_ACCEPTED", grounding };
+  }
+  return { accepted: true, reason: "ACCEPTED", grounding };
+}
+
+/**
+ * C2 coverage is intentionally limited to approved MicroNodes. Review-state
+ * nodes remain visible as excluded; they are never counted as accepted.
+ */
+export function assessApprovedNodeC2Coverage(input: {
+  nodeStatus: string | null | undefined;
+  path: CognitivePathAcceptance;
+}): { included: boolean; accepted: boolean; reason: string } {
+  if (input.nodeStatus !== "approved") {
+    return {
+      included: false,
+      accepted: false,
+      reason: "EXCLUDED_NON_APPROVED_NODE",
+    };
+  }
+  return {
+    included: true,
+    accepted: input.path.accepted,
+    reason: input.path.reason,
+  };
 }

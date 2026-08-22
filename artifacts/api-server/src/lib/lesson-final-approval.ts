@@ -389,7 +389,7 @@ export async function validateLessonForFinalApproval(
           preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
         })),
       );
-      if (!grounding.valid) {
+      if (grounding.status !== "GROUNDED") {
         errors.push({
           code: "COGNITIVE_PATH_GROUNDING_INVALID",
           messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին դուրս է գալիս հաստատված աղբյուրի սահմաններից։`,

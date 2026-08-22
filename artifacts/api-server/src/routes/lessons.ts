@@ -6012,7 +6012,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAu
       preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
     })),
   );
-  if (!grounding.valid) {
+  if (grounding.status !== "GROUNDED") {
     res.status(422).json({
       error: "COG_PATH_GROUNDING_INVALID",
       message: "Ճանաչողական ուղին պարունակում է աղբյուրով չհիմնավորված պնդում կամ օրինակ։",
