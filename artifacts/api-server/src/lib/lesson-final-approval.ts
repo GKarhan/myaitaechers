@@ -13,9 +13,11 @@ import {
   lessonExercisesTable,
   lessonOutcomesTable,
   lessonOutcomeNodeAlignmentsTable,
+  lessonNodeCognitiveLevelsTable,
 } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, inArray } from "drizzle-orm";
 import { detectCompoundLO, detectMegaNode } from "./granularity-heuristics.js";
+import { validateCognitivePathGrounding } from "./cognitive-path-grounding.js";
 
 export interface ValidationIssue {
   code: string;
@@ -150,6 +152,7 @@ export async function validateLessonForFinalApproval(
   const instructionalCoverage = metadata?.quality?.instructionalCoverage;
   const sourceScope = metadata?.quality?.sourceAudit?.sourceScope;
   const sourceSet = metadata?.quality?.sourceAudit?.sourceSet;
+  const sourceAlignment = metadata?.quality?.sourceAlignment;
 
   if (sourceScope?.valid !== true || sourceSet?.titleMatch?.valid !== true) {
     errors.push({
@@ -181,6 +184,18 @@ export async function validateLessonForFinalApproval(
       messageArm: `Ընթեռնելի ուսումնական աղբյուրից ${unresolved} հատված MicroNode-ի պատասխանատու չունի։`,
       count: unresolved,
     });
+  }
+  if (Array.isArray(sourceAlignment?.nodes)) {
+    const unresolvedSourceNodes = sourceAlignment.nodes.filter(
+      (entry: { status?: string }) => entry.status !== "SUFFICIENT",
+    );
+    if (unresolvedSourceNodes.length > 0 || sourceAlignment?.valid !== true) {
+      errors.push({
+        code: "MICRONODE_SOURCE_ALIGNMENT_REQUIRED",
+        messageArm: "Յուրաքանչյուր MicroNode պետք է բավարար չափով հիմնավորվի իր հաստատված աղբյուրով։",
+        count: unresolvedSourceNodes.length,
+      });
+    }
   }
   const outcomeAlignmentAudit = metadata?.quality?.outcomeAlignmentAudit;
   if (
@@ -327,6 +342,54 @@ export async function validateLessonForFinalApproval(
       nodeTitle: node.title,
       count: missing.length,
     });
+  }
+
+  // C1 Fix #6: a source-aligned automatic mapping must not bypass Cognitive
+  // Path grounding or explicit teacher confirmation. Legacy/manual lessons do
+  // not acquire this new requirement retroactively.
+  if (Array.isArray(sourceAlignment?.nodes) && sourceAlignment.nodes.length > 0 && approvedNodes.length > 0) {
+    const nodeIds = approvedNodes.map((node) => node.id);
+    const cognitiveLevels = await db.select()
+      .from(lessonNodeCognitiveLevelsTable)
+      .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeIds));
+    for (const node of approvedNodes) {
+      const levels = cognitiveLevels.filter((level) => level.lessonNodeId === node.id);
+      if ((node as any).cogPathStatus !== "confirmed") {
+        errors.push({
+          code: "COGNITIVE_PATH_REVIEW_REQUIRED",
+          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին պետք է ուսուցչի կողմից հաստատվի։`,
+          nodeId: node.id,
+          nodeTitle: node.title,
+        });
+        continue;
+      }
+      if (levels.length === 0 || levels.filter((level) => level.isTargetCeiling).length !== 1) {
+        errors.push({
+          code: "COGNITIVE_PATH_INVALID",
+          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին ամբողջական չէ։`,
+          nodeId: node.id,
+          nodeTitle: node.title,
+        });
+        continue;
+      }
+      const grounding = validateCognitivePathGrounding(
+        node.theoryContent,
+        node.learningObjective,
+        levels.map((level) => ({
+          performanceObjective: level.performanceObjective,
+          successCriterion: level.successCriterion,
+          preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
+        })),
+      );
+      if (!grounding.valid) {
+        errors.push({
+          code: "COGNITIVE_PATH_GROUNDING_INVALID",
+          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին դուրս է գալիս հաստատված աղբյուրի սահմաններից։`,
+          nodeId: node.id,
+          nodeTitle: node.title,
+        });
+      }
+    }
   }
 
   // ── Warnings: Phase 1.5 advisory signals ───────────────────────────────────

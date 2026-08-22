@@ -1856,6 +1856,24 @@ function LessonNodesPanel({
                   {(n as any).contentSourceType === 'manual' && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">✍ Ձեռքով</span>
                   )}
+                  {(n as any).sourceSupport === 'SUFFICIENT' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✓ Աղբյուրը բավարար է</span>
+                  )}
+                  {['PARTIAL', 'INSUFFICIENT', 'UNREADABLE'].includes((n as any).sourceSupport) && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Աղբյուրի վերանայում</span>
+                  )}
+                  {(n as any).cogPathStatus === 'confirmed' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25 shrink-0">✓ Ճանաչողական ուղին հաստատված է</span>
+                  )}
+                  {(n as any).cognitivePathGroundingStatus === 'GROUNDED' && (n as any).cogPathStatus && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✓ Ճանաչողական ուղին հիմնավորված է</span>
+                  )}
+                  {(n as any).cognitivePathGroundingStatus === 'REVIEW_REQUIRED' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Ճանաչողական ուղու հիմնավորման վերանայում</span>
+                  )}
+                  {(n as any).cogPathStatus === 'needs_review' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Ճանաչողական ուղու վերանայում</span>
+                  )}
                 </div>
                 {(n as any).learningObjective && (
                   <p className="text-[10px] text-primary/70 mt-0.5 leading-relaxed italic">🎯 {(n as any).learningObjective}</p>

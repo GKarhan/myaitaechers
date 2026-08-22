@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourceScopeError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourceScopeError, MappingSourceAlignmentError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -26,6 +26,8 @@ import {
   formatExtractedPagesForPass1,
   validateBlocksAgainstLessonSourceSet,
 } from "../lib/lesson-source-set.js";
+import { classifyMicroNodeSourceAlignment } from "../lib/micronode-source-alignment.js";
+import { validateCognitivePathGrounding } from "../lib/cognitive-path-grounding.js";
 import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
@@ -2404,6 +2406,10 @@ router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (
     .from(lessonNodesTable)
     .where(eq(lessonNodesTable.lessonId, lessonId))
     .orderBy(asc(lessonNodesTable.sequence));
+  const cognitiveLevels = nodes.length
+    ? await db.select().from(lessonNodeCognitiveLevelsTable)
+      .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodes.map((node) => node.id)))
+    : [];
 
   res.json(
     nodes.map((n) => ({
@@ -2429,6 +2435,19 @@ router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (
       sourcePage: n.sourcePage ?? null,
       cogPathStatus: (n as any).cogPathStatus ?? null,
       teachingContentStale: !!((n as any).teachingContentStale),
+      sourceSupport: classifyMicroNodeSourceAlignment(n.learningObjective, [{
+        sourceText: n.theoryContent ?? "",
+        blockType: n.blockType,
+      }]).status,
+      cognitivePathGroundingStatus: validateCognitivePathGrounding(
+        n.theoryContent,
+        n.learningObjective,
+        cognitiveLevels.filter((level) => level.lessonNodeId === n.id).map((level) => ({
+          performanceObjective: level.performanceObjective,
+          successCriterion: level.successCriterion,
+          preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
+        })),
+      ).status,
     }))
   );
 });
@@ -4045,6 +4064,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     if (persistedOutcomeAlignments.length > 0) {
       await db.insert(lessonOutcomeNodeAlignmentsTable).values(persistedOutcomeAlignments);
     }
+    const persistedSourceAlignment = pass2.sourceAlignment.nodes.flatMap((entry) => {
+      const node = nodeByMapPosition.get(`${entry.topicSequence}:${entry.microNodeIndex}`);
+      return node ? [{
+        nodeId: node.id,
+        status: entry.audit.status,
+        reasonCode: entry.audit.reasonCode,
+      }] : [];
+    });
 
     // ── P5.1 — Activity placement validation ──────────────────────────────────
     // Detects EXERCISE/ACTIVITY/HOMEWORK blocks that ended up in sourceBlockIndices
@@ -4182,6 +4209,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           hasMergeTarget: !!finding.mergeIntoMicroNodeTitle,
         })),
         granularityConsolidation: pass2.granularityConsolidation,
+        sourceAlignment: {
+          valid: pass2.sourceAlignment.valid,
+          sufficientCount: pass2.sourceAlignment.sufficientCount,
+          partialCount: pass2.sourceAlignment.partialCount,
+          insufficientCount: pass2.sourceAlignment.insufficientCount,
+          unreadableCount: pass2.sourceAlignment.unreadableCount,
+          nodes: persistedSourceAlignment,
+        },
         pass2Diagnostics: pass2.diagnostics,
       },
     };
@@ -4291,6 +4326,12 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             reason: "PASS2_JSON_PARSE_FAILED_PRE_PERSISTENCE",
             diagnostics: err.diagnostics,
           }
+        : err instanceof MappingSourceAlignmentError
+          ? {
+              progress: "MicroNode objective/source alignment needs correction; existing mapping was preserved.",
+              reason: "MICRONODE_SOURCE_ALIGNMENT_FAILED_PRE_PERSISTENCE",
+              diagnostics: err.alignment,
+            }
         : null;
     await db.update(mappingJobsTable)
       .set({
@@ -5411,6 +5452,15 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
     res.json({ nodeId, cogPathStatus, levels: [] });
     return;
   }
+  const grounding = validateCognitivePathGrounding(
+    node.theoryContent,
+    node.learningObjective,
+    levels.map((level) => ({
+      performanceObjective: level.performanceObjective,
+      successCriterion: level.successCriterion,
+      preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
+    })),
+  );
 
   // Load tasks for all levels + their exercise details in one pass
   const levelIds = levels.map((l) => l.id);
@@ -5439,6 +5489,7 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
   res.json({
     nodeId,
     cogPathStatus,
+    groundingStatus: grounding.status,
     levels: levels.map((l) => ({
       ...l,
       preferredInteractionTypes: (l.preferredInteractionTypes ?? []) as string[],
@@ -5546,7 +5597,12 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
   const result = await generateCognitivePath(input);
 
   if (result.skipped) {
-    res.status(422).json({ error: "SKIP", skipReason: result.skipReason, message: result.skipReason });
+    res.status(422).json({
+      error: "SKIP",
+      skipReason: result.skipReason,
+      message: result.skipReason,
+      groundingStatus: result.groundingAudit?.status ?? null,
+    });
     return;
   }
 
@@ -5626,6 +5682,23 @@ router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAu
   const ceilings = levels.filter((l) => l.isTargetCeiling);
   if (ceilings.length !== 1) {
     res.status(422).json({ error: "CEILING_REQUIRED", message: `Petq e lini kovki mek thirakayin macardak. Ayzhm: ${ceilings.length}.` });
+    return;
+  }
+  const grounding = validateCognitivePathGrounding(
+    node.theoryContent,
+    node.learningObjective,
+    levels.map((level) => ({
+      performanceObjective: level.performanceObjective,
+      successCriterion: level.successCriterion,
+      preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
+    })),
+  );
+  if (!grounding.valid) {
+    res.status(422).json({
+      error: "COG_PATH_GROUNDING_INVALID",
+      message: "Ճանաչողական ուղին պարունակում է աղբյուրով չհիմնավորված պնդում կամ օրինակ։",
+      groundingStatus: grounding.status,
+    });
     return;
   }
 

@@ -1,0 +1,1552 @@
+C1 ACCEPTANCE FIX #6
+MICRONODE GRANULARITY
++ NODE ↔ SOURCE SEMANTIC ALIGNMENT
++ COGNITIVE PATH GROUNDING
+
+We are continuing the REAL C1 acceptance process.
+
+DO NOT proceed to Package 1D.
+DO NOT declare C1 frozen.
+
+Fix #5 substantially corrected source-scope contamination and introduced
+source provenance / scope validation.
+
+The latest clean real mapping now exposes the next narrower C1 layer:
+
+1. duplicate / near-duplicate MicroNodes still survive consolidation;
+2. some MicroNode learningObjectives are not semantically supported by
+   the source content assigned to that MicroNode;
+3. Cognitive Path generation can still invent rules/examples that are
+   outside the MicroNode's approved source / knowledge boundary.
+
+This task must fix ONLY those remaining C1 issues.
+
+════════════════════════════════════════════════════
+0. ESTABLISHED STATE — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+Preserve all completed safeguards from:
+
+Task #108
+Task #109
+Task #110
+Task #112 / Fix #4
+Task #114 / Fix #5
+
+In particular preserve:
+
+- Goal/Outcome draft → teacher confirmation workflow
+- confirmed Goal/Outcomes authority
+- lesson-scoped source extraction
+- physical PDF page provenance
+- validated lesson Source Set
+- source-scope validation
+- source coverage validation
+- source-safe diagnostics
+- parser failure handling
+- zero-node protection
+- non-destructive mapping failure
+- exercise preservation/provenance
+- REQUIRED/SUPPORTING Outcome relations
+- Outcome alignment teacher-review gate
+- generated Teaching Package draft safety
+- final approval fail-closed behavior
+
+DO NOT redesign these.
+
+════════════════════════════════════════════════════
+1. REAL FAILURE EVIDENCE
+════════════════════════════════════════════════════
+
+Latest clean real lesson:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Correct validated source:
+PDF pages 11–12
+
+The new clean mapping was source-scoped correctly, but produced
+approximately 7 MicroNodes.
+
+Several are semantic duplicates / near-duplicates.
+
+Examples:
+
+PAIR A
+
+“Շենքերի համարակալման սկզբունքները”
+
+and
+
+“Շենքերի հասցեներ և համարակալման սկզբունքներ”
+
+These substantially overlap in the same underlying knowledge.
+
+PAIR B
+
+“Կենտ և զույգ համարների տարբերակումը”
+
+and
+
+“Կենտ և զույգ համարներով շենքերի դասավորություն”
+
+These substantially represent the same odd/even side-of-street rule.
+
+PAIR C
+
+“Հասցեի որոշումը շենքերի միջև”
+
+and
+
+“Նոր շենքի հասցեի որոշում”
+
+These substantially overlap in the new-building/addressing objective.
+
+The granularity audit nevertheless reported conceptually:
+
+7 proposed → 7 final
+0 automatic merges
+
+Therefore the existing consolidation logic is still too weak.
+
+════════════════════════════════════════════════════
+2. REAL NODE ↔ SOURCE ALIGNMENT FAILURES
+════════════════════════════════════════════════════
+
+The same mapping exposed cases where a MicroNode's assigned source
+content does not adequately support its learningObjective.
+
+Examples:
+
+A MicroNode about:
+
+“Հասցեի որոշումը շենքերի միջև”
+
+was assigned source content centered on the Moki birthday/address-paper
+story.
+
+That narrative may provide context for the importance of an address,
+but it does NOT directly establish the rule for assigning a new
+building address between existing buildings.
+
+Another MicroNode about general building-numbering principles had source
+content that was effectively only a heading/title.
+
+Another odd/even MicroNode had source content that was effectively a
+chapter/topic heading rather than the instructional rule itself.
+
+A further node had malformed/unusable source text similar to:
+
+“?hարց ?hարց ?hարց”
+
+Such source must not be treated as sufficient instructional grounding.
+
+════════════════════════════════════════════════════
+3. REAL COGNITIVE PATH GROUNDING FAILURE
+════════════════════════════════════════════════════
+
+The same clean mapping exposed a serious Cognitive Path problem.
+
+For a MicroNode about determining a new building address between
+existing buildings, generated Cognitive Path content included a success
+criterion conceptually equivalent to:
+
+“between 24 and 28 → 26”
+
+This is NOT the addressing rule taught by the source.
+
+It appears to have substituted ordinary numeric-between reasoning for
+the textbook's addressing concept.
+
+Another generated Cognitive Path included extrapolated examples such as:
+
+“5/1, 7/2, etc.”
+
+The approved source establishes the 5/1 example, but does not establish
+a general 7/2 rule.
+
+Therefore:
+
+Teaching Package grounding protections are not sufficient.
+
+COGNITIVE PATH GENERATION ITSELF must obey the same approved knowledge
+boundary.
+
+════════════════════════════════════════════════════
+4. FIRST — READ-ONLY FORENSIC AUDIT
+════════════════════════════════════════════════════
+
+Before editing code, trace the current implementation for:
+
+A. initial MicroNode generation
+
+B. granularity consolidation
+
+C. sourceBlock → MicroNode ownership
+
+D. learningObjective generation
+
+E. sourceContent/theory assignment
+
+F. Cognitive Path generation
+
+G. performanceObjective generation
+
+H. successCriterion generation
+
+I. preferredInteractionTypes generation
+
+J. Cognitive Path persistence
+
+K. Cognitive Path approval/status behavior
+
+Determine exactly why:
+
+- near-duplicate MicroNodes survived;
+- source blocks could be assigned to a semantically mismatched objective;
+- Cognitive Path could introduce unsupported rules/examples.
+
+Do not guess.
+
+Report the concrete code/path root causes before implementing fixes.
+
+════════════════════════════════════════════════════
+5. CORE CANONICAL HIERARCHY
+════════════════════════════════════════════════════
+
+Preserve:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+→ Cognitive Path levels
+
+MicroNode remains the atomic curriculum knowledge unit.
+
+Do NOT invent a new Node/Subnode schema.
+
+════════════════════════════════════════════════════
+6. CANONICAL MICRONODE DEFINITION
+════════════════════════════════════════════════════
+
+A MicroNode is:
+
+ONE pedagogically distinct,
+independently teachable,
+independently assessable,
+source-grounded learning objective.
+
+It is NOT:
+
+- one paragraph
+- one source block
+- one heading
+- one example
+- one story fragment
+- one exercise
+- one representation
+- one Outcome wording
+- one arbitrary AI topic fragment
+
+Several source blocks may support one MicroNode.
+
+Several exercises may assess one MicroNode.
+
+Several Outcomes may relate to one MicroNode.
+
+But the MicroNode itself represents ONE coherent knowledge/skill target.
+
+════════════════════════════════════════════════════
+7. MINIMAL COMPLETE MICRONODE SET
+════════════════════════════════════════════════════
+
+The mapper must produce:
+
+THE SMALLEST PEDAGOGICALLY COMPLETE SET OF ATOMIC MICRONODES.
+
+This means two constraints must hold simultaneously:
+
+NO OVER-SPLITTING
+
+and
+
+NO UNDER-SPLITTING.
+
+Do NOT optimize for node count.
+
+Do NOT hardcode 3, 4, 6, 7, or any expected number.
+
+The correct count must emerge from lesson semantics.
+
+════════════════════════════════════════════════════
+8. STRONG DUPLICATE / NEAR-DUPLICATE TEST
+════════════════════════════════════════════════════
+
+Before persistence, compare proposed MicroNodes within the same lesson,
+especially within the same Topic.
+
+Two proposed MicroNodes should normally be MERGED when:
+
+A. they teach the same underlying concept/rule/skill;
+
+B. their learningObjectives differ mainly by wording;
+
+C. one objective is a narrower restatement of the other;
+
+D. they own different source blocks that explain/example the same
+   knowledge;
+
+E. they would naturally be taught together;
+
+F. they would naturally be assessed by substantially the same evidence;
+
+G. mastering one would substantially demonstrate mastery of the other;
+
+H. one is merely:
+   - context
+   - example
+   - representation
+   - narrative
+   - explanation
+   of the other's objective.
+
+Do not rely only on title string similarity.
+
+Use:
+
+- title
+- learningObjective
+- semantic intent
+- owned source blocks
+- confirmed Outcome relations
+- target cognitive depth
+
+to determine pedagogical equivalence.
+
+════════════════════════════════════════════════════
+9. DO NOT OVER-MERGE
+════════════════════════════════════════════════════
+
+Two MicroNodes must remain separate when they represent genuinely
+independent learning objectives.
+
+Examples conceptually:
+
+KNOWING WHY addresses must uniquely identify buildings
+
+is not necessarily the same objective as
+
+APPLYING the odd/even side-of-street numbering rule.
+
+Similarly:
+
+UNDERSTANDING the odd/even street rule
+
+may be distinct from
+
+UNDERSTANDING the special rule for newly constructed buildings between
+existing addresses.
+
+Merge semantic duplicates.
+
+Do NOT collapse the entire lesson into one broad node.
+
+════════════════════════════════════════════════════
+10. MICRONODE NECESSITY GATE
+════════════════════════════════════════════════════
+
+Every final proposed MicroNode must pass ALL five:
+
+1. DISTINCT
+
+Meaningfully different objective from every other final MicroNode.
+
+2. TEACHABLE
+
+Can receive its own coherent instruction/explanation.
+
+3. ASSESSABLE
+
+Can be independently checked through evidence.
+
+4. CURRICULUM-RELEVANT
+
+Supports a confirmed Outcome or an explicit necessary prerequisite
+present in the selected lesson source.
+
+5. SOURCE-GROUNDED
+
+Its objective is semantically supported by its assigned validated source
+blocks.
+
+If any condition fails:
+
+MERGE
+or REMOVE
+or MARK REVIEW-REQUIRED.
+
+Do not final-ready persist an obviously invalid MicroNode.
+
+════════════════════════════════════════════════════
+11. SOURCE OWNERSHIP IS MANY-TO-ONE
+════════════════════════════════════════════════════
+
+Preserve:
+
+many SourceBlocks
+→ one MicroNode
+
+where pedagogically appropriate.
+
+Do NOT create separate MicroNodes simply because:
+
+- explanation and example are separate blocks;
+- narrative and rule are separate blocks;
+- rule appears twice;
+- exercise context repeats the concept;
+- heading is separate from body text.
+
+Coverage must be solved through source ownership.
+
+NOT through node proliferation.
+
+════════════════════════════════════════════════════
+12. NODE ↔ SOURCE SEMANTIC ALIGNMENT GATE
+════════════════════════════════════════════════════
+
+This is mandatory.
+
+For every proposed MicroNode before persistence validate:
+
+MICRONODE LEARNING OBJECTIVE
+
+is semantically entailed/supported by
+
+ITS OWNED VALIDATED SOURCE BLOCKS.
+
+The source does not need to use identical wording.
+
+But the source must contain sufficient instructional meaning to justify
+the objective.
+
+A heading alone is not sufficient if the objective claims a substantive
+rule.
+
+A narrative about the importance of an address is not sufficient to
+support a rule about assigning a new address between buildings.
+
+A malformed/unreadable block is not sufficient instructional grounding.
+
+════════════════════════════════════════════════════
+13. SOURCE SUFFICIENCY CLASSIFICATION
+════════════════════════════════════════════════════
+
+For each final MicroNode classify source support as:
+
+SUFFICIENT
+
+PARTIAL
+
+INSUFFICIENT
+
+UNREADABLE
+
+SUFFICIENT:
+source directly supports the objective.
+
+PARTIAL:
+source supports part of the objective but not all.
+
+INSUFFICIENT:
+assigned source does not establish the claimed objective.
+
+UNREADABLE:
+source cannot reliably support curriculum generation.
+
+Only SUFFICIENT may become normal final-ready mapping automatically.
+
+PARTIAL must require correction/review.
+
+INSUFFICIENT must not become final-ready.
+
+UNREADABLE must not be used as factual authority.
+
+════════════════════════════════════════════════════
+14. SOURCE REALLOCATION BEFORE FAILURE
+════════════════════════════════════════════════════
+
+If a MicroNode's source is insufficient:
+
+before failing the node, deterministically inspect other VALIDATED
+LESSON SOURCE BLOCKS that are:
+
+- within the same lesson
+- preferably same Topic
+- currently owned by a semantically duplicate/related MicroNode
+- or unowned instructional blocks
+
+If correct supporting blocks exist:
+
+reassign/merge ownership appropriately.
+
+Do NOT fetch book-wide context.
+
+Do NOT fabricate source.
+
+Do NOT cross lesson boundaries.
+
+════════════════════════════════════════════════════
+15. HEADING / TITLE RULE
+════════════════════════════════════════════════════
+
+Headings/titles may:
+
+- organize Topics
+- help interpret nearby content
+- contribute contextual evidence
+
+But a heading alone must NOT be treated as sufficient theory/content for
+a substantive MicroNode unless the heading itself explicitly expresses
+the full learning objective.
+
+Example:
+
+“Բնական թվերը և կոորդինատային ճառագայթը”
+
+does not by itself establish the rule:
+
+“left side odd, right side even.”
+
+════════════════════════════════════════════════════
+16. NARRATIVE / STORY RULE
+════════════════════════════════════════════════════
+
+A textbook story/narrative may be legitimate instructional source.
+
+But classify its pedagogical function.
+
+A story may support:
+
+- motivation
+- context
+- problem situation
+- importance/relevance
+- conceptual introduction
+
+It must not automatically be used as factual grounding for a different
+rule merely because both concern the same general topic.
+
+Example:
+
+the Moki address-paper story may support:
+
+why a correct address matters.
+
+It does NOT by itself support:
+
+the rule for assigning a new building address between existing
+buildings.
+
+════════════════════════════════════════════════════
+17. MALFORMED SOURCE RULE
+════════════════════════════════════════════════════
+
+Malformed source such as:
+
+“?hարց ?hարց ?hարց”
+
+or equivalent extraction corruption must NOT:
+
+- support a learningObjective
+- generate theory
+- generate Cognitive Path facts
+- satisfy source sufficiency
+- satisfy final C1 readiness
+
+Use the existing UNREADABLE / unresolved path.
+
+Do not silently convert malformed text into curriculum authority.
+
+════════════════════════════════════════════════════
+18. CONSOLIDATION ORDER
+════════════════════════════════════════════════════
+
+Use this conceptual order:
+
+1. validate lesson Source Set
+2. classify source
+3. initial Topic/MicroNode candidates
+4. initial source ownership
+5. duplicate/near-duplicate consolidation
+6. source ownership reconciliation
+7. MicroNode necessity test
+8. Node ↔ Source semantic alignment
+9. source sufficiency classification
+10. Outcome alignment
+11. persistence
+
+Do not persist duplicate candidates and try to repair them only after
+they become canonical DB nodes.
+
+════════════════════════════════════════════════════
+19. BOUNDED CONSOLIDATION
+════════════════════════════════════════════════════
+
+Do NOT create an uncontrolled AI loop.
+
+At most:
+
+ONE semantic granularity consolidation pass
+
+plus
+
+ONE targeted source-alignment repair pass if necessary.
+
+After that:
+
+deterministic server validation decides pass/fail/review-required.
+
+If still unresolved:
+
+STOP and surface review-required.
+
+Do not keep calling AI until something passes.
+
+════════════════════════════════════════════════════
+20. GRANULARITY AUDIT MUST BE TRUTHFUL
+════════════════════════════════════════════════════
+
+The audit must not report:
+
+“7 → 7, no merges required”
+
+when clear near-duplicate objectives remain.
+
+For each consolidation run retain safe structural diagnostics:
+
+- proposed node count
+- merged count
+- removed count
+- split count
+- final count
+
+Safe reason categories:
+
+DUPLICATE_OBJECTIVE
+
+NEAR_DUPLICATE_OBJECTIVE
+
+EXAMPLE_AS_NODE
+
+CONTEXT_AS_NODE
+
+HEADING_AS_NODE
+
+MULTI_OBJECTIVE_SPLIT
+
+INSUFFICIENT_SOURCE
+
+UNREADABLE_SOURCE
+
+Do NOT store long textbook text in diagnostics.
+
+════════════════════════════════════════════════════
+21. COGNITIVE PATH — CANONICAL RULE
+════════════════════════════════════════════════════
+
+Cognitive Path is NOT allowed to expand curriculum knowledge.
+
+It describes:
+
+HOW the learner progresses cognitively through the SAME approved
+MicroNode knowledge.
+
+Therefore:
+
+MicroNode approved source/knowledge boundary
+→ constrains ALL Cognitive Path levels.
+
+The Cognitive Path may increase cognitive demand.
+
+It may NOT invent new factual rules.
+
+════════════════════════════════════════════════════
+22. COGNITIVE DEPTH ≠ NEW KNOWLEDGE
+════════════════════════════════════════════════════
+
+Bloom progression may move conceptually through:
+
+Հիշել
+→ Հասկանալ
+→ Կիրառել
+→ Վերլուծել
+→ Գնահատել
+→ Ստեղծել
+
+where pedagogically justified.
+
+But moving to a higher cognitive level means:
+
+more demanding reasoning with approved knowledge.
+
+It does NOT mean:
+
+introducing additional unsupported curriculum facts.
+
+Example:
+
+A higher level may ask the learner to APPLY the approved street-numbering
+rule to a new case.
+
+It may not invent a different addressing rule.
+
+════════════════════════════════════════════════════
+23. COGNITIVE PATH GROUNDING INPUT
+════════════════════════════════════════════════════
+
+When generating Cognitive Path for a MicroNode, provide only the
+necessary bounded authoritative context:
+
+- MicroNode title
+- learningObjective
+- validated source content / source summary
+- knowledgeBoundary
+- confirmed relevant Outcome(s)
+- target cognitive depth
+- source-backed examples if appropriate
+- approved Teaching Package content if already available
+
+Do NOT give broad book-wide content.
+
+Do NOT let unrelated MicroNodes supply facts.
+
+════════════════════════════════════════════════════
+24. EVERY COGNITIVE LEVEL MUST STAY GROUNDED
+════════════════════════════════════════════════════
+
+For every Cognitive Path level validate:
+
+A. performanceObjective
+
+B. successCriterion
+
+C. preferredInteractionTypes
+
+D. any embedded example
+
+E. any expected answer/rule if stored
+
+against:
+
+- MicroNode learningObjective
+- validated source
+- knowledgeBoundary
+
+The level may change cognitive operation.
+
+It must not change factual curriculum content.
+
+════════════════════════════════════════════════════
+25. PERFORMANCE OBJECTIVE RULE
+════════════════════════════════════════════════════
+
+performanceObjective must describe an observable learner action using
+the approved MicroNode knowledge.
+
+Valid conceptual pattern:
+
+“Learner can explain why...”
+
+“Learner can determine which side... using the approved rule.”
+
+“Learner can apply the rule to a new supported case.”
+
+Invalid:
+
+introducing a new factual rule that is not present in the MicroNode's
+approved knowledge.
+
+════════════════════════════════════════════════════
+26. SUCCESS CRITERION RULE
+════════════════════════════════════════════════════
+
+successCriterion must measure successful performance on the SAME
+MicroNode objective.
+
+It must not introduce a new rule as part of the expected answer.
+
+REAL FAILURE TO PREVENT:
+
+MicroNode:
+new-building addressing between existing buildings.
+
+Invalid generated success criterion:
+
+“between 24 and 28 → 26”
+
+when the approved knowledge is about a special address such as 5/1.
+
+This must fail grounding validation.
+
+════════════════════════════════════════════════════
+27. GENERATED EXAMPLE RULE
+════════════════════════════════════════════════════
+
+Generated examples may change surface details ONLY when the approved
+knowledge supports that transformation.
+
+Changing numbers is NOT automatically safe.
+
+For a mathematical rule that universally applies:
+number substitution may be valid.
+
+For a contextual convention demonstrated only through a specific source
+example:
+do NOT assume arbitrary number substitution preserves truth.
+
+REAL FAILURE TO PREVENT:
+
+Source supports 5/1.
+
+Do NOT automatically generate:
+
+7/2
+9/3
+24/26
+etc.
+
+unless the approved rule logically supports those variants.
+
+════════════════════════════════════════════════════
+28. COGNITIVE PATH GROUNDING STATUS
+════════════════════════════════════════════════════
+
+For generated Cognitive Path content classify grounding as:
+
+GROUNDED
+
+REVIEW_REQUIRED
+
+INVALID
+
+GROUNDED:
+all factual content remains inside approved knowledge.
+
+REVIEW_REQUIRED:
+pedagogically plausible but contains an inference not directly validated.
+
+INVALID:
+contradicts or materially exceeds the approved knowledge boundary.
+
+INVALID must not be approved.
+
+REVIEW_REQUIRED requires teacher review.
+
+Do not silently treat generated content as canonical.
+
+════════════════════════════════════════════════════
+29. COGNITIVE PATH APPROVAL
+════════════════════════════════════════════════════
+
+Audit current approval behavior.
+
+If Cognitive Path is AI-generated:
+
+teacher approval must remain explicit before final C1 approval.
+
+Do NOT auto-approve a path merely because JSON/schema validation passes.
+
+Structural validity is not factual validity.
+
+If the existing UI already has Cognitive Path confirmation:
+reuse it.
+
+Do not create a competing approval mechanism.
+
+════════════════════════════════════════════════════
+30. EXERCISES AND COGNITIVE LEVELS
+════════════════════════════════════════════════════
+
+Preserve real textbook exercises.
+
+After final MicroNode consolidation:
+
+reconcile exercise attachments.
+
+If duplicate MicroNodes merge:
+
+their valid source exercises must not be lost.
+
+Reassign exercises to the surviving MicroNode where semantically valid.
+
+Then map exercises to Cognitive Path levels only when their actual
+cognitive demand matches the level.
+
+Do NOT fabricate exercises merely to satisfy required counts.
+
+Existing missing-count UI may remain.
+
+════════════════════════════════════════════════════
+31. OUTCOME ALIGNMENT AFTER CONSOLIDATION
+════════════════════════════════════════════════════
+
+Outcome alignment must be calculated/reconciled AFTER final MicroNode
+granularity is established.
+
+If duplicate nodes merge:
+
+do not retain stale duplicate Outcome relations.
+
+Rebuild/reconcile:
+
+Outcome
+→ REQUIRED/SUPPORTING
+→ surviving MicroNode
+→ required cognitive depth
+
+Preserve explicit teacher review.
+
+Do NOT mark relations reviewed automatically after remap.
+
+════════════════════════════════════════════════════
+32. REAL LESSON — DO NOT HARDCODE EXPECTED NODES
+════════════════════════════════════════════════════
+
+For “Շենքերի համարակալումը”:
+
+do NOT hardcode that the lesson must have exactly 3 MicroNodes.
+
+The previous human review suggests that a structure around these
+conceptual areas may be plausible:
+
+- importance/meaning of a building address
+- odd/even street-numbering rule
+- new-building addressing between existing buildings
+
+But this is REVIEW EVIDENCE, not a hardcoded answer.
+
+The mapper must derive the correct minimal complete structure from the
+validated source.
+
+If 3, 4, or another count is pedagogically justified and passes all
+gates, accept the evidence.
+
+════════════════════════════════════════════════════
+33. REAL LESSON REGRESSION — DUPLICATE PAIRS
+════════════════════════════════════════════════════
+
+Add regression coverage representing the real failure classes.
+
+Near-duplicate pair class:
+
+“Շենքերի համարակալման սկզբունքները”
+
+vs
+
+“Շենքերի հասցեներ և համարակալման սկզբունքներ”
+
+must trigger semantic comparison.
+
+Near-duplicate pair class:
+
+“Կենտ և զույգ համարների տարբերակումը”
+
+vs
+
+“Կենտ և զույգ համարներով շենքերի դասավորություն”
+
+must trigger semantic comparison.
+
+Near-duplicate pair class:
+
+“Հասցեի որոշումը շենքերի միջև”
+
+vs
+
+“Նոր շենքի հասցեի որոշում”
+
+must trigger semantic comparison.
+
+Tests should verify semantic consolidation behavior.
+
+Do NOT hardcode titles into production logic.
+
+Fixtures may use them as regression examples.
+
+════════════════════════════════════════════════════
+34. REAL LESSON REGRESSION — SOURCE ALIGNMENT
+════════════════════════════════════════════════════
+
+Add tests proving:
+
+A. heading-only source cannot substantiate a detailed rule;
+
+B. address-story narrative cannot substantiate a new-building numbering
+   rule;
+
+C. correct rule/explanation blocks can substantiate the matching
+   MicroNode;
+
+D. malformed source cannot satisfy source grounding;
+
+E. source may be reallocated from a duplicate candidate to the surviving
+   correct MicroNode during consolidation;
+
+F. no valid source block is lost during merge.
+
+════════════════════════════════════════════════════
+35. REAL LESSON REGRESSION — COGNITIVE PATH
+════════════════════════════════════════════════════
+
+Add explicit tests for the real failure.
+
+SOURCE/KNOWLEDGE:
+
+new building between existing numbered buildings may receive a special
+address such as 5/1 without renumbering existing buildings.
+
+The Cognitive Path MUST NOT generate/accept as grounded:
+
+“between 24 and 28 → 26”
+
+as the success rule for that MicroNode.
+
+Also MUST NOT automatically accept extrapolated factual claims such as:
+
+“7/2”
+
+unless the approved knowledge boundary establishes the rule needed to
+derive it.
+
+Add:
+
+1. grounded paraphrase PASS
+
+2. grounded explanation PASS
+
+3. grounded cognitive-demand increase PASS
+
+4. unsupported number substitution REVIEW/FAIL
+
+5. unrelated mathematical-between rule FAIL
+
+6. unsupported addressing extrapolation REVIEW/FAIL
+
+7. structural JSON validity alone does not PASS grounding
+
+════════════════════════════════════════════════════
+36. TEACHING PACKAGE COMPATIBILITY
+════════════════════════════════════════════════════
+
+Do not reopen Fix #5 Teaching Package architecture.
+
+But ensure:
+
+if MicroNodes merge or source ownership changes,
+
+existing/generated draft Teaching Package items do not remain attached
+to a deleted/obsolete duplicate node incorrectly.
+
+Preserve valid drafts where safely reassignable.
+
+Otherwise mark them for regeneration/review.
+
+Do not auto-approve.
+
+════════════════════════════════════════════════════
+37. FINAL C1 READINESS EXTENSION
+════════════════════════════════════════════════════
+
+Final C1 readiness must now require conceptually:
+
+GOAL_OUTCOMES_CONFIRMED
+
+AND
+
+SOURCE_SCOPE_VALID
+
+AND
+
+INSTRUCTIONAL_SOURCE_COVERAGE_COMPLETE
+
+AND
+
+MICRONODE_GRANULARITY_VALID
+
+AND
+
+MICRONODE_SOURCE_ALIGNMENT_VALID
+
+AND
+
+OUTCOME_ALIGNMENT_REVIEWED
+
+AND
+
+COGNITIVE_PATH_GROUNDING_VALID_OR_EXPLICITLY_APPROVED
+
+AND
+
+EXISTING_TEACHING_PACKAGE_APPROVAL_REQUIREMENTS
+
+Do not duplicate gates if equivalent existing fields already exist.
+
+Integrate with current readiness architecture.
+
+════════════════════════════════════════════════════
+38. UI — MINIMAL CHANGES ONLY
+════════════════════════════════════════════════════
+
+Do NOT redesign the dashboard.
+
+Only expose enough information for teacher review.
+
+For a MicroNode, teacher should be able to understand if:
+
+- source support is sufficient
+- Cognitive Path is grounded
+- review is required
+
+Prefer compact badges/statuses.
+
+Examples conceptually:
+
+Source:
+✓ Բավարար
+
+or
+
+⚠ Աղբյուրի վերանայում
+
+Cognitive Path:
+✓ Հիմնավորված
+
+or
+
+⚠ Վերանայում է պահանջվում
+
+Use natural Armenian UI labels consistent with the existing interface.
+
+Do not add large debug panels to production UI.
+
+════════════════════════════════════════════════════
+39. KEEP MANDATORY TEACHING TIME OUT OF THIS
+════════════════════════════════════════════════════
+
+⏱ Պարտադիր ուսուցման ժամանակ
+
+is unrelated to this Fix.
+
+It remains optional planning metadata.
+
+Do not make it a C1 blocker.
+
+Do not redesign it now.
+
+════════════════════════════════════════════════════
+40. EXISTING REAL MAPPING SAFETY
+════════════════════════════════════════════════════
+
+The current real mapping may be used as regression evidence.
+
+Do NOT destructively mutate/delete the user's current mapping merely to
+run tests.
+
+Prefer:
+
+- fixtures
+- in-process route tests
+- disposable lesson
+- explicitly recreated test lesson
+
+If a live clean retest is necessary:
+
+use disposable data or ask before destructive action.
+
+Never delete the user's real lesson automatically.
+
+════════════════════════════════════════════════════
+41. CLEAN END-TO-END RETEST
+════════════════════════════════════════════════════
+
+After implementation:
+
+run ONE clean mapping using the same lesson/source in disposable or
+explicitly recreated state.
+
+Verify in order:
+
+1. source scope valid
+
+2. instructional source coverage complete
+
+3. initial MicroNode candidates
+
+4. granularity consolidation
+
+5. final MicroNodes
+
+6. Node ↔ Source semantic alignment
+
+7. source sufficiency
+
+8. exercise reconciliation
+
+9. Outcome alignment
+
+Then generate Cognitive Path for all final MicroNodes.
+
+Verify:
+
+10. cognitive levels appropriate
+
+11. performanceObjectives grounded
+
+12. successCriteria grounded
+
+13. generated examples grounded
+
+14. no unsupported addressing/math rule
+
+15. teacher review statuses correct
+
+Do not auto-approve for convenience.
+
+════════════════════════════════════════════════════
+42. REQUIRED CLEAN RETEST REPORT
+════════════════════════════════════════════════════
+
+Return safe structural evidence.
+
+SOURCE
+
+- validated block count
+- instructional count
+- practice count
+- structural count
+- unresolved count
+
+GRANULARITY
+
+- initial candidate MicroNodes
+- duplicate groups detected
+- merged count
+- removed count
+- split count
+- final MicroNode count
+
+FINAL MICRONODES
+
+For each:
+
+- title
+- learningObjective
+- Topic
+- source pages
+- sourceBlock IDs
+- source sufficiency status
+- why distinct from other nodes
+- related Outcome IDs
+- REQUIRED/SUPPORTING
+- target cognitive depth
+- exercise count
+
+COGNITIVE PATH
+
+For each MicroNode:
+
+- generated levels
+- target level
+- grounding status
+- teacher review status
+- any rejected/flagged generated claim count
+
+Do NOT output long copyrighted source text.
+
+════════════════════════════════════════════════════
+43. FOCUSED GRANULARITY TESTS
+════════════════════════════════════════════════════
+
+Add tests:
+
+1. exact duplicate objectives merge
+
+2. near-duplicate objectives merge
+
+3. wording differences alone do not preserve duplicate nodes
+
+4. same objective across multiple source blocks remains one node
+
+5. context/example does not become separate node
+
+6. heading does not become substantive node
+
+7. independently assessable objectives remain separate
+
+8. multi-objective node can split
+
+9. merge preserves all valid source ownership
+
+10. merge preserves/reconciles exercises
+
+11. merge reconciles Outcome relations
+
+12. consolidation bounded to one semantic pass
+
+════════════════════════════════════════════════════
+44. FOCUSED SOURCE-ALIGNMENT TESTS
+════════════════════════════════════════════════════
+
+Add tests:
+
+1. objective directly supported by source → SUFFICIENT
+
+2. source supports only part → PARTIAL
+
+3. semantically mismatched source → INSUFFICIENT
+
+4. malformed source → UNREADABLE
+
+5. heading-only substantive rule → not SUFFICIENT
+
+6. narrative context assigned to unrelated rule → not SUFFICIENT
+
+7. valid source reallocation repairs ownership
+
+8. unresolved source alignment blocks final-ready status
+
+════════════════════════════════════════════════════
+45. FOCUSED COGNITIVE-PATH TESTS
+════════════════════════════════════════════════════
+
+Add tests:
+
+1. performanceObjective stays inside MicroNode knowledge
+
+2. successCriterion stays inside MicroNode knowledge
+
+3. higher Bloom level increases reasoning, not factual scope
+
+4. valid source-supported example passes
+
+5. unsupported numeric substitution does not auto-pass
+
+6. unsupported factual extrapolation does not auto-pass
+
+7. contradictory/unrelated rule is INVALID
+
+8. uncertain inference is REVIEW_REQUIRED
+
+9. AI-generated path is not auto-approved
+
+10. teacher approval remains explicit
+
+11. final C1 approval blocks invalid/unreviewed required path
+
+════════════════════════════════════════════════════
+46. REGRESSION SUITES
+════════════════════════════════════════════════════
+
+Run relevant existing suites:
+
+- Package 1A
+- Package 1B
+- Package 1C
+- automatic mapping
+- mapping context/preflight
+- Pass 2 diagnostics
+- source-scope tests
+- source coverage tests
+- canonical Outcome tests
+- Outcome alignment tests
+- Cognitive Path tests
+- final approval tests
+- Teaching Package grounding tests
+
+Do not weaken existing tests to obtain green results.
+
+════════════════════════════════════════════════════
+47. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime/chat.ts behavior
+- learner sessions
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree
+- C6 Recommendation / Personalization
+- Quiz creation
+- Quiz scoring
+- Package 1D manual TEXT mapping
+- unrelated teacher-dashboard areas
+
+DO NOT:
+
+- switch AI models as the solution
+- hardcode this lesson
+- hardcode MicroNode count
+- delete source blocks to reduce node count
+- classify instructional blocks as structural to pass coverage
+- fabricate exercises
+- fabricate source
+- auto-approve Cognitive Path
+- auto-approve Teaching Package
+- remove existing C1 gates
+
+════════════════════════════════════════════════════
+48. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly these sections:
+
+A. MICRONODE GRANULARITY ROOT CAUSE
+
+Why did obvious near-duplicate nodes survive Fix #5?
+
+B. NODE ↔ SOURCE ALIGNMENT ROOT CAUSE
+
+Why could objectives be paired with insufficient/mismatched source?
+
+C. COGNITIVE PATH GROUNDING ROOT CAUSE
+
+Why could success criteria/examples introduce unsupported rules?
+
+D. IMPLEMENTED GRANULARITY CONTRACT
+
+E. IMPLEMENTED SOURCE-ALIGNMENT CONTRACT
+
+F. IMPLEMENTED COGNITIVE-PATH GROUNDING CONTRACT
+
+G. FILES CHANGED
+
+H. DB / SCHEMA CHANGES
+
+State explicitly if none.
+
+I. GRANULARITY REGRESSION RESULTS
+
+J. SOURCE-ALIGNMENT REGRESSION RESULTS
+
+K. COGNITIVE-PATH REGRESSION RESULTS
+
+L. EXISTING C1 REGRESSION STATUS
+
+M. CLEAN REAL RETEST — SOURCE
+
+N. CLEAN REAL RETEST — MICRONODES
+
+Use Section 42 structure.
+
+O. CLEAN REAL RETEST — OUTCOME ALIGNMENT
+
+P. CLEAN REAL RETEST — EXERCISES
+
+Q. CLEAN REAL RETEST — COGNITIVE PATH
+
+R. FINAL READINESS BEHAVIOR
+
+S. REMAINING C1 ISSUES
+
+T. VERDICT
+
+Use ONLY one of:
+
+READY FOR MANUAL C1 FINAL REVIEW
+
+or
+
+C1 FIX #6 BLOCKED
+
+Do NOT return C1 FROZEN.
+
+════════════════════════════════════════════════════
+49. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS only if ALL are true:
+
+[ ] Existing Fix #5 source-scope safeguards remain intact.
+
+[ ] Existing source coverage remains intact.
+
+[ ] Near-duplicate MicroNodes are detected semantically.
+
+[ ] Duplicate objectives do not survive merely due to wording changes.
+
+[ ] Source block count does not drive MicroNode count.
+
+[ ] Final MicroNodes form a minimal complete pedagogical set.
+
+[ ] Every final MicroNode is distinct.
+
+[ ] Every final MicroNode is teachable.
+
+[ ] Every final MicroNode is independently assessable.
+
+[ ] Every final MicroNode is curriculum relevant.
+
+[ ] Every final MicroNode is source grounded.
+
+[ ] Heading-only source cannot falsely ground a substantive objective.
+
+[ ] Narrative context cannot falsely ground an unrelated rule.
+
+[ ] Malformed source cannot ground a MicroNode.
+
+[ ] Source ownership survives valid merges.
+
+[ ] Exercises survive/reconcile after merges.
+
+[ ] Outcome relations reconcile after merges.
+
+[ ] Cognitive Path cannot expand factual curriculum scope.
+
+[ ] performanceObjective is grounded.
+
+[ ] successCriterion is grounded.
+
+[ ] Higher Bloom depth changes cognitive demand, not factual knowledge.
+
+[ ] “24 and 28 → 26” failure class is rejected for the addressing node.
+
+[ ] Unsupported “7/2” extrapolation does not auto-pass.
+
+[ ] Cognitive Path structural validity alone is insufficient.
+
+[ ] AI-generated Cognitive Path requires explicit review/approval.
+
+[ ] Invalid/unreviewed required Cognitive Path blocks final C1 approval.
+
+[ ] Teaching Package safeguards remain intact.
+
+[ ] No hardcoded MicroNode count exists.
+
+[ ] No production logic hardcodes this lesson.
+
+[ ] Clean end-to-end retest passes.
+
+If ANY item fails:
+
+STOP.
+
+Return:
+
+C1 FIX #6 BLOCKED
+
+State the exact remaining blocker.
+
+Do NOT proceed to Package 1D.
+
+Do NOT declare C1 frozen.

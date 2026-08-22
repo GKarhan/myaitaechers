@@ -17,6 +17,15 @@ import {
   type InstructionalCoverageResult,
 } from "../lib/coverage-validator.js";
 import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heuristics.js";
+import {
+  classifyMicroNodeSourceAlignment,
+  pedagogicalNearDuplicate,
+  type SourceAlignmentAudit,
+} from "../lib/micronode-source-alignment.js";
+import {
+  validateCognitivePathGrounding,
+  type CognitivePathGroundingAudit,
+} from "../lib/cognitive-path-grounding.js";
 import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
 import {
@@ -308,6 +317,15 @@ export class MappingInstructionalCoverageError extends Error {
   }
 }
 
+export class MappingSourceAlignmentError extends Error {
+  readonly teacherMessage =
+    "MicroNode-ի նպատակը բավարար չափով չի հիմնավորվել իր ընտրված աղբյուրով։ Արդյունքը չի պահպանվել։ Խնդրում ենք վերանայել քարտեզագրումը։";
+  constructor(readonly alignment: Pass2SourceAlignment) {
+    super("Detailed mapping contains MicroNodes without sufficient owned-source support");
+    this.name = "MappingSourceAlignmentError";
+  }
+}
+
 export class MappingSourceScopeError extends Error {
   readonly teacherMessage =
     "Դասի ընտրված էջերը չեն հաստատվել որպես տվյալ դասի աղբյուր։ Ստուգեք դասագիրքը և PDF-ի ֆիզիկական էջերի միջակայքը։";
@@ -333,6 +351,7 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingSourceTruncatedError) return error.teacherMessage;
   if (error instanceof MappingZeroMicroNodesError) return error.teacherMessage;
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
+  if (error instanceof MappingSourceAlignmentError) return error.teacherMessage;
   if (error instanceof MappingSourceScopeError) return error.teacherMessage;
   if (error instanceof MappingOutcomeAlignmentError) return error.teacherMessage;
   if (error instanceof MappingPass2ParserError) return error.teacherMessage;
@@ -1289,7 +1308,7 @@ export interface GranularityConsolidation {
     topicSequence: number;
     keptMicroNodeTitle: string;
     removedMicroNodeTitle: string;
-    reason: "HIGH_CONFIDENCE_OVER_SPLIT";
+    reason: "HIGH_CONFIDENCE_OVER_SPLIT" | "NEAR_DUPLICATE_OBJECTIVE";
   }>;
 }
 
@@ -1344,6 +1363,38 @@ export function consolidateHighConfidenceOverSplits(
   };
 }
 
+export type Pass2SourceAlignment = {
+  valid: boolean;
+  sufficientCount: number;
+  partialCount: number;
+  insufficientCount: number;
+  unreadableCount: number;
+  nodes: Array<{ topicSequence: number; microNodeIndex: number; audit: SourceAlignmentAudit }>;
+};
+
+export function validatePass2SourceAlignment(
+  topics: ReadonlyArray<Pass2TopicResult>,
+  blocks: ReadonlyArray<Pass1Block>,
+): Pass2SourceAlignment {
+  const nodes = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => ({
+    topicSequence: topic.sequence,
+    microNodeIndex,
+    audit: classifyMicroNodeSourceAlignment(
+      node.learningObjective,
+      node.sourceBlockIndices.map((index) => blocks[index]).filter((block): block is Pass1Block => !!block),
+    ),
+  })));
+  const count = (status: SourceAlignmentAudit["status"]) => nodes.filter((node) => node.audit.status === status).length;
+  return {
+    valid: nodes.every((node) => node.audit.status === "SUFFICIENT"),
+    sufficientCount: count("SUFFICIENT"),
+    partialCount: count("PARTIAL"),
+    insufficientCount: count("INSUFFICIENT"),
+    unreadableCount: count("UNREADABLE"),
+    nodes,
+  };
+}
+
 export interface Pass2Result {
   topics: Pass2TopicResult[];
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
@@ -1361,6 +1412,7 @@ export interface Pass2Result {
   granularityFindings: GranularityFinding[];
   /** One bounded pre-persistence merge pass applied only to explicit HIGH findings. */
   granularityConsolidation: GranularityConsolidation;
+  sourceAlignment: Pass2SourceAlignment;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
   diagnostics: Pass2Diagnostics;
 }
@@ -2801,6 +2853,7 @@ export async function runPass2Pipeline(
   // safe only if it preserves one valid owner for every source and activity.
   const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics);
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
+  const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
 
   logger.info(
     {
@@ -2844,6 +2897,9 @@ export async function runPass2Pipeline(
     );
     throw new MappingInstructionalCoverageError(postConsolidationInstructionalCoverage, diagnostics);
   }
+  if (!sourceAlignment.valid) {
+    throw new MappingSourceAlignmentError(sourceAlignment);
+  }
 
   return {
     topics,
@@ -2852,6 +2908,7 @@ export async function runPass2Pipeline(
     instructionalCoverage: postConsolidationInstructionalCoverage,
     granularityFindings,
     granularityConsolidation,
+    sourceAlignment,
     diagnostics,
   };
 }
@@ -3108,6 +3165,7 @@ export interface CogPathGenerationResult {
   skipped:     boolean;
   skipReason?: string;
   levels:      CogPathLevel[];
+  groundingAudit?: CognitivePathGroundingAudit;
 }
 
 import { z } from "zod";
@@ -3258,11 +3316,26 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       if (l.isTargetCeiling && l.sequence !== maxSeq) l.isTargetCeiling = false;
     }
   }
+  const groundingAudit = validateCognitivePathGrounding(
+    input.theoryContent,
+    input.learningObjective,
+    levels,
+  );
+  if (!groundingAudit.valid) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipReason: "generated Cognitive Path includes claims not supported by the MicroNode source",
+      levels: [],
+      groundingAudit,
+    };
+  }
 
   return {
     nodeId: input.nodeId,
     skipped: false,
     levels: levels as CogPathLevel[],
+    groundingAudit,
   };
 }
 
