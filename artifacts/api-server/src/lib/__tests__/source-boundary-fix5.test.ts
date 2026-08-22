@@ -3,10 +3,12 @@ import {
   buildLessonSourceSet,
   applyVisionTitleAnchor,
   assignTextBlocksToPhysicalPages,
+  bindTextBlocksToPhysicalPages,
+  formatExtractedPagesForPass1,
   validateBlocksAgainstLessonSourceSet,
 } from "../lesson-source-set.js";
 import { validateTeachingContentGrounding } from "../teaching-content-grounding.js";
-import { consolidateHighConfidenceOverSplits, type Pass2TopicResult } from "../../services/lesson-mapping.js";
+import { consolidateHighConfidenceOverSplits, normalisePass1, type Pass2TopicResult } from "../../services/lesson-mapping.js";
 
 const lessonPages = [{
   pageNumber: 11,
@@ -73,12 +75,102 @@ const lessonPages = [{
 
 {
   const physicalPages = [{ pageNumber: 11, text: "Տպագիր էջ 37։ Շենքերի համարակալումը սկսվում է այստեղ։" }];
-  const bound = assignTextBlocksToPhysicalPages(physicalPages, [{
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [{
     sourcePage: 37,
     sourceText: "Շենքերի համարակալումը սկսվում է այստեղ։",
   }]);
-  assert.equal(bound[0].sourcePage, 11);
-  console.log("  ✓ printed textbook page labels cannot replace physical PDF provenance");
+  assert.equal(bound.blocks[0].sourcePage, 11);
+  assert.equal(bound.audit.correctedProviderPageLabelCount, 1);
+  console.log("  ✓ wrong provider and printed textbook labels are corrected to the physical PDF page");
+}
+
+{
+  const physicalPages = [
+    { pageNumber: 11, text: "Տպագիր էջ 10։ Առաջին կանոնը գրված է այստեղ։" },
+    { pageNumber: 12, text: "Երկրորդ կանոնը գրված է այստեղ։" },
+  ];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [
+    { sourcePage: 12, sourceText: "Առաջին կանոնը գրված է այստեղ։" },
+    { sourcePage: 11, sourceText: "Երկրորդ կանոնը գրված է այստեղ։" },
+  ]);
+  assert.deepEqual(bound.blocks.map((block) => block.sourcePage), [11, 12]);
+  assert.equal(bound.audit.correctedProviderPageLabelCount, 2);
+  console.log("  ✓ multi-page text blocks bind from server text, not swapped provider labels");
+}
+
+{
+  const physicalPages = [{ pageNumber: 11, text: "Համարա-\nկալման կանոնը գրված է այստեղ։" }];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [{
+    sourcePage: 10,
+    sourceText: "Համարակալման կանոնը գրված է այստեղ։",
+  }]);
+  assert.equal(bound.blocks[0].sourcePage, 11);
+  assert.equal(bound.audit.correctedProviderPageLabelCount, 1);
+  console.log("  ✓ visual PDF line wraps cannot prevent a deterministic physical-page binding");
+}
+
+{
+  const physicalPages = [
+    { pageNumber: 11, text: "Կրկնվող վերնագիր։ Առաջին եզակի բացատրություն։" },
+    { pageNumber: 12, text: "Կրկնվող վերնագիր։ Երկրորդ եզակի բացատրություն։" },
+  ];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [{
+    sourcePage: 12,
+    sourceText: "Կրկնվող վերնագիր։",
+  }]);
+  assert.equal(bound.blocks[0].sourcePage, 0);
+  assert.equal(bound.audit.ambiguousProvenanceCount, 1);
+  console.log("  ✓ repeated short headings remain unverified instead of being guessed");
+}
+
+{
+  const physicalPages = [
+    { pageNumber: 11, text: "Առաջին եզակի նախադասություն։ Կրկնվող վերնագիր։ Վերջին եզակի նախադասություն։" },
+    { pageNumber: 12, text: "Կրկնվող վերնագիր։ Այլ նյութ։" },
+  ];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [
+    { sourcePage: 12, sourceText: "Առաջին եզակի նախադասություն։" },
+    { sourcePage: 12, sourceText: "Կրկնվող վերնագիր։" },
+    { sourcePage: 12, sourceText: "Վերջին եզակի նախադասություն։" },
+  ]);
+  assert.deepEqual(bound.blocks.map((block) => block.sourcePage), [11, 11, 11]);
+  assert.equal(bound.audit.contextResolvedAmbiguousCount, 1);
+  console.log("  ✓ a repeated heading may use same-page server-verified structural neighbors");
+}
+
+{
+  const physicalPages = [{ pageNumber: 11, text: "Միայն ընտրված էջի ստուգելի նյութ։" }];
+  const bound = bindTextBlocksToPhysicalPages(physicalPages, [{
+    sourcePage: 10,
+    sourceText: "Կեղծված և չգոյություն ունեցող աղբյուր։",
+  }]);
+  assert.equal(bound.blocks[0].sourcePage, 0);
+  assert.equal(bound.audit.unverifiedProvenanceCount, 1);
+  console.log("  ✓ fabricated out-of-scope text is quarantined before the source-set gate");
+}
+
+{
+  const formatted = formatExtractedPagesForPass1([
+    { pageNumber: 11, text: "Առաջին էջ" },
+    { pageNumber: 12, text: "Երկրորդ էջ" },
+  ]);
+  assert.match(formatted, /^\[PDF PAGE 11\]/u);
+  assert.match(formatted, /\[PDF PAGE 12\]/u);
+  console.log("  ✓ text retries reuse immutable server physical-page markers");
+}
+
+{
+  const vision = normalisePass1({
+    blocks: [{
+      blockType: "RULE",
+      sourceText: "Պատկերի վրա գրված կանոն",
+      sourcePage: 10,
+      sourceParagraph: null,
+      sourceBoundingBox: null,
+    }],
+  }, 11);
+  assert.equal(vision.blocks[0].sourcePage, 11);
+  console.log("  ✓ one-page vision extraction always inherits the server physical page");
 }
 
 {
@@ -168,4 +260,4 @@ const lessonPages = [{
   console.log("  ✓ only explicit HIGH same-topic over-splits consolidate without losing sources");
 }
 
-console.log("\nFix #5 source boundary: 7/7 passing");
+console.log("\nFix #5/Fix #7 source boundary: 14/14 passing");

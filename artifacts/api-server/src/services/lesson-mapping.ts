@@ -686,6 +686,8 @@ export interface Pass1Block {
 
 export interface Pass1Result {
   blocks: Pass1Block[];
+  /** Number of positive provider page labels replaced by a known server page. */
+  providerPageLabelCorrectionCount?: number;
   /** Page ranges that failed to extract (even after 1-page fallback) and were
    *  skipped rather than thrown.  Propagated into mappingReport.reviewItems so
    *  the teacher knows which pages need manual review or a re-run. */
@@ -700,12 +702,27 @@ const VALID_BLOCK_TYPES = new Set<string>([
   "NOTE", "ACTIVITY", "HOMEWORK",
 ]);
 
-function normalisePass1(raw: unknown, sourcePageOverride?: number): Pass1Result {
+/**
+ * Normalizes a provider response. Vision callers pass the physical page being
+ * processed so that model-provided page labels can never become provenance.
+ */
+export function normalisePass1(raw: unknown, sourcePageOverride?: number): Pass1Result {
   const obj = raw as { blocks?: unknown[] };
+  let providerPageLabelCorrectionCount = 0;
   const blocks: Pass1Block[] = (Array.isArray(obj?.blocks) ? obj.blocks : [])
     .map((b) => {
       const block = b as Record<string, unknown>;
       const bt = String(block.blockType ?? "");
+      const providerSourcePage = typeof block.sourcePage === "number" && block.sourcePage > 0
+        ? Math.round(block.sourcePage)
+        : 0;
+      if (
+        sourcePageOverride !== undefined &&
+        providerSourcePage > 0 &&
+        providerSourcePage !== sourcePageOverride
+      ) {
+        providerPageLabelCorrectionCount++;
+      }
       return {
         blockType: VALID_BLOCK_TYPES.has(bt)
           ? (bt as Pass1Block["blockType"])
@@ -713,9 +730,7 @@ function normalisePass1(raw: unknown, sourcePageOverride?: number): Pass1Result 
         sourceText: typeof block.sourceText === "string"
           ? block.sourceText.trim() : "",
         sourcePage: sourcePageOverride ?? (
-          typeof block.sourcePage === "number" && block.sourcePage > 0
-            ? Math.round(block.sourcePage)
-            : 0
+          providerSourcePage
         ),
         sourceParagraph: typeof block.sourceParagraph === "string" && block.sourceParagraph.trim()
           ? block.sourceParagraph.trim() : null,
@@ -729,13 +744,14 @@ function normalisePass1(raw: unknown, sourcePageOverride?: number): Pass1Result 
     })
     .filter((b) => b.sourceText.length > 0); // drop empty blocks
 
-  return { blocks };
+  return { blocks, providerPageLabelCorrectionCount };
 }
 
 // ── Pass 1 text path ──────────────────────────────────────────────────────────
 
 export async function extractBlocksWithAI(
-  input: LessonMappingInput
+  input: LessonMappingInput,
+  options: { sourcePageOverride?: number } = {},
 ): Promise<Pass1Result> {
   const { userPrompt, diagnostics } = buildPass1TextRequest(input);
   assertPass1ContextBudget(diagnostics);
@@ -786,7 +802,7 @@ export async function extractBlocksWithAI(
     if (!parsed) throw new Error("Pass 1 text extraction: response not valid JSON after retry");
   }
 
-  const result = normalisePass1(parsed);
+  const result = normalisePass1(parsed, options.sourcePageOverride);
   logger.info({ blockCount: result.blocks.length }, "pass1 text: extraction complete");
   return result;
 }

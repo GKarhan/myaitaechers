@@ -36,6 +36,17 @@ export type SourceScopeAudit = {
   reasonCodes: Array<"SOURCE_PAGE_OUT_OF_SCOPE" | "SOURCE_TEXT_NOT_IN_SELECTED_PAGE">;
 };
 
+export type TextPageBindingAudit = {
+  verificationMode: "TEXT_CONTENT";
+  selectedPhysicalPages: number[];
+  blockCount: number;
+  exactOrNormalizedMatchCount: number;
+  contextResolvedAmbiguousCount: number;
+  correctedProviderPageLabelCount: number;
+  ambiguousProvenanceCount: number;
+  unverifiedProvenanceCount: number;
+};
+
 type SourceBlock = {
   sourcePage: number;
   sourceText: string;
@@ -69,6 +80,12 @@ function normalizedWords(value: string): string[] {
 function comparableText(value: string): string {
   return value
     .normalize("NFKC")
+    // pdf-parse and providers may disagree only about a visual line-wrap or
+    // Armenian ligature. Remove those presentation differences before checking
+    // the original server-extracted text; do not apply semantic stemming here.
+    .replace(/\u0565\u0582/gu, "\u0587")
+    .replace(/[\u00AD\u200B\u200C\u200D\u2060]/gu, "")
+    .replace(/([\p{L}\p{N}])[-\u2010-\u2015]\s*\n\s*([\p{L}\p{N}])/gu, "$1$2")
     .toLocaleLowerCase("hy-AM")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
@@ -191,29 +208,104 @@ export function validateBlocksAgainstLessonSourceSet(
 
 /**
  * Text-model page labels are advisory only. Bind a verbatim block to the
- * physical PDF page(s) extracted by the server, preferring an unambiguous text
- * match. This prevents printed textbook footer numbers from becoming provenance.
+ * physical PDF page(s) extracted by the server, requiring one unambiguous
+ * whole-fragment match. This prevents printed textbook footer numbers from
+ * becoming provenance and prevents short repeated headings from being guessed.
  */
-export function assignTextBlocksToPhysicalPages<T extends SourceBlock>(
+export function bindTextBlocksToPhysicalPages<T extends SourceBlock>(
   extractedPages: ReadonlyArray<ExtractedLessonPage>,
   blocks: ReadonlyArray<T>,
-): T[] {
+): { blocks: T[]; audit: TextPageBindingAudit } {
   const pageTexts = extractedPages.map((page) => ({
     pageNumber: page.pageNumber,
     text: comparableText(page.text),
   }));
-  return blocks.map((block) => {
+  let exactOrNormalizedMatchCount = 0;
+  let contextResolvedAmbiguousCount = 0;
+  let correctedProviderPageLabelCount = 0;
+  let ambiguousProvenanceCount = 0;
+  let unverifiedProvenanceCount = 0;
+
+  const candidates = blocks.map((block) => {
     const sourceText = comparableText(block.sourceText);
-    const matches = sourceText
+    return sourceText
       ? pageTexts.filter((page) => page.text.includes(sourceText)).map((page) => page.pageNumber)
       : [];
-    const physicalPage = matches.length === 1
-      ? matches[0]
-      : matches.includes(block.sourcePage)
-        ? block.sourcePage
-        : 0;
+  });
+  const physicalPages = candidates.map((matches) => matches.length === 1 ? matches[0] : 0);
+
+  // A short heading may appear on two selected pages. The provider's label is
+  // never used to break that tie. We can, however, prove ownership when the
+  // immediately surrounding server-verifiable blocks are both on the same
+  // candidate page in the source's reading order.
+  for (let index = 0; index < candidates.length; index++) {
+    if (physicalPages[index] !== 0 || candidates[index].length < 2) continue;
+    let previousPage = 0;
+    let nextPage = 0;
+    for (let previous = index - 1; previous >= 0; previous--) {
+      if (physicalPages[previous] !== 0) {
+        previousPage = physicalPages[previous];
+        break;
+      }
+    }
+    for (let next = index + 1; next < physicalPages.length; next++) {
+      if (physicalPages[next] !== 0) {
+        nextPage = physicalPages[next];
+        break;
+      }
+    }
+    if (
+      previousPage > 0 &&
+      previousPage === nextPage &&
+      candidates[index].includes(previousPage)
+    ) {
+      physicalPages[index] = previousPage;
+      contextResolvedAmbiguousCount++;
+    }
+  }
+
+  const boundBlocks = blocks.map((block, index) => {
+    const matches = candidates[index];
+    const physicalPage = physicalPages[index];
+    if (matches.length === 1) {
+      exactOrNormalizedMatchCount++;
+      if (Number.isInteger(block.sourcePage) && block.sourcePage > 0 && block.sourcePage !== physicalPage) {
+        correctedProviderPageLabelCount++;
+      }
+    } else if (physicalPage > 0) {
+      if (Number.isInteger(block.sourcePage) && block.sourcePage > 0 && block.sourcePage !== physicalPage) {
+        correctedProviderPageLabelCount++;
+      }
+    } else if (matches.length > 1) {
+      ambiguousProvenanceCount++;
+    } else {
+      unverifiedProvenanceCount++;
+    }
+
     return { ...block, sourcePage: physicalPage };
   });
+
+  return {
+    blocks: boundBlocks,
+    audit: {
+      verificationMode: "TEXT_CONTENT",
+      selectedPhysicalPages: pageTexts.map((page) => page.pageNumber),
+      blockCount: blocks.length,
+      exactOrNormalizedMatchCount,
+      contextResolvedAmbiguousCount,
+      correctedProviderPageLabelCount,
+      ambiguousProvenanceCount,
+      unverifiedProvenanceCount,
+    },
+  };
+}
+
+/** Backward-compatible block-only view for pure callers. */
+export function assignTextBlocksToPhysicalPages<T extends SourceBlock>(
+  extractedPages: ReadonlyArray<ExtractedLessonPage>,
+  blocks: ReadonlyArray<T>,
+): T[] {
+  return bindTextBlocksToPhysicalPages(extractedPages, blocks).blocks;
 }
 
 /**

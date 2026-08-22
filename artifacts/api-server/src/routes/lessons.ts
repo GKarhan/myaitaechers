@@ -22,7 +22,7 @@ import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
 import {
   buildLessonSourceSet,
   applyVisionTitleAnchor,
-  assignTextBlocksToPhysicalPages,
+  bindTextBlocksToPhysicalPages,
   formatExtractedPagesForPass1,
   validateBlocksAgainstLessonSourceSet,
 } from "../lib/lesson-source-set.js";
@@ -3802,6 +3802,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     // ── Pass 1: Pure verbatim block extraction (in-memory, no DB write yet) ──
     let pass1: Pass1Result;
+    let textPageBindingAudit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"] | null = null;
     if (useVision) {
       logger.info(
         { lessonId, pagesFrom: lesson.pagesFrom, pagesTo: lesson.pagesTo },
@@ -3811,15 +3812,60 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       logger.info({ lessonId, pageCount: pageImages.length }, "lesson mapping: rasterised pages");
       pass1 = await extractBlocksWithVision(baseInput, pageImages);
     } else {
-      pass1 = await extractBlocksWithAI({ ...baseInput, lessonText });
+      // Text pages are independently extracted by the server. Keep one physical
+      // page per provider request so repeated headings cannot make page ownership
+      // ambiguous. The model's sourcePage is overridden before binding, while
+      // sourceText must still be contained in that exact server page.
+      const pageResults: Array<{
+        result: Pass1Result;
+        blocks: Pass1Result["blocks"];
+        audit: ReturnType<typeof bindTextBlocksToPhysicalPages>["audit"];
+      }> = [];
+      for (const page of extractedPages) {
+        const result = await extractBlocksWithAI({
+          ...baseInput,
+          pagesFrom: page.pageNumber,
+          pagesTo: page.pageNumber,
+          lessonText: formatExtractedPagesForPass1([page]),
+        }, { sourcePageOverride: page.pageNumber });
+        const bound = bindTextBlocksToPhysicalPages([page], result.blocks);
+        pageResults.push({ result, blocks: bound.blocks, audit: bound.audit });
+      }
       pass1 = {
-        ...pass1,
-        blocks: assignTextBlocksToPhysicalPages(extractedPages, pass1.blocks),
+        blocks: pageResults.flatMap((item) => item.blocks),
+      };
+      textPageBindingAudit = {
+        verificationMode: "TEXT_CONTENT",
+        selectedPhysicalPages: extractedPages.map((page) => page.pageNumber),
+        blockCount: pageResults.reduce((sum, item) => sum + item.audit.blockCount, 0),
+        exactOrNormalizedMatchCount: pageResults.reduce((sum, item) => sum + item.audit.exactOrNormalizedMatchCount, 0),
+        contextResolvedAmbiguousCount: pageResults.reduce((sum, item) => sum + item.audit.contextResolvedAmbiguousCount, 0),
+        correctedProviderPageLabelCount: pageResults.reduce(
+          (sum, item) => sum + (item.result.providerPageLabelCorrectionCount ?? 0),
+          0,
+        ),
+        ambiguousProvenanceCount: pageResults.reduce((sum, item) => sum + item.audit.ambiguousProvenanceCount, 0),
+        unverifiedProvenanceCount: pageResults.reduce((sum, item) => sum + item.audit.unverifiedProvenanceCount, 0),
       };
     }
     if (useVision) {
       sourceSet = applyVisionTitleAnchor(sourceSet, lesson.title, pass1.blocks);
     }
+    const physicalPageProvenance = textPageBindingAudit ?? {
+      verificationMode: "VISION_PAGE" as const,
+      selectedPhysicalPages: extractedPages.map((page) => page.pageNumber),
+      blockCount: pass1.blocks.length,
+      exactOrNormalizedMatchCount: 0,
+      contextResolvedAmbiguousCount: 0,
+      correctedProviderPageLabelCount: 0,
+      ambiguousProvenanceCount: 0,
+      unverifiedProvenanceCount: 0,
+      serverAssignedBlockCount: pass1.blocks.length,
+    };
+    logger.info(
+      { lessonId, blockCount: pass1.blocks.length, physicalPageProvenance },
+      "lesson mapping Pass 1 provenance binding complete",
+    );
     const sourceScope = validateBlocksAgainstLessonSourceSet(
       sourceSet,
       extractedPages,
@@ -3829,7 +3875,6 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     if (!sourceScope.valid) {
       throw new MappingSourceScopeError({ ...sourceScope, sourceSet });
     }
-    logger.info({ lessonId, blockCount: pass1.blocks.length }, "lesson mapping Pass 1 complete");
     await db.update(mappingJobsTable)
       .set({ progress: `Pass 2: Organising ${pass1.blocks.length} blocks into topics and MicroNodes...`, updatedAt: new Date() })
       .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
@@ -4188,6 +4233,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         sourceAudit: {
           sourceSet,
           sourceScope,
+          physicalPageProvenance,
           dispositions: pass2.instructionalCoverage.blocks,
           dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
           unresolvedInstructionalBlocks: pass2.instructionalCoverage.unresolvedInstructionalIndices.length,
