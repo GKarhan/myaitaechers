@@ -1,0 +1,1044 @@
+FINAL C1 BUG FIX — PDF PHYSICAL PAGE SELECTION / INDEXING / PROVENANCE
+
+GOAL
+
+Fix the real regression where a teacher selects the correct PDF physical
+pages for a lesson, but automatic mapping rejects them with:
+
+«Դասի ընտրված էջերը չեն հաստատվել որպես տվյալ դասի աղբյուր։
+Ստուգեք դասագիրքը և PDF-ի ֆիզիկական էջերի միջակայքը»։
+
+This must be fixed as a narrow page-selection/provenance bug.
+
+DO NOT redesign C1.
+DO NOT weaken source/provenance safeguards.
+DO NOT proceed to Package 1D.
+DO NOT declare C1 frozen.
+
+════════════════════════════════════════════════════
+0. REAL REPRODUCTION
+════════════════════════════════════════════════════
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Բնական թվերի շարքը
+
+Teacher intends to select the PDF physical pages containing this lesson.
+
+IMPORTANT:
+
+In the teacher-facing workflow, the intended range is currently understood
+as PDF physical pages 13–14.
+
+However, there may be a 0-based vs 1-based indexing mismatch between:
+
+- PDF viewer page number
+- lesson.pageStart/pageEnd
+- PDF extraction library index
+- internal physicalPage field
+- Pass 1 provenance
+- source-scope validation
+
+Therefore:
+
+DO NOT hardcode an offset.
+
+Before changing anything, inspect the actual PDF/page-extraction path and
+prove which internal indices correspond to the teacher-visible PDF pages.
+
+The fix must establish ONE canonical convention.
+
+════════════════════════════════════════════════════
+1. PRODUCT DECISION — PAGE INPUT SEMANTICS
+════════════════════════════════════════════════════
+
+For AUTOMATIC MAPPING:
+
+the page range entered by the teacher means:
+
+PDF PHYSICAL PAGES AS SEEN BY THE TEACHER IN THE PDF.
+
+Example:
+
+teacher enters:
+
+13–14
+
+The system must read exactly those two teacher-visible PDF pages.
+
+The teacher must NOT:
+
+- calculate a hidden offset;
+- know a zero-based library index;
+- convert printed textbook numbering;
+- compensate for covers/front matter;
+- know provider page numbering.
+
+The application performs any required internal conversion.
+
+════════════════════════════════════════════════════
+2. DISTINGUISH FOUR PAGE IDENTITIES
+════════════════════════════════════════════════════
+
+Audit these separately:
+
+A. TEACHER-VISIBLE PDF PAGE NUMBER
+
+What the teacher sees/selects.
+
+Example:
+13
+
+B. INTERNAL PDF PAGE INDEX
+
+What the PDF library/API may use.
+
+This may be zero-based.
+
+Example:
+teacher-visible page 13 may internally be index 12.
+
+C. SERVER PHYSICAL PAGE IDENTITY
+
+The canonical physical provenance stored/used by the mapping pipeline.
+
+Choose and document ONE convention.
+
+D. PRINTED TEXTBOOK PAGE NUMBER
+
+The page number printed inside the textbook page itself.
+
+This is separate metadata and MUST NOT control automatic page selection
+in this fix.
+
+Do not overload one field with multiple meanings.
+
+════════════════════════════════════════════════════
+3. AUDIT FIRST — NO CODE CHANGE UNTIL ROOT CAUSE IS PROVEN
+════════════════════════════════════════════════════
+
+Trace the REAL executable production path:
+
+teacher lesson create/edit UI
+→ pageStart/pageEnd
+→ API request/storage
+→ mapping endpoint
+→ PDF page selection
+→ PDF extraction library
+→ Pass 1 provider request
+→ Pass 1 parser
+→ server provenance assignment
+→ source-block normalization
+→ provenance validation
+→ source-scope validation
+→ Pass 2.
+
+For every boundary report internally:
+
+FIELD / VALUE
+SEMANTIC MEANING
+0-BASED OR 1-BASED
+FILE
+FUNCTION
+
+Specifically inspect:
+
+- lesson.pageStart
+- lesson.pageEnd
+- PDF extraction page argument
+- provider page fields
+- sourceBlock.sourcePage
+- physicalPage / physicalPageIndex fields
+- page provenance audit fields
+- lesson source-scope comparison
+
+Do not infer from variable names.
+
+Trace actual runtime behavior.
+
+════════════════════════════════════════════════════
+4. DETERMINE THE ACTUAL REAL-BOOK PAGE MAPPING
+════════════════════════════════════════════════════
+
+Use the currently uploaded/verified Math 5 resource READ-ONLY.
+
+Do NOT modify the lesson yet.
+
+Determine:
+
+Teacher-visible PDF page 13
+→ internal PDF extraction index ?
+→ what content/lesson does it contain?
+
+Teacher-visible PDF page 14
+→ internal PDF extraction index ?
+→ what content/lesson does it contain?
+
+Also inspect adjacent pages if necessary ONLY to establish indexing:
+
+12, 13, 14, 15
+
+Do not map them.
+Do not persist source blocks.
+Do not use AI to guess page identity if the server/PDF parser can establish
+it deterministically.
+
+We need to distinguish:
+
+CONTENT RANGE ERROR
+
+from:
+
+INDEXING/PROVENANCE BUG.
+
+════════════════════════════════════════════════════
+5. CRITICAL ACCEPTANCE QUESTION
+════════════════════════════════════════════════════
+
+Before implementation, answer internally:
+
+When teacher enters 13–14, which exact PDF page objects/images are sent to
+Pass 1 today?
+
+If the answer is not exactly the teacher-visible pages 13 and 14:
+
+this is the regression.
+
+If the correct pages ARE already extracted:
+
+trace the later provenance/source-scope validation and identify why those
+correct pages are rejected.
+
+Do NOT change page semantics until this is known.
+
+════════════════════════════════════════════════════
+6. CANONICAL CONVERSION BOUNDARY
+════════════════════════════════════════════════════
+
+If the underlying PDF library is zero-based:
+
+perform conversion at ONE boundary only.
+
+Conceptually:
+
+teacherVisiblePage = 13
+        ↓
+PDF adapter
+        ↓
+libraryIndex = 12
+
+Do not spread +1 / -1 corrections throughout the mapping pipeline.
+
+Create/reuse one canonical conversion helper/boundary.
+
+After extraction, the rest of the application should use the documented
+server physical-page convention consistently.
+
+No double conversion.
+
+No mixed conventions.
+
+════════════════════════════════════════════════════
+7. SERVER IS AUTHORITATIVE FOR PHYSICAL PROVENANCE
+════════════════════════════════════════════════════
+
+Preserve Fix #7's core principle.
+
+If the server deliberately extracts teacher-visible PDF page 13:
+
+every block returned from THAT extraction call inherits server-authoritative
+physical provenance for that page.
+
+Conceptually:
+
+extract teacher-visible PDF page 13
+→ internally open correct PDF page object
+→ provider extracts content
+→ server assigns physicalPage = 13
+
+The provider must not rediscover physical page identity.
+
+════════════════════════════════════════════════════
+8. PROVIDER PAGE CLAIM MUST NOT OVERRIDE SERVER PROVENANCE
+════════════════════════════════════════════════════
+
+Audit whether provider output includes:
+
+page
+sourcePage
+physicalPage
+pageNumber
+or equivalent.
+
+If provider claims a different page:
+
+DO NOT let that override the server-known physical page.
+
+Example:
+
+server deliberately extracted teacher-visible PDF page 13
+
+provider says:
+page = 14
+
+Correct:
+
+server physical provenance remains 13.
+
+Provider page claim may be:
+
+- ignored for physical provenance;
+- rejected as non-authoritative metadata;
+- retained only as safe diagnostic information if useful.
+
+It cannot cause a false physical-provenance rejection.
+
+════════════════════════════════════════════════════
+9. PAGE IDENTITY AND CONTENT VALIDITY ARE DIFFERENT
+════════════════════════════════════════════════════
+
+Preserve strict source validation.
+
+PAGE IDENTITY:
+
+known from server extraction context.
+
+CONTENT VALIDITY:
+
+must still be verified.
+
+Continue enforcing:
+
+- source containment
+- normalized containment where currently accepted
+- readable/unreadable classification
+- no fabricated textbook text
+- no outside-selected-page content
+- no full-book fallback
+- validated Source Set
+- lesson source-scope boundaries
+
+Do NOT remove those protections.
+
+But do not use provider page numbering to prove server physical page
+identity.
+
+════════════════════════════════════════════════════
+10. ONE-PAGE PASS 1 EXTRACTION
+════════════════════════════════════════════════════
+
+If current Pass 1 uses one physical page per provider call, preserve it.
+
+Preferred authoritative structure:
+
+for teacherVisiblePage in selectedRange:
+
+    internalPdfPage = convertAtPdfAdapterBoundary(teacherVisiblePage)
+
+    pageContent = extract(internalPdfPage)
+
+    blocks = Pass1(pageContent)
+
+    for each block:
+        server assigns:
+        physicalPage = teacherVisiblePage
+
+The provider is responsible for extracting/classifying content.
+
+The server is responsible for page identity.
+
+════════════════════════════════════════════════════
+11. LESSON TITLE / SOURCE-SCOPE VALIDATION
+════════════════════════════════════════════════════
+
+Audit this carefully.
+
+A valid selected page does NOT necessarily repeat the exact lesson title.
+
+A multi-page lesson may contain:
+
+page 1:
+lesson heading + theory
+
+page 2:
+continuation + examples + exercises
+
+Therefore this must NOT happen:
+
+exact lesson title absent on second selected page
+→ second page rejected
+
+Likewise, a heading may be extracted slightly differently without making
+the physical page invalid.
+
+Lesson title/content anchors may validate scope.
+
+They must not override server-known page selection through an overly strict
+exact-string requirement.
+
+If the current regression is here, fix ONLY that narrow condition.
+
+Do not remove lesson-scope protection.
+
+════════════════════════════════════════════════════
+12. MULTI-PAGE SOURCE SCOPE
+════════════════════════════════════════════════════
+
+If teacher selects:
+
+13–14
+
+then ONLY those teacher-visible PDF pages belong to the extraction scope.
+
+Blocks from page 13:
+allowed.
+
+Blocks from page 14:
+allowed.
+
+Blocks from 12 or 15:
+not allowed unless separately selected through an existing legitimate
+mechanism.
+
+Do not broaden the range automatically.
+
+════════════════════════════════════════════════════
+13. PRINTED TEXTBOOK PAGE NUMBER IS OPTIONAL METADATA
+════════════════════════════════════════════════════
+
+Do NOT build a printed-textbook-page resolver in this task.
+
+If a visible textbook page number can be extracted reliably, it may be
+stored/displayed as separate metadata.
+
+But:
+
+printed textbook page number
+MUST NOT control automatic source selection.
+
+The selection contract for this task is:
+
+TEACHER-VISIBLE PDF PHYSICAL PAGE.
+
+════════════════════════════════════════════════════
+14. UI MUST MAKE THIS EXPLICIT
+════════════════════════════════════════════════════
+
+Audit lesson create/edit UI.
+
+The input must clearly communicate that the teacher enters the PDF page
+number they see in the PDF.
+
+Use a concise Armenian label/help such as:
+
+«PDF-ի ֆիզիկական էջեր»
+
+Help text:
+
+«Նշեք PDF-ում տեսանելի այն էջերի համարները, որոնք համակարգը պետք է
+կարդա այս դասի համար»։
+
+Do not redesign the UI.
+
+Only remove ambiguity.
+
+The lesson card may still display:
+
+Էջ 13–14
+
+if space is limited.
+
+But create/edit must make semantics explicit.
+
+════════════════════════════════════════════════════
+15. RANGE VALIDATION
+════════════════════════════════════════════════════
+
+Before provider call validate:
+
+pageStart >= 1
+
+pageEnd >= pageStart
+
+pageEnd <= teacher-visible PDF page count
+
+If invalid:
+
+fail deterministically before Pass 1.
+
+Do not ask the provider whether the PDF page exists.
+
+════════════════════════════════════════════════════
+16. ERROR CATEGORIES
+════════════════════════════════════════════════════
+
+Do not collapse unrelated failures into:
+
+“wrong physical pages”.
+
+Introduce/reuse safe error categories such as:
+
+INVALID_PDF_PAGE_RANGE
+
+PDF_PAGE_EXTRACTION_FAILED
+
+SOURCE_TEXT_NOT_VERIFIED
+
+LESSON_SCOPE_MISMATCH
+
+PASS1_EXTRACTION_FAILED
+
+PAGE_PROVENANCE_INTERNAL_ERROR
+
+Teacher-facing Armenian message should correspond to the actual failure.
+
+Example for invalid range:
+
+«Նշված PDF էջերը չեն գտնվում վերբեռնված ֆայլի էջերի սահմաններում»։
+
+Example for source mismatch:
+
+«Ընտրված PDF էջերի բովանդակությունը չհաջողվեց վստահորեն հաստատել որպես
+այս դասի աղբյուր»։
+
+Do not expose raw provider output.
+
+════════════════════════════════════════════════════
+17. DO NOT TOUCH CONFIRMED GOAL/OUTCOMES
+════════════════════════════════════════════════════
+
+Current real lesson already has confirmed Goal/Outcomes.
+
+Do NOT:
+
+- regenerate them;
+- modify them;
+- delete them;
+- reconfirm them automatically.
+
+This bug is downstream of Goal/Outcome confirmation.
+
+════════════════════════════════════════════════════
+18. OLD VALID MAPPING SAFETY
+════════════════════════════════════════════════════
+
+Preserve transactional safety.
+
+If page extraction/source validation fails:
+
+existing valid mapping must remain untouched.
+
+Do not delete Topics/MicroNodes/exercises before the new candidate passes
+all existing hard gates.
+
+════════════════════════════════════════════════════
+19. PROVIDER-FREE TEST — 1-BASED UI / 0-BASED LIBRARY
+════════════════════════════════════════════════════
+
+Teacher enters:
+13–14
+
+Underlying PDF library uses:
+12–13
+
+Expected:
+
+exact teacher-visible PDF pages 13 and 14 are extracted.
+
+Server provenance:
+13 and 14.
+
+No double offset.
+
+════════════════════════════════════════════════════
+20. PROVIDER-FREE TEST — 1-BASED THROUGHOUT
+════════════════════════════════════════════════════
+
+If an adapter/library already accepts 1-based page numbers:
+
+teacher 13–14
+→ extract 13–14
+
+Expected:
+no unnecessary conversion.
+
+The implementation must follow the actual library contract.
+
+Do not force a -1 if it is not required.
+
+════════════════════════════════════════════════════
+21. PROVIDER-FREE TEST — PROVIDER WRONG PAGE CLAIM
+════════════════════════════════════════════════════
+
+Server extracts teacher-visible page 13.
+
+Provider returns page = 999.
+
+Expected:
+
+physical provenance remains 13.
+
+Provider cannot move the block to page 999.
+
+Content must still pass containment validation.
+
+════════════════════════════════════════════════════
+22. PROVIDER-FREE TEST — PROVIDER OMITS PAGE
+════════════════════════════════════════════════════
+
+Server extracts teacher-visible page 13.
+
+Provider returns valid source blocks with no page field.
+
+Expected:
+
+blocks still receive server physical provenance = 13.
+
+════════════════════════════════════════════════════
+23. PROVIDER-FREE TEST — CONTENT FABRICATION
+════════════════════════════════════════════════════
+
+Server extracts page 13.
+
+Provider returns block text not contained in page 13.
+
+Expected:
+
+block rejected.
+
+Server-authoritative page identity does NOT bypass content containment.
+
+════════════════════════════════════════════════════
+24. PROVIDER-FREE TEST — CONTINUATION PAGE
+════════════════════════════════════════════════════
+
+Selected range contains:
+
+page 13:
+lesson title + theory
+
+page 14:
+continuation/exercises, no repeated exact title
+
+Expected:
+
+page 14 is not rejected solely because the lesson title is absent.
+
+Existing source/content safeguards still apply.
+
+════════════════════════════════════════════════════
+25. PROVIDER-FREE TEST — OUTSIDE RANGE
+════════════════════════════════════════════════════
+
+Teacher selects 13–14.
+
+Any candidate/source claiming or originating from page 15 must not enter
+the validated Source Set.
+
+Expected:
+fail/reject outside-scope source.
+
+════════════════════════════════════════════════════
+26. PROVIDER-FREE TEST — INVALID RANGE
+════════════════════════════════════════════════════
+
+Cases:
+
+0–1
+
+14–13
+
+13–999 where PDF has fewer pages
+
+Expected:
+
+deterministic pre-provider failure.
+
+════════════════════════════════════════════════════
+27. PROVIDER-FREE TEST — OLD MAP PRESERVATION
+════════════════════════════════════════════════════
+
+Existing valid mapping exists.
+
+New mapping attempt fails during:
+
+page extraction
+or
+source containment
+or
+lesson-scope validation.
+
+Expected:
+
+old mapping remains unchanged.
+
+════════════════════════════════════════════════════
+28. PROVIDER-FREE TEST — MULTI-PAGE PROVENANCE
+════════════════════════════════════════════════════
+
+Teacher selects 13–14.
+
+Pass 1 returns:
+
+several blocks from first extraction
++
+several blocks from second extraction.
+
+Expected:
+
+first-call blocks → physical page 13
+
+second-call blocks → physical page 14
+
+No block gets the neighboring page due to provider claims or index
+conversion.
+
+════════════════════════════════════════════════════
+29. RUN EXISTING REGRESSIONS
+════════════════════════════════════════════════════
+
+After focused tests pass, run at minimum:
+
+- Fix #7 provenance suite
+- Fix #5 source-scope suite
+- Pass 1 source-boundary suite
+- source containment tests
+- source coverage suite
+- Pass 2 diagnostics suite
+- Fix #6 grounding/granularity suite
+- Fix #6A source reallocation suite
+- Task #118/#119 hardening tests
+- canonical Goal/Outcome suite
+- Outcome alignment suite
+- Cognitive Path suite
+- Teaching Package suite
+- final approval suite
+- API TypeScript typecheck
+- Web TypeScript typecheck
+
+Use isolated test DB where required.
+
+Do not weaken tests.
+
+════════════════════════════════════════════════════
+30. REAL LESSON RETEST — READ-ONLY PRECHECK FIRST
+════════════════════════════════════════════════════
+
+After all provider-free tests pass:
+
+use the CURRENT REAL lesson.
+
+Do NOT recreate it.
+
+Do NOT delete it.
+
+Do NOT change Goal/Outcomes.
+
+Before mapping, perform a READ-ONLY precheck.
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Բնական թվերի շարքը
+
+Teacher-intended PDF physical range:
+13–14
+
+First prove:
+
+teacher-visible PDF page 13
+→ actual internal PDF page/index
+→ content identity
+
+teacher-visible PDF page 14
+→ actual internal PDF page/index
+→ content identity
+
+If runtime inspection proves that the teacher-visible pages containing
+the intended lesson are actually different from 13–14:
+
+STOP BEFORE MAPPING.
+
+Do NOT silently change the lesson range.
+
+Report the exact indexing/content evidence.
+
+The user will decide whether the stored range should change.
+
+════════════════════════════════════════════════════
+31. REAL LESSON RETEST — WHEN PRECHECK CONFIRMS 13–14
+════════════════════════════════════════════════════
+
+If the read-only precheck confirms that teacher-visible PDF pages 13–14
+are the intended source pages:
+
+run automatic mapping ONCE using the existing lesson.
+
+Expected:
+
+teacher range:
+13–14
+
+server extraction:
+exactly teacher-visible pages 13 and 14
+
+Pass 1 source blocks inherit:
+physical page 13 or 14
+
+No provider page claim may change them.
+
+Then continue through existing source-scope and C1 gates.
+
+════════════════════════════════════════════════════
+32. DO NOT AUTO-APPROVE ANYTHING
+════════════════════════════════════════════════════
+
+If mapping succeeds:
+
+leave the generated result untouched for user review.
+
+Do NOT approve:
+
+- Topics
+- MicroNodes
+- exercises
+- Outcome relations
+- Cognitive Paths
+- Teaching Package
+- final mapping
+
+We need to inspect the raw automatic result.
+
+════════════════════════════════════════════════════
+33. LIVE EVIDENCE
+════════════════════════════════════════════════════
+
+Return safe compact evidence:
+
+Teacher-visible selected range:
+13–14
+
+Internal PDF indices used:
+[?, ?]
+
+Server physical provenance:
+[13, 14]
+
+For page 13:
+
+- Pass 1 block count
+- verified block count
+- rejected block count
+
+For page 14:
+
+- Pass 1 block count
+- verified block count
+- rejected block count
+
+Then:
+
+- outside-scope blocks
+- ambiguous physical provenance
+- unverified physical provenance
+- source containment status
+- lesson source-scope status
+- Pass 2 reached YES/NO
+
+Do not print long textbook text.
+
+════════════════════════════════════════════════════
+34. IF PASS 2 FAILS LATER
+════════════════════════════════════════════════════
+
+If page selection/provenance succeeds but Pass 2 later fails because of:
+
+- MicroNode direct-support gate
+- duplicate/over-split gate
+- source placement
+- granularity
+- other accepted C1 hardening
+
+DO NOT reopen this page fix.
+
+Report:
+
+PAGE SELECTION = PASS
+
+and separately:
+
+LATER C1 FAILURE = <reason>
+
+This task succeeds if the correct teacher-visible pages reliably reach
+Pass 1 with correct server-authoritative provenance.
+
+════════════════════════════════════════════════════
+35. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- Goal/Outcome generation
+- Goal/Outcome confirmation
+- canonical Outcome semantics
+- Pass 2 prompt except if absolutely necessary to remove provider page
+  authority
+- MicroNode atomicity rules
+- duplicate/over-split gates
+- direct source-support gates
+- Fix #6A semantic reallocation
+- Cognitive Path
+- Teaching Package
+- AI Teacher runtime
+- quizzes
+- Knowledge Tree
+- learner model
+- manual mapping
+- Package 1D
+
+This task is ONLY:
+
+TEACHER-VISIBLE PDF PAGE
+→ CORRECT INTERNAL PDF PAGE
+→ PASS 1
+→ SERVER-AUTHORITATIVE PHYSICAL PROVENANCE
+→ EXISTING SOURCE VALIDATION.
+
+════════════════════════════════════════════════════
+36. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. ROOT CAUSE
+
+State the exact regression.
+
+Was it:
+
+- 0/1-based indexing?
+- double conversion?
+- provider page override?
+- source-scope comparison?
+- title-anchor logic?
+- another specific issue?
+
+No speculation.
+
+B. PAGE EXECUTION PATH
+
+List files/functions:
+
+UI
+→ API
+→ DB
+→ mapping
+→ PDF adapter
+→ Pass 1
+→ provenance
+→ source validation.
+
+C. PAGE SEMANTICS
+
+State explicitly what:
+
+pageStart
+pageEnd
+internal PDF index
+physicalPage
+
+mean after the fix.
+
+D. CONVERSION BOUNDARY
+
+Where 1-based ↔ 0-based conversion occurs, if required.
+
+E. SERVER-AUTHORITATIVE PROVENANCE
+
+How every block gets its page identity.
+
+F. PROVIDER PAGE FIELDS
+
+How provider page claims are handled now.
+
+G. SOURCE/TITLE VALIDATION
+
+Any narrow correction made.
+
+H. UI
+
+Exact teacher-facing page label/help.
+
+I. FILES CHANGED
+
+J. DB/SCHEMA CHANGES
+
+State explicitly if NONE.
+
+K. FOCUSED TEST RESULTS
+
+Report PASS/FAIL for Sections 19–28.
+
+L. EXISTING C1 REGRESSIONS
+
+M. REAL LESSON READ-ONLY PRECHECK
+
+Teacher-visible page 13:
+internal index:
+content/lesson identity:
+
+Teacher-visible page 14:
+internal index:
+content/lesson identity:
+
+N. REAL LESSON MAPPING RETEST
+
+Only if precheck confirms 13–14.
+
+Selected:
+13–14
+
+Internal extraction:
+[...]
+
+Server provenance:
+[...]
+
+Pass 1:
+PASS/FAIL
+
+Source scope:
+PASS/FAIL
+
+Pass 2 reached:
+YES/NO
+
+O. LATER C1 FAILURE, IF ANY
+
+Clearly separate it from page-selection/provenance.
+
+P. VERDICT
+
+Use exactly ONE:
+
+PHYSICAL PAGE PIPELINE FIXED — RAW MAPPING READY FOR USER REVIEW
+
+or
+
+PHYSICAL PAGE PIPELINE FIXED — LATER C1 GATE BLOCKED MAPPING
+
+or
+
+PHYSICAL PAGE PIPELINE STILL BLOCKED
+
+Do NOT declare C1 frozen.
+Do NOT proceed to Package 1D.
