@@ -67,6 +67,11 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   // Provenance of the active task: 'micro_check' | 'source_exercise' | null
   activeTaskProvenance: text("active_task_provenance"),
 
+  // C3: immutable opaque identity created when an answerable task is activated.
+  // It is copied into evidence_events before this mutable active-task state can
+  // be reset by continuation/progression.
+  activeTaskReference: text("active_task_reference"),
+
   // Backend-only answer data for an active AI-generated objective MICRO_CHECK.
   // null = no active objective micro-check; source exercises never use this payload.
   activeObjectiveTaskPayload: jsonb("active_objective_task_payload")

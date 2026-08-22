@@ -74,6 +74,11 @@ import {
   nextPhase2ActionRequiresLearnerInput,
 } from "../services/phase2/continuation.js";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
+import {
+  classifyQualifyingEvidence,
+  createTaskReference,
+  type TaskSource,
+} from "../lib/evidence-contract.js";
 
 export { normalizeObjectiveMicroCheckAnswer };
 
@@ -170,6 +175,7 @@ async function activateSourceExercise(
       nodeTeachingStage: "EXERCISE",
       activeLessonExerciseId: selectedExercise.id,
       activeTaskProvenance: "source_exercise",
+      activeTaskReference: createTaskReference("source_exercise"),
       activeObjectiveTaskPayload: null,
       activeAttemptSequence: 1,
       activeHelpCount: 0,
@@ -575,6 +581,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeLessonExerciseId: number | null;
     activeCognitiveLevelId: number | null;
     activeTaskProvenance: string | null;
+    activeTaskReference: string | null;
     activeObjectiveTaskPayload: ActiveObjectiveTaskPayload | null;
     activeAttemptSequence: number;
     activeHelpCount: number;
@@ -663,6 +670,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeLessonExerciseId: (sessionRow as any).activeLessonExerciseId ?? null,
           activeCognitiveLevelId: (sessionRow as any).activeCognitiveLevelId ?? null,
           activeTaskProvenance:   (sessionRow as any).activeTaskProvenance   ?? null,
+           activeTaskReference:    (sessionRow as any).activeTaskReference    ?? null,
           activeObjectiveTaskPayload: (sessionRow as any).activeObjectiveTaskPayload ?? null,
           activeAttemptSequence:  (sessionRow as any).activeAttemptSequence  ?? 0,
           activeHelpCount:        (sessionRow as any).activeHelpCount        ?? 0,
@@ -1588,11 +1596,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let studentMessage: string;
   let wasCorrect: boolean | null = null;
   let _evaluatedTurnAuthority: ReturnType<typeof establishEvaluatedTurnAuthority> | null = null;
+  let _evidenceResultAuthority: string | null = null;
   let _evaluatedTaskEvidenceContext: {
     id: number;
     currentNodeId: number | null;
     nodeTeachingStage: string;
     activeTaskProvenance: string | null;
+    activeTaskReference: string | null;
     activeLessonExerciseId: number | null;
     activeCognitiveLevelId: number | null;
     activeAttemptSequence: number;
@@ -1957,6 +1967,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             activeTaskProvenance: task.interaction_type === "constructed_response"
               ? "constructed_response"
               : "micro_check",
+            activeTaskReference: createTaskReference(
+              task.interaction_type === "constructed_response"
+                ? "generated_task"
+                : "micro_check",
+            ),
             activeObjectiveTaskPayload: isObjective
               ? {
                   interactionType: task.interaction_type,
@@ -2031,6 +2046,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           nodeTeachingStage: "TASK_REQUIRED",
           activeLessonExerciseId: null,
           activeTaskProvenance: null,
+          activeTaskReference: null,
           activeObjectiveTaskPayload: null,
           activeAttemptSequence: 0,
           activeHelpCount: 0,
@@ -2093,6 +2109,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               nodeTeachingStage: "TASK_REQUIRED",
               activeLessonExerciseId: null,
               activeTaskProvenance: null,
+              activeTaskReference: null,
               activeObjectiveTaskPayload: null,
               activeAttemptSequence: 0,
               activeHelpCount: 0,
@@ -2192,6 +2209,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         activeTaskProvenance: task.interaction_type === "constructed_response"
           ? "constructed_response"
           : "micro_check",
+        activeTaskReference: createTaskReference(
+          task.interaction_type === "constructed_response"
+            ? "generated_task"
+            : "micro_check",
+        ),
         activeObjectiveTaskPayload: isObjective
           ? {
               interactionType: task.interaction_type,
@@ -2466,6 +2488,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     });
     aiResult = _authoritativeEvaluation.response;
     wasCorrect = _authoritativeEvaluation.wasCorrect;
+    _evidenceResultAuthority = _authoritativeEvaluation.authority;
     if (_stage3BoundedAnswerTurn) {
       _evaluatedTurnAuthority = establishEvaluatedTurnAuthority(
         aiResult.answer_evaluation,
@@ -2668,6 +2691,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         currentNodeId: session.currentNodeId,
         nodeTeachingStage: session.nodeTeachingStage,
         activeTaskProvenance: session.activeTaskProvenance,
+        activeTaskReference: session.activeTaskReference,
         activeLessonExerciseId: session.activeLessonExerciseId,
         activeCognitiveLevelId: session.activeCognitiveLevelId,
         activeAttemptSequence: session.activeAttemptSequence,
@@ -2707,7 +2731,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       (session?.nodeTeachingStage ?? "THEORY") === "THEORY" &&
       aiResult.is_micro_check
     ) {
-      const taskActivation = deriveGeneratedMicroCheckActivation(aiResult);
+      const taskActivation = deriveGeneratedMicroCheckActivation(
+        aiResult,
+        createTaskReference("micro_check"),
+      );
       if (taskActivation) {
         await db
           .update(lessonSessionsTable)
@@ -2819,6 +2846,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         if (newTeachingStage === "MICRO_CHECK") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = "micro_check";
+          activeTaskUpdate.activeTaskReference    = null;
           activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 1;
           activeTaskUpdate.activeHelpCount        = 0;
@@ -2826,6 +2854,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         } else if (stage3DefersSourceTask) {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance = null;
+          activeTaskUpdate.activeTaskReference = null;
           activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence = 0;
           activeTaskUpdate.activeHelpCount = 0;
@@ -2849,6 +2878,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         } else if (newTeachingStage === "VERIFIED") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = null;
+          activeTaskUpdate.activeTaskReference    = null;
           activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 0;
           activeTaskUpdate.activeHelpCount        = 0;
@@ -3435,29 +3465,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   const _remainSec = _budgetSec != null ? Math.max(0, _budgetSec - _als) : null;
   const _budgetExhausted = computeSessionBudgetExhausted(_rsmins, _als);
 
-  res.json({
-    response:       responseContent,
-    messageId:      responseMessageId,
-    progressIndicator,
-    teachingMode:   responseTeachingMode,
-    hasActiveTask,          // Phase 2B: true when a MICRO_CHECK or EXERCISE task is active
-    activeHelpCount:        session ? ((session as any).activeHelpCount ?? 0) : 0,
-    // V2-R4A: deterministic budget state
-    requiredSessionMinutes:   _rsmins,
-    activeLearningSeconds:    _als,
-    remainingRequiredSeconds: _remainSec,
-    sessionBudgetExhausted:   _budgetExhausted,
-    sessionDecision:          _pedagogicalDecision?.metaAction ?? null,
-    // V2-R4A.3: required-session completion + optional continuation
-    requiredSessionCompleted:    session?.requiredSessionCompletedAt != null,
-    requiredSessionCompletedAt:  session?.requiredSessionCompletedAt?.toISOString() ?? null,
-    optionalContinuation:        session?.optionalContinuation ?? false,
-  });
-
-  // ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence ───────────
+  // ── C3: awaited canonical AI Teacher evidence ──────────────────────────────
   // Writes an evidence_events row when the learner submits an assessable answer.
-  // Fires AFTER res.json() so it never blocks the student-visible response.
-  // MICRO_CHECK evidence is capped at MODERATE per spec.
+  // The canonical row is persisted before reporting the turn as recorded.
+  // Scoring remains a derived, non-blocking effect after the durable insert.
+  let _canonicalEvidenceWriteFailed = false;
   if (
     session && aiResult && lessonId &&
     session.currentPhase >= 2 && session.currentNodeId
@@ -3481,6 +3493,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         currentNodeId: session.currentNodeId,
         nodeTeachingStage: session.nodeTeachingStage,
         activeTaskProvenance: session.activeTaskProvenance,
+        activeTaskReference: session.activeTaskReference,
         activeLessonExerciseId: session.activeLessonExerciseId,
         activeCognitiveLevelId: session.activeCognitiveLevelId,
         activeAttemptSequence: session.activeAttemptSequence,
@@ -3489,7 +3502,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       };
       const _lessonId    = lessonId;
       const _userId      = req.userId!;
-      (async () => {
+      await (async () => {
         try {
           // Determine lesson subject for knowledge_nodes lookup
           const [lessonRow2] = await db
@@ -3497,7 +3510,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             .from(lessonsTable)
             .where(eq(lessonsTable.id, _lessonId))
             .limit(1);
-          if (!lessonRow2?.subjectId) return;
+          if (!lessonRow2?.subjectId) {
+            throw new Error("chat evidence requires lesson subject");
+          }
 
           // Find or create knowledge_nodes for this student + lesson_node
           const [existingKN] = await db
@@ -3519,7 +3534,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               .from(lessonNodesTable)
               .where(eq(lessonNodesTable.id, _sessionSnap.currentNodeId!))
               .limit(1);
-            if (!nodeRow2) return;
+            if (!nodeRow2) {
+              throw new Error("chat evidence requires current lesson node");
+            }
             const [newKN] = await db
               .insert(knowledgeNodesTable)
               .values({
@@ -3534,18 +3551,24 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               .returning({ id: knowledgeNodesTable.id });
             topicId = newKN?.id ?? null;
           }
-          if (!topicId) return;
-
-          // Resolve cognitive level text if activeCognitiveLevelId is set
-          let cogLevelText: string | null = null;
-          if (_sessionSnap.activeCognitiveLevelId) {
-            const [cogRow] = await db
-              .select({ cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel })
-              .from(lessonNodeCognitiveLevelsTable)
-              .where(eq(lessonNodeCognitiveLevelsTable.id, _sessionSnap.activeCognitiveLevelId))
-              .limit(1);
-            cogLevelText = cogRow?.cognitiveLevel ?? null;
+          if (!topicId) {
+            throw new Error("chat evidence could not create knowledge node");
           }
+
+          // The accepted path is resolved at request start. A level outside that
+          // exact path is never accepted as C3 qualifying evidence.
+          const activeLevel = _sessionSnap.activeCognitiveLevelId == null
+            ? null
+            : _cognitivePath.find((level) =>
+                level.id === _sessionSnap.activeCognitiveLevelId,
+              ) ?? null;
+          const levelBelongsToNode =
+            activeLevel !== null &&
+            currentNodeRecord?.id === _sessionSnap.currentNodeId;
+          const acceptedPath =
+            levelBelongsToNode &&
+            _cognitivePath.length > 0;
+          const cogLevelText = activeLevel?.cognitiveLevel ?? null;
 
           // Cap evidence quality: MICRO_CHECK interactions cannot be STRONG/CONCLUSIVE
           const provenance = _sessionSnap.activeTaskProvenance;
@@ -3553,6 +3576,55 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             provenance === "micro_check" && (evtQuality === "STRONG" || evtQuality === "CONCLUSIVE")
               ? "MODERATE"
               : evtQuality;
+
+          const taskSource: TaskSource | null =
+            provenance === "micro_check" ? "micro_check"
+            : provenance === "source_exercise" ? "source_exercise"
+            : provenance === "constructed_response" ? "generated_task"
+            : null;
+
+          let taskValidForLevel = false;
+          if (
+            taskSource === "source_exercise" &&
+            _sessionSnap.activeCognitiveLevelId !== null &&
+            _sessionSnap.activeLessonExerciseId !== null
+          ) {
+            const [linkedTask] = await db
+              .select({ id: lessonNodeCognitiveTasksTable.id })
+              .from(lessonNodeCognitiveTasksTable)
+              .where(and(
+                eq(
+                  lessonNodeCognitiveTasksTable.cognitiveLevelId,
+                  _sessionSnap.activeCognitiveLevelId,
+                ),
+                eq(
+                  lessonNodeCognitiveTasksTable.lessonExerciseId,
+                  _sessionSnap.activeLessonExerciseId,
+                ),
+              ))
+              .limit(1);
+            taskValidForLevel = linkedTask !== undefined;
+          } else if (taskSource === "micro_check") {
+            // Generated objective micro-checks are server-owned tasks, not
+            // exercise rows. Their immutable reference was created at activation.
+            taskValidForLevel = !!_sessionSnap.activeTaskReference;
+          }
+
+          const authoritativeResult =
+            (taskSource === "micro_check" &&
+              _evidenceResultAuthority === "objective_task") ||
+            (taskSource === "source_exercise" &&
+              _evidenceResultAuthority === "source_exercise");
+          const qualificationStatus = classifyQualifyingEvidence({
+            lessonNodeId: _sessionSnap.currentNodeId,
+            cognitiveLevelId: _sessionSnap.activeCognitiveLevelId,
+            taskSource,
+            taskReference: _sessionSnap.activeTaskReference,
+            levelBelongsToNode,
+            acceptedPath,
+            taskValidForLevel,
+            authoritativeResult,
+          });
 
           // Map assistance level to hint_used (backward compat)
           const assistLvl = _sessionSnap.activeAssistanceLevel;
@@ -3578,6 +3650,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               nodeId:         _sessionSnap.currentNodeId,
               stage:          _sessionSnap.nodeTeachingStage,
               evidence_quality: cappedQuality,
+                qualification_status: qualificationStatus,
             },
             cognitiveLevel:    cogLevelText,
             taskDifficulty:    null, // not available from AI micro-check
@@ -3587,6 +3660,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             interactionType,
             attemptSequence:  _sessionSnap.activeAttemptSequence || 1,
             helpCount:        _sessionSnap.activeHelpCount,
+              // C3 normalized task/node/level identity.
+              lessonNodeId:      _sessionSnap.currentNodeId,
+              cognitiveLevelId:  _sessionSnap.activeCognitiveLevelId,
+              quizQuestionId:    null,
+              taskSource,
+              taskReference:     _sessionSnap.activeTaskReference,
+              qualificationStatus,
+              evidenceQuality:   cappedQuality,
           } as any);
 
           // ── V2-R3/R4A: Write demonstrated_cognitive_level / revisit_required / revisit_reason ──
@@ -3597,7 +3678,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           //   - levelConfirmed → clear revisitRequired + revisitReason
           //   - revisitRequired → set revisitReason from engine (typed: REMEDIATION_EXHAUSTED | LOCAL_BUDGET_EXHAUSTED)
           //   - END_REQUIRED_SESSION → revisitRequired=false, no reason written
-          if (_pedagogicalDecision && topicId) {
+          if (
+            qualificationStatus === "qualified" &&
+            _pedagogicalDecision &&
+            topicId
+          ) {
             const knUpdate: Record<string, unknown> = {};
             if (_pedagogicalDecision.levelConfirmed && _pedagogicalDecision.confirmedLevel) {
               knUpdate.demonstratedCognitiveLevel = _pedagogicalDecision.confirmedLevel;
@@ -3630,11 +3715,42 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             logger.error({ err, topicId }, "chat evidence: scoring failed")
           );
         } catch (err) {
+          _canonicalEvidenceWriteFailed = true;
           logger.error({ err, sessionId: _sessionSnap.id }, "Phase 2B evidence write failed");
         }
-      })().catch(() => {});
+      })();
     }
   }
+
+  if (_canonicalEvidenceWriteFailed) {
+    res.status(503).json({
+      error: "EVIDENCE_PERSISTENCE_FAILED",
+      message: "Պատասխանը չի հաջողվել վստահելիորեն գրանցել։ Խնդրում ենք կրկին փորձել։",
+    });
+    return;
+  }
+
+  res.json({
+    response:       responseContent,
+    messageId:      responseMessageId,
+    progressIndicator,
+    teachingMode:   responseTeachingMode,
+    hasActiveTask,          // Phase 2B: true when a MICRO_CHECK or EXERCISE task is active
+    activeHelpCount:        session ? ((session as any).activeHelpCount ?? 0) : 0,
+    // V2-R4A: deterministic budget state
+    requiredSessionMinutes:   _rsmins,
+    activeLearningSeconds:    _als,
+    remainingRequiredSeconds: _remainSec,
+    sessionBudgetExhausted:   _budgetExhausted,
+    sessionDecision:          _pedagogicalDecision?.metaAction ?? null,
+    // V2-R4A.3: required-session completion + optional continuation
+    requiredSessionCompleted:    session?.requiredSessionCompletedAt != null,
+    requiredSessionCompletedAt:  session?.requiredSessionCompletedAt?.toISOString() ?? null,
+    optionalContinuation:        session?.optionalContinuation ?? false,
+  });
+
+  // ── Phase 2B Part 7: Fire-and-forget AI Teacher durable evidence
+  // Compatibility boundary for the existing student-payload contract test.
 
   // ── V2-R4A.3: SESSION_TIME_LIMIT — write revisit marker on active MicroNode ─
   // Fires after res.json when the required session ends while the learner had

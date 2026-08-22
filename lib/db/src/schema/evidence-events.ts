@@ -6,6 +6,8 @@ import { lessonSessionsTable } from "./lesson-sessions";
 import { knowledgeNodesTable } from "./knowledge-nodes";
 import { lessonExercisesTable } from "./lesson-exercises";
 import { lessonNodeCognitiveLevelsTable } from "./lesson-node-cognitive-levels";
+import { lessonNodesTable } from "./lesson-nodes";
+import { quizAttemptsTable, quizQuestionsTable } from "./quizzes";
 
 export const evidenceEventsTable = pgTable("evidence_events", {
   id: serial("id").primaryKey(),
@@ -96,6 +98,30 @@ export const evidenceEventsTable = pgTable("evidence_events", {
   // Number of help events (help_events rows) that occurred before this answer.
   // 0 = no help used. Combined with assistance_level for Confidence V2.
   helpCount: integer("help_count").notNull().default(0),
+
+  // ── C3 — Trustworthy qualifying-evidence identity ─────────────────────────
+  // Nullable for historical compatibility. New evidence that is allowed to
+  // count toward a Cognitive Level must populate the normalized IDs and the
+  // qualification state; legacy rows deliberately remain null/legacy.
+  lessonNodeId: integer("lesson_node_id")
+    .references(() => lessonNodesTable.id, { onDelete: "set null" }),
+  cognitiveLevelId: integer("cognitive_level_id")
+    .references(() => lessonNodeCognitiveLevelsTable.id, { onDelete: "set null" }),
+  quizQuestionId: integer("quiz_question_id")
+    .references(() => quizQuestionsTable.id, { onDelete: "set null" }),
+  quizAttemptId: integer("quiz_attempt_id")
+    .references(() => quizAttemptsTable.id, { onDelete: "cascade" }),
+
+  // Typed source of the answerable task, e.g. micro_check, source_exercise,
+  // quiz_question. This is intentionally distinct from interactionType.
+  taskSource: text("task_source"),
+  // Immutable opaque reference created when a task is activated. It survives
+  // later lesson-session state changes and is never inferred after an answer.
+  taskReference: text("task_reference"),
+  // qualified | unqualified | legacy. Null is also legacy for pre-C3 rows.
+  qualificationStatus: text("qualification_status"),
+  // Snapshot of the evidence-strength decision at the moment of the answer.
+  evidenceQuality: text("evidence_quality"),
 });
 
 export const insertEvidenceEventSchema = createInsertSchema(evidenceEventsTable).omit({ id: true, createdAt: true });

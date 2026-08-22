@@ -1,0 +1,531 @@
+FINAL C3 IMPLEMENTATION — TRUSTWORTHY EVIDENCE / MINIMUM TELEMETRY
+
+Execute this task NOW.
+
+The C3 Phase 1 audit is complete.
+DO NOT repeat the architecture audit.
+DO NOT ask for confirmation.
+DO NOT stop after creating a plan/task.
+Implement, test, verify, and report.
+
+==================================================
+GOAL
+==================================================
+
+Close C3 with the SMALLEST safe implementation that makes qualifying
+learner evidence trustworthy and usable by C4.
+
+For every NEW qualifying learner response, the persisted data must allow
+the platform to answer deterministically:
+
+WHO?
+→ exact learner
+
+WHAT?
+→ exact MicroNode
+
+LEVEL?
+→ exact Cognitive Level
+
+FROM WHAT?
+→ exact task source/type
+
+WHICH TASK?
+→ stable immutable task reference
+
+RESULT?
+→ correct / incorrect / partial where supported
+
+HOW?
+→ assistance level + help count + attempt sequence
+
+WHEN?
+→ event timestamp + session/attempt context
+
+STRENGTH?
+→ evidence strength / qualification state
+
+Canonical chain:
+
+Learner action
+→ identifiable task
+→ MicroNode
+→ Cognitive Level
+→ result
+→ assistance context
+→ evidence strength
+→ durable Evidence
+→ C4 input
+
+Use the EXISTING evidence_events architecture.
+DO NOT create a second parallel evidence system.
+
+==================================================
+NON-NEGOTIABLE SCOPE
+==================================================
+
+DO NOT redesign or modify:
+
+- C1 mapping architecture
+- C2 Cognitive Path architecture
+- Knowledge Tree behavior/recommendations
+- AI Teacher teaching scenario
+- TEACH → MICRO_CHECK → FEEDBACK cycle
+- Node Lock
+- quiz-taking UX
+- general mastery/confidence algorithm
+- C4 learner-state logic
+- retention/review architecture
+- homework architecture
+
+Do not try to solve C4/C5/C6/C7 here.
+
+Historical evidence may remain legacy/null-annotated.
+DO NOT fabricate or backfill Cognitive-Level identity for historical rows.
+
+==================================================
+PART 1 — CANONICAL QUALIFYING EVIDENCE CONTRACT
+==================================================
+
+Make every NEW evidence event that is allowed to count as
+Cognitive-Level evidence preserve explicit, durable identity for:
+
+- learner/user ID
+- lesson/session context
+- lessonNodeId / MicroNode ID
+- cognitiveLevelId
+- cognitiveLevel/Bloom snapshot
+- task source/type
+- stable task reference
+- result/correctness
+- attemptSequence
+- assistanceLevel
+- helpCount
+- evidence strength/quality
+- qualification state
+- timestamp
+
+Prefer extending evidence_events minimally rather than adding a new
+parallel table.
+
+IMPORTANT:
+
+The normalized IDs are authoritative for joins.
+Text/metadata snapshots may remain for diagnostics/history.
+
+If existing fields already satisfy a requirement, REUSE THEM.
+Do not duplicate equivalent fields unnecessarily.
+
+==================================================
+PART 2 — DURABLE TASK IDENTITY
+==================================================
+
+Every NEW qualifying evidence event must have a stable task identity.
+
+Support at minimum:
+
+A) SOURCE / LESSON EXERCISE
+- retain existing lessonExerciseId
+- retain provenance where already available
+- persist exact MicroNode ID
+- persist exact Cognitive Level ID
+
+B) QUIZ QUESTION
+- use a typed quizQuestionId / equivalent stable FK or explicit field
+- do NOT rely only on JSON metadata.questionId
+- retain sourceExerciseId when it legitimately exists
+- persist exact MicroNode ID
+- persist exact Cognitive Level ID when the question qualifies as
+  Cognitive-Level evidence
+
+C) GENERATED MICRO-CHECK
+- create/persist a stable task reference when the micro-check is activated
+- carry exactly that reference into the learner's evidence event
+- it must survive subsequent lesson_session state mutation
+- do not use mutable active payload alone as historical task identity
+
+Do not invent semantic task identity after the answer.
+
+==================================================
+PART 3 — QUALIFYING VS LEGACY / UNQUALIFIED EVIDENCE
+==================================================
+
+A response may qualify as Cognitive-Level evidence ONLY when the system
+can validate:
+
+1. exact MicroNode
+2. exact Cognitive Level
+3. task belongs/is valid for that MicroNode
+4. Cognitive Level belongs to that MicroNode's accepted/confirmed path
+5. task is permitted to assess that level
+6. result is authoritative enough for that task type
+
+If any required identity is absent:
+
+- the interaction may still work for backward compatibility where safe;
+- it may still be recorded as legacy/unqualified evidence if appropriate;
+- BUT it MUST NOT silently count as proof of a Cognitive Level.
+
+Add/use an explicit qualification representation if one does not already
+exist.
+
+Do not infer missing Cognitive Level merely from Bloom text.
+
+==================================================
+PART 4 — C2 COGNITIVE TASK ↔ EXERCISE CONNECTION
+==================================================
+
+The audit found:
+
+lesson_node_cognitive_tasks exists,
+chat already knows how to use it,
+but current live DB count is 0.
+
+Do NOT redesign this table.
+
+Make the existing C2 → task linkage operational.
+
+When linking an exercise to a Cognitive Level, validate at minimum:
+
+- cognitive level exists
+- level belongs to the intended MicroNode
+- exercise exists
+- exercise belongs to the SAME MicroNode
+- exercise is in a deliverable/allowed state
+- link is not cross-lesson/cross-node
+- duplicate invalid links cannot be created
+
+For accepted modern Cognitive Paths:
+
+If level-specific task links exist,
+AI Teacher must use the existing linked-task filtering behavior.
+
+Do NOT silently reinterpret an arbitrary MicroNode exercise as intentionally
+mapped Cognitive-Level evidence.
+
+Backward-compatible delivery may remain possible, but unmapped tasks must
+not qualify as Cognitive-Level confirmation merely because they were
+delivered.
+
+==================================================
+PART 5 — QUIZ COGNITIVE-LEVEL ANNOTATION
+==================================================
+
+The audit found that current quiz questions can have:
+
+- nodeId
+- cognitiveLevelId
+- sourceExerciseId
+
+but lesson 644's current questions have cognitiveLevelId = null.
+
+Fix the CREATION/GENERATION path for NEW qualifying quiz questions.
+
+For a quiz question to count as Cognitive-Level evidence:
+
+- nodeId must be present
+- cognitiveLevelId must be present
+- cognitiveLevelId must belong to that node
+- question ID must be persisted as stable task identity
+- sourceExerciseId must be preserved when legitimately derived from one
+- invalid/mismatched annotations must fail validation
+
+IMPORTANT:
+
+Existing quiz questions with null cognitiveLevelId do NOT need fabricated
+backfill.
+
+They may remain valid quiz questions,
+but their answers must NOT claim a demonstrated Cognitive Level.
+
+Do NOT redesign quiz UI.
+
+==================================================
+PART 6 — MICRO-CHECK EVIDENCE RULE
+==================================================
+
+Preserve the existing rule:
+
+MICRO_CHECK alone must NEVER become STRONG/CONCLUSIVE evidence.
+
+Its maximum evidence strength remains MODERATE.
+
+Do not weaken this.
+
+Generated micro-checks must now have stable task identity, but giving them
+an ID does NOT make them stronger evidence.
+
+The existing independent-evidence logic must remain intact.
+
+==================================================
+PART 7 — ASSISTANCE / INDEPENDENCE
+==================================================
+
+Preserve and reliably snapshot:
+
+- helpCount
+- assistanceLevel
+- attemptSequence
+- existing hint information where still required
+
+Do not derive these later from mutable session state.
+
+Capture the values applicable to THAT response before active task/session
+state is cleared or changed.
+
+Preserve the existing independent-evidence rule unless a direct bug is
+proven by tests.
+
+Do NOT redesign pedagogy here.
+
+==================================================
+PART 8 — DURABLE EVIDENCE WRITE
+==================================================
+
+The audit found qualifying chat/quiz evidence persistence can currently be
+fire-and-forget after the learner response.
+
+For NEW QUALIFYING evidence, this is not sufficient.
+
+Implement the smallest reliable persistence boundary.
+
+Preferred order:
+
+1. If safe within current architecture:
+   persist the authoritative evidence record transactionally / awaited
+   before treating the qualifying evidence as recorded.
+
+OR
+
+2. If current response architecture makes that unsafe:
+   use a minimal durable outbox/retry mechanism.
+
+Do NOT build a large event platform.
+
+Required invariant:
+
+A learner action must not be reported/treated as successfully recorded
+Cognitive-Level evidence if its canonical evidence record can silently
+fail to persist.
+
+Scoring/mastery/Knowledge Tree updates are DERIVED effects.
+The canonical immutable evidence record is the source of truth.
+
+Do not block the learner indefinitely because a derived scoring refresh
+failed after evidence itself was safely persisted.
+
+==================================================
+PART 9 — DO NOT REDESIGN SCORING
+==================================================
+
+The audit found scoring.ts currently ignores several C2-aware fields.
+
+DO NOT redesign scoring.ts in C3.
+
+Specifically, do NOT attempt to solve here:
+
+- Cognitive-Level-aware mastery formula
+- current demonstrated ceiling calculation across all producers
+- Knowledge Tree state
+- retention
+- target-vs-demonstrated comparison
+- recommendation logic
+
+Those belong to C4+.
+
+C3's job is to make the underlying evidence trustworthy enough for C4.
+
+Only make a scoring-path change if strictly necessary to prevent newly
+UNQUALIFIED evidence from falsely acting as Cognitive-Level confirmation.
+
+Preserve existing mastery/confidence behavior otherwise.
+
+==================================================
+PART 10 — DATABASE / MIGRATION SAFETY
+==================================================
+
+Before adding fields:
+
+- inspect current evidence_events schema
+- reuse existing columns wherever semantically correct
+- add only the minimum missing normalized identifiers/qualification fields
+- preserve existing rows
+- nullable migration for historical compatibility where necessary
+- no destructive migration
+- no historical fabricated backfill
+
+Be careful because the audit found mixed migration history.
+Use the repository's actual current migration mechanism and verify the
+runtime schema after migration.
+
+==================================================
+PART 11 — REQUIRED REGRESSION TESTS
+==================================================
+
+Add focused tests proving at minimum:
+
+TEST 1 — Source exercise evidence
+A learner answers a valid level-linked source exercise.
+
+Persisted evidence can identify:
+user
+MicroNode
+Cognitive Level ID
+lessonExerciseId
+result
+assistance
+attempt
+strength
+timestamp/context
+
+PASS.
+
+TEST 2 — Generated micro-check
+Generated micro-check gets a stable task reference.
+
+After session state changes, its evidence still identifies the exact
+historical micro-check.
+
+PASS.
+
+Also verify:
+micro-check evidence strength <= MODERATE.
+
+TEST 3 — Invalid cross-node task link
+Exercise from MicroNode B cannot be linked as Cognitive-Level task for
+MicroNode A.
+
+REJECT.
+
+TEST 4 — Unmapped exercise
+An exercise without a valid Cognitive-Level assessment mapping may be
+handled through backward-compatible delivery if existing behavior requires
+it, but it MUST NOT qualify as Cognitive-Level confirmation.
+
+PASS.
+
+TEST 5 — Qualified quiz question
+New quiz question with valid nodeId + cognitiveLevelId persists answer
+evidence with:
+quizQuestionId
+MicroNode ID
+Cognitive Level ID
+result
+attempt/context.
+
+PASS.
+
+TEST 6 — Legacy/unannotated quiz question
+Question with cognitiveLevelId = null remains usable where current quiz
+behavior allows, but its answer does NOT claim Cognitive-Level evidence.
+
+PASS.
+
+TEST 7 — Assistance
+Help/assistance values applicable to the response survive session state
+reset/change and remain attached to the evidence event.
+
+PASS.
+
+TEST 8 — Durable write failure
+Simulate canonical evidence persistence failure.
+
+System must NOT silently mark the Cognitive-Level evidence as successfully
+recorded/confirmed.
+
+PASS.
+
+TEST 9 — Historical compatibility
+Existing evidence rows with missing new nullable identifiers still read
+without crash and are treated as legacy/unqualified where appropriate.
+
+PASS.
+
+==================================================
+PART 12 — REAL ACCEPTANCE TRACE
+==================================================
+
+After tests/typecheck/build pass, perform ONE controlled acceptance trace.
+
+Do NOT repeatedly generate mappings or mutate C1.
+
+Prefer an existing safe lesson/node with:
+
+- confirmed Cognitive Path
+- valid MicroNode
+- valid exercise
+
+If lesson 644 is not safely learner-deliverable because it remains draft,
+DO NOT change C1 data merely to satisfy C3 testing.
+
+Use a provider-free/integration fixture or another already-valid lesson
+where necessary.
+
+Prove with actual persisted rows that one NEW qualifying evidence event can
+answer:
+
+WHO
+WHAT MicroNode
+WHICH Cognitive Level ID
+WHICH task source
+WHICH stable task reference
+RESULT
+ASSISTANCE
+ATTEMPT
+WHEN
+STRENGTH / QUALIFICATION
+
+Also prove that an unqualified/legacy event cannot falsely establish a
+Cognitive Level.
+
+==================================================
+PART 13 — STOP CONDITION
+==================================================
+
+C3 is COMPLETE when:
+
+1. every NEW qualifying evidence event has stable learner/task/node/level
+   identity;
+2. generated micro-check task identity survives session mutation;
+3. source exercise Cognitive-Level evidence requires a valid assessment
+   mapping;
+4. NEW qualifying quiz questions preserve Cognitive Level identity;
+5. null/legacy quiz questions do not falsely claim Cognitive-Level proof;
+6. assistance/attempt context is snapshotted on the evidence event;
+7. micro-check evidence remains capped at MODERATE;
+8. canonical qualifying evidence persistence is reliable;
+9. historical rows remain compatible;
+10. focused tests + typecheck + builds pass.
+
+When all pass:
+
+STOP.
+
+Do NOT begin C4.
+Do NOT modify Knowledge Tree.
+Do NOT redesign scoring.
+Do NOT start another audit.
+
+==================================================
+FINAL REPORT — KEEP IT SHORT
+==================================================
+
+Return only:
+
+1. C3 STATUS: COMPLETE / BLOCKED
+2. Exact files/schema changed
+3. Evidence fields/contract now guaranteed
+4. Source exercise result
+5. Micro-check result
+6. Quiz result
+7. Durable persistence result
+8. Regression test summary
+9. Build/typecheck result
+10. Any remaining issue classified ONLY as:
+    - C4
+    - C5+
+    - OPTIONAL
+
+If a blocker prevents completion:
+state the exact blocker and STOP.
+Do not expand scope to solve later phases.

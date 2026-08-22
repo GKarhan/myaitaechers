@@ -3,6 +3,7 @@ import {
   type DeterministicSourceExerciseEvaluation,
 } from "../../lib/deterministic-source-exercise-evaluation.js";
 import type { AIStructuredResponse } from "../ai.js";
+import { randomUUID } from "node:crypto";
 import type { IntentClass } from "../intentRouter.js";
 import {
   computeLocalNodeBudget,
@@ -545,6 +546,7 @@ export type Phase2TaskStateUpdate = {
   nodeTeachingStage: string;
   activeLessonExerciseId: number | null;
   activeTaskProvenance: string | null;
+  activeTaskReference: string | null;
   activeObjectiveTaskPayload: ActiveObjectiveTaskPayload | null;
   activeAttemptSequence: number;
   activeHelpCount: number;
@@ -557,12 +559,14 @@ export type Phase2TaskStateUpdate = {
  */
 export function deriveGeneratedMicroCheckActivation(
   response: AIStructuredResponse,
+  activeTaskReference = `micro_check:${randomUUID()}`,
 ): Phase2TaskStateUpdate | null {
   if (!response.is_micro_check) return null;
   return {
     nodeTeachingStage: "MICRO_CHECK",
     activeLessonExerciseId: null,
     activeTaskProvenance: "micro_check",
+    activeTaskReference,
     activeObjectiveTaskPayload: objectivePayloadFromMicroCheck(response),
     activeAttemptSequence: 1,
     activeHelpCount: 0,
@@ -579,6 +583,7 @@ export function deriveCognitiveAdvanceTaskReset(): Phase2TaskStateUpdate {
     nodeTeachingStage: "THEORY",
     activeLessonExerciseId: null,
     activeTaskProvenance: null,
+    activeTaskReference: null,
     activeObjectiveTaskPayload: null,
     activeAttemptSequence: 0,
     activeHelpCount: 0,

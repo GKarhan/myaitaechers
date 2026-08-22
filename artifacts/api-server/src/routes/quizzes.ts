@@ -16,12 +16,15 @@ import {
   usersTable,
   reviewScheduleTable,
   lessonNodeDependenciesTable,
+  lessonExercisesTable,
 } from "@workspace/db";
 import { updateTopicScoring } from "../services/scoring";
 import { eq, and, asc, inArray, desc, sql, count, ne } from "drizzle-orm";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
 import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
+import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
+import { classifyQualifyingEvidence } from "../lib/evidence-contract.js";
 
 // ---------------------------------------------------------------------------
 // Helper: wraps an async route handler so unhandled rejections are forwarded
@@ -491,12 +494,14 @@ router.post("/quizzes", requireTeacher, asyncHandler(async (req: AuthRequest, re
         generated.map((q, i) => ({
           quizId:              quiz.id,
           nodeId:              q.nodeId,
+          cognitiveLevelId:    q.cognitiveLevelId,
           questionText:        q.questionText,
           options:             q.options,
           correctOptionIndex:  q.correctOptionIndex,
           difficultyLevel:     q.difficultyLevel,
           sequence:            i + 1,
           optionExplanations:  (q.optionExplanations?.map(s => s ?? "") ?? null),
+          interactionType:     "multiple_choice",
         }))
       );
     }
@@ -1208,7 +1213,170 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
     }))
   );
 
-  // Mark assignment COMPLETED
+  // ── C3: awaited canonical evidence persistence ───────────────────────────
+  // A quiz score is not reported as recorded Cognitive-Level evidence until
+  // its immutable evidence rows have been written. Existing null-annotated
+  // questions stay usable, but are explicitly unqualified.
+  const studentId = req.userId!;
+  const scoredTopicIds: number[] = [];
+  try {
+    const [quizRow] = await db
+      .select({ subjectId: quizzesTable.subjectId })
+      .from(quizzesTable)
+      .where(eq(quizzesTable.id, quizId))
+      .limit(1);
+    if (!quizRow?.subjectId) throw new Error("quiz evidence requires subject");
+
+    const nodeIds = [...new Set(answerRows
+      .map((answer) => answer.nodeId)
+      .filter((id): id is number => id !== null))];
+    const nodes = nodeIds.length > 0
+      ? await db
+          .select({
+            id: lessonNodesTable.id,
+            title: lessonNodesTable.title,
+            targetBloomLevel: lessonNodesTable.targetBloomLevel,
+            theoryContent: lessonNodesTable.theoryContent,
+            learningObjective: lessonNodesTable.learningObjective,
+            cogPathStatus: lessonNodesTable.cogPathStatus,
+          })
+          .from(lessonNodesTable)
+          .where(inArray(lessonNodesTable.id, nodeIds))
+      : [];
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const levels = nodeIds.length > 0
+      ? await db
+          .select()
+          .from(lessonNodeCognitiveLevelsTable)
+          .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeIds))
+      : [];
+    const levelMap = new Map(levels.map((level) => [level.id, level]));
+    const levelsByNode = new Map<number, typeof levels>();
+    for (const level of levels) {
+      const current = levelsByNode.get(level.lessonNodeId) ?? [];
+      current.push(level);
+      levelsByNode.set(level.lessonNodeId, current);
+    }
+    const acceptedNodeIds = new Set(nodes
+      .filter((node) => assessAcceptedCognitivePath({
+        cogPathStatus: node.cogPathStatus,
+        theoryContent: node.theoryContent,
+        learningObjective: node.learningObjective,
+        levels: levelsByNode.get(node.id) ?? [],
+      }).accepted)
+      .map((node) => node.id));
+
+    const sourceExerciseIds = [...new Set(questions
+      .map((question) => question.sourceExerciseId)
+      .filter((id): id is number => id !== null))];
+    const sourceExercises = sourceExerciseIds.length > 0
+      ? await db
+          .select({
+            id: lessonExercisesTable.id,
+            relatedNodeId: lessonExercisesTable.relatedNodeId,
+          })
+          .from(lessonExercisesTable)
+          .where(inArray(lessonExercisesTable.id, sourceExerciseIds))
+      : [];
+    const sourceExerciseMap = new Map(sourceExercises.map((exercise) => [exercise.id, exercise]));
+
+    for (const answer of answerRows) {
+      const question = questionMap.get(answer.questionId);
+      const node = answer.nodeId === null ? null : nodeMap.get(answer.nodeId) ?? null;
+      if (!question || !node || answer.nodeId === null) continue;
+
+      let topicId: number | null = null;
+      const [existingKN] = await db
+        .select({ id: knowledgeNodesTable.id })
+        .from(knowledgeNodesTable)
+        .where(and(
+          eq(knowledgeNodesTable.subjectId, quizRow.subjectId),
+          eq(knowledgeNodesTable.userId, studentId),
+          eq(knowledgeNodesTable.lessonNodeId, answer.nodeId),
+        ))
+        .limit(1);
+      if (existingKN) {
+        topicId = existingKN.id;
+      } else {
+        const [newKN] = await db
+          .insert(knowledgeNodesTable)
+          .values({
+            subjectId: quizRow.subjectId,
+            userId: studentId,
+            topicName: node.title,
+            lessonNodeId: answer.nodeId,
+            status: "not_started",
+            isProvisional: true,
+            bloomLevel: node.targetBloomLevel ?? 1,
+          })
+          .returning({ id: knowledgeNodesTable.id });
+        topicId = newKN?.id ?? null;
+      }
+      if (!topicId) throw new Error("quiz evidence could not create knowledge node");
+      if (!scoredTopicIds.includes(topicId)) scoredTopicIds.push(topicId);
+
+      const cognitiveLevelId = question.cognitiveLevelId ?? null;
+      const cognitiveLevel = cognitiveLevelId === null
+        ? null
+        : levelMap.get(cognitiveLevelId) ?? null;
+      const sourceExercise = question.sourceExerciseId === null
+        ? null
+        : sourceExerciseMap.get(question.sourceExerciseId) ?? null;
+      const qualificationStatus = classifyQualifyingEvidence({
+        lessonNodeId: answer.nodeId,
+        cognitiveLevelId,
+        taskSource: "quiz_question",
+        taskReference: `quiz_question:${question.id}`,
+        levelBelongsToNode: cognitiveLevel?.lessonNodeId === answer.nodeId,
+        acceptedPath: acceptedNodeIds.has(answer.nodeId),
+        taskValidForLevel: sourceExercise === null ||
+          sourceExercise.relatedNodeId === answer.nodeId,
+        authoritativeResult: true,
+      });
+
+      await db.insert(evidenceEventsTable).values({
+        userId: studentId,
+        lessonSessionId: null,
+        topicId,
+        eventType: "answer",
+        wasCorrect: answer.isCorrect,
+        responseTimeMs: null,
+        hintUsed: false,
+        metadata: {
+          source: "quiz",
+          quizId,
+          questionId: question.id,
+          qualification_status: qualificationStatus,
+        },
+        cognitiveLevel: cognitiveLevel?.cognitiveLevel ?? null,
+        taskDifficulty: question.difficultyLevel,
+        assistanceLevel: "none",
+        lessonExerciseId: question.sourceExerciseId,
+        interactionType: question.interactionType ?? "multiple_choice",
+        attemptSequence: 1,
+        helpCount: 0,
+        lessonNodeId: answer.nodeId,
+        cognitiveLevelId,
+        quizQuestionId: question.id,
+        quizAttemptId: attempt.id,
+        taskSource: "quiz_question",
+        taskReference: `quiz_question:${question.id}`,
+        qualificationStatus,
+        evidenceQuality: "MODERATE",
+      } as any);
+    }
+  } catch (err) {
+    // quiz_attempt_id cascades any partially written canonical evidence when
+    // this attempt is rolled back, so retrying cannot duplicate proof.
+    await db.delete(quizAttemptsTable).where(eq(quizAttemptsTable.id, attempt.id));
+    logger.error({ err, quizId, attemptId: attempt.id }, "quiz canonical evidence write failed");
+    res.status(503).json({
+      error: "EVIDENCE_PERSISTENCE_FAILED",
+      message: "Թեստի արդյունքը չի հաջողվել վստահելիորեն գրանցել։ Խնդրում ենք կրկին փորձել։",
+    });
+    return;
+  }
+
   await db
     .update(quizAssignmentsTable)
     .set({ status: "COMPLETED" })
@@ -1216,143 +1384,11 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
 
   res.json({ totalCorrect, totalQuestions, scorePercent });
 
-  // ── Fire-and-forget: write evidence_events per answer, update scoring ─────
-  // Same non-blocking pattern as chat.ts. Any failure here is logged but must
-  // never affect the student's score (already sent above).
-  const _studentId   = req.userId!;
-  const _answerRows  = answerRows;      // capture before request scope expires
-  const _quizId      = quizId;
-  const _questionMap = questionMap;     // Phase 2B: needed for cognitive fields
-  (async () => {
-    // 1. Fetch the quiz's subjectId (not available in the handler above)
-    const [quizRow] = await db
-      .select({ subjectId: quizzesTable.subjectId })
-      .from(quizzesTable)
-      .where(eq(quizzesTable.id, _quizId))
-      .limit(1);
-    if (!quizRow?.subjectId) return;
-    const quizSubjectId = quizRow.subjectId;
-
-    // Collect distinct nodeIds (skip null — some questions may lack a node)
-    const distinctNodeIds = [
-      ...new Set(
-        _answerRows
-          .map((a) => a.nodeId)
-          .filter((id): id is number => id !== null)
-      ),
-    ];
-
-    for (const nodeId of distinctNodeIds) {
-      try {
-        // 2. Fetch the lesson_nodes row to get title + targetBloomLevel
-        const [lessonNode] = await db
-          .select({
-            title:            lessonNodesTable.title,
-            targetBloomLevel: lessonNodesTable.targetBloomLevel,
-          })
-          .from(lessonNodesTable)
-          .where(eq(lessonNodesTable.id, nodeId))
-          .limit(1);
-        if (!lessonNode) {
-          logger.warn({ nodeId }, "quiz evidence: lesson_nodes row not found, skipping");
-          continue;
-        }
-
-        // 3. Find-or-create knowledge_nodes using lessonNodeId as primary key
-        //    (NOT topicName-only — lessonNodeId is the stable FK from Step 1)
-        let topicId: number | null = null;
-        const [existingKN] = await db
-          .select({ id: knowledgeNodesTable.id })
-          .from(knowledgeNodesTable)
-          .where(
-            and(
-              eq(knowledgeNodesTable.subjectId,    quizSubjectId),
-              eq(knowledgeNodesTable.userId,        _studentId),
-              eq(knowledgeNodesTable.lessonNodeId,  nodeId),
-            )
-          )
-          .limit(1);
-
-        if (existingKN) {
-          topicId = existingKN.id;
-        } else {
-          const [newKN] = await db
-            .insert(knowledgeNodesTable)
-            .values({
-              subjectId:    quizSubjectId,
-              userId:       _studentId,
-              topicName:    lessonNode.title,
-              lessonNodeId: nodeId,
-              status:       "not_started",
-              isProvisional: true,
-              bloomLevel:   lessonNode.targetBloomLevel ?? 1,
-            })
-            .returning({ id: knowledgeNodesTable.id });
-          topicId = newKN?.id ?? null;
-        }
-        if (!topicId) continue;
-
-        // 4. Insert one evidence_events row per answer belonging to this nodeId
-        //    Phase 2B: also populate cognitive identity fields from quiz_questions.
-        const nodeAnswers = _answerRows.filter((a) => a.nodeId === nodeId);
-
-        // Collect distinct cognitiveLevelIds from this batch so we can resolve
-        // the cognitive_level text in one query.
-        const cogLevelIds = [
-          ...new Set(
-            nodeAnswers
-              .map((a) => (_questionMap.get(a.questionId) as any)?.cognitiveLevelId)
-              .filter((id): id is number => typeof id === "number")
-          ),
-        ];
-        const cogLevelRows = cogLevelIds.length > 0
-          ? await db
-              .select({ id: lessonNodeCognitiveLevelsTable.id, cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel })
-              .from(lessonNodeCognitiveLevelsTable)
-              .where(inArray(lessonNodeCognitiveLevelsTable.id, cogLevelIds))
-          : [];
-        const cogLevelMap = new Map(cogLevelRows.map((r) => [r.id, r.cognitiveLevel]));
-
-        await db.insert(evidenceEventsTable).values(
-          nodeAnswers.map((a) => {
-            const q = _questionMap.get(a.questionId) as any;
-            const cogLevelId: number | null = q?.cognitiveLevelId ?? null;
-            const cogLevelText = cogLevelId ? (cogLevelMap.get(cogLevelId) ?? null) : null;
-            return {
-              userId:          _studentId,
-              lessonSessionId: null,
-              topicId,
-              eventType:       "answer",
-              wasCorrect:      a.isCorrect,
-              responseTimeMs:  null,
-              hintUsed:        false,
-              metadata:        { source: "quiz", quizId: _quizId, questionId: a.questionId },
-              // Phase 2A fields
-              cognitiveLevel:  cogLevelText,
-              taskDifficulty:  q?.difficultyLevel ?? null,
-              assistanceLevel: "none",
-              // Phase 2B new fields
-              lessonExerciseId: q?.sourceExerciseId ?? null,
-              interactionType:  q?.interactionType ?? "multiple_choice",
-              attemptSequence:  1,
-              helpCount:        0,
-            };
-          }) as any[]
-        );
-
-        // 5. Recompute mastery/confidence for this topic (fire-and-forget within
-        //    fire-and-forget — matches the pattern in chat.ts exactly)
-        updateTopicScoring(topicId, _studentId, { quizId: _quizId }).catch((err) =>
-          logger.error({ err, topicId, userId: _studentId }, "quiz evidence: scoring failed")
-        );
-
-      } catch (err) {
-        logger.error({ err, nodeId, quizId: _quizId }, "quiz evidence: per-node block failed");
-      }
-    }
-  })().catch((err) =>
-    logger.error({ err, quizId: _quizId }, "quiz evidence: fire-and-forget wrapper failed")
-  );
+  for (const topicId of scoredTopicIds) {
+    updateTopicScoring(topicId, studentId, { quizId }).catch((err) =>
+      logger.error({ err, topicId, userId: studentId }, "quiz evidence: scoring failed"),
+    );
+  }
 });
 
 // ── GET /api/quizzes/:id/analysis ────────────────────────────────────────────

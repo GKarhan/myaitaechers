@@ -6203,6 +6203,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, req
 
   const { cognitiveLevelId, lessonExerciseId } = req.body as { cognitiveLevelId?: number; lessonExerciseId?: number };
   if (!cognitiveLevelId) { res.status(400).json({ error: "cognitiveLevelId required" }); return; }
+  if (!lessonExerciseId) { res.status(400).json({ error: "lessonExerciseId required" }); return; }
 
   // Verify level belongs to this node
   const [level] = await db
@@ -6212,14 +6213,31 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, req
     .limit(1);
   if (!level) { res.status(404).json({ error: "Cognitive level not found on this node" }); return; }
 
-  // Verify exercise belongs to this lesson (if provided)
-  if (lessonExerciseId) {
-    const [ex] = await db
-      .select({ id: lessonExercisesTable.id })
-      .from(lessonExercisesTable)
-      .where(and(eq(lessonExercisesTable.id, lessonExerciseId), eq(lessonExercisesTable.lessonId, lessonId)))
-      .limit(1);
-    if (!ex) { res.status(404).json({ error: "Exercise not found in this lesson" }); return; }
+  // A source exercise can only assess this Cognitive Level when it is an
+  // approved, class-deliverable exercise owned by this exact MicroNode.
+  // Lesson membership alone is insufficient: it would permit cross-node
+  // evidence attribution.
+  const [ex] = await db
+    .select({
+      id: lessonExercisesTable.id,
+      relatedNodeId: lessonExercisesTable.relatedNodeId,
+      assignment: lessonExercisesTable.assignment,
+      status: lessonExercisesTable.status,
+    })
+    .from(lessonExercisesTable)
+    .where(and(
+      eq(lessonExercisesTable.id, lessonExerciseId),
+      eq(lessonExercisesTable.lessonId, lessonId),
+    ))
+    .limit(1);
+  if (!ex) { res.status(404).json({ error: "Exercise not found in this lesson" }); return; }
+  if (ex.relatedNodeId !== nodeId) {
+    res.status(409).json({ error: "Exercise must belong to the same MicroNode" });
+    return;
+  }
+  if (ex.assignment !== "CLASS" || ex.status !== "approved") {
+    res.status(409).json({ error: "Exercise must be an approved CLASS exercise" });
+    return;
   }
 
   try {
@@ -6227,7 +6245,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, req
       .insert(lessonNodeCognitiveTasksTable)
       .values({
         cognitiveLevelId,
-        lessonExerciseId: lessonExerciseId ?? null,
+        lessonExerciseId,
         taskProvenance: "source_derived",
       })
       .returning();

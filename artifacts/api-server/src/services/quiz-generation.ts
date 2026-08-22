@@ -1,12 +1,18 @@
 import { openrouter } from "@workspace/integrations-openrouter-ai";
-import { db, lessonNodesTable } from "@workspace/db";
+import {
+  db,
+  lessonNodesTable,
+  lessonNodeCognitiveLevelsTable,
+} from "@workspace/db";
 import { inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
 
 export interface GeneratedQuestion {
   nodeId: number | null;
+  cognitiveLevelId: number | null;
   questionText: string;
   options: [string, string, string, string];
   correctOptionIndex: number; // 0-3
@@ -49,6 +55,7 @@ No markdown, no code fences, no explanatory text outside the JSON.
 Each question object schema:
 {
   "nodeId": <integer — the id= value of the node this question tests>,
+  "cognitiveLevelId": <integer from the node's COGNITIVE_LEVEL_OPTIONS, or null only when no options are supplied>,
   "questionText": "<question in Armenian հայատառ — 1 sentence>",
   "options": ["<option A>", "<option B>", "<option C>", "<option D>"],
   "correctOptionIndex": <0|1|2|3>,
@@ -69,6 +76,8 @@ Rules for questions:
 - LOW = direct recall from text (definition, fact). MEDIUM = comprehension or simple application. HIGH = comparison, analysis, or multi-step reasoning.
 - Distribute difficulty levels exactly as specified in the user message counts.
 - Use each node's id as nodeId. Never hallucinate a nodeId not present in the source.
+- When a node lists COGNITIVE_LEVEL_OPTIONS, choose exactly one listed level ID
+  that the question is designed to assess. Never invent or infer a level ID.
 
 Rules for optionExplanations (CRITICAL — read carefully):
 - optionExplanations MUST be an array of exactly 4 strings, index-aligned with options[].
@@ -93,12 +102,52 @@ export async function generateQuizQuestions(
       theoryContent:            lessonNodesTable.theoryContent,
       childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
       basicExamples:            lessonNodesTable.basicExamples,
+      learningObjective:        lessonNodesTable.learningObjective,
+      cogPathStatus:            lessonNodesTable.cogPathStatus,
     })
     .from(lessonNodesTable)
     .where(inArray(lessonNodesTable.id, input.nodeIds));
 
   if (nodes.length === 0) {
     throw new Error("No nodes found for the provided nodeIds");
+  }
+
+  const cognitiveRows = await db
+    .select({
+      id: lessonNodeCognitiveLevelsTable.id,
+      lessonNodeId: lessonNodeCognitiveLevelsTable.lessonNodeId,
+      cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+      sequence: lessonNodeCognitiveLevelsTable.sequence,
+      isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+      isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
+      performanceObjective: lessonNodeCognitiveLevelsTable.performanceObjective,
+      successCriterion: lessonNodeCognitiveLevelsTable.successCriterion,
+      preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
+    })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, input.nodeIds));
+
+  const levelsByNode = new Map<number, typeof cognitiveRows>();
+  for (const level of cognitiveRows) {
+    const current = levelsByNode.get(level.lessonNodeId) ?? [];
+    current.push(level);
+    levelsByNode.set(level.lessonNodeId, current);
+  }
+
+  const allowedLevelIdsByNode = new Map<number, Set<number>>();
+  for (const node of nodes) {
+    const levels = levelsByNode.get(node.id) ?? [];
+    const accepted = assessAcceptedCognitivePath({
+      cogPathStatus: node.cogPathStatus,
+      theoryContent: node.theoryContent,
+      learningObjective: node.learningObjective,
+      levels,
+    }).accepted;
+    if (accepted) {
+      allowedLevelIdsByNode.set(node.id, new Set(levels
+        .filter((level) => level.isApplicable)
+        .map((level) => level.id)));
+    }
   }
 
   const split = computeSplit(input.questionCount, input.difficultyMode);
@@ -110,6 +159,14 @@ export async function generateQuizQuestions(
       n.childFriendlyExplanation ? `EXPLANATION: ${n.childFriendlyExplanation}` : "",
       Array.isArray(n.basicExamples) && (n.basicExamples as string[]).length > 0
         ? `EXAMPLES: ${(n.basicExamples as string[]).join(" | ")}`
+        : "",
+      allowedLevelIdsByNode.has(n.id)
+        ? `COGNITIVE_LEVEL_OPTIONS: ${(levelsByNode.get(n.id) ?? [])
+          .filter((level) => allowedLevelIdsByNode.get(n.id)?.has(level.id))
+          .map((level) =>
+            `id=${level.id}, bloom=${level.cognitiveLevel}, objective=${level.performanceObjective ?? ""}`,
+          )
+          .join(" | ")}`
         : "",
     ]
       .filter(Boolean)
@@ -209,6 +266,12 @@ export async function generateQuizQuestions(
 
     return {
       nodeId: typeof q.nodeId === "number" ? q.nodeId : null,
+      cognitiveLevelId:
+        typeof q.nodeId === "number" &&
+        typeof q.cognitiveLevelId === "number" &&
+        allowedLevelIdsByNode.get(q.nodeId)?.has(q.cognitiveLevelId)
+          ? q.cognitiveLevelId
+          : null,
       questionText: typeof q.questionText === "string" ? q.questionText : `Հarц ${i + 1}`,
       options: opts,
       correctOptionIndex:
