@@ -1,0 +1,439 @@
+C3 — PHASE 1: CURRENT EVIDENCE + MINIMUM TELEMETRY ARCHITECTURE AUDIT
+
+IMPORTANT:
+This is an AUDIT-FIRST task.
+
+DO NOT redesign the system yet.
+DO NOT change C1 mapping.
+DO NOT change C2 Cognitive Path architecture.
+DO NOT change Knowledge Tree behavior yet.
+DO NOT change AI Teacher teaching scenario yet.
+DO NOT change quiz UX yet.
+DO NOT add a new evidence architecture before proving what already exists.
+
+Our goal is to determine exactly what already exists between:
+
+MicroNode
+→ Cognitive Level
+→ Exercise / Micro-check / Quiz response
+→ Evidence event
+→ scoring/mastery/confidence
+→ learner-specific knowledge state
+
+We have completed:
+
+C1 — Knowledge Mapping
+C2 — Cognitive Path
+
+The current real lesson already demonstrates that Cognitive Levels contain:
+
+- performanceObjective
+- successCriterion
+- preferred interaction/task types
+- required evidence count
+
+Example UI currently shows states such as:
+
+Պահանջվում է: 3
+Կապված է: 0
+Պակասում է: 3
+
+Therefore C3 must NOT duplicate C2.
+
+C2 defines what evidence is required.
+C3 must determine how actual learner performance becomes trustworthy evidence.
+
+==================================================
+1. AUDIT CURRENT DATA MODEL
+==================================================
+
+Inspect the real database/schema/migrations and identify all tables/fields related to:
+
+- evidence events
+- lesson exercises
+- cognitive-level tasks
+- quiz questions
+- quiz attempts
+- quiz answers
+- lesson sessions
+- chat messages
+- learner mastery
+- confidence
+- Knowledge Tree state
+- MicroNode learner state
+
+Specifically inspect, where present:
+
+evidenceEventsTable
+lessonExercisesTable
+lessonNodeCognitiveTasksTable
+lessonSessionsTable
+chatMessagesTable
+quizzes
+quiz_questions
+quiz_assignments
+quiz_attempts
+quiz_answers
+knowledgeNodesTable
+
+and any other relevant current table discovered by code inspection.
+
+For each relevant table report:
+
+TABLE
+PURPOSE
+IMPORTANT FIELDS
+WRITERS
+READERS
+CURRENTLY ACTIVE OR LEGACY
+RELATION TO MicroNode
+RELATION TO Cognitive Level
+RELATION TO learner/student
+
+Do not infer schema from names.
+Verify actual code.
+
+==================================================
+2. AUDIT ALL CURRENT EVIDENCE PRODUCERS
+==================================================
+
+Find every runtime path that can currently create evidence or change learner knowledge/mastery.
+
+At minimum investigate:
+
+A. AI Teacher micro-check
+B. AI Teacher textbook/class exercise
+C. Quiz/test answer
+D. manually attached lesson exercise
+E. any completion/progress action
+F. any other discovered producer
+
+For EACH producer trace:
+
+student action
+→ route
+→ validation/scoring
+→ DB write
+→ evidence representation
+→ mastery/confidence update
+→ Knowledge Tree impact
+
+Report exact files/functions.
+
+Important question:
+
+Does the system currently distinguish:
+
+- micro-check evidence
+- real exercise evidence
+- quiz evidence
+- assisted answer
+- independent answer
+- correct/incorrect result
+- attempt count
+- cognitive level demonstrated
+
+If yes, show exactly where.
+
+If not, mark GAP.
+
+==================================================
+3. AUDIT EVIDENCE EVENT CONTRACT
+==================================================
+
+Inspect the current evidence event structure.
+
+Determine whether one evidence record can reliably answer:
+
+WHO?
+Which learner?
+
+WHAT?
+Which MicroNode?
+
+AT WHAT COGNITIVE LEVEL?
+Remember / Understand / Apply / Analyze / etc.
+
+FROM WHAT?
+micro-check / lesson exercise / quiz / other
+
+WHICH TASK?
+exercise/question/task identifier
+
+RESULT?
+correct / incorrect / partial / score
+
+HOW?
+independent / hinted / scaffolded / assisted
+
+WHEN?
+timestamp/session/attempt
+
+STRENGTH?
+weak / moderate / strong or equivalent
+
+If a field exists under a different name, map it.
+
+Produce a matrix:
+
+REQUIRED CONCEPT
+CURRENT FIELD
+STATUS
+NOTES
+
+Status:
+EXISTS
+PARTIAL
+MISSING
+LEGACY/UNRELIABLE
+
+Do NOT add fields yet.
+
+==================================================
+4. VERIFY C2 → C3 CONNECTION
+==================================================
+
+C2 Cognitive Path currently defines per cognitive level:
+
+- performance objective
+- success criterion
+- preferred interaction types
+- required evidence count
+
+Audit whether the system can currently connect an actual task/evidence event to:
+
+MicroNode
++
+specific Cognitive Level
+
+Inspect lessonNodeCognitiveTasksTable and all related routes/services.
+
+Determine:
+
+1. Can an exercise be attached to a cognitive level?
+2. Is that attachment persisted?
+3. Does AI Teacher actually use it?
+4. Does quiz generation use it?
+5. When the student answers, does evidence preserve that cognitive level?
+6. Does requiredEvidenceCount affect runtime completion?
+7. Is “Կապված է / Պակասում է” only authoring UI information or operational runtime logic?
+
+This section is critical.
+
+==================================================
+5. AUDIT CURRENT SCORING / MASTERY / CONFIDENCE
+==================================================
+
+Trace the actual scoring implementation.
+
+Inspect services such as scoring.ts and every caller.
+
+We previously have logic conceptually similar to:
+
+3/3 → mastery 100 / confidence 100
+2/3 → 67 / 75
+1/3 → 33 / 55
+0/3 → 0 / 10
+
+DO NOT assume this is still authoritative.
+
+Verify current implementation.
+
+Determine:
+
+- authoritative mastery calculation
+- authoritative confidence calculation
+- getMasteryLevel or equivalent
+- whether scoring is MicroNode-specific
+- whether cognitive depth affects scoring
+- whether evidence strength affects scoring
+- whether assisted answers affect scoring
+- whether multiple evidence sources combine
+- whether newer evidence replaces or accumulates
+- whether quiz evidence and AI Teacher evidence use the same engine
+
+Report discrepancies.
+
+==================================================
+6. AUDIT AI TEACHER EVIDENCE RULES
+==================================================
+
+Read the CURRENT production AI Teacher runtime.
+
+Do not modify it.
+
+Compare implementation against our intended rule:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION / EXERCISE
+
+Important existing design requirement:
+
+A micro-check alone must NOT be enough to establish strong mastery.
+
+Micro-check evidence should be at most MODERATE.
+
+Strong confirmation should require genuine learner performance on an appropriate real/independent task.
+
+Also inspect whether the runtime currently records:
+
+- help/hints
+- retries
+- correctness
+- active cognitive level
+- active lesson exercise
+- session/node
+- evidence strength
+
+Report:
+
+IMPLEMENTED
+PARTIAL
+MISSING
+CONFLICTING
+
+==================================================
+7. AUDIT LEARNER-SPECIFIC STATE
+==================================================
+
+Do NOT implement C4 yet.
+
+Only determine what learner-specific state already exists.
+
+We need to know whether current code already stores any equivalent of:
+
+curriculum target cognitive level
+
+VERSUS
+
+learner current demonstrated cognitive ceiling
+
+These are NOT the same concept.
+
+C2 target belongs to curriculum/MicroNode.
+
+The learner demonstrated ceiling must eventually be learner-specific.
+
+Audit whether such learner-specific cognitive depth already exists anywhere.
+
+If not, explicitly say:
+
+NOT CURRENTLY MODELED — C4 RESPONSIBILITY
+
+Do not add it during C3 Phase 1.
+
+==================================================
+8. TRACE ONE REAL END-TO-END EXAMPLE
+==================================================
+
+Use the current real Math 5 lesson / current approved MicroNodes as a read-only reference where useful.
+
+Do NOT alter its mapping/Cognitive Paths.
+
+Trace one hypothetical/available real exercise through CURRENT code:
+
+MicroNode
+→ Cognitive Level
+→ Exercise
+→ Student response
+→ Evidence
+→ scoring
+→ learner state / Knowledge Tree
+
+Mark every transition:
+
+WORKING
+PARTIAL
+BROKEN
+NOT IMPLEMENTED
+
+This should expose the real C3 gaps.
+
+==================================================
+9. CLASSIFY THE GAPS
+==================================================
+
+At the end classify every discovered issue into only these buckets:
+
+C3-BLOCKER
+Required to create trustworthy minimum evidence telemetry.
+
+C3-IMPORTANT
+Should be fixed in C3 but does not block the minimal evidence chain.
+
+C4
+Learner Model responsibility.
+
+C5+
+Knowledge Tree / recommendation / later responsibility.
+
+OPTIONAL
+Useful improvement but not required for our approved architecture.
+
+Do not move an approved architectural requirement into OPTIONAL just to close C3 faster.
+
+==================================================
+10. REQUIRED FINAL OUTPUT
+==================================================
+
+Return:
+
+A. CURRENT ARCHITECTURE SUMMARY
+
+B. DATA MODEL MATRIX
+
+C. EVIDENCE PRODUCER MATRIX
+
+D. C2 → C3 CONNECTION STATUS
+
+E. CURRENT SCORING / MASTERY FLOW
+
+F. AI TEACHER EVIDENCE STATUS
+
+G. LEARNER-SPECIFIC STATE STATUS
+
+H. ONE END-TO-END TRACE
+
+I. GAP LIST:
+   - C3-BLOCKER
+   - C3-IMPORTANT
+   - C4
+   - C5+
+   - OPTIONAL
+
+J. MINIMUM C3 IMPLEMENTATION PLAN
+
+The implementation plan must be the SMALLEST set of changes that gives us this trustworthy chain:
+
+Learner action
+→ identifiable task
+→ MicroNode
+→ Cognitive Level
+→ result
+→ assistance context
+→ evidence strength
+→ persisted Evidence
+→ usable input for C4 Learner Model
+
+IMPORTANT:
+Do not implement the plan in this task unless explicitly instructed after the audit.
+
+==================================================
+SUCCESS CRITERION
+==================================================
+
+At the end we must be able to answer, with code/database evidence:
+
+“When a learner performs a task, can the platform reliably know WHO demonstrated WHAT MicroNode, at WHICH cognitive level, on WHICH task, with WHAT result, under WHAT assistance conditions, and persist that as trustworthy evidence?”
+
+If the answer is not fully YES, identify the exact smallest changes required to make it YES.
+
+No C1 redesign.
+No C2 redesign.
+No Knowledge Tree redesign.
+No AI Teacher scenario redesign.
+No quiz UX redesign.
+No broad refactor.
+No speculative architecture.
