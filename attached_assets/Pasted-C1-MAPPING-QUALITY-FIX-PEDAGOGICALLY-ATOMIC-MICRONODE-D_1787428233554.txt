@@ -1,0 +1,750 @@
+C1 MAPPING QUALITY FIX — PEDAGOGICALLY ATOMIC MICRONODE DECOMPOSITION
+AND EXERCISE-TO-MICRONODE ALIGNMENT
+
+IMPORTANT:
+The source/page/provenance pipeline is now working.
+DO NOT reopen or redesign it.
+
+This task is ONLY about mapping quality after valid source extraction:
+
+VALIDATED SOURCE
+→ pedagogically atomic MicroNodes
+→ complete instructional knowledge coverage
+→ correct exercise-to-MicroNode alignment
+
+Do NOT proceed to Package 1D.
+Do NOT modify Cognitive Path or Teaching Package.
+Do NOT modify Goal/Outcome generation or confirmation.
+Do NOT weaken existing source-support or coverage gates.
+
+==================================================
+0. REAL ACCEPTANCE CASE
+==================================================
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+1.2 Բնական թվերի շարքը
+
+Current selected PDF physical pages:
+14–15
+
+The current automatic mapping successfully reads the correct source
+and preserves the textbook exercises.
+
+Current mapping created 3 MicroNodes:
+
+1. Բնական թվերի սահմանումը և հատկությունները
+2. 0-ի տարբերակումը բնական թվերից
+3. Բնական թվերի շարքը թվային ճառագայթի վրա
+
+But this decomposition is pedagogically under-granular.
+
+The source and exercises contain additional independently teachable/
+assessable knowledge that has no appropriate MicroNode.
+
+Examples include:
+
+- finding the next natural number;
+- finding the previous natural number;
+- reasoning about numbers between two natural numbers;
+- applying ordering/position properties of the natural-number sequence.
+
+As a consequence, several real textbook exercises are preserved but
+remain in “Additional exercises” because no semantically appropriate
+MicroNode exists.
+
+THIS is the bug to solve.
+
+==================================================
+1. DO NOT FIX THIS LESSON BY HARDCODING
+==================================================
+
+Do NOT hardcode:
+
+- this lesson title;
+- these page numbers;
+- expected MicroNode titles;
+- expected number of MicroNodes;
+- exercise numbers;
+- mathematics-specific rules.
+
+Do NOT implement:
+
+“this lesson should have 5 MicroNodes”
+or
+“every lesson should have at least N MicroNodes”.
+
+The solution must generalize across subjects and lessons.
+
+==================================================
+2. CANONICAL MICRONODE DEFINITION
+==================================================
+
+A MicroNode is the smallest pedagogically meaningful unit that can be:
+
+1. taught coherently;
+2. checked independently;
+3. supported directly by source;
+4. associated with one clear learning objective;
+5. assessed by one or more relevant tasks when such tasks exist.
+
+Canonical rule:
+
+ONE MicroNode
+=
+ONE clear independently teachable/assessable learning objective.
+
+A MicroNode must NOT simply be:
+
+- one paragraph;
+- one heading;
+- one source block;
+- one sentence;
+- one exercise;
+- one Outcome;
+- one arbitrary AI chunk.
+
+==================================================
+3. TWO FAILURE MODES MUST BOTH BE PREVENTED
+==================================================
+
+UNDER-SPLITTING:
+
+Several independently assessable concepts/skills are merged into one
+broad MicroNode.
+
+Example pattern:
+
+“definition + sequence properties + successor/predecessor + infinity”
+
+inside one MicroNode even though the source/exercises independently
+assess these skills.
+
+OVER-SPLITTING:
+
+One coherent learning objective is fragmented into multiple artificial
+MicroNodes merely because:
+
+- source spans multiple blocks;
+- several examples exist;
+- several exercises test the same knowledge;
+- wording differs slightly.
+
+The mapper must optimize for pedagogical atomicity, NOT maximum node
+count.
+
+==================================================
+4. INDEPENDENT ASSESSABILITY TEST
+==================================================
+
+Before finalizing each candidate MicroNode boundary, ask:
+
+Could a learner demonstrate mastery of A while still failing B?
+
+If YES and A/B are both explicitly supported by the lesson source,
+they are strong candidates for separate MicroNodes.
+
+Examples of structurally different mastery:
+
+- define/recognize X
+versus
+- apply a procedural relationship involving X
+
+- explain a property
+versus
+- determine predecessor/successor
+
+- recognize a category
+versus
+- locate/order values in a representation
+
+But do not split when the distinction is merely wording or example
+variation.
+
+==================================================
+5. EXERCISES ARE GRANULARITY EVIDENCE
+==================================================
+
+This is critical.
+
+Textbook exercises/questions/tasks are not only content to preserve.
+
+They are evidence about the intended knowledge granularity.
+
+Before final MicroNode generation:
+
+analyze each verified exercise and identify the primary knowledge/skill
+required to solve it.
+
+Then ask:
+
+Does an existing candidate MicroNode have a learning objective that
+actually teaches/tests that knowledge?
+
+If YES:
+align the exercise to that MicroNode.
+
+If NO:
+determine whether:
+
+A. a pedagogically necessary MicroNode is missing;
+
+or
+
+B. the exercise is legitimately integrative/cumulative and should remain
+additional.
+
+Do NOT create a MicroNode merely to attach every exercise.
+
+But do NOT leave an exercise “Additional” merely because the mapper
+failed to create an obvious source-supported atomic knowledge unit.
+
+==================================================
+6. EXERCISE-DRIVEN MISSING-NODE DETECTION
+==================================================
+
+Add a deterministic/structured review stage before final normalization:
+
+For each real verified exercise:
+
+1. identify its primary instructional demand;
+2. compare it to candidate MicroNode objectives;
+3. classify:
+
+DIRECT_MATCH
+INTEGRATIVE
+NO_APPROPRIATE_MICRONODE
+
+If NO_APPROPRIATE_MICRONODE:
+
+check whether the required knowledge is explicitly supported by verified
+instructional source.
+
+If source-supported:
+flag MISSING_ATOMIC_MICRONODE and allow the existing bounded mapping
+repair/review process to create or split the necessary node.
+
+If not independently source-supported:
+do NOT invent a node.
+
+==================================================
+7. SOURCE CONTENT MUST ALSO DRIVE GRANULARITY
+==================================================
+
+Exercises are evidence, but not the sole authority.
+
+Some important knowledge may have no dedicated exercise.
+
+Therefore inspect verified instructional source for independently
+teachable claims/skills.
+
+Candidate splitting should consider:
+
+- distinct definitions;
+- distinct rules;
+- distinct relationships;
+- independently executable procedures;
+- distinct representations;
+- explicit exceptions/boundaries;
+- independently assessed concepts.
+
+But examples, narrative context, repetitions, headings, captions, and
+restatements are NOT automatically separate MicroNodes.
+
+==================================================
+8. OUTCOMES ARE A COVERAGE CONSTRAINT, NOT NODE COUNT
+==================================================
+
+Confirmed canonical Outcomes must help validate mapping completeness.
+
+For every confirmed Outcome:
+
+ask whether the resulting MicroNode set contains sufficient atomic
+knowledge/skills to support that Outcome.
+
+But:
+
+Outcome ≠ MicroNode.
+
+One Outcome may require several MicroNodes.
+
+One MicroNode may support multiple Outcomes.
+
+Do NOT force one-to-one mapping.
+
+Do NOT create artificial nodes solely to match Outcome count.
+
+==================================================
+9. CURRENT REAL LESSON — EXPECTED SEMANTIC REVIEW
+==================================================
+
+For the current lesson, DO NOT hardcode this result, but use it as a
+manual acceptance reference.
+
+The current 3-node map appears to miss independently assessable knowledge
+around:
+
+- predecessor/successor relationships;
+- reasoning about positions/counts between natural numbers;
+- ordering/comparison properties where explicitly taught/supported.
+
+The current first MicroNode also appears too broad because it combines
+multiple independently assessable properties.
+
+The corrected mapper should independently discover appropriate atomic
+boundaries from source + exercises + confirmed Outcomes.
+
+Do NOT force a specific count.
+
+A reasonable result may contain roughly 5–7 MicroNodes, but COUNT IS NOT
+AN ACCEPTANCE CRITERION.
+
+Semantic correctness is.
+
+==================================================
+10. EXERCISE ALIGNMENT RULE
+==================================================
+
+After final MicroNodes are produced, perform semantic exercise alignment.
+
+For every verified textbook exercise:
+
+choose one of:
+
+PRIMARY → one MicroNode
+SECONDARY → optional additional relevant MicroNode(s)
+INTEGRATIVE → legitimate additional/cumulative exercise
+
+Do not duplicate the exercise text into multiple canonical exercises.
+
+Canonical exercise identity remains one record.
+
+Relations may express multiple relevance where architecture supports it.
+
+==================================================
+11. “ADDITIONAL EXERCISE” DEFINITION
+==================================================
+
+An exercise may remain Additional only if:
+
+- it integrates multiple MicroNodes;
+- it is enrichment/generalization;
+- it depends on prior/future lesson knowledge;
+- or no single current MicroNode is its primary instructional owner.
+
+“Mapper failed to create the necessary MicroNode” is NOT a legitimate
+reason for Additional status.
+
+==================================================
+12. SOURCE SUPPORT REMAINS STRICT
+==================================================
+
+Every new/split MicroNode must pass the existing direct source-support
+gate.
+
+Do NOT create a node from exercise wording alone if the underlying
+knowledge cannot be grounded in verified instructional source.
+
+Do NOT weaken:
+
+MICRONODE_SOURCE_ALIGNMENT
+
+or any existing source-support validator.
+
+Heading-only support remains insufficient where currently insufficient.
+
+==================================================
+13. GRANULARITY VALIDATOR
+==================================================
+
+Add/reuse a pre-persistence granularity review that can detect at least:
+
+UNDER_SPLIT:
+one MicroNode objective/source combines multiple independently assessable
+instructional demands.
+
+OVER_SPLIT:
+multiple MicroNodes represent effectively the same objective/source
+knowledge with only superficial wording differences.
+
+MISSING_ATOMIC_MICRONODE:
+verified source + exercise evidence demonstrates an independently
+assessable knowledge unit with no suitable MicroNode.
+
+UNSUPPORTED_MICRONODE:
+candidate node lacks sufficient verified source support.
+
+These findings must occur BEFORE destructive persistence.
+
+==================================================
+14. BOUNDED REPAIR ONLY
+==================================================
+
+If granularity problems are found:
+
+allow ONE bounded semantic repair/review pass using the already validated
+same-lesson source.
+
+The repair may:
+
+- split an under-granular MicroNode;
+- merge duplicate/over-split MicroNodes;
+- add a missing source-supported atomic MicroNode;
+- reassign exercises.
+
+Then rerun deterministic validators.
+
+NO recursive repair loop.
+NO unlimited AI retries.
+
+If still invalid:
+fail safely and preserve the previous mapping.
+
+==================================================
+15. PRESERVE SOURCE OWNERSHIP
+==================================================
+
+Splitting a MicroNode does NOT mean duplicating all source text across
+children.
+
+Each resulting MicroNode must receive the smallest sufficient directly
+supporting source span/block set.
+
+Shared context may be referenced where architecture permits, but do not
+manufacture duplicate source ownership merely to satisfy validation.
+
+==================================================
+16. CURRENT EXERCISE ACCEPTANCE CHECK
+==================================================
+
+For the real lesson, specifically inspect why exercises such as the
+following remained Additional:
+
+- successor task;
+- predecessor task;
+- successor/predecessor mixed task;
+- numbers-between task;
+- neighboring-number task;
+- building-number application;
+- comparison between sequence distance and building numbering.
+
+Do NOT hardcode their numbers/text.
+
+For each, report:
+
+PRIMARY_MATCH
+INTEGRATIVE
+or
+MISSING_ATOMIC_MICRONODE
+
+This report is acceptance evidence only.
+
+==================================================
+17. PROVIDER-FREE TEST — UNDER-SPLIT
+==================================================
+
+Fixture:
+
+source explicitly teaches:
+A
+B
+
+exercises independently test A and B
+
+provider creates:
+one broad node “A and B”
+
+Expected:
+UNDER_SPLIT detected.
+
+Bounded repair may produce separate atomic nodes if both have direct
+source support.
+
+==================================================
+18. PROVIDER-FREE TEST — COHERENT NODE
+==================================================
+
+Source explains one concept through multiple paragraphs/examples.
+
+Several exercises test the same objective.
+
+Expected:
+ONE MicroNode remains valid.
+
+Do NOT split by paragraph/exercise count.
+
+==================================================
+19. PROVIDER-FREE TEST — MISSING NODE FROM EXERCISE EVIDENCE
+==================================================
+
+Verified instructional source explicitly teaches skill B.
+
+Verified exercise directly tests B.
+
+Candidate MicroNodes cover A and C only.
+
+Expected:
+MISSING_ATOMIC_MICRONODE.
+
+Bounded repair may add B.
+
+==================================================
+20. PROVIDER-FREE TEST — EXERCISE WITHOUT SOURCE SUPPORT
+==================================================
+
+Exercise appears to require skill B.
+
+But verified instructional source does not teach B independently.
+
+Expected:
+do NOT invent B MicroNode.
+
+Classify exercise according to existing additional/integrative rules.
+
+==================================================
+21. PROVIDER-FREE TEST — OVER-SPLIT
+==================================================
+
+Provider creates:
+
+“identify X”
+“recognize X”
+“determine whether item is X”
+
+with the same direct source and same mastery demand.
+
+Expected:
+OVER_SPLIT/duplicate detected and merged.
+
+==================================================
+22. PROVIDER-FREE TEST — OUTCOME ≠ NODE
+==================================================
+
+One confirmed Outcome requires three atomic prerequisite skills.
+
+Expected:
+three source-supported MicroNodes may support one Outcome.
+
+No one-to-one Outcome enforcement.
+
+==================================================
+23. PROVIDER-FREE TEST — INTEGRATIVE EXERCISE
+==================================================
+
+Exercise genuinely combines two or more valid MicroNodes.
+
+Expected:
+it may remain Additional/Integrative.
+
+Do NOT create a fake umbrella MicroNode solely for the exercise.
+
+==================================================
+24. PROVIDER-FREE TEST — TRANSACTIONAL SAFETY
+==================================================
+
+Existing valid map exists.
+
+New candidate fails granularity after bounded repair.
+
+Expected:
+
+old Topics
+old MicroNodes
+old exercises
+
+remain unchanged.
+
+==================================================
+25. REGRESSION
+==================================================
+
+Run all relevant existing C1 regressions, especially:
+
+- verified-source subset
+- physical-page provenance
+- source-scope/source-boundary
+- instructional coverage
+- direct source support
+- duplicate/over-split
+- Fix #6 granularity/grounding
+- Fix #6A reallocation
+- exercise preservation
+- canonical Outcomes
+- Outcome alignment
+- final approval
+- Cognitive Path regression
+- Teaching Package regression
+- API typecheck
+- Web typecheck
+
+Do NOT weaken existing tests.
+
+==================================================
+26. REAL LESSON RETEST
+==================================================
+
+After provider-free tests pass:
+
+use the current real lesson only.
+
+Do NOT change:
+
+- page range;
+- Goal;
+- Outcomes;
+- paragraph number;
+- approval state.
+
+Run automatic mapping ONCE.
+
+Do not approve generated nodes/exercises.
+
+Report the raw candidate/result for manual review.
+
+==================================================
+27. REQUIRED REAL-LESSON REPORT
+==================================================
+
+Return:
+
+A. SOURCE
+
+Verified source blocks:
+Quarantined:
+Coverage:
+
+B. BEFORE
+
+Current/generated-before-repair:
+Topics:
+MicroNodes:
+Exercises:
+Additional exercises:
+
+C. GRANULARITY FINDINGS
+
+UNDER_SPLIT:
+OVER_SPLIT:
+MISSING_ATOMIC_MICRONODE:
+UNSUPPORTED_MICRONODE:
+
+D. AFTER BOUNDED REPAIR
+
+Topics:
+MicroNodes:
+Exercises:
+Additional/integrative exercises:
+
+For every resulting MicroNode report ONLY:
+
+- title
+- learning objective
+- source page
+- direct-source-support PASS/FAIL
+- primary exercise count
+
+Do not dump long textbook text.
+
+E. PREVIOUSLY ADDITIONAL EXERCISES
+
+For each:
+PRIMARY_MATCH
+INTEGRATIVE
+MISSING_ATOMIC_MICRONODE
+
+and resulting owner if applicable.
+
+F. OUTCOME COVERAGE
+
+For each confirmed Outcome:
+supporting MicroNode count
+REQUIRED/SUPPORTING proposal
+teacher review still required
+
+G. VALIDATION
+
+Direct source support:
+Instructional coverage:
+Atomicity:
+Duplicate/over-split:
+Exercise alignment:
+Outcome coverage:
+
+H. PERSISTENCE
+
+Did replacement occur?
+YES/NO
+
+If NO:
+exact gate.
+
+I. REGRESSIONS
+
+List PASS/FAIL.
+
+==================================================
+28. ACCEPTANCE CRITERIA
+==================================================
+
+PASS only if:
+
+1. correct validated lesson source is preserved;
+2. no unsupported MicroNode is created;
+3. independently assessable source-supported knowledge is not hidden
+   inside an overly broad MicroNode;
+4. coherent knowledge is not fragmented artificially;
+5. exercises influence granularity review;
+6. real exercises are aligned to appropriate MicroNodes where such nodes
+   legitimately exist;
+7. integrative exercises may remain Additional;
+8. Outcome count does not determine MicroNode count;
+9. existing source-safety gates remain unchanged;
+10. old mapping is protected on failed replacement;
+11. no unlimited repair loop exists.
+
+==================================================
+29. NO SCOPE DRIFT
+==================================================
+
+DO NOT MODIFY:
+
+- PDF page semantics
+- page indexing
+- source extraction contract
+- verified-source quarantine policy
+- Goal generation
+- Goal confirmation
+- Outcome generation
+- Outcome confirmation
+- Cognitive Path
+- Teaching Package
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- student flow
+- manual mapping
+- Package 1D
+
+==================================================
+30. FINAL VERDICT
+==================================================
+
+Use exactly ONE:
+
+MICRONODE GRANULARITY + EXERCISE ALIGNMENT FIXED — RAW MAP READY FOR USER REVIEW
+
+or
+
+MICRONODE GRANULARITY FIXED — LATER C1 GATE BLOCKED MAPPING
+
+or
+
+MICRONODE GRANULARITY / EXERCISE ALIGNMENT STILL BLOCKED
+
+Do NOT declare C1 frozen.
+Do NOT proceed to Package 1D.
