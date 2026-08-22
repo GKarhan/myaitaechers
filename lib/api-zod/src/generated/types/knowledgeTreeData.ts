@@ -6,11 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AIRecommendation } from './aIRecommendation';
-import type { KnowledgeTopic } from './knowledgeTopic';
+import type { KnowledgeTreeCoverage } from './knowledgeTreeCoverage';
+import type { KnowledgeTreeLesson } from './knowledgeTreeLesson';
 
-export interface KnowledgeTreeData {
+export type KnowledgeTreeData = KnowledgeTreeCoverage & {
   subjectId: number;
   subjectName: string;
-  topics: KnowledgeTopic[];
+  lessons: KnowledgeTreeLesson[];
   recommendations: AIRecommendation[];
-}
+};

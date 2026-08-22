@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface CreateCourseInput {
-  name: string;
-  description?: string;
+export interface CreateLessonNodeInput {
+  title: string;
+  theoryContent?: string;
+  targetBloomLevel?: number;
+  estimatedMinutes?: number;
 }

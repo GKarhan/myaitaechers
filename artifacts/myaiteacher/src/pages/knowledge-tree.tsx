@@ -2,58 +2,24 @@ import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
-import { getGetKnowledgeTreeQueryKey } from "@workspace/api-client-react";
+import {
+  getGetKnowledgeTreeQueryKey,
+  type KnowledgeState,
+  type KnowledgeTreeCoverage,
+  type KnowledgeTreeData,
+  type KnowledgeTreeLesson,
+  type KnowledgeTreeMicroNode,
+  type KnowledgeTreeTopic,
+} from "@workspace/api-client-react";
 import { NodeDetailPanel } from "./node-detail-panel";
 
-// ── KT-1.3 / KT-1.4 types ────────────────────────────────────────────────────
-type FilterTab = "all" | "mastered" | "weak" | "in_progress" | "not_started";
-type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
-
-// KT-1.4A: coverage fields present on Topic, Lesson, and Subject.
-// coveragePercent = round(studiedCount / totalUnits * 100).
-// null only when totalUnits === 0. 0% = curriculum exists but nothing studied.
-interface KTCoverage {
-  totalUnits:       number;
-  studiedCount:     number;
-  notStudiedCount:  number;
-  coveragePercent:  number | null;
-  masteredCount:    number;
-  partialCount:     number;     // "weak" internally
-  doesNotKnowCount: number;     // "in_progress" internally
-  notStartedCount:  number;
-}
-
-interface KTMicroNode {
-  lessonNodeId: number;
-  title: string;
-  sequence: number;
-  masteryScore: number;
-  confidenceScore: number | null;
-  masteryLevel: MasteryLevel4;
-}
-
-interface KTTopic extends KTCoverage {
-  topicId: number;
-  topicTitle: string;
-  topicSequence: number;
-  nodes: KTMicroNode[];
-}
-
-interface KTLesson extends KTCoverage {
-  lessonId: number;
-  lessonTitle: string;
-  lessonNumber: number | null;
-  topics: KTTopic[];
-  ungroupedNodes: KTMicroNode[];
-  ungroupedCoverage: KTCoverage;  // KT-1.4A: coverage for the "Առanc khmbi" display group
-}
-
-interface KTData extends KTCoverage {
-  subjectId: number;
-  subjectName: string;
-  lessons: KTLesson[];
-  recommendations: Array<{ type: string; message: string; topicName: string }>;
-}
+// ── C5 Knowledge Tree types ──────────────────────────────────────────────────
+type FilterTab = "all" | KnowledgeState;
+type KTCoverage = KnowledgeTreeCoverage;
+type KTMicroNode = KnowledgeTreeMicroNode;
+type KTTopic = KnowledgeTreeTopic;
+type KTLesson = KnowledgeTreeLesson;
+type KTData = KnowledgeTreeData;
 
 /** Render a coverage percentage (null = no curriculum → "—") */
 function formatCoverage(pct: number | null): string {
@@ -70,12 +36,12 @@ function coverageColour(pct: number | null): string {
 
 // ── State helpers ─────────────────────────────────────────────────────────────
 
-function masteryConfig(level: MasteryLevel4) {
+function knowledgeStateConfig(level: KnowledgeState) {
   switch (level) {
-    case "mastered":    return { icon: "✓", label: "Գիտի",                badge: "bg-secondary/10 text-secondary border-secondary/20",   border: "border-l-secondary",  dot: "bg-secondary"  };
-    case "weak":        return { icon: "◐", label: "Մասնակի գիտի",        badge: "bg-accent/10 text-accent border-accent/20",             border: "border-l-accent",     dot: "bg-accent"     };
-    case "in_progress": return { icon: "!", label: "Չգիտի",               badge: "bg-primary/10 text-primary border-primary/20",          border: "border-l-primary",    dot: "bg-primary"    };
-    case "not_started": return { icon: "○", label: "Դեռ չի ուսումնասիրել", badge: "bg-destructive/10 text-destructive border-destructive/20", border: "border-l-destructive", dot: "bg-destructive" };
+    case "MASTERED":    return { icon: "✓", badge: "bg-secondary/10 text-secondary border-secondary/20",   border: "border-l-secondary",  dot: "bg-secondary",  text: "text-secondary"  };
+    case "PARTIAL":     return { icon: "◐", badge: "bg-accent/10 text-accent border-accent/20",             border: "border-l-accent",     dot: "bg-accent",     text: "text-accent"     };
+    case "NOT_KNOWN":   return { icon: "!", badge: "bg-primary/10 text-primary border-primary/20",          border: "border-l-primary",    dot: "bg-primary",    text: "text-primary"    };
+    case "NOT_STUDIED": return { icon: "○", badge: "bg-destructive/10 text-destructive border-destructive/20", border: "border-l-destructive", dot: "bg-destructive", text: "text-destructive" };
   }
 }
 
@@ -83,9 +49,9 @@ function masteryConfig(level: MasteryLevel4) {
 function filterLesson(lesson: KTLesson, filter: FilterTab): KTLesson | null {
   if (filter === "all") return lesson;
   const filteredTopics = lesson.topics
-    .map(t => ({ ...t, nodes: t.nodes.filter(n => n.masteryLevel === filter) }))
+    .map(t => ({ ...t, nodes: t.nodes.filter(n => n.knowledgeState === filter) }))
     .filter(t => t.nodes.length > 0);
-  const filteredUngrouped = lesson.ungroupedNodes.filter(n => n.masteryLevel === filter);
+  const filteredUngrouped = lesson.ungroupedNodes.filter(n => n.knowledgeState === filter);
   if (filteredTopics.length === 0 && filteredUngrouped.length === 0) return null;
   return { ...lesson, topics: filteredTopics, ungroupedNodes: filteredUngrouped };
 }
@@ -101,7 +67,7 @@ function NodeRow({
   onClick: (id: number) => void;
   isSelected: boolean;
 }) {
-  const cfg = masteryConfig(node.masteryLevel);
+  const cfg = knowledgeStateConfig(node.knowledgeState);
   return (
     <button
       type="button"
@@ -118,14 +84,9 @@ function NodeRow({
       <span
         className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${cfg.dot} bg-opacity-20`}
         style={{ backgroundColor: "transparent" }}
-        aria-label={cfg.label}
+        aria-label={node.knowledgeStateLabel}
       >
-        <span className={`text-xs font-bold ${
-          node.masteryLevel === "mastered"    ? "text-secondary" :
-          node.masteryLevel === "weak"        ? "text-accent"    :
-          node.masteryLevel === "in_progress" ? "text-primary"   :
-                                                "text-destructive"
-        }`}>{cfg.icon}</span>
+        <span className={`text-xs font-bold ${cfg.text}`}>{cfg.icon}</span>
       </span>
 
       {/* Title */}
@@ -138,7 +99,7 @@ function NodeRow({
 
       {/* Badge */}
       <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium border ${cfg.badge}`}>
-        {cfg.label}
+         {node.knowledgeStateLabel}
       </span>
     </button>
   );
@@ -501,10 +462,10 @@ export default function KnowledgeTree() {
           {(
             [
               { key: "all",         label: "Բոլորը",              dot: null },
-              { key: "mastered",    label: "Գիտի",                dot: "bg-secondary"   },
-              { key: "weak",        label: "Մասնակի գիտի",        dot: "bg-accent"      },
-              { key: "in_progress", label: "Չգիտի",               dot: "bg-primary"     },
-              { key: "not_started", label: "Դեռ չի ուսումնասիրել", dot: "bg-destructive" },
+               { key: "MASTERED",    label: "Գիտի",                dot: "bg-secondary"   },
+               { key: "PARTIAL",     label: "Մասնակի գիտի",        dot: "bg-accent"      },
+               { key: "NOT_KNOWN",   label: "Չգիտի",               dot: "bg-primary"     },
+               { key: "NOT_STUDIED", label: "Դեռ չի ուսումնասիրել", dot: "bg-destructive" },
             ] as const
           ).map(({ key, label, dot }) => (
             <button

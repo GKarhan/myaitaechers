@@ -6,6 +6,7 @@ import {
   useSendChatMessage
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { invalidateKnowledgeTreeQueries } from "@/lib/knowledge-tree-cache";
 
 // ── Phase 2B Part 13: Progressive Help UI ─────────────────────────────────────
 // Help levels:
@@ -114,6 +115,7 @@ export default function Chat() {
       {
         onSuccess: (responseData) => {
           queryClient.invalidateQueries({ queryKey: getGetChatHistoryQueryKey(historyParams) });
+          void invalidateKnowledgeTreeQueries(queryClient);
           // Update hasActiveTask from server response (Phase 2B)
           const d = responseData as { hasActiveTask?: boolean; activeHelpCount?: number } | undefined;
           if (d?.hasActiveTask !== undefined) {

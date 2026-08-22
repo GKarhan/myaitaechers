@@ -10,5 +10,4 @@ export interface CreateClassInput {
   name: string;
   grade?: string;
   teacherId: number;
-  subjectIds?: number[];
 }

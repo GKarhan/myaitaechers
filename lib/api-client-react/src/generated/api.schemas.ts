@@ -36,7 +36,6 @@ export interface ClassItem {
   teacherId: number;
   teacherName?: string;
   createdAt: string;
-  assignedSubjects?: string[];
 }
 
 export interface ClassTeacherInfo {
@@ -79,7 +78,6 @@ export interface CreateClassInput {
   name: string;
   grade?: string;
   teacherId: number;
-  subjectIds?: number[];
 }
 
 export interface CreateStudentInput {
@@ -114,7 +112,6 @@ export interface UpdateClassInput {
   name?: string;
   grade?: string;
   teacherId?: number;
-  subjectIds?: number[];
 }
 
 export interface ScheduleItem {
@@ -142,7 +139,6 @@ export interface CourseItem {
   id: number;
   classId: number;
   teacherId?: number | null;
-  subjectId?: number | null;
   name: string;
   description?: string;
   lessonCount?: number;
@@ -152,7 +148,6 @@ export interface CourseItem {
 export interface CreateCourseInput {
   name: string;
   description?: string;
-  subjectId: number;
 }
 
 export interface ResourceItem {
@@ -215,35 +210,10 @@ export interface TeacherLessonItem {
   textbookTitle?: string | null;
   chapterTitle?: string | null;
   paragraphNumber?: string | null;
-  textbookResourceId?: number | null;
   status: string;
   assignedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
-  lessonGoal?: string | null;
-  lessonOutcomes?: string[] | null;
-  coreProblem?: string | null;
-  practicalTasks?: string[] | null;
-}
-
-// Returned immediately by POST /lessons/:id/map and /generate-teaching-content.
-// The actual work runs in the background; poll GET /lessons/jobs/:jobId for progress.
-export interface MapLessonResult {
-  jobId:  number;
-  status: 'pending';
-}
-
-export type MappingJobStatus = 'pending' | 'running' | 'completed' | 'failed';
-
-export interface MappingJobResponse {
-  jobId:     number;
-  lessonId:  number;
-  jobType:   string;
-  status:    MappingJobStatus;
-  result:    unknown | null;
-  error:     string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface CreateTeacherLessonInput {
@@ -261,9 +231,6 @@ export interface CreateTeacherLessonInput {
   textbookTitle?: string;
   chapterTitle?: string;
   paragraphNumber?: string;
-  textbookResourceId?: number | null;
-  lessonGoal?: string;
-  lessonOutcomes?: string[];
 }
 
 export type UpdateLessonStatusInputStatus = typeof UpdateLessonStatusInputStatus[keyof typeof UpdateLessonStatusInputStatus];
@@ -421,23 +388,6 @@ export interface StartLessonInput {
   lessonId: number;
 }
 
-export type KnowledgeTopicMasteryLevel = typeof KnowledgeTopicMasteryLevel[keyof typeof KnowledgeTopicMasteryLevel];
-
-
-export const KnowledgeTopicMasteryLevel = {
-  mastered: 'mastered',
-  weak: 'weak',
-  not_started: 'not_started',
-} as const;
-
-export interface KnowledgeTopic {
-  id: number;
-  topicName: string;
-  score: number;
-  status: string;
-  masteryLevel: KnowledgeTopicMasteryLevel;
-}
-
 export type AIRecommendationType = typeof AIRecommendationType[keyof typeof AIRecommendationType];
 
 
@@ -453,12 +403,91 @@ export interface AIRecommendation {
   topicName: string;
 }
 
-export interface KnowledgeTreeData {
+export type KnowledgeState = typeof KnowledgeState[keyof typeof KnowledgeState];
+
+
+export const KnowledgeState = {
+  MASTERED: 'MASTERED',
+  PARTIAL: 'PARTIAL',
+  NOT_KNOWN: 'NOT_KNOWN',
+  NOT_STUDIED: 'NOT_STUDIED',
+} as const;
+
+export interface KnowledgeTreeCoverage {
+  totalUnits: number;
+  studiedCount: number;
+  notStudiedCount: number;
+  coveragePercent: number | null;
+  masteredCount: number;
+  partialCount: number;
+  doesNotKnowCount: number;
+  notStartedCount: number;
+}
+
+export interface KnowledgeTreeCognitiveLevel {
+  id: number;
+  cognitiveLevel: string;
+  sequence: number;
+}
+
+export type KnowledgeTreeMicroNodeMasteryLevel = typeof KnowledgeTreeMicroNodeMasteryLevel[keyof typeof KnowledgeTreeMicroNodeMasteryLevel];
+
+
+export const KnowledgeTreeMicroNodeMasteryLevel = {
+  mastered: 'mastered',
+  weak: 'weak',
+  in_progress: 'in_progress',
+  not_started: 'not_started',
+} as const;
+
+export type KnowledgeTreeMicroNodeCoverageState = typeof KnowledgeTreeMicroNodeCoverageState[keyof typeof KnowledgeTreeMicroNodeCoverageState];
+
+
+export const KnowledgeTreeMicroNodeCoverageState = {
+  STUDIED: 'STUDIED',
+  NOT_STUDIED: 'NOT_STUDIED',
+} as const;
+
+export interface KnowledgeTreeMicroNode {
+  lessonNodeId: number;
+  title: string;
+  sequence: number;
+  masteryScore: number;
+  confidenceScore: number | null;
+  masteryLevel: KnowledgeTreeMicroNodeMasteryLevel;
+  knowledgeState: KnowledgeState;
+  knowledgeStateLabel: string;
+  coverageState: KnowledgeTreeMicroNodeCoverageState;
+  meaningfulAttemptCount: number;
+  qualifyingEvidenceCount: number;
+  targetCognitiveLevel: KnowledgeTreeCognitiveLevel | null;
+  demonstratedCognitiveLevel: KnowledgeTreeCognitiveLevel | null;
+  remainingCognitiveLevels: string[];
+  stateReason: string;
+}
+
+export type KnowledgeTreeTopic = KnowledgeTreeCoverage & {
+  topicId: number;
+  topicTitle: string;
+  topicSequence: number;
+  nodes: KnowledgeTreeMicroNode[];
+};
+
+export type KnowledgeTreeLesson = KnowledgeTreeCoverage & ({
+  lessonId: number;
+  lessonTitle: string;
+  lessonNumber: number | null;
+  topics: KnowledgeTreeTopic[];
+  ungroupedNodes: KnowledgeTreeMicroNode[];
+  ungroupedCoverage: KnowledgeTreeCoverage;
+});
+
+export type KnowledgeTreeData = KnowledgeTreeCoverage & {
   subjectId: number;
   subjectName: string;
-  topics: KnowledgeTopic[];
+  lessons: KnowledgeTreeLesson[];
   recommendations: AIRecommendation[];
-}
+};
 
 export interface LessonPhase {
   phase: number;
@@ -720,9 +749,6 @@ export interface UpdateLessonInput {
   textbookTitle?: string | null;
   chapterTitle?: string | null;
   paragraphNumber?: string | null;
-  textbookResourceId?: number | null;
-  lessonGoal?: string;
-  lessonOutcomes?: string[];
 }
 
 export interface GenerateLessonsInput {
@@ -814,6 +840,30 @@ export interface TeacherHomeworkItem {
   createdAt: string;
 }
 
+export interface LessonNode {
+  id: number;
+  lessonId: number;
+  sequence: number;
+  title: string;
+  theoryContent?: string | null;
+  targetBloomLevel?: number | null;
+  estimatedMinutes?: number | null;
+}
+
+export interface CreateLessonNodeInput {
+  title: string;
+  theoryContent?: string;
+  targetBloomLevel?: number;
+  estimatedMinutes?: number;
+}
+
+export interface UpdateLessonNodeInput {
+  title?: string;
+  theoryContent?: string;
+  targetBloomLevel?: number;
+  estimatedMinutes?: number;
+}
+
 export interface TeacherProfile {
   id: number;
   userId: number;
@@ -846,176 +896,4 @@ export type DeleteCourse200 = { [key: string]: unknown };
 export type DeleteCourseResource200 = { [key: string]: unknown };
 
 export type GenerateLessonsAI201 = { [key: string]: unknown };
-
-export interface LessonNode {
-  id: number;
-  lessonId: number;
-  sequence: number;
-  title: string;
-  learningObjective?: string | null;
-  theoryContent?: string | null;
-  targetBloomLevel?: number | null;
-  estimatedMinutes?: number | null;
-  verbatimTheoryAnchor?: string | null;
-  commonMisconception?: string | null;
-  childFriendlyExplanation?: string | null;
-  basicExamples?: string[];
-  nonExamples?: string[];
-  realLifeExamples?: string[];
-  status?: string;
-  contentSourceType?: string;
-  createdBy?: string;
-  topicId?: number | null;
-  sourcePage?: number | null;
-}
-
-export interface CreateLessonNodeInput {
-  title: string;
-  theoryContent?: string;
-  targetBloomLevel?: number;
-  estimatedMinutes?: number;
-  /** Phase 1.1: Topic assignment for new MicroNode */
-  topicId?: number | null;
-  /** Phase 1.1: Learning objective for new MicroNode */
-  learningObjective?: string;
-}
-
-export interface UpdateLessonNodeInput {
-  title?: string;
-  learningObjective?: string;
-  theoryContent?: string;
-  targetBloomLevel?: number;
-  estimatedMinutes?: number;
-  verbatimTheoryAnchor?: string;
-  commonMisconception?: string;
-  childFriendlyExplanation?: string;
-  basicExamples?: string[];
-  nonExamples?: string[];
-  realLifeExamples?: string[];
-  /** P6.5: Teacher approval — "approved" | "needs_review" | "draft" */
-  status?: string;
-  /** Phase 1.1: Move MicroNode to a different topic (null = standalone) */
-  topicId?: number | null;
-}
-
-export interface LessonTopic {
-  id: number;
-  lessonId: number;
-  sequence: number;
-  title: string;
-  description?: string | null;
-}
-
-export interface CreateLessonTopicInput {
-  title: string;
-  description?: string;
-}
-
-export interface UpdateLessonTopicInput {
-  title?: string;
-  description?: string;
-}
-
-export interface ReorderTopicsInput {
-  orderedTopicIds: number[];
-}
-
-export interface ReorderNodesInput {
-  orderedNodeIds: number[];
-}
-
-export interface LessonExercise {
-  id: number;
-  lessonId: number;
-  exerciseId: string;
-  sequence: number;
-  sourcePage?: string | null;
-  /** Immutable textbook source text. Never overwritten by teacher edits. */
-  exerciseTextVerbatim: string;
-  /** Teacher-edited adaptation. null = no edit; non-null = adapted wording. */
-  exerciseTextEdited?: string | null;
-  /** Resolved learner-facing text: exerciseTextEdited (trimmed, non-empty) ?? exerciseTextVerbatim */
-  effectiveExerciseText?: string;
-  exercisePurpose?: string | null;
-  relatedNodeId?: number | null;
-  successCriteria?: string | null;
-  interactionType?: 'multiple_choice' | 'true_false' | 'constructed_response' | null;
-  correctAnswer?: string | null;
-  difficultyLevel?: string | null;
-  assignment?: string | null;
-  /** Authoring lifecycle: "draft" | "approved" (may include legacy "reviewed"). */
-  status?: string | null;
-  /** "textbook" | "manual" */
-  sourceType?: string | null;
-  sourceBlockIndex?: number | null;
-}
-
-export interface CreateLessonExerciseInput {
-  exerciseTextVerbatim: string;
-  relatedNodeId?: number | null;
-  sourcePage?: string;
-  successCriteria?: string;
-  interactionType?: 'multiple_choice' | 'true_false' | 'constructed_response' | null;
-  correctAnswer?: string | null;
-  difficultyLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
-  assignment?: 'CLASS' | 'HOMEWORK';
-  exercisePurpose?: string;
-}
-
-export interface UpdateLessonExerciseInput {
-  /**
-   * Teacher-edited adaptation text (P1.6B).
-   * For sourceType='textbook' exercises this is the ONLY field that changes displayed text.
-   * Send null or "" to reset (restores verbatim text as the effective text).
-   * For sourceType='manual' exercises exerciseTextVerbatim may still be patched directly.
-   */
-  exerciseTextEdited?: string | null;
-  /** Only accepted for sourceType='manual' exercises. Rejected for textbook exercises. */
-  exerciseTextVerbatim?: string;
-  relatedNodeId?: number | null;
-  successCriteria?: string;
-  interactionType?: 'multiple_choice' | 'true_false' | 'constructed_response' | null;
-  correctAnswer?: string | null;
-  difficultyLevel?: string;
-  assignment?: string;
-  exercisePurpose?: string;
-  /** Gate 1.4 approval lifecycle: "draft" | "reviewed" | "approved" */
-  status?: string;
-}
-
-export interface ApproveAllLessonExercisesResponse {
-  approvedCount: number;
-  lessonId: number;
-}
-
-/** P1.7: Individual validation issue returned by POST /lessons/:id/final-approve */
-export interface LessonApprovalIssue {
-  code: string;
-  messageArm: string;
-  nodeId?: number;
-  nodeTitle?: string;
-  count?: number;
-}
-
-/** P1.7: Summary counts returned alongside errors/warnings */
-export interface LessonApprovalSummary {
-  totalNodes: number;
-  approvedNodes: number;
-  totalTopics: number;
-  sourceExercises: number;
-  approvedSourceExercises: number;
-  draftSourceExercises: number;
-  phase2CompleteNodes: number;
-  missingLONodes: number;
-  emptyNodes: number;
-}
-
-/** P1.7: Response from POST /lessons/:id/final-approve */
-export interface FinalApproveResponse {
-  approved: boolean;
-  lessonId: number;
-  errors: LessonApprovalIssue[];
-  warnings: LessonApprovalIssue[];
-  summary: LessonApprovalSummary;
-}
 

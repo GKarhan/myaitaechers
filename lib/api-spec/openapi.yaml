@@ -3353,22 +3353,6 @@ components:
         lessonId:
           type: integer
 
-    KnowledgeTopic:
-      type: object
-      required: [id, topicName, score, status, masteryLevel]
-      properties:
-        id:
-          type: integer
-        topicName:
-          type: string
-        score:
-          type: integer
-        status:
-          type: string
-        masteryLevel:
-          type: string
-          enum: [mastered, weak, not_started]
-
     AIRecommendation:
       type: object
       required: [type, message, topicName]
@@ -3381,22 +3365,148 @@ components:
         topicName:
           type: string
 
-    KnowledgeTreeData:
+    KnowledgeState:
+      type: string
+      enum: [MASTERED, PARTIAL, NOT_KNOWN, NOT_STUDIED]
+
+    KnowledgeTreeCoverage:
       type: object
-      required: [subjectId, subjectName, topics, recommendations]
+      required:
+        [totalUnits, studiedCount, notStudiedCount, coveragePercent, masteredCount, partialCount, doesNotKnowCount, notStartedCount]
       properties:
-        subjectId:
+        totalUnits:
           type: integer
-        subjectName:
+        studiedCount:
+          type: integer
+        notStudiedCount:
+          type: integer
+        coveragePercent:
+          type: integer
+          nullable: true
+        masteredCount:
+          type: integer
+        partialCount:
+          type: integer
+        doesNotKnowCount:
+          type: integer
+        notStartedCount:
+          type: integer
+
+    KnowledgeTreeCognitiveLevel:
+      type: object
+      required: [id, cognitiveLevel, sequence]
+      properties:
+        id:
+          type: integer
+        cognitiveLevel:
           type: string
-        topics:
+        sequence:
+          type: integer
+
+    KnowledgeTreeMicroNode:
+      type: object
+      required:
+        [lessonNodeId, title, sequence, masteryScore, confidenceScore, masteryLevel, knowledgeState, knowledgeStateLabel, coverageState, meaningfulAttemptCount, qualifyingEvidenceCount, targetCognitiveLevel, demonstratedCognitiveLevel, remainingCognitiveLevels, stateReason]
+      properties:
+        lessonNodeId:
+          type: integer
+        title:
+          type: string
+        sequence:
+          type: integer
+        masteryScore:
+          type: integer
+        confidenceScore:
+          type: integer
+          nullable: true
+        masteryLevel:
+          type: string
+          enum: [mastered, weak, in_progress, not_started]
+        knowledgeState:
+          $ref: "#/components/schemas/KnowledgeState"
+        knowledgeStateLabel:
+          type: string
+        coverageState:
+          type: string
+          enum: [STUDIED, NOT_STUDIED]
+        meaningfulAttemptCount:
+          type: integer
+        qualifyingEvidenceCount:
+          type: integer
+        targetCognitiveLevel:
+          allOf:
+            - $ref: "#/components/schemas/KnowledgeTreeCognitiveLevel"
+          nullable: true
+        demonstratedCognitiveLevel:
+          allOf:
+            - $ref: "#/components/schemas/KnowledgeTreeCognitiveLevel"
+          nullable: true
+        remainingCognitiveLevels:
           type: array
           items:
-            $ref: "#/components/schemas/KnowledgeTopic"
-        recommendations:
-          type: array
-          items:
-            $ref: "#/components/schemas/AIRecommendation"
+            type: string
+        stateReason:
+          type: string
+
+    KnowledgeTreeTopic:
+      allOf:
+        - $ref: "#/components/schemas/KnowledgeTreeCoverage"
+        - type: object
+          required: [topicId, topicTitle, topicSequence, nodes]
+          properties:
+            topicId:
+              type: integer
+            topicTitle:
+              type: string
+            topicSequence:
+              type: integer
+            nodes:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeTreeMicroNode"
+
+    KnowledgeTreeLesson:
+      allOf:
+        - $ref: "#/components/schemas/KnowledgeTreeCoverage"
+        - type: object
+          required: [lessonId, lessonTitle, lessonNumber, topics, ungroupedNodes, ungroupedCoverage]
+          properties:
+            lessonId:
+              type: integer
+            lessonTitle:
+              type: string
+            lessonNumber:
+              type: integer
+              nullable: true
+            topics:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeTreeTopic"
+            ungroupedNodes:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeTreeMicroNode"
+            ungroupedCoverage:
+              $ref: "#/components/schemas/KnowledgeTreeCoverage"
+
+    KnowledgeTreeData:
+      allOf:
+        - $ref: "#/components/schemas/KnowledgeTreeCoverage"
+        - type: object
+          required: [subjectId, subjectName, lessons, recommendations]
+          properties:
+            subjectId:
+              type: integer
+            subjectName:
+              type: string
+            lessons:
+              type: array
+              items:
+                $ref: "#/components/schemas/KnowledgeTreeLesson"
+            recommendations:
+              type: array
+              items:
+                $ref: "#/components/schemas/AIRecommendation"
 
     LessonPhase:
       type: object

@@ -10,7 +10,6 @@ export interface CourseItem {
   id: number;
   classId: number;
   teacherId?: number | null;
-  subjectId?: number | null;
   name: string;
   description?: string;
   lessonCount?: number;

@@ -19,6 +19,15 @@ interface NodeDetailLearnerState {
   masteryScore:    number;
   confidenceScore: number | null;
   masteryLevel:    "mastered" | "weak" | "in_progress" | "not_started";
+  knowledgeState: "MASTERED" | "PARTIAL" | "NOT_KNOWN" | "NOT_STUDIED";
+  knowledgeStateLabel: string;
+  coverageState: "STUDIED" | "NOT_STUDIED";
+  meaningfulAttemptCount: number;
+  qualifyingEvidenceCount: number;
+  targetCognitiveLevel: { id: number; cognitiveLevel: string; sequence: number } | null;
+  demonstratedCognitiveLevel: { id: number; cognitiveLevel: string; sequence: number } | null;
+  remainingCognitiveLevels: string[];
+  stateReason: string;
 }
 
 interface NodeDetailEvidenceItem {
@@ -57,23 +66,14 @@ export interface NodeDetail {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type MasteryLevel4 = "mastered" | "weak" | "in_progress" | "not_started";
+type KnowledgeState = "MASTERED" | "PARTIAL" | "NOT_KNOWN" | "NOT_STUDIED";
 
-function masteryConfig(level: MasteryLevel4) {
+function knowledgeStateConfig(level: KnowledgeState) {
   switch (level) {
-    case "mastered":    return { colour: "text-secondary",   bg: "bg-secondary/10 border-secondary/20"   };
-    case "weak":        return { colour: "text-accent",      bg: "bg-accent/10 border-accent/20"         };
-    case "in_progress": return { colour: "text-primary",     bg: "bg-primary/10 border-primary/20"       };
-    case "not_started": return { colour: "text-destructive", bg: "bg-destructive/10 border-destructive/20" };
-  }
-}
-
-function armenianMasteryLabel(level: MasteryLevel4): string {
-  switch (level) {
-    case "mastered":    return "Գիտի";
-    case "weak":        return "Մասնակի գիտի";
-    case "in_progress": return "Չգիտի";
-    case "not_started": return "Դեռ չի ուսումնասիրել";
+    case "MASTERED":    return { colour: "text-secondary",   bg: "bg-secondary/10 border-secondary/20"   };
+    case "PARTIAL":     return { colour: "text-accent",      bg: "bg-accent/10 border-accent/20"         };
+    case "NOT_KNOWN":   return { colour: "text-primary",     bg: "bg-primary/10 border-primary/20"       };
+    case "NOT_STUDIED": return { colour: "text-destructive", bg: "bg-destructive/10 border-destructive/20" };
   }
 }
 
@@ -201,7 +201,7 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
 // ── Panel body ────────────────────────────────────────────────────────────────
 
 function PanelContent({ data }: { data: NodeDetail }) {
-  const mCfg = masteryConfig(data.learnerState.masteryLevel);
+  const mCfg = knowledgeStateConfig(data.learnerState.knowledgeState);
 
   return (
     <>
@@ -252,7 +252,7 @@ function PanelContent({ data }: { data: NodeDetail }) {
         {/* State badge */}
         <div className="flex items-center gap-3">
           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${mCfg.bg} ${mCfg.colour}`}>
-            {armenianMasteryLabel(data.learnerState.masteryLevel)}
+            {data.learnerState.knowledgeStateLabel}
           </span>
         </div>
 
@@ -261,6 +261,21 @@ function PanelContent({ data }: { data: NodeDetail }) {
           <span className="text-sm text-muted-foreground">Յուրացում</span>
           <span className="text-sm font-bold text-white">{data.learnerState.masteryScore}%</span>
         </div>
+
+        {data.learnerState.targetCognitiveLevel && (
+          <div className="pt-1 border-t border-card-border space-y-1">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-muted-foreground">Թիրախային մակարդակ</span>
+              <span className="text-white/80">{data.learnerState.targetCognitiveLevel.cognitiveLevel}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-muted-foreground">Ցուցադրված մակարդակ</span>
+              <span className="text-white/80">
+                {data.learnerState.demonstratedCognitiveLevel?.cognitiveLevel ?? "—"}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Confidence */}
         {data.learnerState.confidenceScore !== null && (

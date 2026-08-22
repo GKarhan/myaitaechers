@@ -16,7 +16,12 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, isNotNull, desc, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
-import { getMasteryLevelFromScores, aggregateKnowledgeCoverage } from "../lib/mastery";
+import { getMasteryLevelFromScores } from "../lib/mastery";
+import {
+  aggregateCanonicalKnowledgeState,
+  resolveKnowledgeTreeStates,
+  type KnowledgeState,
+} from "../services/knowledge-tree-state.js";
 
 const router = Router();
 
@@ -131,10 +136,13 @@ router.get(
         )
       );
 
-    // Step 3: Collect per-subject node lists for coverage aggregation (KT-1.4A).
-    // Only masteryLevel is needed — coverage does not average scores.
-    type NodeLevel = { masteryLevel: "mastered" | "weak" | "in_progress" | "not_started" };
-    const subjectNodes = new Map<number, NodeLevel[]>();
+    const stateMap = await resolveKnowledgeTreeStates(
+      targetUserId,
+      nodes.map((node) => node.lessonNodeId),
+    );
+
+    // Step 3: Collect per-subject node lists from the canonical C5 classifier.
+    const subjectNodes = new Map<number, Array<{ knowledgeState: KnowledgeState }>>();
     for (const sid of subjectMeta.keys()) {
       subjectNodes.set(sid, []);
     }
@@ -145,11 +153,8 @@ router.get(
       const list = subjectNodes.get(sid);
       if (!list) continue;
 
-      const rawLevel = getMasteryLevelFromScores(node.masteryScore, node.confidenceScore, node.dueAt ?? null);
-      // needs_review folds into mastered (same 4-state policy as per-subject KT endpoint)
-      const masteryLevel = (rawLevel === "needs_review" ? "mastered" : rawLevel) as NodeLevel["masteryLevel"];
-
-      list.push({ masteryLevel });
+      const state = stateMap.get(node.lessonNodeId);
+      if (state) list.push({ knowledgeState: state.knowledgeState });
     }
 
     // Step 4: Build response preserving enrollment order (deduped by subjectId).
@@ -158,7 +163,7 @@ router.get(
     for (const row of validCourses) {
       if (seen.has(row.subjectId)) continue;
       seen.add(row.subjectId);
-      const coverage = aggregateKnowledgeCoverage(subjectNodes.get(row.subjectId) ?? []);
+      const coverage = aggregateCanonicalKnowledgeState(subjectNodes.get(row.subjectId) ?? []);
       subjects.push({ subjectId: row.subjectId, subjectName: row.subjectName, ...coverage });
     }
 
@@ -261,6 +266,10 @@ router.get(
       .limit(1);
 
     const kn = knRows[0] ?? null;
+
+    const state = (
+      await resolveKnowledgeTreeStates(userId, [lessonNodeId])
+    ).get(lessonNodeId);
 
     // 7. Get review_schedule via knowledge_nodes.id (topicId FK = kn.id)
     let dueAt: Date | null = null;
@@ -370,6 +379,15 @@ router.get(
         masteryScore,
         confidenceScore: kn?.confidenceScore ?? null,
         masteryLevel,
+        knowledgeState: state?.knowledgeState ?? "NOT_STUDIED",
+        knowledgeStateLabel: state?.knowledgeStateLabel ?? "Դեռ չի ուսումնասիրել",
+        coverageState: state?.coverageState ?? "NOT_STUDIED",
+        meaningfulAttemptCount: state?.meaningfulAttemptCount ?? 0,
+        qualifyingEvidenceCount: state?.qualifyingEvidenceCount ?? 0,
+        targetCognitiveLevel: state?.targetCognitiveLevel ?? null,
+        demonstratedCognitiveLevel: state?.demonstratedCognitiveLevel ?? null,
+        remainingCognitiveLevels: state?.remainingCognitiveLevels ?? [],
+        stateReason: state?.stateReason ?? "NO_MEANINGFUL_ATTEMPT",
       },
 
       nextReviewAt: dueAt ? dueAt.toISOString() : null,
@@ -491,7 +509,13 @@ router.get(
       .where(eq(coursesTable.subjectId, subjectId));
 
     if (enrolledCourses.length === 0) {
-      res.json({ subjectId: subject.id, subjectName: subject.name, lessons: [], recommendations: [] });
+      res.json({
+        subjectId: subject.id,
+        subjectName: subject.name,
+        ...aggregateCanonicalKnowledgeState([]),
+        lessons: [],
+        recommendations: [],
+      });
       return;
     }
     const courseIds = enrolledCourses.map((c) => c.courseId);
@@ -533,6 +557,11 @@ router.get(
         eq(lessonNodesTable.status, "approved"),
       ));
 
+    const stateMap = await resolveKnowledgeTreeStates(
+      targetUserId,
+      nodeRows.map((row) => row.lessonNodeId),
+    );
+
     // ── Step 2: Fetch lesson_topics for all involved lessons ─────────────────
     const lessonIds = [...new Set(nodeRows.map(r => r.lessonId))];
     const topicRows = lessonIds.length > 0
@@ -553,6 +582,23 @@ router.get(
       masteryScore: number;       // pre-normalised: 0 for not_started
       confidenceScore: number | null;
       masteryLevel: MasteryLevel4;
+      knowledgeState: KnowledgeState;
+      knowledgeStateLabel: string;
+      coverageState: "STUDIED" | "NOT_STUDIED";
+      meaningfulAttemptCount: number;
+      qualifyingEvidenceCount: number;
+      targetCognitiveLevel: {
+        id: number;
+        cognitiveLevel: string;
+        sequence: number;
+      } | null;
+      demonstratedCognitiveLevel: {
+        id: number;
+        cognitiveLevel: string;
+        sequence: number;
+      } | null;
+      remainingCognitiveLevels: string[];
+      stateReason: string;
     }
 
     // Process each flat row → typed MicroNode
@@ -562,6 +608,17 @@ router.get(
       );
       const masteryLevel: MasteryLevel4 =
         rawLevel === "needs_review" ? "mastered" : rawLevel;
+      const canonical = stateMap.get(row.lessonNodeId) ?? {
+        knowledgeState: "NOT_STUDIED" as const,
+        knowledgeStateLabel: "Դեռ չի ուսումնասիրել",
+        coverageState: "NOT_STUDIED" as const,
+        meaningfulAttemptCount: 0,
+        qualifyingEvidenceCount: 0,
+        targetCognitiveLevel: null,
+        demonstratedCognitiveLevel: null,
+        remainingCognitiveLevels: [],
+        stateReason: "NO_MEANINGFUL_ATTEMPT",
+      };
       return {
         lessonId:  row.lessonId,
         topicId:   row.topicId ?? null,
@@ -571,6 +628,7 @@ router.get(
         masteryScore:    row.masteryScore    ?? 0,
         confidenceScore: row.confidenceScore ?? null,
         masteryLevel,
+        ...canonical,
         // lesson meta — kept for lesson map below
         lessonTitle:  row.lessonTitle,
         lessonNumber: row.lessonNumber,
@@ -605,6 +663,15 @@ router.get(
         masteryScore: node.masteryScore,
         confidenceScore: node.confidenceScore,
         masteryLevel: node.masteryLevel,
+         knowledgeState: node.knowledgeState,
+         knowledgeStateLabel: node.knowledgeStateLabel,
+         coverageState: node.coverageState,
+         meaningfulAttemptCount: node.meaningfulAttemptCount,
+         qualifyingEvidenceCount: node.qualifyingEvidenceCount,
+         targetCognitiveLevel: node.targetCognitiveLevel,
+         demonstratedCognitiveLevel: node.demonstratedCognitiveLevel,
+         remainingCognitiveLevels: node.remainingCognitiveLevels,
+         stateReason: node.stateReason,
       });
     }
 
@@ -643,8 +710,8 @@ router.get(
             topicTitle:    topic.title,
             topicSequence: topic.sequence,
             nodes,
-            // KT-1.4A: authoritative topic-level coverage aggregation
-            ...aggregateKnowledgeCoverage(nodes),
+            // C5: authoritative topic-level aggregation from canonical state.
+            ...aggregateCanonicalKnowledgeState(nodes),
           };
         })
         .filter(t => t.nodes.length > 0);  // omit topics with zero approved nodes
@@ -664,10 +731,9 @@ router.get(
         lessonNumber: meta.lessonNumber,
         topics,
         ungroupedNodes,
-        // KT-1.4A: coverage for "Առanc khmbi" (ungrouped) display group
-        ungroupedCoverage: aggregateKnowledgeCoverage(ungroupedNodes),
-        // KT-1.4A: lesson-level coverage (topics + ungrouped)
-        ...aggregateKnowledgeCoverage(allLessonNodes),
+        // C5: coverage for "Առanc khmbi" and lesson uses canonical state.
+        ungroupedCoverage: aggregateCanonicalKnowledgeState(ungroupedNodes),
+        ...aggregateCanonicalKnowledgeState(allLessonNodes),
       };
     });
 
@@ -680,10 +746,10 @@ router.get(
       topicName: string;
     }> = [];
 
-    const notStarted = flatNodes.filter(n => n.masteryLevel === "not_started");
-    const inProgress = flatNodes.filter(n => n.masteryLevel === "in_progress");
-    const weak       = flatNodes.filter(n => n.masteryLevel === "weak");
-    const mastered   = flatNodes.filter(n => n.masteryLevel === "mastered");
+    const notStarted = flatNodes.filter(n => n.knowledgeState === "NOT_STUDIED");
+    const inProgress = flatNodes.filter(n => n.knowledgeState === "NOT_KNOWN");
+    const weak       = flatNodes.filter(n => n.knowledgeState === "PARTIAL");
+    const mastered   = flatNodes.filter(n => n.knowledgeState === "MASTERED");
 
     if (notStarted.length > 0) {
       recommendations.push({
@@ -719,8 +785,8 @@ router.get(
       console.warn(`[KT-1.3] Duplicate lessonNodeIds detected for subjectId=${subjectId}`);
     }
 
-    // KT-1.4A: subject-level coverage aggregation from all visible atomic MicroNodes
-    const subjectCoverage = aggregateKnowledgeCoverage(processedNodes);
+    // C5: subject-level aggregation from all visible canonical MicroNode states.
+    const subjectCoverage = aggregateCanonicalKnowledgeState(processedNodes);
 
     res.json({
       subjectId:   subject.id,

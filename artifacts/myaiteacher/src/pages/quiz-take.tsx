@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateKnowledgeTreeQueries } from "@/lib/knowledge-tree-cache";
 
 interface TakeQuestion {
   id: number;
@@ -35,6 +37,7 @@ const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 export default function QuizTake() {
   const { id } = useParams<{ id: string }>();
   const { token, isLoading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const quizId = parseInt(id || "", 10);
 
@@ -90,6 +93,7 @@ export default function QuizTake() {
       const res = await resp.json();
       if (!resp.ok) throw new Error(res.error ?? "Ձakholvec");
       setResult(res);
+      void invalidateKnowledgeTreeQueries(queryClient);
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Ձakholvec");
     } finally {

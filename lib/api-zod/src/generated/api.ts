@@ -228,21 +228,111 @@ export const GetKnowledgeTreeParams = zod.object({
 })
 
 export const GetKnowledgeTreeResponse = zod.object({
+  "totalUnits": zod.number(),
+  "studiedCount": zod.number(),
+  "notStudiedCount": zod.number(),
+  "coveragePercent": zod.number().nullable(),
+  "masteredCount": zod.number(),
+  "partialCount": zod.number(),
+  "doesNotKnowCount": zod.number(),
+  "notStartedCount": zod.number()
+}).and(zod.object({
   "subjectId": zod.number(),
   "subjectName": zod.string(),
+  "lessons": zod.array(zod.object({
+  "totalUnits": zod.number(),
+  "studiedCount": zod.number(),
+  "notStudiedCount": zod.number(),
+  "coveragePercent": zod.number().nullable(),
+  "masteredCount": zod.number(),
+  "partialCount": zod.number(),
+  "doesNotKnowCount": zod.number(),
+  "notStartedCount": zod.number()
+}).and(zod.object({
+  "lessonId": zod.number(),
+  "lessonTitle": zod.string(),
+  "lessonNumber": zod.number().nullable(),
   "topics": zod.array(zod.object({
+  "totalUnits": zod.number(),
+  "studiedCount": zod.number(),
+  "notStudiedCount": zod.number(),
+  "coveragePercent": zod.number().nullable(),
+  "masteredCount": zod.number(),
+  "partialCount": zod.number(),
+  "doesNotKnowCount": zod.number(),
+  "notStartedCount": zod.number()
+}).and(zod.object({
+  "topicId": zod.number(),
+  "topicTitle": zod.string(),
+  "topicSequence": zod.number(),
+  "nodes": zod.array(zod.object({
+  "lessonNodeId": zod.number(),
+  "title": zod.string(),
+  "sequence": zod.number(),
+  "masteryScore": zod.number(),
+  "confidenceScore": zod.number().nullable(),
+  "masteryLevel": zod.enum(['mastered', 'weak', 'in_progress', 'not_started']),
+  "knowledgeState": zod.enum(['MASTERED', 'PARTIAL', 'NOT_KNOWN', 'NOT_STUDIED']),
+  "knowledgeStateLabel": zod.string(),
+  "coverageState": zod.enum(['STUDIED', 'NOT_STUDIED']),
+  "meaningfulAttemptCount": zod.number(),
+  "qualifyingEvidenceCount": zod.number(),
+  "targetCognitiveLevel": zod.object({
   "id": zod.number(),
-  "topicName": zod.string(),
-  "score": zod.number(),
-  "status": zod.string(),
-  "masteryLevel": zod.enum(['mastered', 'weak', 'not_started'])
+  "cognitiveLevel": zod.string(),
+  "sequence": zod.number()
+}).nullable(),
+  "demonstratedCognitiveLevel": zod.object({
+  "id": zod.number(),
+  "cognitiveLevel": zod.string(),
+  "sequence": zod.number()
+}).nullable(),
+  "remainingCognitiveLevels": zod.array(zod.string()),
+  "stateReason": zod.string()
+}))
+}))),
+  "ungroupedNodes": zod.array(zod.object({
+  "lessonNodeId": zod.number(),
+  "title": zod.string(),
+  "sequence": zod.number(),
+  "masteryScore": zod.number(),
+  "confidenceScore": zod.number().nullable(),
+  "masteryLevel": zod.enum(['mastered', 'weak', 'in_progress', 'not_started']),
+  "knowledgeState": zod.enum(['MASTERED', 'PARTIAL', 'NOT_KNOWN', 'NOT_STUDIED']),
+  "knowledgeStateLabel": zod.string(),
+  "coverageState": zod.enum(['STUDIED', 'NOT_STUDIED']),
+  "meaningfulAttemptCount": zod.number(),
+  "qualifyingEvidenceCount": zod.number(),
+  "targetCognitiveLevel": zod.object({
+  "id": zod.number(),
+  "cognitiveLevel": zod.string(),
+  "sequence": zod.number()
+}).nullable(),
+  "demonstratedCognitiveLevel": zod.object({
+  "id": zod.number(),
+  "cognitiveLevel": zod.string(),
+  "sequence": zod.number()
+}).nullable(),
+  "remainingCognitiveLevels": zod.array(zod.string()),
+  "stateReason": zod.string()
 })),
+  "ungroupedCoverage": zod.object({
+  "totalUnits": zod.number(),
+  "studiedCount": zod.number(),
+  "notStudiedCount": zod.number(),
+  "coveragePercent": zod.number().nullable(),
+  "masteredCount": zod.number(),
+  "partialCount": zod.number(),
+  "doesNotKnowCount": zod.number(),
+  "notStartedCount": zod.number()
+})
+}))),
   "recommendations": zod.array(zod.object({
   "type": zod.enum(['start', 'review', 'repeat']),
   "message": zod.string(),
   "topicName": zod.string()
 }))
-})
+}))
 
 
 /**
@@ -335,6 +425,89 @@ export const DeleteLessonParams = zod.object({
 })
 
 export const DeleteLessonResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List all nodes for a lesson ordered by sequence
+ */
+export const GetLessonNodesParams = zod.object({
+  "lessonId": zod.coerce.number()
+})
+
+export const GetLessonNodesResponseItem = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "sequence": zod.number(),
+  "title": zod.string(),
+  "theoryContent": zod.string().nullish(),
+  "targetBloomLevel": zod.number().nullish(),
+  "estimatedMinutes": zod.number().nullish()
+})
+export const GetLessonNodesResponse = zod.array(GetLessonNodesResponseItem)
+
+
+/**
+ * @summary Create a new node for a lesson
+ */
+export const CreateLessonNodeParams = zod.object({
+  "lessonId": zod.coerce.number()
+})
+
+export const CreateLessonNodeBody = zod.object({
+  "title": zod.string(),
+  "theoryContent": zod.string().optional(),
+  "targetBloomLevel": zod.number().optional(),
+  "estimatedMinutes": zod.number().optional()
+})
+
+export const CreateLessonNodeResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "sequence": zod.number(),
+  "title": zod.string(),
+  "theoryContent": zod.string().nullish(),
+  "targetBloomLevel": zod.number().nullish(),
+  "estimatedMinutes": zod.number().nullish()
+})
+
+
+/**
+ * @summary Update a lesson node
+ */
+export const UpdateLessonNodeParams = zod.object({
+  "lessonId": zod.coerce.number(),
+  "nodeId": zod.coerce.number()
+})
+
+export const UpdateLessonNodeBody = zod.object({
+  "title": zod.string().optional(),
+  "theoryContent": zod.string().optional(),
+  "targetBloomLevel": zod.number().optional(),
+  "estimatedMinutes": zod.number().optional()
+})
+
+export const UpdateLessonNodeResponse = zod.object({
+  "id": zod.number(),
+  "lessonId": zod.number(),
+  "sequence": zod.number(),
+  "title": zod.string(),
+  "theoryContent": zod.string().nullish(),
+  "targetBloomLevel": zod.number().nullish(),
+  "estimatedMinutes": zod.number().nullish()
+})
+
+
+/**
+ * @summary Delete a lesson node
+ */
+export const DeleteLessonNodeParams = zod.object({
+  "lessonId": zod.coerce.number(),
+  "nodeId": zod.coerce.number()
+})
+
+export const DeleteLessonNodeResponse = zod.object({
   "message": zod.string()
 })
 

@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface CreateCourseInput {
-  name: string;
-  description?: string;
+export interface KnowledgeTreeCognitiveLevel {
+  id: number;
+  cognitiveLevel: string;
+  sequence: number;
 }

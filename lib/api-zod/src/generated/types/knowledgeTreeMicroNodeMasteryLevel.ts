@@ -6,11 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type KnowledgeTopicMasteryLevel = typeof KnowledgeTopicMasteryLevel[keyof typeof KnowledgeTopicMasteryLevel];
+export type KnowledgeTreeMicroNodeMasteryLevel = typeof KnowledgeTreeMicroNodeMasteryLevel[keyof typeof KnowledgeTreeMicroNodeMasteryLevel];
 
 
-export const KnowledgeTopicMasteryLevel = {
+export const KnowledgeTreeMicroNodeMasteryLevel = {
   mastered: 'mastered',
   weak: 'weak',
+  in_progress: 'in_progress',
   not_started: 'not_started',
 } as const;
