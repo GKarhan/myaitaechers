@@ -1,0 +1,396 @@
+FINAL TASK — C2 FAST CLOSE
+COMPLETE THE MINIMUM SAFE COGNITIVE PATH FLOW AND MOVE ON
+
+GOAL
+
+Close C2 quickly and safely for the current real lesson.
+
+This is NOT a general Cognitive Path redesign.
+This is NOT a cleanup/refactor task.
+Do NOT expand scope.
+
+Current real lesson:
+
+Մաթեմատիկա 5
+§1.2 Բնական թվերի շարքը
+resource #19
+physical PDF pages 14–15
+
+Resolve the current lesson ID from DB.
+The latest audit resolved it as lesson 644.
+
+Current audit facts:
+
+- 4 persisted MicroNodes
+- MN 2284:
+  approved
+  confirmed Cognitive Path exists
+  GROUNDED
+  remember → understand(target)
+
+- MN 2285:
+  approved
+  no modern Cognitive Path
+
+- MN 2286:
+  approved
+  no modern Cognitive Path
+
+- MN 2287:
+  needs_review
+  no Cognitive Path
+
+- AI Teacher currently does not hard-gate Cognitive Path consumption
+  on cogPathStatus === "confirmed".
+
+- REVIEW_REQUIRED grounding is currently too permissive for strict
+  runtime consumption.
+
+==================================================
+SCOPE PRINCIPLE
+==================================================
+
+For this FAST CLOSE task:
+
+C2 acceptance applies only to APPROVED MicroNodes.
+
+A MicroNode already persisted as needs_review must NOT block C2
+completion for the approved subset.
+
+Do NOT automatically approve MN 2287.
+Do NOT invent missing source support for it.
+Do NOT reopen C1.
+
+The system must clearly report it as excluded from C2 acceptance
+because teacher review is still required.
+
+==================================================
+PART 1 — COMPLETE MISSING PATHS
+==================================================
+
+For APPROVED MicroNodes only:
+
+- 2284
+- 2285
+- 2286
+
+ensure each has a usable modern Cognitive Path in:
+
+lesson_node_cognitive_levels
+
+Each path must have:
+
+- ordered cognitive levels
+- exactly one target ceiling
+- performanceObjective
+- successCriterion
+- minimumIndependentEvidence
+- preferredInteractionTypes
+- grounding result
+- teacher confirmation state
+
+DO NOT create a Cognitive Path for MN 2287 as part of this task.
+
+Use the existing production Cognitive Path generation pipeline.
+
+Do NOT manually invent DB rows unless the existing generation path
+cannot perform the operation.
+
+==================================================
+PART 2 — TARGET CEILING / OUTCOME CAPACITY
+==================================================
+
+For each APPROVED MicroNode:
+
+compare:
+
+1. source-backed MicroNode learning objective
+2. Cognitive Path target ceiling
+3. REQUIRED Outcome requiredCognitiveDepth
+
+The confirmed target ceiling must be sufficient for the REQUIRED
+Outcome assigned to that MicroNode.
+
+IMPORTANT:
+
+Do NOT blindly raise a target ceiling just to silence a warning.
+
+Raise/adjust it only if the MicroNode's verified learning objective
+and source-backed instructional scope support that level.
+
+For MN 2284 specifically:
+
+current path:
+remember → understand(target)
+
+but a REQUIRED Outcome currently requires apply.
+
+Determine whether the persisted verified MicroNode objective/source
+supports an APPLY target.
+
+IF YES:
+generate/edit the path so the target ceiling legitimately reaches
+APPLY and validate grounding.
+
+IF NO:
+do NOT fabricate APPLY content.
+Keep the source-supported ceiling and mark that specific Outcome
+alignment as requiring curriculum review.
+
+For FAST CLOSE, an Outcome attached to an excluded needs_review
+MicroNode must not block acceptance of the approved MicroNode subset.
+
+==================================================
+PART 3 — RUNTIME SAFETY FIX
+==================================================
+
+Make one narrow backend safety fix:
+
+AI Teacher / chat runtime may consume a modern Cognitive Path ONLY IF:
+
+lesson_nodes.cogPathStatus === "confirmed"
+
+AND
+
+the path grounding state is GROUNDED / accepted according to the
+canonical persisted C2 grounding result.
+
+A needs_review, unconfirmed, REVIEW_REQUIRED, INVALID, incomplete,
+or otherwise non-accepted path MUST NOT control:
+
+- active cognitive level
+- progression
+- target ceiling
+- evidence threshold
+- performance objective
+- success criterion
+- exercise filtering
+
+Use the existing safe fallback behavior when no accepted modern path
+is available.
+
+Do NOT redesign AI Teacher.
+
+==================================================
+PART 4 — TEACHER CONFIRMATION
+==================================================
+
+For generated paths:
+
+preserve the existing teacher-review contract.
+
+Generation itself must NOT silently become confirmation.
+
+However, for this real acceptance test, use the existing supported
+teacher/admin authoring mechanism to review the generated result.
+
+Confirm a path only if:
+
+- grounding is GROUNDED
+- required fields are complete
+- exactly one target ceiling exists
+- target is supported by the MicroNode
+- no unsupported knowledge was introduced
+
+Do not weaken confirmation validation.
+
+==================================================
+PART 5 — EXERCISES ARE NOT A FAST-CLOSE BLOCKER
+==================================================
+
+Do NOT make full lesson_node_cognitive_tasks coverage a blocker for
+this task.
+
+Existing node-level exercise fallback may remain temporarily.
+
+Do NOT spend this task:
+
+- mapping every exercise to every cognitive level
+- redesigning exercise evidence
+- approving all 13 exercises
+- building new exercise UI
+
+Record level-specific task coverage as FOLLOW-UP / BACKLOG.
+
+C3 can address evidence/task completeness later.
+
+==================================================
+PART 6 — DO NOT DO THESE
+==================================================
+
+DO NOT:
+
+- reopen C1
+- remap the lesson
+- change PDF/source verification
+- modify source provenance architecture
+- redesign Cognitive Path architecture
+- remove legacy targetBloomLevel everywhere
+- redesign quiz logic
+- redesign Knowledge Tree
+- build reorder UI
+- add semantic objective-quality architecture
+- perform broad schema cleanup
+- start C3
+- modify MN 2287 into fake acceptance
+- create unrelated tasks/refactors
+
+Also do NOT implement every P1/P2 item from the audit.
+
+This is FAST CLOSE.
+
+==================================================
+PART 7 — REGRESSION TESTS
+==================================================
+
+Add/run focused tests proving at minimum:
+
+A.
+confirmed + GROUNDED path
+→ runtime may consume it
+
+B.
+needs_review path
+→ runtime must not consume it
+
+C.
+unconfirmed generated path
+→ runtime must not consume it
+
+D.
+REVIEW_REQUIRED / INVALID grounding
+→ runtime must not consume it as accepted C2
+
+E.
+approved MicroNode with confirmed accepted path
+→ C2 coverage PASS
+
+F.
+needs_review MicroNode without path
+→ excluded from approved-node C2 coverage,
+not silently treated as accepted
+
+G.
+target ceiling below REQUIRED Outcome depth
+→ detected explicitly
+
+H.
+target ceiling equal/above required depth
+→ PASS
+
+Run:
+
+- focused C2 tests
+- relevant AI Teacher/chat tests
+- API typecheck
+- web typecheck
+- API build
+- web build
+
+Do not fix unrelated failures.
+
+==================================================
+PART 8 — REAL LESSON ACCEPTANCE
+==================================================
+
+After tests pass, perform ONE controlled real acceptance verification
+on the current lesson.
+
+Do NOT remap C1.
+
+Verify persisted state.
+
+Required FAST-CLOSE result:
+
+APPROVED MICRO NODES:
+
+MN 2284
+- accepted Cognitive Path
+- confirmed
+- grounded
+- valid target ceiling
+
+MN 2285
+- accepted Cognitive Path
+- confirmed
+- grounded
+- valid target ceiling
+
+MN 2286
+- accepted Cognitive Path
+- confirmed
+- grounded
+- valid target ceiling
+
+MN 2287
+- remains needs_review unless separately resolved by real teacher review
+- excluded explicitly from approved-node C2 acceptance
+- must not provide an accepted runtime Cognitive Path
+
+Also verify:
+
+- AI Teacher can only load accepted confirmed paths
+- no unsupported Cognitive Path is used
+- no C1 data was replaced
+- no source provenance was weakened
+
+==================================================
+C2 FAST-CLOSE VERDICT
+==================================================
+
+Return exactly one of:
+
+C2 FAST CLOSE — PASS
+
+or
+
+C2 FAST CLOSE — BLOCKED
+
+PASS means:
+
+1. Every APPROVED MicroNode has an accepted confirmed Cognitive Path.
+2. Each accepted path is GROUNDED.
+3. Each has exactly one valid target ceiling.
+4. Required Outcome capacity conflicts for the approved subset are
+   either resolved source-faithfully or explicitly isolated as
+   curriculum-review items rather than silently accepted.
+5. AI Teacher cannot consume unconfirmed/review-required paths.
+6. needs_review MicroNodes are explicitly excluded rather than
+   falsely accepted.
+7. No C1/source-safety regression occurred.
+
+==================================================
+FINAL REPORT — KEEP IT SHORT
+==================================================
+
+Return:
+
+1. Files changed
+2. Tests/build result
+3. Approved MicroNodes:
+   - node id
+   - path
+   - target ceiling
+   - grounding
+   - confirmation
+4. Excluded review-required MicroNodes
+5. Outcome capacity conflicts:
+   resolved / still curriculum-review
+6. Runtime confirmed-path gate:
+   PASS/FAIL
+7. Deferred backlog:
+   - level-specific exercise mappings
+   - atomic regeneration hardening
+   - reorder UI
+   - legacy target cleanup
+   - other P1/P2 audit items
+8. FINAL VERDICT:
+   C2 FAST CLOSE — PASS/BLOCKED
+
+If PASS:
+
+STOP.
+
+Do NOT begin C3 automatically.
+Do NOT propose additional C2 improvements unless they are true safety
+blockers.
