@@ -1,0 +1,143 @@
+FINAL PHASE 2 READINESS CHECK + MINIMAL FIX
+
+Context:
+The lesson already has persisted C1 mapping and C2 Cognitive Paths.
+I have already attempted to generate the Phase 2 / teaching content.
+
+Do NOT regenerate everything blindly.
+First inspect the CURRENT persisted state and validation errors.
+
+Lesson:
+Մաթեմատիկա 5
+§1.2 Բնական թվերի շարքը
+Current real lesson ID: resolve from DB
+Resource #19
+Pages 14–15
+
+GOAL:
+Make this lesson pass the existing readiness/validation gate required for student assignment,
+with the SMALLEST possible fix.
+
+Do NOT redesign C1–C5.
+Do NOT change mapping architecture.
+Do NOT weaken source verification.
+Do NOT rewrite Cognitive Paths unless one specific invalid path is truly blocking readiness.
+Do NOT start C6/C7.
+
+STEP 1 — READ CURRENT STATE
+
+Inspect the real persisted lesson and report:
+
+- total MicroNodes
+- approved MicroNodes
+- needs_review MicroNodes
+- Cognitive Paths: confirmed / review-required
+- Phase 2 teaching-content rows/packages per MicroNode
+- exercises
+- Outcome–MicroNode links
+- current validation errors/warnings
+
+Specifically verify whether these previous errors still exist:
+
+- MISSING_PHASE2
+- AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED
+- COGNITIVE_PATH_GROUNDING_INVALID
+- COMPOUND_LO warnings
+
+Do not assume they still exist.
+
+STEP 2 — IDENTIFY THE ACTUAL ASSIGNMENT BLOCKER
+
+Trace the real readiness condition used before the lesson can be assigned to students.
+
+Determine exactly which validation issue currently blocks assignment.
+
+Distinguish:
+
+BLOCKING ERROR
+vs
+WARNING / REVIEW ITEM
+
+Do NOT treat warnings as blockers unless current backend contract explicitly does so.
+
+STEP 3 — FIX ONLY WHAT IS ACTUALLY MISSING
+
+If Phase 2 content is missing for any approved MicroNode:
+
+generate/persist teaching content ONLY for those missing MicroNodes.
+
+Do not regenerate already valid Phase 2 content.
+
+If one persisted Phase 2 package is incomplete:
+repair only that package.
+
+If Outcome–MicroNode links merely require teacher review:
+do not invent new links.
+Use the existing review/confirmation workflow if that is the actual required gate.
+
+If one Cognitive Path grounding issue is the blocker:
+identify the exact MicroNode and exact unsupported claim.
+Make the smallest source-faithful correction.
+Do not redesign the Cognitive Path system.
+
+If a needs_review MicroNode is intentionally allowed by the current teacher-review policy:
+do not let it block the whole lesson unless the current final-approval contract explicitly requires resolution.
+
+STEP 4 — RE-RUN VALIDATION
+
+Run the existing final readiness validation again.
+
+Report:
+
+ERRORS: N
+WARNINGS: N
+
+For every remaining error:
+- code
+- MicroNode
+- exact reason
+- whether it blocks assignment
+
+STEP 5 — VERIFY ASSIGNMENT READINESS
+
+Trace the same backend/frontend readiness state used by the assignment flow.
+
+Final result must answer:
+
+LESSON READY FOR ASSIGNMENT: YES / NO
+
+If YES:
+verify that the teacher assignment action is enabled for this lesson/quiz workflow.
+
+If NO:
+report the ONE smallest remaining blocker.
+
+STEP 6 — REGRESSION SAFETY
+
+Run only relevant checks:
+- Phase 2 validation tests
+- C2/C3/C4/C5 regressions if touched
+- API typecheck
+- Web typecheck if UI touched
+- builds for touched apps
+
+No broad refactor.
+
+FINAL REPORT — SHORT
+
+Return exactly:
+
+1. CURRENT PHASE 2 STATE
+2. CURRENT BLOCKERS
+3. FILES/DATA CHANGED
+4. MINIMAL FIX APPLIED
+5. VALIDATION:
+   ERRORS N
+   WARNINGS N
+6. LESSON READY FOR ASSIGNMENT: YES/NO
+7. ASSIGNMENT ACTION AVAILABLE: YES/NO
+8. REMAINING BLOCKER, if any
+
+If lesson is ready:
+STOP.
+Do not continue with C6 automatically.
