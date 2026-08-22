@@ -39,6 +39,15 @@ async function apiPost(path: string) {
   return { status: r.status, body: (await r.json()) as Record<string, unknown> };
 }
 
+async function apiPostJson(path: string, body: Record<string, unknown>) {
+  const r = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 type NodeRow = typeof lessonNodesTable.$inferSelect;
 type ExRow = typeof lessonExercisesTable.$inferSelect;
@@ -338,6 +347,87 @@ it("H1: needs_review teaching candidate blocks final-approve → 422", async () 
     );
   } finally {
     await restoreNode(snap!);
+  }
+});
+
+it("H2: persisted non-sufficient source alignment blocks final approval even if node is approved", async () => {
+  const [lesson] = await db.select({ metadata: lessonsTable.mappingMetadata })
+    .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+  const nodeSnap = await getNode(NODE.id);
+  assert.ok(nodeSnap);
+  const originalMetadata = (lesson?.metadata ?? {}) as Record<string, unknown>;
+  try {
+    await db.update(lessonNodesTable).set({
+      status: "approved",
+      changeReason: "SOURCE_ALIGNMENT:INSUFFICIENT:HEADING_ONLY",
+    }).where(eq(lessonNodesTable.id, NODE.id));
+    await db.update(lessonsTable).set({
+      mappingMetadata: {
+        ...originalMetadata,
+        quality: {
+          ...((originalMetadata.quality as Record<string, unknown>) ?? {}),
+          sourceAlignment: {
+            valid: false,
+            sufficientCount: 1,
+            partialCount: 0,
+            insufficientCount: 1,
+            unreadableCount: 0,
+            nodes: [{ nodeId: NODE.id, status: "INSUFFICIENT", reasonCode: "HEADING_ONLY" }],
+          },
+        },
+      },
+    }).where(eq(lessonsTable.id, LESSON_ID));
+    const result = await validateLessonForFinalApproval(LESSON_ID);
+    assert.ok(result.errors.some((error) => error.code === "MICRONODE_SOURCE_ALIGNMENT_REQUIRED"));
+  } finally {
+    await restoreNode(nodeSnap!);
+    await db.update(lessonsTable).set({ mappingMetadata: originalMetadata })
+      .where(eq(lessonsTable.id, LESSON_ID));
+  }
+});
+
+it("H3: explicit node approval records teacher resolution without erasing the original alignment audit", async () => {
+  const [lesson] = await db.select({ metadata: lessonsTable.mappingMetadata })
+    .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+  const nodeSnap = await getNode(NODE.id);
+  assert.ok(nodeSnap);
+  const originalMetadata = (lesson?.metadata ?? {}) as Record<string, unknown>;
+  try {
+    await db.update(lessonNodesTable).set({
+      status: "needs_review",
+      changeReason: "SOURCE_ALIGNMENT:INSUFFICIENT:HEADING_ONLY",
+    }).where(eq(lessonNodesTable.id, NODE.id));
+    await db.update(lessonsTable).set({
+      mappingMetadata: {
+        ...originalMetadata,
+        quality: {
+          ...((originalMetadata.quality as Record<string, unknown>) ?? {}),
+          sourceAlignment: {
+            valid: false,
+            sufficientCount: 1,
+            partialCount: 0,
+            insufficientCount: 1,
+            unreadableCount: 0,
+            nodes: [{ nodeId: NODE.id, status: "INSUFFICIENT", reasonCode: "HEADING_ONLY" }],
+          },
+        },
+      },
+    }).where(eq(lessonsTable.id, LESSON_ID));
+    const response = await apiPostJson(`/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, { status: "approved" });
+    assert.equal(response.status, 200);
+    const [updatedLesson] = await db.select({ metadata: lessonsTable.mappingMetadata })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    const auditNode = ((updatedLesson?.metadata as any)?.quality?.sourceAlignment?.nodes ?? [])[0];
+    assert.equal(auditNode.status, "INSUFFICIENT", "Original classifier status must remain auditable");
+    assert.equal(auditNode.reviewStatus, "RESOLVED_BY_TEACHER");
+    const updatedNode = await getNode(NODE.id);
+    assert.equal(updatedNode?.changeReason, "SOURCE_ALIGNMENT_REVIEWED_BY_TEACHER");
+    const validation = await validateLessonForFinalApproval(LESSON_ID);
+    assert.ok(!validation.errors.some((error) => error.code === "MICRONODE_SOURCE_ALIGNMENT_REQUIRED"));
+  } finally {
+    await restoreNode(nodeSnap!);
+    await db.update(lessonsTable).set({ mappingMetadata: originalMetadata })
+      .where(eq(lessonsTable.id, LESSON_ID));
   }
 });
 

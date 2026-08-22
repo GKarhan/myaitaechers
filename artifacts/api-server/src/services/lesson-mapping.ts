@@ -4350,8 +4350,10 @@ export function buildAutomaticOutcomeAlignmentPlan(
 
 /**
  * The route deletes old Topics/MicroNodes only after runPass2Pipeline resolves.
- * Keeping all hard gates in this pure assertion makes that replacement boundary
- * explicit and provider-free testable.
+ * Keeping source/provenance/structural gates in this pure assertion makes that
+ * replacement boundary explicit and provider-free testable. Source-alignment
+ * quality is deliberately not a lesson-level hard gate: non-sufficient nodes
+ * are persisted as teacher-review drafts while retaining their safe audit.
  */
 export function assertPass2PersistenceGates(input: {
   coverageValidation: CoverageValidationResult;
@@ -4370,9 +4372,6 @@ export function assertPass2PersistenceGates(input: {
   }
   if (!input.instructionalCoverage.valid) {
     throw new MappingInstructionalCoverageError(input.instructionalCoverage, input.diagnostics);
-  }
-  if (!input.sourceAlignment.valid) {
-    throw new MappingSourceAlignmentError(input.sourceAlignment);
   }
   if (input.duplicateResolution.unresolvedPairIds.length > 0) {
     throw new MappingGranularityReviewError(input.duplicateResolution);

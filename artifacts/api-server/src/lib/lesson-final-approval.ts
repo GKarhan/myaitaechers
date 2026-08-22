@@ -137,6 +137,7 @@ export async function validateLessonForFinalApproval(
       .where(eq(lessonOutcomesTable.lessonId, lessonId)),
     db.select({
       lessonOutcomeId: lessonOutcomeNodeAlignmentsTable.lessonOutcomeId,
+      lessonNodeId: lessonOutcomeNodeAlignmentsTable.lessonNodeId,
       role: lessonOutcomeNodeAlignmentsTable.role,
     }).from(lessonOutcomeNodeAlignmentsTable)
       .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
@@ -186,10 +187,14 @@ export async function validateLessonForFinalApproval(
     });
   }
   if (Array.isArray(sourceAlignment?.nodes)) {
+    const currentNodeIds = new Set(nodes.map((node) => node.id));
     const unresolvedSourceNodes = sourceAlignment.nodes.filter(
-      (entry: { status?: string }) => entry.status !== "SUFFICIENT",
+      (entry: { nodeId?: number; status?: string; reviewStatus?: string }) =>
+        currentNodeIds.has(entry.nodeId ?? -1)
+        && entry.status !== "SUFFICIENT"
+        && entry.reviewStatus !== "RESOLVED_BY_TEACHER",
     );
-    if (unresolvedSourceNodes.length > 0 || sourceAlignment?.valid !== true) {
+    if (unresolvedSourceNodes.length > 0) {
       errors.push({
         code: "MICRONODE_SOURCE_ALIGNMENT_REQUIRED",
         messageArm: "Յուրաքանչյուր MicroNode պետք է բավարար չափով հիմնավորվի իր հաստատված աղբյուրով։",
@@ -232,7 +237,10 @@ export async function validateLessonForFinalApproval(
   ) {
     const requiredOutcomeIds = new Set(
       outcomeAlignments
-        .filter((alignment) => alignment.role === "REQUIRED")
+        .filter((alignment) =>
+          alignment.role === "REQUIRED"
+          && nodes.some((node) => node.id === alignment.lessonNodeId && node.status === "approved"),
+        )
         .map((alignment) => alignment.lessonOutcomeId),
     );
     for (const outcome of canonicalOutcomes) {

@@ -1860,7 +1860,10 @@ function LessonNodesPanel({
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✓ Աղբյուրը բավարար է</span>
                   )}
                   {['PARTIAL', 'INSUFFICIENT', 'UNREADABLE'].includes((n as any).sourceSupport) && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Աղբյուրի վերանայում</span>
+                    <span
+                      title={(n as any).sourceAlignmentReason ?? "Աղբյուրային հիմնավորումը պահանջում է ուսուցչի վերանայում"}
+                      className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0"
+                    >⚠ Աղբյուրի վերանայում</span>
                   )}
                   {(n as any).cogPathStatus === 'confirmed' && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25 shrink-0">✓ Ճանաչողական ուղին հաստատված է</span>
@@ -3614,6 +3617,19 @@ type MappingAuditReport = {
       approvedCandidates: number;
       candidatesWithoutReview: number;
     };
+    sourceAlignment?: {
+      valid: boolean;
+      sufficientCount: number;
+      partialCount: number;
+      insufficientCount: number;
+      unreadableCount: number;
+      nodes: Array<{
+        nodeId: number;
+        status: string;
+        reasonCode: string;
+        reviewStatus?: "RESOLVED_BY_TEACHER";
+      }>;
+    };
   };
 };
 
@@ -3642,6 +3658,10 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
   const consolidation = report?.quality?.granularityConsolidation;
   const exerciseProvenance = report?.quality?.exerciseProvenance;
   const teachingContentReview = report?.quality?.teachingContentReview;
+  const sourceAlignment = report?.quality?.sourceAlignment;
+  const unresolvedSourceAlignmentCount = sourceAlignment?.nodes.filter(
+    (node) => node.status !== "SUFFICIENT" && node.reviewStatus !== "RESOLVED_BY_TEACHER",
+  ).length ?? 0;
   const confirmOutcomeReview = async () => {
     setConfirmingReview(true);
     try {
@@ -3740,6 +3760,23 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
                   {teachingContentReview.candidatesWithoutReview > 0
                     ? ` · ${teachingContentReview.candidatesWithoutReview} այլ կարգավիճակով`
                     : ""}
+                </div>
+              )}
+              {sourceAlignment && (
+                <div className={`rounded border p-2 text-[10px] ${
+                  unresolvedSourceAlignmentCount === 0
+                    ? "border-emerald-400/20 bg-emerald-400/[0.05] text-emerald-100"
+                    : "border-amber-400/30 bg-amber-400/[0.08] text-amber-100"
+                }`}>
+                  Աղբյուրային հիմնավորում՝ {sourceAlignment.sufficientCount} բավարար
+                  {unresolvedSourceAlignmentCount > 0
+                    ? ` · ${unresolvedSourceAlignmentCount} վերանայում է պահանջում`
+                    : " · բոլոր MicroNode-ները հաստատված կամ ուսուցչի կողմից վերանայված են"}
+                  {(sourceAlignment.partialCount + sourceAlignment.insufficientCount + sourceAlignment.unreadableCount) > 0 && (
+                    <div className="mt-1 opacity-85">
+                      Մասնակի՝ {sourceAlignment.partialCount} · Անբավարար՝ {sourceAlignment.insufficientCount} · Անընթեռնելի՝ {sourceAlignment.unreadableCount}
+                    </div>
+                  )}
                 </div>
               )}
               {alignment && (

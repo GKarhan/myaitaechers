@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -150,6 +150,49 @@ async function markGoalOutcomeReviewStale(lessonId: number): Promise<void> {
       goalOutcomeConfirmedBy: null,
     }).where(eq(lessonsTable.id, lessonId));
   }
+}
+
+/**
+ * A teacher may explicitly resolve a persisted source-alignment review by
+ * approving that exact MicroNode after reviewing or correcting it. The original
+ * classifier result remains in the audit; this records only a teacher action.
+ * Deleted nodes are ignored by final approval, preserving delete/merge flows.
+ */
+async function markSourceAlignmentReviewedByTeacher(lessonId: number, nodeId: number, teacherId: number): Promise<void> {
+  const [lesson] = await db.select({ mappingMetadata: lessonsTable.mappingMetadata })
+    .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  const metadata = (lesson?.mappingMetadata ?? {}) as Record<string, any>;
+  const alignment = metadata?.quality?.sourceAlignment;
+  if (!Array.isArray(alignment?.nodes)) return;
+
+  let changed = false;
+  const nodes = alignment.nodes.map((entry: Record<string, unknown>) => {
+    if (
+      entry.nodeId === nodeId
+      && entry.status !== "SUFFICIENT"
+      && entry.reviewStatus !== "RESOLVED_BY_TEACHER"
+    ) {
+      changed = true;
+      return {
+        ...entry,
+        reviewStatus: "RESOLVED_BY_TEACHER",
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: teacherId,
+      };
+    }
+    return entry;
+  });
+  if (!changed) return;
+
+  await db.update(lessonsTable).set({
+    mappingMetadata: {
+      ...metadata,
+      quality: {
+        ...(metadata.quality ?? {}),
+        sourceAlignment: { ...alignment, nodes },
+      },
+    },
+  }).where(eq(lessonsTable.id, lessonId));
 }
 
 function parseGoalOutcomeProposal(raw: string): { lessonGoal: string; outcomes: string[] } | null {
@@ -2434,6 +2477,9 @@ router.get("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async (
       contentSourceType: n.contentSourceType ?? "textbook",
       createdBy: n.createdBy ?? "ai",
       sourcePage: n.sourcePage ?? null,
+      sourceAlignmentReason: n.changeReason?.startsWith("SOURCE_ALIGNMENT:")
+        ? n.changeReason
+        : null,
       cogPathStatus: (n as any).cogPathStatus ?? null,
       teachingContentStale: !!((n as any).teachingContentStale),
       sourceSupport: classifyMicroNodeSourceAlignment(n.learningObjective, [{
@@ -2573,6 +2619,12 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
   // P6.5: Teacher approval — only allow safe status transitions
   if (status !== undefined && ["approved", "needs_review", "draft"].includes(status)) {
     patch.status = status;
+    if (status === "approved" && existing.changeReason?.startsWith("SOURCE_ALIGNMENT:")) {
+      // Preserve the original diagnostic in mappingMetadata, but clear the
+      // unresolved-node marker after an explicit teacher resolution so trusted
+      // authoring tools can use the reviewed node.
+      patch.changeReason = "SOURCE_ALIGNMENT_REVIEWED_BY_TEACHER";
+    }
   }
   // P12: Allow teacher to move a MicroNode between topics (or make standalone)
   if (topicId !== undefined) patch.topicId = topicId; // null = standalone
@@ -2617,6 +2669,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
     .returning();
 
   await invalidateLessonApproval(lessonId);
+  if (patch.status === "approved" && req.userId !== undefined) {
+    await markSourceAlignmentReviewedByTeacher(lessonId, nodeId, req.userId);
+  }
   res.json({
     id: updated.id,
     lessonId: updated.lessonId,
@@ -2671,6 +2726,9 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
           eq(lessonNodesTable.status, "draft"),
           eq(lessonNodesTable.status, "needs_review"),
         ),
+        // Source-alignment review drafts require an explicit teacher decision
+        // through the individual node editor; bulk approval must never bypass it.
+        sql`COALESCE(${lessonNodesTable.changeReason}, '') NOT LIKE 'SOURCE_ALIGNMENT:%'`,
         // P1.5: Never bulk-approve nodes that have no Learning Objective
         isNotNull(lessonNodesTable.learningObjective),
         sql`TRIM(${lessonNodesTable.learningObjective}) != ''`,
@@ -2938,6 +2996,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
       learningObjective: lessonNodesTable.learningObjective,
       theoryContent:     lessonNodesTable.theoryContent,
       blockType:         lessonNodesTable.blockType,
+      changeReason:      lessonNodesTable.changeReason,
       cogPathStatus:     (lessonNodesTable as any).cogPathStatus,
     })
     .from(lessonNodesTable)
@@ -2946,6 +3005,13 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
 
   if (!node) {
     res.status(404).json({ error: "Node not found" });
+    return;
+  }
+  if (node.changeReason?.startsWith("SOURCE_ALIGNMENT:")) {
+    res.status(422).json({
+      error: "SOURCE_ALIGNMENT_REVIEW_REQUIRED",
+      message: "Այս MicroNode-ի աղբյուրային հիմնավորումը ուսուցչի վերանայում է պահանջում, նախքան AI ուսուցման բովանդակություն գեներացնելը։",
+    });
     return;
   }
 
@@ -3956,39 +4022,72 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       confirmedOutcomes.map((outcome) => outcome.outcomeText),
       pass2.topics,
     );
-    if (confirmedOutcomes.length > 0 && outcomeAlignmentPlan.unresolvedOutcomeIndexes.length > 0) {
-      throw new MappingOutcomeAlignmentError(outcomeAlignmentPlan.unresolvedOutcomeIndexes);
-    }
+    // A non-sufficient MicroNode remains a visible draft for teacher review, but
+    // cannot silently become curriculum authority. Keep only proposals whose
+    // target MicroNode has passed the strict owned-source classifier; unresolved
+    // Outcomes are surfaced in the audit and continue to block final approval.
+    const sourceAlignmentByPosition = new Map(
+      pass2.sourceAlignment.nodes.map((entry) => [
+        `${entry.topicSequence}:${entry.microNodeIndex}`,
+        entry,
+      ]),
+    );
+    const safeOutcomeAlignmentPlan = {
+      proposals: outcomeAlignmentPlan.proposals.filter((proposal) =>
+        sourceAlignmentByPosition.get(`${proposal.topicSequence}:${proposal.microNodeIndex}`)
+          ?.audit.status === "SUFFICIENT",
+      ),
+      unresolvedOutcomeIndexes: confirmedOutcomes
+        .map((_, outcomeIndex) => outcomeIndex)
+        .filter((outcomeIndex) => !outcomeAlignmentPlan.proposals.some(
+          (proposal) =>
+            proposal.outcomeIndex === outcomeIndex
+            && sourceAlignmentByPosition.get(`${proposal.topicSequence}:${proposal.microNodeIndex}`)
+              ?.audit.status === "SUFFICIENT"
+            && proposal.role === "REQUIRED",
+        )),
+    };
 
     await db.update(mappingJobsTable)
       .set({ progress: "Saving results to database...", updatedAt: new Date() })
       .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
 
-    // ── Clear ALL prior mapping data for this lesson ───────────────────────
-    // Order matters: FK constraints → delete nodes before topics.
-    await db.delete(lessonNodeDependenciesTable).where(
-      eq(lessonNodeDependenciesTable.lessonId, lessonId)
-    );
-    await db.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
-    await db.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
-    await db.delete(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, lessonId));
-
-    // ── Store Pass 2 results ──────────────────────────────────────────────
+    // ── Atomically replace the detailed mapping ───────────────────────────
+    // The destructive clear, every child insert, the alignment rows, and the
+    // audit metadata share one transaction. A failure at any point rolls back
+    // to the previously teachable mapping rather than leaving a partial lesson.
     let totalNodes = 0;
     let totalExercises = 0;
     let exerciseCounter = 0;
     let nodesWithFullContent = 0;
     const reviewItems: { nodeId: number; nodeTitle: string; reason: string }[] = [];
-
     const topicRows: { id: number; sequence: number; title: string }[] = [];
     const nodeRows:  { id: number; topicId: number; topicSequence: number; microNodeIndex: number; title: string; sequence: number }[] = [];
+    let mappingReport!: Record<string, unknown>;
+
+    const verifiedPhysicalPageProvenance = physicalPageProvenance;
+    if (!verifiedPhysicalPageProvenance) {
+      throw new Error("Physical page provenance was not established before mapping persistence");
+    }
+    let coveragePercent = 0;
+
+    await db.transaction(async (tx) => {
+      // Order matters: FK constraints → delete nodes before topics.
+      await tx.delete(lessonNodeDependenciesTable).where(
+        eq(lessonNodeDependenciesTable.lessonId, lessonId),
+      );
+      await tx.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
+      await tx.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+      await tx.delete(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, lessonId));
+
+      // ── Store Pass 2 results ────────────────────────────────────────────
     // Sequence bug fix: lesson-wide counter so MicroNode sequence is unique across
     // all topics (previously reset per topic, giving every first node sequence=1).
     let mnSeq = 0;
 
     for (const topic of pass2.topics) {
       // 1. Insert the topic
-      const [insertedTopic] = await db
+        const [insertedTopic] = await tx
         .insert(lessonTopicsTable)
         .values({
           lessonId,
@@ -4015,13 +4114,15 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         const primaryBlock = sourceBlocks[0] ?? null;
 
         // 2. Insert the MicroNode
-        const requiredDepths = outcomeAlignmentPlan.proposals
+        const sourceAlignment = sourceAlignmentByPosition.get(`${topic.sequence}:${microNodeIndex}`);
+        const needsSourceReview = sourceAlignment?.audit.status !== "SUFFICIENT";
+        const requiredDepths = safeOutcomeAlignmentPlan.proposals
           .filter((proposal) =>
             proposal.topicSequence === topic.sequence && proposal.microNodeIndex === microNodeIndex,
           )
           .map((proposal) => COGNITIVE_LEVEL_TO_BLOOM_INT[proposal.requiredCognitiveDepth] ?? 1);
         const targetBloomLevel = Math.max(1, ...requiredDepths);
-        const [insertedNode] = await db
+        const [insertedNode] = await tx
           .insert(lessonNodesTable)
           .values({
             lessonId,
@@ -4040,7 +4141,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             blockType:           primaryBlock?.blockType ?? null,
             // STEP-3: persist all source block indices for coverage auditing
             sourceBlockIndices:  mn.sourceBlockIndices as any,
-            status:              "draft" as const,
+            status:              needsSourceReview ? "needs_review" as const : "draft" as const,
+            // This is deliberately a machine-readable audit pointer, not a
+            // fabricated source judgment. The complete safe audit stays in
+            // mappingMetadata for teacher review and final-approval checks.
+            changeReason:        needsSourceReview
+              ? `SOURCE_ALIGNMENT:${sourceAlignment?.audit.status ?? "UNKNOWN"}:${sourceAlignment?.audit.reasonCode ?? "UNKNOWN"}`
+              : null,
             createdBy:           "ai"   as const,
             targetBloomLevel,
             estimatedMinutes:    5,
@@ -4083,7 +4190,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           }
           exerciseCounter += 1;
 
-          await db.insert(lessonExercisesTable).values({
+          await tx.insert(lessonExercisesTable).values({
             lessonId,
             exerciseId:          `EX-${lessonId}-${exerciseCounter}`,
             exerciseTextVerbatim: block.sourceText.trim(),
@@ -4129,7 +4236,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         const additionalAssignment: "CLASS" | "HOMEWORK" =
           block.blockType === "HOMEWORK" ? "HOMEWORK" : "CLASS";
 
-        await db.insert(lessonExercisesTable).values({
+        await tx.insert(lessonExercisesTable).values({
           lessonId,
           exerciseId:           `EX-${lessonId}-${exerciseCounter}`,
           exerciseTextVerbatim: block.sourceText.trim(),
@@ -4155,7 +4262,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const nodeByMapPosition = new Map(
       nodeRows.map((node) => [`${node.topicSequence}:${node.microNodeIndex}`, node]),
     );
-    const persistedOutcomeAlignments = outcomeAlignmentPlan.proposals.flatMap((proposal) => {
+    const persistedOutcomeAlignments = safeOutcomeAlignmentPlan.proposals.flatMap((proposal) => {
       const outcome = confirmedOutcomes[proposal.outcomeIndex];
       const node = nodeByMapPosition.get(`${proposal.topicSequence}:${proposal.microNodeIndex}`);
       if (!outcome || !node) return [];
@@ -4168,7 +4275,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       }];
     });
     if (persistedOutcomeAlignments.length > 0) {
-      await db.insert(lessonOutcomeNodeAlignmentsTable).values(persistedOutcomeAlignments);
+      await tx.insert(lessonOutcomeNodeAlignmentsTable).values(persistedOutcomeAlignments);
     }
     const persistedSourceAlignment = pass2.sourceAlignment.nodes.flatMap((entry) => {
       const node = nodeByMapPosition.get(`${entry.topicSequence}:${entry.microNodeIndex}`);
@@ -4200,7 +4307,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     // single source of truth for coverage percent.  The old formula
     // ((totalBlocks - unmappedBlocks) / totalBlocks) excluded missingIndices and diverged
     // from the validator's result.
-    const coveragePercent = pass2.coverageValidation.coveragePercent;
+    coveragePercent = pass2.coverageValidation.coveragePercent;
 
     // ── Review items for pages that failed extraction entirely ───────────────
     // These are pages where Pass 1 could not parse the AI's response even after
@@ -4261,18 +4368,18 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     }
     const activityIssues = activityIssuesRaw;
 
-    const mappingReport = {
+    mappingReport = {
       lessonId,
       lessonTitle:  lesson.title,
       pagesFrom:    lesson.pagesFrom  ?? null,
       pagesTo:      lesson.pagesTo    ?? null,
       generatedAt:  new Date().toISOString(),
       counts: {
-        providerBlocksExtracted: Number(physicalPageProvenance.providerBlockCount ?? pass1.blocks.length),
-        verifiedSourceBlocks: Number(physicalPageProvenance.verifiedBlockCount ?? pass1.blocks.length),
-        quarantinedSourceBlocks: Number(physicalPageProvenance.quarantinedBlockCount ?? 0),
+        providerBlocksExtracted: Number(verifiedPhysicalPageProvenance.providerBlockCount ?? pass1.blocks.length),
+        verifiedSourceBlocks: Number(verifiedPhysicalPageProvenance.verifiedBlockCount ?? pass1.blocks.length),
+        quarantinedSourceBlocks: Number(verifiedPhysicalPageProvenance.quarantinedBlockCount ?? 0),
         pass1BlocksExtracted: pass1.blocks.length,
-        pass2InputBlocks: Number(physicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
+        pass2InputBlocks: Number(verifiedPhysicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
         topicsCreated:        pass2.topics.length,
         microNodesCreated:    totalNodes,
         exercisesCreated:     totalExercises,
@@ -4298,7 +4405,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         sourceAudit: {
           sourceSet,
           sourceScope,
-          physicalPageProvenance,
+          physicalPageProvenance: verifiedPhysicalPageProvenance,
           dispositions: pass2.instructionalCoverage.blocks,
           dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
           unresolvedInstructionalBlocks: pass2.instructionalCoverage.unresolvedInstructionalIndices.length,
@@ -4309,6 +4416,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           persistedAlignments: persistedOutcomeAlignments.length,
           requiredAlignments: persistedOutcomeAlignments.filter((alignment) => alignment.role === "REQUIRED").length,
           supportingAlignments: persistedOutcomeAlignments.filter((alignment) => alignment.role === "SUPPORTING").length,
+          unresolvedOutcomeIndexes: safeOutcomeAlignmentPlan.unresolvedOutcomeIndexes,
           requiresTeacherReview: persistedOutcomeAlignments.length > 0,
           reviewedAt: null,
           reviewedBy: null,
@@ -4350,9 +4458,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     };
 
     // Persist so GET /mapping-report can return it without recomputing
-    await db.update(lessonsTable)
+    await tx.update(lessonsTable)
       .set({ mappingMetadata: mappingReport as any })
       .where(eq(lessonsTable.id, lessonId));
+    });
 
     logger.info(
       {
@@ -4503,24 +4612,12 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
                 pass2Diagnostics: err.diagnostics,
               },
             }
-        : err instanceof MappingOutcomeAlignmentError
-          ? {
-              progress: "Confirmed Outcomes could not be matched to MicroNodes; existing mapping was preserved.",
-              reason: "OUTCOME_ALIGNMENT_FAILED_PRE_PERSISTENCE",
-              diagnostics: { unresolvedOutcomeIndexes: err.unresolvedOutcomeIndexes },
-            }
         : err instanceof MappingPass2ParserError
         ? {
             progress: "Pass 2 response could not be parsed; existing mapping was preserved.",
             reason: "PASS2_JSON_PARSE_FAILED_PRE_PERSISTENCE",
             diagnostics: err.diagnostics,
           }
-        : err instanceof MappingSourceAlignmentError
-          ? {
-              progress: "MicroNode objective/source alignment needs correction; existing mapping was preserved.",
-              reason: "MICRONODE_SOURCE_ALIGNMENT_FAILED_PRE_PERSISTENCE",
-              diagnostics: err.alignment,
-            }
         : err instanceof MappingGranularityReviewError
           ? {
               progress: "Duplicate or over-split MicroNode review remained unresolved; existing mapping was preserved.",

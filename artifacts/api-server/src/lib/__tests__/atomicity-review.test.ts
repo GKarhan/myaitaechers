@@ -289,6 +289,27 @@ const diagnostics = {
 }
 
 {
+  const source = blocks([{ blockType: "OBJECTIVE", sourceText: "Natural-number relationships." }]);
+  const topics = [topic([node(
+    "t1:n0",
+    "Natural-number sequence definition",
+    "Explain why the natural-number sequence starts with one and has no end.",
+    [0],
+  )])];
+  const alignment = validatePass2SourceAlignment(topics, source);
+  assert.equal(alignment.valid, false, "Heading-only objective source remains non-sufficient");
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(source.length, topics),
+    instructionalCoverage: validateInstructionalCoverage(source, topics),
+    sourceAlignment: alignment,
+    duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
+    diagnostics,
+    unresolvedAtomicityFindings: [],
+  }));
+  console.log("  ✓ non-sufficient source alignment is a review disposition, not a destructive persistence failure");
+}
+
+{
   const source = blocks([
     { blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." },
     { blockType: "EXERCISE", sourceText: "Find the successor number." },
