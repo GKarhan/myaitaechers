@@ -1,0 +1,922 @@
+C1 ACCEPTANCE FIX #7
+PASS 1 PHYSICAL PAGE PROVENANCE RELIABILITY
++ CLEAN END-TO-END C1 RETEST
+
+This is a NARROW continuation of the C1 acceptance process.
+
+DO NOT reopen Fix #5, Fix #6, or Fix #6A broadly.
+DO NOT proceed to Package 1D.
+DO NOT declare C1 frozen.
+
+Current accepted state:
+
+Fix #5:
+- validated lesson Source Set
+- source-scope gate
+- physical PDF page provenance safeguards
+- source coverage
+- exercise provenance
+- Teaching Package grounding
+
+Fix #6:
+- MicroNode granularity safeguards
+- Node↔Source support classification
+- Cognitive Path grounding
+- unsupported numeric/rule extrapolation rejection
+- final-approval Cognitive Path gate
+
+Fix #6A:
+- one bounded same-lesson semantic source-reallocation pass
+- deterministic post-reallocation source validation
+- source ownership / exercise preservation
+- no weakening of source scope
+
+The clean disposable C1 retest was BLOCKED before Fix #6A could be fully
+exercised because Pass 1 emitted at least one block with a physical page
+outside the selected validated page range.
+
+The existing Fix #5 provenance gate correctly rejected the mapping
+before persistence.
+
+This task must find and fix ONLY that physical-page provenance
+reliability problem, then rerun the clean end-to-end acceptance test.
+
+════════════════════════════════════════════════════
+1. OBSERVED LIVE BLOCKER
+════════════════════════════════════════════════════
+
+Real acceptance source:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Verified physical PDF source:
+pages 11–12
+
+Disposable live mapping used:
+- correct resource
+- correct page range 11–12
+- isolated lesson data
+
+The mapping failed closed because:
+
+Pass 1 produced at least one source block whose physical/source page was
+outside the validated 11–12 range.
+
+The Fix #5 source-scope gate rejected the candidate before persistence.
+
+This gate MUST remain intact.
+
+Do NOT bypass it.
+
+════════════════════════════════════════════════════
+2. PRIMARY QUESTION
+════════════════════════════════════════════════════
+
+Why can Pass 1 assign an out-of-range physical PDF page to a block when
+the backend extracted only selected pages 11–12?
+
+Trace exactly where page authority comes from.
+
+Potential boundaries to inspect:
+
+A. server page extraction
+
+B. page marker injection into AI input
+
+C. multi-page text assembly
+
+D. Pass 1 prompt instructions
+
+E. model-generated sourcePage / page label
+
+F. Pass 1 parser
+
+G. normalization
+
+H. source-block provenance binding
+
+I. text-mode path
+
+J. vision-mode path
+
+K. retry/repair path
+
+L. mixed printed-page vs physical-PDF-page semantics
+
+Do NOT guess.
+
+Identify the FIRST point where page identity can diverge from the
+server-known extracted page.
+
+════════════════════════════════════════════════════
+3. READ-ONLY FORENSIC AUDIT FIRST
+════════════════════════════════════════════════════
+
+Before changing code:
+
+inspect the current source path for selected physical pages 11–12.
+
+For each selected physical page return safe structural evidence:
+
+- resource ID
+- physical PDF page/index
+- extracted character count
+- extraction mode:
+  text / vision / other
+- injected server page marker
+- Pass 1 block count
+- block page labels before correction
+- block page labels after current normalization/binding
+- any out-of-range labels
+- retry path if used
+
+Do NOT output long textbook text.
+
+If a historical raw provider response is unavailable, say so.
+
+If necessary, use ONE controlled disposable diagnostic run with
+count/page-only instrumentation.
+
+Do not weaken source-scope validation.
+
+════════════════════════════════════════════════════
+4. CANONICAL PAGE AUTHORITY
+════════════════════════════════════════════════════
+
+Physical PDF page provenance MUST be server-authoritative.
+
+The model may help identify semantic content.
+
+The model must NOT decide the canonical physical PDF page.
+
+Canonical rule:
+
+SERVER-EXTRACTED PAGE IDENTITY
+→ authoritative physical page
+
+MODEL-RETURNED sourcePage
+→ advisory at most
+
+A block's persisted physical page must be derived from the server-known
+page extraction context that actually produced that block.
+
+Do not trust arbitrary model page numbers.
+
+════════════════════════════════════════════════════
+5. PRINTED PAGE vs PHYSICAL PDF PAGE
+════════════════════════════════════════════════════
+
+The system must distinguish:
+
+A. PHYSICAL PDF PAGE / INDEX
+
+Used for:
+- source provenance
+- extraction scope
+- server validation
+- C1 source-scope gate
+
+B. PRINTED TEXTBOOK PAGE NUMBER
+
+May appear visually inside the textbook page.
+
+These are NOT necessarily equal.
+
+Never allow a printed textbook page number inferred/read by AI to
+replace the canonical physical PDF page identity.
+
+If both need to be preserved:
+
+reuse existing fields/metadata if available.
+
+Do NOT introduce schema changes unless absolutely necessary.
+
+For C1 provenance, physical PDF page remains authoritative.
+
+════════════════════════════════════════════════════
+6. TEXT-MODE PASS 1 BINDING
+════════════════════════════════════════════════════
+
+For text extraction:
+
+Each server-extracted page must be injected into Pass 1 with a stable,
+machine-readable physical-page boundary.
+
+Example conceptually:
+
+[PHYSICAL_PDF_PAGE:11]
+...page content...
+
+[PHYSICAL_PDF_PAGE:12]
+...page content...
+
+Use the project's existing safe marker format where possible.
+
+Pass 1 must not be allowed to convert:
+
+printed page numbers
+section numbers
+lesson numbers
+chapter numbers
+
+into physical PDF provenance.
+
+After AI output:
+
+server must bind each returned block back to the actual physical page
+from which its source fragment originated.
+
+If exact fragment matching is available:
+
+use it to establish page ownership.
+
+If a block can be matched to more than one selected page:
+
+use deterministic ambiguity handling / review.
+
+Do NOT accept an arbitrary model page label.
+
+════════════════════════════════════════════════════
+7. VISION-MODE PASS 1 BINDING
+════════════════════════════════════════════════════
+
+Preserve Fix #5 vision safeguards.
+
+For vision extraction:
+
+each vision call/page must already be page-scoped.
+
+Canonical physical page must come from:
+
+the page image/request being processed.
+
+The model must not override that physical page number.
+
+If one vision request processes exactly one physical page:
+
+all blocks from that response inherit that page unless the architecture
+has stronger server-known region provenance.
+
+If vision batches multiple pages:
+
+inspect whether that batching itself creates ambiguity.
+
+Preferred safety:
+
+page-assigned provenance.
+
+Do NOT weaken truncation or source-scope checks.
+
+════════════════════════════════════════════════════
+8. MULTI-PAGE TEXT SOURCE MATCHING
+════════════════════════════════════════════════════
+
+If Pass 1 processes multiple selected pages in one request:
+
+the server must still deterministically recover which selected page owns
+each block.
+
+Possible safe mechanisms include the existing architecture's:
+
+- source substring matching per page
+- injected immutable page markers
+- source fragment lookup
+- page-scoped block extraction
+
+Choose the smallest reliable method already compatible with the code.
+
+Do not invent AI-based page inference if deterministic source matching
+is available.
+
+════════════════════════════════════════════════════
+9. OUT-OF-RANGE MODEL PAGE LABEL
+════════════════════════════════════════════════════
+
+If the provider returns:
+
+sourcePage = 10
+
+while only physical pages 11–12 were extracted:
+
+do NOT immediately fail merely because the model label is 10 IF the
+block text can be deterministically proven to originate from page 11 or
+12.
+
+Instead:
+
+- correct the canonical physical page from server evidence
+- record a safe diagnostic that model page label was corrected
+- continue only if provenance is unambiguous
+
+However:
+
+if the source fragment cannot be traced to selected pages:
+
+reject/quarantine the block.
+
+Never rewrite provenance without evidence.
+
+════════════════════════════════════════════════════
+10. UNTRACEABLE BLOCK RULE
+════════════════════════════════════════════════════
+
+If a Pass 1 block cannot be deterministically associated with any
+selected physical page:
+
+it must NOT enter the validated lesson Source Set.
+
+Classify it conceptually as:
+
+UNVERIFIED_PROVENANCE
+
+or reuse the closest existing error/review status.
+
+It must not:
+
+- satisfy source coverage
+- support a MicroNode
+- become exercise provenance
+- enter Pass 2
+- become final-ready curriculum
+
+Do not invent a page to rescue it.
+
+════════════════════════════════════════════════════
+11. DUPLICATE FRAGMENT / AMBIGUITY RULE
+════════════════════════════════════════════════════
+
+Some repeated headings/labels may appear on multiple selected pages.
+
+If identical short text occurs on multiple pages:
+
+do NOT use that short fragment alone to infer page provenance.
+
+Use:
+
+- larger surrounding source fragment
+- existing block context
+- page-scoped extraction identity
+- structural position
+
+If still ambiguous:
+
+mark provenance review-required/unverified.
+
+Do not guess.
+
+════════════════════════════════════════════════════
+12. SOURCEBLOCK PAGE MUST BE IMMUTABLE AFTER BINDING
+════════════════════════════════════════════════════
+
+Once server provenance binds a SourceBlock to a physical page:
+
+later stages must not overwrite it based on:
+
+- Topic generation
+- MicroNode generation
+- AI page labels
+- Outcome alignment
+- Cognitive Path
+- UI edits unrelated to source provenance
+
+Audit the pipeline for accidental mutation.
+
+Physical source provenance should be canonical and stable.
+
+════════════════════════════════════════════════════
+13. RETRY / REPAIR PATHS
+════════════════════════════════════════════════════
+
+Audit every Pass 1 retry/repair/fallback path.
+
+A retry must preserve the SAME selected physical page scope.
+
+It must not:
+
+- drop page markers
+- broaden to whole-document source
+- reuse stale page labels
+- change physical page authority
+- merge unrelated pages
+- infer page numbers from model text
+
+Add tests for retries if they currently bypass the canonical binding
+path.
+
+════════════════════════════════════════════════════
+14. SOURCE-SAFE DIAGNOSTICS
+════════════════════════════════════════════════════
+
+Diagnostics may retain only safe structural facts such as:
+
+- selected physical pages
+- block count
+- corrected-page-label count
+- ambiguous-provenance count
+- rejected-unverified count
+- extraction mode
+- fixed reason codes
+
+Do NOT persist:
+
+- raw textbook text
+- arbitrary provider key names
+- raw provider responses
+- generated titles/objectives in diagnostic blobs unless already
+  explicitly approved by the existing safe contract
+
+Preserve #109/#110 privacy protections.
+
+════════════════════════════════════════════════════
+15. FAIL-CLOSED BEHAVIOR
+════════════════════════════════════════════════════
+
+Preserve current fail-closed source-scope behavior.
+
+If after server page binding any block still has:
+
+- out-of-scope provenance
+- ambiguous provenance that cannot be resolved
+- no selected-page traceability
+
+then mapping must fail/review before destructive replacement.
+
+Do not weaken the gate to make the live test pass.
+
+════════════════════════════════════════════════════
+16. DO NOT MODIFY FIX #6A REALLOCATION
+════════════════════════════════════════════════════
+
+The final Fix #6A architecture review already passed.
+
+Preserve:
+
+- one bounded Pass 2B semantic review call
+- same-lesson validated source only
+- server-validated returned indices
+- deterministic post-reallocation support validation
+- coverage reconciliation
+- exercise preservation
+- Outcome reconciliation
+
+This task is earlier in the pipeline.
+
+Do NOT change Fix #6A unless a regression directly proves interaction
+failure.
+
+════════════════════════════════════════════════════
+17. DO NOT MODIFY COGNITIVE PATH
+════════════════════════════════════════════════════
+
+Preserve Fix #6 Cognitive Path grounding.
+
+Do not redesign or expand it.
+
+The clean retest will verify it after mapping succeeds.
+
+════════════════════════════════════════════════════
+18. PROVIDER-FREE TEST — WRONG MODEL PAGE LABEL
+════════════════════════════════════════════════════
+
+Fixture:
+
+Selected physical pages:
+11–12
+
+Server page 11 source contains block X.
+
+Provider returns block X with:
+sourcePage = 10
+
+Expected:
+
+server proves X comes from physical page 11
+
+canonical block page = 11
+
+model page label is ignored/corrected
+
+block remains valid
+
+safe diagnostic increments corrected-label count.
+
+════════════════════════════════════════════════════
+19. PROVIDER-FREE TEST — OUT-OF-SCOPE FABRICATED BLOCK
+════════════════════════════════════════════════════
+
+Selected pages:
+11–12
+
+Provider returns a block whose source fragment exists on neither page.
+
+Expected:
+
+cannot bind to selected physical page
+
+block rejected/quarantined
+
+does not enter validated Source Set
+
+does not count toward coverage
+
+does not reach Pass 2
+
+mapping fails/requires review if instructional completeness depends on
+it.
+
+════════════════════════════════════════════════════
+20. PROVIDER-FREE TEST — PRINTED PAGE CONFUSION
+════════════════════════════════════════════════════
+
+Physical PDF page:
+11
+
+Textbook printed page visible in source:
+10
+
+Provider returns:
+sourcePage = 10
+
+Expected:
+
+canonical provenance remains physical PDF page 11
+
+printed page number does not override server physical page.
+
+════════════════════════════════════════════════════
+21. PROVIDER-FREE TEST — MULTI-PAGE CORRECT BINDING
+════════════════════════════════════════════════════
+
+Selected pages:
+11 and 12
+
+Block A originates only from page 11.
+Block B originates only from page 12.
+
+Provider labels are wrong/swapped.
+
+Expected:
+
+server deterministically binds:
+A → 11
+B → 12
+
+No reliance on provider labels.
+
+════════════════════════════════════════════════════
+22. PROVIDER-FREE TEST — AMBIGUOUS REPEATED HEADING
+════════════════════════════════════════════════════
+
+Same short heading appears on both selected pages.
+
+Provider returns only that short fragment.
+
+Expected:
+
+short duplicate fragment alone is not enough for deterministic page
+binding.
+
+Use larger context if available.
+
+If ambiguity remains:
+
+UNVERIFIED/REVIEW_REQUIRED
+
+Do not guess.
+
+════════════════════════════════════════════════════
+23. PROVIDER-FREE TEST — TEXT RETRY
+════════════════════════════════════════════════════
+
+If text Pass 1 retries after malformed/truncated output:
+
+verify:
+
+- same selected pages
+- same immutable page markers
+- same server page-binding logic
+- no whole-book fallback
+- no provider page authority
+
+════════════════════════════════════════════════════
+24. PROVIDER-FREE TEST — VISION PAGE
+════════════════════════════════════════════════════
+
+For one-page vision extraction:
+
+all returned blocks must inherit the server-known physical page being
+processed.
+
+Provider-returned page numbers cannot override it.
+
+Preserve existing vision source safety.
+
+════════════════════════════════════════════════════
+25. RUN EXISTING REGRESSIONS
+════════════════════════════════════════════════════
+
+Run at minimum:
+
+- Fix #5 source-boundary suite
+- source coverage suite
+- Fix #6 granularity/grounding suite
+- Fix #6A reallocation suite
+- Pass 2 diagnostics suite
+- mapping context/preflight/truncation suite
+- canonical Outcome/alignment suite
+- Cognitive Path suite
+- final approval suite
+- API TypeScript typecheck
+- Web TypeScript typecheck
+
+Do not weaken tests.
+
+════════════════════════════════════════════════════
+26. CLEAN DISPOSABLE END-TO-END RETEST — REQUIRED
+════════════════════════════════════════════════════
+
+After provider-free tests pass:
+
+rerun the clean disposable C1 acceptance mapping.
+
+Use:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Verified physical PDF pages:
+11–12
+
+Use:
+- isolated/disposable lesson
+- same verified resource
+- normal authenticated mapping endpoint
+
+Do NOT mutate/delete the user's real lesson.
+
+Clean up disposable data afterward.
+
+════════════════════════════════════════════════════
+27. CLEAN RETEST — REQUIRED EVIDENCE
+════════════════════════════════════════════════════
+
+Report safe structural data only.
+
+SOURCE PROVENANCE
+
+- selected physical pages
+- extraction mode
+- Pass 1 block count
+- provider page-label correction count
+- ambiguous provenance count
+- unverified/rejected block count
+- final validated Source Set count
+
+MAPPING
+
+- Topic count
+- initial MicroNode count
+- consolidation count
+- source-reallocation count
+- final MicroNode count
+- exercise count
+- Outcome relation count
+- unresolved instructional count
+
+COGNITIVE PATH
+
+For each final MicroNode:
+- level count
+- target level
+- grounding status
+- teacher review status
+
+Do not output long source text.
+
+════════════════════════════════════════════════════
+28. PREVIOUS FAILURE CLASSES MUST REMAIN FIXED
+════════════════════════════════════════════════════
+
+Explicitly verify:
+
+A. source contamination from unrelated lessons — PASS
+
+B. full-book fallback — PASS
+
+C. 0-MicroNode false success — PASS
+
+D. duplicate/near-duplicate MicroNodes — PASS
+
+E. heading-only source grounding — PASS
+
+F. narrative→wrong-rule grounding — PASS
+
+G. malformed source grounding — PASS
+
+H. Cognitive Path 24-and-28 → 26 error — PASS
+
+I. unsupported 7/2 extrapolation — PASS
+
+J. wrong provider page label overriding physical page — PASS
+
+Report PASS/FAIL for each.
+
+════════════════════════════════════════════════════
+29. FINAL C1 READINESS CHECK
+════════════════════════════════════════════════════
+
+Do not auto-approve teacher-review items.
+
+Verify final readiness fails closed unless required review gates are
+satisfied.
+
+Conceptually:
+
+GOAL_OUTCOMES_CONFIRMED
+
+AND
+SOURCE_SCOPE_VALID
+
+AND
+PHYSICAL_PAGE_PROVENANCE_VALID
+
+AND
+INSTRUCTIONAL_SOURCE_COVERAGE_COMPLETE
+
+AND
+MICRONODE_GRANULARITY_VALID
+
+AND
+MICRONODE_SOURCE_ALIGNMENT_VALID
+
+AND
+OUTCOME_ALIGNMENT_REVIEWED
+
+AND
+COGNITIVE_PATH_GROUNDED/APPROVED
+
+AND
+TEACHING_PACKAGE_APPROVAL_REQUIREMENTS
+
+You may report:
+
+READY BUT WAITING FOR TEACHER REVIEW
+
+as correct behavior.
+
+Do not auto-confirm merely to force a PASS.
+
+════════════════════════════════════════════════════
+30. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime/chat
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree
+- C6 Recommendation/Personalization
+- Quiz
+- scoring
+- student sessions
+- Package 1D manual TEXT mapping
+- unrelated teacher dashboard UI
+
+DO NOT:
+
+- broaden source scope
+- weaken provenance validation
+- trust AI page labels
+- switch models as a shortcut
+- hardcode lesson pages into production logic
+- hardcode MicroNode count
+- fabricate source
+- fabricate exercises
+- create repair loops
+- auto-approve review gates
+
+════════════════════════════════════════════════════
+31. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. PHYSICAL PAGE PROVENANCE ROOT CAUSE
+
+Why could Pass 1 emit an out-of-range page?
+
+B. FIRST DIVERGENCE BOUNDARY
+
+C. TEXT-MODE PAGE BINDING
+
+D. VISION-MODE PAGE BINDING
+
+E. PRINTED PAGE vs PHYSICAL PAGE RULE
+
+F. FILES CHANGED
+
+G. DB / SCHEMA CHANGES
+
+H. PROVIDER-FREE FIX #7 TEST RESULTS
+
+I. EXISTING FIX #5/#6/#6A REGRESSION STATUS
+
+J. CLEAN DISPOSABLE RETEST — SOURCE PROVENANCE
+
+K. CLEAN DISPOSABLE RETEST — MAPPING
+
+L. CLEAN DISPOSABLE RETEST — COGNITIVE PATH
+
+M. PREVIOUS FAILURE CLASSES
+
+Return PASS/FAIL for Section 28 A–J.
+
+N. FINAL READINESS BEHAVIOR
+
+O. REMAINING C1 ISSUES
+
+P. VERDICT
+
+Use ONLY:
+
+READY FOR MANUAL C1 FINAL REVIEW
+
+or
+
+C1 FIX #7 BLOCKED
+
+Do NOT return C1 FROZEN.
+
+════════════════════════════════════════════════════
+32. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS only if ALL are true:
+
+[ ] Root cause of out-of-range Pass 1 page is proven.
+
+[ ] Physical PDF page is server-authoritative.
+
+[ ] Provider sourcePage cannot override server provenance.
+
+[ ] Printed textbook page cannot override physical PDF page.
+
+[ ] Wrong provider page label can be corrected only with deterministic
+    selected-source evidence.
+
+[ ] Untraceable block is rejected/quarantined.
+
+[ ] Ambiguous repeated fragments are not guessed.
+
+[ ] Text retry preserves canonical page binding.
+
+[ ] Vision path preserves page-assigned provenance.
+
+[ ] Fix #5 source-scope gate remains strict.
+
+[ ] Fix #6 granularity safeguards remain intact.
+
+[ ] Fix #6 Cognitive Path safeguards remain intact.
+
+[ ] Fix #6A source reallocation remains intact.
+
+[ ] Clean disposable mapping completes successfully.
+
+[ ] No unrelated source enters Pass 2.
+
+[ ] No invalid physical-page block enters validated Source Set.
+
+[ ] Previous real failure classes A–J all PASS.
+
+[ ] Final readiness remains fail-closed on teacher review.
+
+If ANY item fails:
+
+STOP.
+
+Return:
+
+C1 FIX #7 BLOCKED
+
+State the exact blocker.
+
+Do NOT proceed to Package 1D.
+Do NOT declare C1 frozen.
