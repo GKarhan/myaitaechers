@@ -7,6 +7,7 @@ import { validateCognitivePathGrounding } from "../cognitive-path-grounding.js";
 import {
   applyBoundedSourceReallocation,
   consolidateHighConfidenceOverSplits,
+  reconcileSameTopicSourceAlignment,
   removeStructuralHeadingSourceOwnership,
   validatePass2SourceAlignment,
   type Pass2TopicResult,
@@ -85,6 +86,31 @@ console.log("  ✓ Armenian near-duplicate objectives are semantic consolidation
     "UNREADABLE",
   );
   console.log("  ✓ headings, unrelated narrative, and malformed text cannot ground an objective");
+}
+
+{
+  const topics = [topic([{
+    ...node("Թվերի կարգեր", "Բացատրում է 10 թվանշանով կարգերի կանոնը։", 0),
+    candidateId: "t1:n0:split1",
+  }])];
+  const blocks = [{
+    blockType: "RULE" as const,
+    sourceText: "Թվերի կարգերը որոշում են թվի տեղը գրության մեջ։",
+    sourcePage: 14,
+    sourceParagraph: null,
+    sourceBoundingBox: null,
+  }];
+  const alignment = validatePass2SourceAlignment(topics, blocks);
+  const entry = alignment.nodes[0];
+  assert.equal(entry.audit.status, "PARTIAL");
+  assert.equal(entry.microNodeId, "t1:n0:split1");
+  assert.equal(entry.microNodeTitle, "Թվերի կարգեր");
+  assert.equal(entry.learningObjective, "Բացատրում է 10 թվանշանով կարգերի կանոնը։");
+  assert.deepEqual(entry.sourceBlockIndices, [0]);
+  assert.deepEqual(entry.sourcePages, [14]);
+  assert.ok(entry.missingObjectiveConceptLabels.length > 0);
+  assert.equal("sourceText" in entry, false);
+  console.log("  ✓ non-sufficient audit exposes safe node/source metadata without textbook excerpts");
 }
 
 const addressSource = "Նոր շենքի հասցեի գրառումը կարող է լինել 5/1 ձևով՝ առանց հին համարները փոխելու։";
@@ -247,6 +273,79 @@ const sourceBlocks = (rows: Array<{ blockType: string; sourceText: string }>) =>
 }
 
 {
+  const targetObjective = "Բացատրում է բնական թվերի շարքի հաջորդ թիվը։";
+  const donorObjective = "Բացատրում է հաջորդ թիվը։";
+  const topics = [topic([
+    {
+      ...node("Թվերի աճման կանոն", targetObjective, 0),
+      exercises: [{ blockIndex: 3, sourceParagraph: null }],
+    },
+    {
+      ...node("Հաջորդականության կանոն", donorObjective, 1),
+      sourceBlockIndices: [1, 2],
+    },
+  ])];
+  const blocks = sourceBlocks([
+    { blockType: "NOTE", sourceText: "Բնական թվերի մասին կարճ նշում։" },
+    { blockType: "RULE", sourceText: "Բնական թվերի շարքի յուրաքանչյուր հաջորդ թիվը մեկով մեծ է նախորդից։" },
+    { blockType: "RULE", sourceText: "Յուրաքանչյուր հաջորդ թիվը գրվում է հերթով։" },
+    { blockType: "EXERCISE", sourceText: "Շարունակեք բնական թվերի շարքը։" },
+  ]);
+  assert.equal(validatePass2SourceAlignment(topics, blocks).valid, false);
+  const reconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
+  assert.equal(reconciliation.appliedCount, 1);
+  assert.deepEqual(reconciliation.dispositions, [{
+    topicSequence: 1,
+    microNodeId: "t1:n0",
+    microNodeTitle: "Թվերի աճման կանոն",
+    status: "REPAIRED",
+    sourceBlockIndices: [1],
+  }]);
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0, 1]);
+  assert.deepEqual(topics[0].microNodes[1].sourceBlockIndices, [2]);
+  assert.equal(topics[0].microNodes[0].exercises[0].blockIndex, 3);
+  assert.equal(validatePass2SourceAlignment(topics, blocks).valid, true);
+  assert.equal(validateSourceCoverage(blocks.length, topics).valid, true);
+  console.log("  ✓ one verified same-topic move repairs ownership while preserving donor and exercise evidence");
+}
+
+{
+  const topics = [topic([
+    node("Թվերի աճման կանոն", "Բացատրում է բնական թվերի շարքի հաջորդ թիվը։", 0),
+    node("Հաջորդականության կանոն", "Բացատրում է հաջորդ թիվը։", 1),
+  ])];
+  const blocks = sourceBlocks([
+    { blockType: "NOTE", sourceText: "Բնական թվերի մասին կարճ նշում։" },
+    { blockType: "RULE", sourceText: "Բնական թվերի շարքի յուրաքանչյուր հաջորդ թիվը մեկով մեծ է նախորդից։" },
+  ]);
+  const reconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
+  assert.equal(reconciliation.appliedCount, 0);
+  assert.equal(reconciliation.dispositions[0].status, "NO_SAFE_SAME_TOPIC_REALLOCATION");
+  assert.deepEqual(topics[0].microNodes[1].sourceBlockIndices, [1]);
+  assert.equal(validatePass2SourceAlignment(topics, blocks).valid, false);
+  console.log("  ✓ move that would break the previous owner is rejected with an explicit disposition");
+}
+
+{
+  const topics = [topic([
+    node("Թվերի աճման կանոն", "Բացատրում է բնական թվերի շարքի հաջորդ թիվը։", 0),
+    node("Այլ կանոն", "Բացատրում է հաջորդ թիվը։", 1),
+  ])];
+  topics[0].inputBlockIndices = [0, 1];
+  const blocks = sourceBlocks([
+    { blockType: "NOTE", sourceText: "Բնական թվերի մասին կարճ նշում։" },
+    { blockType: "RULE", sourceText: "Այլ կանոն՝ թվերի հերթականության մասին։" },
+    { blockType: "RULE", sourceText: "Բնական թվերի շարքի յուրաքանչյուր հաջորդ թիվը մեկով մեծ է նախորդից։" },
+  ]);
+  topics[0].microNodes[1].sourceBlockIndices = [2];
+  const reconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
+  assert.equal(reconciliation.appliedCount, 0);
+  assert.equal(reconciliation.dispositions[0].status, "NO_SAFE_SAME_TOPIC_REALLOCATION");
+  assert.deepEqual(topics[0].microNodes[1].sourceBlockIndices, [2]);
+  console.log("  ✓ out-of-topic source is never considered for reconciliation");
+}
+
+{
   const topics = [topic([node("Չգոյություն ունեցող կանոն", "Կիրառում է չգրված գաղտնի կանոնը։", 0)])];
   const blocks = sourceBlocks([{ blockType: "NOTE", sourceText: "Սա հասցեի կարևորության մասին պատմություն է։" }]);
   const repair = applyBoundedSourceReallocation(topics, blocks, [{
@@ -273,4 +372,4 @@ const sourceBlocks = (rows: Array<{ blockType: string; sourceText: string }>) =>
   console.log("  ✓ malformed blocks can never become semantic repair authority");
 }
 
-console.log("\nFix #6A granularity, grounding, and bounded reallocation: 13/13 passing");
+console.log("\nFix #6A granularity, grounding, and bounded reallocation: 17/17 passing");

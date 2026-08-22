@@ -179,7 +179,7 @@ const diagnostics = {
     "Identify successor number and explain unrelated road distance.",
     [0, 1],
   )])];
-  applyBoundedAtomicityRepairs(topics, source, [{
+  const repair = applyBoundedAtomicityRepairs(topics, source, [{
     action: "SPLIT_MICRONODE",
     topicSequence: 1,
     microNodeId: "t1:n0",
@@ -201,15 +201,11 @@ const diagnostics = {
       },
     ],
   }]);
-  assert.equal(validatePass2SourceAlignment(topics, source).valid, false);
-  assert.throws(() => assertPass2PersistenceGates({
-    coverageValidation: validateSourceCoverage(source.length, topics),
-    instructionalCoverage: validateInstructionalCoverage(source, topics),
-    sourceAlignment: validatePass2SourceAlignment(topics, source),
-    duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
-    diagnostics,
-  }), MappingSourceAlignmentError);
-  console.log("  ✓ unsupported exercise demand cannot persist an invented MicroNode");
+  assert.equal(repair.appliedCount, 0);
+  assert.equal(repair.rejectedDecisionCount, 1);
+  assert.equal(topics[0].microNodes.length, 1);
+  assert.equal(validatePass2SourceAlignment(topics, source).valid, true);
+  console.log("  ✓ source-misaligned atomic split is rejected before it can create an invented MicroNode");
 }
 
 {

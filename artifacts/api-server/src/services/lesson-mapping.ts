@@ -21,6 +21,7 @@ import {
 import { detectCompoundLO } from "../lib/granularity-heuristics.js";
 import {
   classifyMicroNodeSourceAlignment,
+  getMissingObjectiveConceptLabels,
   pedagogicalNearDuplicate,
   isUnreadableSource,
   type SourceAlignmentAudit,
@@ -2145,6 +2146,12 @@ export function applyBoundedAtomicityRepairs(
       child.sourceBlockIndices.every((index) =>
         originalSource.includes(index) && isAtomicityEligibleSource(blocks[index]),
       ) &&
+      classifyMicroNodeSourceAlignment(
+        child.learningObjective,
+        child.sourceBlockIndices
+          .map((index) => blocks[index])
+          .filter((block): block is Pass1Block => !!block),
+      ).status === "SUFFICIENT" &&
       child.exerciseBlockIndices.every(isActivity),
     );
     const exerciseIndices = children.flatMap((child) => child.exerciseBlockIndices);
@@ -2267,21 +2274,49 @@ export type Pass2SourceAlignment = {
   partialCount: number;
   insufficientCount: number;
   unreadableCount: number;
-  nodes: Array<{ topicSequence: number; microNodeIndex: number; audit: SourceAlignmentAudit }>;
+  /** Source-safe metadata only; never includes raw textbook excerpts or provider payloads. */
+  nodes: Array<{
+    topicSequence: number;
+    topicTitle: string;
+    microNodeIndex: number;
+    microNodeId: string;
+    microNodeTitle: string;
+    learningObjective: string;
+    sourceBlockIndices: number[];
+    sourcePages: number[];
+    missingObjectiveConceptLabels: string[];
+    /** Bounded same-topic ownership repair outcome, when the node needed one. */
+    reconciliationDisposition?: SourceAlignmentReconciliationDisposition;
+    audit: SourceAlignmentAudit;
+  }>;
 };
 
 export function validatePass2SourceAlignment(
   topics: ReadonlyArray<Pass2TopicResult>,
   blocks: ReadonlyArray<Pass1Block>,
 ): Pass2SourceAlignment {
-  const nodes = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => ({
-    topicSequence: topic.sequence,
-    microNodeIndex,
-    audit: classifyMicroNodeSourceAlignment(
-      node.learningObjective,
-      node.sourceBlockIndices.map((index) => blocks[index]).filter((block): block is Pass1Block => !!block),
-    ),
-  })));
+  const nodes = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => {
+    const sourceBlockIndices = [...node.sourceBlockIndices];
+    const sourceBlocks = sourceBlockIndices
+      .map((index) => blocks[index])
+      .filter((block): block is Pass1Block => !!block);
+    return {
+      topicSequence: topic.sequence,
+      topicTitle: topic.title,
+      microNodeIndex,
+      microNodeId: node.candidateId ?? `t${topic.sequence}:n${microNodeIndex}`,
+      microNodeTitle: node.title,
+      learningObjective: node.learningObjective,
+      sourceBlockIndices,
+      sourcePages: [...new Set(sourceBlocks.map((block) => block.sourcePage))]
+        .sort((a, b) => a - b),
+      missingObjectiveConceptLabels: getMissingObjectiveConceptLabels(
+        node.learningObjective,
+        sourceBlocks,
+      ),
+      audit: classifyMicroNodeSourceAlignment(node.learningObjective, sourceBlocks),
+    };
+  }));
   const count = (status: SourceAlignmentAudit["status"]) => nodes.filter((node) => node.audit.status === status).length;
   return {
     valid: nodes.every((node) => node.audit.status === "SUFFICIENT"),
@@ -2305,6 +2340,111 @@ export type SourceReallocationResult = {
     reasonCode: "SEMANTIC_SOURCE_REVIEW";
   }>;
 };
+
+export type SourceAlignmentReconciliationDisposition = {
+  topicSequence: number;
+  microNodeId: string;
+  microNodeTitle: string;
+  status: "REPAIRED" | "NO_SAFE_SAME_TOPIC_REALLOCATION";
+  sourceBlockIndices: number[];
+};
+
+export type SourceAlignmentReconciliationResult = {
+  attempted: boolean;
+  appliedCount: number;
+  /** One deterministic disposition for every initially non-sufficient node. */
+  dispositions: SourceAlignmentReconciliationDisposition[];
+};
+
+/**
+ * One bounded, provider-free source-ownership reconciliation pass.
+ *
+ * A Pass 2B response can legitimately create a partial owner when a directly
+ * supporting, verified block is held by a neighboring MicroNode. This routine
+ * searches same-topic source ownership exactly once and moves at most one block
+ * per non-sufficient node. A move is accepted only when the recipient and every
+ * donor are both SUFFICIENT after the move. No source is duplicated, invented,
+ * or taken from outside the verified topic input.
+ */
+export function reconcileSameTopicSourceAlignment(
+  topics: Pass2TopicResult[],
+  blocks: ReadonlyArray<Pass1Block>,
+): SourceAlignmentReconciliationResult {
+  const result: SourceAlignmentReconciliationResult = {
+    attempted: false,
+    appliedCount: 0,
+    dispositions: [],
+  };
+  const isEligible = (index: number) => {
+    const block = blocks[index];
+    return Number.isInteger(index) && !!block &&
+      !ACTIVITY_BLOCK_TYPES.has(block.blockType) &&
+      !["IMAGE", "CAPTION", "TABLE"].includes(block.blockType) &&
+      !isUnreadableSource(block.sourceText) &&
+      !isLikelyStructuralHeading(block);
+  };
+  const auditNode = (node: Pass2MicroNode) => classifyMicroNodeSourceAlignment(
+    node.learningObjective,
+    node.sourceBlockIndices.map((index) => blocks[index]).filter((block): block is Pass1Block => !!block),
+  );
+
+  for (const topic of topics) {
+    const initialTargets = topic.microNodes
+      .filter((node) => auditNode(node).status !== "SUFFICIENT");
+    for (const target of initialTargets) {
+      result.attempted = true;
+      const targetId = target.candidateId ??
+        `t${topic.sequence}:n${topic.microNodes.indexOf(target)}`;
+      let movedIndex: number | null = null;
+      const candidateIndices = [...new Set(topic.inputBlockIndices)]
+        .filter((index) => !target.sourceBlockIndices.includes(index) && isEligible(index))
+        .sort((a, b) => a - b);
+
+      for (const index of candidateIndices) {
+        const donors = topic.microNodes.filter((node) =>
+          node !== target && node.sourceBlockIndices.includes(index),
+        );
+        // The reconciliation is ownership-only. It never promotes an unmapped
+        // block into evidence, and it never chooses a block with no current
+        // same-topic source owner.
+        if (donors.length === 0) continue;
+        const targetAudit = classifyMicroNodeSourceAlignment(
+          target.learningObjective,
+          [...target.sourceBlockIndices, index]
+            .map((sourceIndex) => blocks[sourceIndex])
+            .filter((block): block is Pass1Block => !!block),
+        );
+        if (targetAudit.status !== "SUFFICIENT") continue;
+        const donorsRemainSufficient = donors.every((donor) => classifyMicroNodeSourceAlignment(
+          donor.learningObjective,
+          donor.sourceBlockIndices
+            .filter((sourceIndex) => sourceIndex !== index)
+            .map((sourceIndex) => blocks[sourceIndex])
+            .filter((block): block is Pass1Block => !!block),
+        ).status === "SUFFICIENT");
+        if (!donorsRemainSufficient) continue;
+
+        for (const donor of donors) {
+          donor.sourceBlockIndices = donor.sourceBlockIndices
+            .filter((sourceIndex) => sourceIndex !== index);
+        }
+        target.sourceBlockIndices = [...new Set([...target.sourceBlockIndices, index])];
+        movedIndex = index;
+        result.appliedCount++;
+        break;
+      }
+
+      result.dispositions.push({
+        topicSequence: topic.sequence,
+        microNodeId: targetId,
+        microNodeTitle: target.title,
+        status: movedIndex === null ? "NO_SAFE_SAME_TOPIC_REALLOCATION" : "REPAIRED",
+        sourceBlockIndices: movedIndex === null ? [] : [movedIndex],
+      });
+    }
+  }
+  return result;
+}
 
 /**
  * Applies the one semantic-review result without making the reviewer an
@@ -2426,6 +2566,8 @@ export interface Pass2Result {
   duplicateResolution: DuplicateResolutionAudit;
   sourceAlignment: Pass2SourceAlignment;
   sourceReallocation: SourceReallocationResult;
+  /** One deterministic post-review ownership reconciliation pass. */
+  sourceAlignmentReconciliation: SourceAlignmentReconciliationResult;
   /** One same-lesson, server-validated repair pass for atomicity/exercise ownership. */
   atomicityRepair: AtomicityRepairResult;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
@@ -3835,7 +3977,10 @@ atomicityRepairs actions: SPLIT_MICRONODE, ASSIGN_PRIMARY_EXERCISE, MARK_INTEGRA
 A split child source set must be an exact disjoint partition of the target's current
 sourceBlockIndices. If source is also reallocated for that target in this response,
 include every resulting source index in exactly one split child. Never create a
-source-less child.`;
+source-less child. Every split child learningObjective must be directly supported
+by its own partitioned sourceBlockIndices: a heading, shared topic word, or broad
+Outcome wording is not enough. If you cannot write a one-action objective with
+direct support for every child, do not propose the split.`;
 
   try {
     const r = await openrouter.chat.completions.create({
@@ -4563,6 +4708,8 @@ export async function runPass2Pipeline(
     semanticReview.atomicityRepairs,
   );
   normalizeActivityPlacements(topics, blocks);
+  const sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
+  normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
@@ -4570,6 +4717,16 @@ export async function runPass2Pipeline(
   const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics);
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
+  const reconciliationByNodeId = new Map(
+    sourceAlignmentReconciliation.dispositions.map((disposition) => [
+      `${disposition.topicSequence}:${disposition.microNodeId}`,
+      disposition,
+    ]),
+  );
+  for (const entry of sourceAlignment.nodes) {
+    const disposition = reconciliationByNodeId.get(`${entry.topicSequence}:${entry.microNodeId}`);
+    if (disposition) entry.reconciliationDisposition = disposition;
+  }
   const unresolvedAtomicityFindings = getUnresolvedAtomicityFindings(
     topics,
     granularityFindings,
@@ -4593,6 +4750,7 @@ export async function runPass2Pipeline(
           rejectedDecisionCount: duplicateResolution.rejectedDecisionCount,
         },
        sourceReallocation,
+        sourceAlignmentReconciliation,
         atomicityRepair,
         unresolvedAtomicityFindingCount: unresolvedAtomicityFindings.length,
       missingIndices:  coverageValidation.missingIndices,
@@ -4648,6 +4806,7 @@ export async function runPass2Pipeline(
     duplicateResolution,
     sourceAlignment,
     sourceReallocation,
+    sourceAlignmentReconciliation,
     atomicityRepair,
     diagnostics,
   };

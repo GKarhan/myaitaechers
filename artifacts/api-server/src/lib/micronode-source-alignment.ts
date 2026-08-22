@@ -35,6 +35,20 @@ function tokens(value: string): Set<string> {
     }).filter((token) => token.length >= 3 && !GENERIC.has(token)));
 }
 
+/**
+ * Returns only normalized objective labels that are absent from the assigned
+ * source. These labels are safe diagnostics: they contain no source excerpt.
+ */
+export function getMissingObjectiveConceptLabels(
+  learningObjective: string | null | undefined,
+  sourceBlocks: readonly SourceBlock[],
+): string[] {
+  const source = tokens(sourceBlocks.map((block) => block.sourceText ?? "").join("\n"));
+  return [...tokens(learningObjective ?? "")]
+    .filter((token) => !source.has(token))
+    .slice(0, 20);
+}
+
 export function isUnreadableSource(value: string): boolean {
   const text = value.trim();
   if (text.length < 20) return true;

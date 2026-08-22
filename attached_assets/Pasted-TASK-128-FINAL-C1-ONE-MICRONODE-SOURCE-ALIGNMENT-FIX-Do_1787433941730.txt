@@ -1,0 +1,577 @@
+TASK #128 — FINAL C1 ONE-MICRONODE SOURCE-ALIGNMENT FIX
+
+Do not perform another broad C1 audit.
+
+Do not redesign the mapping pipeline.
+
+Do not reopen already solved problems.
+
+We have ONE remaining blocker before real mapping persistence.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Real lesson:
+
+- Textbook: Մաթեմատիկա 5
+- Author: Սմբատ Գոգյան
+- Lesson: §1.2 Բնական թվերի շարքը
+- Resource: #19
+- Physical PDF pages: 14–15
+
+Resolve the current lesson ID from DB before the final acceptance run.
+
+Latest real acceptance job:
+
+- job #128
+- Pass 1: PASS
+- Source Verification: PASS
+- Pass 2: reached
+- Source coverage: 24/24 = 100%
+- Final MicroNodes: 4
+- SUFFICIENT: 3
+- PARTIAL: 1
+- INSUFFICIENT: 0
+- UNREADABLE: 0
+- persistence: blocked
+
+Exact remaining blocker:
+
+MICRONODE_SOURCE_ALIGNMENT_FAILED_PRE_PERSISTENCE
+
+Failing node:
+
+- topic 1
+- post-atomicity MicroNode index 2
+- reason: PARTIAL_CONCEPT_OVERLAP
+- matched concepts: 1
+
+Previous HEADING_ONLY failure is already fixed.
+
+Do NOT reopen it.
+
+==================================================
+GOAL
+==================================================
+
+Fix ONLY the remaining PARTIAL MicroNode so that the final real mapping
+reaches:
+
+4/4 source-aligned MicroNodes
+→ deterministic validation PASS
+→ persistence PASS
+
+Do this without weakening any validation gate.
+
+==================================================
+PART 1 — SURFACE THE EXACT FAILING NODE
+==================================================
+
+Before changing generation logic, make the existing safe diagnostics
+sufficient to identify the failing node deterministically.
+
+For every non-SUFFICIENT MicroNode, diagnostics must expose source-safe
+metadata only:
+
+- stable node identity/index;
+- topic identity/index;
+- node title;
+- learning objective;
+- source block references/indices;
+- physical source page numbers;
+- alignment status;
+- alignment reason code;
+- matched concept count;
+- missing/unsupported concept labels if these can be represented without
+  persisting raw textbook excerpts.
+
+Do NOT log full raw textbook source.
+
+Do NOT log provider raw output.
+
+The purpose is to know EXACTLY why this node is PARTIAL.
+
+==================================================
+PART 2 — CLASSIFY THE FAILURE
+==================================================
+
+Using the exact failing node, determine which ONE applies:
+
+A. OBJECTIVE_TOO_BROAD
+
+The objective contains more knowledge than its assigned validated
+source actually teaches.
+
+B. WRONG_SOURCE_OWNERSHIP
+
+The objective is legitimate for this lesson, but the MicroNode owns the
+wrong/incomplete source blocks.
+
+C. COMPOUND_MICRONODE
+
+The objective combines two independently teachable concepts and should
+be split.
+
+D. SOURCE_BLOCK_DISTRIBUTION_ERROR
+
+Relevant validated source exists but was allocated to another node or
+structural disposition incorrectly.
+
+E. VALIDATOR_FALSE_NEGATIVE
+
+Use this ONLY if deterministic evidence proves the existing objective
+is directly supported by its current validated source.
+
+Do not assume E.
+
+Do not change the validator unless E is conclusively proven.
+
+==================================================
+PART 3 — APPLY THE SMALLEST CORRECT REPAIR
+==================================================
+
+Use this repair order.
+
+--------------------------------------------------
+CASE A — OBJECTIVE_TOO_BROAD
+--------------------------------------------------
+
+Narrow the objective to exactly the knowledge directly supported by the
+existing validated source.
+
+Requirements:
+
+- same pedagogical concept;
+- no invented knowledge;
+- no new source;
+- no broader Outcome-derived wording;
+- objective remains independently teachable and assessable.
+
+Server must accept the narrowed objective ONLY if deterministic
+revalidation changes:
+
+PARTIAL → SUFFICIENT
+
+against the SAME validated source ownership.
+
+Otherwise reject the repair.
+
+--------------------------------------------------
+CASE B — WRONG_SOURCE_OWNERSHIP
+--------------------------------------------------
+
+Reallocate only existing VERIFIED same-lesson source blocks.
+
+Requirements:
+
+- pages must remain 14–15;
+- no unverified block;
+- no neighboring-page content;
+- no duplicated canonical ownership simply to pass validation;
+- previous owner must be revalidated after reallocation;
+- coverage must remain valid.
+
+Accept only if all affected MicroNodes become SUFFICIENT.
+
+--------------------------------------------------
+CASE C — COMPOUND_MICRONODE
+--------------------------------------------------
+
+Split only if the objective genuinely contains two independently
+teachable/assessable concepts.
+
+Do NOT split merely because the validator sees multiple words/concepts.
+
+Each resulting MicroNode must:
+
+- be atomic;
+- have direct source support;
+- have legitimate source ownership;
+- independently pass SUFFICIENT.
+
+Do not return to over-generation.
+
+--------------------------------------------------
+CASE D — SOURCE_BLOCK_DISTRIBUTION_ERROR
+--------------------------------------------------
+
+Correct the disposition/ownership of the existing verified block.
+
+Do not create new source text.
+
+Do not duplicate it merely to satisfy validation.
+
+Revalidate all affected nodes and coverage.
+
+--------------------------------------------------
+CASE E — VALIDATOR_FALSE_NEGATIVE
+--------------------------------------------------
+
+Only if proven with deterministic provider-free evidence:
+
+make the smallest validator correction.
+
+Do NOT lower thresholds globally.
+
+Do NOT add an "accept PARTIAL" path.
+
+Do NOT special-case this lesson/title/node.
+
+==================================================
+PART 4 — BOUNDED REPAIR MUST ACTUALLY RESOLVE IT
+==================================================
+
+Current evidence showed:
+
+Pass 2B appliedCount = 0
+
+for the remaining PARTIAL node.
+
+Fix the bounded repair orchestration so a repairable non-SUFFICIENT
+node cannot silently pass through Pass 2B without either:
+
+A. a valid repair being attempted and deterministically accepted;
+
+OR
+
+B. an explicit machine-readable disposition explaining why no safe
+repair exists.
+
+Do NOT create retry loops.
+
+Maximum:
+
+ONE bounded repair/reconciliation pass.
+
+After it:
+
+rerun deterministic validation.
+
+If still non-SUFFICIENT:
+
+FAIL CLOSED.
+
+==================================================
+PART 5 — OUTCOMES MUST NOT FORCE SOURCE MISMATCH
+==================================================
+
+Canonical Outcomes remain important, but source truth is authoritative.
+
+If the failing objective became too broad because an Outcome contains
+knowledge not directly supported by this MicroNode's source:
+
+DO NOT broaden the MicroNode.
+
+Instead:
+
+- keep the MicroNode source-grounded;
+- link the Outcome only at the level genuinely supported;
+- or leave the unsupported Outcome relation unresolved for teacher
+  review.
+
+Never invent source support to satisfy an Outcome.
+
+==================================================
+PART 6 — PRESERVE TASK #124
+==================================================
+
+Task #124 atomicity rules must remain intact.
+
+ONE MicroNode =
+ONE independently teachable/assessable knowledge objective.
+
+Do NOT create MicroNodes based on:
+
+- block count;
+- paragraph count;
+- exercise count;
+- Outcome count;
+- sentence count.
+
+Do not regress to the previous over-generation problem.
+
+Current final count is 4 MicroNodes.
+
+Do NOT assume the correct final count must remain exactly 4.
+
+It may remain 4 if objective narrowing/source ownership solves the
+problem.
+
+It may change only if genuine pedagogical atomicity requires it.
+
+Any count change must be justified by atomic knowledge structure, not
+by source-validation convenience.
+
+==================================================
+PART 7 — EXERCISE PRESERVATION
+==================================================
+
+No textbook exercise may disappear because of this repair.
+
+If source ownership changes:
+
+- preserve attached exercises when pedagogically valid;
+- move them to the correct MicroNode when clearly justified;
+- otherwise preserve them as Additional/Unassigned.
+
+Never delete or duplicate exercises just to pass alignment.
+
+==================================================
+PART 8 — PROVIDER-FREE REGRESSION GATE
+==================================================
+
+Before another real mapping run, add focused tests for:
+
+1. objective broader than source
+   → PARTIAL/FAIL
+
+2. valid narrowing against same source
+   → SUFFICIENT/PASS
+
+3. unsupported narrowing
+   → REJECT
+
+4. wrong source ownership
+   → FAIL
+
+5. verified source reallocation that fixes both affected nodes
+   → PASS
+
+6. reallocation that breaks previous owner
+   → REJECT
+
+7. compound objective genuinely requiring split
+   → valid atomic split
+
+8. artificial split merely to satisfy alignment
+   → REJECT
+
+9. unsupported Outcome does not broaden objective
+   → PASS with unresolved Outcome relation
+
+10. exercises preserved during repair
+
+11. coverage remains complete after repair
+
+12. out-of-scope source cannot be used
+
+13. PARTIAL cannot persist
+
+14. one bounded repair only
+
+15. no repair / appliedCount=0 on a repairable node must produce an
+    explicit disposition rather than silently continuing
+
+Keep existing suites green:
+
+- source alignment
+- Task #124 atomicity
+- exercise ownership
+- source coverage
+- canonical Outcomes
+- source provenance
+- physical PDF selection
+
+Do not weaken tests.
+
+==================================================
+PART 9 — BUILD GATE
+==================================================
+
+Before the real run:
+
+- API typecheck PASS
+- API build PASS
+- relevant web checks PASS if touched
+- source-alignment tests PASS
+- Task #124 tests PASS
+- coverage tests PASS
+- Outcome tests PASS
+- provenance/source subset tests PASS
+
+Restart API.
+
+Confirm clean startup.
+
+==================================================
+PART 10 — ONE REAL ACCEPTANCE RUN
+==================================================
+
+Only after all provider-free checks pass:
+
+Resolve the CURRENT lesson ID from DB.
+
+Verify it is the unique lesson matching:
+
+- Բնական թվերի շարքը
+- resource #19
+- physical PDF pages 14–15
+- confirmed Goal/Outcomes
+
+Then run automatic mapping ONCE.
+
+No second speculative mapping run.
+
+No metadata changes.
+
+No Goal/Outcome changes.
+
+No manual mapping.
+
+No seeded nodes.
+
+No bypass.
+
+==================================================
+FINAL ACCEPTANCE
+==================================================
+
+Required:
+
+PASS 1 PAGE 14: PASS
+PASS 1 PAGE 15: PASS
+
+SOURCE VERIFICATION: PASS
+
+PASS 2: PASS
+
+SOURCE COVERAGE: PASS
+
+MICRONODE SOURCE ALIGNMENT:
+SUFFICIENT = ALL FINAL MICRONODES
+PARTIAL = 0
+INSUFFICIENT = 0
+UNREADABLE = 0
+
+ATOMICITY: PASS
+
+EXERCISE PRESERVATION: PASS
+
+PERSISTENCE: PASS
+
+Then read the persisted result and report:
+
+TOPICS: N
+MICRONODES: N
+EXERCISES: N
+ADDITIONAL/UNASSIGNED EXERCISES: N
+
+SOURCE COVERAGE: N/N
+
+SUFFICIENT MICRONODES: N/N
+
+PARTIAL MICRONODES: 0
+
+UNRESOLVED INSTRUCTIONAL BLOCKS: N
+
+REQUIRED OUTCOME LINKS: N
+SUPPORTING OUTCOME LINKS: N
+UNRESOLVED OUTCOMES: N
+
+==================================================
+STOP AFTER SUCCESS
+==================================================
+
+If persistence succeeds:
+
+STOP.
+
+DO NOT:
+
+- generate Cognitive Paths;
+- generate Teaching Packages;
+- approve nodes;
+- approve exercises;
+- modify Outcomes;
+- start C2;
+- start Package 1D;
+- perform additional C1 optimization.
+
+The user must manually inspect the persisted mapping first.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly:
+
+1. FAILING MICRONODE
+
+- stable identity
+- title
+- failure classification A/B/C/D/E
+- alignment reason
+
+2. ROOT CAUSE
+
+One concise explanation.
+
+3. REPAIR
+
+Exact bounded repair applied.
+
+4. SAFETY
+
+Confirm:
+
+- validation gate not weakened
+- no unverified source accepted
+- no source invented
+- exercises preserved
+- Task #124 atomicity preserved
+
+5. TESTS
+
+Report relevant suite counts/results.
+
+6. REAL ACCEPTANCE
+
+PASS 1 PAGE 14: PASS / FAIL
+PASS 1 PAGE 15: PASS / FAIL
+SOURCE VERIFICATION: PASS / FAIL
+PASS 2: PASS / FAIL
+SOURCE COVERAGE: PASS / FAIL
+
+MICRONODE ALIGNMENT:
+SUFFICIENT N/N
+PARTIAL N
+INSUFFICIENT N
+
+ATOMICITY: PASS / FAIL
+EXERCISE PRESERVATION: PASS / FAIL
+PERSISTENCE: PASS / FAIL
+
+7. PERSISTED RESULT
+
+Only if persistence succeeded:
+
+TOPICS: N
+MICRONODES: N
+EXERCISES: N
+ADDITIONAL EXERCISES: N
+SOURCE COVERAGE: N/N
+UNRESOLVED BLOCKS: N
+REQUIRED OUTCOME LINKS: N
+SUPPORTING OUTCOME LINKS: N
+UNRESOLVED OUTCOMES: N
+
+8. VERDICT
+
+Exactly one:
+
+C1 REAL MAPPING PERSISTED — READY FOR MANUAL REVIEW
+
+or
+
+C1 ONE-MICRONODE ALIGNMENT STILL BLOCKED
+
+==================================================
+IMPORTANT
+==================================================
+
+Do not propose another C1 improvement if this succeeds.
+
+Successful persistence ends this debugging sequence.
+
+The next step is HUMAN MANUAL REVIEW of the actual mapping.

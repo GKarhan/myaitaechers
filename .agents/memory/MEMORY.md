@@ -46,3 +46,4 @@
 - [Verified lesson source sets](verified-lesson-source-sets.md) — map physical PDF pages only; text and vision sources use distinct provenance checks, and final approval fails closed without verified scope.
 - [Verified source subset continuation](verified-source-subset-continuation.md) — quarantine unverified Pass 1 candidates; only server-verified blocks enter Pass 2 and downstream C1 gates still decide persistence.
 - [Pass 1 structured output](pass1-empty-provider-output.md) — generic JSON mode permits empty objects; enforce a strict non-empty schema locally and at the provider boundary.
+- [Heading-only live acceptance](heading-only-live-acceptance.md) — a provider can still assign a lone structural heading as source evidence; fail closed and expose only safe alignment metadata, never retry blindly.
