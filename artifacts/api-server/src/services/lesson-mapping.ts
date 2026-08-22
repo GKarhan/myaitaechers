@@ -348,6 +348,26 @@ export class MappingGranularityReviewError extends Error {
   }
 }
 
+export class MappingAtomicityError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրումը չի բաժանել ինքնուրույն ստուգվող գիտելիքները բավարար ատոմային MicroNode-ների։ Արդյունքը չի պահպանվել։";
+
+  constructor(readonly findings: GranularityFinding[]) {
+    super("Detailed mapping contains unresolved pedagogical atomicity findings");
+    this.name = "MappingAtomicityError";
+  }
+}
+
+export class MappingAtomicityReviewUnavailableError extends Error {
+  readonly teacherMessage =
+    "Քարտեզագրման ատոմայնության ստուգումը չի ավարտվել։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
+
+  constructor(readonly reason: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED") {
+    super(`Detailed mapping atomicity review unavailable: ${reason}`);
+    this.name = "MappingAtomicityReviewUnavailableError";
+  }
+}
+
 export class MappingSourceScopeError extends Error {
   readonly code = "LESSON_SCOPE_MISMATCH";
   readonly teacherMessage =
@@ -407,6 +427,8 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingInstructionalCoverageError) return error.teacherMessage;
   if (error instanceof MappingSourceAlignmentError) return error.teacherMessage;
   if (error instanceof MappingGranularityReviewError) return error.teacherMessage;
+  if (error instanceof MappingAtomicityError) return error.teacherMessage;
+  if (error instanceof MappingAtomicityReviewUnavailableError) return error.teacherMessage;
   if (error instanceof MappingSourceScopeError) return error.teacherMessage;
   if (error instanceof MappingPdfPageRangeError) return error.teacherMessage;
   if (error instanceof MappingPdfPageExtractionError) return error.teacherMessage;
@@ -1394,15 +1416,22 @@ export function assertDetailedMappingHasMicroNodes(
 // ── Phase 4: Granularity review types ────────────────────────────────────────
 
 /**
- * A single finding from the Pass 2B semantic granularity review.
- * These are advisory — they never block the mapping or change any node.
+ * A single finding from the Pass 2B semantic granularity review. Findings are
+ * resolved by the one bounded repair pass or remain pre-persistence failures.
  */
 export interface GranularityFinding {
   topicTitle: string;
   microNodeTitle: string;
   /** Provider actions must use this server-issued identity, never titles alone. */
   microNodeId?: string;
-  issue: "MEGA_NODE" | "OVER_SPLIT" | "EXERCISE_MISMATCH";
+  /** MEGA_NODE is retained for legacy audit readability; UNDER_SPLIT is canonical. */
+  issue:
+    | "MEGA_NODE"
+    | "UNDER_SPLIT"
+    | "OVER_SPLIT"
+    | "EXERCISE_MISMATCH"
+    | "MISSING_ATOMIC_MICRONODE"
+    | "UNSUPPORTED_MICRONODE";
   confidence: "HIGH" | "MEDIUM";
   /** Armenian-language explanation for the teacher. */
   reason: string;
@@ -1412,6 +1441,8 @@ export interface GranularityFinding {
   mergeIntoMicroNodeTitle?: string;
   /** Provider actions must use this server-issued identity, never titles alone. */
   mergeIntoMicroNodeId?: string;
+  /** Exercise evidence is always identified by a server-validated Pass 1 index. */
+  exerciseBlockIndex?: number;
 }
 
 export interface GranularityConsolidation {
@@ -1497,6 +1528,260 @@ export function consolidateHighConfidenceOverSplits(
     resolvedCandidatePairs,
     actions,
   };
+}
+
+export type AtomicityRepairAction =
+  | "SPLIT_MICRONODE"
+  | "ASSIGN_PRIMARY_EXERCISE"
+  | "MARK_INTEGRATIVE";
+
+/**
+ * A bounded repair action is a proposal, never an authority.  Source ownership
+ * remains server-validated and a split may only partition the target's existing
+ * source — it cannot manufacture or duplicate source support.
+ */
+export interface AtomicityRepairDecision {
+  action: AtomicityRepairAction;
+  topicSequence: number;
+  microNodeId?: string;
+  exerciseBlockIndex?: number;
+  splitMicroNodes?: Array<{
+    title: string;
+    learningObjective: string;
+    microNodeType: "knowledge" | "skill";
+    sourceBlockIndices: number[];
+    exerciseBlockIndices: number[];
+  }>;
+  reason: string;
+}
+
+export interface AtomicityRepairResult {
+  attempted: boolean;
+  appliedCount: number;
+  rejectedDecisionCount: number;
+  splitCandidateIds: string[];
+  splitReplacementCandidateIds: Record<string, string[]>;
+  primaryExerciseIndices: number[];
+  primaryExerciseOwnerCandidateIds: Record<number, string[]>;
+  integrativeExerciseIndices: number[];
+}
+
+function isAtomicityEligibleSource(block: Pass1Block | undefined): block is Pass1Block {
+  return !!block &&
+    !ACTIVITY_BLOCK_TYPES.has(block.blockType) &&
+    !["IMAGE", "CAPTION", "TABLE"].includes(block.blockType) &&
+    !isUnreadableSource(block.sourceText);
+}
+
+function removeExerciseFromEveryDestination(topics: Pass2TopicResult[], blockIndex: number): void {
+  for (const topic of topics) {
+    for (const node of topic.microNodes) {
+      node.exercises = node.exercises.filter((exercise) => exercise.blockIndex !== blockIndex);
+    }
+    topic.additionalExercises = topic.additionalExercises.filter((exercise) => exercise.blockIndex !== blockIndex);
+  }
+}
+
+/**
+ * Applies at most one provider-reviewed atomicity repair plan.  The only node
+ * creation primitive is a true split: children must form an exact, disjoint
+ * partition of the original node's source ownership.  This keeps source
+ * provenance and canonical exercise identity intact.
+ */
+export function applyBoundedAtomicityRepairs(
+  topics: Pass2TopicResult[],
+  blocks: Pass1Block[],
+  decisions: ReadonlyArray<AtomicityRepairDecision>,
+): AtomicityRepairResult {
+  const result: AtomicityRepairResult = {
+    attempted: decisions.length > 0,
+    appliedCount: 0,
+    rejectedDecisionCount: 0,
+    splitCandidateIds: [],
+    splitReplacementCandidateIds: {},
+    primaryExerciseIndices: [],
+    primaryExerciseOwnerCandidateIds: {},
+    integrativeExerciseIndices: [],
+  };
+  const isActivity = (index: number) => isValidBlockIndex(index, blocks) &&
+    ACTIVITY_BLOCK_TYPES.has(blocks[index].blockType);
+  const topicFor = (sequence: number) => topics.find((topic) => topic.sequence === sequence);
+  const nodeFor = (topic: Pass2TopicResult | undefined, candidateId: string | undefined) =>
+    candidateId ? topic?.microNodes.find((node) => node.candidateId === candidateId) : undefined;
+
+  for (const decision of decisions) {
+    const topic = topicFor(decision.topicSequence);
+    if (!topic) {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+
+    if (decision.action === "ASSIGN_PRIMARY_EXERCISE" || decision.action === "MARK_INTEGRATIVE") {
+      const exerciseBlockIndex = decision.exerciseBlockIndex;
+      if (!isActivity(exerciseBlockIndex ?? Number.NaN)) {
+        result.rejectedDecisionCount++;
+        continue;
+      }
+      if (decision.action === "ASSIGN_PRIMARY_EXERCISE") {
+        const target = nodeFor(topic, decision.microNodeId);
+        if (!target) {
+          result.rejectedDecisionCount++;
+          continue;
+        }
+        removeExerciseFromEveryDestination(topics, exerciseBlockIndex!);
+        target.exercises.push({
+          blockIndex: exerciseBlockIndex!,
+          sourceParagraph: blocks[exerciseBlockIndex!].sourceParagraph ?? null,
+        });
+        result.primaryExerciseIndices.push(exerciseBlockIndex!);
+        if (target.candidateId) {
+          result.primaryExerciseOwnerCandidateIds[exerciseBlockIndex!] = [target.candidateId];
+        }
+      } else {
+        removeExerciseFromEveryDestination(topics, exerciseBlockIndex!);
+        topic.additionalExercises.push({
+          blockIndex: exerciseBlockIndex!,
+          sourceParagraph: blocks[exerciseBlockIndex!].sourceParagraph ?? null,
+        });
+        result.integrativeExerciseIndices.push(exerciseBlockIndex!);
+      }
+      result.appliedCount++;
+      continue;
+    }
+
+    const target = nodeFor(topic, decision.microNodeId);
+    const children = decision.splitMicroNodes ?? [];
+    if (!target || children.length < 2) {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+    const originalSource = [...new Set(target.sourceBlockIndices)].sort((a, b) => a - b);
+    const claimedSource = children.flatMap((child) => child.sourceBlockIndices);
+    const uniqueClaimed = [...new Set(claimedSource)].sort((a, b) => a - b);
+    const exactPartition = claimedSource.length === uniqueClaimed.length &&
+      uniqueClaimed.length === originalSource.length &&
+      uniqueClaimed.every((index, position) => index === originalSource[position]);
+    const validChildren = exactPartition && children.every((child) =>
+      child.title.trim().length > 0 &&
+      child.learningObjective.trim().length > 0 &&
+      child.sourceBlockIndices.length > 0 &&
+      child.sourceBlockIndices.every((index) =>
+        originalSource.includes(index) && isAtomicityEligibleSource(blocks[index]),
+      ) &&
+      child.exerciseBlockIndices.every(isActivity),
+    );
+    const exerciseIndices = children.flatMap((child) => child.exerciseBlockIndices);
+    if (!validChildren || exerciseIndices.length !== new Set(exerciseIndices).size) {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+
+    const previousExercises = target.exercises.map((exercise) => exercise.blockIndex);
+    const childExercises = new Set(exerciseIndices);
+    // A split is an authoritative re-assignment for these exercises. Remove
+    // every old placement before the replacement children are inserted, so the
+    // later canonical-normalization pass cannot retain an unrelated old owner.
+    for (const exerciseIndex of childExercises) {
+      removeExerciseFromEveryDestination(topics, exerciseIndex);
+    }
+    const targetIndex = topic.microNodes.indexOf(target);
+    const originalCandidateId = target.candidateId ?? `t${topic.sequence}:n${targetIndex}`;
+    const replacement = children.map((child, childIndex): Pass2MicroNode => ({
+      candidateId: `${originalCandidateId}:split${childIndex}`,
+      title: child.title.trim(),
+      learningObjective: child.learningObjective.trim(),
+      microNodeType: child.microNodeType,
+      sourceBlockIndices: [...child.sourceBlockIndices],
+      exercises: child.exerciseBlockIndices.map((blockIndex) => ({
+        blockIndex,
+        sourceParagraph: blocks[blockIndex].sourceParagraph ?? null,
+      })),
+      supportingMaterialIndices: [],
+    }));
+    topic.microNodes.splice(targetIndex, 1, ...replacement);
+    for (const exerciseIndex of previousExercises) {
+      if (!childExercises.has(exerciseIndex)) {
+        topic.additionalExercises.push({
+          blockIndex: exerciseIndex,
+          sourceParagraph: blocks[exerciseIndex]?.sourceParagraph ?? null,
+        });
+      }
+    }
+    replacement.forEach((child) => {
+      for (const exercise of child.exercises) {
+        const expectedOwners = result.primaryExerciseOwnerCandidateIds[exercise.blockIndex] ?? [];
+        if (child.candidateId && !expectedOwners.includes(child.candidateId)) {
+          result.primaryExerciseOwnerCandidateIds[exercise.blockIndex] = [...expectedOwners, child.candidateId];
+        }
+      }
+    });
+    for (const exerciseIndex of childExercises) {
+      if (!result.primaryExerciseIndices.includes(exerciseIndex)) {
+        result.primaryExerciseIndices.push(exerciseIndex);
+      }
+    }
+    result.splitCandidateIds.push(originalCandidateId);
+    result.splitReplacementCandidateIds[originalCandidateId] = replacement
+      .map((child) => child.candidateId)
+      .filter((candidateId): candidateId is string => !!candidateId);
+    result.appliedCount++;
+  }
+  return result;
+}
+
+/**
+ * Finds semantic-review findings that are still structurally unresolved after
+ * the single bounded repair pass. This deliberately checks final state rather
+ * than trusting an action label: an integrative destination can never resolve a
+ * source-supported missing-MicroNode finding.
+ */
+export function getUnresolvedAtomicityFindings(
+  topics: ReadonlyArray<Pass2TopicResult>,
+  findings: ReadonlyArray<GranularityFinding>,
+  repair: AtomicityRepairResult,
+  sourceAlignment: Pass2SourceAlignment,
+): GranularityFinding[] {
+  const nodeByCandidateId = new Map<string, Pass2MicroNode>();
+  for (const topic of topics) {
+    for (const node of topic.microNodes) {
+      if (node.candidateId) nodeByCandidateId.set(node.candidateId, node);
+    }
+  }
+  const hasPrimaryOwner = (blockIndex: number) =>
+    topics.some((topic) => topic.microNodes.some((node) =>
+      node.exercises.some((exercise) => exercise.blockIndex === blockIndex),
+    ));
+
+  return findings.filter((finding) => {
+    if (finding.issue === "UNDER_SPLIT" || finding.issue === "MEGA_NODE") {
+      if (!finding.microNodeId) return true;
+      const replacementIds = repair.splitReplacementCandidateIds[finding.microNodeId];
+      return !replacementIds?.length || replacementIds.some((candidateId) => {
+        const replacement = nodeByCandidateId.get(candidateId);
+        return !replacement || detectCompoundLO(replacement.learningObjective) !== null;
+      });
+    }
+    if (finding.issue === "MISSING_ATOMIC_MICRONODE") {
+      const expectedOwnerIds = repair.primaryExerciseOwnerCandidateIds[finding.exerciseBlockIndex ?? Number.NaN] ?? [];
+      return !Number.isInteger(finding.exerciseBlockIndex) ||
+        !repair.primaryExerciseIndices.includes(finding.exerciseBlockIndex!) ||
+        !hasPrimaryOwner(finding.exerciseBlockIndex!) ||
+        expectedOwnerIds.length === 0 ||
+        !expectedOwnerIds.some((candidateId) =>
+          nodeByCandidateId.get(candidateId)?.exercises.some(
+            (exercise) => exercise.blockIndex === finding.exerciseBlockIndex,
+          ),
+        );
+    }
+    if (finding.issue === "EXERCISE_MISMATCH") {
+      return !Number.isInteger(finding.exerciseBlockIndex) ||
+        (!repair.primaryExerciseIndices.includes(finding.exerciseBlockIndex!) &&
+          !repair.integrativeExerciseIndices.includes(finding.exerciseBlockIndex!));
+    }
+    if (finding.issue === "UNSUPPORTED_MICRONODE") return !sourceAlignment.valid;
+    // OVER_SPLIT is resolved by the separate duplicate-resolution gate.
+    return false;
+  });
 }
 
 export type Pass2SourceAlignment = {
@@ -1640,6 +1925,8 @@ export interface Pass2Result {
   duplicateResolution: DuplicateResolutionAudit;
   sourceAlignment: Pass2SourceAlignment;
   sourceReallocation: SourceReallocationResult;
+  /** One same-lesson, server-validated repair pass for atomicity/exercise ownership. */
+  atomicityRepair: AtomicityRepairResult;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
   diagnostics: Pass2Diagnostics;
 }
@@ -2421,20 +2708,21 @@ supporting material, source text, or any indices not listed above.`;
 // topic calls are still detectable.
 //
 // RULES:
-//   • Never modifies topics[], nodes, sourceBlockIndices, or coverageValidation.
+//   • Returns one bounded, server-validated repair proposal at most.
 //   • Returns [] on review failure. Existing duplicate suspicions then fail closed
 //     rather than being silently persisted.
-//   • Runs AFTER Step 2 and BEFORE coverageValidation (purely additive).
+//   • Runs AFTER Step 2 and BEFORE final coverage validation.
 
 const PASS2B_REVIEW_SYSTEM = `You are a curriculum quality reviewer. You receive a compact
 representation of all MicroNodes produced by a lesson mapping pipeline, along with
 deterministic heuristic signals flagged before this call.
 
-Your ONLY job is to detect three types of granularity problems and report them as
-structured JSON findings. You do NOT change any node, split anything, or merge anything.
+Your job is to detect granularity problems and produce one bounded repair proposal
+using ONLY the provided same-lesson candidate IDs and validated block indices.
+The server, not you, validates and applies every action.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. MEGA_NODE — a single MicroNode contains two or more INDEPENDENTLY ASSESSABLE objectives.
+1. UNDER_SPLIT — a single MicroNode contains two or more INDEPENDENTLY ASSESSABLE objectives.
 
 Flag ONLY when: a student could correctly answer a test question for skill A while
 failing a test question for skill B, and both skills are contained in one MicroNode.
@@ -2442,12 +2730,12 @@ failing a test question for skill B, and both skills are contained in one MicroN
 EXAMPLE — flag this:
   LO: "Student can define a verb and identify verbs in text."
   Reason: Defining (recall) and identifying in context (application) are separately testable.
-  → MEGA_NODE
+  → UNDER_SPLIT
 
 DO NOT flag this:
   LO: "Student can decompose a multi-digit number by grouping digits from right to left."
   Reason: "grouping from right to left" is the METHOD of one procedure — not a separate skill.
-  → NOT a MEGA_NODE
+  → NOT an UNDER_SPLIT
 
 CRITICAL: The presence of "and", "կամ", "և", "ու" alone is NOT enough to flag MEGA_NODE.
 You must verify that both sides of the connector represent independently assessable skills.
@@ -2472,7 +2760,12 @@ DO NOT flag genuinely different objectives (even in the same topic):
   → These are different skills, NOT an over-split.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-3. EXERCISE_MISMATCH — an exercise obviously requires a skill far outside the MicroNode's LO.
+3. MISSING_ATOMIC_MICRONODE — a real verified exercise has no defensible primary
+owner, but an independently teachable objective is directly supported by this
+lesson's instructional source. Do not report this merely because an exercise
+has an unusual format or combines several existing skills.
+
+4. EXERCISE_MISMATCH — an exercise obviously requires a skill far outside the MicroNode's LO.
 
 Flag ONLY when: the exercise's required primary skill is clearly not covered by or
 prerequisite to the MicroNode's learning objective.
@@ -2485,6 +2778,9 @@ EXAMPLE — flag this:
 DO NOT flag exercises that test the exact skill, a sub-skill, or a direct prerequisite.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. UNSUPPORTED_MICRONODE — a candidate lacks direct source support even after
+considering the listed validated source blocks. Heading-only support is insufficient.
+
 HEURISTIC SIGNALS PROVIDED:
 The input includes pre-computed heuristic flags:
   • compoundLO: true  — regex detected a possible compound connector between two verb phrases
@@ -2501,12 +2797,13 @@ OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary.
       "topicTitle": "exact topic title from input",
       "microNodeTitle": "exact MicroNode title from input",
       "microNodeId": "server candidateId from input",
-      "issue": "MEGA_NODE",
+      "issue": "UNDER_SPLIT",
       "confidence": "HIGH",
       "reason": "Armenian-language explanation for the teacher",
       "suggestedAction": "Split into 2: [Title A] / [Title B]",
       "mergeIntoMicroNodeTitle": "exact existing MicroNode title (OVER_SPLIT only)",
-      "mergeIntoMicroNodeId": "server candidateId (OVER_SPLIT only)"
+      "mergeIntoMicroNodeId": "server candidateId (OVER_SPLIT only)",
+      "exerciseBlockIndex": 12
     }
   ],
   "duplicateResolutions": [
@@ -2525,10 +2822,23 @@ For EVERY duplicateCandidates pair, return exactly one duplicateResolutions entr
   • MERGE only for the SAME TOPIC and only when they are truly the same objective;
     include keepCandidateId for the one existing MicroNode that should remain.
   • REVIEW_REQUIRED when uncertain. Never use titles to identify an action.
-Allowed issue values: "MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH" only.
+Allowed issue values: "MEGA_NODE", "UNDER_SPLIT", "OVER_SPLIT", "EXERCISE_MISMATCH",
+"MISSING_ATOMIC_MICRONODE", "UNSUPPORTED_MICRONODE".
 Allowed confidence values: "HIGH", "MEDIUM" only.
 reason MUST be in Armenian.
-suggestedAction is optional.`;
+suggestedAction is optional.
+
+atomicityRepairs may contain only these server-validated actions:
+  • SPLIT_MICRONODE: replace one existing candidate with at least two atomic
+    children. The children must use a disjoint exact partition of that candidate's
+    CURRENT sourceBlockIndices. Do not add source blocks and do not duplicate them.
+  • ASSIGN_PRIMARY_EXERCISE: move one exercise to one existing candidate ID.
+  • MARK_INTEGRATIVE: keep a genuinely cross-node/reflection/out-of-scope exercise
+    as Additional. Do not use this for an exercise whose obvious source-supported
+    owner is merely missing.
+
+Never create a source-less node. Never use text, IDs, or indices not supplied.
+Return only valid JSON.`;
 
 /** Compact per-MicroNode representation sent to Pass 2B. */
 interface GranularityReviewMicroNode {
@@ -2816,8 +3126,11 @@ export interface SourceReallocationDecision {
 }
 
 export interface SemanticReviewResult {
+  status: "COMPLETE" | "UNAVAILABLE";
+  unavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
   findings: GranularityFinding[];
   sourceReallocations: SourceReallocationDecision[];
+  atomicityRepairs: AtomicityRepairDecision[];
   duplicateResolutions: DuplicateResolution[];
   malformedDuplicateResolutionEntries: MalformedDuplicateResolutionEntry[];
 }
@@ -2880,8 +3193,10 @@ async function runGranularityReview(
   const totalMicroNodes = reviewTopics.reduce((s, t) => s + t.microNodes.length, 0);
   if (totalMicroNodes === 0) {
     return {
+      status: "COMPLETE",
       findings: [],
       sourceReallocations: [],
+      atomicityRepairs: [],
       duplicateResolutions: [],
       malformedDuplicateResolutionEntries: [],
     };
@@ -2897,6 +3212,26 @@ async function runGranularityReview(
         currentSourceBlockIndices: node.sourceBlockIndices,
       })),
     }));
+  const exerciseReviewInput = topics.flatMap((topic) => {
+    const assigned = topic.microNodes.flatMap((node) => node.exercises.map((exercise) => ({
+      blockIndex: exercise.blockIndex,
+      currentOwnerCandidateId: node.candidateId ?? null,
+    })));
+    const additional = topic.additionalExercises.map((exercise) => ({
+      blockIndex: exercise.blockIndex,
+      currentOwnerCandidateId: null,
+    }));
+    return [...assigned, ...additional]
+      .filter(({ blockIndex }) =>
+        isValidBlockIndex(blockIndex, blocks) && ACTIVITY_BLOCK_TYPES.has(blocks[blockIndex].blockType),
+      )
+      .map(({ blockIndex, currentOwnerCandidateId }) => ({
+        topicSequence: topic.sequence,
+        blockIndex,
+        currentOwnerCandidateId,
+        block: fmtPass2Block(blockIndex, blocks[blockIndex]),
+      }));
+  });
   const eligibleSourceBlocks = blocks
     .map((block, index) => ({ index, block }))
     .filter(({ block }) =>
@@ -2913,8 +3248,12 @@ ${JSON.stringify(reviewTopics, null, 2)}
 DUPLICATE CANDIDATES (complete contract; includes cross-topic pairs):
 ${JSON.stringify(duplicateReviewCandidates, null, 2)}
 
-Apply the MEGA_NODE, OVER_SPLIT, and EXERCISE_MISMATCH criteria from the system prompt.
+Apply the UNDER_SPLIT, OVER_SPLIT, MISSING_ATOMIC_MICRONODE, UNSUPPORTED_MICRONODE,
+and EXERCISE_MISMATCH criteria from the system prompt.
 Pay special attention to MicroNodes where compoundLO=true and duplicate candidate pairs.
+
+VERIFIED EXERCISES:
+${JSON.stringify(exerciseReviewInput, null, 2)}
 
 SOURCE REALLOCATION (only for nodes with needsSourceRepair=true):
 The following are the only readable, validated source blocks from this same lesson Source Set
@@ -2937,6 +3276,25 @@ Return only this JSON shape:
     "sourceBlockIndices": [12],
     "reason": "Հայերեն պատճառ"
   }],
+  "atomicityRepairs": [{
+    "action": "SPLIT_MICRONODE",
+    "topicSequence": 1,
+    "microNodeId": "t1:n0",
+    "reason": "Հայերեն պատճառ",
+    "splitMicroNodes": [{
+      "title": "Հայերեն ատոմային վերնագիր",
+      "learningObjective": "Սովորողը կարող է կատարել մեկ չափելի գործողություն։",
+      "microNodeType": "knowledge",
+      "sourceBlockIndices": [3],
+      "exerciseBlockIndices": [12]
+    }, {
+      "title": "Երկրորդ ատոմային վերնագիր",
+      "learningObjective": "Սովորողը կարող է կատարել երկրորդ չափելի գործողություն։",
+      "microNodeType": "skill",
+      "sourceBlockIndices": [4],
+      "exerciseBlockIndices": []
+    }]
+  }],
   "duplicateResolutions": [{
     "candidateAId": "t1:n0",
     "candidateBId": "t1:n1",
@@ -2947,7 +3305,12 @@ Return only this JSON shape:
 Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NO_VALID_SUPPORT_FOUND.
 Every sourceBlockIndices value must come from the listed validated source blocks.
 Return one duplicateResolutions entry for every duplicateCandidates pair, including
-cross-topic pairs. Do not infer actions from titles.`;
+cross-topic pairs. Do not infer actions from titles.
+atomicityRepairs actions: SPLIT_MICRONODE, ASSIGN_PRIMARY_EXERCISE, MARK_INTEGRATIVE.
+A split child source set must be an exact disjoint partition of the target's current
+sourceBlockIndices. If source is also reallocated for that target in this response,
+include every resulting source index in exactly one split child. Never create a
+source-less child.`;
 
   try {
     const r = await openrouter.chat.completions.create({
@@ -2964,8 +3327,11 @@ cross-topic pairs. Do not infer actions from titles.`;
     if (!raw.trim()) {
       logger.warn({ totalMicroNodes }, "pass2b granularity review: empty response — returning no findings");
       return {
+        status: "UNAVAILABLE",
+        unavailableReason: "EMPTY_RESPONSE",
         findings: [],
         sourceReallocations: [],
+        atomicityRepairs: [],
         duplicateResolutions: [],
         malformedDuplicateResolutionEntries: [],
       };
@@ -2974,19 +3340,30 @@ cross-topic pairs. Do not infer actions from titles.`;
     const parsed = parsePass2JSON(raw) as {
       findings?: unknown[];
       sourceReallocations?: unknown[];
+      atomicityRepairs?: unknown[];
       duplicateResolutions?: unknown[];
     };
     if (!parsed || !Array.isArray(parsed.findings)) {
       logger.warn({ totalMicroNodes }, "pass2b granularity review: invalid JSON schema — returning no findings");
       return {
+        status: "UNAVAILABLE",
+        unavailableReason: "INVALID_RESPONSE",
         findings: [],
         sourceReallocations: [],
+        atomicityRepairs: [],
         duplicateResolutions: [],
         malformedDuplicateResolutionEntries: [],
       };
     }
 
-    const VALID_ISSUES   = new Set(["MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH"]);
+    const VALID_ISSUES = new Set([
+      "MEGA_NODE",
+      "UNDER_SPLIT",
+      "OVER_SPLIT",
+      "EXERCISE_MISMATCH",
+      "MISSING_ATOMIC_MICRONODE",
+      "UNSUPPORTED_MICRONODE",
+    ]);
     const VALID_CONFIDENCE = new Set(["HIGH", "MEDIUM"]);
 
     const findings: GranularityFinding[] = [];
@@ -3012,6 +3389,9 @@ cross-topic pairs. Do not infer actions from titles.`;
         ...(item.mergeIntoMicroNodeTitle ? { mergeIntoMicroNodeTitle: String(item.mergeIntoMicroNodeTitle) } : {}),
         ...(item.microNodeId ? { microNodeId: String(item.microNodeId) } : {}),
         ...(item.mergeIntoMicroNodeId ? { mergeIntoMicroNodeId: String(item.mergeIntoMicroNodeId) } : {}),
+        ...(typeof item.exerciseBlockIndex === "number" && Number.isInteger(item.exerciseBlockIndex)
+          ? { exerciseBlockIndex: item.exerciseBlockIndex }
+          : {}),
       });
     }
 
@@ -3040,12 +3420,61 @@ cross-topic pairs. Do not infer actions from titles.`;
       }
     }
 
+    const atomicityRepairs: AtomicityRepairDecision[] = [];
+    if (Array.isArray(parsed.atomicityRepairs)) {
+      for (const item of parsed.atomicityRepairs) {
+        const value = asRecord(item);
+        const action = String(value?.action ?? "");
+        const topicSequence = value?.topicSequence;
+        const reason = value?.reason;
+        if (
+          !value ||
+          !["SPLIT_MICRONODE", "ASSIGN_PRIMARY_EXERCISE", "MARK_INTEGRATIVE"].includes(action) ||
+          typeof topicSequence !== "number" || !Number.isInteger(topicSequence) ||
+          typeof reason !== "string" || !reason.trim()
+        ) continue;
+        const decision: AtomicityRepairDecision = {
+          action: action as AtomicityRepairAction,
+          topicSequence,
+          ...(typeof value.microNodeId === "string" ? { microNodeId: value.microNodeId } : {}),
+          ...(typeof value.exerciseBlockIndex === "number" && Number.isInteger(value.exerciseBlockIndex)
+            ? { exerciseBlockIndex: value.exerciseBlockIndex }
+            : {}),
+          reason,
+        };
+        if (decision.action === "SPLIT_MICRONODE") {
+          if (!Array.isArray(value.splitMicroNodes)) continue;
+          decision.splitMicroNodes = value.splitMicroNodes.flatMap((candidate) => {
+            const node = asRecord(candidate);
+            if (!node || typeof node.title !== "string" || typeof node.learningObjective !== "string") return [];
+            const sourceBlockIndices = Array.isArray(node.sourceBlockIndices)
+              ? node.sourceBlockIndices.filter((index): index is number =>
+                typeof index === "number" && Number.isInteger(index))
+              : [];
+            const exerciseBlockIndices = Array.isArray(node.exerciseBlockIndices)
+              ? node.exerciseBlockIndices.filter((index): index is number =>
+                typeof index === "number" && Number.isInteger(index))
+              : [];
+            return [{
+              title: node.title,
+              learningObjective: node.learningObjective,
+              microNodeType: node.microNodeType === "skill" ? "skill" : "knowledge",
+              sourceBlockIndices,
+              exerciseBlockIndices,
+            }];
+          });
+        }
+        atomicityRepairs.push(decision);
+      }
+    }
+
     const parsedDuplicateResolutions = parseDuplicateResolutions(parsed.duplicateResolutions);
     const duplicateResolutions = parsedDuplicateResolutions.resolutions;
 
     logger.info(
       {
         findingCount: findings.length,
+        atomicityRepairCount: atomicityRepairs.length,
         duplicateResolutionCount: duplicateResolutions.length,
         malformedDuplicateResolutionCount: parsedDuplicateResolutions.malformedEntries.length,
         totalMicroNodes,
@@ -3053,8 +3482,10 @@ cross-topic pairs. Do not infer actions from titles.`;
       "pass2b granularity review: complete",
     );
     return {
+      status: "COMPLETE",
       findings,
       sourceReallocations,
+      atomicityRepairs,
       duplicateResolutions,
       malformedDuplicateResolutionEntries: parsedDuplicateResolutions.malformedEntries,
     };
@@ -3062,8 +3493,11 @@ cross-topic pairs. Do not infer actions from titles.`;
   } catch (err) {
     logger.warn({ err }, "pass2b granularity review: AI call failed — duplicate candidates will fail closed");
     return {
+      status: "UNAVAILABLE",
+      unavailableReason: "REQUEST_FAILED",
       findings: [],
       sourceReallocations: [],
+      atomicityRepairs: [],
       duplicateResolutions: [],
       malformedDuplicateResolutionEntries: [],
     };
@@ -3245,7 +3679,12 @@ export function assertPass2PersistenceGates(input: {
   sourceAlignment: Pass2SourceAlignment;
   duplicateResolution: DuplicateResolutionAudit;
   diagnostics: Pass2Diagnostics;
+  unresolvedAtomicityFindings?: GranularityFinding[];
+  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
 }): void {
+  if (input.atomicityReviewUnavailableReason) {
+    throw new MappingAtomicityReviewUnavailableError(input.atomicityReviewUnavailableReason);
+  }
   if (!input.coverageValidation.valid) {
     throw new MappingSourcePlacementError(input.coverageValidation);
   }
@@ -3257,6 +3696,9 @@ export function assertPass2PersistenceGates(input: {
   }
   if (input.duplicateResolution.unresolvedPairIds.length > 0) {
     throw new MappingGranularityReviewError(input.duplicateResolution);
+  }
+  if ((input.unresolvedAtomicityFindings?.length ?? 0) > 0) {
+    throw new MappingAtomicityError(input.unresolvedAtomicityFindings!);
   }
 }
 
@@ -3531,6 +3973,9 @@ export async function runPass2Pipeline(
     initialSourceAlignment,
     duplicateSuspicions,
   );
+  const atomicityReviewUnavailableReason = semanticReview.status === "UNAVAILABLE"
+    ? semanticReview.unavailableReason
+    : undefined;
   const granularityFindings = semanticReview.findings;
   const explicitConsolidation = consolidateHighConfidenceOverSplits(
     topics,
@@ -3557,6 +4002,15 @@ export async function runPass2Pipeline(
     semanticReview.sourceReallocations,
     { requireStableIds: true },
   );
+  // This is the only atomicity repair pass in a mapping run. Its split contract
+  // requires an exact partition of existing same-lesson source ownership, while
+  // exercise moves preserve one canonical activity destination.
+  const atomicityRepair = applyBoundedAtomicityRepairs(
+    topics,
+    blocks,
+    semanticReview.atomicityRepairs,
+  );
+  normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
@@ -3564,6 +4018,12 @@ export async function runPass2Pipeline(
   const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics);
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
+  const unresolvedAtomicityFindings = getUnresolvedAtomicityFindings(
+    topics,
+    granularityFindings,
+    atomicityRepair,
+    sourceAlignment,
+  );
 
   logger.info(
     {
@@ -3581,6 +4041,8 @@ export async function runPass2Pipeline(
           rejectedDecisionCount: duplicateResolution.rejectedDecisionCount,
         },
        sourceReallocation,
+        atomicityRepair,
+        unresolvedAtomicityFindingCount: unresolvedAtomicityFindings.length,
       missingIndices:  coverageValidation.missingIndices,
       duplicateIndices: coverageValidation.duplicateIndices,
       invalidIndices:  coverageValidation.invalidIndices,
@@ -3620,6 +4082,8 @@ export async function runPass2Pipeline(
     sourceAlignment,
     duplicateResolution,
     diagnostics,
+    unresolvedAtomicityFindings,
+    atomicityReviewUnavailableReason,
   });
 
   return {
@@ -3632,6 +4096,7 @@ export async function runPass2Pipeline(
     duplicateResolution,
     sourceAlignment,
     sourceReallocation,
+    atomicityRepair,
     diagnostics,
   };
 }

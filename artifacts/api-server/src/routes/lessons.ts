@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, MappingInstructionalCoverageError, MappingOutcomeAlignmentError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingSourcePlacementError, MappingSourceScopeError, MappingSourceAlignmentError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -4328,6 +4328,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           rejectedDecisionCount: pass2.duplicateResolution.rejectedDecisionCount,
         },
         sourceReallocation: pass2.sourceReallocation,
+        atomicityRepair: {
+          attempted: pass2.atomicityRepair.attempted,
+          appliedCount: pass2.atomicityRepair.appliedCount,
+          rejectedDecisionCount: pass2.atomicityRepair.rejectedDecisionCount,
+          splitMicroNodeCount: pass2.atomicityRepair.splitCandidateIds.length,
+          primaryExerciseCount: pass2.atomicityRepair.primaryExerciseIndices.length,
+          integrativeExerciseCount: pass2.atomicityRepair.integrativeExerciseIndices.length,
+        },
         sourceAlignment: {
           valid: pass2.sourceAlignment.valid,
           sufficientCount: pass2.sourceAlignment.sufficientCount,
@@ -4492,6 +4500,24 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
                 unresolvedPairIds: err.duplicateResolution.unresolvedPairIds,
                 rejectedDecisionCount: err.duplicateResolution.rejectedDecisionCount,
               },
+            }
+        : err instanceof MappingAtomicityError
+          ? {
+              progress: "Pedagogically atomic MicroNode review remained unresolved; existing mapping was preserved.",
+              reason: "MICRONODE_ATOMICITY_FAILED_PRE_PERSISTENCE",
+              diagnostics: {
+                findings: err.findings.map((finding) => ({
+                  issue: finding.issue,
+                  confidence: finding.confidence,
+                  hasExerciseEvidence: Number.isInteger(finding.exerciseBlockIndex),
+                })),
+              },
+            }
+        : err instanceof MappingAtomicityReviewUnavailableError
+          ? {
+              progress: "Atomicity review did not complete; existing mapping was preserved.",
+              reason: "MICRONODE_ATOMICITY_REVIEW_UNAVAILABLE_PRE_PERSISTENCE",
+              diagnostics: { reviewReason: err.reason },
             }
         : null;
     await db.update(mappingJobsTable)
