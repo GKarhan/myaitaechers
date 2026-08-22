@@ -1,0 +1,223 @@
+FINAL C1 SOURCE VERIFICATION BUG
+REAL LESSON: «Բնական թվերի շարքը»
+
+Do NOT redesign mapping.
+Do NOT change Goal/Outcomes.
+Do NOT weaken source-scope safety.
+Do NOT proceed to Package 1D.
+
+REAL CURRENT FAILURE
+
+Book:
+Մաթեմատիկա 5
+Author:
+Սմբատ Գոգյան
+
+Lesson title:
+Բնական թվերի շարքը
+
+Current UI section identifier:
+§2.1
+
+Selected PDF pages:
+14–15
+
+Automatic mapping fails with:
+
+«Ընտրված PDF էջերի բովանդակությունը չհաջողվեց վստահորեն հաստատել որպես այս դասի աղբյուր»։
+
+IMPORTANT SOURCE FACT:
+
+In the textbook, the lesson is actually:
+
+1.2 Բնական թվերի շարքը
+
+Therefore audit whether the current lesson metadata (§2.1) is incorrect
+and whether that incorrect identifier participates in lesson/source-scope
+validation.
+
+==================================================
+1. AUDIT FIRST
+==================================================
+
+Trace exactly:
+
+lesson title
+lesson section / paragraph identifier
+selected PDF pages
+Pass 1 extracted blocks
+lesson/source anchor construction
+source-scope validator
+failure condition
+
+Return:
+
+- exact file/function
+- exact values used
+- which comparison fails
+- whether §2.1 vs 1.2 contributes to rejection
+- whether title-anchor logic is too strict
+- whether source containment itself fails
+
+Do not guess.
+
+==================================================
+2. CHECK SECTION IDENTIFIER
+==================================================
+
+Verify from the current resource/page content whether the intended lesson
+identifier is:
+
+1.2
+
+not:
+
+2.1
+
+If current lesson metadata is wrong:
+
+do NOT silently rewrite user data before proving the effect.
+
+First show whether this wrong metadata is used by source validation.
+
+If it is the cause:
+fix the lesson metadata safely or make section matching tolerant enough
+to avoid false source rejection while preserving source-scope safety.
+
+Do not hardcode this lesson.
+
+==================================================
+3. TITLE / SECTION ANCHOR RULE
+==================================================
+
+A lesson source range should not fail merely because:
+
+- one page does not repeat the lesson title;
+- section formatting differs slightly;
+- OCR/provider formatting changes punctuation;
+- the continuation page contains only exercises/content.
+
+Use title/section anchors as supporting evidence, not brittle exact-string
+requirements.
+
+But do not remove source-scope protection.
+
+==================================================
+4. CONTENT CONTAINMENT
+==================================================
+
+Independently verify:
+
+- physical page 14 source
+- physical page 15 source
+- Pass 1 returned blocks
+- containment against those exact pages
+
+Report count only:
+
+page 14 blocks:
+verified:
+rejected:
+
+page 15 blocks:
+verified:
+rejected:
+
+If block rejection is due to normalization/formatting mismatch, fix only
+that containment boundary.
+
+Do not accept fabricated text.
+
+==================================================
+5. REAL SOURCE EXPECTATION
+==================================================
+
+The selected source should include the lesson:
+
+«Բնական թվերի շարքը»
+
+and its continuation/exercises.
+
+The system should be able to confirm the lesson scope from the actual
+content even if the exact lesson heading appears only on the first page.
+
+==================================================
+6. SAFE FIX OPTIONS
+==================================================
+
+Depending on proven root cause:
+
+A. WRONG LESSON SECTION METADATA
+→ correct/reconcile the section identifier safely.
+
+B. OVER-STRICT TITLE/SECTION MATCH
+→ make matching normalized and continuation-aware.
+
+C. SOURCE CONTAINMENT NORMALIZATION BUG
+→ fix deterministic normalization.
+
+D. PROVIDER FABRICATED/ALTERED BLOCK
+→ preserve fail-closed behavior.
+
+Do not weaken all gates.
+
+==================================================
+7. PROVIDER-FREE TESTS
+==================================================
+
+Add tests for:
+
+1. exact title match
+2. normalized title match
+3. correct lesson with heading only on first selected page
+4. continuation page without heading
+5. wrong section number but correct title/content
+6. wrong title/content must still fail
+7. provider formatting differences must not create false rejection
+8. fabricated source block must fail
+9. old valid mapping remains unchanged on failure
+
+==================================================
+8. REAL LESSON RETEST
+==================================================
+
+After focused tests pass:
+
+use the CURRENT lesson only.
+
+Do not recreate/delete it.
+
+Before mapping report:
+
+lesson title
+stored section identifier
+selected pages
+source-scope anchors used
+
+Then run automatic mapping ONCE.
+
+Report:
+
+page extraction PASS/FAIL
+source containment PASS/FAIL
+lesson scope validation PASS/FAIL
+Pass 2 reached YES/NO
+
+Do not approve anything.
+
+==================================================
+9. REQUIRED VERDICT
+==================================================
+
+Return exactly one:
+
+SOURCE VERIFICATION FIXED — PASS 2 REACHED
+
+or
+
+SOURCE VERIFICATION STILL BLOCKED
+
+If blocked, state the exact remaining cause.
+
+Do NOT proceed to Package 1D.
+Do NOT declare C1 frozen.
