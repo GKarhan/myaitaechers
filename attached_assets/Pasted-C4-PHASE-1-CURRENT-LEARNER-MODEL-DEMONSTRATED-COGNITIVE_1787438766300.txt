@@ -1,0 +1,575 @@
+C4 — PHASE 1: CURRENT LEARNER MODEL / DEMONSTRATED COGNITIVE CEILING AUDIT
+
+Execute this audit NOW.
+
+DO NOT ask for confirmation.
+AUDIT ONLY.
+READ ONLY.
+NO code changes.
+NO DB writes.
+NO implementation.
+NO task creation.
+
+C1, C2 and C3 are complete.
+
+C1:
+Curriculum → Lesson → Topic → atomic MicroNode → source/exercises
+
+C2:
+Each MicroNode may have an accepted Cognitive Path with:
+- ordered cognitive levels
+- curriculum target cognitive level / ceiling
+- performanceObjective
+- successCriterion
+- required evidence count
+- preferred interaction/task types
+
+C3:
+New qualifying evidence can reliably preserve:
+- learner
+- MicroNode
+- Cognitive Level ID
+- stable task identity
+- result
+- assistance/help
+- attempt
+- session/context
+- evidence strength/quality
+- qualification state
+
+Now C4 must determine the LEARNER-SPECIFIC state derived from that evidence.
+
+==================================================
+CORE ARCHITECTURAL RULE
+==================================================
+
+DO NOT confuse:
+
+A) CURRICULUM TARGET COGNITIVE LEVEL
+"What level should this MicroNode ultimately reach?"
+
+with
+
+B) LEARNER CURRENT DEMONSTRATED COGNITIVE CEILING
+"What is the highest cognitive level this learner has actually
+demonstrated with sufficient qualifying evidence?"
+
+These are different concepts.
+
+Curriculum target:
+MicroNode/C2 property.
+
+Demonstrated ceiling:
+learner × MicroNode property.
+
+The learner must NEVER be promoted to a cognitive level merely because
+that level exists in the Cognitive Path.
+
+==================================================
+1. AUDIT CURRENT LEARNER-STATE DATA MODEL
+==================================================
+
+Inspect actual schema/migrations/code for all learner-specific
+MicroNode/knowledge state.
+
+At minimum inspect:
+
+- knowledge_nodes
+- evidence_events
+- any mastery/progress tables
+- any learner-node state tables
+- lesson/session state if used
+- Knowledge Tree readers
+- scoring services
+- quiz result processing
+- AI Teacher evidence processing
+
+Determine whether current persisted learner × MicroNode state contains:
+
+- learner/user ID
+- MicroNode ID
+- mastery score
+- confidence score
+- mastery/status classification
+- demonstrated cognitive level
+- evidence count
+- last evidence timestamp
+- last successful demonstration
+- target cognitive level
+- prerequisite state
+- review/retention state
+
+Do NOT infer from names.
+Verify actual schema and writers/readers.
+
+Return a matrix:
+
+CONCEPT
+CURRENT FIELD/TABLE
+WRITER
+READER
+STATUS
+NOTES
+
+Statuses:
+AUTHORITATIVE
+PARTIAL
+LEGACY
+DERIVED
+MISSING
+
+==================================================
+2. AUDIT demonstratedCognitiveLevel
+==================================================
+
+The previous audit identified an existing field similar to:
+
+knowledge_nodes.demonstratedCognitiveLevel
+
+Inspect it deeply.
+
+Answer:
+
+1. Is it actually learner-specific?
+2. Is it MicroNode-specific?
+3. What exact values can it contain?
+4. Which code writes it?
+5. Which evidence producers can change it?
+6. What rule promotes it?
+7. What rule prevents promotion?
+8. Can it decrease?
+9. Can assisted evidence change it?
+10. Can MICRO_CHECK change it?
+11. Does evidence strength matter?
+12. Does requiredEvidenceCount matter?
+13. Does Cognitive Level ID matter, or only Bloom text?
+14. Is the value currently trustworthy after C3?
+15. Does Knowledge Tree use it?
+16. Does AI Teacher use it?
+
+Trace actual code/functions.
+
+==================================================
+3. AUDIT CURRENT MASTERY + CONFIDENCE
+==================================================
+
+Determine the authoritative learner × MicroNode:
+
+- mastery
+- confidence
+- status/classification
+
+Trace:
+
+Evidence
+→ scoring
+→ mastery/confidence
+→ persisted learner state
+
+Verify the CURRENT formulas.
+
+Do not assume historical formulas are still authoritative.
+
+Determine whether mastery/confidence currently consider:
+
+- number of qualifying evidence events
+- correctness
+- independent vs assisted
+- evidence quality/strength
+- Cognitive Level
+- required evidence count
+- recency
+- repeated attempts
+- quiz evidence
+- AI Teacher evidence
+
+Classify each:
+USED
+PARTIAL
+IGNORED
+
+==================================================
+4. DEFINE CURRENT DEMONSTRATED CEILING BEHAVIOR
+==================================================
+
+Audit whether current implementation can reliably answer:
+
+"For learner X and MicroNode Y, what is the highest Cognitive Level
+that the learner has sufficiently demonstrated?"
+
+Important:
+
+One correct answer must NOT automatically prove an entire Cognitive Level
+unless the C2 requirement for that level says one qualifying evidence item
+is sufficient.
+
+The system must eventually respect:
+
+C2 requiredEvidenceCount
++
+C3 qualifying evidence
++
+independence/assistance
++
+evidence strength
++
+success at that Cognitive Level.
+
+Audit what currently happens.
+
+Do NOT implement the new rule yet.
+
+==================================================
+5. CONTIGUOUS PROGRESSION AUDIT
+==================================================
+
+Inspect whether the learner can currently jump cognitive levels.
+
+Example path:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY
+→ ANALYZE
+
+If the learner demonstrates APPLY evidence but UNDERSTAND is not yet
+sufficiently confirmed:
+
+Does current system immediately store APPLY as demonstrated ceiling?
+
+Or does it require lower required levels to be satisfied?
+
+Report current behavior.
+
+For this audit, evaluate the architecture for a CONTIGUOUS demonstrated
+ceiling:
+
+The ceiling should normally mean:
+the highest level for which that level AND all required lower levels in
+the accepted Cognitive Path have sufficient evidence.
+
+Do not implement yet.
+Report whether current system supports this.
+
+==================================================
+6. EVIDENCE QUALIFICATION AUDIT
+==================================================
+
+Using the new C3 contract, determine exactly which evidence currently
+affects learner state.
+
+Check:
+
+QUALIFIED + STRONG
+QUALIFIED + MODERATE
+QUALIFIED + weak/other
+UNQUALIFIED
+legacy/null Cognitive Level
+assisted
+independent
+incorrect
+partial
+
+Determine what each currently does to:
+
+- mastery
+- confidence
+- demonstrated Cognitive Level
+
+Important architectural rule:
+
+UNQUALIFIED evidence must NEVER establish a demonstrated Cognitive Level.
+
+MICRO_CHECK alone must NEVER establish strong/conclusive mastery.
+
+Verify whether current code satisfies this.
+
+==================================================
+7. TARGET VS DEMONSTRATED GAP
+==================================================
+
+Audit whether the system currently represents:
+
+curriculumTargetLevel
+vs
+learnerDemonstratedLevel
+
+and whether it can compute:
+
+remaining cognitive gap.
+
+Example:
+
+Target = ANALYZE
+Learner demonstrated = UNDERSTAND
+
+Gap:
+APPLY → ANALYZE
+
+Determine:
+
+- where target comes from
+- where demonstrated comes from
+- whether comparison exists
+- whether AI Teacher currently uses the gap
+- whether Knowledge Tree currently exposes it
+
+DO NOT implement personalization here.
+
+That belongs to C5/C6+.
+
+==================================================
+8. FAILURE / REMEDIATION BEHAVIOR
+==================================================
+
+Audit what happens when learner evidence at a target level is insufficient.
+
+Example:
+
+Target = APPLY
+Learner repeatedly fails APPLY tasks.
+
+Does current code:
+
+- leave demonstrated ceiling at UNDERSTAND?
+- lower mastery?
+- lower confidence?
+- incorrectly downgrade already demonstrated lower levels?
+- overwrite demonstrated level?
+- retry indefinitely?
+- store failure evidence without changing ceiling?
+
+Report actual behavior.
+
+IMPORTANT future rule:
+
+Failure at a higher level must not erase a legitimately demonstrated lower
+ceiling.
+
+Do NOT implement yet.
+
+==================================================
+9. RETENTION / DECAY BOUNDARY
+==================================================
+
+Audit whether current learner model includes:
+
+- recency
+- decay
+- retention
+- scheduled review
+- stale mastery
+- revalidation
+
+If these already exist, document them.
+
+If not, classify them correctly.
+
+Do NOT build a retention engine during C4 Phase 1.
+
+We need to know whether they are:
+C4 essential,
+later C5+,
+or optional.
+
+==================================================
+10. KNOWLEDGE TREE BOUNDARY
+==================================================
+
+Do NOT modify Knowledge Tree.
+
+Audit only how Knowledge Tree currently derives:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Determine its authoritative inputs.
+
+Does it use:
+
+- mastery?
+- confidence?
+- evidence?
+- demonstrated Cognitive Level?
+- quiz-only state?
+- another table?
+
+Report any mismatch between the current Knowledge Tree state and the
+learner model.
+
+Classification only.
+No fix in this audit.
+
+==================================================
+11. AI TEACHER BOUNDARY
+==================================================
+
+Do NOT redesign AI Teacher.
+
+Audit whether AI Teacher currently receives/uses:
+
+- curriculum target level
+- learner demonstrated level
+- mastery
+- confidence
+- current evidence count
+- required evidence count
+
+Determine whether it can currently distinguish:
+
+"Teach toward APPLY"
+
+from
+
+"Learner has only demonstrated UNDERSTAND"
+
+If not, identify the exact missing connection.
+
+Do not implement it here unless later C4 implementation specifically needs
+to expose learner state.
+
+==================================================
+12. REAL DATA TRACE
+==================================================
+
+Use current DB data read-only.
+
+Prefer a learner/MicroNode with existing evidence.
+
+Trace:
+
+C3 evidence rows
+→ scoring
+→ knowledge_nodes or equivalent
+→ mastery
+→ confidence
+→ demonstrated Cognitive Level
+→ Knowledge Tree / AI Teacher readers
+
+If current real data is insufficient, use code-path evidence instead.
+
+DO NOT fabricate production learner data.
+
+==================================================
+13. CLASSIFY ALL GAPS
+==================================================
+
+Classify every issue into:
+
+C4-BLOCKER
+Required for a trustworthy learner-specific state.
+
+C4-IMPORTANT
+Should be fixed in C4 but not necessary for the minimal core.
+
+C5
+Knowledge Tree / learner-state presentation responsibility.
+
+C6
+Personalization / decision engine responsibility.
+
+C7
+AI Teacher production integration responsibility.
+
+OPTIONAL
+True enhancement only.
+
+Do NOT classify an approved architecture requirement as OPTIONAL merely
+to close C4 faster.
+
+==================================================
+14. MINIMUM C4 IMPLEMENTATION TARGET
+==================================================
+
+After the audit, propose the SMALLEST implementation required so the
+platform can reliably maintain:
+
+learner × MicroNode:
+
+- mastery
+- confidence
+- current demonstrated cognitive ceiling
+- evidence-derived state
+- last evidence/update context
+
+Minimum demonstrated-ceiling rule should be evidence-based and should
+respect:
+
+- accepted C2 Cognitive Path
+- C2 requiredEvidenceCount
+- C3 QUALIFIED evidence only
+- Cognitive Level ID
+- result/success
+- assistance/independence where relevant
+- evidence strength
+- contiguous progression
+
+IMPORTANT:
+
+Do not implement this plan yet.
+
+==================================================
+15. REQUIRED FINAL OUTPUT
+==================================================
+
+Return exactly these sections:
+
+A. CURRENT LEARNER MODEL SUMMARY
+
+B. LEARNER-STATE DATA MODEL MATRIX
+
+C. demonstratedCognitiveLevel CURRENT BEHAVIOR
+
+D. MASTERY / CONFIDENCE CURRENT BEHAVIOR
+
+E. C3 EVIDENCE → LEARNER STATE TRACE
+
+F. CONTIGUOUS COGNITIVE CEILING STATUS
+
+G. TARGET VS DEMONSTRATED STATUS
+
+H. FAILURE / REMEDIATION STATE BEHAVIOR
+
+I. KNOWLEDGE TREE BOUNDARY
+
+J. AI TEACHER BOUNDARY
+
+K. GAP CLASSIFICATION
+- C4-BLOCKER
+- C4-IMPORTANT
+- C5
+- C6
+- C7
+- OPTIONAL
+
+L. MINIMUM C4 IMPLEMENTATION PLAN
+
+M. FINAL ANSWER TO THIS QUESTION:
+
+"Can the current platform reliably determine, for each learner and each
+MicroNode, the highest Cognitive Level the learner has sufficiently and
+independently demonstrated from trustworthy evidence?"
+
+Answer:
+YES
+or
+NO
+
+If NO:
+state the exact smallest missing pieces.
+
+==================================================
+STOP
+==================================================
+
+AUDIT ONLY.
+
+Do not implement.
+Do not create tasks.
+Do not modify code.
+Do not modify DB.
+Do not begin C5/C6/C7.
+
+STOP after the C4 audit report.

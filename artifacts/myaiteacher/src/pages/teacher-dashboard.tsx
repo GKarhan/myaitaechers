@@ -1848,10 +1848,10 @@ function LessonNodesPanel({
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✅ Հաստատված</span>
                   )}
                   {(n as any).status === 'needs_review' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Veranayl</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Վերանայի</span>
                   )}
                   {((n as any).status === 'draft' || !(n as any).status) && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">📝 Sevagir</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">📝 Սևագիր</span>
                   )}
                   {(n as any).contentSourceType === 'manual' && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">✍ Ձեռքով</span>
@@ -3018,7 +3018,7 @@ function LessonNodesPanel({
                                     <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված </span>
                                   ) : (
                                     <>
-                                      <span className="text-[10px] text-amber-400/60">🟡 Sevagir</span>
+                                      <span className="text-[10px] text-amber-400/60">🟡 Սևագիր</span>
                                       <button
                                         onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
                                         disabled={updateEx.isPending}
