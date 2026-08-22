@@ -1,0 +1,654 @@
+C2 PHASE 1 — CURRENT COGNITIVE PATH ARCHITECTURE & DATA AUDIT
+
+IMPORTANT
+
+C1 automatic-mapper debugging is STOPPED.
+
+Do NOT reopen C1.
+Do NOT improve automatic mapping.
+Do NOT remap the lesson.
+Do NOT modify source verification.
+Do NOT modify MicroNode generation.
+
+We now move forward to:
+
+C2 — COGNITIVE PATH
+
+This task is READ-ONLY AUDIT FIRST.
+
+NO CODE CHANGES.
+NO DB WRITES.
+NO COGNITIVE PATH REGENERATION.
+NO APPROVAL CHANGES.
+
+==================================================
+REAL AUDIT TARGET
+==================================================
+
+Use the currently persisted real lesson:
+
+Textbook:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+§1.2 Բնական թվերի շարքը
+
+Resource:
+#19
+
+Physical PDF pages:
+14–15
+
+Resolve the CURRENT lesson ID from DB.
+
+The latest persisted mapping has approximately:
+
+- 1 Topic
+- 4 MicroNodes
+- 13 exercises
+
+Do not assume these counts if DB differs.
+Report actual persisted values.
+
+This lesson is our C2 acceptance test lesson.
+
+==================================================
+C2 PURPOSE
+==================================================
+
+C2 must define the pedagogically valid cognitive learning path for each
+atomic MicroNode.
+
+Canonical concept:
+
+MicroNode
+→ Cognitive Levels
+→ Target Cognitive Level
+→ Performance Objective
+→ Success Criterion
+→ Evidence Requirement Profile
+
+Cognitive levels are based on the existing project taxonomy, such as:
+
+Remember
+Understand
+Apply
+Analyze
+Evaluate
+Create
+
+but DO NOT assume every MicroNode needs every level.
+
+A MicroNode may legitimately require only:
+
+Remember → Understand
+
+or:
+
+Remember → Understand → Apply
+
+or another source/outcome-grounded path.
+
+The path must be determined by the knowledge objective and required
+demonstrated performance.
+
+==================================================
+CRITICAL DISTINCTION
+==================================================
+
+C2 must distinguish:
+
+1. CURRICULUM TARGET COGNITIVE LEVEL
+
+What level the curriculum / canonical Outcome expects for this
+MicroNode.
+
+from:
+
+2. LEARNER CURRENT DEMONSTRATED CEILING
+
+What cognitive level a particular learner has actually demonstrated.
+
+C2 defines the curriculum-side path and evidence requirements.
+
+Learner-specific demonstrated ceiling belongs later to the Learner
+Model / evidence pipeline.
+
+Do NOT mix these concepts.
+
+==================================================
+PART 1 — TRACE THE CURRENT ARCHITECTURE
+==================================================
+
+Find and report the actual implementation for Cognitive Paths.
+
+Inspect at minimum:
+
+- DB tables
+- schema fields
+- backend routes
+- backend services
+- AI generation functions/prompts
+- validation functions
+- source-grounding checks
+- teacher dashboard UI
+- edit/delete/regenerate actions
+- approval state
+- exercise attachment
+- AI Teacher consumers
+- quiz consumers if any
+- final C1/C2 readiness consumers if any
+
+Search the repository rather than relying on assumptions.
+
+Report exact file paths and important function names.
+
+Do not edit anything.
+
+==================================================
+PART 2 — DATABASE CONTRACT
+==================================================
+
+Identify the authoritative tables/fields for:
+
+A. MicroNode
+
+B. Cognitive Path / cognitive levels
+
+C. target cognitive level
+
+D. performanceObjective
+
+E. successCriterion
+
+F. preferredInteractionTypes
+
+G. evidence requirement count/profile
+
+H. attached lesson exercises
+
+I. path approval / grounding status
+
+J. ordering of cognitive levels
+
+For each field, report:
+
+- table
+- column
+- nullable/non-null if relevant
+- generated or teacher-authored
+- current consumer(s)
+
+Also identify whether any duplicate/legacy cognitive-path storage exists.
+
+==================================================
+PART 3 — REAL LESSON DATA AUDIT
+==================================================
+
+Read the persisted 4 MicroNodes of the real lesson.
+
+For EACH MicroNode report compactly:
+
+MICRONODE:
+- id
+- title
+- learningObjective
+- source support/review status
+- Bloom/cognitive metadata currently stored
+
+COGNITIVE PATH:
+- exists YES/NO
+- approved YES/NO
+- grounding status
+- ordered cognitive levels
+
+For EACH cognitive level:
+
+- level
+- target flag YES/NO
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- required evidence count
+- attached exercise count
+- attached exercise IDs only
+- grounding/validation status
+
+Do NOT dump raw textbook source text.
+
+==================================================
+PART 4 — AUDIT THE CURRENT GENERATION CONTRACT
+==================================================
+
+Find how Cognitive Paths are generated today.
+
+Answer:
+
+1. What exact context is sent to the AI?
+
+Does it receive:
+
+- MicroNode title?
+- learningObjective?
+- source/theory?
+- canonical Outcomes?
+- source page?
+- attached exercises?
+- exercise types?
+- Bloom metadata?
+
+2. What does the AI decide?
+
+- path levels?
+- target level?
+- performance objectives?
+- success criteria?
+- interaction types?
+- evidence counts?
+
+3. What is determined server-side?
+
+4. What is validated deterministically after generation?
+
+5. Can the AI generate claims that are not supported by the MicroNode
+source?
+
+6. What currently happens when that occurs?
+
+We already saw in the UI:
+
+"generated Cognitive Path includes claims not supported by the
+MicroNode source"
+
+Find the exact code path producing this condition.
+
+Do not fix it yet.
+
+==================================================
+PART 5 — TARGET COGNITIVE LEVEL
+==================================================
+
+Determine how target cognitive level is currently selected.
+
+Answer explicitly:
+
+- Is it copied from the MicroNode Bloom level?
+- inferred from canonical Outcome?
+- generated by AI?
+- manually selected?
+- derived from exercises?
+- some combination?
+
+Then determine whether the current implementation has ONE authoritative
+target level.
+
+If multiple conflicting target concepts exist, report them.
+
+Do not resolve them yet.
+
+==================================================
+PART 6 — PERFORMANCE OBJECTIVE
+==================================================
+
+Audit the current semantics.
+
+A correct Performance Objective should describe:
+
+WHAT THE LEARNER MUST DEMONSTRATE
+AT THIS SPECIFIC COGNITIVE LEVEL.
+
+Example conceptual distinction:
+
+MicroNode learningObjective:
+understand concept X
+
+Remember performance objective:
+recall/identify the relevant fact or definition
+
+Understand performance objective:
+explain concept X in own reasoning
+
+Apply performance objective:
+use concept X in a suitable task
+
+Audit whether the current generator follows this principle.
+
+Report concrete structural problems.
+
+==================================================
+PART 7 — SUCCESS CRITERION
+==================================================
+
+Determine whether successCriterion is currently:
+
+- observable;
+- assessable;
+- specific to the cognitive level;
+- distinct from performanceObjective.
+
+Identify cases where it merely paraphrases the objective.
+
+Do not redesign it yet.
+
+==================================================
+PART 8 — EVIDENCE REQUIREMENT PROFILE
+==================================================
+
+This is critical for later C3.
+
+Audit exactly how the system currently represents:
+
+"How much and what type of evidence is required to demonstrate this
+cognitive level?"
+
+Find:
+
+- required evidence count;
+- exercise/task attachment;
+- interaction types;
+- evidence strength if present;
+- independent vs assisted evidence if present;
+- transfer requirement if present;
+- recency/repetition requirement if present.
+
+Determine what already exists and what is missing.
+
+Do NOT build C3 in this task.
+
+We only need to know whether C2 currently provides enough specification
+for C3 to consume later.
+
+==================================================
+PART 9 — EXERCISE ↔ COGNITIVE LEVEL ALIGNMENT
+==================================================
+
+Audit how exercises are attached to cognitive levels.
+
+Determine:
+
+- automatic or manual?
+- one exercise can attach to multiple levels?
+- one exercise can attach to multiple MicroNodes?
+- cognitive level stored on exercise itself?
+- attachment table?
+- whether attachment affects required evidence count;
+- whether attached exercises are validated against the cognitive level.
+
+Use the real lesson as evidence.
+
+Report suspicious/missing links.
+
+==================================================
+PART 10 — SOURCE GROUNDING
+==================================================
+
+C2 must not invent new curriculum knowledge.
+
+Audit the current grounding rule:
+
+MicroNode source
+→ learningObjective
+→ cognitive path
+
+Important distinction:
+
+Higher cognitive demand MAY transform how the learner demonstrates the
+same knowledge.
+
+It must NOT introduce new factual/conceptual knowledge absent from the
+MicroNode.
+
+For example:
+
+Understand → Apply
+
+may require applying the SAME concept in a new task.
+
+That is legitimate.
+
+But the generated Apply level must not introduce a different concept
+that the MicroNode never teaches.
+
+Determine whether current validation correctly distinguishes:
+
+NEW COGNITIVE DEMAND
+
+from:
+
+NEW UNSUPPORTED KNOWLEDGE.
+
+Report findings only.
+
+==================================================
+PART 11 — TEACHER REVIEW WORKFLOW
+==================================================
+
+Audit what the teacher can currently do.
+
+For a Cognitive Path, can the teacher:
+
+- generate;
+- regenerate;
+- edit level;
+- add level;
+- delete level;
+- reorder levels;
+- change target level;
+- edit performanceObjective;
+- edit successCriterion;
+- edit interaction types;
+- change evidence requirement count;
+- attach/detach exercises;
+- approve path?
+
+Test through code/UI inspection.
+
+Do not perform writes.
+
+Identify missing CRUD/review functions.
+
+==================================================
+PART 12 — AI TEACHER CONSUMPTION
+==================================================
+
+READ ONLY.
+
+Trace how AI Teacher currently consumes Cognitive Path data.
+
+Find whether chat.ts / related services use:
+
+- cognitiveLevel
+- target cognitive level
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- required evidence count
+- attached exercises
+
+Report:
+
+USED
+PARTIALLY USED
+NOT USED
+
+for each.
+
+Do NOT modify AI Teacher.
+
+==================================================
+PART 13 — C2 ACCEPTANCE CONTRACT
+==================================================
+
+Based on the existing architecture and findings, propose the MINIMUM
+acceptance contract required to declare C2 complete.
+
+At minimum evaluate whether C2 should require:
+
+1. every approved MicroNode has a Cognitive Path;
+
+2. path has ordered levels;
+
+3. exactly one target cognitive level;
+
+4. target is justified by curriculum Outcome / MicroNode objective;
+
+5. each level has performanceObjective;
+
+6. each level has successCriterion;
+
+7. each level has evidence requirement;
+
+8. interaction/task types are defined;
+
+9. path introduces no unsupported curriculum knowledge;
+
+10. teacher can review/edit/approve;
+
+11. refresh preserves the approved path;
+
+12. C3 can consume the result without inventing its own cognitive
+requirements.
+
+Do not implement this gate yet.
+
+==================================================
+PART 14 — GAP CLASSIFICATION
+==================================================
+
+Classify every discovered gap as:
+
+P0 — blocks C2 correctness
+
+P1 — required before C3
+
+P2 — useful improvement, not required now
+
+We want to avoid another endless optimization cycle.
+
+Only P0 and necessary P1 items should become implementation tasks.
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return exactly these sections:
+
+1. C2 ARCHITECTURE
+
+Short diagram:
+
+MicroNode
+→ ...
+→ Cognitive Path
+→ ...
+→ downstream consumers
+
+Include exact authoritative tables/files.
+
+2. REAL LESSON AUDIT
+
+Compact table:
+
+MicroNode
+Path exists
+Levels
+Target
+Approved
+Grounding
+Evidence requirements
+Attached exercises
+Main issue
+
+3. GENERATION CONTRACT
+
+AI inputs
+AI outputs
+server-derived fields
+deterministic validators
+
+4. TARGET LEVEL
+
+Current authoritative logic and any conflicts.
+
+5. PERFORMANCE OBJECTIVE / SUCCESS CRITERION
+
+Current quality and structural issues.
+
+6. EVIDENCE REQUIREMENT PROFILE
+
+What exists
+What is missing for C3
+
+7. EXERCISE ALIGNMENT
+
+Current behavior and gaps.
+
+8. SOURCE GROUNDING
+
+How it currently works and exact failure path for unsupported Cognitive
+Path claims.
+
+9. TEACHER REVIEW
+
+Existing CRUD/review capabilities and missing ones.
+
+10. AI TEACHER CONSUMPTION
+
+Table:
+
+Field | Used / Partial / Not used | File/function
+
+11. C2 ACCEPTANCE CONTRACT
+
+Proposed minimum gate.
+
+12. GAPS
+
+P0
+P1
+P2
+
+13. IMPLEMENTATION PLAN
+
+Give the SMALLEST ordered sequence of implementation tasks required to
+reach C2 acceptance.
+
+Prefer 2–4 focused tasks, not a large redesign.
+
+For each task state:
+
+- exact goal
+- likely files
+- acceptance test
+
+14. VERDICT
+
+Exactly one:
+
+C2 ALREADY FUNCTIONALLY COMPLETE — ONLY ACCEPTANCE VALIDATION NEEDED
+
+or
+
+C2 PARTIALLY IMPLEMENTED — FOCUSED FIXES REQUIRED
+
+or
+
+C2 ARCHITECTURE INCOMPLETE — IMPLEMENTATION REQUIRED
+
+==================================================
+STOP RULE
+==================================================
+
+STOP after the audit/report.
+
+Do NOT edit code.
+Do NOT create migrations.
+Do NOT regenerate Cognitive Paths.
+Do NOT modify the real lesson.
+Do NOT start C3.
+Do NOT reopen C1.
+
+Wait for user review before implementation.
