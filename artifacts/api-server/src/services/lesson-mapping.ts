@@ -20,6 +20,7 @@ import { detectCompoundLO, detectDuplicateLOs } from "../lib/granularity-heurist
 import {
   classifyMicroNodeSourceAlignment,
   pedagogicalNearDuplicate,
+  isUnreadableSource,
   type SourceAlignmentAudit,
 } from "../lib/micronode-source-alignment.js";
 import {
@@ -1395,6 +1396,89 @@ export function validatePass2SourceAlignment(
   };
 }
 
+export type SourceReallocationResult = {
+  attempted: boolean;
+  appliedCount: number;
+  rejectedDecisionCount: number;
+  actions: Array<{
+    topicSequence: number;
+    microNodeTitle: string;
+    action: SourceReallocationAction;
+    sourceBlockIndices: number[];
+    reasonCode: "SEMANTIC_SOURCE_REVIEW";
+  }>;
+};
+
+/**
+ * Applies the one semantic-review result without making the reviewer an
+ * authority. Every index must be a readable, non-activity block in this exact
+ * validated Source Set; the target must still need support; and the canonical
+ * single-owner invariant is preserved for moved blocks.
+ */
+export function applyBoundedSourceReallocation(
+  topics: Pass2TopicResult[],
+  blocks: ReadonlyArray<Pass1Block>,
+  decisions: ReadonlyArray<SourceReallocationDecision>,
+): SourceReallocationResult {
+  const result: SourceReallocationResult = {
+    attempted: decisions.length > 0,
+    appliedCount: 0,
+    rejectedDecisionCount: 0,
+    actions: [],
+  };
+  const isEligible = (index: number) => {
+    const block = blocks[index];
+    return Number.isInteger(index) && !!block &&
+      !["EXERCISE", "ACTIVITY", "HOMEWORK", "IMAGE"].includes(block.blockType) &&
+      !isUnreadableSource(block.sourceText);
+  };
+  const ownerOf = (index: number) => topics.flatMap((topic) =>
+    topic.microNodes.filter((node) => node.sourceBlockIndices.includes(index)),
+  );
+
+  for (const decision of decisions) {
+    if (decision.action === "KEEP_CURRENT" || decision.action === "NO_VALID_SUPPORT_FOUND") continue;
+    const topic = topics.find((candidate) => candidate.title === decision.topicTitle);
+    const target = topic?.microNodes.find((node) => node.title === decision.microNodeTitle);
+    if (!topic || !target || classifyMicroNodeSourceAlignment(
+      target.learningObjective,
+      target.sourceBlockIndices.map((index) => blocks[index]).filter((block): block is Pass1Block => !!block),
+    ).status === "SUFFICIENT") {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+    const indices = [...new Set(decision.sourceBlockIndices)].filter(isEligible);
+    if (indices.length === 0 || indices.length !== new Set(decision.sourceBlockIndices).size) {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+    if (decision.action === "ADD_SUPPORTING_BLOCKS" &&
+      indices.some((index) => ownerOf(index).some((owner) => owner !== target))) {
+      // Canonical coverage does not allow duplicate ownership. The reviewer
+      // must choose MOVE_BLOCKS for an already-owned candidate.
+      result.rejectedDecisionCount++;
+      continue;
+    }
+    if (decision.action === "MOVE_BLOCKS" || decision.action === "MERGE_SOURCE_OWNERSHIP") {
+      for (const index of indices) {
+        for (const owner of ownerOf(index)) {
+          if (owner !== target) owner.sourceBlockIndices = owner.sourceBlockIndices.filter((owned) => owned !== index);
+        }
+      }
+    }
+    target.sourceBlockIndices = [...new Set([...target.sourceBlockIndices, ...indices])];
+    result.appliedCount++;
+    result.actions.push({
+      topicSequence: topic.sequence,
+      microNodeTitle: target.title,
+      action: decision.action,
+      sourceBlockIndices: indices,
+      reasonCode: "SEMANTIC_SOURCE_REVIEW",
+    });
+  }
+  return result;
+}
+
 export interface Pass2Result {
   topics: Pass2TopicResult[];
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
@@ -1413,6 +1497,7 @@ export interface Pass2Result {
   /** One bounded pre-persistence merge pass applied only to explicit HIGH findings. */
   granularityConsolidation: GranularityConsolidation;
   sourceAlignment: Pass2SourceAlignment;
+  sourceReallocation: SourceReallocationResult;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
   diagnostics: Pass2Diagnostics;
 }
@@ -2296,6 +2381,8 @@ interface GranularityReviewMicroNode {
   /** From detectCompoundLO heuristic. */
   compoundLO: boolean;
   compoundConnector?: string;
+  sourceBlockIndices: number[];
+  needsSourceRepair: boolean;
 }
 
 interface GranularityReviewTopic {
@@ -2305,17 +2392,39 @@ interface GranularityReviewTopic {
   duplicateCandidates: Array<{ titleA: string; titleB: string; similarity: number }>;
 }
 
+export type SourceReallocationAction =
+  | "KEEP_CURRENT"
+  | "ADD_SUPPORTING_BLOCKS"
+  | "MOVE_BLOCKS"
+  | "MERGE_SOURCE_OWNERSHIP"
+  | "NO_VALID_SUPPORT_FOUND";
+
+export interface SourceReallocationDecision {
+  topicTitle: string;
+  microNodeTitle: string;
+  action: SourceReallocationAction;
+  sourceBlockIndices: number[];
+  reason: string;
+}
+
+export interface SemanticReviewResult {
+  findings: GranularityFinding[];
+  sourceReallocations: SourceReallocationDecision[];
+}
+
 /**
  * Pass 2B — semantic granularity review.
  *
  * Runs a single AI call over all MicroNodes from all topics after Step 2.
- * Returns an array of advisory findings (never blocks the mapping).
- * Returns [] on any error.
+ * Returns advisory findings and at most one bounded source-reallocation plan.
+ * The plan is only a set of existing block indices; the server applies and
+ * deterministically validates it. Returns empty arrays on any review error.
  */
 async function runGranularityReview(
   topics: Pass2TopicResult[],
   blocks: Pass1Block[],
-): Promise<GranularityFinding[]> {
+  sourceAlignment: Pass2SourceAlignment,
+): Promise<SemanticReviewResult> {
   // Build compact topic representation with heuristic signals
   const reviewTopics: GranularityReviewTopic[] = topics.map((topic) => {
     const mnRepresentations: GranularityReviewMicroNode[] = topic.microNodes.map((mn) => {
@@ -2328,6 +2437,11 @@ async function runGranularityReview(
         learningObjective:  mn.learningObjective,
         sourceBlockTypes,
         exerciseCount:      mn.exercises.length,
+        sourceBlockIndices: [...mn.sourceBlockIndices],
+        needsSourceRepair: sourceAlignment.nodes.some((entry) =>
+          entry.topicSequence === topic.sequence &&
+          entry.microNodeIndex === topic.microNodes.indexOf(mn) &&
+          entry.audit.status !== "SUFFICIENT"),
         compoundLO:         compound !== null,
         ...(compound ? { compoundConnector: compound.connector } : {}),
       };
@@ -2350,7 +2464,25 @@ async function runGranularityReview(
 
   // Skip the AI call if there are no MicroNodes at all
   const totalMicroNodes = reviewTopics.reduce((s, t) => s + t.microNodes.length, 0);
-  if (totalMicroNodes === 0) return [];
+  if (totalMicroNodes === 0) return { findings: [], sourceReallocations: [] };
+
+  const repairTopics = reviewTopics
+    .filter((topic) => topic.microNodes.some((node) => node.needsSourceRepair))
+    .map((topic) => ({
+      topicTitle: topic.title,
+      nodes: topic.microNodes.filter((node) => node.needsSourceRepair).map((node) => ({
+        title: node.title,
+        learningObjective: node.learningObjective,
+        currentSourceBlockIndices: node.sourceBlockIndices,
+      })),
+    }));
+  const eligibleSourceBlocks = blocks
+    .map((block, index) => ({ index, block }))
+    .filter(({ block }) =>
+      !["EXERCISE", "ACTIVITY", "HOMEWORK", "IMAGE"].includes(block.blockType) &&
+      !isUnreadableSource(block.sourceText),
+    )
+    .map(({ index, block }) => fmtPass2Block(index, block));
 
   const userPrompt = `Review the following lesson mapping for granularity issues.
 
@@ -2359,7 +2491,29 @@ ${JSON.stringify(reviewTopics, null, 2)}
 
 Apply the MEGA_NODE, OVER_SPLIT, and EXERCISE_MISMATCH criteria from the system prompt.
 Pay special attention to MicroNodes where compoundLO=true and duplicate candidate pairs.
-Return only the findings array — empty array if no issues.`;
+
+SOURCE REALLOCATION (only for nodes with needsSourceRepair=true):
+The following are the only readable, validated source blocks from this same lesson Source Set
+that may be selected. Lexical similarity is only candidate ranking; decide whether the block
+actually teaches/supports the objective. A narrative may support context but not an unstated
+rule. A heading-only block is not sufficient. Never invent source text or indices.
+${JSON.stringify(eligibleSourceBlocks, null, 2)}
+
+${JSON.stringify(repairTopics, null, 2)}
+
+Return only this JSON shape:
+{
+  "findings": [],
+  "sourceReallocations": [{
+    "topicTitle": "exact topic title",
+    "microNodeTitle": "exact MicroNode title",
+    "action": "ADD_SUPPORTING_BLOCKS",
+    "sourceBlockIndices": [12],
+    "reason": "Հայերեն պատճառ"
+  }]
+}
+Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NO_VALID_SUPPORT_FOUND.
+Every sourceBlockIndices value must come from the listed validated source blocks.`;
 
   try {
     const r = await openrouter.chat.completions.create({
@@ -2375,13 +2529,16 @@ Return only the findings array — empty array if no issues.`;
     const raw = r.choices[0]?.message?.content ?? "";
     if (!raw.trim()) {
       logger.warn({ totalMicroNodes }, "pass2b granularity review: empty response — returning no findings");
-      return [];
+      return { findings: [], sourceReallocations: [] };
     }
 
-    const parsed = parsePass2JSON(raw) as { findings?: unknown[] };
+    const parsed = parsePass2JSON(raw) as {
+      findings?: unknown[];
+      sourceReallocations?: unknown[];
+    };
     if (!parsed || !Array.isArray(parsed.findings)) {
-      logger.warn({ raw: raw.slice(0, 200) }, "pass2b granularity review: invalid JSON schema — returning no findings");
-      return [];
+      logger.warn({ totalMicroNodes }, "pass2b granularity review: invalid JSON schema — returning no findings");
+      return { findings: [], sourceReallocations: [] };
     }
 
     const VALID_ISSUES   = new Set(["MEGA_NODE", "OVER_SPLIT", "EXERCISE_MISMATCH"]);
@@ -2411,15 +2568,36 @@ Return only the findings array — empty array if no issues.`;
       });
     }
 
+    const sourceReallocations: SourceReallocationDecision[] = [];
+    if (Array.isArray(parsed.sourceReallocations)) {
+      for (const item of parsed.sourceReallocations) {
+        if (!item || typeof item !== "object") continue;
+        const value = item as Record<string, unknown>;
+        const action = String(value.action) as SourceReallocationAction;
+        if (!["KEEP_CURRENT", "ADD_SUPPORTING_BLOCKS", "MOVE_BLOCKS", "MERGE_SOURCE_OWNERSHIP", "NO_VALID_SUPPORT_FOUND"].includes(action)) continue;
+        const indices = Array.isArray(value.sourceBlockIndices)
+          ? value.sourceBlockIndices.filter((index): index is number => typeof index === "number" && Number.isInteger(index))
+          : [];
+        if (typeof value.topicTitle !== "string" || typeof value.microNodeTitle !== "string" || typeof value.reason !== "string") continue;
+        sourceReallocations.push({
+          topicTitle: value.topicTitle,
+          microNodeTitle: value.microNodeTitle,
+          action,
+          sourceBlockIndices: indices,
+          reason: value.reason,
+        });
+      }
+    }
+
     logger.info(
       { findingCount: findings.length, totalMicroNodes },
       "pass2b granularity review: complete",
     );
-    return findings;
+    return { findings, sourceReallocations };
 
   } catch (err) {
     logger.warn({ err }, "pass2b granularity review: AI call failed — returning no findings (mapping unaffected)");
-    return [];
+    return { findings: [], sourceReallocations: [] };
   }
 }
 
@@ -2845,8 +3023,15 @@ export async function runPass2Pipeline(
 
   // Pass 2B produces semantic findings. A single bounded merge pass may apply
   // only explicit HIGH-confidence OVER_SPLIT actions with a known target.
-  const granularityFindings = await runGranularityReview(topics, blocks);
+  const initialSourceAlignment = validatePass2SourceAlignment(topics, blocks);
+  const semanticReview = await runGranularityReview(topics, blocks, initialSourceAlignment);
+  const granularityFindings = semanticReview.findings;
   const granularityConsolidation = consolidateHighConfidenceOverSplits(topics, granularityFindings);
+  const sourceReallocation = applyBoundedSourceReallocation(
+    topics,
+    blocks,
+    semanticReview.sourceReallocations,
+  );
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
@@ -2863,6 +3048,7 @@ export async function runPass2Pipeline(
        instructionalCoverageValid: postConsolidationInstructionalCoverage.valid,
        unresolvedInstructional: postConsolidationInstructionalCoverage.unresolvedInstructionalIndices.length,
        granularityConsolidation,
+       sourceReallocation,
       missingIndices:  coverageValidation.missingIndices,
       duplicateIndices: coverageValidation.duplicateIndices,
       invalidIndices:  coverageValidation.invalidIndices,
@@ -2909,6 +3095,7 @@ export async function runPass2Pipeline(
     granularityFindings,
     granularityConsolidation,
     sourceAlignment,
+    sourceReallocation,
     diagnostics,
   };
 }

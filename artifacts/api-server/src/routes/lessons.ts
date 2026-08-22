@@ -4209,6 +4209,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           hasMergeTarget: !!finding.mergeIntoMicroNodeTitle,
         })),
         granularityConsolidation: pass2.granularityConsolidation,
+        sourceReallocation: pass2.sourceReallocation,
         sourceAlignment: {
           valid: pass2.sourceAlignment.valid,
           sufficientCount: pass2.sourceAlignment.sufficientCount,

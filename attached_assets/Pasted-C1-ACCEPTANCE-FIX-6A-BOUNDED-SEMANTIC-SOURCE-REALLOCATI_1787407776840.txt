@@ -1,0 +1,1112 @@
+C1 ACCEPTANCE FIX #6A
+BOUNDED SEMANTIC SOURCE REALLOCATION
++ COMPLETE FIX #6 ACCEPTANCE RETEST
+
+This is a NARROW continuation of C1 Fix #6.
+
+DO NOT reopen Fix #6 broadly.
+DO NOT proceed to Package 1D.
+DO NOT declare C1 frozen.
+
+The previous Fix #6 implementation correctly identified and addressed:
+
+- MicroNode granularity weaknesses
+- source-support classification
+- Cognitive Path grounding
+- unsupported numeric/rule extrapolation
+- final-approval Cognitive Path enforcement
+- compact teacher-visible grounding/review statuses
+
+The final Fix #6 review correctly returned:
+
+C1 FIX #6 BLOCKED
+
+because ONE substantive acceptance requirement remains:
+
+A single bounded semantic source-alignment / source-reallocation pass
+has not yet been implemented.
+
+This task exists ONLY to close that gap and then complete the clean
+Fix #6 acceptance retest.
+
+════════════════════════════════════════════════════
+0. PRESERVE CURRENT FIX #6 STATE
+════════════════════════════════════════════════════
+
+Preserve all current Fix #6 changes.
+
+In particular preserve:
+
+- Armenian-aware near-duplicate candidate detection
+- conservative semantic consolidation
+- removal of unsafe automatic lexical merging
+- explicit HIGH OVER_SPLIT merge requirement
+- source-support statuses:
+  SUFFICIENT
+  PARTIAL
+  INSUFFICIENT
+  UNREADABLE
+- heading-only source protection
+- narrative/source mismatch protection
+- malformed source protection
+- Cognitive Path grounding validation
+- unsupported numeric claim detection
+- unsupported strong/corrective claim detection
+- 24-and-28 → 26 regression protection
+- unsupported 7/2 extrapolation protection
+- Cognitive Path teacher confirmation
+- final approval Cognitive Path gate
+- compact source/Cognitive Path review badges
+- all Fix #5 source-scope/provenance safeguards
+
+Do NOT replace these with a new architecture.
+
+════════════════════════════════════════════════════
+1. CONFIRMED REMAINING BLOCKER
+════════════════════════════════════════════════════
+
+The Fix #6 completion review established:
+
+The mapper can classify a MicroNode's current source support as:
+
+SUFFICIENT
+PARTIAL
+INSUFFICIENT
+UNREADABLE
+
+but when support is PARTIAL or INSUFFICIENT, it does NOT yet perform the
+required single bounded semantic search/reallocation over other
+validated source blocks from the SAME lesson.
+
+Therefore a valid MicroNode may fail simply because the model initially
+attached the wrong source block, even though the correct supporting
+source exists elsewhere in the already validated lesson Source Set.
+
+Conversely, lexical overlap alone must NOT be used to falsely declare
+semantic support.
+
+This is the exact gap to fix.
+
+════════════════════════════════════════════════════
+2. FIRST — TRACE CURRENT FIX #6 BOUNDARY
+════════════════════════════════════════════════════
+
+Before editing, perform a short READ-ONLY trace.
+
+Identify:
+
+A. where initial MicroNode sourceBlock ownership exists after
+   consolidation;
+
+B. where source-support classification currently runs;
+
+C. where PARTIAL / INSUFFICIENT currently causes failure/review;
+
+D. where the full validated lesson Source Set is still available;
+
+E. where the bounded source-reallocation pass can be inserted BEFORE
+   destructive persistence;
+
+F. how source ownership is represented so reassignment does not lose
+   coverage;
+
+G. how exercise and Outcome reconciliation occur after consolidation.
+
+Return the concrete insertion point.
+
+Then implement only the required bounded pass.
+
+════════════════════════════════════════════════════
+3. CORE REALLOCATION RULE
+════════════════════════════════════════════════════
+
+For each final candidate MicroNode:
+
+FIRST validate its currently owned source.
+
+If:
+
+SOURCE_SUPPORT = SUFFICIENT
+
+→ do nothing.
+
+If:
+
+SOURCE_SUPPORT = UNREADABLE
+
+→ unreadable blocks must never become factual authority.
+
+Do not attempt to "repair" unreadable text by inventing meaning.
+
+Other readable validated lesson blocks may still be considered if they
+independently support the MicroNode objective.
+
+If:
+
+SOURCE_SUPPORT = PARTIAL
+or
+SOURCE_SUPPORT = INSUFFICIENT
+
+→ perform ONE bounded semantic source-reallocation pass.
+
+════════════════════════════════════════════════════
+4. ELIGIBLE REALLOCATION SOURCE POOL
+════════════════════════════════════════════════════
+
+The reallocation pass may inspect ONLY:
+
+VALIDATED SOURCE BLOCKS
+FROM THE SAME LESSON SOURCE SET.
+
+Never inspect:
+
+- another lesson
+- another page range outside validated scope
+- book-wide fallback content
+- another resource
+- stale cached blocks
+- AI-invented source
+- unverified page labels
+
+Eligible candidates should be prioritized conceptually:
+
+1. same Topic validated instructional blocks
+
+2. blocks owned by a duplicate/merged candidate whose objective is
+   semantically related
+
+3. currently unowned validated instructional blocks
+
+4. other same-lesson validated instructional blocks only when clearly
+   semantically relevant
+
+Practice/exercise blocks should not become theory authority merely
+because they contain similar words, unless the existing architecture
+explicitly allows that source type to support the objective and the
+semantic relation is valid.
+
+════════════════════════════════════════════════════
+5. SEMANTIC SUPPORT — NOT LEXICAL MATCHING
+════════════════════════════════════════════════════
+
+The repair decision must answer:
+
+DOES THIS SOURCE BLOCK ACTUALLY SUPPORT THE MICRONODE'S LEARNING
+OBJECTIVE?
+
+Do NOT use simple word overlap as sufficient proof.
+
+Lexical similarity may be used only as:
+
+candidate discovery / ranking.
+
+It must NOT be the final semantic-support decision.
+
+Examples:
+
+Objective:
+explain the odd/even street-side numbering rule.
+
+Source:
+a paragraph explicitly explaining left-side odd / right-side even.
+
+→ valid semantic support.
+
+Objective:
+determine a new building's address between existing buildings.
+
+Source:
+a birthday story showing why an address matters.
+
+→ NOT sufficient semantic support even though both mention addresses.
+
+Objective:
+explain why unique building numbers are useful.
+
+Source:
+the address story/problem context.
+
+→ may be legitimate support if its instructional meaning establishes
+   that objective.
+
+════════════════════════════════════════════════════
+6. BOUNDED SEMANTIC REVIEW
+════════════════════════════════════════════════════
+
+Use at most ONE semantic source-reallocation/review pass per mapping.
+
+Do NOT create:
+
+repair → validate → repair → validate → repair loops.
+
+Conceptually:
+
+INITIAL FINAL MICRONODES
+↓
+CURRENT SOURCE SUPPORT CLASSIFICATION
+↓
+PARTIAL / INSUFFICIENT NODES ONLY
+↓
+ONE BOUNDED SEMANTIC SOURCE REALLOCATION
+↓
+DETERMINISTIC REVALIDATION
+↓
+PASS / REVIEW_REQUIRED / FAIL
+
+Runtime AI Minimization remains mandatory.
+
+If existing semantic-review infrastructure can safely perform this
+single bounded review, reuse it.
+
+Do not add a second competing semantic engine.
+
+════════════════════════════════════════════════════
+7. SEMANTIC REALLOCATION OUTPUT
+════════════════════════════════════════════════════
+
+For each MicroNode needing repair, the bounded semantic review may
+return conceptually:
+
+KEEP_CURRENT
+
+ADD_SUPPORTING_BLOCKS
+
+MOVE_BLOCKS
+
+MERGE_SOURCE_OWNERSHIP
+
+NO_VALID_SUPPORT_FOUND
+
+It must reference existing validated sourceBlock IDs/indices only.
+
+It must NOT return arbitrary source text as authority.
+
+Server must validate every returned sourceBlock reference.
+
+════════════════════════════════════════════════════
+8. SOURCE OWNERSHIP SAFETY
+════════════════════════════════════════════════════
+
+Reallocation must never silently lose valid instructional source.
+
+After source ownership repair:
+
+every validated instructional source block must be:
+
+- owned by an appropriate MicroNode
+OR
+- explicitly unresolved/review-required
+
+Do not delete source merely because it does not support the originally
+assigned node.
+
+Many source blocks may support one MicroNode.
+
+Where pedagogically justified, a source block may participate in
+supporting more than one relation only if the current canonical
+ownership model allows it.
+
+Do not change schema merely to enable duplication.
+
+Respect the existing ownership model.
+
+════════════════════════════════════════════════════
+9. DO NOT USE REALLOCATION TO HIDE BAD MICRONODES
+════════════════════════════════════════════════════
+
+Source reallocation must NOT become a way to rescue an invalid
+MicroNode.
+
+Before and after repair the MicroNode must still pass:
+
+- DISTINCT
+- TEACHABLE
+- ASSESSABLE
+- CURRICULUM_RELEVANT
+- SOURCE_GROUNDED
+
+If no source in the validated lesson genuinely supports the objective:
+
+do NOT search harder.
+
+do NOT broaden source scope.
+
+do NOT fabricate support.
+
+Instead:
+
+mark the MicroNode as:
+
+REVIEW_REQUIRED
+or
+INVALID
+
+according to the existing Fix #6 contract.
+
+If the objective itself is unsupported by the lesson:
+
+it must not become final-ready.
+
+════════════════════════════════════════════════════
+10. REALLOCATION + GRANULARITY INTERACTION
+════════════════════════════════════════════════════
+
+Granularity consolidation happens BEFORE final source-alignment
+validation.
+
+If two duplicate MicroNodes were merged:
+
+the surviving MicroNode should inherit the valid source ownership from
+both candidates.
+
+Then source alignment must determine which inherited blocks actually
+support the surviving objective.
+
+Do not preserve irrelevant source ownership merely because it came from
+a merged node.
+
+Irrelevant blocks must be:
+
+- reallocated to another valid node
+or
+- left explicitly unresolved for review.
+
+════════════════════════════════════════════════════
+11. HEADING-ONLY SOURCE MUST STILL FAIL
+════════════════════════════════════════════════════
+
+Do NOT weaken the Fix #6 source-support validator.
+
+A heading/title may help candidate discovery.
+
+But it must not become SUFFICIENT merely because it shares words with
+the learningObjective.
+
+Example:
+
+Heading:
+“Բնական թվերը և կոորդինատային ճառագայթը”
+
+Objective:
+explain the odd/even street-side building numbering rule.
+
+→ heading remains insufficient.
+
+The repair pass should locate the actual explanatory rule block instead.
+
+════════════════════════════════════════════════════
+12. NARRATIVE SOURCE MUST KEEP ITS PEDAGOGICAL ROLE
+════════════════════════════════════════════════════
+
+Do NOT broadly reject narratives.
+
+Determine what the narrative actually teaches/supports.
+
+Example:
+
+Moki/address-paper story.
+
+It may support:
+
+- why an address matters
+- why identifying a building uniquely matters
+- contextual understanding of addresses
+
+It does NOT establish:
+
+- the odd/even street-side numbering rule
+- the special new-building addressing rule
+
+Source reallocation must preserve this distinction.
+
+════════════════════════════════════════════════════
+13. UNREADABLE / MALFORMED SOURCE
+════════════════════════════════════════════════════
+
+Malformed source such as:
+
+“?hարց ?hարց ?hարց”
+
+must remain:
+
+UNREADABLE
+
+and cannot be selected as semantic support.
+
+If the same instructional meaning exists in another valid readable block
+from the lesson:
+
+that valid block may support the MicroNode.
+
+Otherwise:
+
+the affected knowledge remains unresolved/review-required.
+
+Do not reconstruct missing textbook meaning with AI.
+
+════════════════════════════════════════════════════
+14. DETERMINISTIC POST-REALLOCATION VALIDATION
+════════════════════════════════════════════════════
+
+After the ONE bounded semantic reallocation pass:
+
+run the deterministic Fix #6 source-support validator again.
+
+For every final MicroNode:
+
+SUFFICIENT
+→ eligible to continue.
+
+PARTIAL
+→ REVIEW_REQUIRED.
+
+INSUFFICIENT
+→ not final-ready.
+
+UNREADABLE-only
+→ not final-ready.
+
+Do NOT allow the semantic reviewer itself to declare final readiness.
+
+The server validator is authoritative.
+
+════════════════════════════════════════════════════
+15. SOURCE COVERAGE AFTER REALLOCATION
+════════════════════════════════════════════════════
+
+Recalculate/revalidate instructional source coverage after ownership
+changes.
+
+Final mapping must satisfy BOTH:
+
+MICRONODE_SOURCE_ALIGNMENT_VALID
+
+AND
+
+INSTRUCTIONAL_SOURCE_COVERAGE_COMPLETE
+
+Do not fix node grounding by accidentally creating uncovered
+instructional blocks.
+
+If reallocation produces unresolved source:
+
+surface it truthfully.
+
+════════════════════════════════════════════════════
+16. EXERCISE RECONCILIATION
+════════════════════════════════════════════════════
+
+Do not lose exercises during source repair.
+
+If MicroNode ownership changes:
+
+revalidate exercise → MicroNode attachment.
+
+Preserve an attachment when its task intent still matches the surviving
+MicroNode.
+
+If not:
+
+reassign where semantically valid
+or
+preserve as unlinked canonical exercise for teacher review.
+
+Do not fabricate replacement exercises.
+
+════════════════════════════════════════════════════
+17. OUTCOME ALIGNMENT RECONCILIATION
+════════════════════════════════════════════════════
+
+After final:
+
+granularity
++
+source reallocation
++
+source validation
+
+reconcile Outcome relations.
+
+Outcome alignment must reference the surviving valid MicroNodes.
+
+Remove stale relations to deleted/merged candidates.
+
+Preserve:
+
+REQUIRED
+SUPPORTING
+required cognitive depth
+explicit teacher review
+
+Do NOT auto-mark Outcome alignment reviewed.
+
+════════════════════════════════════════════════════
+18. COGNITIVE PATH — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+The previous Fix #6 Cognitive Path grounding work is accepted for this
+continuation unless regression testing finds a real defect.
+
+Preserve:
+
+- unsupported numeric-claim rejection
+- unsupported strong-rule rejection
+- 24-and-28 → 26 protection
+- unsupported 7/2 protection
+- grounding status
+- explicit confirmation
+- final approval gating
+
+Do not redesign Cognitive Path again in Fix #6A.
+
+The clean retest must simply prove that these protections work on the
+final corrected MicroNodes.
+
+════════════════════════════════════════════════════
+19. TEACHING PACKAGE — DO NOT REOPEN
+════════════════════════════════════════════════════
+
+Preserve Fix #5 Teaching Package grounding.
+
+Do not modify it unless a regression directly demonstrates a defect
+caused by source reallocation.
+
+Any existing draft attached to an obsolete/merged MicroNode must obey
+the existing safe reconciliation behavior.
+
+Never auto-approve.
+
+════════════════════════════════════════════════════
+20. NO DB / SCHEMA CHANGE UNLESS ABSOLUTELY REQUIRED
+════════════════════════════════════════════════════
+
+Prefer NO schema change.
+
+The remaining blocker is an enforcement/workflow issue.
+
+Reuse:
+
+- existing SourceBlocks
+- existing ownership structures
+- existing mapping diagnostics
+- existing review status architecture
+
+If you believe a schema change is necessary:
+
+STOP before implementing it
+and explain why the current structures cannot represent the required
+state.
+
+════════════════════════════════════════════════════
+21. PROVIDER-FREE REGRESSION — SUCCESSFUL REALLOCATION
+════════════════════════════════════════════════════
+
+Add a focused fixture:
+
+MicroNode objective:
+odd/even street-side building numbering rule.
+
+Initially owned source:
+heading-only block.
+
+Same validated lesson Source Set also contains:
+a direct instructional block explaining left-side odd / right-side even.
+
+Expected:
+
+initial support = INSUFFICIENT/PARTIAL
+
+bounded reallocation finds the valid rule block
+
+post-validation = SUFFICIENT
+
+heading alone does not become authority.
+
+════════════════════════════════════════════════════
+22. PROVIDER-FREE REGRESSION — NARRATIVE MISMATCH
+════════════════════════════════════════════════════
+
+Fixture:
+
+MicroNode objective:
+new-building addressing rule.
+
+Initially owned source:
+address-importance narrative.
+
+Same lesson contains:
+direct source explaining the new-building 5/1 example/rule boundary.
+
+Expected:
+
+narrative alone ≠ SUFFICIENT
+
+direct rule block is selected/reallocated
+
+post-validation = SUFFICIENT
+
+narrative may remain with the appropriate address-importance node.
+
+════════════════════════════════════════════════════
+23. PROVIDER-FREE REGRESSION — NO SUPPORT EXISTS
+════════════════════════════════════════════════════
+
+Fixture:
+
+MicroNode objective claims knowledge that does NOT exist anywhere in the
+validated lesson Source Set.
+
+Expected:
+
+bounded review finds no valid source
+
+NO_VALID_SUPPORT_FOUND
+
+server does NOT fabricate support
+
+server does NOT broaden source scope
+
+node remains REVIEW_REQUIRED / invalid according to existing contract.
+
+════════════════════════════════════════════════════
+24. PROVIDER-FREE REGRESSION — MALFORMED SOURCE
+════════════════════════════════════════════════════
+
+Fixture:
+
+initial source is malformed/unreadable.
+
+Expected:
+
+malformed block never becomes support.
+
+If valid same-lesson supporting source exists:
+repair may use it.
+
+If no valid source exists:
+node remains unresolved.
+
+════════════════════════════════════════════════════
+25. PROVIDER-FREE REGRESSION — COVERAGE PRESERVATION
+════════════════════════════════════════════════════
+
+Create a fixture where source blocks move between duplicate/consolidated
+MicroNodes.
+
+Expected:
+
+- no valid instructional source block disappears
+- source coverage remains truthful
+- duplicate ownership does not hide unresolved source
+- final node source support remains valid
+
+════════════════════════════════════════════════════
+26. PROVIDER-FREE REGRESSION — EXERCISES
+════════════════════════════════════════════════════
+
+When a node receives corrected source ownership:
+
+verify valid exercise attachment is preserved/reconciled based on task
+intent.
+
+No exercise may disappear merely because source ownership changed.
+
+════════════════════════════════════════════════════
+27. PROVIDER-FREE REGRESSION — OUTCOMES
+════════════════════════════════════════════════════
+
+After source reallocation/consolidation:
+
+verify:
+
+- stale duplicate-node Outcome relations are removed/reconciled
+- surviving node receives correct relation
+- REQUIRED/SUPPORTING semantics remain
+- teacher review remains required
+
+════════════════════════════════════════════════════
+28. RUN EXISTING REGRESSIONS
+════════════════════════════════════════════════════
+
+Run at minimum:
+
+- Fix #6 focused granularity/grounding suite
+- Fix #5 source-boundary suite
+- source coverage suite
+- final approval suite
+- canonical Outcome / alignment suite
+- Cognitive Path suite
+- API TypeScript typecheck
+- Web TypeScript typecheck
+
+Do not weaken tests to obtain green results.
+
+════════════════════════════════════════════════════
+29. CLEAN DISPOSABLE END-TO-END RETEST — REQUIRED
+════════════════════════════════════════════════════
+
+After Fix #6A passes provider-free tests:
+
+run the clean disposable/recreated mapping retest that Fix #6 could not
+run.
+
+Use the same real acceptance shape if available:
+
+Book:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+Շենքերի համարակալումը
+
+§1.1
+
+Validated physical PDF source:
+pages 11–12
+
+Use disposable/recreated lesson data.
+
+DO NOT delete or mutate the user's current real lesson/mapping.
+
+DO NOT restore previously deleted data.
+
+════════════════════════════════════════════════════
+30. CLEAN RETEST — REQUIRED ORDER
+════════════════════════════════════════════════════
+
+Verify in this exact conceptual order:
+
+1. correct resource/source scope
+
+2. validated Source Set
+
+3. source classification
+
+4. initial Topic/MicroNode candidates
+
+5. granularity consolidation
+
+6. source ownership
+
+7. initial source-support status
+
+8. bounded semantic source reallocation
+
+9. deterministic post-reallocation source-support status
+
+10. instructional coverage
+
+11. final MicroNodes
+
+12. exercises
+
+13. Outcome alignment
+
+14. Cognitive Path generation
+
+15. Cognitive Path grounding
+
+16. teacher-review states
+
+17. final C1 readiness behavior
+
+Do not skip the pre/post source-support evidence.
+
+════════════════════════════════════════════════════
+31. CLEAN RETEST — MICRONODE ACCEPTANCE
+════════════════════════════════════════════════════
+
+Do NOT expect a hardcoded MicroNode count.
+
+For each final MicroNode prove:
+
+- DISTINCT
+- TEACHABLE
+- ASSESSABLE
+- CURRICULUM_RELEVANT
+- SOURCE_GROUNDED
+
+Report:
+
+- title
+- learningObjective
+- Topic
+- sourceBlock IDs
+- source pages
+- initial source-support status
+- whether reallocation occurred
+- final source-support status
+- why distinct
+- Outcome relations
+- cognitive depth
+- exercise count
+
+Do not output long textbook passages.
+
+════════════════════════════════════════════════════
+32. CLEAN RETEST — REAL FAILURE CLASSES
+════════════════════════════════════════════════════
+
+Explicitly verify that the final mapping does NOT contain the previously
+observed failure classes:
+
+A. duplicate/near-duplicate MicroNodes representing the same objective;
+
+B. heading-only source treated as sufficient theory;
+
+C. Moki/address narrative used as support for the new-building rule;
+
+D. malformed “?hարց...” source treated as authority;
+
+E. Cognitive Path success criterion using:
+   “24 and 28 → 26”
+   for the addressing rule;
+
+F. unsupported:
+   “7/2”
+   extrapolation.
+
+Report PASS/FAIL for each class.
+
+════════════════════════════════════════════════════
+33. CLEAN RETEST — COGNITIVE PATH
+════════════════════════════════════════════════════
+
+Generate Cognitive Path for every final MicroNode.
+
+For each report:
+
+- levels
+- target cognitive level
+- grounding status
+- confirmation/review status
+- rejected/flagged claim count
+
+Verify:
+
+higher Bloom depth changes cognitive operation,
+not factual curriculum scope.
+
+Do NOT auto-confirm paths merely to make final readiness pass.
+
+════════════════════════════════════════════════════
+34. FINAL READINESS TEST
+════════════════════════════════════════════════════
+
+Verify final C1 readiness behavior.
+
+It must fail closed when any required condition remains unresolved.
+
+Conceptually final readiness requires:
+
+GOAL_OUTCOMES_CONFIRMED
+
+AND
+SOURCE_SCOPE_VALID
+
+AND
+INSTRUCTIONAL_SOURCE_COVERAGE_COMPLETE
+
+AND
+MICRONODE_GRANULARITY_VALID
+
+AND
+MICRONODE_SOURCE_ALIGNMENT_VALID
+
+AND
+OUTCOME_ALIGNMENT_REVIEWED
+
+AND
+COGNITIVE_PATH_GROUNDING_VALID_OR_EXPLICITLY_APPROVED
+
+AND
+EXISTING_TEACHING_PACKAGE_REQUIREMENTS
+
+Do NOT auto-approve teacher review gates merely for the test.
+
+You may prove:
+
+“blocked until teacher review”
+
+as correct behavior.
+
+════════════════════════════════════════════════════
+35. NO SCOPE DRIFT
+════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- AI Teacher runtime/chat
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree
+- C6 Recommendation/Personalization
+- Quiz creation
+- Quiz scoring
+- student sessions
+- Package 1D manual mapping
+- unrelated dashboard UI
+
+DO NOT:
+
+- switch AI models
+- hardcode this lesson
+- hardcode a MicroNode count
+- broaden source scope
+- use book-wide fallback
+- fabricate source
+- fabricate exercises
+- use lexical overlap as semantic proof
+- add uncontrolled repair loops
+- auto-approve Cognitive Path
+- auto-approve Outcome alignment
+- auto-approve Teaching Package
+
+════════════════════════════════════════════════════
+36. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. FIX #6A INSERTION POINT
+
+Where was the bounded semantic source-reallocation pass added?
+
+B. REALLOCATION ALGORITHM
+
+C. SEMANTIC SUPPORT DECISION
+
+Explain clearly why lexical overlap is not final authority.
+
+D. BOUNDING / AI CALL BEHAVIOR
+
+State maximum repair/review calls.
+
+E. SOURCE OWNERSHIP SAFETY
+
+F. FILES CHANGED
+
+G. DB / SCHEMA CHANGES
+
+H. FIX #6A FOCUSED TEST RESULTS
+
+I. FIX #5 / FIX #6 REGRESSION STATUS
+
+J. CLEAN DISPOSABLE RETEST — SOURCE
+
+K. CLEAN DISPOSABLE RETEST — GRANULARITY
+
+L. CLEAN DISPOSABLE RETEST — SOURCE REALLOCATION
+
+For each affected MicroNode show:
+
+initial status
+→ action
+→ final status
+
+M. CLEAN DISPOSABLE RETEST — FINAL MICRONODES
+
+N. CLEAN DISPOSABLE RETEST — EXERCISES
+
+O. CLEAN DISPOSABLE RETEST — OUTCOME ALIGNMENT
+
+P. CLEAN DISPOSABLE RETEST — COGNITIVE PATH
+
+Q. PREVIOUS FAILURE CLASSES
+
+Return PASS/FAIL for:
+
+- duplicate/near-duplicate nodes
+- heading-only grounding
+- narrative→wrong-rule grounding
+- malformed-source grounding
+- 24/28→26 Cognitive Path error
+- unsupported 7/2 extrapolation
+
+R. FINAL C1 READINESS BEHAVIOR
+
+S. REMAINING C1 ISSUES
+
+T. VERDICT
+
+Use ONLY:
+
+READY FOR MANUAL C1 FINAL REVIEW
+
+or
+
+C1 FIX #6A BLOCKED
+
+Do NOT return C1 FROZEN.
+
+════════════════════════════════════════════════════
+37. ACCEPTANCE GATE
+════════════════════════════════════════════════════
+
+PASS only if ALL are true:
+
+[ ] One bounded semantic source-reallocation pass exists.
+
+[ ] It runs only for PARTIAL/INSUFFICIENT source support as appropriate.
+
+[ ] It searches only the validated same-lesson Source Set.
+
+[ ] Lexical overlap is not treated as semantic proof.
+
+[ ] Heading-only source cannot falsely become sufficient.
+
+[ ] Narrative source keeps its correct pedagogical role.
+
+[ ] Malformed source cannot become authority.
+
+[ ] Correct same-lesson source can repair wrong initial ownership.
+
+[ ] No-support case fails/requires review instead of fabrication.
+
+[ ] Server deterministically revalidates after semantic repair.
+
+[ ] Semantic reviewer cannot directly declare final readiness.
+
+[ ] Instructional source coverage remains complete/truthful.
+
+[ ] No valid source block is silently lost.
+
+[ ] Exercise attachments survive/reconcile correctly.
+
+[ ] Outcome relations survive/reconcile correctly.
+
+[ ] Fix #6 granularity safeguards remain intact.
+
+[ ] Fix #6 Cognitive Path safeguards remain intact.
+
+[ ] Fix #5 source-scope safeguards remain intact.
+
+[ ] 24-and-28 → 26 failure remains rejected.
+
+[ ] Unsupported 7/2 extrapolation remains rejected.
+
+[ ] Clean disposable end-to-end mapping retest is completed.
+
+[ ] Final MicroNodes all pass:
+    DISTINCT
+    TEACHABLE
+    ASSESSABLE
+    CURRICULUM_RELEVANT
+    SOURCE_GROUNDED
+
+[ ] Final readiness fails closed on unresolved review requirements.
+
+If ANY condition fails:
+
+STOP.
+
+Return:
+
+C1 FIX #6A BLOCKED
+
+State the exact blocker.
+
+Do NOT proceed to Package 1D.
+Do NOT declare C1 frozen.
