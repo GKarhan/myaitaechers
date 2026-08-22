@@ -5,6 +5,7 @@ const _require = createRequire(import.meta.url);
 const { PDFParse } = _require("pdf-parse") as {
   PDFParse: new (opts: { data: Buffer }) => {
     getText(opts?: { partial?: number[] }): Promise<{ text: string }>;
+    getInfo(): Promise<{ total: number }>;
     destroy(): Promise<void>;
   };
 };
@@ -348,12 +349,43 @@ export class MappingGranularityReviewError extends Error {
 }
 
 export class MappingSourceScopeError extends Error {
+  readonly code = "LESSON_SCOPE_MISMATCH";
   readonly teacherMessage =
-    "Դասի ընտրված էջերը չեն հաստատվել որպես տվյալ դասի աղբյուր։ Ստուգեք դասագիրքը և PDF-ի ֆիզիկական էջերի միջակայքը։";
+    "Ընտրված PDF էջերի բովանդակությունը չհաջողվեց վստահորեն հաստատել որպես այս դասի աղբյուր։";
 
   constructor(readonly audit: unknown) {
     super("Mapping source set is outside the verified lesson scope");
     this.name = "MappingSourceScopeError";
+  }
+}
+
+export class MappingPdfPageRangeError extends Error {
+  readonly code = "INVALID_PDF_PAGE_RANGE";
+  readonly teacherMessage =
+    "Նշված PDF էջերը չեն գտնվում վերբեռնված ֆայլի էջերի սահմաններում։";
+
+  constructor(
+    readonly pagesFrom: number,
+    readonly pagesTo: number,
+    readonly totalPages: number | null,
+  ) {
+    super(
+      totalPages === null
+        ? `Requested invalid PDF page range ${pagesFrom}–${pagesTo}`
+        : `Requested PDF pages ${pagesFrom}–${pagesTo} are outside document range 1–${totalPages}`,
+    );
+    this.name = "MappingPdfPageRangeError";
+  }
+}
+
+export class MappingPdfPageExtractionError extends Error {
+  readonly code = "PDF_PAGE_EXTRACTION_FAILED";
+  readonly teacherMessage =
+    "Չհաջողվեց կարդալ ընտրված PDF էջերը։ Խնդրում ենք ստուգել վերբեռնված ֆայլը և փորձել կրկին։";
+
+  constructor() {
+    super("Selected PDF page extraction failed");
+    this.name = "MappingPdfPageExtractionError";
   }
 }
 
@@ -376,6 +408,8 @@ export function getTeacherFacingMappingFailure(error: unknown): string {
   if (error instanceof MappingSourceAlignmentError) return error.teacherMessage;
   if (error instanceof MappingGranularityReviewError) return error.teacherMessage;
   if (error instanceof MappingSourceScopeError) return error.teacherMessage;
+  if (error instanceof MappingPdfPageRangeError) return error.teacherMessage;
+  if (error instanceof MappingPdfPageExtractionError) return error.teacherMessage;
   if (error instanceof MappingOutcomeAlignmentError) return error.teacherMessage;
   if (error instanceof MappingPass2ParserError) return error.teacherMessage;
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -409,6 +443,15 @@ export async function extractPdfPageRange(
 
 export type ExtractedPdfPage = { pageNumber: number; text: string };
 
+/**
+ * The teacher-visible PDF page is the canonical page identity everywhere after
+ * this adapter boundary. pdf-parse's `partial` API is 1-based, so this is an
+ * intentional identity conversion rather than a hidden offset.
+ */
+export function teacherVisiblePdfPageToParserPage(pageNumber: number): number {
+  return pageNumber;
+}
+
 /** Extract pages independently so the selected physical PDF identity survives
  * beyond an aggregate string and can validate every Pass 1 block. */
 export async function extractPdfPages(
@@ -417,17 +460,44 @@ export async function extractPdfPages(
   pagesTo: number,
 ): Promise<ExtractedPdfPage[]> {
   const range = validateRequiredLessonPageRange(pagesFrom, pagesTo);
-  if (!range.valid) throw new Error(range.error);
-  const parser = new PDFParse({ data: fs.readFileSync(filePath) });
+  if (!range.valid) throw new MappingPdfPageRangeError(pagesFrom, pagesTo, null);
+  let parser: {
+    getText(opts?: { partial?: number[] }): Promise<{ text: string }>;
+    getInfo(): Promise<{ total: number }>;
+    destroy(): Promise<void>;
+  } | undefined;
   try {
+    parser = new PDFParse({ data: fs.readFileSync(filePath) });
+    const { total: totalPages } = await parser.getInfo();
+    if (!Number.isInteger(totalPages) || totalPages < 1) {
+      throw new MappingPdfPageExtractionError();
+    }
+    if (range.pagesTo > totalPages) {
+      throw new MappingPdfPageRangeError(range.pagesFrom, range.pagesTo, totalPages);
+    }
     const pages: ExtractedPdfPage[] = [];
     for (let pageNumber = range.pagesFrom; pageNumber <= range.pagesTo; pageNumber++) {
-      const result = await parser.getText({ partial: [pageNumber] });
+      const parserPage = teacherVisiblePdfPageToParserPage(pageNumber);
+      const result = await parser.getText({ partial: [parserPage] });
       pages.push({ pageNumber, text: result.text.trim() });
     }
     return pages;
+  } catch (error) {
+    if (
+      error instanceof MappingPdfPageRangeError ||
+      error instanceof MappingPdfPageExtractionError
+    ) {
+      throw error;
+    }
+    throw new MappingPdfPageExtractionError();
   } finally {
-    await parser.destroy();
+    if (parser) {
+      try {
+        await parser.destroy();
+      } catch (cleanupError) {
+        logger.warn({ err: cleanupError }, "PDF parser cleanup failed after page extraction");
+      }
+    }
   }
 }
 
@@ -4322,6 +4392,8 @@ const _execFileAsync = promisify(execFile);
 /**
  * Rasterises a page range of a PDF using pdftoppm and returns each page as a
  * base64-encoded PNG string.
+ * pdftoppm accepts the same 1-based physical page numbers as the teacher UI;
+ * no conversion is applied here.
  * 150 DPI provides sufficient resolution for a vision model without excessive
  * image token cost.
  */

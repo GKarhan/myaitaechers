@@ -6102,6 +6102,14 @@ export default function TeacherDashboard() {
                           placeholder="«Դասի վերնագիրը»"
                         />
                       </div>
+                      <div className="sm:col-span-2">
+                        <p className="text-xs font-medium text-foreground">
+                          PDF-ի ֆիզիկական էջեր
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Նշեք PDF-ում տեսանելի այն էջերի համարները, որոնք համակարգը պետք է կարդա այս դասի համար։
+                        </p>
+                      </div>
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                           Էջի սկիզբը
@@ -6287,12 +6295,21 @@ export default function TeacherDashboard() {
                           className={inputCls}
                         />
                       </div>
+                      <div className="sm:col-span-2">
+                        <p className="text-xs font-medium text-foreground">
+                          PDF-ի ֆիզիկական էջեր
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Նշեք PDF-ում տեսանելի այն էջերի համարները, որոնք համակարգը պետք է կարդա այս դասի համար։
+                        </p>
+                      </div>
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                           Էջի սկիզբը
                         </label>
                         <input
                           type="number"
+                          min="1"
                           value={editLesson.pagesFrom}
                           onChange={(e) =>
                             setEditLesson(
@@ -6308,6 +6325,7 @@ export default function TeacherDashboard() {
                         </label>
                         <input
                           type="number"
+                          min="1"
                           value={editLesson.pagesTo}
                           onChange={(e) =>
                             setEditLesson(
