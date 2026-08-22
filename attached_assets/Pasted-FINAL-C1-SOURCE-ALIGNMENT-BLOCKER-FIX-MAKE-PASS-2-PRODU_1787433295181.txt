@@ -1,0 +1,531 @@
+FINAL C1 SOURCE-ALIGNMENT BLOCKER FIX
+MAKE PASS 2 PRODUCE SOURCE-GROUNDED MICRONODES AND PERSIST THE REAL MAPPING
+
+This is a narrow blocker-resolution task.
+
+Do NOT reopen Pass 1.
+Do NOT perform another broad C1 audit.
+Do NOT weaken source validation.
+
+The previous task successfully established:
+
+Source pages
+→ Pass 1
+→ Source Verification
+→ Pass 2
+
+The real lesson now reaches Pass 2.
+
+The remaining blocker is:
+
+"MicroNode-ի նպատակը բավարար չափով չի հիմնավորվել իր ընտրված աղբյուրով։
+Արդյունքը չի պահպանվել։"
+
+The mapping therefore fails before persistence.
+
+==================================================
+REAL ACCEPTANCE TARGET
+==================================================
+
+Textbook:
+Մաթեմատիկա 5
+
+Author:
+Սմբատ Գոգյան
+
+Lesson:
+§1.2 Բնական թվերի շարքը
+
+Resource:
+#19
+
+Physical PDF pages:
+14–15
+
+Resolve the CURRENT lesson ID from DB immediately before the final run.
+
+Confirmed latest pipeline state:
+
+PAGE 14 PASS 1 BLOCKS = 12
+PAGE 15 PASS 1 BLOCKS = 13
+
+Source verification = PASS
+Pass 2 reached = YES
+
+The Pass 1 model boundary is already fixed.
+
+Do not change it in this task.
+
+==================================================
+GOAL
+==================================================
+
+Fix the Pass 2 → MicroNode source-alignment failure so that:
+
+1. every generated MicroNode has a pedagogically atomic learning
+   objective;
+
+2. that objective is actually supported by the readable validated
+   source assigned to that MicroNode;
+
+3. no unsupported concept is invented merely to satisfy canonical
+   Outcomes;
+
+4. legitimate instructional source is not lost;
+
+5. exercises remain preserved and correctly owned or explicitly
+   unassigned;
+
+6. deterministic source-alignment validation passes;
+
+7. the mapping persists successfully.
+
+Required pipeline:
+
+VERIFIED SOURCE BLOCKS
+→ PASS 2
+→ ATOMIC MICRONODES
+→ SOURCE OWNERSHIP
+→ SOURCE-ALIGNED LEARNING OBJECTIVES
+→ DETERMINISTIC VALIDATION
+→ PERSISTENCE
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Work ONLY on the Pass 2 MicroNode generation/source-allocation/
+source-alignment boundary required to fix this failure.
+
+DO NOT modify:
+
+- physical PDF page selection;
+- page numbering;
+- resource #19;
+- lesson title;
+- paragraph number;
+- Pass 1 model;
+- Pass 1 schema;
+- Pass 1 parser;
+- Pass 1 retry behavior;
+- server PDF extraction;
+- source verification;
+- deterministic provenance rules;
+- source containment rules;
+- Goal;
+- canonical Outcomes;
+- Outcome confirmation;
+- Cognitive Path generation;
+- Teaching Package generation;
+- AI Teacher;
+- quiz logic;
+- Knowledge Tree;
+- DB schema;
+- final approval architecture.
+
+Do NOT start Package 1D.
+
+Do NOT weaken the failing source-alignment gate merely to make the
+mapping persist.
+
+==================================================
+PART 1 — IDENTIFY THE EXACT FAILING MICRONODE(S)
+==================================================
+
+Before changing code, use the latest failed Pass 2 result / safe
+diagnostics to identify:
+
+- generated MicroNode count;
+- failing MicroNode index/id if available;
+- MicroNode title;
+- generated learningObjective;
+- assigned validated source block indices/pages;
+- source-support/alignment score or deterministic reason code;
+- whether the source itself is insufficient OR Pass 2 created an
+  objective broader/different than its assigned source.
+
+Do NOT log or persist raw textbook text merely for diagnostics.
+
+Use source-safe structural diagnostics.
+
+Classify each failure into one of these categories:
+
+A. OBJECTIVE_TOO_BROAD
+B. OBJECTIVE_NOT_SUPPORTED_BY_ASSIGNED_SOURCE
+C. WRONG_SOURCE_BLOCK_OWNERSHIP
+D. SOURCE_SPLIT_REQUIRED
+E. SOURCE_MERGE_REQUIRED
+F. OUTCOME_PRESSURE_CREATED_UNSUPPORTED_OBJECTIVE
+G. VALIDATOR_FALSE_NEGATIVE
+
+Only choose G if deterministic evidence proves the objective is
+actually supported and the validator is wrong.
+
+Do not assume the validator is wrong.
+
+==================================================
+PART 2 — FIX GENERATION / OWNERSHIP, NOT THE GATE
+==================================================
+
+Preferred correction order:
+
+1. Correct source ownership/allocation if the MicroNode was assigned the
+   wrong instructional block(s).
+
+2. If the source supports a narrower learning objective, narrow the
+   MicroNode objective to exactly what the source teaches.
+
+3. If one generated MicroNode combines multiple independently teachable
+   concepts, split it only when pedagogically necessary.
+
+4. If multiple source blocks clearly teach ONE pedagogically atomic
+   concept, they may support the same MicroNode.
+
+5. If a canonical Outcome contains a concept that is not actually
+   taught in the selected source, DO NOT invent a MicroNode to satisfy
+   the Outcome.
+
+   Keep the Outcome unresolved / unsupported for teacher review.
+
+Canonical Outcomes guide alignment.
+They do NOT override source truth.
+
+==================================================
+PART 3 — PRESERVE TASK #124 ATOMICITY RULE
+==================================================
+
+Do NOT return to the old over-generation behavior.
+
+MicroNode count must be determined by independently teachable knowledge,
+not:
+
+- source block count;
+- paragraph count;
+- exercise count;
+- Outcome count;
+- sentence count.
+
+ONE MicroNode = ONE independently teachable / assessable knowledge
+objective.
+
+A MicroNode may own multiple source blocks when those blocks jointly
+teach the same atomic objective.
+
+A MicroNode may own multiple exercises.
+
+Do not create extra MicroNodes simply to improve coverage percentages.
+
+Do not create separate MicroNodes for:
+
+- examples;
+- narrative introductions;
+- repeated explanations;
+- visual captions;
+- practice-only variations;
+
+unless they introduce genuinely independent instructional knowledge.
+
+==================================================
+PART 4 — SOURCE OWNERSHIP CONTRACT
+==================================================
+
+For every readable instructional source block, determine exactly one
+legitimate disposition:
+
+A. owned by a MicroNode as instructional support;
+
+B. legitimate structural/visual/supporting material;
+
+C. real exercise/question/activity;
+
+D. explicitly unresolved and therefore blocks persistence if required
+   instructional knowledge remains uncovered.
+
+Do not duplicate canonical instructional ownership merely to make
+multiple MicroNodes pass alignment.
+
+One source block may support a MicroNode together with neighboring
+validated blocks when they form one coherent instructional unit.
+
+All source references must remain inside the verified same-lesson
+source set.
+
+==================================================
+PART 5 — EXERCISES
+==================================================
+
+Preserve every real textbook exercise/question/activity already
+extracted from the verified source.
+
+For each exercise:
+
+- attach it to the MicroNode it genuinely assesses when that ownership
+  is clear;
+
+OR
+
+- preserve it as Additional/Unassigned if no single MicroNode is
+  sufficiently justified.
+
+Never:
+
+- delete an exercise because it does not fit;
+- duplicate an exercise across MicroNodes merely to satisfy coverage;
+- create a MicroNode only because an exercise exists.
+
+Exercise ownership must not distort knowledge granularity.
+
+==================================================
+PART 6 — OUTCOME ALIGNMENT
+==================================================
+
+After the corrected MicroNodes exist, reconcile canonical Outcomes.
+
+Rules:
+
+REQUIRED:
+use only when the MicroNode's source-grounded objective genuinely
+supports that Outcome.
+
+SUPPORTING:
+use when it contributes but does not independently satisfy it.
+
+UNRESOLVED:
+leave the Outcome without an automatic REQUIRED relation when the
+selected textbook source does not support it.
+
+Do not broaden a MicroNode objective to force an Outcome match.
+
+Do not use action-word overlap alone as evidence.
+
+Do not weaken the existing teacher-review requirement.
+
+==================================================
+PART 7 — DETERMINISTIC REVALIDATION
+==================================================
+
+After the bounded correction, rerun the existing deterministic checks:
+
+- source provenance;
+- source ownership;
+- instructional coverage;
+- MicroNode source support;
+- objective/source alignment;
+- exercise preservation;
+- atomicity;
+- Outcome relation validity.
+
+There must be no "accept anyway" path.
+
+If a MicroNode remains unsupported, persistence must still fail.
+
+==================================================
+PART 8 — REGRESSION TESTS
+==================================================
+
+Add or update focused provider-free tests for at least:
+
+1. supported atomic objective → PASS;
+
+2. objective broader than source → FAIL;
+
+3. wrong source ownership → FAIL;
+
+4. narrowing objective to supported knowledge → PASS;
+
+5. multiple source blocks supporting one atomic MicroNode → PASS;
+
+6. one block does NOT automatically mean one MicroNode;
+
+7. Outcome not supported by source does NOT create a fake MicroNode;
+
+8. unsupported Outcome remains unresolved;
+
+9. exercise-only material does not force a new MicroNode;
+
+10. exercises remain preserved after source reallocation;
+
+11. no source block from neighboring/out-of-scope pages may be used;
+
+12. previous mapping remains intact if validation fails before
+    persistence.
+
+Keep all existing Task #124 tests green.
+
+Do not weaken tests.
+
+==================================================
+PART 9 — TYPECHECK / BUILD
+==================================================
+
+Before the real run:
+
+- relevant API typecheck PASS;
+- relevant web typecheck PASS if touched;
+- API build PASS;
+- source/provenance tests PASS;
+- source-alignment tests PASS;
+- Task #124 atomicity tests PASS;
+- Outcome alignment tests PASS.
+
+Restart the API with final code.
+
+Check startup logs.
+
+==================================================
+PART 10 — ONE REAL ACCEPTANCE RUN
+==================================================
+
+Only after all tests pass:
+
+Resolve the current lesson ID.
+
+Run automatic mapping ONCE for:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+§1.2 Բնական թվերի շարքը
+resource #19
+physical PDF pages 14–15
+
+Do not modify lesson metadata before the run.
+
+Do not change Goal/Outcomes.
+
+Do not manually seed mapping data.
+
+Do not bypass any validation.
+
+Do not retry the real mapping repeatedly.
+
+==================================================
+REQUIRED ACCEPTANCE
+==================================================
+
+The run must show:
+
+PASS 1 PAGE 14: PASS
+PASS 1 PAGE 15: PASS
+
+SOURCE VERIFICATION: PASS
+
+PASS 2: PASS
+
+MICRONODE SOURCE ALIGNMENT: PASS
+
+PERSISTENCE: PASS
+
+Then read the persisted mapping and report:
+
+TOPICS: N
+
+MICRONODES: N
+
+EXERCISES: N
+
+ADDITIONAL / UNASSIGNED EXERCISES: N
+
+INSTRUCTIONAL SOURCE COVERAGE:
+covered / total
+
+UNRESOLVED INSTRUCTIONAL BLOCKS:
+N
+
+OUTCOME RELATIONS:
+REQUIRED N
+SUPPORTING N
+UNRESOLVED OUTCOMES N
+
+ATOMICITY:
+PASS / FAIL
+
+==================================================
+IMPORTANT — DO NOT TUNE THE RESULT
+==================================================
+
+If persistence succeeds:
+
+STOP.
+
+Do NOT immediately:
+
+- regenerate Cognitive Paths;
+- generate Teaching Packages;
+- approve MicroNodes;
+- approve exercises;
+- edit Outcomes;
+- optimize the mapping;
+- start another C1 improvement;
+- start Package 1D.
+
+The user will manually inspect the real mapping first.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly these sections:
+
+1. ROOT CAUSE
+
+State which failure class caused the blocker:
+A/B/C/D/E/F/G.
+
+2. FIX
+
+State the smallest implementation change made.
+
+3. SAFETY
+
+Confirm that source/provenance/alignment gates were NOT weakened.
+
+4. REGRESSIONS
+
+List relevant suites and pass/fail.
+
+5. REAL ACCEPTANCE
+
+PAGE 14 PASS 1: PASS / FAIL
+PAGE 15 PASS 1: PASS / FAIL
+SOURCE VERIFICATION: PASS / FAIL
+PASS 2: PASS / FAIL
+MICRONODE SOURCE ALIGNMENT: PASS / FAIL
+PERSISTENCE: PASS / FAIL
+
+6. PERSISTED RESULT
+
+TOPICS: N
+MICRONODES: N
+EXERCISES: N
+ADDITIONAL EXERCISES: N
+SOURCE COVERAGE: N/N
+UNRESOLVED INSTRUCTIONAL BLOCKS: N
+REQUIRED OUTCOME LINKS: N
+SUPPORTING OUTCOME LINKS: N
+UNRESOLVED OUTCOMES: N
+ATOMICITY: PASS / FAIL
+
+7. TASK #124
+
+Confirm whether its atomic MicroNode rules remained intact.
+
+8. VERDICT
+
+Exactly one:
+
+C1 REAL MAPPING PERSISTED — READY FOR MANUAL REVIEW
+
+or
+
+C1 SOURCE ALIGNMENT STILL BLOCKED
+
+==================================================
+STOP RULE
+==================================================
+
+If successful, STOP.
+
+The next action belongs to the user:
+manual review of the actual persisted mapping.
+
+Do not proceed to another package or another optimization automatically.

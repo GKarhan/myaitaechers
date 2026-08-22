@@ -7,9 +7,11 @@ import { validateCognitivePathGrounding } from "../cognitive-path-grounding.js";
 import {
   applyBoundedSourceReallocation,
   consolidateHighConfidenceOverSplits,
+  removeStructuralHeadingSourceOwnership,
   validatePass2SourceAlignment,
   type Pass2TopicResult,
 } from "../../services/lesson-mapping.js";
+import { validateSourceCoverage } from "../coverage-validator.js";
 
 function topic(nodes: Pass2TopicResult["microNodes"]): Pass2TopicResult {
   return {
@@ -142,6 +144,51 @@ const sourceBlocks = (rows: Array<{ blockType: string; sourceText: string }>) =>
 }
 
 {
+  const topics = [topic([{
+    ...node("Կենտ և զույգ համարների կանոն", "Բացատրում է կենտ և զույգ համարների կանոնը։", 0),
+    sourceBlockIndices: [0, 1],
+    exercises: [{ blockIndex: 2, sourceParagraph: null }],
+  }])];
+  const blocks = sourceBlocks([
+    { blockType: "OBJECTIVE", sourceText: "Շենքերի համարակալում" },
+    { blockType: "RULE", sourceText: "Փողոցի ձախ կողմի շենքերը ստանում են կենտ, իսկ աջ կողմի շենքերը՝ զույգ համարներ։" },
+    { blockType: "EXERCISE", sourceText: "Գտեք ճիշտ կողմը։" },
+  ]);
+  const repair = removeStructuralHeadingSourceOwnership(topics, blocks);
+  assert.deepEqual(repair.movedHeadingIndices, [0]);
+  assert.equal(repair.removedMicroNodeTitles.length, 0);
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [1]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [0]);
+  assert.equal(topics[0].microNodes[0].exercises[0].blockIndex, 2);
+  assert.equal(validatePass2SourceAlignment(topics, blocks).valid, true);
+  assert.equal(validateSourceCoverage(blocks.length, topics).valid, true);
+  console.log("  ✓ structural heading is unowned while the direct source and exercise stay intact");
+}
+
+{
+  const topics = [topic([
+    {
+      ...node("Անվավեր heading node", "Բացատրում է համարակալման կանոնը։", 0),
+      exercises: [{ blockIndex: 1, sourceParagraph: null }],
+    },
+    node("Կանոն", "Բացատրում է կենտ և զույգ համարների կանոնը։", 2),
+  ])];
+  const blocks = sourceBlocks([
+    { blockType: "OBJECTIVE", sourceText: "Շենքերի համարակալում" },
+    { blockType: "EXERCISE", sourceText: "Գտեք ճիշտ կողմը։" },
+    { blockType: "RULE", sourceText: "Փողոցի ձախ կողմի շենքերը ստանում են կենտ, իսկ աջ կողմի շենքերը՝ զույգ համարներ։" },
+  ]);
+  const repair = removeStructuralHeadingSourceOwnership(topics, blocks);
+  assert.deepEqual(repair.removedMicroNodeTitles, ["Անվավեր heading node"]);
+  assert.deepEqual(repair.rescuedExerciseIndices, [1]);
+  assert.equal(topics[0].microNodes.length, 1);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [0]);
+  assert.equal(topics[0].additionalExercises[0].blockIndex, 1);
+  assert.equal(validateSourceCoverage(blocks.length, topics).valid, true);
+  console.log("  ✓ source-less heading node is removed without dropping its exercise");
+}
+
+{
   const objective = "Որոշում է նոր շենքի հասցեն 5/1 կանոնով։";
   const topics = [topic([node("Նոր շենքի հասցե", objective, 0)])];
   const blocks = sourceBlocks([
@@ -155,6 +202,48 @@ const sourceBlocks = (rows: Array<{ blockType: string; sourceText: string }>) =>
   assert.equal(repair.appliedCount, 1);
   assert.equal(validatePass2SourceAlignment(topics, blocks).valid, true);
   console.log("  ✓ narrative mismatch is repaired only with the direct same-lesson rule");
+}
+
+{
+  const broadObjective = "Բացատրում է 10 թվանշանով կարգերի կանոնը։";
+  const revisedObjective = "Բացատրում է թվերի կարգերը գրության մեջ։";
+  const topics = [topic([node("Թվերի կարգեր", broadObjective, 0)])];
+  const blocks = sourceBlocks([
+    { blockType: "RULE", sourceText: "Թվերի կարգերը որոշում են թվի տեղը գրության մեջ։" },
+  ]);
+  assert.equal(validatePass2SourceAlignment(topics, blocks).valid, false);
+  const repair = applyBoundedSourceReallocation(topics, blocks, [{
+    topicTitle: "Թեմա",
+    microNodeTitle: "Թվերի կարգեր",
+    action: "NARROW_OBJECTIVE",
+    sourceBlockIndices: [],
+    learningObjective: revisedObjective,
+    reason: "Աղբյուրը բացատրում է միայն գրության մեջ կարգերի տեղը",
+  }]);
+  assert.equal(repair.appliedCount, 1);
+  assert.equal(topics[0].microNodes[0].learningObjective, revisedObjective);
+  assert.equal(validatePass2SourceAlignment(topics, blocks).valid, true);
+  console.log("  ✓ objective is narrowed only when the retained source directly supports it");
+}
+
+{
+  const originalObjective = "Բացատրում է 10 թվանշանով կարգերի կանոնը։";
+  const topics = [topic([node("Թվերի կարգեր", originalObjective, 0)])];
+  const blocks = sourceBlocks([
+    { blockType: "RULE", sourceText: "Թվերի կարգերը որոշում են թվի տեղը գրության մեջ։" },
+  ]);
+  const repair = applyBoundedSourceReallocation(topics, blocks, [{
+    topicTitle: "Թեմա",
+    microNodeTitle: "Թվերի կարգեր",
+    action: "NARROW_OBJECTIVE",
+    sourceBlockIndices: [],
+    learningObjective: "Կիրառում է միլիոնների կանոնը։",
+    reason: "Չի թույլատրվում",
+  }]);
+  assert.equal(repair.appliedCount, 0);
+  assert.equal(repair.rejectedDecisionCount, 1);
+  assert.equal(topics[0].microNodes[0].learningObjective, originalObjective);
+  console.log("  ✓ unsupported objective rewrite is rejected without mutating the MicroNode");
 }
 
 {
@@ -184,4 +273,4 @@ const sourceBlocks = (rows: Array<{ blockType: string; sourceText: string }>) =>
   console.log("  ✓ malformed blocks can never become semantic repair authority");
 }
 
-console.log("\nFix #6A granularity, grounding, and bounded reallocation: 11/11 passing");
+console.log("\nFix #6A granularity, grounding, and bounded reallocation: 13/13 passing");

@@ -14,6 +14,7 @@ import { logger } from "../lib/logger";
 import {
   validateInstructionalCoverage,
   validateSourceCoverage,
+  isLikelyStructuralHeading,
   type CoverageValidationResult,
   type InstructionalCoverageResult,
 } from "../lib/coverage-validator.js";
@@ -227,6 +228,89 @@ export function normalizeActivityPlacements(
   }
 
   return { evictedFromSource, postEvictionStripped, dedupedExercises, dedupedAdditional, stepBRescued, stepCRescued };
+}
+
+/**
+ * A title-like Pass 1 block describes structure, not teachable evidence. It
+ * must never be the sole source owner for a MicroNode: that creates a
+ * plausible-looking node with no source-backed learning objective.
+ *
+ * This repair is deliberately mechanical. It neither invents a new MicroNode
+ * nor assigns an instructional block to a different objective. It only moves
+ * conservative structural headings to the topic's legitimate unmapped
+ * disposition, and preserves activities from any node made source-less.
+ */
+export function removeStructuralHeadingSourceOwnership(
+  topics: Pass2TopicResult[],
+  blocks: Pass1Block[],
+): {
+  movedHeadingIndices: number[];
+  removedMicroNodeTitles: string[];
+  rescuedExerciseIndices: number[];
+} {
+  const movedHeadingIndices: number[] = [];
+  const removedMicroNodeTitles: string[] = [];
+  const rescuedExerciseIndices: number[] = [];
+  const headingHome = new Map<number, Pass2TopicResult>();
+
+  for (const topic of topics) {
+    const keptNodes: Pass2MicroNode[] = [];
+    for (const node of topic.microNodes) {
+      const keptSource: number[] = [];
+      for (const index of node.sourceBlockIndices) {
+        const block = isValidBlockIndex(index, blocks) ? blocks[index] : undefined;
+        if (block && isLikelyStructuralHeading(block)) {
+          movedHeadingIndices.push(index);
+          headingHome.set(index, topic);
+          continue;
+        }
+        keptSource.push(index);
+      }
+      node.sourceBlockIndices = keptSource;
+
+      if (node.sourceBlockIndices.length === 0) {
+        removedMicroNodeTitles.push(node.title);
+        for (const exercise of node.exercises) {
+          topic.additionalExercises.push(exercise);
+          rescuedExerciseIndices.push(exercise.blockIndex);
+        }
+        for (const supportIndex of node.supportingMaterialIndices) {
+          if (!topic.unmappedBlockIndices.includes(supportIndex)) {
+            topic.unmappedBlockIndices.push(supportIndex);
+          }
+        }
+        continue;
+      }
+      keptNodes.push(node);
+    }
+    topic.microNodes = keptNodes;
+  }
+
+  // A heading may only be moved to `unmapped` if no valid destination still
+  // owns it. This retains coverage's duplicate detection for malformed input.
+  const stillOwned = new Set<number>();
+  for (const topic of topics) {
+    for (const node of topic.microNodes) {
+      node.sourceBlockIndices.forEach((index) => stillOwned.add(index));
+      node.supportingMaterialIndices.forEach((index) => stillOwned.add(index));
+      node.exercises.forEach((exercise) => stillOwned.add(exercise.blockIndex));
+    }
+    topic.additionalExercises.forEach((exercise) => stillOwned.add(exercise.blockIndex));
+    topic.unmappedBlockIndices.forEach((index) => stillOwned.add(index));
+  }
+  for (const index of new Set(movedHeadingIndices)) {
+    const home = headingHome.get(index);
+    if (home && !stillOwned.has(index)) {
+      home.unmappedBlockIndices.push(index);
+      stillOwned.add(index);
+    }
+  }
+
+  return {
+    movedHeadingIndices: [...new Set(movedHeadingIndices)].sort((a, b) => a - b),
+    removedMicroNodeTitles,
+    rescuedExerciseIndices: [...new Set(rescuedExerciseIndices)].sort((a, b) => a - b),
+  };
 }
 
 const MODEL = "deepseek/deepseek-chat-v3-0324";
@@ -2269,6 +2353,30 @@ export function applyBoundedSourceReallocation(
       result.rejectedDecisionCount++;
       continue;
     }
+    if (decision.action === "NARROW_OBJECTIVE") {
+      const revisedObjective = decision.learningObjective?.trim() ?? "";
+      const revisedAudit = revisedObjective
+        ? classifyMicroNodeSourceAlignment(
+          revisedObjective,
+          target.sourceBlockIndices.map((index) => blocks[index])
+            .filter((block): block is Pass1Block => !!block),
+        )
+        : null;
+      if (!revisedObjective || detectCompoundLO(revisedObjective) || revisedAudit?.status !== "SUFFICIENT") {
+        result.rejectedDecisionCount++;
+        continue;
+      }
+      target.learningObjective = revisedObjective;
+      result.appliedCount++;
+      result.actions.push({
+        topicSequence: topic.sequence,
+        microNodeTitle: target.title,
+        action: decision.action,
+        sourceBlockIndices: [],
+        reasonCode: "SEMANTIC_SOURCE_REVIEW",
+      });
+      continue;
+    }
     const indices = [...new Set(decision.sourceBlockIndices)].filter(isEligible);
     if (indices.length === 0 || indices.length !== new Set(decision.sourceBlockIndices).size) {
       result.rejectedDecisionCount++;
@@ -2572,6 +2680,18 @@ FIELD DEFINITIONS:
                         sentence or learning content.
                         MUST be non-empty. If you cannot find a non-activity source block,
                         merge with an adjacent MicroNode instead.
+
+  SOURCE-ALIGNMENT GATE — apply before returning every MicroNode:
+  1. The assigned source must directly teach the exact concept/action in learningObjective.
+     Shared topical words alone are not enough.
+  2. A short NOTE/OBJECTIVE that is only a lesson or section title is structural context,
+     never instructional evidence. Put it in unmappedBlocks; never make it the sole
+     sourceBlockIndices entry for a MicroNode.
+  3. If the available source teaches a narrower idea than your draft objective, narrow the
+     objective to that supported idea. Do not create an unsupported Outcome or MicroNode.
+  4. Before final output, verify every MicroNode has at least one readable, non-heading
+     source block that directly supports its objective. If not, merge it into the node that
+     owns the supporting source or remove the unsupported draft node.
 
   STRICT RULE — EXERCISE blocks in sourceBlockIndices:
   An EXERCISE / ACTIVITY / HOMEWORK block may appear in sourceBlockIndices ONLY when it
@@ -3504,6 +3624,7 @@ export type SourceReallocationAction =
   | "ADD_SUPPORTING_BLOCKS"
   | "MOVE_BLOCKS"
   | "MERGE_SOURCE_OWNERSHIP"
+  | "NARROW_OBJECTIVE"
   | "NO_VALID_SUPPORT_FOUND";
 
 export interface SourceReallocationDecision {
@@ -3515,6 +3636,8 @@ export interface SourceReallocationDecision {
   microNodeId?: string;
   action: SourceReallocationAction;
   sourceBlockIndices: number[];
+  /** Only permitted when the retained source directly supports the revision. */
+  learningObjective?: string;
   reason: string;
 }
 
@@ -3653,6 +3776,14 @@ The following are the only readable, validated source blocks from this same less
 that may be selected. Lexical similarity is only candidate ranking; decide whether the block
 actually teaches/supports the objective. A narrative may support context but not an unstated
 rule. A heading-only block is not sufficient. Never invent source text or indices.
+Return exactly one sourceReallocations decision for every node listed in the repair input:
+• use ADD_SUPPORTING_BLOCKS / MOVE_BLOCKS only when the final source set directly supports
+  the existing objective;
+• use NARROW_OBJECTIVE only when the current retained source directly supports the proposed
+  one-action objective. Include that revised text in learningObjective and use [] for
+  sourceBlockIndices;
+• otherwise use NO_VALID_SUPPORT_FOUND. Never use KEEP_CURRENT for a node marked
+  needsSourceRepair=true.
 ${JSON.stringify(eligibleSourceBlocks, null, 2)}
 
 ${JSON.stringify(repairTopics, null, 2)}
@@ -3665,8 +3796,9 @@ Return only this JSON shape:
     "microNodeTitle": "exact MicroNode title",
     "topicSequence": 1,
     "microNodeId": "t1:n0",
-    "action": "ADD_SUPPORTING_BLOCKS",
-    "sourceBlockIndices": [12],
+    "action": "NARROW_OBJECTIVE",
+    "sourceBlockIndices": [],
+    "learningObjective": "Սովորողը կարող է բացատրել աղբյուրում ներկայացված մեկ կանոնը։",
     "reason": "Հայերեն պատճառ"
   }],
   "atomicityRepairs": [{
@@ -3695,7 +3827,7 @@ Return only this JSON shape:
     "confidence": "HIGH"
   }]
 }
-Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NO_VALID_SUPPORT_FOUND.
+Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NARROW_OBJECTIVE, NO_VALID_SUPPORT_FOUND.
 Every sourceBlockIndices value must come from the listed validated source blocks.
 Return one duplicateResolutions entry for every duplicateCandidates pair, including
 cross-topic pairs. Do not infer actions from titles.
@@ -3794,7 +3926,14 @@ source-less child.`;
         if (!item || typeof item !== "object") continue;
         const value = item as Record<string, unknown>;
         const action = String(value.action) as SourceReallocationAction;
-        if (!["KEEP_CURRENT", "ADD_SUPPORTING_BLOCKS", "MOVE_BLOCKS", "MERGE_SOURCE_OWNERSHIP", "NO_VALID_SUPPORT_FOUND"].includes(action)) continue;
+        if (![
+          "KEEP_CURRENT",
+          "ADD_SUPPORTING_BLOCKS",
+          "MOVE_BLOCKS",
+          "MERGE_SOURCE_OWNERSHIP",
+          "NARROW_OBJECTIVE",
+          "NO_VALID_SUPPORT_FOUND",
+        ].includes(action)) continue;
         const indices = Array.isArray(value.sourceBlockIndices)
           ? value.sourceBlockIndices.filter((index): index is number => typeof index === "number" && Number.isInteger(index))
           : [];
@@ -3808,6 +3947,9 @@ source-less child.`;
           ...(typeof value.microNodeId === "string" ? { microNodeId: value.microNodeId } : {}),
           action,
           sourceBlockIndices: indices,
+          ...(typeof value.learningObjective === "string"
+            ? { learningObjective: value.learningObjective }
+            : {}),
           reason: value.reason,
         });
       }
@@ -4303,6 +4445,23 @@ export async function runPass2Pipeline(
       );
     }
   }
+
+  // A pure section heading can be correctly extracted by Pass 1 yet still be
+  // invalid evidence for a MicroNode objective. Keep that structural source in
+  // the mapping without allowing a heading-only MicroNode through to semantic
+  // review or persistence.
+  const structuralOwnershipRepair = removeStructuralHeadingSourceOwnership(topics, blocks);
+  if (structuralOwnershipRepair.movedHeadingIndices.length > 0) {
+    logger.info(
+      {
+        movedHeadingIndices: structuralOwnershipRepair.movedHeadingIndices,
+        removedMicroNodeCount: structuralOwnershipRepair.removedMicroNodeTitles.length,
+        rescuedExerciseIndices: structuralOwnershipRepair.rescuedExerciseIndices,
+      },
+      "pass2: structural heading ownership repaired before source alignment",
+    );
+  }
+  normalizeActivityPlacements(topics, blocks);
 
   // Source coverage has a stricter meaning than placement coverage: a readable
   // instructional block in `unmappedBlockIndices` must be repaired or fail
