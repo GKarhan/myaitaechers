@@ -1,0 +1,712 @@
+C5 — PHASE 1: KNOWLEDGE TREE CURRENT-STATE AUDIT
+CANONICAL LEARNER STATE → 4 KNOWLEDGE STATES
+
+EXECUTE THIS AUDIT NOW.
+
+AUDIT ONLY.
+READ ONLY.
+
+DO NOT modify code.
+DO NOT modify DB.
+DO NOT create migrations.
+DO NOT create implementation tasks.
+DO NOT redesign UI.
+DO NOT begin C6 personalization.
+DO NOT begin C7 AI Teacher integration.
+
+C1–C4 are complete.
+
+════════════════════════════════════════════════════
+0. CANONICAL INPUTS — DO NOT REDEFINE
+════════════════════════════════════════════════════
+
+C5 must consume the architecture already established by C1–C4.
+
+C1:
+Subject → Lesson → Topic → atomic MicroNode.
+
+C2:
+Each MicroNode may have an accepted ordered Cognitive Path with:
+- Cognitive Level IDs
+- curriculum target Cognitive Level
+- performance objectives
+- success criteria
+- minimumIndependentEvidence
+- accepted path ordering
+
+C3:
+Trustworthy evidence contains canonical MicroNode / Cognitive Level /
+task / qualification / assistance / quality information.
+
+C4:
+There is ONE canonical shared learner cognitive-ceiling projector.
+
+For learner × MicroNode it persists trustworthy:
+
+- demonstrated_cognitive_level_id
+- demonstrated cognitive level snapshot/name
+- ceiling update context/timestamp
+
+The demonstrated ceiling is:
+
+- C3-qualified evidence based
+- Cognitive-Level-ID based
+- minimumIndependentEvidence aware
+- contiguous across the accepted C2 path
+- monotonic
+- shared by Chat and Quiz
+
+IMPORTANT:
+
+C5 MUST NOT create another demonstrated-level algorithm.
+
+Knowledge Tree must consume C4 learner state.
+
+════════════════════════════════════════════════════
+1. TARGET KNOWLEDGE TREE MODEL
+════════════════════════════════════════════════════
+
+The approved student-facing Knowledge Tree has exactly FOUR primary states:
+
+1. Գիտի
+2. Մասնակի գիտի
+3. Չգիտի
+4. Դեռ չի ուսումնասիրել
+
+English technical labels may be:
+
+MASTERED
+PARTIAL
+NOT_KNOWN
+NOT_STUDIED
+
+Audit how the current platform derives these states.
+
+Do NOT assume the current implementation already matches this model.
+
+════════════════════════════════════════════════════
+2. AUDIT CURRENT KNOWLEDGE TREE ARCHITECTURE
+════════════════════════════════════════════════════
+
+Inspect actual:
+
+- DB tables
+- API routes
+- services
+- scoring logic
+- Knowledge Tree frontend
+- learner progress endpoints
+- evidence readers
+- knowledge_nodes readers/writers
+- quiz integrations
+- AI Teacher integrations if they currently affect KT state
+
+Identify:
+
+A. authoritative learner × MicroNode state table
+B. Knowledge Tree API endpoint(s)
+C. status classification function(s)
+D. mastery/confidence inputs
+E. demonstrated Cognitive Level inputs
+F. frontend grouping logic
+G. counts/summary logic
+H. refresh/update behavior
+
+Return exact file/function/table references.
+
+════════════════════════════════════════════════════
+3. TRACE THE CURRENT FOUR-STATE CLASSIFICATION
+════════════════════════════════════════════════════
+
+For each current Knowledge Tree state determine:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Answer:
+
+- What exact rule places a MicroNode there?
+- Which DB fields are used?
+- Is the rule backend or frontend?
+- Does it use mastery?
+- confidence?
+- evidence count?
+- quiz attempts?
+- demonstrated_cognitive_level_id?
+- legacy demonstrated_cognitive_level text?
+- C3 qualification?
+- C4 projector output?
+- no-evidence state?
+
+Do not infer.
+
+Trace actual code.
+
+Return a matrix:
+
+STATE
+CURRENT RULE
+SOURCE FIELDS
+AUTHORITATIVE WRITER
+CLASSIFIER LOCATION
+TRUST STATUS
+NOTES
+
+Trust status:
+
+CANONICAL
+PARTIAL
+LEGACY
+INCONSISTENT
+MISSING
+
+════════════════════════════════════════════════════
+4. AUDIT "ԴԵՌ ՉԻ ՈՒՍՈՒՄՆԱՍԻՐԵԼ"
+════════════════════════════════════════════════════
+
+This state is especially important.
+
+Determine how the system currently knows that a learner has NEVER
+meaningfully studied/attempted a MicroNode.
+
+Audit whether NOT_STUDIED currently means:
+
+- no knowledge_nodes row
+- no evidence
+- no qualifying evidence
+- no quiz attempt
+- no AI Teacher attempt
+- mastery = null
+- mastery = 0
+- another condition
+
+These are NOT automatically equivalent.
+
+Determine the actual current behavior.
+
+Important future distinction:
+
+"No trustworthy successful evidence"
+
+is NOT necessarily the same as:
+
+"Never studied."
+
+A learner may have attempted a MicroNode and failed.
+
+That should be distinguishable from never having studied it.
+
+Report whether current data can make this distinction reliably.
+
+════════════════════════════════════════════════════
+5. AUDIT "ՉԳԻՏԻ"
+════════════════════════════════════════════════════
+
+Determine what currently causes NOT_KNOWN.
+
+We need to distinguish:
+
+A) never studied
+from
+B) studied/attempted but demonstrated insufficient knowledge.
+
+Trace whether current system can identify B reliably.
+
+Inspect:
+
+- failed evidence
+- qualifying incorrect evidence
+- quiz attempts
+- AI Teacher evidence
+- mastery/confidence
+- learner-state row existence
+- demonstrated ceiling null/non-null
+
+Do NOT define the final rule yet.
+
+Report actual current capability.
+
+════════════════════════════════════════════════════
+6. AUDIT "ՄԱՍՆԱԿԻ ԳԻՏԻ"
+════════════════════════════════════════════════════
+
+Determine what currently causes PARTIAL.
+
+Audit whether it currently means:
+
+- intermediate mastery score
+- some correct evidence
+- demonstrated ceiling below curriculum target
+- incomplete quiz score
+- confidence threshold
+- another condition
+
+Then compare it with the new C2/C4 architecture.
+
+Important architectural question:
+
+Can C5 reliably distinguish:
+
+Target = ANALYZE
+Demonstrated = UNDERSTAND
+
+from
+
+Target = ANALYZE
+Demonstrated = APPLY
+
+even if both ultimately display:
+
+Մասնակի գիտի
+
+The UI state may remain PARTIAL,
+but the underlying learner model must preserve the cognitive depth.
+
+Report whether current KT preserves that distinction.
+
+════════════════════════════════════════════════════
+7. AUDIT "ԳԻՏԻ"
+════════════════════════════════════════════════════
+
+Determine what currently causes MASTERED.
+
+Audit whether the system can currently say:
+
+learner demonstrated the MicroNode's curriculum target Cognitive Level
+
+using the canonical C2 target + C4 demonstrated ceiling.
+
+Or whether MASTERED still comes from:
+
+- mastery threshold
+- quiz score
+- confidence threshold
+- legacy getMasteryLevel()
+- another rule
+
+Important:
+
+Do NOT automatically redefine MASTERED during this audit.
+
+Report the current rule and whether it is compatible with C2–C4.
+
+════════════════════════════════════════════════════
+8. TARGET VS DEMONSTRATED IN KNOWLEDGE TREE
+════════════════════════════════════════════════════
+
+Trace whether Knowledge Tree currently has access to:
+
+curriculum target Cognitive Level ID
++
+learner demonstrated Cognitive Level ID
+
+For each MicroNode determine whether KT can compute:
+
+target
+demonstrated
+remaining cognitive gap
+
+Example:
+
+Target = ANALYZE
+Demonstrated = UNDERSTAND
+
+Potential KT state:
+Մասնակի գիտի
+
+But the underlying data should still know:
+
+remaining gap = APPLY → ANALYZE
+
+Audit whether current endpoint already exposes enough data.
+
+Do NOT implement UI for the gap yet unless later C5 implementation
+explicitly requires a minimal representation.
+
+════════════════════════════════════════════════════
+9. MASTERY / CONFIDENCE ROLE
+════════════════════════════════════════════════════
+
+C4 intentionally did NOT redesign mastery/confidence.
+
+Audit exactly how KT currently uses them.
+
+Determine whether mastery/confidence should currently be considered:
+
+A. authoritative state classifier
+B. supporting signal
+C. legacy compatibility signal
+D. presentation-only metric
+
+Do not decide based on theory.
+First report actual current architecture.
+
+Also identify conflicts such as:
+
+- mastery says MASTERED but C4 ceiling < target
+- mastery low but C4 ceiling == target
+- confidence high with no qualified C4 evidence
+- old quiz-derived mastery conflicting with canonical cognitive evidence
+
+Identify whether such states are currently possible.
+
+════════════════════════════════════════════════════
+10. COVERAGE VS MASTERY
+════════════════════════════════════════════════════
+
+Audit whether current Knowledge Tree distinguishes:
+
+CURRICULUM COVERAGE:
+studied / not studied
+
+from
+
+KNOWLEDGE STATE:
+mastered / partial / not known
+
+These are different dimensions.
+
+Determine whether current schema/API already has enough data to derive both.
+
+Target conceptual model:
+
+Coverage:
+- STUDIED
+- NOT_STUDIED
+
+Knowledge:
+- MASTERED
+- PARTIAL
+- NOT_KNOWN
+
+The four UI blocks can still be:
+
+MASTERED
+PARTIAL
+NOT_KNOWN
+NOT_STUDIED
+
+But NOT_STUDIED must come from coverage,
+not simply mastery = 0.
+
+Audit current capability.
+
+════════════════════════════════════════════════════
+11. HIERARCHY / COUNTS AUDIT
+════════════════════════════════════════════════════
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+Student-facing:
+
+Առարկա
+→ Դաս
+→ Գիտելիքի խումբ
+→ Գիտելիքի հանգույց
+
+Audit whether current KT:
+
+- uses this hierarchy
+- has Topic grouping
+- counts atomic MicroNodes correctly
+- aggregates the four states correctly
+- avoids double counting
+- handles MicroNodes with no learner-state row
+- handles deleted/draft/unapproved nodes correctly
+
+Check counts at:
+
+Subject
+Lesson
+Topic
+MicroNode
+
+Do not redesign hierarchy.
+
+════════════════════════════════════════════════════
+12. ACTION BUTTONS / ENTRY POINTS AUDIT
+════════════════════════════════════════════════════
+
+Approved conceptual actions are:
+
+Գիտի
+→ Կրկնություն
+
+Մասնակի գիտի
+→ Սովորել
+
+Չգիտի
+→ Լիարժեք սովորել
+
+Դեռ չի ուսումնասիրել
+→ Սովորել նախնական
+
+Audit current buttons/routes only.
+
+Determine:
+
+- what action currently appears
+- where it navigates
+- whether it passes MicroNode identity
+- whether it starts correct AI Teacher mode
+- whether it is placeholder/broken/legacy
+
+DO NOT implement C6/C7 behavior.
+
+Only identify what C5 owns versus what must wait for C6/C7.
+
+════════════════════════════════════════════════════
+13. REFRESH / EVENTUAL CONSISTENCY AUDIT
+════════════════════════════════════════════════════
+
+Trace:
+
+Chat/Quiz
+→ C3 evidence
+→ C4 projector
+→ knowledge_nodes
+→ KT API
+→ frontend refresh
+
+Determine:
+
+- Is KT reading current persisted state?
+- Is there async lag?
+- Does refresh retrieve new state?
+- Is client cache involved?
+- Can a student finish evidence and still temporarily see old state?
+- Is manual refresh required?
+
+Classify any issue:
+
+C5-BLOCKER
+C5-IMPORTANT
+LATER
+
+Do not build a new event system in this audit.
+
+════════════════════════════════════════════════════
+14. REAL DATA TRACE
+════════════════════════════════════════════════════
+
+Use development DB read-only.
+
+Prefer an existing learner × MicroNode with:
+
+- knowledge_nodes row
+- C3 evidence
+- C4 demonstrated Cognitive Level ID
+
+Trace:
+
+MicroNode
+→ curriculum target
+→ learner demonstrated ceiling
+→ mastery/confidence
+→ current KT classification
+→ current frontend/API representation
+
+If there is no suitable complete real row, use multiple existing rows or
+code-path evidence.
+
+DO NOT fabricate production data.
+DO NOT mutate lesson 644 or learner curriculum data.
+
+════════════════════════════════════════════════════
+15. DEFINE THE MINIMUM C5 CANONICAL CLASSIFIER
+════════════════════════════════════════════════════
+
+After auditing current behavior, propose the SMALLEST safe classifier
+needed for C5.
+
+It must preserve:
+
+- C2 curriculum target
+- C3 trustworthy evidence
+- C4 demonstrated ceiling
+- distinction between NOT_STUDIED and attempted-but-not-known
+- cognitive depth even when UI collapses multiple depths into PARTIAL
+
+Do NOT implement it yet.
+
+Evaluate this candidate direction against actual data:
+
+NOT_STUDIED:
+no meaningful learner interaction/evidence for the MicroNode.
+
+NOT_KNOWN:
+meaningful attempt exists,
+but no Cognitive Level has been sufficiently demonstrated.
+
+PARTIAL:
+at least one accepted Cognitive Level is sufficiently demonstrated,
+but demonstrated ceiling is below curriculum target.
+
+MASTERED:
+demonstrated ceiling reaches the curriculum target.
+
+IMPORTANT:
+
+Do not blindly accept this rule.
+
+Check whether current C2 paths can begin above REMEMBER,
+whether target IDs/order are reliable,
+and whether meaningful-attempt data is sufficient.
+
+Report any necessary adjustment.
+
+════════════════════════════════════════════════════
+16. MASTERY / CONFIDENCE COMPATIBILITY
+════════════════════════════════════════════════════
+
+We are NOT deleting mastery/confidence.
+
+Propose how they should coexist with the canonical four-state classifier.
+
+Preferred direction to evaluate:
+
+- C2/C3/C4 determine canonical knowledge state.
+- mastery/confidence remain useful metrics/supporting indicators.
+- they do not override a contradictory canonical demonstrated ceiling.
+
+But first verify whether adopting this immediately would break existing
+quiz/KT behavior.
+
+Report compatibility risks.
+
+No implementation yet.
+
+════════════════════════════════════════════════════
+17. GAP CLASSIFICATION
+════════════════════════════════════════════════════
+
+Classify every finding into:
+
+C5-BLOCKER
+Must be fixed to make Knowledge Tree trustworthy.
+
+C5-IMPORTANT
+Should be fixed while closing C5.
+
+C6
+Personalization / next-action decision responsibility.
+
+C7
+AI Teacher runtime integration responsibility.
+
+LATER
+Retention, analytics, richer visualization, etc.
+
+OPTIONAL
+True enhancement only.
+
+Do not move an approved core requirement into OPTIONAL merely to close C5.
+
+════════════════════════════════════════════════════
+18. MINIMUM C5 IMPLEMENTATION PLAN
+════════════════════════════════════════════════════
+
+Produce the smallest implementation plan that would give us:
+
+Canonical learner × MicroNode four-state classification:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+plus correct hierarchy/counts and safe API consumption.
+
+Prefer:
+
+- one backend classifier
+- no duplicated frontend classification
+- C4 canonical demonstrated ID
+- C2 target ID/order
+- meaningful interaction/evidence for coverage
+- existing knowledge_nodes projection where possible
+- additive changes only if required
+
+Do NOT implement.
+
+Keep C6/C7 out.
+
+════════════════════════════════════════════════════
+19. REQUIRED FINAL OUTPUT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. CURRENT KNOWLEDGE TREE ARCHITECTURE
+
+B. CURRENT FOUR-STATE CLASSIFICATION MATRIX
+
+C. NOT_STUDIED CURRENT BEHAVIOR
+
+D. NOT_KNOWN CURRENT BEHAVIOR
+
+E. PARTIAL CURRENT BEHAVIOR
+
+F. MASTERED CURRENT BEHAVIOR
+
+G. C2 TARGET + C4 DEMONSTRATED INTEGRATION STATUS
+
+H. MASTERY / CONFIDENCE ROLE
+
+I. COVERAGE VS KNOWLEDGE STATUS
+
+J. HIERARCHY / COUNTS STATUS
+
+K. ACTION BUTTON / ENTRY-POINT STATUS
+
+L. REFRESH / CONSISTENCY STATUS
+
+M. REAL DATA TRACE
+
+N. GAP CLASSIFICATION
+- C5-BLOCKER
+- C5-IMPORTANT
+- C6
+- C7
+- LATER
+- OPTIONAL
+
+O. MINIMUM C5 IMPLEMENTATION PLAN
+
+P. FINAL ANSWER
+
+Answer this exact question:
+
+"Can the current Knowledge Tree reliably classify every learner ×
+MicroNode into Գիտի / Մասնակի գիտի / Չգիտի /
+Դեռ չի ուսումնասիրել using the canonical C2–C4 learner model?"
+
+Answer:
+
+YES
+
+or
+
+NO — <smallest exact missing pieces>
+
+════════════════════════════════════════════════════
+STOP
+════════════════════════════════════════════════════
+
+AUDIT ONLY.
+
+Do not implement.
+Do not create tasks.
+Do not modify code.
+Do not modify DB.
+Do not start C6.
+Do not start C7.
+
+STOP after the C5 audit report.
