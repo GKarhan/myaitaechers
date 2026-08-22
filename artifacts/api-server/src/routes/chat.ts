@@ -74,6 +74,7 @@ import {
   nextPhase2ActionRequiresLearnerInput,
 } from "../services/phase2/continuation.js";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
+import { projectLearnerCognitiveCeiling } from "../services/learner-cognitive-ceiling.js";
 import {
   classifyQualifyingEvidence,
   createTaskReference,
@@ -3670,45 +3671,25 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               evidenceQuality:   cappedQuality,
           } as any);
 
-          // ── V2-R3/R4A: Write demonstrated_cognitive_level / revisit_required / revisit_reason ──
-          // Applied after the evidence row is written (not before) because the
-          // evidence row is the source of truth; this is a write-through cache.
-          //
-          // Reset rules (Part 15):
-          //   - levelConfirmed → clear revisitRequired + revisitReason
-          //   - revisitRequired → set revisitReason from engine (typed: REMEDIATION_EXHAUSTED | LOCAL_BUDGET_EXHAUSTED)
-          //   - END_REQUIRED_SESSION → revisitRequired=false, no reason written
-          if (
-            qualificationStatus === "qualified" &&
-            _pedagogicalDecision &&
-            topicId
-          ) {
-            const knUpdate: Record<string, unknown> = {};
-            if (_pedagogicalDecision.levelConfirmed && _pedagogicalDecision.confirmedLevel) {
-              knUpdate.demonstratedCognitiveLevel = _pedagogicalDecision.confirmedLevel;
-              knUpdate.revisitRequired = false; // confirmed level clears revisit flag
-              knUpdate.revisitReason   = null;  // R4A: clear reason on confirmation
-              knUpdate.updatedAt = new Date();
-            }
-            if (_pedagogicalDecision.revisitRequired) {
-              knUpdate.revisitRequired = true;
-              knUpdate.revisitReason   = _pedagogicalDecision.revisitReason ?? null;
-              knUpdate.updatedAt = new Date();
-            }
-            if (Object.keys(knUpdate).length > 0) {
-              await db
-                .update(knowledgeNodesTable)
-                .set(knUpdate as any)
-                .where(eq(knowledgeNodesTable.id, topicId));
-              logger.info({
-                topicId,
-                metaAction: _pedagogicalDecision.metaAction,
-                demonstratedLevel: knUpdate.demonstratedCognitiveLevel ?? null,
-                revisitRequired: knUpdate.revisitRequired ?? null,
-                revisitReason:   knUpdate.revisitReason ?? null,
-              }, "V2-R3/R4A: knowledge_nodes durable state updated");
-            }
-          }
+          // ── C4: shared authoritative learner ceiling projection ────────────
+          // Chat does not promote demonstrated_cognitive_level directly. Once
+          // canonical evidence exists, one locked projector transaction owns
+          // both the C3→C2 ceiling projection and any revisit-state request.
+          const _ceilingProjection = await projectLearnerCognitiveCeiling(
+            _userId,
+            _sessionSnap.currentNodeId!,
+            _pedagogicalDecision?.revisitRequired
+              ? { revisitRequest: { reason: _pedagogicalDecision.revisitReason ?? null } }
+              : {},
+          );
+          logger.info({
+            topicId,
+            lessonNodeId: _sessionSnap.currentNodeId,
+            ceilingLevelId: _ceilingProjection.ceilingLevelId,
+            ceilingLevel: _ceilingProjection.ceilingLevel,
+            reachedTarget: _ceilingProjection.reachedTarget,
+            revisitRequested: _pedagogicalDecision?.revisitRequired ?? false,
+          }, "C4: learner cognitive ceiling projected from chat evidence");
 
           // Update knowledge scoring in background (no quizId — chat-sourced evidence)
           updateTopicScoring(topicId, _userId).catch((err) =>
@@ -3770,46 +3751,30 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session.nodeAttemptCount > 0
   ) {
     const _slt_session  = session;
-    const _slt_lessonId = lessonId;
     const _slt_userId   = req.userId!;
     (async () => {
       try {
-        const [lessonRow3] = await db
-          .select({ subjectId: (lessonsTable as any).subjectId })
-          .from(lessonsTable)
-          .where(eq(lessonsTable.id, _slt_lessonId))
-          .limit(1);
-        if (!lessonRow3?.subjectId) return;
-
-        const [existingKN3] = await db
-          .select({
-            id:             knowledgeNodesTable.id,
-            revisitRequired: knowledgeNodesTable.revisitRequired,
-          })
-          .from(knowledgeNodesTable)
-          .where(and(
-            eq(knowledgeNodesTable.subjectId,   lessonRow3.subjectId),
-            eq(knowledgeNodesTable.userId,       _slt_userId),
-            eq(knowledgeNodesTable.lessonNodeId, _slt_session.currentNodeId!),
-          ))
-          .limit(1);
-
-        // Only write if KN exists AND not already revisitRequired
-        // (don't overwrite REMEDIATION_EXHAUSTED / LOCAL_BUDGET_EXHAUSTED).
-        if (existingKN3 && !existingKN3.revisitRequired) {
-          await db
-            .update(knowledgeNodesTable)
-            .set({
-              revisitRequired: true,
-              revisitReason:   "SESSION_TIME_LIMIT",
-              updatedAt:       new Date(),
-            } as any)
-            .where(eq(knowledgeNodesTable.id, existingKN3.id));
-          logger.info(
-            { topicId: existingKN3.id, sessionId: _slt_session.id },
-            "V2-R4A.3: SESSION_TIME_LIMIT revisit marker written"
-          );
-        }
+        // C4 serializes this marker with Chat/Quiz ceiling projections. Target
+        // confirmation wins; an existing remediation reason remains untouched.
+        const projection = await projectLearnerCognitiveCeiling(
+          _slt_userId,
+          _slt_session.currentNodeId!,
+          {
+            revisitRequest: {
+              reason: "SESSION_TIME_LIMIT",
+              onlyIfUnset: true,
+            },
+          },
+        );
+        logger.info(
+          {
+            sessionId: _slt_session.id,
+            lessonNodeId: _slt_session.currentNodeId,
+            ceilingLevelId: projection.ceilingLevelId,
+            reachedTarget: projection.reachedTarget,
+          },
+          "V2-R4A.3: SESSION_TIME_LIMIT processed by C4 projector",
+        );
       } catch (err) {
         logger.error({ err, sessionId: _slt_session.id }, "V2-R4A.3: SESSION_TIME_LIMIT write failed");
       }

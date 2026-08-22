@@ -264,7 +264,7 @@ await test("T18 — R3/R2/R1/R1.1 remain green", () => {
   const r3 = execSync("pnpm run test:v2r3 2>&1 || true", { cwd: API_DIR, encoding: "utf8" });
   const r2 = execSync("pnpm run test:v2r2 2>&1 || true", { cwd: API_DIR, encoding: "utf8" });
   const r1 = execSync("pnpm run test:v2r1 2>&1 || true", { cwd: API_DIR, encoding: "utf8" });
-  assert.ok(r3.includes("45 passed") || r3.includes("45/45"), `R3 regression failed:\n${r3.split("\n").slice(-4).join("\n")}`);
+  assert.ok(r3.includes("passed, 0 failed"), `R3 regression failed:\n${r3.split("\n").slice(-4).join("\n")}`);
   assert.ok(r2.includes("41 passed") || r2.includes("PASS"),  `R2 regression failed:\n${r2.split("\n").slice(-4).join("\n")}`);
   assert.ok(r1.includes("33 passed") || r1.includes("PASS"),  `R1 regression failed:\n${r1.split("\n").slice(-4).join("\n")}`);
 });

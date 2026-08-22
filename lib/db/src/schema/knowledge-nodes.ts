@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { subjectsTable } from "./subjects";
 import { usersTable } from "./users";
 import { lessonNodesTable } from "./lesson-nodes";
+import { lessonNodeCognitiveLevelsTable } from "./lesson-node-cognitive-levels";
 
 export const knowledgeNodesTable = pgTable(
   "knowledge_nodes",
@@ -36,6 +37,19 @@ export const knowledgeNodesTable = pgTable(
     // Evidence in evidence_events is authoritative; this is a write-through
     // materialized cache updated when a level is confirmed by the decision engine.
     demonstratedCognitiveLevel: text("demonstrated_cognitive_level"),
+
+    // C4 canonical identity for the durable demonstrated ceiling. The Bloom
+    // name above remains a readable compatibility snapshot, but C4 must use
+    // the accepted lesson_node_cognitive_levels row ID as the source identity.
+    demonstratedCognitiveLevelId: integer("demonstrated_cognitive_level_id")
+      .references(() => lessonNodeCognitiveLevelsTable.id, { onDelete: "set null" }),
+    demonstratedCognitiveLevelUpdatedAt: timestamp(
+      "demonstrated_cognitive_level_updated_at",
+      { withTimezone: true },
+    ),
+    demonstratedCognitiveEvidenceReference: text(
+      "demonstrated_cognitive_evidence_reference",
+    ),
 
     // revisitRequired: true when the remediation budget was exhausted before the
     // student reached the curriculum target ceiling. Must survive sessions — used

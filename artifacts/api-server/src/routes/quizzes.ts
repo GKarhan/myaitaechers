@@ -25,6 +25,7 @@ import { generateQuizQuestions } from "../services/quiz-generation";
 import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 import { classifyQualifyingEvidence } from "../lib/evidence-contract.js";
+import { projectLearnerCognitiveCeiling } from "../services/learner-cognitive-ceiling.js";
 
 // ---------------------------------------------------------------------------
 // Helper: wraps an async route handler so unhandled rejections are forwarded
@@ -1364,6 +1365,20 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
         qualificationStatus,
         evidenceQuality: "MODERATE",
       } as any);
+    }
+
+    // C4: once every canonical quiz evidence row is durable, use the same
+    // projector as AI Teacher evidence. A qualified quiz response can therefore
+    // contribute to a learner's contiguous demonstrated ceiling.
+    for (const nodeId of nodeIds) {
+      const projection = await projectLearnerCognitiveCeiling(studentId, nodeId);
+      logger.info({
+        userId: studentId,
+        lessonNodeId: nodeId,
+        ceilingLevelId: projection.ceilingLevelId,
+        ceilingLevel: projection.ceilingLevel,
+        reachedTarget: projection.reachedTarget,
+      }, "C4: learner cognitive ceiling projected from quiz evidence");
     }
   } catch (err) {
     // quiz_attempt_id cascades any partially written canonical evidence when

@@ -1,0 +1,535 @@
+FINAL C4 IMPLEMENTATION — TRUSTWORTHY LEARNER COGNITIVE CEILING
+
+GOAL
+Implement and close the minimum C4 learner-state core identified by the completed C4 Phase 1 audit.
+
+DO NOT repeat the architecture audit.
+DO NOT redesign C1, C2, or C3.
+DO NOT start C5 Knowledge Tree work.
+DO NOT start C6 personalization.
+DO NOT modify AI Teacher prompt/persona/teaching scenario as part of C7.
+DO NOT redesign quiz UX.
+DO NOT redesign mastery/confidence formulas unless a minimal compatibility change is strictly required.
+
+The goal is narrow:
+
+For every learner × MicroNode, reliably determine and persist the highest Cognitive Level that the learner has sufficiently and independently demonstrated from C3-qualified evidence.
+
+════════════════════════════════════════════════════
+0. FIRST — VERIFY CURRENT IMPLEMENTATION
+════════════════════════════════════════════════════
+
+Before editing code, inspect the exact current implementations of:
+
+- evidence_events
+- knowledge_nodes
+- lesson_node_cognitive_levels
+- lesson_node_cognitive_tasks
+- chat evidence persistence
+- quiz evidence persistence
+- current demonstrated_cognitive_level writer
+- C3 qualification fields
+- active_task_reference / task_reference
+- minimum_independent_evidence
+- accepted/confirmed C2 Cognitive Path ordering
+
+Use the completed C4 audit as the baseline.
+
+Do not create a new architecture.
+
+If current code differs from the audit because of later changes, adapt the implementation narrowly and report the difference.
+
+════════════════════════════════════════════════════
+1. CREATE ONE SHARED LEARNER CEILING PROJECTOR
+════════════════════════════════════════════════════
+
+Create one backend-owned service/function responsible for computing the demonstrated Cognitive Level for:
+
+    learner × MicroNode
+
+Conceptually:
+
+projectLearnerCognitiveCeiling(userId, lessonNodeId)
+
+Chat and Quiz MUST NOT maintain separate promotion algorithms.
+
+The projector is the authoritative C4 computation.
+
+════════════════════════════════════════════════════
+2. ONLY TRUST C3-QUALIFIED EVIDENCE FOR THE CEILING
+════════════════════════════════════════════════════
+
+Evidence may contribute to demonstrated Cognitive Level only when all required C3 conditions are satisfied.
+
+At minimum require:
+
+- qualification_status = qualified
+- lesson_node_id matches the target MicroNode
+- cognitive_level_id is non-null
+- Cognitive Level belongs to the accepted/confirmed C2 path of that MicroNode
+- answer/result is successful/correct
+- evidence quality is permitted for cognitive confirmation
+- assistance/help satisfies the independent-evidence policy
+- task/source identity is valid
+
+Explicitly EXCLUDE from demonstrated-ceiling confirmation:
+
+- unqualified evidence
+- legacy/null qualification evidence
+- null cognitive_level_id evidence
+- evidence from another MicroNode
+- evidence for a Cognitive Level outside the accepted C2 path
+- incorrect/failed evidence
+- evidence with disqualifying assistance
+- invalid task/source identity
+
+Do NOT delete legacy evidence.
+It simply must not establish the C4 demonstrated ceiling.
+
+════════════════════════════════════════════════════
+3. USE COGNITIVE LEVEL IDs — NOT BLOOM TEXT AS IDENTITY
+════════════════════════════════════════════════════
+
+The canonical computation must use:
+
+    lesson_node_cognitive_levels.id
+
+Do not aggregate Cognitive Level evidence by Bloom text alone.
+
+Bloom name may remain as a readable snapshot/compatibility field, but Cognitive Level ID is the canonical identity.
+
+════════════════════════════════════════════════════
+4. ENFORCE minimum_independent_evidence
+════════════════════════════════════════════════════
+
+For every Cognitive Level in the accepted C2 path:
+
+read:
+
+    minimum_independent_evidence
+
+A level is sufficiently demonstrated only when it has enough qualifying independent evidence.
+
+Do not allow one successful answer to establish a level when the configured minimum requires more.
+
+Use stable task_reference/task identity when counting evidence.
+
+At minimum, repeated persistence/replay of the exact same task reference must not artificially satisfy the required evidence count.
+
+Prefer distinct qualifying task references for the required count.
+
+Do not introduce semantic-diversity scoring in C4.
+
+════════════════════════════════════════════════════
+5. COMPUTE A CONTIGUOUS COGNITIVE CEILING
+════════════════════════════════════════════════════
+
+The accepted C2 Cognitive Path is ordered.
+
+Example:
+
+REMEMBER → UNDERSTAND → APPLY → ANALYZE
+
+The learner ceiling is the highest CONTIGUOUS sufficiently demonstrated level from the beginning of the accepted path.
+
+Example:
+
+REMEMBER = sufficient
+UNDERSTAND = sufficient
+APPLY = insufficient
+ANALYZE = sufficient
+
+Result MUST be:
+
+    UNDERSTAND
+
+NOT ANALYZE.
+
+Higher-level evidence must never skip an unresolved required lower level.
+
+Algorithm conceptually:
+
+for level in acceptedPath ordered ascending:
+    if level satisfies its qualifying evidence requirement:
+        ceiling = level
+    else:
+        stop
+
+Persist the resulting highest contiguous level.
+
+════════════════════════════════════════════════════
+6. MAKE THE PERSISTED CEILING MONOTONIC
+════════════════════════════════════════════════════
+
+A legitimate already-demonstrated ceiling must NOT be erased merely because:
+
+- the learner later fails a higher-level task;
+- the learner receives remediation;
+- a later lower-level task is attempted;
+- a lower Cognitive Level is reconfirmed.
+
+Example:
+
+Persisted ceiling = APPLY
+
+Later learner fails ANALYZE.
+
+Persisted ceiling remains APPLY.
+
+Later learner completes another UNDERSTAND task.
+
+Persisted ceiling remains APPLY.
+
+Do not implement cognitive decay/downgrade in C4.
+
+Retention/revalidation policy belongs to later work.
+
+If recomputation based on trustworthy evidence produces a lower result because of historical data anomalies, preserve the legitimate previously confirmed higher ceiling unless there is an explicit invalidation mechanism already present.
+
+Do not invent an invalidation mechanism in C4.
+
+════════════════════════════════════════════════════
+7. PERSIST AUTHORITATIVE LEARNER STATE
+════════════════════════════════════════════════════
+
+knowledge_nodes remains the learner × MicroNode projection.
+
+Add only the minimum additive/history-safe fields required to make C4 authoritative.
+
+Prefer nullable/additive migration.
+
+At minimum persist:
+
+- demonstrated Cognitive Level ID
+- demonstrated Bloom/name snapshot if existing compatibility field remains
+- last ceiling update timestamp
+- last qualifying evidence context/reference where practical
+
+If useful and minimal, persist a compact qualifying evidence count/context summary.
+
+Do NOT backfill historical rows by guessing.
+
+Existing demonstrated_cognitive_level text can remain for compatibility, but it must no longer be the canonical identity.
+
+Do not destructively migrate existing learner data.
+
+════════════════════════════════════════════════════
+8. CHAT AND QUIZ MUST USE THE SAME PROJECTOR
+════════════════════════════════════════════════════
+
+After canonical C3 evidence has successfully persisted:
+
+CHAT:
+    persist evidence
+        →
+    run shared learner ceiling projector
+        →
+    persist learner projection
+
+QUIZ:
+    persist evidence
+        →
+    run the SAME learner ceiling projector
+        →
+    persist learner projection
+
+Quiz-qualified evidence must now be able to contribute to the demonstrated ceiling exactly according to the same C4 rules.
+
+Remove/disable the old chat-only direct demonstrated_cognitive_level promotion path if it would compete with the projector.
+
+There must be ONE authoritative promotion mechanism.
+
+Do not weaken the C3 durable evidence boundary.
+
+════════════════════════════════════════════════════
+9. MICRO_CHECK SAFETY
+════════════════════════════════════════════════════
+
+Preserve the existing C3 rule that generated MICRO_CHECK evidence is capped at MODERATE.
+
+Do not automatically treat every micro-check as sufficient cognitive confirmation.
+
+It may contribute only when:
+
+- C3-qualified;
+- independent under the assistance policy;
+- correct;
+- its quality is permitted;
+- its Cognitive Level ID is valid;
+- required independent evidence count is satisfied.
+
+Do not weaken existing evidence-quality rules.
+
+════════════════════════════════════════════════════
+10. KEEP MASTERY / CONFIDENCE SEPARATE
+════════════════════════════════════════════════════
+
+C4 demonstrated Cognitive Level is NOT the same thing as mastery/confidence.
+
+Do not replace the current scoring system in this task.
+
+For this C4 minimum:
+
+- demonstrated ceiling = trustworthy C3/C2 cognitive evidence projection
+- mastery/confidence = existing scoring projection
+
+Do not let legacy/unqualified evidence establish a demonstrated Cognitive Level.
+
+If mastery/confidence currently still uses legacy/unqualified evidence, leave that larger policy redesign for the appropriate later phase unless a tiny change is absolutely necessary for correctness.
+
+Document this remaining separation clearly.
+
+════════════════════════════════════════════════════
+11. DO NOT IMPLEMENT C5 YET
+════════════════════════════════════════════════════
+
+Do NOT redesign Knowledge Tree.
+
+Do not change the four Knowledge Tree blocks in this task.
+
+Do not add target-vs-demonstrated UI yet.
+
+C4 only needs to make the learner-state projection trustworthy so C5 can consume it later.
+
+════════════════════════════════════════════════════
+12. DO NOT IMPLEMENT C6 OR C7
+════════════════════════════════════════════════════
+
+Do NOT:
+
+- build personalized next-node selection;
+- change prerequisite personalization;
+- redesign remediation policy;
+- inject the new learner ceiling into AI Teacher prompts;
+- change AI Teacher teaching behavior.
+
+Those belong to C6/C7.
+
+════════════════════════════════════════════════════
+13. REQUIRED REGRESSION TEST MATRIX
+════════════════════════════════════════════════════
+
+Add focused provider-free tests.
+
+CASE A — contiguous success
+
+Path:
+REMEMBER → UNDERSTAND → APPLY
+
+All required qualifying evidence satisfied.
+
+Expected:
+ceiling = APPLY.
+
+────────────────────────────────────────
+
+CASE B — lower-level gap
+
+REMEMBER sufficient
+UNDERSTAND insufficient
+APPLY has qualifying successful evidence
+
+Expected:
+ceiling = REMEMBER.
+
+APPLY must NOT skip UNDERSTAND.
+
+────────────────────────────────────────
+
+CASE C — unqualified evidence
+
+Enough correct evidence exists but:
+
+qualification_status != qualified
+
+Expected:
+does not establish/promote ceiling.
+
+────────────────────────────────────────
+
+CASE D — legacy evidence
+
+Historical/null qualification rows exist.
+
+Expected:
+compatible and preserved,
+but do not establish demonstrated ceiling.
+
+────────────────────────────────────────
+
+CASE E — assisted evidence
+
+Correct evidence with disqualifying assistance.
+
+Expected:
+does not satisfy independent evidence requirement.
+
+────────────────────────────────────────
+
+CASE F — insufficient evidence count
+
+minimum_independent_evidence = 3
+only 2 qualifying independent evidence items.
+
+Expected:
+level not sufficiently demonstrated.
+
+────────────────────────────────────────
+
+CASE G — repeated same task
+
+minimum_independent_evidence > 1
+same stable task_reference repeated.
+
+Expected:
+must not artificially satisfy required independent evidence count.
+
+────────────────────────────────────────
+
+CASE H — quiz/chat parity
+
+One qualifying event comes from Chat and another from Quiz.
+
+Expected:
+both are processed by the same projector and can jointly satisfy the level when otherwise valid.
+
+────────────────────────────────────────
+
+CASE I — higher-level failure
+
+Existing ceiling = APPLY.
+
+Learner fails ANALYZE.
+
+Expected:
+ceiling remains APPLY.
+
+────────────────────────────────────────
+
+CASE J — later lower-level confirmation
+
+Existing ceiling = APPLY.
+
+Learner later successfully demonstrates UNDERSTAND again.
+
+Expected:
+ceiling remains APPLY.
+
+────────────────────────────────────────
+
+CASE K — wrong Cognitive Level / node
+
+Evidence references another MicroNode or a Cognitive Level outside the accepted C2 path.
+
+Expected:
+does not contribute.
+
+────────────────────────────────────────
+
+CASE L — MICRO_CHECK
+
+Qualified independent correct MODERATE micro-check evidence exists.
+
+Expected:
+it follows the normal configured evidence-count/quality rules;
+it must not bypass them.
+
+════════════════════════════════════════════════════
+14. DATABASE ACCEPTANCE TRACE
+════════════════════════════════════════════════════
+
+After tests pass, perform a controlled provider-free database acceptance trace using temporary/self-cleaning fixtures.
+
+Prove at minimum:
+
+1. learner × MicroNode state exists;
+2. accepted C2 ordered path is read;
+3. qualified evidence is grouped by Cognitive Level ID;
+4. required evidence count is enforced;
+5. contiguous ceiling is computed;
+6. demonstrated Cognitive Level ID is persisted;
+7. Bloom snapshot matches that ID;
+8. lower-gap scenario cannot promote above the gap;
+9. qualified Quiz evidence and Chat evidence use the same projector;
+10. unqualified/legacy evidence cannot establish the ceiling;
+11. later higher-level failure does not erase the legitimate lower ceiling.
+
+Clean up temporary fixtures.
+
+Do not modify lesson 644 curriculum/mapping data merely to prove C4.
+
+════════════════════════════════════════════════════
+15. VERIFICATION
+════════════════════════════════════════════════════
+
+Run:
+
+- new C4 focused regression suite
+- C3 trustworthy-evidence suite
+- C2 Fast Close suite
+- relevant Phase 2/chat regressions
+- quiz regressions affected by the shared projector
+- DB/API typecheck
+- frontend typecheck if shared schema/types affect it
+- API build
+- frontend build if affected
+- API restart
+- startup/runtime log check
+
+Do not perform unnecessary provider/model calls.
+
+════════════════════════════════════════════════════
+16. DEFINITION OF DONE
+════════════════════════════════════════════════════
+
+C4 is DONE only if we can truthfully answer YES to:
+
+“Can the platform reliably determine and persist, for each learner and each MicroNode, the highest Cognitive Level the learner has sufficiently and independently demonstrated from trustworthy C3 evidence?”
+
+Required final state:
+
+C3 qualified evidence
+        ↓
+shared C4 projector
+        ↓
+accepted C2 Cognitive Path
+        ↓
+required independent evidence per level
+        ↓
+contiguous demonstrated prefix
+        ↓
+highest demonstrated Cognitive Level ID
+        ↓
+durable learner × MicroNode projection
+
+Both Chat and Quiz use this exact mechanism.
+
+════════════════════════════════════════════════════
+17. FINAL REPORT
+════════════════════════════════════════════════════
+
+Return a concise report containing:
+
+A. files/schema changed
+B. authoritative projector location
+C. exact evidence qualification rules
+D. contiguous-ceiling algorithm
+E. monotonic persistence behavior
+F. Chat integration
+G. Quiz integration
+H. DB fields added/used
+I. regression results
+J. database acceptance-trace result
+K. any remaining C5/C6/C7 work
+
+End with exactly one of:
+
+C4 COMPLETE — TRUSTWORTHY LEARNER COGNITIVE CEILING VERIFIED
+
+or
+
+C4 BLOCKED — <exact blocker>
+
+IMPORTANT:
+If a real blocker appears, stop and report it.
+Do not broaden scope to solve C5/C6/C7.

@@ -1,6 +1,6 @@
 ---
 name: V2-R3 Pedagogical Decision Engine
-description: Pure-function decision engine for cognitive-level progression, remediation escalation, and mastery write-through in Phase 2 AI teaching loop.
+description: Pure-function decision engine for session-local cognitive progression and remediation escalation in the Phase 2 AI teaching loop.
 ---
 
 ## Rule
@@ -10,7 +10,7 @@ description: Pure-function decision engine for cognitive-level progression, reme
 
 ## DB columns (applied to live DB)
 - `lesson_sessions.remediation_step` INT DEFAULT 0 — resets on node advance or new level
-- `knowledge_nodes.demonstrated_cognitive_level` TEXT nullable — write-through cache of highest confirmed Bloom level
+- `knowledge_nodes.demonstrated_cognitive_level` TEXT nullable — compatibility snapshot; it is not a canonical C4 ceiling
 - `knowledge_nodes.revisit_required` BOOL DEFAULT false — set when budget exhausted
 
 ## Key decisions
@@ -19,12 +19,12 @@ description: Pure-function decision engine for cognitive-level progression, reme
 - independence gate: `helpCount <= 1 AND assistanceLevel IN ['none','light']`
 - quality gate: MODERATE/STRONG/CONCLUSIVE
 
-## Fire-and-forget gate fix (critical)
-knowledge_nodes update is gated on `evtWasEval && (evtQuality !== "NONE" || _decisionHasKNState)` where `_decisionHasKNState = decision.levelConfirmed || decision.revisitRequired`. Without this, `revisit_required` would never write on wrong answers (which always have quality=NONE).
+## Durable-state boundary
+The decision engine still supplies session-local `revisitRequired` guidance, including on quality=NONE turns. It must not independently promote a durable demonstrated ceiling: C4 evidence projection owns that state. Revisit requests must be serialized with C4 projection so target confirmation cannot be overwritten by a concurrent remediation or time-limit update.
 
-**Why:** Wrong answers always produce quality=NONE. Budget exhaustion fires on wrong answer. The `revisitRequired=true` write must not be gated on evidence quality.
+**Why:** Session-local teaching flow may advance based on a current turn, but durable cognitive proof requires the separate C3/C2 contract. Concurrent state writers could otherwise restore a revisit marker after durable target confirmation.
 
 ## How to apply
 - V2-R3 decision log: `INFO "V2-R3 pedagogical decision"` with `metaAction, remediationAction, reasonCode, newRemediationStep, levelConfirmed, revisitRequired`
-- Tests: `pnpm --filter @workspace/api-server test:v2r3` (45 tests T01–T45)
+- Tests: `pnpm --filter @workspace/api-server test:v2r3`
 - All prior regression suites (V2-R1: 33, V2-R1.1: 21, V2-R2: 41) must stay green after changes here
