@@ -1,0 +1,372 @@
+C2 GENERATION QUALITY FIX — SOURCE-GROUNDED PATHS WITHOUT WEAKENING VALIDATION
+
+We now have a real multi-node acceptance case showing that C2 safety works,
+but C2 generation quality is still inconsistent.
+
+REAL LESSON:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+§1.4 Կարգեր, կարգային միավորներ
+pages 19–22
+lesson id: 654
+
+Current mapping contains 5 MicroNodes.
+
+Cognitive Path generation results:
+
+1. "Թվի ներկայացումը կարգային գումարելիների գումարով"
+   FAILED:
+   generated Cognitive Path includes claims not supported by the MicroNode source
+
+2. "Կարգեր և կարգային միավորներ"
+   PASSED:
+   confirmed Remember path
+
+3. "Միանիշ, երկնիշ, եռանիշ և բազմանիշ թվեր"
+   PASSED:
+   confirmed Remember → Understand → Apply → Analyze path
+
+4. "Կարգային միավորներ"
+   FAILED:
+   generated Cognitive Path includes claims not supported by the MicroNode source
+
+5. "Բնական թվեր"
+   FAILED:
+   insufficient source content for cognitive enrichment
+
+IMPORTANT:
+
+Do NOT weaken the existing C2 grounding validator.
+
+The validator correctly prevented unsupported Cognitive Paths.
+
+We need to improve GENERATION QUALITY so source-sufficient MicroNodes
+produce valid grounded paths more reliably.
+
+==================================================
+1. FORENSIC AUDIT FIRST
+==================================================
+
+Inspect the exact persisted source, learning objective, C1 target ceiling,
+and generated rejected C2 candidate for EACH of the 5 MicroNodes.
+
+For each return internally:
+
+- node id
+- status
+- learningObjective
+- source text
+- C1 target cognitive level
+- proposed C2 levels
+- performanceObjective per level
+- successCriterion per level
+- exact grounding rejection
+- exact unsupported phrase/claim
+
+Classify each failure:
+
+A. C2 generator invented unsupported wording
+B. C2 generator exceeded C1 target ceiling
+C. source is actually insufficient
+D. C1 learning objective itself is unsupported
+E. other
+
+Do not modify anything until this classification is proven.
+
+==================================================
+2. DISTINGUISH C1 PROBLEM FROM C2 PROBLEM
+==================================================
+
+This is mandatory.
+
+If the MicroNode itself has insufficient or unsupported C1 source:
+
+DO NOT try to make C2 generation pass.
+
+Return:
+
+C1_REVIEW_REQUIRED
+
+and leave the C2 path unconfirmed.
+
+Example candidate requiring inspection:
+"Բնական թվեր"
+
+Its current source appears to be only a heading while its learning
+objective claims conceptual knowledge.
+
+If that is confirmed, this is NOT a C2 generator defect.
+
+Do not fabricate C2 content.
+
+==================================================
+3. IMPROVE C2 GENERATION FOR SOURCE-SUFFICIENT NODES
+==================================================
+
+For source-sufficient MicroNodes, strengthen the canonical C2 generator.
+
+Every generated:
+
+- Cognitive Level
+- Performance Objective
+- Success Criterion
+
+must be directly supportable by:
+
+MicroNode learning objective
++
+MicroNode source content
++
+existing C1 target ceiling.
+
+Rules:
+
+1. Do not introduce facts, procedures, examples, comparisons, numeric
+   claims, or conceptual extensions not present or clearly entailed by
+   the source.
+
+2. Do not make a Success Criterion broader than the source.
+
+3. Do not use generic Bloom boilerplate that adds unsupported operations.
+
+4. Preserve the exact C1 target ceiling.
+   Never elevate the path beyond it.
+
+5. Lower levels may only be included when they are pedagogically valid
+   prerequisites inside the accepted C1/C2 semantics.
+
+6. A path may begin above REMEMBER.
+   Never invent REMEMBER merely because it is the first Bloom level.
+
+==================================================
+4. SOURCE-ANCHORED PERFORMANCE OBJECTIVES
+==================================================
+
+Performance Objectives must describe what the learner can demonstrate
+WITH THE KNOWLEDGE PRESENT IN THIS MICRONODE.
+
+Bad pattern:
+
+source describes representation of a number as place-value addends
+→ generated criterion introduces unrelated operations or concepts.
+
+Good pattern:
+
+source explicitly demonstrates:
+7254 = 7000 + 200 + 50 + 4
+
+Then a grounded criterion can ask the learner to correctly represent a
+given number as a sum of its place-value addends.
+
+The wording may be new.
+The curriculum claim may not be new.
+
+==================================================
+5. SOURCE-ANCHORED SUCCESS CRITERIA
+==================================================
+
+Success Criterion must be:
+
+- observable
+- assessable
+- narrow enough
+- source-supported
+- aligned to the current Cognitive Level
+
+Do not use broad generic criteria such as:
+
+"analyzes properties"
+"explains relationships"
+"solves different problems"
+
+unless the source/objective actually supports those operations.
+
+==================================================
+6. DO NOT FORCE ENRICHMENT
+==================================================
+
+If a source only supports one valid Cognitive Level:
+
+generate ONE valid level.
+
+That is better than inventing:
+
+Remember → Understand → Apply → Analyze
+
+without evidence.
+
+C2 richness is not a goal by itself.
+
+SOURCE-ALIGNED PATH QUALITY is the goal.
+
+==================================================
+7. INVALID C1 NODE HANDLING
+==================================================
+
+If a MicroNode is:
+
+needs_review
+and/or
+source-insufficient
+and/or
+its learningObjective is not supported by its source,
+
+C2 generation must fail with a clear structured reason such as:
+
+C1_SOURCE_INSUFFICIENT
+C1_OBJECTIVE_NOT_GROUNDED
+C1_REVIEW_REQUIRED
+
+rather than repeatedly invoking the model and returning vague:
+
+"insufficient source content for cognitive enrichment".
+
+Reuse existing review/error architecture where possible.
+
+Do not auto-delete or auto-fix the node in this task.
+
+==================================================
+8. PROVIDER-FREE TESTS
+==================================================
+
+Add deterministic tests:
+
+CASE 1
+Source sufficient + target Remember
+→ grounded Remember path passes.
+
+CASE 2
+Source sufficient + target Apply
+→ generated path cannot exceed Apply.
+
+CASE 3
+Generated success criterion contains unsupported source claim
+→ rejected.
+
+CASE 4
+Generator attempts generic higher-level enrichment unsupported by source
+→ rejected.
+
+CASE 5
+Source supports only one level
+→ one-level path is valid.
+
+CASE 6
+Path may begin above REMEMBER
+→ no forced REMEMBER.
+
+CASE 7
+C1 source is only a heading / insufficient
+→ C1_REVIEW_REQUIRED
+→ no C2 path persisted.
+
+CASE 8
+C1 learningObjective unsupported by source
+→ no C2 generation.
+
+Do not weaken existing grounding tests.
+
+==================================================
+9. REAL ACCEPTANCE — LIMITED
+==================================================
+
+After deterministic tests pass:
+
+Re-run C2 generation ONLY for the two source-sufficient failed nodes:
+
+- "Թվի ներկայացումը կարգային գումարելիների գումարով"
+- "Կարգային միավորներ"
+
+Do NOT regenerate the already confirmed two paths.
+
+Do NOT force generation for "Բնական թվեր" if its C1 source is still
+insufficient.
+
+For each regenerated node:
+
+- validate with canonical grounding validator
+- preserve C1 target ceiling
+- persist only if valid
+- confirm only through canonical C2 confirmation flow
+
+Maximum one generation attempt per affected source-sufficient node after
+the fix.
+
+==================================================
+10. FINAL ACCEPTANCE EXPECTATION
+==================================================
+
+Expected final lesson state is NOT necessarily 5/5 C2 paths.
+
+Correct final state may be:
+
+4 valid/confirmed C2 paths
++
+1 C1-review-required node with no C2 path.
+
+That is acceptable and safer than inventing a path.
+
+If "Բնական թվեր" is proven invalid as a C1 MicroNode, report it clearly
+for our manual Mapping Quality Review.
+
+==================================================
+11. REGRESSIONS
+==================================================
+
+Run:
+
+C2 generation/grounding tests
+C2 readiness tests
+C6 invalid-path/fail-closed tests
+C7 target-lock tests
+API typecheck
+API build
+
+Do not change C3–C7 semantics.
+
+==================================================
+12. FINAL REPORT
+==================================================
+
+Return:
+
+A. 5-NODE C2 AUDIT TABLE
+
+For each node:
+SOURCE SUFFICIENT?
+C1 OBJECTIVE GROUNDED?
+C1 TARGET
+OLD C2 RESULT
+ROOT CAUSE
+NEW C2 RESULT
+
+B. GENERATOR ROOT CAUSE
+
+C. FILES CHANGED
+
+D. GENERATION CONTRACT CHANGE
+
+E. VALIDATOR CHANGE
+Must say NONE unless a real bug was found.
+Do NOT weaken grounding.
+
+F. REAL REGENERATION RESULTS
+
+G. FINAL COUNTS
+- valid confirmed C2
+- C1 review required
+- C2 failed
+
+H. REGRESSION RESULTS
+
+I. CONFIRM:
+
+C2 generation quality was improved without weakening C1 source safety,
+C2 grounding, C6 fail-closed behavior, or C7 target authority.
+
+Then STOP.
+
+Do not start teaching-content generation.
+Do not modify other mapping nodes.
+Do not publish/deploy.

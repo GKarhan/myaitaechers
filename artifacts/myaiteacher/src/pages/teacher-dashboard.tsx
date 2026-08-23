@@ -2173,7 +2173,7 @@ function LessonNodesPanel({
                 </span>
               ) : null}
               {cogPathData[n.id]?.cogPathStatus === 'confirmed' && (
-                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">✓ Hastatvel</span>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">✓ Հաստատվել</span>
               )}
               {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
                 <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">⏳ Gashmvum e</span>
