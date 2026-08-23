@@ -1,0 +1,825 @@
+C7.5 — IMPLEMENTATION
+REAL EXERCISE / TASK EXECUTION + EVIDENCE INTEGRITY
+
+IMPLEMENT + TEST + VERIFY.
+
+C7.1 COMPLETE.
+C7.2 COMPLETE.
+C7.3 COMPLETE.
+C7.4 COMPLETE.
+
+Do NOT redesign them.
+
+This task fixes ONLY C7.5:
+
+Make every assessment/exercise task used by AI Teacher:
+
+- canonically identified,
+- target-compatible,
+- source/provenance-aware,
+- immutable during an attempt,
+- safely evaluated,
+- correctly written to C3,
+- and incapable of producing stronger evidence than its actual task quality allows.
+
+C7.6 remains OUT OF SCOPE.
+
+==================================================
+0. CORE CONTRACT
+==================================================
+
+Canonical execution chain:
+
+C6 selects:
+MicroNode + Cognitive Level
+
+C7 teaches that target.
+
+When assessment is required:
+
+C7 must use a task compatible with:
+
+current MicroNode
++
+current Cognitive Level
++
+C2 success criterion / eligible task semantics.
+
+Learner responds.
+
+Then:
+
+task snapshot
+→ evaluation
+→ C3 evidence
+→ C4 projection
+→ C6 next decision if progression becomes valid.
+
+The model is NOT allowed to invent task identity after the learner
+answers.
+
+==================================================
+1. FORENSIC AUDIT FIRST
+==================================================
+
+Inspect current implementation of:
+
+- lesson exercises
+- lessonNodeCognitiveTasksTable
+- activeLessonExerciseId
+- activeTaskReference
+- generated task identity
+- exerciseTextVerbatim
+- source exercise handling
+- fallback/generated task handling
+- attempt identity
+- task reservation/claim logic
+- C3 evidence writer
+- task provenance
+- response evaluation
+- equivalent/independent re-check generation
+- quiz task identity if shared helpers exist
+
+Find every C7 task source:
+
+A. textbook/source exercise
+B. teacher-created task
+C. approved/generated task
+D. runtime bounded-generated task
+E. micro-check
+F. legacy fallback task
+
+For each report internally:
+
+TASK IDENTITY
+MICRONODE LINK
+COGNITIVE LEVEL LINK
+PROVENANCE
+IMMUTABLE ATTEMPT SNAPSHOT?
+C3 ELIGIBLE?
+MAX EVIDENCE STRENGTH?
+
+Then patch only real gaps.
+
+==================================================
+2. ONE CANONICAL TASK SNAPSHOT
+==================================================
+
+Every learner-facing assessment task must have a canonical immutable
+attempt snapshot BEFORE it is shown to the learner.
+
+At minimum the snapshot must preserve where applicable:
+
+- task identity
+- MicroNode ID
+- Cognitive Level ID
+- task type/family
+- source/provenance
+- exercise/source reference
+- exact prompt/task text shown
+- success criterion / evaluation target
+- assistance state baseline
+- attempt identity
+- generated-variant parent/template identity if applicable
+
+Do not reconstruct these values from model output after the answer.
+
+Do not use chat history as the authoritative task definition.
+
+==================================================
+3. SOURCE / TEACHER APPROVED EXERCISES
+==================================================
+
+For a persisted approved exercise:
+
+use the canonical persisted exercise identity.
+
+If `exerciseTextVerbatim` exists:
+
+the learner-facing task MUST preserve that text word-for-word.
+
+Do not paraphrase it.
+
+Append the existing page/exercise reference format where required.
+
+Example concept:
+
+(Էջ 15, Վ. 14)
+
+Do not allow the model to rewrite a verbatim task.
+
+==================================================
+4. COGNITIVE LEVEL COMPATIBILITY
+==================================================
+
+A real exercise may be presented only if it is eligible for:
+
+CURRENT MicroNode
++
+CURRENT active Cognitive Level.
+
+Reuse canonical C2/task links.
+
+Do not use:
+
+“any exercise on this node”
+
+as fallback when current level has no valid task.
+
+C7.3 already hardened this partially.
+
+C7.5 must make it evidence-safe.
+
+If no eligible approved task exists:
+
+do not silently use a lower/higher-level task as if equivalent.
+
+Use bounded-generation policy only if allowed.
+
+Otherwise fail safely / request another valid route.
+
+==================================================
+5. TASK TYPE ≠ EVIDENCE STRENGTH
+==================================================
+
+Do NOT hard-code:
+
+multiple choice = WEAK
+constructed response = STRONG
+
+or similar universal rules.
+
+C3 evidence quality depends on:
+
+- cognitive alignment
+- success criterion coverage
+- independence
+- task diagnostic quality
+- learner response.
+
+Preserve those semantics.
+
+Task type may be an input.
+
+It is not the final evidence strength authority.
+
+==================================================
+6. MICRO-CHECK VS REAL EXERCISE
+==================================================
+
+Keep these separate.
+
+MICRO_CHECK:
+
+- short instructional check
+- tied to just-taught content
+- C7.2 stage-managed
+- evidence cap remains ≤ MODERATE where current contract requires
+
+REAL EXERCISE:
+
+- approved/eligible task or bounded equivalent
+- can produce stronger canonical evidence if C3 requirements are met.
+
+A micro-check must never be relabeled as a real exercise simply because
+the learner answered correctly.
+
+==================================================
+7. GENERATED / BOUNDED EQUIVALENT TASK
+==================================================
+
+Runtime AI may create a new task ONLY under the bounded-generation
+contract.
+
+The generated task must preserve:
+
+- MicroNode
+- Knowledge Boundary
+- Cognitive Level
+- Learning Objective
+- task semantic purpose
+- tested skill
+- approximate difficulty band where applicable
+
+Only surface parameters may vary.
+
+Generated task must receive a durable identity/reference BEFORE learner
+response is evaluated.
+
+Do not store only raw text with no identity.
+
+==================================================
+8. VARIANT PROVENANCE
+==================================================
+
+For generated equivalent tasks preserve at least:
+
+- provenance = runtime/bounded generated
+- parent/template task when applicable
+- variant identity
+- generation context
+- MicroNode
+- Cognitive Level
+
+Do not allow a generated task to masquerade as textbook/source material.
+
+Do not lose parent/template traceability when one exists.
+
+==================================================
+9. INDEPENDENT RE-CHECK SAFETY
+==================================================
+
+C7.4 established:
+
+assisted success
+→ new equivalent independent re-check.
+
+C7.5 must enforce task identity safety.
+
+The independent re-check must NOT be:
+
+- the exact same revealed task;
+- same task ID with cleared help count;
+- same answer already exposed;
+- trivial rewording that preserves the answer cue.
+
+Prefer:
+
+new approved eligible task
+
+or:
+
+bounded equivalent variant with new identity.
+
+The new task starts with independent assistance state.
+
+==================================================
+10. ATTEMPT IDENTITY
+==================================================
+
+Task and attempt are different concepts.
+
+One task can have multiple attempts.
+
+Each evaluable learner response should have a traceable attempt identity
+or deterministic equivalent existing mechanism.
+
+Do not overwrite historical attempts.
+
+Do not use the same attempt identity for two separate submissions.
+
+Duplicate submission of the SAME response/retry must not create a second
+attempt/evidence event.
+
+Reuse C7.4 reservation/idempotency hardening.
+
+==================================================
+11. IMMUTABLE ANSWER TARGET
+==================================================
+
+When learner responds:
+
+evaluation must use the exact task snapshot that was shown.
+
+Do not re-fetch a changed exercise version and evaluate against that.
+
+Do not let current session target replace the historical task target if
+they differ due to transition/recovery.
+
+C7.2/C7.3 recovery snapshots remain authoritative for that turn.
+
+==================================================
+12. ASSISTANCE SNAPSHOT
+==================================================
+
+Before evidence is written preserve the assistance state associated with
+THAT attempt:
+
+- helpCount
+- assistance level
+- hint/support type
+- remediation context where applicable
+
+Do not reset help state before evidence snapshot.
+
+C7.4 behavior must remain intact.
+
+==================================================
+13. RESPONSE RESULT SEMANTICS
+==================================================
+
+Preserve canonical C3 result semantics:
+
+CORRECT
+PARTIAL
+INCORRECT
+UNCLEAR
+NO_RESPONSE
+
+Do not collapse:
+
+PARTIAL → INCORRECT
+UNCLEAR → INCORRECT
+NO_RESPONSE → INCORRECT
+
+unless canonical C3 policy explicitly evaluates it that way.
+
+The task evaluator may provide diagnostic details.
+
+C3 owns evidence semantics.
+
+==================================================
+14. STRONG EVIDENCE SAFETY
+==================================================
+
+Strong/confirming evidence must require an actually eligible,
+sufficiently diagnostic task.
+
+Examples of unsafe behavior to prevent:
+
+- unlinked generated question → STRONG
+- micro-check → STRONG
+- wrong Cognitive Level exercise → STRONG
+- revealed/helped task → INDEPENDENT STRONG
+- source exercise from another node → STRONG
+
+C3 must remain the authority.
+
+C7.5's job is to supply truthful task metadata.
+
+==================================================
+15. EXERCISE CONSUMPTION / REUSE
+==================================================
+
+Audit how exercises are selected across repeated attempts.
+
+Do not unnecessarily repeat already exhausted/revealed tasks when a
+fresh independent check is required.
+
+But do not permanently “consume” a textbook task in a way that prevents
+legitimate later review use.
+
+Differentiate:
+
+task available as curriculum resource
+
+from
+
+task eligible as fresh independent evidence for this attempt context.
+
+==================================================
+16. FALLBACK SAFETY
+==================================================
+
+Remove/contain any legacy fallback that says conceptually:
+
+“no linked exercise → use any exercise”
+
+or:
+
+“no task → ask generic AI question and treat as normal exercise”.
+
+Fallback content can support teaching.
+
+It cannot silently gain evidence authority.
+
+If no canonical evidence-eligible task is available:
+
+return a deterministic safe state such as:
+
+NEEDS_TASK
+GENERATE_EQUIVALENT_TASK
+TEACH_ONLY
+
+according to current architecture.
+
+Do not fabricate strong evidence.
+
+==================================================
+17. MODEL EVALUATION BOUNDARY
+==================================================
+
+If AI/model evaluates open-ended responses:
+
+the model receives:
+
+- immutable task snapshot
+- current success criterion
+- target Cognitive Level
+- expected evaluation schema
+
+It must return constrained evaluation fields.
+
+The model must NOT:
+
+- redefine the task;
+- change Cognitive Level;
+- change MicroNode;
+- declare node mastered;
+- select next node;
+- change assistance history.
+
+Server validates the evaluation.
+
+==================================================
+18. OBJECTIVE / SUCCESS CRITERION ALIGNMENT
+==================================================
+
+For C3-eligible assessment:
+
+the task must align with the current level's:
+
+performanceObjective
++
+successCriterion.
+
+Do not require every task to cover 100% of a complex criterion.
+
+But preserve the actual coverage so C3 can know whether one task is
+sufficient or only partial evidence.
+
+Do not fake full criterion coverage.
+
+==================================================
+19. C7.1 / C7.2 / C7.3 / C7.4 INTEGRATION
+==================================================
+
+C7.1:
+C3 → C4 → C6 progression remains authoritative.
+
+C7.2:
+real exercise fits the stage cycle:
+
+TRANSITION
+→ EXERCISE
+→ learner response
+→ FEEDBACK
+→ TRANSITION.
+
+C7.3:
+task must remain target-locked.
+
+C7.4:
+assistance/remediation metadata must remain truthful.
+
+Do not bypass any previous C7 contract.
+
+==================================================
+20. C3 WRITE ORDER
+==================================================
+
+Canonical answer handling:
+
+1. validate active task reservation/snapshot
+2. evaluate learner response
+3. freeze result + assistance + task metadata
+4. write canonical C3 evidence idempotently
+5. run C4 projection
+6. mark projection completion durably where current recovery contract uses it
+7. persist feedback/release stage
+8. C6 only after canonical progression condition is met
+
+Do not alter C7.4's recovery safety.
+
+==================================================
+21. TASK VERSION / EDIT SAFETY
+==================================================
+
+If teacher edits an exercise while a learner attempt is active:
+
+the active attempt must still evaluate against the snapshot shown to the
+learner.
+
+New attempts may use the new version/current text.
+
+Do not retroactively alter historical evidence meaning.
+
+Avoid a new large versioning architecture if snapshot storage already
+solves the runtime requirement.
+
+==================================================
+22. REQUIRED PROVIDER-FREE TEST MATRIX
+==================================================
+
+Add deterministic tests.
+
+TEST 1
+Approved textbook exercise
+→ canonical task identity preserved.
+
+TEST 2
+exerciseTextVerbatim
+→ learner-visible text unchanged.
+
+TEST 3
+Exercise from wrong MicroNode
+→ rejected.
+
+TEST 4
+Exercise from wrong Cognitive Level
+→ rejected.
+
+TEST 5
+No linked exercise
+→ system does NOT choose arbitrary node exercise.
+
+TEST 6
+Micro-check correct
+→ cannot become STRONG real-exercise evidence.
+
+TEST 7
+Eligible independent real exercise
+→ may produce qualifying strong evidence when C3 allows.
+
+TEST 8
+Generated bounded equivalent
+→ gets new durable task identity.
+
+TEST 9
+Generated equivalent
+→ preserves MicroNode and Cognitive Level.
+
+TEST 10
+Generated equivalent provenance
+→ not textbook/source.
+
+TEST 11
+Generated variant preserves parent/template reference where available.
+
+TEST 12
+Assisted task success
+→ cannot reuse same task as independent confirmation.
+
+TEST 13
+New equivalent independent re-check
+→ new task identity.
+
+TEST 14
+Duplicate answer retry
+→ no duplicate evidence.
+
+TEST 15
+Two real attempts on same task
+→ distinct attempt identities.
+
+TEST 16
+Teacher edits task after presentation
+→ active attempt evaluates original snapshot.
+
+TEST 17
+HelpCount/assistance captured before reset.
+
+TEST 18
+PARTIAL result remains PARTIAL.
+
+TEST 19
+UNCLEAR remains UNCLEAR.
+
+TEST 20
+NO_RESPONSE remains NO_RESPONSE.
+
+TEST 21
+Unlinked runtime AI question
+→ cannot produce STRONG evidence.
+
+TEST 22
+Wrong-level task
+→ cannot confirm target.
+
+TEST 23
+Source exercise from another node
+→ cannot confirm current node.
+
+TEST 24
+Feedback after exercise uses same immutable task snapshot.
+
+TEST 25
+Recovery retry uses persisted evaluation/task snapshot, not new model evaluation.
+
+TEST 26
+C4 projection occurs after canonical C3 evidence.
+
+TEST 27
+C6 does not see progression before C4 projection.
+
+TEST 28
+Task target CAS prevents stale-write after C6 target change.
+
+TEST 29
+Path begins above REMEMBER
+→ exercise selection uses active accepted level only.
+
+TEST 30
+No valid task available
+→ fail-safe deterministic state, no fake evidence.
+
+No external provider calls.
+
+==================================================
+23. REGRESSION REQUIREMENTS
+==================================================
+
+Run:
+
+C7.1 tests
+C7.2 tests
+C7.3 tests
+C7.4 tests
+C6
+C5
+C4
+C3
+Phase 2
+chat/session
+task/exercise
+structured evaluation
+
+Run:
+
+API typecheck
+API build
+
+If frontend/shared contract changed:
+
+web typecheck
+web build.
+
+Do not modify lesson 644 mapping to make tests pass.
+
+==================================================
+24. FRESH INDEPENDENT REVIEW
+==================================================
+
+Review specifically for:
+
+1. arbitrary exercise fallback
+2. generated task without identity
+3. task text reconstructed after answer
+4. wrong node/level task evidence
+5. verbatim exercise paraphrased
+6. micro-check becoming strong evidence
+7. assistance reset before snapshot
+8. duplicate evidence on retry
+9. same revealed task used as independent re-check
+10. variant provenance lost
+11. task edit altering active attempt semantics
+12. C7.1 progression bypass
+13. C7.2 exercise-stage bypass
+14. C7.3 target-lock bypass
+15. C7.4 assistance/remediation regression.
+
+Fix concrete C7.5 findings.
+
+Rerun affected tests.
+
+==================================================
+25. SAFE ACCEPTANCE
+==================================================
+
+Prefer provider-free fixture.
+
+Verify:
+
+C6 target X / APPLY
+→ C7 teaches
+→ approved APPLY exercise selected
+→ immutable task snapshot persisted
+→ learner response
+→ canonical evaluation
+→ C3 evidence with correct task/provenance/assistance
+→ C4
+→ feedback
+→ if confirmed, C6 next target.
+
+Then verify assisted flow:
+
+task A
+→ help
+→ assisted correct
+→ no independent confirmation
+→ new equivalent task B
+→ independent response
+→ evidence uses task B identity.
+
+Then verify bad fallback:
+
+no eligible task
+→ no arbitrary exercise
+→ no strong evidence.
+
+==================================================
+26. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. C7.5 VERDICT
+
+B. CANONICAL TASK SOURCES
+
+C. TASK SNAPSHOT
+
+Exact persisted/runtime authority.
+
+D. VERBATIM EXERCISE RULE
+
+E. COGNITIVE-LEVEL ELIGIBILITY
+
+F. GENERATED EQUIVALENT TASK
+
+Identity + provenance + parent behavior.
+
+G. ATTEMPT IDENTITY / IDEMPOTENCY
+
+H. ASSISTANCE SNAPSHOT
+
+I. RESULT SEMANTICS
+
+J. EVIDENCE STRENGTH BOUNDARY
+
+K. INDEPENDENT RE-CHECK
+
+L. FALLBACK SAFETY
+
+M. C3 → C4 → C6 ORDER
+
+N. C7.1–C7.4 REGRESSION STATUS
+
+O. FILES CHANGED
+
+P. TEST RESULTS
+
+Q. ACCEPTANCE RESULT
+
+R. REMAINING C7 ITEM
+
+Only:
+C7.6
+
+S. FINAL VERDICT
+
+Return exactly one:
+
+C7.5 COMPLETE — AI Teacher assessment tasks now have canonical identity,
+target compatibility, immutable attempt context, and evidence-safe
+execution.
+
+or
+
+C7.5 BLOCKED — <smallest exact blocker>
+
+==================================================
+27. STOP
+==================================================
+
+Do not start C7.6.
+
+Do not implement Flashcards.
+Do not implement Quiz improvements.
+Do not implement Today/Diary.
+
+If completing C7.5 would require changing C3/C4/C6 semantics:
+
+STOP and report the exact blocker.
+
+Otherwise implement, verify, report, and STOP.
