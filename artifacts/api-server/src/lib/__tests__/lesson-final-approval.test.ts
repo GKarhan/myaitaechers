@@ -12,7 +12,9 @@ import {
   lessonsTable,
   lessonNodesTable,
   lessonNodeCognitiveLevelsTable,
+  lessonNodeTeachingPackageItemsTable,
   lessonExercisesTable,
+  lessonOutcomesTable,
   subjectsTable,
   usersTable,
 } from "@workspace/db";
@@ -296,7 +298,7 @@ it("F2: draft source exercise does not block the one lesson-level approval", asy
 
 // ── G: Phase 2 enrichment ─────────────────────────────────────────────────────
 
-it("G1: approved node missing childFriendlyExplanation → MISSING_PHASE2 error", async () => {
+it("G1: approved node missing childFriendlyExplanation → MISSING_PHASE2 requires explicit override", async () => {
   const snap = await getNode(NODE.id);
   assert.ok(snap);
   try {
@@ -304,29 +306,216 @@ it("G1: approved node missing childFriendlyExplanation → MISSING_PHASE2 error"
       .set({ childFriendlyExplanation: null })
       .where(eq(lessonNodesTable.id, NODE.id));
     const result = await validateLessonForFinalApproval(LESSON_ID);
-    const err = result.errors.find((e) => e.code === "MISSING_PHASE2");
-    assert.ok(err, "Expected MISSING_PHASE2 error");
-    assert.equal(err?.nodeId, NODE.id);
+    const issue = result.overrideable.find((e) => e.code === "MISSING_PHASE2");
+    assert.ok(issue, "Expected overrideable MISSING_PHASE2 issue");
+    assert.equal(issue?.nodeId, NODE.id);
+    assert.equal(result.errors.some((e) => e.code === "MISSING_PHASE2"), false);
   } finally {
     await restoreNode(snap!);
   }
 });
 
-it("G2: MISSING_PHASE2 blocks final-approve → 422", async () => {
+it("G2: missing Teaching Content without explicit confirmation → 409 and lesson stays unapproved", async () => {
   const snap = await getNode(NODE.id);
   assert.ok(snap);
   try {
     await db.update(lessonNodesTable)
       .set({ commonMisconception: null })
       .where(eq(lessonNodesTable.id, NODE.id));
+    await db.update(lessonsTable)
+      .set({ status: "needs_review", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
     const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(status, 422);
+    assert.equal(status, 409);
     assert.equal(body.approved, false);
-    assert.ok(
-      (body.errors as Array<{ code: string }>).some((e) => e.code === "MISSING_PHASE2"),
-    );
+    assert.equal(body.confirmationRequired, true);
+    assert.ok((body.overrideable as Array<{ code: string }>).some((e) => e.code === "MISSING_PHASE2"));
+    const [lesson] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(lesson?.status, "needs_review");
   } finally {
     await restoreNode(snap!);
+  }
+});
+
+it("G3: explicit missing-content override persists audit but never fabricates content", async () => {
+  const snap = await getNode(NODE.id);
+  assert.ok(snap);
+  try {
+    await db.update(lessonNodesTable)
+      .set({ childFriendlyExplanation: null })
+      .where(eq(lessonNodesTable.id, NODE.id));
+    await db.update(lessonsTable)
+      .set({ status: "needs_review", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    const { status, body } = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, {
+      confirmMissingTeachingContent: true,
+    });
+    assert.equal(status, 200);
+    assert.equal(body.approved, true);
+    assert.equal(body.approvalMode, "missing_teaching_content_override");
+    const [lesson] = await db.select({
+      status: lessonsTable.status,
+      everApproved: lessonsTable.everApproved,
+      metadata: lessonsTable.mappingMetadata,
+    }).from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(lesson?.status, "approved");
+    assert.equal(lesson?.everApproved, false, "Override approval must remain re-reviewable after edits");
+    const audit = (lesson?.metadata as any)?.finalApproval;
+    assert.equal(audit?.mode, "missing_teaching_content_override");
+    assert.equal(audit?.missingNodeCount, 1);
+    assert.ok(Array.isArray(audit?.missingNodeIds) && audit.missingNodeIds.includes(NODE.id));
+    const after = await getNode(NODE.id);
+    assert.equal(after?.childFriendlyExplanation, null, "Override must not fabricate missing Teaching Content");
+
+    // The existing send-to-student action accepts persisted approval. This
+    // checks the same activation gate used by teacher delivery, not a duplicate
+    // eligibility rule.
+    const activation = await fetch(`${BASE}/teacher/lessons/${LESSON_ID}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert.equal(activation.status, 200, "Override-approved lesson must be eligible for existing activation");
+
+    // An edit after activation must still reopen review instead of leaving this
+    // override-approved lesson visible to students.
+    const edit = await fetch(`${BASE}/lessons/${LESSON_ID}/nodes/${NODE.id}/update`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: runTag(RUN_ID, "override approval must re-review after edit") }),
+    });
+    assert.equal(edit.status, 200);
+    const [afterEdit] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(afterEdit?.status, "needs_review");
+  } finally {
+    await restoreNode(snap!);
+  }
+});
+
+it("G4: explicit override cannot bypass a true validation error", async () => {
+  const snap = await getNode(NODE.id);
+  assert.ok(snap);
+  try {
+    await db.update(lessonNodesTable).set({
+      childFriendlyExplanation: null,
+      learningObjective: "",
+    }).where(eq(lessonNodesTable.id, NODE.id));
+    await db.update(lessonsTable)
+      .set({ status: "needs_review", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    const { status, body } = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, {
+      confirmMissingTeachingContent: true,
+    });
+    assert.equal(status, 422);
+    assert.equal(body.approved, false);
+    assert.ok((body.errors as Array<{ code: string }>).some((e) => e.code === "MISSING_LO"));
+    assert.ok((body.overrideable as Array<{ code: string }>).some((e) => e.code === "MISSING_PHASE2"));
+  } finally {
+    await restoreNode(snap!);
+  }
+});
+
+it("G5: an Outcome edit invalidates an active override-approved lesson", async () => {
+  try {
+    // G3 persisted the override audit. Recreate its active, non-sticky delivery
+    // state to prove Outcome authoring takes the same route back to review.
+    await db.update(lessonsTable)
+      .set({ status: "approved", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    const activation = await fetch(`${BASE}/teacher/lessons/${LESSON_ID}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert.equal(activation.status, 200);
+
+    const outcome = await apiPostJson(`/lessons/${LESSON_ID}/outcomes`, {
+      outcomeText: runTag(RUN_ID, "override outcome edit"),
+    });
+    assert.equal(outcome.status, 201);
+    const [lesson] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(lesson?.status, "needs_review");
+  } finally {
+    await db.delete(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, LESSON_ID));
+    await db.update(lessonsTable).set({
+      status: "needs_review",
+      everApproved: false,
+      goalOutcomeReviewStatus: "legacy",
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+  }
+});
+
+it("G6: applying a Goal/Outcome proposal invalidates an active override-approved lesson", async () => {
+  try {
+    await db.update(lessonsTable).set({
+      status: "approved",
+      everApproved: false,
+      lessonGoal: null,
+      goalOutcomeReviewStatus: "proposed",
+      goalOutcomeProposal: {
+        lessonGoal: runTag(RUN_ID, "override proposal goal"),
+        outcomes: [runTag(RUN_ID, "override proposal outcome")],
+      },
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+    const activation = await fetch(`${BASE}/teacher/lessons/${LESSON_ID}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert.equal(activation.status, 200);
+
+    const applied = await apiPostJson(`/lessons/${LESSON_ID}/goal-outcome-review/apply-proposal`, {});
+    assert.equal(applied.status, 200);
+    const [lesson] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(lesson?.status, "needs_review");
+  } finally {
+    await db.delete(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, LESSON_ID));
+    await db.update(lessonsTable).set({
+      status: "needs_review",
+      everApproved: false,
+      lessonGoal: null,
+      goalOutcomeReviewStatus: "legacy",
+      goalOutcomeProposal: null,
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+  }
+});
+
+it("G7: Teaching Package creation invalidates an active override-approved lesson", async () => {
+  try {
+    await db.update(lessonsTable)
+      .set({ status: "approved", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    const activation = await fetch(`${BASE}/teacher/lessons/${LESSON_ID}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${BEARER}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert.equal(activation.status, 200);
+
+    const created = await apiPostJson(`/lessons/${LESSON_ID}/nodes/${NODE.id}/teaching-package`, {
+      itemType: "HINT",
+      content: runTag(RUN_ID, "override teaching package edit"),
+      provenance: "teacher_created",
+      status: "draft",
+    });
+    assert.equal(created.status, 201);
+    const [lesson] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+    assert.equal(lesson?.status, "needs_review");
+  } finally {
+    await db.delete(lessonNodeTeachingPackageItemsTable)
+      .where(eq(lessonNodeTeachingPackageItemsTable.lessonId, LESSON_ID));
+    await db.update(lessonsTable)
+      .set({ status: "needs_review", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
   }
 });
 
@@ -452,9 +641,16 @@ it("P1: dynamic lesson clean → approved: true (200)", async () => {
   assert.ok(summary.approvedNodes > 0, "Must have approved nodes");
   assert.ok(summary.phase2CompleteNodes > 0, "Must have Phase 2 complete nodes");
 
-  const [lesson] = await db.select({ status: lessonsTable.status })
+  const [lesson] = await db.select({
+    status: lessonsTable.status,
+    everApproved: lessonsTable.everApproved,
+    metadata: lessonsTable.mappingMetadata,
+  })
     .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
   assert.equal(lesson?.status, "approved", "DB lesson.status must be 'approved'");
+  assert.equal(lesson?.everApproved, true, "Normal approval retains the existing sticky semantics");
+  const audit = (lesson?.metadata as any)?.finalApproval;
+  assert.equal(audit?.mode, "normal");
 });
 
 it("P2: GET /lessons/:id returns authoringStatus: 'approved'", async () => {

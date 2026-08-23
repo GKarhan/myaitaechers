@@ -1811,6 +1811,7 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
     });
     return;
   }
+  await invalidateLessonApproval(lessonId);
   res.json({ lessonId, status: "draft", ...result, requiresConfirmation: true });
 });
 
@@ -1840,6 +1841,7 @@ router.post("/lessons/:lessonId/goal-outcome-review/confirm", requireAuth, requi
     });
     return;
   }
+  await invalidateLessonApproval(lessonId);
   res.json({ lessonId, status: "confirmed", requiresConfirmation: false });
 });
 
@@ -1874,6 +1876,7 @@ router.post("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, asy
     return created;
   });
   await markGoalOutcomeReviewStale(lessonId);
+  await invalidateLessonApproval(lessonId);
 
   res.status(201).json({
     id: outcome.id,
@@ -1913,6 +1916,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/update", requireAuth, requir
     .returning();
   if (!updated) { res.status(404).json({ error: "Outcome not found" }); return; }
   await markGoalOutcomeReviewStale(lessonId);
+  await invalidateLessonApproval(lessonId);
   res.json(updated);
 });
 
@@ -1946,6 +1950,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/delete", requireAuth, requir
 
   await db.delete(lessonOutcomesTable).where(eq(lessonOutcomesTable.id, outcomeId));
   await markGoalOutcomeReviewStale(lessonId);
+  await invalidateLessonApproval(lessonId);
   res.json({ deleted: true, id: outcomeId, removedAlignmentCount: approvedRelations.length });
 });
 
@@ -1989,6 +1994,7 @@ router.post("/lessons/:lessonId/outcomes/reorder", requireAuth, requireLessonAut
         .orderBy(asc(lessonOutcomesTable.sequence));
     });
     await markGoalOutcomeReviewStale(lessonId);
+    await invalidateLessonApproval(lessonId);
     res.json(updated);
   } catch (error) {
     if (error instanceof Error && error.message === "OUTCOME_ORDER_CHANGED") {
@@ -2039,6 +2045,7 @@ router.post("/lessons/:lessonId/outcomes/backfill-legacy", requireAuth, requireL
     throw error;
   });
   if (missing === null) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (missing.length > 0) await invalidateLessonApproval(lessonId);
   res.status(201).json({
     createdCount: missing.length,
     note: "Legacy outcomes were copied as draft records; no MicroNode relations were inferred.",
@@ -2099,6 +2106,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments", requireAuth, re
   }).onConflictDoNothing().returning();
   if (!alignment) { res.status(409).json({ error: "OUTCOME_NODE_ALIGNMENT_ALREADY_EXISTS" }); return; }
   await markGoalOutcomeReviewStale(lessonId);
+  await invalidateLessonApproval(lessonId);
   res.status(201).json({
     alignment,
     warnings: getAlignmentWarnings(role, requiredDepth, capacity),
@@ -2119,6 +2127,7 @@ router.post("/lessons/:lessonId/outcomes/:outcomeId/alignments/:alignmentId/dele
     .returning({ id: lessonOutcomeNodeAlignmentsTable.id });
   if (!deleted) { res.status(404).json({ error: "Alignment not found" }); return; }
   await markGoalOutcomeReviewStale(lessonId);
+  await invalidateLessonApproval(lessonId);
   res.json({ deleted: true, id: alignmentId });
 });
 
@@ -2348,6 +2357,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package", requireAuth, re
       }).returning();
       return created;
     });
+    await invalidateLessonApproval(lessonId);
     res.status(201).json(item);
   } catch (error) {
     if (error instanceof Error && error.message === "PRIMARY_EXPLANATION_EXISTS") {
@@ -2435,6 +2445,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/:itemId/update", 
         .where(eq(lessonNodeTeachingPackageItemsTable.id, itemId)).returning();
       return result;
     });
+    await invalidateLessonApproval(lessonId);
     res.json(updated);
   } catch (error) {
     if (error instanceof Error && error.message === "TEACHING_ITEM_NOT_FOUND") {
@@ -2493,6 +2504,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/:itemId/approve",
       }).where(eq(lessonNodeTeachingPackageItemsTable.id, itemId)).returning();
       return result;
     });
+    await invalidateLessonApproval(lessonId);
     res.json(updated);
   } catch (error) {
     if (error instanceof Error && error.message === "TEACHING_ITEM_NOT_FOUND") {
@@ -2521,6 +2533,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/:itemId/delete", 
     ))
     .returning({ id: lessonNodeTeachingPackageItemsTable.id });
   if (!deleted) { res.status(404).json({ error: "Teaching Package item not found" }); return; }
+  await invalidateLessonApproval(lessonId);
   res.json({ deleted: true, id: itemId });
 });
 
@@ -2571,6 +2584,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/teaching-package/reorder", require
         ))
         .orderBy(asc(lessonNodeTeachingPackageItemsTable.sequence));
     });
+    await invalidateLessonApproval(lessonId);
     res.json(updated);
   } catch (error) {
     if (error instanceof Error && error.message === "TEACHING_ITEM_ORDER_CHANGED") {
@@ -2637,6 +2651,7 @@ router.post("/lessons/:lessonId/teaching-package/backfill-existing", requireAuth
     }
     return { createdCount: toInsert.length, scannedNodeCount: nodes.length };
   });
+  if (result.createdCount > 0) await invalidateLessonApproval(lessonId);
   res.status(201).json({
     ...result,
     note: "Only deterministic existing fields were copied as draft Teaching Package items; original MicroNode fields remain unchanged.",
@@ -3009,6 +3024,7 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
 
   // P8: Rebuild sequential dependency chain after node approval.
   const depResult = await refreshSequentialDependencies(lessonId);
+  if (updated.length > 0) await invalidateLessonApproval(lessonId);
 
   res.json({
     approvedCount:          updated.length,
@@ -3451,6 +3467,7 @@ router.delete("/lessons/:lessonId/mapping", requireAuth, requireLessonAuthor, as
   });
 
   logger.info({ lessonId, deleted }, "lesson mapping deleted");
+  await invalidateLessonApproval(lessonId);
   res.json({ message: "Mapping deleted", deleted });
 });
 
@@ -3856,9 +3873,10 @@ router.get("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async 
 });
 
 // POST /lessons/:lessonId/final-approve — P1.7 Final Lesson Approval Gate
-// Runs full deterministic validation; if errors === 0, sets lesson status → 'approved'.
-// Returns { approved, lessonId, errors[], warnings[], summary } always.
-// On validation failure: 422 with errors. On success: 200 with approved: true.
+// Runs full deterministic validation. Missing Teaching Content is an explicit
+// teacher decision, not a silent bypass; all other validator errors remain hard
+// blockers. Returns { approved, lessonId, errors[], overrideable[], warnings[],
+// summary } always.
 router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -3867,32 +3885,100 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
-  const result = await validateLessonForFinalApproval(lessonId);
+  const confirmMissingTeachingContent = req.body?.confirmMissingTeachingContent === true;
+  const finalization = await db.transaction(async (tx) => {
+    // Serialize final approval per lesson. Authoring writes persist their
+    // material change first and then use the same parent row when invalidating,
+    // which avoids child-to-parent lock inversions while still ensuring any
+    // concurrent change returns a non-sticky override to review.
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
 
-  if (result.errors.length > 0) {
+    const result = await validateLessonForFinalApproval(lessonId);
+    const missingTeachingContent = result.overrideable.filter(
+      (issue) => issue.code === "MISSING_PHASE2",
+    );
+    if (result.errors.length > 0) {
+      return { kind: "blocked" as const, result, missingTeachingContent };
+    }
+    if (missingTeachingContent.length > 0 && !confirmMissingTeachingContent) {
+      return { kind: "confirmation_required" as const, result, missingTeachingContent };
+    }
+
+    const [currentLesson] = await tx.select({
+      mappingMetadata: lessonsTable.mappingMetadata,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    const currentMetadata = (currentLesson?.mappingMetadata ?? {}) as Record<string, any>;
+    const missingNodeIds = [...new Set(missingTeachingContent
+      .map((issue) => issue.nodeId)
+      .filter((nodeId): nodeId is number => typeof nodeId === "number"))];
+    const approvalAudit = missingNodeIds.length > 0
+      ? {
+        mode: "missing_teaching_content_override",
+        missingNodeIds,
+        missingNodeCount: missingNodeIds.length,
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: req.userId ?? null,
+      }
+      : {
+        mode: "normal",
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: req.userId ?? null,
+      };
+
+    // Missing Teaching Content can be accepted only through the explicit request
+    // above. Keep it missing and auditable; it is never converted to generated
+    // content. Override approval is intentionally non-sticky so a later material
+    // edit moves even an active lesson back into review.
+    await tx.update(lessonsTable)
+      .set({
+        status: "approved",
+        everApproved: missingNodeIds.length === 0,
+        mappingMetadata: {
+          ...currentMetadata,
+          finalApproval: approvalAudit,
+        },
+      } as any)
+      .where(eq(lessonsTable.id, lessonId));
+    return { kind: "approved" as const, result, approvalAudit };
+  });
+
+  if (finalization.kind === "blocked") {
     res.status(422).json({
       approved: false,
       lessonId,
-      errors: result.errors,
-      warnings: result.warnings,
-      summary: result.summary,
+      errors: finalization.result.errors,
+      overrideable: finalization.missingTeachingContent,
+      confirmationRequired: false,
+      warnings: finalization.result.warnings,
+      summary: finalization.result.summary,
     });
     return;
   }
-
-  // All checks passed — stamp the lesson as approved.
-  // Also set everApproved=true (sticky flag) so future teacher edits do NOT
-  // revert the lesson to needs_review (POST-P1.12 authoring simplification).
-  await db.update(lessonsTable)
-    .set({ status: "approved", everApproved: true } as any)
-    .where(eq(lessonsTable.id, lessonId));
+  if (finalization.kind === "confirmation_required") {
+    const missingNodeIds = new Set(finalization.missingTeachingContent.map((issue) => issue.nodeId)
+      .filter((nodeId): nodeId is number => typeof nodeId === "number"));
+    res.status(409).json({
+      approved: false,
+      lessonId,
+      errors: [],
+      overrideable: finalization.missingTeachingContent,
+      confirmationRequired: true,
+      missingTeachingContent: { nodeCount: missingNodeIds.size },
+      warnings: finalization.result.warnings,
+      summary: finalization.result.summary,
+    });
+    return;
+  }
 
   res.json({
     approved: true,
     lessonId,
     errors: [],
-    warnings: result.warnings,
-    summary: result.summary,
+    overrideable: [],
+    confirmationRequired: false,
+    approvalMode: finalization.approvalAudit.mode,
+    warnings: finalization.result.warnings,
+    summary: finalization.result.summary,
   });
 });
 
@@ -4814,6 +4900,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       .set({ mappingMetadata: mappingReport as any })
       .where(eq(lessonsTable.id, lessonId));
     });
+    // The persisted mapping replaces the student-deliverable lesson package.
+    // A missing-content override is non-sticky, including while it is active.
+    await invalidateLessonApproval(lessonId);
 
     logger.info(
       {
@@ -6025,6 +6114,7 @@ async function handleLegacyJsonImport(
     );
   }
 
+  await invalidateLessonApproval(lessonId);
   res.json({
     lessonId,
     lessonTitle:   lesson.title,
@@ -6501,6 +6591,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
   const cogStatusUpdates: Record<string, unknown> = { cogPathStatus: "needs_review" };
   if (priorIsConfirmed && priorHasTc) cogStatusUpdates.teachingContentStale = true;
   await db.update(lessonNodesTable).set(cogStatusUpdates).where(eq(lessonNodesTable.id, nodeId));
+  // Replacing the C2 path changes material considered by final approval. A
+  // missing-content override is deliberately non-sticky even after activation.
+  await invalidateLessonApproval(lessonId);
 
   logger.info({ lessonId, nodeId, levelCount: result.levels.length }, "cognitive path generated");
 
@@ -6566,6 +6659,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAu
   }
 
   await db.update(lessonNodesTable).set({ cogPathStatus: "confirmed" } as any).where(eq(lessonNodesTable.id, nodeId));
+  await invalidateLessonApproval(lessonId);
   res.json({ cogPathStatus: "confirmed", nodeId });
 });
 
@@ -6608,6 +6702,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels", requireAuth, re
   }).returning();
 
   await invalidateCogPathConfirmation(nodeId);
+  await invalidateLessonApproval(lessonId);
 
   res.status(201).json({ ...inserted, preferredInteractionTypes: (inserted.preferredInteractionTypes ?? []) as string[], tasks: [] });
 });
@@ -6644,6 +6739,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/reorder", require
   });
 
   await invalidateCogPathConfirmation(nodeId);
+  await invalidateLessonApproval(lessonId);
   res.json({ reordered: orderedLevelIds.length });
 });
 
@@ -6700,6 +6796,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId/update",
 
   // Invalidate confirmation if this node's cog path was confirmed
   await invalidateCogPathConfirmation(nodeId);
+  await invalidateLessonApproval(lessonId);
 
   const [updated] = await db
     .select()
@@ -6731,6 +6828,7 @@ router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-levels/:levelId", requ
   // Invalidate confirmation before deleting (must check confirmed state first)
   await invalidateCogPathConfirmation(nodeId);
   await db.delete(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.id, levelId));
+  await invalidateLessonApproval(lessonId);
   res.json({ success: true });
 });
 
@@ -6793,6 +6891,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks", requireAuth, req
         taskProvenance: "source_derived",
       })
       .returning();
+    await invalidateLessonApproval(lessonId);
     res.status(201).json({ success: true, task });
   } catch (err: unknown) {
     const msg = String((err as Error)?.message ?? "");
@@ -6825,6 +6924,7 @@ router.delete("/lessons/:lessonId/nodes/:nodeId/cognitive-tasks/:taskId", requir
   if (!task) { res.status(404).json({ error: "Task not found on this node" }); return; }
 
   await db.delete(lessonNodeCognitiveTasksTable).where(eq(lessonNodeCognitiveTasksTable.id, taskId));
+  await invalidateLessonApproval(lessonId);
   res.json({ success: true });
 });
 

@@ -35,5 +35,16 @@ test("15 incomplete required content remains a true blocker", () => assert.equal
 test("16 normal MicroNode success is represented by complete current state", () => assert.equal(summarizeCurrentTeachingContent([complete]).complete, 1));
 test("17 normal exercise approval is outside teaching-content retry eligibility", () => assert.equal(summarizeCurrentTeachingContent([complete]).missing, 0));
 test("18 exceptions remain visible through missing count", () => assert.equal(summarizeCurrentTeachingContent([complete, incomplete]).missing, 1));
+test("19 4/4 complete fields are the only complete node state", () => assert.equal(hasCompleteTeachingContent(complete), true));
+test("20 3/4, 2/4, 1/4, and 0/4 field states remain incomplete", () => {
+  const threeOfFour = { ...complete, nonExamples: [] };
+  const twoOfFour = { childFriendlyExplanation: complete.childFriendlyExplanation, basicExamples: complete.basicExamples };
+  const oneOfFour = { commonMisconception: complete.commonMisconception };
+  const zeroOfFour = {};
+  assert.deepEqual(
+    [threeOfFour, twoOfFour, oneOfFour, zeroOfFour].map(hasCompleteTeachingContent),
+    [false, false, false, false],
+  );
+});
 
-console.log(`\nMapping pipeline closure: ${passed}/18 passed`);
+console.log(`\nMapping pipeline closure: ${passed}/20 passed`);

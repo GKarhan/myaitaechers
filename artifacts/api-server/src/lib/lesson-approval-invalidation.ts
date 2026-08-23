@@ -12,25 +12,27 @@
  * Usage: call `await invalidateLessonApproval(lessonId)` immediately after any
  * persisted authoring change in lessons.ts and teacher.ts routes.
  *
- * This is a silent no-op when the lesson is not approved OR when everApproved=true.
+ * This is a silent no-op when the lesson is neither approved nor active, or when
+ * everApproved=true.
  * Never throws — failures are logged but do not roll back the authoring change.
  */
 import { db, lessonsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 export async function invalidateLessonApproval(lessonId: number): Promise<void> {
   try {
-    // Only invalidate lessons that are currently "approved" AND have never been
-    // approved before (everApproved=false).  Once a lesson is everApproved, teacher
-    // edits are authoritative and must not trigger re-approval workflow.
+    // An explicit missing-content override is deliberately non-sticky
+    // (everApproved=false). It may already have been activated for students, so
+    // editing it must also remove the active/deliverable state. Once a lesson is
+    // normally approved (everApproved=true), teacher edits remain authoritative.
     await db
       .update(lessonsTable)
       .set({ status: "needs_review" })
       .where(
         and(
           eq(lessonsTable.id, lessonId),
-          eq(lessonsTable.status, "approved"),
+          inArray(lessonsTable.status, ["approved", "active"]),
           eq(lessonsTable.everApproved, false),
         )
       );

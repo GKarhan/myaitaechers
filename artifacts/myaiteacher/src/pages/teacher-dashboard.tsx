@@ -1236,6 +1236,7 @@ function LessonNodesPanel({
   const [approvalErrors, setApprovalErrors] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
   const [approvalWarnings, setApprovalWarnings] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
   const [showApprovalErrors, setShowApprovalErrors] = useState(false);
+  const [missingContentOverrideCount, setMissingContentOverrideCount] = useState<number | null>(null);
 
   // Phase 1.9: linked tests section — type now includes live completion stats
   // returned by the extended GET /api/lessons/:id/quizzes endpoint.
@@ -1264,7 +1265,7 @@ function LessonNodesPanel({
   // Sync external authoringStatus changes (e.g. after lesson list refetch)
   useEffect(() => { setApprovalStatus(authoringStatus); }, [authoringStatus]);
 
-  const handleFinalApprove = async () => {
+  const handleFinalApprove = async (confirmMissingTeachingContent = false) => {
     if (approvalPending) return;
     setApprovalPending(true);
     setApprovalErrors([]);
@@ -1274,9 +1275,11 @@ function LessonNodesPanel({
       const r = await fetch(`/api/lessons/${lessonId}/final-approve`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(confirmMissingTeachingContent ? { confirmMissingTeachingContent: true } : {}),
       });
       const data = await r.json();
       if (data.approved) {
+        setMissingContentOverrideCount(null);
         setApprovalStatus("approved");
         setApprovalErrors([]);
         setApprovalWarnings(data.warnings ?? []);
@@ -1284,6 +1287,13 @@ function LessonNodesPanel({
         // Refresh the lesson card so (l as any).status === "approved" is seen immediately
         // and the "Հandznarar sovorgiin" button becomes clickable without a page reload.
         qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+      } else if (r.status === 409 && data.confirmationRequired === true) {
+        const count = Number(data.missingTeachingContent?.nodeCount);
+        setMissingContentOverrideCount(Number.isFinite(count) ? count : 0);
+        setApprovalStatus("needs_review");
+        setApprovalErrors([]);
+        setApprovalWarnings(data.warnings ?? []);
+        setShowApprovalErrors(false);
       } else {
         setApprovalStatus("needs_review");
         setApprovalErrors(data.errors ?? []);
@@ -2642,7 +2652,7 @@ function LessonNodesPanel({
                       <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300">✅ Հաստատված</span>
                     ) : (
                       <button
-                        onClick={handleFinalApprove}
+                        onClick={() => { void handleFinalApprove(); }}
                         disabled={approvalPending || !finalApprovalPrerequisitesReady}
                         title={finalApprovalPrerequisitesReady ? "Կատարել վերջնական հաստատումը" : "Նախ ստեղծիր քարտեզագրումը"}
                         className="flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300 transition-colors hover:border-emerald-300/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
@@ -2740,6 +2750,45 @@ function LessonNodesPanel({
               )}
             </div>
           )}
+
+          <AlertDialog
+            open={missingContentOverrideCount !== null}
+            onOpenChange={(open) => {
+              if (!open && !approvalPending) setMissingContentOverrideCount(null);
+            }}
+          >
+            <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-base text-amber-200">
+                  Հաստատե՞լ դասը առանց ամբողջական ուսուցման բովանդակության
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
+                  {missingContentOverrideCount} MicroNode-ի համար ուսուցման բովանդակությունը
+                  դեռ ամբողջական չէ։ Կարող եք հաստատել դասը՝ ընդունելով, որ այդ նյութը
+                  բացակայում է և պետք է լրացվի հետագայում։
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  disabled={approvalPending}
+                  onClick={() => setMissingContentOverrideCount(null)}
+                  className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+                >
+                  Չեղարկել
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={approvalPending}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void handleFinalApprove(true);
+                  }}
+                  className="bg-amber-500 text-black hover:bg-amber-400"
+                >
+                  {approvalPending ? "Հաստատվում է..." : "Հաստատել առանց լրացուցիչ բովանդակության"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">

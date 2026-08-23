@@ -3,7 +3,8 @@
  *
  * Single authoritative validator called by POST /lessons/:lessonId/final-approve.
  * Never calls AI. Reads only persisted DB state.
- * Returns { errors, warnings } — errors block approval, warnings do not.
+ * Returns { errors, overrideable, warnings } — errors block approval,
+ * overrideable issues require an explicit teacher decision, warnings do not.
  */
 import {
   db,
@@ -29,6 +30,8 @@ export interface ValidationIssue {
 
 export interface LessonValidationResult {
   errors: ValidationIssue[];
+  /** Issues that are safe only when the teacher explicitly accepts the tradeoff. */
+  overrideable: ValidationIssue[];
   warnings: ValidationIssue[];
   /** Summary counts for the final report */
   summary: {
@@ -104,6 +107,7 @@ export async function validateLessonForFinalApproval(
   lessonId: number
 ): Promise<LessonValidationResult> {
   const errors: ValidationIssue[] = [];
+  const overrideable: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
   // ── Load all authoritative data ─────────────────────────────────────────────
@@ -350,7 +354,7 @@ export async function validateLessonForFinalApproval(
   );
   for (const node of nodesNeedingPhase2) {
     const missing = phase2MissingFields(node as any);
-    errors.push({
+    overrideable.push({
       code: "MISSING_PHASE2",
       messageArm: `Phase 2 pataratsma tvaynery bacakayum en (${missing.length}) · «${node.title}»`,
       nodeId: node.id,
@@ -430,6 +434,7 @@ export async function validateLessonForFinalApproval(
 
   return {
     errors,
+    overrideable,
     warnings,
     summary: {
       totalNodes: nodes.length,
