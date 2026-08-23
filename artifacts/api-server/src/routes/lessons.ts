@@ -3886,22 +3886,92 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
   const confirmMissingTeachingContent = req.body?.confirmMissingTeachingContent === true;
-  const finalization = await db.transaction(async (tx) => {
+  const repairedAlignmentIds = await db.transaction(async (tx) => {
     // Serialize final approval per lesson. Authoring writes persist their
     // material change first and then use the same parent row when invalidating,
     // which avoids child-to-parent lock inversions while still ensuring any
     // concurrent change returns a non-sticky override to review.
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
 
+    // One bounded, deterministic normalization pass: an existing canonical
+    // SUPPORTING relation can become REQUIRED only when it is the sole
+    // relationship for that Outcome, remains source-safe, and has enough
+    // current C2 capacity. This never creates a link from a textual guess.
+    const [repairLesson] = await tx.select({ mappingMetadata: lessonsTable.mappingMetadata })
+      .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    const repairMetadata = (repairLesson?.mappingMetadata ?? {}) as Record<string, any>;
+    const sourceStatuses = new Map<number, string>(
+      Array.isArray(repairMetadata?.quality?.sourceAlignment?.nodes)
+        ? repairMetadata.quality.sourceAlignment.nodes
+          .filter((entry: { nodeId?: unknown; status?: unknown }) =>
+            typeof entry.nodeId === "number" && typeof entry.status === "string")
+          .map((entry: { nodeId: number; status: string }) => [entry.nodeId, entry.status])
+        : [],
+    );
+    const [repairOutcomes, repairNodes, repairAlignments, repairLevels] = await Promise.all([
+      tx.select({ id: lessonOutcomesTable.id }).from(lessonOutcomesTable)
+        .where(eq(lessonOutcomesTable.lessonId, lessonId)),
+      tx.select({
+        id: lessonNodesTable.id,
+        targetBloomLevel: lessonNodesTable.targetBloomLevel,
+        cogPathStatus: lessonNodesTable.cogPathStatus,
+      }).from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId)),
+      tx.select().from(lessonOutcomeNodeAlignmentsTable)
+        .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
+      tx.select({
+        lessonNodeId: lessonNodeCognitiveLevelsTable.lessonNodeId,
+        cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+        isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+        isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
+      }).from(lessonNodeCognitiveLevelsTable)
+        .innerJoin(lessonNodesTable, eq(lessonNodesTable.id, lessonNodeCognitiveLevelsTable.lessonNodeId))
+        .where(eq(lessonNodesTable.lessonId, lessonId)),
+    ]);
+    const repairNodesById = new Map(repairNodes.map((node) => [node.id, node]));
+    const repairLevelsByNode = new Map<number, typeof repairLevels>();
+    for (const level of repairLevels) {
+      const levels = repairLevelsByNode.get(level.lessonNodeId) ?? [];
+      levels.push(level);
+      repairLevelsByNode.set(level.lessonNodeId, levels);
+    }
+    const repairedIds: number[] = [];
+    for (const outcome of repairOutcomes) {
+      const alignments = repairAlignments.filter((alignment) => alignment.lessonOutcomeId === outcome.id);
+      if (alignments.some((alignment) => alignment.role === "REQUIRED") || alignments.length !== 1) continue;
+      const alignment = alignments[0];
+      if (alignment.role !== "SUPPORTING") continue;
+      const node = repairNodesById.get(alignment.lessonNodeId);
+      const sourceStatus = sourceStatuses.get(alignment.lessonNodeId);
+      if (!node || sourceStatus === "INSUFFICIENT" || sourceStatus === "UNREADABLE"
+        || !isCognitiveDepth(alignment.requiredCognitiveDepth)) continue;
+      const capacity = deriveNodeCognitiveCapacity({
+        targetBloomLevel: node.targetBloomLevel,
+        cogPathStatus: node.cogPathStatus,
+        levels: repairLevelsByNode.get(node.id) ?? [],
+      });
+      if (!isDepthWithinCapacity(alignment.requiredCognitiveDepth, capacity)) continue;
+      await tx.update(lessonOutcomeNodeAlignmentsTable)
+        .set({ role: "REQUIRED", updatedAt: new Date() })
+        .where(eq(lessonOutcomeNodeAlignmentsTable.id, alignment.id));
+      repairedIds.push(alignment.id);
+    }
+
+    return repairedIds;
+  });
+
+  const finalization = await db.transaction(async (tx) => {
+    // Re-lock after the committed bounded repair so validation reads the latest
+    // canonical state rather than an uncommitted transaction snapshot.
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
     const result = await validateLessonForFinalApproval(lessonId);
     const missingTeachingContent = result.overrideable.filter(
       (issue) => issue.code === "MISSING_PHASE2",
     );
     if (result.errors.length > 0) {
-      return { kind: "blocked" as const, result, missingTeachingContent };
+      return { kind: "blocked" as const, result, missingTeachingContent, repairedAlignmentIds };
     }
     if (missingTeachingContent.length > 0 && !confirmMissingTeachingContent) {
-      return { kind: "confirmation_required" as const, result, missingTeachingContent };
+      return { kind: "confirmation_required" as const, result, missingTeachingContent, repairedAlignmentIds };
     }
 
     const [currentLesson] = await tx.select({
@@ -3939,7 +4009,7 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
         },
       } as any)
       .where(eq(lessonsTable.id, lessonId));
-    return { kind: "approved" as const, result, approvalAudit };
+    return { kind: "approved" as const, result, approvalAudit, repairedAlignmentIds };
   });
 
   if (finalization.kind === "blocked") {
@@ -3949,6 +4019,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
       errors: finalization.result.errors,
       overrideable: finalization.missingTeachingContent,
       confirmationRequired: false,
+      readiness: finalization.result.readiness,
+      repairedAlignmentIds: finalization.repairedAlignmentIds,
       warnings: finalization.result.warnings,
       summary: finalization.result.summary,
     });
@@ -3963,6 +4035,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
       errors: [],
       overrideable: finalization.missingTeachingContent,
       confirmationRequired: true,
+      readiness: finalization.result.readiness,
+      repairedAlignmentIds: finalization.repairedAlignmentIds,
       missingTeachingContent: { nodeCount: missingNodeIds.size },
       warnings: finalization.result.warnings,
       summary: finalization.result.summary,
@@ -3976,6 +4050,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     errors: [],
     overrideable: [],
     confirmationRequired: false,
+    readiness: finalization.result.readiness,
+    repairedAlignmentIds: finalization.repairedAlignmentIds,
     approvalMode: finalization.approvalAudit.mode,
     warnings: finalization.result.warnings,
     summary: finalization.result.summary,

@@ -58,4 +58,5 @@
 - [C2 approval readiness](c2-approval-readiness.md) — approved MicroNodes require accepted confirmed C2; generation honors explicit C1 target ceilings and fails closed on drift.
 - [Lesson workflow AI locks](lesson-workflow-ai-locks.md) — generation availability must reflect persisted node content, while partial outcomes stay inspectable and never masquerade as completion.
 - [Mapping readiness policy](mapping-readiness-three-outcome.md) — safe review states may continue; only real source/grounding failures are hard blocks.
+- [Final approval readiness](final-approval-readiness.md) — only true errors block approval; safe reviews stay advisory, missing content needs explicit override, and repair may only normalize one existing safe relation.
 - [Teaching Content override approvals](teaching-content-override-approvals.md) — overrides are explicit, non-sticky approvals; later material edits must return delivery state to review.

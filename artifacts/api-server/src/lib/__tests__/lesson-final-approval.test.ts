@@ -15,6 +15,7 @@ import {
   lessonNodeTeachingPackageItemsTable,
   lessonExercisesTable,
   lessonOutcomesTable,
+  lessonOutcomeNodeAlignmentsTable,
   subjectsTable,
   usersTable,
 } from "@workspace/db";
@@ -122,9 +123,26 @@ const [dynLesson] = await db.insert(lessonsTable).values({
       },
     },
   },
-}).returning({ id: lessonsTable.id });
+}).returning({
+  id: lessonsTable.id,
+  mappingMetadata: lessonsTable.mappingMetadata,
+});
 
 const LESSON_ID = dynLesson.id;
+const BASE_MAPPING_METADATA = dynLesson.mappingMetadata;
+
+async function resetFinalReadinessFixture(): Promise<void> {
+  await db.delete(lessonOutcomeNodeAlignmentsTable)
+    .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, LESSON_ID));
+  await db.delete(lessonOutcomesTable)
+    .where(eq(lessonOutcomesTable.lessonId, LESSON_ID));
+  await db.update(lessonsTable).set({
+    status: "needs_review",
+    everApproved: false,
+    goalOutcomeReviewStatus: "legacy",
+    mappingMetadata: BASE_MAPPING_METADATA,
+  } as never).where(eq(lessonsTable.id, LESSON_ID));
+}
 
 // Create 2 approved nodes with all required Phase 2 fields
 const insertedNodes = await db.insert(lessonNodesTable).values([
@@ -516,6 +534,140 @@ it("G7: Teaching Package creation invalidates an active override-approved lesson
     await db.update(lessonsTable)
       .set({ status: "needs_review", everApproved: false } as never)
       .where(eq(lessonsTable.id, LESSON_ID));
+  }
+});
+
+it("R1: stale automatic Outcome-review metadata is review-only, not a final-approval blocker", async () => {
+  try {
+    const [outcome] = await db.insert(lessonOutcomesTable).values({
+      lessonId: LESSON_ID,
+      outcomeText: runTag(RUN_ID, "stale automatic relation"),
+      sequence: 1,
+      status: "approved",
+      provenance: "teacher_authored",
+    }).returning({ id: lessonOutcomesTable.id });
+    await db.insert(lessonOutcomeNodeAlignmentsTable).values({
+      lessonId: LESSON_ID,
+      lessonOutcomeId: outcome.id,
+      lessonNodeId: NODE.id,
+      role: "REQUIRED",
+      requiredCognitiveDepth: "remember",
+    });
+    await db.update(lessonsTable).set({
+      goalOutcomeReviewStatus: "confirmed",
+      mappingMetadata: {
+        ...((BASE_MAPPING_METADATA ?? {}) as Record<string, unknown>),
+        quality: {
+          sourceAudit: {
+            sourceSet: { titleMatch: { valid: true } },
+            sourceScope: { valid: true },
+          },
+          outcomeAlignmentAudit: {
+            persistedAlignments: 1,
+            requiresTeacherReview: true,
+            reviewedAt: null,
+          },
+        },
+      },
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+    const result = await validateLessonForFinalApproval(LESSON_ID);
+    assert.equal(result.errors.some((issue) => issue.code === "AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED"), false);
+    assert.equal(result.warnings.some((issue) => issue.code === "AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED"), true);
+    assert.equal(result.readiness, "REVIEW_REQUIRED");
+  } finally {
+    await resetFinalReadinessFixture();
+  }
+});
+
+it("R2/R10: one bounded repair promotes one valid persisted SUPPORTING relation", async () => {
+  try {
+    const [outcome] = await db.insert(lessonOutcomesTable).values({
+      lessonId: LESSON_ID,
+      outcomeText: runTag(RUN_ID, "promote existing relation"),
+      sequence: 1,
+      status: "approved",
+      provenance: "teacher_authored",
+    }).returning({ id: lessonOutcomesTable.id });
+    const [supporting] = await db.insert(lessonOutcomeNodeAlignmentsTable).values({
+      lessonId: LESSON_ID,
+      lessonOutcomeId: outcome.id,
+      lessonNodeId: NODE.id,
+      role: "SUPPORTING",
+      requiredCognitiveDepth: "remember",
+    }).returning({ id: lessonOutcomeNodeAlignmentsTable.id });
+    await db.update(lessonsTable).set({ goalOutcomeReviewStatus: "confirmed" } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+
+    const first = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.approved, true);
+    assert.deepEqual(first.body.repairedAlignmentIds, [supporting.id]);
+    const [promoted] = await db.select({ role: lessonOutcomeNodeAlignmentsTable.role })
+      .from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.id, supporting.id));
+    assert.equal(promoted?.role, "REQUIRED");
+
+    await db.update(lessonsTable).set({ status: "needs_review", everApproved: false } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    const second = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(second.status, 200);
+    assert.deepEqual(second.body.repairedAlignmentIds, [], "repair must not repeat after the single promotion");
+  } finally {
+    await resetFinalReadinessFixture();
+  }
+});
+
+it("R3: an Outcome without a safe existing relation remains blocked and no link is fabricated", async () => {
+  try {
+    await db.insert(lessonOutcomesTable).values({
+      lessonId: LESSON_ID,
+      outcomeText: runTag(RUN_ID, "no relationship may be invented"),
+      sequence: 1,
+      status: "approved",
+      provenance: "teacher_authored",
+    });
+    await db.update(lessonsTable).set({ goalOutcomeReviewStatus: "confirmed" } as never)
+      .where(eq(lessonsTable.id, LESSON_ID));
+    const response = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(response.status, 422);
+    assert.equal((response.body.errors as Array<{ code: string }>)
+      .some((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE"), true);
+    const alignments = await db.select({ id: lessonOutcomeNodeAlignmentsTable.id })
+      .from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, LESSON_ID));
+    assert.equal(alignments.length, 0);
+  } finally {
+    await resetFinalReadinessFixture();
+  }
+});
+
+it("R4: review-only readiness still permits canonical final approval", async () => {
+  try {
+    await db.update(lessonsTable).set({
+      mappingMetadata: {
+        ...((BASE_MAPPING_METADATA ?? {}) as Record<string, unknown>),
+        quality: {
+          sourceAudit: {
+            sourceSet: { titleMatch: { valid: true } },
+            sourceScope: { valid: true },
+          },
+          outcomeAlignmentAudit: {
+            persistedAlignments: 1,
+            requiresTeacherReview: true,
+            reviewedAt: null,
+          },
+        },
+      },
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+    const response = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.approved, true);
+    assert.equal(response.body.readiness, "REVIEW_REQUIRED");
+    const [persisted] = await db.select({ status: lessonsTable.status })
+      .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID));
+    assert.equal(persisted?.status, "approved");
+  } finally {
+    await resetFinalReadinessFixture();
   }
 });
 

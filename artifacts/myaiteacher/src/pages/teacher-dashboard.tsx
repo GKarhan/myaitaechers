@@ -751,7 +751,7 @@ function GenerateTeachingContentButton({
         onClick={handleGenerate}
         disabled={isActive || !prerequisitesReady}
         title={hasExistingPhase2
-          ? "Վերागеneratsnel amboлj dasy (կпаhаnjي hаstatum)"
+          ? "Կրկին գեներացնել կրթական բովանդակությունը"
           : "Ствrzел usutsman боvandakutyun"}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
@@ -2729,7 +2729,7 @@ function LessonNodesPanel({
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-destructive">
-                  ❌ Հաutatуmы chi anhnar · {approvalErrors.length} skhаlm.
+                  ❌ Չի հաստատվել · {approvalErrors.length} սխալ կա.
                 </span>
                 <button onClick={() => setShowApprovalErrors(false)} className="text-xs text-muted-foreground hover:text-white">✕</button>
               </div>

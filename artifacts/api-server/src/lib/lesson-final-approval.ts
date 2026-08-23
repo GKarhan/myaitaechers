@@ -29,6 +29,8 @@ export interface ValidationIssue {
 }
 
 export interface LessonValidationResult {
+  /** Canonical readiness classification for the current persisted lesson state. */
+  readiness: "READY" | "REVIEW_REQUIRED" | "BLOCKED";
   errors: ValidationIssue[];
   /** Issues that are safe only when the teacher explicitly accepts the tradeoff. */
   overrideable: ValidationIssue[];
@@ -219,9 +221,12 @@ export async function validateLessonForFinalApproval(
     outcomeAlignmentAudit.requiresTeacherReview === true &&
     !outcomeAlignmentAudit.reviewedAt
   ) {
-    errors.push({
+    // Final approval is the teacher's single explicit acceptance action. An
+    // existing, source-safe automatic relation that only retains its old review
+    // marker is advisory; it cannot force a second per-alignment approval step.
+    warnings.push({
       code: "AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED",
-      messageArm: "Ավտոմատ ստեղծված Outcome–MicroNode կապերը պետք է ուսուցչի կողմից վերանայվեն մինչև վերջնական հաստատումը։",
+      messageArm: "Outcome–MicroNode ավտոմատ կապերը խորհուրդ է տրվում վերանայել։ Դրանք չեն խանգարում դասի վերջնական հաստատմանը։",
     });
   }
 
@@ -250,7 +255,7 @@ export async function validateLessonForFinalApproval(
       outcomeAlignments
         .filter((alignment) =>
           alignment.role === "REQUIRED"
-          && nodes.some((node) => node.id === alignment.lessonNodeId && node.status === "approved"),
+          && nodes.some((node) => node.id === alignment.lessonNodeId),
         )
         .map((alignment) => alignment.lessonOutcomeId),
     );
@@ -433,6 +438,11 @@ export async function validateLessonForFinalApproval(
   }
 
   return {
+    readiness: errors.length > 0
+      ? "BLOCKED"
+      : overrideable.length > 0 || warnings.length > 0
+        ? "REVIEW_REQUIRED"
+        : "READY",
     errors,
     overrideable,
     warnings,

@@ -1,0 +1,621 @@
+FINAL LESSON APPROVAL → STUDENT ASSIGNMENT CLOSURE
+
+GOAL
+
+The current lesson-mapping workflow is almost complete.
+
+The remaining critical problem is:
+
+A teacher may have a usable mapped lesson, but canonical Final Approval can still
+fail because review-type Outcome–MicroNode alignment states are treated as hard
+blockers.
+
+Because Final Approval fails, the existing:
+
+“Հանձնարարել սովորողին”
+
+action remains disabled.
+
+Fix this fundamentally.
+
+IMPORTANT:
+Do NOT directly enable the student-assignment button from frontend.
+Do NOT fake lesson approval.
+Do NOT manually change DB approval state.
+Do NOT weaken true source/integrity/runtime safety.
+Do NOT redesign C1–C7.
+Do NOT change Quiz, Knowledge Tree, or AI Teacher runtime semantics.
+Do NOT publish/deploy.
+
+The desired canonical flow is:
+
+Mapping
+→ Generate Cognitive Paths
+→ Generate Teaching Content when possible
+→ Final lesson approval
+→ Assignment readiness becomes enabled
+
+Final lesson approval must be the ONE human acceptance step.
+
+==================================================
+0 — AUDIT FIRST — DO NOT CHANGE CODE YET
+==================================================
+
+Inspect the CURRENT implementation and CURRENT canonical lesson state.
+
+Trace:
+
+1. final approval endpoint;
+2. final approval validator;
+3. Outcome → MicroNode alignment validation;
+4. REQUIRED MicroNode validation;
+5. source-readiness validation;
+6. Cognitive Path readiness;
+7. Teaching Content readiness / existing override behavior;
+8. persisted lesson approval state;
+9. assignment-readiness logic;
+10. frontend condition controlling “Հանձնարարել սովորողին”.
+
+For every current final-approval failure classify it as:
+
+A. AUTO_REPAIRABLE
+B. REVIEW_REQUIRED_BUT_SAFE
+C. TRUE_HARD_BLOCKER
+
+Report the classification before making changes.
+
+Do NOT use historical job status as canonical truth.
+
+Current DB state is authoritative.
+
+==================================================
+1 — THREE-STATE FINAL-READINESS POLICY
+==================================================
+
+Use exactly these semantic outcomes:
+
+READY
+REVIEW_REQUIRED
+BLOCKED
+
+READY:
+Current canonical data satisfies the requirement.
+
+REVIEW_REQUIRED:
+The lesson is still structurally/safely usable, but teacher attention is
+recommended.
+
+BLOCKED:
+The lesson is not safe/complete enough for student delivery.
+
+CRITICAL RULE:
+
+REVIEW_REQUIRED alone must NOT automatically prevent the teacher from performing
+the ONE final lesson approval.
+
+Only BLOCKED conditions may prevent final approval.
+
+==================================================
+2 — OUTCOME → MICRONODE ALIGNMENT
+==================================================
+
+Current failures may include:
+
+AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED
+
+and:
+
+OUTCOME_WITHOUT_REQUIRED_NODE
+
+Do not simply suppress these validators.
+
+Instead inspect the actual current canonical relationships.
+
+For each Outcome:
+
+- inspect current Outcome → MicroNode links;
+- inspect REQUIRED / OPTIONAL / SUPPORTING semantics if present;
+- inspect MicroNode learning objectives;
+- inspect source grounding;
+- inspect existing canonical mapping metadata.
+
+If the existing relationship is valid and only has stale/review metadata:
+
+normalize it safely.
+
+If an Outcome already has a deterministically appropriate linked MicroNode but
+its REQUIRED classification is missing:
+
+repair that canonical relationship.
+
+Do NOT fabricate unsupported Outcome → MicroNode links.
+
+Do NOT assign a random MicroNode merely to make validation pass.
+
+==================================================
+3 — ONE BOUNDED AUTO-REPAIR PASS
+==================================================
+
+Before rejecting Final Approval, the backend may perform exactly ONE bounded
+deterministic repair pass.
+
+Examples of allowed repair:
+
+- stale alignment-review state;
+- valid existing Outcome relationship missing canonical REQUIRED normalization;
+- outdated review flag after underlying canonical data is already valid;
+- safe normalization derivable from existing authoritative mapping data.
+
+After that ONE repair pass:
+
+re-read current state from DB
+→ re-run canonical validation.
+
+NO LOOP.
+NO repeated AI generation.
+NO arbitrary data fabrication.
+
+==================================================
+4 — SAFE REVIEW MUST NOT BECOME AN APPROVAL MAZE
+==================================================
+
+If remaining issues are only safe review conditions such as:
+
+- automatic Outcome alignment review;
+- partial but usable source alignment;
+- Cognitive Path review;
+- generated Teaching Content review;
+- other safe teacher-review states;
+
+then Final Approval must remain possible.
+
+The teacher must NOT have to separately approve:
+
+- every MicroNode;
+- every exercise;
+- every Cognitive Path;
+- every Outcome link;
+- every Teaching Content object.
+
+The ONE:
+
+“Վերջնական հաստատում”
+
+action is the teacher's explicit human acceptance step.
+
+==================================================
+5 — TEACHING CONTENT MUST NOT REINTRODUCE THE BLOCK
+==================================================
+
+The previous workflow already introduced safe handling for Teaching Content that
+cannot be generated.
+
+Preserve that behavior.
+
+If Teaching Content is missing but the existing policy says teacher override is
+allowed:
+
+Final Approval may proceed through the existing explicit teacher confirmation.
+
+Do NOT undo that feature.
+
+Do NOT make missing Teaching Content an unconditional hard blocker again.
+
+Do NOT change the Teaching Content generator itself in this task unless a tiny
+integration correction is strictly required for final-readiness classification.
+
+==================================================
+6 — TRUE HARD BLOCKERS
+==================================================
+
+These remain non-overridable.
+
+Examples:
+
+- missing/unreadable required source;
+- materially unsupported MicroNode;
+- corrupted Topic/MicroNode hierarchy;
+- unusable Cognitive Path required by runtime;
+- required runtime data genuinely missing;
+- structurally invalid Outcome mapping with no safe derivation;
+- data-integrity failure;
+- another condition that would make student delivery unsafe.
+
+If a TRUE hard blocker exists:
+
+Final Approval must fail.
+
+Teacher override must NOT bypass it.
+
+==================================================
+7 — TEACHER-FACING UX
+==================================================
+
+Do NOT expose raw technical validator codes as the main teacher message.
+
+Do not primarily show things like:
+
+[AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED]
+
+[OUTCOME_WITHOUT_REQUIRED_NODE]
+
+[MICRONODE_SOURCE_ALIGNMENT_REVIEW_REQUIRED]
+
+[COGNITIVE_PATH_REVIEW_REQUIRED]
+
+These may remain available in developer/debug information if useful.
+
+Teacher-facing UI should translate them into simple Armenian.
+
+If only reviewable conditions remain, show something like:
+
+“Դասում կան կետեր, որոնք խորհուրդ է տրվում վերանայել։
+Դրանք չեն խանգարում դասի օգտագործմանը։
+Ցանկանո՞ւմ եք շարունակել վերջնական հաստատումը։”
+
+Actions:
+
+“Չեղարկել”
+
+“Շարունակել և հաստատել”
+
+Keep this compact.
+
+Do NOT make the mapping workflow block/card expand vertically because of long
+technical messages.
+
+Detailed diagnostics may be collapsible or developer-only.
+
+==================================================
+8 — REMOVE REDUNDANT NORMAL SUCCESS NOISE
+==================================================
+
+Preserve the simplified mapping UI policy already established.
+
+Do NOT reintroduce repeated:
+
+“✅ Հաստատված”
+
+badges next to every normal:
+
+- exercise;
+- MicroNode;
+- Cognitive Path;
+- generated item.
+
+Normal success should be visually quiet.
+
+Show teacher attention states when something actually needs review.
+
+Do NOT reintroduce:
+
+“Հաստատել բոլոր հանգույցները”
+
+as another required workflow step.
+
+Final lesson approval remains the single human acceptance action.
+
+==================================================
+9 — SERVER-OWNED FINAL APPROVAL
+==================================================
+
+When teacher activates:
+
+“Վերջնական հաստատում”
+
+the backend must:
+
+1. read CURRENT canonical lesson state;
+2. run one bounded deterministic repair pass;
+3. re-read current state;
+4. run canonical validation;
+5. separate:
+   READY
+   REVIEW_REQUIRED
+   BLOCKED
+6. if BLOCKED exists:
+   reject approval;
+7. if only READY / REVIEW_REQUIRED remain:
+   allow explicit teacher final approval;
+8. persist canonical final approval;
+9. read the persisted state back from DB;
+10. return the authoritative result.
+
+Frontend must never fake success.
+
+==================================================
+10 — STUDENT ASSIGNMENT READINESS
+==================================================
+
+This is a REQUIRED acceptance condition.
+
+After successful canonical Final Approval:
+
+the existing:
+
+“Հանձնարարել սովորողին”
+
+action must become enabled.
+
+Do NOT directly hard-code:
+
+disabled = false
+
+or otherwise bypass readiness.
+
+Correct chain:
+
+Teacher Final Approval
+→ backend validates
+→ canonical approved state persisted
+→ frontend invalidates/refetches lesson/readiness
+→ assignment-readiness evaluates current approved state
+→ “Հանձնարարել սովորողին” becomes enabled.
+
+Audit this complete chain.
+
+If assignment-readiness contains an obsolete gate based on old per-item
+confirmation states, fix that gate to consume the NEW canonical final approval
+state.
+
+But preserve all genuine assignment requirements.
+
+==================================================
+11 — CURRENT LESSON REAL ACCEPTANCE TEST
+==================================================
+
+Use the current lesson that exposed the problem:
+
+Մաթեմատիկա 5
+§1.4 Կարգեր, կարգային միավորներ
+
+Do NOT remap it.
+Do NOT delete data.
+Do NOT manually force DB statuses.
+Do NOT fabricate relationships.
+Do NOT reset unrelated state.
+
+First reproduce current Final Approval.
+
+Record all current blockers.
+
+For each:
+
+CODE:
+CLASSIFICATION:
+AUTO-REPAIR:
+CURRENT RESULT:
+FINAL IMPACT:
+
+Then execute the corrected Final Approval flow.
+
+==================================================
+12 — DATABASE READ-BACK
+==================================================
+
+If Final Approval succeeds:
+
+READ THE LESSON BACK FROM DATABASE.
+
+Verify the persisted canonical approval state.
+
+Do not accept frontend appearance alone as proof.
+
+Report:
+
+FINAL_APPROVAL_PERSISTED:
+YES / NO
+
+==================================================
+13 — ASSIGNMENT BUTTON ACCEPTANCE
+==================================================
+
+After successful persisted approval:
+
+reload/refetch the teacher page.
+
+Verify:
+
+“Հանձնարարել սովորողին”
+
+VISIBLE:
+YES / NO
+
+ENABLED:
+YES / NO
+
+Do NOT create a real student assignment.
+
+If clicking it would require selecting a student/class, stop before committing
+the assignment.
+
+We only need assignment READINESS verified.
+
+==================================================
+14 — REGRESSION MATRIX
+==================================================
+
+Add deterministic tests for at least these 10 cases.
+
+CASE 1
+Valid Outcome links + stale automatic-review flag
+→ normalized/review-only
+→ final approval allowed.
+
+CASE 2
+Outcome missing REQUIRED classification but deterministic existing relationship
+exists
+→ repaired
+→ final approval allowed.
+
+CASE 3
+Outcome has no safe derivable MicroNode relationship
+→ no fabricated link
+→ BLOCKED.
+
+CASE 4
+Only REVIEW_REQUIRED conditions remain
+→ teacher final approval allowed.
+
+CASE 5
+True source/integrity blocker remains
+→ approval rejected.
+
+CASE 6
+Teaching Content missing but existing explicit safe override applies
+→ final approval allowed after teacher confirmation.
+
+CASE 7
+Successful final approval
+→ canonical approved state persisted and read back.
+
+CASE 8
+Canonical approved state
+→ assignment readiness enabled.
+
+CASE 9
+Failed final approval
+→ assignment remains disabled.
+
+CASE 10
+Auto-repair executes maximum once
+→ no repair loop.
+
+Expected:
+
+10 / 10 PASS.
+
+==================================================
+15 — EXISTING REGRESSION SUITES
+==================================================
+
+Run all relevant existing tests, including:
+
+- final approval
+- C1/C2 readiness
+- C6 safety
+- C7 safety
+- assignment readiness if a suite exists
+- API typecheck
+- frontend typecheck
+- API build
+- frontend production build
+
+Do not weaken existing assertions merely to make the new implementation pass.
+
+If an old test encodes the intentionally replaced per-item approval behavior,
+update it only after documenting why the canonical policy changed.
+
+==================================================
+16 — STRICT SCOPE
+==================================================
+
+Do NOT change:
+
+- Quiz
+- Knowledge Tree
+- student quiz-taking
+- AI Teacher pedagogical runtime
+- canonical Subject → Lesson → Topic → MicroNode hierarchy
+- C3–C7 semantics
+- mapping source-fidelity rules
+- exercise content
+- lesson content
+- unrelated dashboard functionality
+
+Do NOT publish/deploy.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+ROOT CAUSE:
+...
+
+OLD FINAL-APPROVAL BLOCKERS:
+...
+
+AUTO_REPAIRED:
+...
+
+REVIEW_REQUIRED:
+...
+
+TRUE_HARD_BLOCKERS:
+...
+
+OUTCOME → MICRONODE REPAIR:
+...
+
+REQUIRED RELATION REPAIR:
+...
+
+TEACHING CONTENT OVERRIDE PRESERVED:
+YES / NO
+
+FINAL APPROVAL RESULT:
+APPROVED / BLOCKED
+
+FINAL_APPROVAL_PERSISTED:
+YES / NO
+
+LESSON DB STATUS:
+...
+
+ASSIGNMENT READINESS:
+READY / NOT_READY
+
+“ՀԱՆՁՆԱՐԱՐԵԼ ՍՈՎՈՐՈՂԻՆ”:
+
+VISIBLE:
+YES / NO
+
+ENABLED:
+YES / NO
+
+REAL STUDENT ASSIGNMENT CREATED:
+NO
+
+10-CASE MATRIX:
+X / 10 PASS
+
+EXISTING REGRESSION TESTS:
+...
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+YES / NO
+
+If YES:
+list exactly what canonical repair/approval state was persisted.
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+C1–C7 SAFETY WEAKENED:
+NO
+
+PUBLISHED/DEPLOYED:
+NO
+
+FINAL VERDICT:
+
+Return exactly ONE:
+
+FINAL APPROVAL AND STUDENT ASSIGNMENT READINESS STABILIZED
+
+or
+
+FINAL APPROVAL BLOCKED — <smallest exact true blocker>
+
+Then STOP.
