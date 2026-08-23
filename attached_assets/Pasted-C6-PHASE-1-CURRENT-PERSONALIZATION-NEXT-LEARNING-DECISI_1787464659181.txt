@@ -1,0 +1,1035 @@
+C6 — PHASE 1
+CURRENT PERSONALIZATION / NEXT-LEARNING-DECISION
+ARCHITECTURE + DATA AUDIT
+
+AUDIT ONLY — NO CODE CHANGES
+
+We have completed and verified:
+
+C1 — Curriculum / MicroNode mapping
+C2 — Cognitive Path architecture
+C3 — Canonical evidence
+C4 — Demonstrated Cognitive Ceiling
+C5 — Canonical four-state Knowledge Tree
+
+C5 now provides canonical learner × MicroNode state based on:
+
+- accepted C2 target Cognitive Level
+- C3-qualified evidence
+- C4 demonstrated Cognitive Level
+- meaningful attempt / coverage
+
+Canonical C5 states:
+
+MASTERED
+PARTIAL
+NOT_KNOWN
+NOT_STUDIED
+
+We now begin:
+
+C6 — PERSONALIZATION ENGINE
+
+════════════════════════════════════════════════════
+0. PURPOSE OF THIS AUDIT
+════════════════════════════════════════════════════
+
+Determine how the CURRENT application decides:
+
+1. which MicroNode the learner should work on next;
+2. which Cognitive Level inside that MicroNode should be targeted next;
+3. whether prerequisite remediation is required;
+4. whether the learner should:
+   - start learning,
+   - continue learning,
+   - remediate,
+   - review,
+   - or move forward;
+5. what information is currently passed into AI Teacher when a learner
+   starts/resumes learning.
+
+We need the smallest implementation plan that will make this decision
+canonical and deterministic using C1–C5.
+
+DO NOT IMPLEMENT YET.
+
+Do not modify code.
+Do not modify DB.
+Do not run migrations.
+Do not change lesson 644.
+Do not redesign AI Teacher.
+Do not redesign Knowledge Tree.
+Do not redesign quizzes.
+
+════════════════════════════════════════════════════
+1. ACCEPTED C1–C5 CONTRACT — DO NOT REDEFINE
+════════════════════════════════════════════════════
+
+Canonical hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ atomic MicroNode
+
+C2:
+
+Each MicroNode may have an accepted ordered Cognitive Path:
+
+L1 → L2 → L3 ...
+
+Each path contains:
+
+- Cognitive Level IDs
+- sequence/order
+- curriculum target
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimumIndependentEvidence
+
+IMPORTANT:
+
+A path does NOT have to start at REMEMBER.
+
+Use accepted path identity/order.
+
+Do not blindly use Bloom numeric values.
+
+C3:
+
+Canonical learner evidence determines which evidence is trustworthy.
+
+C4:
+
+Canonical learner × MicroNode demonstrated ceiling exists.
+
+It is:
+
+- Cognitive-Level-ID based
+- contiguous
+- monotonic
+- derived from C3-qualified evidence
+- shared by Chat and Quiz
+
+C5:
+
+Canonical Knowledge Tree state exists:
+
+MASTERED
+PARTIAL
+NOT_KNOWN
+NOT_STUDIED
+
+C5 also exposes:
+
+- target Cognitive Level
+- demonstrated Cognitive Level
+- coverage
+- remaining cognitive gap
+- supporting mastery/confidence
+
+C6 MUST CONSUME these systems.
+
+C6 must NOT recreate C2/C3/C4/C5 logic.
+
+════════════════════════════════════════════════════
+2. TARGET C6 RESPONSIBILITY
+════════════════════════════════════════════════════
+
+C6 should eventually answer one deterministic question:
+
+Given the learner's current curriculum and demonstrated knowledge,
+
+WHAT SHOULD THE LEARNER WORK ON NEXT?
+
+The future canonical decision should be capable of returning concepts
+equivalent to:
+
+learnerId
+lessonId
+microNodeId
+
+knowledgeState
+
+curriculumTargetCognitiveLevelId
+demonstratedCognitiveLevelId
+
+nextTargetCognitiveLevelId
+
+decisionType:
+START
+CONTINUE
+REMEDIATE
+REVIEW
+ADVANCE
+
+reasonCode
+
+prerequisiteStatus
+
+and enough deterministic context for C7 AI Teacher.
+
+Do NOT implement this contract yet.
+
+Audit whether equivalents already exist.
+
+════════════════════════════════════════════════════
+3. AUDIT CURRENT PERSONALIZATION LOGIC
+════════════════════════════════════════════════════
+
+Search the repository for ALL current logic that decides or influences:
+
+- next node
+- current node
+- recommended node
+- target node
+- resume node
+- lesson start node
+- next cognitive level
+- active cognitive level
+- remediation
+- prerequisite return
+- review
+- mastery-based routing
+- confidence-based routing
+- knowledge-tree action
+- teaching mode
+- session decision
+- phase selection
+- learning mode
+- weak node selection
+- incomplete node selection
+- progress-based node selection
+
+Search especially:
+
+artifacts/api-server/src/routes/
+artifacts/api-server/src/services/
+artifacts/myaiteacher/src/
+
+and relevant schema/shared packages.
+
+Return exact:
+
+FILE
+FUNCTION
+CURRENT INPUT
+CURRENT DECISION
+CURRENT OUTPUT
+CONSUMER
+
+Do not infer from names alone.
+
+Read the implementation.
+
+════════════════════════════════════════════════════
+4. AUDIT AI TEACHER ENTRY POINT
+════════════════════════════════════════════════════
+
+Trace what happens TODAY when a learner starts or resumes an AI lesson.
+
+Trace:
+
+student action
+→ frontend
+→ endpoint
+→ session creation/resume
+→ currentNodeId selection
+→ Cognitive Level selection
+→ lesson context
+→ AI Teacher.
+
+Determine exactly:
+
+A. How is initial currentNodeId chosen?
+
+B. How is the next MicroNode chosen?
+
+C. What causes currentNodeId to advance?
+
+D. Is Knowledge Tree state consulted?
+
+E. Is C4 demonstrated ceiling consulted?
+
+F. Is C2 target consulted?
+
+G. How is activeCognitiveLevelId selected?
+
+H. Can the learner resume at a Cognitive Level already demonstrated?
+
+I. Can the learner skip a level already demonstrated?
+
+J. Can the system accidentally start from REMEMBER even when the
+accepted path starts above REMEMBER?
+
+K. Is personalization decision duplicated in chat.ts?
+
+L. Is there already a reusable decision service?
+
+Provide exact evidence.
+
+════════════════════════════════════════════════════
+5. AUDIT KNOWLEDGE TREE ACTIONS
+════════════════════════════════════════════════════
+
+C5 conceptual states/actions are:
+
+MASTERED / Գիտի
+→ Կրկնություն
+
+PARTIAL / Մասնակի գիտի
+→ Սովորել
+
+NOT_KNOWN / Չգիտի
+→ Լիարժեք սովորել
+
+NOT_STUDIED / Դեռ չի ուսումնասիրել
+→ Սովորել նախնական
+
+Audit what these buttons/actions currently do.
+
+For each state determine:
+
+frontend action
+→ route/navigation
+→ parameters
+→ backend
+→ AI Teacher/session effect.
+
+Important:
+
+Determine whether these labels currently cause a real different
+personalized learning decision
+
+OR
+
+whether they are mostly UI labels that ultimately start the same lesson
+flow.
+
+════════════════════════════════════════════════════
+6. AUDIT NEXT COGNITIVE LEVEL SELECTION
+════════════════════════════════════════════════════
+
+This is one of the most important C6 questions.
+
+For an accepted path:
+
+UNDERSTAND
+→ APPLY
+→ ANALYZE(target)
+
+audit current behavior for:
+
+A.
+demonstrated = null
+
+What level does the system start?
+
+B.
+demonstrated = UNDERSTAND
+
+What level does it start/resume?
+
+C.
+demonstrated = APPLY
+
+What level does it start/resume?
+
+D.
+demonstrated = ANALYZE
+
+What happens?
+
+Determine whether current code can deterministically calculate:
+
+nextTargetLevel =
+first accepted C2 path level AFTER demonstrated ceiling
+
+subject to target ceiling.
+
+If demonstrated is null:
+
+nextTargetLevel =
+first accepted path level.
+
+Do NOT implement yet.
+
+Determine whether this logic already exists and where.
+
+════════════════════════════════════════════════════
+7. AUDIT MASTERED / REVIEW BEHAVIOR
+════════════════════════════════════════════════════
+
+For:
+
+C5 MASTERED
+
+determine current behavior.
+
+Does the system:
+
+- start full lesson again?
+- select a review mode?
+- select exercises?
+- use dueForReview?
+- use mastery/confidence?
+- use spaced repetition?
+- use last evidence timestamp?
+- use no special logic?
+
+Identify exactly what exists.
+
+C6 should not redesign spaced repetition unless an existing mechanism
+already exists and is relevant.
+
+We only need to understand whether REVIEW is currently a real
+personalization decision.
+
+════════════════════════════════════════════════════
+8. AUDIT NOT_STUDIED BEHAVIOR
+════════════════════════════════════════════════════
+
+For:
+
+C5 NOT_STUDIED
+
+determine current starting behavior.
+
+We expect conceptually:
+
+START
+at the first accepted C2 Cognitive Level.
+
+But audit actual behavior.
+
+Does the system:
+
+- select first lesson node?
+- select first uncompleted node?
+- select REMEMBER?
+- use Bloom number?
+- use Cognitive Path sequence?
+- use lesson order only?
+
+Report exact implementation.
+
+════════════════════════════════════════════════════
+9. AUDIT PARTIAL BEHAVIOR
+════════════════════════════════════════════════════
+
+For:
+
+C5 PARTIAL
+
+determine whether the system currently resumes AFTER the demonstrated
+ceiling.
+
+Example:
+
+Accepted path:
+UNDERSTAND → APPLY → ANALYZE
+
+Demonstrated:
+UNDERSTAND
+
+Expected future C6 concept:
+CONTINUE at APPLY.
+
+Audit what happens today.
+
+Does it:
+
+- restart UNDERSTAND?
+- restart entire MicroNode?
+- use mastery score?
+- use last active level?
+- use demonstrated ceiling?
+- select APPLY correctly?
+
+Report exact behavior.
+
+════════════════════════════════════════════════════
+10. AUDIT NOT_KNOWN / REMEDIATION BEHAVIOR
+════════════════════════════════════════════════════
+
+For:
+
+C5 NOT_KNOWN
+
+meaning:
+
+meaningful attempt exists,
+but no Cognitive Level is sufficiently demonstrated.
+
+Audit current remediation logic.
+
+Search for:
+
+- remediation budget
+- retry counts
+- activeHelpCount
+- error taxonomy
+- alternate explanation
+- extra example
+- contrast example
+- guided support
+- prerequisite check
+- return to prerequisite
+- lower difficulty
+- simplify language
+- step by step
+- independent re-check
+
+Determine:
+
+A. What already exists?
+
+B. Is remediation controlled by AI prompt only?
+
+C. Is it controlled by backend deterministic state?
+
+D. Is there a bounded remediation budget?
+
+E. What happens when target is not reached?
+
+F. Does current system incorrectly mark a level/node complete?
+
+G. Does current demonstrated ceiling remain truthful?
+
+Do NOT redesign C7 teaching behavior.
+
+We only need to determine what C6 must decide before C7 executes it.
+
+════════════════════════════════════════════════════
+11. AUDIT PREREQUISITES / DEPENDENCIES
+════════════════════════════════════════════════════
+
+Search actual schema/data/services for:
+
+lessonNodeDependencies
+lesson_node_dependencies
+prerequisite
+dependency
+dependsOn
+requiredNode
+
+Determine:
+
+1. Does a canonical dependency graph exist?
+
+2. Is it MicroNode → MicroNode?
+
+3. Are dependencies persisted by mapping?
+
+4. Are dependencies actually populated in current data?
+
+5. Does AI Teacher use them?
+
+6. Does Knowledge Tree use them?
+
+7. Does any current routing logic block/redirect based on prerequisites?
+
+8. Can C6 safely determine:
+   prerequisite satisfied / not satisfied?
+
+9. What definition of prerequisite satisfaction is currently used, if
+   any?
+
+Do not invent a new prerequisite architecture if current data cannot
+support it.
+
+Report the actual state.
+
+════════════════════════════════════════════════════
+12. AUDIT LESSON / NODE ORDER
+════════════════════════════════════════════════════
+
+C6 may need curriculum order when selecting the next MicroNode.
+
+Audit authoritative ordering fields for:
+
+Lesson
+Topic
+MicroNode.
+
+Determine:
+
+- actual DB columns
+- backend ordering
+- frontend ordering
+- whether teacher reordering persists
+- whether next-node logic uses this canonical order
+
+Important:
+
+Do not confuse curriculum order with Cognitive Path order.
+
+These are separate:
+
+MicroNode curriculum order
+vs
+Cognitive Level path order.
+
+════════════════════════════════════════════════════
+13. AUDIT EXISTING SESSION STATE
+════════════════════════════════════════════════════
+
+Inspect lesson session schema/state.
+
+Report existing fields equivalent to:
+
+currentNodeId
+phase
+teachingMode
+sessionDecision
+nodeTeachingStage
+activeCognitiveLevelId
+activeLessonExerciseId
+activeHelpCount
+lastQuestionAsked
+completed nodes
+progress
+
+For each:
+
+- persisted or runtime only?
+- authoritative or diagnostic?
+- who writes it?
+- who reads it?
+
+Determine whether C6 decision should:
+
+A. be persisted in session,
+
+B. be calculated on entry,
+
+C. or both.
+
+Do NOT change anything yet.
+
+════════════════════════════════════════════════════
+14. AUDIT CURRENT “PERSONALIZATION ENGINE”
+════════════════════════════════════════════════════
+
+Search whether something already exists conceptually as:
+
+personalization service
+recommendation engine
+decision engine
+routing engine
+next-learning service
+student-state resolver
+
+If yes:
+
+do NOT propose a duplicate architecture.
+
+Determine whether it can be upgraded to consume C2–C5.
+
+If no:
+
+identify the smallest natural backend location for ONE canonical C6
+decision service.
+
+════════════════════════════════════════════════════
+15. DEFINE THE MINIMUM FUTURE C6 DECISION MATRIX
+════════════════════════════════════════════════════
+
+Based ONLY on actual repository/data capabilities, evaluate whether the
+following target matrix is implementable:
+
+────────────────────────────────────────
+NOT_STUDIED
+────────────────────────────────────────
+
+Decision:
+START
+
+MicroNode:
+requested/current curriculum MicroNode
+
+Cognitive Level:
+first accepted C2 path level
+
+────────────────────────────────────────
+NOT_KNOWN
+────────────────────────────────────────
+
+Decision:
+REMEDIATE
+
+MicroNode:
+same MicroNode unless a real unsatisfied prerequisite is known
+
+Cognitive Level:
+first accepted C2 path level not demonstrated
+
+Since demonstrated ceiling is null:
+normally first accepted path level.
+
+────────────────────────────────────────
+PARTIAL
+────────────────────────────────────────
+
+Decision:
+CONTINUE
+
+MicroNode:
+same MicroNode
+
+Cognitive Level:
+first accepted C2 level AFTER C4 demonstrated ceiling
+
+────────────────────────────────────────
+MASTERED
+────────────────────────────────────────
+
+If explicit review action:
+REVIEW same MicroNode
+
+Otherwise when advancing curriculum:
+ADVANCE to next eligible MicroNode.
+
+Do not implement this matrix.
+
+For each row say:
+
+SUPPORTED NOW
+PARTIALLY SUPPORTED
+NOT SUPPORTED
+
+and explain exactly why.
+
+════════════════════════════════════════════════════
+16. NEXT MICRO-NODE ELIGIBILITY
+════════════════════════════════════════════════════
+
+Audit whether C6 can safely select the next MicroNode.
+
+Candidate future rule:
+
+1. preserve teacher-defined curriculum order;
+2. skip MicroNodes already MASTERED when normal forward learning;
+3. stop at first non-MASTERED eligible MicroNode;
+4. if prerequisites exist and are unsatisfied, route to prerequisite;
+5. never silently mark skipped nodes complete.
+
+Determine whether current data supports this.
+
+Do not implement yet.
+
+════════════════════════════════════════════════════
+17. LEARNER SESSION READINESS MODE
+════════════════════════════════════════════════════
+
+We previously planned a learner-controlled session readiness input such
+as:
+
+«Ինչպե՞ս ես քեզ զգում այսօր»
+
+Possible responses conceptually:
+
+- Պատրաստ եմ
+- Մի քիչ հոգնած եմ
+- Ուզում եմ թեթև ռեժիմ
+
+Audit whether anything equivalent already exists.
+
+Search for:
+
+readiness
+learner state
+energy
+fatigue
+light mode
+pace
+workload
+session preference
+
+If absent:
+
+report ABSENT.
+
+Do NOT implement it in this audit.
+
+Determine whether this belongs in C6 decision context or later C7
+teaching execution.
+
+════════════════════════════════════════════════════
+18. CRITICAL ARCHITECTURAL QUESTION
+════════════════════════════════════════════════════
+
+Determine whether current application has this dangerous duplication:
+
+Knowledge Tree decides one thing
++
+lesson/session route decides another
++
+chat.ts decides another
++
+AI prompt decides another.
+
+Produce a DECISION OWNERSHIP MAP:
+
+DECISION
+CURRENT OWNER
+SHOULD C6 OWN IT?
+SHOULD C7 OWN IT?
+
+At minimum include:
+
+- MicroNode selection
+- next Cognitive Level
+- prerequisite redirect
+- START/CONTINUE/REMEDIATE/REVIEW/ADVANCE
+- instructional strategy
+- hint selection
+- exercise selection
+- evidence evaluation
+- level completion
+- node completion
+
+Remember:
+
+C6 = what should learner work on next.
+
+C7 = how AI Teacher teaches that target.
+
+Do not mix them.
+
+════════════════════════════════════════════════════
+19. REQUIRED GAP ANALYSIS
+════════════════════════════════════════════════════
+
+Classify findings:
+
+KEEP
+REUSE
+MODIFY
+DEPRECATE
+MISSING
+
+Focus specifically on:
+
+A. canonical C6 decision service
+B. C5 state consumption
+C. C4 ceiling consumption
+D. C2 path consumption
+E. next Cognitive Level
+F. next MicroNode
+G. prerequisite handling
+H. session persistence
+I. Knowledge Tree action integration
+J. AI Teacher handoff
+
+Avoid optional enhancements.
+
+════════════════════════════════════════════════════
+20. MINIMUM IMPLEMENTATION PLAN
+════════════════════════════════════════════════════
+
+After the audit, propose the smallest implementation sequence needed to
+complete C6.
+
+Prefer approximately 3–6 implementation steps.
+
+Example shape only:
+
+C6.1 canonical decision service
+C6.2 next Cognitive Level resolver
+C6.3 next MicroNode/prerequisite resolver
+C6.4 session + KT entry integration
+C6.5 tests / acceptance
+
+But derive the actual plan from repository evidence.
+
+Do NOT implement.
+
+════════════════════════════════════════════════════
+21. REQUIRED TEST MATRIX FOR FUTURE IMPLEMENTATION
+════════════════════════════════════════════════════
+
+Design provider-free deterministic tests for at least:
+
+1. NOT_STUDIED → START at first accepted path level
+
+2. NOT_KNOWN → REMEDIATE at first undemonstrated accepted level
+
+3. PARTIAL:
+   path UNDERSTAND → APPLY → ANALYZE
+   demonstrated UNDERSTAND
+   → CONTINUE at APPLY
+
+4. PARTIAL:
+   demonstrated APPLY
+   target ANALYZE
+   → CONTINUE at ANALYZE
+
+5. MASTERED + explicit review
+   → REVIEW same MicroNode
+
+6. MASTERED + normal forward learning
+   → ADVANCE
+
+7. accepted path starts at UNDERSTAND
+   → never invent REMEMBER
+
+8. unsatisfied prerequisite if supported
+   → deterministic prerequisite decision
+
+9. no prerequisite data
+   → no fabricated prerequisite
+
+10. already demonstrated level
+    → do not restart unnecessarily
+
+11. Chat entry and Knowledge Tree entry for equivalent learner state
+    → same C6 target
+
+12. Quiz-updated C4 ceiling
+    → next C6 decision uses updated ceiling
+
+Do not run these yet unless equivalent tests already exist and can be
+read without changing code.
+
+════════════════════════════════════════════════════
+22. SCOPE EXCLUSIONS
+════════════════════════════════════════════════════
+
+DO NOT:
+
+- modify code
+- modify DB
+- run migration
+- change C1 mapping
+- change C2 Cognitive Path architecture
+- change C3 evidence architecture
+- change C4 projector
+- change C5 classifier
+- redesign scoring
+- redesign quiz
+- implement flashcards
+- implement diary
+- implement schedule/calendar
+- redesign AI Teacher prompt
+- implement C7
+- add new UI
+- modify lesson 644
+
+This is C6 architecture/data audit only.
+
+════════════════════════════════════════════════════
+23. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly these sections:
+
+A. EXECUTIVE VERDICT
+
+Answer:
+
+Does a real canonical Personalization Engine exist today?
+
+YES / PARTIAL / NO
+
+B. CURRENT DECISION FLOW
+
+Show actual current:
+
+learner action
+→ KT/lesson entry
+→ session
+→ node selection
+→ Cognitive Level selection
+→ AI Teacher
+
+C. CURRENT DECISION OWNERS
+
+Table:
+
+Decision | Current owner | Current input | Problem
+
+D. C1–C5 CONSUMPTION
+
+For each:
+C1
+C2
+C3
+C4
+C5
+
+show whether current personalization actually consumes it.
+
+E. NEXT COGNITIVE LEVEL AUDIT
+
+Show exact current behavior and gap.
+
+F. NEXT MICRO-NODE AUDIT
+
+Show exact current behavior and gap.
+
+G. PREREQUISITE AUDIT
+
+Show schema, data population, current consumer, reliability.
+
+H. SESSION STATE AUDIT
+
+Show relevant fields and authority.
+
+I. KNOWLEDGE TREE ACTION AUDIT
+
+Show what the four C5 actions currently do.
+
+J. REMEDIATION / REVIEW AUDIT
+
+Show what exists today and where responsibility currently lives.
+
+K. LEARNER READINESS MODE
+
+Return:
+EXISTS / PARTIAL / ABSENT
+
+and recommended ownership:
+C6 context / C7 execution / both.
+
+L. TARGET C6 DECISION MATRIX
+
+For:
+NOT_STUDIED
+NOT_KNOWN
+PARTIAL
+MASTERED
+
+show:
+
+target decision
+current support
+gap.
+
+M. KEEP / REUSE / MODIFY / DEPRECATE / MISSING
+
+N. MINIMUM C6 IMPLEMENTATION PLAN
+
+Maximum 6 steps.
+
+O. FUTURE TEST MATRIX
+
+P. RISKS / BLOCKERS
+
+Only real blockers.
+
+Q. FINAL VERDICT
+
+Return exactly one:
+
+C6 READY FOR IMPLEMENTATION — <short reason>
+
+or
+
+C6 BLOCKED — <smallest exact blocker>
+
+STOP AFTER THE AUDIT.
+
+Do not implement C6.
+Do not begin C7.
