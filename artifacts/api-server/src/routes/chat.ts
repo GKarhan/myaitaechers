@@ -7,7 +7,7 @@ import {
   lessonNodeCognitiveLevelsTable, helpEventsTable,
   lessonNodeCognitiveTasksTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, gte, or, isNull, sql } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, gte, or, isNull, sql } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import {
   callAI, callAIStructured,
@@ -52,6 +52,8 @@ import {
 import {
   coordinatePedagogicalDecision,
   deriveGeneratedMicroCheckActivation,
+  buildMandatoryFeedbackStageUpdate,
+  buildPostFeedbackTransitionUpdate,
   deriveLegacyCompletionAllowed,
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
@@ -402,11 +404,11 @@ After all questions, show a brief accuracy summary.
 Use DUE_REVIEWS topics (if listed above) as priority targets.`;
 
     case 2:
-      return `TEACHING PHASE — strict TEACH → MICRO_CHECK cycle (P4 §11):
+      return `TEACHING PHASE — strict server-owned TEACH → MICRO_CHECK → FEEDBACK → TRANSITION cycle:
 Step 1. Present ONE concept from APPROVED_EXPLANATION above (2-3 sentences, plain language).
-Step 2. Immediately ask ONE MICRO_CHECK question about that concept (≤25 words).
-Step 3. Wait for student answer → FEEDBACK (correct/guide) → next concept or exercise.
-Step 4. After concepts are taught, transition to an eligible CLASS_EXERCISE using its exact source_fidelity.exercise_id. The backend, not you, renders the source exercise text.
+Step 2. Stop. The backend separately creates exactly one MICRO_CHECK question.
+Step 3. Wait for student answer → FEEDBACK (correct/guide) only.
+Step 4. The backend selects the next concept, generated check, or eligible CLASS_EXERCISE. It renders source exercise text.
 Step 5. Do NOT present a new exercise until student demonstrates understanding of the current one.
 NEVER give the answer directly — always hint and guide.
 
@@ -545,6 +547,12 @@ async function persistAndProjectChatEvidence(input: {
   evidenceQuality: string;
   wasCorrect: boolean;
   evidenceResultAuthority: string | null;
+  evaluationSnapshot?: {
+    status: string;
+    evidenceQuality: string;
+    errorFamily: string | null;
+    errorStability: string | null;
+  };
 }): Promise<{
   qualificationStatus: EvidenceQualificationStatus;
   projection: LearnerCeilingProjection;
@@ -648,6 +656,9 @@ async function persistAndProjectChatEvidence(input: {
       stage: input.snapshot.nodeTeachingStage,
       evidence_quality: cappedQuality,
       qualification_status: qualificationStatus,
+      // This immutable C3 record is also the recovery authority for a
+      // FEEDBACK retry after the mutable active-task fields are retired.
+      evaluation: input.evaluationSnapshot ?? null,
     },
     cognitiveLevel: activeLevel?.cognitiveLevel ?? null,
     taskDifficulty: null,
@@ -778,6 +789,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _cognitivePath: CognitiveLevelRow[] = [];
   let _activeCognitiveLevelRow: CognitiveLevelRow | null = null;
   let _nextNodeHasCriticalDep = false;
+  let _deferredC7Action: "ADVANCE_COGNITIVE_LEVEL" | "COMPLETE_MICRONODE" | null = null;
+  let _deferredC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
+  let _deferredSafetyCapHit = false;
 
   if (lessonId) {
     const [lessonRow] = await db
@@ -1347,9 +1361,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           return (
             `NODE_STAGE: THEORY (first turn on this node)\n` +
             `DIRECTIVE — THIS TURN YOU MUST: ` +
-            `(1) Present APPROVED_EXPLANATION in 2-3 plain sentences. ` +
-            `(2) Immediately ask ONE MICRO_CHECK question (\u226425 words). ` +
-            `teaching_mode: "TEACH" for the explanation, is_micro_check: true for the question.`
+            `Present APPROVED_EXPLANATION in 2-3 plain sentences only. ` +
+            `Do NOT ask a question, include options, or create a task. ` +
+            `Set teaching_mode: "TEACH", is_micro_check: false, and leave task fields empty.`
           );
         }
         if (teachingStage === "MICRO_CHECK") {
@@ -2311,19 +2325,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       if (driftDetected) {
         throw new Error("bounded THEORY response mentioned an out-of-scope node");
       }
-      await db
-        .update(lessonSessionsTable)
-        .set({
-          nodeTeachingStage: "TASK_REQUIRED",
-          activeLessonExerciseId: null,
-          activeTaskProvenance: null,
-          activeTaskReference: null,
-          activeObjectiveTaskPayload: null,
-          activeAttemptSequence: 0,
-          activeHelpCount: 0,
-          activeAssistanceLevel: "none",
-        } as any)
-        .where(eq(lessonSessionsTable.id, session.id));
       const [theoryMessage] = await db
         .insert(chatMessagesTable)
         .values({
@@ -2333,23 +2334,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           content: theory.student_message,
         })
         .returning();
-      const continuation = await runPhase2Continuation("DELIVER_THEORY");
-      if (continuation) {
-        hasActiveTask = continuation.hasActiveTask;
-        respondWithPersistedPhase2Message(
-          continuation.lastContent,
-          continuation.lastMessageId,
-          continuation.teachingMode,
-          continuation.hasActiveTask,
-        );
-      } else {
-        respondWithPersistedPhase2Message(
-          theory.student_message,
-          theoryMessage.id,
-          "TEACH",
-          false,
-        );
-      }
+      // Make TEACH visible before releasing TASK_REQUIRED. A failed state write
+      // can at worst repeat theory; it can never silently skip to a task.
+      await db
+        .update(lessonSessionsTable)
+        .set(buildPostFeedbackTransitionUpdate() as any)
+        .where(eq(lessonSessionsTable.id, session.id));
+      // C7.2: TEACH is an observable turn.  Do not immediately chain into a
+      // task or let the response hide the explanation from the learner.
+      respondWithPersistedPhase2Message(
+        theory.student_message,
+        theoryMessage.id,
+        "TEACH",
+        false,
+      );
       return;
     } catch (error) {
       // Stage 5.5 — narrow fallback: both bounded THEORY attempts included a
@@ -2374,19 +2372,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             },
             "Stage-5.5: both THEORY attempts included a visible task — using safe node-content fallback",
           );
-          await db
-            .update(lessonSessionsTable)
-            .set({
-              nodeTeachingStage: "TASK_REQUIRED",
-              activeLessonExerciseId: null,
-              activeTaskProvenance: null,
-              activeTaskReference: null,
-              activeObjectiveTaskPayload: null,
-              activeAttemptSequence: 0,
-              activeHelpCount: 0,
-              activeAssistanceLevel: "none",
-            } as any)
-            .where(eq(lessonSessionsTable.id, session.id));
           const [fallbackMessage] = await db
             .insert(chatMessagesTable)
             .values({
@@ -2396,23 +2381,18 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               content: fallback.student_message,
             })
             .returning();
-          const continuation = await runPhase2Continuation("DELIVER_THEORY");
-          if (continuation) {
-            hasActiveTask = continuation.hasActiveTask;
-            respondWithPersistedPhase2Message(
-              continuation.lastContent,
-              continuation.lastMessageId,
-              continuation.teachingMode,
-              continuation.hasActiveTask,
-            );
-          } else {
-            respondWithPersistedPhase2Message(
-              fallback.student_message,
-              fallbackMessage.id,
-              "TEACH",
-              false,
-            );
-          }
+          await db
+            .update(lessonSessionsTable)
+            .set(buildPostFeedbackTransitionUpdate() as any)
+            .where(eq(lessonSessionsTable.id, session.id));
+          // C7.2 keeps the deterministic fallback identical to normal
+          // teaching: persist and display TEACH before a later task turn.
+          respondWithPersistedPhase2Message(
+            fallback.student_message,
+            fallbackMessage.id,
+            "TEACH",
+            false,
+          );
           return;
         } catch (fallbackError) {
           // Fallback itself failed (e.g. approved node content contained a task
@@ -2553,6 +2533,87 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       await respondWithBoundedPhase2Message(feedback.student_message, "FEEDBACK", true);
       return;
     } catch (error) {
+      boundedPhase2Failure(error, "FEEDBACK");
+      return;
+    }
+  }
+
+  if (
+    session?.currentPhase === 2 &&
+    _phase2ServerActionPlan.action === "DELIVER_FEEDBACK" &&
+    session.nodeTeachingStage === "FEEDBACK"
+  ) {
+    try {
+      // Recover only the feedback boundary after a bounded-feedback failure.
+      // The evaluator result was already persisted into immutable C3 evidence
+      // before the stage changed. Do not infer correctness from chat history.
+      const [feedbackEvidence] = await db
+        .select({ metadata: evidenceEventsTable.metadata, taskReference: (evidenceEventsTable as any).taskReference })
+        .from(evidenceEventsTable)
+        .where(and(
+          eq((evidenceEventsTable as any).lessonSessionId, session.id),
+          eq((evidenceEventsTable as any).lessonNodeId, session.currentNodeId),
+        ))
+        .orderBy(desc(evidenceEventsTable.createdAt))
+        .limit(1);
+      const retryEvaluation = (feedbackEvidence?.metadata as any)?.evaluation ?? null;
+      const retryTransition = (feedbackEvidence?.metadata as any)?.c7DeferredTransition ?? null;
+      if (!retryEvaluation?.status) {
+        throw new Error("FEEDBACK recovery requires persisted canonical evaluation evidence");
+      }
+      const feedback = await callPhase2FeedbackJob(
+        chatHistory,
+        [
+          lessonContext,
+          "AUTHORITATIVE FEEDBACK FACTS:",
+          `Evaluation: ${JSON.stringify(retryEvaluation)}`,
+          `Evidence task reference: ${feedbackEvidence?.taskReference ?? "unknown"}`,
+          "The learner has already submitted an answer. Provide only concise feedback consistent with this evaluation.",
+          "Do not ask a question, create a task, or change the current target.",
+          "Server action: DELIVER_FEEDBACK",
+        ].join("\n"),
+        _stage3HiddenExerciseContent,
+      );
+      assertFeedbackOnly(feedback);
+      const [feedbackMessage] = await db
+        .insert(chatMessagesTable)
+        .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: feedback.student_message })
+        .returning();
+      // The message is observable before this boundary may release. Reapply a
+      // C7.1 transition only from the persisted authorization snapshot.
+      if (retryTransition?.action === "ADVANCE_COGNITIVE_LEVEL") {
+        const nextLevelId = retryTransition.c6Decision?.nextTargetCognitiveLevelId;
+        if (typeof nextLevelId !== "number") {
+          throw new Error("FEEDBACK recovery transition is missing its C6 level target");
+        }
+        await db
+          .update(lessonSessionsTable)
+          .set(buildAuthorizedLevelTransitionUpdate(nextLevelId) as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+      } else if (retryTransition?.action === "COMPLETE_MICRONODE") {
+        const advanceResult = await advanceNodeInSession(
+          session.id,
+          req.userId!,
+          lessonId!,
+          session.currentNodeId!,
+          session.currentPhase,
+          Boolean(retryTransition.safetyCapHit),
+          retryTransition.c6Decision as Awaited<ReturnType<typeof resolveCanonicalC6Decision>>,
+        );
+        if (advanceResult.c6BlockedReason) {
+          throw new Error(`FEEDBACK recovery C6 target unavailable: ${advanceResult.c6BlockedReason}`);
+        }
+      } else {
+        await db
+          .update(lessonSessionsTable)
+          .set(buildPostFeedbackTransitionUpdate() as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+      }
+      respondWithPersistedPhase2Message(feedback.student_message, feedbackMessage.id, "FEEDBACK", false);
+      return;
+    } catch (error) {
+      // Leave FEEDBACK untouched so a later retry resumes the same safe
+      // boundary rather than replacing the evaluated task.
       boundedPhase2Failure(error, "FEEDBACK");
       return;
     }
@@ -2993,6 +3054,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           evidenceQuality: quality,
           wasCorrect: isCorrect,
           evidenceResultAuthority: _evidenceResultAuthority,
+          evaluationSnapshot: {
+            status: aiResult.answer_evaluation.status,
+            evidenceQuality: aiResult.answer_evaluation.evidence_quality,
+            errorFamily: aiResult.answer_evaluation.error_family,
+            errorStability: aiResult.answer_evaluation.error_stability,
+          },
         });
         _canonicalEvidenceProcessed = true;
         _canonicalEvidenceQualification = canonicalEvidence.qualificationStatus;
@@ -3133,7 +3200,35 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         })
         .where(eq(lessonSessionsTable.id, session.id));
 
-      if (newTeachingStage) {
+      const mustEnterFeedbackBoundary =
+        session.currentPhase === 2 &&
+        (session.nodeTeachingStage === "MICRO_CHECK" ||
+          session.nodeTeachingStage === "EXERCISE") &&
+        session.activeTaskProvenance !== null;
+      if (mustEnterFeedbackBoundary) {
+        // C7.2: every evaluated answer, whether correct, incorrect, unclear,
+        // generated, or source-backed, retires into an explicit FEEDBACK
+        // state.  The task cannot be replaced while bounded feedback is
+        // pending or being retried.
+        await db
+          .update(lessonSessionsTable)
+          .set(buildMandatoryFeedbackStageUpdate() as any)
+          .where(eq(lessonSessionsTable.id, session.id));
+        hasActiveTask = false;
+        _activeLessonExerciseIdForDelivery = null;
+        session.nodeTeachingStage = "FEEDBACK";
+        session.activeLessonExerciseId = null;
+        session.activeTaskProvenance = null;
+        session.activeTaskReference = null;
+        session.activeObjectiveTaskPayload = null;
+        session.activeAttemptSequence = 0;
+        session.activeHelpCount = 0;
+        session.activeAssistanceLevel = "none";
+        logger.info(
+          { sessionId: session.id, nodeId: session.currentNodeId, currentStage },
+          "C7.2: evaluated task retired into mandatory FEEDBACK boundary",
+        );
+      } else if (newTeachingStage) {
         // Phase 2B: update active task identity when stage transitions.
         // MICRO_CHECK is not tied to a source exercise. EXERCISE activation is
         // delegated to activateSourceExercise(), which persists the exact
@@ -3241,16 +3336,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           lessonId,
           sessionId: session.id,
           userId: req.userId!,
-          nodeTeachingStage: session.nodeTeachingStage,
+          nodeTeachingStage: _evaluatedTaskEvidenceContext?.nodeTeachingStage ?? session.nodeTeachingStage,
           remediationStep: session.remediationStep,
           activeCognitiveLevelId: session.activeCognitiveLevelId,
           activeCognitiveLevelRow: _activeCognitiveLevelRow,
           cognitivePath: _cognitivePath,
           evaluation: aiResult.answer_evaluation,
-          activeHelpCount: session.activeHelpCount,
-          activeAssistanceLevel: session.activeAssistanceLevel,
-          activeAttemptSequence: session.activeAttemptSequence,
-          activeTaskProvenance: session.activeTaskProvenance,
+          activeHelpCount: _evaluatedTaskEvidenceContext?.activeHelpCount ?? session.activeHelpCount,
+          activeAssistanceLevel: _evaluatedTaskEvidenceContext?.activeAssistanceLevel ?? session.activeAssistanceLevel,
+          activeAttemptSequence: _evaluatedTaskEvidenceContext?.activeAttemptSequence ?? session.activeAttemptSequence,
+          activeTaskProvenance: _evaluatedTaskEvidenceContext?.activeTaskProvenance ?? session.activeTaskProvenance,
           levelEvidenceSummary: _levelEvidenceSummary,
           nextNodeHasCriticalDependencyOnCurrentNode: _nextNodeHasCriticalDep,
           requiredSessionMinutes: session.requiredSessionMinutes,
@@ -3489,72 +3584,48 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         "Phase-2 server action selected after authoritative evaluation",
       );
 
-      // Cognitive Path progression owns completion whenever a confirmed path is
-      // active.  The legacy stage/safety gates must not bypass an
-      // ADVANCE_COGNITIVE_LEVEL decision and complete the MicroNode early.
-      if (_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL") {
-        const cognitiveAdvanceReset = buildAuthorizedLevelTransitionUpdate(
-          _authorizedC6Decision!.nextTargetCognitiveLevelId!,
-        );
-        await db
-          .update(lessonSessionsTable)
-          .set(cognitiveAdvanceReset as any)
-          .where(eq(lessonSessionsTable.id, session.id));
-        hasActiveTask = false;
-        _activeLessonExerciseIdForDelivery = null;
-        logger.info(
-          {
-            sessionId: session.id,
-            nodeId: session.currentNodeId,
-            nextCognitiveLevelId: _authorizedC6Decision!.nextTargetCognitiveLevelId,
-          },
-          "Cognitive Path advance: reset stage to THEORY without completing node"
-        );
-      }
-
-      if (_phase2ServerActionPlan.action === "COMPLETE_MICRONODE") {
-        const advanceResult = await advanceNodeInSession(
-          session.id,
-          req.userId!,
-          lessonId,
-          session.currentNodeId,
-          session.currentPhase,
-          safetyCapHit,
-          _authorizedC6Decision!,
-        );
-        if (advanceResult.c6BlockedReason) {
-          res.status(409).json({
-            error: "C6_TARGET_UNAVAILABLE",
-            message: "Հաջորդ հանգույցի ճանաչողական ուղին հաստատված չէ, ուստի ուսուցումը չի կարող առաջանալ։",
-            reasonCode: advanceResult.c6BlockedReason,
-          });
-          return;
-        }
-        const [updSess] = await db
-          .select({ currentNodeId: lessonSessionsTable.currentNodeId })
-          .from(lessonSessionsTable)
-          .where(eq(lessonSessionsTable.id, session.id))
-          .limit(1);
-
-        if (updSess) {
-          const allNodes2 = await db
-            .select({ id: lessonNodesTable.id, sequence: lessonNodesTable.sequence, title: lessonNodesTable.title })
-            .from(lessonNodesTable)
-            .where(eq(lessonNodesTable.lessonId, lessonId))
-            .orderBy(asc(lessonNodesTable.sequence));
-
-          const tn2 = allNodes2.length;
-          const ne2 = allNodes2.find((n) => n.id === updSess.currentNodeId);
-          const seq2 = ne2?.sequence ?? (tn2 + 1);
-          const comp2 = updSess.currentNodeId != null ? seq2 - 1 : tn2;
-
-          progressIndicator = {
-            current_node_name: ne2?.title ?? topicName,
-            step:            Math.min(seq2, Math.max(tn2, 1)),
-            total_steps:     tn2,
-            completed_nodes: comp2,
-            total_nodes:     tn2,
-          };
+      // C7.2 defers any already-authorized C7.1 transition until the bounded
+      // feedback message is actually persisted below.  C3 → C4 → C6
+      // authorization has already happened; this only keeps the selected
+      // C6 target locked through the visible feedback boundary.
+      if (
+        (_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
+          _phase2ServerActionPlan.action === "COMPLETE_MICRONODE") &&
+        _authorizedC6Decision
+      ) {
+        _deferredC7Action = _phase2ServerActionPlan.action;
+        _deferredC6Decision = _authorizedC6Decision;
+        _deferredSafetyCapHit = safetyCapHit;
+        // C7.2 recovery must survive a feedback-provider or message-write
+        // failure. Attach the already-authorized C7.1 transition to the same
+        // immutable evidence record that owns the evaluator facts; never
+        // re-derive it from learner chat.
+        if (_canonicalEvidenceTaskReference) {
+          const [evidenceRecord] = await db
+            .select({ id: evidenceEventsTable.id, metadata: evidenceEventsTable.metadata })
+            .from(evidenceEventsTable)
+            .where(and(
+              eq((evidenceEventsTable as any).lessonSessionId, session.id),
+              eq((evidenceEventsTable as any).taskReference, _canonicalEvidenceTaskReference),
+            ))
+            .orderBy(desc(evidenceEventsTable.createdAt))
+            .limit(1);
+          if (!evidenceRecord) {
+            throw new Error("C7.2 deferred transition requires its canonical evidence record");
+          }
+          await db
+            .update(evidenceEventsTable)
+            .set({
+              metadata: {
+                ...(evidenceRecord.metadata as Record<string, unknown>),
+                c7DeferredTransition: {
+                  action: _deferredC7Action,
+                  c6Decision: _deferredC6Decision,
+                  safetyCapHit: _deferredSafetyCapHit,
+                },
+              },
+            } as any)
+            .where(eq(evidenceEventsTable.id, evidenceRecord.id));
         }
       }
 
@@ -3726,6 +3797,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
       teachingMode = "FEEDBACK";
       aiResult.student_message = studentMessage;
+      // Only a successfully persisted bounded feedback response may release
+      // the FEEDBACK boundary.  Progression transitions already authorized by
+      // C7.1 retain their C3 → C4 → C6 ownership; all other paths return to
+      // server-selected TASK_REQUIRED for the following interaction.
+      // Release occurs only after the assistant feedback message has been
+      // inserted below; a provider/message failure therefore leaves FEEDBACK
+      // recoverable and unable to create a replacement task.
     } catch (error) {
       boundedPhase2Failure(error, "FEEDBACK");
       return;
@@ -3736,6 +3814,64 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     .insert(chatMessagesTable)
     .values({ userId: req.userId!, lessonId: lessonId ?? null, role: "assistant", content: studentMessage })
     .returning();
+  if (
+    _stage3BoundedAnswerTurn &&
+    session &&
+    !_deferredC7Action
+  ) {
+    await db
+      .update(lessonSessionsTable)
+      .set(buildPostFeedbackTransitionUpdate() as any)
+      .where(eq(lessonSessionsTable.id, session.id));
+  }
+  if (
+    _stage3BoundedAnswerTurn &&
+    session &&
+    lessonId &&
+    _deferredC7Action &&
+    _deferredC6Decision
+  ) {
+    if (_deferredC7Action === "ADVANCE_COGNITIVE_LEVEL") {
+      const nextLevelId = _deferredC6Decision.nextTargetCognitiveLevelId;
+      if (nextLevelId === null) {
+        throw new Error("C7.2 deferred cognitive transition lost its C6 level target");
+      }
+      await db
+        .update(lessonSessionsTable)
+        .set(buildAuthorizedLevelTransitionUpdate(nextLevelId) as any)
+        .where(eq(lessonSessionsTable.id, session.id));
+      logger.info(
+        { sessionId: session.id, nodeId: session.currentNodeId, nextCognitiveLevelId: nextLevelId },
+        "C7.2: applied C7.1-authorized cognitive transition after feedback persistence",
+      );
+    } else {
+      const advanceResult = await advanceNodeInSession(
+        session.id,
+        req.userId!,
+        lessonId,
+        session.currentNodeId!,
+        session.currentPhase,
+        _deferredSafetyCapHit,
+        _deferredC6Decision,
+      );
+      if (advanceResult.c6BlockedReason) {
+        logger.error(
+          { sessionId: session.id, reasonCode: advanceResult.c6BlockedReason },
+          "C7.2: deferred C6 target became unavailable after feedback persistence",
+        );
+      } else {
+        logger.info(
+          {
+            sessionId: session.id,
+            fromNodeId: session.currentNodeId,
+            toNodeId: advanceResult.newNodeId,
+            nextPhase: advanceResult.newPhase,
+          },
+          "C7.2: applied C7.1-authorized node transition after feedback persistence",
+        );
+      }
+    }
+  }
   let responseContent = studentMessage;
   let responseMessageId = assistantMsg.id;
   let responseTeachingMode = teachingMode;
@@ -3753,48 +3889,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     );
   }
 
-  if (
-    _stage3BoundedAnswerTurn &&
-    session &&
-    (
-      _postFeedbackContinuationPlan !== null ||
-      _phase2ServerActionPlan.action === "DELIVER_SOURCE_EXERCISE" ||
-      _phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL" ||
-      _phase2ServerActionPlan.action === "COMPLETE_MICRONODE"
-    )
-  ) {
-    try {
-      const continuationFromAction =
-        _postFeedbackContinuationPlan?.action ??
-        _phase2ServerActionPlan.action;
-      const continuation = await runPhase2Continuation(
-        continuationFromAction,
-        _postFeedbackExcludedExerciseId,
-      );
-      if (continuation) {
-        responseContent = continuation.lastContent;
-        responseMessageId = continuation.lastMessageId;
-        responseTeachingMode = continuation.teachingMode;
-        hasActiveTask = continuation.hasActiveTask;
-      }
-      logger.info(
-        {
-          sessionId: session.id,
-          requestId: (req as any).id ?? null,
-          learnerMessageId: learnerMessage.id,
-          feedbackMessageId: assistantMsg.id,
-          continuationFromAction,
-          returnedMessageId: responseMessageId,
-          returnedTeachingMode: responseTeachingMode,
-          continuationStopReason: continuation?.stopReason ?? null,
-        },
-        "Stage-5 post-feedback continuation response assembled",
-      );
-    } catch (error) {
-      boundedPhase2Failure(error, "THEORY");
-      return;
-    }
-  }
+  // C7.2 deliberately returns the feedback turn itself.  The next task is
+  // selected from persisted server state on the next interaction, preventing
+  // a feedback response from being hidden or merged with a new question.
 
   // ── V2-R1.1: Auto-progression — exercise delivery after FEEDBACK ──────────────
   // P11.1 normally delivers the newly activated exercise in the primary assistant

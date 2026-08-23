@@ -148,19 +148,19 @@ async function testT05_nodeTeachingStageSurvivesRefresh() {
   assert.equal(refreshed.nodeTeachingStage, "EXERCISE", "T05: nodeTeachingStage persists across refresh");
 }
 
-// T06 — THEORY directive requires a micro-check question (AI self-advances)
-async function testT06_theoryDirectiveRequiresMicroCheck() {
+// T06 — THEORY is a visible, task-free TEACH boundary.
+async function testT06_theoryDirectiveIsTaskFree() {
   // Reproduce the THEORY stageDirectiveLine from chat.ts
   const teachingStage = "THEORY";
   const directive =
     teachingStage === "THEORY"
       ? `NODE_STAGE: THEORY (first turn on this node)\nDIRECTIVE — THIS TURN YOU MUST: ` +
-        `(1) Present APPROVED_EXPLANATION in 2-3 plain sentences. ` +
-        `(2) Immediately ask ONE MICRO_CHECK question (≤25 words). ` +
-        `teaching_mode: "TEACH" for the explanation, is_micro_check: true for the question.`
+        `Present APPROVED_EXPLANATION in 2-3 plain sentences only. ` +
+        `Do NOT ask a question, include options, or create a task. ` +
+        `Set teaching_mode: "TEACH", is_micro_check: false, and leave task fields empty.`
       : "other";
-  assert.ok(directive.includes("is_micro_check: true"), "T06: THEORY directive must mandate is_micro_check: true");
-  assert.ok(directive.includes("MICRO_CHECK question"), "T06: THEORY directive must mention MICRO_CHECK question");
+  assert.ok(directive.includes("is_micro_check: false"), "T06: THEORY must not create a MICRO_CHECK");
+  assert.ok(directive.includes("Do NOT ask a question"), "T06: THEORY must remain task-free");
 }
 
 // T07 — MICRO_CHECK creates exactly one active task (anticipatory advance sets activeTaskProvenance)
@@ -185,6 +185,25 @@ async function testT08_activeTaskSurvivesRefresh() {
   const has2 = computeHasActiveTask(refreshed.activeTaskProvenance as string, refreshed.nodeTeachingStage as string);
   assert.equal(has1, true, "T08: hasActiveTask before refresh");
   assert.equal(has2, true, "T08: hasActiveTask after refresh must be the same");
+}
+
+// T08b — all C7.2 persisted boundaries survive refresh without fabrication.
+async function testT08b_teachingCycleBoundariesSurviveRefresh() {
+  for (const stage of ["MICRO_CHECK", "FEEDBACK", "EXERCISE"] as const) {
+    const s = fakeSession({
+      nodeTeachingStage: stage,
+      activeTaskProvenance: stage === "MICRO_CHECK" ? "micro_check" : stage === "EXERCISE" ? "source_exercise" : null,
+      activeLessonExerciseId: stage === "EXERCISE" ? 17 : null,
+    });
+    const refreshed = { ...s };
+    assert.equal(refreshed.nodeTeachingStage, stage, `T08b: ${stage} survives refresh`);
+  }
+  const feedback = fakeSession({ nodeTeachingStage: "FEEDBACK", activeTaskProvenance: null });
+  assert.equal(
+    computeHasActiveTask(feedback.activeTaskProvenance as string | null, feedback.nodeTeachingStage as string),
+    false,
+    "T08b: FEEDBACK is recoverable but cannot present a replacement active task",
+  );
 }
 
 // T09 — While active task exists, directive forces FEEDBACK-only mode (no new task creation)
@@ -495,9 +514,10 @@ const TESTS: [string, () => Promise<void>][] = [
   ["T03 — introConfirmed survives refresh",                         testT03_introConfirmedSurvivesRefresh],
   ["T04 — currentNodeId survives refresh",                          testT04_currentNodeIdSurvivesRefresh],
   ["T05 — nodeTeachingStage survives refresh",                      testT05_nodeTeachingStageSurvivesRefresh],
-  ["T06 — THEORY directive mandates is_micro_check: true",          testT06_theoryDirectiveRequiresMicroCheck],
+  ["T06 — THEORY directive stays task-free",                        testT06_theoryDirectiveIsTaskFree],
   ["T07 — anticipatory advance sets exactly one activeTaskProvenance", testT07_anticipatoryAdvanceSetsOneActiveTask],
   ["T08 — hasActiveTask computation survives refresh",              testT08_activeTaskSurvivesRefresh],
+  ["T08b — C7.2 teaching boundaries survive refresh",               testT08b_teachingCycleBoundariesSurviveRefresh],
   ["T09 — MICRO_CHECK+activeTask directive is FEEDBACK-only",       testT09_activeTaskDirectiveForcessFeedbackOnly],
   ["T10 — lastQuestionAsked used as evaluation anchor",             testT10_evaluationUsesExistingActiveTask],
   ["T11 — R7: FEEDBACK+is_micro_check=true throws",                 testT11_r7ValidatorThrowsOnFeedbackWithMicroCheck],

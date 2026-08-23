@@ -52,3 +52,4 @@
 - [C5 canonical Knowledge Tree](c5-canonical-knowledge-tree.md) — four backend-owned learner states use C2 path order and validated C4/C3 provenance, failing closed when evidence is stale.
 - [C6 canonical personalization](c6-canonical-personalization.md) — C6 alone selects next targets from accepted C2, C5/C4, and REQUIRED dependencies; unavailable targets block delivery.
 - [C7 canonical completion authority](c7-canonical-completion-authority.md) — C7 transitions require C3-qualified evidence, C4 projection, then C6; engine candidates cannot advance sessions.
+- [C7.2 teaching-cycle persistence](c7-2-teaching-cycle.md) — TEACH/FEEDBACK are visible persisted boundaries; retire active tasks only after C3/C4 and recover feedback from immutable evidence, never chat inference.

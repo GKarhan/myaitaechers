@@ -176,6 +176,22 @@ export function derivePhase2ServerAction(
     );
   }
 
+  // C7.2 persists an evaluated answer as a recoverable FEEDBACK boundary.  A
+  // refresh or bounded-provider failure must resume feedback first rather than
+  // manufacture a replacement question or task.
+  if (
+    input.nodeTeachingStage === "FEEDBACK" &&
+    input.activeTaskProvenance === null &&
+    input.activeLessonExerciseId === null &&
+    input.activeObjectiveTaskPayload === null
+  ) {
+    return makeActionPlan(
+      "DELIVER_FEEDBACK",
+      "persisted_feedback_boundary_requires_feedback_delivery",
+      { responseTeachingMode: "FEEDBACK" },
+    );
+  }
+
   const hasGeneratedObjectiveTask =
     input.activeTaskProvenance === "micro_check" &&
     input.activeObjectiveTaskPayload !== null;
@@ -552,6 +568,43 @@ export type Phase2TaskStateUpdate = {
   activeHelpCount: number;
   activeAssistanceLevel: string;
 };
+
+/**
+ * C7.2's feedback boundary deliberately reuses the existing persisted teaching
+ * stage.  The answered task is retired only after its C3 evidence snapshot has
+ * been recorded by the route, so no new schema or parallel state machine is
+ * needed.
+ */
+export function buildMandatoryFeedbackStageUpdate(): Phase2TaskStateUpdate {
+  return {
+    nodeTeachingStage: "FEEDBACK",
+    activeLessonExerciseId: null,
+    activeTaskProvenance: null,
+    activeTaskReference: null,
+    activeObjectiveTaskPayload: null,
+    activeAttemptSequence: 0,
+    activeHelpCount: 0,
+    activeAssistanceLevel: "none",
+  };
+}
+
+/**
+ * After feedback itself has been persisted, TASK_REQUIRED gives the server sole
+ * ownership of selecting the next source exercise or generated MICRO_CHECK.
+ * It intentionally never changes C6's active target fields.
+ */
+export function buildPostFeedbackTransitionUpdate(): Phase2TaskStateUpdate {
+  return {
+    nodeTeachingStage: "TASK_REQUIRED",
+    activeLessonExerciseId: null,
+    activeTaskProvenance: null,
+    activeTaskReference: null,
+    activeObjectiveTaskPayload: null,
+    activeAttemptSequence: 0,
+    activeHelpCount: 0,
+    activeAssistanceLevel: "none",
+  };
+}
 
 /**
  * Derives the existing anticipatory THEORY → MICRO_CHECK task state. Validation

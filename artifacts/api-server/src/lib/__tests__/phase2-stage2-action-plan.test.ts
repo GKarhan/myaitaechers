@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import type { AIStructuredResponse } from "../../services/ai.js";
 import {
+  buildMandatoryFeedbackStageUpdate,
+  buildPostFeedbackTransitionUpdate,
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
   establishEvaluatedTurnAuthority,
@@ -117,6 +119,71 @@ test("B — a visible task cannot be included in DELIVER_THEORY", () => {
     /DELIVER_THEORY requires a theory-only TEACH envelope/,
   );
   assert.equal(derivePhase2ServerAction(input).action, "DELIVER_THEORY");
+});
+
+test("B1 — persisted FEEDBACK resumes feedback without creating a task", () => {
+  const plan = derivePhase2ServerAction(baseInput({
+    nodeTeachingStage: "FEEDBACK",
+    learnerIntent: "READY",
+  }));
+  assert.equal(plan.action, "DELIVER_FEEDBACK");
+  assert.equal(plan.activeTaskMayBeCreated, false);
+  assert.equal(plan.progressionMayOccur, false);
+  assert.equal(plan.responseTeachingMode, "FEEDBACK");
+});
+
+test("B2 — mandatory feedback retires both generated and source task identity", () => {
+  const update = buildMandatoryFeedbackStageUpdate();
+  assert.equal(update.nodeTeachingStage, "FEEDBACK");
+  assert.equal(update.activeTaskProvenance, null);
+  assert.equal(update.activeLessonExerciseId, null);
+  assert.equal(update.activeObjectiveTaskPayload, null);
+  assert.equal(update.activeAttemptSequence, 0);
+  assert.equal(update.activeHelpCount, 0);
+});
+
+test("B3 — post-feedback transition stays target-neutral and server-selected", () => {
+  const update = buildPostFeedbackTransitionUpdate() as Record<string, unknown>;
+  assert.equal(update.nodeTeachingStage, "TASK_REQUIRED");
+  assert.equal(update.activeTaskProvenance, null);
+  assert.equal("activeCognitiveLevelId" in update, false);
+  assert.equal("currentNodeId" in update, false);
+  assert.equal(
+    derivePhase2ServerAction(baseInput({
+      nodeTeachingStage: "TASK_REQUIRED",
+      eligibleSourceExerciseAvailable: false,
+    })).action,
+    "GENERATE_TASK",
+  );
+  assert.equal(
+    derivePhase2ServerAction(baseInput({
+      nodeTeachingStage: "TASK_REQUIRED",
+      eligibleSourceExerciseAvailable: true,
+    })).action,
+    "DELIVER_SOURCE_EXERCISE",
+  );
+});
+
+test("B4 — an active generated MICRO_CHECK cannot be replaced on non-answer input", () => {
+  const plan = derivePhase2ServerAction(baseInput({
+    nodeTeachingStage: "MICRO_CHECK",
+    activeTaskProvenance: "micro_check",
+    activeObjectiveTaskPayload: objectivePayload,
+    learnerIntent: "HELP",
+  }));
+  assert.equal(plan.action, "PRESERVE_ACTIVE_TASK");
+  assert.equal(plan.activeTaskMayBeCreated, false);
+});
+
+test("B5 — active source exercise remains an evaluation target, not a generated check", () => {
+  const plan = derivePhase2ServerAction(baseInput({
+    nodeTeachingStage: "EXERCISE",
+    activeTaskProvenance: "source_exercise",
+    activeLessonExerciseId: 501,
+    learnerIntent: "ANSWER",
+  }));
+  assert.equal(plan.action, "EVALUATE_ACTIVE_TASK");
+  assert.equal(plan.taskAuthority, "active_source_exercise");
 });
 
 test("C — active generated MICRO_CHECK answer selects EVALUATE_ACTIVE_TASK", () => {

@@ -146,7 +146,7 @@ export function canonicalizePhase2TheoryEnvelope(
   return {
     ...response,
     teaching_mode: "TEACH",
-    is_micro_check: true,
+    is_micro_check: false,
   };
 }
 
@@ -271,18 +271,18 @@ CRITICAL RULES:
    entire response.
 
 TEACHING CYCLE (P4 §11):
-- TEACH: Present ONE concept (2-3 sentences) then ask ONE MICRO_CHECK question (≤25 words) in the same message.
+- TEACH: Present ONE concept (2-3 sentences) only. The server schedules the next MICRO_CHECK in a separate turn.
 - MICRO_CHECK: Standalone check question only (no new theory).
 - FEEDBACK: Evaluate student answer → correct/guide/correct error. MUST set is_micro_check: false. Do NOT append the next question — it comes in a separate subsequent turn. If asking student to retry the same task, set is_micro_check: false (same active task stays open).
 - TRANSITION: Signal moving to next concept/phase.
 
 PHASE_2_THEORY_CONTRACT:
 teaching_mode MUST be TEACH.
-is_micro_check MUST be true.
+is_micro_check MUST be false.
 student_message MUST contain:
 1) brief theory explanation
-2) exactly one MICRO_CHECK
-interaction_type MUST match PREFERRED_INTERACTION_TYPES.
+2) no question, answer options, or answerable task
+interaction_type, options, and correct_option MUST be null.
 Then stop and wait.
 
 EVIDENCE QUALITY (P5 §17.13) — STRICT:
@@ -807,7 +807,8 @@ function validatePrematureTransition(
 //   Detection: lessonContext contains "PREVIOUS_MICRO_CHECK: <text>" (not "(none)").
 //   (Messages are plain text; is_micro_check cannot be extracted from them.)
 //
-// Rule 2 — TEACH must have is_micro_check=true (concept + check in one turn).
+// Rule 2 — Phase-2 TEACH is theory-only. A later server-owned action creates
+// the one permitted MICRO_CHECK.
 //
 // Rule 3 — MICRO_CHECK student_message must contain a question (? or ՞).
 //
@@ -972,21 +973,20 @@ export function validateTeachingCycle(
     );
   }
 
-  // ── Rule 2: TEACH must have is_micro_check=true ────────────────────────────
-  // Phase 1 (review/greeting phase) uses TEACH for introductions without a
-  // micro-check, so R2 only applies to Phase 2 where every TEACH turn must
-  // immediately include a micro-check question (THEORY stage contract).
+  // ── Rule 2: Phase-2 TEACH must remain theory-only ──────────────────────────
+  // Phase 1 (review/greeting phase) is unchanged. In Phase 2, a new task is
+  // only allowed on the later server-owned GENERATE_TASK action.
   const _statePhase = parseInt(
     lessonContext.match(/STUDENT_STATE:.*?phase=(\d+)/)?.[1] ?? "2",
     10
   );
-  if (_statePhase >= 2 && mode === "TEACH" && response.is_micro_check !== true) {
+  if (_statePhase >= 2 && mode === "TEACH" && response.is_micro_check !== false) {
     logger.warn(
       { teaching_mode: mode, is_micro_check: response.is_micro_check, _statePhase },
-      "validateTeachingCycle [R2]: TEACH response missing is_micro_check=true"
+      "validateTeachingCycle [R2]: TEACH response attempted to create a MICRO_CHECK"
     );
     throw new Error(
-      "Teaching cycle violation [R2]: teaching_mode=TEACH but is_micro_check is not true"
+      "Teaching cycle violation [R2]: teaching_mode=TEACH must be theory-only"
     );
   }
 

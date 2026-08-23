@@ -51,6 +51,7 @@
     "test:phase2-stage0-http": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2-stage0-http.test.ts",
     "test:phase2-stage1": "tsx src/lib/__tests__/phase2-stage1-extraction.test.ts",
     "test:phase2-stage2": "tsx src/lib/__tests__/phase2-stage2-action-plan.test.ts",
+    "test:c7-2": "tsx src/lib/__tests__/phase2-stage2-action-plan.test.ts && tsx src/services/phase2/__tests__/continuation.test.ts",
     "test:phase2-stage3": "tsx src/lib/__tests__/phase2-stage3-bounded-jobs.test.ts",
     "test:stage4-content-boundary": "tsx src/lib/__tests__/exercise-content-boundary.test.ts",
     "test:stage4-help-boundary": "tsx src/lib/__tests__/stage4-help-boundary.test.ts",
