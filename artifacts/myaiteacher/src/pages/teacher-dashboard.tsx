@@ -450,13 +450,19 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         ✍️ Ձեռքով
       </button>
 
-      {isActive && (
-        <span className="text-[10px] text-primary/70 animate-pulse max-w-[200px] truncate" title={statusLabel}>
-          {statusLabel || 'Քարտեզագրում է...'}
-        </span>
-      )}
-      {mapError && (
-        <span className="text-xs text-destructive whitespace-nowrap">{mapError}</span>
+      {(isActive || mapError) && (
+        <div className="basis-full min-w-0 order-last pt-1">
+          {isActive && (
+            <div className="min-w-0 text-[10px] text-primary/70 animate-pulse break-words" title={statusLabel}>
+              {statusLabel || 'Քարտեզագրում է...'}
+            </div>
+          )}
+          {mapError && (
+            <div className="min-w-0 text-xs text-destructive whitespace-normal break-words leading-relaxed">
+              {mapError}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Manual-map Dialog ─────────────────────────────────────────── */}
@@ -6577,15 +6583,15 @@ export default function TeacherDashboard() {
                                   : "border-white/8 bg-background/40"
                               }`}
                             >
-                              <div className="px-4 py-3 flex items-start gap-3">
+                              <div className="px-4 py-3 flex flex-wrap items-start gap-x-3 gap-y-2">
                                 <span className="text-xs font-mono text-primary/70 w-7 shrink-0 mt-0.5 text-center">
                                   {(l as any).lessonNumber ?? "—"}
                                 </span>
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-[1_1_18rem] min-w-[12rem] max-w-full">
                                   <div className="font-medium text-sm">{l.title}</div>
-                                  <div className="flex flex-wrap gap-2 mt-1 items-center">
+                                  <div className="flex flex-wrap gap-x-2 gap-y-1 mt-1 items-center">
                                     {(l as any).paragraphNumber && (
-                                      <span className="text-xs text-muted-foreground">
+                                      <span className="text-xs text-muted-foreground whitespace-nowrap">
                                         §{(l as any).paragraphNumber}
                                       </span>
                                     )}
@@ -6594,13 +6600,13 @@ export default function TeacherDashboard() {
                                       <span className="text-xs text-muted-foreground/40"> · </span>
                                     )}
                                     {((l as any).pagesFrom || (l as any).pagesTo) && (
-                                      <span className="text-xs text-muted-foreground">
+                                      <span className="text-xs text-muted-foreground whitespace-nowrap">
                                         Էջ {(l as any).pagesFrom ?? "?"}–{(l as any).pagesTo ?? "?"}
                                       </span>
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex flex-wrap gap-1 shrink-0 items-center justify-end">
+                                <div className="flex min-w-0 max-w-full flex-[1_1_24rem] basis-full sm:basis-auto flex-wrap gap-1 items-center justify-end">
                                   {/* P3.5: coverage badge — shown when auto-mapped but structural coverage validation failed */}
                                   {isMapped && coverageValid === false && (
                                     <span

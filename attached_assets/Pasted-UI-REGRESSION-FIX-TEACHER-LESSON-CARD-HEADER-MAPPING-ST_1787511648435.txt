@@ -1,0 +1,311 @@
+UI REGRESSION FIX — TEACHER LESSON CARD HEADER / MAPPING STATUS
+
+IMPORTANT:
+This is UI/layout only.
+
+DO NOT modify mapping logic.
+DO NOT modify C1 validation.
+DO NOT modify C2–C7.
+DO NOT modify database/schema.
+DO NOT change lesson data.
+DO NOT publish/deploy.
+
+We have a visible layout regression in the Teacher Dashboard lesson card.
+
+See the current lesson:
+
+Մաթեմատիկա 5
+Lesson: Կարգեր, կարգային միավորներ
+§1.4
+Pages 19–22
+
+CURRENT PROBLEMS:
+
+1. The lesson title is compressed into an extremely narrow column and
+wraps almost word-by-word.
+
+2. §1.4 and especially the page range "Էջ 19–22" wrap vertically and
+overlap/compress the left side.
+
+3. Mapping/action controls such as:
+- Automatic mapping
+- Manual mapping
+- Edit
+- Delete
+and their icons can disappear or become inaccessible when the status
+message is long.
+
+4. A long red mapping-status/error message consumes the same horizontal
+row and pushes the primary lesson information/actions out of usable space.
+
+Example current message:
+
+«Քարտեզագրումը չի բաժանել ինքնուրույն ստուգվող գիտելիքները բավարար
+ատոմային MicroNode-ների ...»
+
+A diagnostic/status message must NEVER be allowed to destroy the lesson
+header layout.
+
+==================================================
+1. INSPECT FIRST
+==================================================
+
+Find the exact React component rendering this lesson row/card.
+
+Identify:
+
+- container layout
+- flex/grid definitions
+- width/min-width/max-width
+- flex-shrink behavior
+- wrapping behavior
+- action control container
+- status/error message container
+- responsive breakpoints
+
+Explain the exact CSS/layout root cause before changing it.
+
+==================================================
+2. REQUIRED LAYOUT STRUCTURE
+==================================================
+
+Refactor only the presentation so the lesson card/header has clear
+visual zones.
+
+Preferred conceptual structure:
+
+ROW / HEADER:
+
+[sequence]
+[lesson identity]
+[action controls]
+
+Then BELOW that:
+
+[status / warning / mapping diagnostic]
+
+Lesson identity should contain together:
+
+Կարգեր, կարգային միավորներ
+§1.4
+Էջ 19–22
+
+The diagnostic message must NOT compete horizontally with the title and
+actions.
+
+==================================================
+3. LESSON IDENTITY
+==================================================
+
+The lesson identity area must:
+
+- receive the main flexible width
+- have a sensible min-width
+- allow normal title wrapping
+- never collapse to a few characters per line
+
+Keep:
+
+Կարգեր, կարգային միավորներ
+
+readable as a normal lesson title.
+
+Metadata:
+
+§1.4 · Էջ 19–22
+
+should preferably remain on one compact metadata line when space allows.
+
+Do not allow:
+
+Էջ
+19–
+22
+
+unless the viewport is genuinely extremely narrow.
+
+Use appropriate:
+- min-width
+- flex-shrink
+- whitespace/no-wrap where appropriate
+- gap
+
+Do not solve this with fixed pixel positioning.
+
+==================================================
+4. ACTION CONTROLS MUST REMAIN ACCESSIBLE
+==================================================
+
+The action area must not disappear because the title/status is long.
+
+Preserve all existing functionality.
+
+Do not remove or hide actions merely to fix layout.
+
+Existing controls/icons must remain usable:
+
+- Automatic mapping
+- Manual mapping
+- Edit
+- Delete
+- any currently valid mapping/review action
+
+Use a non-shrinking action container where appropriate.
+
+If responsive wrapping is required, wrap the action group as a group or
+move it to a second row cleanly.
+
+Do not let individual icons become clipped.
+
+==================================================
+5. STATUS / ERROR MESSAGE
+==================================================
+
+Move mapping diagnostic/status text into its own row/area BELOW the main
+lesson identity/action row.
+
+It should:
+
+- use available card width
+- wrap normally
+- not overlap controls
+- not shrink the lesson title
+- not push metadata into a vertical one-character column
+
+Keep severity styling:
+
+error → red
+warning → warning style
+success → success style
+
+Do not change the underlying message semantics in this task.
+
+If the status is no longer applicable after the mapping state changes,
+make sure the UI displays only the CURRENT backend state and does not
+retain a stale previous error.
+
+Do not hide a real current error.
+
+==================================================
+6. RESPONSIVE BEHAVIOR
+==================================================
+
+Verify at least:
+
+desktop wide
+desktop medium / Replit preview width
+narrower viewport
+
+At smaller widths the desired behavior is:
+
+lesson identity
+↓
+actions
+↓
+status
+
+or another clean responsive arrangement.
+
+NOT:
+
+title compressed character-by-character
+metadata stacked vertically
+icons disappearing
+text overlapping.
+
+==================================================
+7. CHECK NESTED CONTENT
+==================================================
+
+Also inspect the immediate expandable content below the lesson header.
+
+Opening:
+
+🎯 Նպատակ և վերջնարդյունքներ
+
+must not inherit broken widths from the header.
+
+Make sure nested sections use the full intended card content width.
+
+Do NOT redesign those sections yet.
+
+==================================================
+8. REGRESSION SAFETY
+==================================================
+
+Verify:
+
+- expand/collapse still works
+- Automatic Mapping action still works
+- Manual Mapping action still works
+- Edit still works
+- Delete still works
+- mapping status still renders
+- goal/outcomes block still opens
+- detailed mapping block still opens
+- no horizontal overlap
+- no clipped icons
+
+No backend behavior changes.
+
+==================================================
+9. VISUAL ACCEPTANCE
+==================================================
+
+Use the same real lesson as acceptance case:
+
+Մաթեմատիկա 5
+Կարգեր, կարգային միավորներ
+§1.4
+Էջ 19–22
+
+At Replit Preview desktop width confirm visually:
+
+1. Full lesson title is readable.
+2. §1.4 is readable.
+3. Էջ 19–22 is readable.
+4. All action icons/buttons are visible.
+5. Long mapping diagnostic is on a separate readable line/area.
+6. Nothing overlaps.
+7. Nothing is clipped.
+8. Expanded content uses normal width.
+
+==================================================
+10. FINAL REPORT
+==================================================
+
+Return:
+
+ROOT CAUSE:
+...
+
+FILES CHANGED:
+...
+
+LAYOUT CHANGE:
+...
+
+ACTIONS PRESERVED:
+...
+
+STATUS MESSAGE BEHAVIOR:
+...
+
+RESPONSIVE CHECK:
+...
+
+BACKEND CHANGED:
+NO
+
+DATABASE CHANGED:
+NO
+
+MAPPING LOGIC CHANGED:
+NO
+
+PUBLISH/DEPLOY:
+NO
+
+Then STOP.
+
+Do not redesign other Teacher Dashboard blocks.
