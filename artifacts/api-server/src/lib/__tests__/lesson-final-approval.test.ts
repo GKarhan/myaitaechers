@@ -11,6 +11,7 @@ import {
   db,
   lessonsTable,
   lessonNodesTable,
+  lessonNodeCognitiveLevelsTable,
   lessonExercisesTable,
   subjectsTable,
   usersTable,
@@ -396,7 +397,22 @@ it("H3: explicit node approval records teacher resolution without erasing the or
     await db.update(lessonNodesTable).set({
       status: "needs_review",
       changeReason: "SOURCE_ALIGNMENT:INSUFFICIENT:HEADING_ONLY",
+      cogPathStatus: "confirmed",
+      theoryContent: "Ջուրը կարևոր է կյանքի համար և անհրաժեշտ է բույսերի աճի համար։",
+      learningObjective: "Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։",
     }).where(eq(lessonNodesTable.id, NODE.id));
+    await db.insert(lessonNodeCognitiveLevelsTable).values({
+      lessonNodeId: NODE.id,
+      cognitiveLevel: "understand",
+      sequence: 1,
+      isApplicable: true,
+      isTargetCeiling: true,
+      performanceObjective: "Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։",
+      successCriterion: "Ճիշտ է նշում ջրի կարևորությունը կյանքի համար։",
+      provenance: "teacher_authored",
+      minimumIndependentEvidence: 1,
+      preferredInteractionTypes: ["multiple_choice"],
+    });
     await db.update(lessonsTable).set({
       mappingMetadata: {
         ...originalMetadata,

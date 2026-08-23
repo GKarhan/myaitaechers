@@ -1,0 +1,413 @@
+TASK — MAPPING WORKFLOW UI + POST-APPROVAL GENERATION LOCK
+
+IMPORTANT:
+This is a narrow continuation of Task #154 and the final UI cleanup.
+
+DO NOT redesign:
+- C1–C7
+- mapping semantics
+- Cognitive Path semantics
+- Teaching Content semantics
+- evidence
+- Knowledge Tree
+- quiz logic
+- assignment logic
+
+DO NOT weaken any backend validation.
+
+Goal:
+Make the lesson mapping workflow visually sequential and prevent
+accidental AI regeneration after content has already been created or
+finally approved.
+
+==================================================
+1. REDESIGN ONLY THE LESSON-LEVEL WORKFLOW STRIP
+==================================================
+
+The current block is visually confusing:
+
+Դասի քարտեզագրման քայլեր
+...
+⏳ Վերջնական ստուգման փուլ
+[Ստեղծել ճանաչողական ուղիները]
+[Ստեղծել ուսուցման բովանդակություն]
+Ուսուցման բովանդակություն՝ 4 ստեղծված
+[Վերջնական հաստատում]
+
+Replace this presentation with ONE clean horizontal workflow on desktop
+and a clean vertical workflow on narrow/mobile screens.
+
+Conceptually:
+
+1. Ճանաչողական ուղիներ
+   [Ստեղծել]
+
+→
+
+2. Ուսուցման բովանդակություն
+   [Ստեղծել]
+
+→
+
+3. Վերջնական հաստատում
+   [Հաստատել]
+
+Do not place unrelated status chips above/below the actions.
+
+Keep spacing, button heights, typography and alignment consistent.
+
+==================================================
+2. SHOW STATE INSIDE EACH STEP
+==================================================
+
+Each workflow step should communicate its own state.
+
+Example before generation:
+
+1. Ճանաչողական ուղիներ
+   [✨ Ստեղծել]
+
+2. Ուսուցման բովանդակություն
+   [Ստեղծել] disabled until prerequisites are ready
+
+3. Վերջնական հաստատում
+   [Հաստատել] disabled until readiness passes
+
+After Cognitive Paths exist:
+
+1. Ճանաչողական ուղիներ
+   ✓ Ստեղծված
+
+2. Ուսուցման բովանդակություն
+   [✨ Ստեղծել]
+
+3. Վերջնական հաստատում
+   [Հաստատել] disabled
+
+After Teaching Content exists:
+
+1. Ճանաչողական ուղիներ
+   ✓ Ստեղծված
+
+2. Ուսուցման բովանդակություն
+   ✓ Ստեղծված
+
+3. Վերջնական հաստատում
+   [✅ Հաստատել]
+
+After final approval:
+
+1. Ճանաչողական ուղիներ
+   🔒 Հաստատված
+
+2. Ուսուցման բովանդակություն
+   🔒 Հաստատված
+
+3. Դաս
+   ✅ Հաստատված
+
+Use the REAL backend readiness/status data.
+Do not invent frontend-only approval truth.
+
+==================================================
+3. REMOVE PER-MICRONODE AI REGENERATION SHORTCUT
+==================================================
+
+Inside each MicroNode Cognitive Path section currently there may be:
+
+🔄 Վերաստեղծել ճանաչողական ուղին
+
+Remove this normal teacher-facing regeneration action.
+
+IMPORTANT:
+Do NOT remove:
+- the Cognitive Path section
+- the Cognitive Path itself
+- its levels
+- manual editing
+- manual add/delete controls where currently allowed
+- validation
+- C2 data
+- target ceiling
+- grounding
+- confirmation semantics
+
+We are removing only the easy AI REGENERATION shortcut.
+
+Reason:
+Once bulk Cognitive Paths are created, teachers should review/edit them
+rather than accidentally regenerate them node by node.
+
+==================================================
+4. TEACHING CONTENT — SAME PRINCIPLE
+==================================================
+
+After lesson-wide Teaching Content has successfully been created for
+eligible MicroNodes, do not offer a normal one-click AI regeneration
+shortcut for already-created content.
+
+Keep:
+
+👁 view
+manual edit
+
+Remove/hide normal AI regeneration shortcuts for already-created
+Teaching Content.
+
+Do NOT delete existing content.
+
+==================================================
+5. FINAL APPROVAL LOCK
+==================================================
+
+After canonical lesson-level Final Approval succeeds:
+
+AI generation actions must become locked/disabled.
+
+Specifically:
+
+- bulk Cognitive Path generation → disabled
+- bulk Teaching Content generation → disabled
+- per-node AI Cognitive Path regeneration → unavailable
+- per-node AI Teaching Content regeneration → unavailable
+
+Display a simple state instead:
+
+🔒 Հաստատված
+
+IMPORTANT:
+This lock is against accidental AI regeneration.
+
+It must NOT prevent authorized teacher manual editing.
+
+==================================================
+6. MANUAL EDITING MUST REMAIN POSSIBLE
+==================================================
+
+Teacher remains the final human authority.
+
+Keep existing manual editing capabilities.
+
+Examples:
+
+- edit MicroNode
+- edit learning objective
+- edit Cognitive Path details where supported
+- edit Teaching Content
+- edit exercises
+- add/delete content where currently allowed
+
+DO NOT create a new editing architecture.
+
+Reuse existing authoring controls.
+
+==================================================
+7. AFTER MANUAL EDIT — USE EXISTING INVALIDATION RULES
+==================================================
+
+Do NOT invent a new invalidation model.
+
+Audit the existing backend behavior first.
+
+If an existing manual edit already invalidates C2/content/final approval,
+preserve that exact behavior.
+
+If final approval is invalidated by an existing rule, the UI should
+naturally return to the appropriate readiness state.
+
+Example:
+
+🔒 Հաստատված
+        ↓ teacher edits authoritative content
+⚠ Վերանայում է պետք
+        ↓
+[Վերջնական հաստատում]
+
+But ONLY do this where existing backend semantics already require it.
+
+Do not broadly invalidate unrelated generated content.
+
+==================================================
+8. DO NOT ALLOW ACCIDENTAL REGENERATION
+==================================================
+
+A normal teacher workflow must NOT allow:
+
+Create Cognitive Paths
+→ review
+→ accidentally click regenerate
+→ overwrite valid paths.
+
+Or:
+
+Create Teaching Content
+→ review
+→ accidentally regenerate
+→ overwrite valid teacher-reviewed content.
+
+Existing backend protection against teacher-edited/confirmed content
+must remain fail-closed.
+
+Never use force=true or equivalent automatic overwrite.
+
+==================================================
+9. BLOCKED/FAILED ITEMS
+==================================================
+
+If bulk generation succeeds only partially:
+
+Do NOT mark the whole step as complete.
+
+Show something concise such as:
+
+Ճանաչողական ուղիներ
+3 / 4 ստեղծված
+⚠ 1-ը պահանջում է վերանայում
+
+or:
+
+Ուսուցման բովանդակություն
+3 / 4 ստեղծված
+⚠ 1-ը պատրաստ չէ
+
+The teacher must be able to inspect the blocked MicroNode.
+
+Do not hide real blockers merely to make the UI cleaner.
+
+==================================================
+10. KEEP MICRONODE DETAILS
+==================================================
+
+Do NOT remove the Cognitive Path block.
+
+Do NOT remove the 👁 Teaching Content view.
+
+Do NOT redesign the MicroNode detail architecture.
+
+The intended behavior remains:
+
+MicroNode
+  objective
+  source/context
+  exercises
+  Cognitive Path
+  Teaching Content via 👁 / existing detail view
+
+Only redundant AI regeneration shortcuts are being removed.
+
+==================================================
+11. VISUAL REQUIREMENTS
+==================================================
+
+Fix the current layout issue visible in the teacher dashboard:
+
+- no awkward top/bottom floating statuses
+- no inconsistent button vertical alignment
+- no status text detached from its corresponding action
+- no unnecessary duplicate labels
+- consistent button heights
+- consistent gaps
+- clear 1 → 2 → 3 progression
+- responsive behavior on narrow screens
+
+Do not redesign the rest of the dashboard.
+
+==================================================
+12. REAL LESSON ACCEPTANCE TEST
+==================================================
+
+Use the current:
+
+Մաթեմատիկա 5
+§1.4 Կարգեր, կարգային միավորներ
+
+Verify WITHOUT regenerating its existing data unless necessary for a
+safe test.
+
+Check:
+
+A. Cognitive Paths generated:
+   Step 1 shows created/ready state.
+
+B. Teaching Content generated:
+   Step 2 shows created/ready state.
+
+C. Final approval:
+   Step 3 reflects actual readiness.
+
+D. Per-node:
+   «🔄 Վերաստեղծել ճանաչողական ուղին» is no longer available.
+
+E. Existing Cognitive Path remains visible and editable manually.
+
+F. Existing Teaching Content remains viewable/editable manually.
+
+G. After final approval, AI generation controls are locked.
+
+H. No existing valid data is overwritten.
+
+==================================================
+13. SAFETY / REGRESSION
+==================================================
+
+Run relevant existing tests.
+
+At minimum verify:
+
+- C2 acceptance/readiness
+- Teaching Content readiness
+- final approval
+- C6/C7 target behavior is unaffected
+- frontend typecheck
+- API typecheck if backend code is touched
+- production build
+
+Prefer UI-only changes unless a server-side generation endpoint still
+allows an unsafe overwrite that contradicts the existing confirmed-data
+protection.
+
+If backend hardening is necessary, make the smallest fail-closed change.
+
+==================================================
+14. FINAL REPORT
+==================================================
+
+Return:
+
+WORKFLOW UI:
+- ...
+
+COGNITIVE PATH REGENERATION:
+- ...
+
+TEACHING CONTENT REGENERATION:
+- ...
+
+POST-APPROVAL LOCK:
+- ...
+
+MANUAL EDITING:
+- ...
+
+BACKEND LOGIC CHANGED:
+YES / NO
+If YES, explain exactly why.
+
+DATABASE CHANGED:
+YES / NO
+
+C1–C7 SEMANTICS CHANGED:
+NO
+
+EXISTING LESSON DATA OVERWRITTEN:
+NO
+
+TESTS:
+- ...
+
+VISUAL ACCEPTANCE:
+PASS / FAIL
+
+Do not publish or deploy.
+
+Then STOP.
