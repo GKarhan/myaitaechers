@@ -1,0 +1,975 @@
+TASK — FINAL TEACHING CONTENT GENERATION + TEACHER OVERRIDE CLOSURE
+
+GOAL
+
+Finish the remaining Mapping workflow problem:
+
+Teaching Content generation is still not reliably producing/persisting content
+for mapped MicroNodes.
+
+Fix that root cause GENERALLY.
+
+At the same time, Teaching Content must not become a permanent obstacle for
+teachers.
+
+If Teaching Content cannot be generated after bounded safe attempts, an
+otherwise safe lesson must still be finalizable ONLY after explicit teacher
+confirmation.
+
+This task must preserve the simplified teacher workflow:
+
+1. Cognitive Paths
+2. Teaching Content
+3. Final Approval
+4. Send to Student becomes available after successful final approval
+
+DO NOT redesign Mapping.
+DO NOT remap lessons.
+DO NOT weaken true source/integrity safety.
+DO NOT modify Quiz or Knowledge Tree.
+DO NOT redesign AI Teacher.
+DO NOT publish/deploy.
+
+==================================================
+PART 0 — AUDIT FIRST
+==================================================
+
+Before editing code, trace the CURRENT implementation end to end.
+
+Audit:
+
+1. Lesson-wide Teaching Content generation action.
+2. How eligible MicroNodes are selected.
+3. C1 readiness checks.
+4. C2/Cognitive Path readiness checks.
+5. Provider/model call.
+6. Generated Teaching Content validation.
+7. Persistence into the canonical DB fields.
+8. Database read-back after persistence.
+9. Retry behavior.
+10. Historical/completed mapping-job behavior.
+11. Final lesson approval.
+12. Student-delivery eligibility.
+13. AI Teacher's actual dependency on generated Teaching Content.
+
+Use lesson 654 only as a regression example if useful.
+
+DO NOT create lesson-specific code.
+
+Determine exactly why its mapped MicroNodes currently show:
+
+«Ուսուցման բովանդակությունը դեռ չկա»
+
+despite the lesson-wide Teaching Content workflow having been used.
+
+Classify the root cause before editing:
+
+A. generation never attempted
+B. readiness gate blocks generation
+C. provider output rejected
+D. generated output not persisted
+E. persisted output not read correctly
+F. stale job state prevents retry
+G. another concrete cause
+
+Report the proven root cause internally before applying the fix.
+
+==================================================
+PART 1 — CANONICAL TEACHING CONTENT COMPLETENESS
+==================================================
+
+Find the CURRENT canonical Teaching Content schema/fields.
+
+Do NOT invent a second content model.
+
+Create/reuse one shared deterministic completeness function for Teaching Content.
+
+A MicroNode is considered to have Teaching Content only when the canonical
+required persisted fields are actually present and usable.
+
+Do NOT use:
+
+- historical job success;
+- frontend state;
+- provider response alone;
+- a single explanation field alone;
+
+as proof that Teaching Content exists.
+
+Canonical persisted database state is authoritative.
+
+==================================================
+PART 2 — FIX TEACHING CONTENT GENERATION
+==================================================
+
+Fix the actual general cause preventing Teaching Content from being generated.
+
+The normal desired behavior is:
+
+mapped MicroNode
+→ usable source/C1
+→ usable Cognitive Path/C2
+→ generate Teaching Content
+→ validate
+→ persist
+→ read back
+→ report success.
+
+IMPORTANT:
+
+REVIEW_REQUIRED must not automatically equal BLOCKED.
+
+Use the existing three-state philosophy:
+
+READY
+REVIEW_REQUIRED
+BLOCKED
+
+READY:
+safe to generate.
+
+REVIEW_REQUIRED:
+safe enough to generate but teacher should review later.
+
+BLOCKED:
+generation genuinely cannot safely continue.
+
+Only true source/grounding/structural failures should be hard blockers.
+
+Do NOT require unnecessary confirmation badges merely to allow Teaching Content
+generation.
+
+==================================================
+PART 3 — SAFE YELLOW-PATH GENERATION
+==================================================
+
+Teaching Content generation SHOULD proceed when:
+
+- source is readable and usable;
+- Mapping exists;
+- C1 is usable even if review is recommended;
+- C2 is usable even if review is recommended;
+- there is no critical grounding/integrity failure.
+
+Examples of states that should normally be REVIEW_REQUIRED rather than BLOCKED:
+
+- partial but usable source alignment;
+- review-needed C1 with usable grounding;
+- generated Cognitive Path that is structurally valid and safe but marked for
+  teacher review.
+
+Do not convert genuinely insufficient source into REVIEW_REQUIRED.
+
+==================================================
+PART 4 — BOUNDED SELF-REPAIR
+==================================================
+
+If a fresh AI-generated Teaching Content candidate fails the canonical validator
+for a repairable generation reason:
+
+allow ONE constrained regeneration attempt.
+
+Maximum:
+
+initial generation
++
+one repair attempt.
+
+Do NOT loop indefinitely.
+
+Do NOT weaken the validator merely to accept bad content.
+
+Do NOT overwrite teacher-authored Teaching Content.
+
+Do NOT overwrite already complete persisted Teaching Content.
+
+If the second candidate still fails:
+
+classify the node honestly as REVIEW_REQUIRED or BLOCKED according to the actual
+reason.
+
+==================================================
+PART 5 — MISSING-ONLY GENERATION
+==================================================
+
+Lesson-wide:
+
+«Ստեղծել ուսուցման բովանդակություն»
+
+must operate on CURRENT canonical state.
+
+For every MicroNode:
+
+if complete Teaching Content already exists:
+SKIP.
+
+if Teaching Content is incomplete/missing and generation is currently safe:
+GENERATE.
+
+if Teaching Content is missing and requires teacher review but generation is
+still safe:
+GENERATE and preserve review status.
+
+if true hard blocker exists:
+DO NOT generate and report blocker.
+
+Never overwrite complete existing Teaching Content during lesson-wide generation.
+
+==================================================
+PART 6 — STALE JOBS MUST NOT LOCK RETRY
+==================================================
+
+Historical mapping-job state must NOT decide whether the teacher may retry
+Teaching Content generation.
+
+Example:
+
+old job = completed
+current DB = Teaching Content still missing
+
+This MUST remain retryable.
+
+The action must determine eligibility from CURRENT MicroNode persisted state.
+
+Therefore:
+
+completed historical job
+≠
+Teaching Content complete.
+
+If incomplete nodes still exist, the teacher must be able to retry generation.
+
+==================================================
+PART 7 — DATABASE READ-BACK IS REQUIRED
+==================================================
+
+After Teaching Content is generated and written:
+
+re-read the affected MicroNode from the database.
+
+Only count it as generated if the canonical Teaching Content fields actually
+exist after read-back.
+
+Correct sequence:
+
+generate
+→ validate
+→ persist
+→ read back
+→ verify completeness
+→ count success.
+
+If persistence/read-back fails:
+
+do NOT report the node as successfully generated.
+
+Return an honest failure/review result.
+
+==================================================
+PART 8 — TEACHER UI FOR STEP 2
+==================================================
+
+Keep the existing simple three-step lesson workflow.
+
+STEP 1
+«Ճանաչողական ուղիներ»
+
+STEP 2
+«Ուսուցման բովանդակություն»
+
+STEP 3
+«Վերջնական հաստատում»
+
+Do NOT restore old technical clutter.
+
+For Teaching Content show a compact current-state summary such as:
+
+«4 / 4 ստեղծված»
+
+or:
+
+«2 / 4 ստեղծված · 2-ը վերանայման»
+
+or:
+
+«Չի ստեղծվել · կարելի է կրկին փորձել»
+
+Avoid displaying raw technical labels such as:
+
+C1
+C2
+provider
+validator
+grounding
+job
+pipeline
+
+in the primary teacher UI.
+
+Technical information may remain in debugging/logging surfaces.
+
+==================================================
+PART 9 — KEEP RETRY AVAILABLE
+==================================================
+
+If Teaching Content is incomplete:
+
+the teacher must have a clear retry action.
+
+For example:
+
+«Կրկին փորձել»
+
+or reuse:
+
+«Ստեղծել ուսուցման բովանդակություն»
+
+The action should process only missing/incomplete eligible MicroNodes.
+
+Do not require remapping the entire lesson just to retry Teaching Content.
+
+Do not require recreating existing valid Cognitive Paths.
+
+==================================================
+PART 10 — DO NOT RESTORE PER-ITEM APPROVAL CLUTTER
+==================================================
+
+Preserve the previously simplified Mapping UI.
+
+Routine success badges such as:
+
+«✅ Հաստատված»
+
+must NOT be repeatedly displayed beside every normal MicroNode and every
+exercise in the main Mapping view.
+
+Do not restore:
+
+«Հաստատել բոլոր հանգույցները»
+
+Do not restore unnecessary per-item approval workflow.
+
+Keep exceptional states visible:
+
+⚠ Վերանայում է պետք
+
+or genuine blockers.
+
+Normal success should be visually quiet.
+
+Manual edit/delete/review functionality must remain available.
+
+==================================================
+PART 11 — COGNITIVE PATH BEHAVIOR
+==================================================
+
+Do not restore automatic per-MicroNode Cognitive Path regeneration shortcuts
+that were intentionally removed from the normal teacher workflow.
+
+Lesson-wide Cognitive Path generation remains the primary automatic action.
+
+After generated Cognitive Paths exist, normal teacher interaction should be
+review/edit rather than accidental regeneration.
+
+Existing teacher-authored or confirmed Cognitive Paths must not be overwritten
+by this task.
+
+==================================================
+PART 12 — TEACHING CONTENT MUST BE PREFERRED, NOT MANDATORY
+==================================================
+
+Teaching Content remains the preferred normal state.
+
+The system MUST first attempt normal generation and bounded repair.
+
+However:
+
+missing generated Teaching Content ALONE must NOT permanently prevent an
+otherwise safe lesson from being finalized.
+
+Teaching Content absence becomes an OVERRIDABLE condition.
+
+This does NOT mean automatic approval.
+
+It requires explicit teacher confirmation.
+
+==================================================
+PART 13 — FINAL APPROVAL WITH MISSING TEACHING CONTENT
+==================================================
+
+When teacher clicks:
+
+«Վերջնական հաստատում»
+
+evaluate the lesson.
+
+There are three possible outcomes.
+
+--------------------------------
+OUTCOME A — NORMAL APPROVAL
+--------------------------------
+
+All required data including Teaching Content is complete and no true blocker
+exists.
+
+→ approve normally.
+
+--------------------------------
+OUTCOME B — TEACHER CONFIRMATION REQUIRED
+--------------------------------
+
+Teaching Content is missing for one or more MicroNodes,
+
+BUT:
+
+- source is usable;
+- Mapping is structurally valid;
+- required MicroNodes exist;
+- required Cognitive Paths are usable;
+- no critical source failure exists;
+- no critical grounding failure exists;
+- no structural/runtime integrity blocker exists.
+
+Then:
+
+do NOT permanently block final approval.
+
+Instead return a teacher-confirmation-required state.
+
+--------------------------------
+OUTCOME C — TRUE HARD BLOCK
+--------------------------------
+
+A genuine source/integrity/runtime safety problem exists.
+
+Then:
+
+final approval remains denied.
+
+Teacher override MUST NOT bypass it.
+
+==================================================
+PART 14 — TEACHER CONFIRMATION DIALOG
+==================================================
+
+For OUTCOME B show a simple Armenian confirmation dialog.
+
+Suggested title:
+
+«Ուսուցման բովանդակությունը ամբողջությամբ չի ստեղծվել»
+
+Suggested message:
+
+«Այս դասի որոշ գիտելիքի հանգույցների համար լրացուցիչ ուսուցման
+բովանդակություն չի ստեղծվել։
+
+Դասի հիմնական քարտեզագրումը պահպանված է։
+
+Ցանկանո՞ւմ եք հաստատել դասը առանց լրացուցիչ ուսուցման
+բովանդակության»։
+
+Show affected count:
+
+«Առանց լրացուցիչ բովանդակության՝ 2 հանգույց»
+
+Buttons:
+
+«Չեղարկել»
+
+«Հաստատել առանց լրացուցիչ բովանդակության»
+
+Do NOT expose technical C1/C2/provider/validator/job terminology here.
+
+==================================================
+PART 15 — EXPLICIT TEACHER DECISION
+==================================================
+
+Never silently bypass missing Teaching Content.
+
+Teacher must explicitly choose:
+
+«Հաստատել առանց լրացուցիչ բովանդակության»
+
+Frontend must send that decision explicitly to backend.
+
+Do NOT implement this as frontend-only button enabling.
+
+Backend remains authoritative.
+
+==================================================
+PART 16 — PERSIST THE OVERRIDE
+==================================================
+
+Persist the explicit teacher acceptance using the smallest appropriate existing
+lesson final-approval/audit mechanism.
+
+Do NOT invent a parallel approval architecture unless absolutely necessary.
+
+The system must be able to distinguish:
+
+A.
+lesson approved normally with complete Teaching Content
+
+from:
+
+B.
+lesson explicitly approved by teacher despite missing Teaching Content.
+
+The override must be auditable.
+
+IMPORTANT:
+
+Do NOT create fake Teaching Content.
+
+Do NOT insert placeholder content.
+
+Do NOT mark missing content as generated.
+
+Do NOT convert missing content to READY merely because teacher accepted it.
+
+==================================================
+PART 17 — PARTIAL CONTENT CASES
+==================================================
+
+Support all cases:
+
+4 / 4 Teaching Content exists
+→ normal approval.
+
+3 / 4 exists
+→ teacher may explicitly approve with 1 missing.
+
+2 / 4 exists
+→ teacher may explicitly approve with 2 missing.
+
+1 / 4 exists
+→ teacher may explicitly approve with 3 missing.
+
+0 / 4 exists
+→ teacher may explicitly approve without generated Teaching Content ONLY if
+the rest of the lesson is genuinely safe and structurally usable.
+
+Existing generated Teaching Content must always remain untouched.
+
+==================================================
+PART 18 — STUDENT DELIVERY BUTTON
+==================================================
+
+«Ուղարկել սովորողին»
+
+must remain governed by canonical lesson final-approval state.
+
+Do NOT directly activate the button from the override dialog.
+
+Correct authority chain:
+
+teacher clicks Final Approval
+→ backend detects missing Teaching Content only
+→ UI asks teacher
+→ teacher explicitly confirms
+→ backend final approval succeeds
+→ persisted lesson approval state changes
+→ frontend re-reads canonical lesson state
+→ existing delivery eligibility sees approved lesson
+→ «Ուղարկել սովորողին» becomes active.
+
+Both of these must allow student delivery:
+
+normal final approval
+
+AND
+
+explicit final approval without complete Teaching Content.
+
+True hard-blocked lessons must NOT become deliverable.
+
+==================================================
+PART 19 — AI TEACHER COMPATIBILITY AUDIT
+==================================================
+
+Audit whether AI Teacher runtime hard-requires generated Teaching Content.
+
+Do NOT redesign AI Teacher.
+
+If AI Teacher already safely uses:
+
+Mapping/source content
++
+Cognitive Path
+
+when generated Teaching Content is absent:
+
+preserve that behavior and make no runtime change.
+
+If runtime currently crashes, refuses lesson start, or has a strict dependency
+on generated Teaching Content:
+
+identify the exact dependency.
+
+Then make ONLY the smallest compatibility change required so an explicitly
+teacher-approved lesson without generated Teaching Content can still be taught
+using canonical Mapping/source/Cognitive Path data.
+
+Do NOT create hidden AI-generated Teaching Content at runtime.
+
+Do NOT change C3–C7 pedagogical/evidence semantics.
+
+==================================================
+PART 20 — EDITING AFTER FINAL APPROVAL
+==================================================
+
+Preserve existing final-approval invalidation semantics.
+
+If material Mapping/Cognitive Path/content edits currently invalidate lesson
+approval, they must continue to do so.
+
+An override-approved lesson must NOT become permanently approved despite later
+material changes.
+
+==================================================
+PART 21 — ACCEPTANCE TEST MATRIX
+==================================================
+
+Add deterministic/provider-free regression coverage.
+
+CASE 1
+Teaching Content missing
+→ current-state generation available.
+
+CASE 2
+old completed job + content missing
+→ retry still available.
+
+CASE 3
+complete existing Teaching Content
+→ not overwritten.
+
+CASE 4
+teacher-authored Teaching Content
+→ not overwritten.
+
+CASE 5
+READY node
+→ generation allowed.
+
+CASE 6
+safe REVIEW_REQUIRED node
+→ generation allowed.
+
+CASE 7
+true unreadable/insufficient source
+→ generation blocked.
+
+CASE 8
+first generated candidate valid
+→ persist.
+
+CASE 9
+first candidate repairably invalid
+→ exactly one repair attempt.
+
+CASE 10
+second candidate invalid
+→ no infinite retry.
+
+CASE 11
+persist succeeds + read-back complete
+→ count generated.
+
+CASE 12
+persist/read-back incomplete
+→ do not report success.
+
+CASE 13
+4/4 Teaching Content exists
+→ normal final approval
+→ no override dialog
+→ student delivery eligible.
+
+CASE 14
+3/4 Teaching Content exists
+→ final approval requires explicit teacher confirmation
+→ teacher confirms
+→ approval succeeds
+→ delivery eligible.
+
+CASE 15
+0/4 Teaching Content exists but lesson otherwise safe
+→ explicit teacher confirmation required
+→ teacher confirms
+→ approval succeeds
+→ delivery eligible.
+
+CASE 16
+Teaching Content missing + true source/integrity hard blocker
+→ override unavailable
+→ approval denied
+→ delivery disabled.
+
+CASE 17
+teacher cancels override confirmation
+→ lesson remains unapproved
+→ delivery disabled.
+
+CASE 18
+override approval succeeds
+→ refresh/read-back preserves final approval
+→ missing content remains honestly missing
+→ delivery remains eligible.
+
+CASE 19
+override request without explicit teacher confirmation
+→ backend does NOT bypass Teaching Content requirement.
+
+CASE 20
+partial Teaching Content + override
+→ existing generated content remains unchanged.
+
+Expected:
+
+20 / 20 PASS.
+
+==================================================
+PART 22 — REAL ACCEPTANCE CHECK
+==================================================
+
+After deterministic tests pass, perform ONE safe acceptance check using an
+existing mapped lesson such as lesson 654 IF it remains appropriate.
+
+Do NOT:
+
+- remap the lesson;
+- delete data;
+- reset approval state merely for the test;
+- overwrite existing Teaching Content;
+- overwrite Cognitive Paths;
+- alter Quiz;
+- alter Knowledge Tree;
+- publish/deploy.
+
+If current lesson state allows safe missing-only Teaching Content retry:
+
+run it once.
+
+Then verify by DATABASE READ-BACK, not just UI/job output.
+
+Report:
+
+total MicroNodes
+Teaching Content complete
+Teaching Content missing
+review-required
+hard-blocked
+
+If Teaching Content still cannot be generated, prove the remaining reason.
+
+Then verify that missing Teaching Content alone can reach the explicit teacher
+confirmation path without weakening genuine hard blockers.
+
+==================================================
+PART 23 — SCOPE PROTECTION
+==================================================
+
+DO NOT change:
+
+- Quiz
+- Knowledge Tree
+- student mastery logic
+- evidence semantics
+- C3
+- C4
+- C5
+- C6
+- C7 remediation/evidence behavior
+- lesson target selection
+- Mapping hierarchy
+- unrelated teacher dashboard features
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode.
+
+Do NOT publish or deploy.
+
+Development preview only.
+
+==================================================
+PART 24 — FINAL ACCEPTANCE RULE
+==================================================
+
+The teacher must NEVER end in this dead-end state solely because generated
+Teaching Content failed:
+
+Teaching Content failed
+→ Final Approval permanently disabled
+→ Send to Student permanently disabled.
+
+Correct behavior:
+
+Teaching Content generation attempted
+→ bounded repair attempted if appropriate
+→ retry remains available
+
+AND, if Teaching Content still missing:
+
+→ teacher clicks Final Approval
+→ system explains missing content
+→ teacher explicitly chooses whether to proceed
+
+IF no true hard blocker exists:
+
+→ backend final approval succeeds
+→ approval persists
+→ Send to Student becomes active.
+
+BUT:
+
+true source/integrity/runtime blockers
+must remain non-overridable.
+
+Never silently transform:
+
+BLOCKED
+→ APPROVED.
+
+==================================================
+PART 25 — FINAL REPORT
+==================================================
+
+Return this exact report structure:
+
+ROOT CAUSE:
+<why Teaching Content was not being created>
+
+FILES CHANGED:
+<list>
+
+DATABASE CHANGED:
+YES / NO
+<exact changes if YES>
+
+TEACHING CONTENT GENERATION:
+FIXED / NOT FIXED
+
+CURRENT-STATE RETRY:
+WORKING / NOT WORKING
+
+STALE JOB LOCK:
+REMOVED / STILL EXISTS
+
+MISSING-ONLY GENERATION:
+WORKING / NOT WORKING
+
+EXISTING CONTENT OVERWRITTEN:
+NO / YES
+
+TEACHER CONTENT OVERWRITTEN:
+NO / YES
+
+DATABASE READ-BACK:
+IMPLEMENTED / NOT IMPLEMENTED
+
+SAFE REVIEW-STATE GENERATION:
+WORKING / NOT WORKING
+
+BOUNDED REPAIR:
+WORKING / NOT WORKING
+
+MAX REPAIR ATTEMPTS:
+<number>
+
+TEACHING CONTENT OVERRIDE:
+IMPLEMENTED / NOT IMPLEMENTED
+
+MISSING TEACHING CONTENT:
+OVERRIDABLE / HARD BLOCK
+
+EXPLICIT TEACHER CONFIRMATION:
+REQUIRED / NOT REQUIRED
+
+OVERRIDE PERSISTED:
+YES / NO
+
+0/ALL CONTENT MISSING BUT OTHERWISE SAFE:
+CAN TEACHER APPROVE: YES / NO
+
+TRUE SOURCE/INTEGRITY BLOCKER:
+CAN TEACHER OVERRIDE: YES / NO
+
+AFTER NORMAL APPROVAL:
+SEND TO STUDENT ACTIVE: YES / NO
+
+AFTER OVERRIDE APPROVAL:
+SEND TO STUDENT ACTIVE: YES / NO
+
+REFRESH PRESERVES APPROVAL:
+YES / NO
+
+MISSING CONTENT FALSELY MARKED GENERATED:
+NO / YES
+
+AI TEACHER WITHOUT GENERATED TEACHING CONTENT:
+SAFE / NOT SAFE / NOT APPLICABLE
+<brief explanation>
+
+PER-ITEM NORMAL “ՀԱՍՏԱՏՎԱԾ” BADGES IN MAIN MAPPING UI:
+REMOVED / STILL PRESENT
+
+“ՀԱՍՏԱՏԵԼ ԲՈԼՈՐ ՀԱՆԳՈՒՅՑՆԵՐԸ”:
+REMOVED / PRESENT
+
+20-CASE MATRIX:
+X / 20 PASS
+
+REAL LESSON ACCEPTANCE CHECK:
+<results>
+
+C1–C7 SAFETY SEMANTICS WEAKENED:
+NO / YES
+
+AI TEACHER PEDAGOGICAL LOGIC CHANGED:
+NO / YES
+
+QUIZ CHANGED:
+NO / YES
+
+KNOWLEDGE TREE CHANGED:
+NO / YES
+
+PUBLISHED/DEPLOYED:
+NO
+
+REMAINING BLOCKERS:
+<only concrete remaining blockers, or NONE>
+
+==================================================
+IMPORTANT
+==================================================
+
+Do not report completion merely because:
+
+- typecheck passes;
+- provider returned content;
+- a job says completed;
+- UI shows success.
+
+For Teaching Content success require:
+
+validated candidate
++
+successful persistence
++
+database read-back confirming canonical content.
+
+For lesson approval success require:
+
+canonical persisted final-approval state.
+
+For student-delivery success require:
+
+the existing delivery eligibility logic to observe that persisted approval.
+
+Do not fake any of these states.
