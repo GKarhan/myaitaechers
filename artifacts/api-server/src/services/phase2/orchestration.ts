@@ -564,6 +564,7 @@ export type Phase2TaskStateUpdate = {
   activeLessonExerciseId: number | null;
   activeTaskProvenance: string | null;
   activeTaskReference: string | null;
+  activeTaskSnapshot?: Record<string, unknown> | null;
   activeObjectiveTaskPayload: ActiveObjectiveTaskPayload | null;
   activeAttemptSequence: number;
   activeHelpCount: number;
@@ -582,6 +583,7 @@ export function buildMandatoryFeedbackStageUpdate(): Phase2TaskStateUpdate {
     activeLessonExerciseId: null,
     activeTaskProvenance: null,
     activeTaskReference: null,
+    activeTaskSnapshot: null,
     activeObjectiveTaskPayload: null,
     activeAttemptSequence: 0,
     activeHelpCount: 0,
@@ -600,6 +602,7 @@ export function buildPostFeedbackTransitionUpdate(): Phase2TaskStateUpdate {
     activeLessonExerciseId: null,
     activeTaskProvenance: null,
     activeTaskReference: null,
+    activeTaskSnapshot: null,
     activeObjectiveTaskPayload: null,
     activeAttemptSequence: 0,
     activeHelpCount: 0,
@@ -657,10 +660,11 @@ export function deriveGeneratedMicroCheckActivation(
   activeTaskReference = `micro_check:${randomUUID()}`,
 ): Phase2TaskStateUpdate | null {
   if (!response.is_micro_check) return null;
+  const isConstructedResponse = response.interaction_type === "constructed_response";
   return {
     nodeTeachingStage: "MICRO_CHECK",
     activeLessonExerciseId: null,
-    activeTaskProvenance: "micro_check",
+    activeTaskProvenance: isConstructedResponse ? "constructed_response" : "micro_check",
     activeTaskReference,
     activeObjectiveTaskPayload: objectivePayloadFromMicroCheck(response),
     activeAttemptSequence: 1,
@@ -679,6 +683,7 @@ export function deriveCognitiveAdvanceTaskReset(): Phase2TaskStateUpdate {
     activeLessonExerciseId: null,
     activeTaskProvenance: null,
     activeTaskReference: null,
+    activeTaskSnapshot: null,
     activeObjectiveTaskPayload: null,
     activeAttemptSequence: 0,
     activeHelpCount: 0,

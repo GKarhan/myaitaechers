@@ -107,6 +107,14 @@ import {
   type EvidenceQualificationStatus,
   type TaskSource,
 } from "../lib/evidence-contract.js";
+import {
+  buildCanonicalTaskSnapshot,
+  createCanonicalTaskRetrySnapshot,
+  isCanonicalTaskSnapshot,
+  sourceTaskText,
+  taskSnapshotForEvidence,
+  type CanonicalTaskSnapshot,
+} from "../services/phase2/canonical-task-snapshot.js";
 
 export { normalizeObjectiveMicroCheckAnswer };
 
@@ -115,6 +123,45 @@ type LessonExerciseRow = typeof lessonExercisesTable.$inferSelect;
 function learnerExerciseText(exercise: LessonExerciseRow): string | null {
   const content = resolveLearnerExerciseContent(exercise);
   return isLearnerDeliveryEligible(content) ? content.learnerText : null;
+}
+
+function canonicalSourcePrompt(exercise: LessonExerciseRow): {
+  prompt: string;
+  learnerTextSource: "verbatim" | "edited";
+} | null {
+  // A source exercise must preserve the textbook wording when that wording is
+  // safe to deliver. If it is not safe, fail closed instead of silently
+  // replacing the displayed task with a teacher edit.
+  if (exercise.exerciseTextVerbatim.trim()) {
+    const verbatim = resolveLearnerExerciseContent({
+      ...exercise,
+      exerciseTextEdited: null,
+    });
+    if (!isLearnerDeliveryEligible(verbatim)) return null;
+  } else if (!learnerExerciseText(exercise)) {
+    return null;
+  }
+  return sourceTaskText(exercise);
+}
+
+function renderGeneratedTask(task: {
+  student_message: string;
+  interaction_type: "multiple_choice" | "true_false" | "constructed_response";
+  options: Array<{ key: string; text: string }> | null;
+}): string {
+  const stem = task.interaction_type === "constructed_response"
+    ? task.student_message
+    : task.student_message
+      .split("\n")
+      .filter((line) => !/^\s*[A-ZԱ-Ֆ]\s*[.)]/u.test(line))
+      .join("\n")
+      .trim();
+  const renderedOptions = task.interaction_type === "multiple_choice"
+    ? task.options!.map((option) => `${option.key}) ${option.text}`).join("\n")
+    : task.interaction_type === "true_false"
+      ? "Ա) Ճիշտ\nԲ) Սխալ"
+      : "";
+  return renderedOptions ? `${stem}\n${renderedOptions}` : stem;
 }
 
 export function buildActiveTaskReminder(taskText: string | null): string {
@@ -185,18 +232,37 @@ async function activateSourceExercise(
   sessionId: number,
   selection: SourceExerciseResolution<LessonExerciseRow>,
   executionTarget?: C7ExecutionTarget,
-): Promise<LessonExerciseRow | null> {
+): Promise<{ exercise: LessonExerciseRow; renderedPrompt: string } | null> {
   const selectedExercise = selection.selected;
   if (!selectedExercise) return null;
-  const learnerContent = resolveLearnerExerciseContent(selectedExercise);
-  if (!isLearnerDeliveryEligible(learnerContent)) {
+  const rendered = canonicalSourcePrompt(selectedExercise);
+  if (!rendered) {
     logger.warn({
       sessionId,
       exerciseId: selectedExercise.id,
-      issueCodes: learnerContent.ok ? learnerContent.reviewWarnings : learnerContent.issues.map((issue) => issue.code),
+      issueCodes: ["canonical-verbatim-task-unavailable"],
     }, "source exercise activation blocked by learner-content boundary");
     return null;
   }
+  const taskReference = createTaskReference("source_exercise");
+  const taskSnapshot = buildCanonicalTaskSnapshot({
+    taskReference,
+    taskSource: "source_exercise",
+    taskKind: "source",
+    renderedPrompt: rendered.prompt,
+    executionTarget,
+    interactionType: selectedExercise.interactionType,
+    lessonExerciseId: selectedExercise.id,
+    sourceExerciseId: selectedExercise.exerciseId,
+    sourcePage: selectedExercise.sourcePage,
+    learnerTextSource: rendered.learnerTextSource,
+    sourceAnswer: {
+      interactionType: selectedExercise.interactionType,
+      correctAnswer: selectedExercise.correctAnswer,
+    },
+    sourceSuccessCriteria: selectedExercise.successCriteria,
+    targetCompatibleAtActivation: executionTarget !== undefined,
+  });
 
   const updated = await db
     .update(lessonSessionsTable)
@@ -204,11 +270,13 @@ async function activateSourceExercise(
       nodeTeachingStage: "EXERCISE",
       activeLessonExerciseId: selectedExercise.id,
       activeTaskProvenance: "source_exercise",
-      activeTaskReference: createTaskReference("source_exercise"),
+      activeTaskReference: taskReference,
+      activeTaskSnapshot: taskSnapshot,
       activeObjectiveTaskPayload: null,
       activeAttemptSequence: 1,
       activeHelpCount: 0,
       activeAssistanceLevel: "none",
+      lastQuestionAsked: rendered.prompt,
     } as any)
     .where(executionTarget
       ? and(
@@ -233,7 +301,7 @@ async function activateSourceExercise(
     "source exercise activated from eligible set"
   );
 
-  return selectedExercise;
+  return { exercise: selectedExercise, renderedPrompt: rendered.prompt };
 }
 
 // ── V2-R2 shared help executor ────────────────────────────────────────────────
@@ -702,6 +770,7 @@ type ChatEvidenceSnapshot = {
   activeAttemptSequence: number;
   activeHelpCount: number;
   activeAssistanceLevel: string;
+  activeTaskSnapshot: CanonicalTaskSnapshot | null;
 };
 
 /**
@@ -774,31 +843,32 @@ async function persistAndProjectChatEvidence(input: {
     : input.cognitivePath.find((level) => level.id === input.snapshot.activeCognitiveLevelId) ?? null;
   const levelBelongsToNode = activeLevel !== null && input.currentNodeMatchesSnapshot;
   const acceptedPath = levelBelongsToNode && input.cognitivePath.length > 0;
+  const taskSnapshot = input.snapshot.activeTaskSnapshot;
+  if (
+    !taskSnapshot ||
+    taskSnapshot.taskReference !== input.snapshot.activeTaskReference ||
+    taskSnapshot.attemptSequence !== input.snapshot.activeAttemptSequence ||
+    taskSnapshot.lessonNodeId !== input.snapshot.currentNodeId ||
+    taskSnapshot.cognitiveLevelId !== input.snapshot.activeCognitiveLevelId
+  ) {
+    throw new Error("chat evidence requires a matching immutable canonical task snapshot");
+  }
   const provenance = input.snapshot.activeTaskProvenance;
   const taskSource: TaskSource | null =
-    provenance === "micro_check" ? "micro_check"
-      : provenance === "source_exercise" ? "source_exercise"
-        : provenance === "constructed_response" ? "generated_task" : null;
+    taskSnapshot.taskSource === "micro_check" ? "micro_check"
+      : taskSnapshot.taskSource === "source_exercise" ? "source_exercise"
+        : taskSnapshot.taskSource === "generated_task" ? "generated_task" : null;
   const cappedQuality =
     provenance === "micro_check" &&
     (input.evidenceQuality === "STRONG" || input.evidenceQuality === "CONCLUSIVE")
       ? "MODERATE"
       : input.evidenceQuality;
 
-  let taskValidForLevel = false;
-  if (taskSource === "source_exercise" &&
-      input.snapshot.activeCognitiveLevelId !== null &&
-      input.snapshot.activeLessonExerciseId !== null) {
-    const [linkedTask] = await db.select({ id: lessonNodeCognitiveTasksTable.id })
-      .from(lessonNodeCognitiveTasksTable)
-      .where(and(
-        eq(lessonNodeCognitiveTasksTable.cognitiveLevelId, input.snapshot.activeCognitiveLevelId),
-        eq(lessonNodeCognitiveTasksTable.lessonExerciseId, input.snapshot.activeLessonExerciseId),
-      )).limit(1);
-    taskValidForLevel = linkedTask !== undefined;
-  } else if (taskSource === "micro_check") {
-    taskValidForLevel = !!input.snapshot.activeTaskReference;
-  }
+  const taskValidForLevel =
+    taskSnapshot.targetCompatibleAtActivation &&
+    taskSnapshot.lessonNodeId === input.executionTarget.microNodeId &&
+    taskSnapshot.cognitiveLevelId === input.executionTarget.activeCognitiveLevelId &&
+    (taskSource === "source_exercise" || taskSource === "micro_check");
   const authoritativeResult =
     (taskSource === "micro_check" && input.evidenceResultAuthority === "objective_task") ||
     (taskSource === "source_exercise" && input.evidenceResultAuthority === "source_exercise");
@@ -872,6 +942,11 @@ async function persistAndProjectChatEvidence(input: {
       microNodeId: input.executionTarget.microNodeId,
       activeCognitiveLevelId: input.executionTarget.activeCognitiveLevelId,
     },
+    canonicalTaskSnapshot: taskSnapshotForEvidence(taskSnapshot),
+    assistanceAtEvaluation: {
+      helpCount: input.snapshot.activeHelpCount,
+      assistanceLevel: input.snapshot.activeAssistanceLevel,
+    },
     c4ProjectionCompleted: false,
   };
   const [insertedEvidence] = await db.insert(evidenceEventsTable).values({
@@ -886,9 +961,8 @@ async function persistAndProjectChatEvidence(input: {
     cognitiveLevel: activeLevel?.cognitiveLevel ?? null,
     taskDifficulty: null,
     assistanceLevel: assistanceLevel !== "none" ? assistanceLevel : "none",
-    lessonExerciseId: input.snapshot.activeLessonExerciseId,
-    interactionType: provenance === "source_exercise" ? "short_answer"
-      : provenance === "micro_check" ? "micro_check" : null,
+    lessonExerciseId: taskSnapshot.lessonExerciseId,
+    interactionType: taskSnapshot.interactionType,
     attemptSequence: input.snapshot.activeAttemptSequence || 1,
     helpCount: input.snapshot.activeHelpCount,
     lessonNodeId: input.snapshot.currentNodeId,
@@ -898,7 +972,21 @@ async function persistAndProjectChatEvidence(input: {
     taskReference: input.snapshot.activeTaskReference,
     qualificationStatus,
     evidenceQuality: cappedQuality,
-  } as any).returning({ id: evidenceEventsTable.id });
+  } as any).onConflictDoNothing().returning({ id: evidenceEventsTable.id });
+  if (!insertedEvidence) {
+    const [duplicateEvidence] = await db
+      .select({ id: evidenceEventsTable.id })
+      .from(evidenceEventsTable)
+      .where(and(
+        eq((evidenceEventsTable as any).lessonSessionId, input.snapshot.id),
+        eq((evidenceEventsTable as any).taskReference, input.snapshot.activeTaskReference),
+        eq((evidenceEventsTable as any).attemptSequence, input.snapshot.activeAttemptSequence || 1),
+      ))
+      .limit(1);
+    if (!duplicateEvidence) throw new Error("C3 task-attempt conflict could not be recovered");
+    const projection = await projectLearnerCognitiveCeiling(input.userId, input.snapshot.currentNodeId);
+    return { qualificationStatus, projection, taskReference: input.snapshot.activeTaskReference };
+  }
   const projection = await projectLearnerCognitiveCeiling(
     input.userId,
     input.snapshot.currentNodeId,
@@ -979,6 +1067,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeAttemptSequence: number;
     activeHelpCount: number;
     activeAssistanceLevel: string;
+    activeTaskSnapshot: CanonicalTaskSnapshot | null;
     // V2-R3: pedagogical remediation step (0 = initial, 1–5 = escalation)
     remediationStep: number;
     // V2-R4A: learning budget fields (snapshot from lesson at session creation)
@@ -1068,6 +1157,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeCognitiveLevelId: (sessionRow as any).activeCognitiveLevelId ?? null,
           activeTaskProvenance:   (sessionRow as any).activeTaskProvenance   ?? null,
            activeTaskReference:    (sessionRow as any).activeTaskReference    ?? null,
+           activeTaskSnapshot: isCanonicalTaskSnapshot((sessionRow as any).activeTaskSnapshot)
+             ? (sessionRow as any).activeTaskSnapshot
+             : null,
           activeObjectiveTaskPayload: (sessionRow as any).activeObjectiveTaskPayload ?? null,
           activeAttemptSequence:  (sessionRow as any).activeAttemptSequence  ?? 0,
           activeHelpCount:        (sessionRow as any).activeHelpCount        ?? 0,
@@ -2298,6 +2390,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeAttemptSequence: number;
     activeHelpCount: number;
     activeAssistanceLevel: string;
+    activeTaskSnapshot: CanonicalTaskSnapshot | null;
   } | null = null;
   let _canonicalEvidenceProcessed = false;
   let _canonicalEvidenceQualification: EvidenceQualificationStatus | null = null;
@@ -2712,6 +2805,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             activeLessonExerciseId: null,
             activeTaskProvenance: null,
             activeTaskReference: null,
+            activeTaskSnapshot: null,
             activeObjectiveTaskPayload: null,
             activeAttemptSequence: 0,
             activeHelpCount: 0,
@@ -2730,16 +2824,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       }
 
       if (plan.action === "DELIVER_SOURCE_EXERCISE") {
-        const selectedExercise = await activateSourceExercise(
+        const activatedSource = await activateSourceExercise(
           freshSession.id,
           resolveEligibleSourceExercise(eligibleExercises, null),
           continuationTarget,
         );
-        const sourceText = selectedExercise ? learnerExerciseText(selectedExercise) : null;
-        if (!selectedExercise || !sourceText) {
+        if (!activatedSource) {
           throw new Error("continuation could not activate a learner-deliverable source exercise");
         }
-        const sourceContent = `${sourceText}\n(Էջ ${selectedExercise.sourcePage ?? "?"}, Վ. ${selectedExercise.exerciseId})`;
+        const sourceContent = activatedSource.renderedPrompt;
         const [sourceMessage] = await db
           .insert(chatMessagesTable)
           .values({ userId: req.userId!, lessonId, role: "assistant", content: sourceContent })
@@ -2765,6 +2858,29 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         const isObjective =
           task.interaction_type === "multiple_choice" ||
           task.interaction_type === "true_false";
+        const taskReference = createTaskReference(
+          task.interaction_type === "constructed_response" ? "generated_task" : "micro_check",
+        );
+        const objectivePayload = isObjective
+          ? {
+              interactionType: task.interaction_type,
+              options: task.interaction_type === "multiple_choice" ? task.options : null,
+              correctOption: task.correct_option,
+            } as ActiveObjectiveTaskPayload
+          : null;
+        const taskContent = renderGeneratedTask(task);
+        const taskSnapshot = buildCanonicalTaskSnapshot({
+          taskReference,
+          taskSource: task.interaction_type === "constructed_response" ? "generated_task" : "micro_check",
+          taskKind: task.interaction_type === "constructed_response" ? "generated" : "micro_check",
+          renderedPrompt: taskContent,
+          executionTarget: continuationTarget,
+          interactionType: task.interaction_type,
+          learnerTextSource: "generated",
+          objectivePayload,
+          questionTemplate: task.question_template,
+          targetCompatibleAtActivation: true,
+        });
         await db
           .update(lessonSessionsTable)
           .set({
@@ -2773,37 +2889,15 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             activeTaskProvenance: task.interaction_type === "constructed_response"
               ? "constructed_response"
               : "micro_check",
-            activeTaskReference: createTaskReference(
-              task.interaction_type === "constructed_response"
-                ? "generated_task"
-                : "micro_check",
-            ),
-            activeObjectiveTaskPayload: isObjective
-              ? {
-                  interactionType: task.interaction_type,
-                  options: task.interaction_type === "multiple_choice" ? task.options : null,
-                  correctOption: task.correct_option,
-                }
-              : null,
+            activeTaskReference: taskReference,
+            activeTaskSnapshot: taskSnapshot,
+            activeObjectiveTaskPayload: objectivePayload,
             activeAttemptSequence: 1,
             activeHelpCount: 0,
             activeAssistanceLevel: "none",
-            lastQuestionAsked: task.student_message,
+            lastQuestionAsked: taskContent,
           } as any)
           .where(eq(lessonSessionsTable.id, freshSession.id));
-        const taskStem = task.interaction_type === "constructed_response"
-          ? task.student_message
-          : task.student_message
-            .split("\n")
-            .filter((line) => !/^\s*[A-ZԱ-Ֆ]\s*[.)]/u.test(line))
-            .join("\n")
-            .trim();
-        const renderedOptions = task.interaction_type === "multiple_choice"
-          ? task.options!.map((option) => `${option.key}) ${option.text}`).join("\n")
-          : task.interaction_type === "true_false"
-            ? "Ա) Ճիշտ\nԲ) Սխալ"
-            : "";
-        const taskContent = renderedOptions ? `${taskStem}\n${renderedOptions}` : taskStem;
         const [taskMessage] = await db
           .insert(chatMessagesTable)
           .values({ userId: req.userId!, lessonId, role: "assistant", content: taskContent })
@@ -2936,29 +3030,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session.nodeTeachingStage === "TASK_REQUIRED"
   ) {
     const selection = resolveEligibleSourceExercise(classExercises, null);
-    const selectedExercise = await activateSourceExercise(
+    const activatedSource = await activateSourceExercise(
       session.id,
       selection,
       await assertPhase2TargetLocked() ?? undefined,
     );
-    if (!selectedExercise) {
+    if (!activatedSource) {
       res.status(409).json({
         error: "SOURCE_EXERCISE_UNAVAILABLE",
         message: "Հաջորդ առաջադրանքը հասանելի չէ։ Խնդրում եմ կրկին փորձել։",
       });
       return;
     }
-    const sourceText = learnerExerciseText(selectedExercise);
-    if (!sourceText) {
-      res.status(409).json({
-        error: "SOURCE_EXERCISE_CONTENT_UNSAFE",
-        message: "Հաջորդ առաջադրանքը հասանելի չէ։ Խնդրում եմ կրկին փորձել։",
-      });
-      return;
-    }
-    const sourcePage = selectedExercise.sourcePage ?? "?";
     await respondWithBoundedPhase2Message(
-      `${sourceText}\n(Էջ ${sourcePage}, Վ. ${selectedExercise.exerciseId})`,
+      activatedSource.renderedPrompt,
       "TRANSITION",
       true,
     );
@@ -2975,48 +3060,45 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const isObjective =
         task.interaction_type === "multiple_choice" ||
         task.interaction_type === "true_false";
+      const taskReference = createTaskReference(
+        task.interaction_type === "constructed_response" ? "generated_task" : "micro_check",
+      );
+      const objectivePayload = isObjective
+        ? {
+            interactionType: task.interaction_type,
+            options: task.interaction_type === "multiple_choice" ? task.options : null,
+            correctOption: task.correct_option,
+          } as ActiveObjectiveTaskPayload
+        : null;
+      const taskContent = renderGeneratedTask(task);
       const taskUpdate: Record<string, unknown> = {
         nodeTeachingStage: "MICRO_CHECK",
         activeLessonExerciseId: null,
         activeTaskProvenance: task.interaction_type === "constructed_response"
           ? "constructed_response"
           : "micro_check",
-        activeTaskReference: createTaskReference(
-          task.interaction_type === "constructed_response"
-            ? "generated_task"
-            : "micro_check",
-        ),
-        activeObjectiveTaskPayload: isObjective
-          ? {
-              interactionType: task.interaction_type,
-              options: task.interaction_type === "multiple_choice"
-                ? task.options
-                : null,
-              correctOption: task.correct_option,
-            }
-          : null,
+        activeTaskReference: taskReference,
+        activeTaskSnapshot: buildCanonicalTaskSnapshot({
+          taskReference,
+          taskSource: task.interaction_type === "constructed_response" ? "generated_task" : "micro_check",
+          taskKind: task.interaction_type === "constructed_response" ? "generated" : "micro_check",
+          renderedPrompt: taskContent,
+          executionTarget: _c7ExecutionTarget ?? undefined,
+          interactionType: task.interaction_type,
+          learnerTextSource: "generated",
+          objectivePayload,
+          questionTemplate: task.question_template,
+          targetCompatibleAtActivation: _c7ExecutionTarget !== null,
+        }),
+        activeObjectiveTaskPayload: objectivePayload,
         activeAttemptSequence: 1,
         activeHelpCount: 0,
         activeAssistanceLevel: "none",
-        lastQuestionAsked: task.student_message,
+        lastQuestionAsked: taskContent,
       };
       await updateC7TargetLockedSession(taskUpdate);
-      const taskStem = task.interaction_type === "constructed_response"
-        ? task.student_message
-        : task.student_message
-          .split("\n")
-          .filter((line) => !/^\s*[A-ZԱ-Ֆ]\s*[.)]/u.test(line))
-          .join("\n")
-          .trim();
-      const renderedOptions = task.interaction_type === "multiple_choice"
-        ? task.options!.map((option) => `${option.key}) ${option.text}`).join("\n")
-        : task.interaction_type === "true_false"
-          ? "Ա) Ճիշտ\nԲ) Սխալ"
-          : "";
       await respondWithBoundedPhase2Message(
-        renderedOptions
-          ? `${taskStem}\n${renderedOptions}`
-          : taskStem,
+        taskContent,
         "MICRO_CHECK",
         true,
       );
@@ -3151,53 +3233,39 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   ) {
     try {
       let evaluation: Phase2EvaluationResult | undefined;
+      const activeTaskSnapshot = isCanonicalTaskSnapshot(session.activeTaskSnapshot)
+        ? session.activeTaskSnapshot
+        : null;
+      if (
+        !activeTaskSnapshot ||
+        activeTaskSnapshot.taskReference !== session.activeTaskReference ||
+        activeTaskSnapshot.attemptSequence !== session.activeAttemptSequence
+      ) {
+        throw new Error("bounded evaluation requires an immutable canonical task snapshot");
+      }
       if (session.activeTaskProvenance === "constructed_response") {
         evaluation = await callPhase2EvaluationJob(
           chatHistory,
           [
             lessonContext,
             "AUTHORITATIVE EVALUATION INPUT:",
-            `Task: ${session.lastQuestionAsked ?? "(constructed-response task)"}`,
+            `Task: ${activeTaskSnapshot.renderedPrompt}`,
             `Learner answer: ${message}`,
             "Evaluate the answer only. Do not write learner-facing feedback.",
           ].join("\n"),
         );
       } else if (session.activeTaskProvenance === "source_exercise") {
-        const [activeSourceExercise] = session.activeLessonExerciseId == null
-          ? []
-          : await db
-            .select({
-              id: lessonExercisesTable.id,
-              exerciseId: lessonExercisesTable.exerciseId,
-              interactionType: lessonExercisesTable.interactionType,
-              relatedNodeId: lessonExercisesTable.relatedNodeId,
-              correctAnswer: lessonExercisesTable.correctAnswer,
-              verbatim: lessonExercisesTable.exerciseTextVerbatim,
-              edited: lessonExercisesTable.exerciseTextEdited,
-              successCriteria: lessonExercisesTable.successCriteria,
-            })
-            .from(lessonExercisesTable)
-            .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
-            .limit(1);
-        if (!activeSourceExercise) {
-          throw new Error("active source exercise was not found for evaluation");
+        if (!activeTaskSnapshot.sourceAnswer || activeTaskSnapshot.lessonExerciseId === null) {
+          throw new Error("source evaluation snapshot lacks a persisted answer contract");
         }
-        await assertActiveSourceExerciseMatchesTarget(activeSourceExercise);
-        const learnerContent = resolveLearnerExerciseContent({
-          exerciseTextVerbatim: activeSourceExercise.verbatim,
-          exerciseTextEdited: activeSourceExercise.edited,
-          successCriteria: activeSourceExercise.successCriteria,
-          correctAnswer: activeSourceExercise.correctAnswer,
-        });
-        if (!isLearnerDeliveryEligible(learnerContent)) {
-          throw new Error(
-            `active source exercise is not learner-delivery eligible: ${
-              learnerContent.ok ? learnerContent.reviewWarnings.join(", ") : learnerContent.issues.map((issue) => issue.code).join(", ")
-            }`,
-          );
-        }
+        const activeSourceExercise = {
+          id: activeTaskSnapshot.lessonExerciseId,
+          exerciseId: activeTaskSnapshot.sourceExerciseId ?? "snapshot",
+          interactionType: activeTaskSnapshot.sourceAnswer.interactionType,
+          correctAnswer: activeTaskSnapshot.sourceAnswer.correctAnswer,
+        };
         _stage3HiddenExerciseContent = [
-          activeSourceExercise.successCriteria,
+          activeTaskSnapshot.sourceSuccessCriteria,
           activeSourceExercise.correctAnswer,
         ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
         _stage3SourceExerciseForEvaluation = activeSourceExercise;
@@ -3216,8 +3284,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             [
               lessonContext,
               "AUTHORITATIVE EVALUATION INPUT:",
-              `LEARNER_TASK_TEXT:\n${learnerContent.learnerText}`,
-              `EVALUATOR_ONLY_SUCCESS_CRITERIA:\n${activeSourceExercise.successCriteria?.trim() || "(not provided)"}`,
+              `LEARNER_TASK_TEXT:\n${activeTaskSnapshot.renderedPrompt}`,
+              `EVALUATOR_ONLY_SUCCESS_CRITERIA:\n${activeTaskSnapshot.sourceSuccessCriteria?.trim() || "(not provided)"}`,
               `Interaction type: ${String(activeSourceExercise.interactionType ?? "constructed_response")}`,
               `Learner answer: ${message}`,
               "Evaluate the answer only. Do not write learner-facing feedback.",
@@ -3317,12 +3385,32 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     teachingMode =
       _phase2ServerActionPlan.responseTeachingMode ??
       aiResult.teaching_mode;
+    const _activeCanonicalTaskSnapshot = isCanonicalTaskSnapshot(session?.activeTaskSnapshot)
+      ? session.activeTaskSnapshot
+      : null;
+    if (
+      session !== null &&
+      session.currentPhase >= 2 &&
+      _intentResult.intent === "ANSWER" &&
+      _intentHasActiveTask &&
+      (
+        !_activeCanonicalTaskSnapshot ||
+        _activeCanonicalTaskSnapshot.taskReference !== session.activeTaskReference ||
+        _activeCanonicalTaskSnapshot.attemptSequence !== session.activeAttemptSequence
+      )
+    ) {
+      res.status(409).json({
+        error: "ACTIVE_TASK_SNAPSHOT_UNAVAILABLE",
+        message: "Ընթացիկ առաջադրանքը չի կարող անվտանգ գնահատվել։ Խնդրում ենք նորից սկսել այն։",
+      });
+      return;
+    }
     const _activeObjectiveTaskPayload = (
       _intentResult.intent === "ANSWER" &&
       session?.activeTaskProvenance === "micro_check" &&
-      session.activeObjectiveTaskPayload
+      _activeCanonicalTaskSnapshot?.objectivePayload
     )
-      ? session.activeObjectiveTaskPayload
+      ? _activeCanonicalTaskSnapshot.objectivePayload
       : null;
 
     // Active typed source exercises have a separate, database-backed correctness
@@ -3334,24 +3422,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       _activeSourceExerciseForEvaluation === null &&
       _intentResult.intent === "ANSWER" &&
       session?.activeTaskProvenance === "source_exercise" &&
-      session.activeLessonExerciseId != null
+      _activeCanonicalTaskSnapshot?.sourceAnswer
     ) {
-      const [activeSourceExercise] = await db
-        .select({
-          id: lessonExercisesTable.id,
-          exerciseId: lessonExercisesTable.exerciseId,
-          interactionType: lessonExercisesTable.interactionType,
-          relatedNodeId: lessonExercisesTable.relatedNodeId,
-          correctAnswer: lessonExercisesTable.correctAnswer,
-        })
-        .from(lessonExercisesTable)
-        .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
-        .limit(1);
-
-      if (activeSourceExercise) {
-          await assertActiveSourceExerciseMatchesTarget(activeSourceExercise);
-        _activeSourceExerciseForEvaluation = activeSourceExercise;
-      }
+      _activeSourceExerciseForEvaluation = {
+        id: _activeCanonicalTaskSnapshot.lessonExerciseId ?? -1,
+        exerciseId: _activeCanonicalTaskSnapshot.sourceExerciseId ?? "snapshot",
+        interactionType: _activeCanonicalTaskSnapshot.sourceAnswer.interactionType,
+        correctAnswer: _activeCanonicalTaskSnapshot.sourceAnswer.correctAnswer,
+      };
     }
 
     const _authoritativeEvaluation = resolveAuthoritativeEvaluation({
@@ -3498,7 +3576,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     );
 
     if (activatedExercise) {
-      _activeLessonExerciseIdForDelivery = activatedExercise.id;
+      _activeLessonExerciseIdForDelivery = activatedExercise.exercise.id;
       const activeExercise = classExercises.find(
         (exercise) => exercise.id === _activeLessonExerciseIdForDelivery,
       ) ?? null;
@@ -3512,16 +3590,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       } else {
         _p11SelectedSourceExercise = activeExercise;
         _sourceExerciseActivatedThisTurn = true;
-        const verbatimEx = learnerExerciseText(activeExercise);
-        if (!verbatimEx) {
-          throw new Error("activated source exercise failed learner-content boundary");
-        }
         const enforced = enforceActiveSourceExercise(
           studentMessage,
-          verbatimEx,
+          activatedExercise.renderedPrompt,
           classExercises
             .filter((exercise) => exercise.id !== activeExercise.id)
-            .map((exercise) => learnerExerciseText(exercise))
+            .map((exercise) => canonicalSourcePrompt(exercise)?.prompt ?? null)
             .filter((text): text is string => text !== null),
         );
         if (enforced !== studentMessage) {
@@ -3579,6 +3653,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         activeAttemptSequence: session.activeAttemptSequence,
         activeHelpCount: session.activeHelpCount,
         activeAssistanceLevel: session.activeAssistanceLevel,
+        activeTaskSnapshot: isCanonicalTaskSnapshot(session.activeTaskSnapshot)
+          ? session.activeTaskSnapshot
+          : null,
       };
     }
     const {
@@ -3749,14 +3826,42 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       (session?.nodeTeachingStage ?? "THEORY") === "THEORY" &&
       aiResult.is_micro_check
     ) {
+      const isConstructedResponse = aiResult.interaction_type === "constructed_response";
+      const taskSource = isConstructedResponse ? "generated_task" : "micro_check";
       const taskActivation = deriveGeneratedMicroCheckActivation(
         aiResult,
-        createTaskReference("micro_check"),
+        createTaskReference(taskSource),
       );
       if (taskActivation) {
+        const generatedPrompt =
+          aiResult.interaction_type === "multiple_choice" ||
+          aiResult.interaction_type === "true_false" ||
+          aiResult.interaction_type === "constructed_response"
+            ? renderGeneratedTask({
+                student_message: aiResult.student_message,
+                interaction_type: aiResult.interaction_type,
+                options: aiResult.options,
+              })
+            : aiResult.student_message;
+        const taskSnapshot = buildCanonicalTaskSnapshot({
+          taskReference: taskActivation.activeTaskReference!,
+          taskSource,
+          taskKind: isConstructedResponse ? "generated" : "micro_check",
+          renderedPrompt: generatedPrompt,
+          executionTarget: _c7ExecutionTarget ?? undefined,
+          interactionType: aiResult.interaction_type,
+          learnerTextSource: "generated",
+          objectivePayload: taskActivation.activeObjectiveTaskPayload,
+          questionTemplate: aiResult.question_template,
+          targetCompatibleAtActivation: _c7ExecutionTarget !== null,
+        });
         await db
           .update(lessonSessionsTable)
-          .set(taskActivation as any)
+          .set({
+            ...taskActivation,
+            activeTaskSnapshot: taskSnapshot,
+            lastQuestionAsked: generatedPrompt,
+          } as any)
           .where(eq(lessonSessionsTable.id, session.id));
         hasActiveTask = true;
         logger.info(
@@ -3804,18 +3909,20 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           }
         : resolveEligibleSourceExercise(classExercises, aiResult.source_fidelity.exercise_id);
       const selectedExercise = _sourceExerciseActivatedThisTurn
-        ? selection.selected
+        ? (selection.selected
+          ? { exercise: selection.selected, renderedPrompt: canonicalSourcePrompt(selection.selected)?.prompt ?? "" }
+          : null)
         : await activateSourceExercise(
             session.id,
             selection,
             await assertPhase2TargetLocked() ?? undefined,
           );
       if (selectedExercise) {
-        _activeLessonExerciseIdForDelivery = selectedExercise.id;
+        _activeLessonExerciseIdForDelivery = selectedExercise.exercise.id;
         _sourceExerciseActivatedThisTurn = true;
         hasActiveTask = true;
         logger.info(
-          { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: selectedExercise.exerciseId },
+          { sessionId: session.id, nodeId: session.currentNodeId, exerciseId: selectedExercise.exercise.exerciseId },
           "teachingStage anticipatory advance: MICRO_CHECK -> EXERCISE"
         );
       }
@@ -3875,6 +3982,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         session.activeLessonExerciseId = null;
         session.activeTaskProvenance = null;
         session.activeTaskReference = null;
+        session.activeTaskSnapshot = null;
         session.activeObjectiveTaskPayload = null;
         session.activeAttemptSequence = 0;
         session.activeHelpCount = 0;
@@ -3899,6 +4007,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = "micro_check";
           activeTaskUpdate.activeTaskReference    = null;
+          activeTaskUpdate.activeTaskSnapshot     = null;
           activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 1;
           activeTaskUpdate.activeHelpCount        = 0;
@@ -3907,6 +4016,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance = null;
           activeTaskUpdate.activeTaskReference = null;
+          activeTaskUpdate.activeTaskSnapshot = null;
           activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence = 0;
           activeTaskUpdate.activeHelpCount = 0;
@@ -3921,20 +4031,23 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               }
             : resolveEligibleSourceExercise(classExercises, aiResult.source_fidelity.exercise_id);
           const selectedExercise = _sourceExerciseActivatedThisTurn
-            ? selection.selected
+            ? (selection.selected
+              ? { exercise: selection.selected, renderedPrompt: canonicalSourcePrompt(selection.selected)?.prompt ?? "" }
+              : null)
             : await activateSourceExercise(
                 session.id,
                 selection,
                 await assertPhase2TargetLocked() ?? undefined,
               );
           if (selectedExercise) {
-            _activeLessonExerciseIdForDelivery = selectedExercise.id;
+            _activeLessonExerciseIdForDelivery = selectedExercise.exercise.id;
             _sourceExerciseActivatedThisTurn = true;
           }
         } else if (newTeachingStage === "VERIFIED") {
           activeTaskUpdate.activeLessonExerciseId = null;
           activeTaskUpdate.activeTaskProvenance   = null;
           activeTaskUpdate.activeTaskReference    = null;
+          activeTaskUpdate.activeTaskSnapshot     = null;
           activeTaskUpdate.activeObjectiveTaskPayload = null;
           activeTaskUpdate.activeAttemptSequence  = 0;
           activeTaskUpdate.activeHelpCount        = 0;
@@ -3947,10 +4060,33 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           (newTeachingStage === "MICRO_CHECK" || newTeachingStage === "EXERCISE");
         logger.info({ sessionId: session.id, nodeId: session.currentNodeId, currentStage, newTeachingStage }, "teachingStage advanced");
       } else if (wasEval && session.activeTaskProvenance !== null) {
-        // Same stage, same active task — increment attempt sequence
+        // A retry is a new immutable task attempt, even if its learner-visible
+        // prompt is unchanged. It must not mutate the already evaluated
+        // snapshot or reuse its evidence identity.
+        const activeTaskSnapshot = isCanonicalTaskSnapshot(session.activeTaskSnapshot)
+          ? session.activeTaskSnapshot
+          : null;
+        if (!activeTaskSnapshot || !session.activeTaskReference) {
+          throw new Error("same-stage retry requires a canonical active task snapshot");
+        }
+        if (activeTaskSnapshot.taskSource === "legacy_compatibility") {
+          throw new Error("legacy task snapshots cannot be retried as C3 evidence");
+        }
+        const nextAttemptSequence = session.activeAttemptSequence + 1;
+        const retryTaskReference = createTaskReference(activeTaskSnapshot.taskSource);
+        const retrySnapshot = createCanonicalTaskRetrySnapshot(activeTaskSnapshot, {
+          taskReference: retryTaskReference,
+          attemptSequence: nextAttemptSequence,
+        });
         await db
           .update(lessonSessionsTable)
-          .set({ activeAttemptSequence: session.activeAttemptSequence + 1 } as any)
+          .set({
+            activeTaskReference: retryTaskReference,
+            activeTaskSnapshot: retrySnapshot,
+            activeAttemptSequence: nextAttemptSequence,
+            activeHelpCount: 0,
+            activeAssistanceLevel: "none",
+          } as any)
           .where(eq(lessonSessionsTable.id, session.id));
       }
 
@@ -4569,8 +4705,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session
   ) {
     const _ex = _activeSourceExercise;
-    const _eff = learnerExerciseText(_ex);
-    if (!_eff) {
+    const _snapshot = isCanonicalTaskSnapshot(session.activeTaskSnapshot) &&
+      session.activeTaskSnapshot.taskSource === "source_exercise" &&
+      session.activeTaskSnapshot.lessonExerciseId === _ex.id
+        ? session.activeTaskSnapshot
+        : null;
+    if (!_snapshot) {
       logger.error(
         { sessionId: session.id, exerciseId: _ex.id },
         "standalone source exercise continuation blocked by learner-content boundary",
@@ -4581,9 +4721,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    const _verb = _eff.trim();
-    const _page = `(Էջ ${(_ex as any).sourcePage ?? "?"}, Վ. ${_ex.exerciseId})`;
-    const _exContent = `${_verb}\n${_page}`;
+    const _exContent = _snapshot.renderedPrompt;
     await db
       .insert(chatMessagesTable)
       .values({ userId: req.userId!, lessonId, role: "assistant", content: _exContent });
@@ -4623,20 +4761,81 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     //    — this allows revisit_required to be set even when quality=NONE (wrong/no-quality answers).
     const _decisionHasKNState =
       !!(_pedagogicalDecision?.levelConfirmed || _pedagogicalDecision?.revisitRequired);
+    // Compatibility turns are allowed to persist evidence only through the
+    // canonical snapshot-required writer. They cannot recreate the former
+    // mutable-state C3 path when a pre-C7.5 session lacks a task snapshot.
     if (evtWasEval && (evtQuality !== "NONE" || _decisionHasKNState)) {
+      const compatibilitySnapshot = _evaluatedTaskEvidenceContext;
+      try {
+        if (
+          !compatibilitySnapshot ||
+          !isCanonicalTaskSnapshot(compatibilitySnapshot.activeTaskSnapshot) ||
+          compatibilitySnapshot.activeTaskSnapshot.taskReference !== compatibilitySnapshot.activeTaskReference ||
+          compatibilitySnapshot.activeTaskSnapshot.attemptSequence !== compatibilitySnapshot.activeAttemptSequence ||
+          compatibilitySnapshot.currentNodeId === null
+        ) {
+          throw new Error("compatibility evidence requires a matching canonical task snapshot");
+        }
+        const compatibilityTarget = await assertPhase2TargetLocked();
+        if (!compatibilityTarget) {
+          throw new Error("compatibility evidence requires a locked C7 target");
+        }
+        const canonicalEvidence = await persistAndProjectChatEvidence({
+          userId: req.userId!,
+          lessonId,
+          snapshot: compatibilitySnapshot,
+          currentNodeId: compatibilitySnapshot.currentNodeId,
+          currentNodeMatchesSnapshot:
+            currentNodeRecord?.id === compatibilitySnapshot.currentNodeId,
+          cognitivePath: _cognitivePath,
+          evidenceQuality: evtQuality,
+          wasCorrect: evtIsCorrect,
+          evidenceResultAuthority: _evidenceResultAuthority,
+          executionTarget: compatibilityTarget,
+          evaluationSnapshot: {
+            status: evtStatus,
+            evidenceQuality: evtQuality,
+            errorFamily: aiResult.answer_evaluation.error_family,
+            errorStability: aiResult.answer_evaluation.error_stability,
+          },
+        });
+        _canonicalEvidenceProcessed = true;
+        _canonicalEvidenceQualification = canonicalEvidence.qualificationStatus;
+        _canonicalEvidenceProjection = canonicalEvidence.projection;
+        _canonicalEvidenceTaskReference = canonicalEvidence.taskReference;
+      } catch (err) {
+        _canonicalEvidenceWriteFailed = true;
+        logger.error(
+          { err, sessionId: session.id },
+          "compatibility evidence was blocked without a canonical task snapshot",
+        );
+      }
+    }
+
+    /*
+     * Removed C7.5 legacy mutable-state writer. It is retained below only as
+     * a non-executable migration reference until the previous release branch
+     * is retired; C3 authority above is exclusively snapshot-required.
+     *
+    if (evtWasEval && (evtQuality !== "NONE" || _decisionHasKNState)) {
+      const legacySession = session!;
+      const legacyLessonId = lessonId!;
       const _sessionSnap = _evaluatedTaskEvidenceContext ?? {
-        id: session.id,
-        currentNodeId: session.currentNodeId,
-        nodeTeachingStage: session.nodeTeachingStage,
-        activeTaskProvenance: session.activeTaskProvenance,
-        activeTaskReference: session.activeTaskReference,
-        activeLessonExerciseId: session.activeLessonExerciseId,
-        activeCognitiveLevelId: session.activeCognitiveLevelId,
-        activeAttemptSequence: session.activeAttemptSequence,
-        activeHelpCount: session.activeHelpCount,
-        activeAssistanceLevel: session.activeAssistanceLevel,
+        id: legacySession.id,
+        currentNodeId: legacySession.currentNodeId,
+        nodeTeachingStage: legacySession.nodeTeachingStage,
+        activeTaskProvenance: legacySession.activeTaskProvenance,
+        activeTaskReference: legacySession.activeTaskReference,
+        activeLessonExerciseId: legacySession.activeLessonExerciseId,
+        activeCognitiveLevelId: legacySession.activeCognitiveLevelId,
+        activeAttemptSequence: legacySession.activeAttemptSequence,
+        activeHelpCount: legacySession.activeHelpCount,
+        activeAssistanceLevel: legacySession.activeAssistanceLevel,
+        activeTaskSnapshot: isCanonicalTaskSnapshot(legacySession.activeTaskSnapshot)
+          ? legacySession.activeTaskSnapshot
+          : null,
       };
-      const _lessonId    = lessonId;
+      const _lessonId    = legacyLessonId;
       const _userId      = req.userId!;
       await (async () => {
         try {
@@ -4836,6 +5035,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         }
       })();
     }
+    */
   }
 
   if (_canonicalEvidenceWriteFailed) {

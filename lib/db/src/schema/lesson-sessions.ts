@@ -72,6 +72,11 @@ export const lessonSessionsTable = pgTable("lesson_sessions", {
   // be reset by continuation/progression.
   activeTaskReference: text("active_task_reference"),
 
+  // C7.5: immutable server-owned facts for the exact task displayed to the
+  // learner. It is created before display and copied into C3 evidence; later
+  // task/source edits must never change the meaning of an active attempt.
+  activeTaskSnapshot: jsonb("active_task_snapshot").$type<Record<string, unknown> | null>(),
+
   // Backend-only answer data for an active AI-generated objective MICRO_CHECK.
   // null = no active objective micro-check; source exercises never use this payload.
   activeObjectiveTaskPayload: jsonb("active_objective_task_payload")

@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, boolean, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -122,7 +123,11 @@ export const evidenceEventsTable = pgTable("evidence_events", {
   qualificationStatus: text("qualification_status"),
   // Snapshot of the evidence-strength decision at the moment of the answer.
   evidenceQuality: text("evidence_quality"),
-});
+}, (table) => [
+  uniqueIndex("evidence_events_task_attempt_identity_uq")
+    .on(table.lessonSessionId, table.taskReference, table.attemptSequence)
+    .where(sql`${table.taskReference} is not null and ${table.attemptSequence} is not null`),
+]);
 
 export const insertEvidenceEventSchema = createInsertSchema(evidenceEventsTable).omit({ id: true, createdAt: true });
 export type InsertEvidenceEvent = z.infer<typeof insertEvidenceEventSchema>;

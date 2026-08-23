@@ -64,6 +64,7 @@
     "test:v2r3": "tsx src/lib/__tests__/v2r3-decision-engine.test.ts",
     "test:v2r4a4": "tsx src/lib/__tests__/v2r4a4.test.ts",
     "test:c7-4": "tsx src/lib/__tests__/c7-4-bounded-remediation.test.ts",
+    "test:c7-5": "tsx src/lib/__tests__/c7-5-canonical-task-execution.test.ts",
     "test:c4-ceiling": "tsx src/services/__tests__/learner-cognitive-ceiling.test.ts",
     "test:c4-ceiling-trace": "DATABASE_URL=$TEST_DATABASE_URL tsx src/services/__tests__/learner-cognitive-ceiling-trace.test.ts",
     "test:c5-knowledge-tree": "tsx src/services/__tests__/knowledge-tree-state.test.ts",
