@@ -46,6 +46,7 @@ import { classifyIntent, type IntentContext, type IntentResult } from "../servic
 import {
   computeSessionBudgetExhausted,
   ACTIVE_INTERVAL_CAP_SECONDS,
+  getNextHelpEscalation,
   type CognitiveLevelRow,
   type PedagogicalDecision,
 } from "../services/pedagogicalDecisionEngine.js";
@@ -54,6 +55,7 @@ import {
   deriveGeneratedMicroCheckActivation,
   buildMandatoryFeedbackStageUpdate,
   buildPostFeedbackTransitionUpdate,
+  buildTerminalRevisitStageUpdate,
   deriveLegacyCompletionAllowed,
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
@@ -62,6 +64,8 @@ import {
   establishEvaluatedTurnAuthority,
   filterEvidenceForCurrentRunNode,
   normalizeObjectiveMicroCheckAnswer,
+  requiresLegacyTaskRestart,
+  requiresPostFeedbackHold,
   resolveAuthoritativeEvaluation,
   summarizeLevelEvidence,
   shouldPreparePostFeedbackTaskContinuation,
@@ -350,11 +354,18 @@ async function executeHelpRequest(
   }
 
   const currentHelpCount = session.activeHelpCount ?? 0;
-  const nextHelpLevel    = Math.min(currentHelpCount + 1, 4);
-
-  if (nextHelpLevel === 4 && !revealAnswer) {
-    return { ok: false, errorCode: "REVEAL_REQUIRES_CONFIRMATION", statusHint: 409 };
+  const helpEscalation = getNextHelpEscalation(currentHelpCount, revealAnswer);
+  if (!helpEscalation.ok) {
+    return {
+      ok: false,
+      errorCode: helpEscalation.reason,
+      statusHint: 409,
+      message: helpEscalation.reason === "REVEAL_REQUIRES_CONFIRMATION"
+        ? "Reveal requires explicit confirmation"
+        : "Help budget is exhausted for this task",
+    };
   }
+  const { helpLevel: nextHelpLevel, assistanceLevel } = helpEscalation;
 
   let taskText: string | null = null;
   if (session.activeLessonExerciseId) {
@@ -437,18 +448,15 @@ async function executeHelpRequest(
     hintContent = "\u0553\u0578\u0580\u056e\u056b\u0580 \u056f\u0580\u056f\u056b\u0576 \u0574\u057f\u0561\u056e\u0565\u056c \u056d\u0576\u0564\u056b\u0580\u056b \u0574\u0561\u057d\u056b\u0576, \u056f\u0561\u0574 \u0564\u056b\u0574\u056b\u0580 \u0578\u0582\u057d\u0578\u0582\u0581\u056c\u056b\u0579\u056b\u0576\u0589";
   }
 
-  const LEVEL_TO_ASSIST: Record<number, string> = {
-    1: "light", 2: "moderate", 3: "guided", 4: "revealed",
-  };
-
   // Commit the help event and assistance state only if the execution target is
-  // still current. The transaction makes a concurrent C7.1 transition either
-  // win completely or cause this stale help result to be discarded.
+  // still current. It also compare-and-swaps activeHelpCount so concurrent help
+  // requests cannot overrun the task-local four-level help budget.
   const helpEvent = await db.transaction(async (tx) => {
     const [freshSession] = await tx
       .select({
         currentNodeId: lessonSessionsTable.currentNodeId,
         activeCognitiveLevelId: lessonSessionsTable.activeCognitiveLevelId,
+        activeHelpCount: lessonSessionsTable.activeHelpCount,
       })
       .from(lessonSessionsTable)
       .where(eq(lessonSessionsTable.id, session.id))
@@ -459,6 +467,10 @@ async function executeHelpRequest(
       currentNodeId: freshSession.currentNodeId,
       activeCognitiveLevelId: freshSession.activeCognitiveLevelId,
     });
+    const freshHelpCount = (freshSession.activeHelpCount ?? 0) as number;
+    if (freshHelpCount !== currentHelpCount) {
+      throw new Error("help compare-and-swap rejected a stale help count");
+    }
     const [created] = await tx
       .insert(helpEventsTable)
       .values({
@@ -477,12 +489,13 @@ async function executeHelpRequest(
       .update(lessonSessionsTable)
       .set({
         activeHelpCount: currentHelpCount + 1,
-        activeAssistanceLevel: LEVEL_TO_ASSIST[nextHelpLevel] ?? "guided",
+        activeAssistanceLevel: assistanceLevel,
       } as any)
       .where(and(
         eq(lessonSessionsTable.id, session.id),
         eq(lessonSessionsTable.currentNodeId, helpTarget.microNodeId),
         eq(lessonSessionsTable.activeCognitiveLevelId, helpTarget.activeCognitiveLevelId),
+        eq(lessonSessionsTable.activeHelpCount, currentHelpCount),
       ))
       .returning({ id: lessonSessionsTable.id });
     if (updated.length === 0) {
@@ -516,6 +529,11 @@ const REDIRECT_CANNED_PREFIX =
   "\u0540\u0561\u057d\u056f\u0561\u0576\u0578\u0582\u0574 \u0565\u0574, " +
   "\u0562\u0561\u0575\u0581 \u0561\u0580\u056b\u055b \u0576\u0561\u056d \u0561\u057e\u0561\u0580\u057f\u0565\u0576\u0584 " +
   "\u0568\u0576\u0569\u0561\u0581\u056b\u056f \u0570\u0561\u0580\u0581\u0568 \ud83d\ude0a";
+const C7_EVALUATION_RESERVATION_PREFIX = "__C7_EVALUATING__:";
+
+function c7EvaluationReservation(reference: string, attemptSequence: number): string {
+  return `${C7_EVALUATION_RESERVATION_PREFIX}${reference}:${attemptSequence}`;
+}
 
 function validateNoScopeDrift(studentMessage: string, allNodeTitles: string[]): boolean {
   const lower = studentMessage.toLowerCase();
@@ -698,7 +716,7 @@ async function persistAndProjectChatEvidence(input: {
   currentNodeMatchesSnapshot: boolean;
   cognitivePath: CognitiveLevelRow[];
   evidenceQuality: string;
-  wasCorrect: boolean;
+  wasCorrect: boolean | null;
   evidenceResultAuthority: string | null;
   executionTarget: C7ExecutionTarget;
   evaluationSnapshot?: {
@@ -795,7 +813,68 @@ async function persistAndProjectChatEvidence(input: {
     authoritativeResult,
   });
   const assistanceLevel = input.snapshot.activeAssistanceLevel;
-  await db.insert(evidenceEventsTable).values({
+  // A reservation can be released after a transient failure. Avoid recording
+  // the same immutable task/attempt twice if the evidence insert committed
+  // before the mutable session row could be finalized.
+  const [existingEvidence] = await db
+    .select({
+      qualificationStatus: (evidenceEventsTable as any).qualificationStatus,
+      metadata: evidenceEventsTable.metadata,
+      id: evidenceEventsTable.id,
+    })
+    .from(evidenceEventsTable)
+    .where(and(
+      eq((evidenceEventsTable as any).lessonSessionId, input.snapshot.id),
+      eq((evidenceEventsTable as any).taskReference, input.snapshot.activeTaskReference),
+      eq(
+        (evidenceEventsTable as any).attemptSequence,
+        input.snapshot.activeAttemptSequence || 1,
+      ),
+    ))
+    .limit(1);
+  if (existingEvidence) {
+    const projection = await projectLearnerCognitiveCeiling(
+      input.userId,
+      input.snapshot.currentNodeId,
+    );
+    const existingMetadata = (existingEvidence.metadata ?? {}) as Record<string, unknown>;
+    if (existingMetadata.c4ProjectionCompleted !== true) {
+      await db
+        .update(evidenceEventsTable)
+        .set({
+          metadata: {
+            ...existingMetadata,
+            c4ProjectionCompleted: true,
+          },
+        } as any)
+        .where(eq(evidenceEventsTable.id, existingEvidence.id));
+    }
+    return {
+      qualificationStatus:
+        (existingEvidence.qualificationStatus as EvidenceQualificationStatus) ??
+        qualificationStatus,
+      projection,
+      taskReference: input.snapshot.activeTaskReference,
+    };
+  }
+  const evidenceMetadata = {
+    source: "chat",
+    lessonId: input.lessonId,
+    nodeId: input.snapshot.currentNodeId,
+    stage: input.snapshot.nodeTeachingStage,
+    evidence_quality: cappedQuality,
+    qualification_status: qualificationStatus,
+    // This immutable C3 record is also the recovery authority for a
+    // FEEDBACK retry after the mutable active-task fields are retired.
+    evaluation: input.evaluationSnapshot ?? null,
+    c7ExecutionTarget: {
+      lessonId: input.executionTarget.lessonId,
+      microNodeId: input.executionTarget.microNodeId,
+      activeCognitiveLevelId: input.executionTarget.activeCognitiveLevelId,
+    },
+    c4ProjectionCompleted: false,
+  };
+  const [insertedEvidence] = await db.insert(evidenceEventsTable).values({
     userId: input.userId,
     lessonSessionId: input.snapshot.id,
     topicId,
@@ -803,22 +882,7 @@ async function persistAndProjectChatEvidence(input: {
     wasCorrect: input.wasCorrect,
     responseTimeMs: null,
     hintUsed: assistanceLevel !== "none",
-    metadata: {
-      source: "chat",
-      lessonId: input.lessonId,
-      nodeId: input.snapshot.currentNodeId,
-      stage: input.snapshot.nodeTeachingStage,
-      evidence_quality: cappedQuality,
-      qualification_status: qualificationStatus,
-      // This immutable C3 record is also the recovery authority for a
-      // FEEDBACK retry after the mutable active-task fields are retired.
-      evaluation: input.evaluationSnapshot ?? null,
-        c7ExecutionTarget: {
-          lessonId: input.executionTarget.lessonId,
-          microNodeId: input.executionTarget.microNodeId,
-          activeCognitiveLevelId: input.executionTarget.activeCognitiveLevelId,
-        },
-    },
+    metadata: evidenceMetadata,
     cognitiveLevel: activeLevel?.cognitiveLevel ?? null,
     taskDifficulty: null,
     assistanceLevel: assistanceLevel !== "none" ? assistanceLevel : "none",
@@ -834,11 +898,20 @@ async function persistAndProjectChatEvidence(input: {
     taskReference: input.snapshot.activeTaskReference,
     qualificationStatus,
     evidenceQuality: cappedQuality,
-  } as any);
+  } as any).returning({ id: evidenceEventsTable.id });
   const projection = await projectLearnerCognitiveCeiling(
     input.userId,
     input.snapshot.currentNodeId,
   );
+  await db
+    .update(evidenceEventsTable)
+    .set({
+      metadata: {
+        ...evidenceMetadata,
+        c4ProjectionCompleted: true,
+      },
+    } as any)
+    .where(eq(evidenceEventsTable.id, insertedEvidence.id));
   updateTopicScoring(topicId, input.userId).catch((err) =>
     logger.error({ err, topicId }, "chat evidence: scoring failed"),
   );
@@ -1010,6 +1083,104 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         };
         sessionId = sessionRow.id;
         _activeLessonExerciseIdForDelivery = session.activeLessonExerciseId;
+
+        if (session.activeTaskReference?.startsWith(C7_EVALUATION_RESERVATION_PREFIX)) {
+          const marker = session.activeTaskReference;
+          const separator = marker.lastIndexOf(":");
+          const originalTaskReference =
+            separator > C7_EVALUATION_RESERVATION_PREFIX.length
+              ? marker.slice(C7_EVALUATION_RESERVATION_PREFIX.length, separator)
+              : null;
+          const [persistedEvidence] = originalTaskReference === null
+            ? []
+            : await db
+              .select({
+                id: evidenceEventsTable.id,
+                metadata: evidenceEventsTable.metadata,
+              })
+              .from(evidenceEventsTable)
+              .where(and(
+                eq((evidenceEventsTable as any).lessonSessionId, session.id),
+                eq((evidenceEventsTable as any).taskReference, originalTaskReference),
+              ))
+              .limit(1);
+          if (persistedEvidence) {
+            try {
+              const metadata = (persistedEvidence.metadata ?? {}) as Record<string, unknown>;
+              if (metadata.c4ProjectionCompleted !== true) {
+                // C3 may have committed immediately before a C4 failure.
+                // Re-run the idempotent C4 projection before this task can
+                // become FEEDBACK-recoverable.
+                await projectLearnerCognitiveCeiling(req.userId!, session.currentNodeId!);
+                await db
+                  .update(evidenceEventsTable)
+                  .set({
+                    metadata: {
+                      ...metadata,
+                      c4ProjectionCompleted: true,
+                    },
+                  } as any)
+                  .where(eq(evidenceEventsTable.id, persistedEvidence.id));
+              }
+              // A process may have stopped after C3/C4 committed but before
+              // the mutable session finalized. Recover the safe boundary now.
+              await db
+                .update(lessonSessionsTable)
+                .set(buildMandatoryFeedbackStageUpdate() as any)
+                .where(and(
+                  eq(lessonSessionsTable.id, session.id),
+                  eq((lessonSessionsTable as any).activeTaskReference, marker),
+                ));
+            } catch (projectionError) {
+              logger.error(
+                { err: projectionError, sessionId: session.id },
+                "C7.1: reservation recovery could not complete C4 projection",
+              );
+              res.status(503).json({
+                error: "EVIDENCE_PROJECTION_RECOVERY_FAILED",
+                message: "Պատասխանը գրանցված է, բայց առաջընթացը դեռ վերականգնվում է։ Խնդրում ենք կրկին փորձել։",
+              });
+              return;
+            }
+          } else if (originalTaskReference !== null) {
+            // C3 did not commit, so make the original immutable task retryable.
+            await db
+              .update(lessonSessionsTable)
+              .set({ activeTaskReference: originalTaskReference } as any)
+              .where(and(
+                eq(lessonSessionsTable.id, session.id),
+                eq((lessonSessionsTable as any).activeTaskReference, marker),
+              ));
+          }
+          res.status(409).json({
+            error: persistedEvidence
+              ? "TASK_EVALUATION_RECOVERED"
+              : "TASK_EVALUATION_RETRYABLE",
+            message: persistedEvidence
+              ? "Պատասխանը անվտանգ գրանցվել է։ Խնդրում ենք թարմացնել դասը։"
+              : "Գնահատումը չի ավարտվել։ Կարող ես նույն առաջադրանքին նորից պատասխանել։",
+          });
+          return;
+        }
+
+        // A completed required session may continue only when the server has
+        // explicitly enabled optional continuation. Block before action
+        // planning so no post-budget TASK_REQUIRED state can emit new work.
+        if (session.requiredSessionCompletedAt !== null && !session.optionalContinuation) {
+          res.status(409).json({
+            error: "REQUIRED_SESSION_COMPLETE",
+            message: "Պարտադիր ուսուցման ժամանակը ավարտվել է։ Շարունակությունը պետք է թույլատրվի ուսուցման պլանով։",
+            requiredSessionCompletedAt: session.requiredSessionCompletedAt.toISOString(),
+          });
+          return;
+        }
+        if (session.nodeTeachingStage === "REVISIT_REQUIRED") {
+          res.status(409).json({
+            error: "TARGET_REVISIT_REQUIRED",
+            message: "Այս հատվածին պետք է վերադառնալ ավելի ուշ։ Նոր առաջադրանք կարող է ընտրել միայն ուսուցման պլանը։",
+          });
+          return;
+        }
       }
 
       // Direct chat entry must obey the same C6 reconciliation as normal
@@ -2100,6 +2271,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     });
     return;
   }
+  if (requiresLegacyTaskRestart(_phase2ServerActionPlan, _intentResult.intent)) {
+    // Legacy tasks do not carry an immutable task reference/attempt identity.
+    // Evaluating them would bypass C3 evidence polarity and the task-consume
+    // CAS, so fail closed instead of allowing false credit or duplicate writes.
+    res.status(409).json({
+      error: "LEGACY_TASK_RESTART_REQUIRED",
+      message: "Այս հին առաջադրանքը չի կարող անվտանգ գնահատվել։ Խնդրում ենք նորից սկսել դասի ընթացիկ հատվածը։",
+    });
+    return;
+  }
 
   let aiResult: AIStructuredResponse | null = null;
   let studentMessage: string;
@@ -2122,6 +2303,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _canonicalEvidenceQualification: EvidenceQualificationStatus | null = null;
   let _canonicalEvidenceProjection: LearnerCeilingProjection | null = null;
   let _canonicalEvidenceTaskReference: string | null = null;
+  let _evaluatedTaskClaimed = false;
+  let _evaluatedTaskReservation: {
+    reference: string;
+    marker: string;
+  } | null = null;
   let _stage3BoundedAnswerTurn = false;
   let _stage3SourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
   let _stage3HiddenExerciseContent: string[] = [];
@@ -2143,7 +2329,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       progressIndicator,
       teachingMode: boundedTeachingMode,
       hasActiveTask: activeTask,
-      activeHelpCount: activeTask ? 0 : (session?.activeHelpCount ?? 0),
+      activeHelpCount: session?.activeHelpCount ?? 0,
       requiredSessionMinutes,
       activeLearningSeconds,
       remainingRequiredSeconds: budgetSeconds == null
@@ -3407,6 +3593,47 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     // request any cognitive or MicroNode progression.
     if (wasEval && _evaluatedTaskEvidenceContext) {
       try {
+        // Claim the exact persisted task before evidence is written. A second
+        // answer submission for the same task fails this CAS and cannot append
+        // duplicate evidence or overwrite the terminal/remediation decision.
+        if (_stage3BoundedAnswerTurn) {
+          const taskReference = _evaluatedTaskEvidenceContext.activeTaskReference;
+          const taskNodeId = _evaluatedTaskEvidenceContext.currentNodeId;
+          const taskCognitiveLevelId = _evaluatedTaskEvidenceContext.activeCognitiveLevelId;
+          if (!taskReference || taskNodeId === null || taskCognitiveLevelId === null) {
+            res.status(409).json({
+              error: "ACTIVE_TASK_IDENTITY_UNAVAILABLE",
+              message: "Ընթացիկ առաջադրանքը չի կարող անվտանգ գնահատվել։ Խնդրում ենք նորից սկսել այն։",
+            });
+            return;
+          }
+          const reservationMarker = c7EvaluationReservation(
+            taskReference,
+            _evaluatedTaskEvidenceContext.activeAttemptSequence,
+          );
+          const claimed = await db
+            .update(lessonSessionsTable)
+            .set({ activeTaskReference: reservationMarker } as any)
+            .where(and(
+              eq(lessonSessionsTable.id, session.id),
+              eq(lessonSessionsTable.currentNodeId, taskNodeId),
+              eq(lessonSessionsTable.activeCognitiveLevelId, taskCognitiveLevelId),
+              eq((lessonSessionsTable as any).activeTaskReference, taskReference),
+              eq((lessonSessionsTable as any).activeAttemptSequence, _evaluatedTaskEvidenceContext.activeAttemptSequence),
+            ))
+            .returning({ id: lessonSessionsTable.id });
+          if (claimed.length === 0) {
+            res.status(409).json({
+              error: "STALE_TASK_SUBMISSION",
+              message: "Այս առաջադրանքն արդեն գնահատվել է կամ փոխվել է։ Խնդրում ենք թարմացնել դասը։",
+            });
+            return;
+          }
+          _evaluatedTaskReservation = {
+            reference: taskReference,
+            marker: reservationMarker,
+          };
+        }
         const canonicalEvidence = await persistAndProjectChatEvidence({
           userId: req.userId!,
           lessonId,
@@ -3416,7 +3643,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             currentNodeRecord?.id === _evaluatedTaskEvidenceContext.currentNodeId,
           cognitivePath: _cognitivePath,
           evidenceQuality: quality,
-          wasCorrect: isCorrect,
+          // UNCLEAR and NO_RESPONSE are observations, not negative mastery
+          // evidence. Persist the nullable C3 correctness authority exactly.
+          wasCorrect: _evaluatedTurnAuthority?.evidenceWasCorrect ?? null,
           evidenceResultAuthority: _evidenceResultAuthority,
           executionTarget: (await assertPhase2TargetLocked())!,
           evaluationSnapshot: {
@@ -3430,7 +3659,62 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         _canonicalEvidenceQualification = canonicalEvidence.qualificationStatus;
         _canonicalEvidenceProjection = canonicalEvidence.projection;
         _canonicalEvidenceTaskReference = canonicalEvidence.taskReference;
+        if (_evaluatedTaskReservation) {
+          const finalized = await db
+            .update(lessonSessionsTable)
+            .set(buildMandatoryFeedbackStageUpdate() as any)
+            .where(and(
+              eq(lessonSessionsTable.id, session.id),
+              eq(
+                (lessonSessionsTable as any).activeTaskReference,
+                _evaluatedTaskReservation.marker,
+              ),
+            ))
+            .returning({ id: lessonSessionsTable.id });
+          if (finalized.length === 0) {
+            throw new Error("evaluated task reservation could not be finalized");
+          }
+          _evaluatedTaskClaimed = true;
+        }
       } catch (err) {
+        if (_evaluatedTaskReservation) {
+          try {
+            const [persistedEvidence] = await db
+              .select({ id: evidenceEventsTable.id })
+              .from(evidenceEventsTable)
+              .where(and(
+                eq((evidenceEventsTable as any).lessonSessionId, session.id),
+                eq(
+                  (evidenceEventsTable as any).taskReference,
+                  _evaluatedTaskReservation.reference,
+                ),
+              ))
+              .limit(1);
+            if (!persistedEvidence) {
+              // C3 did not commit: release the reservation so the identical
+              // task can be evaluated again.
+              await db
+                .update(lessonSessionsTable)
+                .set({ activeTaskReference: _evaluatedTaskReservation.reference } as any)
+                .where(and(
+                  eq(lessonSessionsTable.id, session.id),
+                  eq(
+                    (lessonSessionsTable as any).activeTaskReference,
+                    _evaluatedTaskReservation.marker,
+                  ),
+                ));
+            }
+            // If C3 committed, retain the reservation. The request-entry
+            // recovery path detects its evidence and finalizes FEEDBACK without
+            // sending the task through a fresh model evaluation.
+          } catch (restoreError) {
+            logger.error(
+              { err: restoreError, sessionId: session.id },
+              "C7.1: failed to restore task after evidence reservation failure",
+            );
+          }
+          _evaluatedTaskReservation = null;
+        }
         logger.error({ err, sessionId: session.id }, "C7.1: evidence/C4 projection failed before progression");
         res.status(503).json({
           error: "EVIDENCE_PERSISTENCE_FAILED",
@@ -3579,10 +3863,12 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         // generated, or source-backed, retires into an explicit FEEDBACK
         // state.  The task cannot be replaced while bounded feedback is
         // pending or being retried.
-        await db
-          .update(lessonSessionsTable)
-          .set(buildMandatoryFeedbackStageUpdate() as any)
-          .where(eq(lessonSessionsTable.id, session.id));
+        if (!_evaluatedTaskClaimed) {
+          await db
+            .update(lessonSessionsTable)
+            .set(buildMandatoryFeedbackStageUpdate() as any)
+            .where(eq(lessonSessionsTable.id, session.id));
+        }
         hasActiveTask = false;
         _activeLessonExerciseIdForDelivery = null;
         session.nodeTeachingStage = "FEEDBACK";
@@ -4189,7 +4475,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session &&
     !_deferredC7Action
   ) {
-    await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
+    await updateC7TargetLockedSession(
+      (requiresPostFeedbackHold(_pedagogicalDecision?.metaAction)
+        ? buildTerminalRevisitStageUpdate()
+        : buildPostFeedbackTransitionUpdate()) as any,
+    );
   }
   if (
     _stage3BoundedAnswerTurn &&
@@ -4326,7 +4616,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       ? _evaluatedTurnAuthority.isCorrectnessOutcome
       : evtStatus !== "NOT_APPLICABLE" && evtStatus !== "OFF_TOPIC";
     const evtIsCorrect = _evaluatedTurnAuthority?.evidenceWasCorrect ??
-      (evtStatus === "CORRECT" || evtStatus === "PARTIALLY_CORRECT");
+      (evtStatus === "CORRECT");
     // Fire-and-forget block runs when:
     // 1. There is an assessable answer with non-NONE quality (evidence write), OR
     // 2. The decision engine has state to write to knowledge_nodes (levelConfirmed or revisitRequired)

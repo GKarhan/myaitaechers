@@ -271,14 +271,17 @@ test("T13 — CORRECT + 1 help + light assistance → still independent → ADVA
   assert.equal(d.levelConfirmed, true);
 });
 
-test("T14 — PARTIALLY_CORRECT + moderate assistance → REQUEST_INDEPENDENT_CHECK", () => {
+test("T14 — PARTIALLY_CORRECT + moderate assistance → targeted remediation", () => {
   const d = decideNextPedagogicalAction(makeInput({
     answerStatus: "PARTIALLY_CORRECT",
     evidenceQuality: "MODERATE",
     activeHelpCount: 2,
     activeAssistanceLevel: "moderate",
+    errorFamily: "INCOMPLETE_COMMUNICATION",
   }));
-  assert.equal(d.metaAction, "REQUEST_INDEPENDENT_CHECK");
+  assert.equal(d.metaAction, "CONTINUE_COGNITIVE_LEVEL");
+  assert.equal(d.remediationAction, "GUIDED_QUESTION");
+  assert.equal(d.newRemediationStep, 1);
 });
 
 test("T15 — CORRECT + revealed assistance → REQUEST_INDEPENDENT_CHECK", () => {

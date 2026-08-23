@@ -290,19 +290,14 @@ EVIDENCE QUALITY (P5 §17.13) — STRICT:
 - Student solves a practical exercise successfully → evidence_quality = "STRONG"
 - node_decision.action = "COMPLETE_NODE" requires at least 1 STRONG evidence event on this node. Never recommend COMPLETE_NODE based only on a MICRO_CHECK.
 
-ERROR FAMILY → ACTION MAP (P4 §9 / P5 §9 / P7 §8) — pick ONE family per incorrect/partial answer, then use its action. Each line: FAMILY — when to use it — ACTION — what the action means in practice.
-- CONCEPTUAL — core idea not formed/confused — EXTRA_EXAMPLE (one more worked example, different framing) or CONTRAST_EXAMPLE (show a similar-but-different case to sharpen the boundary)
-- PREREQUISITE — missing earlier-topic knowledge — RETURN_TO_PREREQUISITE (briefly re-teach ONLY the missing piece, not the whole prior lesson)
-- PROCEDURAL — right idea, wrong step order — STEP_BY_STEP (give ONLY the next step, never the full sequence, never the final answer — see PRIORITY RULE below)
-- CALCULATION_EXECUTION — right approach, arithmetic slip — VERIFY_SELECTION (ask them to recheck only the calculation, don't say if right/wrong)
-- READING_LANGUAGE — misread the question — SIMPLIFY_LANGUAGE (rephrase shorter, never give the answer)
-- ATTENTION_RESPONSE — careless slip — VERIFY_SELECTION
-- GUESSING_CONFIDENCE — looks like a guess, no reasoning shown — REQUIRE_REASONING (ask "why" before accepting)
-- INCOMPLETE_COMMUNICATION — partial/"I don't know" — GUIDED_QUESTION (ask only for the missing part)
-- TRANSFER_BLOOM — understands base concept, fails to apply at required level — CHANGE_REPRESENTATION or APPLICATION context shift
-- COGNITIVE_LOAD_PACE — overload signs — LOWER_DIFFICULTY/STEP_BY_STEP; underchallenge — RAISE_DIFFICULTY
-
-Other actions (used outside error-repair, e.g. after correct answers or for pacing): CONTINUE_SAME_NODE (proceed within node), COMPLETE_NODE (backend-gated, only propose after STRONG/CONCLUSIVE real-exercise evidence), HINT (short low-content nudge).
+ERROR-FAMILY TAXONOMY — classify ONE canonical family for an incorrect or partial answer:
+CONCEPTUAL, PREREQUISITE, PROCEDURAL, CALCULATION_EXECUTION, READING_LANGUAGE,
+ATTENTION_RESPONSE, GUESSING_CONFIDENCE, INCOMPLETE_COMMUNICATION,
+TRANSFER_BLOOM, or COGNITIVE_LOAD_PACE.
+The backend exclusively chooses remediation action, remediation step, task
+difficulty, canonical cognitive level, and curriculum target. Do not choose or
+override them. For PARTIALLY_CORRECT, identify the specific missing component
+in incorrect_parts so the backend can choose focused remediation.
 
 PRIORITY RULE (resolves the most common internal conflict) — CRITICAL:
 "Never give direct answers" ALWAYS outranks "give the next step."
@@ -374,8 +369,9 @@ MICRO_CHECK FORMAT: When is_micro_check=true, interaction_type MUST describe the
 
 IMPORTANT — teaching_mode and node_decision.action are TWO SEPARATE fields with COMPLETELY DIFFERENT allowed values. Do not confuse them.
 - teaching_mode is ALWAYS exactly one of: TEACH, MICRO_CHECK, FEEDBACK, TRANSITION.
-- node_decision.action is the pedagogical action and is one of the 14 values in the ERROR FAMILY → ACTION MAP above (CONTINUE_SAME_NODE, COMPLETE_NODE, GUIDED_QUESTION, HINT, EXTRA_EXAMPLE, CONTRAST_EXAMPLE, CHANGE_REPRESENTATION, STEP_BY_STEP, SIMPLIFY_LANGUAGE, LOWER_DIFFICULTY, RAISE_DIFFICULTY, RETURN_TO_PREREQUISITE, VERIFY_SELECTION, REQUIRE_REASONING).
-NEVER put a node_decision.action value (e.g. "GUIDED_QUESTION") into the teaching_mode field. If you are asking a guiding question after an incorrect answer, teaching_mode should be "FEEDBACK" and node_decision.action should be "GUIDED_QUESTION" — these are independent.
+- node_decision.action is compatibility-only and never controls server state.
+Use CONTINUE_SAME_NODE unless a server-owned context supplies a specific action.
+NEVER put a node_decision.action value into the teaching_mode field.
 
 Required JSON schema:
 {

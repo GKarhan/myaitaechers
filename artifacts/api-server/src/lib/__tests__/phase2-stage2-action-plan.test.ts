@@ -3,10 +3,13 @@ import type { AIStructuredResponse } from "../../services/ai.js";
 import {
   buildMandatoryFeedbackStageUpdate,
   buildPostFeedbackTransitionUpdate,
+  buildTerminalRevisitStageUpdate,
   derivePostFeedbackContinuationAction,
   derivePhase2ServerAction,
   establishEvaluatedTurnAuthority,
   filterEvidenceForCurrentRunNode,
+  requiresLegacyTaskRestart,
+  requiresPostFeedbackHold,
   shouldPreparePostFeedbackTaskContinuation,
   summarizeLevelEvidence,
   validatePhase2ResponseForServerAction,
@@ -140,6 +143,17 @@ test("B2 — mandatory feedback retires both generated and source task identity"
   assert.equal(update.activeObjectiveTaskPayload, null);
   assert.equal(update.activeAttemptSequence, 0);
   assert.equal(update.activeHelpCount, 0);
+});
+
+test("B2A — terminal C7 decisions cannot release a replacement task", () => {
+  assert.equal(requiresPostFeedbackHold("END_REQUIRED_SESSION"), true);
+  assert.equal(requiresPostFeedbackHold("MARK_TARGET_NOT_REACHED"), true);
+  assert.equal(requiresPostFeedbackHold("REVISIT_LATER"), true);
+  assert.equal(requiresPostFeedbackHold("STOP_LEVEL_AND_REVISIT"), true);
+  assert.equal(requiresPostFeedbackHold("CONTINUE_COGNITIVE_LEVEL"), false);
+  const terminal = buildTerminalRevisitStageUpdate();
+  assert.equal(terminal.nodeTeachingStage, "REVISIT_REQUIRED");
+  assert.equal(terminal.activeTaskReference, null);
 });
 
 test("B3 — post-feedback transition stays target-neutral and server-selected", () => {
@@ -399,6 +413,18 @@ test("E3C — a canonical evaluation status has one evidence polarity", () => {
     isCorrectnessOutcome: false,
   });
   assert.deepEqual(establishEvaluatedTurnAuthority({
+    status: "PARTIALLY_CORRECT",
+    evidence_quality: "MODERATE",
+    error_family: "INCOMPLETE_COMMUNICATION",
+    error_stability: "FIRST_OCCURRENCE",
+    correct_parts: ["one component"],
+    incorrect_parts: ["one missing component"],
+  }), {
+    status: "PARTIALLY_CORRECT",
+    evidenceWasCorrect: null,
+    isCorrectnessOutcome: true,
+  });
+  assert.deepEqual(establishEvaluatedTurnAuthority({
     status: "NO_RESPONSE",
     evidence_quality: "NONE",
     error_family: null,
@@ -594,6 +620,8 @@ test("K — compatibility is limited to legacy MICRO_CHECK without payload", () 
     legacyMicroCheck.compatibilityKind,
     "legacy_micro_check_without_task_payload",
   );
+  assert.equal(requiresLegacyTaskRestart(legacyMicroCheck, "ANSWER"), true);
+  assert.equal(requiresLegacyTaskRestart(legacyMicroCheck, "HELP"), false);
 
   const ungrantedLegacyCompletion = derivePhase2ServerAction(baseInput({
     activeCognitiveLevelId: null,

@@ -462,8 +462,9 @@ export type EvaluatedTurnAuthority = {
 /**
  * Captures the sole correctness result allowed to drive acknowledgement,
  * evidence, decision-engine input, and task transition for an evaluated turn.
- * UNCLEAR and NO_RESPONSE are valid non-credit evaluator outcomes: they retain
- * bounded feedback/remediation behavior without becoming correctness evidence.
+ * Only a fully CORRECT result earns boolean correctness evidence. PARTIALLY_
+ * CORRECT, UNCLEAR, and NO_RESPONSE remain distinct observations and retain
+ * bounded feedback/remediation behavior without becoming mastery credit.
  */
 export function establishEvaluatedTurnAuthority(
   evaluation: AIStructuredResponse["answer_evaluation"],
@@ -484,7 +485,7 @@ export function establishEvaluatedTurnAuthority(
     case "PARTIALLY_CORRECT":
       return {
         status: evaluation.status,
-        evidenceWasCorrect: true,
+        evidenceWasCorrect: null,
         isCorrectnessOutcome: true,
       };
     case "UNCLEAR":
@@ -604,6 +605,47 @@ export function buildPostFeedbackTransitionUpdate(): Phase2TaskStateUpdate {
     activeHelpCount: 0,
     activeAssistanceLevel: "none",
   };
+}
+
+/**
+ * A terminal C7 outcome has no authority to manufacture another task. Keep the
+ * C6-selected target intact but make the session explicitly resume-only until
+ * a later C6 decision can safely choose a new target.
+ */
+export function buildTerminalRevisitStageUpdate(): Phase2TaskStateUpdate {
+  return {
+    ...buildMandatoryFeedbackStageUpdate(),
+    nodeTeachingStage: "REVISIT_REQUIRED",
+  };
+}
+
+/**
+ * These actions conclude the current bounded teaching attempt. They must not
+ * flow through the ordinary post-feedback TASK_REQUIRED release.
+ */
+export function requiresPostFeedbackHold(
+  metaAction: string | null | undefined,
+): boolean {
+  return (
+    metaAction === "END_REQUIRED_SESSION" ||
+    metaAction === "MARK_TARGET_NOT_REACHED" ||
+    metaAction === "REVISIT_LATER" ||
+    metaAction === "STOP_LEVEL_AND_REVISIT"
+  );
+}
+
+/**
+ * Compatibility-only micro-checks predate immutable task identities. Answers
+ * against them must be restarted, never evaluated as canonical C3 evidence.
+ */
+export function requiresLegacyTaskRestart(
+  plan: Pick<Phase2ServerActionPlan, "compatibilityKind">,
+  learnerIntent: Phase2ServerActionInput["learnerIntent"],
+): boolean {
+  return (
+    plan.compatibilityKind === "legacy_micro_check_without_task_payload" &&
+    learnerIntent === "ANSWER"
+  );
 }
 
 /**
@@ -773,7 +815,7 @@ export function resolveAuthoritativeEvaluation(input: {
   const finalStatus = response.answer_evaluation.status;
   return {
     response,
-    wasCorrect: finalStatus === "CORRECT" || finalStatus === "PARTIALLY_CORRECT"
+    wasCorrect: finalStatus === "CORRECT"
       ? true
       : finalStatus === "INCORRECT"
         ? false
@@ -815,7 +857,9 @@ export function deriveTurnProgress(input: {
 }): Phase2TurnProgress {
   const status = input.evaluation.status;
   const quality = input.evaluation.evidence_quality;
-  const isCorrect = status === "CORRECT" || status === "PARTIALLY_CORRECT";
+  // A partial answer is a distinct observation, not a correctness/milestone
+  // signal. It receives family-targeted remediation below.
+  const isCorrect = status === "CORRECT";
   const isIncorrect = status === "INCORRECT";
   const wasEval = status !== "NOT_APPLICABLE" && status !== "OFF_TOPIC";
 
@@ -841,7 +885,7 @@ export function deriveTurnProgress(input: {
     currentStage: input.currentStage,
     newTeachingStage,
     newMasteryCount:
-      input.masteryEvidenceCount + (quality !== "NONE" ? 1 : 0),
+      input.masteryEvidenceCount + (isCorrect && quality !== "NONE" ? 1 : 0),
     newConsecutiveCorrect: isCorrect
       ? input.consecutiveCorrect + 1
       : isIncorrect

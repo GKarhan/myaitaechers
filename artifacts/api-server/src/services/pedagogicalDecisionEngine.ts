@@ -26,6 +26,100 @@ export type CognitiveLevel = typeof COGNITIVE_LEVEL_ORDER[number];
 /** Maximum remediation escalation steps before MARK_TARGET_NOT_REACHED fires. */
 export const MAX_REMEDIATION_STEPS = 5;
 
+/** Maximum persisted help events for one active learner task. */
+export const MAX_HELP_COUNT = 4;
+
+export const CANONICAL_ERROR_FAMILIES = [
+  "CONCEPTUAL",
+  "PREREQUISITE",
+  "PROCEDURAL",
+  "CALCULATION_EXECUTION",
+  "READING_LANGUAGE",
+  "ATTENTION_RESPONSE",
+  "GUESSING_CONFIDENCE",
+  "INCOMPLETE_COMMUNICATION",
+  "TRANSFER_BLOOM",
+  "COGNITIVE_LOAD_PACE",
+] as const;
+
+export type CanonicalErrorFamily = typeof CANONICAL_ERROR_FAMILIES[number];
+
+export type HelpAssistanceLevel = "light" | "moderate" | "guided" | "revealed";
+
+export type HelpEscalation =
+  | {
+      ok: true;
+      helpLevel: 1 | 2 | 3 | 4;
+      assistanceLevel: HelpAssistanceLevel;
+    }
+  | {
+      ok: false;
+      reason: "HELP_BUDGET_EXHAUSTED" | "REVEAL_REQUIRES_CONFIRMATION";
+    };
+
+/**
+ * Normalize external/model labels into the one canonical taxonomy. Unknown
+ * labels become null and therefore use the safe generic remediation sequence;
+ * they never create new backend policy.
+ */
+export function normalizeErrorFamily(
+  value: string | null | undefined,
+): CanonicalErrorFamily | null {
+  if (!value) return null;
+  const normalized = value.trim().toLocaleUpperCase().replace(/[\s-]+/gu, "_");
+  const aliases: Record<string, CanonicalErrorFamily> = {
+    CONCEPTUAL: "CONCEPTUAL",
+    PREREQUISITE: "PREREQUISITE",
+    PROCEDURAL: "PROCEDURAL",
+    CALCULATION: "CALCULATION_EXECUTION",
+    ARITHMETIC: "CALCULATION_EXECUTION",
+    CALCULATION_EXECUTION: "CALCULATION_EXECUTION",
+    READING: "READING_LANGUAGE",
+    LANGUAGE: "READING_LANGUAGE",
+    READING_LANGUAGE: "READING_LANGUAGE",
+    ATTENTION: "ATTENTION_RESPONSE",
+    ATTENTION_RESPONSE: "ATTENTION_RESPONSE",
+    GUESSING: "GUESSING_CONFIDENCE",
+    GUESSING_CONFIDENCE: "GUESSING_CONFIDENCE",
+    INCOMPLETE: "INCOMPLETE_COMMUNICATION",
+    INCOMPLETE_COMMUNICATION: "INCOMPLETE_COMMUNICATION",
+    TRANSFER: "TRANSFER_BLOOM",
+    TRANSFER_BLOOM: "TRANSFER_BLOOM",
+    COGNITIVE_LOAD: "COGNITIVE_LOAD_PACE",
+    PACE: "COGNITIVE_LOAD_PACE",
+    COGNITIVE_LOAD_PACE: "COGNITIVE_LOAD_PACE",
+  };
+  return aliases[normalized] ?? null;
+}
+
+/**
+ * Advance one active task through the finite help scale. The answer reveal is
+ * both the final level and an explicit-consent boundary. This helper is pure
+ * so route and provider-free tests share exactly one policy.
+ */
+export function getNextHelpEscalation(
+  currentHelpCount: number,
+  revealAnswer: boolean,
+): HelpEscalation {
+  const current = Number.isFinite(currentHelpCount)
+    ? Math.max(0, Math.floor(currentHelpCount))
+    : 0;
+  if (current >= MAX_HELP_COUNT) {
+    return { ok: false, reason: "HELP_BUDGET_EXHAUSTED" };
+  }
+  const helpLevel = (current + 1) as 1 | 2 | 3 | 4;
+  if (helpLevel === 4 && !revealAnswer) {
+    return { ok: false, reason: "REVEAL_REQUIRES_CONFIRMATION" };
+  }
+  const assistanceLevel: Record<1 | 2 | 3 | 4, HelpAssistanceLevel> = {
+    1: "light",
+    2: "moderate",
+    3: "guided",
+    4: "revealed",
+  };
+  return { ok: true, helpLevel, assistanceLevel: assistanceLevel[helpLevel] };
+}
+
 /**
  * Maximum inter-turn interval credited as active learning time (seconds).
  * Gaps larger than this (e.g. idle browser) are capped at this value so
@@ -273,50 +367,98 @@ function ceilingLevel(path: CognitiveLevelRow[]): CognitiveLevelRow | null {
 
 /**
  * Map error family + remediation step to the best remediation action.
- * Mirrors the prompt guidance in ai.ts but now owned by code.
+ *
+ * This is the single backend action registry. Each family has a finite,
+ * strategy-varying sequence; the model only renders the selected action.
  */
-function mapErrorFamilyToAction(
+export function mapErrorFamilyToAction(
   errorFamily: string | null,
   remediationStep: number
 ): NodeDecisionAction {
-  // After step 3, always offer guided support regardless of family
-  if (remediationStep >= 3) {
-    if (errorFamily === "PREREQUISITE") return "RETURN_TO_PREREQUISITE";
-    if (errorFamily === "PROCEDURAL") return "STEP_BY_STEP";
-    return "GUIDED_QUESTION";
-  }
-
-  // After step 4, prerequisite check / simplification
-  if (remediationStep >= 4) {
-    if (errorFamily === "PREREQUISITE") return "RETURN_TO_PREREQUISITE";
-    return "LOWER_DIFFICULTY";
-  }
-
-  switch (errorFamily) {
-    case "CONCEPTUAL":
-      return remediationStep <= 1 ? "EXTRA_EXAMPLE" : "CONTRAST_EXAMPLE";
-    case "PREREQUISITE":
-      return "RETURN_TO_PREREQUISITE";
-    case "PROCEDURAL":
-      return "STEP_BY_STEP";
-    case "CALCULATION_EXECUTION":
-      return "VERIFY_SELECTION";
-    case "READING_LANGUAGE":
-      return "SIMPLIFY_LANGUAGE";
-    case "ATTENTION_RESPONSE":
-      return "VERIFY_SELECTION";
-    case "GUESSING_CONFIDENCE":
-      return "REQUIRE_REASONING";
-    case "INCOMPLETE_COMMUNICATION":
-      return "GUIDED_QUESTION";
-    case "TRANSFER_BLOOM":
-      return "CHANGE_REPRESENTATION";
-    case "COGNITIVE_LOAD_PACE":
-      return remediationStep >= 2 ? "LOWER_DIFFICULTY" : "RAISE_DIFFICULTY";
-    default:
-      // Null or unknown family — use generic escalation
-      return remediationStep <= 1 ? "EXTRA_EXAMPLE" : "GUIDED_QUESTION";
-  }
+  const normalizedFamily = normalizeErrorFamily(errorFamily);
+  const sequences: Record<string, readonly NodeDecisionAction[]> = {
+    CONCEPTUAL: [
+      "EXTRA_EXAMPLE",
+      "CHANGE_REPRESENTATION",
+      "CONTRAST_EXAMPLE",
+      "GUIDED_QUESTION",
+      "LOWER_DIFFICULTY",
+    ],
+    // RETURN_TO_PREREQUISITE is a signal only. C6 owns any actual routing.
+    PREREQUISITE: [
+      "RETURN_TO_PREREQUISITE",
+      "RETURN_TO_PREREQUISITE",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "LOWER_DIFFICULTY",
+    ],
+    PROCEDURAL: [
+      "STEP_BY_STEP",
+      "STEP_BY_STEP",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "LOWER_DIFFICULTY",
+    ],
+    CALCULATION_EXECUTION: [
+      "VERIFY_SELECTION",
+      "VERIFY_SELECTION",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "LOWER_DIFFICULTY",
+    ],
+    READING_LANGUAGE: [
+      "SIMPLIFY_LANGUAGE",
+      "SIMPLIFY_LANGUAGE",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "LOWER_DIFFICULTY",
+    ],
+    ATTENTION_RESPONSE: [
+      "VERIFY_SELECTION",
+      "REQUIRE_REASONING",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "LOWER_DIFFICULTY",
+    ],
+    GUESSING_CONFIDENCE: [
+      "REQUIRE_REASONING",
+      "REQUIRE_REASONING",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "LOWER_DIFFICULTY",
+    ],
+    INCOMPLETE_COMMUNICATION: [
+      "GUIDED_QUESTION",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "STEP_BY_STEP",
+      "LOWER_DIFFICULTY",
+    ],
+    TRANSFER_BLOOM: [
+      "CHANGE_REPRESENTATION",
+      "EXTRA_EXAMPLE",
+      "CONTRAST_EXAMPLE",
+      "GUIDED_QUESTION",
+      "LOWER_DIFFICULTY",
+    ],
+    COGNITIVE_LOAD_PACE: [
+      "RAISE_DIFFICULTY",
+      "LOWER_DIFFICULTY",
+      "STEP_BY_STEP",
+      "GUIDED_QUESTION",
+      "LOWER_DIFFICULTY",
+    ],
+    UNKNOWN: [
+      "EXTRA_EXAMPLE",
+      "GUIDED_QUESTION",
+      "CHANGE_REPRESENTATION",
+      "STEP_BY_STEP",
+      "LOWER_DIFFICULTY",
+    ],
+  };
+  const sequence = sequences[normalizedFamily ?? "UNKNOWN"];
+  const index = Math.max(0, Math.floor(remediationStep));
+  return sequence[Math.min(index, sequence.length - 1)];
 }
 
 // ── R4A Helper functions ────────────────────────────────────────────────────
@@ -574,7 +716,10 @@ export function decideNextPedagogicalAction(
   }
 
   // ── CASE B: Correct but heavily assisted (supported success) ─────────────
-  if ((isCorrect || isPartial) && !independent && meetsQuality) {
+  // Partial responses do not establish success, even with help. They continue
+  // into Case C so their missing component/error family gets targeted
+  // remediation rather than an independent-success re-check.
+  if (isCorrect && !independent && meetsQuality) {
     // ── R4A.2 Step 3: Session budget gate ────────────────────────────────────
     if (sessionBudgetExhausted) {
       return {
