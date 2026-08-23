@@ -131,14 +131,65 @@ export function createCanonicalTaskRetrySnapshot(
 export function isCanonicalTaskSnapshot(value: unknown): value is CanonicalTaskSnapshot {
   if (!value || typeof value !== "object") return false;
   const snapshot = value as Partial<CanonicalTaskSnapshot>;
+  const nullableString = (candidate: unknown): candidate is string | null =>
+    candidate === null || typeof candidate === "string";
+  const validSources: CanonicalTaskSource[] = [
+    "source_exercise",
+    "micro_check",
+    "generated_task",
+    "legacy_compatibility",
+  ];
+  const validKinds: CanonicalTaskSnapshot["taskKind"][] = [
+    "source",
+    "generated",
+    "micro_check",
+    "legacy",
+  ];
+  const validLearnerTextSources = ["verbatim", "edited", "generated", "legacy"];
+  const sourceAnswer = snapshot.sourceAnswer;
+  const generated = snapshot.generated;
+  const assistanceBaseline = snapshot.assistanceBaseline;
   return (
     snapshot.version === 1 &&
     typeof snapshot.taskReference === "string" &&
     snapshot.taskReference.length > 0 &&
     typeof snapshot.renderedPrompt === "string" &&
     snapshot.renderedPrompt.length > 0 &&
+    validSources.includes(snapshot.taskSource as CanonicalTaskSource) &&
+    validKinds.includes(snapshot.taskKind as CanonicalTaskSnapshot["taskKind"]) &&
+    nullableString(snapshot.interactionType) &&
+    (snapshot.lessonNodeId === null || Number.isInteger(snapshot.lessonNodeId)) &&
+    (snapshot.cognitiveLevelId === null || Number.isInteger(snapshot.cognitiveLevelId)) &&
+    (snapshot.lessonExerciseId === null || Number.isInteger(snapshot.lessonExerciseId)) &&
+    nullableString(snapshot.sourceExerciseId) &&
+    nullableString(snapshot.sourcePage) &&
+    validLearnerTextSources.includes(snapshot.learnerTextSource as string) &&
+    nullableString(snapshot.successCriterion) &&
+    nullableString(snapshot.sourceSuccessCriteria) &&
     typeof snapshot.targetCompatibleAtActivation === "boolean" &&
-    typeof snapshot.attemptSequence === "number"
+    typeof snapshot.attemptSequence === "number" &&
+    Number.isInteger(snapshot.attemptSequence) &&
+    snapshot.attemptSequence > 0 &&
+    !!assistanceBaseline &&
+    assistanceBaseline.helpCount === 0 &&
+    assistanceBaseline.assistanceLevel === "none" &&
+    (sourceAnswer === null ||
+      (!!sourceAnswer &&
+        typeof sourceAnswer === "object" &&
+        nullableString(sourceAnswer.interactionType) &&
+        nullableString(sourceAnswer.correctAnswer))) &&
+    (generated === null ||
+      (!!generated &&
+        typeof generated === "object" &&
+        nullableString(generated.questionTemplate) &&
+        nullableString(generated.parentTaskReference))) &&
+    (snapshot.taskSource !== "source_exercise" || snapshot.taskKind === "source") &&
+    (snapshot.taskSource !== "micro_check" || snapshot.taskKind === "micro_check") &&
+    (snapshot.taskSource !== "generated_task" || snapshot.taskKind === "generated") &&
+    (snapshot.taskSource !== "legacy_compatibility" || snapshot.taskKind === "legacy") &&
+    (snapshot.targetCompatibleAtActivation
+      ? snapshot.lessonNodeId !== null && snapshot.cognitiveLevelId !== null
+      : true)
   );
 }
 

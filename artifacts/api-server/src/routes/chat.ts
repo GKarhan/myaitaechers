@@ -80,6 +80,7 @@ import {
 } from "../services/c6-personalization.js";
 import {
   applyAuthorizedTargetTransition,
+  applyAuthorizedLevelTransition,
   authorizeCanonicalCompletion,
   buildAuthorizedLevelTransitionUpdate,
 } from "../services/phase2/canonical-completion-authority.js";
@@ -1356,19 +1357,33 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           session.currentPhase !== phaseAfterC6
         ) {
           if (nodeChanged) {
-            await applyAuthorizedTargetTransition({
+            const transitioned = await applyAuthorizedTargetTransition({
               sessionId: session.id,
               currentNodeId: c6Decision.microNodeId,
               nextPhase: phaseAfterC6,
               nextActiveCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
             });
+            if (!transitioned) {
+              res.status(409).json({
+                error: "STALE_C6_TARGET",
+                message: "Ուսուցման թիրախը փոխվել է։ Խնդրում ենք կրկին փորձել։",
+              });
+              return;
+            }
           } else if (c6Decision.nextTargetCognitiveLevelId !== null) {
-            await db
-              .update(lessonSessionsTable)
-              .set(buildAuthorizedLevelTransitionUpdate(
-                c6Decision.nextTargetCognitiveLevelId,
-              ) as any)
-              .where(eq(lessonSessionsTable.id, session.id));
+            const transitioned = await applyAuthorizedLevelTransition({
+              sessionId: session.id,
+              nextActiveCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+              expectedCurrentNodeId: session.currentNodeId,
+              expectedActiveCognitiveLevelId: session.activeCognitiveLevelId,
+            });
+            if (!transitioned) {
+              res.status(409).json({
+                error: "STALE_C6_TARGET",
+                message: "Ուսուցման թիրախը փոխվել է։ Խնդրում ենք կրկին փորձել։",
+              });
+              return;
+            }
           }
           session.currentNodeId = c6Decision.microNodeId;
           session.activeCognitiveLevelId = c6Decision.nextTargetCognitiveLevelId;

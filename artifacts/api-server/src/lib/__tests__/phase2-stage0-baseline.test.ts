@@ -26,6 +26,7 @@ import {
   type PedagogicalDecisionInput,
 } from "../../services/pedagogicalDecisionEngine.js";
 import { normalizeObjectiveMicroCheckAnswer } from "../../services/phase2/orchestration.js";
+import { buildAuthorizedLevelTransitionUpdate } from "../../services/phase2/canonical-completion-authority.js";
 import {
   enforceActiveSourceExercise,
   resolveEligibleSourceExercise,
@@ -354,7 +355,7 @@ test("S0.2 — thin-client POST /api/chat input remains message + lessonId", () 
   }
 });
 
-test("Fixture A — THEORY accepts a visible generated MICRO_CHECK and persists matching task state", () => {
+test("Fixture A — THEORY rejects a generated MICRO_CHECK; task generation is a later server action", () => {
   const candidate = baseResponse({
     teaching_mode: "FEEDBACK",
     is_micro_check: false,
@@ -377,17 +378,10 @@ test("Fixture A — THEORY accepts a visible generated MICRO_CHECK and persists 
     currentNodeId: 2107,
     nodeTeachingStage: "THEORY",
   });
-  validateTeachingCycle(canonical, [], lessonContext("THEORY"));
-  const persisted = activateGeneratedTask(THEORY_STATE, canonical);
   assert.equal(canonical.teaching_mode, "TEACH");
-  assert.equal(persisted.nodeTeachingStage, "MICRO_CHECK");
-  assert.equal(persisted.activeObjectiveTaskPayload?.correctOption, "A");
-  assert.equal(persisted.evidenceCount, 0);
-  assertResponseStateParity(canonical, persisted);
-  assert.match(
-    phase2OrchestrationSource,
-    /activeObjectiveTaskPayload:\s*objectivePayloadFromMicroCheck\(response\)/u,
-  );
+  assert.equal(canonical.is_micro_check, false);
+  assert.equal(THEORY_STATE.activeTaskProvenance, null);
+  assert.equal(THEORY_STATE.activeObjectiveTaskPayload, null);
 });
 
 test("Fixture B — invalid THEORY generation fails before any response/state pair can activate", () => {
@@ -522,28 +516,13 @@ test("Fixture G — cognitive-level advance keeps node/Phase 2 and clears stale 
   const decision = decideNextPedagogicalAction(decisionInput());
   assert.equal(decision.metaAction, "ADVANCE_COGNITIVE_LEVEL");
   assert.equal(decision.newActiveCognitiveLevelId, 302);
-  const persisted: FrozenSessionState = {
-    ...THEORY_STATE,
-    currentPhase: 2,
-    currentNodeId: 2107,
-    activeCognitiveLevelId: decision.newActiveCognitiveLevelId,
-    nodeTeachingStage: "THEORY",
-    activeTaskProvenance: null,
-    activeLessonExerciseId: null,
-    activeObjectiveTaskPayload: null,
-    activeAttemptSequence: 0,
-    activeHelpCount: 0,
-    activeAssistanceLevel: "none",
-  };
-  assert.equal(persisted.currentNodeId, 2107);
-  assert.equal(persisted.currentPhase, 2);
-  assert.equal(persisted.activeCognitiveLevelId, 302);
-  assert.equal(persisted.nodeTeachingStage, "THEORY");
-  assert.equal(persisted.activeTaskProvenance, null);
-  assert.match(
-    chatRouteSource,
-    /Cognitive Path advance: reset stage to THEORY without completing node/u,
+  const update = buildAuthorizedLevelTransitionUpdate(
+    decision.newActiveCognitiveLevelId!,
   );
+  assert.equal(update.activeCognitiveLevelId, 302);
+  assert.equal(update.nodeTeachingStage, "THEORY");
+  assert.equal(update.activeTaskProvenance, null);
+  assert.equal(update.activeTaskSnapshot, null);
 });
 
 test("Fixture H — confirmed target ceiling is the authority that allows MicroNode completion", () => {
@@ -594,7 +573,7 @@ test("Fixture I — legacy VERIFIED stage cannot bypass a false Cognitive Path c
   );
 });
 
-test("Fixture J — constructed response rejects transitions and accepts a visible task", () => {
+test("Fixture J — constructed response rejects transitions and accepts a visible task only in MICRO_CHECK", () => {
   const transitionOnly = baseResponse({
     interaction_type: "constructed_response",
     student_message: "Հիմա անցնենք հաջորդ քայլին։",
@@ -606,13 +585,15 @@ test("Fixture J — constructed response rejects transitions and accepts a visib
         [],
         lessonContext("THEORY"),
       ),
-    /requires a visible question or answerable task/u,
+    /TEACH must be theory-only/u,
   );
   const answerable = baseResponse({
+    teaching_mode: "MICRO_CHECK",
+    is_micro_check: true,
     interaction_type: "constructed_response",
     student_message: "Բացատրիր՝ ինչո՞ւ են մոլեկուլները շարժվում։",
   });
-  validateTeachingCycle(answerable, [], lessonContext("THEORY"));
+  validateTeachingCycle(answerable, [], lessonContext("MICRO_CHECK"));
 });
 
 test("Fixture K — legacy source rows preserve the existing AI-assisted evaluation path", () => {
@@ -654,7 +635,7 @@ test("Fixture L — student chat/session-state payloads expose no hidden answer 
   );
 });
 
-test("S0.3 — fresh/relearn reset clears session-local state but never durable evidence/mastery", () => {
+test("S0.3 — fresh/relearn reset clears task state, retains the C6 target, and never durable evidence/mastery", () => {
   const resetRoute = routeSlice(
     lessonsRouteSource,
     'router.post("/lessons/:lessonId/start-fresh"',
@@ -662,7 +643,6 @@ test("S0.3 — fresh/relearn reset clears session-local state but never durable 
   );
   for (const [field, value] of [
     ["activeLessonExerciseId", "null"],
-    ["activeCognitiveLevelId", "null"],
     ["activeTaskProvenance", "null"],
     ["activeObjectiveTaskPayload", "null"],
     ["nodeTeachingStage", '"THEORY"'],
@@ -675,6 +655,11 @@ test("S0.3 — fresh/relearn reset clears session-local state but never durable 
       `fresh reset must retain ${field}: ${value}`,
     );
   }
+  assert.match(
+    resetRoute,
+    /activeCognitiveLevelId:\s+c6Decision\.nextTargetCognitiveLevelId/u,
+    "fresh reset must retain the server-selected C6 cognitive target",
+  );
   assert.ok(!resetRoute.includes(".delete(evidenceEventsTable)"));
   assert.ok(!resetRoute.includes(".delete(knowledgeNodesTable)"));
   assert.match(

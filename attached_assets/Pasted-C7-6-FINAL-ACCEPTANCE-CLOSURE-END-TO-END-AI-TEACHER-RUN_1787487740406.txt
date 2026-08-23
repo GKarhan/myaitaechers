@@ -1,0 +1,688 @@
+C7.6 — FINAL ACCEPTANCE + CLOSURE
+END-TO-END AI TEACHER RUNTIME VERIFICATION
+
+VERIFY FIRST.
+FIX ONLY CONCRETE REGRESSIONS.
+DO NOT REDESIGN ARCHITECTURE.
+
+C7.1 COMPLETE.
+C7.2 COMPLETE.
+C7.3 COMPLETE.
+C7.4 COMPLETE.
+C7.5 COMPLETE.
+
+This is the FINAL C7 closure task.
+
+The purpose is to verify that all completed C7 contracts work together
+as one coherent AI Teacher runtime.
+
+Do NOT introduce new architecture unless a concrete acceptance blocker
+proves a small correction is required.
+
+==================================================
+0. CANONICAL END-TO-END CONTRACT
+==================================================
+
+The final runtime must behave as:
+
+C6 selects:
+MicroNode + Cognitive Level
+
+↓
+
+C7 teaches the locked target
+
+↓
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+↓
+
+when learner performs an evaluable task:
+
+immutable task snapshot
+→ evaluation
+→ C3 Evidence
+→ C4 demonstrated ceiling
+→ C6 next-learning decision
+
+↓
+
+if target changes:
+shared canonical transition/reset
+
+↓
+
+C7 resumes teaching the new canonical target.
+
+All of the following must remain true:
+
+- model is not mastery authority
+- model is not target authority
+- model is not stage authority
+- Knowledge Tree is not mastery authority
+- Quiz/AI Teacher do not own separate learner-state logic
+- C3 owns Evidence
+- C4 owns learner knowledge state
+- C6 owns what to learn next
+- C7 owns how to teach the selected target
+
+==================================================
+1. FINAL ARCHITECTURE REVIEW
+==================================================
+
+Before running scenarios, inspect current code for remaining duplicate
+authorities.
+
+Search especially:
+
+chat.ts
+ai.ts
+pedagogicalDecisionEngine
+C6 personalization service
+C7.1 completion helper
+C7.2 stage machine
+C7.3 target-lock service
+C7.4 remediation policy
+C7.5 task snapshot/evidence path
+
+Find any remaining path that can independently:
+
+- change currentNodeId
+- change activeCognitiveLevelId
+- mark level/node complete
+- write qualifying evidence without canonical snapshot
+- bypass FEEDBACK
+- retry indefinitely
+- use arbitrary wrong-level exercise
+- overwrite assistance truth
+- create duplicate evidence
+- bypass C3 → C4 → C6 ordering
+
+Only concrete findings count.
+
+==================================================
+2. PROVIDER-FREE MASTER ACCEPTANCE MATRIX
+==================================================
+
+Build/run one deterministic C7 master acceptance suite.
+
+At minimum verify these scenarios.
+
+SCENARIO 1 — NEW LEARNING
+
+C5 = NOT_STUDIED
+C6 selects:
+Node X
+first accepted C2 level = UNDERSTAND
+
+Verify:
+
+C7 starts X / UNDERSTAND
+TEACH
+→ MICRO_CHECK
+→ learner response
+→ FEEDBACK
+→ target unchanged unless canonical progression occurs.
+
+Never invent REMEMBER.
+
+SCENARIO 2 — PARTIAL LEARNER
+
+C4 ceiling = UNDERSTAND
+C2 path:
+UNDERSTAND → APPLY → ANALYZE
+
+C6 selects APPLY.
+
+Verify:
+
+C7 teaches APPLY.
+
+It must not restart UNDERSTAND.
+
+SCENARIO 3 — CORRECT MICRO-CHECK
+
+TEACH
+→ MICRO_CHECK
+→ correct answer
+→ FEEDBACK mandatory
+
+Micro-check alone must not produce unauthorized node mastery.
+
+SCENARIO 4 — INCORRECT MICRO-CHECK
+
+wrong answer
+→ FEEDBACK
+→ bounded remediation
+→ new check
+
+No stage skip.
+
+No target drift.
+
+SCENARIO 5 — ASSISTED SUCCESS
+
+task
+→ help
+→ correct with assistance
+
+Verify:
+
+assistance preserved in evidence
+no independent mastery claim
+new independent re-check required when C2/C3 demands it.
+
+SCENARIO 6 — INDEPENDENT REAL EXERCISE
+
+valid approved/current-level exercise
+→ immutable snapshot
+→ learner independently succeeds
+→ C3 qualifies evidence
+→ C4 projects updated ceiling
+→ only then C6 resolves next target.
+
+Verify exact order:
+
+C3
+→ C4
+→ C6.
+
+SCENARIO 7 — PARTIAL RESPONSE
+
+PARTIAL remains PARTIAL.
+
+Remediation uses missing-component context when available.
+
+Do not collapse to INCORRECT.
+
+SCENARIO 8 — UNCLEAR / NO_RESPONSE
+
+UNCLEAR remains UNCLEAR.
+NO_RESPONSE remains NO_RESPONSE.
+
+Neither becomes fake mastery or immediate C5 NOT_KNOWN.
+
+SCENARIO 9 — REMEDIATION EXHAUSTION
+
+Repeated failure exceeds bounded remediation budget.
+
+Verify:
+
+no level confirmation
+no node completion
+demonstrated ceiling preserved
+deterministic revisit/bounded-stop behavior.
+
+SCENARIO 10 — TOPIC SWITCH
+
+Learner requests another topic.
+
+Verify:
+
+redirect
+currentNodeId unchanged
+activeCognitiveLevelId unchanged
+no evidence written for unrelated content.
+
+SCENARIO 11 — PREREQUISITE
+
+C6 selects prerequisite target.
+
+Verify C7 accepts it.
+
+Also verify C7 cannot invent another prerequisite itself.
+
+SCENARIO 12 — WRONG-LEVEL EXERCISE
+
+Current level = APPLY.
+
+Available unrelated UNDERSTAND/ANALYZE task exists.
+
+Verify it cannot become current evidence task.
+
+SCENARIO 13 — NO ELIGIBLE TASK
+
+No valid evidence-eligible task.
+
+Verify:
+
+no arbitrary exercise fallback
+no fake STRONG evidence
+safe deterministic state.
+
+SCENARIO 14 — VERBATIM SOURCE EXERCISE
+
+exerciseTextVerbatim exists.
+
+Verify exact learner-visible source text remains unchanged.
+
+SCENARIO 15 — RETRY
+
+Learner retries after prior attempt.
+
+Verify:
+
+new task/attempt reference
+new immutable snapshot
+parent provenance preserved
+task-local help state reset
+no duplicate evidence.
+
+SCENARIO 16 — DUPLICATE SUBMISSION
+
+Same answer retried due network/provider failure.
+
+Verify:
+
+no duplicate C3 evidence event
+canonical recovery resumes correctly.
+
+SCENARIO 17 — PROVIDER FAILURE DURING FEEDBACK
+
+Evidence already persisted.
+
+Verify:
+
+C4 projection completion is recovered first
+feedback is reproduced from immutable evaluation context
+authorized transition is not lost
+no new model re-evaluation of learner answer.
+
+SCENARIO 18 — STALE TARGET / CONCURRENCY
+
+Target changes while an older request attempts a write.
+
+Verify CAS/target-bound writes fail closed.
+
+No stale node/level/task write.
+
+SCENARIO 19 — ACTIVE EXERCISE RESUME
+
+Reload during active real exercise.
+
+Verify same immutable task resumes.
+
+Do not replace with another task.
+
+SCENARIO 20 — PENDING FEEDBACK RESUME
+
+Reload after learner answer but before feedback delivery.
+
+Verify FEEDBACK remains mandatory and uses original evaluation snapshot.
+
+SCENARIO 21 — LEVEL CONFIRMATION
+
+Current level becomes canonically CONFIRMED.
+
+Verify C7 does NOT pick next level itself.
+
+C6 resolves next accepted level.
+
+SCENARIO 22 — NODE COMPLETION
+
+C4 reaches C2 curriculum target.
+
+Verify:
+
+C6 chooses next eligible MicroNode
+or lesson completion if none.
+
+C7 cannot choose sequence+1 independently.
+
+SCENARIO 23 — MASTERED + REVIEW
+
+C6 decision = REVIEW.
+
+Verify C7 teaches same mastered node in review mode without deleting or
+lowering demonstrated ceiling.
+
+SCENARIO 24 — INVALID C2 PATH
+
+Invalid/unaccepted path.
+
+Verify fail closed.
+
+No Bloom fallback.
+No forced REMEMBER.
+No arbitrary task.
+
+==================================================
+3. C7.1 ACCEPTANCE
+==================================================
+
+Verify final code still guarantees:
+
+evaluation
+→ C3 qualification
+→ C4 projection
+→ C6
+→ session transition.
+
+Find and reject any path where:
+
+model/pedagogical engine
+→ immediate progression.
+
+==================================================
+4. C7.2 ACCEPTANCE
+==================================================
+
+Verify the state machine is still non-bypassable:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+Also verify real exercise compatibility:
+
+TRANSITION
+→ EXERCISE
+→ learner response
+→ FEEDBACK
+→ TRANSITION.
+
+No second unresolved task/question.
+
+==================================================
+5. C7.3 ACCEPTANCE
+==================================================
+
+Verify all critical writes remain bound to:
+
+lessonId
+currentNodeId
+activeCognitiveLevelId.
+
+Verify:
+
+- help
+- task activation
+- source exercise
+- generated task
+- feedback release
+- continuation
+- completion transition
+
+all use canonical target checks/CAS where required.
+
+==================================================
+6. C7.4 ACCEPTANCE
+==================================================
+
+Verify:
+
+- canonical error taxonomy
+- server-owned error→action policy
+- bounded remediation
+- bounded help escalation
+- strategy variation
+- assistance preserved
+- assisted success ≠ independent mastery
+- prerequisite routing remains C6-owned
+- LOWER_DIFFICULTY does not lower canonical cognitive target
+- terminal remediation does not generate another task indefinitely.
+
+==================================================
+7. C7.5 ACCEPTANCE
+==================================================
+
+Verify:
+
+- immutable pre-display task snapshot
+- source verbatim text
+- source-specific frozen evaluation criteria
+- generated-task identity
+- provenance
+- parent variant traceability
+- attempt identity
+- retry identity
+- idempotent evidence
+- mutable live task rows cannot change active-attempt meaning
+- legacy mutable evidence writer cannot execute.
+
+==================================================
+8. LANGUAGE / OUTPUT SAFETY
+==================================================
+
+Verify existing production contract remains intact:
+
+- learner-facing Armenian
+- Unicode math symbols where applicable
+- no LaTeX leakage
+- concise teacher persona
+- no long multi-question sequences
+- one unresolved learner task at a time.
+
+Do not redesign persona.
+
+Fix only concrete regressions.
+
+==================================================
+9. ONE BOUNDED REAL RUNTIME ACCEPTANCE
+==================================================
+
+After ALL provider-free tests pass:
+
+perform at most ONE bounded real runtime lesson acceptance if safe test
+data/session is available.
+
+Do not repeatedly call providers.
+
+Do not corrupt real learner evidence.
+
+Prefer a disposable/dev test learner/session.
+
+The real acceptance should prove at least:
+
+C6-selected target
+→ TEACH
+→ MICRO_CHECK
+→ learner response
+→ FEEDBACK
+→ TRANSITION
+
+and ideally:
+
+real exercise
+→ C3
+→ C4
+→ C6.
+
+If safe real data cannot prove the full chain:
+
+do not fabricate evidence.
+
+Report exactly what was verified and rely on deterministic suites for
+the rest.
+
+==================================================
+10. FULL REGRESSION SET
+==================================================
+
+Run relevant:
+
+C1 mapping/readiness smoke
+C2 Cognitive Path
+C3 Evidence
+C4 Learner Model
+C5 Knowledge Tree
+C6 Personalization
+C7.1
+C7.2
+C7.3
+C7.4
+C7.5
+Phase 2
+chat/session
+exercise/task
+source-answer
+continuation/resume
+structured-output validation
+
+Also run:
+
+API typecheck
+web typecheck
+API build
+web build
+
+Restart API and inspect clean startup logs.
+
+==================================================
+11. FINAL INDEPENDENT REVIEW
+==================================================
+
+Before closing C7, request a fresh independent review focused ONLY on
+blocking C7 contract violations.
+
+Review for:
+
+1. duplicate mastery authority
+2. duplicate target authority
+3. duplicate stage authority
+4. evidence writer bypass
+5. progression before C4
+6. C6 target override
+7. arbitrary exercise fallback
+8. stale/concurrent write
+9. infinite remediation
+10. assistance loss
+11. duplicate evidence
+12. mutable-task evaluation
+13. resume/recovery stage skip
+14. model-declared mastery
+15. forced REMEMBER/Bloom fallback
+16. unsafe prerequisite node mutation.
+
+Fix concrete blocking findings.
+
+Rerun affected tests.
+
+==================================================
+12. DO NOT EXPAND C7
+==================================================
+
+Do NOT add:
+
+- learner readiness UI
+- advanced Teaching Intelligence
+- strategy-learning analytics
+- flashcards
+- quiz improvements
+- diary
+- Today dashboard
+- advanced recommendation
+- new lesson planning
+- broad UI redesign
+
+These are later roadmap items.
+
+C7.6 is closure, not expansion.
+
+==================================================
+13. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. C7 FINAL VERDICT
+
+C7 COMPLETE
+or
+C7 BLOCKED
+
+B. FINAL AUTHORITY CHAIN
+
+C1:
+C2:
+C3:
+C4:
+C5:
+C6:
+C7:
+
+C. C7.1 STATUS
+
+D. C7.2 STATUS
+
+E. C7.3 STATUS
+
+F. C7.4 STATUS
+
+G. C7.5 STATUS
+
+H. MASTER ACCEPTANCE MATRIX
+
+For each scenario:
+PASS / FAIL
+with short reason.
+
+I. PROVIDER-FREE TEST RESULTS
+
+Exact suites/counts.
+
+J. REAL RUNTIME ACCEPTANCE
+
+Exact bounded scenario/result.
+
+K. FILES CHANGED DURING C7.6
+
+If none, say NONE.
+
+L. REGRESSION STATUS
+
+C1:
+C2:
+C3:
+C4:
+C5:
+C6:
+Phase 2:
+Chat:
+Session/Resume:
+Tasks:
+Builds:
+
+M. REMAINING NON-BLOCKING ITEMS
+
+Only genuine future enhancements.
+
+N. FINAL C7 OWNERSHIP
+
+C6 owns:
+C7 owns:
+C3 owns:
+C4 owns:
+Model owns:
+
+O. FINAL VERDICT
+
+Return exactly one:
+
+C7 COMPLETE — AI Teacher now safely executes the C6-selected learning
+target through a server-owned teaching cycle, bounded remediation,
+canonical task execution, and C3→C4→C6 progression.
+
+or
+
+C7 BLOCKED — <smallest exact blocker>
+
+==================================================
+14. STOP
+==================================================
+
+If C7 is complete:
+
+STOP.
+
+Do not start the next roadmap feature automatically.
+
+Do not start flashcards, quiz improvements, Today, diary, or Teaching
+Intelligence.
+
+Wait for the next explicit instruction.

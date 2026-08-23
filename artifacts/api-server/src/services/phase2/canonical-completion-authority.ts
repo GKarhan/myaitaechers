@@ -90,6 +90,7 @@ export function buildAuthorizedTargetTransitionUpdate(
     activeLessonExerciseId: null,
     activeTaskProvenance: null,
     activeTaskReference: null,
+    activeTaskSnapshot: null,
     activeObjectiveTaskPayload: null,
     activeAttemptSequence: 0,
     activeHelpCount: 0,
@@ -140,10 +141,33 @@ export function buildAuthorizedLevelTransitionUpdate(
     activeLessonExerciseId: null,
     activeTaskProvenance: null,
     activeTaskReference: null,
+    activeTaskSnapshot: null,
     activeObjectiveTaskPayload: null,
     activeAttemptSequence: 0,
     activeHelpCount: 0,
     activeAssistanceLevel: "none",
     remediationStep: 0,
   };
+}
+
+export async function applyAuthorizedLevelTransition(input: {
+  sessionId: number;
+  nextActiveCognitiveLevelId: number;
+  expectedCurrentNodeId: number | null;
+  expectedActiveCognitiveLevelId: number | null;
+}): Promise<boolean> {
+  const updated = await db
+    .update(lessonSessionsTable)
+    .set(buildAuthorizedLevelTransitionUpdate(input.nextActiveCognitiveLevelId) as any)
+    .where(and(
+      eq(lessonSessionsTable.id, input.sessionId),
+      input.expectedCurrentNodeId === null
+        ? isNull(lessonSessionsTable.currentNodeId)
+        : eq(lessonSessionsTable.currentNodeId, input.expectedCurrentNodeId),
+      input.expectedActiveCognitiveLevelId === null
+        ? isNull(lessonSessionsTable.activeCognitiveLevelId)
+        : eq(lessonSessionsTable.activeCognitiveLevelId, input.expectedActiveCognitiveLevelId),
+    ))
+    .returning({ id: lessonSessionsTable.id });
+  return updated.length > 0;
 }
