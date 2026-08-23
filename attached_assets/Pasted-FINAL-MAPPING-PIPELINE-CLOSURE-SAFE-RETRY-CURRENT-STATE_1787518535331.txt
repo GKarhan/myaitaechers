@@ -1,0 +1,1190 @@
+FINAL MAPPING PIPELINE CLOSURE
+SAFE RETRY + CURRENT-STATE READINESS + TEACHING CONTENT PERSISTENCE
++ LOW-FRICTION FINAL APPROVAL + REDUNDANT APPROVAL UI CLEANUP
++ REAL LESSON 654 ACCEPTANCE
+
+IMPORTANT
+
+This is the FINAL stabilization/closure task for the EXISTING Mapping pipeline.
+
+Do NOT redesign Mapping architecture.
+Do NOT redesign C1/C2.
+Do NOT redesign C3–C7.
+Do NOT change Quiz.
+Do NOT change Knowledge Tree.
+Do NOT change AI Teacher runtime behavior.
+Do NOT publish or deploy.
+
+Do not introduce another approval layer.
+
+The teacher workflow must remain simple:
+
+STEP 1 — Ճանաչողական ուղիներ
+STEP 2 — Ուսուցման բովանդակություն
+STEP 3 — Վերջնական հաստատում
+
+The goal is:
+
+1. make missing Teaching Content safely retryable;
+2. make CURRENT canonical state authoritative instead of stale job history;
+3. persist generated Teaching Content reliably;
+4. never overwrite existing/teacher-edited content;
+5. allow safe REVIEW_REQUIRED states to continue;
+6. keep only TRUE blockers as hard blockers;
+7. make final approval low-friction;
+8. remove redundant per-item “✅ Հաստատված” UI noise;
+9. verify everything on the real lesson 654;
+10. keep the workflow UI compact and teacher-friendly.
+
+==================================================
+0 — CURRENT VERIFIED CONTEXT
+==================================================
+
+Real lesson:
+
+Lesson ID: 654
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+
+Թեմա:
+ԲՆԱԿԱՆ ԹՎԵՐԸ ԵՎ ԿՈՈՐԴԻՆԱՏԱՅԻՆ ՃԱՌԱԳԱՅԹԸ
+
+Դաս:
+§1.4 Կարգեր, կարգային միավորներ
+Էջ 19–22
+
+The lesson currently contains 4 mapped MicroNodes.
+
+The four MicroNodes visibly contain mapped/source material such as:
+
+- Learning Objective;
+- theoretical/source content;
+- original/source text;
+- source page;
+- exercises where applicable.
+
+Cognitive Paths are shown as created for 4/4 nodes.
+
+However, opening the MicroNode details currently shows:
+
+«Ուսուցման բովանդակությունը դեռ չկա։
+Օգտագործիր դասի «Ստեղծել ուսուցման բովանդակություն» գործողությունը։»
+
+for all four nodes.
+
+Therefore:
+
+Mapping/source content exists,
+but real persisted Phase 2 Teaching Content is missing.
+
+A previous lesson-wide Teaching Content job completed with blocked results.
+
+The readiness policy was subsequently improved, but lesson 654 could not be
+safely replayed because the previous completed job remained effectively terminal.
+
+This task must solve that problem GENERALLY.
+
+Do NOT special-case lesson 654.
+
+==================================================
+1 — AUDIT BEFORE EDITING
+==================================================
+
+Before changing code, trace the complete current lesson-wide Teaching Content lifecycle.
+
+Find exactly:
+
+1. Where Teaching Content jobs are created.
+2. Where latest/completed job state is read.
+3. Why a completed job prevents or interferes with another generation attempt.
+4. Whether frontend, backend, or both treat job completion as canonical readiness.
+5. How missing persisted Teaching Content is detected.
+6. How existing Teaching Content is detected.
+7. How teacher-edited content is protected.
+8. How current C1 readiness is evaluated.
+9. How current C2/Cognitive Path readiness is evaluated.
+10. Whether stale blocker results from an old job are reused.
+11. What currently blocks final lesson approval.
+12. Whether per-node/per-exercise/per-C2 confirmation statuses unnecessarily
+    become final-approval blockers.
+13. Whether final approval evaluates CURRENT canonical data or historical flags.
+14. Where repetitive per-item “✅ Հաստատված” UI badges are rendered for:
+    - MicroNodes;
+    - exercises;
+    - Cognitive Paths;
+    - other normal mapping items.
+
+Classify the root cause before implementing.
+
+Then make the smallest durable fix.
+
+Do not create parallel readiness logic if canonical helpers already exist.
+
+==================================================
+2 — JOB HISTORY MUST NOT OWN CURRENT READINESS
+==================================================
+
+Separate these concepts:
+
+A. JOB HISTORY
+B. CURRENT LESSON STATE
+
+Job history is historical execution information.
+
+It must NOT become permanent lesson readiness authority.
+
+Example:
+
+job.status = completed
+
+but:
+
+4 MicroNodes exist
+0 have persisted Teaching Content
+
+Then Teaching Content work is NOT complete.
+
+Retry must be allowed.
+
+Another example:
+
+4 MicroNodes exist
+2 have valid Teaching Content
+2 are missing Teaching Content
+
+Then retry must process only the missing eligible 2 nodes.
+
+A stale completed job must NEVER permanently lock the lesson.
+
+Do not delete useful job history.
+
+Just stop treating historical completion/blocker results as canonical current readiness.
+
+==================================================
+3 — CURRENT STATE IS THE SOURCE OF TRUTH
+==================================================
+
+Every Teaching Content generation attempt must re-read CURRENT canonical data.
+
+At minimum:
+
+- current lesson;
+- current MicroNodes;
+- current source/readiness state;
+- current C1 state;
+- current accepted Cognitive Path/C2 state;
+- current persisted Teaching Content;
+- current teacher edits;
+- current structural/integrity state.
+
+Then classify each MicroNode as:
+
+READY
+
+REVIEW_REQUIRED
+
+BLOCKED
+
+Do NOT derive current readiness from:
+
+- previous generation-job result;
+- stale UI cache;
+- historical blocker message;
+- old review flag that no longer matches current data.
+
+==================================================
+4 — THREE-STATE POLICY
+==================================================
+
+Canonical behavior:
+
+READY
+= safe to continue.
+
+REVIEW_REQUIRED
+= safe enough to continue,
+but should remain visible to the teacher for review.
+
+BLOCKED
+= cannot safely continue.
+
+IMPORTANT:
+
+REVIEW_REQUIRED IS NOT BLOCKED.
+
+A safe yellow/review state must not automatically stop:
+
+- Cognitive Path workflow;
+- Teaching Content generation;
+- final teacher review;
+- final approval.
+
+Only a TRUE BLOCKED state should hard-stop the relevant operation.
+
+Do NOT weaken actual source fidelity, grounding, structural, or data-integrity safety.
+
+==================================================
+5 — SAFE RETRY CONTRACT
+==================================================
+
+Allow lesson-wide Teaching Content generation to run again whenever CURRENT
+canonical state shows eligible MicroNodes with missing Teaching Content.
+
+Retry must be:
+
+SAFE
+IDEMPOTENT
+MISSING-ONLY
+
+On every run:
+
+1. read CURRENT MicroNodes;
+2. read CURRENT persisted Teaching Content;
+3. evaluate CURRENT C1;
+4. evaluate CURRENT C2;
+5. classify each node;
+6. skip existing content;
+7. process only missing eligible content.
+
+Previous job state must not decide eligibility.
+
+==================================================
+6 — EXISTING CONTENT MUST NEVER BE OVERWRITTEN
+==================================================
+
+Retry must NOT overwrite:
+
+- existing valid Teaching Content;
+- teacher-edited Teaching Content;
+- manually authored Teaching Content;
+- reviewed Teaching Content;
+- confirmed Teaching Content.
+
+If content exists:
+
+SKIP_EXISTING.
+
+No force regeneration.
+
+No delete-and-recreate.
+
+No resetting Mapping.
+
+No remapping lesson 654.
+
+No deleting Cognitive Paths.
+
+No resetting Cognitive Paths.
+
+==================================================
+7 — BOUNDED SELF-REPAIR
+==================================================
+
+Preserve the bounded repair policy already introduced.
+
+Fresh AI-generated C2 candidate:
+
+if rejected for a repairable reason
+→ maximum ONE constrained regeneration attempt.
+
+If still invalid:
+BLOCKED.
+
+Fresh Teaching Content candidate:
+
+if rejected for a repairable grounding/content reason
+→ maximum ONE constrained regeneration attempt.
+
+If still invalid:
+BLOCKED.
+
+Never loop repeatedly.
+
+Never auto-repair teacher-authored or confirmed content by overwriting it.
+
+Never weaken the canonical validator merely to make generation pass.
+
+==================================================
+8 — TEACHING CONTENT SUCCESS MEANS PERSISTED CONTENT
+==================================================
+
+An AI response is NOT success.
+
+A successful Teaching Content operation requires:
+
+GENERATED
+→ VALIDATED
+→ PERSISTED
+→ READ BACK
+
+After persistence, read the content back from the database.
+
+Only then count it as created.
+
+If persistence fails:
+
+do not mark the node as completed.
+
+If generation succeeds but persistence fails:
+
+the operation must remain safely retryable.
+
+==================================================
+9 — FINAL APPROVAL MUST BE LOW-FRICTION
+==================================================
+
+This is critical.
+
+The teacher must NOT be forced through a chain such as:
+
+approve every MicroNode
+→ approve every exercise
+→ approve every Cognitive Path
+→ approve every Teaching Content item
+→ finally approve lesson.
+
+That workflow is intentionally being simplified.
+
+The teacher-facing workflow must remain:
+
+AI prepares the lesson
+→ teacher reviews/edits if needed
+→ teacher presses ONE lesson-level
+«Վերջնական հաստատում»
+
+Final approval is the explicit human acceptance step.
+
+==================================================
+10 — REVIEW_REQUIRED MUST NOT AUTOMATICALLY BLOCK FINAL APPROVAL
+==================================================
+
+Do NOT let safe review states unnecessarily prevent the teacher from approving the lesson.
+
+Canonical rule:
+
+READY
+→ does not block final approval.
+
+REVIEW_REQUIRED
+→ does NOT automatically block final approval.
+
+If an item is:
+
+- source-grounded enough to be safely usable;
+- structurally valid;
+- safely generated;
+- visible to the teacher;
+- editable/reviewable;
+- and contains no TRUE blocking defect;
+
+then the teacher must be allowed to accept it through the ONE lesson-level
+«Վերջնական հաստատում» action.
+
+The teacher's explicit final approval serves as the human acceptance of safe
+REVIEW_REQUIRED material.
+
+Do NOT require another hidden/per-item confirmation solely because the internal
+status says review_required.
+
+==================================================
+11 — ONLY TRUE BLOCKERS MAY BLOCK FINAL APPROVAL
+==================================================
+
+Examples of TRUE blockers:
+
+- missing required source;
+- unreadable source;
+- materially insufficient source;
+- materially unsupported Learning Objective;
+- source-grounding failure;
+- structurally invalid/unusable Cognitive Path;
+- invalid C2 target ceiling after bounded repair;
+- mandatory canonical data missing;
+- unsafe/unsupported Teaching Content;
+- structural database/integrity failure;
+- corrupted relation required by runtime;
+- another existing canonical safety condition that genuinely makes learner
+  delivery unsafe.
+
+These may block final approval.
+
+But the blocker must be based on CURRENT canonical state.
+
+==================================================
+12 — THESE MUST NOT BLOCK FINAL APPROVAL BY THEMSELVES
+==================================================
+
+Do NOT block final approval merely because of:
+
+- stale previous generation-job results;
+- historical blocker messages;
+- old review flags that no longer match current data;
+- safe REVIEW_REQUIRED state;
+- safe PARTIAL source-alignment state;
+- generated material waiting for teacher acceptance;
+- redundant per-MicroNode confirmation status;
+- redundant per-exercise confirmation status;
+- redundant per-Cognitive-Path confirmation status;
+- redundant per-Teaching-Content confirmation status;
+- absence of UI approval buttons intentionally removed from the simplified workflow.
+
+Do not require a teacher to hunt through the page for hidden confirmations.
+
+==================================================
+13 — FINAL APPROVAL MUST RE-EVALUATE CURRENT STATE
+==================================================
+
+When the teacher presses:
+
+«Վերջնական հաստատում»
+
+the backend must evaluate CURRENT canonical lesson state.
+
+Do not trust stale job/cache status.
+
+Desired behavior:
+
+1. Re-read current lesson state.
+2. Re-evaluate true blockers.
+3. Distinguish REVIEW_REQUIRED from BLOCKED.
+4. If TRUE blockers exist:
+   reject final approval with clear teacher-facing reasons.
+5. If no TRUE blockers exist:
+   approve the lesson.
+
+Do not make the frontend the final authority.
+
+Server remains authoritative.
+
+==================================================
+14 — REDUNDANT PER-ITEM “✅ ՀԱՍՏԱՏՎԱԾ” BADGES MUST BE REMOVED FROM UI
+==================================================
+
+This is a REQUIRED teacher-facing UI cleanup.
+
+Remove repetitive normal-success approval badges/text such as:
+
+“✅ Հաստատված”
+“Հաստատված”
+“✓ Հաստատվել”
+
+from the NORMAL mapping view when they do not require a teacher action.
+
+At minimum remove them from:
+
+A. each normal MicroNode card;
+B. each normal exercise row;
+C. normal Cognitive Path headers;
+D. other repeated per-item success states in the mapping block where the same
+   lesson-level acceptance is already represented by Step 3 “Վերջնական հաստատում”.
+
+Examples:
+
+Current exercise row:
+
+📖 Դասագրքից
+Էջ 20
+✅ Հաստատված
+✏️ 🗑️
+
+Desired normal exercise row:
+
+📖 Դասագրքից
+Էջ 20
+✏️ 🗑️
+
+Current MicroNode title:
+
+Թվի ներկայացումը կարգային գումարելիների գումարով
+✅ Հաստատված
+
+Desired normal MicroNode:
+
+Թվի ներկայացումը կարգային գումարելիների գումարով
+
+Do NOT replace every removed success badge with another green badge.
+
+The normal successful state should be visually quiet.
+
+==================================================
+15 — DO NOT DELETE BACKEND APPROVAL/STATUS DATA
+==================================================
+
+IMPORTANT:
+
+Removing “✅ Հաստատված” from UI does NOT mean deleting status data.
+
+Do NOT:
+
+- delete approval/status columns;
+- remove approval metadata;
+- remove exercise validity;
+- remove node validity;
+- remove Cognitive Path acceptance state;
+- weaken final approval;
+- auto-approve anything merely because the visual badge is gone.
+
+Underlying backend states remain available for canonical validation.
+
+This is PRESENTATION simplification.
+
+==================================================
+16 — KEEP PROBLEM/WARNING STATES VISIBLE
+==================================================
+
+Only normal successful statuses should become visually quiet.
+
+Keep real exceptions visible.
+
+Examples:
+
+⚠ Վերանայել
+
+⛔ Չի կարող շարունակվել
+
+If a normal item is fine:
+show no redundant green success badge.
+
+If an item needs teacher attention:
+show the warning.
+
+If an item is unsafe:
+show the blocker.
+
+Teacher attention should be directed to exceptions, not dozens of repeated success labels.
+
+==================================================
+17 — REMOVE REDUNDANT PER-ITEM APPROVAL ACTIONS
+==================================================
+
+Do not require separate routine “Հաստատել” actions for every normal:
+
+- MicroNode;
+- exercise;
+- Cognitive Path;
+- Teaching Content item.
+
+If such per-item buttons remain only as legacy happy-path approval controls and
+are no longer semantically necessary because the lesson-level final approval
+re-evaluates current canonical state:
+
+remove/hide them from the default workflow.
+
+IMPORTANT:
+
+If a specific item has a genuine correction/review workflow,
+preserve its manual edit/review functionality.
+
+Do not remove:
+- ✏️ edit;
+- 🗑️ delete where currently supported;
+- 👁 Teaching Content view;
+- Cognitive Path details;
+- manual authoring controls.
+
+==================================================
+18 — KEEP THE THREE-STEP UI
+==================================================
+
+The workflow must stay:
+
+1
+Ճանաչողական ուղիներ
+
+2
+Ուսուցման բովանդակություն
+
+3
+Վերջնական հաստատում
+
+Do NOT add:
+
+- another mandatory approval step;
+- another confirmation phase;
+- another teacher-facing technical stage.
+
+Do NOT restore:
+
+“✅ Հաստատել բոլոր հանգույցները”
+
+==================================================
+19 — KEEP STEP 2 COMPACT
+==================================================
+
+The Step 2 card must NOT grow vertically based on blocker count.
+
+Example compact presentation:
+
+2
+
+Ուսուցման բովանդակություն
+
+✓ Պատրաստ՝ 2
+⚠ Վերանայել՝ 1
+⛔ Արգելափակված՝ 1
+
+[Դիտել խնդիրները]
+
+Do NOT list all MicroNode names and long blocker reasons inside the Step 2 card.
+
+Detailed information can appear:
+
+- in an expandable detail section;
+- in the existing MicroNode detail surface;
+- in a modal/panel;
+- or another accessible review surface.
+
+The 3-step row must remain visually stable.
+
+Verify desktop and mobile.
+
+==================================================
+20 — TEACHER-FACING LANGUAGE MUST BE SIMPLE
+==================================================
+
+Do not expose internal architecture language as the primary teacher message.
+
+Avoid requiring teachers to understand:
+
+C1
+C2
+canonical validator
+grounding classifier
+target ceiling
+generation job
+persistence contract
+
+These may exist in diagnostics/developer logs.
+
+Teacher-facing states should be simple Armenian:
+
+✓ Պատրաստ է
+
+⚠ Վերանայել
+
+⛔ Չի կարող շարունակվել
+
+If something is blocked, provide a concrete human-readable reason.
+
+==================================================
+21 — KEEP PREVIOUS UI SIMPLIFICATION
+==================================================
+
+Do NOT restore:
+
+«✅ Հաստատել բոլոր հանգույցները»
+
+Do NOT restore unnecessary per-node AI regeneration shortcuts.
+
+Do NOT add separate mandatory:
+
+- MicroNode approval;
+- exercise approval;
+- Cognitive Path approval;
+- Teaching Content approval.
+
+Manual editing/review tools may remain.
+
+The teacher can inspect and edit individual content when desired.
+
+==================================================
+22 — REAL LESSON 654 CURRENT-STATE RE-EVALUATION
+==================================================
+
+After the GENERAL fix and provider-free tests pass, perform ONE safe acceptance
+retry on:
+
+Lesson ID: 654
+
+Do NOT:
+
+- reset the lesson;
+- remap it;
+- delete content;
+- delete Cognitive Paths;
+- manually change approval states;
+- force regeneration;
+- overwrite existing content.
+
+For EACH of the four MicroNodes report:
+
+NODE:
+TITLE:
+
+SOURCE CURRENT STATE:
+
+C1 CURRENT STATE:
+
+C2 CURRENT STATE:
+
+TEACHING CONTENT EXISTS BEFORE:
+YES / NO
+
+CURRENT CLASSIFICATION:
+READY / REVIEW_REQUIRED / BLOCKED
+
+REASON:
+
+FINAL-APPROVAL IMPACT:
+NON_BLOCKING / BLOCKING
+
+WHY:
+
+Classification must come from CURRENT data.
+
+Not previous job results.
+
+==================================================
+23 — REAL TEACHING CONTENT ACCEPTANCE
+==================================================
+
+For every:
+
+READY
+
+or safely processable:
+
+REVIEW_REQUIRED
+
+MicroNode with missing Teaching Content:
+
+run the canonical existing generation flow.
+
+Then read the result back from the database.
+
+For each MicroNode report:
+
+GENERATED:
+YES / NO
+
+VALIDATED:
+YES / NO
+
+PERSISTED:
+YES / NO
+
+READ_BACK:
+YES / NO
+
+SKIPPED_EXISTING:
+YES / NO
+
+BLOCKED:
+YES / NO
+
+REASON:
+
+If successfully persisted, opening the MicroNode detail must no longer say:
+
+«Ուսուցման բովանդակությունը դեռ չկա»
+
+==================================================
+24 — FINAL APPROVAL REAL ACCEPTANCE CHECK
+==================================================
+
+After lesson 654 current-state re-evaluation and safe Teaching Content generation:
+
+test the final approval validator against the CURRENT lesson state.
+
+Do not blindly approve if true blockers remain.
+
+Report:
+
+FINAL APPROVAL CURRENT RESULT:
+
+APPROVABLE
+or
+BLOCKED
+
+If BLOCKED:
+
+list ONLY true current blockers.
+
+For each blocker:
+
+NODE:
+BLOCKER:
+WHY IT IS A TRUE BLOCKER:
+WHAT MINIMUM CORRECTION IS REQUIRED:
+
+Do NOT include stale/historical/redundant confirmation states.
+
+If only safe REVIEW_REQUIRED items remain:
+
+expected result:
+
+APPROVABLE
+
+because the teacher's explicit final lesson approval is the human acceptance step.
+
+==================================================
+25 — REQUIRED PROVIDER-FREE 18-CASE MATRIX
+==================================================
+
+Add a deterministic provider-free regression matrix.
+
+Required cases:
+
+CASE 1
+READY C1 + valid C2 + missing Teaching Content
+→ eligible.
+
+CASE 2
+REVIEW_REQUIRED but source-safe C1
+→ eligible.
+
+CASE 3
+True source-insufficient C1
+→ BLOCKED.
+
+CASE 4
+Heading-only/unusable source
+→ BLOCKED.
+
+CASE 5
+Fresh repairable C2
+→ maximum one repair attempt.
+
+CASE 6
+C2 still invalid after bounded repair
+→ BLOCKED.
+
+CASE 7
+One blocked MicroNode
+→ other eligible nodes still generate.
+
+CASE 8
+Previous completed job + zero persisted Teaching Content
+→ retry allowed.
+
+CASE 9
+Previous completed job + partial persisted Teaching Content
+→ only missing eligible nodes retried.
+
+CASE 10
+Existing valid/teacher-edited Teaching Content
+→ never overwritten.
+
+CASE 11
+Previous job contains stale blocker results
+→ CURRENT readiness wins.
+
+CASE 12
+Retry when nothing is missing
+→ safe no-op.
+
+CASE 13
+Safe REVIEW_REQUIRED item exists
+→ does NOT automatically block final lesson approval.
+
+CASE 14
+Stale per-item confirmation/review state exists but CURRENT canonical content is safe
+→ does NOT block final approval.
+
+CASE 15
+TRUE canonical blocker exists
+→ final approval fails closed with a concrete reason.
+
+CASE 16
+Normal MicroNode
+→ no redundant “✅ Հաստատված” badge in teacher UI.
+
+CASE 17
+Normal exercise
+→ no redundant “✅ Հաստատված” badge in teacher UI.
+
+CASE 18
+Review/blocking item
+→ warning/blocker remains visible after success-badge cleanup.
+
+Expected:
+
+18 / 18 PASS.
+
+==================================================
+26 — REGRESSION VERIFICATION
+==================================================
+
+Run all relevant existing tests:
+
+- C1 readiness/source tests;
+- C2 generation/readiness/quality tests;
+- Phase 2 Teaching Content tests;
+- final approval tests;
+- C6;
+- C7 target-lock/runtime safety tests.
+
+Also run:
+
+API typecheck
+frontend typecheck
+API production build
+frontend production build
+
+Verify:
+
+C1–C7 safety semantics unchanged.
+
+Quiz unchanged.
+
+Knowledge Tree unchanged.
+
+AI Teacher runtime unchanged.
+
+==================================================
+27 — DO NOT PUBLISH
+==================================================
+
+DO NOT PUBLISH.
+
+DO NOT DEPLOY.
+
+DO NOT CREATE PUBLIC ACCESS.
+
+Development preview only.
+
+If any UI asks to Publish/Deploy:
+
+do not click it.
+
+==================================================
+28 — SCOPE CONTROL
+==================================================
+
+Do not start a new architecture task.
+
+Do not start another feature.
+
+Do not redesign lesson mapping.
+
+Do not redesign the AI Teacher.
+
+Do not change Quiz.
+
+Do not change Knowledge Tree.
+
+Do not modify C3–C7 behavior.
+
+Do not solve unrelated UI issues.
+
+If you discover an unrelated issue:
+
+report it separately.
+
+Do not implement it.
+
+==================================================
+FINAL REPORT — USE EXACTLY THIS STRUCTURE
+==================================================
+
+ROOT CAUSE OF RETRY LOCK:
+...
+
+ROOT CAUSE OF APPROVAL FRICTION:
+...
+
+GENERAL FIX:
+...
+
+CURRENT READINESS SOURCE OF TRUTH:
+...
+
+SAFE RETRY RULE:
+...
+
+REVIEW_REQUIRED POLICY:
+...
+
+TRUE BLOCKER POLICY:
+...
+
+FINAL APPROVAL RULE:
+...
+
+PER-ITEM APPROVAL UI CLEANUP:
+...
+
+REMOVED SUCCESS BADGES:
+...
+
+WARNING/BLOCKER STATES KEPT:
+...
+
+EXISTING BACKEND APPROVAL DATA PRESERVED:
+YES
+
+EXISTING CONTENT PROTECTION:
+...
+
+STEP 2 UI:
+...
+
+LESSON 654 BEFORE:
+
+MicroNodes:
+...
+
+Teaching Content persisted:
+...
+
+Previous job state:
+...
+
+LESSON 654 CURRENT RE-EVALUATION:
+
+NODE 1:
+TITLE:
+SOURCE:
+C1:
+C2:
+TEACHING CONTENT BEFORE:
+CLASSIFICATION:
+FINAL-APPROVAL IMPACT:
+REASON:
+
+NODE 2:
+TITLE:
+SOURCE:
+C1:
+C2:
+TEACHING CONTENT BEFORE:
+CLASSIFICATION:
+FINAL-APPROVAL IMPACT:
+REASON:
+
+NODE 3:
+TITLE:
+SOURCE:
+C1:
+C2:
+TEACHING CONTENT BEFORE:
+CLASSIFICATION:
+FINAL-APPROVAL IMPACT:
+REASON:
+
+NODE 4:
+TITLE:
+SOURCE:
+C1:
+C2:
+TEACHING CONTENT BEFORE:
+CLASSIFICATION:
+FINAL-APPROVAL IMPACT:
+REASON:
+
+REAL RETRY RESULT:
+
+READY:
+...
+
+REVIEW_REQUIRED:
+...
+
+BLOCKED:
+...
+
+GENERATED:
+...
+
+VALIDATED:
+...
+
+PERSISTED:
+...
+
+READ-BACK VERIFIED:
+...
+
+SKIPPED EXISTING:
+...
+
+FINAL APPROVAL CURRENT RESULT:
+
+APPROVABLE / BLOCKED
+
+TRUE BLOCKERS:
+...
+
+NON-BLOCKING REVIEW ITEMS:
+...
+
+18-CASE MATRIX:
+
+X / 18 PASS
+
+FAILED CASES:
+...
+
+REGRESSION TESTS:
+...
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+
+YES / NO
+
+If YES:
+list only writes caused by the authorized lesson-654 acceptance run.
+
+EXISTING TEACHING CONTENT OVERWRITTEN:
+
+NO
+
+LESSON REMAPPED:
+
+NO
+
+COGNITIVE PATHS DELETED/RESET:
+
+NO
+
+REDUNDANT PER-ITEM APPROVALS REMOVED FROM UI:
+
+YES / NO
+
+BACKEND APPROVAL/STATUS DATA DELETED:
+
+NO
+
+«ՀԱՍՏԱՏԵԼ ԲՈԼՈՐ ՀԱՆԳՈՒՅՑՆԵՐԸ» RESTORED:
+
+NO
+
+C1–C7 SAFETY WEAKENED:
+
+NO
+
+QUIZ CHANGED:
+
+NO
+
+KNOWLEDGE TREE CHANGED:
+
+NO
+
+AI TEACHER RUNTIME CHANGED:
+
+NO
+
+PUBLISHED/DEPLOYED:
+
+NO
+
+FINAL VERDICT:
+
+Return exactly ONE:
+
+MAPPING PIPELINE STABILIZED — SAFE RETRY, TEACHING CONTENT PERSISTENCE, LOW-FRICTION FINAL APPROVAL AND CLEAN TEACHER UI VERIFIED
+
+or
+
+MAPPING PIPELINE BLOCKED — <smallest exact remaining blocker>
+
+Then STOP.
+
+Do not propose another architecture task.
+Do not start another feature.
+Do not publish/deploy.
