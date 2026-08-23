@@ -55,3 +55,4 @@
 - [C7.2 teaching-cycle persistence](c7-2-teaching-cycle.md) — TEACH/FEEDBACK are visible persisted boundaries; retire active tasks only after C3/C4 and recover feedback from immutable evidence, never chat inference.
 - [C7 task consumption](c7-task-consumption.md) — evaluated Phase 2 tasks need atomic identity-based consumption; identity-free legacy tasks fail closed.
 - [C7 canonical task snapshot](c7-canonical-task-snapshot.md) — freeze the exact displayed task before delivery; preserve safe verbatim source text and generated provenance through evidence.
+- [C2 approval readiness](c2-approval-readiness.md) — approved MicroNodes require accepted confirmed C2; generation honors explicit C1 target ceilings and fails closed on drift.

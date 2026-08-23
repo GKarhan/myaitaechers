@@ -5030,6 +5030,11 @@ export interface CogPathInput {
   learningObjective: string | null;
   theoryContent:     string | null;
   blockType:         string | null;
+  /**
+   * Existing C1 ceiling, when one has been established. C2 generation may not
+   * raise or replace this curriculum decision.
+   */
+  targetBloomLevel?: number | null;
   subjectName:       string;
   lessonTitle:       string;
   topicTitle:        string | null;
@@ -5082,6 +5087,34 @@ const _cogPathResponseSchema = z.object({
   levels: z.array(_cogPathLevelSchema).min(1),
 });
 
+const BLOOM_LEVEL_BY_INT = [
+  "remember",
+  "understand",
+  "apply",
+  "analyze",
+  "evaluate",
+  "create",
+] as const;
+
+export function preservesC1TargetCeiling(
+  targetBloomLevel: number | null | undefined,
+  levels: ReadonlyArray<Pick<CogPathLevel, "cognitiveLevel" | "isTargetCeiling">>,
+): boolean {
+  const requiredC1Ceiling =
+    targetBloomLevel && targetBloomLevel >= 1 && targetBloomLevel <= 6
+      ? BLOOM_LEVEL_BY_INT[targetBloomLevel - 1]
+      : null;
+  if (!requiredC1Ceiling) return true;
+
+  const selectedCeiling = levels.find((level) => level.isTargetCeiling)?.cognitiveLevel;
+  return selectedCeiling === requiredC1Ceiling
+    && levels.every(
+      (level) =>
+        BLOOM_LEVEL_BY_INT.indexOf(level.cognitiveLevel) <=
+        BLOOM_LEVEL_BY_INT.indexOf(requiredC1Ceiling),
+    );
+}
+
 const COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի փորձագետ ես, որը վերլուծում է MicroNode-ի ճանաչողական կառուցվածքը՝ Bloom-ի վերանայված տաքսոնոմիայի (2001) հիման վրա։
 
 ԿԱՆՈՆՆԵՐ.
@@ -5095,6 +5128,8 @@ const COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի
 8. minimumIndependentEvidence: цель проектирования (1–5). По умолчанию: 2 для remember, 3 для understand/apply, 3 для analyze и выше.
 9. preferredInteractionTypes: выбери из: multiple_choice, multi_select, true_false, matching, classification, ordering, numeric_answer, short_answer, constructed_response, problem_solving.
 10. Взаимодействие и когнитивное требование — РАЗНЫЕ измерения. multiple_choice может оценивать Apply; written_response — не обязательно означает высшее мышление.
+11. Մի գրիր թվական, քանակ կամ թվային պնդում performanceObjective կամ successCriterion դաշտերում, եթե այն բառացիորեն տեսանելի չէ source-ում։ Եթե թիվ պետք չէ, այն մի օգտագործիր։
+12. Եթե C1 target ceiling-ը 1 (remember) է, վերադարձիր ՄԻԱՅՆ մեկ remember մակարդակ՝ sequence=1 և isTargetCeiling=true։ C1-ի նշված ceiling-ից բարձր մակարդակ երբեք մի վերադարձիր։
 
 ОРИЕНТИРЫ (следуй учебным целям и содержанию, а не этим примерам механически):
 - определение/распознавание: remember → understand
@@ -5127,6 +5162,9 @@ Topic: ${input.topicTitle ?? "(standalone node)"}
 MicroNode id=${input.nodeId}: "${input.title}"
 learningObjective: ${input.learningObjective ?? "(not set)"}
 blockType: ${input.blockType ?? "(unknown)"}
+C1 target ceiling: ${input.targetBloomLevel && input.targetBloomLevel >= 1 && input.targetBloomLevel <= 6
+  ? `${input.targetBloomLevel} (${BLOOM_LEVEL_BY_INT[input.targetBloomLevel - 1]})`
+  : "(not specified)"}
 
 theoryContent:
 ${input.theoryContent ?? "(empty)"}
@@ -5213,6 +5251,18 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     for (const l of levels) {
       if (l.isTargetCeiling && l.sequence !== maxSeq) l.isTargetCeiling = false;
     }
+  }
+  if (!preservesC1TargetCeiling(input.targetBloomLevel, levels)) {
+    const requiredC1Ceiling =
+      input.targetBloomLevel && input.targetBloomLevel >= 1 && input.targetBloomLevel <= 6
+        ? BLOOM_LEVEL_BY_INT[input.targetBloomLevel - 1]
+        : "the recorded C1 ceiling";
+      return {
+        nodeId: input.nodeId,
+        skipped: true,
+        skipReason: `generated Cognitive Path does not preserve C1 target ceiling ${requiredC1Ceiling}`,
+        levels: [],
+      };
   }
   const groundingAudit = validateCognitivePathGrounding(
     input.theoryContent,

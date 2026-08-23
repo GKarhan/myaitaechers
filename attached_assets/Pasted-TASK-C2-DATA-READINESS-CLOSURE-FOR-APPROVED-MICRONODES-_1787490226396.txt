@@ -1,0 +1,210 @@
+TASK — C2 DATA-READINESS CLOSURE FOR APPROVED MICRONODES
+
+Goal:
+Close the remaining data-readiness issue found by the latest read-only audit:
+
+- 7 approved MicroNodes exist.
+- 3 approved MicroNodes do NOT currently have a confirmed C2 Cognitive Path.
+- Canonical C6/C7 behavior correctly fails closed for such nodes.
+- We must make every approved/teachable MicroNode C2-ready WITHOUT weakening any existing C1–C7 authority or validation rule.
+
+IMPORTANT:
+This is a small closure/data-integrity task.
+Do NOT redesign C1–C7.
+Do NOT weaken fail-closed behavior.
+Do NOT add fallback cognitive paths.
+Do NOT invent REMEMBER or any other cognitive level.
+Do NOT modify Quiz, Knowledge Tree, C3/C4/C5/C6/C7 semantics unless a concrete blocker proves that a minimal fix is required.
+
+═══════════════════════════════════════════════════
+STEP 1 — READ-ONLY ROOT-CAUSE AUDIT FIRST
+═══════════════════════════════════════════════════
+
+Before changing code or DB data, identify the exact 3 approved MicroNodes that lack a confirmed C2 path.
+
+For EACH affected MicroNode report:
+
+1. lesson id + lesson title
+2. MicroNode id + title
+3. MicroNode approval/status
+4. topic/knowledge-group linkage
+5. target cognitive level from C1, if present
+6. existing cognitive-path rows
+7. cognitive-path status
+8. whether path levels/tasks/content already exist but are merely unconfirmed
+9. whether required C1 fields needed to construct/confirm C2 are present
+10. exact reason why the node is approved while C2 is not confirmed
+
+Classify each root cause as one of:
+
+A. C2 exists and is valid, but confirmation/status is missing
+B. C2 exists but is incomplete/invalid
+C. C2 was never generated
+D. C1 data required by C2 is incomplete
+E. approval workflow allowed a MicroNode to become approved before C2 readiness
+F. legacy/imported data
+G. other — explain with evidence
+
+Also determine whether this is:
+- only stale historical data,
+OR
+- an active workflow defect that can create the same inconsistency again.
+
+STOP after the audit if the root cause is unclear.
+
+═══════════════════════════════════════════════════
+STEP 2 — DEFINE THE CANONICAL INVARIANT
+═══════════════════════════════════════════════════
+
+Verify against the existing C1/C2 implementation and current C6/C7 contracts.
+
+The intended invariant is:
+
+An approved/teachable MicroNode must have a valid CONFIRMED C2 Cognitive Path before it can participate in canonical learning execution.
+
+But do NOT blindly implement this sentence.
+
+First inspect the existing approval and C2 lifecycle and identify the correct existing gate/status semantics.
+
+We must preserve:
+
+C1 Mapping
+→ C2 confirmed Cognitive Path
+→ Learning Activity
+→ C3 Evidence
+→ C4 Learner Model
+→ C5 Diagnosis/Knowledge Tree
+→ C6 target
+→ C7 execution
+
+No downstream component may manufacture missing C2 state.
+
+═══════════════════════════════════════════════════
+STEP 3 — FIX THE 3 EXISTING DATA ISSUES SAFELY
+═══════════════════════════════════════════════════
+
+After root cause is proven, repair the affected MicroNodes using the existing canonical C2 workflow.
+
+Rules:
+
+1. If a complete valid C2 path already exists:
+   validate it through the canonical C2 validator and confirm it through the canonical confirmation path.
+
+2. If C2 exists but is invalid/incomplete:
+   do NOT simply flip its status to confirmed.
+   Repair/regenerate it using the existing C2 generation/review workflow, then validate and confirm.
+
+3. If C2 does not exist:
+   generate it from authoritative C1 data using the existing C2 mechanism.
+
+4. If required C1 data is missing:
+   do NOT invent it.
+   Report the missing fields and leave that MicroNode blocked until the authoritative data is supplied/reviewed.
+
+5. Never directly update DB status to "confirmed" merely to satisfy the audit count unless that is already the canonical confirmation implementation after validation.
+
+6. Preserve all existing:
+   - target cognitive-level semantics
+   - cognitive progression semantics
+   - performance objectives
+   - success criteria
+   - task eligibility/linkage
+   - source provenance
+   - teacher-review authority.
+
+═══════════════════════════════════════════════════
+STEP 4 — PREVENT RECURRENCE
+═══════════════════════════════════════════════════
+
+If the audit proves that the CURRENT workflow can still approve a MicroNode without valid confirmed C2 readiness, add the smallest correct prevention gate.
+
+Preferred rule:
+
+Before a MicroNode becomes canonically teachable/fully approved, server-side validation must verify that its required C2 Cognitive Path exists, is valid, and is confirmed.
+
+IMPORTANT:
+Determine the correct location from the existing architecture.
+
+Do NOT duplicate C2 validation logic.
+Reuse the canonical validator/authority already present.
+
+If approval and C2 confirmation are intentionally separate workflow stages, preserve that UX and instead ensure that the node cannot become "teachable/ready for canonical learning" until both conditions are satisfied.
+
+Do not change historical status semantics unnecessarily.
+
+C6/C7 must continue to fail closed if invalid data somehow reaches runtime.
+
+═══════════════════════════════════════════════════
+STEP 5 — DATA INTEGRITY CHECK
+═══════════════════════════════════════════════════
+
+After the fix, run read-only DB verification.
+
+Required result:
+
+approved/teachable MicroNodes without valid confirmed C2 path = 0
+
+Also verify:
+
+- no orphan cognitive levels
+- no C2 path linked to the wrong MicroNode
+- no cognitive level linked to another node
+- no duplicate path levels
+- path ordering remains valid
+- target cognitive level is reachable through the confirmed path
+- no invalid cognitive-task/exercise links were introduced
+- existing approved nodes with valid C2 remain unchanged
+
+Show BEFORE and AFTER counts.
+
+═══════════════════════════════════════════════════
+STEP 6 — REGRESSION TESTS
+═══════════════════════════════════════════════════
+
+Run the smallest relevant deterministic regression set.
+
+At minimum prove:
+
+1. valid MicroNode + valid confirmed C2 → remains usable
+2. missing C2 → cannot enter canonical learning execution
+3. unconfirmed C2 → cannot satisfy readiness
+4. invalid C2 → cannot be confirmed/used
+5. valid C2 confirmation → readiness succeeds
+6. C6 does not invent a missing cognitive path
+7. C7 cannot bypass C2 readiness
+8. existing C3/C4/C5/C6/C7 tests still pass
+9. existing canonical AI Teacher flow still passes
+10. no existing valid lesson/path was changed unexpectedly
+
+Do not use paid AI/provider calls for tests unless absolutely necessary.
+Prefer provider-free deterministic tests.
+
+═══════════════════════════════════════════════════
+STEP 7 — FINAL REPORT
+═══════════════════════════════════════════════════
+
+Return a concise evidence report:
+
+A. The exact 3 affected MicroNodes
+B. Root cause for each
+C. Whether this was historical data or an active workflow defect
+D. Files changed
+E. DB/data changes made
+F. Prevention gate added, if needed
+G. BEFORE count
+H. AFTER count
+I. Tests run + results
+J. Confirmation that:
+
+approved/teachable MicroNodes without valid confirmed C2 = 0
+
+and:
+
+C1 → C2 → C3 → C4 → C5 → C6 → C7 authority remains unchanged.
+
+IMPORTANT SCOPE RULE:
+Do not perform unrelated cleanup/refactoring.
+Do not work on Tests 2.0, Roles, Journal, Homework, Today, Flashcards, Quick Practice, Reporting, or UI polish in this task.
+
+First audit.
+Then make only the smallest evidence-backed fix.

@@ -169,6 +169,7 @@ async function buildCogInput(nodeId: number): Promise<CogPathInput> {
       learningObjective: lessonNodesTable.learningObjective,
       theoryContent:     lessonNodesTable.theoryContent,
       blockType:         lessonNodesTable.blockType,
+      targetBloomLevel:  lessonNodesTable.targetBloomLevel,
     })
     .from(lessonNodesTable)
     .where(eq(lessonNodesTable.id, nodeId));
@@ -190,6 +191,7 @@ async function buildCogInput(nodeId: number): Promise<CogPathInput> {
     learningObjective: node.learningObjective,
     theoryContent:     node.theoryContent,
     blockType:         node.blockType,
+    targetBloomLevel:  node.targetBloomLevel,
     subjectName:       `${runId}-subject`,
     lessonTitle:       `${runId}-lesson`,
     topicTitle:        null,

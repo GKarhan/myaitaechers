@@ -29,6 +29,7 @@ import {
 } from "../lib/lesson-source-set.js";
 import { classifyMicroNodeSourceAlignment } from "../lib/micronode-source-alignment.js";
 import { validateCognitivePathGrounding } from "../lib/cognitive-path-grounding.js";
+import { assessApprovedMicroNodeC2Readiness } from "../lib/c2-readiness.js";
 import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
@@ -2828,6 +2829,33 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
       });
       return;
     }
+    if (
+      (theoryContent !== undefined || learningObjective !== undefined)
+      && existing.cogPathStatus === "confirmed"
+    ) {
+      res.status(409).json({
+        error: "COG_PATH_RECONFIRMATION_REQUIRED",
+        message: "MicroNode-ի C1 տվյալը փոխվել է։ Ճանաչողական ուղին պետք է նորից հաստատվի մինչև MicroNode-ի հաստատումը։",
+      });
+      return;
+    }
+    const readiness = await getApprovedMicroNodeC2Readiness({
+      nodeId,
+      cogPathStatus: existing.cogPathStatus,
+      theoryContent: theoryContent !== undefined
+        ? (String(theoryContent).trim() || null)
+        : existing.theoryContent,
+      learningObjective: effectiveLO,
+    });
+    if (!readiness.ready) {
+      res.status(409).json({
+        error: "COG_PATH_NOT_READY",
+        reason: readiness.acceptance.reason,
+        grounding: readiness.acceptance.grounding,
+        message: "MicroNode-ը չի կարող հաստատվել, քանի դեռ դրա C2 ճանաչողական ուղին վավեր և հաստատված չէ։",
+      });
+      return;
+    }
   }
 
   // P1.5: If an approved node's LO is being cleared, auto-revert to needs_review
@@ -2838,6 +2866,15 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
     existing.status === "approved" &&       // node currently approved
     patch.status === undefined              // not also changing status explicitly
   ) {
+    patch.status = "needs_review";
+  }
+  if (
+    (theoryContent !== undefined || learningObjective !== undefined) &&
+    existing.status === "approved" &&
+    patch.status === undefined
+  ) {
+    // C1 edits invalidate the grounding on which the confirmed C2 path rests.
+    // Keep the edit but prevent canonical delivery until reconfirmation.
     patch.status = "needs_review";
   }
   // ────────────────────────────────────────────────────────────────────────────
@@ -2854,6 +2891,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
     .returning();
 
   await invalidateLessonApproval(lessonId);
+  if (theoryContent !== undefined || learningObjective !== undefined) {
+    await invalidateCogPathConfirmation(nodeId);
+  }
   if (patch.status === "approved" && req.userId !== undefined) {
     await markSourceAlignmentReviewedByTeacher(lessonId, nodeId, req.userId);
   }
@@ -2900,13 +2940,17 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
     );
   const skippedLOCount = Number(skippedLOResult?.count ?? 0);
 
-  const updated = await db
-    .update(lessonNodesTable)
-    .set({ status: "approved" })
+  const candidates = await db
+    .select({
+      id: lessonNodesTable.id,
+      cogPathStatus: lessonNodesTable.cogPathStatus,
+      theoryContent: lessonNodesTable.theoryContent,
+      learningObjective: lessonNodesTable.learningObjective,
+    })
+    .from(lessonNodesTable)
     .where(
       and(
         eq(lessonNodesTable.lessonId, lessonId),
-        // Only promote eligible statuses — never downgrade approved or override needs_source_content
         or(
           eq(lessonNodesTable.status, "draft"),
           eq(lessonNodesTable.status, "needs_review"),
@@ -2914,12 +2958,34 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
         // Source-alignment review drafts require an explicit teacher decision
         // through the individual node editor; bulk approval must never bypass it.
         sql`COALESCE(${lessonNodesTable.changeReason}, '') NOT LIKE 'SOURCE_ALIGNMENT:%'`,
-        // P1.5: Never bulk-approve nodes that have no Learning Objective
+        // P1.5: Never bulk-approve nodes that have no Learning Objective.
         isNotNull(lessonNodesTable.learningObjective),
         sql`TRIM(${lessonNodesTable.learningObjective}) != ''`,
-      )
-    )
-    .returning({ id: lessonNodesTable.id });
+      ),
+    );
+  const readinessByNodeId = await Promise.all(candidates.map(async (candidate) => ({
+    nodeId: candidate.id,
+    readiness: await getApprovedMicroNodeC2Readiness({
+      nodeId: candidate.id,
+      cogPathStatus: candidate.cogPathStatus,
+      theoryContent: candidate.theoryContent,
+      learningObjective: candidate.learningObjective,
+    }),
+  })));
+  const readyNodeIds = readinessByNodeId
+    .filter(({ readiness }) => readiness.ready)
+    .map(({ nodeId }) => nodeId);
+  const c2BlockedNodeIds = readinessByNodeId
+    .filter(({ readiness }) => !readiness.ready)
+    .map(({ nodeId }) => nodeId);
+
+  const updated = readyNodeIds.length > 0
+    ? await db
+      .update(lessonNodesTable)
+      .set({ status: "approved" })
+      .where(inArray(lessonNodesTable.id, readyNodeIds))
+      .returning({ id: lessonNodesTable.id })
+    : [];
 
   // P8: Rebuild sequential dependency chain after node approval.
   const depResult = await refreshSequentialDependencies(lessonId);
@@ -2928,6 +2994,8 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
     approvedCount:          updated.length,
     nodeIds:                updated.map((n) => n.id),
     skippedLOCount,          // P1.5: nodes skipped because LO was blank
+    skippedC2Count:          c2BlockedNodeIds.length,
+    skippedC2NodeIds:        c2BlockedNodeIds,
     sequentialDependencies: depResult,
   });
 });
@@ -5927,6 +5995,34 @@ async function getCogNode(lessonId: number, nodeId: number) {
   return node ?? null;
 }
 
+async function getApprovedMicroNodeC2Readiness(input: {
+  nodeId: number;
+  cogPathStatus: string | null | undefined;
+  theoryContent: string | null | undefined;
+  learningObjective: string | null | undefined;
+}) {
+  const levels = await db
+    .select({
+      cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+      sequence: lessonNodeCognitiveLevelsTable.sequence,
+      isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+      isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
+      performanceObjective: lessonNodeCognitiveLevelsTable.performanceObjective,
+      successCriterion: lessonNodeCognitiveLevelsTable.successCriterion,
+      preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
+    })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, input.nodeId))
+    .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence), asc(lessonNodeCognitiveLevelsTable.id));
+
+  return assessApprovedMicroNodeC2Readiness({
+    cogPathStatus: input.cogPathStatus,
+    theoryContent: input.theoryContent,
+    learningObjective: input.learningObjective,
+    levels,
+  });
+}
+
 // GET /lessons/:lessonId/nodes/:nodeId/cognitive-path
 // Returns all cognitive levels for a MicroNode with their linked exercises.
 router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
@@ -6083,6 +6179,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
     learningObjective: node.learningObjective ?? null,
     theoryContent:     node.theoryContent ?? null,
     blockType:         node.blockType ?? null,
+    targetBloomLevel:  node.targetBloomLevel ?? null,
     subjectName:       subject?.name ?? "Unknown Subject",
     lessonTitle:       lesson?.title ?? "Unknown Lesson",
     topicTitle:        topicRow?.title ?? null,
