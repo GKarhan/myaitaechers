@@ -1,0 +1,807 @@
+POST-IMPLEMENTATION SYSTEM AUDIT
+CURRENT STATE AFTER C1–C7
+
+AUDIT ONLY.
+DO NOT IMPLEMENT.
+DO NOT FIX.
+DO NOT REFACTOR.
+DO NOT MODIFY CODE.
+DO NOT MODIFY DATABASE.
+DO NOT PUBLISH OR DEPLOY.
+
+We have completed C1–C7.
+
+Before starting any new roadmap work, perform a forensic audit of the
+CURRENT repository/database/runtime architecture.
+
+The purpose is to establish exactly WHAT EXISTS NOW.
+
+Later we will compare this audit against our original pre-implementation
+audit and roadmap.
+
+This task is CURRENT-STATE AUDIT ONLY.
+
+==================================================
+0. STRICT RULES
+==================================================
+
+DO NOT:
+
+- change code
+- change database data/schema
+- create migrations
+- regenerate mappings
+- modify lesson 644
+- create learner evidence
+- modify sessions
+- publish/deploy
+- implement follow-up tasks
+- fix issues you discover
+- start Flashcards
+- start Quiz improvements
+- start Today/Diary
+- start Teaching Intelligence
+
+READ ONLY.
+
+If you discover a problem:
+
+REPORT IT.
+
+Do not fix it.
+
+==================================================
+1. AUDIT THE FINAL AUTHORITY ARCHITECTURE
+==================================================
+
+Determine from CURRENT CODE what component owns each decision.
+
+Audit:
+
+C1 — Curriculum / Mapping
+C2 — Cognitive Path
+C3 — Evidence
+C4 — Learner Knowledge State / Demonstrated Ceiling
+C5 — Knowledge Tree
+C6 — Personalization / Next Learning Target
+C7 — AI Teacher Execution
+
+For each answer:
+
+AUTHORITATIVE OWNER:
+INPUT:
+OUTPUT:
+PERSISTED STATE:
+MAIN FILES/SERVICES:
+CALLERS:
+LEGACY/PARALLEL AUTHORITY STILL PRESENT? YES/NO
+
+Do not rely only on prior reports.
+
+Verify from current code.
+
+==================================================
+2. CURRENT END-TO-END LEARNING PIPELINE
+==================================================
+
+Trace the actual current runtime chain from curriculum to learner state.
+
+Expected conceptual chain:
+
+Source/Textbook
+→ C1 Mapping
+→ Topic
+→ MicroNode
+→ C2 Cognitive Path
+→ C6 Target Selection
+→ C7 Teaching
+→ Task/Micro-check/Exercise
+→ C3 Evidence
+→ C4 Demonstrated Ceiling
+→ C5 Knowledge Tree
+→ C6 Next Decision
+→ C7 Next Teaching Target
+
+Verify whether this is actually true in CURRENT implementation.
+
+For every arrow report:
+
+IMPLEMENTED
+PARTIAL
+NOT IMPLEMENTED
+LEGACY BYPASS EXISTS
+
+Include exact code/service/DB evidence.
+
+==================================================
+3. CANONICAL DATA MODEL
+==================================================
+
+Audit current canonical hierarchy:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+→ Cognitive Level
+→ Cognitive Task / Exercise
+→ Learner Evidence
+→ Learner State
+
+For every layer identify:
+
+DB table(s)
+primary IDs
+foreign-key/link mechanism
+ordering field
+status/approval field
+source/provenance field
+learner-specific or curriculum-global
+
+Also identify any duplicate/legacy representation.
+
+==================================================
+4. C1 — MAPPING CURRENT STATE
+==================================================
+
+Audit current mapping architecture.
+
+Verify:
+
+- Source Blocks
+- source coverage
+- Topic creation
+- MicroNode granularity
+- sourceQuote/source provenance
+- exercises/questions/activities preservation
+- Outcome links
+- teacher review
+- draft / needs_review
+- approval
+- final approval
+- atomic persistence
+- manual mapping
+- automatic mapping
+- teacher CRUD
+- ordering
+- Phase 2 content generation relationship
+
+Report each:
+
+IMPLEMENTED
+PARTIAL
+MISSING
+LEGACY
+
+Also report whether C1 now safely supports imperfect mapping persistence
+for teacher review.
+
+==================================================
+5. C2 — COGNITIVE PATH CURRENT STATE
+==================================================
+
+Audit:
+
+MicroNode
+→ accepted Cognitive Path.
+
+Verify:
+
+- level ordering
+- target ceiling
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- task requirements
+- grounding
+- teacher confirmation
+- invalid path fail-closed
+- paths beginning above REMEMBER
+- no forced Bloom fallback
+- relationship to exercises/tasks
+
+Identify canonical tables/services.
+
+==================================================
+6. C3 — EVIDENCE CURRENT STATE
+==================================================
+
+Audit canonical learner evidence.
+
+Verify:
+
+- canonical evidence table/event
+- task identity
+- attempt identity
+- MicroNode
+- Cognitive Level
+- result semantics
+- assistance/help metadata
+- provenance
+- evidence strength
+- idempotency
+- immutable task snapshot relationship
+- C4 projection status
+- duplicate submission protection
+- recovery behavior
+
+Verify canonical result semantics:
+
+CORRECT
+PARTIAL
+INCORRECT
+UNCLEAR
+NO_RESPONSE
+
+Report any remaining legacy evidence writer and whether executable.
+
+==================================================
+7. C4 — LEARNER KNOWLEDGE STATE
+==================================================
+
+Audit how current demonstrated knowledge is calculated.
+
+Verify:
+
+- current demonstrated ceiling
+- curriculum target vs learner current level
+- projection from C3
+- assisted vs independent evidence
+- evidence requirements
+- confirmation semantics
+- failure semantics
+- no false mastery
+- behavior when target is not reached
+- behavior after remediation exhaustion
+
+Identify persisted vs derived fields.
+
+==================================================
+8. C5 — KNOWLEDGE TREE
+==================================================
+
+Audit current Knowledge Tree.
+
+Verify canonical four states:
+
+Գիտի
+Մասնակի գիտի
+Չգիտի
+Դեռ չի ուսումնասիրել
+
+Determine exactly how each state is derived NOW.
+
+Verify:
+
+- C3/C4 provenance
+- no separate mastery authority
+- subject/lesson/topic/MicroNode hierarchy
+- counters
+- learner-specific state
+- actions
+- refresh/update behavior
+- async lag if any
+- current UI implementation
+
+Report what is complete vs still UI/UX incomplete.
+
+==================================================
+9. C6 — PERSONALIZATION
+==================================================
+
+Audit canonical C6 decision service.
+
+Verify inputs:
+
+C1 curriculum order
+C2 accepted path
+C4 demonstrated ceiling
+C5 state
+dependencies/prerequisites
+
+Verify outputs:
+
+lesson
+MicroNode
+Cognitive Level
+learning action/mode
+reason/decision state
+
+Verify behavior for:
+
+NOT_STUDIED
+PARTIAL
+NOT_KNOWN
+MASTERED
+REVIEW
+prerequisite
+no eligible node
+invalid C2 path
+dependency cycle
+resume
+same-node next cognitive level
+next MicroNode
+
+Search for any remaining duplicate target selector.
+
+==================================================
+10. C7 — AI TEACHER CURRENT STATE
+==================================================
+
+Audit final C7.1–C7.6 implementation.
+
+Verify separately:
+
+C7.1
+Canonical completion authority
+
+C7.2
+Server-owned teaching cycle
+
+C7.3
+C6 target lock
+
+C7.4
+Bounded remediation/help/error taxonomy
+
+C7.5
+Canonical task/attempt/evidence execution
+
+C7.6
+Final acceptance/closure protections
+
+Then reconstruct current real teaching lifecycle.
+
+Show exact state machine.
+
+Example:
+
+TARGET ACQUIRED
+→ TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+→ EXERCISE
+→ EVALUATION
+→ C3
+→ C4
+→ C6
+→ next target
+
+But use CURRENT CODE, not this example, as authority.
+
+==================================================
+11. MODEL / AI AUTHORITY
+==================================================
+
+This section is very important.
+
+Determine exactly what the LLM/AI model is allowed to decide NOW.
+
+For each item mark:
+
+MODEL OWNS
+MODEL PROPOSES / SERVER VALIDATES
+SERVER OWNS
+NOT USED
+
+Items:
+
+- explanation wording
+- examples
+- Armenian teacher response
+- micro-check wording
+- exercise selection
+- generated task content
+- correctness evaluation
+- error classification
+- remediation strategy
+- help level
+- stage transition
+- cognitive level
+- MicroNode
+- prerequisite
+- mastery
+- demonstrated ceiling
+- Knowledge Tree state
+- lesson completion
+- next learning target
+
+We need to know exactly how much pedagogical freedom the AI Teacher
+still has after C1–C7.
+
+==================================================
+12. TEACHING FLEXIBILITY
+==================================================
+
+Audit what the AI Teacher can dynamically vary WITHOUT violating
+server-owned authority.
+
+Check whether it can vary:
+
+- explanation
+- example
+- counterexample
+- analogy
+- representation
+- guided question
+- hint
+- step-by-step support
+- language simplification
+- difficulty of surface task
+- pacing
+- repetition
+- remediation strategy
+- independent equivalent re-check
+
+Also identify what is currently too rigid.
+
+DO NOT redesign it.
+
+Just report current capability.
+
+==================================================
+13. EXERCISES / TASKS
+==================================================
+
+Audit all current task sources:
+
+textbook exercise
+teacher-created exercise
+approved generated exercise
+runtime generated task
+micro-check
+legacy fallback
+
+For each report:
+
+canonical identity?
+MicroNode linked?
+Cognitive Level linked?
+source provenance?
+immutable snapshot?
+C3 eligible?
+maximum possible evidence authority?
+can be used for independent confirmation?
+
+Also audit unlinked exercises.
+
+==================================================
+14. QUIZ CURRENT STATE
+==================================================
+
+AUDIT ONLY.
+
+We have NOT started the next Quiz improvement package.
+
+Document what exists NOW:
+
+- quiz creation
+- single/multi lesson selection
+- nodeIds
+- suggested question count
+- question generation
+- assignment
+- attempts
+- answers
+- scoring
+- evidence integration
+- Knowledge Tree integration
+- cognitive-level awareness
+- task provenance
+- current known limitations
+
+Do not improve anything.
+
+==================================================
+15. FLASHCARDS CURRENT STATE
+==================================================
+
+Determine whether Flashcards currently exist at all.
+
+Report:
+
+IMPLEMENTED
+PARTIAL
+NOT IMPLEMENTED
+
+If implemented/partial:
+
+identify data model, UI, generation, learner use and evidence integration.
+
+Do not create Flashcards.
+
+==================================================
+16. TODAY / DIARY CURRENT STATE
+==================================================
+
+Audit current implementation of:
+
+Today / learner daily view
+Diary / journal
+daily learning plan
+daily recommendations
+progress recap
+
+Report only what currently exists.
+
+Do not implement.
+
+==================================================
+17. TEACHER REVIEW / AUTHORING
+==================================================
+
+Audit current teacher capabilities:
+
+Lesson overview edit
+Topic CRUD
+MicroNode CRUD
+Topic ordering
+MicroNode ordering
+exercise CRUD
+exercise approval
+Cognitive Path generation
+Cognitive Path editing
+Cognitive Path confirmation
+Outcome review
+MicroNode approval
+final lesson approval
+Phase 2 content generation
+
+Report persistence/read-back behavior.
+
+==================================================
+18. STUDENT EXPERIENCE
+==================================================
+
+Audit CURRENT student-facing flow:
+
+login/dashboard
+subject selection
+lesson entry
+Knowledge Tree
+AI Teacher
+quiz
+progress
+resume
+review
+assignment visibility
+
+Report:
+
+WORKING
+PARTIAL
+MISSING
+
+Do not redesign UI.
+
+==================================================
+19. LEGACY / DEAD / DUPLICATE LOGIC
+==================================================
+
+Search specifically for old architecture that still exists.
+
+Examples:
+
+- old Bloom fallback
+- sequence+1 progression
+- duplicate mastery calculation
+- duplicate Knowledge Tree scoring
+- mutable evidence writer
+- arbitrary exercise fallback
+- model-controlled progression
+- old micro-check flow
+- duplicate target selection
+- stale comments/dead branches
+
+For each:
+
+ACTIVE DANGEROUS
+ACTIVE COMPATIBILITY
+DEAD CODE
+REMOVED
+
+This section must distinguish existence from executability.
+
+==================================================
+20. DATABASE HEALTH / CONSISTENCY
+==================================================
+
+READ ONLY.
+
+Audit schema consistency relevant to C1–C7.
+
+Check:
+
+orphan MicroNodes
+orphan Cognitive Levels
+orphan exercises
+invalid node-level task links
+duplicate evidence identity
+missing required foreign relationships
+approved nodes without valid C2 path
+stale task snapshots
+sessions pointing to missing node/level
+invalid Knowledge Tree derivation inputs
+
+Use aggregate/read-only queries only.
+
+Do not repair data.
+
+==================================================
+21. TEST COVERAGE
+==================================================
+
+Inventory existing relevant suites.
+
+Report exact available tests for:
+
+C1
+C2
+C3
+C4
+C5
+C6
+C7.1
+C7.2
+C7.3
+C7.4
+C7.5
+C7.6
+Phase 2
+Quiz
+Knowledge Tree
+Chat
+Session/Resume
+Exercises
+Mapping
+
+Report:
+
+test file
+purpose
+provider-free?
+last/current result if safely runnable
+
+Do not call external AI providers.
+
+==================================================
+22. CURRENT SYSTEM MATURITY TABLE
+==================================================
+
+Produce one master table:
+
+AREA | STATUS | WHAT EXISTS | WHAT IS MISSING | RISK
+
+Use statuses only:
+
+COMPLETE
+FUNCTIONAL
+PARTIAL
+NOT IMPLEMENTED
+LEGACY RISK
+
+Rows at minimum:
+
+C1 Mapping
+Teacher Review
+C2 Cognitive Path
+C3 Evidence
+C4 Learner Model
+C5 Knowledge Tree
+C6 Personalization
+C7 AI Teacher Runtime
+Exercises
+Quiz
+Flashcards
+Today
+Diary
+Teacher Dashboard
+Student Dashboard
+Analytics
+Teaching Intelligence
+
+==================================================
+23. DO NOT COMPARE WITH OLD PLAN YET
+==================================================
+
+IMPORTANT:
+
+Do NOT compare against our historical/original audit yet.
+
+Do NOT say:
+
+“planned but not done”
+
+unless the requirement is explicitly present in CURRENT repository
+documentation.
+
+This audit establishes CURRENT TRUTH only.
+
+We will perform the historical comparison separately.
+
+==================================================
+24. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly these sections:
+
+A. EXECUTIVE CURRENT-STATE SUMMARY
+
+B. FINAL AUTHORITY MAP
+
+C. END-TO-END PIPELINE
+
+D. CANONICAL DATA MODEL
+
+E. C1 CURRENT STATE
+
+F. C2 CURRENT STATE
+
+G. C3 CURRENT STATE
+
+H. C4 CURRENT STATE
+
+I. C5 CURRENT STATE
+
+J. C6 CURRENT STATE
+
+K. C7 CURRENT STATE
+
+L. AI MODEL AUTHORITY
+
+M. CURRENT TEACHING FLEXIBILITY
+
+N. EXERCISE/TASK SYSTEM
+
+O. QUIZ CURRENT STATE
+
+P. FLASHCARDS CURRENT STATE
+
+Q. TODAY / DIARY CURRENT STATE
+
+R. TEACHER AUTHORING CURRENT STATE
+
+S. STUDENT EXPERIENCE CURRENT STATE
+
+T. LEGACY / DUPLICATE LOGIC
+
+U. DATABASE CONSISTENCY
+
+V. TEST COVERAGE
+
+W. CURRENT SYSTEM MATURITY TABLE
+
+X. CURRENT BLOCKERS
+
+Only actual current blockers.
+
+Y. NON-BLOCKING TECHNICAL DEBT
+
+Z. AUDIT VERDICT
+
+Final line exactly:
+
+CURRENT-STATE AUDIT COMPLETE — READY FOR HISTORICAL PLAN COMPARISON
+
+or
+
+CURRENT-STATE AUDIT BLOCKED — <exact reason>
+
+==================================================
+25. STOP
+==================================================
+
+After the report:
+
+STOP.
+
+Do not implement anything.
+
+Do not create implementation tasks.
+
+Do not propose automatic fixes.
+
+Do not publish/deploy.
+
+Wait for the historical comparison phase.
