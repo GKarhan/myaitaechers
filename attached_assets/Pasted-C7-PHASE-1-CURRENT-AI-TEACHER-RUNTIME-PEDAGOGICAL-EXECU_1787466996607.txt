@@ -1,0 +1,824 @@
+C7 — PHASE 1
+CURRENT AI TEACHER RUNTIME / PEDAGOGICAL EXECUTION AUDIT
+
+AUDIT ONLY — NO CODE CHANGES
+
+C1–C6 are complete.
+
+C6 now owns:
+- target MicroNode
+- next target Cognitive Level
+- START / CONTINUE / REMEDIATE / REVIEW / ADVANCE
+- prerequisite redirect/status
+
+C7 owns:
+HOW the AI Teacher teaches that selected target.
+
+The goal of this audit is to compare the CURRENT runtime against our approved AI Teacher pedagogical contract and identify only the remaining implementation gaps.
+
+DO NOT:
+- modify code
+- modify DB
+- create migrations
+- redesign C1–C6
+- change C6 routing
+- modify lesson 644
+- redesign quiz
+- redesign Knowledge Tree
+- redesign evidence architecture
+- start implementation automatically
+
+==================================================
+1. APPROVED C7 TEACHING CONTRACT
+==================================================
+
+The canonical teaching cycle is:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+The AI Teacher must not skip or blur these stages.
+
+TEACH:
+- teach only CURRENT_NODE / CURRENT Cognitive Level
+- explain the current knowledge target
+- use source-backed content
+- do not ask the evidence question prematurely
+
+MICRO_CHECK:
+- exactly one short check
+- preferably ≤25 words where practical
+- evaluates the just-taught point
+- next learner turn must go to FEEDBACK
+
+FEEDBACK:
+- explicitly evaluate learner response
+- identify error family when relevant
+- give short concrete feedback
+- decide remediation / next action deterministically
+
+TRANSITION:
+- either:
+  - another teach/remediation step,
+  - appropriate real exercise,
+  - next cognitive level,
+  - node completion handoff to C6,
+  - or bounded revisit state.
+
+Audit whether this is actually enforced today.
+
+==================================================
+2. DECISION OWNERSHIP — CRITICAL
+==================================================
+
+After C6:
+
+C6 owns:
+WHAT learner works on next.
+
+C7 must consume:
+- currentNodeId
+- activeCognitiveLevelId
+- C6 decision / intent where available
+
+C7 must NOT independently:
+- select another MicroNode
+- select another cognitive target
+- reclassify C5 state
+- recompute C4 ceiling
+- override C6 routing
+- invent a higher/lower cognitive target
+
+Audit chat.ts and all related services for duplicated targeting logic.
+
+Return every place where C7 still independently decides:
+node
+level
+advance
+prerequisite target
+or learning mode.
+
+==================================================
+3. TRACE CURRENT AI TEACHER RUNTIME
+==================================================
+
+Trace one complete current turn:
+
+student message
+→ route
+→ session snapshot
+→ C6 target
+→ C2 path/context
+→ prompt/context construction
+→ model call
+→ structured result
+→ validation
+→ pedagogicalDecisionEngine
+→ evidence handling
+→ response
+→ session update.
+
+Identify exact files/functions for:
+
+- chat route
+- AI call
+- structured output schema
+- validators
+- pedagogicalDecisionEngine
+- evidence creation
+- active task management
+- level progression
+- node progression
+- remediation
+- session timing
+- redirect handling
+
+Return actual implementation, not assumptions.
+
+==================================================
+4. NODE LOCK / SCOPE LOCK
+==================================================
+
+Approved rule:
+
+AI Teacher teaches only CURRENT_NODE / current lesson scope.
+
+If learner asks for another lesson/topic:
+- do not drift
+- set redirect_needed where appropriate
+- return learner warmly to the current target.
+
+Audit:
+
+- current node lock
+- lesson lock
+- topic drift detection
+- currentNodeId authority
+- out-of-scope title detection
+- redirect flags
+- whether AI output can still introduce another node/topic.
+
+Report:
+WORKING
+PARTIAL
+BROKEN
+
+with exact code evidence.
+
+==================================================
+5. CURRENT COGNITIVE LEVEL LOCK
+==================================================
+
+Within the selected MicroNode:
+
+C7 must teach toward the C6-selected active Cognitive Level.
+
+Audit whether prompts/context reliably include:
+
+- active Cognitive Level
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimumIndependentEvidence
+- target ceiling
+- learner demonstrated ceiling if available to C7
+- required/current evidence count
+
+Determine whether AI can accidentally:
+- teach above active level
+- teach below it indefinitely
+- jump to another level
+- claim completion without backend confirmation.
+
+==================================================
+6. TEACH → MICRO_CHECK → FEEDBACK → TRANSITION
+==================================================
+
+Audit the current state machine.
+
+For every stage determine:
+
+- how stage is stored
+- who transitions it
+- whether transition is deterministic
+- whether model output can bypass it
+- whether validators enforce it.
+
+Specifically inspect:
+
+nodeTeachingStage
+hasActiveTask
+lastQuestionAsked
+sessionDecision
+currentPhase
+or equivalent fields.
+
+Return a transition table:
+
+CURRENT STAGE
+ALLOWED NEXT STAGE
+CURRENT OWNER
+CURRENT VALIDATION
+PROBLEM
+
+==================================================
+7. MICRO-CHECK RULES
+==================================================
+
+Approved rules:
+
+- one micro-check at a time
+- short
+- directly tied to current target
+- next turn must be FEEDBACK
+- micro-check evidence alone is never STRONG
+- maximum evidence strength = MODERATE
+
+Audit actual implementation.
+
+Check:
+- prompt instruction
+- runtime enforcement
+- output validation
+- evidence creation
+- whether multiple questions can appear
+- whether teacher can accidentally ask another question before feedback.
+
+==================================================
+8. REAL EXERCISE RULE
+==================================================
+
+Strong confirmation should require real appropriate learner performance.
+
+Audit:
+
+- how real lesson exercises are selected
+- whether C2 level-specific task links are used
+- fallback behavior
+- activeLessonExerciseId
+- activeTaskReference
+- exercise provenance
+- exerciseTextVerbatim
+- page/exercise reference
+- whether AI may paraphrase a verbatim exercise.
+
+Approved rule:
+
+If exerciseTextVerbatim exists:
+copy word-for-word
+and append page/exercise reference where required.
+
+Report whether this remains enforced.
+
+==================================================
+9. EVIDENCE / COMPLETION BOUNDARY
+==================================================
+
+C7 must not declare level/node mastered by itself.
+
+C3 owns evidence.
+C4 owns demonstrated ceiling.
+C6 owns next target.
+
+Audit whether AI/model output can currently:
+- mark a level complete
+- mark node complete
+- move to next node
+- say “you mastered this” without backend authority.
+
+Trace exact completion path.
+
+Determine:
+WHO decides:
+- evidence qualifies
+- levelConfirmed
+- nodeComplete
+- C6 re-entry / next target.
+
+==================================================
+10. ERROR TAXONOMY
+==================================================
+
+Audit the current error families and action mapping.
+
+Approved families include at least:
+
+CONCEPTUAL
+→ EXTRA_EXAMPLE / CONTRAST_EXAMPLE
+
+PREREQUISITE
+→ RETURN_TO_PREREQUISITE
+
+PROCEDURAL
+→ STEP_BY_STEP
+
+CALCULATION_EXECUTION
+→ VERIFY_SELECTION
+
+READING_LANGUAGE
+→ SIMPLIFY_LANGUAGE
+
+ATTENTION_RESPONSE
+→ VERIFY_SELECTION
+
+GUESSING_CONFIDENCE
+→ REQUIRE_REASONING
+
+INCOMPLETE_COMMUNICATION
+→ GUIDED_QUESTION
+
+TRANSFER_BLOOM
+→ CHANGE_REPRESENTATION
+
+COGNITIVE_LOAD_PACE
+→ LOWER_DIFFICULTY / RAISE_DIFFICULTY
+
+Audit:
+
+- actual taxonomy
+- actual mappings
+- duplicates
+- missing families
+- prompt-only vs backend-owned
+- whether action selection can conflict across layers.
+
+Do NOT redesign yet.
+
+==================================================
+11. REMEDIATION BUDGET
+==================================================
+
+Approved principle:
+
+AI Teacher must not retry forever.
+
+Within a bounded remediation budget it should vary strategy:
+
+- alternative explanation
+- example / counterexample
+- progressive hint / guided support
+- prerequisite check
+- representation change
+- independent re-check
+
+If target is still not demonstrated:
+- do NOT mark it mastered
+- preserve current demonstrated ceiling
+- record bounded revisit / remediation outcome
+- hand control back appropriately.
+
+Audit current:
+
+remediationStep
+help count
+max remediation steps
+session time budget
+revisit_required
+revisit_reason
+optional continuation
+or equivalents.
+
+Determine whether:
+- retries are bounded
+- strategy actually varies
+- exhaustion is deterministic
+- learner state remains truthful.
+
+==================================================
+12. HELP / HINT POLICY
+==================================================
+
+Audit:
+- activeHelpCount
+- assistance level
+- hint escalation
+- reveal confirmation
+- max help level
+- how help affects evidence qualification
+- whether help state resets correctly between tasks.
+
+Check whether assistance is snapshotted before task state mutation.
+
+Report any conflict with C3/C4.
+
+==================================================
+13. PREREQUISITE EXECUTION BOUNDARY
+==================================================
+
+C6 now owns prerequisite routing/status.
+
+Audit whether C7 still independently:
+- redirects to prerequisite
+- changes currentNodeId
+- chooses prerequisite target
+- continues despite C6 prerequisite block.
+
+Correct ownership should be:
+
+C6:
+which prerequisite node/target
+
+C7:
+how to teach/remediate once that prerequisite target is active.
+
+Identify every current conflict.
+
+==================================================
+14. LEARNER READINESS MODE
+==================================================
+
+We planned a voluntary learner readiness input:
+
+«Ինչպե՞ս ես քեզ զգում այսօր»
+
+Possible modes conceptually:
+- Պատրաստ եմ
+- Մի քիչ հոգնած եմ
+- Ուզում եմ թեթև ռեժիմ
+
+C6 audit found this is ABSENT.
+
+For C7 audit determine the minimum execution semantics if added later:
+
+It MAY adjust:
+- pacing
+- workload
+- explanation density
+- scaffolding
+- task difficulty
+- number of optional tasks
+
+It MUST NOT change:
+- C2 curriculum target
+- C3 evidence truth
+- C4 demonstrated ceiling
+- C5 state
+- C6 canonical target
+
+Do not implement it in this audit.
+
+Classify whether it belongs:
+C7 core
+C7-important
+later enhancement.
+
+==================================================
+15. ARMENIAN LANGUAGE / OUTPUT CONTRACT
+==================================================
+
+Audit current production rules:
+
+- Armenian script for teacher/student-facing text
+- math symbols Unicode
+- no LaTeX
+- concise Armenian teacher persona
+- short concrete encouragement
+- no long sequences
+- one task/check at a time
+
+Determine:
+prompt-only
+validator-enforced
+or absent.
+
+Report exact validators.
+
+==================================================
+16. STRUCTURED OUTPUT / FALLBACK SAFETY
+==================================================
+
+Audit:
+
+callAIStructured
+schema
+retry
+fallback
+malformed JSON detection
+language validation
+transition validation
+scope drift validation
+micro-check validator
+redirect handling.
+
+Check whether fallback text mode can bypass canonical stage/evidence rules.
+
+Identify only actual remaining risks.
+
+==================================================
+17. SESSION RESUME / RESET / STALE STATE
+==================================================
+
+Audit current behavior for:
+
+- fresh start
+- resume
+- stale active task
+- stale activeCognitiveLevelId
+- stale currentNodeId
+- reset/restart test session
+- completed session
+- C6 retarget after completion.
+
+Determine whether C7 can safely resume without replaying or skipping a required stage.
+
+Do not implement reset UI unless already in scope.
+
+==================================================
+18. C7 vs pedagogicalDecisionEngine
+==================================================
+
+The existing pedagogicalDecisionEngine is a major reusable component.
+
+Audit exactly what it already owns.
+
+For every behavior classify:
+
+KEEP AS-IS
+REUSE
+MODIFY
+MOVE OUT OF C7
+MISSING
+
+At minimum inspect:
+
+- evidence threshold decision
+- nextLevel
+- remediation
+- revisit
+- help
+- time budget
+- action selection
+- task type recommendation
+- completion decision.
+
+We should NOT replace a deterministic engine with prompt logic.
+
+==================================================
+19. END-TO-END CURRENT SCENARIOS
+==================================================
+
+Using code paths and safe existing data, assess these scenarios:
+
+A.
+C6 selects:
+MicroNode X
+level UNDERSTAND
+decision START
+
+Can C7 correctly:
+teach
+micro-check
+feedback
+continue?
+
+B.
+Learner answers incorrectly.
+
+Can C7:
+classify error
+choose bounded remediation
+not falsely confirm level?
+
+C.
+Learner succeeds on enough qualifying evidence.
+
+Can backend:
+confirm level
+project C4
+re-enter C6
+move to next target?
+
+D.
+Learner reaches target but session time ends.
+
+Does system preserve truthful state?
+
+E.
+Learner asks to change topic.
+
+Does Node Lock redirect?
+
+F.
+Learner needs prerequisite.
+
+Does C7 respect C6 prerequisite target instead of inventing another one?
+
+Mark:
+WORKING
+PARTIAL
+BROKEN
+
+==================================================
+20. CRITICAL COLLISION AUDIT
+==================================================
+
+Search for duplicated or conflicting rules across:
+
+chat.ts
+ai.ts
+pedagogicalDecisionEngine.ts
+system prompts
+validators
+lesson routes
+C6 service.
+
+Find cases where the same decision is described in more than one layer
+with different semantics.
+
+Especially inspect:
+
+- error taxonomy/action mapping
+- evidence thresholds
+- level completion
+- node advancement
+- prerequisite routing
+- micro-check transition
+- help policy
+- remediation exhaustion.
+
+Return only concrete collisions with exact files/functions.
+
+==================================================
+21. CLASSIFY ALL FINDINGS
+==================================================
+
+Use these categories:
+
+C7-BLOCKER
+Required for safe/correct AI Teacher execution.
+
+C7-IMPORTANT
+Should be fixed before C7 closes.
+
+C7-HARDENING
+Useful but not required to move forward.
+
+LATER
+Readiness-mode polish, analytics, richer UX, etc.
+
+DO NOT classify an approved core rule as optional merely to close C7 quickly.
+
+==================================================
+22. MINIMUM C7 IMPLEMENTATION PLAN
+==================================================
+
+After audit, propose the smallest implementation sequence.
+
+Prefer 3–6 focused steps.
+
+Example shape only:
+
+C7.1 ownership cleanup / C6 target lock
+C7.2 stage-machine enforcement
+C7.3 micro-check/evidence boundary
+C7.4 remediation/action cleanup
+C7.5 real exercise/verbatim integration
+C7.6 acceptance tests
+
+Derive actual steps from the repository.
+
+Do NOT implement.
+
+==================================================
+23. REQUIRED FUTURE TEST MATRIX
+==================================================
+
+Design provider-free deterministic tests for at least:
+
+1. C6 target cannot be overridden by chat.
+
+2. TEACH must precede MICRO_CHECK.
+
+3. MICRO_CHECK turn must be followed by FEEDBACK.
+
+4. One micro-check only.
+
+5. Micro-check evidence ≤ MODERATE.
+
+6. Real independent exercise can produce strong evidence when C3 allows.
+
+7. Wrong answer → deterministic error/action mapping.
+
+8. Remediation stops at configured budget.
+
+9. Exhausted remediation does not falsely confirm level.
+
+10. Help escalation affects independence correctly.
+
+11. Verbatim exercise remains verbatim.
+
+12. Out-of-scope student request → redirect, no node drift.
+
+13. Successful level confirmation → C4 projection → C6 next target.
+
+14. C7 cannot directly mark node mastered.
+
+15. Prerequisite target comes from C6, not prompt invention.
+
+16. Invalid structured output cannot bypass stage machine.
+
+17. Resume with stale active level revalidates safely.
+
+18. Session time limit preserves demonstrated ceiling.
+
+19. Path starts above REMEMBER → C7 never invents REMEMBER.
+
+20. AI response in wrong language fails validation / safe fallback.
+
+Do not run them yet unless equivalent existing tests are read-only discoverable.
+
+==================================================
+24. SCOPE EXCLUSIONS
+==================================================
+
+DO NOT:
+
+- edit code
+- edit DB
+- modify C1–C6
+- redesign scoring
+- redesign quiz
+- redesign Knowledge Tree
+- implement flashcards
+- implement diary
+- implement Today dashboard
+- implement lesson planning
+- redesign frontend broadly
+- modify lesson 644
+- call external providers unnecessarily
+
+This is C7 audit only.
+
+==================================================
+25. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. EXECUTIVE VERDICT
+
+Does current AI Teacher substantially follow the approved C7 contract?
+
+YES / PARTIAL / NO
+
+B. RUNTIME FLOW
+
+Current real turn pipeline.
+
+C. DECISION OWNERSHIP MAP
+
+Decision | Current owner | Correct owner | Conflict
+
+D. C6 TARGET HANDOFF STATUS
+
+E. TEACH → MICRO_CHECK → FEEDBACK → TRANSITION STATUS
+
+F. NODE / COGNITIVE LEVEL LOCK STATUS
+
+G. MICRO-CHECK STATUS
+
+H. REAL EXERCISE / VERBATIM STATUS
+
+I. EVIDENCE / COMPLETION STATUS
+
+J. ERROR TAXONOMY / ACTION STATUS
+
+K. REMEDIATION / HELP / TIME-BUDGET STATUS
+
+L. PREREQUISITE EXECUTION STATUS
+
+M. ARMENIAN / STRUCTURED OUTPUT / VALIDATOR STATUS
+
+N. SESSION RESUME / STALE STATE STATUS
+
+O. COLLISIONS / DUPLICATED AUTHORITY
+
+P. SCENARIO MATRIX
+WORKING / PARTIAL / BROKEN
+
+Q. GAP CLASSIFICATION
+- C7-BLOCKER
+- C7-IMPORTANT
+- C7-HARDENING
+- LATER
+
+R. MINIMUM C7 IMPLEMENTATION PLAN
+maximum 6 steps
+
+S. FUTURE TEST MATRIX
+
+T. FINAL VERDICT
+
+Return exactly one:
+
+C7 READY FOR IMPLEMENTATION — <short reason>
+
+or
+
+C7 BLOCKED — <smallest exact blocker>
+
+STOP AFTER THE AUDIT.
+
+DO NOT IMPLEMENT C7.
