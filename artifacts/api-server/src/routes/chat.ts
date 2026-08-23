@@ -83,6 +83,15 @@ import {
   MAX_PHASE2_INTERNAL_CONTINUATIONS,
   nextPhase2ActionRequiresLearnerInput,
 } from "../services/phase2/continuation.js";
+import {
+  assertC7ExecutionTargetMatchesSession,
+  buildC7TargetContext,
+  createC7ExecutionTarget,
+  isC7TopicSwitchRequest,
+  isExerciseCompatibleWithC7Target,
+  validateC7ModelTargetProposal,
+  type C7ExecutionTarget,
+} from "../services/phase2/c7-execution-target.js";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 import {
   projectLearnerCognitiveCeiling,
@@ -171,6 +180,7 @@ function createStage3EvaluationEnvelope(
 async function activateSourceExercise(
   sessionId: number,
   selection: SourceExerciseResolution<LessonExerciseRow>,
+  executionTarget?: C7ExecutionTarget,
 ): Promise<LessonExerciseRow | null> {
   const selectedExercise = selection.selected;
   if (!selectedExercise) return null;
@@ -184,7 +194,7 @@ async function activateSourceExercise(
     return null;
   }
 
-  await db
+  const updated = await db
     .update(lessonSessionsTable)
     .set({
       nodeTeachingStage: "EXERCISE",
@@ -196,7 +206,17 @@ async function activateSourceExercise(
       activeHelpCount: 0,
       activeAssistanceLevel: "none",
     } as any)
-    .where(eq(lessonSessionsTable.id, sessionId));
+    .where(executionTarget
+      ? and(
+          eq(lessonSessionsTable.id, sessionId),
+          eq(lessonSessionsTable.currentNodeId, executionTarget.microNodeId),
+          eq(lessonSessionsTable.activeCognitiveLevelId, executionTarget.activeCognitiveLevelId),
+        )
+      : eq(lessonSessionsTable.id, sessionId))
+    .returning({ id: lessonSessionsTable.id });
+  if (updated.length === 0) {
+    throw new Error("source exercise activation lost the C7 execution-target compare-and-swap");
+  }
 
   logger.info(
     {
@@ -258,6 +278,77 @@ async function executeHelpRequest(
     return { ok: false, errorCode: "NO_ACTIVE_TASK", statusHint: 409, message: "No active task" };
   }
 
+  // Help is C7 execution too. Rehydrate the persisted C6/C2 target rather
+  // than giving the generic hint model an unbounded curriculum prompt.
+  if (session.currentNodeId === null || session.activeCognitiveLevelId === null) {
+    return {
+      ok: false,
+      errorCode: "C7_EXECUTION_TARGET_UNAVAILABLE",
+      statusHint: 409,
+      message: "No canonical instructional target is available.",
+    };
+  }
+  const [helpNode, helpLevels] = await Promise.all([
+    db
+      .select({
+        id: lessonNodesTable.id,
+        title: lessonNodesTable.title,
+        learningObjective: lessonNodesTable.learningObjective,
+        theoryContent: lessonNodesTable.theoryContent,
+        cogPathStatus: lessonNodesTable.cogPathStatus,
+      })
+      .from(lessonNodesTable)
+      .where(eq(lessonNodesTable.id, session.currentNodeId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    db
+      .select({
+        id: lessonNodeCognitiveLevelsTable.id,
+        cognitiveLevel: lessonNodeCognitiveLevelsTable.cognitiveLevel,
+        sequence: lessonNodeCognitiveLevelsTable.sequence,
+        isApplicable: lessonNodeCognitiveLevelsTable.isApplicable,
+        isTargetCeiling: lessonNodeCognitiveLevelsTable.isTargetCeiling,
+        performanceObjective: lessonNodeCognitiveLevelsTable.performanceObjective,
+        successCriterion: lessonNodeCognitiveLevelsTable.successCriterion,
+        preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
+        minimumIndependentEvidence: lessonNodeCognitiveLevelsTable.minimumIndependentEvidence,
+      })
+      .from(lessonNodeCognitiveLevelsTable)
+      .where(and(
+        eq(lessonNodeCognitiveLevelsTable.lessonNodeId, session.currentNodeId),
+        eq(lessonNodeCognitiveLevelsTable.isApplicable, true),
+      )),
+  ]);
+  if (!helpNode) {
+    return { ok: false, errorCode: "C7_EXECUTION_TARGET_UNAVAILABLE", statusHint: 409 };
+  }
+  const helpPathAcceptance = assessAcceptedCognitivePath({
+    cogPathStatus: helpNode.cogPathStatus,
+    theoryContent: helpNode.theoryContent,
+    learningObjective: helpNode.learningObjective,
+    levels: helpLevels,
+  });
+  if (!helpPathAcceptance.accepted) {
+    return {
+      ok: false,
+      errorCode: "C7_EXECUTION_TARGET_UNAVAILABLE",
+      statusHint: 409,
+      message: "The canonical instructional target is not currently approved.",
+    };
+  }
+  let helpTarget: C7ExecutionTarget;
+  try {
+    helpTarget = createC7ExecutionTarget({
+      lessonId,
+      currentNodeId: session.currentNodeId,
+      activeCognitiveLevelId: session.activeCognitiveLevelId,
+      node: helpNode,
+      acceptedPath: helpLevels,
+    });
+  } catch {
+    return { ok: false, errorCode: "C7_EXECUTION_TARGET_UNAVAILABLE", statusHint: 409 };
+  }
+
   const currentHelpCount = session.activeHelpCount ?? 0;
   const nextHelpLevel    = Math.min(currentHelpCount + 1, 4);
 
@@ -269,6 +360,8 @@ async function executeHelpRequest(
   if (session.activeLessonExerciseId) {
     const [exRow] = await db
       .select({
+        id: lessonExercisesTable.id,
+        relatedNodeId: lessonExercisesTable.relatedNodeId,
         exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim,
         exerciseTextEdited: lessonExercisesTable.exerciseTextEdited,
         successCriteria: lessonExercisesTable.successCriteria,
@@ -277,6 +370,29 @@ async function executeHelpRequest(
       .from(lessonExercisesTable)
       .where(eq(lessonExercisesTable.id, session.activeLessonExerciseId))
       .limit(1);
+    if (!exRow) {
+      return { ok: false, errorCode: "ACTIVE_TASK_NOT_FOUND", statusHint: 409 };
+    }
+    const helpExerciseLinks = await db
+      .select({ lessonExerciseId: lessonNodeCognitiveTasksTable.lessonExerciseId })
+      .from(lessonNodeCognitiveTasksTable)
+      .where(eq(
+        lessonNodeCognitiveTasksTable.cognitiveLevelId,
+        helpTarget.activeCognitiveLevelId,
+      ));
+    const linkedExerciseIds = new Set(
+      helpExerciseLinks
+        .map((row) => row.lessonExerciseId)
+        .filter((id): id is number => id !== null),
+    );
+    if (!isExerciseCompatibleWithC7Target(helpTarget, exRow, linkedExerciseIds)) {
+      return {
+        ok: false,
+        errorCode: "ACTIVE_TASK_TARGET_MISMATCH",
+        statusHint: 409,
+        message: "The active task does not match the canonical instructional target.",
+      };
+    }
     const helpTask = resolveHelpTaskText(exRow ?? null, session.lastQuestionAsked);
     if (!helpTask.ok) {
       logger.warn({
@@ -307,6 +423,7 @@ async function executeHelpRequest(
   try {
     const helpPrompt = [
       `You are an Armenian AI Teacher giving a level-${nextHelpLevel} hint.`,
+      buildC7TargetContext(helpTarget),
       `Task: ${taskText ?? "(no task text available)"}`,
       `Instruction: ${HINT_INSTRUCTIONS[nextHelpLevel] ?? HINT_INSTRUCTIONS[3]}`,
       "Reply ONLY in Armenian. Do not repeat the task verbatim.",
@@ -324,28 +441,55 @@ async function executeHelpRequest(
     1: "light", 2: "moderate", 3: "guided", 4: "revealed",
   };
 
-  const [helpEvent] = await db
-    .insert(helpEventsTable)
-    .values({
-      userId,
-      lessonSessionId:  session.id,
-      lessonNodeId:     session.currentNodeId!,
-      lessonExerciseId: session.activeLessonExerciseId,
-      quizQuestionId:   null,
-      cognitiveLevelId: session.activeCognitiveLevelId,
-      helpLevel:        nextHelpLevel,
-      isAnswerReveal:   nextHelpLevel === 4,
-      hintContent,
-    } as any)
-    .returning({ id: helpEventsTable.id });
-
-  await db
-    .update(lessonSessionsTable)
-    .set({
-      activeHelpCount:       currentHelpCount + 1,
-      activeAssistanceLevel: LEVEL_TO_ASSIST[nextHelpLevel] ?? "guided",
-    } as any)
-    .where(eq(lessonSessionsTable.id, session.id));
+  // Commit the help event and assistance state only if the execution target is
+  // still current. The transaction makes a concurrent C7.1 transition either
+  // win completely or cause this stale help result to be discarded.
+  const helpEvent = await db.transaction(async (tx) => {
+    const [freshSession] = await tx
+      .select({
+        currentNodeId: lessonSessionsTable.currentNodeId,
+        activeCognitiveLevelId: lessonSessionsTable.activeCognitiveLevelId,
+      })
+      .from(lessonSessionsTable)
+      .where(eq(lessonSessionsTable.id, session.id))
+      .limit(1);
+    if (!freshSession) throw new Error("help session disappeared");
+    assertC7ExecutionTargetMatchesSession(helpTarget, {
+      lessonId,
+      currentNodeId: freshSession.currentNodeId,
+      activeCognitiveLevelId: freshSession.activeCognitiveLevelId,
+    });
+    const [created] = await tx
+      .insert(helpEventsTable)
+      .values({
+        userId,
+        lessonSessionId: session.id,
+        lessonNodeId: helpTarget.microNodeId,
+        lessonExerciseId: session.activeLessonExerciseId,
+        quizQuestionId: null,
+        cognitiveLevelId: helpTarget.activeCognitiveLevelId,
+        helpLevel: nextHelpLevel,
+        isAnswerReveal: nextHelpLevel === 4,
+        hintContent,
+      } as any)
+      .returning({ id: helpEventsTable.id });
+    const updated = await tx
+      .update(lessonSessionsTable)
+      .set({
+        activeHelpCount: currentHelpCount + 1,
+        activeAssistanceLevel: LEVEL_TO_ASSIST[nextHelpLevel] ?? "guided",
+      } as any)
+      .where(and(
+        eq(lessonSessionsTable.id, session.id),
+        eq(lessonSessionsTable.currentNodeId, helpTarget.microNodeId),
+        eq(lessonSessionsTable.activeCognitiveLevelId, helpTarget.activeCognitiveLevelId),
+      ))
+      .returning({ id: lessonSessionsTable.id });
+    if (updated.length === 0) {
+      throw new Error("help execution-target compare-and-swap rejected a stale write");
+    }
+    return created;
+  });
 
   return {
     ok:            true,
@@ -448,6 +592,10 @@ async function advanceNodeInSession(
   currentPhase: number,
   reviewNeeded: boolean,
   canonicalC6Decision?: Awaited<ReturnType<typeof resolveCanonicalC6Decision>>,
+  expectedExecutionTarget?: Pick<
+    C7ExecutionTarget,
+    "microNodeId" | "activeCognitiveLevelId"
+  >,
 ): Promise<{
   newNodeId: number | null;
   newPhase: number;
@@ -496,13 +644,18 @@ async function advanceNodeInSession(
     newNodeId = null;
   }
 
-  await applyAuthorizedTargetTransition({
+  const transitioned = await applyAuthorizedTargetTransition({
     sessionId,
     currentNodeId: newNodeId,
     nextPhase: newPhase,
     nextActiveCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
     reviewNeeded,
+    expectedCurrentNodeId: expectedExecutionTarget?.microNodeId,
+    expectedActiveCognitiveLevelId: expectedExecutionTarget?.activeCognitiveLevelId,
   });
+  if (!transitioned) {
+    throw new Error("authorized C7 target transition lost its execution-target compare-and-swap");
+  }
 
   logger.info(
     {
@@ -547,6 +700,7 @@ async function persistAndProjectChatEvidence(input: {
   evidenceQuality: string;
   wasCorrect: boolean;
   evidenceResultAuthority: string | null;
+  executionTarget: C7ExecutionTarget;
   evaluationSnapshot?: {
     status: string;
     evidenceQuality: string;
@@ -659,6 +813,11 @@ async function persistAndProjectChatEvidence(input: {
       // This immutable C3 record is also the recovery authority for a
       // FEEDBACK retry after the mutable active-task fields are retired.
       evaluation: input.evaluationSnapshot ?? null,
+        c7ExecutionTarget: {
+          lessonId: input.executionTarget.lessonId,
+          microNodeId: input.executionTarget.microNodeId,
+          activeCognitiveLevelId: input.executionTarget.activeCognitiveLevelId,
+        },
     },
     cognitiveLevel: activeLevel?.cognitiveLevel ?? null,
     taskDifficulty: null,
@@ -788,6 +947,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _feedbackJobInvocationCount = 0;
   let _cognitivePath: CognitiveLevelRow[] = [];
   let _activeCognitiveLevelRow: CognitiveLevelRow | null = null;
+  let _c7ExecutionTarget: C7ExecutionTarget | null = null;
   let _nextNodeHasCriticalDep = false;
   let _deferredC7Action: "ADVANCE_COGNITIVE_LEVEL" | "COMPLETE_MICRONODE" | null = null;
   let _deferredC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
@@ -858,7 +1018,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const hasAuthoritativeActiveTask =
         session?.activeTaskProvenance !== null ||
         session?.activeLessonExerciseId !== null ||
-        session?.activeTaskReference !== null;
+        session?.activeTaskReference !== null ||
+        // A C7.2 FEEDBACK boundary owns an immutable evaluated-task snapshot.
+        // It must be recovered before C6 resume reconciliation may consider a
+        // new target.
+        session?.nodeTeachingStage === "FEEDBACK";
       if (
         session &&
         session.currentPhase === 2 &&
@@ -1076,21 +1240,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         _cognitivePath = pathAcceptance.accepted ? cogRows as CognitiveLevelRow[] : [];
         if (!pathAcceptance.accepted) {
           _activeCognitiveLevelRow = null;
-          if (_sessActiveLevelId) {
-            await db
-              .update(lessonSessionsTable)
-              .set({ activeCognitiveLevelId: null } as any)
-              .where(eq(lessonSessionsTable.id, _sessId));
-          }
-          _sessActiveLevelId = null;
-          if (session) session.activeCognitiveLevelId = null;
           logger.info({
             sessionId: _sessId,
             lessonNodeId: _nodeId,
             cogPathStatus: currentNodeRecord?.cogPathStatus ?? null,
             reason: pathAcceptance.reason,
             groundingStatus: pathAcceptance.grounding?.status ?? null,
-          }, "chat: modern Cognitive Path rejected; using legacy fallback");
+          }, "chat: modern Cognitive Path rejected; C7 delivery fails closed");
         }
 
         // Resolve active cognitive level from the persisted C6 target. A
@@ -1101,7 +1257,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             (r) => r.id === _sessActiveLevelId
           ) ?? null;
         }
-        if (!_activeCognitiveLevelRow && _cognitivePath.length > 0) {
+        const c7HasActiveExecutionBoundary =
+          session.activeTaskProvenance !== null ||
+          session.activeLessonExerciseId !== null ||
+          session.activeTaskReference !== null ||
+          session.nodeTeachingStage === "FEEDBACK";
+        if (
+          !_activeCognitiveLevelRow &&
+          _cognitivePath.length > 0 &&
+          !c7HasActiveExecutionBoundary
+        ) {
           const c6Decision = await resolveCanonicalC6Decision({
             learnerId: req.userId!,
             lessonId: lessonId!,
@@ -1120,10 +1285,33 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               if (session) session.activeCognitiveLevelId = _activeCognitiveLevelRow.id;
               await db
                 .update(lessonSessionsTable)
-                .set({ activeCognitiveLevelId: _activeCognitiveLevelRow.id } as any)
+                .set(buildAuthorizedLevelTransitionUpdate(
+                  _activeCognitiveLevelRow.id,
+                ) as any)
                 .where(eq(lessonSessionsTable.id, _sessId));
             }
           }
+        }
+
+        // C7.3: this is a per-turn execution snapshot, never a second
+        // progression authority. A Phase-2 turn without the C6-selected,
+        // accepted C2 level fails closed instead of inventing a first/Bloom
+        // fallback level.
+        if (session.currentPhase === 2) {
+          if (!_activeCognitiveLevelRow) {
+            res.status(409).json({
+              error: "C7_EXECUTION_TARGET_UNAVAILABLE",
+              message: "Դասի ընթացիկ ճանաչողական նպատակը հասանելի չէ։ Խնդրում եմ կրկին սկսել դասը։",
+            });
+            return;
+          }
+          _c7ExecutionTarget = createC7ExecutionTarget({
+            lessonId: lessonId!,
+            currentNodeId: session.currentNodeId,
+            activeCognitiveLevelId: _activeCognitiveLevelRow.id,
+            node: currentNodeRecord!,
+            acceptedPath: _cognitivePath,
+          });
         }
 
         // Dependency gate: does the next node have a REQUIRED+CRITICAL dep on this node?
@@ -1172,18 +1360,26 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             eq(lessonExercisesTable.status, "approved"),
           ))
           .orderBy(asc(lessonExercisesTable.sequence));
-        // Cognitive-level exercise filtering: if the active level has linked exercises,
-        // restrict classExercises to only those. Backward-compatible: if no tasks are
-        // linked to the active level (older lessons), the full node set is preserved.
-        if (_activeCognitiveLevelRow && classExercises.length > 0) {
+        // C7.3: a Phase-2 source exercise must match both the C6 MicroNode and
+        // the active accepted C2 level. Do not fall back to arbitrary exercises
+        // on the node when the level has no linked task; the server will instead
+        // choose a bounded generated MICRO_CHECK.
+        if (_c7ExecutionTarget && classExercises.length > 0) {
           const cogTasks = await db
             .select({ lessonExerciseId: lessonNodeCognitiveTasksTable.lessonExerciseId })
             .from(lessonNodeCognitiveTasksTable)
-            .where(eq(lessonNodeCognitiveTasksTable.cognitiveLevelId, _activeCognitiveLevelRow.id));
+            .where(eq(
+              lessonNodeCognitiveTasksTable.cognitiveLevelId,
+              _c7ExecutionTarget.activeCognitiveLevelId,
+            ));
           const linkedIds = new Set(cogTasks.map(t => t.lessonExerciseId).filter((id): id is number => id !== null));
-          if (linkedIds.size > 0) {
-            classExercises = classExercises.filter(e => linkedIds.has(e.id));
-          }
+          classExercises = classExercises.filter((exercise) =>
+            isExerciseCompatibleWithC7Target(
+              _c7ExecutionTarget!,
+              exercise,
+              linkedIds,
+            ),
+          );
         }
         logger.info({
           phase,
@@ -1495,6 +1691,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
       lessonContext = [
         structuredHeader,
+        _c7ExecutionTarget ? buildC7TargetContext(_c7ExecutionTarget) : "",
         absoluteRuleBlock,
         studentName ? `STUDENT_NAME: ${studentName}` : "",
         essentialQuestion ? `ESSENTIAL_QUESTION: ${essentialQuestion}` : "",
@@ -1793,6 +1990,37 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  // C7.3: learner topic-switches are handled before any model call, evidence
+  // processing, or task selection. Clarifications that do not explicitly ask
+  // to switch remain on the normal teaching path.
+  if (_c7ExecutionTarget && isC7TopicSwitchRequest(message)) {
+    assertC7ExecutionTargetMatchesSession(_c7ExecutionTarget, {
+      lessonId: lessonId!,
+      currentNodeId: session?.currentNodeId ?? null,
+      activeCognitiveLevelId: session?.activeCognitiveLevelId ?? null,
+    });
+    const redirect = `${REDIRECT_CANNED_PREFIX}\nԵկ շարունակենք «${_c7ExecutionTarget.microNodeTitle}» թեման։`;
+    const [redirectMessage] = await db
+      .insert(chatMessagesTable)
+      .values({
+        userId: req.userId!,
+        lessonId: lessonId ?? null,
+        role: "assistant",
+        content: redirect,
+      })
+      .returning();
+    res.json({
+      response: redirect,
+      messageId: redirectMessage.id,
+      progressIndicator,
+      teachingMode: "TEACH",
+      hasActiveTask: _intentHasActiveTask,
+      activeHelpCount: session?.activeHelpCount ?? 0,
+      redirect_needed: true,
+    });
+    return;
+  }
+
   // ── V2-R2: HELP via text → reuse executeHelpRequest (same as 💡 button) ─────
   // Text-based "oghni" / "hushum tur" routes to the same progressive help
   // infrastructure as the button.  Falls through to normal AI if no active task
@@ -1973,6 +2201,81 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     });
   };
 
+  const assertPhase2TargetLocked = async (): Promise<C7ExecutionTarget | null> => {
+    if (session?.currentPhase !== 2) return null;
+    if (!_c7ExecutionTarget) {
+      throw new Error("C7 execution target was not established for Phase 2");
+    }
+    // Re-read the canonical state rather than trusting this request's snapshot:
+    // another request may have completed the only authorized C7.1 transition
+    // while this turn was waiting on a bounded model job.
+    const [latestSession] = await db
+      .select({
+        currentNodeId: lessonSessionsTable.currentNodeId,
+        activeCognitiveLevelId: lessonSessionsTable.activeCognitiveLevelId,
+      })
+      .from(lessonSessionsTable)
+      .where(eq(lessonSessionsTable.id, session.id))
+      .limit(1);
+    if (!latestSession) {
+      throw new Error("C7 session disappeared before execution");
+    }
+    assertC7ExecutionTargetMatchesSession(_c7ExecutionTarget, {
+      lessonId: lessonId!,
+      currentNodeId: latestSession.currentNodeId,
+      activeCognitiveLevelId: latestSession.activeCognitiveLevelId,
+    });
+    return _c7ExecutionTarget;
+  };
+
+  const updateC7TargetLockedSession = async (
+    values: Record<string, unknown>,
+  ): Promise<void> => {
+    const target = await assertPhase2TargetLocked();
+    if (!target) {
+      await db
+        .update(lessonSessionsTable)
+        .set(values as any)
+        .where(eq(lessonSessionsTable.id, session!.id));
+      return;
+    }
+    const updated = await db
+      .update(lessonSessionsTable)
+      .set(values as any)
+      .where(and(
+        eq(lessonSessionsTable.id, session!.id),
+        eq(lessonSessionsTable.currentNodeId, target.microNodeId),
+        eq(lessonSessionsTable.activeCognitiveLevelId, target.activeCognitiveLevelId),
+      ))
+      .returning({ id: lessonSessionsTable.id });
+    if (updated.length === 0) {
+      throw new Error("C7 execution-target compare-and-swap rejected a stale session write");
+    }
+  };
+
+  const assertActiveSourceExerciseMatchesTarget = async (exercise: {
+    id: number;
+    relatedNodeId: number | null;
+  }): Promise<void> => {
+    const target = await assertPhase2TargetLocked();
+    if (!target) return;
+    const mappings = await db
+      .select({ lessonExerciseId: lessonNodeCognitiveTasksTable.lessonExerciseId })
+      .from(lessonNodeCognitiveTasksTable)
+      .where(eq(
+        lessonNodeCognitiveTasksTable.cognitiveLevelId,
+        target.activeCognitiveLevelId,
+      ));
+    const linkedIds = new Set(
+      mappings
+        .map((mapping) => mapping.lessonExerciseId)
+        .filter((id): id is number => id !== null),
+    );
+    if (!isExerciseCompatibleWithC7Target(target, exercise, linkedIds)) {
+      throw new Error("active source exercise does not match the C7 execution target");
+    }
+  };
+
   type ContinuationResult = {
     lastContent: string;
     lastMessageId: number;
@@ -2031,6 +2334,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           performanceObjective: (lessonNodeCognitiveLevelsTable as any).performanceObjective,
           successCriterion: (lessonNodeCognitiveLevelsTable as any).successCriterion,
           preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
+          minimumIndependentEvidence: lessonNodeCognitiveLevelsTable.minimumIndependentEvidence,
         })
         .from(lessonNodeCognitiveLevelsTable)
         .where(and(
@@ -2045,30 +2349,57 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         levels: cognitivePath,
       });
       const acceptedCognitivePath = pathAcceptance.accepted ? cognitivePath : [];
-      if (!pathAcceptance.accepted && (freshSession as any).activeCognitiveLevelId) {
-        await db
-          .update(lessonSessionsTable)
-          .set({ activeCognitiveLevelId: null } as any)
-          .where(eq(lessonSessionsTable.id, freshSession.id));
+      if (!pathAcceptance.accepted) {
         logger.info({
           sessionId: freshSession.id,
           lessonNodeId: freshNode.id,
           cogPathStatus: freshNode.cogPathStatus,
           reason: pathAcceptance.reason,
           groundingStatus: pathAcceptance.grounding?.status ?? null,
-        }, "chat continuation: modern Cognitive Path rejected; using legacy fallback");
-        (freshSession as any).activeCognitiveLevelId = null;
+        }, "chat continuation: modern Cognitive Path rejected; C7 delivery fails closed");
       }
       let activeLevel = acceptedCognitivePath.find(
         (level) => level.id === (freshSession as any).activeCognitiveLevelId,
       ) ?? null;
-      if (!activeLevel && acceptedCognitivePath[0]) {
-        activeLevel = acceptedCognitivePath[0];
-        await db
-          .update(lessonSessionsTable)
-          .set({ activeCognitiveLevelId: activeLevel.id } as any)
-          .where(eq(lessonSessionsTable.id, freshSession.id));
+      if (!activeLevel) {
+        // C7.3: continuation is not a second C6/C2 selector. In particular,
+        // never substitute acceptedCognitivePath[0] (which could invent a
+        // REMEMBER target before a C6-selected UNDERSTAND target).
+        throw new Error(
+          "continuation active cognitive level is absent from the accepted C2 path",
+        );
       }
+      const continuationTarget = createC7ExecutionTarget({
+        lessonId,
+        currentNodeId: freshSession.currentNodeId,
+        activeCognitiveLevelId: activeLevel.id,
+        node: freshNode,
+        acceptedPath: acceptedCognitivePath,
+      });
+      assertC7ExecutionTargetMatchesSession(continuationTarget, {
+        lessonId,
+        currentNodeId: freshSession.currentNodeId,
+        activeCognitiveLevelId: (freshSession as any).activeCognitiveLevelId ?? null,
+      });
+      const updateContinuationTargetSession = async (
+        values: Record<string, unknown>,
+      ): Promise<void> => {
+        const updated = await db
+          .update(lessonSessionsTable)
+          .set(values as any)
+          .where(and(
+            eq(lessonSessionsTable.id, freshSession.id),
+            eq(lessonSessionsTable.currentNodeId, continuationTarget.microNodeId),
+            eq(
+              lessonSessionsTable.activeCognitiveLevelId,
+              continuationTarget.activeCognitiveLevelId,
+            ),
+          ))
+          .returning({ id: lessonSessionsTable.id });
+        if (updated.length === 0) {
+          throw new Error("continuation execution-target compare-and-swap rejected a stale write");
+        }
+      };
 
       let eligibleExercises = await db
         .select()
@@ -2087,9 +2418,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         const linkedIds = new Set(
           mappings.map((mapping) => mapping.lessonExerciseId).filter((id): id is number => id !== null),
         );
-        if (linkedIds.size > 0) {
-          eligibleExercises = eligibleExercises.filter((exercise) => linkedIds.has(exercise.id));
-        }
+        eligibleExercises = eligibleExercises.filter((exercise) =>
+          isExerciseCompatibleWithC7Target(
+            continuationTarget,
+            exercise,
+            linkedIds,
+          ),
+        );
       }
       eligibleExercises = filterLearnerSafeExercises(eligibleExercises, {
         lessonId,
@@ -2128,6 +2463,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       const continuationContext = [
         "STAGE_5_SERVER_OWNED_CONTINUATION: true",
         "This is an internal server continuation, not a learner message.",
+        buildC7TargetContext(continuationTarget),
         `PHASE: 2 | CURRENT_NODE: «${freshNode.title}»`,
         `NODE_STAGE: ${freshSession.nodeTeachingStage ?? "THEORY"}`,
         `LESSON: «${lesson.title}»`,
@@ -2185,18 +2521,16 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           continuationContext,
         );
         assertTheoryOnly(theory);
-        await db
-          .update(lessonSessionsTable)
-          .set({
+        await updateContinuationTargetSession({
             nodeTeachingStage: "TASK_REQUIRED",
             activeLessonExerciseId: null,
             activeTaskProvenance: null,
+            activeTaskReference: null,
             activeObjectiveTaskPayload: null,
             activeAttemptSequence: 0,
             activeHelpCount: 0,
             activeAssistanceLevel: "none",
-          } as any)
-          .where(eq(lessonSessionsTable.id, freshSession.id));
+          });
         const [theoryMessage] = await db
           .insert(chatMessagesTable)
           .values({ userId: req.userId!, lessonId, role: "assistant", content: theory.student_message })
@@ -2213,6 +2547,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         const selectedExercise = await activateSourceExercise(
           freshSession.id,
           resolveEligibleSourceExercise(eligibleExercises, null),
+          continuationTarget,
         );
         const sourceText = selectedExercise ? learnerExerciseText(selectedExercise) : null;
         if (!selectedExercise || !sourceText) {
@@ -2317,6 +2652,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     _phase2ServerActionPlan.action === "DELIVER_THEORY"
   ) {
     try {
+      await assertPhase2TargetLocked();
       const theory = await callPhase2TheoryJob(chatHistory, lessonContext);
       assertTheoryOnly(theory);
       const driftDetected = session.currentNodeId
@@ -2336,10 +2672,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .returning();
       // Make TEACH visible before releasing TASK_REQUIRED. A failed state write
       // can at worst repeat theory; it can never silently skip to a task.
-      await db
-        .update(lessonSessionsTable)
-        .set(buildPostFeedbackTransitionUpdate() as any)
-        .where(eq(lessonSessionsTable.id, session.id));
+      await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
       // C7.2: TEACH is an observable turn.  Do not immediately chain into a
       // task or let the response hide the explanation from the learner.
       respondWithPersistedPhase2Message(
@@ -2381,10 +2714,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               content: fallback.student_message,
             })
             .returning();
-          await db
-            .update(lessonSessionsTable)
-            .set(buildPostFeedbackTransitionUpdate() as any)
-            .where(eq(lessonSessionsTable.id, session.id));
+          await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
           // C7.2 keeps the deterministic fallback identical to normal
           // teaching: persist and display TEACH before a later task turn.
           respondWithPersistedPhase2Message(
@@ -2420,7 +2750,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session.nodeTeachingStage === "TASK_REQUIRED"
   ) {
     const selection = resolveEligibleSourceExercise(classExercises, null);
-    const selectedExercise = await activateSourceExercise(session.id, selection);
+    const selectedExercise = await activateSourceExercise(
+      session.id,
+      selection,
+      await assertPhase2TargetLocked() ?? undefined,
+    );
     if (!selectedExercise) {
       res.status(409).json({
         error: "SOURCE_EXERCISE_UNAVAILABLE",
@@ -2450,6 +2784,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     _phase2ServerActionPlan.action === "GENERATE_TASK"
   ) {
     try {
+      await assertPhase2TargetLocked();
       const task = await callPhase2TaskJob(chatHistory, lessonContext);
       const isObjective =
         task.interaction_type === "multiple_choice" ||
@@ -2479,10 +2814,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         activeAssistanceLevel: "none",
         lastQuestionAsked: task.student_message,
       };
-      await db
-        .update(lessonSessionsTable)
-        .set(taskUpdate as any)
-        .where(eq(lessonSessionsTable.id, session.id));
+      await updateC7TargetLockedSession(taskUpdate);
       const taskStem = task.interaction_type === "constructed_response"
         ? task.student_message
         : task.student_message
@@ -2558,9 +2890,19 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .limit(1);
       const retryEvaluation = (feedbackEvidence?.metadata as any)?.evaluation ?? null;
       const retryTransition = (feedbackEvidence?.metadata as any)?.c7DeferredTransition ?? null;
+      const retryTarget = (feedbackEvidence?.metadata as any)?.c7ExecutionTarget ?? null;
       if (!retryEvaluation?.status) {
         throw new Error("FEEDBACK recovery requires persisted canonical evaluation evidence");
       }
+      if (
+        !retryTarget ||
+        retryTarget.lessonId !== lessonId ||
+        retryTarget.microNodeId !== session.currentNodeId ||
+        retryTarget.activeCognitiveLevelId !== session.activeCognitiveLevelId
+      ) {
+        throw new Error("FEEDBACK recovery target does not match its immutable evaluated-task snapshot");
+      }
+      await assertPhase2TargetLocked();
       const feedback = await callPhase2FeedbackJob(
         chatHistory,
         [
@@ -2586,10 +2928,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         if (typeof nextLevelId !== "number") {
           throw new Error("FEEDBACK recovery transition is missing its C6 level target");
         }
-        await db
-          .update(lessonSessionsTable)
-          .set(buildAuthorizedLevelTransitionUpdate(nextLevelId) as any)
-          .where(eq(lessonSessionsTable.id, session.id));
+        await updateC7TargetLockedSession(
+          buildAuthorizedLevelTransitionUpdate(nextLevelId) as any,
+        );
       } else if (retryTransition?.action === "COMPLETE_MICRONODE") {
         const advanceResult = await advanceNodeInSession(
           session.id,
@@ -2599,15 +2940,13 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           session.currentPhase,
           Boolean(retryTransition.safetyCapHit),
           retryTransition.c6Decision as Awaited<ReturnType<typeof resolveCanonicalC6Decision>>,
+          await assertPhase2TargetLocked() ?? undefined,
         );
         if (advanceResult.c6BlockedReason) {
           throw new Error(`FEEDBACK recovery C6 target unavailable: ${advanceResult.c6BlockedReason}`);
         }
       } else {
-        await db
-          .update(lessonSessionsTable)
-          .set(buildPostFeedbackTransitionUpdate() as any)
-          .where(eq(lessonSessionsTable.id, session.id));
+        await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
       }
       respondWithPersistedPhase2Message(feedback.student_message, feedbackMessage.id, "FEEDBACK", false);
       return;
@@ -2645,6 +2984,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               id: lessonExercisesTable.id,
               exerciseId: lessonExercisesTable.exerciseId,
               interactionType: lessonExercisesTable.interactionType,
+              relatedNodeId: lessonExercisesTable.relatedNodeId,
               correctAnswer: lessonExercisesTable.correctAnswer,
               verbatim: lessonExercisesTable.exerciseTextVerbatim,
               edited: lessonExercisesTable.exerciseTextEdited,
@@ -2656,6 +2996,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         if (!activeSourceExercise) {
           throw new Error("active source exercise was not found for evaluation");
         }
+        await assertActiveSourceExerciseMatchesTarget(activeSourceExercise);
         const learnerContent = resolveLearnerExerciseContent({
           exerciseTextVerbatim: activeSourceExercise.verbatim,
           exerciseTextEdited: activeSourceExercise.edited,
@@ -2719,6 +3060,23 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
 
     if (!aiResult) {
       throw new Error("No Phase-2 response was available for evaluation");
+    }
+
+    // The structured contract currently does not require target proposal
+    // fields, but reject them if a provider/legacy response includes them.
+    // This is a server-side boundary, not a prompt-only convention.
+    if (
+      _c7ExecutionTarget &&
+      !validateC7ModelTargetProposal(
+        _c7ExecutionTarget,
+        aiResult as unknown as {
+          lessonId?: number | null;
+          microNodeId?: number | null;
+          cognitiveLevelId?: number | null;
+        },
+      )
+    ) {
+      throw new Error("model response proposed a target outside the immutable C7 execution target");
     }
 
     {
@@ -2797,6 +3155,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           id: lessonExercisesTable.id,
           exerciseId: lessonExercisesTable.exerciseId,
           interactionType: lessonExercisesTable.interactionType,
+          relatedNodeId: lessonExercisesTable.relatedNodeId,
           correctAnswer: lessonExercisesTable.correctAnswer,
         })
         .from(lessonExercisesTable)
@@ -2804,6 +3163,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         .limit(1);
 
       if (activeSourceExercise) {
+          await assertActiveSourceExerciseMatchesTarget(activeSourceExercise);
         _activeSourceExerciseForEvaluation = activeSourceExercise;
       }
     }
@@ -2945,7 +3305,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       classExercises,
       aiResult?.source_fidelity?.exercise_id ?? null,
     );
-    const activatedExercise = await activateSourceExercise(session.id, selection);
+    const activatedExercise = await activateSourceExercise(
+      session.id,
+      selection,
+      await assertPhase2TargetLocked() ?? undefined,
+    );
 
     if (activatedExercise) {
       _activeLessonExerciseIdForDelivery = activatedExercise.id;
@@ -3054,6 +3418,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           evidenceQuality: quality,
           wasCorrect: isCorrect,
           evidenceResultAuthority: _evidenceResultAuthority,
+          executionTarget: (await assertPhase2TargetLocked())!,
           evaluationSnapshot: {
             status: aiResult.answer_evaluation.status,
             evidenceQuality: aiResult.answer_evaluation.evidence_quality,
@@ -3156,7 +3521,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         : resolveEligibleSourceExercise(classExercises, aiResult.source_fidelity.exercise_id);
       const selectedExercise = _sourceExerciseActivatedThisTurn
         ? selection.selected
-        : await activateSourceExercise(session.id, selection);
+        : await activateSourceExercise(
+            session.id,
+            selection,
+            await assertPhase2TargetLocked() ?? undefined,
+          );
       if (selectedExercise) {
         _activeLessonExerciseIdForDelivery = selectedExercise.id;
         _sourceExerciseActivatedThisTurn = true;
@@ -3267,7 +3636,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
             : resolveEligibleSourceExercise(classExercises, aiResult.source_fidelity.exercise_id);
           const selectedExercise = _sourceExerciseActivatedThisTurn
             ? selection.selected
-            : await activateSourceExercise(session.id, selection);
+            : await activateSourceExercise(
+                session.id,
+                selection,
+                await assertPhase2TargetLocked() ?? undefined,
+              );
           if (selectedExercise) {
             _activeLessonExerciseIdForDelivery = selectedExercise.id;
             _sourceExerciseActivatedThisTurn = true;
@@ -3282,10 +3655,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           activeTaskUpdate.activeAssistanceLevel  = "none";
           _activeLessonExerciseIdForDelivery = null;
         }
-        await db
-          .update(lessonSessionsTable)
-          .set(activeTaskUpdate as any)
-          .where(eq(lessonSessionsTable.id, session.id));
+        await updateC7TargetLockedSession(activeTaskUpdate);
         // Update hasActiveTask to reflect the new stage
         hasActiveTask = !stage3DefersSourceTask &&
           (newTeachingStage === "MICRO_CHECK" || newTeachingStage === "EXERCISE");
@@ -3819,10 +4189,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     session &&
     !_deferredC7Action
   ) {
-    await db
-      .update(lessonSessionsTable)
-      .set(buildPostFeedbackTransitionUpdate() as any)
-      .where(eq(lessonSessionsTable.id, session.id));
+    await updateC7TargetLockedSession(buildPostFeedbackTransitionUpdate() as any);
   }
   if (
     _stage3BoundedAnswerTurn &&
@@ -3836,10 +4203,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       if (nextLevelId === null) {
         throw new Error("C7.2 deferred cognitive transition lost its C6 level target");
       }
-      await db
-        .update(lessonSessionsTable)
-        .set(buildAuthorizedLevelTransitionUpdate(nextLevelId) as any)
-        .where(eq(lessonSessionsTable.id, session.id));
+      await updateC7TargetLockedSession(
+        buildAuthorizedLevelTransitionUpdate(nextLevelId) as any,
+      );
       logger.info(
         { sessionId: session.id, nodeId: session.currentNodeId, nextCognitiveLevelId: nextLevelId },
         "C7.2: applied C7.1-authorized cognitive transition after feedback persistence",
@@ -3853,6 +4219,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         session.currentPhase,
         _deferredSafetyCapHit,
         _deferredC6Decision,
+        await assertPhase2TargetLocked() ?? undefined,
       );
       if (advanceResult.c6BlockedReason) {
         logger.error(

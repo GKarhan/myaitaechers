@@ -5,7 +5,7 @@
  * qualification plus the persisted C4 projection can authorize it. C6 remains
  * the sole next-target resolver after this gate succeeds.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, lessonSessionsTable } from "@workspace/db";
 import type { EvidenceQualificationStatus } from "../../lib/evidence-contract.js";
 
@@ -61,6 +61,8 @@ export type AuthorizedTargetTransition = {
   nextPhase: number;
   nextActiveCognitiveLevelId: number | null;
   reviewNeeded?: boolean;
+  expectedCurrentNodeId?: number | null;
+  expectedActiveCognitiveLevelId?: number | null;
 };
 
 /**
@@ -98,11 +100,29 @@ export function buildAuthorizedTargetTransitionUpdate(
 
 export async function applyAuthorizedTargetTransition(
   input: AuthorizedTargetTransition,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const updated = await db
     .update(lessonSessionsTable)
     .set(buildAuthorizedTargetTransitionUpdate(input) as any)
-    .where(eq(lessonSessionsTable.id, input.sessionId));
+    .where(
+      input.expectedCurrentNodeId === undefined ||
+      input.expectedActiveCognitiveLevelId === undefined
+        ? eq(lessonSessionsTable.id, input.sessionId)
+        : and(
+            eq(lessonSessionsTable.id, input.sessionId),
+            input.expectedCurrentNodeId === null
+              ? isNull(lessonSessionsTable.currentNodeId)
+              : eq(lessonSessionsTable.currentNodeId, input.expectedCurrentNodeId),
+            input.expectedActiveCognitiveLevelId === null
+              ? isNull(lessonSessionsTable.activeCognitiveLevelId)
+              : eq(
+                  lessonSessionsTable.activeCognitiveLevelId,
+                  input.expectedActiveCognitiveLevelId,
+                ),
+          ),
+    )
+    .returning({ id: lessonSessionsTable.id });
+  return updated.length > 0;
 }
 
 /**

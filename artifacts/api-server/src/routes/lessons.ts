@@ -883,7 +883,10 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     const hasAuthoritativeActiveTask =
       s.activeTaskProvenance !== null ||
       s.activeLessonExerciseId !== null ||
-      s.activeTaskReference !== null;
+      s.activeTaskReference !== null ||
+      // C7.2 feedback recovery is an active, target-bound execution boundary
+      // even though its task fields have intentionally been retired.
+      s.nodeTeachingStage === "FEEDBACK";
 
     // An inactive Phase 2 resume (and a selected Knowledge Tree action) must
     // re-enter C6. An authoritative task is deliberately never replaced.
