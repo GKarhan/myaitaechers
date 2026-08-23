@@ -8,8 +8,8 @@ import {
   getUnresolvedAtomicityFindings,
   normalizeActivityPlacements,
   validatePass2SourceAlignment,
-  MappingAtomicityError,
   MappingAtomicityReviewUnavailableError,
+  MappingGranularityReviewError,
   MappingSourceAlignmentError,
   type Pass2TopicResult,
 } from "../../services/lesson-mapping.js";
@@ -256,7 +256,7 @@ const diagnostics = {
   const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
   const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
   const alignment = validatePass2SourceAlignment(topics, source);
-  assert.throws(() => assertPass2PersistenceGates({
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
     coverageValidation: validateSourceCoverage(source.length, topics),
     instructionalCoverage: validateInstructionalCoverage(source, topics),
     sourceAlignment: alignment,
@@ -270,8 +270,8 @@ const diagnostics = {
       confidence: "HIGH",
       reason: "Unresolved test fixture.",
     }],
-  }), MappingAtomicityError);
-  console.log("  ✓ unresolved atomicity failure preserves the existing mapping boundary");
+  }));
+  console.log("  ✓ unresolved atomicity becomes a persisted teacher-review disposition");
 }
 
 {
@@ -286,6 +286,46 @@ const diagnostics = {
     atomicityReviewUnavailableReason: "INVALID_RESPONSE",
   }), MappingAtomicityReviewUnavailableError);
   console.log("  ✓ unavailable or malformed atomicity review blocks persistence");
+}
+
+{
+  const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
+  const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(source.length, topics),
+    instructionalCoverage: validateInstructionalCoverage(source, topics),
+    sourceAlignment: validatePass2SourceAlignment(topics, source),
+    duplicateResolution: {
+      candidatePairCount: 1,
+      resolvedDistinctCount: 0,
+      mergedCount: 0,
+      unresolvedPairIds: [{ candidateAId: "t1:n0", candidateBId: "t1:n1" }],
+      rejectedDecisionCount: 0,
+      actions: [],
+    },
+    diagnostics,
+  }));
+  console.log("  ✓ unresolved duplicate candidates become a teacher-review disposition");
+}
+
+{
+  const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
+  const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
+  assert.throws(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(source.length, topics),
+    instructionalCoverage: validateInstructionalCoverage(source, topics),
+    sourceAlignment: validatePass2SourceAlignment(topics, source),
+    duplicateResolution: {
+      candidatePairCount: 1,
+      resolvedDistinctCount: 0,
+      mergedCount: 0,
+      unresolvedPairIds: [{ candidateAId: "t1:n0", candidateBId: "t1:n1" }],
+      rejectedDecisionCount: 1,
+      actions: [],
+    },
+    diagnostics,
+  }), MappingGranularityReviewError);
+  console.log("  ✓ malformed duplicate-review output still blocks persistence");
 }
 
 {
@@ -465,4 +505,4 @@ const diagnostics = {
   console.log("  ✓ combined source reallocation and split partition final ownership");
 }
 
-console.log("\nAtomicity and exercise-alignment review: 12/12 passing");
+console.log("\nAtomicity and exercise-alignment review: 15/15 passing");

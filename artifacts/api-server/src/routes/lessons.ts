@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -4285,11 +4285,45 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         entry,
       ]),
     );
+    const pedagogicalReviewReasonsByPosition = new Map<string, string[]>();
+    const addPedagogicalReviewReason = (position: string, reason: string) => {
+      const reasons = pedagogicalReviewReasonsByPosition.get(position) ?? [];
+      if (!reasons.includes(reason)) reasons.push(reason);
+      pedagogicalReviewReasonsByPosition.set(position, reasons);
+    };
+    const positionForCandidateId = (candidateId: string) => pass2.sourceAlignment.nodes.find(
+      (entry) => entry.microNodeId === candidateId,
+    );
+    for (const finding of pass2.unresolvedAtomicityFindings) {
+      const entry = (finding.microNodeId ? positionForCandidateId(finding.microNodeId) : undefined)
+        ?? pass2.sourceAlignment.nodes.find((candidate) =>
+          candidate.topicTitle === finding.topicTitle
+          && candidate.microNodeTitle === finding.microNodeTitle,
+        );
+      if (entry) {
+        addPedagogicalReviewReason(
+          `${entry.topicSequence}:${entry.microNodeIndex}`,
+          `ATOMICITY_REVIEW_REQUIRED:${finding.issue}:${finding.confidence}`,
+        );
+      }
+    }
+    for (const pair of pass2.duplicateResolution.unresolvedPairIds) {
+      for (const candidateId of [pair.candidateAId, pair.candidateBId]) {
+        const entry = positionForCandidateId(candidateId);
+        if (entry) {
+          addPedagogicalReviewReason(
+            `${entry.topicSequence}:${entry.microNodeIndex}`,
+            "DUPLICATE_REVIEW_REQUIRED",
+          );
+        }
+      }
+    }
     const safeOutcomeAlignmentPlan = {
-      proposals: outcomeAlignmentPlan.proposals.filter((proposal) =>
-        sourceAlignmentByPosition.get(`${proposal.topicSequence}:${proposal.microNodeIndex}`)
-          ?.audit.status === "SUFFICIENT",
-      ),
+      proposals: outcomeAlignmentPlan.proposals.filter((proposal) => {
+        const position = `${proposal.topicSequence}:${proposal.microNodeIndex}`;
+        return sourceAlignmentByPosition.get(position)?.audit.status === "SUFFICIENT"
+          && (pedagogicalReviewReasonsByPosition.get(position)?.length ?? 0) === 0;
+      }),
       unresolvedOutcomeIndexes: confirmedOutcomes
         .map((_, outcomeIndex) => outcomeIndex)
         .filter((outcomeIndex) => !outcomeAlignmentPlan.proposals.some(
@@ -4297,6 +4331,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             proposal.outcomeIndex === outcomeIndex
             && sourceAlignmentByPosition.get(`${proposal.topicSequence}:${proposal.microNodeIndex}`)
               ?.audit.status === "SUFFICIENT"
+            && (pedagogicalReviewReasonsByPosition.get(
+              `${proposal.topicSequence}:${proposal.microNodeIndex}`,
+            )?.length ?? 0) === 0
             && proposal.role === "REQUIRED",
         )),
     };
@@ -4369,6 +4406,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         // 2. Insert the MicroNode
         const sourceAlignment = sourceAlignmentByPosition.get(`${topic.sequence}:${microNodeIndex}`);
         const needsSourceReview = sourceAlignment?.audit.status !== "SUFFICIENT";
+        const pedagogicalReviewReasons = pedagogicalReviewReasonsByPosition.get(
+          `${topic.sequence}:${microNodeIndex}`,
+        ) ?? [];
+        const needsPedagogicalReview = pedagogicalReviewReasons.length > 0;
         const requiredDepths = safeOutcomeAlignmentPlan.proposals
           .filter((proposal) =>
             proposal.topicSequence === topic.sequence && proposal.microNodeIndex === microNodeIndex,
@@ -4394,13 +4435,18 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             blockType:           primaryBlock?.blockType ?? null,
             // STEP-3: persist all source block indices for coverage auditing
             sourceBlockIndices:  mn.sourceBlockIndices as any,
-            status:              needsSourceReview ? "needs_review" as const : "draft" as const,
+            status:              needsSourceReview || needsPedagogicalReview
+              ? "needs_review" as const
+              : "draft" as const,
             // This is deliberately a machine-readable audit pointer, not a
             // fabricated source judgment. The complete safe audit stays in
             // mappingMetadata for teacher review and final-approval checks.
-            changeReason:        needsSourceReview
-              ? `SOURCE_ALIGNMENT:${sourceAlignment?.audit.status ?? "UNKNOWN"}:${sourceAlignment?.audit.reasonCode ?? "UNKNOWN"}`
-              : null,
+            changeReason:        [
+              ...(needsSourceReview
+                ? [`SOURCE_ALIGNMENT:${sourceAlignment?.audit.status ?? "UNKNOWN"}:${sourceAlignment?.audit.reasonCode ?? "UNKNOWN"}`]
+                : []),
+              ...pedagogicalReviewReasons,
+            ].join("|") || null,
             createdBy:           "ai"   as const,
             targetBloomLevel,
             estimatedMinutes:    5,
@@ -4425,6 +4471,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
             reason:    !mn.learningObjective
               ? "Missing learning objective"
               : "Missing or very short theory content",
+          });
+        }
+        for (const reason of pedagogicalReviewReasons) {
+          reviewItems.push({
+            nodeId: insertedNode.id,
+            nodeTitle: mn.title,
+            reason,
           });
         }
 
@@ -4538,6 +4591,32 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         reasonCode: entry.audit.reasonCode,
       }] : [];
     });
+    const persistedAtomicityReview = pass2.unresolvedAtomicityFindings.map((finding) => {
+      const entry = (finding.microNodeId ? positionForCandidateId(finding.microNodeId) : undefined)
+        ?? pass2.sourceAlignment.nodes.find((candidate) =>
+          candidate.topicTitle === finding.topicTitle
+          && candidate.microNodeTitle === finding.microNodeTitle,
+        );
+      const node = entry
+        ? nodeByMapPosition.get(`${entry.topicSequence}:${entry.microNodeIndex}`)
+        : undefined;
+      return {
+        nodeId: node?.id ?? null,
+        issue: finding.issue,
+        confidence: finding.confidence,
+        reasonCode: `ATOMICITY_REVIEW_REQUIRED:${finding.issue}:${finding.confidence}`,
+      };
+    });
+    const persistedDuplicateReview = pass2.duplicateResolution.unresolvedPairIds.map((pair) => ({
+      nodeIds: [pair.candidateAId, pair.candidateBId].flatMap((candidateId) => {
+        const entry = positionForCandidateId(candidateId);
+        const node = entry
+          ? nodeByMapPosition.get(`${entry.topicSequence}:${entry.microNodeIndex}`)
+          : undefined;
+        return node ? [node.id] : [];
+      }),
+      reasonCode: "DUPLICATE_REVIEW_REQUIRED",
+    }));
 
     // ── P5.1 — Activity placement validation ──────────────────────────────────
     // Detects EXERCISE/ACTIVITY/HOMEWORK blocks that ended up in sourceBlockIndices
@@ -4594,19 +4673,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       });
     }
 
-    // ── P4.8 — Phase 4 granularity findings → reviewItems ────────────────────
-    // Advisory only: these do NOT change jobStatus or coverageValidation.
+    // ── P4.8 — unresolved Phase 4 findings → reviewItems ─────────────────────
+    // They are advisory only after source and structural validation has passed.
     // coverageIssues = Phase 3 findings (skipped pages + coverage gaps).
     // granularityIssues = Phase 4 semantic findings (mega-node / over-split / exercise mismatch).
     const coverageIssues = reviewItems.length;  // count before appending Phase 4 items
-    for (const gf of pass2.granularityFindings) {
-      reviewItems.push({
-        nodeId:    null as unknown as number,
-        nodeTitle: "—",
-        reason:    `SEMANTIC_GRANULARITY_REVIEW:${gf.issue}:${gf.confidence}`,
-      });
-    }
-    const granularityIssues = pass2.granularityFindings.length;
+    const granularityIssues =
+      pass2.unresolvedAtomicityFindings.length
+      + pass2.duplicateResolution.unresolvedPairIds.length;
 
     // ── P5.1 + P5.4 — Activity placement findings → reviewItems ──────────────
     // HIGH severity: advisory only, never blocks the mapping.
@@ -4680,6 +4754,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           reasonCode: "SEMANTIC_GRANULARITY_REVIEW",
           hasMergeTarget: !!finding.mergeIntoMicroNodeTitle,
         })),
+        pedagogicalReview: {
+          required: persistedAtomicityReview.length > 0 || persistedDuplicateReview.length > 0,
+          atomicityFindings: persistedAtomicityReview,
+          duplicatePairs: persistedDuplicateReview,
+        },
         granularityConsolidation: pass2.granularityConsolidation,
         duplicateResolution: {
           candidatePairCount: pass2.duplicateResolution.candidatePairCount,
@@ -4756,6 +4835,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           exercisesCreated:     totalExercises,
           unmappedBlocks:       pass2.unmappedBlockIndices.length,
           instructionalCoverageValid: pass2.instructionalCoverage.valid,
+          teacherReviewRequired:
+            pass2.unresolvedAtomicityFindings.length + pass2.duplicateResolution.unresolvedPairIds.length,
           mappingReport,
           // Keep job polling source-safe too. Raw textbook/provider text never
           // belongs in a job result or teacher audit response.
@@ -4881,18 +4962,6 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
                 mergedCount: err.duplicateResolution.mergedCount,
                 unresolvedPairIds: err.duplicateResolution.unresolvedPairIds,
                 rejectedDecisionCount: err.duplicateResolution.rejectedDecisionCount,
-              },
-            }
-        : err instanceof MappingAtomicityError
-          ? {
-              progress: "Pedagogically atomic MicroNode review remained unresolved; existing mapping was preserved.",
-              reason: "MICRONODE_ATOMICITY_FAILED_PRE_PERSISTENCE",
-              diagnostics: {
-                findings: err.findings.map((finding) => ({
-                  issue: finding.issue,
-                  confidence: finding.confidence,
-                  hasExerciseEvidence: Number.isInteger(finding.exerciseBlockIndex),
-                })),
               },
             }
         : err instanceof MappingAtomicityReviewUnavailableError

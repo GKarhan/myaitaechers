@@ -15,7 +15,6 @@ import {
   collectDuplicateSuspicions,
   consolidateHighConfidenceOverSplits,
   MappingGranularityReviewError,
-  MappingSourceAlignmentError,
   MappingSourcePlacementError,
   parseDuplicateResolutions,
   resolveDuplicateSuspicions,
@@ -238,6 +237,7 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     reason: "Թեստ",
   }], { requireStableIds: true });
   assert.equal(titleOnly.mergedMicroNodeCount, 0);
+  assert.equal(titleOnly.rejectedDecisionCount, 1);
   const forgedId = consolidateHighConfidenceOverSplits(topics, [{
     topicTitle: "Թեմա 1",
     microNodeTitle: "Կանոն",
@@ -249,6 +249,7 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     reason: "Թեստ",
   }], { requireStableIds: true });
   assert.equal(forgedId.mergedMicroNodeCount, 0);
+  assert.equal(forgedId.rejectedDecisionCount, 1);
 
   const blocks = [
     { blockType: "RULE", sourceText: "Շենքերի համարակալման կանոնը բացատրվում է այստեղ։", sourcePage: 11 },
@@ -290,9 +291,13 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     confidence: "MEDIUM",
   }]);
   assert.equal(unresolved.unresolvedPairIds.length, 1);
-  assertPreservesOldMap(validPlacement, MappingGranularityReviewError, {
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validPlacement,
+    instructionalCoverage: validInstructionalCoverage,
+    sourceAlignment: validSourceAlignment,
     duplicateResolution: unresolved,
-  });
+    diagnostics,
+  }));
 
   const collisionAudit = resolveDuplicateSuspicions(topics, [{
     candidateAId: "t1:n0",
@@ -321,7 +326,7 @@ console.log("  ✓ all invalid placement categories block persistence and preser
   }]);
   assert.equal(topics[0].microNodes[0].candidateId, "t1:n0");
   assert.equal(topics[1].microNodes[0].candidateId, "t2:n0");
-  console.log("  ✓ cross-topic candidates reach review, accept HIGH DISTINCT, and fail closed when unresolved");
+  console.log("  ✓ cross-topic candidates reach review, accept HIGH DISTINCT, and persist as review-required when unresolved");
 }
 
 {
@@ -402,8 +407,14 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     assertPreservesOldMap(validPlacement, MappingGranularityReviewError, { duplicateResolution: audit });
   }
   const omitted = resolveDuplicateSuspicions(topics, suspicions, []);
-  assertPreservesOldMap(validPlacement, MappingGranularityReviewError, { duplicateResolution: omitted });
-  console.log("  ✓ parser retains malformed and omitted duplicate decisions as hard failures");
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validPlacement,
+    instructionalCoverage: validInstructionalCoverage,
+    sourceAlignment: validSourceAlignment,
+    duplicateResolution: omitted,
+    diagnostics,
+  }));
+  console.log("  ✓ parser rejects malformed duplicate decisions while omitted pairs persist as review-required");
 }
 
 {
@@ -437,10 +448,14 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     candidateAId: "t1:n0",
     candidateBId: "t1:n2",
   });
-  assertPreservesOldMap(validPlacement, MappingGranularityReviewError, {
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validPlacement,
+    instructionalCoverage: validInstructionalCoverage,
+    sourceAlignment: validSourceAlignment,
     duplicateResolution: audit,
-  });
-  console.log("  ✓ merging one candidate cannot suppress a different unresolved duplicate edge");
+    diagnostics,
+  }));
+  console.log("  ✓ merging one candidate cannot suppress a different unresolved duplicate review edge");
 }
 
 {
@@ -453,7 +468,7 @@ console.log("  ✓ all invalid placement categories block persistence and preser
   );
   assert.equal(plan.proposals.length, 1, "an Outcome may be conceptually alignable");
   const oldMapping = [{ id: 8, title: "Աղբյուրով հաստատված հին քարտեզ" }];
-  assert.throws(() => assertPass2PersistenceGates({
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
     coverageValidation: validPlacement,
     instructionalCoverage: validInstructionalCoverage,
     sourceAlignment: {
@@ -466,9 +481,9 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     },
     duplicateResolution: noDuplicateConcern,
     diagnostics,
-  }), MappingSourceAlignmentError);
+  }));
   assert.deepEqual(oldMapping, [{ id: 8, title: "Աղբյուրով հաստատված հին քարտեզ" }]);
-  console.log("  ✓ Outcome similarity cannot rescue a weak source-grounding failure");
+  console.log("  ✓ Outcome similarity cannot auto-approve a weak source-grounding review state");
 }
 
 console.log("\nC1 mapping hardening: provider-free gates passing");

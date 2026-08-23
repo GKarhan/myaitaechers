@@ -1895,7 +1895,8 @@ export function assertDetailedMappingHasMicroNodes(
 
 /**
  * A single finding from the Pass 2B semantic granularity review. Findings are
- * resolved by the one bounded repair pass or remain pre-persistence failures.
+ * resolved by the one bounded repair pass or persisted as teacher-review
+ * findings after every source and structural persistence gate has passed.
  */
 export interface GranularityFinding {
   topicTitle: string;
@@ -1927,6 +1928,8 @@ export interface GranularityConsolidation {
   beforeMicroNodeCount: number;
   afterMicroNodeCount: number;
   mergedMicroNodeCount: number;
+  /** Parsed HIGH OVER_SPLIT actions rejected by server-side identity checks. */
+  rejectedDecisionCount: number;
   /**
    * Internal stable-identity record of the exact pair resolved by an explicit
    * HIGH OVER_SPLIT merge. It is used to preserve unrelated duplicate edges.
@@ -1954,48 +1957,59 @@ export function consolidateHighConfidenceOverSplits(
   const beforeMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
   const actions: GranularityConsolidation["actions"] = [];
   const resolvedCandidatePairs: GranularityConsolidation["resolvedCandidatePairs"] = [];
+  let rejectedDecisionCount = 0;
 
-  for (const topic of topics) {
-    const applicable = findings.filter((finding) =>
-      finding.topicTitle === topic.title &&
-      finding.issue === "OVER_SPLIT" &&
-      finding.confidence === "HIGH" &&
-      !!finding.mergeIntoMicroNodeTitle,
-    );
-    for (const finding of applicable) {
-      if (options.requireStableIds && (!finding.microNodeId || !finding.mergeIntoMicroNodeId)) {
-        continue;
-      }
-      const sourceIndex = finding.microNodeId
-        ? topic.microNodes.findIndex((node) => node.candidateId === finding.microNodeId)
-        : topic.microNodes.findIndex((node) => node.title === finding.microNodeTitle);
-      const targetIndex = finding.mergeIntoMicroNodeId
-        ? topic.microNodes.findIndex((node) => node.candidateId === finding.mergeIntoMicroNodeId)
-        : topic.microNodes.findIndex((node) => node.title === finding.mergeIntoMicroNodeTitle);
-      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) continue;
+  for (const finding of findings) {
+    if (finding.issue !== "OVER_SPLIT" || finding.confidence !== "HIGH") continue;
+    if (!finding.mergeIntoMicroNodeTitle) {
+      rejectedDecisionCount++;
+      continue;
+    }
+    if (options.requireStableIds && (!finding.microNodeId || !finding.mergeIntoMicroNodeId)) {
+      rejectedDecisionCount++;
+      continue;
+    }
+    const topic = finding.microNodeId
+      ? topics.find((candidate) => candidate.microNodes.some(
+          (node) => node.candidateId === finding.microNodeId,
+        ))
+      : topics.find((candidate) => candidate.title === finding.topicTitle);
+    if (!topic || topic.title !== finding.topicTitle) {
+      rejectedDecisionCount++;
+      continue;
+    }
+    const sourceIndex = finding.microNodeId
+      ? topic.microNodes.findIndex((node) => node.candidateId === finding.microNodeId)
+      : topic.microNodes.findIndex((node) => node.title === finding.microNodeTitle);
+    const targetIndex = finding.mergeIntoMicroNodeId
+      ? topic.microNodes.findIndex((node) => node.candidateId === finding.mergeIntoMicroNodeId)
+      : topic.microNodes.findIndex((node) => node.title === finding.mergeIntoMicroNodeTitle);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+      rejectedDecisionCount++;
+      continue;
+    }
 
-      const source = topic.microNodes[sourceIndex];
-      const target = topic.microNodes[targetIndex];
-      target.sourceBlockIndices = [...new Set([...target.sourceBlockIndices, ...source.sourceBlockIndices])];
-      target.exercises = [...target.exercises, ...source.exercises];
-      target.supportingMaterialIndices = [...new Set([
-        ...target.supportingMaterialIndices,
-        ...source.supportingMaterialIndices,
-      ])];
-      topic.microNodes.splice(sourceIndex, 1);
-      if (finding.microNodeId && finding.mergeIntoMicroNodeId) {
-        resolvedCandidatePairs.push({
-          candidateAId: finding.microNodeId,
-          candidateBId: finding.mergeIntoMicroNodeId,
-        });
-      }
-      actions.push({
-        topicSequence: topic.sequence,
-        keptMicroNodeTitle: target.title,
-        removedMicroNodeTitle: source.title,
-        reason: "HIGH_CONFIDENCE_OVER_SPLIT",
+    const source = topic.microNodes[sourceIndex];
+    const target = topic.microNodes[targetIndex];
+    target.sourceBlockIndices = [...new Set([...target.sourceBlockIndices, ...source.sourceBlockIndices])];
+    target.exercises = [...target.exercises, ...source.exercises];
+    target.supportingMaterialIndices = [...new Set([
+      ...target.supportingMaterialIndices,
+      ...source.supportingMaterialIndices,
+    ])];
+    topic.microNodes.splice(sourceIndex, 1);
+    if (finding.microNodeId && finding.mergeIntoMicroNodeId) {
+      resolvedCandidatePairs.push({
+        candidateAId: finding.microNodeId,
+        candidateBId: finding.mergeIntoMicroNodeId,
       });
     }
+    actions.push({
+      topicSequence: topic.sequence,
+      keptMicroNodeTitle: target.title,
+      removedMicroNodeTitle: source.title,
+      reason: "HIGH_CONFIDENCE_OVER_SPLIT",
+    });
   }
 
   const afterMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
@@ -2003,6 +2017,7 @@ export function consolidateHighConfidenceOverSplits(
     beforeMicroNodeCount,
     afterMicroNodeCount,
     mergedMicroNodeCount: beforeMicroNodeCount - afterMicroNodeCount,
+    rejectedDecisionCount,
     resolvedCandidatePairs,
     actions,
   };
@@ -2236,13 +2251,20 @@ export function getUnresolvedAtomicityFindings(
       node.exercises.some((exercise) => exercise.blockIndex === blockIndex),
     ));
 
-  return findings.filter((finding) => {
+  return findings.flatMap((finding) => {
     if (finding.issue === "UNDER_SPLIT" || finding.issue === "MEGA_NODE") {
-      if (!finding.microNodeId) return true;
+      if (!finding.microNodeId) return [finding];
       const replacementIds = repair.splitReplacementCandidateIds[finding.microNodeId];
-      return !replacementIds?.length || replacementIds.some((candidateId) => {
+      if (!replacementIds?.length) return [finding];
+      return replacementIds.flatMap((candidateId) => {
         const replacement = nodeByCandidateId.get(candidateId);
-        return !replacement || detectCompoundLO(replacement.learningObjective) !== null;
+        return !replacement || detectCompoundLO(replacement.learningObjective) !== null
+          ? [{
+              ...finding,
+              microNodeId: candidateId,
+              microNodeTitle: replacement?.title ?? finding.microNodeTitle,
+            }]
+          : [];
       });
     }
     if (finding.issue === "MISSING_ATOMIC_MICRONODE") {
@@ -2255,16 +2277,39 @@ export function getUnresolvedAtomicityFindings(
           nodeByCandidateId.get(candidateId)?.exercises.some(
             (exercise) => exercise.blockIndex === finding.exerciseBlockIndex,
           ),
-        );
+        )
+        ? [finding]
+        : [];
     }
     if (finding.issue === "EXERCISE_MISMATCH") {
       return !Number.isInteger(finding.exerciseBlockIndex) ||
         (!repair.primaryExerciseIndices.includes(finding.exerciseBlockIndex!) &&
-          !repair.integrativeExerciseIndices.includes(finding.exerciseBlockIndex!));
+          !repair.integrativeExerciseIndices.includes(finding.exerciseBlockIndex!))
+        ? [finding]
+        : [];
     }
-    if (finding.issue === "UNSUPPORTED_MICRONODE") return !sourceAlignment.valid;
+    if (finding.issue === "UNSUPPORTED_MICRONODE") {
+      if (sourceAlignment.valid) return [];
+      const replacementIds = finding.microNodeId
+        ? repair.splitReplacementCandidateIds[finding.microNodeId]
+        : undefined;
+      if (!replacementIds?.length) return [finding];
+      return replacementIds.flatMap((candidateId) => {
+        const replacement = nodeByCandidateId.get(candidateId);
+        const audit = sourceAlignment.nodes.find((entry) =>
+          entry.microNodeId === candidateId,
+        )?.audit;
+        return audit?.status === "SUFFICIENT"
+          ? []
+          : [{
+              ...finding,
+              microNodeId: candidateId,
+              microNodeTitle: replacement?.title ?? finding.microNodeTitle,
+            }];
+      });
+    }
     // OVER_SPLIT is resolved by the separate duplicate-resolution gate.
-    return false;
+    return [];
   });
 }
 
@@ -2560,6 +2605,12 @@ export interface Pass2Result {
   instructionalCoverage: InstructionalCoverageResult;
   /** Phase 4 semantic findings for teacher review. */
   granularityFindings: GranularityFinding[];
+  /**
+   * Semantic findings which remain after the one bounded repair pass. They are
+   * pedagogical review requirements, not a reason to discard an otherwise
+   * verified and structurally valid map.
+   */
+  unresolvedAtomicityFindings: GranularityFinding[];
   /** Bounded pre-persistence merges applied only to explicit HIGH decisions. */
   granularityConsolidation: GranularityConsolidation;
   /** Duplicate suspicion audit; unresolved pairs block persistence. */
@@ -2814,6 +2865,16 @@ Rule: if two skills can be taught and assessed independently, they MUST be separ
 MicroNodes even when their source blocks are adjacent or appear on the same page.
 Do NOT bundle multiple definitions, rules, procedures, or independently testable
 outcomes into one MicroNode.
+
+FINAL ATOMICITY CHECK — before returning a MicroNode:
+  • Write exactly one observable action about one source-taught concept or procedure.
+  • If the source teaches two concepts that could be assessed separately, create two
+    MicroNodes only when each has its own direct instructional source support.
+  • Do not turn historical, contextual, visual, or merely neighboring material into
+    a learning objective unless its assigned source directly teaches that objective.
+  • When no direct source supports a possible objective, do not invent a MicroNode;
+    retain the relevant activity as additionalExercises or leave structural context
+    in unmappedBlocks.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FIELD DEFINITIONS:
@@ -3637,9 +3698,9 @@ export function collectDuplicateSuspicions(
 }
 
 /**
- * Applies only explicit HIGH-confidence same-topic merges. Every other candidate
- * must be explicitly classified HIGH DISTINCT; otherwise it remains a hard
- * pre-persistence review failure.
+ * Applies only explicit HIGH-confidence same-topic merges. Every other
+ * candidate remains visible for teacher review; malformed or unknown decisions
+ * are still rejected before persistence.
  */
 export function resolveDuplicateSuspicions(
   topics: Pass2TopicResult[],
@@ -3750,7 +3811,9 @@ export function resolveDuplicateSuspicions(
       });
       continue;
     }
-    if (resolution) audit.rejectedDecisionCount++;
+    if (resolution && resolution.decision !== "REVIEW_REQUIRED") {
+      audit.rejectedDecisionCount++;
+    }
     addUnresolved(suspicion.candidateAId, suspicion.candidateBId);
   }
   // Unknown IDs/pairs are untrusted provider output. Do not ignore them:
@@ -4036,18 +4099,34 @@ direct support for every child, do not propose the split.`;
     ]);
     const VALID_CONFIDENCE = new Set(["HIGH", "MEDIUM"]);
 
+    let malformedEntryCount = 0;
     const findings: GranularityFinding[] = [];
     for (const f of parsed.findings) {
       if (
         typeof f !== "object" || f === null ||
         !("topicTitle" in f) || !("microNodeTitle" in f) ||
         !("issue" in f) || !("confidence" in f) || !("reason" in f)
-      ) continue;
+      ) {
+        malformedEntryCount++;
+        continue;
+      }
 
       const item = f as Record<string, unknown>;
-      if (!VALID_ISSUES.has(String(item.issue))) continue;
-      if (!VALID_CONFIDENCE.has(String(item.confidence))) continue;
-      if (!String(item.reason).trim()) continue;
+      if (
+        typeof item.topicTitle !== "string" ||
+        typeof item.microNodeTitle !== "string" ||
+        !VALID_ISSUES.has(String(item.issue)) ||
+        !VALID_CONFIDENCE.has(String(item.confidence)) ||
+        typeof item.reason !== "string" ||
+        !item.reason.trim() ||
+        (item.microNodeId !== undefined && typeof item.microNodeId !== "string") ||
+        (item.mergeIntoMicroNodeId !== undefined && typeof item.mergeIntoMicroNodeId !== "string") ||
+        (item.exerciseBlockIndex !== undefined &&
+          (typeof item.exerciseBlockIndex !== "number" || !Number.isInteger(item.exerciseBlockIndex)))
+      ) {
+        malformedEntryCount++;
+        continue;
+      }
 
       findings.push({
         topicTitle:       String(item.topicTitle),
@@ -4066,9 +4145,14 @@ direct support for every child, do not propose the split.`;
     }
 
     const sourceReallocations: SourceReallocationDecision[] = [];
-    if (Array.isArray(parsed.sourceReallocations)) {
+    if (parsed.sourceReallocations !== undefined && !Array.isArray(parsed.sourceReallocations)) {
+      malformedEntryCount++;
+    } else if (Array.isArray(parsed.sourceReallocations)) {
       for (const item of parsed.sourceReallocations) {
-        if (!item || typeof item !== "object") continue;
+        if (!item || typeof item !== "object") {
+          malformedEntryCount++;
+          continue;
+        }
         const value = item as Record<string, unknown>;
         const action = String(value.action) as SourceReallocationAction;
         if (![
@@ -4078,11 +4162,21 @@ direct support for every child, do not propose the split.`;
           "MERGE_SOURCE_OWNERSHIP",
           "NARROW_OBJECTIVE",
           "NO_VALID_SUPPORT_FOUND",
-        ].includes(action)) continue;
-        const indices = Array.isArray(value.sourceBlockIndices)
-          ? value.sourceBlockIndices.filter((index): index is number => typeof index === "number" && Number.isInteger(index))
-          : [];
-        if (typeof value.topicTitle !== "string" || typeof value.microNodeTitle !== "string" || typeof value.reason !== "string") continue;
+        ].includes(action) ||
+          !Array.isArray(value.sourceBlockIndices) ||
+          !value.sourceBlockIndices.every((index) => typeof index === "number" && Number.isInteger(index)) ||
+          typeof value.topicTitle !== "string" ||
+          typeof value.microNodeTitle !== "string" ||
+          typeof value.reason !== "string" ||
+          !value.reason.trim() ||
+          typeof value.topicSequence !== "number" ||
+          !Number.isInteger(value.topicSequence) ||
+          typeof value.microNodeId !== "string"
+        ) {
+          malformedEntryCount++;
+          continue;
+        }
+        const indices = value.sourceBlockIndices;
         sourceReallocations.push({
           topicTitle: value.topicTitle,
           microNodeTitle: value.microNodeTitle,
@@ -4101,7 +4195,9 @@ direct support for every child, do not propose the split.`;
     }
 
     const atomicityRepairs: AtomicityRepairDecision[] = [];
-    if (Array.isArray(parsed.atomicityRepairs)) {
+    if (parsed.atomicityRepairs !== undefined && !Array.isArray(parsed.atomicityRepairs)) {
+      malformedEntryCount++;
+    } else if (Array.isArray(parsed.atomicityRepairs)) {
       for (const item of parsed.atomicityRepairs) {
         const value = asRecord(item);
         const action = String(value?.action ?? "");
@@ -4112,7 +4208,17 @@ direct support for every child, do not propose the split.`;
           !["SPLIT_MICRONODE", "ASSIGN_PRIMARY_EXERCISE", "MARK_INTEGRATIVE"].includes(action) ||
           typeof topicSequence !== "number" || !Number.isInteger(topicSequence) ||
           typeof reason !== "string" || !reason.trim()
-        ) continue;
+        ) {
+          malformedEntryCount++;
+          continue;
+        }
+        if (
+          (action === "SPLIT_MICRONODE" || action === "ASSIGN_PRIMARY_EXERCISE") &&
+          typeof value.microNodeId !== "string"
+        ) {
+          malformedEntryCount++;
+          continue;
+        }
         const decision: AtomicityRepairDecision = {
           action: action as AtomicityRepairAction,
           topicSequence,
@@ -4123,29 +4229,58 @@ direct support for every child, do not propose the split.`;
           reason,
         };
         if (decision.action === "SPLIT_MICRONODE") {
-          if (!Array.isArray(value.splitMicroNodes)) continue;
+          if (!Array.isArray(value.splitMicroNodes)) {
+            malformedEntryCount++;
+            continue;
+          }
+          let malformedChild = false;
           decision.splitMicroNodes = value.splitMicroNodes.flatMap((candidate) => {
             const node = asRecord(candidate);
-            if (!node || typeof node.title !== "string" || typeof node.learningObjective !== "string") return [];
-            const sourceBlockIndices = Array.isArray(node.sourceBlockIndices)
-              ? node.sourceBlockIndices.filter((index): index is number =>
-                typeof index === "number" && Number.isInteger(index))
-              : [];
-            const exerciseBlockIndices = Array.isArray(node.exerciseBlockIndices)
-              ? node.exerciseBlockIndices.filter((index): index is number =>
-                typeof index === "number" && Number.isInteger(index))
-              : [];
+            if (
+              !node ||
+              typeof node.title !== "string" ||
+              !node.title.trim() ||
+              typeof node.learningObjective !== "string" ||
+              !node.learningObjective.trim() ||
+              !Array.isArray(node.sourceBlockIndices) ||
+              !node.sourceBlockIndices.every((index) => typeof index === "number" && Number.isInteger(index)) ||
+              !Array.isArray(node.exerciseBlockIndices) ||
+              !node.exerciseBlockIndices.every((index) => typeof index === "number" && Number.isInteger(index))
+            ) {
+              malformedChild = true;
+              return [];
+            }
             return [{
               title: node.title,
               learningObjective: node.learningObjective,
               microNodeType: node.microNodeType === "skill" ? "skill" : "knowledge",
-              sourceBlockIndices,
-              exerciseBlockIndices,
+              sourceBlockIndices: node.sourceBlockIndices,
+              exerciseBlockIndices: node.exerciseBlockIndices,
             }];
           });
+          if (malformedChild) {
+            malformedEntryCount++;
+            continue;
+          }
         }
         atomicityRepairs.push(decision);
       }
+    }
+
+    if (malformedEntryCount > 0) {
+      logger.warn(
+        { malformedEntryCount, totalMicroNodes },
+        "pass2b granularity review: malformed semantic entry — failing closed",
+      );
+      return {
+        status: "UNAVAILABLE",
+        unavailableReason: "INVALID_RESPONSE",
+        findings: [],
+        sourceReallocations: [],
+        atomicityRepairs: [],
+        duplicateResolutions: [],
+        malformedDuplicateResolutionEntries: [],
+      };
     }
 
     const parsedDuplicateResolutions = parseDuplicateResolutions(parsed.duplicateResolutions);
@@ -4352,8 +4487,8 @@ export function buildAutomaticOutcomeAlignmentPlan(
  * The route deletes old Topics/MicroNodes only after runPass2Pipeline resolves.
  * Keeping source/provenance/structural gates in this pure assertion makes that
  * replacement boundary explicit and provider-free testable. Source-alignment
- * quality is deliberately not a lesson-level hard gate: non-sufficient nodes
- * are persisted as teacher-review drafts while retaining their safe audit.
+ * and pedagogical granularity quality are deliberately not lesson-level hard
+ * gates: source-safe nodes persist as teacher-review drafts with their audit.
  */
 export function assertPass2PersistenceGates(input: {
   coverageValidation: CoverageValidationResult;
@@ -4363,9 +4498,14 @@ export function assertPass2PersistenceGates(input: {
   diagnostics: Pass2Diagnostics;
   unresolvedAtomicityFindings?: GranularityFinding[];
   atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  /** A parsed semantic-review action that fails server validation is untrusted. */
+  rejectedSemanticReviewDecisionCount?: number;
 }): void {
   if (input.atomicityReviewUnavailableReason) {
     throw new MappingAtomicityReviewUnavailableError(input.atomicityReviewUnavailableReason);
+  }
+  if ((input.rejectedSemanticReviewDecisionCount ?? 0) > 0) {
+    throw new MappingAtomicityReviewUnavailableError("INVALID_RESPONSE");
   }
   if (!input.coverageValidation.valid) {
     throw new MappingSourcePlacementError(input.coverageValidation);
@@ -4373,11 +4513,8 @@ export function assertPass2PersistenceGates(input: {
   if (!input.instructionalCoverage.valid) {
     throw new MappingInstructionalCoverageError(input.instructionalCoverage, input.diagnostics);
   }
-  if (input.duplicateResolution.unresolvedPairIds.length > 0) {
+  if (input.duplicateResolution.rejectedDecisionCount > 0) {
     throw new MappingGranularityReviewError(input.duplicateResolution);
-  }
-  if ((input.unresolvedAtomicityFindings?.length ?? 0) > 0) {
-    throw new MappingAtomicityError(input.unresolvedAtomicityFindings!);
   }
 }
 
@@ -4689,6 +4826,7 @@ export async function runPass2Pipeline(
     beforeMicroNodeCount: explicitConsolidation.beforeMicroNodeCount,
     afterMicroNodeCount: topics.reduce((sum, topic) => sum + topic.microNodes.length, 0),
     mergedMicroNodeCount: explicitConsolidation.mergedMicroNodeCount + duplicateResolution.mergedCount,
+    rejectedDecisionCount: explicitConsolidation.rejectedDecisionCount,
     resolvedCandidatePairs: explicitConsolidation.resolvedCandidatePairs,
     actions: [...explicitConsolidation.actions, ...duplicateResolution.actions],
   };
@@ -4793,6 +4931,10 @@ export async function runPass2Pipeline(
     diagnostics,
     unresolvedAtomicityFindings,
     atomicityReviewUnavailableReason,
+    rejectedSemanticReviewDecisionCount:
+      granularityConsolidation.rejectedDecisionCount
+      + sourceReallocation.rejectedDecisionCount
+      + atomicityRepair.rejectedDecisionCount,
   });
 
   return {
@@ -4807,6 +4949,7 @@ export async function runPass2Pipeline(
     sourceReallocation,
     sourceAlignmentReconciliation,
     atomicityRepair,
+    unresolvedAtomicityFindings,
     diagnostics,
   };
 }
