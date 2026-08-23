@@ -1,0 +1,951 @@
+C7.4 — IMPLEMENTATION
+BOUNDED REMEDIATION + HELP + ERROR-TAXONOMY EXECUTION
+
+IMPLEMENT + TEST + VERIFY.
+
+C7.1 is COMPLETE.
+C7.2 is COMPLETE.
+C7.3 is COMPLETE.
+
+Current canonical architecture:
+
+C3 → evidence qualification
+C4 → demonstrated ceiling
+C6 → WHAT learner works on next
+C7 → HOW the selected target is taught
+
+C7 execution is now:
+
+- progression-authority safe
+- server-owned teaching-cycle safe
+- hard-locked to the C6-selected MicroNode + Cognitive Level
+
+DO NOT redesign C7.1–C7.3.
+
+This task fixes ONLY C7.4:
+
+When the learner struggles, make remediation/help deterministic,
+bounded, evidence-safe, and strategy-aware without allowing C7 to
+change the canonical C6 target.
+
+C7.5–C7.6 remain OUT OF SCOPE.
+
+==================================================
+0. CORE PRINCIPLE
+==================================================
+
+A learner may fail to demonstrate the current Cognitive Level.
+
+C7 must NOT:
+
+- retry forever;
+- repeat the same explanation indefinitely;
+- automatically lower the canonical curriculum target;
+- mark the level mastered because the learner succeeded with heavy help;
+- jump to another node on its own;
+- invent a prerequisite target;
+- erase the learner's previously demonstrated ceiling.
+
+C7 may adapt HOW it teaches the CURRENT C6 target.
+
+Canonical concept:
+
+learner difficulty
+→ classify error / difficulty family
+→ choose bounded pedagogical action
+→ provide support
+→ re-check appropriately
+→ C3 evaluates evidence
+→ C4 preserves truthful demonstrated state
+→ C6 decides any actual target change.
+
+==================================================
+1. FORENSIC AUDIT FIRST
+==================================================
+
+Before editing, inspect current implementation of:
+
+- pedagogicalDecisionEngine.ts
+- chat.ts
+- ai.ts
+- current error taxonomy
+- action registry
+- remediationStep
+- activeHelpCount
+- activeAssistanceLevel
+- help/hint endpoints or helpers
+- session time-budget logic
+- revisit_required / revisit_reason or equivalents
+- RETURN_TO_PREREQUISITE
+- LOWER_DIFFICULTY / RAISE_DIFFICULTY
+- independent re-check handling
+- C3 assistance/evidence qualification
+
+Find exact current:
+
+ERROR FAMILY
+→ ACTION
+
+mapping.
+
+Find duplication between:
+
+- system prompt
+- pedagogicalDecisionEngine
+- chat.ts
+- action registry
+- validators.
+
+Do NOT rewrite everything.
+
+Reuse the strongest deterministic layer already present.
+
+==================================================
+2. CANONICAL ERROR TAXONOMY
+==================================================
+
+Preserve the approved families unless the repository already has an
+equivalent canonical naming.
+
+At minimum support equivalents of:
+
+CONCEPTUAL
+PREREQUISITE
+PROCEDURAL
+CALCULATION_EXECUTION
+READING_LANGUAGE
+ATTENTION_RESPONSE
+GUESSING_CONFIDENCE
+INCOMPLETE_COMMUNICATION
+TRANSFER_BLOOM
+COGNITIVE_LOAD_PACE
+
+Do not create duplicate synonymous families.
+
+If old taxonomy contains equivalent names:
+
+normalize/adapt rather than duplicating.
+
+==================================================
+3. CANONICAL ACTION MAPPING
+==================================================
+
+The approved minimum mapping is:
+
+CONCEPTUAL
+→ EXTRA_EXAMPLE / CONTRAST_EXAMPLE
+
+PREREQUISITE
+→ prerequisite need signal
+→ C6 owns actual prerequisite routing
+
+PROCEDURAL
+→ STEP_BY_STEP
+
+CALCULATION_EXECUTION
+→ VERIFY_SELECTION
+
+READING_LANGUAGE
+→ SIMPLIFY_LANGUAGE
+
+ATTENTION_RESPONSE
+→ VERIFY_SELECTION
+
+GUESSING_CONFIDENCE
+→ REQUIRE_REASONING
+
+INCOMPLETE_COMMUNICATION
+→ GUIDED_QUESTION
+
+TRANSFER_BLOOM
+→ CHANGE_REPRESENTATION
+
+COGNITIVE_LOAD_PACE
+→ LOWER_DIFFICULTY / RAISE_DIFFICULTY
+
+IMPORTANT:
+
+The deterministic engine selects the pedagogical ACTION FAMILY.
+
+The model may choose the concrete wording/example inside that action.
+
+Do not make the model the sole action selector.
+
+==================================================
+4. REMOVE REAL COLLISIONS
+==================================================
+
+Audit previously found duplicated semantics across:
+
+- error taxonomy
+- action registry
+- prompt instructions.
+
+Remove/contain only concrete collisions.
+
+Desired ownership:
+
+ERROR CLASSIFICATION
+→ deterministic/backend-supported signal where possible
+
+ACTION SELECTION
+→ pedagogicalDecisionEngine / canonical server policy
+
+ACTION RENDERING
+→ AI model
+
+Do not keep two authoritative mappings with different semantics.
+
+Prompt may describe allowed behavior,
+but must not compete with backend decision ownership.
+
+==================================================
+5. BOUNDED REMEDIATION BUDGET
+==================================================
+
+Implement/reuse a real bounded remediation budget.
+
+Use current session fields if available.
+
+Prefer existing:
+
+remediationStep
+activeHelpCount
+session/time budget
+
+rather than adding duplicate state.
+
+Define explicit maximum behavior.
+
+Do not create an infinite loop such as:
+
+wrong
+→ explain
+→ wrong
+→ explain
+→ wrong
+→ explain forever.
+
+The exact limit should come from existing project policy/configuration
+where possible.
+
+If no canonical maximum exists:
+
+introduce the smallest explicit configurable constant/policy,
+not a magic value scattered through chat.ts.
+
+==================================================
+6. STRATEGY MUST VARY
+==================================================
+
+Within the remediation budget, repeated failure should not simply
+repeat the same action indefinitely.
+
+Example conceptual progression:
+
+attempt 1:
+alternative explanation / example
+
+attempt 2:
+contrast example / representation change / guided support
+
+attempt 3:
+step-by-step / prerequisite check / stronger scaffold
+
+then:
+independent re-check or bounded stop/revisit.
+
+Do not hard-code one universal sequence for every error family if the
+existing pedagogical engine already supports family-specific choices.
+
+But guarantee:
+
+same ineffective action cannot repeat forever.
+
+==================================================
+7. CANONICAL TARGET MUST NOT CHANGE
+==================================================
+
+C7.3 remains authoritative.
+
+Remediation actions operate inside:
+
+currentNodeId
++
+activeCognitiveLevelId
+
+unless C6 explicitly returns another target.
+
+Examples:
+
+LOWER_DIFFICULTY
+
+means:
+make the support/task easier WITHIN the same cognitive target.
+
+It does NOT mean:
+change APPLY target to UNDERSTAND.
+
+CHANGE_REPRESENTATION
+
+means:
+teach same target differently.
+
+It does NOT mean:
+change MicroNode.
+
+==================================================
+8. PREREQUISITE BOUNDARY
+==================================================
+
+If C7 detects evidence suggesting a prerequisite gap:
+
+C7 may emit a prerequisite-need signal/reason.
+
+C7 MUST NOT independently change currentNodeId.
+
+C6 owns:
+
+- whether a prerequisite is actually required;
+- which prerequisite MicroNode;
+- when to route there.
+
+If C6 authorizes prerequisite routing:
+
+C7 teaches that new canonical target normally.
+
+Remove/contain legacy RETURN_TO_PREREQUISITE paths that directly mutate
+the node.
+
+==================================================
+9. HELP / HINT ESCALATION
+==================================================
+
+Implement/reuse bounded help escalation.
+
+Conceptually:
+
+NO_HELP
+→ LIGHT
+→ MODERATE
+→ HIGH
+
+or the existing equivalent scale.
+
+Preserve raw help context:
+
+- help count
+- assistance level
+- assistance type
+- hint/action used
+
+Do not rely only on a final derived label.
+
+Each escalation must be persisted consistently enough for C3 evidence
+qualification.
+
+==================================================
+10. HELP MUST AFFECT EVIDENCE TRUTH
+==================================================
+
+C3 already owns evidence qualification.
+
+C7 must preserve the actual assistance snapshot BEFORE task state is
+cleared or reset.
+
+Example:
+
+learner answers correctly after HIGH assistance
+
+Result may be CORRECT
+
+but evidence must retain HIGH assistance.
+
+C7 must never reset help state first and then accidentally write the
+answer as INDEPENDENT.
+
+Audit this ordering carefully.
+
+==================================================
+11. ASSISTED CORRECT ≠ CONFIRMED
+==================================================
+
+Do not change C3/C4 rules.
+
+If learner succeeds after assistance:
+
+that may be positive evidence.
+
+But it does NOT automatically establish independent mastery.
+
+If canonical C2/C3 requirement requires independence:
+
+after assisted success,
+the learner should eventually receive a NEW equivalent independent
+check.
+
+Do not mechanically repeat the same question.
+
+C7.5 will harden real task/equivalent-task execution further.
+
+C7.4 only ensures the pedagogical/remediation logic respects this
+boundary.
+
+==================================================
+12. INDEPENDENT RE-CHECK
+==================================================
+
+After remediation/support succeeds:
+
+the next verification must be capable of returning to independent
+performance.
+
+Expected conceptual flow:
+
+original task
+→ difficulty/error
+→ support/remediation
+→ assisted success
+→ TRANSITION
+→ new equivalent independent check
+→ C3 evidence.
+
+Do not claim mastery from the assisted task itself.
+
+Do not reuse the exact same answer-revealed task as independent
+confirmation.
+
+==================================================
+13. ERROR CLASSIFICATION SAFETY
+==================================================
+
+The AI/model may contribute to classifying an error.
+
+But error classification must be constrained to the canonical taxonomy.
+
+Unknown/free-text labels must not silently become new backend policy.
+
+Validate/normalize model error labels.
+
+If classification is uncertain:
+
+use a safe generic remediation path rather than inventing a taxonomy.
+
+Do not make UNCLEAR evidence equal to NOT_KNOWN.
+
+==================================================
+14. WRONG ANSWER ≠ “ՉԳԻՏԻ”
+==================================================
+
+One incorrect answer is one evidence event.
+
+C7 must not tell C4/C5:
+
+learner = NOT_KNOWN
+
+directly.
+
+C4 owns learner state from evidence history.
+
+Preserve:
+
+INCORRECT
+PARTIAL
+UNCLEAR
+NO_RESPONSE
+
+as observational results where applicable.
+
+Do not collapse them into a single “doesn't know” runtime state.
+
+==================================================
+15. PARTIAL RESPONSE
+==================================================
+
+PARTIAL must remain pedagogically useful.
+
+If the learner demonstrates part of the success criterion:
+
+remediation should target the missing component where feasible,
+not restart everything automatically.
+
+Use current successCriterion/context.
+
+Do not redesign C3 semantic scoring.
+
+But ensure C7 does not turn PARTIAL into generic wrong-answer behavior
+when the existing evaluation contains usable missing-component context.
+
+==================================================
+16. COGNITIVE LOAD / PACE
+==================================================
+
+Audit and fix the known LOWER_DIFFICULTY / RAISE_DIFFICULTY behavior.
+
+LOWER_DIFFICULTY may adjust:
+
+- scaffolding
+- problem complexity
+- number of simultaneous steps
+- language complexity
+- example concreteness
+
+while preserving the current Cognitive Level target.
+
+RAISE_DIFFICULTY may reduce scaffolding or increase task complexity
+within the same target.
+
+Neither may silently change C2 target identity.
+
+==================================================
+17. REMEDIATION EXHAUSTION
+==================================================
+
+When the remediation budget is exhausted and the learner still has not
+demonstrated the target:
+
+C7 MUST NOT:
+
+- mark the level confirmed;
+- mark node complete;
+- fabricate progress;
+- continue indefinitely.
+
+Instead create/use a deterministic terminal remediation result such as:
+
+REVISIT_REQUIRED
+BOUNDED_STOP
+NEEDS_LATER_REVIEW
+
+according to existing repository conventions.
+
+Preserve:
+
+- current demonstrated ceiling;
+- evidence history;
+- current unresolved requirement;
+- reason for stopping where supported.
+
+Do not create a second C4 state model.
+
+==================================================
+18. TIME BUDGET COMPATIBILITY
+==================================================
+
+If the current system already has a session/time budget:
+
+ensure remediation respects it.
+
+Time exhaustion must not cause fake mastery.
+
+If time expires during remediation:
+
+persist the truthful learner state
+and exit through the deterministic bounded/revisit path.
+
+Do NOT implement a new large scheduling system.
+
+==================================================
+19. C7.2 STAGE MACHINE INTEGRATION
+==================================================
+
+Remediation must respect:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+Example:
+
+MICRO_CHECK
+→ wrong answer
+→ FEEDBACK
+→ TRANSITION selects remediation action
+→ TEACH/remediation
+→ MICRO_CHECK
+→ FEEDBACK
+→ ...
+
+Do not combine:
+
+feedback + new unresolved question
+
+in the same FEEDBACK stage.
+
+Do not bypass C7.2.
+
+==================================================
+20. C7.1 AUTHORITY INTEGRATION
+==================================================
+
+Even after remediation success:
+
+C7 cannot authorize progression.
+
+Canonical progression remains:
+
+task/evaluation
+→ C3
+→ C4
+→ C6
+→ shared target transition.
+
+The pedagogical engine may produce a progression candidate only.
+
+Do not weaken C7.1.
+
+==================================================
+21. C7.3 TARGET LOCK INTEGRATION
+==================================================
+
+Every remediation/help write must remain target-bound.
+
+Reuse the target-lock/CAS mechanism added in C7.3.
+
+Do not introduce remediation writes that can race against a target
+change.
+
+If canonical target changed before the write:
+
+fail closed.
+
+==================================================
+22. ACTION RENDERING
+==================================================
+
+Once the backend chooses an action:
+
+AI may render it naturally.
+
+Examples:
+
+EXTRA_EXAMPLE
+→ model generates a relevant extra example.
+
+CONTRAST_EXAMPLE
+→ model creates/uses contrasting examples.
+
+STEP_BY_STEP
+→ model explains steps.
+
+SIMPLIFY_LANGUAGE
+→ model restates more simply.
+
+GUIDED_QUESTION
+→ one stage-appropriate guided question.
+
+CHANGE_REPRESENTATION
+→ verbal ↔ visual/concrete/symbolic representation where supported.
+
+Keep pedagogical flexibility.
+
+Do not turn C7 into a rigid script.
+
+==================================================
+23. SOURCE / CONTENT SAFETY
+==================================================
+
+All remediation content remains inside C7.3 target/source boundary.
+
+An alternative explanation may rephrase.
+
+It may not introduce unsupported curriculum content.
+
+A new example/counterexample must remain within the MicroNode knowledge
+boundary.
+
+C7.5 will further harden generated/equivalent exercise handling.
+
+==================================================
+24. REQUIRED PROVIDER-FREE TEST MATRIX
+==================================================
+
+Add deterministic tests.
+
+TEST 1
+CONCEPTUAL error
+→ approved conceptual remediation action.
+
+TEST 2
+PROCEDURAL error
+→ STEP_BY_STEP.
+
+TEST 3
+READING_LANGUAGE
+→ SIMPLIFY_LANGUAGE.
+
+TEST 4
+GUESSING_CONFIDENCE
+→ REQUIRE_REASONING.
+
+TEST 5
+INCOMPLETE_COMMUNICATION
+→ GUIDED_QUESTION.
+
+TEST 6
+TRANSFER_BLOOM
+→ CHANGE_REPRESENTATION.
+
+TEST 7
+COGNITIVE_LOAD_PACE
+→ difficulty/scaffolding adaptation
+→ canonical Cognitive Level unchanged.
+
+TEST 8
+Repeated same error
+→ remediation strategy does not repeat indefinitely.
+
+TEST 9
+Remediation reaches max budget
+→ deterministic bounded/revisit state
+→ no mastery.
+
+TEST 10
+Correct after HIGH assistance
+→ evidence preserves HIGH assistance.
+
+TEST 11
+Assisted correct
+→ does NOT directly confirm independent mastery.
+
+TEST 12
+Assisted success
+→ next verification may be a NEW equivalent independent check.
+
+TEST 13
+Exact same revealed task
+→ cannot be treated as new independent confirmation.
+
+TEST 14
+One incorrect response
+→ does not directly set C5 NOT_KNOWN.
+
+TEST 15
+PARTIAL response
+→ targeted remediation path when missing-component information exists.
+
+TEST 16
+UNCLEAR
+→ safe clarification/remediation
+→ not treated as confirmed or not-known.
+
+TEST 17
+NO_RESPONSE
+→ safe handling
+→ no fake negative mastery.
+
+TEST 18
+Prerequisite suspicion
+→ C7 cannot mutate node.
+
+TEST 19
+C6-authorized prerequisite target
+→ C7 can teach it.
+
+TEST 20
+LOWER_DIFFICULTY
+→ activeCognitiveLevelId unchanged.
+
+TEST 21
+RAISE_DIFFICULTY
+→ activeCognitiveLevelId unchanged.
+
+TEST 22
+Help escalation:
+0 → light → moderate → high
+respects maximum.
+
+TEST 23
+New task resets task-specific help state at the correct boundary.
+
+TEST 24
+Help snapshot is captured before evidence persistence/reset.
+
+TEST 25
+Remediation action respects C7.2 FEEDBACK → TRANSITION boundary.
+
+TEST 26
+Remediation cannot bypass C7.1 progression authority.
+
+TEST 27
+Remediation write respects C7.3 target CAS.
+
+TEST 28
+Time/remediation exhaustion preserves demonstrated ceiling.
+
+No external provider calls.
+
+==================================================
+25. REGRESSION TESTS
+==================================================
+
+Run:
+
+C7.1
+C7.2
+C7.3
+C6
+C5
+C4
+C3
+Phase 2
+chat/session
+structured-output/action validation
+
+Run:
+
+API typecheck
+API build
+
+If frontend/shared contracts touched:
+
+web typecheck
+web build.
+
+Do not modify lesson 644 to satisfy tests.
+
+==================================================
+26. FRESH INDEPENDENT REVIEW
+==================================================
+
+Review specifically for:
+
+1. duplicate error→action authority
+2. prompt competing with backend registry
+3. infinite remediation
+4. same strategy repeating forever
+5. help reset before evidence capture
+6. assisted correct becoming mastery
+7. exact same task used as independent re-check
+8. LOWER_DIFFICULTY lowering canonical cognitive target
+9. prerequisite action mutating node
+10. C7.2 stage bypass
+11. C7.1 progression bypass
+12. C7.3 target-lock bypass
+13. stale-target remediation write
+14. one wrong answer becoming C5 NOT_KNOWN
+15. remediation exhaustion falsely completing level/node.
+
+Fix concrete C7.4 findings.
+
+Rerun affected tests.
+
+==================================================
+27. SAFE ACCEPTANCE SCENARIO
+==================================================
+
+Prefer deterministic/provider-free session fixture.
+
+Verify:
+
+C6 target X / APPLY
+
+→ TEACH
+→ MICRO_CHECK
+→ learner incorrect
+→ FEEDBACK
+→ conceptual/procedural remediation action
+→ support
+→ new check
+→ assisted correct if applicable
+→ assistance preserved
+→ independent re-check required
+→ no C4/C6 progression until canonical evidence allows it.
+
+Then verify repeated failure:
+
+→ bounded remediation exhaustion
+→ truthful state preserved
+→ no fake mastery
+→ no node/level drift.
+
+==================================================
+28. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. C7.4 VERDICT
+
+B. ERROR TAXONOMY
+
+Canonical families actually implemented.
+
+C. ACTION REGISTRY
+
+Canonical error → action ownership.
+
+D. REMEDIATION BUDGET
+
+Exact implemented policy/state.
+
+E. STRATEGY VARIATION
+
+How repetition is prevented.
+
+F. HELP / ASSISTANCE
+
+Persistence and escalation behavior.
+
+G. ASSISTED → INDEPENDENT RE-CHECK
+
+Exact flow.
+
+H. PARTIAL / INCORRECT / UNCLEAR / NO_RESPONSE
+
+Behavior for each.
+
+I. PREREQUISITE BOUNDARY
+
+Confirm C6 ownership.
+
+J. COGNITIVE LOAD
+
+Confirm target-level preservation.
+
+K. EXHAUSTION / REVISIT
+
+Exact terminal behavior.
+
+L. C7.1–C7.3 REGRESSION STATUS
+
+M. FILES CHANGED
+
+N. TEST RESULTS
+
+O. ACCEPTANCE RESULT
+
+P. REMAINING C7 ITEMS
+
+Only:
+C7.5
+C7.6
+
+Q. FINAL VERDICT
+
+Return exactly one:
+
+C7.4 COMPLETE — remediation and help are bounded, evidence-safe, and
+strategy-aware without changing the canonical C6 target.
+
+or
+
+C7.4 BLOCKED — <smallest exact blocker>
+
+==================================================
+29. STOP
+==================================================
+
+Do not start C7.5.
+Do not start C7.6.
+
+Do not implement Flashcards.
+Do not implement Quiz improvements.
+Do not implement Today/Diary.
+
+If completing C7.4 requires changing C3/C4/C6 semantics:
+
+STOP and report the blocker.
+
+Otherwise implement, verify, report, and STOP.
