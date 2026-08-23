@@ -1,0 +1,391 @@
+TEACHER MAPPING UI SIMPLIFICATION — BULK ACTIONS + SINGLE FINAL APPROVAL
+
+IMPORTANT:
+This is a UI/workflow simplification task.
+
+DO NOT redesign or weaken:
+- C1 mapping validation
+- C2 Cognitive Path validation
+- C3 Evidence
+- C4 Learner Model
+- C5 Knowledge Tree
+- C6 personalization
+- C7 AI Teacher runtime
+- source/provenance safety
+- final readiness validation
+
+DO NOT change database semantics unless absolutely required for UI wiring.
+DO NOT publish/deploy.
+
+Goal:
+Make the teacher mapping workflow much simpler while preserving all
+existing backend safety gates.
+
+==================================================
+1. TARGET TEACHER WORKFLOW
+==================================================
+
+The desired teacher workflow is:
+
+1. Create lesson
+2. Create / review / confirm Lesson Goal + Outcomes
+3. Run Mapping
+4. Generate Cognitive Paths for all eligible MicroNodes with ONE bulk action
+5. Generate Teaching Content for all eligible MicroNodes with ONE bulk action
+6. Teacher reviews the generated result
+7. ONE final lesson approval
+8. "Հանձնարարել սովորողին" becomes enabled only when canonical readiness passes
+
+The teacher should NOT have to manually approve every small technical
+sub-object individually unless something specifically requires review.
+
+Backend validation stays strict.
+
+==================================================
+2. TOP-LEVEL MAPPING ACTIONS
+==================================================
+
+In the main detailed mapping block, provide a clear compact action area
+near the top.
+
+Required actions:
+
+- «Ստեղծել ճանաչողական ուղիները»
+- «Ստեղծել ուսուցման բովանդակությունը»
+- «Հաստատել դասը»
+
+Use existing backend bulk/generation/final-approval routes where they already exist.
+
+Do NOT create duplicate backend authority.
+
+==================================================
+3. BULK COGNITIVE PATH GENERATION
+==================================================
+
+Add/use ONE button:
+
+«Ստեղծել ճանաչողական ուղիները»
+
+Behavior:
+
+- process all eligible MicroNodes
+- skip nodes already correctly confirmed unless explicit regeneration is requested
+- do NOT generate C2 for C1 review-required/source-insufficient nodes
+- preserve fail-closed C2 validation
+- report clearly which nodes:
+  - succeeded
+  - already existed
+  - require C1 review
+  - failed validation
+
+Do not require teacher to open every MicroNode and click generate one by one.
+
+Existing per-node Cognitive Path block remains available for review/editing.
+
+==================================================
+4. BULK TEACHING CONTENT GENERATION
+==================================================
+
+Add/use ONE button:
+
+«Ստեղծել ուսուցման բովանդակությունը»
+
+Behavior:
+
+- generate missing teaching content for all eligible MicroNodes
+- do not overwrite valid existing approved content unnecessarily
+- preserve source grounding
+- report nodes that succeeded / failed / require review
+
+Do not require generation one MicroNode at a time.
+
+==================================================
+5. FINAL APPROVAL
+==================================================
+
+Use ONE clear final lesson action:
+
+«Հաստատել դասը»
+
+This button must call the existing canonical final readiness/approval
+validation.
+
+The backend must still verify all required gates.
+
+The UI simplification MUST NOT mean automatic approval of invalid:
+
+- Mapping
+- source/provenance
+- MicroNodes
+- Outcome alignment
+- C2 paths
+- teaching content
+- exercises/tasks
+
+If readiness fails:
+
+show a concise list of the exact remaining review items.
+
+Do not make the teacher click many redundant approval buttons merely to
+satisfy internal states if canonical final approval can safely confirm
+them through the existing workflow.
+
+If some current manual confirmation is semantically required by the
+architecture, preserve that backend requirement but simplify its UI
+presentation as much as safely possible.
+
+==================================================
+6. STUDENT ASSIGNMENT BUTTON
+==================================================
+
+«Հանձնարարել սովորողին» must remain disabled until the lesson is
+canonically ready/approved.
+
+After successful final lesson approval:
+
+- button becomes enabled
+- no additional hidden technical confirmation should be required.
+
+Do NOT change assignment semantics.
+
+==================================================
+7. MICRONODE ACTION ICONS — VERY IMPORTANT
+==================================================
+
+Current MicroNode action row includes icons similar to:
+
+👁 🧠 ✏️ 🗑️
+
+CHANGE ONLY THIS:
+
+REMOVE the 🧠 icon from the MicroNode card action row.
+
+KEEP:
+
+👁
+✏️
+🗑️
+
+Do NOT remove or redesign the Cognitive Path block itself.
+
+The Cognitive Path section must remain exactly available inside the
+MicroNode details as it is now.
+
+The 👁 icon must remain and continue to show/open the MicroNode's
+Teaching Content / educational content view exactly as it currently does.
+
+Do NOT change the behavior of 👁.
+
+Do NOT move Cognitive Path into 👁.
+
+Do NOT remove:
+- Cognitive Path levels
+- Performance Objective
+- Success Criterion
+- task links
+- regenerate/edit controls inside the Cognitive Path section
+
+Only remove the redundant 🧠 shortcut icon from the MicroNode action row.
+
+==================================================
+8. REDUCE STATUS NOISE
+==================================================
+
+The current UI shows too many simultaneous technical status phrases.
+
+Examples:
+
+- Հաստատված
+- Աղբյուրը բավարար է
+- Ճանաչողական ուղին հաստատված է
+- Ճանաչողական ուղին հիմնավորված է
+- Սևագիր
+- Վերանայել
+
+Simplify the PRIMARY visible MicroNode status.
+
+Prefer one main teacher-facing state such as:
+
+✅ Պատրաստ է
+⚠ Վերանայել
+📝 Սևագիր
+
+Detailed technical statuses may remain visible inside expanded/review
+details where useful.
+
+Do NOT hide a real blocking condition.
+
+Do NOT change backend statuses.
+
+This is presentation simplification only.
+
+==================================================
+9. EXERCISE APPROVAL UI
+==================================================
+
+Do NOT remove exercise data or validation.
+
+But avoid forcing the teacher to click «Հաստատել» on every individual
+exercise when a safe bulk/final approval path already exists.
+
+Keep per-exercise edit/delete/review capability.
+
+If an exercise specifically requires manual review because of a real
+problem, show that one clearly.
+
+The normal happy path should not require dozens of repetitive approval
+clicks.
+
+==================================================
+10. KEEP EXISTING DETAILS AVAILABLE
+==================================================
+
+The teacher must still be able to expand and inspect:
+
+- source text/context
+- learning objective
+- Cognitive Path
+- Teaching Content
+- exercises
+- provenance/review details where needed
+
+The goal is NOT to remove expert controls.
+
+The goal is:
+
+simple default workflow
++
+detailed controls on demand.
+
+==================================================
+11. DO NOT CHANGE CONTENT STRUCTURE
+==================================================
+
+Do NOT alter:
+
+- Topic/MicroNode hierarchy
+- mapping output
+- Cognitive Path semantics
+- exercise linking
+- source content
+- Outcome links
+- Teaching Package content model
+
+This task changes teacher workflow/UI only.
+
+==================================================
+12. RESPONSIVE / CLEAN LAYOUT
+==================================================
+
+Make the top mapping action area visually clear and compact.
+
+Recommended order:
+
+Քարտեզագրում
+[Ստեղծել ճանաչողական ուղիները]
+[Ստեղծել ուսուցման բովանդակությունը]
+[Հաստատել դասը]
+
+Show concise readiness/progress near them.
+
+Example concept:
+
+Քարտեզագրում՝ պատրաստ
+Ճանաչողական ուղիներ՝ 4/5
+Ուսուցման բովանդակություն՝ 3/5
+Վերանայում է պահանջում՝ 1
+
+Do not expose internal technical identifiers.
+
+==================================================
+13. REGRESSION SAFETY
+==================================================
+
+Verify all existing actions still work:
+
+- Mapping
+- Manual Mapping
+- Topic CRUD
+- MicroNode CRUD
+- ordering
+- Cognitive Path review/edit/regenerate
+- Teaching Content view via 👁
+- Teaching Content generation
+- exercise CRUD
+- final approval
+- assignment readiness
+
+Backend behavior must remain unchanged except minimal wiring required for
+bulk UI actions.
+
+==================================================
+14. VISUAL ACCEPTANCE
+==================================================
+
+Use current real lesson:
+
+Մաթեմատիկա 5
+§1.4 Կարգեր, կարգային միավորներ
+
+Verify teacher can understand the main workflow without opening every
+MicroNode:
+
+1. Mapping exists
+2. One-click Cognitive Path generation
+3. One-click Teaching Content generation
+4. Review issues are visible
+5. One final approval
+6. Assignment readiness becomes clear
+
+For each MicroNode:
+
+- 🧠 shortcut icon is gone
+- 👁 remains and works exactly as before
+- ✏️ remains
+- 🗑️ remains
+- Cognitive Path section remains unchanged inside the card/details
+
+==================================================
+15. FINAL REPORT
+==================================================
+
+Return:
+
+A. OLD WORKFLOW
+
+B. NEW TEACHER WORKFLOW
+
+C. TOP-LEVEL ACTIONS ADDED/REUSED
+
+D. MICRONODE ICON CHANGE
+Must explicitly confirm:
+- 🧠 removed
+- 👁 unchanged
+- ✏️ unchanged
+- 🗑️ unchanged
+- Cognitive Path section unchanged
+
+E. STATUS SIMPLIFICATION
+
+F. EXERCISE APPROVAL SIMPLIFICATION
+
+G. FINAL APPROVAL / ASSIGNMENT READINESS
+
+H. FILES CHANGED
+
+I. BACKEND SEMANTICS CHANGED
+YES / NO
+If YES, explain only minimal required wiring.
+
+J. DATABASE CHANGED
+YES / NO
+
+K. REGRESSION RESULTS
+
+L. VISUAL ACCEPTANCE
+
+Then STOP.
+
+Do not redesign other teacher dashboard areas.
+Do not start Quiz/Flashcards/Today/Journal work.
+Do not publish/deploy.
