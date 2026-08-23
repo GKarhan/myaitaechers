@@ -163,6 +163,12 @@ interface LessonJobStatus {
       blockCode?: string;
     }>;
   } | null;
+  currentState?: {
+    total: number;
+    complete: number;
+    missing: number;
+    retryAllowed: boolean;
+  };
 }
 
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
@@ -646,7 +652,7 @@ function GenerateTeachingContentButton({
   hasNodes: boolean;
   /** True when ≥1 node already has teaching content; the server fills gaps only. */
   hasExistingPhase2: boolean;
-  /** True when every MicroNode already has generated Teaching Content. */
+  /** True when every MicroNode has all persisted Teaching Content fields. */
   hasTeachingContentForAllNodes: boolean;
   /** Teaching Content is offered after every Cognitive Path is safely generated. */
   prerequisitesReady: boolean;
@@ -695,16 +701,6 @@ function GenerateTeachingContentButton({
   }, [genStatus?.status]);
 
   const handleGenerate = async () => {
-    // Safety: if lesson already has Phase 2 enrichment, require explicit confirmation
-    // before asking the lesson-wide job to fill the remaining content.
-    if (hasExistingPhase2) {
-      const ok = window.confirm(
-        "Դասում արդեն կա ուսուցման բովանդակություն։\n\n" +
-        "Շարունակելու դեպքում կլրացվեն միայն բացակա MicroNode-ները։\n\n" +
-        "Շարունակե՞լ։"
-      );
-      if (!ok) return;
-    }
     setGenError(null);
     setGenDone(false);
     setPostPending(true);
@@ -727,6 +723,8 @@ function GenerateTeachingContentButton({
     ?? (genStatus?.status === 'running'  ? 'Arabatk...'
       : genStatus?.status === 'pending' ? 'Spasuma...' : '');
   const teachingContentResult = genStatus?.status === 'completed' ? genStatus.result : null;
+  const currentState = genStatus?.currentState;
+  const retryAllowed = currentState?.retryAllowed ?? !hasTeachingContentForAllNodes;
   const teachingContentBlocks = teachingContentResult?.summary?.filter(
     (row) => row.status === 'blocked_c1' || row.status === 'blocked_c2',
   ) ?? [];
@@ -739,10 +737,10 @@ function GenerateTeachingContentButton({
       </span>
     );
   }
-  if (hasTeachingContentForAllNodes) {
+  if (hasTeachingContentForAllNodes && !retryAllowed) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-medium text-amber-200">
-        ⚠ Վերանայել
+      <span className="text-[10px] text-white/55">
+        Պատրաստ է
       </span>
     );
   }
@@ -856,9 +854,6 @@ function NodeViewModal({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono text-primary/60">{String(node.sequence ?? "?")}.</span>
               <span className="text-sm font-semibold text-white leading-snug">{String(node.title ?? "")}</span>
-              {node.status === "approved" && (
-                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">✅ Հաստատված</span>
-              )}
             </div>
             {node.targetBloomLevel != null && (
               <span className="text-[10px] text-primary/40 mt-0.5 inline-block">Bloom {String(node.targetBloomLevel)}</span>
@@ -1339,10 +1334,7 @@ function LessonNodesPanel({
       && Array.isArray(content.basicExamples) && content.basicExamples.length > 0
       && Array.isArray(content.nonExamples) && content.nonExamples.length > 0;
   };
-  const hasGeneratedTeachingContent = (node: (typeof nodes)[number]) => {
-    const content = node as any;
-    return typeof content.childFriendlyExplanation === "string" && content.childFriendlyExplanation.trim().length > 0;
-  };
+  const hasGeneratedTeachingContent = hasCompleteTeachingContent;
   const cognitivePathsCreated = nodes.filter((node) =>
     ["needs_review", "confirmed"].includes((node as any).cogPathStatus),
   ).length;
@@ -1995,7 +1987,7 @@ function LessonNodesPanel({
                     onClick={() => saveNode(n.id)}
                     disabled={updateNode.isPending}
                     className={btnSm + " bg-primary text-black disabled:opacity-40"}
-                  >{updateNode.isPending ? "..." : "Հաստատել"}</button>
+                  >{updateNode.isPending ? "..." : "Պահպանել"}</button>
                   <button
                     onClick={() => { setEditingNodeId(null); setEditNodeForm(null); }}
                     className={btnSm + " bg-white/10 text-muted-foreground"}
@@ -2006,9 +1998,6 @@ function LessonNodesPanel({
               <>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-semibold text-white">{n.title}</span>
-                  {nodeStatus === 'approved' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✅ Հաստատված</span>
-                  )}
                   {nodeStatus === 'needs_review' && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠️ Վերանայում է պետք</span>
                   )}
@@ -2153,7 +2142,7 @@ function LessonNodesPanel({
                         {nodes.map((nd) => <option key={nd.id} value={String(nd.id)}>{nd.sequence}. {nd.title}</option>)}
                       </select>
                       <div className="flex gap-1">
-                        <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Հաստատել"}</button>
+                        <button onClick={() => saveEx(ex.id)} disabled={updateEx.isPending} className={btnSm + " bg-primary text-black disabled:opacity-40"}>{updateEx.isPending ? "..." : "Պահպանել"}</button>
                         <button onClick={() => { setEditingExerciseId(null); setEditExForm(null); }} className={btnSm + " bg-white/10 text-muted-foreground"}>Չեղարկել</button>
                       </div>
                     </div>
@@ -2182,18 +2171,8 @@ function LessonNodesPanel({
                             </span>
                           )}
                           {ex.sourcePage && <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>}
-                          {/* Gate 1.4 — approval status badge */}
-                          {ex.status === "approved" ? (
-                            <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված</span>
-                          ) : (
-                            <>
-                              <span className="text-[10px] text-amber-400/60">🟡 Սևագիր</span>
-                              <button
-                                onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
-                                disabled={updateEx.isPending}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
-                              >Հաստատել</button>
-                            </>
+                          {ex.status !== "approved" && (
+                            <span className="text-[10px] text-amber-400/60">⚠ Վերանայել</span>
                           )}
                         </div>
                       </div>
@@ -2282,9 +2261,6 @@ function LessonNodesPanel({
                   ({[...cogPathData[n.id]!.levels].sort((a, b) => CANONICAL_COG_ORDER.indexOf(a.cognitiveLevel) - CANONICAL_COG_ORDER.indexOf(b.cognitiveLevel)).map((l) => COG_LEVEL_LABELS[l.cognitiveLevel] ?? l.cognitiveLevel).join(' → ')})
                 </span>
               ) : null}
-              {cogPathData[n.id]?.cogPathStatus === 'confirmed' && (
-                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">✓ Հաստատվել</span>
-              )}
               {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (
                 <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">⏳ Gashmvum e</span>
               )}
@@ -2304,17 +2280,6 @@ function LessonNodesPanel({
               {/* Error */}
               {cogPathError[n.id] && (
                 <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1">{cogPathError[n.id]}</p>
-              )}
-
-              {/* Confirm button — shown when path exists and is not yet confirmed */}
-              {cogPathData[n.id]?.cogPathStatus === 'needs_review' && (cogPathData[n.id]?.levels.length ?? 0) > 0 && (
-                <button
-                  onClick={() => confirmCogPath(n.id)}
-                  disabled={!!cogPathConfirming[n.id]}
-                  className={btnSm + " bg-emerald-600/70 text-white text-[10px] hover:bg-emerald-500/80 disabled:opacity-40"}
-                >
-                  {cogPathConfirming[n.id] ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : '✓ Հաստատել ճանաչողական ուղին'}
-                </button>
               )}
 
               {/* Levels list — sorted by canonical Bloom order, not DB sequence */}
@@ -2646,19 +2611,18 @@ function LessonNodesPanel({
                       lessonId={lessonId}
                       hasNodes={nodes.length > 0}
                       hasExistingPhase2={teachingContentGenerated > 0}
-                      hasTeachingContentForAllNodes={allTeachingContentGenerated}
+                      hasTeachingContentForAllNodes={allTeachingContentComplete}
                       prerequisitesReady={allCognitivePathsCreated}
                       isLocked={lessonIsApproved}
                       onInspectNode={openCogPathFromBulkResult}
                     />
                   </div>
-                  {teachingContentGenerated > 0 && !lessonIsApproved && (
+                  {teachingContentComplete > 0 && !lessonIsApproved && (
                     <p className={"mt-1 text-[9px] " + (
-                      allTeachingContentGenerated ? "text-emerald-300/70" : "text-amber-200/75"
+                       allTeachingContentComplete ? "text-white/55" : "text-amber-200/75"
                     )}>
-                      {teachingContentGenerated} / {nodes.length} ստեղծված
-                      {!allTeachingContentGenerated && ` · ⚠ ${nodes.length - teachingContentGenerated}-ը պատրաստ չէ`}
-                      {allTeachingContentGenerated && !allTeachingContentComplete && " · ⚠ Վերջնական հաստատման համար պետք է լրացնել ձեռքով"}
+                      {teachingContentComplete} / {nodes.length} պատրաստ է
+                      {!allTeachingContentComplete && ` · ⚠ ${nodes.length - teachingContentComplete}-ը պատրաստ չէ`}
                     </p>
                   )}
                 </div>
@@ -2941,17 +2905,6 @@ function LessonNodesPanel({
                   Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը
                 </p>
               )}
-              {/* Gate 1.4: Approve All exercises — lesson-scoped, transaction-safe */}
-              {exercises.some((e) => e.status !== "approved") && exercises.length > 0 && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => approveAllEx.mutate({ lessonId }, { onSuccess: refreshEx })}
-                    disabled={approveAllEx.isPending}
-                    className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 font-medium"
-                  >{approveAllEx.isPending ? "…" : "✅ Հաստատել բոլոր վարժությունները"}</button>
-                </div>
-              )}
-
               {/* ── Topic list with drag-to-reorder ── */}
               {reorderSaving && (
                 <p className="text-[10px] text-primary/60 text-center">Պահպանվում է...</p>
@@ -3176,18 +3129,8 @@ function LessonNodesPanel({
                                   {ex.sourcePage && (
                                     <span className="text-[10px] text-muted-foreground/40"> Էջ {ex.sourcePage}</span>
                                   )}
-                                  {/* Gate 1.4 — approval status badge */}
-                                  {ex.status === "approved" ? (
-                                    <span className="text-[10px] text-emerald-400/70 font-medium">✅ Հաստատված </span>
-                                  ) : (
-                                    <>
-                                      <span className="text-[10px] text-amber-400/60">🟡 Սևագիր</span>
-                                      <button
-                                        onClick={() => updateEx.mutate({ lessonId, exerciseId: ex.id, data: { status: "approved" } }, { onSuccess: refreshEx })}
-                                        disabled={updateEx.isPending}
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
-                                      >Հաստատել</button>
-                                    </>
+                                  {ex.status !== "approved" && (
+                                    <span className="text-[10px] text-amber-400/60">⚠ Վերանայել</span>
                                   )}
                                 </div>
                               </div>

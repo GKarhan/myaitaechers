@@ -263,7 +263,7 @@ it("D1: inflated sourceExerciseCount in meta → LOST_SOURCE_EXERCISES error", a
 
 // ── F: Exercise approval states ───────────────────────────────────────────────
 
-it("F1: draft textbook exercise → DRAFT_SOURCE_EXERCISES error", async () => {
+it("F1: draft textbook exercise → review warning, not final-approval blocker", async () => {
   const snap = await getExercise(EX.id);
   assert.ok(snap);
   try {
@@ -271,15 +271,15 @@ it("F1: draft textbook exercise → DRAFT_SOURCE_EXERCISES error", async () => {
       .set({ status: "draft" })
       .where(eq(lessonExercisesTable.id, EX.id));
     const result = await validateLessonForFinalApproval(LESSON_ID);
-    const err = result.errors.find((e) => e.code === "DRAFT_SOURCE_EXERCISES");
-    assert.ok(err, "Expected DRAFT_SOURCE_EXERCISES error");
-    assert.ok((err?.count ?? 0) >= 1, "Count must be ≥ 1");
+    const warning = result.warnings.find((e) => e.code === "DRAFT_SOURCE_EXERCISES_REVIEW_REQUIRED");
+    assert.ok(warning, "Expected review warning");
+    assert.ok((warning?.count ?? 0) >= 1, "Count must be ≥ 1");
   } finally {
     await restoreExercise(snap!);
   }
 });
 
-it("F2: DRAFT_SOURCE_EXERCISES blocks final-approve → 422", async () => {
+it("F2: draft source exercise does not block the one lesson-level approval", async () => {
   const snap = await getExercise(EX.id);
   assert.ok(snap);
   try {
@@ -287,11 +287,8 @@ it("F2: DRAFT_SOURCE_EXERCISES blocks final-approve → 422", async () => {
       .set({ status: "draft" })
       .where(eq(lessonExercisesTable.id, EX.id));
     const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(status, 422);
-    assert.equal(body.approved, false);
-    assert.ok(
-      (body.errors as Array<{ code: string }>).some((e) => e.code === "DRAFT_SOURCE_EXERCISES"),
-    );
+    assert.equal(status, 200);
+    assert.equal(body.approved, true);
   } finally {
     await restoreExercise(snap!);
   }
@@ -333,7 +330,7 @@ it("G2: MISSING_PHASE2 blocks final-approve → 422", async () => {
   }
 });
 
-it("H1: needs_review teaching candidate blocks final-approve → 422", async () => {
+it("H1: safe needs_review node does not require redundant per-node approval", async () => {
   const snap = await getNode(NODE.id);
   assert.ok(snap);
   try {
@@ -341,11 +338,8 @@ it("H1: needs_review teaching candidate blocks final-approve → 422", async () 
       .set({ status: "needs_review" })
       .where(eq(lessonNodesTable.id, NODE.id));
     const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(status, 422);
-    assert.ok(
-      (body.errors as Array<{ code: string }>).some((error) => error.code === "UNREVIEWED_MICRONODES"),
-      "Expected UNREVIEWED_MICRONODES to block final approval",
-    );
+    assert.equal(status, 200);
+    assert.equal(body.approved, true);
   } finally {
     await restoreNode(snap!);
   }

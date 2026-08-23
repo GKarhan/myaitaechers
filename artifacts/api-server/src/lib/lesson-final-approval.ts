@@ -143,7 +143,10 @@ export async function validateLessonForFinalApproval(
       .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
   ]);
 
-  const approvedNodes = nodes.filter((n) => n.status === "approved");
+  // Final approval is the teacher's one explicit acceptance action. Current
+  // canonical content—not a routine per-node approval flag—determines whether
+  // a mapped node is safe to deliver.
+  const approvedNodes = nodes;
   const sourceExercises = exercises.filter((e) => e.sourceType === "textbook");
   const draftSourceExercises = sourceExercises.filter((e) => e.status !== "approved");
   const phase2CompleteNodes = approvedNodes.filter(
@@ -167,15 +170,6 @@ export async function validateLessonForFinalApproval(
       messageArm: "Դասը պետք է ունենա առնվազն մեկ MicroNode՝ վերջնական հաստատման համար։",
     });
   }
-  const unreviewedNodes = nodes.filter((node) => node.status !== "approved");
-  if (unreviewedNodes.length > 0) {
-    errors.push({
-      code: "UNREVIEWED_MICRONODES",
-      messageArm: `${unreviewedNodes.length} MicroNode դեռ ուսուցչի կողմից հաստատված չէ։`,
-      count: unreviewedNodes.length,
-    });
-  }
-
   if (instructionalCoverage && instructionalCoverage.valid !== true) {
     const unresolved = Array.isArray(instructionalCoverage.unresolvedInstructionalIndices)
       ? instructionalCoverage.unresolvedInstructionalIndices.length
@@ -191,7 +185,7 @@ export async function validateLessonForFinalApproval(
     const unresolvedSourceNodes = sourceAlignment.nodes.filter(
       (entry: { nodeId?: number; status?: string; reviewStatus?: string }) =>
         currentNodeIds.has(entry.nodeId ?? -1)
-        && entry.status !== "SUFFICIENT"
+        && (entry.status === "INSUFFICIENT" || entry.status === "UNREADABLE")
         && entry.reviewStatus !== "RESOLVED_BY_TEACHER",
     );
     if (unresolvedSourceNodes.length > 0) {
@@ -199,6 +193,19 @@ export async function validateLessonForFinalApproval(
         code: "MICRONODE_SOURCE_ALIGNMENT_REQUIRED",
         messageArm: "Յուրաքանչյուր MicroNode պետք է բավարար չափով հիմնավորվի իր հաստատված աղբյուրով։",
         count: unresolvedSourceNodes.length,
+      });
+    }
+  }
+  if (Array.isArray(sourceAlignment?.nodes)) {
+    const safeReviewCount = sourceAlignment.nodes.filter(
+      (entry: { nodeId?: number; status?: string }) =>
+        nodes.some((node) => node.id === entry.nodeId) && entry.status === "PARTIAL",
+    ).length;
+    if (safeReviewCount > 0) {
+      warnings.push({
+        code: "MICRONODE_SOURCE_ALIGNMENT_REVIEW_REQUIRED",
+        messageArm: `${safeReviewCount} MicroNode-ի աղբյուրային կապը խորհուրդ է տրվում վերանայել։`,
+        count: safeReviewCount,
       });
     }
   }
@@ -330,9 +337,9 @@ export async function validateLessonForFinalApproval(
 
   // ── F: Exercise approval states ─────────────────────────────────────────────
   if (draftSourceExercises.length > 0) {
-    errors.push({
-      code: "DRAFT_SOURCE_EXERCISES",
-      messageArm: `Chakatagrvacu aghbyuray varjutyunner · ${draftSourceExercises.length}`,
+    warnings.push({
+      code: "DRAFT_SOURCE_EXERCISES_REVIEW_REQUIRED",
+      messageArm: `Աղբյուրային ${draftSourceExercises.length} վարժություն խորհուրդ է տրվում վերանայել։`,
       count: draftSourceExercises.length,
     });
   }
@@ -362,15 +369,6 @@ export async function validateLessonForFinalApproval(
       .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeIds));
     for (const node of approvedNodes) {
       const levels = cognitiveLevels.filter((level) => level.lessonNodeId === node.id);
-      if ((node as any).cogPathStatus !== "confirmed") {
-        errors.push({
-          code: "COGNITIVE_PATH_REVIEW_REQUIRED",
-          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին պետք է ուսուցչի կողմից հաստատվի։`,
-          nodeId: node.id,
-          nodeTitle: node.title,
-        });
-        continue;
-      }
       if (levels.length === 0 || levels.filter((level) => level.isTargetCeiling).length !== 1) {
         errors.push({
           code: "COGNITIVE_PATH_INVALID",
@@ -389,10 +387,17 @@ export async function validateLessonForFinalApproval(
           preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
         })),
       );
-      if (grounding.status !== "GROUNDED") {
+      if (!grounding.valid) {
         errors.push({
           code: "COGNITIVE_PATH_GROUNDING_INVALID",
           messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին դուրս է գալիս հաստատված աղբյուրի սահմաններից։`,
+          nodeId: node.id,
+          nodeTitle: node.title,
+        });
+      } else if (grounding.status === "REVIEW_REQUIRED" || (node as any).cogPathStatus !== "confirmed") {
+        warnings.push({
+          code: "COGNITIVE_PATH_REVIEW_REQUIRED",
+          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին խորհուրդ է տրվում վերանայել։`,
           nodeId: node.id,
           nodeTitle: node.title,
         });

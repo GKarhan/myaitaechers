@@ -32,6 +32,11 @@ import { validateCognitivePathGrounding } from "../lib/cognitive-path-grounding.
 import { assessC2GenerationPreflight } from "../lib/c2-generation-preflight.js";
 import { assessApprovedMicroNodeC2Readiness } from "../lib/c2-readiness.js";
 import {
+  hasCompleteTeachingContent,
+  summarizeCurrentTeachingContent,
+  shouldRunBoundedPhase2Repair,
+} from "../lib/teaching-content-readiness.js";
+import {
   isLearnerDeliveryEligible,
   resolveLearnerExerciseContent,
 } from "../lib/exercise-content-boundary.js";
@@ -1146,6 +1151,13 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
 
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (lesson.status === "approved") {
+    res.status(409).json({
+      error: "LESSON_APPROVED",
+      message: "Վերջնական հաստատումից հետո ուսուցման բովանդակության AI գեներացումը փակ է։",
+    });
+    return;
+  }
   if (lesson.status === "approved") {
     res.status(409).json({
       error: "LESSON_APPROVED",
@@ -5047,6 +5059,9 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       blockType:                 lessonNodesTable.blockType,
       status:                    lessonNodesTable.status,
       childFriendlyExplanation:  lessonNodesTable.childFriendlyExplanation,
+      commonMisconception:       lessonNodesTable.commonMisconception,
+      basicExamples:             lessonNodesTable.basicExamples,
+      nonExamples:               lessonNodesTable.nonExamples,
       changeReason:              lessonNodesTable.changeReason,
       cogPathStatus:             (lessonNodesTable as any).cogPathStatus,
     })
@@ -5054,15 +5069,17 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     .where(eq(lessonNodesTable.lessonId, lessonId))
     .orderBy(asc(lessonNodesTable.sequence));
 
-  // Only process nodes that are missing Phase 2 content — never overwrite completed nodes.
-  const nodes = allNodes.filter((n) => !n.childFriendlyExplanation);
+  // Current persisted fields—not a historical completed job—decide retry
+  // eligibility. An incomplete node may safely receive only its missing fields;
+  // a complete or teacher-edited node is never sent back to the model.
+  const nodes = allNodes.filter((node) => !hasCompleteTeachingContent(node));
 
   if (allNodes.length === 0) {
     res.status(400).json({ error: "No MicroNodes found — run /map first" });
     return;
   }
   if (nodes.length === 0) {
-    res.status(400).json({ error: "All MicroNodes already have Phase 2 content — nothing to generate" });
+    res.status(400).json({ error: "All MicroNodes already have complete Teaching Content — nothing to generate" });
     return;
   }
 
@@ -5197,7 +5214,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         // Bounded repair: a generated candidate that fails the source-grounding
         // validator gets one fresh constrained attempt. Existing content is never
         // sent here because this job processes only missing content.
-        if (result.skipped && result.groundingAudit && !result.groundingAudit.valid) {
+        if (shouldRunBoundedPhase2Repair(result, 0)) {
           result = await generatePhase2Content(input, exercises);
         }
         return { nodeId: node.id, blocked: false as const, result };
@@ -5277,10 +5294,33 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
             .set(phase2Updates)
             .where(eq(lessonNodesTable.id, result.nodeId));
 
+          // A provider response is not success. Count a node only after the
+          // persisted record can be read back with all required fields.
+          const [persisted] = await db
+            .select({
+              childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+              commonMisconception: lessonNodesTable.commonMisconception,
+              basicExamples: lessonNodesTable.basicExamples,
+              nonExamples: lessonNodesTable.nonExamples,
+            })
+            .from(lessonNodesTable)
+            .where(eq(lessonNodesTable.id, result.nodeId))
+            .limit(1);
+          if (!persisted || !hasCompleteTeachingContent(persisted)) {
+            summaryRows.push({
+              nodeId: result.nodeId,
+              title: nodeTitle,
+              status: "persistence_incomplete",
+              confidence: null,
+              sourceType: "—",
+              skipReason: "Ստեղծված բովանդակությունը ամբողջությամբ չի պահպանվել։ Կարելի է կրկին փորձել։",
+            });
+            continue;
+          }
           summaryRows.push({
-            nodeId:     result.nodeId,
-            title:      nodeTitle,
-            status:     "needs_review",
+            nodeId: result.nodeId,
+            title: nodeTitle,
+            status: "needs_review",
             confidence: null,
             sourceType: "textbook",
           });
@@ -5290,7 +5330,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
 
     const readyCount            = 0;
     const needsReviewCount      = summaryRows.filter((r) => r.status === "needs_review").length;
-    const needsSourceCount      = summaryRows.filter((r) => r.status === "needs_source_content").length;
+    const needsSourceCount      = summaryRows.filter((r) => r.status === "needs_source_content" || r.status === "persistence_incomplete").length;
     const skippedReviewCount    = summaryRows.filter((r) => r.status === "skipped_needs_review").length;
     const blockedC1Count        = summaryRows.filter((r) => r.status === "blocked_c1").length;
     const blockedC2Count        = summaryRows.filter((r) => r.status === "blocked_c2").length;
@@ -5375,8 +5415,15 @@ router.get("/lessons/:lessonId/generate-status", requireAuth, requireLessonAutho
     .orderBy(desc(mappingJobsTable.id))
     .limit(1);
 
+  const currentNodes = await db.select({
+    childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+    commonMisconception: lessonNodesTable.commonMisconception,
+    basicExamples: lessonNodesTable.basicExamples,
+    nonExamples: lessonNodesTable.nonExamples,
+  }).from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
+  const currentState = summarizeCurrentTeachingContent(currentNodes);
   if (!job) {
-    res.json({ jobId: null, status: "none", progress: null, error: null });
+    res.json({ jobId: null, status: "none", progress: null, error: null, currentState });
     return;
   }
   res.json({
@@ -5384,6 +5431,7 @@ router.get("/lessons/:lessonId/generate-status", requireAuth, requireLessonAutho
     status: job.status, progress: job.progress ?? null,
     result: job.result ?? null, error: job.error ?? null,
     createdAt: job.createdAt, updatedAt: job.updatedAt,
+    currentState,
   });
 });
 
