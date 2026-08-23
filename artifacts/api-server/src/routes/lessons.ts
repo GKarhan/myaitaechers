@@ -60,6 +60,10 @@ import {
   resolveCanonicalC6Decision,
   type C6EntryIntent,
 } from "../services/c6-personalization.js";
+import { projectLearnerCognitiveCeiling } from "../services/learner-cognitive-ceiling.js";
+import {
+  applyAuthorizedTargetTransition,
+} from "../services/phase2/canonical-completion-authority.js";
 
 const router = Router();
 
@@ -1429,6 +1433,10 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
 // Active tasks cannot be bypassed; C6 owns mastery/prerequisite eligibility.
 router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (Number.isNaN(lessonId)) {
+    res.status(400).json({ error: "Invalid lesson id" });
+    return;
+  }
 
   const [session] = await db
     .select()
@@ -1450,6 +1458,21 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
     res.status(400).json({ error: "This session has no active node" });
     return;
   }
+  const requestedNodeId = (req.body as { currentNodeId?: unknown } | undefined)?.currentNodeId;
+  if (
+    requestedNodeId !== undefined &&
+    Number(requestedNodeId) !== session.currentNodeId
+  ) {
+    res.status(409).json({
+      error: "STALE_NODE_ADVANCE_REQUEST",
+      message: "Ընթացիկ հանգույցը փոխվել է։ Թարմացրու դասի վիճակը։",
+    });
+    return;
+  }
+  if (session.status !== "active") {
+    res.status(409).json({ error: "SESSION_NOT_ACTIVE" });
+    return;
+  }
   const hasAuthoritativeActiveTask =
     session.activeTaskProvenance !== null ||
     session.activeLessonExerciseId !== null ||
@@ -1458,6 +1481,17 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
     res.status(409).json({
       error: "ACTIVE_TASK_MUST_BE_COMPLETED",
       message: "Սկզբում ավարտիր ընթացիկ առաջադրանքը։",
+    });
+    return;
+  }
+  if (
+    session.nodeTeachingStage === "THEORY" ||
+    session.nodeTeachingStage === "TASK_REQUIRED" ||
+    session.nodeTeachingStage !== "VERIFIED"
+  ) {
+    res.status(409).json({
+      error: "CURRENT_NODE_NOT_CANONICALLY_COMPLETED",
+      message: "Ընթացիկ հանգույցի ավարտը դեռ չի հաստատվել։",
     });
     return;
   }
@@ -1470,6 +1504,23 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
 
   if (!lesson) {
     res.status(404).json({ error: "Lesson not found" });
+    return;
+  }
+
+  // Re-project from persisted qualified evidence before C6 reads learner state.
+  // This endpoint deliberately has no independent completion authority.
+  const c4Projection = await projectLearnerCognitiveCeiling(
+    req.userId!,
+    session.currentNodeId,
+  );
+  if (!c4Projection.pathAccepted || !c4Projection.reachedTarget) {
+    res.status(409).json({
+      error: "CURRENT_NODE_NOT_CANONICALLY_COMPLETED",
+      message: "Ընթացիկ հանգույցի ճանաչողական ապացույցները դեռ բավարար չեն։",
+      reasonCode: c4Projection.pathAccepted
+        ? "C4_TARGET_NOT_REACHED"
+        : "C2_PATH_UNAVAILABLE",
+    });
     return;
   }
 
@@ -1487,6 +1538,14 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
     });
     return;
   }
+  if (c6Decision.decisionType !== "ADVANCE") {
+    res.status(409).json({
+      error: "CURRENT_NODE_NOT_CANONICALLY_COMPLETED",
+      message: "Ընթացիկ հանգույցի ավարտը դեռ չի հաստատվել։",
+      reasonCode: c6Decision.reasonCode,
+    });
+    return;
+  }
   const [nextNode] = c6Decision.microNodeId === null
     ? []
     : await db
@@ -1495,7 +1554,6 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
       .where(eq(lessonNodesTable.id, c6Decision.microNodeId))
       .limit(1);
 
-  const now = new Date();
   const nextPhase =
     c6Decision.microNodeId === null &&
     c6Decision.decisionType === "ADVANCE" &&
@@ -1503,24 +1561,17 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
       ? 3
       : session.currentPhase;
 
+  await applyAuthorizedTargetTransition({
+    sessionId: session.id,
+    currentNodeId: nextNode?.id ?? null,
+    nextPhase,
+    nextActiveCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+  });
   const [updated] = await db
-    .update(lessonSessionsTable)
-    .set({
-      currentNodeId: nextNode?.id ?? null,
-      nodeStartedAt: nextNode ? now : null,
-      currentPhase: nextPhase,
-      activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
-      activeLessonExerciseId: null,
-      activeTaskProvenance: null,
-      activeTaskReference: null,
-      activeObjectiveTaskPayload: null,
-      activeAttemptSequence: 0,
-      activeHelpCount: 0,
-      activeAssistanceLevel: "none",
-      remediationStep: 0,
-    })
+    .select()
+    .from(lessonSessionsTable)
     .where(eq(lessonSessionsTable.id, session.id))
-    .returning();
+    .limit(1);
 
   res.json({
     currentNodeId: updated.currentNodeId ?? null,

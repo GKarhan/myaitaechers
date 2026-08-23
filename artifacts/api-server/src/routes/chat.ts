@@ -51,7 +51,6 @@ import {
 } from "../services/pedagogicalDecisionEngine.js";
 import {
   coordinatePedagogicalDecision,
-  deriveCognitiveAdvanceTaskReset,
   deriveGeneratedMicroCheckActivation,
   deriveLegacyCompletionAllowed,
   derivePostFeedbackContinuationAction,
@@ -74,14 +73,23 @@ import {
   resolveCanonicalC6Decision,
 } from "../services/c6-personalization.js";
 import {
+  applyAuthorizedTargetTransition,
+  authorizeCanonicalCompletion,
+  buildAuthorizedLevelTransitionUpdate,
+} from "../services/phase2/canonical-completion-authority.js";
+import {
   MAX_PHASE2_INTERNAL_CONTINUATIONS,
   nextPhase2ActionRequiresLearnerInput,
 } from "../services/phase2/continuation.js";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
-import { projectLearnerCognitiveCeiling } from "../services/learner-cognitive-ceiling.js";
+import {
+  projectLearnerCognitiveCeiling,
+  type LearnerCeilingProjection,
+} from "../services/learner-cognitive-ceiling.js";
 import {
   classifyQualifyingEvidence,
   createTaskReference,
+  type EvidenceQualificationStatus,
   type TaskSource,
 } from "../lib/evidence-contract.js";
 
@@ -436,14 +444,15 @@ async function advanceNodeInSession(
   lessonId: number,
   currentNodeId: number,
   currentPhase: number,
-  reviewNeeded: boolean
+  reviewNeeded: boolean,
+  canonicalC6Decision?: Awaited<ReturnType<typeof resolveCanonicalC6Decision>>,
 ): Promise<{
   newNodeId: number | null;
   newPhase: number;
   allNodesDone: boolean;
   c6BlockedReason?: "C2_PATH_UNAVAILABLE" | "DEPENDENCY_CYCLE" | "DEPENDENCY_TARGET_MISSING";
 }> {
-  const c6Decision = await resolveCanonicalC6Decision({
+  const c6Decision = canonicalC6Decision ?? await resolveCanonicalC6Decision({
     learnerId: userId,
     lessonId,
     afterMicroNodeId: currentNodeId,
@@ -485,33 +494,13 @@ async function advanceNodeInSession(
     newNodeId = null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const advanceSet: Record<string, unknown> = {
+  await applyAuthorizedTargetTransition({
+    sessionId,
     currentNodeId: newNodeId,
-    nodeStartedAt: newNodeId ? new Date() : null,
-    nodeAttemptCount: 0,
-    currentPhase: newPhase,
-    lastQuestionAsked: null,
-    nodeMasteryEvidenceCount: 0,
-    nodeConsecutiveCorrect:   0,
-    nodeConsecutiveIncorrect: 0,
-    nodeLastEvidenceQuality:  reviewNeeded ? "WEAK" : null,
-    nodeTeachingStage:        "THEORY",
-    // Phase 2B: reset active task state when advancing to a new node
-    activeLessonExerciseId: null,
-    activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
-    activeTaskProvenance:   null,
-    activeObjectiveTaskPayload: null,
-    activeAttemptSequence:  0,
-    activeHelpCount:        0,
-    activeAssistanceLevel:  "none",
-    // V2-R3: reset remediation step on node advance
-    remediationStep:        0,
-  };
-  await db
-    .update(lessonSessionsTable)
-    .set(advanceSet as any)
-    .where(eq(lessonSessionsTable.id, sessionId));
+    nextPhase: newPhase,
+    nextActiveCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+    reviewNeeded,
+  });
 
   logger.info(
     {
@@ -527,6 +516,163 @@ async function advanceNodeInSession(
   );
 
   return { newNodeId, newPhase, allNodesDone };
+}
+
+type ChatEvidenceSnapshot = {
+  id: number;
+  currentNodeId: number | null;
+  nodeTeachingStage: string;
+  activeTaskProvenance: string | null;
+  activeTaskReference: string | null;
+  activeLessonExerciseId: number | null;
+  activeCognitiveLevelId: number | null;
+  activeAttemptSequence: number;
+  activeHelpCount: number;
+  activeAssistanceLevel: string;
+};
+
+/**
+ * Persists the current answer through C3 before C4 reads it. This is purposefully
+ * called before C7's candidate engine; no caller may resolve C6 until it returns.
+ */
+async function persistAndProjectChatEvidence(input: {
+  userId: number;
+  lessonId: number;
+  snapshot: ChatEvidenceSnapshot;
+  currentNodeId: number;
+  currentNodeMatchesSnapshot: boolean;
+  cognitivePath: CognitiveLevelRow[];
+  evidenceQuality: string;
+  wasCorrect: boolean;
+  evidenceResultAuthority: string | null;
+}): Promise<{
+  qualificationStatus: EvidenceQualificationStatus;
+  projection: LearnerCeilingProjection;
+  taskReference: string | null;
+}> {
+  const [lessonRow] = await db
+    .select({ subjectId: (lessonsTable as any).subjectId })
+    .from(lessonsTable)
+    .where(eq(lessonsTable.id, input.lessonId))
+    .limit(1);
+  if (!lessonRow?.subjectId || input.snapshot.currentNodeId === null) {
+    throw new Error("chat evidence requires lesson subject and current node");
+  }
+
+  const [existingKN] = await db
+    .select({ id: knowledgeNodesTable.id })
+    .from(knowledgeNodesTable)
+    .where(and(
+      eq(knowledgeNodesTable.subjectId, lessonRow.subjectId),
+      eq(knowledgeNodesTable.userId, input.userId),
+      eq(knowledgeNodesTable.lessonNodeId, input.snapshot.currentNodeId),
+    ))
+    .limit(1);
+  let topicId = existingKN?.id ?? null;
+  if (!topicId) {
+    const [node] = await db
+      .select({ title: lessonNodesTable.title, targetBloomLevel: lessonNodesTable.targetBloomLevel })
+      .from(lessonNodesTable)
+      .where(eq(lessonNodesTable.id, input.snapshot.currentNodeId))
+      .limit(1);
+    if (!node) throw new Error("chat evidence requires current lesson node");
+    const [created] = await db.insert(knowledgeNodesTable).values({
+      subjectId: lessonRow.subjectId,
+      userId: input.userId,
+      topicName: node.title,
+      lessonNodeId: input.snapshot.currentNodeId,
+      status: "not_started",
+      isProvisional: true,
+      bloomLevel: node.targetBloomLevel ?? 1,
+    }).returning({ id: knowledgeNodesTable.id });
+    topicId = created?.id ?? null;
+  }
+  if (!topicId) throw new Error("chat evidence could not create knowledge node");
+
+  const activeLevel = input.snapshot.activeCognitiveLevelId == null
+    ? null
+    : input.cognitivePath.find((level) => level.id === input.snapshot.activeCognitiveLevelId) ?? null;
+  const levelBelongsToNode = activeLevel !== null && input.currentNodeMatchesSnapshot;
+  const acceptedPath = levelBelongsToNode && input.cognitivePath.length > 0;
+  const provenance = input.snapshot.activeTaskProvenance;
+  const taskSource: TaskSource | null =
+    provenance === "micro_check" ? "micro_check"
+      : provenance === "source_exercise" ? "source_exercise"
+        : provenance === "constructed_response" ? "generated_task" : null;
+  const cappedQuality =
+    provenance === "micro_check" &&
+    (input.evidenceQuality === "STRONG" || input.evidenceQuality === "CONCLUSIVE")
+      ? "MODERATE"
+      : input.evidenceQuality;
+
+  let taskValidForLevel = false;
+  if (taskSource === "source_exercise" &&
+      input.snapshot.activeCognitiveLevelId !== null &&
+      input.snapshot.activeLessonExerciseId !== null) {
+    const [linkedTask] = await db.select({ id: lessonNodeCognitiveTasksTable.id })
+      .from(lessonNodeCognitiveTasksTable)
+      .where(and(
+        eq(lessonNodeCognitiveTasksTable.cognitiveLevelId, input.snapshot.activeCognitiveLevelId),
+        eq(lessonNodeCognitiveTasksTable.lessonExerciseId, input.snapshot.activeLessonExerciseId),
+      )).limit(1);
+    taskValidForLevel = linkedTask !== undefined;
+  } else if (taskSource === "micro_check") {
+    taskValidForLevel = !!input.snapshot.activeTaskReference;
+  }
+  const authoritativeResult =
+    (taskSource === "micro_check" && input.evidenceResultAuthority === "objective_task") ||
+    (taskSource === "source_exercise" && input.evidenceResultAuthority === "source_exercise");
+  const qualificationStatus = classifyQualifyingEvidence({
+    lessonNodeId: input.snapshot.currentNodeId,
+    cognitiveLevelId: input.snapshot.activeCognitiveLevelId,
+    taskSource,
+    taskReference: input.snapshot.activeTaskReference,
+    levelBelongsToNode,
+    acceptedPath,
+    taskValidForLevel,
+    authoritativeResult,
+  });
+  const assistanceLevel = input.snapshot.activeAssistanceLevel;
+  await db.insert(evidenceEventsTable).values({
+    userId: input.userId,
+    lessonSessionId: input.snapshot.id,
+    topicId,
+    eventType: "answer",
+    wasCorrect: input.wasCorrect,
+    responseTimeMs: null,
+    hintUsed: assistanceLevel !== "none",
+    metadata: {
+      source: "chat",
+      lessonId: input.lessonId,
+      nodeId: input.snapshot.currentNodeId,
+      stage: input.snapshot.nodeTeachingStage,
+      evidence_quality: cappedQuality,
+      qualification_status: qualificationStatus,
+    },
+    cognitiveLevel: activeLevel?.cognitiveLevel ?? null,
+    taskDifficulty: null,
+    assistanceLevel: assistanceLevel !== "none" ? assistanceLevel : "none",
+    lessonExerciseId: input.snapshot.activeLessonExerciseId,
+    interactionType: provenance === "source_exercise" ? "short_answer"
+      : provenance === "micro_check" ? "micro_check" : null,
+    attemptSequence: input.snapshot.activeAttemptSequence || 1,
+    helpCount: input.snapshot.activeHelpCount,
+    lessonNodeId: input.snapshot.currentNodeId,
+    cognitiveLevelId: input.snapshot.activeCognitiveLevelId,
+    quizQuestionId: null,
+    taskSource,
+    taskReference: input.snapshot.activeTaskReference,
+    qualificationStatus,
+    evidenceQuality: cappedQuality,
+  } as any);
+  const projection = await projectLearnerCognitiveCeiling(
+    input.userId,
+    input.snapshot.currentNodeId,
+  );
+  updateTopicScoring(topicId, input.userId).catch((err) =>
+    logger.error({ err, topicId }, "chat evidence: scoring failed"),
+  );
+  return { qualificationStatus, projection, taskReference: input.snapshot.activeTaskReference };
 }
 
 router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
@@ -704,6 +850,28 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         session.currentPhase === 2 &&
         !hasAuthoritativeActiveTask
       ) {
+        // A resume must refresh persisted C4 before C6 is allowed to select a
+        // different MicroNode. This covers interrupted sessions without
+        // reintroducing a second progression authority.
+        let resumeC4Projection: LearnerCeilingProjection | null = null;
+        if (session.currentNodeId !== null) {
+          try {
+            resumeC4Projection = await projectLearnerCognitiveCeiling(
+              req.userId!,
+              session.currentNodeId,
+            );
+          } catch (err) {
+            logger.error(
+              { err, sessionId: session.id, nodeId: session.currentNodeId },
+              "C7.1: C4 refresh failed during chat resume reconciliation",
+            );
+            res.status(503).json({
+              error: "EVIDENCE_PERSISTENCE_FAILED",
+              message: "Դասի առաջընթացը չի հաջողվել վստահելիորեն ստուգել։ Խնդրում ենք կրկին փորձել։",
+            });
+            return;
+          }
+        }
         const c6Decision = await resolveCanonicalC6Decision({
           learnerId: req.userId!,
           lessonId,
@@ -724,33 +892,43 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           c6Decision.decisionType === "ADVANCE"
             ? 3
             : session.currentPhase;
+        if (nodeChanged && !resumeC4Projection?.reachedTarget) {
+          logger.warn(
+            {
+              sessionId: session.id,
+              currentNodeId: session.currentNodeId,
+              c6TargetNodeId: c6Decision.microNodeId,
+              c4PathAccepted: resumeC4Projection?.pathAccepted ?? false,
+              c4ReachedTarget: resumeC4Projection?.reachedTarget ?? false,
+            },
+            "C7.1: chat resume refused node change without confirmed C4 target",
+          );
+          res.status(409).json({
+            error: "CURRENT_NODE_NOT_CANONICALLY_COMPLETED",
+            message: "Ընթացիկ հանգույցի ճանաչողական ապացույցները դեռ բավարար չեն։",
+          });
+          return;
+        }
         if (
           nodeChanged ||
           session.activeCognitiveLevelId !== c6Decision.nextTargetCognitiveLevelId ||
           session.currentPhase !== phaseAfterC6
         ) {
-          await db
-            .update(lessonSessionsTable)
-            .set({
+          if (nodeChanged) {
+            await applyAuthorizedTargetTransition({
+              sessionId: session.id,
               currentNodeId: c6Decision.microNodeId,
-              activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
-              currentPhase: phaseAfterC6,
-              ...(nodeChanged
-                ? {
-                    nodeStartedAt: c6Decision.microNodeId ? new Date() : null,
-                    nodeTeachingStage: "THEORY",
-                    activeLessonExerciseId: null,
-                    activeTaskProvenance: null,
-                    activeTaskReference: null,
-                    activeObjectiveTaskPayload: null,
-                    activeAttemptSequence: 0,
-                    activeHelpCount: 0,
-                    activeAssistanceLevel: "none",
-                    remediationStep: 0,
-                  }
-                : {}),
-            } as any)
-            .where(eq(lessonSessionsTable.id, session.id));
+              nextPhase: phaseAfterC6,
+              nextActiveCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+            });
+          } else if (c6Decision.nextTargetCognitiveLevelId !== null) {
+            await db
+              .update(lessonSessionsTable)
+              .set(buildAuthorizedLevelTransitionUpdate(
+                c6Decision.nextTargetCognitiveLevelId,
+              ) as any)
+              .where(eq(lessonSessionsTable.id, session.id));
+          }
           session.currentNodeId = c6Decision.microNodeId;
           session.activeCognitiveLevelId = c6Decision.nextTargetCognitiveLevelId;
           session.currentPhase = phaseAfterC6;
@@ -1698,6 +1876,10 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
     activeHelpCount: number;
     activeAssistanceLevel: string;
   } | null = null;
+  let _canonicalEvidenceProcessed = false;
+  let _canonicalEvidenceQualification: EvidenceQualificationStatus | null = null;
+  let _canonicalEvidenceProjection: LearnerCeilingProjection | null = null;
+  let _canonicalEvidenceTaskReference: string | null = null;
   let _stage3BoundedAnswerTurn = false;
   let _stage3SourceExerciseForEvaluation: AuthoritativeSourceExercise | null = null;
   let _stage3HiddenExerciseContent: string[] = [];
@@ -2795,6 +2977,37 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       wasEval,
     } = _turnProgress;
 
+    // C7.1 order is deliberate: C3 qualification and its persisted C4
+    // projection happen before the candidate-only pedagogical engine can
+    // request any cognitive or MicroNode progression.
+    if (wasEval && _evaluatedTaskEvidenceContext) {
+      try {
+        const canonicalEvidence = await persistAndProjectChatEvidence({
+          userId: req.userId!,
+          lessonId,
+          snapshot: _evaluatedTaskEvidenceContext,
+          currentNodeId: session.currentNodeId,
+          currentNodeMatchesSnapshot:
+            currentNodeRecord?.id === _evaluatedTaskEvidenceContext.currentNodeId,
+          cognitivePath: _cognitivePath,
+          evidenceQuality: quality,
+          wasCorrect: isCorrect,
+          evidenceResultAuthority: _evidenceResultAuthority,
+        });
+        _canonicalEvidenceProcessed = true;
+        _canonicalEvidenceQualification = canonicalEvidence.qualificationStatus;
+        _canonicalEvidenceProjection = canonicalEvidence.projection;
+        _canonicalEvidenceTaskReference = canonicalEvidence.taskReference;
+      } catch (err) {
+        logger.error({ err, sessionId: session.id }, "C7.1: evidence/C4 projection failed before progression");
+        res.status(503).json({
+          error: "EVIDENCE_PERSISTENCE_FAILED",
+          message: "Պատասխանը չի հաջողվել վստահելիորեն գրանցել։ Խնդրում ենք կրկին փորձել։",
+        });
+        return;
+      }
+    }
+
     // ── Initialize hasActiveTask from existing session state ──────────────
     // Covers backward-compat with sessions created before Phase 2B (null provenance)
     // and cases where the task was set in a previous turn.
@@ -3002,6 +3215,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               helpCount:      (evidenceEventsTable as any).helpCount,
               assistanceLevel:(evidenceEventsTable as any).assistanceLevel,
               metadata:       evidenceEventsTable.metadata,
+              taskReference:  (evidenceEventsTable as any).taskReference,
               createdAt:      evidenceEventsTable.createdAt,
             })
             .from(evidenceEventsTable)
@@ -3011,11 +3225,14 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
               eq((evidenceEventsTable as any).wasCorrect, true),
             ));
           _levelEvidenceSummary = summarizeLevelEvidence(
-            filterEvidenceForCurrentRunNode(evRows, {
+            filterEvidenceForCurrentRunNode(
+              evRows.filter((row) => row.taskReference !== _canonicalEvidenceTaskReference),
+              {
               currentNodeId: session.currentNodeId,
               nodeStartedAt: session.nodeStartedAt,
               sessionStartedAt: session.startedAt,
-            }),
+              },
+            ),
           );
         }
 
@@ -3050,15 +3267,11 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         });
         _pedagogicalDecision = _decisionPlan.decision;
 
-        // Persist remediationStep + any cognitive-level advance to the session.
-        // These writes happen synchronously (before res.json) so the next turn
-        // reads the updated values immediately.
+        // The pedagogical engine is candidate-only. It may update remediation
+        // state, but its proposed cognitive level cannot mutate the session.
         const dUpdates: Record<string, unknown> = {
           remediationStep: _pedagogicalDecision.newRemediationStep,
         };
-        if (_pedagogicalDecision.newActiveCognitiveLevelId !== null) {
-          dUpdates.activeCognitiveLevelId = _pedagogicalDecision.newActiveCognitiveLevelId;
-        }
         await db
           .update(lessonSessionsTable)
           .set(dUpdates as any)
@@ -3130,9 +3343,63 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         activeCognitiveLevelRow: _activeCognitiveLevelRow,
         decision: _pedagogicalDecision,
       });
+      const _currentLevelIndex = _cognitivePath.findIndex(
+        (level) => level.id === _activeCognitiveLevelRow?.id,
+      );
+      const _ceilingIndex = _cognitivePath.findIndex(
+        (level) => level.id === _canonicalEvidenceProjection?.ceilingLevelId,
+      );
+      const _currentLevelConfirmedByC4 =
+        _currentLevelIndex >= 0 && _ceilingIndex >= _currentLevelIndex;
+      const _candidateType =
+        _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL"
+          ? "ADVANCE_COGNITIVE_LEVEL"
+          : "COMPLETE_MICRONODE";
+      const _candidateRequiresAuthorization =
+        _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL" ||
+        _progressionPlan.shouldCompleteNode;
+      const _completionAuthorization = _candidateRequiresAuthorization
+        ? authorizeCanonicalCompletion({
+            candidate: _candidateType,
+            qualificationStatus: _canonicalEvidenceQualification,
+            projection: _canonicalEvidenceProjection,
+            currentLevelConfirmed: _currentLevelConfirmedByC4,
+          })
+        : null;
+      let _authorizedC6Decision: Awaited<ReturnType<typeof resolveCanonicalC6Decision>> | null = null;
+      if (_completionAuthorization?.authorized) {
+        _authorizedC6Decision = await resolveCanonicalC6Decision({
+          learnerId: req.userId!,
+          lessonId,
+          requestedMicroNodeId: session.currentNodeId,
+          entryIntent: "NORMAL_LEARNING",
+        });
+        if (isC6DeliveryBlocked(_authorizedC6Decision)) {
+          _authorizedC6Decision = null;
+        }
+      }
+      const _authorizedLevelAdvance =
+        _pedagogicalDecision?.metaAction === "ADVANCE_COGNITIVE_LEVEL" &&
+        _completionAuthorization?.authorized === true &&
+        _authorizedC6Decision?.microNodeId === session.currentNodeId &&
+        _authorizedC6Decision.nextTargetCognitiveLevelId !== null;
+      const _authorizedNodeCompletion =
+        _progressionPlan.shouldCompleteNode &&
+        _completionAuthorization?.authorized === true &&
+        _authorizedC6Decision !== null &&
+        (_authorizedC6Decision.decisionType === "ADVANCE" ||
+          _authorizedC6Decision.reasonCode === "NO_ELIGIBLE_MICRONODE");
+      const _authorizedProgressionPlan = {
+        ..._progressionPlan,
+        cognitiveCompletionGate: _authorizedNodeCompletion,
+        shouldCompleteNode: _authorizedNodeCompletion,
+        shouldResetForCognitiveAdvance: _authorizedLevelAdvance,
+        shouldAutoContinueExercise:
+          _progressionPlan.shouldAutoContinueExercise && !_candidateRequiresAuthorization,
+      };
       _postFeedbackContinuationPlan = derivePostFeedbackContinuationAction({
         decision: _pedagogicalDecision,
-        progressionPlan: _progressionPlan,
+        progressionPlan: _authorizedProgressionPlan,
         hasActiveTask,
         // Do not select source delivery if the just-answered source task was
         // the sole eligible exercise; that safe path falls back to a bounded
@@ -3208,7 +3475,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
         learnerIntent: _intentResult.intent,
         evaluated: true,
         decision: _pedagogicalDecision,
-        progressionPlan: _progressionPlan,
+        progressionPlan: _authorizedProgressionPlan,
         eligibleSourceExerciseAvailable: classExercises.length > 0,
       });
       const { safetyCapHit } = _progressionPlan;
@@ -3226,7 +3493,9 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
       // active.  The legacy stage/safety gates must not bypass an
       // ADVANCE_COGNITIVE_LEVEL decision and complete the MicroNode early.
       if (_phase2ServerActionPlan.action === "ADVANCE_COGNITIVE_LEVEL") {
-        const cognitiveAdvanceReset = deriveCognitiveAdvanceTaskReset();
+        const cognitiveAdvanceReset = buildAuthorizedLevelTransitionUpdate(
+          _authorizedC6Decision!.nextTargetCognitiveLevelId!,
+        );
         await db
           .update(lessonSessionsTable)
           .set(cognitiveAdvanceReset as any)
@@ -3237,7 +3506,7 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           {
             sessionId: session.id,
             nodeId: session.currentNodeId,
-            nextCognitiveLevelId: _pedagogicalDecision.newActiveCognitiveLevelId,
+            nextCognitiveLevelId: _authorizedC6Decision!.nextTargetCognitiveLevelId,
           },
           "Cognitive Path advance: reset stage to THEORY without completing node"
         );
@@ -3250,7 +3519,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           lessonId,
           session.currentNodeId,
           session.currentPhase,
-          safetyCapHit
+          safetyCapHit,
+          _authorizedC6Decision!,
         );
         if (advanceResult.c6BlockedReason) {
           res.status(409).json({
@@ -3260,11 +3530,6 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
           });
           return;
         }
-        await db
-          .update(lessonSessionsTable)
-          .set({ askedQuestionTemplates: [] })
-          .where(eq(lessonSessionsTable.id, session.id));
-
         const [updSess] = await db
           .select({ currentNodeId: lessonSessionsTable.currentNodeId })
           .from(lessonSessionsTable)
@@ -3588,7 +3853,8 @@ router.post("/chat", requireAuth, async (req: AuthRequest, res) => {
   let _canonicalEvidenceWriteFailed = false;
   if (
     session && aiResult && lessonId &&
-    session.currentPhase >= 2 && session.currentNodeId
+    session.currentPhase >= 2 && session.currentNodeId &&
+    !_canonicalEvidenceProcessed
   ) {
     const evtQuality  = aiResult.answer_evaluation.evidence_quality;
     const evtStatus   = _evaluatedTurnAuthority?.status ?? aiResult.answer_evaluation.status;
