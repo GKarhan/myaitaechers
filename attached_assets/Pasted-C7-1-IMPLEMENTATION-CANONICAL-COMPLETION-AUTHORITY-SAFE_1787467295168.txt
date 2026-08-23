@@ -1,0 +1,702 @@
+C7.1 — IMPLEMENTATION
+CANONICAL COMPLETION AUTHORITY + SAFE NODE ADVANCEMENT
+
+IMPLEMENT NOW.
+
+This is the first implementation step after the completed C7 Phase 1 audit.
+
+C1–C6 are COMPLETE and MUST NOT be redesigned.
+
+This task fixes ONLY the two C7 blockers found by the audit:
+
+BLOCKER 1
+C7 runtime progression can currently be authorized before C3 evidence
+qualification and C4 demonstrated-ceiling projection become authoritative.
+
+BLOCKER 2
+POST /lessons/:lessonId/advance-node remains a second learner-accessible
+node-advance authority and can bypass canonical completion semantics.
+
+DO NOT implement C7.2–C7.6 in this task.
+
+==================================================
+0. CORE OWNERSHIP CONTRACT — NON-NEGOTIABLE
+==================================================
+
+Canonical authority is:
+
+C1 = curriculum / MicroNode structure
+C2 = accepted Cognitive Path
+C3 = evidence qualification
+C4 = demonstrated cognitive ceiling
+C5 = Knowledge Tree state
+C6 = what learner should work on next
+C7 = how the selected target is taught
+
+Therefore C7 MUST NOT authorize progression from its own counters,
+model output, answer quality, or pedagogical-engine candidate alone.
+
+Canonical successful progression order MUST be:
+
+learner response
+→ authoritative task evaluation
+→ create evidence candidate
+→ C3 qualifies/rejects evidence
+→ persist qualified evidence
+→ C4 projects demonstrated ceiling
+→ determine whether current level/node is actually confirmed
+→ C6 resolves next target
+→ atomically update session target/state
+→ C7 teaches that target.
+
+Never:
+
+C7 completion candidate
+→ advance node/level
+→ write evidence later.
+
+==================================================
+1. FIRST — FORENSIC CONFIRMATION
+==================================================
+
+Before editing, inspect the exact current implementation identified
+by the C7 audit.
+
+At minimum inspect:
+
+- artifacts/api-server/src/routes/chat.ts
+- artifacts/api-server/src/routes/lessons.ts
+- services/phase2/orchestration.ts
+- pedagogicalDecisionEngine.ts
+- C3 evidence qualification path
+- C4 projector
+- services/c6-personalization.ts
+- advanceNodeInSession()
+- POST /lessons/:lessonId/advance-node
+
+Confirm with exact functions/call order:
+
+A.
+Where deriveProgressionPlan / pedagogicalDecisionEngine currently
+produces level/node completion candidates.
+
+B.
+Where evidence is currently inserted/qualified.
+
+C.
+Where C4 projection currently occurs.
+
+D.
+Where C6 is re-entered.
+
+E.
+Every runtime callsite capable of changing:
+- currentNodeId
+- activeCognitiveLevelId
+because of learner progression.
+
+Do not redesign architecture before this confirmation.
+
+==================================================
+2. FIX THE PROGRESSION ORDER
+==================================================
+
+Refactor the smallest possible boundary so a progression candidate
+is only a CANDIDATE until C3/C4 have completed.
+
+The pedagogicalDecisionEngine MAY still say things such as:
+
+- evidence appears sufficient
+- level confirmation candidate
+- node completion candidate
+- remediation
+- revisit
+
+But candidate != authorization.
+
+No level/node advancement may be persisted until:
+
+1. the current evidence has been processed by the canonical C3
+   qualification rules;
+
+2. qualifying evidence has been durably persisted;
+
+3. C4 projection has run from canonical qualified evidence;
+
+4. the resulting demonstrated ceiling/current state proves that the
+   required target is actually confirmed;
+
+5. only then C6 is invoked to resolve the next canonical target.
+
+If C3 rejects the evidence:
+
+NO ADVANCEMENT.
+
+If C3 classifies the evidence below the required independence/strength:
+
+NO ADVANCEMENT unless canonical C3/C4 state already independently
+satisfies the target.
+
+If C4 does not confirm the required ceiling:
+
+NO ADVANCEMENT.
+
+==================================================
+3. DO NOT DUPLICATE C3 OR C4
+==================================================
+
+Critical:
+
+Do NOT recreate C3 evidence rules inside chat.ts.
+
+Do NOT recreate C4 ceiling rules inside chat.ts.
+
+Reuse the canonical existing C3 qualification implementation and
+existing C4 projector.
+
+C7 must consume their result.
+
+There must not be two versions of:
+
+- qualifying evidence
+- independence
+- evidence strength
+- demonstrated ceiling
+- level mastery.
+
+If the existing API/function shape makes this difficult, add the
+smallest reusable adapter/helper around the canonical implementation.
+
+Do NOT rewrite C3/C4.
+
+==================================================
+4. UNLINKED / FALLBACK TASK SAFETY
+==================================================
+
+The audit found an important risk:
+
+A generated/unlinked/fallback task may currently satisfy runtime
+progression counters even when C3 would not qualify it.
+
+Fix this.
+
+A task that does not satisfy canonical C3 qualification requirements
+must NEVER cause:
+
+- level confirmation
+- node completion
+- C4 advancement
+- C6 next-target progression.
+
+Micro-check evidence must continue to obey its existing evidence cap.
+
+Do not weaken C3 qualification to make tests pass.
+
+==================================================
+5. C4 MUST PRECEDE C6 RE-ENTRY
+==================================================
+
+This ordering is mandatory:
+
+C3
+→ C4
+→ C6
+
+Never:
+
+C6
+→ C3/C4.
+
+When the current turn appears to complete a level/node:
+
+FIRST process C3 evidence.
+
+THEN project C4.
+
+THEN ask C6 what happens next.
+
+C6 must receive/read the updated learner state.
+
+This is especially important for PARTIAL learners:
+
+If demonstrated ceiling was UNDERSTAND and the learner now qualifies
+at APPLY, C4 must first become APPLY before C6 resolves the next target.
+
+==================================================
+6. LEVEL ADVANCEMENT
+==================================================
+
+Do not let C7 invent the next cognitive level.
+
+After C3/C4 confirmation, C6 remains the canonical target resolver.
+
+If the learner has confirmed the current level but has not reached the
+MicroNode curriculum target:
+
+C6 decides the next accepted C2 level.
+
+C7 must not use:
+
+Bloom + 1
+sequence guess
+hard-coded REMEMBER → UNDERSTAND → APPLY
+or prompt inference
+
+as the authority.
+
+This must preserve the already-completed C6 rule that a path may begin
+above REMEMBER.
+
+==================================================
+7. NODE COMPLETION
+==================================================
+
+A MicroNode is not complete merely because:
+
+- model says mastered;
+- answer_evaluation says correct;
+- pedagogicalDecisionEngine says COMPLETE_MICRONODE;
+- evidence counter reaches a local threshold.
+
+Those may trigger a completion CANDIDATE only.
+
+Actual node completion requires canonical C3/C4 state to prove the
+required C2 target ceiling.
+
+Then C6 selects the next target.
+
+==================================================
+8. HARD-GATE advance-node
+==================================================
+
+Audit identified:
+
+POST /lessons/:lessonId/advance-node
+
+as a second unsafe progression authority.
+
+Do NOT simply delete it before checking callers.
+
+First find every frontend/backend/test caller.
+
+Then choose the smallest safe solution.
+
+Preferred solution:
+
+The endpoint MUST NOT independently decide that the current node may
+be skipped/completed.
+
+It may only execute a transition that has already been authorized by
+the same canonical server completion authority used by chat.
+
+Acceptable designs include:
+
+A.
+Require a server-owned completion/transition grant generated after
+C3 → C4 confirmation;
+
+OR
+
+B.
+Make the endpoint itself invoke the same canonical completion
+authority and reject unless the current target is actually complete.
+
+Do NOT trust a frontend boolean such as:
+
+completed=true
+mastered=true
+canAdvance=true
+
+Do NOT trust client-provided node/level mastery.
+
+Server state is authoritative.
+
+==================================================
+9. ADVANCE-NODE REJECTION CASES
+==================================================
+
+POST /advance-node MUST reject progression when:
+
+- current node is still THEORY;
+- task is required but not completed;
+- an active task is unresolved;
+- evidence is unqualified;
+- C4 demonstrated ceiling is below the required target;
+- current C2 path is invalid;
+- dependency/C6 state is blocked;
+- session target is stale;
+- requested/current node does not match canonical session state.
+
+Use an explicit safe conflict/status response.
+
+Do not silently advance.
+
+==================================================
+10. CENTRALIZE TRANSITION MUTATION
+==================================================
+
+There must be ONE canonical server helper/path responsible for applying
+an already-authorized target transition.
+
+Reuse/refactor advanceNodeInSession() if appropriate.
+
+The transition must atomically/consistently update relevant session
+state, including as applicable:
+
+- currentNodeId
+- activeCognitiveLevelId
+- nodeTeachingStage
+- active task identity
+- activeLessonExerciseId
+- activeTaskReference
+- activeHelpCount
+- activeAssistanceLevel
+- remediation state
+- last task/question state
+- other target-specific transient state.
+
+Do not clear durable evidence.
+
+Do not clear C4 state.
+
+Do not create a new mastery source.
+
+==================================================
+11. STAGE RESET
+==================================================
+
+The audit specifically found that manual advancement may leave stale
+nodeTeachingStage state.
+
+When C6 selects a NEW MicroNode:
+
+nodeTeachingStage must start from the canonical initial teaching stage
+for that target — normally THEORY unless existing architecture defines
+a more precise C6/C2-driven initial state.
+
+No stale:
+
+MICRO_CHECK
+EXERCISE
+VERIFIED
+active task
+help count
+remediation step
+
+may leak from the previous MicroNode.
+
+When C6 keeps the SAME MicroNode but advances to a new cognitive level,
+reset only the state that belongs to the previous level/task.
+
+Preserve unrelated durable learner evidence.
+
+==================================================
+12. FAILURE / TRANSACTION SAFETY
+==================================================
+
+Progression must fail closed.
+
+If any of these fail:
+
+- evidence persistence
+- C3 qualification
+- C4 projection
+- C6 resolution
+- session transition
+
+do not leave the learner half-advanced.
+
+Prefer existing transaction patterns where compatible.
+
+At minimum ensure that the system cannot persist:
+
+new currentNodeId
+
+while C3/C4 state still represents the old incomplete learner state.
+
+Do not swallow progression errors.
+
+==================================================
+13. MODEL AUTHORITY
+==================================================
+
+The model is NEVER progression authority.
+
+These model fields may be signals only:
+
+- node_decision
+- answer_evaluation
+- teaching_mode
+- transition language
+- “mastered” wording.
+
+Server must ignore/reject premature progression claims.
+
+The model must not be able to make this happen:
+
+AI says complete
+→ node changes.
+
+==================================================
+14. KEEP PEDAGOGICAL DECISION ENGINE
+==================================================
+
+Do NOT remove pedagogicalDecisionEngine.
+
+It remains useful for:
+
+- remediation
+- feedback strategy
+- evidence-quality candidate
+- revisit decisions
+- completion candidates.
+
+But its completion output must be interpreted as:
+
+REQUEST/CANDIDATE FOR CANONICAL VALIDATION
+
+not:
+
+AUTHORIZED MASTERY.
+
+Make this ownership explicit in code naming/comments if needed,
+without broad refactoring.
+
+==================================================
+15. DO NOT CHANGE C7.2–C7.6
+==================================================
+
+This task intentionally does NOT fix:
+
+- visible TEACH → MICRO_CHECK sequencing;
+- universal node-content hard scope validator;
+- remediation terminal action mapping;
+- step-4 LOWER_DIFFICULTY bug unless required for compilation;
+- learner readiness mode;
+- Armenian persona improvements;
+- verbatim UI polish;
+- local per-node time budget.
+
+Those belong to later C7 tasks.
+
+Do not expand scope.
+
+==================================================
+16. REQUIRED PROVIDER-FREE TESTS
+==================================================
+
+Add focused deterministic tests.
+
+At minimum:
+
+TEST 1
+Correct answer but C3 rejects evidence
+→ no level/node advancement.
+
+TEST 2
+Evidence qualifies but C4 remains below target
+→ no node completion.
+
+TEST 3
+Evidence qualifies
+→ C4 projects target
+→ only then C6 is invoked.
+
+TEST 4
+Verify call/order contract:
+C3 before C4 before C6.
+
+TEST 5
+Unlinked fallback task cannot advance learner.
+
+TEST 6
+Micro-check MODERATE evidence alone cannot satisfy a STRONG
+independent-evidence requirement.
+
+TEST 7
+Valid independent source exercise
+→ qualified evidence
+→ C4 target reached
+→ C6 next target.
+
+TEST 8
+C7/model COMPLETE_MICRONODE candidate without C3/C4 authority
+→ no advancement.
+
+TEST 9
+advance-node called from THEORY
+→ rejected.
+
+TEST 10
+advance-node with active unresolved task
+→ rejected.
+
+TEST 11
+advance-node with insufficient C4 ceiling
+→ rejected.
+
+TEST 12
+authorized node transition
+→ currentNodeId updated
+→ activeCognitiveLevelId comes from C6
+→ stage reset
+→ task/help/remediation transient state reset.
+
+TEST 13
+new cognitive level on same MicroNode
+→ no stale active task from previous level.
+
+TEST 14
+invalid C2 path
+→ fail closed.
+
+TEST 15
+C6 blocked prerequisite/dependency state
+→ no accidental completion.
+
+TEST 16
+path starts at UNDERSTAND
+→ transition never invents REMEMBER.
+
+TEST 17
+C4 is updated before C6 reads learner state.
+
+TEST 18
+failed transition cannot leave half-updated session state.
+
+Use provider-free fixtures/mocks.
+
+Do not spend provider tokens for these tests.
+
+==================================================
+17. REGRESSION REQUIREMENTS
+==================================================
+
+Run:
+
+- C3 evidence tests
+- C4 ceiling tests
+- C5 tests
+- C6 deterministic tests
+- Phase 2 orchestration tests
+- final approval/readiness tests if touched
+- API typecheck
+- web typecheck if frontend caller changes
+- API build
+- web build if touched.
+
+Existing C1–C6 tests must remain green.
+
+==================================================
+18. SAFE REAL ACCEPTANCE
+==================================================
+
+After provider-free tests pass:
+
+Do NOT run an expensive full AI lesson automatically.
+
+Prefer a deterministic isolated/session fixture proving:
+
+current target
+→ qualifying evidence
+→ C3
+→ C4
+→ C6
+→ session target transition.
+
+If an existing real test learner/session can safely verify the
+transition without destroying useful data, one bounded acceptance
+check is allowed.
+
+Do not repeatedly run provider calls.
+
+Do not modify lesson mapping.
+
+==================================================
+19. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. ROOT CAUSE CONFIRMED
+
+Show the old unsafe ordering.
+
+B. FILES CHANGED
+
+C. CANONICAL PROGRESSION ORDER
+
+Show the new exact sequence:
+
+evaluation
+→ C3
+→ C4
+→ C6
+→ session transition.
+
+D. PEDAGOGICAL ENGINE AUTHORITY
+
+Explain what remains candidate-only.
+
+E. ADVANCE-NODE RESULT
+
+State:
+- callers found
+- final safety design
+- rejection conditions.
+
+F. TRANSITION RESET RESULT
+
+Show what resets for:
+- new cognitive level
+- new MicroNode.
+
+G. TEST RESULTS
+
+List exact suites/counts.
+
+H. REGRESSION STATUS
+
+C1
+C2
+C3
+C4
+C5
+C6
+Phase 2
+
+I. REMAINING C7 ITEMS
+
+Only list C7.2–C7.6 items.
+Do not start them.
+
+J. FINAL VERDICT
+
+Return exactly one:
+
+C7.1 COMPLETE — C3/C4 are authoritative before C6 progression and no
+second unsafe node-advance authority remains.
+
+or
+
+C7.1 BLOCKED — <smallest exact blocker>
+
+==================================================
+20. STOP CONDITION
+==================================================
+
+If C3/C4 cannot be made authoritative without redesigning C1–C6:
+
+STOP.
+
+Report the exact architectural blocker.
+
+Do NOT weaken evidence rules.
+
+Do NOT add a shortcut.
+
+Do NOT mark C7.1 complete.
+
+Otherwise implement, verify, report, and STOP.
+
+DO NOT START C7.2.
