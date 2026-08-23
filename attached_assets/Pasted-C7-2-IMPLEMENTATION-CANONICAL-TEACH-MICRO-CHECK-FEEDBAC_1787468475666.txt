@@ -1,0 +1,904 @@
+C7.2 — IMPLEMENTATION
+CANONICAL TEACH → MICRO_CHECK → FEEDBACK → TRANSITION STATE MACHINE
+
+IMPLEMENT + TEST + VERIFY.
+
+C7.1 is COMPLETE.
+
+Canonical progression authority is now:
+
+learner response
+→ C3 evidence qualification
+→ C4 demonstrated ceiling
+→ C6 next target
+→ shared session transition
+→ C7 execution
+
+DO NOT change that architecture.
+
+This task fixes ONLY C7.2:
+
+Make the AI Teacher teaching-cycle state machine explicit,
+server-owned, deterministic, and non-bypassable:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+C7.3–C7.6 remain OUT OF SCOPE.
+
+════════════════════════════════════════════════════
+0. NON-NEGOTIABLE OWNERSHIP
+════════════════════════════════════════════════════
+
+C6 owns WHAT to learn:
+- MicroNode
+- Cognitive Level
+- START / CONTINUE / REMEDIATE / REVIEW / ADVANCE
+- prerequisite target/status
+
+C7 owns HOW to teach the already-selected target.
+
+Within C7:
+
+SERVER STATE MACHINE owns:
+- current pedagogical stage
+- allowed next stage
+- whether learner input is expected
+- whether feedback is mandatory
+- whether another question/task may be asked
+
+MODEL owns:
+- wording of explanation
+- wording of one micro-check
+- wording of feedback
+- pedagogical content inside the allowed action
+
+The model MUST NOT own stage transitions.
+
+════════════════════════════════════════════════════
+1. FORENSIC CONFIRMATION FIRST
+════════════════════════════════════════════════════
+
+Before editing, inspect the CURRENT implementation.
+
+At minimum:
+
+- artifacts/api-server/src/routes/chat.ts
+- services/ai.ts
+- pedagogicalDecisionEngine.ts
+- lesson session schema/state
+- nodeTeachingStage usage
+- hasActiveTask / active task state
+- lastQuestionAsked
+- sessionDecision
+- currentPhase
+- validators related to teaching cycle
+- structured AI response schema
+
+Find every read/write of:
+
+nodeTeachingStage
+
+and every equivalent stage-like field.
+
+Also find every place capable of deciding:
+
+- TEACH
+- MICRO_CHECK
+- FEEDBACK
+- EXERCISE
+- TRANSITION
+- next question
+- next task
+
+Return the exact current ownership internally before patching.
+
+Do not create a second state machine if one already exists.
+
+════════════════════════════════════════════════════
+2. CANONICAL STATE MODEL
+════════════════════════════════════════════════════
+
+Use the smallest compatible representation with existing session state.
+
+Prefer existing `nodeTeachingStage` if it is the correct canonical field.
+
+Do NOT add a DB migration unless absolutely required.
+
+Canonical conceptual cycle:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+Existing states such as:
+
+THEORY
+MICRO_CHECK
+EXERCISE
+VERIFIED
+
+may be retained if already persisted and widely used.
+
+Do NOT rename persisted enums merely for aesthetics.
+
+Instead establish an explicit mapping between existing persisted states
+and the canonical pedagogical cycle.
+
+For example, only if consistent with current code:
+
+THEORY ≈ TEACH
+MICRO_CHECK ≈ MICRO_CHECK
+FEEDBACK may require an explicit runtime state if currently absent
+EXERCISE may be a TRANSITION-selected task state
+VERIFIED may represent post-confirmation transition
+
+Determine this from the actual repository.
+
+The important requirement is behavior, not enum naming.
+
+════════════════════════════════════════════════════
+3. TEACH RULE
+════════════════════════════════════════════════════
+
+When the canonical stage is TEACH:
+
+C7 may:
+
+- explain the current C6-selected target
+- give a short example
+- clarify the current concept
+- prepare the learner for one check
+
+C7 must NOT:
+
+- mark evidence as if a learner response occurred
+- complete the level
+- complete the MicroNode
+- jump to another target
+- ask multiple checks
+- skip directly to a second question/task
+
+After appropriate teaching, the next assessment interaction must be
+ONE MICRO_CHECK.
+
+Server controls this transition.
+
+The model may not output:
+
+“let's move to the next topic”
+
+and thereby change the state.
+
+════════════════════════════════════════════════════
+4. MICRO_CHECK RULE
+════════════════════════════════════════════════════
+
+MICRO_CHECK must be:
+
+- exactly ONE check/question
+- tied directly to the just-taught point
+- tied to current MicroNode
+- tied to current Cognitive Level
+- short; target ≤25 words where practical
+- not a multi-part sequence
+- not followed by another question in the same response
+
+After a MICRO_CHECK has been presented:
+
+the session MUST remember that a learner response is expected.
+
+The next learner response MUST be processed as the answer to that
+micro-check.
+
+The AI must not issue another micro-check before FEEDBACK.
+
+════════════════════════════════════════════════════
+5. MICRO_CHECK → FEEDBACK IS MANDATORY
+════════════════════════════════════════════════════
+
+This is the central C7.2 requirement.
+
+After learner answers an active MICRO_CHECK:
+
+NEXT pedagogical action MUST be FEEDBACK.
+
+Not:
+
+TEACH
+not another MICRO_CHECK
+not another exercise
+not node transition
+not unrelated explanation.
+
+FEEDBACK must occur even when the learner answer is:
+
+- correct
+- incorrect
+- incomplete
+- uncertain
+- partially correct
+
+The server state machine must enforce this.
+
+Do not rely only on prompt wording.
+
+════════════════════════════════════════════════════
+6. FEEDBACK RULE
+════════════════════════════════════════════════════
+
+FEEDBACK should:
+
+- acknowledge/evaluate the learner's response
+- remain tied to current target
+- be concise
+- expose no fake mastery claim
+- prepare the deterministic next action
+
+If wrong/incomplete:
+
+feedback may communicate the issue and prepare remediation.
+
+If correct:
+
+feedback may acknowledge correctness.
+
+BUT:
+
+FEEDBACK itself does not authorize C3/C4/C6 progression.
+
+C7.1 remains authoritative.
+
+After FEEDBACK, the system enters TRANSITION decision.
+
+════════════════════════════════════════════════════
+7. TRANSITION RULE
+════════════════════════════════════════════════════
+
+TRANSITION is server-owned.
+
+After FEEDBACK, determine the allowed next execution action from
+canonical backend state.
+
+Possible outcomes include:
+
+A. TEACH
+More explanation/remediation on SAME C6 target.
+
+B. MICRO_CHECK
+A new independent short check, only when pedagogically allowed.
+
+C. EXERCISE
+Present a real appropriate exercise when required.
+
+D. C6 HANDOFF
+Only after C7.1/C3/C4 confirms progression and C6 selects a new target.
+
+E. REVISIT / BOUNDED STOP
+If existing deterministic remediation/time policy requires it.
+
+Do not implement the full C7.4 remediation redesign here.
+
+Use current deterministic engine behavior where possible.
+
+The critical C7.2 requirement:
+
+TRANSITION must select the next stage;
+the model cannot select it freely.
+
+════════════════════════════════════════════════════
+8. ACTIVE QUESTION/TASK INVARIANT
+════════════════════════════════════════════════════
+
+There must never be two unresolved learner-response requests.
+
+If an active micro-check exists:
+
+do not issue another micro-check.
+
+If an active real exercise exists:
+
+do not silently replace it with another task.
+
+If learner response is awaiting FEEDBACK:
+
+do not issue a new question before feedback.
+
+Audit and reuse existing fields such as:
+
+hasActiveTask
+activeLessonExerciseId
+activeTaskReference
+lastQuestionAsked
+
+where appropriate.
+
+Do not create duplicate task-state truth.
+
+════════════════════════════════════════════════════
+9. STRUCTURED AI OUTPUT
+════════════════════════════════════════════════════
+
+Inspect current structured response schema.
+
+The AI may propose/render content appropriate to the server-authorized
+stage.
+
+But the server must validate the response against the CURRENT stage.
+
+Examples:
+
+CURRENT = TEACH
+
+Reject/sanitize model output that attempts an unauthorized completion
+or multi-question assessment.
+
+CURRENT = MICRO_CHECK
+
+Require exactly one appropriate check.
+
+CURRENT = FEEDBACK
+
+Require feedback behavior and prohibit another assessment question.
+
+CURRENT = TRANSITION
+
+The server determines next stage before asking AI to render the
+corresponding content.
+
+Prefer existing structured fields.
+
+Do not create a huge new response schema unless necessary.
+
+════════════════════════════════════════════════════
+10. VALIDATOR ENFORCEMENT
+════════════════════════════════════════════════════
+
+The audit found some teaching-cycle validation already exists.
+
+Reuse and strengthen it rather than duplicating it.
+
+Required deterministic validations:
+
+1. TEACH cannot silently become node/level completion.
+
+2. MICRO_CHECK contains only one check.
+
+3. MICRO_CHECK cannot be followed by another assessment before
+   FEEDBACK.
+
+4. After active micro-check answer:
+   next stage = FEEDBACK.
+
+5. FEEDBACK response must not introduce a new unresolved question.
+
+6. Model-requested stage transition cannot override server stage.
+
+7. C6 target cannot change through C7 stage output.
+
+8. Invalid structured output must fail safely without corrupting
+   session stage.
+
+Do not depend solely on regex if structured information is available.
+
+════════════════════════════════════════════════════
+11. MODEL PROMPT ALIGNMENT
+════════════════════════════════════════════════════
+
+After server authority is correct, align the prompt with it.
+
+The prompt should receive an explicit CURRENT PEDAGOGICAL STAGE.
+
+For each call clearly tell the model what it is allowed to produce.
+
+Example conceptually:
+
+CURRENT_STAGE = TEACH
+Allowed:
+explanation + optional example
+
+CURRENT_STAGE = MICRO_CHECK
+Allowed:
+one short check only
+
+CURRENT_STAGE = FEEDBACK
+Allowed:
+evaluate/respond to learner answer
+NO new question
+
+Do not put competing stage-selection rules elsewhere in the prompt.
+
+Search for duplicated TEACH/MICRO_CHECK/FEEDBACK instructions and
+remove/contain concrete collisions where necessary.
+
+Do not broadly rewrite the entire prompt.
+
+════════════════════════════════════════════════════
+12. FEEDBACK MUST NOT DISAPPEAR ON CORRECT ANSWER
+════════════════════════════════════════════════════
+
+Add an explicit regression for this.
+
+Current temptation in tutoring systems is:
+
+micro-check
+→ correct
+→ immediately next task.
+
+Do NOT allow that.
+
+Required:
+
+micro-check
+→ learner correct
+→ FEEDBACK
+→ TRANSITION
+→ next action.
+
+Same for wrong answer.
+
+════════════════════════════════════════════════════
+13. FEEDBACK MUST NOT BECOME ANOTHER MICRO-CHECK
+════════════════════════════════════════════════════
+
+Example prohibited behavior:
+
+Learner answers incorrectly.
+
+Teacher:
+“Գրեթե ճիշտ է։ Իսկ ի՞նչ կլինի, եթե...?”
+
+That response combines feedback + another unresolved check.
+
+For the canonical strict cycle:
+
+first response = FEEDBACK.
+
+Then server TRANSITION determines whether another MICRO_CHECK,
+TEACH/remediation, or EXERCISE follows.
+
+Keep one pedagogical responsibility per stage.
+
+════════════════════════════════════════════════════
+14. C7.1 PROGRESSION AUTHORITY MUST REMAIN UNCHANGED
+════════════════════════════════════════════════════
+
+Do not weaken or bypass C7.1.
+
+Even after a correct MICRO_CHECK:
+
+MICRO_CHECK
+→ FEEDBACK
+→ C3/C4 authority as applicable
+→ TRANSITION
+
+Micro-check evidence remains subject to canonical C3 rules.
+
+The state machine cannot say:
+
+correct
+→ mastered.
+
+Do not duplicate C3/C4.
+
+════════════════════════════════════════════════════
+15. C6 TARGET LOCK
+════════════════════════════════════════════════════
+
+Throughout:
+
+TEACH
+MICRO_CHECK
+FEEDBACK
+TRANSITION
+
+the target remains the current C6-selected:
+
+MicroNode
++
+Cognitive Level
+
+unless C7.1 has authorized progression and C6 has returned a new target.
+
+C7.2 must not introduce independent node/level advancement.
+
+════════════════════════════════════════════════════
+16. REAL EXERCISE COMPATIBILITY
+════════════════════════════════════════════════════
+
+Do not redesign exercise selection in this task.
+
+But ensure the state machine can cleanly support:
+
+TRANSITION
+→ EXERCISE
+
+and:
+
+EXERCISE response/evaluation
+→ FEEDBACK
+→ canonical progression/remediation decision.
+
+If existing `EXERCISE` is a persisted `nodeTeachingStage`, preserve it
+where appropriate.
+
+Do not force real exercises into MICRO_CHECK semantics.
+
+A micro-check and a real evidence exercise are different concepts.
+
+════════════════════════════════════════════════════
+17. SESSION RESUME
+════════════════════════════════════════════════════
+
+State machine must survive reload/resume.
+
+Verify:
+
+A.
+Session persisted at TEACH
+→ resume TEACH.
+
+B.
+Micro-check has been issued and learner response is pending
+→ resume still expects that response.
+
+C.
+Learner response was received and FEEDBACK is required
+→ reload must not skip FEEDBACK if state is persisted at that boundary.
+
+D.
+Active real exercise
+→ resume same exercise.
+
+E.
+New C6 target after authorized progression
+→ previous stage/task state does not leak.
+
+Use the smallest compatible persistence mechanism.
+
+Avoid DB migration if current fields can safely represent the state.
+
+If FEEDBACK cannot be made resume-safe with existing state,
+determine the smallest necessary representation.
+
+Do not use in-memory-only state for correctness-critical sequencing.
+
+════════════════════════════════════════════════════
+18. FAILURE SAFETY
+════════════════════════════════════════════════════
+
+If AI structured call fails during:
+
+TEACH
+MICRO_CHECK
+FEEDBACK
+
+do not corrupt the canonical stage.
+
+A retry/fallback may render the SAME authorized stage.
+
+It must not move to another stage merely because provider output failed.
+
+Malformed output:
+
+→ no unauthorized transition
+→ no fake completion
+→ no new C6 target
+→ preserve recoverable session state.
+
+════════════════════════════════════════════════════
+19. DO NOT IMPLEMENT C7.3
+════════════════════════════════════════════════════
+
+Do NOT broaden this task into universal semantic source/scope
+validation.
+
+Keep existing Node Lock validators working.
+
+If a small change is necessary because stage enforcement directly
+depends on them, do only that minimum.
+
+Full scope/target lock hardening is C7.3.
+
+════════════════════════════════════════════════════
+20. DO NOT IMPLEMENT C7.4
+════════════════════════════════════════════════════
+
+Do not redesign:
+
+- remediation budget
+- error taxonomy
+- action registry
+- help escalation
+- LOWER_DIFFICULTY
+- terminal remediation behavior
+
+Use existing behavior behind the new stage boundary.
+
+Full remediation cleanup is C7.4.
+
+════════════════════════════════════════════════════
+21. REQUIRED PROVIDER-FREE TEST MATRIX
+════════════════════════════════════════════════════
+
+Add deterministic tests.
+
+TEST 1
+
+TEACH
+→ next assessment stage is MICRO_CHECK.
+
+TEST 2
+
+MICRO_CHECK output contains exactly one check.
+
+TEST 3
+
+MICRO_CHECK issued
+→ learner answers correctly
+→ next stage MUST be FEEDBACK.
+
+TEST 4
+
+MICRO_CHECK issued
+→ learner answers incorrectly
+→ next stage MUST be FEEDBACK.
+
+TEST 5
+
+FEEDBACK for correct answer
+→ does not contain another unresolved check.
+
+TEST 6
+
+FEEDBACK for incorrect answer
+→ does not contain another unresolved check.
+
+TEST 7
+
+Only after FEEDBACK
+→ TRANSITION may select next TEACH/MICRO_CHECK/EXERCISE/C6 handoff.
+
+TEST 8
+
+Model proposes node completion during TEACH
+→ ignored/rejected.
+
+TEST 9
+
+Model proposes another cognitive level during MICRO_CHECK
+→ ignored/rejected.
+
+TEST 10
+
+Two simultaneous unresolved micro-checks
+→ impossible/rejected.
+
+TEST 11
+
+Active real exercise
+→ new micro-check cannot silently replace it.
+
+TEST 12
+
+Malformed structured output during MICRO_CHECK
+→ stage remains recoverable and no unauthorized transition occurs.
+
+TEST 13
+
+Malformed structured output during FEEDBACK
+→ does not skip FEEDBACK.
+
+TEST 14
+
+Resume with pending micro-check
+→ same response expectation preserved.
+
+TEST 15
+
+Resume where FEEDBACK is required
+→ FEEDBACK not skipped.
+
+TEST 16
+
+Authorized C6 new target
+→ state resets to correct initial teaching stage.
+
+TEST 17
+
+Same MicroNode/new Cognitive Level
+→ stale prior task/check does not leak.
+
+TEST 18
+
+Micro-check evidence cannot directly mark node mastered.
+
+TEST 19
+
+Path begins at UNDERSTAND
+→ state machine never invents REMEMBER.
+
+TEST 20
+
+C7 stage output cannot change currentNodeId or
+activeCognitiveLevelId independently of C6.
+
+No external provider calls for these tests.
+
+════════════════════════════════════════════════════
+22. REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Run relevant existing:
+
+C7.1 tests
+C6 tests
+C5 tests
+C4 tests
+C3 evidence tests
+Phase 2 orchestration tests
+chat tests
+session/resume tests
+structured-output validators
+
+Also run:
+
+API typecheck
+API build
+
+If frontend/shared contract is touched:
+
+web typecheck
+web build.
+
+Do not modify lesson 644 to make tests pass.
+
+════════════════════════════════════════════════════
+23. FRESH REVIEW
+════════════════════════════════════════════════════
+
+Before completion perform a fresh review specifically for:
+
+1. second stage authority
+2. model-controlled transition
+3. MICRO_CHECK → MICRO_CHECK bypass
+4. MICRO_CHECK → next task without FEEDBACK
+5. feedback containing a new unresolved question
+6. stale active task on transition
+7. reload skipping FEEDBACK
+8. C7.1 authority regression
+9. C6 target override
+10. duplicate stage truth across fields
+
+Fix concrete C7.2 issues found.
+
+Rerun affected tests.
+
+════════════════════════════════════════════════════
+24. REAL ACCEPTANCE
+════════════════════════════════════════════════════
+
+Prefer provider-free/session-level acceptance.
+
+Verify one bounded scenario:
+
+C6-selected target
+→ TEACH
+→ MICRO_CHECK
+→ learner response
+→ FEEDBACK
+→ TRANSITION
+
+and verify persisted session stages at each relevant boundary.
+
+Do not run repeated expensive provider calls.
+
+Do not change lesson mapping.
+
+════════════════════════════════════════════════════
+25. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. C7.2 VERDICT
+
+B. CANONICAL STATE MACHINE
+
+Show actual implemented states and mapping to:
+
+TEACH
+MICRO_CHECK
+FEEDBACK
+TRANSITION
+
+C. SERVER AUTHORITY
+
+Which function/service owns allowed transitions.
+
+D. MODEL AUTHORITY
+
+What the model may and may not decide.
+
+E. MICRO_CHECK ENFORCEMENT
+
+- one question
+- response expectation
+- mandatory feedback
+
+F. FEEDBACK ENFORCEMENT
+
+How correct/incorrect answers both require FEEDBACK.
+
+G. TRANSITION ENFORCEMENT
+
+Who selects next stage.
+
+H. EXERCISE COMPATIBILITY
+
+How real exercises fit the state machine.
+
+I. RESUME SAFETY
+
+How pending MICRO_CHECK / FEEDBACK / EXERCISE survive resume.
+
+J. C7.1 SAFETY
+
+Confirm C3 → C4 → C6 progression remains authoritative.
+
+K. FILES CHANGED
+
+Exact files.
+
+L. TEST RESULTS
+
+Exact suites/counts.
+
+M. REAL ACCEPTANCE
+
+Exact scenario verified.
+
+N. REMAINING C7 ITEMS
+
+Only:
+C7.3
+C7.4
+C7.5
+C7.6
+
+O. FINAL VERDICT
+
+Return exactly one:
+
+C7.2 COMPLETE — TEACH → MICRO_CHECK → FEEDBACK → TRANSITION is now a
+server-owned non-bypassable teaching cycle.
+
+or
+
+C7.2 BLOCKED — <smallest exact blocker>
+
+════════════════════════════════════════════════════
+26. STOP
+════════════════════════════════════════════════════
+
+If enforcing mandatory FEEDBACK requires a small persisted stage change,
+implement the smallest safe representation.
+
+If it would require redesigning C1–C6 or C7.1:
+
+STOP and report the exact blocker.
+
+Do not weaken the cycle.
+
+When C7.2 is complete:
+
+STOP.
+
+DO NOT START C7.3.
+DO NOT START C7.4.
+DO NOT START C7.5.
+DO NOT START C7.6.
+DO NOT START FLASHCARDS / QUIZ IMPROVEMENTS / DIARY / TODAY.
