@@ -1,0 +1,763 @@
+C7.3 — IMPLEMENTATION
+HARD SCOPE LOCK + C6 TARGET LOCK
+
+IMPLEMENT + TEST + VERIFY.
+
+C7.1 is COMPLETE.
+C7.2 is COMPLETE.
+
+Current canonical architecture:
+
+C3 → evidence qualification
+C4 → demonstrated ceiling
+C6 → WHAT learner works on next
+C7 → HOW that selected target is taught
+
+C7.2 now owns the persisted teaching cycle:
+
+TEACH
+→ MICRO_CHECK
+→ FEEDBACK
+→ TRANSITION
+
+DO NOT redesign C7.1 or C7.2.
+
+This task fixes ONLY C7.3:
+
+Make the current C6-selected lesson/MicroNode/Cognitive-Level target
+a hard server-owned execution boundary that model output, prompt drift,
+fallback behavior, remediation, resume, or learner topic-change requests
+cannot override.
+
+C7.4–C7.6 remain OUT OF SCOPE.
+
+==================================================
+0. NON-NEGOTIABLE TARGET AUTHORITY
+==================================================
+
+The authoritative instructional target is server state derived from C6:
+
+- lessonId
+- currentNodeId
+- activeCognitiveLevelId
+
+and the accepted C2 path data for that level.
+
+C7 may choose HOW to teach inside that target.
+
+C7 MUST NOT independently choose:
+
+- another lesson
+- another MicroNode
+- another Cognitive Level
+- a higher Bloom level
+- a lower curriculum level
+- another prerequisite
+- the next node
+- a different curriculum objective
+
+Only an authorized C7.1 → C3 → C4 → C6 transition may change
+currentNodeId or activeCognitiveLevelId.
+
+==================================================
+1. FORENSIC AUDIT FIRST
+==================================================
+
+Before editing, inspect the actual current implementation.
+
+At minimum inspect:
+
+- artifacts/api-server/src/routes/chat.ts
+- services/ai.ts
+- pedagogicalDecisionEngine.ts
+- C6 personalization service
+- C7.1 shared transition helper
+- C7.2 teaching-cycle implementation
+- scope-drift validators
+- redirect validators
+- structured AI output schema
+- prompt construction
+- lessonContext construction
+- resume/recovery paths
+- fallback AI path
+
+Find every place where:
+
+- currentNodeId is read or changed
+- activeCognitiveLevelId is read or changed
+- node title/objective is supplied to AI
+- cognitive target is supplied to AI
+- model output can refer to another target
+- redirect_needed is created/consumed
+- scope drift is detected
+- another lesson/topic/node can enter the response.
+
+Do not assume old validators are sufficient.
+
+Confirm exact gaps before patching.
+
+==================================================
+2. BUILD ONE CANONICAL EXECUTION TARGET
+==================================================
+
+At the beginning of a C7 turn, derive one immutable/server-owned
+execution target from canonical session/C6/C2 state.
+
+Conceptually it should contain the authoritative values needed by C7:
+
+lesson
+MicroNode
+MicroNode title
+learningObjective
+source/context
+active Cognitive Level
+performanceObjective
+successCriterion
+preferredInteractionTypes
+target ceiling / accepted C2 information as appropriate.
+
+Reuse existing types/data where possible.
+
+Do NOT create another learner-state truth.
+
+This object is an execution snapshot, not a new persistence authority.
+
+All C7 stages for that turn must use the SAME authoritative target.
+
+==================================================
+3. HARD MICRONODE LOCK
+==================================================
+
+During:
+
+TEACH
+MICRO_CHECK
+FEEDBACK
+TRANSITION
+EXERCISE/remediation execution
+
+C7 must remain on currentNodeId.
+
+The model may not change currentNodeId.
+
+The model may not cause a node transition by mentioning another node.
+
+The model may not decide that another MicroNode would be “better”.
+
+If another MicroNode is pedagogically necessary:
+
+that must go through canonical C6/prerequisite/progression authority.
+
+No prompt-only node switching.
+
+==================================================
+4. HARD COGNITIVE-LEVEL LOCK
+==================================================
+
+The active cognitive target is:
+
+activeCognitiveLevelId
+selected by C6 from the accepted C2 path.
+
+C7 must teach and assess toward that level.
+
+Do NOT allow C7/model logic to independently infer:
+
+REMEMBER
+UNDERSTAND
+APPLY
+ANALYZE
+etc.
+
+from generic Bloom rules when an authoritative active level exists.
+
+Especially prohibit:
+
+current level + 1
+Bloom + 1
+always start at REMEMBER
+prompt-inferred next level
+model-proposed next level.
+
+If the accepted C2 path begins at UNDERSTAND:
+
+C7 must begin at UNDERSTAND.
+
+Never invent REMEMBER.
+
+==================================================
+5. COGNITIVE CONTEXT MUST REACH THE MODEL
+==================================================
+
+Verify that every relevant C7 model call receives the authoritative
+current cognitive context.
+
+At minimum where available:
+
+- cognitive level/name
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimumIndependentEvidence or equivalent canonical requirement
+- current MicroNode learningObjective
+- current source-backed teaching content/context.
+
+Do not duplicate C2 data manually.
+
+Read canonical persisted C2 data.
+
+If some current calls receive only node title/content but not the
+active level contract, fix that narrowly.
+
+==================================================
+6. LESSON / TOPIC SCOPE LOCK
+==================================================
+
+The AI Teacher must not teach another lesson or unrelated topic.
+
+If learner asks:
+
+“անցնենք ուրիշ թեմայի”
+“սովորեցրու հաջորդ դասը”
+or asks an unrelated curriculum question,
+
+the system must:
+
+- preserve currentNodeId
+- preserve activeCognitiveLevelId
+- not generate evidence for another target
+- not silently switch context
+- respond with a short warm redirection to the current target
+- set/use redirect_needed where the existing contract requires it.
+
+Do not let the model decide whether scope may change.
+
+==================================================
+7. LEARNER QUESTIONS INSIDE CURRENT SCOPE
+==================================================
+
+Do NOT over-lock normal teaching.
+
+The learner may ask clarification questions about the current target.
+
+Example:
+
+current target = natural-number sequence.
+
+Learner:
+“ինչու 0-ն բնական թիվ չի համարվում այստեղ?”
+
+If this is supported by the current MicroNode/source context,
+C7 should answer normally.
+
+Scope lock must prevent curriculum drift,
+not prevent useful clarification.
+
+==================================================
+8. SOURCE-BOUNDARY ENFORCEMENT
+==================================================
+
+Audit current source grounding protection.
+
+C7 should not invent curriculum claims outside the authoritative
+MicroNode source/context.
+
+Reuse existing source-grounding mechanisms.
+
+Do NOT build a new large semantic architecture in C7.3.
+
+But close concrete runtime bypasses where:
+
+- TEACH output can introduce unsupported curriculum claims
+- MICRO_CHECK can assess unsupported content
+- FEEDBACK can teach another concept
+- fallback output bypasses grounding validation.
+
+If semantic grounding cannot be deterministically proven in every
+free-text sentence, fail safely on concrete detectable drift and
+keep the prompt tightly bounded.
+
+Do not pretend regex provides perfect semantic validation.
+
+==================================================
+9. MICRO_CHECK TARGET LOCK
+==================================================
+
+A MICRO_CHECK must assess:
+
+CURRENT MicroNode
++
+CURRENT active Cognitive Level.
+
+It must not:
+
+- assess a later level
+- assess another node
+- combine several curriculum targets
+- introduce a prerequisite not selected by C6.
+
+Keep C7.2 one-check rule intact.
+
+==================================================
+10. FEEDBACK TARGET LOCK
+==================================================
+
+FEEDBACK must evaluate the learner response against the SAME target/task
+snapshot that produced the question.
+
+This is especially important after C7.2 recovery hardening.
+
+Do not evaluate a recovered answer against newly loaded/stale:
+
+currentNodeId
+activeCognitiveLevelId
+or changed prompt context.
+
+Use the immutable evaluated-turn/task snapshot where already established.
+
+==================================================
+11. EXERCISE TARGET LOCK
+==================================================
+
+Do not redesign exercise selection yet.
+
+But any exercise C7 presents must be compatible with:
+
+- current MicroNode
+- current active Cognitive Level
+- current C2 path/task requirements.
+
+If an exercise belongs to another node/level:
+
+do not silently use it.
+
+C7.5 will perform deeper exercise/evidence hardening.
+
+C7.3 only enforces target compatibility.
+
+==================================================
+12. REMEDIATION MUST NOT ESCAPE TARGET
+==================================================
+
+C7.4 will redesign remediation behavior.
+
+For now ensure existing remediation actions cannot independently
+change node/level.
+
+Actions such as:
+
+EXTRA_EXAMPLE
+CONTRAST_EXAMPLE
+STEP_BY_STEP
+SIMPLIFY_LANGUAGE
+GUIDED_QUESTION
+CHANGE_REPRESENTATION
+LOWER_DIFFICULTY
+
+must operate within the current C6 target unless C6 has explicitly
+authorized a prerequisite/target change.
+
+Important:
+
+LOWER_DIFFICULTY does NOT mean lowering the canonical C2 target.
+
+It may reduce scaffolding/task difficulty while preserving the
+curriculum target.
+
+Do not implement C7.4 here.
+
+==================================================
+13. PREREQUISITE AUTHORITY
+==================================================
+
+C6 owns prerequisite routing.
+
+C7 may detect/communicate that the learner appears to need prerequisite
+support, but it must not mutate currentNodeId to a prerequisite itself.
+
+If C6 returns a prerequisite target:
+
+then C7 teaches that target normally.
+
+Search for legacy RETURN_TO_PREREQUISITE or similar code that directly
+selects/changes a node.
+
+Contain any second authority.
+
+==================================================
+14. MODEL OUTPUT IS NOT TARGET AUTHORITY
+==================================================
+
+Structured model output may contain fields such as:
+
+node_decision
+redirect_needed
+teaching_mode
+next action
+etc.
+
+None may directly change canonical target.
+
+Server validates output against the execution target.
+
+If model proposes another node/level:
+
+ignore/reject/safely regenerate within the SAME target.
+
+Never mutate learner target because the model requested it.
+
+==================================================
+15. FALLBACK PATH MUST USE SAME LOCK
+==================================================
+
+Audit:
+
+callAIStructured
+retry
+callAI fallback
+malformed-output recovery
+C7.2 recovery path.
+
+Fallback must receive and preserve the SAME execution target.
+
+A structured-call failure must not result in an unrestricted generic
+AI call capable of teaching another topic/level.
+
+Fallback is a rendering recovery path,
+not a curriculum-routing path.
+
+==================================================
+16. RESUME / STALE TARGET SAFETY
+==================================================
+
+On resume:
+
+verify persisted session target against canonical C6/C2 state.
+
+If currentNodeId / activeCognitiveLevelId is stale:
+
+do not let C7 continue teaching the stale target.
+
+Use the existing C6/C7.1 reconciliation path.
+
+Once reconciled, construct a fresh execution target.
+
+Do not create a second reconciliation algorithm in C7.3.
+
+Pending C7.2 MICRO_CHECK/FEEDBACK recovery must preserve the original
+task/evaluation snapshot as already implemented.
+
+Do not break that behavior.
+
+==================================================
+17. TARGET CHANGE INVALIDATES TRANSIENT STATE
+==================================================
+
+Reuse the C7.1 shared transition/reset boundary.
+
+When C6 authorizes a NEW target:
+
+old target-specific transient state must not leak:
+
+- active task
+- activeLessonExerciseId
+- activeTaskReference
+- help state
+- remediation state
+- old micro-check
+- old stage-specific question context
+
+Do not duplicate reset logic.
+
+==================================================
+18. VALIDATOR OWNERSHIP
+==================================================
+
+Prefer one canonical server validation boundary such as:
+
+validateC7ExecutionTarget(...)
+validateNoScopeDrift(...)
+or the appropriate existing abstraction.
+
+Do not scatter slightly different scope rules across many routes.
+
+Consolidate only where necessary.
+
+At minimum validate:
+
+- session lesson matches request lesson
+- response belongs to currentNodeId
+- response does not authorize another node
+- active cognitive level remains unchanged unless C6 transition occurred
+- task/exercise belongs to current target
+- redirect cannot mutate target
+- model output cannot mutate target.
+
+==================================================
+19. DO NOT OVER-CONSTRAIN LANGUAGE GENERATION
+==================================================
+
+AI should remain pedagogically flexible.
+
+Within the locked target it may still:
+
+- explain differently
+- use analogies
+- give examples
+- ask guided questions when stage allows
+- simplify language
+- change representation
+- adapt pacing
+- respond naturally.
+
+C7.3 is NOT a script engine.
+
+Lock WHAT is being taught.
+
+Do not unnecessarily lock HOW it is explained.
+
+==================================================
+20. REQUIRED PROVIDER-FREE TESTS
+==================================================
+
+Add deterministic tests.
+
+TEST 1
+C6 selects node X + UNDERSTAND
+→ C7 execution target = X + UNDERSTAND.
+
+TEST 2
+Model proposes node Y
+→ currentNodeId remains X.
+
+TEST 3
+Model proposes APPLY while active level is UNDERSTAND
+→ activeCognitiveLevelId remains UNDERSTAND.
+
+TEST 4
+Accepted C2 path begins at UNDERSTAND
+→ C7 never invents REMEMBER.
+
+TEST 5
+Learner asks to switch topic
+→ redirect
+→ target unchanged.
+
+TEST 6
+Learner asks an in-scope clarification
+→ answer allowed
+→ target unchanged.
+
+TEST 7
+MICRO_CHECK generated for another node
+→ rejected.
+
+TEST 8
+MICRO_CHECK generated above current cognitive target
+→ rejected/safely handled.
+
+TEST 9
+FEEDBACK uses original evaluated-task target snapshot.
+
+TEST 10
+Exercise belonging to another MicroNode
+→ not presented.
+
+TEST 11
+Remediation action cannot mutate node.
+
+TEST 12
+LOWER_DIFFICULTY cannot lower canonical C2 target.
+
+TEST 13
+Legacy prerequisite action cannot directly mutate node.
+
+TEST 14
+C6 prerequisite target
+→ C7 accepts and teaches that target.
+
+TEST 15
+Structured output proposes completion/new target
+→ cannot mutate target without C7.1/C6.
+
+TEST 16
+Structured-call failure → fallback preserves same target.
+
+TEST 17
+Malformed output → no node/level drift.
+
+TEST 18
+Resume with stale target → canonical C6 reconciliation occurs before C7.
+
+TEST 19
+New C6 target → C7.1 shared reset clears old transient task state.
+
+TEST 20
+C7.2 pending FEEDBACK recovery → uses original target snapshot even if
+current session is reloaded.
+
+TEST 21
+Current-node source context remains the content boundary.
+
+TEST 22
+Unrelated lesson content cannot become a micro-check.
+
+No external provider calls.
+
+==================================================
+21. REGRESSIONS
+==================================================
+
+Run relevant:
+
+C7.1 tests
+C7.2 tests
+C6 tests
+C5 tests
+C4 tests
+C3 tests
+Phase 2 tests
+chat validators
+resume/recovery tests
+structured-output tests
+
+Run:
+
+API typecheck
+API build
+
+If frontend/shared contract touched:
+
+web typecheck
+web build.
+
+All C1–C6 behavior must remain unchanged.
+
+==================================================
+22. FRESH INDEPENDENT REVIEW
+==================================================
+
+Before completion review specifically for:
+
+1. second node-selection authority
+2. second cognitive-level authority
+3. Bloom+1 fallback
+4. forced REMEMBER fallback
+5. prompt-controlled prerequisite routing
+6. model-controlled node decision
+7. fallback escaping target
+8. MICRO_CHECK above target
+9. FEEDBACK using stale target
+10. exercise from wrong node
+11. resume continuing stale target
+12. duplicate scope validators with conflicting semantics
+13. C7.1 regression
+14. C7.2 stage-machine regression.
+
+Fix concrete C7.3 findings only.
+
+Rerun affected tests.
+
+==================================================
+23. SAFE ACCEPTANCE
+==================================================
+
+Prefer provider-free/session fixture.
+
+Verify:
+
+C6 target:
+MicroNode X
+Cognitive Level UNDERSTAND
+
+Then:
+
+TEACH
+→ remains X/UNDERSTAND
+
+MICRO_CHECK
+→ remains X/UNDERSTAND
+
+learner asks unrelated topic
+→ redirect
+→ remains X/UNDERSTAND
+
+learner returns
+→ FEEDBACK / canonical cycle continues
+→ remains X/UNDERSTAND
+
+Only authorized C7.1/C6 transition may change the target.
+
+Do not modify lesson mapping.
+Do not repeatedly call providers.
+
+==================================================
+24. REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+A. C7.3 VERDICT
+
+B. AUTHORITATIVE EXECUTION TARGET
+
+Exact fields/source.
+
+C. MICRONODE LOCK
+
+D. COGNITIVE-LEVEL LOCK
+
+E. LESSON/TOPIC REDIRECT
+
+F. SOURCE BOUNDARY
+
+G. MICRO_CHECK / FEEDBACK TARGET LOCK
+
+H. EXERCISE TARGET COMPATIBILITY
+
+I. REMEDIATION / PREREQUISITE BOUNDARY
+
+J. FALLBACK SAFETY
+
+K. RESUME SAFETY
+
+L. C7.1 / C7.2 REGRESSION STATUS
+
+M. FILES CHANGED
+
+N. TEST RESULTS
+
+O. ACCEPTANCE RESULT
+
+P. REMAINING C7 ITEMS
+
+Only:
+C7.4
+C7.5
+C7.6
+
+Q. FINAL VERDICT
+
+Return exactly one:
+
+C7.3 COMPLETE — C7 is hard-locked to the C6-selected MicroNode and
+Cognitive Level while preserving pedagogical flexibility inside that
+target.
+
+or
+
+C7.3 BLOCKED — <smallest exact blocker>
+
+==================================================
+25. STOP
+==================================================
+
+Do not start C7.4.
+Do not start C7.5.
+Do not start C7.6.
+
+Do not implement flashcards.
+Do not implement quiz improvements.
+Do not implement diary/Today.
+
+When C7.3 is verified, STOP.
