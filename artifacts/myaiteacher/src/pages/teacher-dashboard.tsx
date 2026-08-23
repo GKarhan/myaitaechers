@@ -2740,7 +2740,7 @@ function LessonNodesPanel({
               ))}
               {approvalWarnings.length > 0 && (
                 <>
-                  <div className="text-xs font-medium text-amber-400/80 pt-1">⚠️ Nahatakutyunner · {approvalWarnings.length}</div>
+                  <div className="text-xs font-medium text-amber-400/80 pt-1">⚠️ Նախազգուշացումներ · {approvalWarnings.length}</div>
                   {approvalWarnings.map((w, i) => (
                     <div key={i} className="text-[11px] text-amber-400/60 pl-2 border-l border-amber-400/20">
                       <span className="font-mono text-[10px] text-muted-foreground/60">[{w.code}]</span> {w.messageArm}

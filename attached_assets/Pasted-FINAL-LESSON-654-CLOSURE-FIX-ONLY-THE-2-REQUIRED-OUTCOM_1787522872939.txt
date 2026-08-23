@@ -1,0 +1,266 @@
+FINAL LESSON 654 CLOSURE — FIX ONLY THE 2 REQUIRED OUTCOME→MICRONODE BLOCKERS
+
+GOAL
+
+Lesson 654 still cannot be assigned to a student because Final Approval is
+blocked by exactly TWO current canonical errors:
+
+OUTCOME_WITHOUT_REQUIRED_NODE
+OUTCOME_WITHOUT_REQUIRED_NODE
+
+The teacher-facing assignment action remains disabled because the lesson is not
+persisted as approved.
+
+Fix ONLY these two current blockers safely.
+
+Do NOT directly enable the assignment button.
+Do NOT fake approval.
+Do NOT redesign C1–C7.
+Do NOT change Quiz, Knowledge Tree, AI Teacher runtime, Mapping architecture, or
+Teaching Content policy.
+Do NOT publish/deploy.
+
+==================================================
+1 — AUDIT THE TWO BLOCKED OUTCOMES
+==================================================
+
+For each of the two Outcomes currently missing a REQUIRED MicroNode relation,
+inspect:
+
+- Outcome id
+- Outcome text
+- all current Outcome→MicroNode links
+- relationship type/status
+- linked MicroNode title
+- MicroNode learningObjective
+- MicroNode source grounding
+- current C1/C2 status
+- whether an existing relation can safely become REQUIRED
+
+Return internally:
+
+OUTCOME:
+CURRENT LINKS:
+BEST EXISTING MICRONODE:
+SOURCE SUPPORT:
+OBJECTIVE SUPPORT:
+SAFE REQUIRED RELATION:
+YES / NO
+WHY:
+
+Do not change data before proving the relation.
+
+==================================================
+2 — USE EXISTING CANONICAL RELATIONS WHERE POSSIBLE
+==================================================
+
+If an Outcome already has an existing persisted relation to a MicroNode and the
+MicroNode clearly covers that Outcome:
+
+promote/normalize that existing relation to REQUIRED using the existing canonical
+Outcome-alignment path.
+
+Do NOT invent a new MicroNode.
+
+Do NOT create arbitrary links just to make Final Approval pass.
+
+==================================================
+3 — IF NO RELATION EXISTS
+==================================================
+
+If one of the two Outcomes has no persisted relationship at all:
+
+inspect the existing 4 mapped MicroNodes.
+
+Only create a REQUIRED link if the relationship is directly supported by:
+
+Outcome text
++
+MicroNode learningObjective
++
+MicroNode source content.
+
+This must be deterministic and source-grounded.
+
+If no safe relationship exists:
+
+STOP for that Outcome and report it as the smallest remaining true blocker.
+
+Do NOT fabricate the relationship.
+
+==================================================
+4 — EXPECTED LESSON 654 CANDIDATES
+==================================================
+
+Current MicroNodes include concepts such as:
+
+- Թվի ներկայացումը կարգային գումարելիների գումարով
+- Կարգեր և կարգային միավորներ
+- Միանիշ, երկնիշ, եռանիշ և բազմանիշ թվեր
+- Կարգային միավորներ
+
+Current blocked Outcomes include ideas corresponding to:
+
+- explaining ranks/place-value units
+- solving problems using place-value knowledge
+
+Use the ACTUAL persisted Outcome texts and node source/objectives.
+
+Do not rely only on these summaries.
+
+==================================================
+5 — REVALIDATE FINAL APPROVAL
+==================================================
+
+After applying only safe canonical relationship repairs:
+
+re-read current lesson state from DB.
+
+Run canonical Final Approval validation again.
+
+Review/warning states such as:
+
+- source review
+- Cognitive Path review
+- automatic alignment review
+
+must remain review-only according to the already implemented policy.
+
+Missing Teaching Content must continue using the existing explicit teacher
+override policy.
+
+Do NOT restore old approval blockers.
+
+==================================================
+6 — FINAL APPROVAL
+==================================================
+
+If no TRUE blocker remains:
+
+run the canonical Final Approval flow.
+
+If missing Teaching Content requires explicit teacher confirmation:
+
+use the already implemented confirmation/override path.
+
+Do NOT manually set lesson.status in DB.
+
+Approval must happen through the normal backend authority.
+
+Then read the lesson back from DB.
+
+Expected:
+
+lesson.status = approved
+
+or the current canonical approved state used by assignment readiness.
+
+==================================================
+7 — ASSIGNMENT BUTTON
+==================================================
+
+After persisted Final Approval:
+
+refetch/reload teacher lesson state.
+
+Verify:
+
+“Հանձնարարել սովորողին”
+
+VISIBLE: YES
+ENABLED: YES
+
+Do NOT create an actual student assignment.
+
+Do NOT hard-code frontend enabled state.
+
+Correct chain must remain:
+
+safe Outcome repair
+→ Final Approval
+→ persisted approved lesson
+→ frontend refresh/refetch
+→ existing assignment readiness
+→ button enabled
+
+==================================================
+8 — REAL ACCEPTANCE REPORT
+==================================================
+
+Return:
+
+BLOCKED OUTCOME 1:
+TEXT:
+OLD RELATION:
+REPAIR:
+NEW REQUIRED RELATION:
+SOURCE-GROUNDED:
+YES / NO
+
+BLOCKED OUTCOME 2:
+TEXT:
+OLD RELATION:
+REPAIR:
+NEW REQUIRED RELATION:
+SOURCE-GROUNDED:
+YES / NO
+
+FINAL APPROVAL:
+APPROVED / BLOCKED
+
+LESSON STATUS READ-BACK:
+...
+
+TEACHING CONTENT OVERRIDE USED:
+YES / NO
+
+TRUE BLOCKERS REMAINING:
+...
+
+“ՀԱՆՁՆԱՐԱՐԵԼ ՍՈՎՈՐՈՂԻՆ”:
+
+VISIBLE:
+YES / NO
+
+ENABLED:
+YES / NO
+
+REAL ASSIGNMENT CREATED:
+NO
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+YES / NO
+
+If YES:
+list only the canonical Outcome→MicroNode relation repairs and normal final
+approval writes.
+
+C1–C7 SAFETY WEAKENED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+PUBLISHED/DEPLOYED:
+NO
+
+FINAL VERDICT:
+
+Return exactly ONE:
+
+LESSON 654 APPROVED — STUDENT ASSIGNMENT READY
+
+or
+
+LESSON 654 STILL BLOCKED — <smallest exact true blocker>
+
+Then STOP.
