@@ -1,0 +1,440 @@
+URGENT C1 REGRESSION — ATOMIC MICRONODE FAILURE STILL BLOCKS PERSISTENCE
+
+We found a new real mapping failure after the recent C1 completion-mode work.
+
+REAL LESSON:
+
+Book: Մաթեմատիկա 5
+Author: Սմբատ Գոգյան
+Topic: ԲՆԱԿԱՆ ԹՎԵՐԸ ԵՎ ԿՈՈՐԴԻՆԱՏԱՅԻՆ ՃԱՌԱԳԱՅԹԸ
+Lesson: Կարգեր, կարգային միավորներ
+§1.4
+Pages: 19–22
+
+Lesson Goal and canonical Outcomes were successfully generated and confirmed.
+
+But Automatic Mapping failed with this UI error:
+
+«Քարտեզագրումը չի բաժանել ինքնուրույն ստուգվող գիտելիքները բավարար ատոմային MicroNode-ների։ Արդյունքը չի պահպանվել։»
+
+Result:
+
+- 0 Topics/MicroNodes persisted
+- 0 additional exercises persisted
+- detailed mapping is empty
+
+THIS IS A C1 REGRESSION / COMPLETION-MODE GAP.
+
+Our previously implemented C1 policy was specifically intended to avoid
+throwing away otherwise valid mappings merely because some generated
+MicroNodes require teacher review.
+
+DO NOT fix only lesson §1.4 manually.
+
+We need to identify and fix the GENERAL failure mode so future lessons
+do not repeatedly fail for the same reason.
+
+==================================================
+0. SCOPE
+==================================================
+
+Work ONLY on C1 automatic mapping generation/validation/persistence.
+
+DO NOT change:
+
+- C2 semantics
+- C3
+- C4
+- C5
+- C6
+- C7
+- Quiz
+- Knowledge Tree
+- AI Teacher runtime
+- Flashcards
+- Today
+- Journal/Homework
+- lesson planning
+- reporting
+
+Do not weaken source/provenance safety.
+
+Do not publish/deploy.
+
+==================================================
+1. FORENSIC ROOT-CAUSE AUDIT FIRST
+==================================================
+
+Before modifying anything, reproduce/inspect the exact failure for:
+
+Մաթեմատիկա 5
+§1.4 Կարգեր, կարգային միավորներ
+pages 19–22.
+
+Find the EXACT validator/error producer responsible for:
+
+«Քարտեզագրումը չի բաժանել ինքնուրույն ստուգվող գիտելիքները բավարար ատոմային MicroNode-ների։ Արդյունքը չի պահպանվել։»
+
+Report:
+
+A. exact file/function
+B. exact validation rule
+C. generated MicroNode count
+D. expected/minimum atomic MicroNode count
+E. why each generated node passed/failed atomicity
+F. whether the AI output was structurally bad OR the validator was too rigid
+G. whether this failure occurs BEFORE or AFTER:
+   - source coverage validation
+   - provenance validation
+   - structural validation
+   - alignment/review classification
+   - persistence transaction
+
+Also inspect the actual Pass 1 / Pass 2 output for this run if retained.
+
+We need to know what the mapper actually generated.
+
+==================================================
+2. CHECK AGAINST CURRENT C1 COMPLETION-MODE CONTRACT
+==================================================
+
+Audit the CURRENT implementation of the previously completed policy:
+
+valid source-backed mapping
++
+non-sufficient / imperfect MicroNode
+→ persist safely
+→ mark affected node draft / needs_review
+→ teacher repairs/reviews later
+
+Determine why the current atomicity failure is still causing:
+
+ENTIRE MAPPING REJECTED
++
+ZERO PERSISTENCE.
+
+Classify the reason:
+
+A. atomicity validator is still a lesson-level hard gate
+B. completion-mode disposition is never reached
+C. generated structure is too malformed to persist safely
+D. persistence path incorrectly treats review-required atomicity as fatal
+E. another legacy validator still rejects the mapping
+F. other — prove it
+
+IMPORTANT:
+
+Do NOT assume atomicity should always become a warning.
+
+Some malformed structures must still fail closed.
+
+We need the correct boundary.
+
+==================================================
+3. DEFINE THE CORRECT SAFETY BOUNDARY
+==================================================
+
+Keep these as HARD FAILURES:
+
+- missing/unverified source
+- unreadable required source
+- invalid page/source provenance
+- fabricated sourceQuote
+- sourceQuote not found in source
+- broken IDs/references
+- duplicate IDs that make persistence ambiguous
+- invalid Topic/MicroNode relationships
+- structurally unparsable mapping
+- transaction/persistence integrity failure
+- catastrophic source coverage loss
+
+But distinguish these from REPAIRABLE PEDAGOGICAL QUALITY problems:
+
+- MicroNode too broad
+- MicroNode combines multiple independently assessable objectives
+- MicroNode granularity not ideal
+- heading-like MicroNode
+- partially sufficient source alignment
+- node needs teacher splitting
+- node needs teacher renaming/refinement
+
+If source/provenance/structure are safe, these pedagogical-quality issues
+should NOT automatically destroy the entire lesson mapping.
+
+They should become explicit teacher-review state where safe.
+
+Use the existing canonical status/review model.
+Do NOT invent a parallel architecture.
+
+==================================================
+4. IMPROVE GENERATION BEFORE RELAXING VALIDATION
+==================================================
+
+The primary fix should first improve the mapper so it GENERATES proper
+atomic MicroNodes.
+
+Inspect the automatic mapping prompt/schema.
+
+Strengthen it so that:
+
+ONE MicroNode = ONE independently assessable learning objective.
+
+Explicitly instruct the mapper to split content when a learner could:
+
+- know one part but not another,
+- perform one operation but not another,
+- answer one assessment independently from another.
+
+For this mathematics lesson, the mapper must inspect the source and
+derive atomic units from the actual textbook content.
+
+DO NOT hard-code lesson-specific MicroNode titles.
+
+DO NOT hard-code §1.4.
+
+The rule must generalize across subjects.
+
+Examples of separation logic:
+
+definition/concept
+≠ recognition
+≠ representation
+≠ procedure/application
+
+But actual nodes MUST come from the source.
+
+Do not force artificial over-fragmentation either.
+
+==================================================
+5. ADD SAFE COMPLETION FALLBACK
+==================================================
+
+After improving generation, implement/repair the completion-mode boundary.
+
+If the returned mapping is:
+
+- source-backed,
+- provenance-valid,
+- coverage-safe,
+- structurally persistable,
+
+but one or more MicroNodes fail only PEDAGOGICAL atomicity/granularity:
+
+DO NOT discard the entire valid mapping automatically.
+
+Persist the safely usable structure atomically.
+
+For affected MicroNodes use the existing review-required semantics,
+for example:
+
+draft / needs_review
+
+and record the exact review reason such as:
+
+MICRONODE_TOO_BROAD
+COMPOUND_LEARNING_OBJECTIVE
+HEADING_ONLY
+ATOMICITY_REVIEW_REQUIRED
+
+Use existing fields/status architecture wherever possible.
+
+Do NOT mark such nodes approved.
+
+Do NOT make them C2-ready automatically.
+
+Do NOT allow C6/C7 to use them until normal review/approval requirements
+are satisfied.
+
+==================================================
+6. EXERCISE PRESERVATION
+==================================================
+
+This is critical.
+
+Even when a MicroNode needs review:
+
+DO NOT lose valid textbook exercises/questions/activities extracted from
+pages 19–22.
+
+Preserve them with source provenance.
+
+If an exercise cannot safely be assigned to one MicroNode because the
+node structure is under review:
+
+keep it as an unlinked/additional source exercise rather than dropping it
+or assigning it incorrectly.
+
+NO exercise duplication.
+
+NO invented exercise linkage.
+
+==================================================
+7. OUTCOME ALIGNMENT SAFETY
+==================================================
+
+Do not create fake REQUIRED Outcome links for uncertain/broad nodes.
+
+If a MicroNode needs atomicity review:
+
+- preserve safe alignment only when supported,
+- otherwise mark/restrict the alignment for teacher review.
+
+Final lesson approval must remain fail-closed until required review is
+resolved.
+
+==================================================
+8. REGRESSION TESTS
+==================================================
+
+Add provider-free deterministic tests covering at least:
+
+CASE 1
+Valid atomic mapping
+→ persists normally.
+
+CASE 2
+Source-valid mapping with one broad/compound MicroNode
+→ valid mapping persists
+→ affected node needs_review
+→ entire lesson is NOT discarded.
+
+CASE 3
+Multiple repairable granularity issues
+→ safe mapping persists
+→ review reasons preserved.
+
+CASE 4
+Invalid/fabricated source provenance
+→ HARD FAIL
+→ nothing persists.
+
+CASE 5
+Catastrophic source coverage failure
+→ HARD FAIL.
+
+CASE 6
+Structurally invalid mapping
+→ HARD FAIL.
+
+CASE 7
+Review-required MicroNode
+→ cannot become canonical teachable/C2-ready without normal review.
+
+CASE 8
+Exercises belonging to uncertain node
+→ preserved safely without fabricated linkage.
+
+Also run existing C1 mapping regression suites and C2 readiness tests.
+
+==================================================
+9. REAL ACCEPTANCE RUN — EXACTLY ONE
+==================================================
+
+After:
+
+- root cause proven,
+- implementation complete,
+- deterministic tests pass,
+- typecheck/build pass,
+
+run EXACTLY ONE real automatic mapping acceptance attempt for:
+
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+§1.4 Կարգեր, կարգային միավորներ
+pages 19–22
+
+Do NOT retry repeatedly.
+
+If it succeeds:
+
+verify persisted:
+
+- Topics
+- MicroNodes
+- MicroNode statuses
+- source pages/provenance
+- source coverage
+- exercises
+- unlinked exercises
+- Outcome links
+- review-required nodes
+- mapping audit
+
+If generation is still pedagogically imperfect but structurally/source
+safe, the expected completion-mode behavior is:
+
+PERSIST + NEEDS_REVIEW
+
+not:
+
+DISCARD EVERYTHING.
+
+If it fails because of a TRUE hard safety gate, report the exact gate
+instead of weakening it.
+
+==================================================
+10. DO NOT AUTO-APPROVE
+==================================================
+
+IMPORTANT:
+
+The goal is successful SAFE MAPPING PERSISTENCE.
+
+Do NOT:
+
+- approve all MicroNodes
+- confirm C2 automatically merely to make the lesson green
+- final-approve the lesson
+- generate Phase 2 teaching content unless automatic mapping itself
+  canonically requires something before persistence
+
+We will manually inspect mapping quality after this task.
+
+==================================================
+11. FINAL REPORT
+==================================================
+
+Return:
+
+1. ROOT CAUSE
+
+2. EXACT OLD BLOCKING RULE
+
+3. WHY PREVIOUS COMPLETION MODE DID NOT HANDLE IT
+
+4. FILES CHANGED
+
+5. GENERAL GENERATION IMPROVEMENT
+
+6. PERSISTENCE/REVIEW FALLBACK CHANGE
+
+7. HARD GATES THAT REMAIN UNCHANGED
+
+8. TEST RESULTS
+
+9. REAL §1.4 ACCEPTANCE RESULT
+
+10. PERSISTED COUNTS
+- Topics
+- MicroNodes
+- approved nodes
+- needs_review nodes
+- exercises
+- unlinked exercises
+- Outcome links
+
+11. SOURCE COVERAGE RESULT
+
+12. ANY REMAINING REVIEW ITEMS
+
+13. CONFIRM:
+This was fixed as a GENERAL C1 mapping behavior,
+not as a lesson-specific hard-coded workaround.
+
+Then STOP.
+
+Do not start another lesson.
+Do not start C2 generation.
+Do not start Phase 2.
+Do not publish/deploy.
