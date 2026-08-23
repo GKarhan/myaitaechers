@@ -299,16 +299,19 @@ it("F1: draft textbook exercise → review warning, not final-approval blocker",
   }
 });
 
-it("F2: draft source exercise does not block the one lesson-level approval", async () => {
+it("F2: draft source exercise is accepted through the one lesson-level decision", async () => {
   const snap = await getExercise(EX.id);
   assert.ok(snap);
   try {
     await db.update(lessonExercisesTable)
       .set({ status: "draft" })
       .where(eq(lessonExercisesTable.id, EX.id));
-    const { status, body } = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(status, 200);
-    assert.equal(body.approved, true);
+    const first = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(first.status, 409);
+    assert.equal(first.body.confirmationRequired, true);
+    const accepted = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, { confirmReviewIssues: true });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.approved, true);
   } finally {
     await restoreExercise(snap!);
   }
@@ -617,7 +620,7 @@ it("R2/R10: one bounded repair promotes one valid persisted SUPPORTING relation"
   }
 });
 
-it("R3: an Outcome without a safe existing relation remains blocked and no link is fabricated", async () => {
+it("R3: an Outcome without a safe existing relation requires explicit review and no link is fabricated", async () => {
   try {
     await db.insert(lessonOutcomesTable).values({
       lessonId: LESSON_ID,
@@ -629,19 +632,29 @@ it("R3: an Outcome without a safe existing relation remains blocked and no link 
     await db.update(lessonsTable).set({ goalOutcomeReviewStatus: "confirmed" } as never)
       .where(eq(lessonsTable.id, LESSON_ID));
     const response = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(response.status, 422);
-    assert.equal((response.body.errors as Array<{ code: string }>)
+    assert.equal(response.status, 409);
+    assert.equal((response.body.overrideable as Array<{ code: string }>)
+      .some((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE"), true);
+    assert.equal((response.body.reviewIssues as Array<{ code: string }>)
       .some((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE"), true);
     const alignments = await db.select({ id: lessonOutcomeNodeAlignmentsTable.id })
       .from(lessonOutcomeNodeAlignmentsTable)
       .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, LESSON_ID));
     assert.equal(alignments.length, 0);
+    const accepted = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, { confirmReviewIssues: true });
+    assert.equal(accepted.status, 200);
+    const [lesson] = await db.select({
+      everApproved: lessonsTable.everApproved,
+      metadata: lessonsTable.mappingMetadata,
+    }).from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID));
+    assert.equal(lesson.everApproved, false, "review acceptance is intentionally non-sticky");
+    assert.ok((lesson.metadata as any)?.finalApproval?.acceptedIssueCodes?.includes("OUTCOME_WITHOUT_REQUIRED_NODE"));
   } finally {
     await resetFinalReadinessFixture();
   }
 });
 
-it("R4: review-only readiness still permits canonical final approval", async () => {
+it("R4: review-only readiness requires one explicit assignment acceptance", async () => {
   try {
     await db.update(lessonsTable).set({
       mappingMetadata: {
@@ -660,9 +673,12 @@ it("R4: review-only readiness still permits canonical final approval", async () 
       },
     } as never).where(eq(lessonsTable.id, LESSON_ID));
     const response = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
-    assert.equal(response.status, 200);
-    assert.equal(response.body.approved, true);
+    assert.equal(response.status, 409);
+    assert.equal(response.body.confirmationRequired, true);
     assert.equal(response.body.readiness, "REVIEW_REQUIRED");
+    const accepted = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, { confirmReviewIssues: true });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.approved, true);
     const [persisted] = await db.select({ status: lessonsTable.status })
       .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID));
     assert.equal(persisted?.status, "approved");

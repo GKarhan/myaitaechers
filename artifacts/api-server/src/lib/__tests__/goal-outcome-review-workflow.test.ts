@@ -67,11 +67,11 @@ try {
 
   await db.update(lessonsTable).set({ goalOutcomeReviewStatus: "needs_review" })
     .where(eq(lessonsTable.id, lessonId));
-  const blocked = await validateLessonForFinalApproval(lessonId);
+  const reviewRequired = await validateLessonForFinalApproval(lessonId);
   assert.equal(
-    blocked.errors.some((issue) => issue.code === "GOAL_OUTCOME_CONFIRMATION_REQUIRED"),
+    reviewRequired.overrideable.some((issue) => issue.code === "GOAL_OUTCOME_REVIEW_REQUIRED"),
     true,
-    "non-legacy, unconfirmed review state blocks final approval",
+    "non-legacy, unconfirmed review state becomes an explicit assignment review finding",
   );
 
   await db.update(lessonsTable).set({
@@ -80,9 +80,9 @@ try {
   }).where(eq(lessonsTable.id, lessonId));
   const confirmed = await validateLessonForFinalApproval(lessonId);
   assert.equal(
-    confirmed.errors.some((issue) => issue.code === "GOAL_OUTCOME_CONFIRMATION_REQUIRED"),
+    confirmed.overrideable.some((issue) => issue.code === "GOAL_OUTCOME_REVIEW_REQUIRED"),
     false,
-    "explicit confirmation clears only the Goal/Outcome confirmation gate",
+    "the legacy confirmation endpoint remains compatible without changing canonical data",
   );
 
   const [[persistedNode], [persistedOutcome]] = await Promise.all([
@@ -93,7 +93,7 @@ try {
   ]);
   assert.equal(persistedNode.theoryContent, "Պահպանվող աղբյուրային բովանդակություն");
   assert.equal(persistedOutcome.outcomeText, "Սովորողը կարող է կիրառել կանոնը։");
-  console.log("  ✓ Package 1C confirmation blocks approval without remapping or duplicating data");
+  console.log("  ✓ Goal/Outcome review remains auditable without blocking mapping or duplicating data");
 
   // Provider-free acceptance coverage: proposal generation itself has a source/AI
   // dependency, so seed the exact persisted proposal returned by that route and
@@ -173,8 +173,7 @@ try {
   assert.equal(approvedStatusAttempt.response.status, 409, "an Outcome status cannot bypass confirmation");
 
   const mappingBeforeConfirmation = await request("/map", { method: "POST" });
-  assert.equal(mappingBeforeConfirmation.response.status, 409);
-  assert.equal(mappingBeforeConfirmation.body.error, "GOAL_OUTCOME_CONFIRMATION_REQUIRED");
+  assert.notEqual(mappingBeforeConfirmation.body.error, "GOAL_OUTCOME_CONFIRMATION_REQUIRED");
 
   const preMappingReadiness = await request("/outcomes/readiness");
   assert.equal(preMappingReadiness.response.status, 200);
@@ -196,13 +195,6 @@ try {
     .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, proposalLessonId));
   assert.equal(confirmedOutcomes.every((outcome) => outcome.status === "approved"), true);
 
-  const mappingAfterConfirmation = await request("/map", { method: "POST" });
-  assert.notEqual(
-    mappingAfterConfirmation.body.error,
-    "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
-    "detailed mapping becomes eligible after explicit confirmation",
-  );
-
   await db.insert(lessonNodesTable).values({
     lessonId: proposalLessonId,
     sequence: 1,
@@ -211,22 +203,22 @@ try {
   });
   const postMappingReadiness = await request("/outcomes/readiness");
   assert.equal(
-    (postMappingReadiness.body.errors as Array<{ code: string }>).filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
+    (postMappingReadiness.body.warnings as Array<{ code: string }>).filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
     proposalOutcomes.length,
     "required MicroNode coverage remains a post-mapping readiness rule",
   );
   const finalApprovalReadiness = await validateLessonForFinalApproval(proposalLessonId);
   assert.equal(
-    finalApprovalReadiness.errors.filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
+    finalApprovalReadiness.overrideable.filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
     proposalOutcomes.length,
-    "final approval also blocks mapped lessons missing REQUIRED Outcome coverage",
+    "missing REQUIRED Outcome coverage is accepted only through the final assignment review",
   );
 
   await request(`/outcomes/${persistedProposalOutcome.id}/delete`, { method: "POST" });
   const importAfterTeacherRemoval = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
   assert.equal(importAfterTeacherRemoval.response.status, 409);
   assert.equal(importAfterTeacherRemoval.body.error, "CANONICAL_DRAFT_CONFLICT");
-  console.log("  ✓ C1 proposal import, confirmation, mapping gates, and readiness use the corrected workflow");
+  console.log("  ✓ C1 proposal import, compatibility confirmation, mapping, and assignment review use the simplified workflow");
 } finally {
   if (server) await new Promise<void>((resolve, reject) => server!.close((error) => error ? reject(error) : resolve()));
   if (lessonId) await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId)).catch(() => {});

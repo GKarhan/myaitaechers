@@ -49,7 +49,6 @@ import {
   useCreateTeacherLesson,
   useUpdateTeacherLesson,
   useDeleteTeacherLesson,
-  useUpdateLessonStatus,
   useGetTeacherSchedule,
   useGetTeacherProfile,
   useGetStudentDetail,
@@ -1229,14 +1228,7 @@ function LessonNodesPanel({
     await loadCogPath(nodeId);
   };
 
-  // P1.7: Final Lesson Approval state
   const { token: authToken } = useAuth();
-  const [approvalStatus, setApprovalStatus] = useState<string>(authoringStatus);
-  const [approvalPending, setApprovalPending] = useState(false);
-  const [approvalErrors, setApprovalErrors] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
-  const [approvalWarnings, setApprovalWarnings] = useState<Array<{ code: string; messageArm: string; nodeId?: number }>>([]);
-  const [showApprovalErrors, setShowApprovalErrors] = useState(false);
-  const [missingContentOverrideCount, setMissingContentOverrideCount] = useState<number | null>(null);
 
   // Phase 1.9: linked tests section — type now includes live completion stats
   // returned by the extended GET /api/lessons/:id/quizzes endpoint.
@@ -1261,52 +1253,6 @@ function LessonNodesPanel({
       .finally(() => { if (!cancelled) setLinkedTestsLoading(false); });
     return () => { cancelled = true; };
   }, [lessonId, authToken]);
-
-  // Sync external authoringStatus changes (e.g. after lesson list refetch)
-  useEffect(() => { setApprovalStatus(authoringStatus); }, [authoringStatus]);
-
-  const handleFinalApprove = async (confirmMissingTeachingContent = false) => {
-    if (approvalPending) return;
-    setApprovalPending(true);
-    setApprovalErrors([]);
-    setApprovalWarnings([]);
-    setShowApprovalErrors(false);
-    try {
-      const r = await fetch(`/api/lessons/${lessonId}/final-approve`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify(confirmMissingTeachingContent ? { confirmMissingTeachingContent: true } : {}),
-      });
-      const data = await r.json();
-      if (data.approved) {
-        setMissingContentOverrideCount(null);
-        setApprovalStatus("approved");
-        setApprovalErrors([]);
-        setApprovalWarnings(data.warnings ?? []);
-        setShowApprovalErrors(false);
-        // Refresh the lesson card so (l as any).status === "approved" is seen immediately
-        // and the "Հandznarar sovorgiin" button becomes clickable without a page reload.
-        qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
-      } else if (r.status === 409 && data.confirmationRequired === true) {
-        const count = Number(data.missingTeachingContent?.nodeCount);
-        setMissingContentOverrideCount(Number.isFinite(count) ? count : 0);
-        setApprovalStatus("needs_review");
-        setApprovalErrors([]);
-        setApprovalWarnings(data.warnings ?? []);
-        setShowApprovalErrors(false);
-      } else {
-        setApprovalStatus("needs_review");
-        setApprovalErrors(data.errors ?? []);
-        setApprovalWarnings(data.warnings ?? []);
-        setShowApprovalErrors(true);
-      }
-    } catch {
-      setApprovalErrors([{ code: "NETWORK_ERROR", messageArm: "Կապի սխալ. Փortsek kjnakel." }]);
-      setShowApprovalErrors(true);
-    } finally {
-      setApprovalPending(false);
-    }
-  };
 
   const { data: nodes = [], isFetching: nodesFetching } = useGetLessonNodes(lessonId, {
     query: { enabled: open, queryKey: getGetLessonNodesQueryKey(lessonId) },
@@ -1336,7 +1282,7 @@ function LessonNodesPanel({
 
   // Build grouped view: nodes sorted by sequence, grouped by topicId
   const sortedNodes = useMemo(() => [...nodes].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), [nodes]);
-  const lessonIsApproved = approvalStatus === "approved";
+  const lessonIsApproved = authoringStatus === "approved";
   const hasCompleteTeachingContent = (node: (typeof nodes)[number]) => {
     const content = node as any;
     return typeof content.childFriendlyExplanation === "string" && content.childFriendlyExplanation.trim().length > 0
@@ -1362,10 +1308,6 @@ function LessonNodesPanel({
   const sourceExercises = exercises.filter((exercise) => (exercise as any).sourceType === "textbook");
   const sourceExercisesApproved = sourceExercises.every((exercise) => (exercise as any).status === "approved");
   const nodesApproved = nodes.every((node) => (node as any).status === "approved");
-  // Final approval is the one lesson-level decision. The server remains the
-  // authority and returns concrete review/blocking reasons; avoid hiding that
-  // action behind redundant bulk-approval UI.
-  const finalApprovalPrerequisitesReady = nodes.length > 0;
 
   const generateAllCogPaths = async () => {
     if (lessonIsApproved || bulkCogPathRunning || sortedNodes.length === 0) return;
@@ -2645,29 +2587,17 @@ function LessonNodesPanel({
                 <div className="min-w-0 rounded-lg border border-emerald-400/20 bg-black/15 p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-[10px] font-semibold text-emerald-200">3</span>
-                    <p className="text-[10px] font-semibold text-white">Վերջնական հաստատում</p>
+                    <p className="text-[10px] font-semibold text-white">Հանձնարարում</p>
                   </div>
                   <div className="mt-2 min-h-8">
                     {lessonIsApproved ? (
                       <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300">✅ Հաստատված</span>
                     ) : (
-                      <button
-                        onClick={() => { void handleFinalApprove(); }}
-                        disabled={approvalPending || !finalApprovalPrerequisitesReady}
-                        title={finalApprovalPrerequisitesReady ? "Կատարել վերջնական հաստատումը" : "Նախ ստեղծիր քարտեզագրումը"}
-                        className="flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300 transition-colors hover:border-emerald-300/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {approvalPending ? (
-                          <span className="inline-block h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        ) : "✅ Հաստատել"}
-                      </button>
+                      <span className="inline-flex rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-medium text-white/70">
+                        Ավարտեք վերանայումը, ապա հանձնարարեք դասի քարտից
+                      </span>
                     )}
                   </div>
-                  {!lessonIsApproved && !finalApprovalPrerequisitesReady && (
-                    <p className="mt-1 text-[9px] text-amber-200/75">
-                      ⚠ Նախ ստեղծիր քարտեզագրումը
-                    </p>
-                  )}
                 </div>
               </div>
               {bulkCogPathRunning && bulkCogPathProgress && (
@@ -2724,72 +2654,6 @@ function LessonNodesPanel({
               )}
             </section>
           )}
-          {/* P1.7: Validation error/warning panel */}
-          {showApprovalErrors && (approvalErrors.length > 0 || approvalWarnings.length > 0) && (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-destructive">
-                  ❌ Չի հաստատվել · {approvalErrors.length} սխալ կա.
-                </span>
-                <button onClick={() => setShowApprovalErrors(false)} className="text-xs text-muted-foreground hover:text-white">✕</button>
-              </div>
-              {approvalErrors.map((e, i) => (
-                <div key={i} className="text-[11px] text-destructive/80 pl-2 border-l border-destructive/20">
-                  <span className="font-mono text-[10px] text-muted-foreground/60">[{e.code}]</span> {e.messageArm}
-                </div>
-              ))}
-              {approvalWarnings.length > 0 && (
-                <>
-                  <div className="text-xs font-medium text-amber-400/80 pt-1">⚠️ Նախազգուշացումներ · {approvalWarnings.length}</div>
-                  {approvalWarnings.map((w, i) => (
-                    <div key={i} className="text-[11px] text-amber-400/60 pl-2 border-l border-amber-400/20">
-                      <span className="font-mono text-[10px] text-muted-foreground/60">[{w.code}]</span> {w.messageArm}
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-
-          <AlertDialog
-            open={missingContentOverrideCount !== null}
-            onOpenChange={(open) => {
-              if (!open && !approvalPending) setMissingContentOverrideCount(null);
-            }}
-          >
-            <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-base text-amber-200">
-                  Հաստատե՞լ դասը առանց ամբողջական ուսուցման բովանդակության
-                </AlertDialogTitle>
-                <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
-                  {missingContentOverrideCount} MicroNode-ի համար ուսուցման բովանդակությունը
-                  դեռ ամբողջական չէ։ Կարող եք հաստատել դասը՝ ընդունելով, որ այդ նյութը
-                  բացակայում է և պետք է լրացվի հետագայում։
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel
-                  disabled={approvalPending}
-                  onClick={() => setMissingContentOverrideCount(null)}
-                  className="border-white/15 bg-white/5 text-white hover:bg-white/10"
-                >
-                  Չեղարկել
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={approvalPending}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void handleFinalApprove(true);
-                  }}
-                  className="bg-amber-500 text-black hover:bg-amber-400"
-                >
-                  {approvalPending ? "Հաստատվում է..." : "Հաստատել առանց լրացուցիչ բովանդակության"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center justify-between">
@@ -3530,6 +3394,142 @@ function LessonNodesPanel({
     </div>
   );
 }
+type AssignmentReviewIssue = {
+  messageArm?: string;
+  message?: string;
+};
+
+function LessonAssignmentAction({
+  lessonId,
+  courseId,
+  authoringStatus,
+}: {
+  lessonId: number;
+  courseId: number;
+  authoringStatus: string;
+}) {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const [pending, setPending] = useState(false);
+  const [reviewIssues, setReviewIssues] = useState<AssignmentReviewIssue[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshLessons = async () => {
+    await queryClient.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
+  };
+
+  const activateLesson = async () => {
+    const response = await fetch(`/api/teacher/lessons/${lessonId}/status`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    const data = await response.json().catch(() => ({})) as { message?: string; error?: string };
+    if (!response.ok) throw new Error(data.message ?? data.error ?? "Դասը չհաջողվեց հանձնարարել։");
+    await refreshLessons();
+  };
+
+  const runAssignmentPreflight = async (confirmReviewIssues = false) => {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      if (authoringStatus === "approved") {
+        await activateLesson();
+        return;
+      }
+      const response = await fetch(`/api/lessons/${lessonId}/final-approve`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token ?? ""}`, "Content-Type": "application/json" },
+        body: JSON.stringify(confirmReviewIssues ? { confirmReviewIssues: true } : {}),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        approved?: boolean;
+        confirmationRequired?: boolean;
+        reviewIssues?: AssignmentReviewIssue[];
+        overrideable?: AssignmentReviewIssue[];
+        warnings?: AssignmentReviewIssue[];
+        errors?: AssignmentReviewIssue[];
+      };
+      if (data.approved) {
+        setReviewIssues(null);
+        await activateLesson();
+        return;
+      }
+      if (response.status === 409 && data.confirmationRequired) {
+        setReviewIssues(data.reviewIssues ?? [...(data.overrideable ?? []), ...(data.warnings ?? [])]);
+        return;
+      }
+      const issues = data.errors ?? [];
+      setError(
+        issues.map((issue) => issue.messageArm ?? issue.message).filter(Boolean).join(" ")
+        || "Դասը դեռ պատրաստ չէ հանձնարարելու համար։",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Կապի սխալ։ Կրկին փորձեք։");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex flex-col items-end gap-1">
+        <button
+          onClick={() => { void runAssignmentPreflight(); }}
+          disabled={pending}
+          className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20 disabled:opacity-50"
+        >
+          {pending ? "Ստուգվում է..." : "Հանձնարարել սովորողին"}
+        </button>
+        {error && <p className="max-w-56 text-right text-[10px] leading-snug text-destructive">{error}</p>}
+      </div>
+      <AlertDialog
+        open={reviewIssues !== null}
+        onOpenChange={(open) => { if (!open && !pending) setReviewIssues(null); }}
+      >
+        <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base text-amber-200">
+              Վերանայել նախքան հանձնարարելը
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
+              Դասը հանձնարարելուց առաջ ուշադրություն դարձրեք հետևյալ կետերին։ Հաստատելու դեպքում
+              դրանք կպահպանվեն որպես ձեր տեղեկացված որոշում։
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+            {(reviewIssues ?? []).slice(0, 6).map((issue, index) => (
+              <p key={index} className="rounded border border-amber-400/15 bg-amber-400/[0.06] px-2 py-1.5 text-[11px] leading-relaxed text-amber-100">
+                {issue.messageArm ?? issue.message ?? "Վերանայում է պահանջվում։"}
+              </p>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={pending}
+              onClick={() => setReviewIssues(null)}
+              className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+            >
+              Վերադառնալ և վերանայել
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                void runAssignmentPreflight(true);
+              }}
+              className="bg-amber-500 text-black hover:bg-amber-400"
+            >
+              {pending ? "Հանձնարարում է..." : "Հաստատել և հանձնարարել"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 function LessonGoalOutcomesPanel({
   lessonId,
   lessonGoal,
@@ -3667,13 +3667,6 @@ function LessonGoalOutcomesPanel({
                     onClick={() => void run(() => request("/goal-outcome-review/apply-proposal"))}
                     className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
                   >Ներմուծել որպես draft</button>
-                )}
-                {review.requiresConfirmation && (
-                  <button
-                    disabled={busy}
-                    onClick={() => void run(() => request("/goal-outcome-review/confirm"))}
-                    className="rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-400/20 disabled:opacity-50"
-                  >✅ Հաստատել Goal/Outcomes</button>
                 )}
               </div>
               {review.proposal && (
@@ -4163,7 +4156,7 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
                             <span className="rounded border border-white/10 bg-black/20 px-1 py-0.5 text-secondary">
                               {outcome.status === "approved"
-                                ? "Հաստատված՝ Goal/Outcomes հաստատմամբ"
+                                ? "Պահպանված"
                                 : outcome.status === "reviewed"
                                   ? "Վերանայված"
                                   : "Սևագիր"}
@@ -5232,7 +5225,6 @@ export default function TeacherDashboard() {
     ({ id: number } & typeof emptyLesson) | null
   >(null);
   const [expandedLessonId, setExpandedLessonId] = useState<number | null>(null);
-  const updateStatus = useUpdateLessonStatus();
 
   const handleCreateLesson = (e: React.FormEvent) => {
     e.preventDefault();
@@ -5330,23 +5322,6 @@ export default function TeacherDashboard() {
         onError: (err: unknown) => {
           const d = (err as { response?: { data?: { error?: string } } })?.response?.data;
           setLessonError(d?.error ?? "Դասի փոփոխությունը չհաջողվեց");
-        },
-      },
-    );
-  };
-
-  const handleStatusChange = (
-    lessonId: number,
-    status: "assigned" | "active" | "completed",
-  ) => {
-    if (!selectedCourse) return;
-    updateStatus.mutate(
-      { id: lessonId, data: { status } },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({
-            queryKey: getGetCourseLessonsQueryKey(selectedCourse.id),
-          });
         },
       },
     );
@@ -6782,15 +6757,12 @@ export default function TeacherDashboard() {
                                     <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none">
                                       Ընթացքի մեջ
                                     </span>
-                                  ) : isMapped && (l as any).status === "approved" ? (
-                                    /* P1.12: gate - only approved lessons can be assigned to students */
-                                    <button
-                                      onClick={() => handleStatusChange(l.id, "active")}
-                                      disabled={updateStatus.isPending}
-                                      className="px-2 py-1 rounded-lg text-xs bg-primary/15 text-primary hover:bg-primary/25 transition-colors border border-primary/20"
-                                    >
-                                      Հանձնարարել սովորողին
-                                    </button>
+                                  ) : isMapped ? (
+                                    <LessonAssignmentAction
+                                      lessonId={l.id}
+                                      courseId={selectedCourse!.id}
+                                      authoringStatus={(l as any).status ?? "draft"}
+                                    />
                                   ) : isMapped ? (
                                     /* Mapped but not yet approved - show disabled */
                                     <span

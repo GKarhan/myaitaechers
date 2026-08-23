@@ -19,6 +19,7 @@ import {
   classesTable,
   classStudentsTable,
   usersTable,
+  teachersTable,
   lessonSessionsTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -28,8 +29,8 @@ const RUN_ID = makeRunId();
 const SECRET = process.env.SESSION_SECRET ?? "myaiteacher-secret";
 const BASE = "http://localhost:8080/api";
 
-// Teacher userId=1 is the canonical test teacher (must exist in DB).
-const teacherToken = jwt.sign({ userId: 1, role: "teacher", username: "teacher1", fullName: "T1" }, SECRET, { expiresIn: "1h" });
+let TEACHER_ID = 0;
+let teacherToken = "";
 
 function authH(tok: string) { return { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }; }
 
@@ -46,26 +47,32 @@ let studentToken = "";
 
 // ── Dynamic fixture setup ──────────────────────────────────────────────────────
 
-// Determine a valid subjectId by looking up the teacher's existing lessons.
-// Fall back to subjectId=1 if none found.
+// Determine a valid subjectId from existing fixture data.
 const SUBJECT_ID = await (async () => {
   const [existing] = await db
     .select({ subjectId: lessonsTable.subjectId })
     .from(lessonsTable)
-    .where(eq(lessonsTable.teacherId, 1))
     .limit(1);
   return existing?.subjectId ?? 1;
 })();
 
-// Determine teacherRow.id (teachers.id) for classesTable.teacherId
-const { teachersTable } = await import("@workspace/db");
-const [teacherRow] = await db
-  .select({ id: teachersTable.id })
-  .from(teachersTable)
-  .where(eq(teachersTable.userId, 1))
-  .limit(1);
+const [teacherUser] = await db.insert(usersTable).values({
+  username: runTag(RUN_ID, "teacher"),
+  passwordHash: "x",
+  fullName: runTag(RUN_ID, "Teacher"),
+  role: "teacher",
+}).returning({ id: usersTable.id });
+TEACHER_ID = teacherUser.id;
+teacherToken = jwt.sign(
+  { userId: TEACHER_ID, role: "teacher", username: runTag(RUN_ID, "teacher"), fullName: "T" },
+  SECRET,
+  { expiresIn: "1h" },
+);
 
-if (!teacherRow) throw new Error("Teacher row for userId=1 not found — cannot create test class");
+const [teacherRow] = await db
+  .insert(teachersTable)
+  .values({ userId: TEACHER_ID })
+  .returning({ id: teachersTable.id });
 
 // 1. Create a temp class
 const [dynClass] = await db.insert(classesTable).values({
@@ -92,7 +99,7 @@ await db.insert(classStudentsTable).values({ classId: CLASS_ID, studentId: STUDE
 const [dynLesson] = await db.insert(lessonsTable).values({
   title: runTag(RUN_ID, "approved_lesson"),
   subjectId: SUBJECT_ID,
-  teacherId: 1,
+  teacherId: TEACHER_ID,
   classId: CLASS_ID,
   status: "approved",
   everApproved: true,
@@ -147,7 +154,7 @@ await db.insert(lessonExercisesTable).values(exValues);
 const [draftLesson] = await db.insert(lessonsTable).values({
   title: runTag(RUN_ID, "draft_lesson"),
   subjectId: SUBJECT_ID,
-  teacherId: 1,
+  teacherId: TEACHER_ID,
   classId: CLASS_ID,
   status: "draft",
   everApproved: false,
@@ -406,6 +413,7 @@ try {
 
   // 5. Delete class (cascade handles class_students)
   if (CLASS_ID) await db.delete(classesTable).where(eq(classesTable.id, CLASS_ID)).catch(() => {});
+  if (TEACHER_ID) await db.delete(usersTable).where(eq(usersTable.id, TEACHER_ID)).catch(() => {});
 
   console.log(`  [cleanup] Fixtures for ${RUN_ID} deleted.`);
 }

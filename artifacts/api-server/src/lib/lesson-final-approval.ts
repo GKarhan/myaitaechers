@@ -230,25 +230,25 @@ export async function validateLessonForFinalApproval(
     });
   }
 
-  // Package 1C: legacy lessons retain their established approval behavior.
-  // Once a teacher explicitly starts canonical Goal/Outcome review, however,
-  // final approval cannot bypass the same explicit confirmation that protects
-  // detailed mapping generation.
+  // Goal/Outcome edits are reviewed as part of the one delivery decision, not
+  // through a separate confirmation gate. The persisted state remains visible
+  // for audit, while the teacher explicitly accepts it only when assigning the
+  // lesson.
   if (
     (lesson as any).goalOutcomeReviewStatus !== "legacy" &&
     (lesson as any).goalOutcomeReviewStatus !== "confirmed"
   ) {
-    errors.push({
-      code: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
-      messageArm: "Դասի նպատակը և վերջնարդյունքները պետք է ուսուցչի կողմից հաստատվեն մինչև վերջնական հաստատումը։",
+    overrideable.push({
+      code: "GOAL_OUTCOME_REVIEW_REQUIRED",
+      messageArm: "Դասի նպատակն ու վերջնարդյունքները փոխվել են և խորհուրդ է տրվում վերանայել։",
     });
   }
 
-  // Goal/Outcome confirmation deliberately happens before detailed mapping.
-  // Once mapping has produced MicroNodes, though, final approval must require
-  // every canonical Outcome to have a REQUIRED mapping relation.
+  // Mapped canonical Outcomes without a REQUIRED relation are a teacher-review
+  // concern, not permission to manufacture a relationship. A teacher may accept
+  // the lesson as-is at assignment time; the canonical graph is left untouched.
   if (
-    (lesson as any).goalOutcomeReviewStatus === "confirmed" &&
+    canonicalOutcomes.length > 0 &&
     nodes.length > 0
   ) {
     const requiredOutcomeIds = new Set(
@@ -261,9 +261,9 @@ export async function validateLessonForFinalApproval(
     );
     for (const outcome of canonicalOutcomes) {
       if (!requiredOutcomeIds.has(outcome.id)) {
-        errors.push({
+        overrideable.push({
           code: "OUTCOME_WITHOUT_REQUIRED_NODE",
-          messageArm: "Յուրաքանչյուր վերջնարդյունք պետք է ունենա առնվազն մեկ REQUIRED MicroNode՝ վերջնական հաստատումից առաջ։",
+          messageArm: "Վերջնարդյունքներից մեկը դեռ REQUIRED MicroNode կապ չունի։",
         });
       }
     }

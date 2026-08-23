@@ -2174,9 +2174,9 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
   const warnings: Array<{ code: string; message: string; nodeId?: number; outcomeId?: number }> = [];
   const info: Array<{ code: string; message: string }> = [];
   if (review.requiresConfirmation) {
-    errors.push({
-      code: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
-      message: "Նպատակը և վերջնարդյունքները դեռ ուսուցչի հաստատման են սպասում։",
+    warnings.push({
+      code: "GOAL_OUTCOME_REVIEW_REQUIRED",
+      message: "Նպատակը և վերջնարդյունքները կվերանայվեն դասը հանձնարարելիս։",
     });
   } else if (review.status === "legacy") {
     warnings.push({
@@ -2201,7 +2201,7 @@ router.get("/lessons/:lessonId/outcomes/readiness", requireAuth, requireLessonAu
   for (const outcome of bundle.outcomes) {
     const required = outcome.alignments.filter((alignment) => alignment.role === "REQUIRED");
     if (hasDetailedMapping && required.length === 0) {
-      errors.push({ code: "OUTCOME_WITHOUT_REQUIRED_NODE", outcomeId: outcome.id, message: "Յուրաքանչյուր վերջնարդյունք պետք է ունենա առնվազն մեկ REQUIRED MicroNode։" });
+      warnings.push({ code: "OUTCOME_WITHOUT_REQUIRED_NODE", outcomeId: outcome.id, message: "Վերջնարդյունքը դեռ REQUIRED MicroNode կապ չունի և կվերանայվի հանձնարարելիս։" });
     }
     for (const alignment of outcome.alignments) {
       alignedNodeIds.add(alignment.lessonNodeId);
@@ -3872,11 +3872,9 @@ router.get("/lessons/:lessonId/topics", requireAuth, requireLessonAuthor, async 
   })));
 });
 
-// POST /lessons/:lessonId/final-approve — P1.7 Final Lesson Approval Gate
-// Runs full deterministic validation. Missing Teaching Content is an explicit
-// teacher decision, not a silent bypass; all other validator errors remain hard
-// blockers. Returns { approved, lessonId, errors[], overrideable[], warnings[],
-// summary } always.
+// POST /lessons/:lessonId/final-approve — authoritative assignment preflight.
+// Teachers may explicitly accept safe review findings in one delivery decision;
+// data-integrity and learner-safety errors remain hard blockers.
 router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
   if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
@@ -3885,6 +3883,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
+  const confirmReviewIssues = req.body?.confirmReviewIssues === true;
+  // Compatibility for callers of the prior narrow Teaching Content override.
   const confirmMissingTeachingContent = req.body?.confirmMissingTeachingContent === true;
   const repairedAlignmentIds = await db.transaction(async (tx) => {
     // Serialize final approval per lesson. Authoring writes persist their
@@ -3964,14 +3964,17 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     // canonical state rather than an uncommitted transaction snapshot.
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
     const result = await validateLessonForFinalApproval(lessonId);
-    const missingTeachingContent = result.overrideable.filter(
-      (issue) => issue.code === "MISSING_PHASE2",
-    );
+    const reviewIssues = [...result.overrideable, ...result.warnings];
+    const missingTeachingContent = result.overrideable.filter((issue) => issue.code === "MISSING_PHASE2");
     if (result.errors.length > 0) {
-      return { kind: "blocked" as const, result, missingTeachingContent, repairedAlignmentIds };
+      return { kind: "blocked" as const, result, reviewIssues, repairedAlignmentIds };
     }
-    if (missingTeachingContent.length > 0 && !confirmMissingTeachingContent) {
-      return { kind: "confirmation_required" as const, result, missingTeachingContent, repairedAlignmentIds };
+    if (
+      reviewIssues.length > 0
+      && !confirmReviewIssues
+      && !(confirmMissingTeachingContent && reviewIssues.every((issue) => issue.code === "MISSING_PHASE2"))
+    ) {
+      return { kind: "confirmation_required" as const, result, reviewIssues, repairedAlignmentIds };
     }
 
     const [currentLesson] = await tx.select({
@@ -3981,11 +3984,16 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     const missingNodeIds = [...new Set(missingTeachingContent
       .map((issue) => issue.nodeId)
       .filter((nodeId): nodeId is number => typeof nodeId === "number"))];
-    const approvalAudit = missingNodeIds.length > 0
+    const acceptedIssueCodes = [...new Set(reviewIssues.map((issue) => issue.code))];
+    const approvalAudit = reviewIssues.length > 0
       ? {
-        mode: "missing_teaching_content_override",
+        mode: missingNodeIds.length > 0 && acceptedIssueCodes.length === 1
+          ? "missing_teaching_content_override"
+          : "teacher_review_override",
         missingNodeIds,
         missingNodeCount: missingNodeIds.length,
+        acceptedIssueCodes,
+        acceptedIssueCount: reviewIssues.length,
         confirmedAt: new Date().toISOString(),
         confirmedBy: req.userId ?? null,
       }
@@ -3995,21 +4003,20 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
         confirmedBy: req.userId ?? null,
       };
 
-    // Missing Teaching Content can be accepted only through the explicit request
-    // above. Keep it missing and auditable; it is never converted to generated
-    // content. Override approval is intentionally non-sticky so a later material
-    // edit moves even an active lesson back into review.
+    // Accepted review findings stay exactly as authored and auditable; neither
+    // missing Teaching Content nor Outcome relationships are fabricated. Review
+    // acceptance is non-sticky, so a later material edit reopens delivery review.
     await tx.update(lessonsTable)
       .set({
         status: "approved",
-        everApproved: missingNodeIds.length === 0,
+        everApproved: reviewIssues.length === 0,
         mappingMetadata: {
           ...currentMetadata,
           finalApproval: approvalAudit,
         },
       } as any)
       .where(eq(lessonsTable.id, lessonId));
-    return { kind: "approved" as const, result, approvalAudit, repairedAlignmentIds };
+    return { kind: "approved" as const, result, reviewIssues, approvalAudit, repairedAlignmentIds };
   });
 
   if (finalization.kind === "blocked") {
@@ -4017,7 +4024,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
       approved: false,
       lessonId,
       errors: finalization.result.errors,
-      overrideable: finalization.missingTeachingContent,
+      overrideable: finalization.result.overrideable,
+      reviewIssues: finalization.reviewIssues,
       confirmationRequired: false,
       readiness: finalization.result.readiness,
       repairedAlignmentIds: finalization.repairedAlignmentIds,
@@ -4027,17 +4035,21 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     return;
   }
   if (finalization.kind === "confirmation_required") {
-    const missingNodeIds = new Set(finalization.missingTeachingContent.map((issue) => issue.nodeId)
-      .filter((nodeId): nodeId is number => typeof nodeId === "number"));
     res.status(409).json({
       approved: false,
       lessonId,
       errors: [],
-      overrideable: finalization.missingTeachingContent,
+      overrideable: finalization.result.overrideable,
+      reviewIssues: finalization.reviewIssues,
       confirmationRequired: true,
       readiness: finalization.result.readiness,
       repairedAlignmentIds: finalization.repairedAlignmentIds,
-      missingTeachingContent: { nodeCount: missingNodeIds.size },
+      missingTeachingContent: {
+        nodeCount: new Set(finalization.result.overrideable
+          .filter((issue) => issue.code === "MISSING_PHASE2")
+          .map((issue) => issue.nodeId)
+          .filter((nodeId): nodeId is number => typeof nodeId === "number")).size,
+      },
       warnings: finalization.result.warnings,
       summary: finalization.result.summary,
     });
@@ -4048,7 +4060,8 @@ router.post("/lessons/:lessonId/final-approve", requireAuth, requireLessonAuthor
     approved: true,
     lessonId,
     errors: [],
-    overrideable: [],
+    overrideable: finalization.result.overrideable,
+    reviewIssues: finalization.reviewIssues,
     confirmationRequired: false,
     readiness: finalization.result.readiness,
     repairedAlignmentIds: finalization.repairedAlignmentIds,
@@ -4197,14 +4210,6 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     res.status(404).json({ error: "Lesson not found" });
     return;
   }
-  if (requiresGoalOutcomeConfirmation(lesson)) {
-    res.status(409).json({
-      error: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
-      message: "Նախ հաստատեք դասի նպատակը և վերջնարդյունքները, ապա ստեղծեք մանրամասն քարտեզագրումը։",
-    });
-    return;
-  }
-
   if (!lesson.textbookResourceId) {
     res.status(400).json({
       error: "Այս դասին կապված դասագրքի ֆայլ չկա, ընտրիր այն դասը խմբագրելիս",
@@ -6232,14 +6237,6 @@ router.post("/lessons/:lessonId/manual-map", requireLessonAuthor, async (req: Au
     goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
   }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
-  if (requiresGoalOutcomeConfirmation(lesson)) {
-    res.status(409).json({
-      error: "GOAL_OUTCOME_CONFIRMATION_REQUIRED",
-      message: "Նախ հաստատեք դասի նպատակը և վերջնարդյունքները, ապա ներմուծեք մանրամասն քարտեզագրումը։",
-    });
-    return;
-  }
-
   const { rawText, format, dryRun } = req.body as { rawText?: string; format?: string; dryRun?: boolean };
   if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
     res.status(400).json({ error: "rawText is required" });
