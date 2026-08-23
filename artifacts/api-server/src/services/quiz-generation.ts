@@ -4,7 +4,7 @@ import {
   lessonNodesTable,
   lessonNodeCognitiveLevelsTable,
 } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { asc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
 
@@ -125,7 +125,12 @@ export async function generateQuizQuestions(
       preferredInteractionTypes: lessonNodeCognitiveLevelsTable.preferredInteractionTypes,
     })
     .from(lessonNodeCognitiveLevelsTable)
-    .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, input.nodeIds));
+    .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, input.nodeIds))
+    .orderBy(
+      asc(lessonNodeCognitiveLevelsTable.lessonNodeId),
+      asc(lessonNodeCognitiveLevelsTable.sequence),
+      asc(lessonNodeCognitiveLevelsTable.id),
+    );
 
   const levelsByNode = new Map<number, typeof cognitiveRows>();
   for (const level of cognitiveRows) {

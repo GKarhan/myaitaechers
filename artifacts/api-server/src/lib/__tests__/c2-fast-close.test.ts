@@ -114,12 +114,12 @@ test("D3: malformed interaction data is rejected fail-closed", () => {
   assert.equal(assess("confirmed", malformedLevels).reason, "INTERACTION_TYPES_INVALID");
 });
 
-test("D4: unordered levels are rejected", () => {
-  const unorderedLevels = [
-    { ...groundedLevels[1], sequence: 2 },
+test("D4: duplicate authored sequences are rejected", () => {
+  const duplicateSequenceLevels = [
     { ...groundedLevels[0], sequence: 1 },
+    { ...groundedLevels[1], sequence: 1 },
   ];
-  assert.equal(assess("confirmed", unorderedLevels).reason, "LEVEL_ORDER_INVALID");
+  assert.equal(assess("confirmed", duplicateSequenceLevels).reason, "LEVEL_ORDER_INVALID");
 });
 
 test("E: approved MicroNode with accepted path passes C2 coverage", () => {

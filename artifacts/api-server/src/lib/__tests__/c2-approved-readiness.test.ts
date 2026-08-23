@@ -20,15 +20,15 @@ const validLevel = {
   sequence: 1,
   isApplicable: true,
   isTargetCeiling: true,
-  performanceObjective: "The student can identify water in the source.",
-  successCriterion: "The student identifies water independently.",
+  performanceObjective: "Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։",
+  successCriterion: "Ճիշտ է նշում ջրի կարևորությունը կյանքի համար։",
   preferredInteractionTypes: ["multiple_choice"],
 };
 
 const validInput = {
   cogPathStatus: "confirmed",
-  theoryContent: "Water is essential for life.",
-  learningObjective: "The student can identify water in the source.",
+  theoryContent: "Ջուրը կարևոր է կյանքի համար և անհրաժեշտ է բույսերի աճի համար։",
+  learningObjective: "Սովորողը բացատրում է ջրի կարևորությունը կյանքի համար։",
   levels: [validLevel],
 } as const;
 

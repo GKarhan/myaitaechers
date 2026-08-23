@@ -29,6 +29,7 @@ import {
 } from "../lib/lesson-source-set.js";
 import { classifyMicroNodeSourceAlignment } from "../lib/micronode-source-alignment.js";
 import { validateCognitivePathGrounding } from "../lib/cognitive-path-grounding.js";
+import { assessC2GenerationPreflight } from "../lib/c2-generation-preflight.js";
 import { assessApprovedMicroNodeC2Readiness } from "../lib/c2-readiness.js";
 import {
   isLearnerDeliveryEligible,
@@ -6050,6 +6051,7 @@ async function getCogNode(lessonId: number, nodeId: number) {
     .select({
       id: lessonNodesTable.id,
       title: lessonNodesTable.title,
+      status: lessonNodesTable.status,
       learningObjective: lessonNodesTable.learningObjective,
       theoryContent: lessonNodesTable.theoryContent,
       blockType: lessonNodesTable.blockType,
@@ -6191,6 +6193,33 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
   const node = await getCogNode(lessonId, nodeId);
   if (!node) { res.status(404).json({ error: "Node not found" }); return; }
 
+  // C2 may not bypass unresolved C1 source/objective review, even when an old
+  // confirmed path exists. This runs before confirmation/edit safeguards so the
+  // caller gets the actionable C1 reason and no provider call is made.
+  const preflight = assessC2GenerationPreflight({
+    nodeStatus: node.status,
+    learningObjective: node.learningObjective,
+    theoryContent: node.theoryContent,
+    blockType: node.blockType,
+  });
+  if (!preflight.eligible) {
+    res.status(422).json({
+      error: preflight.reason,
+      message: "C1 MicroNode must be resolved before Cognitive Path generation.",
+      preflight: {
+        reason: preflight.reason,
+        sourceAlignment: preflight.sourceAlignment
+          ? {
+              status: preflight.sourceAlignment.status,
+              reasonCode: preflight.sourceAlignment.reasonCode,
+              matchedConceptCount: preflight.sourceAlignment.matchedConceptCount,
+            }
+          : null,
+      },
+    });
+    return;
+  }
+
   const force = !!(req.body as { force?: boolean })?.force;
 
   // Regeneration safety: check for teacher-authored rows
@@ -6245,6 +6274,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
   const input: CogPathInput = {
     nodeId:            node.id,
     title:             node.title,
+    nodeStatus:        node.status,
     learningObjective: node.learningObjective ?? null,
     theoryContent:     node.theoryContent ?? null,
     blockType:         node.blockType ?? null,
@@ -6268,7 +6298,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
 
   if (result.skipped) {
     res.status(422).json({
-      error: "SKIP",
+      error: result.skipCode ?? "SKIP",
       skipReason: result.skipReason,
       message: result.skipReason,
       groundingStatus: result.groundingAudit?.status ?? null,

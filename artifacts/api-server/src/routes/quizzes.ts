@@ -1250,6 +1250,11 @@ router.post("/quizzes/:id/submit", requireAuth, async (req: AuthRequest, res) =>
           .select()
           .from(lessonNodeCognitiveLevelsTable)
           .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeIds))
+          .orderBy(
+            asc(lessonNodeCognitiveLevelsTable.lessonNodeId),
+            asc(lessonNodeCognitiveLevelsTable.sequence),
+            asc(lessonNodeCognitiveLevelsTable.id),
+          )
       : [];
     const levelMap = new Map(levels.map((level) => [level.id, level]));
     const levelsByNode = new Map<number, typeof levels>();

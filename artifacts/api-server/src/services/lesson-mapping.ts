@@ -27,9 +27,14 @@ import {
   type SourceAlignmentAudit,
 } from "../lib/micronode-source-alignment.js";
 import {
+  assessCognitivePathStructure,
   validateCognitivePathGrounding,
   type CognitivePathGroundingAudit,
 } from "../lib/cognitive-path-grounding.js";
+import {
+  assessC2GenerationPreflight,
+  type C2GenerationBlockCode,
+} from "../lib/c2-generation-preflight.js";
 import { ACTIVITY_BLOCK_TYPES } from "../lib/activity-validator.js";
 import { validateRequiredLessonPageRange } from "../lib/lesson-page-range.js";
 import {
@@ -5170,6 +5175,8 @@ export interface CogPathExercise {
 export interface CogPathInput {
   nodeId:            number;
   title:             string;
+  /** Persisted C1 review state; known non-approved states must not enter C2. */
+  nodeStatus?:       string | null;
   learningObjective: string | null;
   theoryContent:     string | null;
   blockType:         string | null;
@@ -5209,6 +5216,7 @@ export interface CogPathLevel {
 export interface CogPathGenerationResult {
   nodeId:      number;
   skipped:     boolean;
+  skipCode?:   C2GenerationBlockCode | "C2_CEILING_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
   skipReason?: string;
   levels:      CogPathLevel[];
   groundingAudit?: CognitivePathGroundingAudit;
@@ -5216,18 +5224,18 @@ export interface CogPathGenerationResult {
 
 import { z } from "zod";
 
-const _cogPathLevelSchema = z.object({
+export const cogPathLevelSchema = z.object({
   cognitiveLevel:             z.enum(["remember", "understand", "apply", "analyze", "evaluate", "create"]),
   sequence:                   z.number().int().min(1),
   isTargetCeiling:            z.boolean(),
   performanceObjective:       z.string(),
   successCriterion:           z.string(),
-  minimumIndependentEvidence: z.number().int().min(1).default(3),
+  minimumIndependentEvidence: z.number().int().min(1).max(5).default(3),
   preferredInteractionTypes:  z.array(z.string()).default([]),
 });
 
 const _cogPathResponseSchema = z.object({
-  levels: z.array(_cogPathLevelSchema).min(1),
+  levels: z.array(cogPathLevelSchema).min(1),
 });
 
 const BLOOM_LEVEL_BY_INT = [
@@ -5258,7 +5266,7 @@ export function preservesC1TargetCeiling(
     );
 }
 
-const COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի փորձագետ ես, որը վերլուծում է MicroNode-ի ճանաչողական կառուցվածքը՝ Bloom-ի վերանայված տաքսոնոմիայի (2001) հիման վրա։
+const LEGACY_COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի փորձագետ ես, որը վերլուծում է MicroNode-ի ճանաչողական կառուցվածքը՝ Bloom-ի վերանայված տաքսոնոմիայի (2001) հիման վրա։
 
 ԿԱՆՈՆՆԵՐ.
 1. Որոշիր ԲՈLA unjust ճanachogakan макардакнеры, որոնք արдаrakunел են ուsuмnakan нправ-ovi и bovna ndakutYun-ov: Не добавляй уровни механически.
@@ -5284,7 +5292,21 @@ const COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի
 
 Верни ТОЛЬКО валидный JSON. Без markdown. Без прозы.`;
 
-function buildCogPathPrompt(input: CogPathInput): string {
+export const COGNITIVE_PATH_SYSTEM = `You design Cognitive Paths for an Armenian curriculum. Return only valid JSON.
+
+SOURCE-GROUNDING CONTRACT:
+1. Treat theoryContent as the sole authority for claims, examples, numbers, operations, and relationships. The learningObjective can set the intended action only when theoryContent supports it.
+2. Every performanceObjective and successCriterion must name a learner action tied to a specific claim, representation, or procedure visible in theoryContent. Do not use generic Bloom boilerplate, unrelated scenarios, or unsupported stronger claims.
+3. Preserve every number, notation, and operation exactly when you use it. Do not invent a number or a worked example.
+4. Use the fewest meaningful levels. A single level is valid. Do not mechanically add REMEMBER, and a path may start at UNDERSTAND, APPLY, or another supported level.
+5. Levels must be strictly increasing: remember < understand < apply < analyze < evaluate < create. Return exactly one target ceiling.
+6. If a C1 target ceiling is specified, the target ceiling must equal it and no returned level may be higher. Do not lower, raise, or replace that C1 decision.
+7. All performanceObjective and successCriterion text must be Armenian Unicode. Make the performance objective observable and the success criterion narrow, checkable evidence for that same source-backed action.
+8. minimumIndependentEvidence must be an integer from 1 to 5. preferredInteractionTypes may contain only: multiple_choice, multi_select, true_false, matching, classification, ordering, numeric_answer, short_answer, constructed_response, problem_solving.
+
+Return only the requested JSON object. No markdown and no prose.`;
+
+export function buildCogPathPrompt(input: CogPathInput): string {
   const exList = input.exercises.length
     ? input.exercises.map((e) => `[${e.exerciseId}] ${e.exerciseText}`).join("\n")
     : "(no source exercises linked)";
@@ -5317,22 +5339,23 @@ Linked Source Exercises (${input.exercises.length}):
 ${exList}
 ${existingSection}
 
-Analyze this MicroNode and return a pedagogically valid cognitive path.
+Return a source-grounded cognitive path for this MicroNode. Include only levels
+that the source and C1 target directly support.
 {
   "levels": [
     {
-      "cognitiveLevel": "remember",
+      "cognitiveLevel": "apply",
       "sequence": 1,
-      "isTargetCeiling": false,
-      "performanceObjective": "Armenian — observable action: Սovonoghy kare....",
-      "successCriterion": "Armenian — what counts as valid evidence...",
-      "minimumIndependentEvidence": 2,
-      "preferredInteractionTypes": ["multiple_choice", "matching"]
+      "isTargetCeiling": true,
+      "performanceObjective": "Հայերեն՝ աղբյուրում տեսանելի գործողությամբ դիտարկելի նպատակ",
+      "successCriterion": "Հայերեն՝ նույն գործողության նեղ, ստուգելի չափանիշ",
+      "minimumIndependentEvidence": 3,
+      "preferredInteractionTypes": ["short_answer"]
     }
   ]
 }
 
-CRITICAL: return ONLY the JSON object above. Exactly one level must have isTargetCeiling: true.`;
+CRITICAL: The example is shape-only. Do not copy its level, action, or wording. Return ONLY the JSON object above.`;
 }
 
 function tryParseCogPath(raw: string): Record<string, unknown> | null {
@@ -5347,8 +5370,20 @@ function tryParseCogPath(raw: string): Record<string, unknown> | null {
  * Does NOT write to the database — caller handles persistence.
  */
 export async function generateCognitivePath(input: CogPathInput): Promise<CogPathGenerationResult> {
-  if (isWeakSource(input.theoryContent)) {
-    return { nodeId: input.nodeId, skipped: true, skipReason: "insufficient source content for cognitive enrichment", levels: [] };
+  const preflight = assessC2GenerationPreflight({
+    nodeStatus: input.nodeStatus,
+    learningObjective: input.learningObjective,
+    theoryContent: input.theoryContent,
+    blockType: input.blockType,
+  });
+  if (!preflight.eligible) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: preflight.reason ?? undefined,
+      skipReason: "C1 MicroNode is not eligible for source-grounded Cognitive Path generation",
+      levels: [],
+    };
   }
 
   async function callModel(): Promise<string> {
@@ -5395,6 +5430,16 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       if (l.isTargetCeiling && l.sequence !== maxSeq) l.isTargetCeiling = false;
     }
   }
+  const structuralReason = assessCognitivePathStructure(levels);
+  if (structuralReason) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_PATH_STRUCTURE_REJECTED",
+      skipReason: `generated Cognitive Path violates required structure: ${structuralReason}`,
+      levels: [],
+    };
+  }
   if (!preservesC1TargetCeiling(input.targetBloomLevel, levels)) {
     const requiredC1Ceiling =
       input.targetBloomLevel && input.targetBloomLevel >= 1 && input.targetBloomLevel <= 6
@@ -5403,6 +5448,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       return {
         nodeId: input.nodeId,
         skipped: true,
+        skipCode: "C2_CEILING_VIOLATION",
         skipReason: `generated Cognitive Path does not preserve C1 target ceiling ${requiredC1Ceiling}`,
         levels: [],
       };
@@ -5412,11 +5458,12 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     input.learningObjective,
     levels,
   );
-  if (!groundingAudit.valid) {
+  if (groundingAudit.status !== "GROUNDED") {
     return {
       nodeId: input.nodeId,
       skipped: true,
-      skipReason: "generated Cognitive Path includes claims not supported by the MicroNode source",
+      skipCode: "C2_GROUNDING_REJECTED",
+      skipReason: "generated Cognitive Path is not fully grounded in the MicroNode source",
       levels: [],
       groundingAudit,
     };

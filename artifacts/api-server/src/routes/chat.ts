@@ -97,7 +97,10 @@ import {
   validateC7ModelTargetProposal,
   type C7ExecutionTarget,
 } from "../services/phase2/c7-execution-target.js";
-import { assessAcceptedCognitivePath } from "../lib/cognitive-path-grounding.js";
+import {
+  assessAcceptedCognitivePath,
+  orderCognitivePathLevels,
+} from "../lib/cognitive-path-grounding.js";
 import {
   projectLearnerCognitiveCeiling,
   type LearnerCeilingProjection,
@@ -390,7 +393,11 @@ async function executeHelpRequest(
       .where(and(
         eq(lessonNodeCognitiveLevelsTable.lessonNodeId, session.currentNodeId),
         eq(lessonNodeCognitiveLevelsTable.isApplicable, true),
-      )),
+      ))
+      .orderBy(
+        asc(lessonNodeCognitiveLevelsTable.sequence),
+        asc(lessonNodeCognitiveLevelsTable.id),
+      ),
   ]);
   if (!helpNode) {
     return { ok: false, errorCode: "C7_EXECUTION_TARGET_UNAVAILABLE", statusHint: 409 };
@@ -399,7 +406,7 @@ async function executeHelpRequest(
     cogPathStatus: helpNode.cogPathStatus,
     theoryContent: helpNode.theoryContent,
     learningObjective: helpNode.learningObjective,
-    levels: helpLevels,
+    levels: orderCognitivePathLevels(helpLevels),
   });
   if (!helpPathAcceptance.accepted) {
     return {

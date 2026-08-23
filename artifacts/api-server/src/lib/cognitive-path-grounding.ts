@@ -14,6 +14,7 @@ export type CognitivePathAcceptanceLevel = {
   isTargetCeiling: boolean;
   performanceObjective: string | null;
   successCriterion: string | null;
+  minimumIndependentEvidence?: number | null;
   preferredInteractionTypes: unknown;
 };
 
@@ -25,7 +26,9 @@ export type CognitivePathAcceptance = {
     | "NO_APPLICABLE_LEVELS"
     | "TARGET_CEILING_INVALID"
     | "LEVEL_ORDER_INVALID"
+    | "COGNITIVE_LEVEL_ORDER_INVALID"
     | "INTERACTION_TYPES_INVALID"
+    | "EVIDENCE_BUDGET_INVALID"
     | "GROUNDING_NOT_ACCEPTED";
   grounding: CognitivePathGroundingAudit | null;
 };
@@ -34,7 +37,17 @@ const ALLOWED_INTERACTIONS = new Set([
   "multiple_choice", "multi_select", "true_false", "matching", "classification",
   "ordering", "numeric_answer", "short_answer", "constructed_response", "problem_solving",
 ]);
+const COGNITIVE_LEVEL_RANK: Record<string, number> = {
+  remember: 1,
+  understand: 2,
+  apply: 3,
+  analyze: 4,
+  evaluate: 5,
+  create: 6,
+};
 const strongClaim = /(?:միշտ|երբեք|միայն|անպայման|սխալ\s+է|always|never|only|must|wrong)/iu;
+const armenianLetter = /\p{Script=Armenian}/u;
+const latinLetter = /\p{Script=Latin}/u;
 const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("hy-AM")
   .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
 const numbers = (value: string) => value.match(/\d+(?:[\/.,:]\d+)*/g) ?? [];
@@ -47,7 +60,9 @@ export function validateCognitivePathGrounding(
 ): CognitivePathGroundingAudit {
   const source = normalize(theoryContent ?? "");
   const sourceNumbers = new Set(numbers(source));
-  const sourceAnchors = anchors(`${source} ${learningObjective ?? ""}`);
+  // C1 validates whether the objective belongs to this source. C2 grounding
+  // must independently prove every generated claim from textbook source only.
+  const sourceAnchors = anchors(source);
   const issueCounts: Record<string, number> = {};
   const add = (code: string) => { issueCounts[code] = (issueCounts[code] ?? 0) + 1; };
   if (isUnreadableSource(theoryContent ?? "")) add("UNREADABLE_SOURCE");
@@ -55,17 +70,55 @@ export function validateCognitivePathGrounding(
     for (const value of [level.performanceObjective ?? "", level.successCriterion ?? ""]) {
       const text = normalize(value);
       if (!text) { add("EMPTY_REQUIRED_FIELD"); continue; }
+      if (!armenianLetter.test(value) || latinLetter.test(value)) add("NON_ARMENIAN_REQUIRED_TEXT");
       if (numbers(text).some((number) => !sourceNumbers.has(number))) add("NOVEL_NUMERIC_CLAIM");
       const overlap = [...anchors(text)].filter((token) => sourceAnchors.has(token)).length;
-      if (text.length >= 24 && overlap === 0) add("LOW_SOURCE_ANCHOR");
+      if (overlap === 0) add("LOW_SOURCE_ANCHOR");
       if (strongClaim.test(text) && !source.includes(text)) add("UNSUPPORTED_STRONG_CLAIM");
     }
     if ((level.preferredInteractionTypes ?? []).some((kind) => !ALLOWED_INTERACTIONS.has(kind))) add("INVALID_INTERACTION_TYPE");
   }
-  const invalid = ["UNREADABLE_SOURCE", "EMPTY_REQUIRED_FIELD", "NOVEL_NUMERIC_CLAIM", "UNSUPPORTED_STRONG_CLAIM", "INVALID_INTERACTION_TYPE"]
+  const invalid = ["UNREADABLE_SOURCE", "EMPTY_REQUIRED_FIELD", "NON_ARMENIAN_REQUIRED_TEXT", "NOVEL_NUMERIC_CLAIM", "UNSUPPORTED_STRONG_CLAIM", "INVALID_INTERACTION_TYPE"]
     .some((code) => issueCounts[code]);
   const review = !!issueCounts.LOW_SOURCE_ANCHOR;
   return { status: invalid ? "INVALID" : review ? "REVIEW_REQUIRED" : "GROUNDED", valid: !invalid, issueCounts };
+}
+
+/** Sort persisted levels before a runtime consumer evaluates the path contract. */
+export function orderCognitivePathLevels<T extends { sequence: number; id?: number }>(
+  levels: readonly T[],
+): T[] {
+  return [...levels].sort((left, right) =>
+    left.sequence - right.sequence || (left.id ?? 0) - (right.id ?? 0),
+  );
+}
+
+/**
+ * Structural invariants for every usable Cognitive Path. Do not infer omitted
+ * lower levels: a path may begin at any supported level, but listed levels
+ * must strictly advance in Bloom rank and the sole target must be the last one.
+ */
+export function assessCognitivePathStructure(
+  levels: ReadonlyArray<Pick<CognitivePathAcceptanceLevel, "cognitiveLevel" | "sequence" | "isTargetCeiling">>,
+): Exclude<CognitivePathAcceptance["reason"], "ACCEPTED" | "PATH_NOT_CONFIRMED" | "NO_APPLICABLE_LEVELS" | "INTERACTION_TYPES_INVALID" | "GROUNDING_NOT_ACCEPTED"> | null {
+  if (levels.filter((level) => level.isTargetCeiling).length !== 1) {
+    return "TARGET_CEILING_INVALID";
+  }
+  if (levels.some((level, index) =>
+    index > 0 && level.sequence <= levels[index - 1].sequence,
+  )) {
+    return "LEVEL_ORDER_INVALID";
+  }
+  if (levels.some((level, index) =>
+    !COGNITIVE_LEVEL_RANK[level.cognitiveLevel]
+    || (index > 0 && COGNITIVE_LEVEL_RANK[level.cognitiveLevel] <= COGNITIVE_LEVEL_RANK[levels[index - 1].cognitiveLevel]),
+  )) {
+    return "COGNITIVE_LEVEL_ORDER_INVALID";
+  }
+  if (!levels[levels.length - 1]?.isTargetCeiling) {
+    return "TARGET_CEILING_INVALID";
+  }
+  return null;
 }
 
 /**
@@ -85,23 +138,32 @@ export function assessAcceptedCognitivePath(input: {
     return { accepted: false, reason: "PATH_NOT_CONFIRMED", grounding: null };
   }
 
-  const applicableLevels = input.levels.filter((level) => level.isApplicable);
+  // Persisted rows can arrive in any SQL order. Their authored sequence—not
+  // retrieval order—is the canonical path order for all runtime consumers.
+  const applicableLevels = orderCognitivePathLevels(
+    input.levels.filter((level) => level.isApplicable),
+  );
   if (applicableLevels.length === 0) {
     return { accepted: false, reason: "NO_APPLICABLE_LEVELS", grounding: null };
   }
-  if (applicableLevels.filter((level) => level.isTargetCeiling).length !== 1) {
-    return { accepted: false, reason: "TARGET_CEILING_INVALID", grounding: null };
-  }
-  if (applicableLevels.some((level, index) =>
-    index > 0 && level.sequence <= applicableLevels[index - 1].sequence,
-  )) {
-    return { accepted: false, reason: "LEVEL_ORDER_INVALID", grounding: null };
+  const structuralReason = assessCognitivePathStructure(applicableLevels);
+  if (structuralReason) {
+    return { accepted: false, reason: structuralReason, grounding: null };
   }
   if (applicableLevels.some((level) =>
     !Array.isArray(level.preferredInteractionTypes) ||
     level.preferredInteractionTypes.some((kind) => typeof kind !== "string"),
   )) {
     return { accepted: false, reason: "INTERACTION_TYPES_INVALID", grounding: null };
+  }
+  if (applicableLevels.some((level) =>
+    level.minimumIndependentEvidence !== undefined
+    && level.minimumIndependentEvidence !== null
+    && (!Number.isInteger(level.minimumIndependentEvidence)
+      || level.minimumIndependentEvidence < 1
+      || level.minimumIndependentEvidence > 5),
+  )) {
+    return { accepted: false, reason: "EVIDENCE_BUDGET_INVALID", grounding: null };
   }
 
   const grounding = validateCognitivePathGrounding(
