@@ -54,6 +54,12 @@ import {
   type TeachingPackageItemType,
   type TeachingPackageProvenance,
 } from "../lib/teaching-package.js";
+import {
+  C6_ENTRY_INTENTS,
+  isC6DeliveryBlocked,
+  resolveCanonicalC6Decision,
+  type C6EntryIntent,
+} from "../services/c6-personalization.js";
 
 const router = Router();
 
@@ -813,9 +819,28 @@ router.get("/lessons/:lessonId/student-package", requireAuth, async (req: AuthRe
 });
 
 router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
-  const { lessonId } = req.body as { lessonId: number };
+  const {
+    lessonId,
+    lessonNodeId = null,
+    intent = "NORMAL_LEARNING",
+  } = req.body as {
+    lessonId: number;
+    lessonNodeId?: number | null;
+    intent?: C6EntryIntent;
+  };
   if (!lessonId) {
     res.status(400).json({ error: "lessonId is required" });
+    return;
+  }
+  if (
+    lessonNodeId !== null &&
+    (!Number.isInteger(lessonNodeId) || lessonNodeId <= 0)
+  ) {
+    res.status(400).json({ error: "Invalid lessonNodeId" });
+    return;
+  }
+  if (!C6_ENTRY_INTENTS.includes(intent)) {
+    res.status(400).json({ error: "Invalid C6 entry intent" });
     return;
   }
 
@@ -851,6 +876,80 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
   if (existing.length > 0) {
     let s = existing[0];
 
+    const hasAuthoritativeActiveTask =
+      s.activeTaskProvenance !== null ||
+      s.activeLessonExerciseId !== null ||
+      s.activeTaskReference !== null;
+
+    // An inactive Phase 2 resume (and a selected Knowledge Tree action) must
+    // re-enter C6. An authoritative task is deliberately never replaced.
+    if (!hasAuthoritativeActiveTask && (lessonNodeId !== null || s.currentPhase === 2)) {
+      const c6Decision = await resolveCanonicalC6Decision({
+        learnerId: req.userId!,
+        lessonId,
+        requestedMicroNodeId:
+          lessonNodeId ?? (s.currentPhase === 2 ? s.currentNodeId : null),
+        entryIntent: lessonNodeId === null ? "NORMAL_LEARNING" : intent,
+      });
+      if (isC6DeliveryBlocked(c6Decision)) {
+        res.status(409).json({
+          error: "C6_TARGET_UNAVAILABLE",
+          message: "Այս հանգույցի ճանաչողական ուղին հաստատված չէ, ուստի ուսուցումը դեռ չի կարող սկսվել։",
+          reasonCode: c6Decision.reasonCode,
+        });
+        return;
+      }
+      const nodeChanged = s.currentNodeId !== c6Decision.microNodeId;
+      const phaseAfterC6 =
+        c6Decision.microNodeId === null &&
+        c6Decision.decisionType === "ADVANCE" &&
+        s.currentPhase === 2
+          ? 3
+          : lessonNodeId !== null
+            ? 2
+            : s.currentPhase;
+      await db
+        .update(lessonSessionsTable)
+        .set({
+          currentPhase: phaseAfterC6,
+          currentNodeId: c6Decision.microNodeId,
+          activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+          ...(nodeChanged
+            ? {
+                nodeStartedAt: c6Decision.microNodeId ? new Date() : null,
+                nodeTeachingStage: "THEORY",
+                activeLessonExerciseId: null,
+                activeTaskProvenance: null,
+                activeTaskReference: null,
+                activeObjectiveTaskPayload: null,
+                activeAttemptSequence: 0,
+                activeHelpCount: 0,
+                activeAssistanceLevel: "none",
+                remediationStep: 0,
+              }
+            : {}),
+        } as any)
+        .where(eq(lessonSessionsTable.id, s.id));
+      const [retargeted] = await db
+        .select()
+        .from(lessonSessionsTable)
+        .where(eq(lessonSessionsTable.id, s.id))
+        .limit(1);
+      s = retargeted ?? s;
+      logger.info(
+        {
+          sessionId: s.id,
+          lessonId,
+          userId: req.userId!,
+          c6DecisionType: c6Decision.decisionType,
+          c6TargetNodeId: c6Decision.microNodeId,
+          c6TargetLevelId: c6Decision.nextTargetCognitiveLevelId,
+          c6Reason: c6Decision.reasonCode,
+        },
+        "lessons/start: inactive session reconciled by canonical C6 decision",
+      );
+    }
+
     // ── Stale-phase correction ────────────────────────────────────────────
     // A session may have been created with currentPhase=1 (REVIEW) because
     // review_schedule had entries but evidence_events was empty (stale data).
@@ -867,13 +966,11 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     const shouldCorrect   = s.currentPhase === 1 && !prevExistsReuse;
 
     if (shouldCorrect) {
-      // Find first node so we can restore a clean teaching start
-      const [firstNodeReuse] = await db
-        .select({ id: lessonNodesTable.id })
-        .from(lessonNodesTable)
-        .where(eq(lessonNodesTable.lessonId, lessonId))
-        .orderBy(asc(lessonNodesTable.sequence))
-        .limit(1);
+      const c6Decision = await resolveCanonicalC6Decision({
+        learnerId: req.userId!,
+        lessonId,
+        entryIntent: "NORMAL_LEARNING",
+      });
 
       const correctedPhase = (dueTopicsReuse.length > 0 && prevExistsReuse) ? 1 : 2;
       await db
@@ -881,8 +978,9 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
         .set({
           currentPhase:    correctedPhase,
           nodeAttemptCount: 0,
-          currentNodeId:   firstNodeReuse?.id ?? s.currentNodeId,
-          nodeStartedAt:   firstNodeReuse ? new Date() : s.nodeStartedAt,
+          currentNodeId:   c6Decision.microNodeId,
+          activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+          nodeStartedAt:   c6Decision.microNodeId ? new Date() : null,
         })
         .where(eq(lessonSessionsTable.id, s.id));
 
@@ -937,14 +1035,20 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  // If this lesson has been broken into nodes, start on the first one.
-  // Lessons without nodes yet behave exactly as before (currentNodeId stays null).
-  const [firstNode] = await db
-    .select({ id: lessonNodesTable.id })
-    .from(lessonNodesTable)
-    .where(eq(lessonNodesTable.lessonId, lessonId))
-    .orderBy(asc(lessonNodesTable.sequence))
-    .limit(1);
+  const c6Decision = await resolveCanonicalC6Decision({
+    learnerId: req.userId!,
+    lessonId,
+    requestedMicroNodeId: lessonNodeId,
+    entryIntent: intent,
+  });
+  if (isC6DeliveryBlocked(c6Decision)) {
+    res.status(409).json({
+      error: "C6_TARGET_UNAVAILABLE",
+      message: "Այս դասի առաջին հասանելի հանգույցի ճանաչողական ուղին հաստատված չէ։",
+      reasonCode: c6Decision.reasonCode,
+    });
+    return;
+  }
 
   // ── Phase selection: skip Phase 1 (Review) if no due review targets exist ──
   // Phase 1 only has value when there is prior lesson evidence to review.
@@ -961,10 +1065,17 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
 
   const reviewTargetsCount   = dueTopics.length;
   const previousLessonExists = priorEvidence.length > 0;
-  const selectedInitialPhase =
+  let selectedInitialPhase =
     (reviewTargetsCount > 0 && previousLessonExists)
       ? 1
       : 2;
+  if (
+    c6Decision.microNodeId === null &&
+    c6Decision.decisionType === "ADVANCE" &&
+    selectedInitialPhase === 2
+  ) {
+    selectedInitialPhase = 3;
+  }
 
   const now = new Date();
 
@@ -978,8 +1089,9 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
       lessonId,
       currentPhase: selectedInitialPhase,
       status: "active",
-      currentNodeId: firstNode?.id ?? null,
-      nodeStartedAt: firstNode ? now : null,
+      currentNodeId: c6Decision.microNodeId,
+      activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+      nodeStartedAt: c6Decision.microNodeId ? now : null,
       requiredSessionMinutes: (lesson as any).requiredSessionMinutes ?? null,
     })
     .returning();
@@ -991,7 +1103,10 @@ router.post("/lessons/start", requireAuth, async (req: AuthRequest, res) => {
       previousLessonExists,
       reviewTargetsCount,
       selectedPhase:        selectedInitialPhase,
-      firstNodeId:          firstNode?.id ?? null,
+      c6DecisionType:       c6Decision.decisionType,
+      c6TargetNodeId:       c6Decision.microNodeId,
+      c6TargetLevelId:      c6Decision.nextTargetCognitiveLevelId,
+      c6Reason:             c6Decision.reasonCode,
       lessonId,
       userId:               req.userId!,
     },
@@ -1023,17 +1138,26 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
 
-  // Resolve first approved MicroNode (same ordering as normal session creation)
-  const [firstNode] = await db
-    .select({ id: lessonNodesTable.id })
-    .from(lessonNodesTable)
-    .where(and(eq(lessonNodesTable.lessonId, lessonId), eq(lessonNodesTable.status, "approved")))
-    .orderBy(asc(lessonNodesTable.sequence))
-    .limit(1);
+  const c6Decision = await resolveCanonicalC6Decision({
+    learnerId: req.userId!,
+    lessonId,
+    entryIntent: "NORMAL_LEARNING",
+  });
+  if (isC6DeliveryBlocked(c6Decision)) {
+    res.status(409).json({
+      error: "C6_TARGET_UNAVAILABLE",
+      message: "Այս դասի առաջին հասանելի հանգույցի ճանաչողական ուղին հաստատված չէ։",
+      reasonCode: c6Decision.reasonCode,
+    });
+    return;
+  }
 
   // Fresh/relearn testing starts directly in the Phase 2 MicroNode teaching
   // contract. Normal POST /lessons/start retains its review-phase selection.
-  const selectedInitialPhase = 2;
+  const selectedInitialPhase =
+    c6Decision.microNodeId === null && c6Decision.decisionType === "ADVANCE"
+      ? 3
+      : 2;
   const now = new Date();
 
   // Find the existing session for this user+lesson
@@ -1053,8 +1177,8 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
           currentPhase:           selectedInitialPhase,
           status:                 "active",
           masteryScore:           null,
-          currentNodeId:          firstNode?.id ?? null,
-          nodeStartedAt:          firstNode ? now : null,
+          currentNodeId:          c6Decision.microNodeId,
+          nodeStartedAt:          c6Decision.microNodeId ? now : null,
           startedAt:              now,
           completedAt:            null,
           nodeAttemptCount:       0,
@@ -1070,7 +1194,7 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
           phase1ConsecutiveCorrect:   0,
           introConfirmed:             false,
           activeLessonExerciseId:     null,
-          activeCognitiveLevelId:     null,
+          activeCognitiveLevelId:     c6Decision.nextTargetCognitiveLevelId,
           activeTaskProvenance:       null,
           activeObjectiveTaskPayload: null,
           activeAttemptSequence:      0,
@@ -1092,7 +1216,7 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
         ));
     });
     sessionId = existing.id;
-    logger.info({ sessionId, lessonId, userId: req.userId!, firstNodeId: firstNode?.id ?? null }, "start-fresh: session reset in place");
+    logger.info({ sessionId, lessonId, userId: req.userId!, c6TargetNodeId: c6Decision.microNodeId, c6TargetLevelId: c6Decision.nextTargetCognitiveLevelId }, "start-fresh: session reset in place");
   } else {
     // No session yet — create a fresh one (same as /start new-session path)
     const [session] = await db.insert(lessonSessionsTable).values({
@@ -1100,15 +1224,16 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
       lessonId,
       currentPhase: selectedInitialPhase,
       status: "active",
-      currentNodeId: firstNode?.id ?? null,
-      nodeStartedAt: firstNode ? now : null,
+      currentNodeId: c6Decision.microNodeId,
+      activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+      nodeStartedAt: c6Decision.microNodeId ? now : null,
       requiredSessionMinutes: (lesson as any).requiredSessionMinutes ?? null,
     }).returning();
     sessionId = session.id;
-    logger.info({ sessionId, lessonId, userId: req.userId!, firstNodeId: firstNode?.id ?? null }, "start-fresh: no existing session, created new");
+    logger.info({ sessionId, lessonId, userId: req.userId!, c6TargetNodeId: c6Decision.microNodeId, c6TargetLevelId: c6Decision.nextTargetCognitiveLevelId }, "start-fresh: no existing session, created new");
   }
 
-  res.json({ sessionId, lessonId, currentNodeId: firstNode?.id ?? null, currentPhase: selectedInitialPhase });
+  res.json({ sessionId, lessonId, currentNodeId: c6Decision.microNodeId, currentPhase: selectedInitialPhase });
 });
 
 // ── V2-R4A.3: POST /lessons/:lessonId/session/finish ─────────────────────────
@@ -1300,11 +1425,8 @@ router.post("/lessons/:lessonId/advance-phase", requireAuth, async (req: AuthReq
   });
 });
 
-// Advance from the current lesson node to the next one (within phases 2/3).
-// Same mastery gate as advance-phase, but scoped to the CURRENT NODE's
-// topic, not the whole lesson. When there is no next node, currentNodeId
-// is cleared — that's the signal the node queue for this lesson is
-// exhausted and it's time to move to the next macro-phase.
+// Advance from the current lesson node through the canonical C6 decision.
+// Active tasks cannot be bypassed; C6 owns mastery/prerequisite eligibility.
 router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
 
@@ -1328,6 +1450,17 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
     res.status(400).json({ error: "This session has no active node" });
     return;
   }
+  const hasAuthoritativeActiveTask =
+    session.activeTaskProvenance !== null ||
+    session.activeLessonExerciseId !== null ||
+    session.activeTaskReference !== null;
+  if (hasAuthoritativeActiveTask) {
+    res.status(409).json({
+      error: "ACTIVE_TASK_MUST_BE_COMPLETED",
+      message: "Սկզբում ավարտիր ընթացիկ առաջադրանքը։",
+    });
+    return;
+  }
 
   const [lesson] = await db
     .select()
@@ -1340,59 +1473,51 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
     return;
   }
 
-  const [currentNode] = await db
-    .select()
-    .from(lessonNodesTable)
-    .where(eq(lessonNodesTable.id, session.currentNodeId))
-    .limit(1);
-
-  if (!currentNode) {
-    res.status(404).json({ error: "Current node not found" });
-    return;
-  }
-
-  const [knowledgeNode] = await db
-    .select({ masteryScore: knowledgeNodesTable.masteryScore })
-    .from(knowledgeNodesTable)
-    .where(
-      and(
-        eq(knowledgeNodesTable.subjectId, lesson.subjectId),
-        eq(knowledgeNodesTable.userId, req.userId!),
-        eq(knowledgeNodesTable.topicName, currentNode.title)
-      )
-    )
-    .limit(1);
-
-  const currentMastery = knowledgeNode?.masteryScore ?? null;
-
-  if (currentMastery === null || currentMastery < MASTERY_ADVANCE_THRESHOLD) {
+  const c6Decision = await resolveCanonicalC6Decision({
+    learnerId: req.userId!,
+    lessonId,
+    afterMicroNodeId: session.currentNodeId,
+    entryIntent: "NORMAL_LEARNING",
+  });
+  if (isC6DeliveryBlocked(c6Decision)) {
     res.status(409).json({
-      error:
-        "Այս թեման դեռ բավարար չափով յուրացված չէ, շարունակիր հարցերին պատասխանել, նախքան հաջորդ ենթաթեմային անցնելը",
-      currentMastery,
-      requiredMastery: MASTERY_ADVANCE_THRESHOLD,
+      error: "C6_TARGET_UNAVAILABLE",
+      message: "Հաջորդ հանգույցի ճանաչողական ուղին հաստատված չէ։",
+      reasonCode: c6Decision.reasonCode,
     });
     return;
   }
-
-  const [nextNode] = await db
-    .select()
-    .from(lessonNodesTable)
-    .where(
-      and(
-        eq(lessonNodesTable.lessonId, lessonId),
-        eq(lessonNodesTable.sequence, currentNode.sequence + 1)
-      )
-    )
-    .limit(1);
+  const [nextNode] = c6Decision.microNodeId === null
+    ? []
+    : await db
+      .select()
+      .from(lessonNodesTable)
+      .where(eq(lessonNodesTable.id, c6Decision.microNodeId))
+      .limit(1);
 
   const now = new Date();
+  const nextPhase =
+    c6Decision.microNodeId === null &&
+    c6Decision.decisionType === "ADVANCE" &&
+    session.currentPhase === 2
+      ? 3
+      : session.currentPhase;
 
   const [updated] = await db
     .update(lessonSessionsTable)
     .set({
       currentNodeId: nextNode?.id ?? null,
       nodeStartedAt: nextNode ? now : null,
+      currentPhase: nextPhase,
+      activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+      activeLessonExerciseId: null,
+      activeTaskProvenance: null,
+      activeTaskReference: null,
+      activeObjectiveTaskPayload: null,
+      activeAttemptSequence: 0,
+      activeHelpCount: 0,
+      activeAssistanceLevel: "none",
+      remediationStep: 0,
     })
     .where(eq(lessonSessionsTable.id, session.id))
     .returning();
@@ -1404,6 +1529,12 @@ router.post("/lessons/:lessonId/advance-node", requireAuth, async (req: AuthRequ
     sequence: nextNode?.sequence ?? null,
     estimatedMinutes: nextNode?.estimatedMinutes ?? null,
     done: !nextNode, // true = no more nodes queued for this lesson right now
+    c6Decision: {
+      type: c6Decision.decisionType,
+      reasonCode: c6Decision.reasonCode,
+      prerequisiteStatus: c6Decision.prerequisiteStatus,
+      activeCognitiveLevelId: c6Decision.nextTargetCognitiveLevelId,
+    },
   });
 });
 

@@ -50,3 +50,4 @@
 - [Heading-only live acceptance](heading-only-live-acceptance.md) — a provider can still assign a lone structural heading as source evidence; fail closed and expose only safe alignment metadata, never retry blindly.
 - [Review-required mapping persistence](review-required-mapping-persistence.md) — valid mappings persist atomically while non-sufficient source alignment stays as teacher-reviewed drafts and cannot unlock approval.
 - [C5 canonical Knowledge Tree](c5-canonical-knowledge-tree.md) — four backend-owned learner states use C2 path order and validated C4/C3 provenance, failing closed when evidence is stale.
+- [C6 canonical personalization](c6-canonical-personalization.md) — C6 alone selects next targets from accepted C2, C5/C4, and REQUIRED dependencies; unavailable targets block delivery.

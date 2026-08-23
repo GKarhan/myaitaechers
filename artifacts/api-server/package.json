@@ -64,7 +64,8 @@
     "test:v2r4a4": "tsx src/lib/__tests__/v2r4a4.test.ts",
     "test:c4-ceiling": "tsx src/services/__tests__/learner-cognitive-ceiling.test.ts",
     "test:c4-ceiling-trace": "DATABASE_URL=$TEST_DATABASE_URL tsx src/services/__tests__/learner-cognitive-ceiling-trace.test.ts",
-    "test:c5-knowledge-tree": "tsx src/services/__tests__/knowledge-tree-state.test.ts"
+    "test:c5-knowledge-tree": "tsx src/services/__tests__/knowledge-tree-state.test.ts",
+    "test:c6-personalization": "tsx src/services/__tests__/c6-personalization.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

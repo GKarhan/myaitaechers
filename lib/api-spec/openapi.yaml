@@ -3595,6 +3595,12 @@ components:
       properties:
         lessonId:
           type: integer
+        lessonNodeId:
+          type: integer
+          nullable: true
+        intent:
+          type: string
+          enum: [NORMAL_LEARNING, EXPLICIT_REVIEW]
 
     LessonSession:
       type: object

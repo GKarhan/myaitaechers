@@ -5,9 +5,10 @@
  * Opened by lessonNodeId (canonical curriculum identity).
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useLocation } from "wouter";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,8 +95,11 @@ interface NodeDetailPanelProps {
 }
 
 export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const [, setLocation] = useLocation();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   // Escape key closes the panel
   useEffect(() => {
@@ -191,7 +195,54 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
           )}
 
           {/* Content */}
-          {data && !isLoading && <PanelContent data={data} />}
+          {data && !isLoading && (
+            <PanelContent
+              data={data}
+              canLaunch={user?.role === "student"}
+              launching={launching}
+              launchError={launchError}
+              onLaunch={async () => {
+                setLaunching(true);
+                setLaunchError(null);
+                try {
+                  const intent =
+                    data.learnerState.knowledgeState === "MASTERED"
+                      ? "EXPLICIT_REVIEW"
+                      : "NORMAL_LEARNING";
+                  const headers: Record<string, string> = {
+                    "Content-Type": "application/json",
+                  };
+                  if (token) headers.Authorization = `Bearer ${token}`;
+                  const response = await fetch("/api/lessons/start", {
+                    method: "POST",
+                    headers,
+                    credentials: "include",
+                    body: JSON.stringify({
+                      lessonId: data.lesson.id,
+                      lessonNodeId: data.lessonNodeId,
+                      intent,
+                    }),
+                  });
+                  if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
+                    throw new Error(
+                      (body as { error?: string }).error ?? `HTTP ${response.status}`,
+                    );
+                  }
+                  setLocation(`/lessons/${data.lesson.id}`);
+                  onClose();
+                } catch (launchFailure) {
+                  setLaunchError(
+                    launchFailure instanceof Error
+                      ? launchFailure.message
+                      : "Չհաջողվեց սկսել ուսուցումը",
+                  );
+                } finally {
+                  setLaunching(false);
+                }
+              }}
+            />
+          )}
         </div>
       </aside>
     </>
@@ -200,7 +251,19 @@ export function NodeDetailPanel({ lessonNodeId, onClose }: NodeDetailPanelProps)
 
 // ── Panel body ────────────────────────────────────────────────────────────────
 
-function PanelContent({ data }: { data: NodeDetail }) {
+function PanelContent({
+  data,
+  canLaunch,
+  launching,
+  launchError,
+  onLaunch,
+}: {
+  data: NodeDetail;
+  canLaunch: boolean;
+  launching: boolean;
+  launchError: string | null;
+  onLaunch: () => Promise<void>;
+}) {
   const mCfg = knowledgeStateConfig(data.learnerState.knowledgeState);
 
   return (
@@ -234,6 +297,34 @@ function PanelContent({ data }: { data: NodeDetail }) {
           )}
         </div>
       </section>
+
+      {canLaunch && (
+        <section className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div className="text-sm font-semibold text-white mb-1">
+            {data.learnerState.knowledgeState === "MASTERED"
+              ? "Կրկնել այս հանգույցը"
+              : "Շարունակել այս հանգույցից"}
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Ուսուցման թիրախը որոշվում է ավտոմատ՝ ըստ քո առաջընթացի։
+          </p>
+          <button
+            type="button"
+            onClick={() => void onLaunch()}
+            disabled={launching}
+            className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {launching
+              ? "Բացվում է..."
+              : data.learnerState.knowledgeState === "MASTERED"
+                ? "Կրկնել"
+                : "Սովորել"}
+          </button>
+          {launchError && (
+            <p className="mt-2 text-xs text-destructive">{launchError}</p>
+          )}
+        </section>
+      )}
 
       {/* ── Learning objective ─────────────────────────────────────────── */}
       {data.learningObjective && (
