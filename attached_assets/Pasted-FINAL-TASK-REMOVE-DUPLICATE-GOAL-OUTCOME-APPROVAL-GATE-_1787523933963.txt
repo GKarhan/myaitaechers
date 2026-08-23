@@ -1,0 +1,395 @@
+FINAL TASK — REMOVE DUPLICATE GOAL/OUTCOME APPROVAL GATE AND MAKE ASSIGNMENT THE SINGLE TEACHER DECISION
+
+IMPORTANT:
+This is a narrowly scoped workflow simplification task.
+
+Do NOT redesign the mapping system.
+Do NOT remap lesson 654.
+Do NOT create fake REQUIRED MicroNode relations.
+Do NOT weaken source grounding, Cognitive Path validation, C1–C7 semantics, or AI Teacher runtime safety.
+Do NOT modify Quiz, Knowledge Tree, student learning flow, or deployment.
+Do NOT delete canonical Goal/Outcome data or Outcome–MicroNode relations.
+
+The current problem is teacher-workflow duplication.
+
+CURRENT OBSERVED PROBLEM
+
+In lesson 654:
+
+- Goal/Outcomes already exist.
+- The UI still exposes a separate:
+  `✅ Հաստատել Goal/Outcomes`
+  action.
+- Final Approval can then still fail because an Outcome has no REQUIRED MicroNode relation.
+- As a result, the teacher sees multiple different “approval” concepts and cannot assign the lesson.
+
+This is confusing.
+
+We want ONE final teacher decision:
+`Հանձնարարել սովորողին`
+
+════════════════════════════════════════════
+PART 0 — AUDIT FIRST
+════════════════════════════════════════════
+
+Before editing, inspect the current implementation and identify:
+
+1. Where `Հաստատել Goal/Outcomes` is rendered.
+2. Which backend state/API it changes.
+3. Where Final Approval is currently required for assignment.
+4. Where `Հանձնարարել սովորողին` is disabled.
+5. Which validation findings are:
+   A. true runtime/data-integrity blockers;
+   B. mapping/review/coverage findings that can safely be teacher-overridden.
+6. How teacher override/final approval is currently persisted, if already implemented.
+
+Do not make changes until this flow is understood.
+
+Then implement the smallest general solution.
+
+════════════════════════════════════════════
+PART 1 — REMOVE DUPLICATE GOAL/OUTCOME APPROVAL FROM TEACHER WORKFLOW
+════════════════════════════════════════════
+
+Remove/hide the routine teacher-facing:
+
+`✅ Հաստատել Goal/Outcomes`
+
+button/control from the normal lesson mapping workflow.
+
+IMPORTANT:
+
+This is UI/workflow simplification only.
+
+Do NOT:
+- delete Goal/Outcome records;
+- delete Outcome–MicroNode relations;
+- remove automatic alignment;
+- remove validation;
+- automatically invent REQUIRED relations;
+- lower an Outcome's cognitive requirement to make it pass.
+
+Goal/Outcomes remain canonical lesson data.
+
+If automatic Goal/Outcome alignment has review findings, show them as review information rather than requiring a separate routine teacher approval action.
+
+════════════════════════════════════════════
+PART 2 — OUTCOME WITHOUT REQUIRED MICRONODE
+════════════════════════════════════════════
+
+`OUTCOME_WITHOUT_REQUIRED_NODE` must NOT cause the system to invent an arbitrary REQUIRED relation.
+
+However, for teacher delivery workflow it should become an explicit teacher-overridable mapping issue when the lesson otherwise contains usable mapped MicroNodes.
+
+Example teacher-facing message:
+
+`⚠️ Որոշ վերջնարդյունքների և գիտելիքի հանգույցների կապերը ամբողջական չեն։`
+
+Do NOT expose raw codes such as:
+
+`OUTCOME_WITHOUT_REQUIRED_NODE`
+
+in the normal teacher UI.
+
+Keep the raw validation code internally for logs/debugging if needed.
+
+The underlying validation finding must remain stored/available.
+
+════════════════════════════════════════════
+PART 3 — ASSIGNMENT BECOMES THE SINGLE FINAL TEACHER DECISION
+════════════════════════════════════════════
+
+The main teacher action must be:
+
+`Հանձնարարել սովորողին`
+
+Do NOT keep this button disabled merely because of teacher-overridable mapping/review findings.
+
+When the teacher clicks it, run an authoritative server-side assignment preflight.
+
+There are three outcomes.
+
+CASE A — READY
+
+If there are no unresolved issues:
+
+→ continue directly to the existing assignment flow.
+
+CASE B — TEACHER-OVERRIDABLE REVIEW ISSUES
+
+Examples may include, where safe:
+
+- Outcome without REQUIRED MicroNode relation;
+- automatic Outcome–MicroNode alignment review;
+- source-alignment review where usable source still exists;
+- Cognitive Path review-required state;
+- missing optional/generated Teaching Content when the original mapped/source content remains usable;
+- other existing REVIEW_REQUIRED conditions.
+
+Show ONE compact Armenian confirmation dialog.
+
+Example:
+
+Title:
+`Դասում կան վերանայման կետեր`
+
+Body:
+`Որոշ քարտեզագրման կամ լրացուցիչ ուսուցման տվյալներ ամբողջական չեն։ Կարող եք վերանայել դրանք կամ հաստատել և շարունակել դասի հանձնարարումը։`
+
+Actions:
+
+`Վերադառնալ և վերանայել`
+
+`Հաստատել և հանձնարարել`
+
+If the teacher chooses:
+
+`Հաստատել և հանձնարարել`
+
+then:
+
+1. persist the explicit teacher override/acceptance;
+2. preserve the unresolved findings for audit/history;
+3. mark the lesson as teacher-accepted for delivery using the existing canonical approval mechanism where possible;
+4. immediately continue into the normal assignment flow;
+5. `Հանձնարարել սովորողին` must no longer remain disabled because of those accepted review findings.
+
+Do not require the teacher to separately press Final Approval first.
+
+════════════════════════════════════════════
+PART 4 — TRUE HARD BLOCKERS MUST REMAIN
+════════════════════════════════════════════
+
+Do NOT make every failure overrideable.
+
+Assignment must still fail closed when the lesson cannot safely/runtime-correctly be taught.
+
+Examples of TRUE hard blockers:
+
+- no usable mapped MicroNodes;
+- missing/unreadable source when the runtime requires that source;
+- corrupted/inconsistent canonical data;
+- structurally unusable Cognitive Path where AI Teacher cannot operate safely;
+- missing mandatory runtime identifiers/data;
+- database/integrity failures;
+- any condition that would make the AI Teacher unable to execute the lesson safely.
+
+For a true blocker, show a short Armenian explanation.
+
+Do not expose technical error codes as the primary teacher-facing message.
+
+════════════════════════════════════════════
+PART 5 — FINAL APPROVAL UI
+════════════════════════════════════════════
+
+The teacher should NOT need two final actions:
+
+`Վերջնական հաստատում`
+then
+`Հանձնարարել սովորողին`
+
+For the normal workflow, `Հանձնարարել սովորողին` is the single final human decision.
+
+If the existing Final Approval backend mechanism is needed internally, REUSE it from the assignment/preflight flow rather than deleting its safety logic.
+
+Do not duplicate approval state.
+
+Do not create a second competing source of truth.
+
+If a separate `Վերջնական հաստատում` button is still visible only because of the old workflow, remove/hide it from the normal teacher workflow after confirming that assignment preflight now performs the necessary canonical acceptance.
+
+════════════════════════════════════════════
+PART 6 — UI LANGUAGE CLEANUP
+════════════════════════════════════════════
+
+The teacher-facing UI must be Armenian and simple.
+
+Replace accidental labels such as:
+
+`Nahatakutyunner`
+
+with:
+
+`Վերանայման առաջարկներ`
+
+or, where shorter:
+
+`Վերանայման կետեր`
+
+Do not show normal teachers raw codes such as:
+
+- OUTCOME_WITHOUT_REQUIRED_NODE
+- AUTOMATIC_OUTCOME_ALIGNMENT_REVIEW_REQUIRED
+- COGNITIVE_PATH_REVIEW_REQUIRED
+- MICRONODE_SOURCE_ALIGNMENT_REVIEW_REQUIRED
+
+Those may remain internally available for debugging.
+
+Teacher-facing structure should be approximately:
+
+`⚠️ Վերանայման կետեր · 3`
+
+followed by short human-readable Armenian messages.
+
+Do not expand the workflow cards vertically with long technical diagnostics.
+Detailed diagnostics may be expandable if needed.
+
+════════════════════════════════════════════
+PART 7 — PRESERVE THE SIMPLIFIED MAPPING WORKFLOW
+════════════════════════════════════════════
+
+Do not undo the UI simplification already completed.
+
+The intended workflow remains:
+
+1. Map lesson
+2. Generate Cognitive Paths
+3. Generate Teaching Content when possible
+4. Teacher reviews/edits if desired
+5. `Հանձնարարել սովորողին`
+
+There must NOT again be routine approvals for:
+
+- every exercise;
+- every MicroNode;
+- every Cognitive Path;
+- every Teaching Content item;
+- Goal/Outcomes;
+- then Final Approval;
+- then Assignment.
+
+Exceptional review information may remain visible.
+
+Teacher editing must remain available.
+
+════════════════════════════════════════════
+PART 8 — LIFECYCLE SAFETY
+════════════════════════════════════════════
+
+Teacher override must not permanently authorize a lesson after material changes.
+
+If, after teacher acceptance, the teacher materially changes/remaps:
+
+- Goal/Outcomes;
+- Topics;
+- MicroNodes;
+- source grounding;
+- Cognitive Paths;
+- exercises where relevant to readiness;
+- Teaching Content where relevant;
+- Outcome–MicroNode relations;
+
+invalidate/revoke the previous delivery acceptance according to the existing lifecycle/versioning pattern.
+
+Do not create stale approval.
+
+════════════════════════════════════════════
+PART 9 — TESTS
+════════════════════════════════════════════
+
+Add/update deterministic tests covering at least:
+
+1. READY lesson → Assignment proceeds normally.
+
+2. Outcome without REQUIRED MicroNode but otherwise usable lesson
+   → assignment button available
+   → confirmation shown
+   → teacher confirms
+   → acceptance persists
+   → assignment flow proceeds.
+
+3. Teacher cancels confirmation
+   → no acceptance
+   → no assignment created.
+
+4. Cognitive Path REVIEW_REQUIRED
+   → warning/confirmation, not automatic hard block where safe.
+
+5. Optional Teaching Content missing
+   → teacher can explicitly continue when mapped/source content is usable.
+
+6. True runtime blocker
+   → assignment remains blocked.
+
+7. Teacher override persists correctly.
+
+8. Material remap/edit after override
+   → previous acceptance is revoked.
+
+9. No fake REQUIRED Outcome–MicroNode relation is created.
+
+10. Existing canonical Goal/Outcome data remains unchanged.
+
+11. Existing Quiz/Knowledge Tree/AI Teacher runtime contracts remain unchanged.
+
+════════════════════════════════════════════
+PART 10 — LESSON 654 ACCEPTANCE CHECK
+════════════════════════════════════════════
+
+After implementation, use lesson 654 only as an acceptance/regression case.
+
+Do NOT remap it.
+Do NOT create fake REQUIRED relations.
+Do NOT rewrite its Outcomes.
+Do NOT lower cognitive requirements.
+
+Expected behavior:
+
+- existing Outcome/MicroNode coverage issues remain visible as review findings;
+- `Հանձնարարել սովորողին` is available if no true runtime blocker exists;
+- clicking it shows the Armenian review confirmation;
+- teacher confirmation can authorize delivery despite those review findings;
+- assignment flow becomes available;
+- unresolved mapping findings remain recorded.
+
+Do NOT create a real student assignment during automated verification unless an existing safe test fixture explicitly supports it.
+
+════════════════════════════════════════════
+FINAL REPORT
+════════════════════════════════════════════
+
+Return:
+
+AUDIT FINDINGS
+
+OLD WORKFLOW
+
+NEW WORKFLOW
+
+GOAL/OUTCOME APPROVAL UI REMOVED: YES/NO
+
+SEPARATE FINAL APPROVAL UI REMOVED/HIDDEN: YES/NO
+
+ASSIGNMENT PREFLIGHT IMPLEMENTED: YES/NO
+
+TEACHER OVERRIDE IMPLEMENTED: YES/NO
+
+TRUE HARD BLOCKERS PRESERVED: YES/NO
+
+RAW TECHNICAL CODES HIDDEN FROM NORMAL TEACHER UI: YES/NO
+
+LESSON 654 RESULT
+
+ASSIGNMENT BUTTON AVAILABLE: YES/NO
+
+CONFIRMATION FLOW WORKS: YES/NO
+
+FAKE REQUIRED RELATIONS CREATED: NO
+
+FILES CHANGED
+
+DATABASE CHANGED
+
+TESTS
+
+C1–C7 SAFETY WEAKENED: NO
+
+AI TEACHER RUNTIME CHANGED: NO
+
+QUIZ CHANGED: NO
+
+KNOWLEDGE TREE CHANGED: NO
+
+PUBLISHED/DEPLOYED: NO
+
+Do not make unrelated changes.
