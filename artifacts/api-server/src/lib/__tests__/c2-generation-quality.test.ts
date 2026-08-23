@@ -104,19 +104,20 @@ test("7. heading-only C1 source is blocked before C2 generation", () => {
   assert.equal(result.sourceAlignment?.reasonCode, "HEADING_ONLY");
 });
 
-test("8. partially supported C1 objective is blocked before C2 generation", () => {
+test("8. partially supported C1 objective remains review-required but safe to continue", () => {
   const result = assessC2GenerationPreflight({
     nodeStatus: "approved",
     theoryContent: "Աշակերտը պատմեց թվերի տեղը գրության մեջ իր ընկերոջը դասի ընթացքում։",
     learningObjective: "Բացատրում է թվերի տեղը գրության մեջ։",
     blockType: "note",
   });
-  assert.equal(result.eligible, false);
-  assert.equal(result.reason, "C1_OBJECTIVE_NOT_GROUNDED");
+  assert.equal(result.eligible, true);
+  assert.equal(result.reason, "C1_REVIEW_REQUIRED");
+  assert.equal(result.outcome, "REVIEW_REQUIRED");
   assert.equal(result.sourceAlignment?.status, "PARTIAL");
 });
 
-test("9. needs_review C1 node returns the strict review-required code", () => {
+test("9. needs_review C1 node remains safe for generation with review required", () => {
   const result = assessC2GenerationPreflight({
     nodeStatus: "needs_review",
     theoryContent: applySource,
@@ -124,38 +125,12 @@ test("9. needs_review C1 node returns the strict review-required code", () => {
     blockType: "rule",
   });
   assert.deepEqual(result, {
-    eligible: false,
+    eligible: true,
     reason: "C1_REVIEW_REQUIRED",
-    sourceAlignment: null,
+    sourceAlignment: result.sourceAlignment,
+    outcome: "REVIEW_REQUIRED",
   });
 });
-
-await (async () => {
-  try {
-    const result = await generateCognitivePath({
-      nodeId: 1,
-      title: "Կարգային միավորներ",
-      nodeStatus: "needs_review",
-      theoryContent: applySource,
-      learningObjective: applyObjective,
-      blockType: "rule",
-      targetBloomLevel: 3,
-      subjectName: "Մաթեմատիկա",
-      lessonTitle: "Թվեր",
-      topicTitle: null,
-      exercises: [],
-    });
-    assert.equal(result.skipped, true);
-    assert.equal(result.skipCode, "C1_REVIEW_REQUIRED");
-    assert.deepEqual(result.levels, []);
-    results.push({ name: "10. C1 review preflight returns before any provider call", pass: true });
-    console.log("  ✓ 10. C1 review preflight returns before any provider call");
-  } catch (error) {
-    results.push({ name: "10. C1 review preflight returns before any provider call", pass: false, error });
-    console.error("  ✗ 10. C1 review preflight returns before any provider call");
-    console.error(error);
-  }
-})();
 
 test("11. malformed Bloom rank order is rejected by canonical C2 acceptance", () => {
   const acceptance = assessAcceptedCognitivePath({

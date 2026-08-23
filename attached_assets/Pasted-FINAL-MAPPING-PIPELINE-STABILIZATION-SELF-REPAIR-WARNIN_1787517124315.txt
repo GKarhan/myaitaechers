@@ -1,0 +1,456 @@
+FINAL MAPPING PIPELINE STABILIZATION
+SELF-REPAIR + WARNING-FIRST + TRUE HARD-BLOCK ONLY
+
+GOAL
+
+This is the final stabilization task for the Teacher Mapping workflow before we begin multi-lesson quality validation.
+
+The teacher must NOT have to debug C1/C2/internal readiness problems created by the automatic mapping pipeline.
+
+The normal workflow must remain simple:
+
+Lesson created
+→ Goal/outcomes confirmed
+→ Automatic mapping
+→ Step 1: Generate Cognitive Paths
+→ Step 2: Generate Teaching Content
+→ Teacher reviews/edits
+→ Step 3: Final lesson approval
+
+IMPORTANT:
+Do NOT redesign the mapping architecture.
+Do NOT weaken C1–C7 authority/safety semantics.
+Do NOT bypass source-grounding requirements.
+Do NOT silently approve invalid content.
+Do NOT touch AI Teacher runtime, Quiz, Knowledge Tree, student flow, or unrelated features.
+Do NOT publish/deploy.
+
+==================================================
+PART 0 — AUDIT FIRST
+==================================================
+
+Before changing code, trace the CURRENT exact workflow for:
+
+1. automatic mapping → persisted MicroNodes
+2. C1 creation/readiness/review
+3. C2 Cognitive Path generation
+4. lesson-wide Teaching Content generation
+5. final lesson approval
+
+Identify every place where a node can currently become blocked because of:
+
+- C1 needs_review
+- C1 missing/incomplete
+- C1/source alignment
+- C1 target-ceiling issue
+- C2 missing
+- C2 invalid/unconfirmed
+- generated content failing validation
+- stale status after a previous successful repair
+- any other internal readiness condition
+
+For each blocker classify it as:
+
+A. AUTO-REPAIRABLE
+B. REVIEW-WORTHY BUT SAFE TO CONTINUE
+C. TRUE HARD BLOCKER
+
+Do not change anything until this classification is complete.
+
+==================================================
+PART 1 — CANONICAL POLICY
+==================================================
+
+Implement one consistent readiness policy for the mapping pipeline.
+
+There must be THREE semantic outcomes:
+
+GREEN — READY
+The node is valid and the pipeline continues normally.
+
+YELLOW — REVIEW REQUIRED
+The system produced a usable, source-grounded result, but teacher review is recommended.
+
+YELLOW MUST NOT stop the normal generation pipeline when safe continuation is possible.
+
+The generated result must be preserved and clearly marked for teacher review.
+
+RED — BLOCKED
+Use RED only when safe generation cannot continue.
+
+Examples of legitimate RED conditions:
+
+- required source content is missing/unreadable;
+- the MicroNode cannot be grounded in the source;
+- required canonical data cannot be derived safely;
+- source and objective materially contradict each other;
+- continuing would require inventing unsupported curriculum content;
+- canonical C1/C2 requirements cannot be satisfied even after bounded repair.
+
+Do NOT convert real RED safety failures into warnings.
+
+==================================================
+PART 2 — BOUNDED AUTOMATIC REPAIR
+==================================================
+
+For internal AI-generated readiness problems, the system should attempt bounded automatic repair BEFORE asking the teacher to intervene.
+
+Examples:
+
+- C1 generated but marked needs_review for a repairable grounding/alignment reason;
+- generated objective slightly exceeds supported source scope;
+- target ceiling does not match canonical C1 constraints;
+- C2 candidate violates C1 ceiling;
+- stale/inconsistent generated readiness state;
+- generated Teaching Content candidate fails a repairable validation rule.
+
+Use existing canonical generators/validators where possible.
+
+Do NOT create parallel C1/C2 logic.
+
+Maximum automatic repair must be bounded.
+
+Suggested contract:
+
+initial generation
+→ canonical validation
+→ if repairable: ONE targeted repair/regeneration
+→ canonical validation again
+→ READY / REVIEW_REQUIRED / BLOCKED
+
+Do NOT create infinite retries.
+
+Do NOT relax validators simply to make generation pass.
+
+==================================================
+PART 3 — C1 BEHAVIOR
+==================================================
+
+C1 must stop being a routine teacher-facing technical obstacle.
+
+If C1 is source-grounded and usable but has a non-critical review concern:
+
+DO NOT hard-block the whole Teaching Content workflow.
+
+Persist it as REVIEW_REQUIRED and allow safe downstream processing.
+
+If the C1 issue is automatically repairable:
+repair it once and revalidate.
+
+Only RED C1 failures should stop downstream generation.
+
+The teacher should not need to understand internal C1 mechanics during normal operation.
+
+Do NOT remove C1.
+Do NOT weaken C1 grounding.
+Do NOT fake C1 readiness.
+
+==================================================
+PART 4 — C2 / COGNITIVE PATH BEHAVIOR
+==================================================
+
+Preserve all previously established C2 safety rules:
+
+- C2 must respect C1 target ceiling.
+- C2 must never invent a higher unsupported cognitive ceiling.
+- C2 must remain source/C1 grounded.
+- existing valid/teacher-edited paths must not be overwritten automatically.
+
+For an AI-generated invalid C2 candidate:
+
+perform at most ONE constrained repair/regeneration using the canonical C1 ceiling.
+
+If the repaired result passes:
+persist it.
+
+If usable but requiring non-critical review:
+mark REVIEW_REQUIRED and continue where safe.
+
+If canonical validity still cannot be achieved:
+RED/BLOCKED.
+
+Do NOT force acceptance.
+
+==================================================
+PART 5 — TEACHING CONTENT BULK GENERATION
+==================================================
+
+The lesson-wide Teaching Content action should behave like a robust orchestration layer.
+
+For every MicroNode:
+
+1. inspect canonical readiness;
+2. auto-repair eligible internal C1/C2 problems;
+3. generate Teaching Content for all nodes that are safely usable;
+4. preserve review-required results;
+5. block only nodes that remain genuinely unsafe.
+
+ONE problematic node must NOT destroy valid results generated for other nodes.
+
+Never delete already valid Teaching Content because another node failed.
+
+The final result should summarize:
+
+READY: X
+REVIEW REQUIRED: Y
+BLOCKED: Z
+
+Do not expose internal technical noise unless the teacher opens details.
+
+==================================================
+PART 6 — TEACHER-FACING UX
+==================================================
+
+The normal teacher workflow must stay simple.
+
+Top workflow remains exactly:
+
+1. Ճանաչողական ուղիներ
+2. Ուսուցման բովանդակություն
+3. Վերջնական հաստատում
+
+Do not add additional mandatory teacher steps.
+
+Do not add separate C1/C2 technical approval steps to the main workflow.
+
+Teacher-facing statuses should be understandable Armenian concepts:
+
+✓ Պատրաստ է
+
+⚠ Վերանայել
+
+⛔ Չի կարող շարունակվել
+
+Do not make normal teachers interpret technical messages such as:
+
+C1 blocker
+C2 blocker
+canonical path status
+target ceiling mismatch
+validator failure
+
+Those technical details may remain available in diagnostic/details views, logs, or developer information.
+
+If a node requires review, clicking/opening it should show the concrete human-readable reason.
+
+==================================================
+PART 7 — REMOVE THE REDUNDANT BULK NODE APPROVAL
+==================================================
+
+Remove the teacher-facing lesson-level control:
+
+“✅ Հաստատել բոլոր հանգույցները”
+
+It is redundant with the simplified canonical workflow.
+
+IMPORTANT:
+
+This is UI removal only.
+
+Do NOT remove underlying node validity/status data.
+Do NOT weaken final approval validation.
+Do NOT automatically approve invalid nodes.
+
+Step 3 “Վերջնական հաստատում” remains the single lesson-level final approval action.
+
+==================================================
+PART 8 — FINAL APPROVAL
+==================================================
+
+Final lesson approval remains the authoritative teacher gate.
+
+It may proceed only when there are ZERO RED/BLOCKED conditions.
+
+YELLOW / REVIEW_REQUIRED content must NOT be silently treated as teacher-approved.
+
+If review-required items remain, the final approval UI must clearly tell the teacher what needs review.
+
+The teacher can inspect/edit those items and then explicitly perform the single final lesson approval.
+
+Do not introduce separate approval buttons for every generated object.
+
+Avoid repeated “✅ Հաստատված” UI noise on every exercise/node if it is not required for an actual teacher action.
+
+Preserve underlying status semantics even if the repetitive visual badge is removed.
+
+==================================================
+PART 9 — EDITING AFTER GENERATION
+==================================================
+
+After AI generation:
+
+- teacher can inspect the generated mapping;
+- teacher can inspect Cognitive Paths;
+- teacher can inspect Teaching Content;
+- teacher can manually edit where existing authoring controls allow it.
+
+Do NOT provide casual AI regeneration shortcuts that can accidentally overwrite reviewed content.
+
+Teacher-edited content must remain protected from automatic overwrite.
+
+If a teacher manually changes canonical upstream content and existing architecture correctly invalidates downstream generated state, preserve that safety behavior.
+
+==================================================
+PART 10 — LESSON 654 REGRESSION CASE
+==================================================
+
+Use the current real lesson as a regression case:
+
+Lesson 654
+Մաթեմատիկա 5
+§1.4 Կարգեր, կարգային միավորներ
+Pages 19–22
+
+Current observed state:
+
+Cognitive Paths:
+4 / 4 generated
+
+Teaching Content:
+2 generated/review
+2 blocked at C1
+0 blocked at C2
+
+Affected nodes include:
+
+- Կարգեր և կարգային միավորներ
+- Կարգային միավորներ
+
+Do NOT manually force these two nodes to READY.
+
+Run them through the new canonical classification/repair policy.
+
+For each node report:
+
+BEFORE STATUS
+ROOT CAUSE
+CLASSIFICATION:
+AUTO-REPAIRABLE / REVIEW-WORTHY / TRUE BLOCKER
+REPAIR ATTEMPTED
+VALIDATION RESULT
+FINAL STATUS
+
+This lesson should prove the architecture rather than receive a one-off database hack.
+
+==================================================
+PART 11 — REGRESSION SAFETY
+==================================================
+
+Must preserve:
+
+- source fidelity
+- source coverage
+- MicroNode atomicity
+- exercise preservation
+- C1 canonical semantics
+- C2 target-ceiling enforcement
+- C3 evidence semantics
+- C4 demonstrated-ceiling projection
+- C5/C6 routing/selection
+- C7.1 canonical completion authority
+- C7.2 server-owned teaching cycle
+- C7.3 target lock
+- C7.4 bounded remediation
+- C7.5/C7.6 existing behavior
+- teacher edits
+- existing manual mapping
+- existing automatic mapping
+- quiz flow
+- Knowledge Tree
+- AI Teacher runtime
+
+No schema redesign unless absolutely required and proven first.
+
+==================================================
+PART 12 — TESTS
+==================================================
+
+Add provider-free deterministic tests for at least:
+
+1. valid C1 → READY
+2. repairable C1 → one repair → READY
+3. usable non-critical C1 issue → REVIEW_REQUIRED, not hard blocked
+4. unsafe/un-grounded C1 → BLOCKED
+5. C2 exceeds C1 ceiling → constrained repair
+6. C2 remains invalid after repair → BLOCKED
+7. one blocked node does not destroy other Teaching Content results
+8. teacher-edited C2 is never overwritten automatically
+9. final approval rejects remaining BLOCKED state
+10. final approval requires explicit teacher handling of REVIEW_REQUIRED state
+11. no infinite regeneration/retry
+12. lesson 654 follows the new policy deterministically
+
+Run existing relevant C1–C7 regression suites.
+
+==================================================
+PART 13 — REQUIRED FINAL REPORT
+==================================================
+
+Return exactly:
+
+AUDIT FINDINGS
+
+OLD FAILURE MODEL:
+...
+
+NEW FAILURE MODEL:
+...
+
+AUTO-REPAIRABLE CONDITIONS:
+...
+
+REVIEW_REQUIRED CONDITIONS:
+...
+
+TRUE HARD BLOCKERS:
+...
+
+LESSON 654 BEFORE:
+...
+
+LESSON 654 AFTER:
+...
+
+TEACHER WORKFLOW AFTER:
+1.
+2.
+3.
+
+UI REMOVED:
+...
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+YES / NO
+If YES, explain exactly why.
+
+TESTS:
+...
+
+REGRESSIONS:
+...
+
+C1–C7 SAFETY SEMANTICS WEAKENED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+PUBLISHED/DEPLOYED:
+NO
+
+REMAINING MAPPING BLOCKERS:
+...
+
+Then STOP.
+
+Do NOT propose or start another task.
+Do NOT publish/deploy.

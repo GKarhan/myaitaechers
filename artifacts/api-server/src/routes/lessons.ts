@@ -1146,6 +1146,13 @@ router.post("/lessons/:lessonId/start-fresh", requireAuth, async (req: AuthReque
 
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (lesson.status === "approved") {
+    res.status(409).json({
+      error: "LESSON_APPROVED",
+      message: "Վերջնական հաստատումից հետո AI գեներացումը փակ է։ Ձեռքով խմբագրումը հասանելի է։",
+    });
+    return;
+  }
 
   const c6Decision = await resolveCanonicalC6Decision({
     learnerId: req.userId!,
@@ -5137,17 +5144,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const batch = nodes.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(batch.map(async (node) => {
-        // Phase 2 never turns a lesson-wide click into authority. C1 must first be
-        // source-safe and approved, and C2 must have a confirmed, valid path.
-        if (node.changeReason?.startsWith("SOURCE_ALIGNMENT:")) {
-          return {
-            nodeId: node.id,
-            blocked: true as const,
-            blockCode: "C1_REVIEW_REQUIRED",
-            skipReason: "Source alignment requires teacher review before Teaching Content generation",
-          };
-        }
-
+        // A source-grounded C1 review candidate can continue as YELLOW. Only
+        // unreadable/unsupported source is RED and stops this node.
         const preflight = assessC2GenerationPreflight({
           nodeStatus: node.status,
           learningObjective: node.learningObjective,
@@ -5164,15 +5162,25 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         }
 
         const cogPath = cogLevelsByNode.get(node.id) ?? [];
-        const hasValidConfirmedPath = (node.cogPathStatus as string | null) === "confirmed"
+        const grounding = validateCognitivePathGrounding(
+          node.theoryContent,
+          node.learningObjective,
+          cogPath.map((level) => ({
+            performanceObjective: level.performanceObjective,
+            successCriterion: level.successCriterion,
+            preferredInteractionTypes: [],
+          })),
+        );
+        const hasUsablePath = ["confirmed", "needs_review"].includes(node.cogPathStatus as string)
           && cogPath.length > 0
-          && cogPath.filter((level) => level.isTargetCeiling).length === 1;
-        if (!hasValidConfirmedPath) {
+          && cogPath.filter((level) => level.isTargetCeiling).length === 1
+          && grounding.valid;
+        if (!hasUsablePath) {
           return {
             nodeId: node.id,
             blocked: true as const,
-            blockCode: "COG_PATH_NOT_CONFIRMED",
-            skipReason: "A confirmed Cognitive Path is required before Teaching Content generation",
+            blockCode: "COG_PATH_NOT_USABLE",
+            skipReason: "Ճանաչողական ուղին դեռ անվտանգ օգտագործելի չէ",
           };
         }
 
@@ -5185,7 +5193,13 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           cogPath,
         };
         const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
-        const result = await generatePhase2Content(input, exercises);
+        let result = await generatePhase2Content(input, exercises);
+        // Bounded repair: a generated candidate that fails the source-grounding
+        // validator gets one fresh constrained attempt. Existing content is never
+        // sent here because this job processes only missing content.
+        if (result.skipped && result.groundingAudit && !result.groundingAudit.valid) {
+          result = await generatePhase2Content(input, exercises);
+        }
         return { nodeId: node.id, blocked: false as const, result };
       }));
 
@@ -5198,7 +5212,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       for (const batchResult of batchResults) {
         const nodeTitle = nodes.find((n) => n.id === batchResult.nodeId)?.title ?? "";
         if (batchResult.blocked) {
-          const isC2Block = batchResult.blockCode === "COG_PATH_NOT_CONFIRMED";
+          const isC2Block = batchResult.blockCode.startsWith("COG_PATH");
           summaryRows.push({
             nodeId:     batchResult.nodeId,
             title:      nodeTitle,
@@ -5274,7 +5288,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       }
     }
 
-    const approved              = 0;
+    const readyCount            = 0;
     const needsReviewCount      = summaryRows.filter((r) => r.status === "needs_review").length;
     const needsSourceCount      = summaryRows.filter((r) => r.status === "needs_source_content").length;
     const skippedReviewCount    = summaryRows.filter((r) => r.status === "skipped_needs_review").length;
@@ -5288,7 +5302,10 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           lessonId,
           lessonTitle:         lesson.title,
           totalNodes:          nodes.length,
-          approved,
+          ready:               readyCount,
+          reviewRequired:      needsReviewCount + skippedReviewCount,
+          blocked:             needsSourceCount + blockedC1Count + blockedC2Count,
+          approved:            readyCount,
           needsReview:          needsReviewCount,
           needsSourceContent:  needsSourceCount,
           skippedNeedsReview:  skippedReviewCount,
@@ -5302,7 +5319,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
 
     await invalidateLessonApproval(lessonId);
     logger.info(
-      { jobId: job.id, lessonId, total: nodes.length, approved, needsReview: needsReviewCount, needsSource: needsSourceCount, skippedReview: skippedReviewCount, blockedC1: blockedC1Count, blockedC2: blockedC2Count },
+      { jobId: job.id, lessonId, total: nodes.length, ready: readyCount, needsReview: needsReviewCount, needsSource: needsSourceCount, skippedReview: skippedReviewCount, blockedC1: blockedC1Count, blockedC2: blockedC2Count },
       "phase2 teaching content generation job completed"
     );
   } catch (err) {
@@ -6381,7 +6398,18 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
     })) : undefined,
   };
 
-  const result = await generateCognitivePath(input);
+  let result = await generateCognitivePath(input);
+  // Bounded self-repair: the generator already receives the canonical C1
+  // ceiling and source. When a fresh AI candidate alone fails a C2 structural,
+  // ceiling, or grounding validator, allow exactly one constrained retry.
+  // Teacher-authored/confirmed paths returned above never enter this branch.
+  if (
+    result.skipped
+    && ["C2_PATH_STRUCTURE_REJECTED", "C2_CEILING_VIOLATION", "C2_GROUNDING_REJECTED"]
+      .includes(result.skipCode ?? "")
+  ) {
+    result = await generateCognitivePath(input);
+  }
 
   if (result.skipped) {
     res.status(422).json({

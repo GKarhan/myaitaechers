@@ -13,6 +13,8 @@ export type C2GenerationPreflight = {
   eligible: boolean;
   reason: C2GenerationBlockCode | null;
   sourceAlignment: SourceAlignmentAudit | null;
+  /** Teacher-facing pipeline state. REVIEW_REQUIRED remains safe for generation. */
+  outcome: "READY" | "REVIEW_REQUIRED" | "BLOCKED";
 };
 
 export type C2GenerationPreflightInput = {
@@ -23,26 +25,21 @@ export type C2GenerationPreflightInput = {
 };
 
 /**
- * C2 may extend only an already-safe C1 MicroNode. This is deliberately a
- * deterministic, source-only gate: it does not alter C1 status or attempt to
- * repair source/objective drift. A teacher must resolve C1 first.
+ * C2 may extend only a source-safe C1 MicroNode. A review flag is not itself
+ * proof that the source is unsafe: source-grounded partial alignment can keep
+ * flowing as REVIEW_REQUIRED while unreadable/unsupported source stays blocked.
+ * This function never changes C1 data or relaxes source grounding.
  */
 export function assessC2GenerationPreflight(
   input: C2GenerationPreflightInput,
 ): C2GenerationPreflight {
-  if (input.nodeStatus === "needs_review") {
-    return { eligible: false, reason: "C1_REVIEW_REQUIRED", sourceAlignment: null };
-  }
   if (input.nodeStatus === "needs_source_content") {
-    return { eligible: false, reason: "C1_SOURCE_INSUFFICIENT", sourceAlignment: null };
-  }
-  if (input.nodeStatus && input.nodeStatus !== "approved") {
-    return { eligible: false, reason: "C1_REVIEW_REQUIRED", sourceAlignment: null };
+    return { eligible: false, reason: "C1_SOURCE_INSUFFICIENT", sourceAlignment: null, outcome: "BLOCKED" };
   }
 
   const sourceText = input.theoryContent?.trim() ?? "";
   if (sourceText.length < 50 || isUnreadableSource(sourceText)) {
-    return { eligible: false, reason: "C1_SOURCE_INSUFFICIENT", sourceAlignment: null };
+    return { eligible: false, reason: "C1_SOURCE_INSUFFICIENT", sourceAlignment: null, outcome: "BLOCKED" };
   }
 
   const sourceAlignment = classifyMicroNodeSourceAlignment(input.learningObjective, [{
@@ -51,10 +48,15 @@ export function assessC2GenerationPreflight(
   }]);
 
   if (sourceAlignment.status === "UNREADABLE" || sourceAlignment.status === "INSUFFICIENT") {
-    return { eligible: false, reason: "C1_SOURCE_INSUFFICIENT", sourceAlignment };
+    return { eligible: false, reason: "C1_SOURCE_INSUFFICIENT", sourceAlignment, outcome: "BLOCKED" };
   }
-  if (sourceAlignment.status !== "SUFFICIENT") {
-    return { eligible: false, reason: "C1_OBJECTIVE_NOT_GROUNDED", sourceAlignment };
+  if (sourceAlignment.status === "PARTIAL" || input.nodeStatus === "needs_review") {
+    return {
+      eligible: true,
+      reason: "C1_REVIEW_REQUIRED",
+      sourceAlignment,
+      outcome: "REVIEW_REQUIRED",
+    };
   }
-  return { eligible: true, reason: null, sourceAlignment };
+  return { eligible: true, reason: null, sourceAlignment, outcome: "READY" };
 }

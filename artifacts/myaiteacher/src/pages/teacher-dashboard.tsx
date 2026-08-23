@@ -149,6 +149,9 @@ interface LessonJobStatus {
   error:    string | null;
   result?:  {
     coverageValid?: boolean;
+    ready?: number;
+    reviewRequired?: number;
+    blocked?: number;
     needsReview?: number;
     blockedC1?: number;
     blockedC2?: number;
@@ -641,11 +644,11 @@ function GenerateTeachingContentButton({
 }: {
   lessonId: number;
   hasNodes: boolean;
-  /** True when ≥1 node already has teaching content — require confirmation before filling gaps */
+  /** True when ≥1 node already has teaching content; the server fills gaps only. */
   hasExistingPhase2: boolean;
   /** True when every MicroNode already has generated Teaching Content. */
   hasTeachingContentForAllNodes: boolean;
-  /** Teaching Content is only offered after every Cognitive Path is confirmed. */
+  /** Teaching Content is offered after every Cognitive Path is safely generated. */
   prerequisitesReady: boolean;
   /** Final approval is authoritative; AI generation must be unavailable afterward. */
   isLocked: boolean;
@@ -736,14 +739,10 @@ function GenerateTeachingContentButton({
       </span>
     );
   }
-  if (hasExistingPhase2) {
+  if (hasTeachingContentForAllNodes) {
     return (
-      <span className={"inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium " + (
-        hasTeachingContentForAllNodes
-          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
-          : "border-amber-400/25 bg-amber-400/10 text-amber-200"
-      )}>
-        {hasTeachingContentForAllNodes ? "✓ Ստեղծված" : "⚠ Վերանայում է պետք"}
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-medium text-amber-200">
+        ⚠ Վերանայել
       </span>
     );
   }
@@ -760,7 +759,7 @@ function GenerateTeachingContentButton({
       >
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        ) : !prerequisitesReady ? '⏳ Սպասում է 1-ին քայլին' : genDone ? '✅ Բովանդակությունը պատրաստ է' : hasExistingPhase2 ? 'Լրացնել բացակա բովանդակությունը' : '✨ Ստեղծել'}
+        ) : !prerequisitesReady ? '⏳ Սպասում է 1-ին քայլին' : genDone ? '⚠ Վերանայել' : hasExistingPhase2 ? '✨ Լրացնել բացակա բովանդակությունը' : '✨ Ստեղծել'}
       </button>
       {isActive && (
         <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
@@ -771,11 +770,11 @@ function GenerateTeachingContentButton({
       {teachingContentResult && (
         <div className="max-w-[300px] rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-[9px] leading-relaxed text-white/65">
           <span className="font-medium text-white/80">
-            Ուսուցման բովանդակություն՝ {teachingContentResult.needsReview ?? 0}՝ վերանայման
+            ✓ Պատրաստ է՝ {teachingContentResult.ready ?? 0} · ⚠ Վերանայել՝ {teachingContentResult.reviewRequired ?? teachingContentResult.needsReview ?? 0} · ⛔ Չի կարող շարունակվել՝ {teachingContentResult.blocked ?? ((teachingContentResult.blockedC1 ?? 0) + (teachingContentResult.blockedC2 ?? 0))}
           </span>
           {(teachingContentResult.blockedC1 ?? 0) + (teachingContentResult.blockedC2 ?? 0) > 0 && (
             <span className="ml-1 text-amber-300">
-              · {teachingContentResult.blockedC1 ?? 0} C1, {teachingContentResult.blockedC2 ?? 0} C2 արգելափակված
+              · բացիր հանգույցը՝ պատճառը տեսնելու համար
             </span>
           )}
           {teachingContentBlocks.length > 0 && (
@@ -787,7 +786,7 @@ function GenerateTeachingContentButton({
                   title={row.skipReason}
                   className="rounded border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-left text-amber-200 hover:brightness-125"
                 >
-                  {row.title} · {row.status === 'blocked_c1' ? 'C1' : 'C2'}
+                  {row.title} · ⛔ Չի կարող շարունակվել
                 </button>
               ))}
             </div>
@@ -1361,10 +1360,10 @@ function LessonNodesPanel({
   const sourceExercises = exercises.filter((exercise) => (exercise as any).sourceType === "textbook");
   const sourceExercisesApproved = sourceExercises.every((exercise) => (exercise as any).status === "approved");
   const nodesApproved = nodes.every((node) => (node as any).status === "approved");
-  const finalApprovalPrerequisitesReady = nodes.length > 0
-    && nodesApproved
-    && allTeachingContentComplete
-    && sourceExercisesApproved;
+  // Final approval is the one lesson-level decision. The server remains the
+  // authority and returns concrete review/blocking reasons; avoid hiding that
+  // action behind redundant bulk-approval UI.
+  const finalApprovalPrerequisitesReady = nodes.length > 0;
 
   const generateAllCogPaths = async () => {
     if (lessonIsApproved || bulkCogPathRunning || sortedNodes.length === 0) return;
@@ -2611,7 +2610,7 @@ function LessonNodesPanel({
                       </span>
                     ) : (
                       <button
-                        onClick={generateAllCogPaths}
+                      onClick={generateAllCogPaths}
                         disabled={bulkCogPathRunning}
                         className="flex items-center gap-1.5 rounded-lg border border-indigo-400/35 bg-indigo-500/20 px-2.5 py-1.5 text-[10px] font-medium text-indigo-100 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/30 disabled:opacity-50"
                       >
@@ -2648,7 +2647,7 @@ function LessonNodesPanel({
                       hasNodes={nodes.length > 0}
                       hasExistingPhase2={teachingContentGenerated > 0}
                       hasTeachingContentForAllNodes={allTeachingContentGenerated}
-                      prerequisitesReady={allCognitivePathsConfirmed}
+                      prerequisitesReady={allCognitivePathsCreated}
                       isLocked={lessonIsApproved}
                       onInspectNode={openCogPathFromBulkResult}
                     />
@@ -2681,7 +2680,7 @@ function LessonNodesPanel({
                       <button
                         onClick={handleFinalApprove}
                         disabled={approvalPending || !finalApprovalPrerequisitesReady}
-                        title={finalApprovalPrerequisitesReady ? "Կատարել վերջնական հաստատումը" : "Լրացրու նախորդ քայլերը և հաստատիր աղբյուրային վարժությունները"}
+                        title={finalApprovalPrerequisitesReady ? "Կատարել վերջնական հաստատումը" : "Նախ ստեղծիր քարտեզագրումը"}
                         className="flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300 transition-colors hover:border-emerald-300/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {approvalPending ? (
@@ -2692,7 +2691,7 @@ function LessonNodesPanel({
                   </div>
                   {!lessonIsApproved && !finalApprovalPrerequisitesReady && (
                     <p className="mt-1 text-[9px] text-amber-200/75">
-                      ⚠ Լրացրու նախորդ քայլերը, հաստատիր հանգույցներն ու աղբյուրային վարժությունները
+                      ⚠ Նախ ստեղծիր քարտեզագրումը
                     </p>
                   )}
                 </div>
@@ -2942,17 +2941,6 @@ function LessonNodesPanel({
                   Node-եր դեռ չկան · օգտագործիր 🗺️ կոճակը
                 </p>
               )}
-              {/* P6.6: Approve All convenience button */}
-              {nodes.some((nd) => (nd as any).status !== 'approved') && nodes.length > 0 && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={approveAll}
-                    disabled={approvingAll}
-                    className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 font-medium"
-                  >{approvingAll ? "…" : "✅ Հաստատել բոլոր հանգույցները"}</button>
-                </div>
-              )}
-
               {/* Gate 1.4: Approve All exercises — lesson-scoped, transaction-safe */}
               {exercises.some((e) => e.status !== "approved") && exercises.length > 0 && (
                 <div className="flex justify-end">
