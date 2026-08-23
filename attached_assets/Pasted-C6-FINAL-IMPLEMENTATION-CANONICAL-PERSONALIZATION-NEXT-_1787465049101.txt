@@ -1,0 +1,1074 @@
+C6 — FINAL IMPLEMENTATION
+CANONICAL PERSONALIZATION / NEXT-LEARNING DECISION ENGINE
+
+IMPLEMENT + TEST + VERIFY + CLOSE C6
+
+This is NOT another audit.
+
+The C6 Phase 1 audit is complete.
+
+FINAL AUDIT VERDICT:
+
+C6 READY FOR IMPLEMENTATION.
+
+Current architecture already contains:
+
+- C1 curriculum / MicroNode structure and ordering
+- C2 accepted ordered Cognitive Paths
+- C3 canonical qualified evidence
+- C4 demonstrated Cognitive Ceiling
+- C5 canonical four-state Knowledge Tree
+- persisted lesson session state
+- persisted MicroNode dependency graph
+- server-owned pedagogicalDecisionEngine for within-session execution
+
+The missing piece is ONE canonical deterministic C6 decision layer answering:
+
+“WHAT SHOULD THIS LEARNER WORK ON NEXT?”
+
+Implement that layer now.
+
+Do not create another parallel personalization system.
+
+════════════════════════════════════════════════════
+0. HARD SCOPE
+════════════════════════════════════════════════════
+
+C6 owns:
+
+WHAT the learner should work on next.
+
+C7 owns:
+
+HOW AI Teacher teaches that selected target.
+
+C6 MAY decide:
+
+- target MicroNode
+- target Cognitive Level
+- START
+- CONTINUE
+- REMEDIATE
+- REVIEW
+- ADVANCE
+- prerequisite redirect/status
+- reason for the decision
+
+C6 MUST NOT decide:
+
+- explanation wording
+- hint wording
+- error-specific teaching response
+- feedback text
+- exercise presentation wording
+- AI persona
+- conversational orchestration
+- pedagogical response generation
+
+Those remain C7 / pedagogicalDecisionEngine responsibilities.
+
+DO NOT redesign:
+
+C1
+C2
+C3
+C4
+C5
+quiz scoring
+Knowledge Tree classification
+evidence qualification
+AI Teacher prompt architecture
+
+Do not change lesson 644 content/mapping merely to make tests pass.
+
+════════════════════════════════════════════════════
+1. CANONICAL C6 DECISION SERVICE
+════════════════════════════════════════════════════
+
+Create ONE server-owned canonical C6 decision service in the most
+natural existing services location.
+
+Do not duplicate the logic in:
+
+lessons.ts
+chat.ts
+knowledge-tree.ts
+frontend
+
+The service must consume existing canonical systems.
+
+Conceptually it must resolve a decision equivalent to:
+
+{
+  learnerId,
+  lessonId,
+  microNodeId,
+
+  knowledgeState,
+
+  curriculumTargetCognitiveLevelId,
+  demonstratedCognitiveLevelId,
+
+  nextTargetCognitiveLevelId,
+
+  decisionType,
+
+  reasonCode,
+
+  prerequisiteStatus
+}
+
+Exact TypeScript shape/naming should follow repository conventions.
+
+Allowed canonical decision types:
+
+START
+CONTINUE
+REMEDIATE
+REVIEW
+ADVANCE
+
+Use a typed deterministic contract.
+
+No AI/provider call is allowed for C6 decision-making.
+
+════════════════════════════════════════════════════
+2. SOURCE OF TRUTH
+════════════════════════════════════════════════════
+
+C6 must REUSE, not recreate:
+
+C1:
+- approved curriculum MicroNodes
+- teacher-defined MicroNode sequence
+
+C2:
+- accepted Cognitive Path
+- Cognitive Level IDs
+- Cognitive Path sequence
+- accepted curriculum target
+
+C3:
+- do NOT independently reinterpret raw evidence
+
+C4:
+- canonical demonstrated Cognitive Ceiling
+
+C5:
+- canonical learner × MicroNode state:
+  MASTERED
+  PARTIAL
+  NOT_KNOWN
+  NOT_STUDIED
+
+C6 must not contain a second mastery classifier.
+
+C6 must not calculate demonstrated ceiling independently.
+
+C6 must not infer target level from legacy Bloom numeric values.
+
+════════════════════════════════════════════════════
+3. CANONICAL NEXT COGNITIVE LEVEL RESOLVER
+════════════════════════════════════════════════════
+
+Implement one deterministic resolver based on:
+
+accepted C2 path order
++
+C4 demonstrated ceiling.
+
+IMPORTANT:
+
+Use Cognitive Level identity + accepted path sequence.
+
+DO NOT assume:
+
+REMEMBER = 1
+UNDERSTAND = 2
+APPLY = 3
+etc.
+
+Do not use Bloom numeric comparison as path identity.
+
+RULE A — NO DEMONSTRATED CEILING
+
+If demonstratedCognitiveLevelId == null:
+
+nextTargetCognitiveLevelId =
+FIRST accepted level in the C2 path.
+
+RULE B — DEMONSTRATED LEVEL EXISTS BELOW TARGET
+
+Find demonstrated level inside the accepted path.
+
+nextTargetCognitiveLevelId =
+FIRST accepted level AFTER demonstrated level.
+
+Example:
+
+accepted path:
+
+UNDERSTAND
+→ APPLY
+→ ANALYZE
+
+demonstrated:
+
+UNDERSTAND
+
+result:
+
+APPLY
+
+RULE C
+
+accepted path:
+
+UNDERSTAND
+→ APPLY
+→ ANALYZE
+
+demonstrated:
+
+APPLY
+
+result:
+
+ANALYZE
+
+RULE D — TARGET DEMONSTRATED
+
+If the accepted curriculum target is already demonstrated:
+
+do not invent a higher Cognitive Level.
+
+C5 should normally classify this as MASTERED.
+
+C6 then decides REVIEW or ADVANCE depending on entry intent.
+
+RULE E — PATH STARTS ABOVE REMEMBER
+
+Example:
+
+UNDERSTAND
+→ APPLY
+
+The learner MUST start at UNDERSTAND.
+
+Never insert REMEMBER.
+
+RULE F — INVALID / UNACCEPTED PATH
+
+Fail closed for cognitive-level targeting.
+
+Do not silently use legacy Bloom fallback as the canonical C6 target.
+
+Return an explicit deterministic reason/status so the caller can safely
+handle the unavailable C6 target.
+
+════════════════════════════════════════════════════
+4. C5 → C6 DECISION MATRIX
+════════════════════════════════════════════════════
+
+Implement the canonical matrix.
+
+────────────────────────────────────────
+NOT_STUDIED
+────────────────────────────────────────
+
+decisionType:
+START
+
+MicroNode:
+requested/current eligible curriculum MicroNode
+
+next Cognitive Level:
+first accepted C2 path level
+
+Reason:
+learner has no meaningful attempt / demonstrated ceiling.
+
+────────────────────────────────────────
+NOT_KNOWN
+────────────────────────────────────────
+
+decisionType:
+REMEDIATE
+
+MicroNode:
+same MicroNode unless a real persisted unsatisfied prerequisite requires
+redirect.
+
+next Cognitive Level:
+first accepted level not demonstrated.
+
+Because C4 ceiling is normally null here:
+this will normally be the first accepted C2 path level.
+
+IMPORTANT:
+
+C6 selects the remediation TARGET.
+
+C7/pedagogicalDecisionEngine decides HOW remediation is taught.
+
+────────────────────────────────────────
+PARTIAL
+────────────────────────────────────────
+
+decisionType:
+CONTINUE
+
+MicroNode:
+same MicroNode
+
+next Cognitive Level:
+first accepted C2 level AFTER C4 demonstrated ceiling.
+
+Do not restart already demonstrated levels unnecessarily.
+
+────────────────────────────────────────
+MASTERED + EXPLICIT REVIEW INTENT
+────────────────────────────────────────
+
+decisionType:
+REVIEW
+
+MicroNode:
+same MicroNode
+
+Do not pretend mastery disappeared.
+
+Do not lower C4 ceiling.
+
+Review is a learning action, not evidence deletion.
+
+────────────────────────────────────────
+MASTERED + NORMAL FORWARD LEARNING
+────────────────────────────────────────
+
+decisionType:
+ADVANCE
+
+Select the first eligible non-MASTERED MicroNode in teacher-defined
+curriculum order.
+
+Do not silently mark skipped nodes complete.
+
+════════════════════════════════════════════════════
+5. NEXT MICRO-NODE RESOLVER
+════════════════════════════════════════════════════
+
+Implement ONE deterministic next-MicroNode resolver.
+
+Use authoritative teacher-defined curriculum ordering.
+
+Audit found current behavior simply advances by sequence + 1.
+
+Replace/contain that behavior where C6 is authoritative.
+
+For normal forward learning:
+
+1. read approved curriculum MicroNodes in canonical sequence;
+2. inspect canonical C5 state;
+3. skip MASTERED nodes;
+4. choose first eligible non-MASTERED MicroNode;
+5. respect real persisted REQUIRED prerequisites;
+6. never fabricate prerequisites;
+7. never silently complete skipped nodes.
+
+Do not confuse:
+
+MicroNode curriculum sequence
+
+with
+
+Cognitive Path level sequence.
+
+They are separate orderings.
+
+════════════════════════════════════════════════════
+6. PREREQUISITE POLICY
+════════════════════════════════════════════════════
+
+The audit confirmed a persisted dependency graph exists:
+
+lesson_node_dependencies
+
+with real populated edges.
+
+Use persisted dependency data only.
+
+For C6:
+
+If a candidate MicroNode has a persisted REQUIRED prerequisite:
+
+deterministically evaluate whether that prerequisite is satisfied using
+the canonical learner state.
+
+Prefer canonical C5 MASTERED as the satisfaction condition unless
+existing accepted domain logic proves another canonical requirement is
+already defined.
+
+Do not use a legacy mastery score as a competing authority.
+
+If prerequisite is unsatisfied:
+
+return a deterministic prerequisite decision/status and route to the
+required prerequisite MicroNode when safe.
+
+Do not fabricate a prerequisite when no persisted REQUIRED edge exists.
+
+SEQUENTIAL/SUPPORTING edges must not automatically become hard blockers.
+
+Preserve cycle safety.
+
+If a dependency cycle or invalid graph condition is detected:
+
+fail closed with an explicit reason.
+
+Do not infinite-loop.
+
+════════════════════════════════════════════════════
+7. ENTRY INTENT
+════════════════════════════════════════════════════
+
+C6 must distinguish at least:
+
+NORMAL_LEARNING
+EXPLICIT_REVIEW
+
+Follow existing repository naming conventions if equivalent intent
+already exists.
+
+NORMAL_LEARNING:
+
+MASTERED nodes may be skipped when advancing.
+
+EXPLICIT_REVIEW:
+
+MASTERED target remains the requested MicroNode and produces REVIEW.
+
+Do not infer REVIEW merely because the learner once mastered the node.
+
+════════════════════════════════════════════════════
+8. LESSON START / RESUME INTEGRATION
+════════════════════════════════════════════════════
+
+Current audit found:
+
+POST /lessons/start
+
+creates a new session using the first approved MicroNode by sequence.
+
+Change this so NEW canonical learning entry requests a C6 decision.
+
+Do not independently choose:
+
+first node
+or
+first Cognitive Level
+
+when C6 can determine the target.
+
+For a new session:
+
+C6 should provide:
+
+currentNodeId
+activeCognitiveLevelId
+decision type/context
+
+and the session should initialize from that result.
+
+RESUME SAFETY:
+
+Do not blindly overwrite a valid active in-progress task/session.
+
+Distinguish:
+
+- genuine active-session resume
+from
+- new learning target selection.
+
+If an existing session has an authoritative active task that must be
+continued, preserve resume consistency.
+
+If the session is stale/invalid/completed and a new target is needed,
+obtain a fresh C6 decision.
+
+Do not destroy valid learner progress.
+
+════════════════════════════════════════════════════
+9. CHAT HANDOFF INTEGRATION
+════════════════════════════════════════════════════
+
+Current chat behavior:
+
+- loads currentNodeId
+- loads accepted C2 path
+- reuses activeCognitiveLevelId
+- otherwise defaults to first accepted path level
+
+Modify this boundary carefully.
+
+When a canonical C6 decision exists:
+
+chat must consume:
+
+C6-selected currentNodeId
++
+C6-selected activeCognitiveLevelId
+
+instead of independently deciding another learning target.
+
+The old:
+
+“missing active level → first path level”
+
+must not override a valid C4-aware C6 decision.
+
+Keep defensive validation:
+
+If persisted activeCognitiveLevelId is no longer part of the accepted
+path, do not trust it.
+
+But canonical fallback should go through C6 rather than creating a
+second targeting algorithm inside chat.ts.
+
+IMPORTANT:
+
+Do not redesign pedagogicalDecisionEngine.
+
+Once C6 selects:
+
+MicroNode + Cognitive Level
+
+existing C7-style execution may continue to control:
+
+TEACH
+MICRO_CHECK
+FEEDBACK
+TRANSITION
+remediation
+hints
+exercise interaction
+
+════════════════════════════════════════════════════
+10. CURRENT NODE ADVANCEMENT
+════════════════════════════════════════════════════
+
+Audit found:
+
+advanceNodeInSession()
+
+currently selects sequence + 1.
+
+Where advancement represents a new learning target:
+
+replace/route it through canonical C6 ADVANCE behavior.
+
+Do not duplicate next-node eligibility logic inside chat.ts.
+
+The result should be:
+
+successful node completion
+→ request C6 next decision
+→ first eligible non-MASTERED node
+→ correct C2/C4 target level.
+
+If no eligible node remains:
+
+preserve existing lesson completion/finalization semantics.
+
+Do not invent a fake next node.
+
+════════════════════════════════════════════════════
+11. KNOWLEDGE TREE INTEGRATION
+════════════════════════════════════════════════════
+
+Audit found the four C5 states currently have no real learning-action
+handoff; recommendations are display-only.
+
+Implement the MINIMUM integration needed so Knowledge Tree can use the
+same C6 decision contract.
+
+Do NOT redesign the whole Knowledge Tree UI.
+
+If a small action/navigation hook is required, add only the minimum.
+
+Canonical conceptual actions:
+
+MASTERED
+→ explicit review
+→ C6 REVIEW
+
+PARTIAL
+→ learn/continue
+→ C6 CONTINUE
+
+NOT_KNOWN
+→ learn/remediate
+→ C6 REMEDIATE
+
+NOT_STUDIED
+→ start learning
+→ C6 START
+
+Equivalent learner state entered from:
+
+Knowledge Tree
+or
+normal lesson entry
+
+must resolve through the SAME C6 service.
+
+Do not implement a frontend personalization algorithm.
+
+Frontend sends intent/target.
+Backend C6 decides.
+
+════════════════════════════════════════════════════
+12. SESSION DECISION SNAPSHOT
+════════════════════════════════════════════════════
+
+Audit found lesson_sessions already stores:
+
+currentNodeId
+activeCognitiveLevelId
+currentPhase
+nodeTeachingStage
+activeLessonExerciseId
+activeHelpCount
+remediationStep
+etc.
+
+There is no canonical persisted C6 decision snapshot.
+
+Prefer the smallest architecture.
+
+Do NOT add DB columns automatically.
+
+First determine whether existing session fields are sufficient for
+runtime authority.
+
+If reasonCode / decisionType needs persistence for deterministic resume
+or debugging, add the smallest appropriate representation ONLY if
+actually necessary.
+
+Avoid migration unless required.
+
+The canonical source of truth remains C1–C5; persisted C6 data must not
+become a competing learner-knowledge model.
+
+════════════════════════════════════════════════════
+13. LEARNER READINESS MODE
+════════════════════════════════════════════════════
+
+Audit found learner readiness mode is ABSENT.
+
+Do NOT implement the readiness UI in this task unless absolutely
+required for C6 correctness.
+
+However, design C6 so a future non-evidence session preference can be
+added without changing:
+
+C2 target
+C3 evidence
+C4 ceiling
+C5 state.
+
+This feature can be added later at the C6-context / C7-execution
+boundary.
+
+Do not let it expand this implementation.
+
+════════════════════════════════════════════════════
+14. LEGACY / DUPLICATE LOGIC
+════════════════════════════════════════════════════
+
+Contain or deprecate as authoritative routing sources where appropriate:
+
+- getPersonalizedNextAction() legacy routing
+- Knowledge Tree local recommendation heuristic
+- AI/OpenRouter-generated progress recommendations
+- mastery-score-only next-node routing
+- sequence+1 as canonical personalization
+- first-path-level fallback as canonical personalization
+
+Do NOT delete compatibility code recklessly.
+
+The goal is:
+
+ONE canonical C6 owner.
+
+Legacy code may remain for compatibility if it no longer competes as
+the authoritative next-learning decision.
+
+════════════════════════════════════════════════════
+15. DECISION OWNERSHIP AFTER C6
+════════════════════════════════════════════════════
+
+After implementation ownership must be:
+
+C6 OWNS:
+
+- target MicroNode
+- next target Cognitive Level
+- START
+- CONTINUE
+- REMEDIATE
+- REVIEW
+- ADVANCE
+- prerequisite redirect/status
+
+C7 / pedagogicalDecisionEngine OWNS:
+
+- teaching strategy
+- explanation
+- examples
+- hints
+- scaffolding
+- error-family response
+- task delivery
+- conversational teaching execution
+
+C3/C4 OWNS:
+
+- evidence qualification
+- demonstrated ceiling
+
+C5 OWNS:
+
+- four-state learner classification
+
+Backend completion/evidence rules continue to own actual level/node
+completion.
+
+Do not let AI-generated text decide learner state or routing.
+
+════════════════════════════════════════════════════
+16. PROVIDER-FREE TEST MATRIX — REQUIRED
+════════════════════════════════════════════════════
+
+Add deterministic tests.
+
+At minimum:
+
+TEST 1
+C5 = NOT_STUDIED
+accepted path:
+UNDERSTAND → APPLY
+
+result:
+START
+target level = UNDERSTAND
+
+TEST 2
+C5 = NOT_KNOWN
+no demonstrated ceiling
+accepted path:
+UNDERSTAND → APPLY
+
+result:
+REMEDIATE
+target level = UNDERSTAND
+
+TEST 3
+C5 = PARTIAL
+path:
+UNDERSTAND → APPLY → ANALYZE
+C4 ceiling:
+UNDERSTAND
+
+result:
+CONTINUE
+target = APPLY
+
+TEST 4
+C5 = PARTIAL
+same path
+C4 ceiling:
+APPLY
+
+result:
+CONTINUE
+target = ANALYZE
+
+TEST 5
+C5 = MASTERED
+intent = EXPLICIT_REVIEW
+
+result:
+REVIEW
+same MicroNode
+
+TEST 6
+C5 = MASTERED
+intent = NORMAL_LEARNING
+
+result:
+ADVANCE
+first eligible non-MASTERED MicroNode
+
+TEST 7
+accepted path:
+UNDERSTAND → APPLY
+
+result must NEVER invent REMEMBER.
+
+TEST 8
+candidate has unsatisfied REQUIRED prerequisite
+
+result:
+deterministic prerequisite redirect/status.
+
+TEST 9
+candidate has no REQUIRED prerequisite
+
+result:
+no fabricated prerequisite redirect.
+
+TEST 10
+first next sequence node is MASTERED
+second is PARTIAL
+
+normal ADVANCE:
+skip first
+select second.
+
+TEST 11
+already demonstrated Cognitive Level
+
+must not restart that level unnecessarily.
+
+TEST 12
+Knowledge Tree PARTIAL entry
+and normal lesson entry
+for equivalent state
+
+must resolve the same canonical node/level target where intents are
+equivalent.
+
+TEST 13
+Quiz creates new qualified evidence
+→ C4 ceiling changes
+→ next C6 decision consumes updated ceiling.
+
+Do not mock C4/C5 by recreating their algorithms.
+
+Mock/fixture their canonical outputs at the C6 service boundary where
+appropriate.
+
+TEST 14
+invalid/unaccepted C2 path
+
+must fail closed;
+must not invent Bloom fallback target.
+
+TEST 15
+dependency cycle / invalid redirect
+
+must terminate safely.
+
+════════════════════════════════════════════════════
+17. REGRESSION REQUIREMENTS
+════════════════════════════════════════════════════
+
+Run relevant existing suites for:
+
+C2 Cognitive Path
+C3 evidence
+C4 ceiling
+C5 Knowledge Tree
+lesson/session start
+chat progression
+prerequisite handling
+quiz evidence integration
+
+Also run:
+
+API typecheck
+web typecheck
+API build
+web build
+
+Do not call external AI providers for deterministic C6 tests.
+
+════════════════════════════════════════════════════
+18. REAL ACCEPTANCE SCENARIOS
+════════════════════════════════════════════════════
+
+After provider-free tests pass, verify using safe existing/dev data.
+
+Do not corrupt existing evidence merely to manufacture scenarios.
+
+Verify as many real scenarios as safely available.
+
+At minimum verify structurally:
+
+A. new lesson entry uses C6
+
+B. chat receives the C6-selected node
+
+C. chat receives/reuses the C6-selected Cognitive Level
+
+D. advancement calls canonical C6 routing
+
+E. Knowledge Tree action path reaches canonical C6 decision
+
+F. no duplicate frontend routing logic decides a competing target
+
+If suitable real learner states exist, additionally verify:
+
+PARTIAL
+→ first level after demonstrated ceiling
+
+MASTERED
+→ normal forward learning skips mastered target
+
+Do not fabricate learner evidence if safe fixtures are unavailable.
+
+════════════════════════════════════════════════════
+19. FRESH REVIEW BEFORE COMPLETION
+════════════════════════════════════════════════════
+
+Before marking C6 complete:
+
+perform a fresh code review focused on:
+
+1. duplicated targeting logic
+2. C4 ceiling accidentally recomputed
+3. C5 state accidentally recomputed
+4. Bloom numeric assumptions
+5. invalid-path fallback
+6. prerequisite cycles
+7. stale session behavior
+8. chat overriding C6 target
+9. Knowledge Tree using separate personalization logic
+10. C7 teaching strategy accidentally moved into C6
+
+Fix any concrete regression found.
+
+Then rerun affected tests.
+
+════════════════════════════════════════════════════
+20. STOP CONDITIONS
+════════════════════════════════════════════════════
+
+STOP and report a blocker if implementing canonical C6 would require:
+
+- weakening C2 accepted-path rules
+- changing C3 evidence truth
+- changing C4 ceiling semantics
+- changing C5 classifier semantics
+- fabricating prerequisite data
+- inventing Cognitive Levels
+- silently modifying learner evidence
+- redesigning C7
+
+Do not bypass these contracts.
+
+════════════════════════════════════════════════════
+21. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly:
+
+A. IMPLEMENTATION VERDICT
+
+C6 COMPLETE
+or
+C6 BLOCKED
+
+B. CANONICAL C6 OWNER
+
+file
+service/function
+decision contract
+
+C. DECISION MATRIX IMPLEMENTED
+
+NOT_STUDIED →
+NOT_KNOWN →
+PARTIAL →
+MASTERED + REVIEW →
+MASTERED + ADVANCE →
+
+D. NEXT COGNITIVE LEVEL
+
+Explain exact implemented rule.
+
+E. NEXT MICRO-NODE
+
+Explain exact implemented rule.
+
+F. PREREQUISITES
+
+Explain exact implemented rule.
+
+G. ENTRY INTEGRATION
+
+lesson start/resume:
+Knowledge Tree:
+chat:
+advancement:
+
+H. SESSION STATE
+
+What is persisted/reused.
+
+I. LEGACY LOGIC
+
+What was contained/deprecated as authoritative.
+
+J. FILES CHANGED
+
+Exact files.
+
+K. TEST RESULTS
+
+C6 deterministic:
+C2:
+C3:
+C4:
+C5:
+lesson/session:
+chat:
+quiz:
+API typecheck:
+web typecheck:
+API build:
+web build:
+
+L. REAL ACCEPTANCE
+
+What was actually verified.
+
+M. REMAINING WARNINGS
+
+Only non-blocking real warnings.
+
+N. FINAL OWNERSHIP
+
+C6 owns:
+C7 owns:
+C3/C4 owns:
+C5 owns:
+
+O. FINAL VERDICT
+
+Return exactly one:
+
+C6 COMPLETE — canonical next-learning decisions now use C1–C5 and are shared by lesson entry, Knowledge Tree, and chat.
+
+or
+
+C6 BLOCKED — <smallest exact blocker>
+
+If C6 COMPLETE:
+STOP.
+
+DO NOT BEGIN C7.
+DO NOT IMPLEMENT FLASHCARDS.
+DO NOT IMPLEMENT DIARY/CALENDAR.
+DO NOT START OTHER ROADMAP WORK.
