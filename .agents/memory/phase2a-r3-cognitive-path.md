@@ -43,7 +43,7 @@ if priorIsConfirmed && !priorHasTc → sets cogPathStatus='needs_review' only (n
 if not confirmed → no-op
 ```
 
-## Teaching Content Gate (enrich route)
+## Teaching Content Gate
 
 `POST /lessons/:lessonId/nodes/:nodeId/enrich` is gated by `cogPathStatus === 'confirmed'`.
 - Returns 403 `COG_PATH_NOT_CONFIRMED` if not confirmed.
@@ -71,11 +71,13 @@ if not confirmed → no-op
 - **Reorder buttons**: ↑/↓ on each level card header; calls `reorderCogLevel(nodeId, levelId, dir, levels)`
 - **Add-level form**: `+ Avel channachogakan macardak` → inline form with Bloom level select + optional PO/SC fields
 
-**Enrich node button states:**
-- STATE A (no cog path): disabled ghost + 🧠 label
-- STATE B (needs_review): disabled ghost + 🧠 label  
-- STATE C (confirmed): enabled normal
-- STATE D (confirmed + TC stale): amber ⚠️🧠 warning style
+## Lesson-level teacher workflow
+
+Keep lesson-level generation behind the same authority boundaries as its detailed controls: C2 never force-replaces teacher decisions, and Teaching Content requires resolved C1 plus a confirmed C2 path. Lesson final approval remains deterministic and never auto-approves prerequisites.
+
+**Why:** A compact workflow removes duplicate entry points without weakening the C1/C2 confirmation, teacher-edit, or final-approval authority boundaries.
+
+**How to apply:** Any future bulk or UI shortcut must preserve the per-node preflight, confirmed-path calibration, and teacher-edit guard rather than treating a lesson-wide click as review authority.
 
 ## New state vars in teacher-dashboard.tsx
 

@@ -5040,6 +5040,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       blockType:                 lessonNodesTable.blockType,
       status:                    lessonNodesTable.status,
       childFriendlyExplanation:  lessonNodesTable.childFriendlyExplanation,
+      changeReason:              lessonNodesTable.changeReason,
+      cogPathStatus:             (lessonNodesTable as any).cogPathStatus,
     })
     .from(lessonNodesTable)
     .where(eq(lessonNodesTable.lessonId, lessonId))
@@ -5076,6 +5078,35 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     exercisesByNode.set(ex.relatedNodeId, arr);
   }
 
+  // Teaching Content must be calibrated against the same teacher-confirmed C2
+  // path used by the single-node enrichment route. Load them once for the job,
+  // then fail closed per node if a path is missing or invalid.
+  const allCogLevels = await db
+    .select({
+      lessonNodeId:        lessonNodeCognitiveLevelsTable.lessonNodeId,
+      cognitiveLevel:      lessonNodeCognitiveLevelsTable.cognitiveLevel,
+      sequence:            lessonNodeCognitiveLevelsTable.sequence,
+      isTargetCeiling:     lessonNodeCognitiveLevelsTable.isTargetCeiling,
+      performanceObjective: lessonNodeCognitiveLevelsTable.performanceObjective,
+      successCriterion:    lessonNodeCognitiveLevelsTable.successCriterion,
+    })
+    .from(lessonNodeCognitiveLevelsTable)
+    .where(inArray(lessonNodeCognitiveLevelsTable.lessonNodeId, nodes.map((node) => node.id)))
+    .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+
+  const cogLevelsByNode = new Map<number, ConfirmedCogLevel[]>();
+  for (const level of allCogLevels) {
+    const levels = cogLevelsByNode.get(level.lessonNodeId) ?? [];
+    levels.push({
+      cognitiveLevel:       level.cognitiveLevel,
+      sequence:             level.sequence,
+      isTargetCeiling:      level.isTargetCeiling,
+      performanceObjective: level.performanceObjective ?? null,
+      successCriterion:     level.successCriterion ?? null,
+    });
+    cogLevelsByNode.set(level.lessonNodeId, levels);
+  }
+
   // ── Create job, respond immediately ──────────────────────────────────────
   const [job] = await db
     .insert(mappingJobsTable)
@@ -5099,26 +5130,63 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       confidence:  number | null;
       sourceType:  string;
       skipReason?: string;
+      blockCode?:  string;
     }[] = [];
 
     for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
       const batch = nodes.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(batch.map(async (node) => {
-        // No status gate here — the teacher's explicit click on "Generate Teaching Content"
-        // IS the review action. The real quality gate is isWeakSource() inside
-        // generatePhase2Content(), which rejects nodes whose theoryContent is too thin.
-        // This allows Phase 2 to run on freshly-mapped (draft) nodes without requiring
-        // individual teacher approval of each node first.
+        // Phase 2 never turns a lesson-wide click into authority. C1 must first be
+        // source-safe and approved, and C2 must have a confirmed, valid path.
+        if (node.changeReason?.startsWith("SOURCE_ALIGNMENT:")) {
+          return {
+            nodeId: node.id,
+            blocked: true as const,
+            blockCode: "C1_REVIEW_REQUIRED",
+            skipReason: "Source alignment requires teacher review before Teaching Content generation",
+          };
+        }
+
+        const preflight = assessC2GenerationPreflight({
+          nodeStatus: node.status,
+          learningObjective: node.learningObjective,
+          theoryContent: node.theoryContent,
+          blockType: node.blockType,
+        });
+        if (!preflight.eligible) {
+          return {
+            nodeId: node.id,
+            blocked: true as const,
+            blockCode: preflight.reason ?? "C1_REVIEW_REQUIRED",
+            skipReason: "C1 MicroNode must be resolved before Teaching Content generation",
+          };
+        }
+
+        const cogPath = cogLevelsByNode.get(node.id) ?? [];
+        const hasValidConfirmedPath = (node.cogPathStatus as string | null) === "confirmed"
+          && cogPath.length > 0
+          && cogPath.filter((level) => level.isTargetCeiling).length === 1;
+        if (!hasValidConfirmedPath) {
+          return {
+            nodeId: node.id,
+            blocked: true as const,
+            blockCode: "COG_PATH_NOT_CONFIRMED",
+            skipReason: "A confirmed Cognitive Path is required before Teaching Content generation",
+          };
+        }
+
         const input: Phase2Input = {
           nodeId:            node.id,
           title:             node.title,
           learningObjective: node.learningObjective ?? null,
           theoryContent:     node.theoryContent ?? null,
           blockType:         node.blockType ?? null,
+          cogPath,
         };
         const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
-        return generatePhase2Content(input, exercises);
+        const result = await generatePhase2Content(input, exercises);
+        return { nodeId: node.id, blocked: false as const, result };
       }));
 
       // Update progress: show how many nodes have been processed so far
@@ -5127,8 +5195,23 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
         .set({ progress: `Generating teaching content... (${processed}/${nodes.length} MicroNodes)`, updatedAt: new Date() })
         .where(eq(mappingJobsTable.id, job.id)).catch(() => {});
 
-      for (const result of batchResults) {
-        const nodeTitle = nodes.find((n) => n.id === result.nodeId)?.title ?? "";
+      for (const batchResult of batchResults) {
+        const nodeTitle = nodes.find((n) => n.id === batchResult.nodeId)?.title ?? "";
+        if (batchResult.blocked) {
+          const isC2Block = batchResult.blockCode === "COG_PATH_NOT_CONFIRMED";
+          summaryRows.push({
+            nodeId:     batchResult.nodeId,
+            title:      nodeTitle,
+            status:     isC2Block ? "blocked_c2" : "blocked_c1",
+            confidence: null,
+            sourceType: "—",
+            skipReason: batchResult.skipReason,
+            blockCode:  batchResult.blockCode,
+          });
+          continue;
+        }
+
+        const result = batchResult.result;
         if (result.skipped && result.skipReason === "skipped_needs_review") {
           // Teacher has not yet reviewed this node — do NOT touch its status
           summaryRows.push({
@@ -5195,6 +5278,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     const needsReviewCount      = summaryRows.filter((r) => r.status === "needs_review").length;
     const needsSourceCount      = summaryRows.filter((r) => r.status === "needs_source_content").length;
     const skippedReviewCount    = summaryRows.filter((r) => r.status === "skipped_needs_review").length;
+    const blockedC1Count        = summaryRows.filter((r) => r.status === "blocked_c1").length;
+    const blockedC2Count        = summaryRows.filter((r) => r.status === "blocked_c2").length;
 
     await db.update(mappingJobsTable)
       .set({
@@ -5207,6 +5292,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           needsReview:          needsReviewCount,
           needsSourceContent:  needsSourceCount,
           skippedNeedsReview:  skippedReviewCount,
+          blockedC1:            blockedC1Count,
+          blockedC2:            blockedC2Count,
           summary:             summaryRows,
         } as any,
         updatedAt: new Date(),
@@ -5215,7 +5302,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
 
     await invalidateLessonApproval(lessonId);
     logger.info(
-      { jobId: job.id, lessonId, total: nodes.length, approved, needsReview: needsReviewCount, needsSource: needsSourceCount, skippedReview: skippedReviewCount },
+      { jobId: job.id, lessonId, total: nodes.length, approved, needsReview: needsReviewCount, needsSource: needsSourceCount, skippedReview: skippedReviewCount, blockedC1: blockedC1Count, blockedC2: blockedC2Count },
       "phase2 teaching content generation job completed"
     );
   } catch (err) {

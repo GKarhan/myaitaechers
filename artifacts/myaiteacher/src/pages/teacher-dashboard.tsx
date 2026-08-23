@@ -147,7 +147,19 @@ interface LessonJobStatus {
   status:   string;   // 'none' | 'pending' | 'running' | 'completed' | 'coverage_failed' | 'failed'
   progress: string | null;
   error:    string | null;
-  result?:  { coverageValid?: boolean } | null;
+  result?:  {
+    coverageValid?: boolean;
+    needsReview?: number;
+    blockedC1?: number;
+    blockedC2?: number;
+    summary?: Array<{
+      nodeId: number;
+      title: string;
+      status: string;
+      skipReason?: string;
+      blockCode?: string;
+    }>;
+  } | null;
 }
 
 // ── Lesson Map Button sub-component ──────────────────────────────────────────
@@ -669,12 +681,12 @@ function GenerateTeachingContentButton({
 
   const handleGenerate = async () => {
     // Safety: if lesson already has Phase 2 enrichment, require explicit confirmation
-    // to prevent accidental overwrite of existing AI-generated content.
+    // before asking the lesson-wide job to fill the remaining content.
     if (hasExistingPhase2) {
       const ok = window.confirm(
-        "Dasn ardev uni usutsman bovanndakutyun.\n\n" +
-        "Ambolj dasi verageneratsumy karog e poxel goyutyun unetsog bovanndakutyuny.\n\n" +
-        "Sharunjel? (Yetha uxum ek mi hanguyts harstatsnel, ogtvekel 🧠 knopy aynd hanguyci mot)"
+        "Դասում արդեն կա ուսուցման բովանդակություն։\n\n" +
+        "Շարունակելու դեպքում կլրացվեն միայն բացակա MicroNode-ները։\n\n" +
+        "Շարունակե՞լ։"
       );
       if (!ok) return;
     }
@@ -699,6 +711,10 @@ function GenerateTeachingContentButton({
   const progressLabel = genStatus?.progress
     ?? (genStatus?.status === 'running'  ? 'Arabatk...'
       : genStatus?.status === 'pending' ? 'Spasuma...' : '');
+  const teachingContentResult = genStatus?.status === 'completed' ? genStatus.result : null;
+  const teachingContentBlocks = teachingContentResult?.summary?.filter(
+    (row) => row.status === 'blocked_c1' || row.status === 'blocked_c2',
+  ) ?? [];
 
   if (!hasNodes) return null;
 
@@ -714,7 +730,7 @@ function GenerateTeachingContentButton({
       >
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        ) : genDone ? '✅ Արված է' : hasExistingPhase2 ? '🔄 Կրկնիր' : '🧠 Ուս/Ն համալրում'}
+        ) : genDone ? '✅ Բովանդակությունը պատրաստ է' : hasExistingPhase2 ? '🔄 Լրացնել ուսուցման բովանդակությունը' : '✨ Ստեղծել ուսուցման բովանդակություն'}
       </button>
       {isActive && (
         <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
@@ -722,6 +738,31 @@ function GenerateTeachingContentButton({
         </span>
       )}
       {genError && <span className="text-xs text-destructive whitespace-nowrap">{genError}</span>}
+      {teachingContentResult && (
+        <div className="max-w-[300px] rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-[9px] leading-relaxed text-white/65">
+          <span className="font-medium text-white/80">
+            Ուսուցման բովանդակություն՝ {teachingContentResult.needsReview ?? 0} ստեղծված
+          </span>
+          {(teachingContentResult.blockedC1 ?? 0) + (teachingContentResult.blockedC2 ?? 0) > 0 && (
+            <span className="ml-1 text-amber-300">
+              · {teachingContentResult.blockedC1 ?? 0} C1, {teachingContentResult.blockedC2 ?? 0} C2 արգելափակված
+            </span>
+          )}
+          {teachingContentBlocks.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {teachingContentBlocks.map((row) => (
+                <span
+                  key={`${row.nodeId}-${row.status}`}
+                  title={row.skipReason}
+                  className="rounded border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-amber-200"
+                >
+                  {row.title} · {row.status === 'blocked_c1' ? 'C1' : 'C2'}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -829,7 +870,7 @@ function NodeViewModal({
           )}
           {!node.childFriendlyExplanation && (
             <section className="border border-indigo-500/15 rounded-lg bg-indigo-500/5 px-3 py-2">
-              <p className="text-[10px] text-indigo-400/70">🧠 Phase 2 dater bacakayum en. Klkatsir «🧠» knopы hanguyci mot՝ mіаin аys hanguyts harstatsnelov.</p>
+              <p className="text-[10px] text-indigo-400/70">Ուսուցման բովանդակությունը դեռ չկա։ Օգտագործիր դասի «Ստեղծել ուսուցման բովանդակություն» գործողությունը։</p>
             </section>
           )}
 
@@ -989,21 +1030,24 @@ function LessonNodesPanel({
   const [addExToAdditional, setAddExToAdditional] = useState(false);
   const [addAdditionalForm, setAddAdditionalForm] = useState(emptyExerciseCreateForm);
 
-  // POST-P1.12: Read-only node view (👁 Դител) + per-node Phase 2 enrichment (🧠)
+  // POST-P1.12: Read-only node view (👁 Դител)
   const [viewingNodeData, setViewingNodeData] = useState<{
     node: Record<string, unknown>;
     exercises: Array<Record<string, unknown>>;
   } | null>(null);
-  const [enrichingNodeId, setEnrichingNodeId] = useState<number | null>(null);
-  const [enrichNodeErrors, setEnrichNodeErrors] = useState<Record<number, string>>({});
-  const [enrichNodeDone, setEnrichNodeDone] = useState<Record<number, boolean>>({});
-  const [bannerTriggering, setBannerTriggering] = useState(false);
-  const [bannerError, setBannerError] = useState<string | null>(null);;
 
   // ── Phase 2A R3: Cognitive Path ────────────────────────────────────────────
   type CogTask = { id: number; cognitiveLevelId: number; lessonExerciseId: number | null; taskProvenance: string; exercise: { exerciseId: string; exerciseTextVerbatim: string; exerciseTextEdited: string | null } | null };
   type CogLevel = { id: number; cognitiveLevel: string; sequence: number; isApplicable: boolean; isTargetCeiling: boolean; provenance: string; performanceObjective: string | null; successCriterion: string | null; minimumIndependentEvidence: number; preferredInteractionTypes: string[]; tasks: CogTask[] };
   type CogPathData = { nodeId: number; cogPathStatus: string | null; levels: CogLevel[] };
+  type BulkCogPathEntry = { nodeId: number; title: string; detail?: string };
+  type BulkCogPathSummary = {
+    generated: BulkCogPathEntry[];
+    existing: BulkCogPathEntry[];
+    c1Review: BulkCogPathEntry[];
+    validationFailed: BulkCogPathEntry[];
+    failed: BulkCogPathEntry[];
+  };
 
   const [cogPathOpen,       setCogPathOpen]       = useState<Record<number, boolean>>({});
   const [cogPathData,       setCogPathData]       = useState<Record<number, CogPathData | null>>({});
@@ -1018,6 +1062,9 @@ function LessonNodesPanel({
   const [addLevelOpen,      setAddLevelOpen]      = useState<Record<number, boolean>>({});
   const [addLevelForm,      setAddLevelForm]      = useState<Record<number, { cognitiveLevel: string; performanceObjective: string; successCriterion: string }>>({});
   const [addLevelSaving,    setAddLevelSaving]    = useState<Record<number, boolean>>({});
+  const [bulkCogPathRunning, setBulkCogPathRunning] = useState(false);
+  const [bulkCogPathProgress, setBulkCogPathProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const [bulkCogPathSummary, setBulkCogPathSummary] = useState<BulkCogPathSummary | null>(null);
 
   const COG_LEVEL_LABELS: Record<string, string> = { remember: 'Հիշել', understand: 'Հասկանալ', apply: 'Կիրառել', analyze: 'Վերլուծել', evaluate: 'Գնահատել', create: 'Ստեղծել' };
   // Canonical Bloom 2001 order for display sorting (no manual reorder).
@@ -1146,7 +1193,7 @@ function LessonNodesPanel({
           const prev = d[nodeId];
           return { ...d, [nodeId]: prev ? { ...prev, cogPathStatus: 'confirmed' } : { nodeId, cogPathStatus: 'confirmed', levels: [] } };
         });
-        refreshNodes(); // update node list so enrichNode button reflects confirmed state
+        refreshNodes(); // update the node list so lesson-level readiness reflects confirmation
       } else {
         setCogPathError((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? 'Hastatumn xalech ar' }));
       }
@@ -1188,50 +1235,6 @@ function LessonNodesPanel({
       body: JSON.stringify({ orderedLevelIds: newLevels.map((l) => l.id) }),
     });
     await loadCogPath(nodeId);
-  };
-
-  const handleBannerGenerate = async () => {
-    setBannerError(null);
-    setBannerTriggering(true);
-    try {
-      const r = await fetch(`/api/lessons/${lessonId}/generate-teaching-content`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${authToken ?? ""}` },
-      });
-      const data = await r.json();
-      if (!r.ok) { setBannerTriggering(false); setBannerError(data.error ?? "Xndiru chexavets"); return; }
-      // Invalidate the job-status query so GenerateTeachingContentButton picks up and polls
-      qc.invalidateQueries({ queryKey: ["lesson-generate-status", lessonId] });
-    } catch {
-      setBannerError("Xmbagumutyun sxal");
-    } finally {
-      setBannerTriggering(false);
-    }
-  };
-
-  const enrichNode = async (nodeId: number) => {
-    if (enrichingNodeId !== null) return; // one at a time
-    setEnrichingNodeId(nodeId);
-    setEnrichNodeErrors((e) => { const n = { ...e }; delete n[nodeId]; return n; });
-    setEnrichNodeDone((d) => { const n = { ...d }; delete n[nodeId]; return n; });
-    try {
-      const r = await fetch(`/api/lessons/${lessonId}/nodes/${nodeId}/enrich`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
-      });
-      const data = await r.json() as { success?: boolean; error?: string; message?: string };
-      if (!r.ok || !data.success) {
-        setEnrichNodeErrors((e) => ({ ...e, [nodeId]: data.message ?? data.error ?? "Sxаl" }));
-      } else {
-        setEnrichNodeDone((d) => ({ ...d, [nodeId]: true }));
-        refreshNodes();
-        setTimeout(() => setEnrichNodeDone((d) => { const n = { ...d }; delete n[nodeId]; return n; }), 4000);
-      }
-    } catch {
-      setEnrichNodeErrors((e) => ({ ...e, [nodeId]: "Kapі sxal" }));
-    } finally {
-      setEnrichingNodeId(null);
-    }
   };
 
   // P1.7: Final Lesson Approval state
@@ -1331,6 +1334,116 @@ function LessonNodesPanel({
 
   // Build grouped view: nodes sorted by sequence, grouped by topicId
   const sortedNodes = useMemo(() => [...nodes].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), [nodes]);
+
+  const generateAllCogPaths = async () => {
+    if (bulkCogPathRunning || sortedNodes.length === 0) return;
+
+    const summary: BulkCogPathSummary = {
+      generated: [],
+      existing: [],
+      c1Review: [],
+      validationFailed: [],
+      failed: [],
+    };
+    const publishSummary = () => {
+      setBulkCogPathSummary({
+        generated: [...summary.generated],
+        existing: [...summary.existing],
+        c1Review: [...summary.c1Review],
+        validationFailed: [...summary.validationFailed],
+        failed: [...summary.failed],
+      });
+    };
+
+    setBulkCogPathRunning(true);
+    setBulkCogPathSummary(null);
+    setBulkCogPathProgress({ current: 0, total: sortedNodes.length, title: "" });
+
+    try {
+      for (let index = 0; index < sortedNodes.length; index += 1) {
+        const node = sortedNodes[index];
+        const nodeTitle = node.title;
+        setBulkCogPathProgress({ current: index + 1, total: sortedNodes.length, title: nodeTitle });
+
+        // A confirmed path is a protected teacher decision. Bulk work never requests
+        // a forced regeneration, so it is reported rather than touched.
+        if ((node as any).cogPathStatus === "confirmed") {
+          summary.existing.push({ nodeId: node.id, title: nodeTitle, detail: "Հաստատված ուղին պահպանվել է" });
+          publishSummary();
+          continue;
+        }
+
+        setCogPathGenerating((current) => ({ ...current, [node.id]: true }));
+        setCogPathError((current) => {
+          const next = { ...current };
+          delete next[node.id];
+          return next;
+        });
+
+        try {
+          const response = await fetch(`/api/lessons/${lessonId}/nodes/${node.id}/generate-cognitive-path`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ force: false }),
+          });
+          const data = await response.json().catch(() => ({})) as {
+            cogPathStatus?: string;
+            levels?: CogLevel[];
+            error?: string;
+            message?: string;
+            skipReason?: string;
+          };
+          const detail = data.message ?? data.skipReason ?? data.error;
+
+          if (response.ok) {
+            setCogPathData((current) => ({
+              ...current,
+              [node.id]: {
+                nodeId: node.id,
+                cogPathStatus: data.cogPathStatus ?? "needs_review",
+                levels: data.levels ?? [],
+              },
+            }));
+            summary.generated.push({ nodeId: node.id, title: nodeTitle });
+          } else if (response.status === 409 && data.error === "TEACHER_EDITS_EXIST") {
+            summary.existing.push({ nodeId: node.id, title: nodeTitle, detail: data.message ?? "Ուսուցչի փոփոխությունները պահպանվել են" });
+          } else if (response.status === 422 && (data.error ?? "").startsWith("C1_")) {
+            summary.c1Review.push({ nodeId: node.id, title: nodeTitle, detail });
+            setCogPathError((current) => ({ ...current, [node.id]: detail ?? "C1 վերանայում է պահանջվում" }));
+          } else if (response.status === 422) {
+            summary.validationFailed.push({ nodeId: node.id, title: nodeTitle, detail });
+            setCogPathError((current) => ({ ...current, [node.id]: detail ?? "Ճանաչողական ուղին չի անցել վավերացումը" }));
+          } else {
+            summary.failed.push({ nodeId: node.id, title: nodeTitle, detail: detail ?? `Սխալ (${response.status})` });
+            setCogPathError((current) => ({ ...current, [node.id]: detail ?? `Սխալ (${response.status})` }));
+          }
+        } catch {
+          const detail = "Կապի սխալ";
+          summary.failed.push({ nodeId: node.id, title: nodeTitle, detail });
+          setCogPathError((current) => ({ ...current, [node.id]: detail }));
+        } finally {
+          setCogPathGenerating((current) => {
+            const next = { ...current };
+            delete next[node.id];
+            return next;
+          });
+        }
+
+        publishSummary();
+      }
+      await refreshNodes();
+    } finally {
+      setBulkCogPathRunning(false);
+      setBulkCogPathProgress(null);
+    }
+  };
+
+  const openCogPathFromBulkResult = (nodeId: number) => {
+    setCogPathOpen((current) => ({ ...current, [nodeId]: true }));
+    requestAnimationFrame(() => {
+      document.getElementById(`lesson-node-${nodeId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
 
   const handleCreateTopic = () => {
     if (!addTopicTitle.trim()) return;
@@ -1699,9 +1812,22 @@ function LessonNodesPanel({
   ) => {
     const canMoveUp = nIdxInGroup > 0;
     const canMoveDown = nIdxInGroup < groupLength - 1;
+    const nodeStatus = (n as any).status as string | null;
+    const sourceNeedsReview = ['PARTIAL', 'INSUFFICIENT', 'UNREADABLE'].includes((n as any).sourceSupport);
+    const cogPathNeedsReview = (n as any).cogPathStatus === 'needs_review';
+    const cogPathGroundingNeedsReview = (n as any).cognitivePathGroundingStatus === 'REVIEW_REQUIRED';
+    const readinessNotes = [
+      sourceNeedsReview ? 'Աղբյուրի վերանայում է պահանջվում' : null,
+      cogPathGroundingNeedsReview
+        ? 'Ճանաչողական ուղու հիմնավորումը պետք է վերանայվի'
+        : cogPathNeedsReview
+          ? 'Ճանաչողական ուղին պետք է հաստատվի'
+          : null,
+    ].filter((note): note is string => !!note);
     return (
       <div
         key={n.id}
+        id={`lesson-node-${n.id}`}
         className="bg-background/40 border border-white/8 rounded-xl overflow-hidden"
         style={accent ? { marginLeft: "8px", borderLeft: `2px solid ${accent}35` } : {}}
       >
@@ -1850,40 +1976,24 @@ function LessonNodesPanel({
               <>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-semibold text-white">{n.title}</span>
-                  {(n as any).status === 'approved' && (
+                  {nodeStatus === 'approved' && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✅ Հաստատված</span>
                   )}
-                  {(n as any).status === 'needs_review' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Վերանայի</span>
+                  {nodeStatus === 'needs_review' && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠️ Վերանայում է պետք</span>
                   )}
-                  {((n as any).status === 'draft' || !(n as any).status) && (
+                  {(nodeStatus === 'draft' || !nodeStatus) && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">📝 Սևագիր</span>
                   )}
-                  {(n as any).contentSourceType === 'manual' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/25 shrink-0">✍ Ձեռքով</span>
-                  )}
-                  {(n as any).sourceSupport === 'SUFFICIENT' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✓ Աղբյուրը բավարար է</span>
-                  )}
-                  {['PARTIAL', 'INSUFFICIENT', 'UNREADABLE'].includes((n as any).sourceSupport) && (
-                    <span
-                      title={(n as any).sourceAlignmentReason ?? "Աղբյուրային հիմնավորումը պահանջում է ուսուցչի վերանայում"}
-                      className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0"
-                    >⚠ Աղբյուրի վերանայում</span>
-                  )}
-                  {(n as any).cogPathStatus === 'confirmed' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25 shrink-0">✓ Ճանաչողական ուղին հաստատված է</span>
-                  )}
-                  {(n as any).cognitivePathGroundingStatus === 'GROUNDED' && (n as any).cogPathStatus && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">✓ Ճանաչողական ուղին հիմնավորված է</span>
-                  )}
-                  {(n as any).cognitivePathGroundingStatus === 'REVIEW_REQUIRED' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Ճանաչողական ուղու հիմնավորման վերանայում</span>
-                  )}
-                  {(n as any).cogPathStatus === 'needs_review' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Ճանաչողական ուղու վերանայում</span>
-                  )}
                 </div>
+                {readinessNotes.length > 0 && (
+                  <p
+                    title={(n as any).sourceAlignmentReason ?? undefined}
+                    className="mt-0.5 text-[9px] font-medium leading-relaxed text-amber-300/80"
+                  >
+                    ⚠️ {readinessNotes.join(' · ')}
+                  </p>
+                )}
                 {(n as any).learningObjective && (
                   <p className="text-[10px] text-primary/70 mt-0.5 leading-relaxed italic">🎯 {(n as any).learningObjective}</p>
                 )}
@@ -1944,36 +2054,6 @@ function LessonNodesPanel({
                 title="Դitel — ամovornakan deghekatvats tveyal"
               className="text-xs text-muted-foreground hover:text-primary/80 transition-colors"
               >👁</button>
-              {/* 🧠 Per-node Phase 2 enrichment — gated by confirmed cognitive path (Phase 2A R3) */}
-              {(() => {
-                const nCPS = (n as any).cogPathStatus as string | null;
-                const nTCS = !!((n as any).teachingContentStale);
-                if (!nCPS || nCPS !== 'confirmed') {
-                  return (
-                    <span
-                      title={!nCPS ? "Նax steghtsek ev hastatatsek channachogakan ughiny" : "Նax hastatatsek channachogakan ughiny (✓ Hastatsel knopka)"}
-                      className="text-xs text-white/15 cursor-not-allowed select-none"
-                    >🧠</span>
-                  );
-                }
-                return (
-                  <>
-                    <button
-                      onClick={() => enrichNode(n.id)}
-                      disabled={enrichingNodeId !== null}
-                      title={nTCS ? "Channachogakan ughine khmbagryel e. Verasteghtsit usoumnakan bagrarik" : "Harstatsnel ays MicroNode-i usoumnakan bagrarik (Phase 2)"}
-                      className={"text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed " + (nTCS ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground hover:text-indigo-400")}
-                    >
-                      {enrichingNodeId === n.id
-                        ? <span className="inline-block w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        : enrichNodeDone[n.id] ? "✅" : (nTCS ? "⚠️🧠" : "🧠")}
-                    </button>
-                    {enrichNodeErrors[n.id] && (
-                      <span className="text-[8px] text-red-400 leading-tight text-right max-w-[80px]" title={enrichNodeErrors[n.id]}>!</span>
-                    )}
-                  </>
-                );
-              })()}
               {/* ✏️ Edit */}
               <button
                 onClick={() => startEditNode(n)}
@@ -2510,41 +2590,6 @@ function LessonNodesPanel({
           </>
         )}
 
-        {/* Phase 2: Generate Teaching Content — teacher-level trigger (one click per lesson) */}
-        {nodes.length > 0 && (
-          <div className="flex items-center gap-1 px-1 shrink-0">
-            <GenerateTeachingContentButton
-              lessonId={lessonId}
-              hasNodes={nodes.length > 0}
-              hasExistingPhase2={nodes.some((n) => !!(n as any).childFriendlyExplanation)}
-            />
-          </div>
-        )}
-
-        {/* P1.7: Final Approval button + status badge */}
-        {nodes.length > 0 && (
-          <div className="flex items-center gap-1.5 px-2 shrink-0">
-            {approvalStatus === "approved" ? (
-              <span className="px-2 py-1 rounded-lg text-xs text-emerald-400 border border-emerald-400/20 bg-emerald-400/10 select-none" title="Դասը վերջնականապես հաստատված է">
-                ✅ Հաստ.
-              </span>
-            ) : approvalStatus === "needs_review" ? (
-              <span className="px-2 py-1 rounded-lg text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 select-none" title="Դասը փոփոխվել է հաստատումից հետո — անհրաժեշt է կրկին հաստատել">
-                🔄 Վեր.
-              </span>
-            ) : null}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleFinalApprove(); }}
-              disabled={approvalPending}
-              title="Հաutatateldasgirkel das (P1.7 Final Approval Gate)"
-              className="px-2 py-1 rounded-lg text-xs text-emerald-400/70 border border-emerald-400/15 hover:border-emerald-400/40 hover:text-emerald-400 hover:bg-emerald-400/8 transition-colors disabled:opacity-40 shrink-0"
-            >
-              {approvalPending ? (
-                <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              ) : "✅"}
-            </button>
-          </div>
-        )}
       </div>
 
       {open && (
@@ -2555,6 +2600,111 @@ function LessonNodesPanel({
               Թեմա → MicroNode → աղբյուրային կոնտեքստ → ճանաչողական ուղի → կցված վարժություններ։ Չկցված վարժությունները պահպանվում են առանձին՝ առանց կրկնօրինակելու։
             </p>
           </div>
+          {nodes.length > 0 && (
+            <section className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-3 space-y-2.5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold text-white">Դասի քարտեզագրման քայլեր</p>
+                  <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                    Ստեղծիր ուղիները, լրացրու ուսուցման բովանդակությունը, ապա կատարիր մեկ վերջնական ստուգում։
+                  </p>
+                </div>
+                <span className={
+                  "rounded-full border px-2 py-1 text-[9px] font-medium " +
+                  (approvalStatus === "approved"
+                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+                    : approvalStatus === "needs_review"
+                      ? "border-amber-400/25 bg-amber-400/10 text-amber-300"
+                      : "border-white/10 bg-white/5 text-white/50")
+                }>
+                  {approvalStatus === "approved"
+                    ? "✅ Դասը հաստատված է"
+                    : approvalStatus === "needs_review"
+                      ? "⚠️ Վերահաստատում է պահանջվում"
+                      : "⏳ Վերջնական ստուգման փուլ"}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={generateAllCogPaths}
+                  disabled={bulkCogPathRunning}
+                  className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-indigo-100 border border-indigo-400/35 bg-indigo-500/20 hover:bg-indigo-500/30 hover:border-indigo-300/60 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {bulkCogPathRunning ? (
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : "✨ Ստեղծել ճանաչողական ուղիները"}
+                </button>
+                <div className="flex min-w-0 flex-col items-start gap-1">
+                  <GenerateTeachingContentButton
+                    lessonId={lessonId}
+                    hasNodes={nodes.length > 0}
+                    hasExistingPhase2={nodes.some((n) => !!(n as any).childFriendlyExplanation)}
+                  />
+                </div>
+                <button
+                  onClick={handleFinalApprove}
+                  disabled={approvalPending}
+                  className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-emerald-300 border border-emerald-400/25 bg-emerald-400/10 hover:bg-emerald-400/20 hover:border-emerald-300/50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {approvalPending ? (
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : "✅ Վերջնական հաստատում"}
+                </button>
+              </div>
+              {bulkCogPathRunning && bulkCogPathProgress && (
+                <p className="text-[10px] text-indigo-200/80">
+                  Ստեղծվում է {bulkCogPathProgress.current}/{bulkCogPathProgress.total} · {bulkCogPathProgress.title}
+                </p>
+              )}
+              {bulkCogPathSummary && (
+                <div className="rounded-lg border border-white/8 bg-black/15 px-2.5 py-2 space-y-1.5">
+                  <p className="text-[10px] font-medium text-white/75">Ճանաչողական ուղիների ամփոփում</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { key: "generated", label: "Ստեղծված", entries: bulkCogPathSummary.generated, className: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300" },
+                      { key: "existing", label: "Արդեն կար", entries: bulkCogPathSummary.existing, className: "border-sky-400/20 bg-sky-400/10 text-sky-200" },
+                      { key: "c1Review", label: "C1 վերանայում", entries: bulkCogPathSummary.c1Review, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
+                      { key: "validationFailed", label: "Վավերացում", entries: bulkCogPathSummary.validationFailed, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
+                      { key: "failed", label: "Սխալ", entries: bulkCogPathSummary.failed, className: "border-red-400/20 bg-red-400/10 text-red-200" },
+                    ].filter((item) => item.entries.length > 0).map((item) => (
+                      <span
+                        key={item.key}
+                        title={item.entries.map((entry) => entry.detail ? `${entry.title}: ${entry.detail}` : entry.title).join("\n")}
+                        className={"rounded-full border px-2 py-0.5 text-[9px] font-medium cursor-help " + item.className}
+                      >
+                        {item.label}: {item.entries.length}
+                      </span>
+                    ))}
+                  </div>
+                  {[
+                    ...bulkCogPathSummary.c1Review.map((entry) => ({ entry, label: "C1 վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
+                    ...bulkCogPathSummary.validationFailed.map((entry) => ({ entry, label: "Վավերացում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
+                    ...bulkCogPathSummary.failed.map((entry) => ({ entry, label: "Սխալ", className: "border-red-400/25 bg-red-400/10 text-red-200" })),
+                  ].length > 0 && (
+                    <div className="border-t border-white/8 pt-1.5">
+                      <p className="mb-1 text-[9px] text-white/55">Ուշադրություն պահանջող հանգույցներ՝</p>
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          ...bulkCogPathSummary.c1Review.map((entry) => ({ entry, label: "C1 վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
+                          ...bulkCogPathSummary.validationFailed.map((entry) => ({ entry, label: "Վավերացում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
+                          ...bulkCogPathSummary.failed.map((entry) => ({ entry, label: "Սխալ", className: "border-red-400/25 bg-red-400/10 text-red-200" })),
+                        ].map(({ entry, label, className }) => (
+                          <button
+                            key={`${label}-${entry.nodeId}`}
+                            onClick={() => openCogPathFromBulkResult(entry.nodeId)}
+                            title={entry.detail}
+                            className={"rounded border px-1.5 py-0.5 text-left text-[9px] font-medium hover:brightness-125 " + className}
+                          >
+                            {entry.title} · {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
           {/* P1.7: Validation error/warning panel */}
           {showApprovalErrors && (approvalErrors.length > 0 || approvalWarnings.length > 0) && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5">
@@ -2581,33 +2731,6 @@ function LessonNodesPanel({
               )}
             </div>
           )}
-
-          {/* Phase 2 status banner — show when nodes exist but Phase 2 is not yet complete */}
-          {(() => {
-            const phase2Missing = nodes.filter((n) => !(n as any).childFriendlyExplanation).length;
-            if (phase2Missing === 0 || nodes.length === 0) return null;
-            return (
-              <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/8 px-3 py-2 gap-3">
-                <span className="text-[10px] text-indigo-400/80 font-medium shrink-0">
-                  🧠 {phase2Missing}/{nodes.length} Գիտելիքի հանգույցներ բացակայում են
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  {bannerError && (
-                    <span className="text-[9px] text-red-400">{bannerError}</span>
-                  )}
-                  <button
-                    onClick={handleBannerGenerate}
-                    disabled={bannerTriggering}
-                    className="px-2 py-1 rounded-md text-[10px] font-medium text-indigo-300 border border-indigo-500/40 bg-indigo-500/15 hover:bg-indigo-500/25 hover:border-indigo-400/60 transition-colors disabled:opacity-50 flex items-center gap-1"
-                  >
-                    {bannerTriggering
-                      ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      : "🧠 Ստեղծել ուսուցման բովանդակությունը"}
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
 
           {/* ── R4A.4: Required session time ────────────────────────────────── */}
           <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2 space-y-1">
