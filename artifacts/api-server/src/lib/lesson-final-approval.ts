@@ -379,9 +379,9 @@ export async function validateLessonForFinalApproval(
     for (const node of approvedNodes) {
       const levels = cognitiveLevels.filter((level) => level.lessonNodeId === node.id);
       if (levels.length === 0 || levels.filter((level) => level.isTargetCeiling).length !== 1) {
-        errors.push({
+        warnings.push({
           code: "COGNITIVE_PATH_INVALID",
-          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին ամբողջական չէ։`,
+          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին բացակայում է կամ ամբողջական չէ և խորհուրդ է տրվում վերանայել։`,
           nodeId: node.id,
           nodeTitle: node.title,
         });
@@ -397,9 +397,9 @@ export async function validateLessonForFinalApproval(
         })),
       );
       if (!grounding.valid) {
-        errors.push({
+        warnings.push({
           code: "COGNITIVE_PATH_GROUNDING_INVALID",
-          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին դուրս է գալիս հաստատված աղբյուրի սահմաններից։`,
+          messageArm: `«${node.title}» MicroNode-ի ճանաչողական ուղին պահանջում է վերանայում՝ աղբյուրի սահմանների պատճառով։`,
           nodeId: node.id,
           nodeTitle: node.title,
         });

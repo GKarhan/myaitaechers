@@ -1,0 +1,196 @@
+SMALL FIX ONLY — REMOVE THE TWO REMAINING ENRICHMENT BLOCKERS
+
+Do ONLY the changes below.
+
+Do NOT enter Plan mode.
+Do NOT perform a broad audit.
+Do NOT redesign architecture.
+Do NOT add migrations, DB columns, triggers, new state machines, or concurrency systems.
+Do NOT change Mapping.
+Do NOT change Goal/Outcomes.
+Do NOT change Quiz, Knowledge Tree, C1–C7, or AI Teacher runtime.
+Do NOT publish/deploy.
+
+Use the existing implementation and make the smallest possible patch.
+
+==================================================
+PROBLEM 1 — TEACHING CONTENT
+==================================================
+
+The UI already allows Teaching Content generation independently,
+but the backend still blocks/skips MicroNodes when their Cognitive Path
+is missing, incomplete, or review-required.
+
+FIX:
+
+Missing/incomplete/review-required Cognitive Path must NOT by itself block
+Teaching Content generation.
+
+Teaching Content should generate from the existing canonical:
+
+- MicroNode title
+- Learning Objective
+- source/theory context
+
+Use Cognitive Path when it exists and is usable,
+but treat it as OPTIONAL enrichment for Teaching Content generation.
+
+Keep existing source/C1 safety checks.
+
+Do not overwrite existing teacher-authored Teaching Content.
+
+Keep existing missing-only behavior.
+
+Do not weaken source-grounding requirements.
+
+==================================================
+PROBLEM 2 — ASSIGNMENT
+==================================================
+
+The existing “Հանձնարարել սովորողին” preflight still hard-blocks the lesson
+because some Cognitive Paths are missing/incomplete.
+
+FIX:
+
+These conditions alone must become REVIEW WARNINGS, not hard blockers:
+
+- Cognitive Path missing
+- Cognitive Path incomplete
+- Cognitive Path needs_review
+- Teaching Content review-required
+- partial enrichment-generation results
+
+When these are the only problems, show the existing teacher confirmation flow:
+
+«Դասում կան վերանայման ենթակա կետեր»
+
+and actions:
+
+«Վերադառնալ և խմբագրել»
+«Հաստատել և հանձնարարել»
+
+If teacher chooses:
+
+«Հաստատել և հանձնարարել»
+
+allow the existing approval/assignment flow to continue.
+
+==================================================
+KEEP TRUE HARD BLOCKERS
+==================================================
+
+Do NOT remove genuine unusable-lesson blockers.
+
+Keep hard blocking for existing canonical cases such as:
+
+- no usable MicroNodes
+- missing required Learning Objective
+- missing/unusable required source grounding
+- structurally unusable lesson data
+- integrity/runtime failures that make learner delivery impossible
+
+Do not invent new blocker categories.
+
+==================================================
+IMPORTANT
+==================================================
+
+Do NOT try to fix Cognitive Path quality in this task.
+
+For example, if Cognitive Path generation fails because it falls below the
+Learning Objective cognitive floor:
+
+keep that failure visible as a review issue.
+
+Do NOT weaken the cognitive-floor rule.
+
+It simply must not cascade into:
+
+Cognitive Path failed
+→ Teaching Content cannot generate
+→ Lesson cannot be assigned.
+
+That cascading failure is what this task fixes.
+
+==================================================
+MINIMUM VERIFICATION ONLY
+==================================================
+
+Run only the focused checks needed for these two changes.
+
+Verify:
+
+1. A mapped lesson with only some Cognitive Paths can still generate
+   Teaching Content for eligible MicroNodes.
+
+2. Existing Teaching Content is not overwritten.
+
+3. Missing Cognitive Paths appear as assignment warnings rather than
+   hard blockers when the lesson is otherwise usable.
+
+4. Teacher can choose “Հաստատել և հանձնարարել”.
+
+5. Genuine existing hard blockers still block.
+
+Do NOT start additional review/re-review cycles after these checks pass.
+
+==================================================
+FINAL RESPONSE — KEEP SHORT
+==================================================
+
+Report only:
+
+TEACHING CONTENT REQUIRES COMPLETE COGNITIVE PATH:
+NO
+
+TEACHING CONTENT MISSING-ONLY:
+PASS / FAIL
+
+EXISTING TEACHER CONTENT PRESERVED:
+PASS / FAIL
+
+MISSING COGNITIVE PATH BLOCKS ASSIGNMENT:
+NO
+
+MISSING COGNITIVE PATH SHOWN AS WARNING:
+YES / NO
+
+TEACHER OVERRIDE/ASSIGN:
+PASS / FAIL
+
+TRUE HARD BLOCKERS PRESERVED:
+YES / NO
+
+FILES CHANGED:
+...
+
+TESTS:
+...
+
+MIGRATION ADDED:
+NO
+
+DB SCHEMA CHANGED:
+NO
+
+MAPPING CHANGED:
+NO
+
+GOAL/OUTCOME CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+PUBLISHED/DEPLOYED:
+NO
+
+Then STOP.
+Do not propose additional improvements.
+Do not continue reviewing after the requested checks pass.

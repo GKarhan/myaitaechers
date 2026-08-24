@@ -702,6 +702,40 @@ it("H1: safe needs_review node does not require redundant per-node approval", as
   }
 });
 
+it("H1b: missing Cognitive Paths are review warnings and can be accepted for assignment", async () => {
+  const [lesson] = await db.select({ metadata: lessonsTable.mappingMetadata })
+    .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);
+  const originalMetadata = (lesson?.metadata ?? {}) as Record<string, unknown>;
+  try {
+    await db.update(lessonsTable).set({
+      mappingMetadata: {
+        ...originalMetadata,
+        quality: {
+          ...((originalMetadata.quality as Record<string, unknown>) ?? {}),
+          sourceAlignment: {
+            valid: true,
+            nodes: [{ nodeId: NODE.id, status: "SUFFICIENT" }],
+          },
+        },
+      },
+    } as never).where(eq(lessonsTable.id, LESSON_ID));
+
+    const review = await apiPost(`/lessons/${LESSON_ID}/final-approve`);
+    assert.equal(review.status, 409);
+    assert.equal((review.body.errors as unknown[]).length, 0);
+    assert.ok((review.body.reviewIssues as Array<{ code: string }>)
+      .some((issue) => issue.code === "COGNITIVE_PATH_INVALID"));
+
+    const accepted = await apiPostJson(`/lessons/${LESSON_ID}/final-approve`, { confirmReviewIssues: true });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.approved, true);
+  } finally {
+    await resetFinalReadinessFixture();
+    await db.update(lessonsTable).set({ mappingMetadata: originalMetadata })
+      .where(eq(lessonsTable.id, LESSON_ID));
+  }
+});
+
 it("H2: persisted non-sufficient source alignment blocks final approval even if node is approved", async () => {
   const [lesson] = await db.select({ metadata: lessonsTable.mappingMetadata })
     .from(lessonsTable).where(eq(lessonsTable.id, LESSON_ID)).limit(1);

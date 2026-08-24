@@ -3486,7 +3486,7 @@ function LessonAssignmentAction({
         <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-base text-amber-200">
-              Դասում կան կետեր, որոնք խորհուրդ է տրվում վերանայել
+              Դասում կան վերանայման ենթակա կետեր
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
               Կարող եք վերադառնալ և վերանայել, կամ մեկ անգամ հաստատել ու հանձնարարել դասը։
