@@ -10,7 +10,6 @@ import {
   normalizeActivityPlacements,
   validatePass2SourceAlignment,
   runBoundedAtomicityVerification,
-  MappingAtomicityError,
   MappingAtomicityReviewUnavailableError,
   MappingGranularityReviewError,
   MappingSourceAlignmentError,
@@ -99,7 +98,62 @@ const diagnostics = {
   assert.equal(validatePass2SourceAlignment(topics, source).valid, true);
   normalizeActivityPlacements(topics, source);
   assert.equal(validateSourceCoverage(source.length, topics).valid, true);
-  console.log("  ✓ UNDER_SPLIT produces source-partitioned atomic MicroNodes");
+  const retry = applyBoundedAtomicityRepairs(topics, source, [{
+    action: "SPLIT_MICRONODE",
+    topicSequence: 1,
+    microNodeId: "t1:n0",
+    reason: "The same candidate must not receive another split pass.",
+    splitMicroNodes: [],
+  }]);
+  assert.equal(retry.appliedCount, 0);
+  assert.equal(topics[0].microNodes.length, 2, "retry must not duplicate repaired nodes");
+  const unresolvedAfterRepair = getUnresolvedAtomicityFindings(topics, [{
+    topicTitle: "Թեմա",
+    microNodeTitle: "Combined rule",
+    microNodeId: "t1:n0",
+    issue: "UNDER_SPLIT",
+    confidence: "HIGH",
+    reason: "Two independently assessable rules were initially combined.",
+  }], repaired, validatePass2SourceAlignment(topics, source));
+  assert.deepEqual(unresolvedAfterRepair, []);
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(source.length, topics),
+    instructionalCoverage: validateInstructionalCoverage(source, topics),
+    sourceAlignment: validatePass2SourceAlignment(topics, source),
+    duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
+    diagnostics,
+    unresolvedAtomicityFindings: unresolvedAfterRepair,
+  }));
+  console.log("  ✓ UNDER_SPLIT produces source-partitioned atomic MicroNodes without retry duplicates");
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "Rule one explains the first atomic concept." },
+    { blockType: "RULE", sourceText: "Rule two explains the second atomic concept." },
+    { blockType: "RULE", sourceText: "Rule three explains the third atomic concept." },
+    { blockType: "RULE", sourceText: "Rule four explains the fourth atomic concept." },
+    { blockType: "RULE", sourceText: "Rule five explains the fifth atomic concept." },
+    { blockType: "RULE", sourceText: "Rule six explains the sixth atomic concept." },
+  ]);
+  const topics = [topic([
+    node("t1:n0", "Concept one", "Explain the first atomic concept.", [0]),
+    node("t1:n1", "Concept two", "Explain the second atomic concept.", [1]),
+    node("t1:n2", "Concept three", "Explain the third atomic concept.", [2]),
+    node("t1:n3", "Concept four", "Explain the fourth atomic concept.", [3]),
+    node("t1:n4", "Concept five", "Explain the fifth atomic concept.", [4]),
+    node("t1:n5", "Concept six", "Explain the sixth atomic concept.", [5]),
+  ])];
+  assert.equal(topics[0].microNodes.length, 6);
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(source.length, topics),
+    instructionalCoverage: validateInstructionalCoverage(source, topics),
+    sourceAlignment: validatePass2SourceAlignment(topics, source),
+    duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
+    diagnostics,
+    unresolvedAtomicityFindings: [],
+  }));
+  console.log("  ✓ all six atomic nodes remain eligible for persistence");
 }
 
 {
@@ -256,25 +310,50 @@ const diagnostics = {
 }
 
 {
-  const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
-  const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
-  const alignment = validatePass2SourceAlignment(topics, source);
-  assert.throws(() => assertPass2PersistenceGates({
+  const source = blocks([
+    { blockType: "RULE", sourceText: "Rule one explains the first atomic concept." },
+    { blockType: "RULE", sourceText: "Rule two explains the second atomic concept." },
+    { blockType: "RULE", sourceText: "Rule three explains the third atomic concept." },
+    { blockType: "RULE", sourceText: "Rule four explains the fourth atomic concept." },
+    { blockType: "RULE", sourceText: "Rule five explains the fifth atomic concept." },
+    { blockType: "RULE", sourceText: "Rule six combines two independently assessable concepts." },
+  ]);
+  const topics = [topic([
+    node("t1:n0", "Concept one", "Explain the first atomic concept.", [0]),
+    node("t1:n1", "Concept two", "Explain the second atomic concept.", [1]),
+    node("t1:n2", "Concept three", "Explain the third atomic concept.", [2]),
+    node("t1:n3", "Concept four", "Explain the fourth atomic concept.", [3]),
+    node("t1:n4", "Concept five", "Explain the fifth atomic concept.", [4]),
+    node("t1:n5", "Broad concept", "Explain the sixth concept and apply a separate seventh concept.", [5]),
+  ])];
+  const failedRepair = applyBoundedAtomicityRepairs(topics, source, [{
+    action: "SPLIT_MICRONODE",
+    topicSequence: 1,
+    microNodeId: "t1:n5",
+    reason: "The provider did not return a safe partition.",
+    splitMicroNodes: [],
+  }]);
+  const unresolved = getUnresolvedAtomicityFindings(topics, [{
+    topicTitle: "Թեմա",
+    microNodeTitle: "Broad concept",
+    microNodeId: "t1:n5",
+    issue: "UNDER_SPLIT",
+    confidence: "HIGH",
+    reason: "Independent objectives remain combined.",
+  }], failedRepair, validatePass2SourceAlignment(topics, source));
+  assert.equal(failedRepair.appliedCount, 0);
+  assert.equal(failedRepair.rejectedDecisionCount, 1);
+  assert.equal(topics[0].microNodes.length, 6, "the failed node must not discard its five valid siblings");
+  assert.deepEqual(unresolved.map((finding) => finding.microNodeId), ["t1:n5"]);
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
     coverageValidation: validateSourceCoverage(source.length, topics),
     instructionalCoverage: validateInstructionalCoverage(source, topics),
-    sourceAlignment: alignment,
+    sourceAlignment: validatePass2SourceAlignment(topics, source),
     duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
     diagnostics,
-    unresolvedAtomicityFindings: [{
-      topicTitle: "Թեմա",
-      microNodeTitle: "Successor",
-      microNodeId: "t1:n0",
-      issue: "UNDER_SPLIT",
-      confidence: "HIGH",
-      reason: "Unresolved test fixture.",
-    }],
-  }), MappingAtomicityError);
-  console.log("  ✓ unresolved atomicity fails closed before canonical persistence");
+    unresolvedAtomicityFindings: unresolved,
+  }));
+  console.log("  ✓ six-node map preserves five atomic nodes and marks one failed repair for review");
 }
 
 {

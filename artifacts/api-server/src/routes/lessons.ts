@@ -4868,6 +4868,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     let totalExercises = 0;
     let exerciseCounter = 0;
     let nodesWithFullContent = 0;
+    let reviewRequiredNodeCount = 0;
     const reviewItems: { nodeId: number; nodeTitle: string; reason: string }[] = [];
     const topicRows: { id: number; sequence: number; title: string }[] = [];
     const nodeRows:  { id: number; topicId: number; topicSequence: number; microNodeIndex: number; title: string; sequence: number }[] = [];
@@ -4928,6 +4929,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           `${topic.sequence}:${microNodeIndex}`,
         ) ?? [];
         const needsPedagogicalReview = pedagogicalReviewReasons.length > 0;
+        if (needsSourceReview || needsPedagogicalReview) reviewRequiredNodeCount += 1;
         const requiredDepths = safeOutcomeAlignmentPlan.proposals
           .filter((proposal) =>
             proposal.topicSequence === topic.sequence && proposal.microNodeIndex === microNodeIndex,
@@ -5227,6 +5229,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         pass2InputBlocks: Number(verifiedPhysicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
         topicsCreated:        pass2.topics.length,
         microNodesCreated:    totalNodes,
+        readyMicroNodes:      totalNodes - reviewRequiredNodeCount,
+        reviewRequiredMicroNodes: reviewRequiredNodeCount,
         exercisesCreated:     totalExercises,
         unmappedBlocks:       pass2.unmappedBlockIndices.length,
       },
@@ -5354,6 +5358,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           pass2InputBlocks:      Number(physicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
           topicsCreated:        pass2.topics.length,
           microNodesCreated:    totalNodes,
+          readyMicroNodes:      totalNodes - reviewRequiredNodeCount,
+          reviewRequiredMicroNodes: reviewRequiredNodeCount,
           exercisesCreated:     totalExercises,
           unmappedBlocks:       pass2.unmappedBlockIndices.length,
           instructionalCoverageValid: pass2.instructionalCoverage.valid,

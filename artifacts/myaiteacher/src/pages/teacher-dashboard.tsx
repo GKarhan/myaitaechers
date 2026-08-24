@@ -149,6 +149,8 @@ interface LessonJobStatus {
   error:    string | null;
   result?:  {
     coverageValid?: boolean;
+    readyMicroNodes?: number;
+    reviewRequiredMicroNodes?: number;
     ready?: number;
     reviewRequired?: number;
     blocked?: number;
@@ -300,6 +302,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
   const qc = useQueryClient();
   const { token } = useAuth();
   const [mapError,    setMapError]    = useState<string | null>(null);
+  const [mapSummary,  setMapSummary]  = useState<string | null>(null);
   const [postPending, setPostPending] = useState(false);
   const mapLesson = useMapLessonWithAI();
 
@@ -405,6 +408,13 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) });
       qc.invalidateQueries({ queryKey: ['lesson-topics', lessonId] });
       qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
+      const reviewCount = mapStatus.result?.reviewRequiredMicroNodes ?? 0;
+      const readyCount = mapStatus.result?.readyMicroNodes ?? 0;
+      setMapSummary(
+        reviewCount > 0
+          ? `Քարտեզագրումը ստեղծվել է։ ${readyCount} հանգույց պատրաստ է, ${reviewCount} հանգույց խորհուրդ է տրվում վերանայել։`
+          : null,
+      );
     } else if (mapStatus.status === 'coverage_failed') {
       // P3.1: mapping ran to completion but source coverage validation failed.
       // Nodes/exercises were persisted; refresh data so the teacher can inspect them.
@@ -416,6 +426,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       setMapError('⚠️ Քարտեզագրումն ավարտվեց, բայց source coverage-ը թերի է — կան չծածկված blocks։ Ստուգիր Mapping Report-ը։');
     } else if (mapStatus.status === 'failed') {
       setPostPending(false);
+      setMapSummary(null);
       setMapError(mapStatus.error ?? 'Qartezagrume djaxolvets, pkhorel krnkin');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -423,6 +434,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 
   const handleMap = () => {
     setMapError(null);
+    setMapSummary(null);
     setPostPending(true);
     mapLesson.mutate(
       { lessonId },
@@ -471,7 +483,7 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         ✍️ Ձեռքով
       </button>
 
-      {(isActive || mapError) && (
+      {(isActive || mapError || mapSummary) && (
         <div className="basis-full min-w-0 order-last pt-1">
           {isActive && (
             <div className="min-w-0 text-[10px] text-primary/70 animate-pulse break-words" title={statusLabel}>
@@ -481,6 +493,11 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
           {mapError && (
             <div className="min-w-0 text-xs text-destructive whitespace-normal break-words leading-relaxed">
               {mapError}
+            </div>
+          )}
+          {mapSummary && (
+            <div className="min-w-0 text-xs text-amber-300 whitespace-normal break-words leading-relaxed">
+              {mapSummary}
             </div>
           )}
         </div>
@@ -1955,7 +1972,7 @@ function LessonNodesPanel({
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-semibold text-white">{n.title}</span>
                   {nodeStatus === 'needs_review' && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠️ Վերանայում է պետք</span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">⚠ Վերանայել</span>
                   )}
                   {(nodeStatus === 'draft' || !nodeStatus) && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/8 text-white/40 border border-white/10 shrink-0">📝 Սևագիր</span>

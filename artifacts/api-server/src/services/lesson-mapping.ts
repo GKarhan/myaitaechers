@@ -2113,6 +2113,7 @@ export function applyBoundedAtomicityRepairs(
   const topicFor = (sequence: number) => topics.find((topic) => topic.sequence === sequence);
   const nodeFor = (topic: Pass2TopicResult | undefined, candidateId: string | undefined) =>
     candidateId ? topic?.microNodes.find((node) => node.candidateId === candidateId) : undefined;
+  const attemptedSplitCandidateIds = new Set<string>();
 
   for (const decision of decisions) {
     const topic = topicFor(decision.topicSequence);
@@ -2154,6 +2155,14 @@ export function applyBoundedAtomicityRepairs(
       continue;
     }
 
+    if (!decision.microNodeId || attemptedSplitCandidateIds.has(decision.microNodeId)) {
+      result.rejectedDecisionCount++;
+      continue;
+    }
+    // A candidate receives one split attempt at most. A rejected proposal is
+    // still an attempt; accepting a later provider variation would turn this
+    // bounded repair into an unbounded retry loop.
+    attemptedSplitCandidateIds.add(decision.microNodeId);
     const target = nodeFor(topic, decision.microNodeId);
     const children = decision.splitMicroNodes ?? [];
     if (!target || children.length < 2) {
@@ -4608,8 +4617,9 @@ export function buildAutomaticOutcomeAlignmentPlan(
  * The route deletes old Topics/MicroNodes only after runPass2Pipeline resolves.
  * Keeping source/provenance/structural gates in this pure assertion makes that
  * replacement boundary explicit and provider-free testable. Source-alignment
- * and pedagogical granularity quality are deliberately not lesson-level hard
- * gates: source-safe nodes persist as teacher-review drafts with their audit.
+ * and completed-but-unresolved pedagogical atomicity findings are deliberately
+ * not lesson-level hard gates: source-safe candidates persist as teacher-review
+ * drafts with their audit while valid sibling nodes remain available.
  */
 export function assertPass2PersistenceGates(input: {
   coverageValidation: CoverageValidationResult;
@@ -4638,18 +4648,18 @@ export function assertPass2PersistenceGates(input: {
   if (input.duplicateResolution.rejectedDecisionCount > 0) {
     throw new MappingGranularityReviewError(input.duplicateResolution);
   }
-  if ((input.unresolvedAtomicityFindings ?? []).length > 0) {
-    throw new MappingAtomicityError(
-      input.unresolvedAtomicityFindings ?? [],
-      input.atomicityVerificationDiagnostics,
-    );
-  }
+  // Atomicity is enforced per candidate rather than all-or-nothing for the
+  // lesson. The route turns these verified unresolved findings into
+  // `needs_review` nodes, excludes them from canonical Outcome alignments, and
+  // records the finding in mapping metadata. They never become approved data.
 }
 
 /**
  * Produces the terminal atomicity trace before the destructive persistence
  * boundary. A review interruption is intentionally distinct from a completed
- * review that found broad nodes; neither is eligible for persistence.
+ * review that found broad nodes. Technical interruption remains ineligible for
+ * persistence; completed non-atomic findings remain review-only until the
+ * route persists their node-scoped disposition.
  */
 export function finalizeAtomicityVerificationDiagnostics(input: {
   verification: AtomicityVerificationDiagnostics;
