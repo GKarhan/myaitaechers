@@ -1,0 +1,1115 @@
+IMPLEMENTATION — PHASE 3B ONLY
+LESSON-WIDE SEMANTIC CONSOLIDATION + FINAL TOPIC ASSIGNMENT
+
+ROLE
+
+Act as a principal AI systems architect, knowledge-representation engineer,
+education-domain architect, and senior TypeScript/backend engineer.
+
+This is the final major semantic-architecture phase of the Mapping Core.
+
+The goal is NOT to make one lesson pass.
+
+The goal is to establish a stable lesson-wide knowledge identity model that
+works across subjects, textbooks, lesson structures, and future Cognitive Path
+generation.
+
+PHASES ALREADY COMPLETED
+
+Phase 1:
+- KnowledgeCandidate contract
+- SourceMaterialDisposition contract
+- explicit promotion decisions
+- deterministic promotion tests
+
+Phase 2:
+- durable lesson_source_materials
+- stable source identity
+- source material survives independently of MicroNodes
+- atomic transaction/remap safety
+
+Phase 3A:
+- production Pass 2 now constructs KnowledgeCandidates
+- only explicit PROMOTE creates persisted MicroNodes
+- supporting/exercise/unresolved material does not automatically become nodes
+- candidate diagnostics exist
+- no per-candidate AI calls
+- source durability remains intact
+
+NOW IMPLEMENT ONLY PHASE 3B.
+
+DO NOT start Cognitive Path.
+DO NOT start Teaching Content.
+
+════════════════════════════════════════════════════════════
+0. CORE PROBLEM
+════════════════════════════════════════════════════════════
+
+The remaining architectural problem is:
+
+PROVISIONAL TOPIC STRUCTURE MUST NOT DEFINE KNOWLEDGE IDENTITY.
+
+The same underlying knowledge may appear:
+
+- in two provisional Topics,
+- first as a definition and later as an explanation,
+- first as a rule and later as an example,
+- with different instructional verbs,
+- at different cognitive depths,
+- in a recap,
+- in a worked example,
+- or in several textbook locations.
+
+These appearances must NOT automatically create separate MicroNodes.
+
+Canonical rule:
+
+MICRONODE IDENTITY IS LESSON-WIDE.
+
+Topic membership is organizational metadata.
+
+It is NOT the identity boundary of knowledge.
+
+Target architecture:
+
+Verified Source Material
+        ↓
+Provisional Knowledge Candidates
+        ↓
+Candidate Promotion Assessment
+        ↓
+LESSON-WIDE SEMANTIC CONSOLIDATION
+        ↓
+Canonical Knowledge Units
+        ↓
+Final MicroNodes
+        ↓
+Final Topic Assignment
+        ↓
+Exercises / Supporting Material
+        ↓
+Validation
+        ↓
+Durable Persistence
+
+════════════════════════════════════════════════════════════
+1. FORENSIC AUDIT FIRST — NO EDITING
+════════════════════════════════════════════════════════════
+
+Before changing code, inspect the CURRENT repository after Phase 3A.
+
+Trace:
+
+1. runPass2Pipeline()
+2. organizeTopicMicroNodes()
+3. candidate construction
+4. decideKnowledgeCandidatePromotion()
+5. duplicate suspicion collection
+6. duplicate semantic review
+7. atomicity review
+8. same-topic consolidation
+9. cross-topic duplicate handling
+10. source alignment/reconciliation
+11. topic construction/persistence
+12. exercise ownership
+13. supporting-material relationships
+14. durable source-material generation
+15. mapping metadata/review items
+16. final persistence gates
+
+Answer before editing:
+
+A. At exactly what stage is candidate identity currently topic-scoped?
+
+B. Which duplicate/consolidation functions currently operate:
+   - same-topic only
+   - cross-topic
+   - lesson-wide
+
+C. Which existing semantic-review AI call can be reused?
+
+D. Which current heuristics are signals only and must NOT become automatic merge
+   rules?
+
+E. What current data is sufficient to construct lesson-wide candidate identity?
+
+F. Where should canonicalization occur so that:
+   - source coverage remains safe
+   - exercises remain attached
+   - Topic persistence remains stable
+   - review-required behavior remains intact
+
+G. Exact minimal files required.
+
+State the design before editing.
+
+════════════════════════════════════════════════════════════
+2. FUNDAMENTAL IDENTITY QUESTION
+════════════════════════════════════════════════════════════
+
+For every pair/group of promoted or promotion-eligible candidates, the system
+must conceptually answer:
+
+"DO THESE REPRESENT THE SAME UNDERLYING LEARNER KNOWLEDGE STATE?"
+
+This is the canonical semantic identity question.
+
+NOT:
+
+"Do the titles look similar?"
+
+NOT:
+
+"Are they in the same Topic?"
+
+NOT:
+
+"Do they use the same verb?"
+
+NOT:
+
+"Are they both about multiplication?"
+
+NOT:
+
+"Did Jaccard similarity exceed 0.4?"
+
+The question is:
+
+Would the learner need SEPARATE mastery states for these two things?
+
+If NO:
+they belong to the same canonical knowledge unit.
+
+If YES:
+they remain distinct MicroNodes.
+
+════════════════════════════════════════════════════════════
+3. MICRONODE IDENTITY CONTRACT
+════════════════════════════════════════════════════════════
+
+A canonical MicroNode represents ONE independently trackable knowledge state.
+
+Two candidate appearances should normally consolidate when:
+
+- they teach the same underlying concept/skill,
+- their differences are explanation/example/representation differences,
+- their differences are only cognitive-depth differences,
+- one restates the other,
+- one elaborates the other without adding a separate assessable target,
+- one is a recap of the same knowledge,
+- they appear in different provisional Topics but mastery is still one state.
+
+They should remain distinct when:
+
+- each has an independently assessable learning target,
+- a learner can genuinely master one without mastering the other,
+- they require meaningfully separate evidence,
+- they represent prerequisite vs dependent knowledge,
+- they use similar vocabulary but different conceptual relationships,
+- one introduces an additional rule/condition/procedure that deserves its own
+  learner state.
+
+════════════════════════════════════════════════════════════
+4. BLOOM / COGNITIVE DEPTH MUST NOT DEFINE IDENTITY
+════════════════════════════════════════════════════════════
+
+Mandatory invariant:
+
+Remember / Understand / Apply / Analyze / Evaluate / Create
+
+DO NOT define separate MicroNode identity.
+
+Example:
+
+Candidate A:
+"State the rule for determining the sign of a product."
+
+Candidate B:
+"Explain why the number of negative factors determines the sign."
+
+Candidate C:
+"Apply the sign rule to determine the sign of a product."
+
+These may all refer to ONE underlying knowledge unit:
+
+"Determining the sign of a product"
+
+The later Cognitive Path will model depth.
+
+Do NOT preserve multiple MicroNodes merely because learningObjective verbs differ.
+
+However:
+
+if the candidates actually represent different underlying knowledge, they remain
+separate even if Bloom levels are similar.
+
+════════════════════════════════════════════════════════════
+5. LESSON-WIDE CONSOLIDATION
+════════════════════════════════════════════════════════════
+
+Implement a lesson-wide consolidation stage.
+
+It must operate across provisional Topic boundaries.
+
+Conceptually:
+
+Candidate A — Topic 1
+Candidate B — Topic 2
+Candidate C — Topic 2
+
+        ↓
+
+lesson-wide semantic identity resolution
+
+        ↓
+
+Canonical Unit K1
+  evidence: A + B
+
+Canonical Unit K2
+  evidence: C
+
+        ↓
+
+final MicroNodes
+
+The consolidation stage must preserve:
+
+- all relevant source evidence
+- all supporting source relationships
+- exercises
+- provenance
+- candidate IDs
+- review reasons
+- original provisional Topic context for auditability where useful
+
+Candidate consolidation must NEVER mean source deletion.
+
+════════════════════════════════════════════════════════════
+6. DO NOT USE STRING SIMILARITY AS TRUTH
+════════════════════════════════════════════════════════════
+
+Existing token/Jaccard/near-duplicate logic may be used only as:
+
+CANDIDATE RETRIEVAL / SUSPICION SIGNAL.
+
+It must not be the final semantic merge authority.
+
+Examples:
+
+"positive number"
+and
+"negative number"
+
+can have high lexical overlap but represent different knowledge.
+
+"sign of product"
+and
+"determining whether a product is positive or negative based on negative
+factor parity"
+
+may have weaker lexical overlap but represent the same underlying knowledge.
+
+Therefore:
+
+heuristic similarity
+→ candidate pair discovery
+
+semantic identity decision
+→ merge / distinct / review
+
+Keep these responsibilities separate.
+
+════════════════════════════════════════════════════════════
+7. SEMANTIC REVIEW — BOUNDED, NOT PER PAIR
+════════════════════════════════════════════════════════════
+
+Do NOT add an AI call for every pair.
+
+Reuse the existing bounded semantic review architecture if possible.
+
+Preferred architecture:
+
+1. deterministic candidate retrieval finds plausible overlap groups
+2. obvious non-overlaps are skipped
+3. obvious safe cases may be resolved deterministically only where evidence is
+   genuinely sufficient
+4. ambiguous candidate groups are sent in ONE bounded semantic review batch
+5. semantic review returns structured decisions
+
+Target cost:
+
+small bounded O(1)-style number of provider calls per lesson stage.
+
+NOT O(n²) provider calls.
+
+Local pair comparison may be O(n²) for small lesson candidate sets if needed,
+but AI calls must not be O(n²).
+
+If candidate count may become large, use a reasonable deterministic blocking/
+grouping strategy.
+
+Do not over-engineer premature vector infrastructure in this phase.
+
+════════════════════════════════════════════════════════════
+8. STRUCTURED CONSOLIDATION DECISIONS
+════════════════════════════════════════════════════════════
+
+Use explicit machine-readable decisions.
+
+Conceptually:
+
+SAME_KNOWLEDGE
+DISTINCT_KNOWLEDGE
+REVIEW_REQUIRED
+
+If existing project terminology already provides equivalent states, reuse it.
+
+For SAME_KNOWLEDGE, retain:
+
+- canonical candidate/unit identity
+- merged candidate IDs
+- reason code
+- confidence
+- source provenance union
+
+For DISTINCT_KNOWLEDGE:
+
+- preserve both candidates
+- machine-readable distinction reason where available
+
+For REVIEW_REQUIRED:
+
+- do not guess
+- preserve source material
+- create/retain teacher review metadata
+- do not create duplicate trusted MicroNodes merely to avoid a failure
+
+Do not store raw model output.
+
+════════════════════════════════════════════════════════════
+9. GROUP CONSOLIDATION — NOT JUST PAIRWISE DELETION
+════════════════════════════════════════════════════════════
+
+Avoid a fragile implementation such as:
+
+A matches B → delete B
+B matches C → delete C
+
+without canonical group reasoning.
+
+Consolidation should support semantic groups.
+
+Example:
+
+A = same as B
+B = same as C
+
+Then the system should be able to form:
+
+Canonical Group {A, B, C}
+
+provided there is no contradictory evidence.
+
+Be careful with transitivity.
+
+If:
+
+A same B
+B same C
+A distinct C
+
+that is a semantic conflict.
+
+Do NOT silently merge all three.
+
+Mark the conflicting group REVIEW_REQUIRED.
+
+Implement deterministic conflict detection.
+
+════════════════════════════════════════════════════════════
+10. CANONICAL MICRONODE CONSTRUCTION
+════════════════════════════════════════════════════════════
+
+When multiple candidates consolidate into one canonical MicroNode:
+
+construct the final node deterministically where possible.
+
+Preserve/derive:
+
+- canonical title
+- canonical learningObjective
+- union of valid core source evidence
+- supporting material
+- exercises
+- review metadata
+- provenance to all contributing candidates
+
+Do NOT invent textbook content.
+
+Do NOT concatenate objectives into an over-broad objective.
+
+The canonical learning objective must remain atomic.
+
+If combining candidates would require an objective containing two independent
+targets:
+
+do NOT consolidate them.
+
+If title/objective canonicalization is semantically ambiguous:
+
+prefer the best source-grounded existing candidate representation or mark review
+rather than making another provider call solely for wording.
+
+No AI call merely to make the title prettier.
+
+════════════════════════════════════════════════════════════
+11. SOURCE EVIDENCE UNION
+════════════════════════════════════════════════════════════
+
+When candidates consolidate:
+
+their verified source evidence should be combined safely.
+
+Example:
+
+Candidate A core source:
+[3]
+
+Candidate B core source:
+[8, 9]
+
+Same canonical knowledge unit:
+
+canonical source evidence:
+[3, 8, 9]
+
+subject to existing source-ownership semantics.
+
+But:
+
+canonical primary source disposition
+and
+secondary semantic support
+
+must remain separate concepts.
+
+Do NOT reintroduce the historical source/supporting duplicate ownership bug.
+
+Respect Phase 2 durable source-material canonical disposition.
+
+════════════════════════════════════════════════════════════
+12. EXERCISE REATTACHMENT
+════════════════════════════════════════════════════════════
+
+If Candidate B is consolidated into Candidate A:
+
+exercises associated with B must not disappear.
+
+They should attach to the canonical MicroNode when pedagogically valid.
+
+Deduplicate identical exercise references.
+
+Do not duplicate textbook exercises.
+
+Integrative exercises that genuinely assess multiple canonical MicroNodes must
+remain representable without creating new knowledge nodes.
+
+Do NOT redesign Quiz.
+
+════════════════════════════════════════════════════════════
+13. FINAL TOPIC ASSIGNMENT
+════════════════════════════════════════════════════════════
+
+Only AFTER canonical knowledge identity is established should final Topic
+membership be resolved.
+
+Topics organize MicroNodes.
+
+Topics do NOT create MicroNode identity.
+
+For Phase 3B, preserve the existing Topic model/schema.
+
+Do NOT create a new hierarchy.
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+When a canonical MicroNode has evidence from multiple provisional Topics:
+
+choose its final Topic using deterministic pedagogical/source rules.
+
+Preferred order:
+
+1. Topic where the knowledge is first substantively introduced in source order
+2. Topic with strongest core source evidence
+3. existing stable Topic ordering as tie-breaker
+
+Do NOT duplicate the MicroNode into several Topics.
+
+If final Topic assignment is genuinely ambiguous:
+
+choose a deterministic primary Topic and preserve cross-topic provenance/
+review metadata.
+
+Do not fail the whole map solely because one canonical knowledge unit supports
+multiple Topic contexts.
+
+════════════════════════════════════════════════════════════
+14. TOPIC QUALITY
+════════════════════════════════════════════════════════════
+
+Do NOT perform a broad Topic-generation redesign.
+
+But enforce these basic invariants after consolidation:
+
+- no empty accidental Topic should persist solely because all its duplicate
+  candidates moved elsewhere
+- do not create duplicate Topics with effectively identical membership merely
+  to preserve provisional AI output
+- Topic ordering remains deterministic
+- MicroNode ordering within Topic remains deterministic
+- removing a redundant candidate must not leave broken sequence numbers
+
+Normalize final sequences:
+
+Topics:
+1, 2, 3, ...
+
+MicroNodes within each Topic:
+1, 2, 3, ...
+
+Use existing project ordering conventions.
+
+════════════════════════════════════════════════════════════
+15. REVIEW-REQUIRED SEMANTIC CONFLICTS
+════════════════════════════════════════════════════════════
+
+Pedagogical ambiguity must NOT become structural failure.
+
+Examples:
+
+- uncertain same-vs-distinct knowledge
+- conflicting semantic-review decisions
+- transitivity conflict
+- ambiguous cross-topic identity
+- atomicity uncertainty
+
+For structurally safe material:
+
+persist the safe map/source state with explicit teacher-review metadata according
+to the existing review-required policy.
+
+Do NOT fabricate canonical knowledge.
+
+Do NOT weaken hard integrity gates.
+
+Hard failures remain hard failures:
+
+- invalid source references
+- missing verified source preservation
+- impossible block IDs
+- parser/schema corruption
+- canonical coverage corruption
+- invalid transaction state
+- broken source lineage
+
+════════════════════════════════════════════════════════════
+16. IMPORTANT — ONLY PROMOTED CANONICAL UNITS BECOME MICRONODES
+════════════════════════════════════════════════════════════
+
+After Phase 3B:
+
+candidate proposal
+≠ MicroNode
+
+promoted candidate
+≠ necessarily final MicroNode identity
+
+CANONICAL PROMOTED KNOWLEDGE UNIT
+= final MicroNode identity
+
+Therefore the authoritative production architecture becomes:
+
+Pass 1 verified source
+→ provisional Topics/context
+→ KnowledgeCandidates
+→ promotion assessment
+→ lesson-wide semantic consolidation
+→ canonical promoted knowledge units
+→ final Topic assignment
+→ persisted MicroNodes
+
+This architecture must be visible in the actual production code path.
+
+Do not implement it as an unused parallel helper.
+
+════════════════════════════════════════════════════════════
+17. COGNITIVE PATH BOUNDARY
+════════════════════════════════════════════════════════════
+
+Do NOT generate Cognitive Paths.
+
+But ensure Phase 3B output is ready for them.
+
+Each final MicroNode must represent stable WHAT-to-learn identity.
+
+Future Cognitive Path will represent DEPTH-of-mastery.
+
+Do not persist fake cognitive semantics merely to satisfy existing UI.
+
+Do not change targetBloomLevel schema in this phase unless compilation requires
+a compatibility-safe no-behavior-change adjustment.
+
+Do not change cognitive task generation.
+
+════════════════════════════════════════════════════════════
+18. OBSERVABILITY
+════════════════════════════════════════════════════════════
+
+Extend existing mapping diagnostics enough to understand lesson-wide
+consolidation without rerunning.
+
+Persist structured, source-safe diagnostics such as:
+
+- provisional candidate count
+- promotion-eligible count
+- canonical knowledge-unit count
+- same-knowledge consolidation count
+- distinct decision count
+- review-required semantic group count
+- cross-topic consolidation count
+- emptied provisional Topic count
+- final Topic count
+- candidate IDs per canonical group
+- final Topic assignment reason
+- machine-readable semantic decision reason codes
+- conflict group IDs
+
+Do NOT persist:
+
+- raw provider response
+- unnecessary textbook excerpts
+- hidden chain-of-thought
+- verbose model reasoning
+
+Diagnostics must be sufficient for forensic debugging.
+
+════════════════════════════════════════════════════════════
+19. DETERMINISM
+════════════════════════════════════════════════════════════
+
+Given the same:
+
+- verified Pass 1 blocks
+- parsed structured semantic-review result
+- candidate set
+
+the deterministic consolidation stage must produce the same:
+
+- canonical groups
+- final MicroNodes
+- final Topic assignments
+- ordering
+- diagnostics
+
+Avoid Set/Map iteration behavior that accidentally changes persisted ordering.
+
+Use explicit stable sorting.
+
+════════════════════════════════════════════════════════════
+20. REGRESSION TEST MATRIX
+════════════════════════════════════════════════════════════
+
+Add focused tests for AT LEAST:
+
+CASE 1 — same knowledge, same Topic
+
+Definition + explanation of same target.
+
+Expected:
+one canonical MicroNode.
+
+CASE 2 — same knowledge, different provisional Topics
+
+Expected:
+one canonical MicroNode;
+one final Topic;
+all source evidence preserved.
+
+CASE 3 — same knowledge, different Bloom verbs
+
+Remember / explain / apply same underlying knowledge.
+
+Expected:
+one canonical MicroNode.
+
+CASE 4 — lexical similarity, distinct concepts
+
+Expected:
+two canonical MicroNodes.
+
+CASE 5 — lexical difference, same knowledge
+
+Expected:
+one canonical MicroNode if semantic review establishes same learner state.
+
+CASE 6 — prerequisite vs dependent concept
+
+Expected:
+two nodes even if strongly related.
+
+CASE 7 — one candidate elaborates another without separate assessability
+
+Expected:
+one canonical node;
+elaboration becomes support/evidence.
+
+CASE 8 — additional independent condition/rule
+
+Expected:
+two nodes if independently assessable.
+
+CASE 9 — A=B, B=C, A=C
+
+Expected:
+one canonical group {A,B,C}.
+
+CASE 10 — A=B, B=C, A distinct C
+
+Expected:
+semantic conflict;
+REVIEW_REQUIRED;
+no unsafe automatic three-way merge.
+
+CASE 11 — cross-topic consolidation with exercises
+
+Expected:
+all valid exercises survive and attach to canonical node;
+no duplicates.
+
+CASE 12 — supporting material from multiple candidate appearances
+
+Expected:
+all support survives;
+no canonical ownership duplication.
+
+CASE 13 — provisional Topic becomes empty after consolidation
+
+Expected:
+empty accidental Topic removed safely;
+sequences normalized.
+
+CASE 14 — canonical unit has evidence from two Topics
+
+Expected:
+one deterministic final Topic assignment;
+cross-topic provenance retained.
+
+CASE 15 — ambiguous final Topic
+
+Expected:
+deterministic primary Topic;
+review/provenance preserved;
+no duplicate MicroNode.
+
+CASE 16 — unresolved semantic identity
+
+Expected:
+teacher review state;
+no fabricated trusted duplicate nodes.
+
+CASE 17 — hard invalid source reference
+
+Expected:
+still fails persistence.
+
+CASE 18 — failed remap
+
+Expected:
+previous valid map and durable source map survive unchanged.
+
+CASE 19 — deterministic rerun of consolidation helper
+
+Same input twice.
+
+Expected:
+identical canonical grouping, ordering, and diagnostics.
+
+CASE 20 — no source loss
+
+Every verified source block remains recoverable after consolidation.
+
+CASE 21 — no exercise loss
+
+Every real source exercise survives exactly once canonically.
+
+CASE 22 — MicroNode atomicity
+
+No canonical merge may produce an objective containing two independently
+assessable targets.
+
+CASE 23 — zero unnecessary duplicates
+
+No two final MicroNodes represent the same confirmed learner knowledge state.
+
+════════════════════════════════════════════════════════════
+21. REALISTIC SHADOW VALIDATION — REQUIRED
+════════════════════════════════════════════════════════════
+
+The Phase 3A shadow fixture was too simple to validate lesson-wide consolidation.
+
+Phase 3B requires a stronger NON-PERSISTING shadow validation.
+
+Use realistic fixture data representing at minimum:
+
+- 2+ provisional Topics
+- 5+ candidate appearances
+- at least one cross-topic same-knowledge case
+- at least one similar-but-distinct case
+- supporting material
+- exercises
+- one ambiguity/review case if practical
+
+Compare:
+
+BEFORE CONSOLIDATION
+
+- provisional Topic count
+- candidate count
+- promotion-eligible count
+- apparent duplicate/suspicion count
+- exercise count
+
+AFTER CONSOLIDATION
+
+- final Topic count
+- canonical MicroNode count
+- consolidation count
+- cross-topic consolidation count
+- review-required count
+- exercise count
+- source coverage
+- source loss count
+- exercise loss count
+
+Required:
+
+source loss = 0
+exercise loss = 0
+
+Do NOT persist this fixture to production DB.
+
+Do NOT call lesson 705 automatically.
+
+════════════════════════════════════════════════════════════
+22. COST / COMPLEXITY BUDGET
+════════════════════════════════════════════════════════════
+
+No AI call per pair.
+
+No AI call per candidate.
+
+No AI call merely to rewrite titles.
+
+Reuse the existing bounded semantic-review mechanism where possible.
+
+If one additional lesson-wide batch call is absolutely required, first prove why
+the existing review call cannot safely perform the task.
+
+Prefer adapting the existing semantic-review contract rather than adding another
+provider stage.
+
+Report the final number of provider calls before vs after Phase 3B.
+
+════════════════════════════════════════════════════════════
+23. PERFORMANCE
+════════════════════════════════════════════════════════════
+
+Typical lesson candidate counts should be small enough for deterministic local
+comparison.
+
+However:
+
+avoid obviously unbounded expensive behavior.
+
+If comparing all candidate pairs locally, explain expected candidate scale.
+
+Use deterministic blocking/suspicion filtering where already available.
+
+Do not add embeddings/vector DB/search infrastructure in Phase 3B.
+
+That is unnecessary unless real evidence proves otherwise.
+
+════════════════════════════════════════════════════════════
+24. DO NOT TOUCH
+════════════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- Pass 1 extraction prompt unless absolutely required for compilation — otherwise
+  prohibited
+- PDF extraction
+- source verification
+- durable source-material schema unless a proven Phase 3B correctness bug requires
+  it
+- manual mapping behavior
+- Teacher CRUD/ordering unrelated to automatic consolidation
+- Cognitive Path
+- cognitive-level generation
+- teaching-content generation
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- student flows
+- final approval redesign
+- unrelated UI
+- unrelated DB schema
+
+DO NOT:
+
+- hard-code lesson 705
+- hard-code Algebra rules
+- create subject-specific duplicate logic
+- weaken coverage
+- weaken source validation
+- silently delete review-required material
+- create duplicate MicroNodes just to avoid ambiguity
+- invent textbook content
+
+════════════════════════════════════════════════════════════
+25. ACCEPTANCE GATES
+════════════════════════════════════════════════════════════
+
+Phase 3B passes only if ALL are true:
+
+M1 — SOURCE PRESERVATION
+Every verified source block survives durably.
+
+M2 — CANONICAL IDENTITY
+Final MicroNode identity is lesson-wide, not Topic-scoped.
+
+M3 — SEMANTIC UNIQUENESS
+Confirmed same learner knowledge state produces one canonical MicroNode.
+
+M4 — DISTINCTNESS
+Independently assessable knowledge remains separate.
+
+M5 — BLOOM SEPARATION
+Cognitive depth does not create duplicate knowledge nodes.
+
+M6 — ATOMICITY
+Every canonical MicroNode remains one assessable target.
+
+M7 — TOPIC INDEPENDENCE
+Topic does not define knowledge identity.
+
+M8 — TOPIC STABILITY
+Every canonical node receives exactly one deterministic primary Topic.
+
+M9 — EXERCISE PRESERVATION
+No real exercise disappears or duplicates canonically.
+
+M10 — SUPPORT PRESERVATION
+Supporting source relationships survive without becoming duplicate ownership.
+
+M11 — REVIEW SAFETY
+Semantic ambiguity becomes explicit review, not fabricated knowledge.
+
+M12 — HARD INTEGRITY
+Source/coverage/parser/transaction corruption still fails closed.
+
+M13 — TRANSACTION SAFETY
+Failed remap preserves previous valid state.
+
+M14 — DETERMINISM
+Same inputs produce same canonical map.
+
+M15 — COST BOUND
+No per-candidate/per-pair provider architecture.
+
+M16 — OBSERVABILITY
+Canonicalization decisions are diagnosable after execution.
+
+════════════════════════════════════════════════════════════
+26. IMPLEMENTATION PROCESS
+════════════════════════════════════════════════════════════
+
+STEP 1
+Perform read-only forensic audit.
+
+STEP 2
+State exact current semantic boundary and minimal design.
+
+STEP 3
+State exact files to change.
+
+STEP 4
+Implement lesson-wide consolidation as a coherent domain stage.
+
+STEP 5
+Integrate it into the REAL production automatic mapping path.
+
+STEP 6
+Add focused regression tests.
+
+STEP 7
+Run focused mapping tests.
+
+STEP 8
+Run API typecheck.
+
+STEP 9
+Run realistic NON-PERSISTING shadow validation.
+
+STEP 10
+Review final diff for scope creep.
+
+STEP 11
+Restart only affected workflow if required.
+
+DO NOT rerun lesson 705.
+DO NOT modify production lesson data.
+
+════════════════════════════════════════════════════════════
+27. FINAL REPORT
+════════════════════════════════════════════════════════════
+
+Report exactly:
+
+1. Architecture before Phase 3B
+2. Architecture after Phase 3B
+3. Files changed
+4. Lesson-wide identity algorithm
+5. Candidate suspicion/retrieval strategy
+6. Semantic decision authority
+7. Canonical grouping algorithm
+8. Conflict/transitivity handling
+9. Canonical MicroNode construction
+10. Source-evidence preservation
+11. Supporting-material preservation
+12. Exercise preservation/reattachment
+13. Final Topic assignment algorithm
+14. Topic/order normalization
+15. Review-required behavior
+16. Hard-failure behavior
+17. Diagnostics added
+18. Provider-call count before vs after
+19. Regression tests + exact results
+20. API typecheck result
+21. Realistic shadow-validation metrics
+22. Source loss count
+23. Exercise loss count
+24. Remaining evidence-based risks
+25. M1–M16 acceptance-gate status
+
+Then STOP.
+
+DO NOT implement Cognitive Path.
+DO NOT implement Teaching Content.
+DO NOT rerun lesson 705.

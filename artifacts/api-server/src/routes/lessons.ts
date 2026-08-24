@@ -5406,6 +5406,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         knowledgeCandidates:  pass2.candidatePromotion.candidateCount,
         promotedMicroNodes:   pass2.candidatePromotion.promotedMicroNodeCount,
         candidateReviewRequired: pass2.candidatePromotion.reviewRequiredCandidateCount,
+        canonicalKnowledgeUnits: pass2.lessonWideConsolidation.canonicalKnowledgeUnitCount,
+        crossTopicConsolidations: pass2.lessonWideConsolidation.crossTopicConsolidationCount,
       },
       content: {
         aiGeneratedFields:        totalNodes * 2,   // title + learningObjective per MicroNode
@@ -5456,6 +5458,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         pedagogicalReview: {
           required: persistedAtomicityReview.length > 0
             || persistedDuplicateReview.length > 0
+            || pass2.lessonWideConsolidation.reviewRequiredSemanticGroupCount > 0
             || !!pass2.atomicityReviewUnavailableReason,
           atomicityFindings: persistedAtomicityReview,
           reviewUnavailable: pass2.atomicityReviewUnavailableReason
@@ -5465,6 +5468,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
               }
             : null,
           duplicatePairs: persistedDuplicateReview,
+          lessonWideSemanticGroups: pass2.lessonWideConsolidation.groups
+            .filter((group) => group.state === "REVIEW_REQUIRED"),
         },
         granularityConsolidation: pass2.granularityConsolidation,
         duplicateResolution: {
@@ -5474,8 +5479,10 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           unresolvedPairCount: pass2.duplicateResolution.unresolvedPairIds.length,
           rejectedDecisionCount: pass2.duplicateResolution.rejectedDecisionCount,
           rejectedPairCount: pass2.duplicateResolution.rejectedPairIds?.length ?? 0,
+          crossTopicMergePairCount: pass2.duplicateResolution.crossTopicMergePairs?.length ?? 0,
         },
         candidatePromotion: pass2.candidatePromotion,
+        lessonWideConsolidation: pass2.lessonWideConsolidation,
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignmentReconciliation: pass2.sourceAlignmentReconciliation,
         atomicityRepair: {

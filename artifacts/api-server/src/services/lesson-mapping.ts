@@ -2400,6 +2400,7 @@ export function applyKnowledgeCandidatePromotion(input: {
   unresolvedAtomicityFindings: ReadonlyArray<GranularityFinding>;
   duplicateResolution: DuplicateResolutionAudit;
   consolidatedCandidateCount?: number;
+  forcedReviewCandidateIds?: ReadonlySet<string>;
 }): KnowledgeCandidatePromotionDiagnostics {
   const unresolvedAtomicityIds = new Set(
     input.unresolvedAtomicityFindings
@@ -2429,7 +2430,9 @@ export function applyKnowledgeCandidatePromotion(input: {
           ? "PASS"
           : "UNCERTAIN";
       const hasSemanticUncertainty =
-        unresolvedAtomicityIds.has(candidateId) || unresolvedDuplicateIds.has(candidateId);
+        unresolvedAtomicityIds.has(candidateId)
+        || unresolvedDuplicateIds.has(candidateId)
+        || input.forcedReviewCandidateIds?.has(candidateId);
       const candidate: KnowledgeCandidate = {
         candidateId,
         provisionalTopic: { sequence: topic.sequence, title: topic.title, topicType: topic.topicType },
@@ -2444,7 +2447,7 @@ export function applyKnowledgeCandidatePromotion(input: {
             ? "ACTIVITY_OR_HOMEWORK"
             : "EXERCISE",
         })),
-        semanticStatus: unresolvedDuplicateIds.has(candidateId)
+        semanticStatus: unresolvedDuplicateIds.has(candidateId) || input.forcedReviewCandidateIds?.has(candidateId)
           ? "DUPLICATE_CANDIDATE"
           : hasSemanticUncertainty ? "UNCERTAIN" : "DISTINCT",
         sourceSupport: "UNASSESSED",
@@ -2453,10 +2456,12 @@ export function applyKnowledgeCandidatePromotion(input: {
           meaningfulKnowledgeIdentity: sourceState,
           independentlyTeachable: sourceState,
           independentlyAssessable: sourceState,
-          atomicity: unresolvedAtomicityIds.has(candidateId)
+          atomicity: unresolvedAtomicityIds.has(candidateId) || input.forcedReviewCandidateIds?.has(candidateId)
             ? "UNCERTAIN"
             : detectCompoundLO(node.learningObjective) !== null ? "UNCERTAIN" : "ATOMIC",
-          nonDuplication: unresolvedDuplicateIds.has(candidateId) ? "UNCERTAIN" : "UNIQUE",
+          nonDuplication: unresolvedDuplicateIds.has(candidateId) || input.forcedReviewCandidateIds?.has(candidateId)
+            ? "UNCERTAIN"
+            : "UNIQUE",
           sourceOwnership: sourceState === "PASS" ? "VALID" : "UNCERTAIN",
           supportingOnly: false,
         },
@@ -2524,6 +2529,24 @@ export function applyKnowledgeCandidatePromotion(input: {
     consolidatedCandidateCount: input.consolidatedCandidateCount ?? 0,
     decisions,
   };
+}
+
+/**
+ * Produces Phase 3A promotion decisions without mutating the in-memory Pass 2
+ * map. Phase 3B uses this only to determine which proposals may safely enter
+ * lesson-wide semantic consolidation.
+ */
+export function previewKnowledgeCandidatePromotion(input: {
+  topics: ReadonlyArray<Pass2TopicResult>;
+  blocks: ReadonlyArray<Pass1Block>;
+  sourceAlignment: Pass2SourceAlignment;
+  unresolvedAtomicityFindings: ReadonlyArray<GranularityFinding>;
+  duplicateResolution: DuplicateResolutionAudit;
+}): KnowledgeCandidatePromotionDiagnostics {
+  return applyKnowledgeCandidatePromotion({
+    ...input,
+    topics: structuredClone(input.topics) as Pass2TopicResult[],
+  });
 }
 
 export const PASS2_MICRONODE_REJECTION_REASONS = [
@@ -3415,6 +3438,8 @@ export interface Pass2Result {
   topics: Pass2TopicResult[];
   /** Phase 3A transient candidate decisions, retained as source-safe diagnostics. */
   candidatePromotion: KnowledgeCandidatePromotionDiagnostics;
+  /** Phase 3B lesson-wide canonical identity and final Topic assignment audit. */
+  lessonWideConsolidation: LessonWideConsolidationDiagnostics;
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
   /** Readable instructional blocks retained for teacher review rather than
@@ -4477,6 +4502,10 @@ export interface DuplicateResolutionAudit {
   candidatePairCount: number;
   resolvedDistinctCount: number;
   mergedCount: number;
+  /** Explicit HIGH semantic merge decisions that require Phase 3B lesson-wide grouping. */
+  crossTopicMergePairs?: Array<{ candidateAId: string; candidateBId: string }>;
+  /** Explicit HIGH semantic distinctions, used to detect transitivity conflicts. */
+  distinctPairIds?: Array<{ candidateAId: string; candidateBId: string }>;
   unresolvedPairIds: Array<{ candidateAId: string; candidateBId: string }>;
   /**
    * Candidate pairs whose provider decision was malformed, contradictory, or
@@ -4592,6 +4621,8 @@ export function resolveDuplicateSuspicions(
     candidatePairCount: suspicions.length,
     resolvedDistinctCount: 0,
     mergedCount: 0,
+    crossTopicMergePairs: [],
+    distinctPairIds: [],
     unresolvedPairIds: [],
     rejectedPairIds,
     rejectedDecisionCount,
@@ -4634,6 +4665,10 @@ export function resolveDuplicateSuspicions(
     const resolution = byPair.get(pairKey);
     if (resolution?.decision === "DISTINCT" && resolution.confidence === "HIGH") {
       audit.resolvedDistinctCount++;
+      audit.distinctPairIds!.push({
+        candidateAId: suspicion.candidateAId,
+        candidateBId: suspicion.candidateBId,
+      });
       continue;
     }
     if (
@@ -4660,6 +4695,17 @@ export function resolveDuplicateSuspicions(
       });
       continue;
     }
+    if (
+      resolution?.decision === "MERGE"
+      && resolution.confidence === "HIGH"
+      && left.topic !== right.topic
+    ) {
+      audit.crossTopicMergePairs!.push({
+        candidateAId: suspicion.candidateAId,
+        candidateBId: suspicion.candidateBId,
+      });
+      continue;
+    }
     if (resolution && resolution.decision !== "REVIEW_REQUIRED") {
       audit.rejectedDecisionCount++;
       addRejectedPair(suspicion.candidateAId, suspicion.candidateBId);
@@ -4672,6 +4718,257 @@ export function resolveDuplicateSuspicions(
     addUnresolved(entry.candidateAId, entry.candidateBId);
   }
   return audit;
+}
+
+export type LessonWideSemanticGroupState = "SAME_KNOWLEDGE" | "REVIEW_REQUIRED";
+
+export interface LessonWideSemanticGroup {
+  groupId: string;
+  state: LessonWideSemanticGroupState;
+  candidateIds: string[];
+  canonicalCandidateId?: string;
+  finalTopicSequence?: number;
+  finalTopicAssignmentReason?: "FIRST_SUBSTANTIVE_INTRODUCTION" | "STRONGEST_CORE_EVIDENCE" | "STABLE_TOPIC_ORDER";
+  reasonCodes: string[];
+}
+
+export interface LessonWideConsolidationDiagnostics {
+  provisionalCandidateCount: number;
+  promotionEligibleCount: number;
+  canonicalKnowledgeUnitCount: number;
+  sameKnowledgeConsolidationCount: number;
+  distinctDecisionCount: number;
+  reviewRequiredSemanticGroupCount: number;
+  crossTopicConsolidationCount: number;
+  emptiedProvisionalTopicCount: number;
+  finalTopicCount: number;
+  groups: LessonWideSemanticGroup[];
+  forcedReviewCandidateIds: string[];
+}
+
+type LessonWideCandidateRef = {
+  candidateId: string;
+  topic: Pass2TopicResult;
+  node: Pass2MicroNode;
+  topicSequence: number;
+  microNodeIndex: number;
+};
+
+function sortedUniqueIndices(indices: Iterable<number>): number[] {
+  return [...new Set(indices)].sort((left, right) => left - right);
+}
+
+function firstCoreSourceIndex(node: Pass2MicroNode): number {
+  return node.sourceBlockIndices.length > 0
+    ? Math.min(...node.sourceBlockIndices)
+    : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Resolves lesson-wide knowledge identity after bounded semantic review and
+ * before Phase 3A materializes promoted candidates. Topic is deliberately used
+ * only as final organization, never as the identity boundary.
+ */
+export function consolidateLessonWideKnowledge(input: {
+  topics: Pass2TopicResult[];
+  promotionEligibleCandidateIds: ReadonlySet<string>;
+  duplicateResolution: DuplicateResolutionAudit;
+}): LessonWideConsolidationDiagnostics {
+  const candidateRefs = input.topics.flatMap((topic) =>
+    topic.microNodes.map((node, microNodeIndex) => ({
+      candidateId: node.candidateId ?? `t${topic.sequence}:n${microNodeIndex}`,
+      topic,
+      node,
+      topicSequence: topic.sequence,
+      microNodeIndex,
+    })),
+  ).sort((left, right) =>
+    left.topicSequence - right.topicSequence
+    || left.microNodeIndex - right.microNodeIndex
+    || left.candidateId.localeCompare(right.candidateId),
+  );
+  const candidateById = new Map(candidateRefs.map((candidate) => [candidate.candidateId, candidate]));
+  const eligible = candidateRefs.filter((candidate) =>
+    input.promotionEligibleCandidateIds.has(candidate.candidateId),
+  );
+  const eligibleIds = new Set(eligible.map((candidate) => candidate.candidateId));
+  const parent = new Map(eligible.map((candidate) => [candidate.candidateId, candidate.candidateId]));
+  const find = (candidateId: string): string => {
+    const current = parent.get(candidateId);
+    if (!current || current === candidateId) return candidateId;
+    const root = find(current);
+    parent.set(candidateId, root);
+    return root;
+  };
+  const join = (left: string, right: string) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot === rightRoot) return;
+    parent.set(
+      leftRoot.localeCompare(rightRoot) <= 0 ? rightRoot : leftRoot,
+      leftRoot.localeCompare(rightRoot) <= 0 ? leftRoot : rightRoot,
+    );
+  };
+  const mergePairs = [...(input.duplicateResolution.crossTopicMergePairs ?? [])]
+    .filter((pair) => eligibleIds.has(pair.candidateAId) && eligibleIds.has(pair.candidateBId))
+    .sort((left, right) =>
+      candidatePairKey(left.candidateAId, left.candidateBId)
+        .localeCompare(candidatePairKey(right.candidateAId, right.candidateBId)),
+    );
+  for (const pair of mergePairs) join(pair.candidateAId, pair.candidateBId);
+
+  const membersByRoot = new Map<string, LessonWideCandidateRef[]>();
+  for (const candidate of eligible) {
+    const root = find(candidate.candidateId);
+    const members = membersByRoot.get(root) ?? [];
+    members.push(candidate);
+    membersByRoot.set(root, members);
+  }
+  const distinctKeys = new Set((input.duplicateResolution.distinctPairIds ?? []).map((pair) =>
+    candidatePairKey(pair.candidateAId, pair.candidateBId),
+  ));
+  const unresolvedPairs = input.duplicateResolution.unresolvedPairIds;
+  const forcedReviewCandidateIds = new Set<string>();
+  const groups: LessonWideSemanticGroup[] = [];
+  let sameKnowledgeConsolidationCount = 0;
+  let crossTopicConsolidationCount = 0;
+
+  for (const members of [...membersByRoot.values()].sort((left, right) =>
+    left[0].candidateId.localeCompare(right[0].candidateId),
+  )) {
+    if (members.length < 2) continue;
+    const memberIds = members.map((member) => member.candidateId).sort();
+    const memberIdSet = new Set(memberIds);
+    const hasDistinctConflict = [...distinctKeys].some((key) => {
+      const [left, right] = key.split("|");
+      return memberIdSet.has(left) && memberIdSet.has(right);
+    });
+    const hasUnresolvedConflict = unresolvedPairs.some((pair) =>
+      memberIdSet.has(pair.candidateAId) || memberIdSet.has(pair.candidateBId),
+    );
+    const groupId = `lwg:${memberIds.join("+")}`;
+    if (hasDistinctConflict || hasUnresolvedConflict) {
+      memberIds.forEach((candidateId) => forcedReviewCandidateIds.add(candidateId));
+      groups.push({
+        groupId,
+        state: "REVIEW_REQUIRED",
+        candidateIds: memberIds,
+        reasonCodes: [
+          ...(hasDistinctConflict ? ["TRANSITIVITY_CONFLICT"] : []),
+          ...(hasUnresolvedConflict ? ["SEMANTIC_IDENTITY_UNRESOLVED"] : []),
+        ],
+      });
+      continue;
+    }
+
+    const orderedMembers = [...members].sort((left, right) =>
+      firstCoreSourceIndex(left.node) - firstCoreSourceIndex(right.node)
+      || right.node.sourceBlockIndices.length - left.node.sourceBlockIndices.length
+      || left.topicSequence - right.topicSequence
+      || left.microNodeIndex - right.microNodeIndex
+      || left.candidateId.localeCompare(right.candidateId),
+    );
+    const canonical = orderedMembers[0];
+    const sameEarliestSource = orderedMembers.filter((member) =>
+      firstCoreSourceIndex(member.node) === firstCoreSourceIndex(canonical.node),
+    );
+    const topicReason: LessonWideSemanticGroup["finalTopicAssignmentReason"] =
+      sameEarliestSource.length === 1
+        ? "FIRST_SUBSTANTIVE_INTRODUCTION"
+        : sameEarliestSource.some((member) =>
+            member.node.sourceBlockIndices.length !== canonical.node.sourceBlockIndices.length,
+          )
+          ? "STRONGEST_CORE_EVIDENCE"
+          : "STABLE_TOPIC_ORDER";
+    const coreSources = sortedUniqueIndices(
+      orderedMembers.flatMap((member) => member.node.sourceBlockIndices),
+    );
+    const coreSourceSet = new Set(coreSources);
+    const supportingSources = sortedUniqueIndices(
+      orderedMembers
+        .flatMap((member) => member.node.supportingMaterialIndices)
+        .filter((index) => !coreSourceSet.has(index)),
+    );
+    const exercises = orderedMembers
+      .flatMap((member) => member.node.exercises)
+      .sort((left, right) => left.blockIndex - right.blockIndex)
+      .filter((exercise, index, all) =>
+        all.findIndex((candidate) => candidate.blockIndex === exercise.blockIndex) === index,
+      );
+    canonical.node.sourceBlockIndices = coreSources;
+    canonical.node.supportingMaterialIndices = supportingSources;
+    canonical.node.exercises = exercises;
+
+    const removedNodes = new Set(orderedMembers.slice(1).map((member) => member.node));
+    for (const topic of input.topics) {
+      topic.microNodes = topic.microNodes.filter((node) => !removedNodes.has(node));
+    }
+    if (!canonical.topic.microNodes.includes(canonical.node)) {
+      canonical.topic.microNodes.push(canonical.node);
+    }
+    sameKnowledgeConsolidationCount += orderedMembers.length - 1;
+    if (new Set(orderedMembers.map((member) => member.topicSequence)).size > 1) {
+      crossTopicConsolidationCount++;
+    }
+    groups.push({
+      groupId,
+      state: "SAME_KNOWLEDGE",
+      candidateIds: memberIds,
+      canonicalCandidateId: canonical.candidateId,
+      finalTopicSequence: canonical.topic.sequence,
+      finalTopicAssignmentReason: topicReason,
+      reasonCodes: ["SEMANTIC_SAME_KNOWLEDGE"],
+    });
+  }
+
+  const beforeTopicCount = input.topics.length;
+  const retainedTopics = input.topics.filter((topic) =>
+    topic.microNodes.length > 0
+    || topic.additionalExercises.length > 0
+    || topic.unmappedBlockIndices.length > 0,
+  );
+  input.topics.splice(0, input.topics.length, ...retainedTopics);
+  input.topics.sort((left, right) => left.sequence - right.sequence);
+  for (const [topicIndex, topic] of input.topics.entries()) {
+    topic.sequence = topicIndex + 1;
+    topic.microNodes.sort((left, right) =>
+      firstCoreSourceIndex(left) - firstCoreSourceIndex(right)
+      || (left.candidateId ?? "").localeCompare(right.candidateId ?? ""),
+    );
+  }
+  const finalTopicByCandidateId = new Map(
+    input.topics.flatMap((topic) =>
+      topic.microNodes.map((node) => [node.candidateId, topic.sequence] as const),
+    ),
+  );
+  for (const group of groups) {
+    if (group.canonicalCandidateId) {
+      group.finalTopicSequence = finalTopicByCandidateId.get(group.canonicalCandidateId);
+    }
+  }
+
+  const allReviewCandidateIds = new Set<string>(forcedReviewCandidateIds);
+  for (const pair of unresolvedPairs) {
+    if (eligibleIds.has(pair.candidateAId)) allReviewCandidateIds.add(pair.candidateAId);
+    if (eligibleIds.has(pair.candidateBId)) allReviewCandidateIds.add(pair.candidateBId);
+  }
+  return {
+    provisionalCandidateCount: candidateRefs.length,
+    promotionEligibleCount: eligible.length,
+    canonicalKnowledgeUnitCount: Math.max(
+      0,
+      eligible.length - sameKnowledgeConsolidationCount - allReviewCandidateIds.size,
+    ),
+    sameKnowledgeConsolidationCount,
+    distinctDecisionCount: input.duplicateResolution.resolvedDistinctCount,
+    reviewRequiredSemanticGroupCount: groups.filter((group) => group.state === "REVIEW_REQUIRED").length
+      + unresolvedPairs.length,
+    crossTopicConsolidationCount,
+    emptiedProvisionalTopicCount: beforeTopicCount - input.topics.length,
+    finalTopicCount: input.topics.length,
+    groups,
+    forcedReviewCandidateIds: [...forcedReviewCandidateIds].sort(),
+  };
 }
 
 export type SourceReallocationAction =
@@ -5900,10 +6197,36 @@ export async function runPass2Pipeline(
     semanticReview.atomicityRepairs,
   );
   normalizeActivityPlacements(topics, blocks);
-  const sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
+  let sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
   normalizeActivityPlacements(topics, blocks);
-  const prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
-  const prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
+  let prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
+  let prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
+    topics,
+    granularityFindings,
+    atomicityRepair,
+    prePromotionSourceAlignment,
+  );
+  const promotionPreview = previewKnowledgeCandidatePromotion({
+    topics,
+    blocks,
+    sourceAlignment: prePromotionSourceAlignment,
+    unresolvedAtomicityFindings: prePromotionUnresolvedAtomicity,
+    duplicateResolution,
+  });
+  const lessonWideConsolidation = consolidateLessonWideKnowledge({
+    topics,
+    promotionEligibleCandidateIds: new Set(
+      promotionPreview.decisions
+        .filter((decision) => decision.state === "PROMOTE")
+        .map((decision) => decision.candidateId),
+    ),
+    duplicateResolution,
+  });
+  normalizeActivityPlacements(topics, blocks);
+  sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
+  normalizeActivityPlacements(topics, blocks);
+  prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
+  prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
     topics,
     granularityFindings,
     atomicityRepair,
@@ -5915,7 +6238,8 @@ export async function runPass2Pipeline(
     sourceAlignment: prePromotionSourceAlignment,
     unresolvedAtomicityFindings: prePromotionUnresolvedAtomicity,
     duplicateResolution,
-    consolidatedCandidateCount: granularityConsolidation.mergedMicroNodeCount,
+    consolidatedCandidateCount: lessonWideConsolidation.sameKnowledgeConsolidationCount,
+    forcedReviewCandidateIds: new Set(lessonWideConsolidation.forcedReviewCandidateIds),
   });
   normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
@@ -5986,6 +6310,14 @@ export async function runPass2Pipeline(
           rejectedNonKnowledgeCount: candidatePromotion.rejectedNonKnowledgeCount,
           unresolvedCandidateCount: candidatePromotion.unresolvedCandidateCount,
         },
+        lessonWideConsolidation: {
+          promotionEligibleCount: lessonWideConsolidation.promotionEligibleCount,
+          canonicalKnowledgeUnitCount: lessonWideConsolidation.canonicalKnowledgeUnitCount,
+          sameKnowledgeConsolidationCount: lessonWideConsolidation.sameKnowledgeConsolidationCount,
+          crossTopicConsolidationCount: lessonWideConsolidation.crossTopicConsolidationCount,
+          reviewRequiredSemanticGroupCount: lessonWideConsolidation.reviewRequiredSemanticGroupCount,
+          finalTopicCount: lessonWideConsolidation.finalTopicCount,
+        },
          atomicityVerification,
         unresolvedAtomicityFindingCount: unresolvedAtomicityFindings.length,
       missingIndices:  coverageValidation.missingIndices,
@@ -6041,6 +6373,7 @@ export async function runPass2Pipeline(
   return {
     topics,
     candidatePromotion,
+    lessonWideConsolidation,
     unmappedBlockIndices: allUnmapped,
     sourcePlacementReview,
     coverageValidation,
