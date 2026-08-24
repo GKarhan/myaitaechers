@@ -1,0 +1,110 @@
+FOCUSED FIX ONLY — remove same-MicroNode source/supporting duplicate ownership.
+
+We now have exact persisted evidence from failed mapping job 171.
+
+All duplicates have the same pattern:
+
+7:
+- src:Թվային արտահայտության նշանի որոշում
+- sup:Թվային արտահայտության նշանի որոշում
+
+9:
+- src:Թվային արտահայտության նշանի որոշում
+- sup:Թվային արտահայտության նշանի որոշում
+
+10:
+- src:Թվային արտահայտության նշանի որոշում
+- sup:Թվային արտահայտության նշանի որոշում
+
+12:
+- src:Թվային արտահայտության նշանի որոշում
+- sup:Թվային արտահայտության նշանի որոշում
+
+14:
+- src:Աստիճան բարձրացրած թվի նշանի որոշում
+- sup:Աստիճան բարձրացրած թվի նշանի որոշում
+
+16:
+- src:Աստիճան բարձրացրած թվի նշանի որոշում
+- sup:Աստիճան բարձրացրած թվի նշանի որոշում
+
+ROOT CAUSE
+
+The same NON-ACTIVITY block is present in both:
+
+MicroNode.sourceBlockIndices
+and
+MicroNode.supportingMaterialIndices
+
+for the SAME MicroNode.
+
+TASK
+
+Make the smallest deterministic normalization fix so that:
+
+If an index exists in a MicroNode.sourceBlockIndices,
+that same index is removed from that same MicroNode.supportingMaterialIndices.
+
+Ownership priority:
+
+sourceBlockIndices > supportingMaterialIndices
+
+IMPORTANT:
+- only resolve same-MicroNode source/supporting overlap
+- do not globally delete legitimate supporting materials
+- do not change activity handling
+- do not change prompts
+- do not weaken validateSourceCoverage()
+- do not change source extraction
+- no schema or migrations
+- no unrelated refactor
+- do not touch Quiz, Knowledge Tree, AI Teacher runtime, or C3–C7
+
+Place this cleanup in the existing deterministic normalization flow before final validateSourceCoverage().
+
+FOCUSED TESTS
+
+Add/update only focused tests proving:
+
+1.
+same MicroNode:
+sourceBlockIndices=[7]
+supportingMaterialIndices=[7]
+→ final:
+source=[7]
+supporting=[]
+
+2.
+same MicroNode:
+source=[7]
+supporting=[7,8]
+→ final:
+source=[7]
+supporting=[8]
+
+3.
+supporting-only block:
+source=[]
+supporting=[8]
+→ remains supporting=[8]
+
+4.
+non-overlapping source/supporting:
+source=[7]
+supporting=[8]
+→ unchanged
+
+After cleanup, validateSourceCoverage() must return:
+duplicateIndices.length === 0
+
+Run only focused test + API typecheck.
+
+Report:
+- exact file(s) changed
+- exact cleanup behavior
+- focused test result
+- typecheck result
+
+Do NOT rerun mapping automatically.
+
+STOP.

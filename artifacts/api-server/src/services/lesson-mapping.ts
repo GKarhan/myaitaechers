@@ -255,6 +255,9 @@ export function normalizeActivityPlacements(
         .filter((idx) => !hasCanonicalActivityDestination(idx));
       mn.supportingMaterialIndices = mn.supportingMaterialIndices
         .filter((idx) => !hasCanonicalActivityDestination(idx));
+      const sourceIndices = new Set(mn.sourceBlockIndices);
+      mn.supportingMaterialIndices = mn.supportingMaterialIndices
+        .filter((idx) => !sourceIndices.has(idx));
     }
   }
 

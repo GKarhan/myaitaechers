@@ -475,6 +475,70 @@ it("Test 12: final state — coverage validator sees zero duplicate activity ind
   assert.deepEqual(addArr, [1, 2, 3], "blocks 1, 2, 3 in additionalExercises (each exactly once)");
 });
 
+// ── Tests 13–16 — same-MicroNode source/supporting ownership ──────────────────
+
+it("Test 13: same-MicroNode source wins over supporting material for the same index", () => {
+  const blocks = Array.from({ length: 9 }, () => makeBlock("NOTE"));
+  const topics = [makeTopic("T",
+    [makeMN("MN", [7], [], [7])],
+    [0, 1, 2, 3, 4, 5, 6, 8],
+  )];
+
+  normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [7]);
+  assert.deepEqual(topics[0].microNodes[0].supportingMaterialIndices, []);
+  const coverage = validateSourceCoverage(9, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, []);
+});
+
+it("Test 14: same-MicroNode source removes only the overlapping supporting index", () => {
+  const blocks = Array.from({ length: 9 }, () => makeBlock("NOTE"));
+  const topics = [makeTopic("T",
+    [makeMN("MN", [7], [], [7, 8])],
+    [0, 1, 2, 3, 4, 5, 6],
+  )];
+
+  normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [7]);
+  assert.deepEqual(topics[0].microNodes[0].supportingMaterialIndices, [8]);
+  const coverage = validateSourceCoverage(9, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, []);
+});
+
+it("Test 15: supporting-only block remains supporting material", () => {
+  const blocks = Array.from({ length: 9 }, () => makeBlock("NOTE"));
+  const topics = [makeTopic("T",
+    [makeMN("MN", [7], [], [8])],
+    [0, 1, 2, 3, 4, 5, 6],
+  )];
+
+  normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [7]);
+  assert.deepEqual(topics[0].microNodes[0].supportingMaterialIndices, [8]);
+  const coverage = validateSourceCoverage(9, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, []);
+});
+
+it("Test 16: non-overlapping source and supporting material remain unchanged", () => {
+  const blocks = Array.from({ length: 9 }, () => makeBlock("NOTE"));
+  const topics = [makeTopic("T",
+    [makeMN("MN", [7], [], [8])],
+    [0, 1, 2, 3, 4, 5, 6],
+  )];
+  const beforeSource = [...topics[0].microNodes[0].sourceBlockIndices];
+  const beforeSupporting = [...topics[0].microNodes[0].supportingMaterialIndices];
+
+  normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, beforeSource);
+  assert.deepEqual(topics[0].microNodes[0].supportingMaterialIndices, beforeSupporting);
+  const coverage = validateSourceCoverage(9, topics as any);
+  assert.deepEqual(coverage.duplicateIndices, []);
+});
+
 // ── isValidBlockIndex helper tests ───────────────────────────────────────────
 
 it("isValidBlockIndex: null → false",        () => assert.equal(isValidBlockIndex(null,      [1, 2, 3]), false));
