@@ -1,0 +1,604 @@
+READ-ONLY FORENSIC AUDIT ONLY — LESSON 2.1 UNDER-MAPPING + BOUNDARY LEAKAGE
+
+DO NOT change code.
+DO NOT change prompts.
+DO NOT change data.
+DO NOT rerun mapping.
+DO NOT restart workflows.
+DO NOT propose or implement a fix until the diagnosis is complete.
+
+TARGET LESSON
+
+Book:
+Հանրահաշիվ 9 — Սմբատ Գոգյան
+
+Lesson:
+ՖՈՒՆԿՑԻԱՅԻ ՈՐՈՇՄԱՆ ԵՎ ԱՐԺԵՔՆԵՐԻ ՏԻՐՈՒՅԹՆԵՐԸ.
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿԻ ԸՆԹԵՐՑՈՒՄԸ
+
+§2.1
+physical pages 26–29
+
+Use the newest successful automatic mapping job for this lesson.
+
+==================================================
+KNOWN SOURCE STRUCTURE
+==================================================
+
+The textbook pages 26–29 clearly contain these instructional targets:
+
+A. Function domain concept
+   - what the function domain is
+   - notation D
+
+B. Function range/value-set concept
+   - what the range/value set is
+   - notation E
+
+C. Determine domain from a graph
+
+D. Determine range from a graph
+
+E. Determine the x-values where the function takes a given value
+
+F. Function zero concept
+   - definition f(a)=0
+   - graph intersects x-axis at zeros
+   - determine zeros from graph
+
+G. Construct a graph under combined constraints such as:
+   - domain D
+   - range E
+   - zero set
+   - specified function values / points
+
+The textbook exercises support these distinctions:
+- 75 → domain from graph
+- 76 → find x-values for a given function value
+- 77 → range from graph
+- 78 → integrated graph reading
+- 79 → zeros from graph
+- 80–86 → graph construction under zero/domain/range/value constraints
+
+IMPORTANT BOUNDARY FACT
+
+At the end of page 29, after exercise 87, the textbook begins a NEW instructional section:
+
+“ՏԵՂԱՇԱՐԺ ԿՈՈՐԴԻՆԱՏԱՅԻՆ ԱՌԱՆՑՔԻ ԵՐԿԱՅՆՔՈՎ”
+
+That content must NOT become a canonical MicroNode of lesson §2.1 merely because it appears on the same physical PDF page.
+
+The current persisted map incorrectly contains:
+
+“Տեղաշարժ կոորդինատային առանցքի երկայնքով”
+
+as a MicroNode.
+
+At the same time, most of the real §2.1 knowledge targets are missing.
+
+This audit must diagnose BOTH failures.
+
+==================================================
+PART 1 — IDENTIFY EXACT JOB AND FINAL MAP
+==================================================
+
+Read the database and report:
+
+- lesson ID
+- newest successful mapping job ID
+- created_at
+- verified Pass 1 block count
+- final Topic count
+- final MicroNode count
+- review-required source-material count
+- final persisted MicroNodes with:
+  - title
+  - learningObjective
+  - sourceBlockIndices
+  - related exercise IDs/block indices
+  - Topic
+  - status
+
+Do not rely only on UI text.
+
+==================================================
+PART 2 — SOURCE-BLOCK INVENTORY
+==================================================
+
+Reconstruct all verified source blocks for physical pages 26–29.
+
+For every block report:
+
+- block index
+- physical page
+- blockType
+- source text/excerpt sufficient to identify it
+- current durable disposition
+- current final ownership:
+  - core source
+  - supporting
+  - exercise
+  - additional exercise
+  - unresolved/review
+  - structural
+  - excluded
+- final MicroNode owner, if any
+
+Mark which blocks belong semantically to:
+
+LESSON 2.1
+
+versus
+
+NEXT SECTION / BOUNDARY LEAKAGE
+
+Do not classify by page number alone.
+
+Use textbook headings, sequence, source semantics, and exercise numbering.
+
+==================================================
+PART 3 — EXPECTED TARGETS VS DISCOVERED TARGETS
+==================================================
+
+Audit the current IndependentLearningTarget discovery layer.
+
+For the exact successful job, determine which targets were actually discovered.
+
+Classify discovered targets against:
+
+T1 — DOMAIN_CONCEPT
+T2 — RANGE_CONCEPT
+T3 — DOMAIN_FROM_GRAPH
+T4 — RANGE_FROM_GRAPH
+T5 — VALUE_PREIMAGE_FROM_GRAPH
+T6 — FUNCTION_ZERO_CONCEPT_AND_GRAPH
+T7 — GRAPH_CONSTRUCTION_FROM_CONSTRAINTS
+T8 — COORDINATE_AXIS_TRANSLATION  ← should belong OUTSIDE §2.1
+
+For each target report:
+
+- target ID
+- target title/objective
+- performance direction/type
+- source evidence block IDs
+- exercise-cluster evidence
+- outcome evidence
+- candidate evidence
+- coverage state
+- matched candidate(s)
+- matched canonical MicroNode
+- review state
+
+If a target was NOT discovered, say so explicitly.
+
+==================================================
+PART 4 — CANDIDATE LIFECYCLE
+==================================================
+
+For every generated KnowledgeCandidate reconstruct as much as retained evidence allows:
+
+- candidate ID
+- Topic
+- title
+- learningObjective
+- sourceBlockIndices
+- supporting indices
+- exercise references
+- semantic status
+- source-support status
+- promotion preview
+- final promotion result
+- review reason codes
+- canonicalization result
+- final persisted node or source-only disposition
+
+Then map:
+
+source blocks
+→ IndependentLearningTarget
+→ KnowledgeCandidate
+→ promotion
+→ consolidation
+→ canonical MicroNode
+
+We need the FIRST stage where each missing §2.1 target disappears.
+
+==================================================
+PART 5 — UNDER-MAPPING ANALYSIS
+==================================================
+
+For EACH expected target T1–T7 answer:
+
+1. Is it explicitly taught by source?
+2. Is it independently assessable?
+3. Does it have exercise evidence?
+4. Was it discovered as IndependentLearningTarget?
+5. Was a KnowledgeCandidate generated?
+6. Was it promotion-eligible?
+7. Was it promoted?
+8. Was it consolidated into another target/node?
+9. Was it considered covered by an incompatible node?
+10. Was restore/recovery attempted?
+11. Did ownership protection block restoration?
+12. Final reason why it is present or missing.
+
+Classify each missing target with one of:
+
+TARGET_DISCOVERY_GAP
+CANDIDATE_GENERATION_GAP
+PROMOTION_GAP
+FALSE_COVERAGE_MATCH
+OVER_CONSOLIDATION
+RESTORE_BLOCKED_SAFELY
+EXERCISE_SIGNAL_GAP
+OUTCOME_SIGNAL_GAP
+SOURCE_SUPPORT_CLASSIFICATION_GAP
+OTHER
+
+==================================================
+PART 6 — EXERCISE CLUSTER AUDIT
+==================================================
+
+Trace exercises 75–86.
+
+Classify each by demanded knowledge/performance.
+
+At minimum analyze:
+
+75 → domain from graph
+76 → x-values for given function value
+77 → range from graph
+78 → integrated graph reading
+79 → zeros from graph
+80 → construct graph from prescribed zeros
+82 → construct graph from D/E/zero constraints
+83–86 → construct graph under multiple constraints
+
+For each cluster report:
+
+- whether target discovery sees the cluster
+- whether the cluster supports an IndependentLearningTarget
+- whether the target has a canonical MicroNode
+- whether the exercises are linked to that node
+- if not linked, exact reason
+
+Critical question:
+
+Why did substantial exercise clusters remain as “additional exercises”
+instead of forcing a missing-target REVIEW finding?
+
+==================================================
+PART 7 — OUTCOME COVERAGE AUDIT
+==================================================
+
+The saved lesson outcomes include at least:
+
+- define domain/range
+- determine domain/range from graph
+- determine function value / relevant x-values from graph
+- determine zeros from graph
+- analyze graph / make conclusions
+
+Trace each outcome through current outcome alignment.
+
+For every outcome:
+
+Outcome
+→ normalized performance
+→ target match
+→ candidate match
+→ MicroNode match
+→ coverage decision
+
+Check whether shared words such as “ֆունկցիա” or “գրաֆիկ” create false coverage.
+
+A node about zeros must NOT automatically cover:
+- domain
+- range
+- finding x for a given value
+
+unless its objective actually includes those performances.
+
+==================================================
+PART 8 — LESSON BOUNDARY LEAKAGE
+==================================================
+
+This is critical.
+
+Determine exactly why:
+
+“Տեղաշարժ կոորդինատային առանցքի երկայնքով”
+
+became a MicroNode inside lesson §2.1.
+
+Trace:
+
+PDF page 29
+→ Pass 1 block
+→ topic grouping
+→ target discovery
+→ candidate generation
+→ promotion
+→ persistence
+
+Identify the FIRST boundary where the mapper should have recognized:
+
+“This block belongs to the next instructional section, not the selected lesson.”
+
+Audit what boundary signals are currently available:
+
+- lesson title
+- paragraph/section heading
+- paragraph number §2.1
+- exercise sequence
+- next heading
+- source-page structure
+- selected page range
+- topic heading
+- textbook TOC metadata if available
+
+Answer:
+
+Does the current mapper have a true LESSON CONTENT BOUNDARY model?
+
+YES / PARTIALLY / NO
+
+If PARTIALLY or NO, explain exactly why.
+
+==================================================
+PART 9 — SOURCE RANGE VS LESSON RANGE
+==================================================
+
+Important conceptual distinction:
+
+PDF physical page selection gives the system pages to READ.
+
+It must NOT imply that every instructional block on those pages belongs to the selected lesson.
+
+The mapper should distinguish:
+
+READ RANGE
+
+from
+
+LESSON SEMANTIC RANGE.
+
+Audit whether current code currently equates these concepts anywhere.
+
+Example:
+
+page 29 contains both:
+- end-of-lesson exercises for §2.1
+- beginning of the next instructional content
+
+The source reader must preserve both,
+but the lesson mapper should classify the next-section material as OUTSIDE_LESSON_BOUNDARY / adjacent source material, not promote it into §2.1.
+
+Determine whether current SourceMaterialDisposition has any representation for:
+
+OUTSIDE_SELECTED_LESSON
+NEXT_SECTION
+ADJACENT_SOURCE
+or equivalent.
+
+If not, report that gap.
+
+DO NOT add it yet.
+
+==================================================
+PART 10 — TARGET DISCOVERY QUALITY
+==================================================
+
+Evaluate whether current IndependentLearningTarget discovery is truly:
+
+SOURCE-FIRST + MULTI-SIGNAL
+
+or still effectively:
+
+CANDIDATE-FIRST with extra diagnostics.
+
+For this job report:
+
+- discoveredTargetCount
+- coveredTargetCount
+- missingTargetCount
+- reviewRequiredTargetCount
+- target evidence channels
+- source-only targets
+- exercise-confirmed targets
+- outcome-confirmed targets
+- candidate-only targets
+
+Critical question:
+
+Can T1–T7 be discovered even if the AI candidate generator fails to generate them?
+
+Prove the answer from code.
+
+==================================================
+PART 11 — GRANULARITY / INDEPENDENT ASSESSABILITY
+==================================================
+
+Do not assume every T1–T7 must necessarily be a separate MicroNode.
+
+Evaluate the correct pedagogical grouping.
+
+For example determine whether:
+
+DOMAIN_CONCEPT + DOMAIN_FROM_GRAPH
+
+should be:
+- one MicroNode with conceptual/application depth
+or
+- two independently tracked MicroNodes.
+
+Same for:
+
+RANGE_CONCEPT + RANGE_FROM_GRAPH.
+
+Use the project contract:
+
+Separate learner states only when mastery can meaningfully diverge and separate evidence is useful.
+
+Return your recommended canonical MicroNode structure for §2.1,
+but clearly label it as:
+
+FORENSIC PEDAGOGICAL REFERENCE ONLY
+
+not an implementation.
+
+We need this reference to judge whether 2 persisted nodes are too few.
+
+==================================================
+PART 12 — ROOT-CAUSE CLASSIFICATION
+==================================================
+
+Classify the overall failure using one or more exact labels:
+
+LESSON_BOUNDARY_DISCOVERY_GAP
+TARGET_DISCOVERY_GAP
+CANDIDATE_GENERATION_GAP
+PROMOTION_GAP
+EXERCISE_SIGNAL_GAP
+OUTCOME_COVERAGE_FALSE_POSITIVE
+TARGET_COVERAGE_FALSE_POSITIVE
+OVER_CONSOLIDATION
+SOURCE_SUPPORT_CLASSIFICATION_GAP
+RESTORE_BLOCKED_SAFELY
+OBSERVABILITY_GAP
+OTHER
+
+Rank them:
+
+P0
+P1
+P2
+
+by impact on general mapping quality.
+
+==================================================
+PART 13 — CROSS-LESSON COMPARISON
+==================================================
+
+Compare this failure with lesson §1.5.
+
+§1.5 problem:
+two inverse independently assessable transformations,
+only one survives per run.
+
+§2.1 problem:
+multiple obvious lesson targets missing,
+while adjacent next-section content becomes a MicroNode.
+
+Determine:
+
+Which root causes are SHARED?
+
+Which are lesson-specific?
+
+Does this prove a general problem in:
+- target discovery
+- lesson boundary detection
+- candidate generation
+- promotion
+or several of them?
+
+==================================================
+PART 14 — ARCHITECTURAL VERDICT
+==================================================
+
+Answer explicitly:
+
+1. Can current mapper reliably discover ALL major independently assessable targets?
+
+YES / PARTIALLY / NO
+
+2. Can it distinguish selected lesson content from adjacent content on the same physical page?
+
+YES / PARTIALLY / NO
+
+3. Can exercise clusters expose a missing target?
+
+YES / PARTIALLY / NO
+
+4. Can outcomes expose a missing target without false lexical coverage?
+
+YES / PARTIALLY / NO
+
+5. Is candidate generation still effectively the bottleneck defining what knowledge exists?
+
+YES / PARTIALLY / NO
+
+6. Are the existing source-preservation and hard-validation layers working correctly?
+
+YES / PARTIALLY / NO
+
+==================================================
+PART 15 — PROPOSE ONLY THE SMALLEST FUNDAMENTAL FIX
+==================================================
+
+DO NOT IMPLEMENT.
+
+After diagnosis, propose the smallest fundamental correction that fixes both:
+
+A. UNDER-MAPPING
+B. LESSON-BOUNDARY LEAKAGE
+
+while preserving ALL working architecture:
+
+- durable source material
+- Pass 2 block conservation
+- KnowledgeCandidate contract
+- promotion contract
+- lesson-wide consolidation
+- completeness audit
+- IndependentLearningTarget layer
+- hard source validation
+- coverage validator
+- review-required persistence
+- teacher approval safeguards
+- transaction safety
+
+Do NOT propose:
+- hard-coded Algebra rules
+- page-specific fixes
+- exercise-number rules
+- one MicroNode per outcome
+- one MicroNode per exercise
+- weaker promotion
+- weaker validation
+- new AI call per source block/candidate/target
+- Cognitive Path changes
+- Teaching Content changes
+
+Prefer deterministic invariants and one bounded semantic stage.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly:
+
+1. Job inspected
+2. Final persisted map
+3. Full source-block inventory
+4. Expected targets T1–T7 vs discovered targets
+5. Candidate lifecycle
+6. Exercise-cluster audit
+7. Outcome audit
+8. Lesson-boundary leakage trace
+9. Read-range vs lesson-range finding
+10. Target-discovery quality finding
+11. Pedagogical reference MicroNode structure
+12. §1.5 vs §2.1 comparison
+13. Ranked root causes P0/P1/P2
+14. Architectural verdict
+15. Smallest fundamental fix proposal
+16. Exact files/functions that would likely require change
+17. Regression tests required before implementation
+
+Then STOP.
+
+NO CODE CHANGES.
+NO DB CHANGES.
+NO RERUN.
