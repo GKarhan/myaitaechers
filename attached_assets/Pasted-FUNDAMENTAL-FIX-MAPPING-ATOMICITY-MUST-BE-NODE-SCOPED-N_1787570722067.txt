@@ -1,0 +1,108 @@
+FUNDAMENTAL FIX — MAPPING ATOMICITY MUST BE NODE-SCOPED, NOT ALL-OR-NOTHING
+
+Do not perform a broad redesign.
+
+Current recurring problem:
+Automatic Mapping can successfully generate a lesson map, but if one or more
+MicroNodes fail atomicity validation, the entire map is rejected/not persisted.
+
+This must change.
+
+CORE RULE:
+
+Atomicity remains mandatory per MicroNode.
+
+But one failed MicroNode must NOT discard the entire otherwise-valid lesson map.
+
+Implement node-scoped atomicity handling.
+
+FLOW:
+
+1. Generate complete candidate lesson map.
+2. Validate every MicroNode independently.
+3. Persist valid atomic MicroNodes.
+4. For each non-atomic MicroNode:
+   - perform at most ONE bounded split/repair attempt.
+5. Revalidate only the repaired MicroNode(s).
+6. If repair succeeds:
+   - persist repaired atomic MicroNodes.
+7. If repair still fails:
+   - preserve that content as a teacher-review draft/problem item;
+   - mark it `REVIEW_REQUIRED`;
+   - do NOT mark it canonically validated/approved;
+   - do NOT discard the rest of the valid lesson map.
+
+Do NOT:
+- remove atomicity validation;
+- silently accept non-atomic MicroNodes as valid;
+- repeatedly retry AI;
+- regenerate the whole lesson because one node failed;
+- fabricate source content;
+- alter Quiz, Knowledge Tree, Cognitive Path, Teaching Content, Assignment,
+  Goal/Outcome, or AI Teacher runtime.
+
+Teacher UI:
+
+Instead of:
+“Քարտեզագրումը ... չի պահպանվել”
+
+show a successful partial result such as:
+
+“Քարտեզագրումը ստեղծվել է։
+5 հանգույց պատրաստ է, 1 հանգույց խորհուրդ է տրվում վերանայել։”
+
+For the problematic node show:
+
+`⚠ Վերանայել`
+
+Teacher must be able to open/edit/split that node manually using existing
+authoring controls.
+
+IMPORTANT DATA RULE:
+
+Only atomic/validated MicroNodes may be treated as canonical validated nodes.
+
+A failed repair may be stored only using an existing safe draft/review mechanism.
+Do not invent a parallel curriculum schema.
+
+If the current schema cannot safely persist a review-only candidate without
+treating it as validated canonical data, then:
+- persist all valid nodes,
+- keep the failed node as retryable job/review output using the smallest existing
+  mechanism,
+- do not discard the valid nodes.
+
+MINIMUM TESTS ONLY:
+
+1. 6 nodes, all atomic
+   → 6 persisted.
+
+2. 6 nodes, 1 non-atomic, repair succeeds
+   → repaired result persisted.
+
+3. 6 nodes, 1 non-atomic, repair fails
+   → 5 valid nodes preserved
+   → 1 shown as REVIEW_REQUIRED
+   → entire lesson mapping is NOT discarded.
+
+4. No duplicate nodes on retry.
+
+5. Existing source coverage and source fidelity rules remain enforced.
+
+Do not add migrations unless absolutely required.
+Prefer existing persistence/review structures.
+
+FINAL RESPONSE ONLY:
+
+ATOMICITY STILL ENFORCED: YES
+ALL-OR-NOTHING MAPPING REMOVED: YES/NO
+VALID NODES PRESERVED WHEN ONE FAILS: YES/NO
+MAX REPAIR PASSES: 1
+FAILED NODE SHOWN AS REVIEW: YES/NO
+WHOLE MAP DISCARDED FOR ONE FAILED NODE: NO
+MIGRATION ADDED: YES/NO
+FILES CHANGED:
+TESTS:
+PUBLISHED/DEPLOYED: NO
+
+Then STOP.
