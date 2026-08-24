@@ -1,0 +1,292 @@
+IMPLEMENTATION PHASE 1 ONLY — KNOWLEDGE CANDIDATE + SOURCE MATERIAL DISPOSITION CONTRACT
+
+We have approved the target mapping architecture from your previous A–P architecture report.
+
+Implement ONLY Phase 1 of that architecture.
+
+DO NOT proceed to Phase 2 or later phases.
+
+GOAL
+
+Introduce the internal service-layer semantic boundary:
+
+Verified Source Block
+→ Knowledge Candidate / Source Material Disposition
+→ later promotion to MicroNode
+
+At this phase we are NOT yet switching production persistence to the new architecture.
+
+This task establishes the contract, deterministic rules, and regression tests that later phases will use.
+
+==================================================
+1. STRICT SCOPE
+==================================================
+
+Allowed primary production file:
+
+artifacts/api-server/src/services/lesson-mapping.ts
+
+Focused mapping test files may also be changed/added where appropriate.
+
+Do NOT change:
+
+- Pass 1 extraction behavior
+- PDF/source verification
+- database schema
+- migrations
+- automatic route persistence behavior
+- manual mapping
+- teacher CRUD / ordering
+- Cognitive Path / C2
+- targetBloomLevel schema
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- final approval behavior
+- teaching-content generation
+- frontend/UI
+- unrelated code
+
+No mapping rerun.
+
+==================================================
+2. ADD INTERNAL KNOWLEDGE CANDIDATE CONTRACT
+==================================================
+
+Introduce a transient internal KnowledgeCandidate representation.
+
+It must be source-grounded.
+
+At minimum it should be able to represent:
+
+- stable temporary candidate id
+- provisional topic/context identity
+- title
+- learningObjective
+- coreSourceBlockIndices
+- supportingSourceBlockIndices
+- exercise/activity references where relevant
+- candidate semantic status
+- promotion/review reasons
+- source-support/readability information required by the promotion contract
+
+Do NOT persist this type to DB in Phase 1.
+
+Do NOT introduce a parallel persisted hierarchy.
+
+==================================================
+3. ADD SOURCE MATERIAL DISPOSITION CONTRACT
+==================================================
+
+Introduce an internal SourceMaterialDisposition model sufficient to distinguish at least:
+
+- CORE_EVIDENCE
+- SUPPORTING_MATERIAL
+- EXERCISE
+- ACTIVITY_OR_HOMEWORK
+- STRUCTURAL_MATERIAL
+- UNRESOLVED_VISUAL_OR_FORMULA
+- UNRESOLVED_INSTRUCTIONAL_REVIEW
+- EXCLUDED_WITH_REASON
+
+Names may follow existing project conventions if there is a strong reason, but semantics must remain explicit.
+
+A source block's blockType alone MUST NOT determine whether it becomes knowledge.
+
+Examples:
+
+RULE → may be core evidence.
+NOTE → may be core, supporting, or unresolved.
+EXAMPLE → usually supporting, but may be core if it directly introduces independently teachable knowledge.
+EXERCISE → never becomes a MicroNode merely because it represents deeper cognition.
+Unreadable formula/diagram fragment → unresolved material, not automatic knowledge.
+
+==================================================
+4. IMPLEMENT A PURE PROMOTION DECISION
+==================================================
+
+Add a deterministic/pure promotion predicate or decision function.
+
+It must evaluate the candidate against these conceptual requirements:
+
+A. direct readable source support
+B. meaningful knowledge identity
+C. independent teachability
+D. independent assessability
+E. atomicity
+F. non-duplication state
+G. supporting-material distinction
+H. source-ownership integrity
+
+The function should NOT call AI.
+
+It should return a structured decision rather than only boolean.
+
+Conceptually:
+
+PROMOTE
+REVIEW_REQUIRED
+SUPPORT_ONLY
+UNRESOLVED
+REJECT_NON_KNOWLEDGE
+
+Use project-appropriate naming if needed.
+
+IMPORTANT:
+
+Do not pretend deterministic code can solve semantic questions that require later semantic review.
+
+If atomicity/non-duplication is unresolved, return REVIEW_REQUIRED rather than guessing.
+
+==================================================
+5. SOURCE PRESERVATION INVARIANT
+==================================================
+
+Establish in code/tests the future invariant:
+
+Every VERIFIED source block must ultimately have exactly one PRIMARY disposition.
+
+A block may later have secondary supporting relationships, but these must never be confused with canonical primary ownership.
+
+Do NOT change current production coverage persistence yet.
+
+Phase 1 only defines/tests this contract.
+
+==================================================
+6. IMPORTANT SEMANTIC RULES
+==================================================
+
+Encode/test these rules:
+
+1. Source Block != Knowledge Candidate.
+2. Knowledge Candidate != MicroNode until promotion.
+3. Topic identity does not define knowledge identity.
+4. Cognitive level does not define MicroNode identity.
+5. Example/NOTE/visual material does not automatically become a node.
+6. Exercises do not create nodes.
+7. Same knowledge used at Remember/Understand/Apply remains one candidate/MicroNode.
+8. Weak/unreadable source must not be silently discarded.
+9. Weak/unreadable source must not automatically become trusted knowledge.
+10. Review uncertainty must remain explicit.
+
+==================================================
+7. FOCUSED REGRESSION TEST MATRIX
+==================================================
+
+Add focused tests for at least:
+
+A. Clean definition/rule
+→ PROMOTE candidate.
+
+B. Definition + explanation + example
+→ one candidate;
+definition/explanation core as appropriate;
+example supporting;
+not three nodes.
+
+C. NOTE introduces a genuinely new readable rule
+→ may qualify for promotion.
+
+D. NOTE only clarifies an existing rule
+→ SUPPORT_ONLY;
+no independent node.
+
+E. Unreadable formula/diagram fragment
+→ UNRESOLVED;
+never automatic promotion.
+
+F. Same knowledge appears under two provisional Topics
+→ Topic difference alone must NOT establish distinct knowledge identity.
+The contract must allow later lesson-wide consolidation.
+
+G. Similar wording but independently assessable knowledge
+→ contract must permit distinct candidates.
+
+H. One source paragraph directly supports two independently assessable rules
+→ contract must permit two atomic candidates if source support is valid.
+
+I. Remember / Understand / Apply representations of same knowledge
+→ one knowledge identity;
+cognitive depth does not create three candidates.
+
+J. Exercise uses several concepts
+→ exercise does not create a new candidate.
+
+K. Supporting-only material
+→ preserved disposition;
+no automatic node.
+
+L. Uncertain semantic duplicate/atomicity decision
+→ REVIEW_REQUIRED;
+do not guess PROMOTE or MERGE.
+
+==================================================
+8. COMPATIBILITY REQUIREMENT
+==================================================
+
+Current production mapping behavior must remain unchanged in Phase 1.
+
+This means:
+
+- existing Pass 2 can continue producing its current structures
+- existing persistence remains untouched
+- existing hard gates remain untouched
+- current review-required behavior remains untouched
+
+Phase 1 builds and proves the internal contract only.
+
+We will wire Pass 2 into this contract in a later phase.
+
+==================================================
+9. QUALITY REQUIREMENT
+==================================================
+
+Do not implement this as scattered helper booleans.
+
+Create a coherent small internal domain model so later phases can safely reuse it.
+
+Prefer:
+
+- explicit discriminated unions/enums
+- pure functions
+- machine-readable reason codes
+- exhaustive switches where useful
+- deterministic tests
+
+Avoid:
+
+- stringly-typed hidden semantics
+- duplicated rules
+- broad refactors
+- speculative abstractions unrelated to mapping
+
+==================================================
+10. VERIFICATION
+==================================================
+
+Run only:
+
+- focused mapping/candidate tests
+- API typecheck
+
+Do not rerun automatic mapping.
+
+==================================================
+11. REPORT AND STOP
+==================================================
+
+Report:
+
+1. files changed
+2. exact KnowledgeCandidate contract added
+3. exact SourceMaterialDisposition contract added
+4. promotion decision states
+5. deterministic rules implemented
+6. regression cases and results
+7. typecheck result
+8. confirmation that production mapping/persistence behavior did not change
+9. any architecture concern discovered that should be handled in Phase 2
+
+Then STOP.
+
+Do NOT implement Phase 2.
