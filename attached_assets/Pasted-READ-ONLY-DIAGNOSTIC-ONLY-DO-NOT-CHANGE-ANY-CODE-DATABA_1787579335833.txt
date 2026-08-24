@@ -1,0 +1,65 @@
+READ-ONLY DIAGNOSTIC ONLY. DO NOT CHANGE ANY CODE, DATABASE, SCHEMA, PROMPTS, OR DATA.
+
+We are debugging ONE failed automatic lesson mapping.
+
+Current UI error shown after clicking "🗺️ Ավտոմատ":
+
+"Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ վերանայել աղբյուրը։"
+
+Context:
+- Textbook: հանրահաշիվ 9 — Սմբատ Գոգյան
+- Lesson: ԹՎԱՅԻՆ ԱՐՏԱՀԱՅՏՈՒԹՅՈՒՆՆԵՐԻ ԱՐՏԱԴՐՅԱԼԻ ՆՇԱՆԸ
+- §1.1
+- PDF physical pages: 6–9
+- Source-based Goal + Outcomes generation succeeded.
+- Automatic detailed mapping failed.
+- No new source audit was saved.
+- No Topic/MicroNode mapping was saved.
+
+TASK:
+
+1. Search the repository for the EXACT Armenian error text above.
+
+2. Trace the exact backend execution path that can produce this message:
+   UI action
+   → API endpoint
+   → mapping generation
+   → parsing/normalization
+   → source-block validation
+   → rejection.
+
+3. Identify the EXACT condition that failed.
+
+4. Show:
+   - file path(s)
+   - function name(s)
+   - relevant code snippets
+   - validation/error code if one exists
+   - what data the validator expected
+   - what data it actually received.
+
+5. Determine whether the failure is caused by:
+   A) PDF/source extraction,
+   B) source block IDs/references,
+   C) AI mapping output,
+   D) normalization/parser,
+   E) source coverage validation,
+   F) another specific cause.
+
+6. If logs contain the failed mapping attempt, report the relevant log evidence.
+Do not rerun AI generation and do not spend AI/model credits for this diagnostic.
+
+7. Explain why source-based Goal/Outcomes generation can succeed from the same PDF pages while automatic mapping fails source-block safety validation.
+
+IMPORTANT:
+Do NOT fix anything yet.
+Do NOT refactor.
+Do NOT modify prompts.
+Do NOT modify validation thresholds.
+Do NOT modify database records.
+Do NOT run migrations.
+Do NOT regenerate the mapping.
+
+Return only a concise evidence-based diagnosis.
+
+STOP after the diagnosis.
