@@ -1,0 +1,299 @@
+READ-ONLY ARCHITECTURAL AUDIT — MICRONODE QUALITY + DRAFT PERSISTENCE
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATABASE DATA.
+DO NOT RUN MAPPINGS.
+DO NOT MODIFY PROMPTS YET.
+DO NOT REFACTOR UNRELATED SYSTEMS.
+
+We are fixing the automatic lesson-mapping workflow fundamentally, but only
+the MicroNode quality/review/persistence subsystem.
+
+CURRENT TEST CASE
+
+lessonId: 705
+
+Textbook:
+հանրահաշիվ 9 — Սմբատ Գոգյան
+
+Lesson:
+ԹՎԱՅԻՆ ԱՐՏԱՀԱՅՏՈՒԹՅՈՒՆՆԵՐԻ ԱՐՏԱԴՐՅԱԼԻ ՆՇԱՆԸ
+
+PDF physical pages:
+6–9
+
+We have already fixed deterministic source-placement ownership bugs.
+
+The latest failure is:
+
+DUPLICATE_MICRONODE_REVIEW_FAILED_PRE_PERSISTENCE
+
+Job 172 diagnostics:
+
+candidatePairCount: 2
+resolvedDistinctCount: 0
+mergedCount: 0
+rejectedDecisionCount: 2
+
+unresolved pairs:
+- t1:n0 ↔ t2:n0
+- t1:n1 ↔ t2:n1
+
+The duplicate candidate detector currently uses:
+- at least 2 shared title/objective tokens
+- Jaccard similarity >= 0.4
+
+These were cross-topic candidate pairs.
+
+IMPORTANT PRODUCT DECISION
+
+We are changing the fundamental behavior of mapping quality review.
+
+==================================================
+CORE PRINCIPLE
+==================================================
+
+IF THE MAPPING IS STRUCTURALLY SAFE,
+THE GENERATED MAPPING MUST BE SAVED AS A DRAFT.
+
+Pedagogical quality concerns must NOT destroy an otherwise structurally
+valid generated mapping.
+
+The teacher is the final authority.
+
+Examples of PEDAGOGICAL REVIEW concerns:
+
+- possible duplicate MicroNodes
+- possible over-fragmentation
+- possible under-fragmentation
+- weak learning objective
+- questionable Topic assignment
+- questionable outcome alignment
+- semantic similarity between MicroNodes
+- semantic-review uncertainty
+- duplicate-review model failure/rejection
+
+These should become:
+
+SAVE DRAFT + REVIEW WARNING
+
+NOT:
+
+DISCARD ENTIRE MAPPING
+
+The teacher must later be able to:
+- keep the MicroNode
+- edit it
+- delete it
+- merge it
+- split it
+- move it
+- reorder it
+- approve it
+
+==================================================
+HARD BLOCKERS MUST REMAIN HARD
+==================================================
+
+Do NOT weaken structural/source/data-integrity protections.
+
+Examples that should still block persistence if they cannot be safely
+repaired:
+
+- invalid source block index
+- missing required source placement
+- contradictory source ownership
+- invalid references
+- malformed canonical structure
+- parser/schema corruption
+- source fidelity failure that makes persistence unsafe
+- database integrity failure
+
+Existing deterministic safe repairs should remain.
+
+==================================================
+MICRONODE QUALITY MODEL
+==================================================
+
+Audit whether the current implementation correctly distinguishes:
+
+1. DUPLICATE
+Two MicroNodes represent substantially the same atomic knowledge/objective.
+
+2. OVER-FRAGMENTATION
+One natural atomic knowledge unit has been unnecessarily split into multiple
+MicroNodes.
+
+3. UNDER-FRAGMENTATION
+One MicroNode contains multiple independently teachable/testable learning
+objectives and should probably be split.
+
+These are pedagogical quality findings, not automatically structural
+corruption.
+
+==================================================
+AUDIT SCOPE
+==================================================
+
+Inspect ONLY the code needed for:
+
+Pass 2 MicroNode generation
+→ MicroNode normalization
+→ atomicity checks
+→ duplicate candidate detection
+→ semantic duplicate review
+→ merge/distinct resolution
+→ granularity review
+→ persistence gates
+→ mapping draft persistence
+→ existing teacher-review status/warnings if available
+
+Likely relevant areas include:
+
+artifacts/api-server/src/services/lesson-mapping.ts
+artifacts/api-server/src/lib/micronode-source-alignment.ts
+artifacts/api-server/src/lib/coverage-validator.ts
+artifacts/api-server/src/routes/lessons.ts
+
+and only directly related schema/types/UI if required to understand how
+review warnings can be persisted and displayed.
+
+Do NOT audit AI Teacher, Quiz, Knowledge Tree, C3–C7, or unrelated features.
+
+==================================================
+QUESTIONS TO ANSWER
+==================================================
+
+1. List every current persistence gate after Pass 2.
+
+For each gate classify it as:
+
+HARD INTEGRITY
+or
+PEDAGOGICAL QUALITY
+
+2. Identify every current PEDAGOGICAL QUALITY condition that can abort the
+entire mapping.
+
+Especially inspect:
+- MappingGranularityReviewError
+- duplicateResolution.rejectedDecisionCount
+- unresolved duplicate candidates
+- atomicity/granularity findings
+
+3. Explain exactly what should change so that:
+
+STRUCTURALLY SAFE
++
+PEDAGOGICALLY QUESTIONABLE
+
+becomes:
+
+PERSIST DRAFT
++
+PERSIST REVIEW FINDINGS/WARNINGS
+
+instead of failure.
+
+4. Determine whether the current DB/schema already has appropriate fields
+for:
+- draft/review status
+- MicroNode review status
+- mapping warnings/findings
+- teacher approval
+
+Prefer existing schema if sufficient.
+
+DO NOT propose a migration unless genuinely necessary.
+
+5. Determine how existing duplicate/atomicity diagnostics can be preserved
+with the draft so the teacher can see exactly what needs review.
+
+Example:
+
+Possible duplicate:
+MN A ↔ MN B
+reason: semantic similarity
+
+Possible over-fragmentation:
+MN A + MN B
+
+Possible under-fragmentation:
+MN C
+
+6. Inspect whether current teacher CRUD can already support:
+- edit
+- delete
+- move
+- reorder
+
+For merge/split, only report whether support exists.
+Do NOT implement it now.
+
+7. Review the MicroNode generation prompt/contract only enough to determine
+whether it already defines the intended atomicity rule:
+
+ONE MicroNode = ONE clear independently teachable/testable learning objective.
+
+Report weaknesses, but DO NOT edit the prompt yet.
+
+8. Propose the SMALLEST COHERENT IMPLEMENTATION PLAN.
+
+Prefer approximately:
+
+A. Keep hard structural/source gates unchanged.
+
+B. Convert pedagogical-quality rejection into persisted review findings.
+
+C. Persist structurally valid generated mapping as DRAFT.
+
+D. Surface warnings in the existing detailed mapping UI.
+
+E. Teacher edits/reviews.
+
+F. Final approval remains a separate validation/approval step.
+
+But base the proposal on the ACTUAL repository implementation.
+
+==================================================
+IMPORTANT ARCHITECTURAL RULE
+==================================================
+
+Do NOT solve this by simply deleting this line:
+
+rejectedDecisionCount > 0 → throw
+
+We need a coherent distinction between:
+
+HARD FAILURE
+vs
+REVIEW REQUIRED
+
+Do NOT weaken source coverage or canonical data integrity.
+
+Do NOT introduce a second mapping architecture.
+
+Automatic AI mapping,
+Structured TEXT import,
+and manual UI mapping
+should ultimately converge on the same canonical Mapping Draft model.
+
+==================================================
+OUTPUT
+==================================================
+
+Return a concise implementation-oriented audit with:
+
+1. CURRENT FLOW
+2. CURRENT HARD GATES
+3. CURRENT PEDAGOGICAL GATES
+4. WRONG FAIL-CLOSED BEHAVIOR
+5. EXISTING DB/UI SUPPORT WE CAN REUSE
+6. MINIMAL TARGET ARCHITECTURE
+7. EXACT FILES/FUNCTIONS THAT WOULD NEED CHANGES
+8. MINIMAL IMPLEMENTATION STEPS
+9. RISKS / REGRESSION TESTS
+
+Do not change anything.
+
+STOP after the audit.
