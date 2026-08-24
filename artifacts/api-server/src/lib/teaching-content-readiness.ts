@@ -10,6 +10,11 @@ export type TeachingContentFields = {
   nonExamples?: unknown;
 };
 
+/** Source-alignment review is a hard C1 boundary for every enrichment entry point. */
+export function requiresSourceAlignmentReview(changeReason: string | null | undefined): boolean {
+  return typeof changeReason === "string" && changeReason.startsWith("SOURCE_ALIGNMENT:");
+}
+
 export function hasCompleteTeachingContent(content: TeachingContentFields): boolean {
   return typeof content.childFriendlyExplanation === "string"
     && content.childFriendlyExplanation.trim().length > 0
@@ -19,6 +24,38 @@ export function hasCompleteTeachingContent(content: TeachingContentFields): bool
     && content.basicExamples.length > 0
     && Array.isArray(content.nonExamples)
     && content.nonExamples.length > 0;
+}
+
+/**
+ * Normal AI enrichment is strictly fill-only. A partial node may include
+ * teacher-authored material, so a persisted non-empty field is never replaced.
+ */
+export function getMissingTeachingContentPatch(
+  existing: TeachingContentFields,
+  candidate: TeachingContentFields,
+): TeachingContentFields {
+  const patch: TeachingContentFields = {};
+  if (typeof existing.childFriendlyExplanation !== "string" || !existing.childFriendlyExplanation.trim()) {
+    if (typeof candidate.childFriendlyExplanation === "string" && candidate.childFriendlyExplanation.trim()) {
+      patch.childFriendlyExplanation = candidate.childFriendlyExplanation;
+    }
+  }
+  if (typeof existing.commonMisconception !== "string" || !existing.commonMisconception.trim()) {
+    if (typeof candidate.commonMisconception === "string" && candidate.commonMisconception.trim()) {
+      patch.commonMisconception = candidate.commonMisconception;
+    }
+  }
+  if (!Array.isArray(existing.basicExamples) || existing.basicExamples.length === 0) {
+    if (Array.isArray(candidate.basicExamples) && candidate.basicExamples.length > 0) {
+      patch.basicExamples = candidate.basicExamples;
+    }
+  }
+  if (!Array.isArray(existing.nonExamples) || existing.nonExamples.length === 0) {
+    if (Array.isArray(candidate.nonExamples) && candidate.nonExamples.length > 0) {
+      patch.nonExamples = candidate.nonExamples;
+    }
+  }
+  return patch;
 }
 
 export function summarizeCurrentTeachingContent<T extends TeachingContentFields>(

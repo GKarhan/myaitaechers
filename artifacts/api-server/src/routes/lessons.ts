@@ -28,13 +28,19 @@ import {
   validateBlocksAgainstLessonSourceSet,
 } from "../lib/lesson-source-set.js";
 import { classifyMicroNodeSourceAlignment } from "../lib/micronode-source-alignment.js";
-import { validateCognitivePathGrounding } from "../lib/cognitive-path-grounding.js";
+import {
+  satisfiesLearningObjectiveCognitiveFloor,
+  validateCognitivePathGrounding,
+} from "../lib/cognitive-path-grounding.js";
 import { assessC2GenerationPreflight } from "../lib/c2-generation-preflight.js";
 import { assessApprovedMicroNodeC2Readiness } from "../lib/c2-readiness.js";
 import {
   hasCompleteTeachingContent,
+  getMissingTeachingContentPatch,
+  requiresSourceAlignmentReview,
   summarizeCurrentTeachingContent,
   shouldRunBoundedPhase2Repair,
+  type TeachingContentFields,
 } from "../lib/teaching-content-readiness.js";
 import {
   isLearnerDeliveryEligible,
@@ -73,6 +79,47 @@ import {
 } from "../services/phase2/canonical-completion-authority.js";
 
 const router = Router();
+
+/**
+ * AI enrichment is allowed to fill only fields that are blank at the exact
+ * persistence boundary. Generation jobs can run for minutes, so their original
+ * node snapshot is never authoritative once a teacher can edit the same node.
+ */
+async function persistGeneratedTeachingContent(
+  nodeId: number,
+  candidate: TeachingContentFields,
+): Promise<{ updated: boolean; complete: boolean }> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM lesson_nodes WHERE id = ${nodeId} FOR UPDATE`);
+    const [current] = await tx
+      .select({
+        childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+        commonMisconception: lessonNodesTable.commonMisconception,
+        basicExamples: lessonNodesTable.basicExamples,
+        nonExamples: lessonNodesTable.nonExamples,
+      })
+      .from(lessonNodesTable)
+      .where(eq(lessonNodesTable.id, nodeId))
+      .limit(1);
+
+    if (!current) return { updated: false, complete: false };
+    const patch = getMissingTeachingContentPatch(current, candidate);
+    if (Object.keys(patch).length === 0) {
+      return { updated: false, complete: hasCompleteTeachingContent(current) };
+    }
+
+    const next = { ...current, ...patch };
+    await tx
+      .update(lessonNodesTable)
+      .set({
+        ...patch,
+        status: "needs_review",
+        teachingContentStale: false,
+      } as any)
+      .where(eq(lessonNodesTable.id, nodeId));
+    return { updated: true, complete: hasCompleteTeachingContent(next) };
+  });
+}
 
 /**
  * Exercise answer keys are teacher-authoring data. Keep them behind both a
@@ -3287,9 +3334,8 @@ router.post("/lessons/:lessonId/nodes/:nodeId/delete", requireAuth, requireLesso
 
 // POST /lessons/:lessonId/nodes/:nodeId/enrich
 // Selective Phase 2 enrichment for a single MicroNode.
-// Gate (Phase 2A R3): requires confirmed cognitive path before Teaching Content can be generated.
 // Runs synchronously (returns when AI is done) — designed for single-node operations.
-// Uses same don't-degrade semantics as whole-lesson generate-teaching-content.
+// Uses the same C1/source preflight and fill-only semantics as whole-lesson generation.
 // Does NOT require whole-lesson final approval afterward.
 router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
@@ -3306,8 +3352,13 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
       learningObjective: lessonNodesTable.learningObjective,
       theoryContent:     lessonNodesTable.theoryContent,
       blockType:         lessonNodesTable.blockType,
+      status:            lessonNodesTable.status,
       changeReason:      lessonNodesTable.changeReason,
       cogPathStatus:     (lessonNodesTable as any).cogPathStatus,
+      childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+      commonMisconception: lessonNodesTable.commonMisconception,
+      basicExamples: lessonNodesTable.basicExamples,
+      nonExamples: lessonNodesTable.nonExamples,
     })
     .from(lessonNodesTable)
     .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
@@ -3317,7 +3368,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     res.status(404).json({ error: "Node not found" });
     return;
   }
-  if (node.changeReason?.startsWith("SOURCE_ALIGNMENT:")) {
+  if (requiresSourceAlignmentReview(node.changeReason)) {
     res.status(422).json({
       error: "SOURCE_ALIGNMENT_REVIEW_REQUIRED",
       message: "Այս MicroNode-ի աղբյուրային հիմնավորումը ուսուցչի վերանայում է պահանջում, նախքան AI ուսուցման բովանդակություն գեներացնելը։",
@@ -3325,19 +3376,25 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     return;
   }
 
-  // Phase 2A R3 gate: cognitive path must be confirmed before Teaching Content can be generated
-  const cogStatus = (node as any).cogPathStatus as string | null;
-  if (cogStatus !== "confirmed") {
+  // Teaching Content is independent from Cognitive Path authoring. C1/source
+  // safety remains mandatory, while C2 is used as optional prompt calibration
+  // only after an explicit confirmation.
+  const c1Preflight = assessC2GenerationPreflight({
+    nodeStatus: node.status,
+    learningObjective: node.learningObjective,
+    theoryContent: node.theoryContent,
+    blockType: node.blockType,
+  });
+  if (!c1Preflight.eligible) {
     res.status(422).json({
-      error: "COG_PATH_NOT_CONFIRMED",
-      message: cogStatus === "needs_review"
-        ? "Նախ հաստատեք ճանաչողական ուղին (✓ Հаstatsel)"
-        : "Նախ ստեղծեք եւ հաստատեք ճանաչողական ուղին",
+      error: c1Preflight.reason ?? "C1_REVIEW_REQUIRED",
+      message: "Այս MicroNode-ի աղբյուրային հիմնավորումը պետք է վերանայվի ուսուցման բովանդակություն ստեղծելուց առաջ։",
     });
     return;
   }
 
-  // Fetch confirmed cognitive path for prompt context
+  const cogStatus = (node as any).cogPathStatus as string | null;
+  // Fetch a confirmed cognitive path only for optional prompt calibration.
   const cogLevels = await db
     .select()
     .from(lessonNodeCognitiveLevelsTable)
@@ -3362,13 +3419,13 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     learningObjective: (node as any).learningObjective ?? null,
     theoryContent:     (node as any).theoryContent ?? null,
     blockType:         (node as any).blockType ?? null,
-    cogPath: cogLevels.map((l): ConfirmedCogLevel => ({
+    cogPath: cogStatus === "confirmed" ? cogLevels.map((l): ConfirmedCogLevel => ({
       cognitiveLevel:       l.cognitiveLevel,
       sequence:             l.sequence,
       isTargetCeiling:      l.isTargetCeiling,
       performanceObjective: l.performanceObjective ?? null,
       successCriterion:     l.successCriterion ?? null,
-    })),
+    })) : undefined,
   };
   const exercises: Phase2LinkedExercise[] = nodeExercises.map((e) => ({
     exerciseId:           e.exerciseId,
@@ -3388,22 +3445,17 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     return;
   }
 
-  // Generation produces a draft candidate. It is never an approval action:
-  // teacher review remains the only way source-grounded teaching content becomes authority.
-  const phase2Updates: Record<string, unknown> = { status: "needs_review" as const, teachingContentStale: false };
-  if (result.childFriendlyExplanation?.trim())
-    phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
-  if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
-    phase2Updates.basicExamples = result.basicExamples;
-  if (result.commonMisconception?.trim())
-    phase2Updates.commonMisconception = result.commonMisconception;
-  if (Array.isArray(result.nonExamples) && result.nonExamples.length > 0)
-    phase2Updates.nonExamples = result.nonExamples;
+  // The transactional persistence helper re-reads the current node after the
+  // provider call, so a teacher edit made while generation was running wins.
+  const persistence = await persistGeneratedTeachingContent(nodeId, result);
+  if (!persistence.updated) {
+    res.status(409).json({
+      error: "NO_MISSING_TEACHING_CONTENT_FIELDS",
+      message: "Այս MicroNode-ի գոյություն ունեցող ուսուցման բովանդակությունը չի փոխվել։",
+    });
+    return;
+  }
 
-  await db
-    .update(lessonNodesTable)
-    .set(phase2Updates)
-    .where(eq(lessonNodesTable.id, nodeId));
   await invalidateLessonApproval(lessonId);
 
   // Return the freshly-saved node for immediate UI update
@@ -3413,7 +3465,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     .where(eq(lessonNodesTable.id, nodeId))
     .limit(1);
 
-  logger.info({ lessonId, nodeId, fields: Object.keys(phase2Updates) }, "single-node Phase 2 enrichment completed");
+  logger.info({ lessonId, nodeId }, "single-node Phase 2 enrichment completed");
   res.json({ success: true, nodeId, node: updated });
 });
 
@@ -5309,9 +5361,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
     exercisesByNode.set(ex.relatedNodeId, arr);
   }
 
-  // Teaching Content must be calibrated against the same teacher-confirmed C2
-  // path used by the single-node enrichment route. Load them once for the job,
-  // then fail closed per node if a path is missing or invalid.
+  // A confirmed C2 path may calibrate the prompt, but it is not a generation
+  // prerequisite. Teaching Content remains independently grounded in C1/source.
   const allCogLevels = await db
     .select({
       lessonNodeId:        lessonNodeCognitiveLevelsTable.lessonNodeId,
@@ -5368,6 +5419,14 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const batch = nodes.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(batch.map(async (node) => {
+        if (requiresSourceAlignmentReview(node.changeReason)) {
+          return {
+            nodeId: node.id,
+            blocked: true as const,
+            blockCode: "SOURCE_ALIGNMENT_REVIEW_REQUIRED",
+            skipReason: "Այս MicroNode-ի աղբյուրային հիմնավորումը ուսուցչի վերանայում է պահանջում",
+          };
+        }
         // A source-grounded C1 review candidate can continue as YELLOW. Only
         // unreadable/unsupported source is RED and stops this node.
         const preflight = assessC2GenerationPreflight({
@@ -5385,28 +5444,9 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           };
         }
 
-        const cogPath = cogLevelsByNode.get(node.id) ?? [];
-        const grounding = validateCognitivePathGrounding(
-          node.theoryContent,
-          node.learningObjective,
-          cogPath.map((level) => ({
-            performanceObjective: level.performanceObjective,
-            successCriterion: level.successCriterion,
-            preferredInteractionTypes: [],
-          })),
-        );
-        const hasUsablePath = ["confirmed", "needs_review"].includes(node.cogPathStatus as string)
-          && cogPath.length > 0
-          && cogPath.filter((level) => level.isTargetCeiling).length === 1
-          && grounding.valid;
-        if (!hasUsablePath) {
-          return {
-            nodeId: node.id,
-            blocked: true as const,
-            blockCode: "COG_PATH_NOT_USABLE",
-            skipReason: "Ճանաչողական ուղին դեռ անվտանգ օգտագործելի չէ",
-          };
-        }
+        const cogPath = node.cogPathStatus === "confirmed"
+          ? (cogLevelsByNode.get(node.id) ?? [])
+          : [];
 
         const input: Phase2Input = {
           nodeId:            node.id,
@@ -5414,7 +5454,7 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
           learningObjective: node.learningObjective ?? null,
           theoryContent:     node.theoryContent ?? null,
           blockType:         node.blockType ?? null,
-          cogPath,
+          cogPath: cogPath.length > 0 ? cogPath : undefined,
         };
         const exercises: Phase2LinkedExercise[] = exercisesByNode.get(node.id) ?? [];
         let result = await generatePhase2Content(input, exercises);
@@ -5461,13 +5501,8 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
             skipReason: result.skipReason,
           });
         } else if (result.skipped) {
-          // Source content too thin or generated claims were not grounded.
-          // Neither case can become approved authority automatically.
-          await db
-            .update(lessonNodesTable)
-            .set({ status: result.groundingAudit ? "needs_review" : "needs_source_content" })
-            .where(eq(lessonNodesTable.id, result.nodeId));
-
+          // The job summary surfaces source failures without writing a stale
+          // status snapshot over any teacher change made during generation.
           summaryRows.push({
             nodeId:     result.nodeId,
             title:      nodeTitle,
@@ -5477,29 +5512,9 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
             skipReason: result.skipReason,
           });
         } else {
-          // Success — write the 4 Set A fields, using "don't degrade" semantics:
-          // never overwrite a non-empty field with an empty/null AI response.
-          // This preserves Phase 2 data from a prior run when the AI returns
-          // a partial result (e.g. empty basicExamples for a borderline-thin node).
-          // Generated teaching material is an explicit review candidate, never
-          // a shortcut to approving the MicroNode or the lesson.
-          const phase2Updates: Record<string, unknown> = {
-            status: "needs_review" as const,
-            teachingContentStale: false,
-          };
-          if (result.childFriendlyExplanation?.trim())
-            phase2Updates.childFriendlyExplanation = result.childFriendlyExplanation;
-          if (Array.isArray(result.basicExamples) && result.basicExamples.length > 0)
-            phase2Updates.basicExamples = result.basicExamples;
-          if (result.commonMisconception?.trim())
-            phase2Updates.commonMisconception = result.commonMisconception;
-          if (Array.isArray(result.nonExamples) && result.nonExamples.length > 0)
-            phase2Updates.nonExamples = result.nonExamples;
-
-          await db
-            .update(lessonNodesTable)
-            .set(phase2Updates)
-            .where(eq(lessonNodesTable.id, result.nodeId));
+          // Persist from a locked, fresh row rather than the background job's
+          // stale snapshot. A teacher edit while the provider was running wins.
+          await persistGeneratedTeachingContent(result.nodeId, result);
 
           // A provider response is not success. Count a node only after the
           // persisted record can be read back with all required fields.
@@ -6653,7 +6668,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
   // Teacher-authored/confirmed paths returned above never enter this branch.
   if (
     result.skipped
-    && ["C2_PATH_STRUCTURE_REJECTED", "C2_CEILING_VIOLATION", "C2_GROUNDING_REJECTED"]
+    && ["C2_PATH_STRUCTURE_REJECTED", "C2_CEILING_VIOLATION", "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION", "C2_GROUNDING_REJECTED"]
       .includes(result.skipCode ?? "")
   ) {
     result = await generateCognitivePath(input);
@@ -6748,6 +6763,13 @@ router.post("/lessons/:lessonId/nodes/:nodeId/confirm-cognitive-path", requireAu
   const ceilings = levels.filter((l) => l.isTargetCeiling);
   if (ceilings.length !== 1) {
     res.status(422).json({ error: "CEILING_REQUIRED", message: `Petq e lini kovki mek thirakayin macardak. Ayzhm: ${ceilings.length}.` });
+    return;
+  }
+  if (!satisfiesLearningObjectiveCognitiveFloor(node.learningObjective, levels)) {
+    res.status(422).json({
+      error: "COG_PATH_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION",
+      message: "Ճանաչողական ուղու թիրախային մակարդակը ցածր է կանոնական ուսումնական նպատակի պահանջից։",
+    });
     return;
   }
   const grounding = validateCognitivePathGrounding(

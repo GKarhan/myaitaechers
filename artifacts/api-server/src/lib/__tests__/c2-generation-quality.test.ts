@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { assessC2GenerationPreflight } from "../c2-generation-preflight.js";
 import {
   assessAcceptedCognitivePath,
+  getHighConfidenceLearningObjectiveFloor,
   validateCognitivePathGrounding,
 } from "../cognitive-path-grounding.js";
 import {
@@ -223,6 +224,98 @@ test("17. independent-evidence budget is capped at five in parsing and acceptanc
   });
   assert.equal(acceptance.accepted, false);
   assert.equal(acceptance.reason, "EVIDENCE_BUDGET_INVALID");
+});
+
+const calculationSource = "Աշակերտը հաշվարկում է 7 + 3 գումարը և ստանում է 10։";
+const calculationObjective = "Հաշվարկում է 7 + 3 գումարը։";
+const problemSource = "Աշակերտը լուծում է խնդիր՝ գտնելով անհայտ գումարելին։";
+const problemObjective = "Լուծում է անհայտ գումարելիով խնդիր։";
+
+test("18. a calculation objective rejects a Remember-only target", () => {
+  const acceptance = assessAcceptedCognitivePath({
+    cogPathStatus: "confirmed",
+    theoryContent: calculationSource,
+    learningObjective: calculationObjective,
+    levels: [{
+      ...applyLevel,
+      cognitiveLevel: "remember",
+      performanceObjective: "Հիշում է 7 + 3 գումարը։",
+      successCriterion: "Նշում է 7 + 3 գումարը։",
+    }],
+  });
+  assert.equal(acceptance.accepted, false);
+  assert.equal(acceptance.reason, "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION");
+});
+
+test("19. a problem-solving objective rejects recall/listing-only target", () => {
+  const acceptance = assessAcceptedCognitivePath({
+    cogPathStatus: "confirmed",
+    theoryContent: problemSource,
+    learningObjective: problemObjective,
+    levels: [{
+      ...applyLevel,
+      cognitiveLevel: "remember",
+      performanceObjective: "Հիշում է անհայտ գումարելին։",
+      successCriterion: "Նշում է անհայտ գումարելին։",
+    }],
+  });
+  assert.equal(acceptance.accepted, false);
+  assert.equal(acceptance.reason, "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION");
+});
+
+test("20. an Apply path satisfies a calculation objective floor", () => {
+  const acceptance = assessAcceptedCognitivePath({
+    cogPathStatus: "confirmed",
+    theoryContent: calculationSource,
+    learningObjective: calculationObjective,
+    levels: [{
+      ...applyLevel,
+      performanceObjective: "Հաշվարկում է 7 + 3 գումարը։",
+      successCriterion: "Ճիշտ է հաշվարկում 7 + 3 գումարը։",
+    }],
+  });
+  assert.equal(acceptance.accepted, true);
+});
+
+test("21. a Remember objective remains backward compatible", () => {
+  const acceptance = assessAcceptedCognitivePath({
+    cogPathStatus: "confirmed",
+    theoryContent: rememberSource,
+    learningObjective: rememberObjective,
+    levels: [{
+      ...applyLevel,
+      cognitiveLevel: "remember",
+      performanceObjective: rememberObjective,
+      successCriterion: "Ճիշտ է որոշում բնական թվերի հաջորդ թիվը։",
+    }],
+  });
+  assert.equal(acceptance.accepted, true);
+});
+
+test("22. clear Armenian higher-order objectives establish their own floors", () => {
+  assert.equal(getHighConfidenceLearningObjectiveFloor("Վերլուծում է թվերի կառուցվածքը։"), "analyze");
+  assert.equal(getHighConfidenceLearningObjectiveFloor("Գնահատում է լուծման ճշտությունը։"), "evaluate");
+  assert.equal(getHighConfidenceLearningObjectiveFloor("Ստեղծում է սեփական խնդիր։"), "create");
+});
+
+test("23. a Create objective rejects a path whose target remains at Apply", () => {
+  const acceptance = assessAcceptedCognitivePath({
+    cogPathStatus: "confirmed",
+    theoryContent: applySource,
+    learningObjective: "Ստեղծում է սեփական խնդիր 7254 թվի կարգային գումարելիների համար։",
+    levels: [{
+      ...applyLevel,
+      performanceObjective: "Կիրառում է կարգային գումարելիների կանոնը։",
+      successCriterion: "Ճիշտ է ներկայացնում 7254 թիվը կարգային գումարելիների գումարով։",
+    }],
+  });
+  assert.equal(acceptance.accepted, false);
+  assert.equal(acceptance.reason, "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION");
+});
+
+test("24. vague objectives do not invent a stricter cognitive floor", () => {
+  assert.equal(getHighConfidenceLearningObjectiveFloor("Բացատրում է կանոնը։"), null);
+  assert.equal(getHighConfidenceLearningObjectiveFloor("Որոշում է պատասխանը։"), null);
 });
 
 const failed = results.filter((result) => !result.pass);

@@ -27,6 +27,7 @@ export type CognitivePathAcceptance = {
     | "TARGET_CEILING_INVALID"
     | "LEVEL_ORDER_INVALID"
     | "COGNITIVE_LEVEL_ORDER_INVALID"
+    | "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION"
     | "INTERACTION_TYPES_INVALID"
     | "EVIDENCE_BUDGET_INVALID"
     | "GROUNDING_NOT_ACCEPTED";
@@ -45,6 +46,7 @@ const COGNITIVE_LEVEL_RANK: Record<string, number> = {
   evaluate: 5,
   create: 6,
 };
+type CognitiveLevel = keyof typeof COGNITIVE_LEVEL_RANK;
 const strongClaim = /(?:միշտ|երբեք|միայն|անպայման|սխալ\s+է|always|never|only|must|wrong)/iu;
 const armenianLetter = /\p{Script=Armenian}/u;
 const latinLetter = /\p{Script=Latin}/u;
@@ -52,6 +54,38 @@ const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("
   .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
 const numbers = (value: string) => value.match(/\d+(?:[\/.,:]\d+)*/g) ?? [];
 const anchors = (value: string) => new Set(normalize(value).split(" ").filter((token) => token.length >= 4));
+
+/**
+ * Deliberately conservative objective classifier. Only unambiguous observable
+ * verbs establish a floor. Vague verbs such as "explain", "identify", or
+ * "determine" retain legacy compatibility unless C1 explicitly sets a higher
+ * ceiling; the classifier must never manufacture a stricter objective.
+ */
+export function getHighConfidenceLearningObjectiveFloor(
+  learningObjective: string | null | undefined,
+): CognitiveLevel | null {
+  const objective = normalize(learningObjective ?? "");
+  if (!objective) return null;
+  const createVerb = /(?:^|\s)(?:create|design|compose|develop|construct|ստեղծ\p{L}*|նախագծ\p{L}*|կազմ\p{L}*|մշակ\p{L}*)(?:\s|$)/iu;
+  const evaluateVerb = /(?:^|\s)(?:evaluate|justify|critique|assess|գնահատ\p{L}*|հիմնավոր\p{L}*|քննադատ\p{L}*)(?:\s|$)/iu;
+  const analyzeVerb = /(?:^|\s)(?:analyze|compare|differentiate|classify|վերլուծ\p{L}*|համեմատ\p{L}*|տարբերակ\p{L}*|դասակարգ\p{L}*)(?:\s|$)/iu;
+  const applyVerb = /(?:^|\s)(?:calculate|use|apply|solve|հաշվ\p{L}*|օգտագործ\p{L}*|կիրառ\p{L}*|լուծ\p{L}*)(?:\s|$)/iu;
+  if (createVerb.test(objective)) return "create";
+  if (evaluateVerb.test(objective)) return "evaluate";
+  if (analyzeVerb.test(objective)) return "analyze";
+  return applyVerb.test(objective) ? "apply" : null;
+}
+
+/** True when the path's explicitly selected target meets an unambiguous LO floor. */
+export function satisfiesLearningObjectiveCognitiveFloor(
+  learningObjective: string | null | undefined,
+  levels: ReadonlyArray<Pick<CognitivePathAcceptanceLevel, "cognitiveLevel" | "isTargetCeiling">>,
+): boolean {
+  const floor = getHighConfidenceLearningObjectiveFloor(learningObjective);
+  if (!floor) return true;
+  const target = levels.find((level) => level.isTargetCeiling)?.cognitiveLevel;
+  return !!target && (COGNITIVE_LEVEL_RANK[target] ?? 0) >= COGNITIVE_LEVEL_RANK[floor];
+}
 
 export function validateCognitivePathGrounding(
   theoryContent: string | null | undefined,
@@ -100,7 +134,7 @@ export function orderCognitivePathLevels<T extends { sequence: number; id?: numb
  */
 export function assessCognitivePathStructure(
   levels: ReadonlyArray<Pick<CognitivePathAcceptanceLevel, "cognitiveLevel" | "sequence" | "isTargetCeiling">>,
-): Exclude<CognitivePathAcceptance["reason"], "ACCEPTED" | "PATH_NOT_CONFIRMED" | "NO_APPLICABLE_LEVELS" | "INTERACTION_TYPES_INVALID" | "GROUNDING_NOT_ACCEPTED"> | null {
+): Exclude<CognitivePathAcceptance["reason"], "ACCEPTED" | "PATH_NOT_CONFIRMED" | "NO_APPLICABLE_LEVELS" | "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "INTERACTION_TYPES_INVALID" | "GROUNDING_NOT_ACCEPTED"> | null {
   if (levels.filter((level) => level.isTargetCeiling).length !== 1) {
     return "TARGET_CEILING_INVALID";
   }
@@ -149,6 +183,13 @@ export function assessAcceptedCognitivePath(input: {
   const structuralReason = assessCognitivePathStructure(applicableLevels);
   if (structuralReason) {
     return { accepted: false, reason: structuralReason, grounding: null };
+  }
+  if (!satisfiesLearningObjectiveCognitiveFloor(input.learningObjective, applicableLevels)) {
+    return {
+      accepted: false,
+      reason: "LEARNING_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION",
+      grounding: null,
+    };
   }
   if (applicableLevels.some((level) =>
     !Array.isArray(level.preferredInteractionTypes) ||

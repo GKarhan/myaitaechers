@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { assessC2GenerationPreflight } from "../c2-generation-preflight.js";
-import { hasCompleteTeachingContent, shouldRunBoundedPhase2Repair, summarizeCurrentTeachingContent } from "../teaching-content-readiness.js";
+import { getMissingTeachingContentPatch, hasCompleteTeachingContent, requiresSourceAlignmentReview, shouldRunBoundedPhase2Repair, summarizeCurrentTeachingContent } from "../teaching-content-readiness.js";
 
 let passed = 0;
 function test(name: string, check: () => void) {
@@ -47,4 +47,38 @@ test("20 3/4, 2/4, 1/4, and 0/4 field states remain incomplete", () => {
   );
 });
 
-console.log(`\nMapping pipeline closure: ${passed}/20 passed`);
+test("21 partial teacher-authored Teaching Content is preserved while only blank fields are filled", () => {
+  const partial = {
+    childFriendlyExplanation: "Ուսուցչի բացատրությունը։",
+    basicExamples: ["Ուսուցչի օրինակը։"],
+    commonMisconception: null,
+    nonExamples: [],
+  };
+  const candidate = {
+    childFriendlyExplanation: "AI-ի նոր բացատրությունը։",
+    basicExamples: ["AI-ի նոր օրինակը։"],
+    commonMisconception: "AI-ի սխալ պատկերացումը։",
+    nonExamples: ["AI-ի հակաօրինակը։"],
+  };
+  assert.deepEqual(getMissingTeachingContentPatch(partial, candidate), {
+    commonMisconception: candidate.commonMisconception,
+    nonExamples: candidate.nonExamples,
+  });
+});
+
+test("22 complete Teaching Content produces an empty normal-generation patch", () => {
+  assert.deepEqual(getMissingTeachingContentPatch(complete, {
+    childFriendlyExplanation: "Փոխարինող բացատրություն։",
+    commonMisconception: "Փոխարինող սխալ։",
+    basicExamples: ["Փոխարինող օրինակ։"],
+    nonExamples: ["Փոխարինող հակաօրինակ։"],
+  }), {});
+});
+
+test("23 source-alignment review is a hard block for every enrichment entry point", () => {
+  assert.equal(requiresSourceAlignmentReview("SOURCE_ALIGNMENT:INSUFFICIENT"), true);
+  assert.equal(requiresSourceAlignmentReview("SOURCE_ALIGNMENT_REVIEWED_BY_TEACHER"), false);
+  assert.equal(requiresSourceAlignmentReview(null), false);
+});
+
+console.log(`\nMapping pipeline closure: ${passed}/23 passed`);

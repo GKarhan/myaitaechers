@@ -61,3 +61,4 @@
 - [Atomicity verification recovery](atomicity-verification-recovery.md) — one retry for technical review interruptions; unresolved broad nodes cannot become canonical.
 - [Final approval readiness](final-approval-readiness.md) — only true errors block approval; safe reviews stay advisory, missing content needs explicit override, and repair may only normalize one existing safe relation.
 - [Teaching Content override approvals](teaching-content-override-approvals.md) — overrides are explicit, non-sticky approvals; later material edits must return delivery state to review.
+- [Independent lesson enrichment](independent-lesson-enrichment.md) — Teaching Content is C1/source-gated but C2-independent; normal generation fills only fields blank at commit time.

@@ -641,22 +641,18 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 function GenerateTeachingContentButton({
   lessonId,
   hasNodes,
-  hasExistingPhase2,
+  completedCount,
+  totalCount,
   hasTeachingContentForAllNodes,
-  prerequisitesReady,
-  isLocked,
   onInspectNode,
 }: {
   lessonId: number;
   hasNodes: boolean;
-  /** True when ≥1 node already has teaching content; the server fills gaps only. */
-  hasExistingPhase2: boolean;
+  /** Persisted current-state count; normal generation fills only the missing nodes. */
+  completedCount: number;
+  totalCount: number;
   /** True when every MicroNode has all persisted Teaching Content fields. */
   hasTeachingContentForAllNodes: boolean;
-  /** Teaching Content is offered after every Cognitive Path is safely generated. */
-  prerequisitesReady: boolean;
-  /** Final approval is authoritative; AI generation must be unavailable afterward. */
-  isLocked: boolean;
   /** Opens the existing MicroNode Cognitive Path review surface for a blocked item. */
   onInspectNode: (nodeId: number) => void;
 }) {
@@ -722,41 +718,31 @@ function GenerateTeachingContentButton({
     ?? (genStatus?.status === 'running'  ? 'Arabatk...'
       : genStatus?.status === 'pending' ? 'Spasuma...' : '');
   const teachingContentResult = genStatus?.status === 'completed' ? genStatus.result : null;
-  const currentState = genStatus?.currentState;
-  const retryAllowed = currentState?.retryAllowed ?? !hasTeachingContentForAllNodes;
   const teachingContentBlocks = teachingContentResult?.summary?.filter(
     (row) => row.status === 'blocked_c1' || row.status === 'blocked_c2',
   ) ?? [];
 
   if (!hasNodes) return null;
-  if (isLocked) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300">
-        🔒 Հաստատված
-      </span>
-    );
-  }
-  if (hasTeachingContentForAllNodes && !retryAllowed) {
+  if (hasTeachingContentForAllNodes) {
     return (
       <span className="text-[10px] text-white/55">
-        Պատրաստ է
+        ✓ {completedCount}/{totalCount} ստեղծված
       </span>
     );
   }
+  const missingCount = Math.max(0, totalCount - completedCount);
 
   return (
     <>
       <button
         onClick={handleGenerate}
-        disabled={isActive || !prerequisitesReady}
-        title={hasExistingPhase2
-          ? "Կրկին գեներացնել կրթական բովանդակությունը"
-          : "Ствrzел usutsman боvandakutyun"}
+        disabled={isActive}
+        title="Ստեղծել միայն բացակայող ուսուցման բովանդակությունը"
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
       >
         {isActive ? (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        ) : !prerequisitesReady ? '⏳ Սպասում է 1-ին քայլին' : genDone ? '⚠ Վերանայել' : hasExistingPhase2 ? '✨ Լրացնել բացակա բովանդակությունը' : '✨ Ստեղծել'}
+        ) : genDone ? '⚠ Վերանայել' : completedCount > 0 ? `✨ Լրացնել բացակայող ${missingCount}-ը` : '✨ Ստեղծել'}
       </button>
       {isActive && (
         <span className="text-[10px] text-indigo-400/70 animate-pulse max-w-[200px] truncate" title={progressLabel}>
@@ -801,10 +787,12 @@ function NodeViewModal({
   node,
   exercises,
   onClose,
+  onEdit,
 }: {
   node: Record<string, unknown>;
   exercises: Array<Record<string, unknown>>;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   const nodeExercises = exercises.filter((e) => e.relatedNodeId === node.id);
 
@@ -858,11 +846,19 @@ function NodeViewModal({
               <span className="text-[10px] text-primary/40 mt-0.5 inline-block">Bloom {String(node.targetBloomLevel)}</span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-white transition-colors ml-3 shrink-0 text-lg leading-none"
-            title="Փակել"
-          >✕</button>
+          <div className="ml-3 flex shrink-0 items-center gap-2">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="rounded border border-indigo-400/25 bg-indigo-400/10 px-2 py-1 text-[10px] text-indigo-200 hover:bg-indigo-400/20"
+              >Խմբագրել</button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-white transition-colors text-lg leading-none"
+              title="Փակել"
+            >✕</button>
+          </div>
         </div>
 
         {/* Scrollable content */}
@@ -894,7 +890,7 @@ function NodeViewModal({
           )}
           {!node.childFriendlyExplanation && (
             <section className="border border-indigo-500/15 rounded-lg bg-indigo-500/5 px-3 py-2">
-              <p className="text-[10px] text-indigo-400/70">Ուսուցման բովանդակությունը դեռ չկա։ Օգտագործիր դասի «Ստեղծել ուսուցման բովանդակություն» գործողությունը։</p>
+              <p className="text-[10px] text-indigo-400/70">Ուսուցման բովանդակությունը դեռ չկա։ Այն կարող եք ստեղծել դասի Քայլ 2 գործողությամբ կամ լրացնել «Խմբագրել»-ից։</p>
             </section>
           )}
 
@@ -1310,7 +1306,7 @@ function LessonNodesPanel({
   const nodesApproved = nodes.every((node) => (node as any).status === "approved");
 
   const generateAllCogPaths = async () => {
-    if (lessonIsApproved || bulkCogPathRunning || sortedNodes.length === 0) return;
+    if (bulkCogPathRunning || sortedNodes.length === 0) return;
 
     const summary: BulkCogPathSummary = {
       generated: [],
@@ -1339,10 +1335,17 @@ function LessonNodesPanel({
         const nodeTitle = node.title;
         setBulkCogPathProgress({ current: index + 1, total: sortedNodes.length, title: nodeTitle });
 
-        // A confirmed path is a protected teacher decision. Bulk work never requests
-        // a forced regeneration, so it is reported rather than touched.
-        if ((node as any).cogPathStatus === "confirmed") {
-          summary.existing.push({ nodeId: node.id, title: nodeTitle, detail: "Հաստատված ուղին պահպանվել է" });
+        // Normal bulk generation is strictly missing-only. Any persisted path,
+        // whether awaiting review or confirmed, is teacher-visible work and must
+        // never be regenerated or overwritten by this action.
+        if ((node as any).cogPathStatus) {
+          summary.existing.push({
+            nodeId: node.id,
+            title: nodeTitle,
+            detail: (node as any).cogPathStatus === "confirmed"
+              ? "Հաստատված ուղին պահպանվել է"
+              : "Գոյություն ունեցող ուղին պահպանվել է",
+          });
           publishSummary();
           continue;
         }
@@ -2508,36 +2511,34 @@ function LessonNodesPanel({
           {nodes.length > 0 && (
             <section className="rounded-xl border border-primary/20 bg-primary/[0.045] px-3 py-3 space-y-2.5">
               <p className="text-[11px] font-semibold text-white">Դասի քարտեզագրման քայլեր</p>
-              <div className="grid grid-cols-1 items-stretch gap-2 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+              <div className="grid grid-cols-1 items-stretch gap-2 md:grid-cols-3">
                 <div className="min-w-0 rounded-lg border border-indigo-400/20 bg-black/15 p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-400/15 text-[10px] font-semibold text-indigo-200">1</span>
                     <p className="text-[10px] font-semibold text-white">Ճանաչողական ուղիներ</p>
                   </div>
                   <div className="mt-2 min-h-8">
-                    {lessonIsApproved ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300">🔒 Հաստատված</span>
-                    ) : allCognitivePathsCreated ? (
+                    {allCognitivePathsCreated ? (
                       <span className={"inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium " + (
                         allCognitivePathsConfirmed
                           ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
                           : "border-amber-400/25 bg-amber-400/10 text-amber-200"
                       )}>
-                        {allCognitivePathsConfirmed ? "✓ Ստեղծված" : "⚠ Վերանայում է պետք"}
+                        {allCognitivePathsConfirmed ? `✓ ${cognitivePathsCreated}/${nodes.length} ստեղծված` : "⚠ Վերանայում է պետք"}
                       </span>
                     ) : (
                       <button
-                      onClick={generateAllCogPaths}
+                        onClick={generateAllCogPaths}
                         disabled={bulkCogPathRunning}
                         className="flex items-center gap-1.5 rounded-lg border border-indigo-400/35 bg-indigo-500/20 px-2.5 py-1.5 text-[10px] font-medium text-indigo-100 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/30 disabled:opacity-50"
                       >
                         {bulkCogPathRunning ? (
                           <span className="inline-block h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        ) : "✨ Ստեղծել"}
+                        ) : cognitivePathsCreated > 0 ? `✨ Լրացնել բացակայող ${cognitivePathsMissing}-ը` : "✨ Ստեղծել"}
                       </button>
                     )}
                   </div>
-                  {cognitivePathsCreated > 0 && !lessonIsApproved && (
+                  {cognitivePathsCreated > 0 && (
                     <p className={"mt-1 text-[9px] " + (
                       allCognitivePathsConfirmed ? "text-emerald-300/70" : "text-amber-200/75"
                     )}>
@@ -2548,28 +2549,22 @@ function LessonNodesPanel({
                   )}
                 </div>
 
-                <div className="flex items-center justify-center text-primary/60">
-                  <span className="hidden text-lg md:block">→</span>
-                  <span className="text-lg md:hidden">↓</span>
-                </div>
-
                 <div className="min-w-0 rounded-lg border border-indigo-400/20 bg-black/15 p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-400/15 text-[10px] font-semibold text-indigo-200">2</span>
-                    <p className="text-[10px] font-semibold text-white">Ուսուցման բովանդակություն</p>
+                    <p className="text-[10px] font-semibold text-white">Ուսուցման բովանդակություն · անկախ</p>
                   </div>
                   <div className="mt-2 flex min-h-8 min-w-0 flex-col items-start gap-1">
                     <GenerateTeachingContentButton
                       lessonId={lessonId}
                       hasNodes={nodes.length > 0}
-                      hasExistingPhase2={teachingContentGenerated > 0}
+                      completedCount={teachingContentComplete}
+                      totalCount={nodes.length}
                       hasTeachingContentForAllNodes={allTeachingContentComplete}
-                      prerequisitesReady={allCognitivePathsCreated}
-                      isLocked={lessonIsApproved}
                       onInspectNode={openCogPathFromBulkResult}
                     />
                   </div>
-                  {teachingContentComplete > 0 && !lessonIsApproved && (
+                  {teachingContentComplete > 0 && (
                     <p className={"mt-1 text-[9px] " + (
                        allTeachingContentComplete ? "text-white/55" : "text-amber-200/75"
                     )}>
@@ -2579,24 +2574,17 @@ function LessonNodesPanel({
                   )}
                 </div>
 
-                <div className="flex items-center justify-center text-primary/60">
-                  <span className="hidden text-lg md:block">→</span>
-                  <span className="text-lg md:hidden">↓</span>
-                </div>
-
                 <div className="min-w-0 rounded-lg border border-emerald-400/20 bg-black/15 p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-[10px] font-semibold text-emerald-200">3</span>
                     <p className="text-[10px] font-semibold text-white">Հանձնարարում</p>
                   </div>
                   <div className="mt-2 min-h-8">
-                    {lessonIsApproved ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-300">✅ Հաստատված</span>
-                    ) : (
-                      <span className="inline-flex rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-medium text-white/70">
-                        Ավարտեք վերանայումը, ապա հանձնարարեք դասի քարտից
-                      </span>
-                    )}
+                    <LessonAssignmentAction
+                      lessonId={lessonId}
+                      courseId={courseId}
+                      authoringStatus={authoringStatus}
+                    />
                   </div>
                 </div>
               </div>
@@ -3389,6 +3377,12 @@ function LessonNodesPanel({
         node={viewingNodeData.node}
         exercises={viewingNodeData.exercises}
         onClose={() => setViewingNodeData(null)}
+        onEdit={() => {
+          const currentNode = nodes.find((node) => node.id === viewingNodeData.node.id);
+          if (!currentNode) return;
+          setViewingNodeData(null);
+          startEditNode(currentNode);
+        }}
       />
     )}
     </div>
@@ -3491,11 +3485,11 @@ function LessonAssignmentAction({
         <AlertDialogContent className="border-amber-400/20 bg-[#0f1117] text-white">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-base text-amber-200">
-              Վերանայել նախքան հանձնարարելը
+              Դասում կան կետեր, որոնք խորհուրդ է տրվում վերանայել
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm leading-relaxed text-white/70">
-              Դասը հանձնարարելուց առաջ ուշադրություն դարձրեք հետևյալ կետերին։ Հաստատելու դեպքում
-              դրանք կպահպանվեն որպես ձեր տեղեկացված որոշում։
+              Կարող եք վերադառնալ և վերանայել, կամ մեկ անգամ հաստատել ու հանձնարարել դասը։
+              Հաստատելու դեպքում նշումները կպահպանվեն որպես ձեր տեղեկացված որոշում։
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="max-h-44 space-y-1 overflow-y-auto pr-1">

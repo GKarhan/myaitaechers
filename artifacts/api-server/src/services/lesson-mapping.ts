@@ -28,6 +28,7 @@ import {
 } from "../lib/micronode-source-alignment.js";
 import {
   assessCognitivePathStructure,
+  satisfiesLearningObjectiveCognitiveFloor,
   validateCognitivePathGrounding,
   type CognitivePathGroundingAudit,
 } from "../lib/cognitive-path-grounding.js";
@@ -5398,7 +5399,7 @@ export interface CogPathLevel {
 export interface CogPathGenerationResult {
   nodeId:      number;
   skipped:     boolean;
-  skipCode?:   C2GenerationBlockCode | "C2_CEILING_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
+  skipCode?:   C2GenerationBlockCode | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
   skipReason?: string;
   levels:      CogPathLevel[];
   groundingAudit?: CognitivePathGroundingAudit;
@@ -5619,6 +5620,15 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipped: true,
       skipCode: "C2_PATH_STRUCTURE_REJECTED",
       skipReason: `generated Cognitive Path violates required structure: ${structuralReason}`,
+      levels: [],
+    };
+  }
+  if (!satisfiesLearningObjectiveCognitiveFloor(input.learningObjective, levels)) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION",
+      skipReason: "generated Cognitive Path falls below the canonical Learning Objective cognitive floor",
       levels: [],
     };
   }
