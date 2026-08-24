@@ -1,0 +1,851 @@
+TASK — DESIGN THE TARGET AUTOMATIC MAPPING ARCHITECTURE
+NO CODE CHANGES. NO DATABASE WRITES. NO MAPPING RERUNS.
+
+We have completed the read-only forensic audit of automatic mapping for
+lesson 708 / mapping job 174.
+
+Use that audit as evidence, but DO NOT implement fixes yet.
+
+The goal of this task is to design the smallest robust target architecture
+for automatic lesson mapping so that the mapper identifies the lesson's
+actual atomic knowledge units first, rather than allowing source fragments,
+notes, examples, exercises, topic boundaries, or cognitive levels to create
+artificial MicroNodes.
+
+════════════════════════════════════════════════════════════════════
+0. NON-NEGOTIABLE PRODUCT MODEL
+════════════════════════════════════════════════════════════════════
+
+Canonical hierarchy:
+
+Subject → Lesson → Topic → MicroNode
+
+MicroNode is the atomic curriculum knowledge unit.
+
+CORE CONTRACT:
+
+ONE MICRONODE = ONE COHERENT, SOURCE-BACKED,
+INDEPENDENTLY TEACHABLE AND ASSESSABLE LEARNING OBJECTIVE.
+
+MicroNode count must NEVER be predetermined.
+
+A lesson may legitimately contain:
+- 2 MicroNodes,
+- 4 MicroNodes,
+- 10 MicroNodes,
+- 20 MicroNodes,
+or any other number required by the actual source knowledge structure.
+
+Do NOT optimize for fewer nodes.
+Do NOT optimize for more nodes.
+
+Optimize for the correct atomic knowledge decomposition.
+
+Important distinction:
+
+WHAT the learner learns
+    = MicroNode
+
+HOW DEEPLY the learner learns it
+    = Cognitive Path / cognitive levels
+
+Therefore Remember / Understand / Apply / Analyze etc.
+must NOT create separate MicroNodes for the same knowledge.
+
+Example:
+
+Knowledge:
+"Determine the sign of a rational expression."
+
+This should normally remain ONE MicroNode even if later the learner must:
+
+Remember the rule
+→ Understand why it works
+→ Apply it
+→ Analyze a sign chart
+
+Those are cognitive uses/depths of the same knowledge,
+not automatically four knowledge nodes.
+
+════════════════════════════════════════════════════════════════════
+1. IMPORTANT PRODUCT DECISION — PRESERVE SOURCE MATERIAL
+════════════════════════════════════════════════════════════════════
+
+We do NOT want the mapper to delete or silently discard pedagogically
+questionable source material merely because it should not become a MicroNode.
+
+If a source block is structurally safe and source-verified, preserve it.
+
+The teacher should ultimately be able to review questionable material and
+decide whether it should:
+
+- remain supporting material,
+- attach to another MicroNode,
+- become a MicroNode,
+- merge with another MicroNode,
+- split an existing MicroNode,
+- or be excluded from teaching.
+
+Therefore distinguish clearly between:
+
+A. SOURCE PRESERVATION
+
+and
+
+B. MICRONODE PROMOTION.
+
+A block may be preserved without being promoted into a MicroNode.
+
+Do NOT solve the forensic findings by simply deleting NOTE blocks.
+
+════════════════════════════════════════════════════════════════════
+2. SOURCE MATERIAL IS NOT THE SAME AS KNOWLEDGE
+════════════════════════════════════════════════════════════════════
+
+The source may contain:
+
+- definition
+- rule
+- explanation
+- theorem/property
+- example
+- counterexample
+- note
+- hint
+- formula
+- table
+- diagram
+- illustration
+- worked solution
+- exercise
+- question
+- activity
+- summary
+- objective
+- heading
+- continuation text
+- OCR/layout noise
+
+These are SOURCE BLOCKS.
+
+They are not automatically MicroNodes.
+
+A source block should create or contribute to a MicroNode only when it
+provides evidence for an independently teachable and assessable knowledge
+objective.
+
+Otherwise it should normally become one of:
+
+- theory/supporting explanation,
+- example,
+- counterexample,
+- representation,
+- hint,
+- exercise,
+- activity,
+- visual/supporting material,
+- structural material,
+- unresolved/review material.
+
+IMPORTANT:
+
+Do NOT implement a simplistic rule such as:
+
+NOTE → never MicroNode
+EXAMPLE → never MicroNode
+
+because a NOTE or EXAMPLE can sometimes contain genuinely new knowledge.
+
+The decision must be semantic and source-backed.
+
+════════════════════════════════════════════════════════════════════
+3. FORENSIC EVIDENCE THAT THE TARGET DESIGN MUST SOLVE
+════════════════════════════════════════════════════════════════════
+
+The lesson 708 audit proved/strongly indicated:
+
+1. 33 provider Pass 1 candidates existed.
+2. 28 source-verified blocks entered Pass 2.
+3. 5 blocks were correctly quarantined.
+4. The final map persisted 7 MicroNodes.
+5. All 7 required review.
+6. At least 3 and likely 4 genuine atomic knowledge units existed.
+7. Nodes 2409 and 2412 were created from weak/noisy NOTE evidence.
+8. Node 2411 was likely supporting material / a fragment of node 2408.
+9. Cross-topic boundaries contributed to duplicate knowledge.
+10. Duplicate/atomicity review detected several problems, but only after
+    candidate generation.
+11. Persistence correctly preserved unresolved content for teacher review
+    rather than silently approving it.
+12. All nodes displayed Bloom 1 because no accepted Outcome alignment /
+    Cognitive Path existed and legacy persistence fell back to 1.
+
+Your architecture must explain how these exact failure modes would be
+prevented or safely represented.
+
+════════════════════════════════════════════════════════════════════
+4. QUESTION THE CURRENT PIPELINE ORDER
+════════════════════════════════════════════════════════════════════
+
+Current architecture appears approximately:
+
+PDF/source
+→ Pass 1 source blocks
+→ Topic detection/grouping
+→ per-topic MicroNode generation
+→ duplicate/granularity review
+→ source alignment/reconciliation
+→ persistence
+
+The audit suggests Topic boundaries may be influencing MicroNode creation
+too early.
+
+Evaluate whether the target conceptual pipeline should instead resemble:
+
+PDF/source
+→ verified source blocks
+→ instructional-evidence/readability classification
+→ lesson-wide knowledge candidates
+→ lesson-wide semantic consolidation
+→ atomicity validation
+→ final MicroNodes
+→ Topic grouping/assignment
+→ supporting-material attachment
+→ exercise/activity attachment
+→ teacher review
+→ later Cognitive Path generation
+
+Do NOT assume this proposed order is automatically correct.
+
+Compare it against the existing implementation and tell me:
+
+- what should stay,
+- what should move,
+- what should be added,
+- what should be removed,
+- and what should remain only a review mechanism.
+
+Prefer the SMALLEST architectural correction that produces the desired
+behavior.
+
+Do not redesign working systems unnecessarily.
+
+════════════════════════════════════════════════════════════════════
+5. DESIGN A KNOWLEDGE-CANDIDATE STAGE
+════════════════════════════════════════════════════════════════════
+
+Evaluate introducing an explicit intermediate concept:
+
+Knowledge Candidate
+
+A Knowledge Candidate is NOT yet a persisted MicroNode.
+
+It represents a possible atomic knowledge objective inferred from one or
+more source blocks.
+
+For each candidate, determine whether we need fields/concepts such as:
+
+- candidate objective
+- sourceBlockIndices
+- source support strength
+- independently teachable?
+- independently assessable?
+- semantic identity/fingerprint
+- supportingMaterialIndices
+- related exercise/activity indices
+- confidence
+- ambiguity/review reason
+
+Do NOT add schema merely because these fields are listed.
+
+First determine what can remain transient in Pass 2 and what actually needs
+persistence.
+
+Explain whether this intermediate layer would solve the current failure
+mode more cleanly than generating MicroNodes directly from Topic blocks.
+
+════════════════════════════════════════════════════════════════════
+6. DESIGN THE MICRONODE PROMOTION GATE
+════════════════════════════════════════════════════════════════════
+
+Define the exact conceptual test for promoting a Knowledge Candidate into a
+MicroNode.
+
+A candidate should normally become a MicroNode only if:
+
+A. SOURCE SUPPORT
+There is direct, readable source evidence.
+
+B. KNOWLEDGE IDENTITY
+The source supports a meaningful knowledge/concept/skill, not merely a
+layout fragment or presentation detail.
+
+C. INDEPENDENT TEACHABILITY
+The objective can reasonably be taught as a distinct knowledge unit.
+
+D. INDEPENDENT ASSESSABILITY
+The learner's knowledge of it can be checked independently.
+
+E. ATOMICITY
+It contains one coherent objective rather than multiple independent
+objectives.
+
+F. NON-DUPLICATION
+It is not semantically the same knowledge as another candidate.
+
+G. SUPPORTING-MATERIAL TEST
+If the source is primarily an example, note, hint, diagram, representation,
+or continuation of another concept, determine whether it should attach to
+that concept instead of becoming a new node.
+
+Design this carefully.
+
+We need semantic judgment, not keyword heuristics alone.
+
+════════════════════════════════════════════════════════════════════
+7. READABILITY / SOURCE-EVIDENCE GATE
+════════════════════════════════════════════════════════════════════
+
+The audit showed two dangerous cases:
+
+2409:
+SOURCE_ALIGNMENT:INSUFFICIENT:NO_CONCEPT_OVERLAP
+
+2412:
+SOURCE_ALIGNMENT:UNREADABLE:UNREADABLE_SOURCE
+
+Yet both had already become full MicroNode candidates.
+
+Design where readability and instructional-evidence validation should occur.
+
+Important requirement:
+
+Unreadable or low-information material should NOT silently disappear.
+
+It should be preserved as something like:
+
+- unresolved source material,
+- visual/formula material requiring review,
+- supporting/unassigned material,
+
+but should not automatically establish a new MicroNode.
+
+Explain whether the existing source-alignment stage should:
+
+- move earlier,
+- be split into two stages,
+- remain where it is but gain a pre-promotion gate,
+- or be replaced by another mechanism.
+
+════════════════════════════════════════════════════════════════════
+8. LESSON-WIDE DUPLICATE CONSOLIDATION
+════════════════════════════════════════════════════════════════════
+
+The audit found cross-topic duplicate risk:
+
+2408 and 2411 represented materially overlapping sign-interval knowledge
+but existed in different Topics.
+
+Current high-confidence consolidation does not cross Topics.
+
+Design how semantic identity should work lesson-wide.
+
+Critical principle:
+
+Topic boundaries must organize knowledge.
+They must NOT define knowledge identity.
+
+If two candidates represent the same atomic knowledge but occur in
+different textbook sections/topics, the mapper should normally create one
+MicroNode and preserve both source references.
+
+However:
+
+Do NOT blindly merge similar wording.
+
+Two concepts can have similar vocabulary but represent different knowledge.
+
+Define the distinction between:
+
+- SAME KNOWLEDGE → merge source/support
+- RELATED KNOWLEDGE → separate MicroNodes + dependency/relationship
+- SAME KNOWLEDGE, DIFFERENT COGNITIVE USE → one MicroNode + Cognitive Path
+- SUPPORTING MATERIAL → attach to existing MicroNode
+- TRUE INDEPENDENT KNOWLEDGE → separate MicroNode
+- UNCERTAIN → preserve both/review safely
+
+════════════════════════════════════════════════════════════════════
+9. TOPIC GENERATION
+════════════════════════════════════════════════════════════════════
+
+Determine whether Topics should be:
+
+A. generated before atomic knowledge discovery,
+B. generated after MicroNodes,
+C. provisionally detected before MicroNodes but finalized afterward,
+or
+D. handled another way.
+
+Our desired conceptual hierarchy remains:
+
+Lesson
+→ Topic
+→ MicroNode
+
+Changing processing order does NOT mean changing the persisted hierarchy.
+
+We only want to prevent Topic boundaries from artificially creating
+duplicate knowledge.
+
+Explain the safest target approach.
+
+════════════════════════════════════════════════════════════════════
+10. EXAMPLES / THEORY / SUPPORTING MATERIAL
+════════════════════════════════════════════════════════════════════
+
+Design how source material should attach to MicroNodes.
+
+For example:
+
+MicroNode:
+"Sign-preservation intervals"
+
+Possible attached material:
+
+- definition
+- explanation
+- parity rule
+- worked example
+- number-line representation
+- note about excluded domain values
+- sign-chart diagram
+- hint
+- related exercises
+
+These should not automatically become separate MicroNodes.
+
+But source fidelity must remain intact.
+
+Explain:
+
+- what remains source-owned,
+- whether one block may support more than one candidate,
+- whether a block needs one primary owner,
+- how supporting material should be represented,
+- how unresolved ownership should be preserved for teacher review.
+
+Do NOT create unnecessary database complexity if existing metadata can
+support this safely.
+
+════════════════════════════════════════════════════════════════════
+11. EXERCISES AND ACTIVITIES
+════════════════════════════════════════════════════════════════════
+
+The forensic audit found exercise placement mostly good.
+
+Preserve that working behavior.
+
+Exercises must NOT create MicroNodes merely because they use a different
+question format or cognitive level.
+
+An exercise may:
+
+- have one primary conceptual MicroNode,
+- integrate several MicroNodes,
+- remain topic-level/additional/integrative,
+- later participate in several cognitive tasks.
+
+Distinguish:
+
+concept ownership
+vs.
+cognitive use/evidence.
+
+Do not redesign the student quiz or AI Teacher systems in this task.
+
+════════════════════════════════════════════════════════════════════
+12. COGNITIVE PATH / BLOOM
+════════════════════════════════════════════════════════════════════
+
+The audit proved that lesson 708 has:
+
+- zero persisted Outcome → MicroNode alignments,
+- zero Cognitive Path rows,
+- yet every MicroNode displays Bloom 1 because persistence falls back to 1.
+
+This is misleading.
+
+Design the target semantics.
+
+Preferred conceptual rule:
+
+MicroNode creation should NOT require assigning an artificial cognitive
+depth.
+
+If no Cognitive Path has been generated/approved, the state should mean:
+
+NOT YET DEFINED
+
+not:
+
+REMEMBER.
+
+Evaluate the smallest safe solution.
+
+Possible options include:
+
+- nullable targetBloomLevel,
+- separate path-status field,
+- UI hides legacy Bloom until C2 exists,
+- another compatibility mechanism.
+
+Do NOT choose until you inspect actual schema/API/UI dependencies.
+
+Identify every place that currently assumes targetBloomLevel is always a
+number before recommending a change.
+
+════════════════════════════════════════════════════════════════════
+13. TEACHER REVIEW MODEL
+════════════════════════════════════════════════════════════════════
+
+Teacher review remains essential.
+
+Automation should produce the best map it safely can, then preserve
+uncertainty.
+
+Teacher must be able to decide:
+
+KEEP
+MERGE
+SPLIT
+MOVE
+ATTACH AS SUPPORTING MATERIAL
+EXCLUDE
+
+Do NOT design the full Merge/Split UI yet.
+
+For this task, define only the data/semantic requirements needed so that
+future UI can support those actions without losing source lineage.
+
+Important:
+
+Do not force every questionable candidate to become a visible full
+MicroNode just so the teacher can review it.
+
+Consider whether unresolved source/candidate material can be represented
+separately in mapping metadata/review items.
+
+════════════════════════════════════════════════════════════════════
+14. HARD GATES VS PEDAGOGICAL REVIEW
+════════════════════════════════════════════════════════════════════
+
+Preserve the safety policy already implemented.
+
+HARD FAIL / NO PERSISTENCE should remain for things such as:
+
+- invalid source provenance,
+- parser/schema corruption,
+- broken references,
+- impossible source ownership,
+- coverage/integrity failure,
+- transaction failure.
+
+PEDAGOGICAL UNCERTAINTY should normally:
+
+- persist safely,
+- be marked for review,
+- not become silently trusted,
+- not be bulk-approved/enriched/final-approved while unresolved.
+
+Do NOT weaken any existing integrity gate.
+
+The architecture must clearly separate:
+
+STRUCTURAL SAFETY
+
+from
+
+PEDAGOGICAL QUALITY / UNCERTAINTY.
+
+════════════════════════════════════════════════════════════════════
+15. SOURCE COVERAGE MUST REMAIN A FIRST-CLASS INVARIANT
+════════════════════════════════════════════════════════════════════
+
+A cleaner MicroNode map must NOT reduce source coverage.
+
+Every verified source block must end in a known disposition, for example:
+
+- MicroNode core evidence
+- MicroNode supporting material
+- exercise
+- activity
+- topic/lesson structural material
+- unresolved visual/formula material
+- teacher-review material
+- explicitly excluded with reason
+
+Nothing should disappear silently.
+
+Design the coverage accounting required to guarantee this.
+
+════════════════════════════════════════════════════════════════════
+16. APPLY THE TARGET DESIGN TO LESSON 708
+════════════════════════════════════════════════════════════════════
+
+Use the forensic evidence as a worked example.
+
+Show how the target architecture would process:
+
+2406
+2407
+2408
+2409
+2410
+2411
+2412
+
+Expected diagnostic direction from the audit:
+
+2406
+→ genuine source-backed knowledge
+→ possibly needs teacher atomicity review
+
+2407
+→ genuine source-backed knowledge
+
+2408
+→ genuine source-backed knowledge
+
+2409
+→ should NOT become a trusted standalone MicroNode from blocks 11/16
+→ preserve source material/review state
+
+2410
+→ genuine source-backed domain/ԹԱԲ knowledge
+
+2411
+→ likely supporting material / continuation of 2408
+→ preserve block 23 and exercises appropriately
+
+2412
+→ unreadable visual/formula source
+→ preserve for teacher inspection
+→ should not establish a standalone trusted MicroNode
+
+Do NOT hardcode this lesson's result into general rules.
+
+Use it only to validate the architecture.
+
+════════════════════════════════════════════════════════════════════
+17. REGRESSION / GENERALIZATION TEST MATRIX
+════════════════════════════════════════════════════════════════════
+
+The design must work beyond this Algebra lesson.
+
+Describe expected behavior for at least these cases:
+
+CASE A — clean definition
+One definition introduces one new concept.
+Expected: one MicroNode.
+
+CASE B — definition + explanation + example
+All describe the same knowledge.
+Expected: one MicroNode with supporting material.
+
+CASE C — NOTE introduces genuinely new rule
+Expected: NOTE may contribute to/create a MicroNode.
+
+CASE D — NOTE merely clarifies existing rule
+Expected: supporting material, no new MicroNode.
+
+CASE E — unreadable formula/diagram fragment
+Expected: preserved for review, no automatic standalone MicroNode.
+
+CASE F — same knowledge repeated later in another Topic
+Expected: one lesson-wide knowledge identity, multiple source references.
+
+CASE G — similar wording but genuinely different knowledge
+Expected: separate MicroNodes.
+
+CASE H — one source paragraph contains two independently assessable rules
+Expected: two MicroNodes if source evidence supports both.
+
+CASE I — one knowledge unit has Remember/Understand/Apply tasks
+Expected: one MicroNode + multiple cognitive levels/tasks.
+
+CASE J — integrative exercise uses 3 MicroNodes
+Expected: no new MicroNode merely for the exercise.
+
+CASE K — source contains only example but example clearly introduces a
+previously unstated rule
+Explain expected behavior.
+
+CASE L — visual math representation contains essential knowledge not
+recoverable from plain text
+Explain safe behavior without fabricating content.
+
+════════════════════════════════════════════════════════════════════
+18. COST / MODEL-CALL ANALYSIS
+════════════════════════════════════════════════════════════════════
+
+We care about mapping quality AND operating cost.
+
+For every proposed new AI/semantic stage, state:
+
+- Is an additional model call required?
+- Can it be merged into an existing Pass 2 call?
+- Can deterministic code handle it?
+- What is the expected quality benefit?
+- What is the failure mode?
+- Is the added cost justified?
+
+Prefer:
+
+deterministic validation
++
+the minimum necessary semantic model reasoning.
+
+Do not solve every problem by adding another model call.
+
+════════════════════════════════════════════════════════════════════
+19. COMPATIBILITY / MIGRATION ANALYSIS
+════════════════════════════════════════════════════════════════════
+
+Inspect current consumers before proposing schema/API changes.
+
+At minimum consider:
+
+- automatic mapping route
+- manual mapping
+- teacher review CRUD
+- ordering
+- final approval
+- teaching-content enrichment
+- Cognitive Path generation
+- AI Teacher
+- quiz creation
+- Knowledge Tree
+- mapping audit UI
+
+For every proposed change classify it:
+
+SAFE LOCAL CHANGE
+COMPATIBILITY CHANGE
+SCHEMA MIGRATION
+HIGH-RISK ARCHITECTURAL CHANGE
+
+Prefer backward-compatible changes.
+
+Do NOT modify these systems in this task.
+
+════════════════════════════════════════════════════════════════════
+20. REQUIRED OUTPUT
+════════════════════════════════════════════════════════════════════
+
+Return a design report with EXACTLY these sections:
+
+A. CURRENT PIPELINE
+Show the real current pipeline from source extraction through persistence.
+
+B. FAILURE POINTS
+Map each lesson-708 forensic failure to the exact stage/function responsible.
+
+C. TARGET PIPELINE
+Give the proposed target pipeline in order.
+
+D. MICRONODE PROMOTION CONTRACT
+Define the exact rule for when source material becomes an atomic MicroNode.
+
+E. SOURCE-MATERIAL DISPOSITION MODEL
+Define where definitions, examples, notes, visuals, exercises, activities,
+noise, and unresolved material go.
+
+F. LESSON-WIDE SEMANTIC CONSOLIDATION
+Explain duplicate/related/supporting-material decisions across Topics.
+
+G. TOPIC STRATEGY
+State when Topics should be detected/finalized and why.
+
+H. COGNITIVE PATH SEPARATION
+Explain how MicroNode identity and cognitive depth should remain separate,
+including the Bloom-1 fallback problem.
+
+I. TEACHER REVIEW CONTRACT
+Explain what uncertainty is persisted and how source lineage remains intact.
+
+J. SOURCE COVERAGE INVARIANT
+Show how every verified source block receives an explicit final disposition.
+
+K. LESSON 708 WALKTHROUGH
+Show expected disposition of 2406–2412 under the target design.
+
+L. REGRESSION MATRIX
+Cover Cases A–L above.
+
+M. COST ANALYSIS
+List model calls before vs. after and identify any added cost.
+
+N. COMPATIBILITY / RISK MATRIX
+List affected files/tables/APIs and risk level.
+
+O. MINIMUM IMPLEMENTATION PLAN
+Break implementation into small ordered phases.
+
+For each phase provide:
+
+- exact goal,
+- likely files,
+- whether schema migration is required,
+- tests,
+- rollback boundary,
+- what must NOT change.
+
+P. RECOMMENDATION
+Answer clearly:
+
+1. Should we change the pipeline order?
+2. Should Knowledge Candidate become an explicit intermediate stage?
+3. Should semantic consolidation be lesson-wide before final Topic assignment?
+4. Should supporting material be separated from MicroNode identity?
+5. What should happen to unreadable/noisy source?
+6. What should happen to legacy Bloom before Cognitive Path exists?
+7. What is the SMALLEST safe implementation sequence?
+
+════════════════════════════════════════════════════════════════════
+21. HARD CONSTRAINTS FOR THIS TASK
+════════════════════════════════════════════════════════════════════
+
+DO NOT:
+
+- edit code,
+- write to the database,
+- rerun lesson 708,
+- rerun any mapping,
+- invoke mapping providers/models,
+- change prompts,
+- change schemas,
+- create migrations,
+- restart workflows,
+- modify AI Teacher,
+- modify Quiz,
+- modify Knowledge Tree,
+- implement Merge/Split UI.
+
+This is DESIGN / READ-ONLY ANALYSIS ONLY.
+
+Inspect the actual repository before answering.
+
+Do not answer from the forensic report alone.
+
+For every important architectural claim distinguish:
+
+PROVEN FROM CURRENT CODE
+PROVEN FROM PERSISTED DATA
+INFERENCE
+RECOMMENDATION
+
+If the repository contradicts the forensic report, report the contradiction.
+
+Do not hide uncertainty.
+
+Stop after the design report.
