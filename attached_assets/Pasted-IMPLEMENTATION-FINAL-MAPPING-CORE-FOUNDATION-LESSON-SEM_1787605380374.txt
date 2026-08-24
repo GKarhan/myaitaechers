@@ -1,0 +1,906 @@
+IMPLEMENTATION — FINAL MAPPING CORE FOUNDATION
+LESSON SEMANTIC SCOPE + SOURCE-FIRST TARGET LEDGER
+
+IMPORTANT:
+This is a narrowly scoped Mapping Core architecture task.
+
+The current mapping system already contains multiple working safety layers.
+DO NOT rewrite the mapper.
+DO NOT replace working architecture.
+DO NOT weaken any existing validator.
+DO NOT modify unrelated systems.
+
+The purpose of this task is to fix the final two confirmed architectural gaps:
+
+1. LESSON SEMANTIC BOUNDARY GAP
+2. CANDIDATE-GATED TARGET DISCOVERY GAP
+
+After this task, the Mapping Core should be considered architecturally complete enough for teacher-reviewed production use.
+
+════════════════════════════════════════════════════
+0. ABSOLUTE SAFETY RULE — PRESERVE EXISTING WORK
+════════════════════════════════════════════════════
+
+The following existing behavior/contracts are PROTECTED and must remain working:
+
+- Pass 1 source extraction / verification
+- verified source block conservation
+- source placement invariants
+- ensurePass2TopicGroupCoverage()
+- rescueMissingPass2PlacementReferences()
+- final validateSourceCoverage()
+- KnowledgeCandidate contract
+- candidate promotion
+- semantic review behavior
+- Phase 3B consolidation
+- Knowledge Completeness Audit
+- Task #173 completeness protections
+- Task #174 independent target protections
+- durable source-material persistence
+- teacher-review preservation
+- approval/fail-closed behavior
+- manual mapping
+- existing lesson mapping UI behavior
+
+DO NOT weaken any fail-closed rule just to produce more MicroNodes.
+
+DO NOT solve this by:
+- lowering atomicity thresholds globally
+- automatically promoting review-required candidates
+- generating one MicroNode per exercise
+- forcing a fixed MicroNode count
+- lexical similarity alone
+- copying exercises between owners
+- bypassing teacher review
+- bypassing source coverage validation
+- changing existing consolidation semantics
+
+No unrelated refactoring.
+
+Before editing:
+1. inspect current implementation;
+2. identify exact insertion points;
+3. confirm the change can be additive/bounded;
+4. run relevant baseline tests if practical.
+
+If the implementation requires destructive redesign of existing working layers:
+STOP and report instead of implementing.
+
+════════════════════════════════════════════════════
+1. CONFIRMED PROBLEMS
+════════════════════════════════════════════════════
+
+The forensic audit of lesson 715 (§2.1) confirmed two general architecture problems.
+
+PROBLEM A — PHYSICAL READ RANGE ≠ LESSON SEMANTIC RANGE
+
+Current behavior effectively treats every verified block on selected physical pages as eligible lesson content.
+
+Example:
+
+§2.1 uses physical pages 26–29.
+
+Page 29 also contains the beginning of adjacent material:
+
+"ՏԵՂԱՇԱՐԺ ԿՈՈՐԴԻՆԱՏԱՅԻՆ ԱՌԱՆՑՔԻ ԵՐԿԱՅՆՔՈՎ"
+
+and exercise 87.
+
+Because they are physically on page 29, they entered Pass 2 and produced a canonical MicroNode even though they belong to adjacent/next instructional material.
+
+Source provenance was correct.
+Lesson semantic scope was not.
+
+PROBLEM B — TARGET DISCOVERY IS STILL CANDIDATE-GATED
+
+Current IndependentLearningTarget discovery starts from candidateSnapshots.
+
+Therefore:
+
+verified source
+        ↓
+Pass 2 candidate exists?
+        ↓
+YES → target may exist
+NO  → target cannot independently exist
+
+This means candidate generation still defines what knowledge is visible to completeness.
+
+Exercises/outcomes/source evidence can enrich an existing candidate but cannot independently expose a missing learning target.
+
+That is not sufficient.
+
+════════════════════════════════════════════════════
+2. REQUIRED ARCHITECTURE
+════════════════════════════════════════════════════
+
+Introduce ONE bounded semantic layer:
+
+LESSON SEMANTIC SCOPE + SOURCE-FIRST TARGET LEDGER
+
+Conceptual pipeline:
+
+PDF / source
+   ↓
+Pass 1 verified source blocks
+   ↓
+LESSON SEMANTIC SCOPE
+   ↓
+SOURCE-FIRST TARGET LEDGER
+   ↓
+existing Pass 2 candidate generation
+   ↓
+existing KnowledgeCandidate
+   ↓
+existing promotion
+   ↓
+existing consolidation
+   ↓
+existing completeness audit
+   ↓
+teacher review / approval
+
+IMPORTANT:
+
+Do not create a second competing mapper.
+
+The new layer must FEED or AUDIT the existing pipeline.
+
+Existing candidate generation remains useful.
+
+The critical architectural change is:
+
+CANDIDATES MAY SATISFY TARGETS.
+
+CANDIDATES MUST NOT DEFINE WHETHER A SOURCE-SUPPORTED TARGET EXISTS.
+
+════════════════════════════════════════════════════
+3. LESSON SEMANTIC SCOPE
+════════════════════════════════════════════════════
+
+Create a transient/server-owned semantic scope classification for verified source blocks.
+
+Use an explicit contract such as:
+
+type LessonSemanticScope =
+  | "IN_SCOPE"
+  | "ADJACENT_NEXT_SECTION"
+  | "STRUCTURAL"
+  | "REVIEW_REQUIRED";
+
+Naming may adapt to existing conventions, but semantics must remain explicit.
+
+Every VERIFIED Pass 1 block must remain durably conserved.
+
+Semantic scope classification MUST NOT delete source blocks.
+
+Distinguish:
+
+SOURCE PRESERVATION
+from
+LESSON MAPPING ELIGIBILITY.
+
+An ADJACENT_NEXT_SECTION block:
+
+- remains durable
+- remains auditable
+- remains visible in diagnostics/review
+- DOES NOT enter normal lesson candidate generation
+- DOES NOT become a canonical MicroNode for the selected lesson
+- DOES NOT attach exercises to an in-scope MicroNode merely because it shares the same physical page
+
+STRUCTURAL material remains preserved but should not independently generate a learner mastery state unless existing architecture explicitly supports that.
+
+REVIEW_REQUIRED remains fail-closed.
+
+════════════════════════════════════════════════════
+4. SEMANTIC SCOPE SIGNALS
+════════════════════════════════════════════════════
+
+Do NOT classify lesson scope from page number alone.
+
+Use multiple available signals together.
+
+At minimum inspect:
+
+- selected lesson title
+- paragraph / section identifier when available (§2.1 etc.)
+- source block order
+- headings / OBJECTIVE / section markers
+- abrupt instructional topic change
+- exercise sequence
+- surrounding source context
+- lesson goal/outcomes when available
+- candidate/source semantics when useful
+- position near the end of selected physical range
+
+IMPORTANT:
+
+No single weak lexical signal should be authoritative.
+
+Example:
+
+selected lesson:
+"ՖՈՒՆԿՑԻԱՅԻ ՈՐՈՇՄԱՆ ԵՎ ԱՐԺԵՔՆԵՐԻ ՏԻՐՈՒՅԹՆԵՐԸ.
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿԻ ԸՆԹԵՐՑՈՒՄԸ"
+
+then a new heading appears:
+
+"ՏԵՂԱՇԱՐԺ ԿՈՈՐԴԻՆԱՏԱՅԻՆ ԱՌԱՆՑՔԻ ԵՐԿԱՅՆՔՈՎ"
+
+followed by exercise 87 about arithmetic movement.
+
+That is strong evidence of adjacent material.
+
+The mapper must preserve it but prevent it from becoming a §2.1 canonical node.
+
+If semantic scope is genuinely uncertain:
+REVIEW_REQUIRED.
+
+Do not silently discard it.
+Do not silently promote it.
+
+════════════════════════════════════════════════════
+5. SOURCE-FIRST TARGET LEDGER
+════════════════════════════════════════════════════
+
+Create a TRANSIENT lesson-wide Target Ledger before candidate promotion.
+
+This is NOT a new DB hierarchy.
+
+Do NOT introduce:
+
+Lesson → Target → Candidate → MicroNode
+
+as a user-facing curriculum hierarchy.
+
+Canonical hierarchy remains:
+
+Subject → Lesson → Topic → MicroNode
+
+The Target Ledger is internal mapping evidence.
+
+Each target seed should represent:
+
+ONE independently assessable learner knowledge/performance state.
+
+Conceptual shape:
+
+interface SourceFirstTargetSeed {
+  id: string;
+  conceptIdentity: ...;
+  performanceDirection: ...;
+  sourceBlockIndices: number[];
+  exerciseEvidence: ...;
+  outcomeEvidence: ...;
+  candidateEvidence: ...;
+  confidence: ...;
+  status: ...;
+}
+
+Use current project conventions where possible.
+
+Do not create unnecessary schema.
+
+════════════════════════════════════════════════════
+6. TARGET DISCOVERY MUST BE MULTI-SIGNAL
+════════════════════════════════════════════════════
+
+Target discovery must not begin only from candidateSnapshots.
+
+It should reason over IN_SCOPE evidence including:
+
+A. verified instructional source
+B. definitions/rules/concepts
+C. worked examples
+D. exercise clusters
+E. lesson objectives/outcomes
+F. existing candidate snapshots
+
+Candidates are ONE signal, not the root ontology.
+
+A target may therefore exist even when Pass 2 failed to create a usable candidate.
+
+Example:
+
+source evidence + coherent exercise cluster
+strongly indicates:
+
+"Construct a function graph from domain/range/zero/value constraints"
+
+but candidate generation omitted it.
+
+Required result:
+
+TARGET EXISTS
+candidate coverage = MISSING
+status = REVIEW_REQUIRED
+
+NOT:
+
+invent MicroNode automatically
+
+and NOT:
+
+target disappears.
+
+════════════════════════════════════════════════════
+7. SOURCE GROUNDING RULE
+════════════════════════════════════════════════════
+
+Do NOT fabricate curriculum targets from exercises alone.
+
+A target seed must be grounded in legitimate IN_SCOPE lesson evidence.
+
+However, source grounding may be distributed.
+
+For example:
+
+- instructional statement/context establishes the concept/performance family;
+- multiple exercises establish that it is independently assessed.
+
+Exercise clusters may therefore DISCOVER or strengthen a target when they are semantically grounded by the lesson source.
+
+This is different from blindly converting every exercise into a target.
+
+One exercise ≠ one MicroNode.
+
+One outcome ≠ one MicroNode.
+
+One source block ≠ one MicroNode.
+
+The unit is:
+
+ONE independently assessable learner state.
+
+════════════════════════════════════════════════════
+8. ATOMICITY / LEARNER-STATE RULE
+════════════════════════════════════════════════════
+
+Two concepts/performances should remain separate targets when a learner can realistically master one and fail the other.
+
+Use this as the primary atomicity test:
+
+"Could the learner demonstrate mastery of A while failing B?"
+
+If YES:
+they should normally remain independently auditable targets.
+
+Examples:
+
+DOMAIN vs RANGE
+
+A learner may correctly determine domain but incorrectly determine range.
+
+Therefore they must remain independently visible in the Target Ledger.
+
+GRAPH → DOMAIN
+and
+GRAPH → RANGE
+
+must not disappear into a generic:
+
+"analyze function graph"
+
+unless explicit certified canonical logic intentionally represents both learner states and preserves separate evidence semantics.
+
+Similarly:
+
+FIND x FOR GIVEN y
+
+is not equivalent to:
+
+FIND ZEROS
+
+because zero is only the special case y = 0.
+
+Likewise:
+
+IDENTIFY ZEROS
+
+is not equivalent to:
+
+CONSTRUCT GRAPH FROM CONSTRAINTS.
+
+════════════════════════════════════════════════════
+9. PERFORMANCE DIRECTION
+════════════════════════════════════════════════════
+
+Preserve and extend Task #174 direction safety.
+
+Do not let generic lexical overlap collapse inverse or distinct performances.
+
+Examples:
+
+graph → sign intervals
+
+≠
+
+sign intervals → graph
+
+Likewise:
+
+graph → domain
+
+≠
+
+domain/range constraints → construct graph
+
+And:
+
+given y → find x
+
+≠
+
+find zeros only
+
+UNSPECIFIED direction must not act as a wildcard that certifies unrelated explicit directions.
+
+If direction cannot be safely classified:
+retain uncertainty / review.
+
+════════════════════════════════════════════════════
+10. TARGET → CANDIDATE → CANONICAL COVERAGE
+════════════════════════════════════════════════════
+
+After the Target Ledger exists, explicitly audit:
+
+TARGET
+   ↓
+candidate coverage?
+   ↓
+canonical coverage?
+
+Every in-scope target must end in one of these states:
+
+A. CANONICAL_COVERED
+
+B. REVIEW_REQUIRED_NO_VALID_CANDIDATE
+
+C. REVIEW_REQUIRED_CANDIDATE_HELD
+
+D. REVIEW_REQUIRED_IDENTITY_UNCERTAIN
+
+Equivalent naming is acceptable.
+
+What is NOT acceptable:
+
+target silently disappears.
+
+Completeness must be able to report:
+
+"Source-supported target exists but no valid canonical MicroNode currently represents it."
+
+Do not automatically invent the missing MicroNode.
+
+Teacher Review remains authoritative.
+
+════════════════════════════════════════════════════
+11. EXERCISE CLUSTER SAFETY
+════════════════════════════════════════════════════
+
+Exercises must provide independent performance evidence.
+
+Do not cluster exercises only because they share words such as:
+
+function
+graph
+domain
+range
+zero
+
+Semantic demanded performance matters.
+
+For lesson §2.1:
+
+75 → determine DOMAIN from graph
+
+77 → determine RANGE from graph
+
+76 → find x-values for a given function value
+
+79/81 → zeros
+
+80,82–86 → graph construction / combined constraints
+
+These are not one generic "function graph" cluster.
+
+Exercise 80/82 may contain zero evidence, but that does not make graph construction equivalent to zero identification.
+
+Do not copy an already-owned exercise during restoration.
+
+Preserve Task #174 exercise ownership protections.
+
+════════════════════════════════════════════════════
+12. OUTCOME ALIGNMENT SAFETY
+════════════════════════════════════════════════════
+
+Fix only what is necessary to prevent known false-positive coverage.
+
+Generic lexical overlap such as:
+
+"function"
+"graph"
+
+must NOT allow a zero-focused target/node to satisfy:
+
+- define domain/range
+- determine domain/range
+- find preimages
+- general graph analysis
+
+Outcome matching should require meaningful concept + performance compatibility.
+
+Teacher-confirmed outcomes, if they exist, may strengthen evidence.
+
+Draft/generated outcomes must not override stronger source evidence.
+
+Do not make outcomes the ontology.
+
+Source remains authoritative.
+
+════════════════════════════════════════════════════
+13. LESSON §2.1 REQUIRED BENCHMARK
+════════════════════════════════════════════════════
+
+Use lesson 715 / §2.1 as a regression benchmark.
+
+DO NOT hard-code lesson-specific titles or IDs into production logic.
+
+Expected pedagogical reference:
+
+Target/MicroNode family 1:
+DOMAIN
+- understand domain
+- determine domain from graph
+- exercise 75 evidence
+
+Target/MicroNode family 2:
+RANGE
+- understand range/value set
+- determine range from graph
+- exercise 77 evidence
+
+Target/MicroNode family 3:
+PREIMAGE / VALUE READING
+- find x-values corresponding to a specified y-value
+- blocks 11–14
+- exercise 76
+
+Target/MicroNode family 4:
+ZEROS
+- f(a)=0
+- graph/x-axis interpretation
+- exercises 79 and 81
+
+Target/MicroNode family 5:
+GRAPH CONSTRUCTION FROM CONSTRAINTS
+- domain/range/zero/value/preimage constraints
+- exercises 80, 82–86
+
+This reference does NOT mean the implementation must force exactly five persisted MicroNodes.
+
+The requirement is stronger and safer:
+
+all independently assessable in-scope target families must be represented in the Target Ledger and must end as either:
+
+CANONICAL_COVERED
+
+or
+
+explicit REVIEW_REQUIRED.
+
+No major target may silently disappear.
+
+Additionally:
+
+"ՏԵՂԱՇԱՐԺ ԿՈՈՐԴԻՆԱՏԱՅԻՆ ԱՌԱՆՑՔԻ ԵՐԿԱՅՆՔՈՎ"
+
+and exercise 87 must NOT become canonical §2.1 content if semantic scope identifies them as adjacent next-section material.
+
+They must remain preserved/auditable.
+
+════════════════════════════════════════════════════
+14. §1.5 NON-REGRESSION BENCHMARK
+════════════════════════════════════════════════════
+
+Preserve the previous §1.5 safety result.
+
+The system must continue distinguishing:
+
+GRAPH → SIGN INTERVALS
+
+from
+
+SIGN INTERVALS → GRAPH
+
+A target cannot disappear merely because the other inverse transformation already has a canonical node.
+
+Do not regress Task #174 direction protections.
+
+════════════════════════════════════════════════════
+15. SOURCE CONSERVATION MUST REMAIN ABSOLUTE
+════════════════════════════════════════════════════
+
+Every verified source block must remain durably accounted for.
+
+Semantic scope classification must NOT create source loss.
+
+The final source validator remains authoritative.
+
+Do NOT modify validateSourceCoverage() to make new tests pass.
+
+ADJACENT_NEXT_SECTION is not "deleted".
+
+It is:
+
+verified
++
+preserved
++
+auditable
++
+excluded from selected lesson canonicalization.
+
+If persistence contracts require a new disposition, implement it minimally and compatibly.
+
+════════════════════════════════════════════════════
+16. QUARANTINE OBSERVABILITY
+════════════════════════════════════════════════════
+
+The audit found that exercise 78 was absent from durable source records and one provider block had been quarantined, but retained diagnostics were insufficient to prove identity.
+
+Improve observability minimally.
+
+When a provider/source block is quarantined because source text cannot be verified, retain enough stable diagnostic context to identify:
+
+- original provider index
+- page
+- block type/category if known
+- short safe identifying excerpt/hash/reference
+- quarantine reason
+
+Do NOT persist fabricated source text as verified content.
+
+This is diagnostics only.
+
+════════════════════════════════════════════════════
+17. REQUIRED REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add provider-free deterministic regression tests.
+
+At minimum:
+
+TEST 1 — SAME PAGE / NEXT SECTION
+
+Selected lesson ends on a physical page where a clearly new instructional heading begins.
+
+Expected:
+
+- all blocks preserved
+- next-section material classified adjacent/review-safe
+- cannot become canonical selected-lesson MicroNode
+
+TEST 2 — ADJACENT EXERCISE
+
+Exercise belonging to adjacent content cannot attach to an in-scope node merely because it shares the selected page.
+
+TEST 3 — SOURCE-FIRST MISSING CANDIDATE
+
+Verified in-scope source + coherent exercise evidence establishes an independently assessable target.
+
+Simulate Pass 2 omitting its candidate.
+
+Expected:
+
+target still exists
+canonical coverage missing
+REVIEW_REQUIRED
+
+No invented node.
+
+TEST 4 — DOMAIN vs RANGE
+
+Domain and range remain independently auditable learner states.
+
+TEST 5 — PREIMAGE vs ZERO
+
+"Find x for given y"
+
+cannot be certified as covered by a zero-only target/node.
+
+TEST 6 — GRAPH CONSTRUCTION
+
+Construction exercises supported by in-scope lesson context expose a construction target even if candidate generation omits it.
+
+Do not create one target per exercise.
+
+TEST 7 — OUTCOME FALSE POSITIVE
+
+Generic lexical overlap cannot map domain/range/preimage outcomes to a zero-only node.
+
+TEST 8 — INVERSE DIRECTION NON-REGRESSION
+
+graph → intervals
+and
+intervals → graph
+
+remain distinct unless explicitly certified otherwise.
+
+TEST 9 — SOURCE CONSERVATION
+
+Every verified block still has exactly one valid durable disposition.
+
+No missing indices.
+No duplicate ownership.
+
+TEST 10 — REVIEW SAFETY
+
+Missing target coverage cannot silently approve the lesson.
+
+TEST 11 — EXERCISE OWNERSHIP
+
+Target restoration/discovery cannot copy an already-owned exercise into another owner.
+
+TEST 12 — DETERMINISM
+
+Same normalized input produces same semantic scope + target ledger decisions.
+
+TEST 13 — CROSS-SUBJECT GENERALITY
+
+Use at least one simple non-math fixture.
+
+The algorithm must not depend on Armenian algebra-specific hard-coded vocabulary.
+
+════════════════════════════════════════════════════
+18. PERFORMANCE / COST
+════════════════════════════════════════════════════
+
+Do not introduce one model call per:
+
+- source block
+- exercise
+- target
+- outcome
+- candidate
+
+Prefer one bounded lesson-level semantic analysis stage if model reasoning is required.
+
+Reuse deterministic evidence wherever possible.
+
+The architecture must remain practical for textbook-scale mapping.
+
+════════════════════════════════════════════════════
+19. DO NOT TOUCH
+════════════════════════════════════════════════════
+
+Do NOT modify:
+
+- Cognitive Path generation
+- Teaching Content generation
+- AI Teacher
+- chat.ts
+- quiz generation
+- student quiz-taking
+- Knowledge Tree
+- mastery/scoring
+- manual mapping behavior
+- unrelated teacher dashboard UI
+- unrelated DB schema
+- session logic
+
+Do NOT automatically rerun lesson 715 or lesson 709.
+
+I will manually rerun benchmark lessons after implementation.
+
+════════════════════════════════════════════════════
+20. IMPLEMENTATION METHOD
+════════════════════════════════════════════════════
+
+Before changing code:
+
+A. Trace exact current pipeline:
+verified Pass 1
+→ topic grouping
+→ candidate snapshots
+→ target discovery
+→ promotion
+→ consolidation
+→ completeness
+→ persistence
+
+B. State exactly where the new semantic scope stage belongs.
+
+C. State exactly where the source-first Target Ledger belongs.
+
+D. Confirm how existing Task #173/#174 behavior will remain intact.
+
+Then implement the smallest safe change.
+
+Do not create a parallel pipeline.
+
+════════════════════════════════════════════════════
+21. FINAL VERIFICATION
+════════════════════════════════════════════════════
+
+Run:
+
+- new semantic-scope tests
+- new source-first-target tests
+- existing Pass 2 placement invariant tests
+- KnowledgeCandidate tests
+- candidate promotion tests
+- lesson-wide consolidation tests
+- mapping completeness tests
+- source coverage validator tests
+- durable source-material tests
+- Task #174 direction/ownership regressions
+- API TypeScript typecheck
+- production build if appropriate
+- git diff --check
+
+Restart API only if required by the environment.
+
+Inspect startup logs.
+
+Do NOT execute automatic mapping against production benchmark lessons.
+
+════════════════════════════════════════════════════
+22. REQUIRED FINAL REPORT
+════════════════════════════════════════════════════
+
+Return:
+
+1. Root architecture before the fix.
+2. Exact files/functions changed.
+3. Where Lesson Semantic Scope was inserted.
+4. Semantic scope contract.
+5. How adjacent same-page content is preserved but excluded.
+6. Where Source-First Target Ledger was inserted.
+7. Exact target evidence sources used.
+8. How a target can now exist without a candidate.
+9. How missing candidate coverage becomes REVIEW_REQUIRED.
+10. How exercise clusters contribute without creating one-node-per-exercise.
+11. How DOMAIN vs RANGE remains independently auditable.
+12. How PREIMAGE vs ZERO is protected.
+13. How graph-construction targets are discovered.
+14. How outcome lexical false positives are prevented.
+15. Confirmation §1.5 inverse-direction protections remain intact.
+16. Confirmation Task #173/#174 behavior remains intact.
+17. Confirmation source conservation/final validator remains intact.
+18. Quarantine observability improvement.
+19. Tests run + exact results.
+20. Any remaining architectural limitation.
+
+Then explicitly answer:
+
+A. Can a source-supported learning target now exist even when Pass 2 candidate generation omits it?
+
+B. Can same-page adjacent next-section material be preserved without becoming selected-lesson canonical content?
+
+C. Can a missing target silently disappear?
+
+D. Can a review-required target be automatically promoted merely to improve completeness?
+
+E. Did you weaken any existing validator or safety gate?
+
+F. Is the mapper now safe to manually benchmark again on §1.5 and §2.1?
+
+IMPORTANT FINAL RULE:
+
+The goal is NOT maximum automatic MicroNode count.
+
+The goal is:
+
+MAXIMUM PEDAGOGICAL COVERAGE
++
+NO SILENT KNOWLEDGE LOSS
++
+NO FALSE KNOWLEDGE INVENTION
++
+CORRECT LESSON SEMANTIC BOUNDARY
++
+EXPLICIT TEACHER REVIEW WHEN UNCERTAIN.
+
+Implement only this task.
