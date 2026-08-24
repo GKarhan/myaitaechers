@@ -1,0 +1,814 @@
+FINAL TASK — SIMPLIFY AND CLOSE THE TEACHER LESSON-MAPPING WORKFLOW
+
+GOAL:
+Finish the teacher lesson-mapping workflow so it is simple, predictable,
+teacher-controlled, and does not repeatedly block the teacher on internal
+C1/C2/Outcome/review states.
+
+This is NOT a redesign of the curriculum architecture.
+
+Preserve the existing canonical data model and safety systems.
+
+DO NOT modify:
+- Quiz
+- Knowledge Tree
+- student learning flow
+- AI Teacher runtime behavior
+- C3–C7 semantics
+- deployment/publishing
+- canonical Subject → Lesson → Topic → MicroNode hierarchy
+
+Do NOT remove validators.
+Do NOT invent fake data to satisfy validators.
+Do NOT create fake REQUIRED Outcome–MicroNode relations.
+Do NOT weaken source-grounding rules.
+
+The task is to simplify the TEACHER WORKFLOW and correctly classify
+what truly blocks delivery versus what only needs teacher review.
+
+════════════════════════════════════════════════════
+CORE PRODUCT RULE
+════════════════════════════════════════════════════
+
+Implement this rule consistently:
+
+SYSTEM decides:
+“Does the required instructional structure exist?”
+
+SYSTEM advises:
+“What may need review or improvement?”
+
+TEACHER decides:
+“Is the existing instructional content good enough to give to students?”
+
+Therefore:
+
+MISSING REQUIRED STRUCTURE
+→ BLOCK and tell the teacher exactly what is missing and what action to take.
+
+EXISTING BUT REVIEWABLE / IMPERFECT CONTENT
+→ WARN, allow teacher review/edit, and allow explicit teacher acceptance.
+
+Do NOT treat quality warnings as missing structure.
+
+════════════════════════════════════════════════════
+PART 0 — AUDIT FIRST
+════════════════════════════════════════════════════
+
+Before changing code, audit the current implementation.
+
+Identify:
+
+1. Goal/Outcome generation and persistence.
+2. Knowledge Mapping persistence.
+3. MicroNode readiness.
+4. Cognitive Path generation/persistence.
+5. Teaching Content generation/persistence.
+6. Teaching Content viewer/editor.
+7. Current final-approval validator.
+8. Current assignment enable/disable logic.
+9. Existing teacher override/acceptance mechanism.
+10. Existing invalidation behavior after material edits/remapping.
+
+Also identify every current validation condition that can prevent:
+
+A. lesson final approval;
+B. assignment to a student.
+
+Classify each condition as:
+
+HARD_BLOCK
+or
+REVIEW_WARNING.
+
+Do not change code until this classification is understood.
+
+Use the existing canonical validators and services wherever possible.
+Do not create a parallel readiness system if an existing one can be adapted.
+
+════════════════════════════════════════════════════
+PART 1 — FINAL TEACHER WORKFLOW
+════════════════════════════════════════════════════
+
+The normal teacher workflow must become:
+
+1. Նպատակ և վերջնարդյունքներ
+2. Գիտելիքի քարտեզ
+3. Ճանաչողական ուղիներ
+4. Ուսուցման բովանդակություն
+5. Հաստատել դասը
+6. Հանձնարարել սովորողին
+
+Keep this workflow visually simple.
+
+Do not expose internal pipeline terminology as normal teacher workflow.
+
+Do not require routine separate approvals for:
+
+- each exercise;
+- each MicroNode;
+- each Cognitive Path;
+- each Teaching Content item;
+- Outcome–MicroNode automatic relations.
+
+The teacher may still inspect/edit those items.
+
+════════════════════════════════════════════════════
+PART 2 — GOAL / OUTCOMES
+════════════════════════════════════════════════════
+
+Goal and Outcomes must exist before the lesson can be considered structurally ready.
+
+If Goal/Outcomes are missing:
+
+show a simple actionable state such as:
+
+`Նպատակն ու վերջնարդյունքները դեռ լրացված չեն`
+
+Action:
+
+`Ստեղծել`
+
+or allow manual editing using the existing mechanism.
+
+If AI proposal generation fails validation:
+
+DO NOT expose only a technical error such as:
+
+`INVALID_GOAL_OUTCOME_PROPOSAL`
+
+to the teacher.
+
+Use the existing safe generation/validation contract.
+
+If appropriate and already supported by the architecture,
+allow one bounded automatic repair/retry for a fresh AI proposal.
+
+If it still fails:
+
+show a simple Armenian message and allow retry/manual completion.
+
+IMPORTANT:
+
+Once Goal/Outcomes EXIST, review/alignment concerns must not by themselves
+block the whole lesson.
+
+For example:
+
+- Outcome–MicroNode automatic alignment review
+- missing REQUIRED relation where usable lesson structure otherwise exists
+- cognitive-level mismatch that requires teacher review
+
+must be REVIEW_WARNING unless the missing relation actually makes the
+runtime lesson structurally impossible.
+
+Do NOT create fake REQUIRED relations to make validation green.
+
+Teacher can review/edit Goal/Outcomes before final lesson acceptance.
+
+════════════════════════════════════════════════════
+PART 3 — KNOWLEDGE MAP
+════════════════════════════════════════════════════
+
+The Knowledge Map must preserve the canonical hierarchy:
+
+Lesson
+→ Topic
+→ MicroNode
+→ source context
+→ exercises
+
+The lesson must contain usable MicroNodes.
+
+TRUE structural failure examples:
+
+- zero usable MicroNodes;
+- corrupted MicroNode data;
+- no usable instructional/source basis where runtime requires it.
+
+Those are HARD_BLOCK.
+
+But conditions such as:
+
+- source alignment needs review;
+- automatic alignment confidence is partial;
+- some exercises are not attached;
+- teacher may want to improve a MicroNode;
+- review recommendation exists;
+
+are REVIEW_WARNING when the MicroNode itself remains usable.
+
+Teacher-facing UI should say, for example:
+
+`⚠️ 1 գիտելիքի հանգույց խորհուրդ է տրվում վերանայել`
+
+not raw validator codes.
+
+════════════════════════════════════════════════════
+PART 4 — COGNITIVE PATHS
+════════════════════════════════════════════════════
+
+Every MicroNode that will be taught must have a usable Cognitive Path.
+
+This is required structure.
+
+If a MicroNode has NO usable Cognitive Path:
+
+HARD_BLOCK final lesson acceptance.
+
+But make the blocker actionable.
+
+Example:
+
+`«Կարգային միավորներ» հանգույցի ճանաչողական ուղին բացակայում է։`
+
+Action:
+
+`Ստեղծել ճանաչողական ուղին`
+
+The teacher must not have to understand C2 internals.
+
+Lesson-wide action remains:
+
+`Ստեղծել ճանաչողական ուղիները`
+
+Generate missing paths using the existing canonical generation pipeline.
+
+Do NOT overwrite confirmed or teacher-edited paths automatically.
+
+If a Cognitive Path EXISTS but validator says:
+
+- review required;
+- grounding should be reviewed;
+- target justification should be reviewed;
+- automatic quality finding exists;
+
+then this is normally REVIEW_WARNING, not HARD_BLOCK,
+provided the path remains structurally usable by the runtime.
+
+Example:
+
+`⚠️ «Միանիշ, երկնիշ...» հանգույցի ճանաչողական ուղին խորհուրդ է տրվում վերանայել։`
+
+Teacher can inspect/edit it.
+
+Do not force regeneration.
+
+Do not show per-node routine regenerate controls as part of the normal workflow
+if they were intentionally removed earlier.
+
+Manual editing/recovery tools may remain inside detailed authoring views.
+
+════════════════════════════════════════════════════
+PART 5 — TEACHING CONTENT MUST EXIST
+════════════════════════════════════════════════════
+
+Every MicroNode that will be taught must have usable Teaching Content.
+
+This is required structure.
+
+If Teaching Content is completely missing for a MicroNode:
+
+HARD_BLOCK final lesson acceptance.
+
+But again, make the problem actionable.
+
+Example:
+
+`«Կարգեր և կարգային միավորներ» հանգույցի ուսուցման բովանդակությունը բացակայում է։`
+
+Action:
+
+`Ստեղծել ուսուցման բովանդակությունը`
+
+The lesson-wide generation action must:
+
+- generate only missing eligible Teaching Content;
+- preserve existing content;
+- preserve teacher-edited content;
+- use current canonical state rather than stale historical job state;
+- verify persistence/read-back before reporting success;
+- allow retry for still-missing items;
+- never require remapping simply because a previous generation job failed.
+
+If 4 MicroNodes exist and only 3 have Teaching Content:
+
+show approximately:
+
+`Ուսուցման բովանդակություն՝ 3/4 ստեղծված`
+
+and identify the missing node.
+
+Do NOT represent that as an obscure C1/C2 blocker.
+
+════════════════════════════════════════════════════
+PART 6 — TEACHING CONTENT MUST BE VISIBLE AND EDITABLE
+════════════════════════════════════════════════════
+
+The current Teaching Content experience is not sufficient.
+
+At present it is shown in a small popup/read-only style view.
+
+Improve this WITHOUT redesigning the entire dashboard.
+
+When the teacher opens Teaching Content using the existing view action,
+show a properly readable detailed view.
+
+Use either:
+
+- a wide modal;
+- side panel/drawer;
+- or existing large-detail pattern already used elsewhere in the dashboard.
+
+Do not use a tiny popup that makes long instructional content difficult to read.
+
+The view must display the CURRENT persisted Teaching Content fields.
+
+Use the actual existing schema/fields.
+Do NOT invent a second Teaching Content schema.
+
+For all editable Teaching Content fields, provide:
+
+`Խմբագրել`
+
+then editable controls,
+
+`Պահպանել`
+
+`Չեղարկել`
+
+Saving must update the existing canonical Teaching Content record.
+
+After save:
+
+- read back the persisted record;
+- show the updated value;
+- preserve teacher-authored provenance/status if the project already tracks it;
+- do not silently overwrite teacher edits during future bulk generation.
+
+If Teaching Content does not exist:
+
+show:
+
+`Ուսուցման բովանդակությունը դեռ ստեղծված չէ։`
+
+and an appropriate generation action or pointer to the lesson-wide generation step.
+
+════════════════════════════════════════════════════
+PART 7 — TEACHING CONTENT QUALITY
+════════════════════════════════════════════════════
+
+Important distinction:
+
+Teaching Content MUST EXIST.
+
+But once it exists, ordinary content-quality findings must NOT automatically
+prevent teacher acceptance.
+
+Examples:
+
+- content could be clearer;
+- example quality could improve;
+- grounding needs review but usable source exists;
+- some optional content field is incomplete;
+- validator recommends review;
+- AI-generated wording is imperfect.
+
+These become REVIEW_WARNING.
+
+Teacher sees the content.
+
+Teacher may edit it.
+
+Teacher may also decide it is acceptable as-is.
+
+The system advises.
+The teacher makes the final quality decision.
+
+Do NOT allow technically empty/structurally unusable Teaching Content to pass
+as “existing” merely to bypass this rule.
+
+Use the existing canonical minimum-content/readiness contract.
+
+════════════════════════════════════════════════════
+PART 8 — FINAL LESSON APPROVAL
+════════════════════════════════════════════════════
+
+There must be ONE clear lesson-level human acceptance action:
+
+`Հաստատել դասը`
+
+When clicked, run the authoritative server-side readiness check.
+
+Return two categories:
+
+1. HARD_BLOCKS
+2. REVIEW_WARNINGS
+
+Do not present a long flat list of internal validator codes.
+
+════════════════════════════════════════════════════
+HARD BLOCK BEHAVIOR
+════════════════════════════════════════════════════
+
+If required structure is genuinely missing:
+
+DO NOT approve.
+
+Show a short actionable list.
+
+Example:
+
+`Դասը դեռ պատրաստ չէ`
+
+`• «Կարգային միավորներ» հանգույցի ճանաչողական ուղին բացակայում է։ Ստեղծեք այն։`
+
+`• «Թվերի դասակարգում» հանգույցի ուսուցման բովանդակությունը բացակայում է։ Լրացրեք կամ ստեղծեք այն։`
+
+Where practical, provide an action/link to the relevant item.
+
+Do not make the teacher search through the whole mapping manually.
+
+════════════════════════════════════════════════════
+REVIEW WARNING BEHAVIOR
+════════════════════════════════════════════════════
+
+If all required structure EXISTS but review findings remain:
+
+DO NOT block teacher approval.
+
+Show ONE confirmation dialog.
+
+Example:
+
+Title:
+
+`Դասում կան վերանայման կետեր`
+
+Body:
+
+`Դասի պարտադիր կառուցվածքը լրացված է, սակայն որոշ մասեր խորհուրդ է տրվում վերանայել։ Կարող եք վերադառնալ և խմբագրել կամ հաստատել դասը ներկայիս տարբերակով։`
+
+Show concise findings such as:
+
+`• 1 ճանաչողական ուղի խորհուրդ է տրվում վերանայել`
+`• 2 վերջնարդյունքի կապերը խորհուրդ է տրվում ստուգել`
+`• 1 ուսուցման բովանդակություն խորհուրդ է տրվում վերանայել`
+
+Buttons:
+
+`Վերադառնալ և խմբագրել`
+
+`Հաստատել դասը`
+
+If teacher selects:
+
+`Հաստատել դասը`
+
+then:
+
+- persist explicit teacher acceptance;
+- preserve warning findings for audit/history;
+- mark the lesson approved/teacher-accepted using the existing canonical mechanism;
+- do not silently modify underlying mapping data;
+- do not create fake relations;
+- do not regenerate content;
+- do not erase warnings merely because teacher accepted them.
+
+Teacher acceptance means:
+
+“I reviewed the available lesson and accept it for student delivery.”
+
+════════════════════════════════════════════════════
+PART 9 — ASSIGNMENT
+════════════════════════════════════════════════════
+
+After successful teacher final approval:
+
+`Հանձնարարել սովորողին`
+
+must become active.
+
+This is critical.
+
+Do NOT make assignment run a second competing content-quality approval system.
+
+If lesson approval is current and has not been invalidated by material edits,
+assignment must trust that canonical teacher acceptance.
+
+Assignment may still perform a minimal runtime/integrity preflight for true
+technical impossibilities.
+
+But it must NOT re-block the teacher because of already accepted:
+
+- Outcome alignment warnings;
+- source review warnings;
+- Cognitive Path review warnings;
+- Teaching Content quality warnings;
+- other teacher-accepted review findings.
+
+In short:
+
+FINAL TEACHER APPROVAL
+=
+DELIVERY PERMISSION
+
+unless a new material change or true runtime/integrity failure occurred.
+
+════════════════════════════════════════════════════
+PART 10 — MATERIAL EDIT INVALIDATION
+════════════════════════════════════════════════════
+
+Teacher acceptance must not become stale.
+
+If after final approval a material instructional change occurs, use the
+existing invalidation/versioning mechanism to revoke final delivery approval.
+
+Examples:
+
+- remapping lesson;
+- adding/deleting/replacing MicroNodes;
+- material Goal/Outcome changes;
+- Cognitive Path material changes;
+- Teaching Content material edits;
+- source replacement/change;
+- other existing canonical material-change conditions.
+
+After such a change:
+
+lesson returns to review-required/not-finally-approved state.
+
+Teacher reviews and presses:
+
+`Հաստատել դասը`
+
+again.
+
+Do NOT require per-item approvals again.
+
+════════════════════════════════════════════════════
+PART 11 — SIMPLE TEACHER-FACING STATUS MODEL
+════════════════════════════════════════════════════
+
+Avoid technical status overload.
+
+Normal teacher UI should primarily use:
+
+`✓ Պատրաստ է`
+
+`⚠️ Վերանայել`
+
+`● Պետք է լրացնել`
+
+Avoid exposing:
+
+C1
+C2
+REQUIRED
+source alignment codes
+internal validator enums
+raw error codes
+
+unless inside an explicit developer/debug view.
+
+The mapping workflow summary should look approximately like:
+
+1. Նպատակ և վերջնարդյունքներ
+   ✓ Պատրաստ է
+
+2. Գիտելիքի քարտեզ
+   ✓ 4 հանգույց · 18 վարժություն
+
+3. Ճանաչողական ուղիներ
+   ✓ 4/4 ստեղծված
+   ⚠️ 1-ը խորհուրդ է տրվում վերանայել
+
+4. Ուսուցման բովանդակություն
+   ✓ 4/4 ստեղծված
+   ⚠️ 1-ը խորհուրդ է տրվում վերանայել
+
+5. Հաստատել դասը
+
+Then after teacher approval:
+
+6. Հանձնարարել սովորողին
+
+Keep detailed authoring information available below/in detail views,
+but do not overload the main workflow.
+
+════════════════════════════════════════════════════
+PART 12 — REMOVE DUPLICATE APPROVAL NOISE
+════════════════════════════════════════════════════
+
+Preserve the UI simplification already completed.
+
+Routine `✅ Հաստատված` badges should not be repeated next to every normal:
+
+- exercise;
+- MicroNode;
+- Cognitive Path;
+- Teaching Content item.
+
+Do not reintroduce:
+
+`Հաստատել բոլոր հանգույցները`
+
+or similar redundant bulk approval actions.
+
+Do not require Goal/Outcome approval + node approval + Cognitive Path approval
++ Teaching Content approval + final approval.
+
+There is ONE final lesson acceptance:
+
+`Հաստատել դասը`
+
+Individual edit/review tools remain available.
+
+════════════════════════════════════════════════════
+PART 13 — DO NOT CHASE EVERY WARNING
+════════════════════════════════════════════════════
+
+Do not try to “fix” all existing lesson content during this task.
+
+Do not mutate existing lesson data just to make validators green.
+
+Do not lower standards.
+
+Do not weaken C1/C2 grounding.
+
+Do not automatically attach unrelated exercises.
+
+Do not automatically invent Outcome–MicroNode relations.
+
+This task is about making the workflow correctly distinguish:
+
+MISSING
+from
+EXISTS BUT NEEDS REVIEW.
+
+════════════════════════════════════════════════════
+PART 14 — DETERMINISTIC TESTS
+════════════════════════════════════════════════════
+
+Add/update focused provider-free tests for at least:
+
+CASE 1
+All required structure exists, no warnings
+→ teacher approval succeeds
+→ assignment enabled.
+
+CASE 2
+MicroNode missing Cognitive Path
+→ HARD_BLOCK
+→ actionable missing-path message.
+
+CASE 3
+Cognitive Path exists but REVIEW_REQUIRED
+→ warning
+→ teacher may approve.
+
+CASE 4
+MicroNode missing Teaching Content
+→ HARD_BLOCK
+→ actionable missing-content message.
+
+CASE 5
+Teaching Content exists but quality review is required
+→ warning
+→ teacher may approve.
+
+CASE 6
+Goal/Outcome alignment warning
+→ teacher may approve.
+
+CASE 7
+Outcome without REQUIRED relation but usable lesson structure exists
+→ warning
+→ no fake relation created
+→ teacher may approve.
+
+CASE 8
+Zero usable MicroNodes
+→ HARD_BLOCK.
+
+CASE 9
+Teacher chooses “Վերադառնալ և խմբագրել”
+→ lesson remains unapproved.
+
+CASE 10
+Teacher accepts warnings
+→ approval persists
+→ warnings remain recorded
+→ assignment enabled.
+
+CASE 11
+Teacher edits Teaching Content
+→ persistence/read-back succeeds
+→ edited content visible
+→ bulk generation does not overwrite it.
+
+CASE 12
+Material edit after approval
+→ previous approval invalidated
+→ assignment disabled until teacher approves again.
+
+CASE 13
+Previous generation job failed but Teaching Content still missing
+→ retry remains available based on CURRENT canonical state.
+
+CASE 14
+Partial generation
+→ existing content preserved
+→ only missing content retried.
+
+CASE 15
+True runtime/integrity failure
+→ assignment remains blocked even after previous teacher approval.
+
+════════════════════════════════════════════════════
+PART 15 — ACCEPTANCE CHECK
+════════════════════════════════════════════════════
+
+After implementation, test one existing mapped lesson safely.
+
+Do not remap it merely to make the test pass.
+Do not fabricate data.
+Do not lower cognitive levels.
+Do not create fake REQUIRED relations.
+Do not overwrite teacher-authored content.
+
+Verify:
+
+- Goal/Outcomes status is understandable.
+- Knowledge Map remains intact.
+- every missing Cognitive Path is clearly actionable.
+- every missing Teaching Content item is clearly actionable.
+- Teaching Content can be opened in a readable view.
+- Teaching Content can be edited and persisted.
+- review-only findings do not hard-block final approval.
+- missing required structure does hard-block.
+- teacher can explicitly approve when only warnings remain.
+- after approval, `Հանձնարարել սովորողին` becomes active.
+- assignment does not re-block on already accepted review warnings.
+
+Do NOT create a real student assignment unless the existing test fixture safely supports it.
+
+════════════════════════════════════════════════════
+FINAL REPORT
+════════════════════════════════════════════════════
+
+Return exactly these sections:
+
+AUDIT FINDINGS
+
+OLD WORKFLOW
+
+NEW WORKFLOW
+
+HARD BLOCK RULES
+
+REVIEW WARNING RULES
+
+GOAL/OUTCOME RESULT
+
+KNOWLEDGE MAP RESULT
+
+COGNITIVE PATH RESULT
+
+TEACHING CONTENT GENERATION RESULT
+
+TEACHING CONTENT VIEW/EDIT RESULT
+
+FINAL TEACHER APPROVAL RESULT
+
+ASSIGNMENT ENABLEMENT RESULT
+
+MATERIAL-EDIT INVALIDATION RESULT
+
+UI SIMPLIFICATION RESULT
+
+FILES CHANGED
+
+DATABASE CHANGED
+
+TESTS
+
+ACCEPTANCE CHECK
+
+FAKE REQUIRED RELATIONS CREATED: NO
+
+TEACHER-EDITED CONTENT OVERWRITTEN: NO
+
+C1–C7 SAFETY WEAKENED: NO
+
+AI TEACHER RUNTIME CHANGED: NO
+
+QUIZ CHANGED: NO
+
+KNOWLEDGE TREE CHANGED: NO
+
+PUBLISHED/DEPLOYED: NO
+
+REMAINING TRUE BLOCKERS
+
+Do not make unrelated changes.
