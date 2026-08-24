@@ -303,11 +303,13 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     candidateBId: "t1:n1",
     decision: "MERGE",
     confidence: "HIGH",
+    learnerStateRelation: "SAME",
     keepCandidateId: "t1:n0",
   }]);
-  assert.equal(audit.mergedCount, 1);
-  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0, 1]);
-  console.log("  ✓ explicit HIGH same-topic duplicate merge preserves source ownership");
+  assert.equal(audit.mergedCount, 0);
+  assert.deepEqual(audit.crossTopicMergePairs, [{ candidateAId: "t1:n0", candidateBId: "t1:n1" }]);
+  assert.deepEqual(topics[0].microNodes.map((entry) => entry.sourceBlockIndices), [[0], [1]]);
+  console.log("  ✓ explicit learner-state merge is deferred to canonical lesson-wide consolidation");
 }
 
 {

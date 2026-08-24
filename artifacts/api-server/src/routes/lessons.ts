@@ -5343,6 +5343,17 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         reason: `CANDIDATE_PROMOTION_REVIEW_REQUIRED:${decision.reasonCodes.join(",") || "SEMANTIC_UNCERTAINTY"}`,
       });
     }
+    for (const gap of pass2.knowledgeCompleteness.reviewRequiredGaps) {
+      reviewItems.push({
+        nodeId: null as unknown as number,
+        nodeTitle: gap.candidateId
+          ? `Knowledge candidate ${gap.candidateId}`
+          : gap.outcomeIndex !== undefined
+            ? `Outcome ${gap.outcomeIndex + 1}`
+            : "Knowledge completeness audit",
+        reason: `KNOWLEDGE_COMPLETENESS_REVIEW_REQUIRED:${gap.reason}`,
+      });
+    }
     // Informational: any blocks the AI explicitly excluded as headers.
     if (pass2.unmappedBlockIndices.length > 0) {
       reviewItems.push({
@@ -5408,6 +5419,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         candidateReviewRequired: pass2.candidatePromotion.reviewRequiredCandidateCount,
         canonicalKnowledgeUnits: pass2.lessonWideConsolidation.canonicalKnowledgeUnitCount,
         crossTopicConsolidations: pass2.lessonWideConsolidation.crossTopicConsolidationCount,
+        completenessRestoredCandidates: pass2.knowledgeCompleteness.restoredCandidateIds.length,
+        completenessReviewGaps: pass2.knowledgeCompleteness.reviewRequiredGaps.length,
       },
       content: {
         aiGeneratedFields:        totalNodes * 2,   // title + learningObjective per MicroNode
@@ -5459,6 +5472,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           required: persistedAtomicityReview.length > 0
             || persistedDuplicateReview.length > 0
             || pass2.lessonWideConsolidation.reviewRequiredSemanticGroupCount > 0
+            || pass2.knowledgeCompleteness.reviewRequiredGaps.length > 0
             || !!pass2.atomicityReviewUnavailableReason,
           atomicityFindings: persistedAtomicityReview,
           reviewUnavailable: pass2.atomicityReviewUnavailableReason
@@ -5470,6 +5484,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           duplicatePairs: persistedDuplicateReview,
           lessonWideSemanticGroups: pass2.lessonWideConsolidation.groups
             .filter((group) => group.state === "REVIEW_REQUIRED"),
+          completenessGaps: pass2.knowledgeCompleteness.reviewRequiredGaps,
         },
         granularityConsolidation: pass2.granularityConsolidation,
         duplicateResolution: {
@@ -5483,6 +5498,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         },
         candidatePromotion: pass2.candidatePromotion,
         lessonWideConsolidation: pass2.lessonWideConsolidation,
+        knowledgeCompleteness: pass2.knowledgeCompleteness,
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignmentReconciliation: pass2.sourceAlignmentReconciliation,
         atomicityRepair: {

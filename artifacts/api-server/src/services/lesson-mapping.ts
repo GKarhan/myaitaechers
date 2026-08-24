@@ -3440,6 +3440,8 @@ export interface Pass2Result {
   candidatePromotion: KnowledgeCandidatePromotionDiagnostics;
   /** Phase 3B lesson-wide canonical identity and final Topic assignment audit. */
   lessonWideConsolidation: LessonWideConsolidationDiagnostics;
+  /** M17–M20 deterministic post-canonical completeness audit. */
+  knowledgeCompleteness: KnowledgeCompletenessDiagnostics;
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
   /** Readable instructional blocks retained for teacher review rather than
@@ -4383,16 +4385,19 @@ OUTPUT: respond with ONLY valid JSON — no markdown fences, no commentary.
       "candidateAId": "server candidateId from duplicateCandidates",
       "candidateBId": "server candidateId from duplicateCandidates",
       "decision": "DISTINCT",
-      "confidence": "HIGH"
+      "confidence": "HIGH",
+      "learnerStateRelation": "SEPARATE"
     }
   ]
 }
 
 findings may be an empty array [] if no issues found.
 For EVERY duplicateCandidates pair, return exactly one duplicateResolutions entry:
-  • DISTINCT only when the objectives are clearly independently assessable.
-  • MERGE only for the SAME TOPIC and only when they are truly the same objective;
-    include keepCandidateId for the one existing MicroNode that should remain.
+  • DISTINCT when a learner can master one objective without demonstrating the
+    other; set learnerStateRelation to SEPARATE.
+  • MERGE only when one observable success criterion demonstrates BOTH
+    objectives (the same learner mastery state); set learnerStateRelation to
+    SAME and include keepCandidateId for the one existing MicroNode that should remain.
   • REVIEW_REQUIRED when uncertain. Never use titles to identify an action.
 Allowed issue values: "MEGA_NODE", "UNDER_SPLIT", "OVER_SPLIT", "EXERCISE_MISMATCH",
 "MISSING_ATOMIC_MICRONODE", "UNSUPPORTED_MICRONODE".
@@ -4446,6 +4451,11 @@ export interface DuplicateResolution {
   candidateBId: string;
   decision: "DISTINCT" | "MERGE" | "REVIEW_REQUIRED";
   confidence: "HIGH" | "MEDIUM";
+  /**
+   * A merge is safe only when the reviewer explicitly confirms that one
+   * observable learner success criterion demonstrates both candidates.
+   */
+  learnerStateRelation?: "SAME" | "SEPARATE";
   /** Required only for a same-topic HIGH MERGE decision. */
   keepCandidateId?: string;
 }
@@ -4492,6 +4502,9 @@ export function parseDuplicateResolutions(value: unknown): ParsedDuplicateResolu
       candidateBId,
       decision: decision as DuplicateResolution["decision"],
       confidence: confidence as DuplicateResolution["confidence"],
+      ...(entry.learnerStateRelation === "SAME" || entry.learnerStateRelation === "SEPARATE"
+        ? { learnerStateRelation: entry.learnerStateRelation }
+        : {}),
       ...(typeof entry.keepCandidateId === "string" ? { keepCandidateId: entry.keepCandidateId } : {}),
     });
   }
@@ -4672,33 +4685,9 @@ export function resolveDuplicateSuspicions(
       continue;
     }
     if (
-      resolution?.decision === "MERGE" &&
-      resolution.confidence === "HIGH" &&
-      left.topic === right.topic &&
-      (resolution.keepCandidateId === left.node.candidateId || resolution.keepCandidateId === right.node.candidateId)
-    ) {
-      const target = resolution.keepCandidateId === left.node.candidateId ? left : right;
-      const source = target === left ? right : left;
-      target.node.sourceBlockIndices = [...new Set([...target.node.sourceBlockIndices, ...source.node.sourceBlockIndices])];
-      target.node.exercises = [...target.node.exercises, ...source.node.exercises];
-      target.node.supportingMaterialIndices = [...new Set([
-        ...target.node.supportingMaterialIndices,
-        ...source.node.supportingMaterialIndices,
-      ])];
-      target.topic.microNodes.splice(source.index, 1);
-      audit.mergedCount++;
-      audit.actions.push({
-        topicSequence: target.topic.sequence,
-        keptMicroNodeTitle: target.node.title,
-        removedMicroNodeTitle: source.node.title,
-        reason: "NEAR_DUPLICATE_OBJECTIVE",
-      });
-      continue;
-    }
-    if (
       resolution?.decision === "MERGE"
       && resolution.confidence === "HIGH"
-      && left.topic !== right.topic
+      && resolution.learnerStateRelation === "SAME"
     ) {
       audit.crossTopicMergePairs!.push({
         candidateAId: suspicion.candidateAId,
@@ -5205,13 +5194,16 @@ Return only this JSON shape:
     "candidateAId": "t1:n0",
     "candidateBId": "t1:n1",
     "decision": "DISTINCT",
-    "confidence": "HIGH"
+    "confidence": "HIGH",
+    "learnerStateRelation": "SEPARATE"
   }]
 }
 Allowed actions: KEEP_CURRENT, ADD_SUPPORTING_BLOCKS, MOVE_BLOCKS, MERGE_SOURCE_OWNERSHIP, NARROW_OBJECTIVE, NO_VALID_SUPPORT_FOUND.
 Every sourceBlockIndices value must come from the listed validated source blocks.
 Return one duplicateResolutions entry for every duplicateCandidates pair, including
-cross-topic pairs. Do not infer actions from titles.
+cross-topic pairs. Set learnerStateRelation to SAME only if one observable
+success criterion proves both objectives; set SEPARATE when each direction or
+operation can be assessed independently. Do not infer actions from titles.
 atomicityRepairs actions: SPLIT_MICRONODE, ASSIGN_PRIMARY_EXERCISE, MARK_INTEGRATIVE.
 A split child source set must be an exact disjoint partition of the target's current
 sourceBlockIndices. If source is also reallocated for that target in this response,
@@ -5737,6 +5729,180 @@ export function buildAutomaticOutcomeAlignmentPlan(
   return { proposals, unresolvedOutcomeIndexes };
 }
 
+export type KnowledgeCompletenessGapReason =
+  | "CANDIDATE_NOT_CANONICAL"
+  | "EXERCISE_KNOWLEDGE_GAP"
+  | "OUTCOME_KNOWLEDGE_GAP"
+  | "RESTORE_SOURCE_CONFLICT";
+
+export interface KnowledgeCompletenessCandidateSnapshot {
+  candidateId: string;
+  topicSequence: number;
+  title: string;
+  learningObjective: string;
+  microNodeType: Pass2MicroNode["microNodeType"];
+  coreSourceBlockIndices: number[];
+  supportingSourceBlockIndices: number[];
+  exercises: Pass2Exercise[];
+}
+
+export interface KnowledgeCompletenessGap {
+  id: string;
+  reason: KnowledgeCompletenessGapReason;
+  candidateId?: string;
+  outcomeIndex?: number;
+  exerciseBlockIndices?: number[];
+  detail: string;
+}
+
+export interface KnowledgeCompletenessDiagnostics {
+  candidateTargetCount: number;
+  canonicalMicroNodeCountBeforeAudit: number;
+  canonicalMicroNodeCountAfterAudit: number;
+  restoredCandidateIds: string[];
+  reviewRequiredGaps: KnowledgeCompletenessGap[];
+  exerciseDemandGapCount: number;
+  unresolvedOutcomeIndexes: number[];
+  outcomeAlignment: AutomaticOutcomeAlignmentPlan;
+}
+
+/**
+ * Captures the provider-produced candidate and its verified source/activity
+ * assignment before semantic identity consolidation. This is deliberately a
+ * server-owned snapshot, not a second generation pass.
+ */
+export function snapshotKnowledgeCompletenessCandidates(
+  topics: ReadonlyArray<Pass2TopicResult>,
+): KnowledgeCompletenessCandidateSnapshot[] {
+  return topics.flatMap((topic, topicIndex) => topic.microNodes.map((node, nodeIndex) => ({
+    candidateId: node.candidateId ?? `t${topic.sequence}:n${nodeIndex}`,
+    topicSequence: topic.sequence || topicIndex + 1,
+    title: node.title,
+    learningObjective: node.learningObjective,
+    microNodeType: node.microNodeType,
+    coreSourceBlockIndices: sortedUniqueIndices(node.sourceBlockIndices),
+    supportingSourceBlockIndices: sortedUniqueIndices(node.supportingMaterialIndices),
+    exercises: node.exercises.map((exercise) => ({ ...exercise })),
+  })));
+}
+
+/**
+ * Deterministically verifies that every candidate which passed the independent
+ * promotion contract still has a canonical learner target. The only automatic
+ * repair is restoration of that exact snapshot when all of its core sources
+ * remain exclusively available. It never invents knowledge from an exercise or
+ * an outcome, and it never steals or duplicates verified source ownership.
+ */
+export function auditKnowledgeCompleteness(input: {
+  topics: Pass2TopicResult[];
+  candidateSnapshots: ReadonlyArray<KnowledgeCompletenessCandidateSnapshot>;
+  promotionPreview: KnowledgeCandidatePromotionDiagnostics;
+  /** Final boundary decisions exclude intentionally review-held candidates from repair. */
+  finalPromotion?: KnowledgeCandidatePromotionDiagnostics;
+  lessonWideConsolidation: LessonWideConsolidationDiagnostics;
+  teacherOutcomes?: readonly string[] | null;
+}): KnowledgeCompletenessDiagnostics {
+  const intentionallyNonPromoted = new Set(
+    input.finalPromotion?.decisions
+      .filter((decision) => decision.state !== "PROMOTE")
+      .map((decision) => decision.candidateId) ?? [],
+  );
+  const targets = input.candidateSnapshots.filter((snapshot) =>
+    !intentionallyNonPromoted.has(snapshot.candidateId)
+      && input.promotionPreview.decisions.some((decision) =>
+        decision.candidateId === snapshot.candidateId && decision.state === "PROMOTE",
+      ),
+  );
+  const canonicalBefore = input.topics.reduce((count, topic) => count + topic.microNodes.length, 0);
+  const canonicalIds = () => new Set(input.topics.flatMap((topic) =>
+    topic.microNodes.map((node) => node.candidateId).filter((id): id is string => !!id),
+  ));
+  const mergedCandidateIds = new Set(
+    input.lessonWideConsolidation.groups
+      .filter((group) => group.state === "SAME_KNOWLEDGE")
+      .flatMap((group) => group.candidateIds),
+  );
+  const restoredCandidateIds: string[] = [];
+  const reviewRequiredGaps: KnowledgeCompletenessGap[] = [];
+
+  for (const target of [...targets].sort((left, right) => left.candidateId.localeCompare(right.candidateId))) {
+    if (canonicalIds().has(target.candidateId) || mergedCandidateIds.has(target.candidateId)) continue;
+    const owners = new Set(input.topics.flatMap((topic) => topic.microNodes.flatMap((node) => node.sourceBlockIndices)));
+    const hasExclusiveCore = target.coreSourceBlockIndices.length > 0
+      && target.coreSourceBlockIndices.every((index) => !owners.has(index));
+    const destination = input.topics.find((topic) => topic.sequence === target.topicSequence)
+      ?? input.topics.find((topic) =>
+        target.coreSourceBlockIndices.some((index) => (topic.inputBlockIndices ?? []).includes(index)),
+      );
+    if (destination && hasExclusiveCore) {
+      destination.microNodes.push({
+        candidateId: target.candidateId,
+        promotionState: "PROMOTE",
+        promotionReasonCodes: [],
+        title: target.title,
+        learningObjective: target.learningObjective,
+        microNodeType: target.microNodeType,
+        sourceBlockIndices: [...target.coreSourceBlockIndices],
+        supportingMaterialIndices: target.supportingSourceBlockIndices.filter((index) => !owners.has(index)),
+        exercises: target.exercises.map((exercise) => ({ ...exercise })),
+      });
+      destination.unmappedBlockIndices = destination.unmappedBlockIndices
+        .filter((index) => !target.coreSourceBlockIndices.includes(index));
+      restoredCandidateIds.push(target.candidateId);
+      continue;
+    }
+    reviewRequiredGaps.push({
+      id: `candidate:${target.candidateId}`,
+      reason: hasExclusiveCore ? "CANDIDATE_NOT_CANONICAL" : "RESTORE_SOURCE_CONFLICT",
+      candidateId: target.candidateId,
+      detail: hasExclusiveCore
+        ? "Promotable candidate has no canonical MicroNode after identity processing."
+        : "Promotable candidate is missing, but its verified source is already owned by another canonical MicroNode.",
+    });
+  }
+
+  const finalIds = canonicalIds();
+  const unresolvedCandidateIds = new Set(
+    reviewRequiredGaps.map((gap) => gap.candidateId).filter((id): id is string => !!id),
+  );
+  const exerciseByCandidate = new Map(
+    targets.map((target) => [target.candidateId, target.exercises.map((exercise) => exercise.blockIndex)]),
+  );
+  for (const [candidateId, exerciseBlockIndices] of exerciseByCandidate) {
+    if (!unresolvedCandidateIds.has(candidateId) || exerciseBlockIndices.length === 0) continue;
+    reviewRequiredGaps.push({
+      id: `exercise:${candidateId}`,
+      reason: "EXERCISE_KNOWLEDGE_GAP",
+      candidateId,
+      exerciseBlockIndices: sortedUniqueIndices(exerciseBlockIndices),
+      detail: "A substantive exercise cluster has no independently supported canonical knowledge target.",
+    });
+  }
+
+  const outcomeAlignment = buildAutomaticOutcomeAlignmentPlan(
+    (input.teacherOutcomes ?? []).map((outcome) => outcome.trim()).filter(Boolean),
+    input.topics,
+  );
+  for (const outcomeIndex of outcomeAlignment.unresolvedOutcomeIndexes) {
+    reviewRequiredGaps.push({
+      id: `outcome:${outcomeIndex}`,
+      reason: "OUTCOME_KNOWLEDGE_GAP",
+      outcomeIndex,
+      detail: "Teacher-confirmed outcome has no conservative canonical concept alignment.",
+    });
+  }
+  return {
+    candidateTargetCount: targets.length,
+    canonicalMicroNodeCountBeforeAudit: canonicalBefore,
+    canonicalMicroNodeCountAfterAudit: input.topics.reduce((count, topic) => count + topic.microNodes.length, 0),
+    restoredCandidateIds: restoredCandidateIds.sort(),
+    reviewRequiredGaps,
+    exerciseDemandGapCount: reviewRequiredGaps.filter((gap) => gap.reason === "EXERCISE_KNOWLEDGE_GAP").length,
+    unresolvedOutcomeIndexes: outcomeAlignment.unresolvedOutcomeIndexes,
+    outcomeAlignment,
+  };
+}
+
 /**
  * The route deletes old Topics/MicroNodes only after runPass2Pipeline resolves.
  * Keeping source/provenance/structural gates in this pure assertion makes that
@@ -5756,6 +5922,7 @@ export function assertPass2PersistenceGates(input: {
   instructionalCoverage: InstructionalCoverageResult;
   sourceAlignment: Pass2SourceAlignment;
   duplicateResolution: DuplicateResolutionAudit;
+  knowledgeCompleteness?: KnowledgeCompletenessDiagnostics;
   diagnostics: Pass2Diagnostics;
   unresolvedAtomicityFindings?: GranularityFinding[];
   atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
@@ -5785,6 +5952,9 @@ export function assertPass2PersistenceGates(input: {
       : []),
     ...(input.duplicateResolution.rejectedDecisionCount > 0
       ? ["DUPLICATE_REVIEW_REJECTED"]
+      : []),
+    ...(input.knowledgeCompleteness?.reviewRequiredGaps.length
+      ? ["KNOWLEDGE_COMPLETENESS_REVIEW_REQUIRED"]
       : []),
   ];
   return {
@@ -6213,6 +6383,7 @@ export async function runPass2Pipeline(
     unresolvedAtomicityFindings: prePromotionUnresolvedAtomicity,
     duplicateResolution,
   });
+  const knowledgeCompletenessSnapshots = snapshotKnowledgeCompletenessCandidates(topics);
   const lessonWideConsolidation = consolidateLessonWideKnowledge({
     topics,
     promotionEligibleCandidateIds: new Set(
@@ -6240,6 +6411,14 @@ export async function runPass2Pipeline(
     duplicateResolution,
     consolidatedCandidateCount: lessonWideConsolidation.sameKnowledgeConsolidationCount,
     forcedReviewCandidateIds: new Set(lessonWideConsolidation.forcedReviewCandidateIds),
+  });
+  const knowledgeCompleteness = auditKnowledgeCompleteness({
+    topics,
+    candidateSnapshots: knowledgeCompletenessSnapshots,
+    promotionPreview,
+    finalPromotion: candidatePromotion,
+    lessonWideConsolidation,
+    teacherOutcomes: lessonInfo.teacherOutcomes,
   });
   normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
@@ -6318,6 +6497,13 @@ export async function runPass2Pipeline(
           reviewRequiredSemanticGroupCount: lessonWideConsolidation.reviewRequiredSemanticGroupCount,
           finalTopicCount: lessonWideConsolidation.finalTopicCount,
         },
+        knowledgeCompleteness: {
+          candidateTargetCount: knowledgeCompleteness.candidateTargetCount,
+          restoredCandidateCount: knowledgeCompleteness.restoredCandidateIds.length,
+          reviewRequiredGapCount: knowledgeCompleteness.reviewRequiredGaps.length,
+          exerciseDemandGapCount: knowledgeCompleteness.exerciseDemandGapCount,
+          unresolvedOutcomeCount: knowledgeCompleteness.unresolvedOutcomeIndexes.length,
+        },
          atomicityVerification,
         unresolvedAtomicityFindingCount: unresolvedAtomicityFindings.length,
       missingIndices:  coverageValidation.missingIndices,
@@ -6358,6 +6544,7 @@ export async function runPass2Pipeline(
     instructionalCoverage: postConsolidationInstructionalCoverage,
     sourceAlignment,
     duplicateResolution,
+    knowledgeCompleteness,
     diagnostics,
     unresolvedAtomicityFindings,
     atomicityReviewUnavailableReason,
@@ -6374,6 +6561,7 @@ export async function runPass2Pipeline(
     topics,
     candidatePromotion,
     lessonWideConsolidation,
+    knowledgeCompleteness,
     unmappedBlockIndices: allUnmapped,
     sourcePlacementReview,
     coverageValidation,

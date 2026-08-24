@@ -65,3 +65,4 @@
 - [Goal/Outcome working drafts](goal-outcome-working-drafts.md) — import must verify canonical Goal + Outcome read-back; drafts are editable/deletable without a separate mapping gate.
 - [Phase 3A candidate promotion](phase3a-candidate-promotion.md) — promotion is the MicroNode authority; non-promoted candidates return to durable source/activity placement, while review candidates remain source-only.
 - [Phase 3B lesson-wide identity](phase3b-lesson-wide-identity.md) — Topics organize canonical knowledge but never define it; only explicit semantic merges form cross-topic units.
+- [Mapping completeness and learner-state merges](mapping-completeness.md) — automatic merges need explicit SAME learner-state certification; only exact, exclusively sourced missing candidates may be restored.
