@@ -151,6 +151,7 @@ interface LessonJobStatus {
     coverageValid?: boolean;
     readyMicroNodes?: number;
     reviewRequiredMicroNodes?: number;
+    unmappedReviewBlocks?: number;
     ready?: number;
     reviewRequired?: number;
     blocked?: number;
@@ -410,9 +411,10 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
       qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) });
       const reviewCount = mapStatus.result?.reviewRequiredMicroNodes ?? 0;
       const readyCount = mapStatus.result?.readyMicroNodes ?? 0;
+      const sourceBlockReviewCount = mapStatus.result?.unmappedReviewBlocks ?? 0;
       setMapSummary(
-        reviewCount > 0
-          ? `Քարտեզագրումը ստեղծվել է։ ${readyCount} հանգույց պատրաստ է, ${reviewCount} հանգույց խորհուրդ է տրվում վերանայել։`
+        reviewCount > 0 || sourceBlockReviewCount > 0
+          ? `Քարտեզագրումը ստեղծվել է։ ${readyCount} հանգույց պատրաստ է, ${reviewCount} հանգույց և ${sourceBlockReviewCount} աղբյուրային բլոկ խորհուրդ է տրվում վերանայել։`
           : null,
       );
     } else if (mapStatus.status === 'coverage_failed') {

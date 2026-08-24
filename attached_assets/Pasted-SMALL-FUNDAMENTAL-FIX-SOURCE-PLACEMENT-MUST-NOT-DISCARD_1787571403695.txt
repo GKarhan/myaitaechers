@@ -1,0 +1,103 @@
+SMALL FUNDAMENTAL FIX — SOURCE PLACEMENT MUST NOT DISCARD THE WHOLE MAP
+
+Do ONLY this fix.
+
+Do NOT enter a broad architecture review.
+Do NOT add migrations, DB columns, triggers, or new schemas.
+Do NOT change Atomicity, Cognitive Paths, Teaching Content, Assignment,
+Goal/Outcomes, Quiz, Knowledge Tree, or AI Teacher runtime.
+
+CURRENT FAILURE:
+
+Automatic mapping returns:
+
+«Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։
+Արդյունքը չի պահպանվել։»
+
+One or more unsafe/unresolved source-block placements currently cause the
+entire otherwise-usable map to be discarded.
+
+FIX THE FAILURE SCOPE, NOT THE SOURCE SAFETY RULES.
+
+CORE RULE:
+
+Source fidelity remains strict per MicroNode/source relation.
+
+But one unresolved source placement must NOT discard all valid MicroNodes.
+
+Implement the smallest change so that:
+
+1. Safely source-grounded MicroNodes persist normally.
+
+2. A MicroNode whose source relation cannot be safely validated:
+   - is NOT marked canonically validated;
+   - is kept as REVIEW_REQUIRED / draft using the existing review mechanism;
+   - is visible to the teacher for edit/delete/relink.
+
+3. Source blocks that cannot be safely assigned to a MicroNode:
+   - are preserved;
+   - appear as unmapped/review-required source blocks;
+   - are NOT silently dropped;
+   - can later be handled manually.
+
+4. Do NOT accept:
+   - fabricated sourceQuote;
+   - sourceQuote not present in the source block;
+   - unreadable source as valid grounding;
+   - fake source relations.
+
+5. Do NOT report:
+   «Արդյունքը չի պահպանվել»
+   merely because some source placements need review.
+
+Instead show a partial-success summary such as:
+
+«Քարտեզագրումը ստեղծվել է։
+5 հանգույց պատրաստ է։
+1 հանգույց և 2 աղբյուրային բլոկ խորհուրդ է տրվում վերանայել»։
+
+6. Keep TRUE source hard failures hard:
+   - source document/source blocks unavailable;
+   - source extraction structurally unusable;
+   - no safely usable source basis at all;
+   - canonical data corruption.
+
+But a LOCAL source-placement problem must be node/block scoped.
+
+MINIMUM TESTS ONLY:
+
+A. all source relations valid
+→ whole map persists.
+
+B. 6 nodes, 1 unsafe source relation
+→ 5 valid nodes persist
+→ 1 node REVIEW_REQUIRED
+→ whole map is not discarded.
+
+C. source block cannot be assigned safely
+→ block preserved for review
+→ not silently dropped.
+
+D. invalid/non-verbatim sourceQuote
+→ never accepted as valid grounding.
+
+E. unreadable source reference
+→ never accepted as valid grounding.
+
+Do not run broader review cycles after these tests pass.
+
+FINAL RESPONSE ONLY:
+
+SOURCE SAFETY WEAKENED: NO
+ALL-OR-NOTHING SOURCE PLACEMENT REMOVED: YES/NO
+VALID NODES PRESERVED: YES/NO
+UNSAFE NODE SHOWN AS REVIEW: YES/NO
+UNMAPPED SOURCE BLOCKS PRESERVED: YES/NO
+INVALID SOURCEQUOTE ACCEPTED: NO
+UNREADABLE SOURCE ACCEPTED: NO
+MIGRATION ADDED: NO
+FILES CHANGED:
+TESTS:
+PUBLISHED/DEPLOYED: NO
+
+Then STOP.

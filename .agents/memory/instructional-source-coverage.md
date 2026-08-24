@@ -3,8 +3,8 @@ name: Instructional source coverage
 description: The safety contract for accepting an AI-generated lesson map when source blocks are structurally placed but may not be taught.
 ---
 
-Readable instructional source must be owned by a MicroNode. Generic placement coverage may count `unmapped` source blocks, but it is not proof that a student can be taught the material.
+Readable instructional source should be owned by a MicroNode. If one remains unassigned after its single targeted repair, preserve it as an unmapped, review-required source block rather than fabricating ownership or discarding safe sibling nodes.
 
-**Why:** A provider can return syntactically valid Topics while silently under-generating MicroNodes. Replacing the existing map in that state loses usable curriculum material and obscures the source omission.
+**Why:** A provider can return syntactically valid Topics while silently under-generating MicroNodes. Whole-map rejection loses usable curriculum material, while pretending the source was taught would weaken source fidelity.
 
-**How to apply:** Classify every block using source-safe dispositions. Treat only structural headings, visual/supporting material, and unreadable blocks as legitimate non-instructional exceptions. After activity normalization, make at most one bounded repair call per affected Topic. If readable instruction remains unresolved, fail before destructive persistence; retain the prior map and expose only aggregate, source-safe audit data to the teacher. Automatic Outcome relations need a shared subject concept, not just an action verb or generic term, and must be teacher-reviewed before they count toward final approval.
+**How to apply:** Classify every block using source-safe dispositions. After activity normalization, make at most one bounded repair call per affected Topic. A remaining readable or unreadable unassigned source block stays in the unmapped review audit; it never gains a fabricated MicroNode relation. Invalid/duplicate placement, unresolved activity ownership, unavailable/structurally unusable source, and zero safe mapping candidates still fail before destructive replacement. Automatic Outcome relations require sufficient owned-source support.

@@ -17,6 +17,7 @@ import {
   isLikelyStructuralHeading,
   type CoverageValidationResult,
   type InstructionalCoverageResult,
+  type SourceCoverageBlock,
 } from "../lib/coverage-validator.js";
 import { detectCompoundLO } from "../lib/granularity-heuristics.js";
 import {
@@ -2619,6 +2620,11 @@ export interface Pass2Result {
   topics: Pass2TopicResult[];
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
+  /** Readable instructional blocks retained for teacher review rather than
+   * fabricated into a MicroNode source relation. */
+  sourcePlacementReview: {
+    preservedBlockIndices: number[];
+  };
   /** Deterministic source-coverage validation result. Independent of AI self-report. */
   coverageValidation: CoverageValidationResult;
   /** Strict readable-instruction coverage; unlike placement coverage, an
@@ -4642,7 +4648,11 @@ export function assertPass2PersistenceGates(input: {
   if (!input.coverageValidation.valid) {
     throw new MappingSourcePlacementError(input.coverageValidation);
   }
-  if (!input.instructionalCoverage.valid) {
+  // A readable instructional block that remains without a MicroNode owner is
+  // preserved as an unmapped, review-required source block. Activities are not
+  // eligible for that escape hatch: they must still have a canonical exercise
+  // destination before a replacement map can persist.
+  if (input.instructionalCoverage.unresolvedActivityIndices.length > 0) {
     throw new MappingInstructionalCoverageError(input.instructionalCoverage, input.diagnostics);
   }
   if (input.duplicateResolution.rejectedDecisionCount > 0) {
@@ -4652,6 +4662,45 @@ export function assertPass2PersistenceGates(input: {
   // lesson. The route turns these verified unresolved findings into
   // `needs_review` nodes, excludes them from canonical Outcome alignments, and
   // records the finding in mapping metadata. They never become approved data.
+}
+
+/**
+ * Retains source-safe evidence when an instructional source block cannot be
+ * assigned to a MicroNode after the single targeted repair. The block receives
+ * the existing unmapped placement so structural coverage remains explicit,
+ * while its unresolved or unreadable disposition stays in the teacher-review
+ * audit. No source ownership or quote is fabricated here.
+ */
+export function preserveUnresolvedInstructionalBlocksForReview(
+  topics: Pass2TopicResult[],
+  blocks: ReadonlyArray<SourceCoverageBlock>,
+): { preservedBlockIndices: number[] } {
+  const instructionalCoverage = validateInstructionalCoverage(blocks, topics);
+  const preservedBlockIndices: number[] = [];
+
+  const reviewBlockIndices = instructionalCoverage.blocks
+    .filter((record) =>
+      record.disposition === "UNREADABLE"
+      || (record.disposition === "UNRESOLVED"
+        && record.reason === "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED"),
+    )
+    .map((record) => record.blockIndex);
+
+  for (const blockIndex of reviewBlockIndices) {
+    const topic = topics.find((candidate) =>
+      (candidate.inputBlockIndices ?? []).includes(blockIndex),
+    );
+    // A block outside every server-created Pass 2 topic is a structural
+    // inconsistency. Leave it unplaced so the existing hard coverage gate
+    // preserves the old map instead of attaching it to an arbitrary topic.
+    if (!topic) continue;
+    if (!topic.unmappedBlockIndices.includes(blockIndex)) {
+      topic.unmappedBlockIndices.push(blockIndex);
+    }
+    preservedBlockIndices.push(blockIndex);
+  }
+
+  return { preservedBlockIndices: [...new Set(preservedBlockIndices)].sort((a, b) => a - b) };
 }
 
 /**
@@ -4920,10 +4969,9 @@ export async function runPass2Pipeline(
   }
   normalizeActivityPlacements(topics, blocks);
 
-  // Source coverage has a stricter meaning than placement coverage: a readable
-  // instructional block in `unmappedBlockIndices` must be repaired or fail
-  // before the route can replace an existing map. Each affected Topic receives
-  // exactly one narrow repair call; no repair can broaden to another Topic.
+  // Source coverage has a stricter meaning than placement coverage. Each
+  // affected Topic receives exactly one narrow repair call; no repair can
+  // broaden to another Topic.
   const repairResults = await Promise.all(
     topics.map((topic, index) =>
       repairTopicInstructionalCoverage(topic, blocks, index + 1, curriculumConstraints),
@@ -4959,7 +5007,6 @@ export async function runPass2Pipeline(
     };
   }
 
-  const allUnmapped = topics.flatMap((t) => t.unmappedBlockIndices);
   const diagnostics: Pass2Diagnostics = {
     detectedGroupCount: groups.length,
     groupsAfterTheoryMergeCount: mergedGroups.length,
@@ -5027,8 +5074,10 @@ export async function runPass2Pipeline(
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
   // safe only if it preserves one valid owner for every source and activity.
+  const sourcePlacementReview = preserveUnresolvedInstructionalBlocksForReview(topics, blocks);
   const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics);
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
+  const allUnmapped = topics.flatMap((topic) => topic.unmappedBlockIndices);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
   const reconciliationByNodeId = new Map(
     sourceAlignmentReconciliation.dispositions.map((disposition) => [
@@ -5114,7 +5163,7 @@ export async function runPass2Pipeline(
         unresolvedInstructional: postConsolidationInstructionalCoverage.unresolvedInstructionalIndices,
         unresolvedActivities: postConsolidationInstructionalCoverage.unresolvedActivityIndices,
       },
-      "pass2: readable instructional source remains unresolved after bounded repair",
+      "pass2: readable instructional source retained as review-required after bounded repair",
     );
   }
   assertPass2PersistenceGates({
@@ -5137,6 +5186,7 @@ export async function runPass2Pipeline(
   return {
     topics,
     unmappedBlockIndices: allUnmapped,
+    sourcePlacementReview,
     coverageValidation,
     instructionalCoverage: postConsolidationInstructionalCoverage,
     granularityFindings,

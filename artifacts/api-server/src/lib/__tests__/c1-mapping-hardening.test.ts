@@ -10,6 +10,7 @@ import { classifyMicroNodeSourceAlignment } from "../micronode-source-alignment.
 import {
   assertPass2PersistenceGates,
   applyBoundedSourceReallocation,
+  preserveUnresolvedInstructionalBlocksForReview,
   buildDuplicateReviewCandidates,
   buildAutomaticOutcomeAlignmentPlan,
   collectDuplicateSuspicions,
@@ -153,6 +154,93 @@ for (const [label, invalid] of [
 }
 assert.equal(validPlacement.valid, true);
 console.log("  ✓ all invalid placement categories block persistence and preserve the old map");
+
+{
+  const topics = [topic(1, [
+    node("Առաջին", "Բացատրում է առաջին հասկացությունը։", [0], "t1:n0"),
+    node("Երկրորդ", "Բացատրում է երկրորդ հասկացությունը։", [1], "t1:n1"),
+    node("Երրորդ", "Բացատրում է երրորդ հասկացությունը։", [2], "t1:n2"),
+    node("Չորրորդ", "Բացատրում է չորրորդ հասկացությունը։", [3], "t1:n3"),
+    node("Հինգերորդ", "Բացատրում է հինգերորդ հասկացությունը։", [4], "t1:n4"),
+    node("Վերանայվող", "Կիրառում է չհիմնավորված հատուկ կանոն։", [5], "t1:n5"),
+  ])];
+  const placement = validateSourceCoverage(6, topics);
+  const oneUnsafeRelation: Pass2SourceAlignment = {
+    valid: false,
+    sufficientCount: 5,
+    partialCount: 1,
+    insufficientCount: 0,
+    unreadableCount: 0,
+    nodes: [],
+  };
+  assert.equal(topics[0].microNodes.length, 6);
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: placement,
+    instructionalCoverage: validInstructionalCoverage,
+    sourceAlignment: oneUnsafeRelation,
+    duplicateResolution: noDuplicateConcern,
+    diagnostics,
+  }));
+  console.log("  ✓ five grounded nodes remain eligible when one source relation requires review");
+}
+
+{
+  const blocks = [
+    { blockType: "RULE", sourceText: "Առաջին կանոնը բացատրում է առաջին հասկացությունը։", sourcePage: 11 },
+    { blockType: "RULE", sourceText: "Երկրորդ կանոնը բացատրում է երկրորդ հասկացությունը։", sourcePage: 11 },
+    { blockType: "RULE", sourceText: "Երրորդ կանոնը բացատրում է երրորդ հասկացությունը։", sourcePage: 11 },
+    { blockType: "RULE", sourceText: "Չորրորդ կանոնը բացատրում է չորրորդ հասկացությունը։", sourcePage: 11 },
+    { blockType: "RULE", sourceText: "Հինգերորդ կանոնը բացատրում է հինգերորդ հասկացությունը։", sourcePage: 11 },
+    { blockType: "RULE", sourceText: "Վեցերորդ կանոնը պահանջում է ուսուցչի ձեռքով կապում։", sourcePage: 11 },
+  ];
+  const topics = [topic(1, [
+    node("Առաջին", "Բացատրում է առաջին հասկացությունը։", [0], "t1:n0"),
+    node("Երկրորդ", "Բացատրում է երկրորդ հասկացությունը։", [1], "t1:n1"),
+    node("Երրորդ", "Բացատրում է երրորդ հասկացությունը։", [2], "t1:n2"),
+    node("Չորրորդ", "Բացատրում է չորրորդ հասկացությունը։", [3], "t1:n3"),
+    node("Հինգերորդ", "Բացատրում է հինգերորդ հասկացությունը։", [4], "t1:n4"),
+  ])];
+  topics[0].inputBlockIndices = [0, 1, 2, 3, 4, 5];
+  const before = validateInstructionalCoverage(blocks, topics);
+  assert.deepEqual(before.unresolvedInstructionalIndices, [5]);
+  const preserved = preserveUnresolvedInstructionalBlocksForReview(topics, blocks);
+  const after = validateInstructionalCoverage(blocks, topics);
+  assert.deepEqual(preserved.preservedBlockIndices, [5]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [5]);
+  assert.deepEqual(after.unresolvedInstructionalIndices, [5], "review status must remain visible");
+  assert.equal(validateSourceCoverage(blocks.length, topics).valid, true, "the preserved block is structurally accounted for");
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(blocks.length, topics),
+    instructionalCoverage: after,
+    sourceAlignment: validSourceAlignment,
+    duplicateResolution: noDuplicateConcern,
+    diagnostics,
+  }));
+  console.log("  ✓ an unassigned readable source block persists as review-required instead of discarding valid nodes");
+}
+
+{
+  const blocks = [
+    { blockType: "RULE", sourceText: "", sourcePage: 11 },
+    { blockType: "RULE", sourceText: "Ընթեռնելի կանոնը բացատրում է հասկացությունը։", sourcePage: 11 },
+  ];
+  const topics = [topic(1, [
+    node("Ընթեռնելի կանոն", "Բացատրում է հասկացությունը։", [1], "t1:n0"),
+  ])];
+  const preserved = preserveUnresolvedInstructionalBlocksForReview(topics, blocks);
+  const coverage = validateInstructionalCoverage(blocks, topics);
+  assert.deepEqual(preserved.preservedBlockIndices, [0]);
+  assert.equal(coverage.blocks[0].disposition, "UNREADABLE");
+  assert.equal(validateSourceCoverage(blocks.length, topics).valid, true);
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(blocks.length, topics),
+    instructionalCoverage: coverage,
+    sourceAlignment: validSourceAlignment,
+    duplicateResolution: noDuplicateConcern,
+    diagnostics,
+  }));
+  console.log("  ✓ unreadable source stays unmapped for review and never becomes valid grounding");
+}
 
 {
   const blocks = [

@@ -4869,6 +4869,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     let exerciseCounter = 0;
     let nodesWithFullContent = 0;
     let reviewRequiredNodeCount = 0;
+    let reviewRequiredSourceBlockCount = 0;
     const reviewItems: { nodeId: number; nodeTitle: string; reason: string }[] = [];
     const topicRows: { id: number; sequence: number; title: string }[] = [];
     const nodeRows:  { id: number; topicId: number; topicSequence: number; microNodeIndex: number; title: string; sequence: number }[] = [];
@@ -5175,6 +5176,22 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     }
 
     // ── Review flags for coverage gaps ──────────────────────────────────────
+    // Readable instructional blocks that could not be safely linked to a
+    // MicroNode remain in the server-owned unmapped list. They are deliberately
+    // surfaced individually for teacher relinking rather than discarded or
+    // turned into fabricated source relations.
+    const sourceDispositionByIndex = new Map(
+      pass2.instructionalCoverage.blocks.map((record) => [record.blockIndex, record]),
+    );
+    reviewRequiredSourceBlockCount = pass2.sourcePlacementReview.preservedBlockIndices.length;
+    for (const blockIndex of pass2.sourcePlacementReview.preservedBlockIndices) {
+      const disposition = sourceDispositionByIndex.get(blockIndex);
+      reviewItems.push({
+        nodeId: null as unknown as number,
+        nodeTitle: `Source block #${blockIndex + 1}`,
+        reason: `SOURCE_BLOCK_REVIEW_REQUIRED:${disposition?.reason ?? "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED"}`,
+      });
+    }
     // Informational: any blocks the AI explicitly excluded as headers.
     if (pass2.unmappedBlockIndices.length > 0) {
       reviewItems.push({
@@ -5231,6 +5248,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         microNodesCreated:    totalNodes,
         readyMicroNodes:      totalNodes - reviewRequiredNodeCount,
         reviewRequiredMicroNodes: reviewRequiredNodeCount,
+        unmappedReviewBlocks: reviewRequiredSourceBlockCount,
         exercisesCreated:     totalExercises,
         unmappedBlocks:       pass2.unmappedBlockIndices.length,
       },
@@ -5259,6 +5277,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
           unresolvedInstructionalBlocks: pass2.instructionalCoverage.unresolvedInstructionalIndices.length,
           unresolvedActivityBlocks: pass2.instructionalCoverage.unresolvedActivityIndices.length,
+          unmappedReviewBlocks: pass2.sourcePlacementReview.preservedBlockIndices.map((blockIndex) =>
+            sourceDispositionByIndex.get(blockIndex),
+          ).filter(Boolean),
         },
         outcomeAlignmentAudit: {
           confirmedOutcomes: confirmedOutcomes.length,
@@ -5360,11 +5381,11 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           microNodesCreated:    totalNodes,
           readyMicroNodes:      totalNodes - reviewRequiredNodeCount,
           reviewRequiredMicroNodes: reviewRequiredNodeCount,
+          unmappedReviewBlocks: reviewRequiredSourceBlockCount,
           exercisesCreated:     totalExercises,
           unmappedBlocks:       pass2.unmappedBlockIndices.length,
           instructionalCoverageValid: pass2.instructionalCoverage.valid,
-          teacherReviewRequired:
-            pass2.unresolvedAtomicityFindings.length + pass2.duplicateResolution.unresolvedPairIds.length,
+          teacherReviewRequired: reviewRequiredNodeCount + reviewRequiredSourceBlockCount,
           atomicityVerification: pass2.atomicityVerification,
           mappingReport,
           // Keep job polling source-safe too. Raw textbook/provider text never
