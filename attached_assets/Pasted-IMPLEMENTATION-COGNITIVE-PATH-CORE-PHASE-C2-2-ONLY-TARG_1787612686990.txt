@@ -1,0 +1,821 @@
+IMPLEMENTATION — COGNITIVE PATH CORE
+PHASE C2-2 ONLY
+TARGET COGNITIVE DEMAND RESOLVER
+
+ROLE
+
+Act as a principal AI systems architect, senior TypeScript/backend engineer,
+and education-domain architect.
+
+This task builds ONLY the next Cognitive Path layer:
+
+TARGET COGNITIVE DEMAND RESOLVER.
+
+C2-1 foundation is already implemented and PROTECTED.
+
+==================================================
+0. GLOBAL NON-REGRESSION PRINCIPLE
+==================================================
+
+CRITICAL PROJECT RULE:
+
+BUILD FORWARD — DO NOT BREAK WORKING SYSTEMS.
+
+Before changing any production code:
+
+1. identify the existing working behavior this task touches;
+2. treat it as protected;
+3. make the smallest additive/narrowly scoped change;
+4. add regression coverage for old valid behavior;
+5. if an existing regression fails, STOP and diagnose;
+6. do NOT weaken an old test to make the new code pass.
+
+The following are specifically PROTECTED:
+
+- C2-1 lesson orchestrator
+- per-MicroNode independent generation unit
+- per-node attempt ledger / observability
+- transactional C2 persistence
+- concurrency/idempotency protection
+- stale-write protection
+- missing-only bulk generation
+- failure isolation
+- C2 lesson state summary
+- existing C2 validation/acceptance
+- AI Teacher fail-closed C2_PATH_UNAVAILABLE behavior
+- Teaching Content independence
+- Mapping Core
+- Quiz
+- Knowledge Tree
+- mastery/scoring
+- manual mapping
+- unrelated UI
+
+Do not refactor these systems unless an absolutely minimal compatibility change is required.
+
+==================================================
+1. CONFIRMED CURRENT PROBLEM
+==================================================
+
+Current architecture contains this deterministic dependency:
+
+C1 persisted targetBloomLevel
+        ↓
+C2 target ceiling
+        ↓
+C2 generator cannot exceed it
+
+Example from lesson 715:
+
+MicroNode:
+"Կոորդինատային առանցքի երկայնքով տեղաշարժ"
+
+Learning objective:
+"Աշակերտը կարող է թվաբանական գործողությունները վերափոխել
+կոորդինատային առանցքի երկայնքով տեղաշարժի։"
+
+C1 targetBloomLevel = 1.
+
+Therefore C2 was forced to:
+
+REMEMBER — TARGET
+
+even though the learner performance "վերափոխել" may require a stronger
+cognitive demand than recall.
+
+This task must remove the architectural assumption:
+
+C1 Bloom value = unquestionable C2 curriculum ceiling.
+
+However:
+
+DO NOT DELETE C1 Bloom.
+DO NOT IGNORE IT.
+
+C1 Bloom becomes ONE evidence signal.
+
+==================================================
+2. CORE C2-2 PRINCIPLE
+==================================================
+
+For every canonical MicroNode, determine:
+
+"What is the HIGHEST cognitive performance the curriculum requires
+the learner to demonstrate for THIS MicroNode?"
+
+This is the:
+
+Target Cognitive Demand
+
+or project-equivalent name.
+
+This target must come from the MicroNode's real curriculum evidence.
+
+Not from a fixed Bloom template.
+
+Not from one verb alone.
+
+Not from C1 Bloom alone.
+
+==================================================
+3. TARGET DEMAND EVIDENCE
+==================================================
+
+Resolve target demand from a bounded evidence bundle.
+
+At minimum consider:
+
+A. MicroNode learningObjective
+B. MicroNode title
+C. source/theory content
+D. source-grounded exercises attached to the MicroNode
+E. canonical lesson outcomes if relevant and trustworthy
+F. existing C1 targetBloomLevel as a prior signal
+G. confirmed teacher-authored C2 data when regeneration policy allows reading it
+H. confirmed Teaching Content only if current generation already legitimately uses it
+
+Use source/curriculum evidence as authority.
+
+Do not use learner mastery/evidence to define curriculum target.
+
+==================================================
+4. CURRICULUM TARGET VS LEARNER STATE
+==================================================
+
+Preserve a hard conceptual distinction:
+
+CURRICULUM TARGET COGNITIVE LEVEL
+
+≠
+
+LEARNER CURRENT DEMONSTRATED CEILING
+
+C2 generation defines the curriculum target.
+
+AI Teacher/runtime later determines how far the individual learner has actually demonstrated mastery.
+
+Example:
+
+Curriculum target:
+APPLY
+
+Learner current demonstrated ceiling:
+UNDERSTAND
+
+Do not mix these concepts.
+
+No learner evidence is required in C2-2 target generation.
+
+==================================================
+5. BLOOM TAXONOMY CONTRACT
+==================================================
+
+Use the current project Bloom vocabulary/order:
+
+REMEMBER
+UNDERSTAND
+APPLY
+ANALYZE
+EVALUATE
+CREATE
+
+or exact existing enum names.
+
+Do not invent a competing taxonomy.
+
+The resolver must output exactly one target level.
+
+It must also output structured rationale/evidence signals,
+but NOT chain-of-thought.
+
+Example safe result:
+
+{
+  targetLevel: "apply",
+  confidence: "high",
+  evidence: [
+    "OBJECTIVE_PERFORMANCE",
+    "SOURCE_EXERCISE_DEMAND"
+  ],
+  c1Relation: "RAISED_ABOVE_C1"
+}
+
+Use project conventions.
+
+==================================================
+6. C1 BLOOM BECOMES A SIGNAL, NOT A HARD CEILING
+==================================================
+
+Current C1 value must be compared with resolved target demand.
+
+Possible relations:
+
+MATCHES_C1
+RAISED_ABOVE_C1
+LOWERED_BELOW_C1
+UNCERTAIN_CONFLICT
+
+or equivalent machine-readable states.
+
+If strong curriculum evidence supports a higher target than C1:
+
+do NOT silently force C2 down to C1.
+
+Example:
+
+C1 = REMEMBER
+
+objective + exercises clearly require APPLY
+
+Expected:
+
+resolved C2 target = APPLY
+C1 conflict = RAISED_ABOVE_C1
+status = NEEDS_REVIEW unless confidence/policy safely permits automatic acceptance
+
+Do NOT rewrite the Mapping Core C1 Bloom value in this task.
+
+C2 may disagree with C1 while preserving the discrepancy in diagnostics.
+
+==================================================
+7. DO NOT DETERMINE LEVEL FROM VERB ALONE
+==================================================
+
+Avoid simple verb lookup architecture.
+
+Verbs are signals, not sufficient truth.
+
+Example:
+
+"որոշել"
+can mean recall, application, or analysis depending on the object/task.
+
+"կառուցել"
+may indicate application or create depending on constraints/originality.
+
+"բացատրել"
+may indicate understand, but context matters.
+
+"վերափոխել"
+can imply application when the learner must execute a procedure.
+
+Use semantic performance + required evidence.
+
+If deterministic Armenian verb patterns exist today,
+keep them as weak/medium signals, not authoritative final classification.
+
+==================================================
+8. PERFORMANCE-FIRST RESOLUTION
+==================================================
+
+Resolve demand by identifying the required learner performance.
+
+Conceptual questions:
+
+1. What INPUT is the learner given?
+2. What OUTPUT/action must the learner produce?
+3. Is recall sufficient?
+4. Must the learner interpret/explain?
+5. Must the learner execute a known procedure?
+6. Must the learner decompose/compare/infer structure?
+7. Must the learner judge using criteria?
+8. Must the learner construct something genuinely novel within the curriculum target?
+
+Map the required performance to Bloom conservatively.
+
+Examples:
+
+Recall definition:
+REMEMBER
+
+Explain relationship:
+UNDERSTAND
+
+Use known rule/procedure on a new routine instance:
+APPLY
+
+Interpret/decompose/compare relationships:
+ANALYZE
+
+Judge correctness/quality using explicit criteria:
+EVALUATE
+
+Produce novel solution/model/design where construction itself is target:
+CREATE
+
+Do not over-classify routine construction exercises as CREATE automatically.
+
+==================================================
+9. EXERCISE DEMAND AS STRONG EVIDENCE
+==================================================
+
+MicroNode-linked source exercises are important evidence.
+
+If learningObjective is ambiguous but several source exercises require independent application,
+the target should not remain REMEMBER solely because C1 says Bloom 1.
+
+Exercise demand must be classified by the performance required,
+not by answer format.
+
+Multiple choice can assess APPLY/ANALYZE.
+
+Constructed response is not automatically higher-level.
+
+Do not auto-link exercises to C2 levels yet.
+That belongs to C2-4.
+
+In C2-2 exercises are evidence for TARGET DEMAND only.
+
+==================================================
+10. SOURCE / OBJECTIVE CONFLICT POLICY
+==================================================
+
+If objective and source evidence disagree:
+
+Do not silently choose the more ambitious level.
+
+Examples:
+
+objective says "հիշել..."
+but exercises require only direct recall
+→ REMEMBER
+
+objective says "կիրառել..."
+but source only supports definition
+→ REVIEW_REQUIRED_CONFLICT
+
+objective says "վերափոխել..."
+and source/exercises show routine execution
+→ likely APPLY
+
+If confidence is insufficient:
+
+produce explicit review-required target resolution.
+
+Do not fabricate certainty.
+
+==================================================
+11. CONFIDENCE / REVIEW CONTRACT
+==================================================
+
+Target demand resolver should return:
+
+- resolved target level
+- confidence
+- evidence signals
+- C1 relation
+- review reason codes if needed
+
+Suggested confidence:
+
+HIGH
+MEDIUM
+LOW
+
+or existing project convention.
+
+Automatic path generation may proceed only according to existing/new bounded policy.
+
+At minimum:
+
+HIGH, well-grounded target
+→ eligible for normal C2 path generation
+
+MEDIUM
+→ generation may proceed as needs_review if consistent with existing policy
+
+LOW / conflicting
+→ do not silently generate a trusted target;
+   preserve explicit review-required state/reason
+
+Do not change final teacher approval authority.
+
+==================================================
+12. TARGET DEMAND MUST BE DETERMINISTIC/AUDITABLE
+==================================================
+
+Same normalized input must produce a stable structured decision
+as far as deterministic logic allows.
+
+If AI semantic judgment is required:
+
+- use one bounded per-MicroNode semantic decision within the existing per-node generation unit;
+- do NOT add separate calls per evidence item;
+- preserve machine-readable result fields;
+- no raw chain-of-thought.
+
+If the existing C2 provider call can include target-demand resolution in the same structured output safely,
+prefer extending that existing contract rather than adding a second provider call.
+
+Before adding a new model call:
+prove why the existing C2 call cannot support the resolver.
+
+==================================================
+13. TARGET LEVEL VS PATH LEVELS
+==================================================
+
+C2-2 determines ONLY:
+
+the curriculum target cognitive level.
+
+Do NOT fully redesign progression generation yet.
+
+C2-3 will determine:
+
+which prerequisite/scaffolding levels are needed to reach the target.
+
+For compatibility, the existing generator may still return path levels,
+but C2-2 acceptance must first establish a valid target demand.
+
+Do not mechanically add all lower Bloom levels in this task.
+
+==================================================
+14. CURRENT C2 VALIDATOR UPDATE
+==================================================
+
+The current validator rejects any C2 level above persisted C1 ceiling.
+
+That rule must be changed narrowly.
+
+New validation relationship:
+
+Generated TARGET must equal the accepted C2 Target Cognitive Demand.
+
+C1 Bloom mismatch is diagnostic/review evidence,
+not automatic invalidity.
+
+Existing structural validation remains:
+
+- valid Bloom enum
+- strictly ascending authored sequence
+- exactly one target
+- target is final level
+- required fields
+- Armenian content
+- source grounding
+- interaction allowlist
+- objective/success-criterion validity
+
+Do not weaken these validations.
+
+==================================================
+15. PRESERVE MAPPING CORE
+==================================================
+
+Do NOT modify targetBloomLevel in Mapping Core.
+
+Do NOT remap lessons.
+
+Do NOT make mapper use C2 output.
+
+This task creates a clean boundary:
+
+C1 mapping Bloom = mapper signal / prior estimate
+
+C2 target demand = authoritative curriculum cognitive target for Cognitive Path
+
+Any disagreement remains observable.
+
+==================================================
+16. EXAMPLE REGRESSION — NODE 2429 PATTERN
+==================================================
+
+Create a provider-free semantic fixture equivalent to:
+
+Learning objective:
+"Աշակերտը կարող է թվաբանական գործողությունները վերափոխել
+կոորդինատային առանցքի երկայնքով տեղաշարժի։"
+
+Source describes:
+- addition as right movement
+- subtraction as left movement
+- negative-number transformations
+
+Exercise requires:
+- transform arithmetic operations into coordinate-axis movement
+- compute resulting value
+
+C1 target = REMEMBER
+
+Expected target-demand behavior:
+
+C2 must NOT be forced to REMEMBER merely because C1=1.
+
+The resolver should identify routine procedural execution/application evidence.
+
+Expected likely target:
+APPLY
+
+If the deterministic fixture is designed to prove APPLY,
+make the fixture evidence unambiguous.
+
+Expected relation:
+RAISED_ABOVE_C1
+
+Expected status:
+needs_review or accepted according to explicit confidence policy,
+but never silently downgraded to REMEMBER.
+
+Do NOT modify real node 2429 automatically.
+
+==================================================
+17. OTHER REQUIRED REGRESSION CASES
+==================================================
+
+TEST 1 — PURE RECALL
+
+Objective/source:
+state a definition.
+
+C1 = REMEMBER.
+
+Expected:
+REMEMBER.
+
+TEST 2 — UNDERSTANDING
+
+Explain why/relationship with no independent procedural execution.
+
+Expected:
+UNDERSTAND.
+
+TEST 3 — APPLICATION
+
+Use a known rule on new routine examples.
+
+Expected:
+APPLY.
+
+TEST 4 — ANALYSIS
+
+Compare/decompose/infer relationships from representation/data.
+
+Expected:
+ANALYZE.
+
+TEST 5 — EVALUATION
+
+Judge using explicit criteria.
+
+Expected:
+EVALUATE.
+
+TEST 6 — CREATION
+
+Construct a genuinely novel product/model where creation is curriculum target.
+
+Expected:
+CREATE.
+
+TEST 7 — VERB AMBIGUITY
+
+Same verb in two different task contexts.
+
+Expected:
+different target levels when demanded performance differs.
+
+TEST 8 — C1 TOO LOW
+
+C1=REMEMBER;
+objective + source + exercises strongly support APPLY.
+
+Expected:
+APPLY + RAISED_ABOVE_C1.
+
+TEST 9 — C1 TOO HIGH
+
+C1=ANALYZE;
+source supports only UNDERSTAND.
+
+Expected:
+do not blindly retain ANALYZE;
+emit LOWERED_BELOW_C1 / review according to policy.
+
+TEST 10 — CONFLICT
+
+Objective implies APPLY;
+source supports only REMEMBER.
+
+Expected:
+explicit review-required conflict.
+
+TEST 11 — EXERCISE FORMAT
+
+Multiple-choice item requires analysis.
+
+Expected:
+interaction format does not force low Bloom.
+
+TEST 12 — NO EXERCISES
+
+Clear objective + source are sufficient to resolve target.
+
+TEST 13 — SOURCE EXERCISES STRENGTHEN AMBIGUOUS OBJECTIVE
+
+Objective vague;
+exercise cluster clearly demands APPLY.
+
+Expected:
+exercise evidence raises confidence/target appropriately.
+
+TEST 14 — DETERMINISM
+
+Same evidence bundle → same structured target decision.
+
+==================================================
+18. OBSERVABILITY
+==================================================
+
+Extend C2-1 attempt diagnostics minimally.
+
+For each generated target resolution preserve:
+
+- microNodeId
+- c1TargetLevel
+- resolvedC2TargetLevel
+- c1Relation
+- confidence
+- evidence reason codes
+- review reason codes
+- resolver version/contract version if useful
+
+Do NOT store raw model reasoning.
+
+This must allow future diagnosis:
+
+"Why did this node become APPLY?"
+
+without needing provider logs.
+
+==================================================
+19. REGENERATION SAFETY
+==================================================
+
+C2-1 protections remain authoritative.
+
+Changing target-demand logic must NOT automatically overwrite:
+
+- confirmed paths
+- teacher-authored paths
+- existing needs_review paths
+
+Normal bulk action remains missing-only.
+
+Recalculation of an existing path requires authorized force/regenerate flow.
+
+Failed regeneration leaves old path intact transactionally.
+
+==================================================
+20. LESSON ORCHESTRATOR NON-REGRESSION
+==================================================
+
+Do NOT change the fundamental C2-1 model:
+
+ONE lesson action
+→ independently process eligible MicroNodes
+→ per-node validation
+→ per-node atomic persistence
+→ aggregate ledger
+
+Target Demand Resolver runs INSIDE each MicroNode generation unit.
+
+Do not create one lesson-wide Bloom decision.
+
+==================================================
+21. AI TEACHER NON-REGRESSION
+==================================================
+
+Do NOT modify AI Teacher.
+
+Accepted persisted C2 paths remain the runtime authority.
+
+Current progression/evidence engine remains unchanged.
+
+No missing/needs_review path becomes deliverable.
+
+==================================================
+22. TEACHING CONTENT NON-REGRESSION
+==================================================
+
+Do NOT modify Teaching Content generation.
+
+C2 target-demand improvements must not newly block independent Teaching Content generation.
+
+Confirmed C2 may continue to act as optional calibration context exactly as today.
+
+==================================================
+23. IMPLEMENTATION PROCESS
+==================================================
+
+STEP 1
+Inspect current C2 generator prompt/validator/target-ceiling code.
+
+STEP 2
+State exact current code path where C1 ceiling becomes hard C2 ceiling.
+
+STEP 3
+Define the smallest Target Cognitive Demand contract.
+
+STEP 4
+Implement resolver inside per-MicroNode C2 generation unit.
+
+STEP 5
+Replace hard C1 ceiling validation with accepted C2 target-demand validation.
+
+STEP 6
+Add C1 mismatch diagnostics/review policy.
+
+STEP 7
+Add structured observability.
+
+STEP 8
+Add focused regression tests.
+
+STEP 9
+Run:
+- C2-1 foundation tests
+- current C2 validation/acceptance tests
+- new C2-2 tests
+- AI Teacher fail-closed tests
+- Teaching Content independence tests
+- API typecheck
+- production build if appropriate
+- git diff --check
+
+STEP 10
+Perform focused review for regressions.
+
+STEP 11
+Restart only required API workflow.
+
+DO NOT regenerate lesson 715 automatically.
+
+==================================================
+24. ACCEPTANCE CONTRACT — C2-2
+==================================================
+
+C2D-1 — INDEPENDENT TARGET RESOLUTION
+C2 target cognitive demand is resolved from curriculum evidence, not blindly inherited from C1.
+
+C2D-2 — C1 AS SIGNAL
+C1 Bloom is preserved as evidence and discrepancy signal.
+
+C2D-3 — PERFORMANCE FIRST
+Target level reflects required learner performance.
+
+C2D-4 — MULTI-SIGNAL GROUNDING
+Objective/source/exercise evidence may all contribute.
+
+C2D-5 — NO VERB-ONLY CLASSIFICATION
+One verb alone cannot define target demand.
+
+C2D-6 — EXERCISE FORMAT INDEPENDENCE
+Question format does not determine Bloom demand.
+
+C2D-7 — CONFLICT SAFETY
+Insufficient/conflicting evidence becomes explicit review, not false certainty.
+
+C2D-8 — OBSERVABILITY
+The system can explain target decision using structured reason codes.
+
+C2D-9 — C2-1 NON-REGRESSION
+Orchestration/transactions/concurrency/failure isolation remain intact.
+
+C2D-10 — RUNTIME NON-REGRESSION
+AI Teacher acceptance/fail-closed behavior remains unchanged.
+
+All C2D-1 through C2D-10 must pass.
+
+==================================================
+25. FINAL REPORT
+==================================================
+
+Report exactly:
+
+1. Architecture before
+2. Exact old C1 → C2 hard-ceiling code path
+3. Architecture after
+4. Files changed
+5. Target Cognitive Demand contract
+6. Evidence inputs used
+7. Performance classification logic
+8. C1 comparison/discrepancy policy
+9. Confidence/review policy
+10. Validator changes
+11. Provider-call count before/after
+12. Observability added
+13. Regression tests added
+14. Test results
+15. C2-1 non-regression result
+16. AI Teacher non-regression result
+17. Teaching Content non-regression result
+18. Node-2429-equivalent fixture result
+19. C2D-1…C2D-10 status
+20. Known issues intentionally deferred to C2-3/C2-4
+
+Then STOP.
+
+DO NOT implement progression redesign yet.
+DO NOT auto-link exercises yet.
+DO NOT change Mapping Core.
+DO NOT regenerate production lesson 715 automatically.
