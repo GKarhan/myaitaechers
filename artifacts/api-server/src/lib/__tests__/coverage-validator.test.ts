@@ -93,6 +93,9 @@ it("Test 3: duplicate block — index 1 in sourceBlockIndices of two MicroNodes"
   assert.equal(result.valid,         false);
   assert.deepEqual(result.missingIndices,   []);
   assert.deepEqual(result.duplicateIndices, [1]);
+  assert.deepEqual(result.duplicatePlacements, {
+    "1": ["src:Node A", "src:Node B"],
+  });
   assert.deepEqual(result.invalidIndices,   []);
   // coveredBlocks counts unique valid seen indices
   assert.equal(result.coveredBlocks,   3);  // 0,1,2 all seen at least once

@@ -24,6 +24,8 @@ export interface CoverageValidationResult {
   missingIndices: number[];
   /** Block indices that appear in more than one placement slot. */
   duplicateIndices: number[];
+  /** Human-readable ownership labels for each duplicated block index. */
+  duplicatePlacements: Record<string, string[]>;
   /** Block indices that fall outside [0, totalBlocks). */
   invalidIndices: number[];
   /** Titles of MicroNodes whose sourceBlockIndices array is empty. */
@@ -275,6 +277,9 @@ export function validateSourceCoverage(
   const duplicateIndices = allSeenIndices.filter(
     (i) => !invalidSet.has(i) && seenMap.get(i)!.length > 1,
   );
+  const duplicatePlacements = Object.fromEntries(
+    duplicateIndices.map((index) => [String(index), [...seenMap.get(index)!]]),
+  );
 
   // Missing: valid indices [0, totalBlocks) that never appeared in seenMap
   const validSeenSet = new Set(allSeenIndices.filter((i) => !invalidSet.has(i)));
@@ -300,6 +305,7 @@ export function validateSourceCoverage(
     coveragePercent,
     missingIndices,
     duplicateIndices,
+    duplicatePlacements,
     invalidIndices,
     emptyMicroNodeTitles,
     categoryCounts,

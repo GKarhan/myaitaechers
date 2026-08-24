@@ -5501,6 +5501,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
                 emptyMicroNodeCount: err.coverage.emptyMicroNodeTitles.length,
                 missingIndices: err.coverage.missingIndices,
                 duplicateIndices: err.coverage.duplicateIndices,
+                duplicatePlacements: err.coverage.duplicatePlacements,
                 invalidIndices: err.coverage.invalidIndices,
               },
             }
