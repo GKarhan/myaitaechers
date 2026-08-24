@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const { PDFParse } = _require("pdf-parse") as {
@@ -1881,6 +1882,166 @@ export function validateVerifiedSourcePrimaryDispositions(
     invalidDispositionIndices,
     nonPrimaryOnlyBlockIndices,
   };
+}
+
+export type DurableSourceMaterialVerificationStatus =
+  | "VERIFIED_READABLE"
+  | "VERIFIED_UNREADABLE";
+
+/**
+ * Database-neutral representation of the current canonical source map.
+ * A mapper persists these records atomically with its generated lesson map;
+ * their identity and content never depend on a persisted MicroNode.
+ */
+export interface DurableSourceMaterialRecord {
+  stableSourceKey: string;
+  sourceBlockIndex: number;
+  blockType: Pass1Block["blockType"];
+  sourceText: string;
+  physicalPage: number;
+  sourceParagraph: string | null;
+  sourceBoundingBox: Pass1Block["sourceBoundingBox"];
+  verificationStatus: DurableSourceMaterialVerificationStatus;
+  primaryDisposition: SourceMaterialDisposition;
+  dispositionReasonCodes: SourceMaterialReasonCode[];
+  provenanceMetadata: {
+    sourceDocumentId: number | null;
+    coverageDisposition: string | null;
+    coverageReason: string | null;
+  };
+}
+
+export interface BuildDurableSourceMaterialsInput {
+  sourceDocumentId: number | null;
+  blocks: ReadonlyArray<Pass1Block>;
+  topics: ReadonlyArray<Pass2TopicResult>;
+  instructionalCoverage: InstructionalCoverageResult;
+}
+
+function stableSourceText(value: string): string {
+  return value.normalize("NFKC").replace(/\s+/gu, " ").trim();
+}
+
+function stableBoundingBoxKey(block: Pass1Block): string | null {
+  if (!block.sourceBoundingBox) return null;
+  const { x, y, w, h } = block.sourceBoundingBox;
+  return [x, y, w, h].map((value) => Number(value).toFixed(3)).join(",");
+}
+
+function isDurablyUnreadableSource(block: Pass1Block): boolean {
+  const text = block.sourceText.trim();
+  if (!text) return true;
+  if (/�|□{2,}|(?:\?[^\s]){2,}/u.test(text)) return true;
+  return ["IMAGE", "TABLE"].includes(block.blockType) && isUnreadableSource(text);
+}
+
+/**
+ * Builds one canonical durable record for every verified Pass 1 block.
+ *
+ * Stable identity uses document/location/content provenance. A collision suffix
+ * is required only when Pass 1 gives two blocks identical provenance; it is a
+ * deterministic tie-breaker, never the sole identity component.
+ */
+export function buildDurableSourceMaterialRecords(
+  input: BuildDurableSourceMaterialsInput,
+): DurableSourceMaterialRecord[] {
+  const sourceOwners = new Set<number>();
+  const supportingOwners = new Set<number>();
+  const exerciseOwners = new Set<number>();
+  for (const topic of input.topics) {
+    for (const node of topic.microNodes) {
+      node.sourceBlockIndices.forEach((index) => sourceOwners.add(index));
+      node.supportingMaterialIndices.forEach((index) => supportingOwners.add(index));
+      node.exercises.forEach((exercise) => exerciseOwners.add(exercise.blockIndex));
+    }
+    (topic.additionalExercises ?? []).forEach((exercise) => exerciseOwners.add(exercise.blockIndex));
+  }
+  const coverageByBlockIndex = new Map(
+    input.instructionalCoverage.blocks.map((record) => [record.blockIndex, record]),
+  );
+  const fingerprintCounts = new Map<string, number>();
+
+  const records: DurableSourceMaterialRecord[] = input.blocks.map((block, sourceBlockIndex) => {
+    const coverage = coverageByBlockIndex.get(sourceBlockIndex);
+    const unreadable = isDurablyUnreadableSource(block);
+    let primaryDisposition: SourceMaterialDisposition;
+    let dispositionReasonCodes: SourceMaterialReasonCode[];
+    if (unreadable) {
+      primaryDisposition = "UNRESOLVED_VISUAL_OR_FORMULA";
+      dispositionReasonCodes = ["UNREADABLE_SOURCE"];
+    } else if (block.blockType === "EXERCISE") {
+      primaryDisposition = "EXERCISE";
+      dispositionReasonCodes = ["STUDENT_TASK"];
+    } else if (block.blockType === "ACTIVITY" || block.blockType === "HOMEWORK") {
+      primaryDisposition = "ACTIVITY_OR_HOMEWORK";
+      dispositionReasonCodes = ["STUDENT_TASK"];
+    } else if (supportingOwners.has(sourceBlockIndex)) {
+      primaryDisposition = "SUPPORTING_MATERIAL";
+      dispositionReasonCodes = ["SUPPORTS_EXISTING_KNOWLEDGE"];
+    } else if (sourceOwners.has(sourceBlockIndex)) {
+      primaryDisposition = "CORE_EVIDENCE";
+      dispositionReasonCodes = ["DIRECT_INSTRUCTIONAL_SUPPORT"];
+    } else if (coverage?.disposition === "LEGITIMATE_NON_INSTRUCTIONAL") {
+      if (["IMAGE", "CAPTION", "TABLE"].includes(block.blockType)) {
+        primaryDisposition = "SUPPORTING_MATERIAL";
+        dispositionReasonCodes = ["SUPPORTS_EXISTING_KNOWLEDGE"];
+      } else {
+        primaryDisposition = "STRUCTURAL_MATERIAL";
+        dispositionReasonCodes = ["STRUCTURAL_ONLY"];
+      }
+    } else if (coverage?.disposition === "UNRESOLVED" || coverage?.disposition === "UNREADABLE") {
+      primaryDisposition = "UNRESOLVED_INSTRUCTIONAL_REVIEW";
+      dispositionReasonCodes = ["INSTRUCTIONAL_REVIEW_REQUIRED"];
+    } else {
+      primaryDisposition = "UNRESOLVED_INSTRUCTIONAL_REVIEW";
+      dispositionReasonCodes = ["INSTRUCTIONAL_REVIEW_REQUIRED"];
+    }
+
+    const fingerprint = JSON.stringify({
+      sourceDocumentId: input.sourceDocumentId,
+      physicalPage: block.sourcePage,
+      sourceParagraph: block.sourceParagraph ?? null,
+      sourceBoundingBox: stableBoundingBoxKey(block),
+      blockType: block.blockType,
+      sourceText: stableSourceText(block.sourceText),
+    });
+    const fingerprintHash = createHash("sha256").update(fingerprint).digest("hex");
+    const occurrence = fingerprintCounts.get(fingerprintHash) ?? 0;
+    fingerprintCounts.set(fingerprintHash, occurrence + 1);
+    return {
+      stableSourceKey: `sm-v1:${fingerprintHash}:${occurrence + 1}`,
+      sourceBlockIndex,
+      blockType: block.blockType,
+      sourceText: block.sourceText,
+      physicalPage: block.sourcePage,
+      sourceParagraph: block.sourceParagraph,
+      sourceBoundingBox: block.sourceBoundingBox,
+      verificationStatus: unreadable ? "VERIFIED_UNREADABLE" : "VERIFIED_READABLE",
+      primaryDisposition,
+      dispositionReasonCodes,
+      provenanceMetadata: {
+        sourceDocumentId: input.sourceDocumentId,
+        coverageDisposition: coverage?.disposition ?? null,
+        coverageReason: coverage?.reason ?? null,
+      },
+    };
+  });
+
+  const dispositionValidation = validateVerifiedSourcePrimaryDispositions(
+    input.blocks,
+    records.map((record) => ({
+      blockIndex: record.sourceBlockIndex,
+      disposition: record.primaryDisposition,
+      isPrimary: true,
+      reasonCodes: record.dispositionReasonCodes,
+    })),
+  );
+  if (!dispositionValidation.valid) {
+    throw new Error(
+      `Durable source material disposition invariant failed: ${JSON.stringify(dispositionValidation)}`,
+    );
+  }
+  return records;
 }
 
 export const KNOWLEDGE_CANDIDATE_CHECK_STATES = [

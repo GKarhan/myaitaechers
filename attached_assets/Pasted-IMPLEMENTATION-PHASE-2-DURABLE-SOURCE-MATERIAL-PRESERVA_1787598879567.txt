@@ -1,0 +1,743 @@
+IMPLEMENTATION PHASE 2 — DURABLE SOURCE MATERIAL PRESERVATION
+
+Phase 1 is complete.
+
+We now have the transient internal mapping contracts for:
+
+- KnowledgeCandidate
+- SourceMaterialDisposition
+- structured promotion decisions
+- explicit semantic uncertainty
+- deterministic regression coverage
+
+DO NOT implement Candidate-based Pass 2 yet.
+
+This phase solves the next foundational requirement:
+
+EVERY VERIFIED SOURCE BLOCK MUST SURVIVE DURABLY
+EVEN WHEN IT DOES NOT BECOME A MICRONODE.
+
+The goal is to make source preservation independent from MicroNode promotion.
+
+This is foundational infrastructure for the final Mapping Contract v2.
+
+════════════════════════════════════════════════════════════
+0. CORE ARCHITECTURAL PRINCIPLE
+════════════════════════════════════════════════════════════
+
+The mapper must distinguish:
+
+SOURCE PRESERVATION
+
+from
+
+KNOWLEDGE PROMOTION.
+
+A verified textbook/source block must not disappear merely because it:
+
+- is not atomic knowledge,
+- is supporting explanation,
+- is an example,
+- is a note,
+- is a visual/formula,
+- is structural material,
+- is unresolved,
+- requires teacher review,
+- or is not promoted into a MicroNode.
+
+Canonical principle:
+
+VERIFIED SOURCE BLOCK
+        ↓
+DURABLE SOURCE MATERIAL
+        ↓
+PRIMARY DISPOSITION
+        ↓
+Knowledge Candidate / Supporting / Exercise /
+Structural / Unresolved / Review / Excluded
+        ↓
+possible MicroNode promotion later
+
+MicroNode persistence must NOT be the only durable storage mechanism for
+verified source content.
+
+════════════════════════════════════════════════════════════
+1. FIRST — FORENSIC READ-ONLY AUDIT
+════════════════════════════════════════════════════════════
+
+BEFORE changing code or schema, inspect the actual repository and database
+model.
+
+Determine exactly what currently happens to Pass 1 verified blocks after
+automatic mapping.
+
+Inspect at minimum:
+
+- Pass 1 verified block representation
+- runPass2Pipeline()
+- automatic mapping persistence
+- lesson/topic/MicroNode persistence
+- sourceBlockIndices
+- supportingMaterialIndices
+- exercises/additionalExercises
+- mapping metadata/audit payloads
+- mapping review items
+- manual mapping persistence
+- final approval
+- relevant DB schema/tables
+
+Answer internally before implementation:
+
+1. Is the complete verified source block text currently stored durably
+   anywhere after successful mapping?
+
+2. If yes:
+   - where?
+   - is it stable enough to be the canonical durable source-material layer?
+   - can every verified block be recovered independently of MicroNodes?
+
+3. If no:
+   - which information is lost after the mapping job finishes?
+   - does only index/reference metadata survive?
+   - are mapping-job diagnostics sufficient or not?
+
+4. Can the Phase 2 invariant be achieved safely using existing tables/
+   metadata?
+
+5. Or is a new durable source-material entity/table genuinely required?
+
+DO NOT assume a migration is required.
+
+Prefer the smallest robust architecture.
+
+════════════════════════════════════════════════════════════
+2. REQUIRED INVARIANT
+════════════════════════════════════════════════════════════
+
+After successful automatic mapping, every VERIFIED Pass 1 source block must
+have a durable canonical record or durable canonical representation.
+
+At minimum the durable representation must allow recovery of:
+
+- lesson identity
+- source document identity where available
+- stable source-block identity
+- source text
+- block type
+- physical/source page information
+- source paragraph / location information where available
+- verification/readability status
+- primary disposition
+- review/unresolved reason where applicable
+- provenance required to trace the material back to the original source
+
+Preserve additional existing source metadata where useful.
+
+Do NOT fabricate unavailable provenance.
+
+════════════════════════════════════════════════════════════
+3. STABLE IDENTITY
+════════════════════════════════════════════════════════════
+
+Current Pass 1 block indices are temporary array positions.
+
+Design a durable identity strategy.
+
+A durable source block must not depend solely on:
+
+blockIndex = 7
+
+because a future remap may produce different array positions.
+
+Determine the smallest safe stable identity based on existing data.
+
+Possible inputs may include:
+
+- lesson id
+- source document id
+- physical page
+- source location
+- exact source text
+- deterministic hash/fingerprint
+
+But inspect current architecture before choosing.
+
+Requirements:
+
+- deterministic where practical
+- collision-safe enough for this use
+- traceable
+- supports remapping
+- does not silently confuse two identical textual occurrences on different
+  pages/locations
+
+Do NOT introduce unnecessary complexity.
+
+════════════════════════════════════════════════════════════
+4. PRIMARY DISPOSITION CONTRACT
+════════════════════════════════════════════════════════════
+
+Every verified source block must eventually have exactly ONE canonical
+PRIMARY disposition.
+
+Use/align with Phase 1 SourceMaterialDisposition semantics.
+
+Conceptual primary dispositions include:
+
+CORE_EVIDENCE
+SUPPORTING_MATERIAL
+EXERCISE
+ACTIVITY_OR_HOMEWORK
+STRUCTURAL_MATERIAL
+UNRESOLVED_VISUAL_OR_FORMULA
+UNRESOLVED_INSTRUCTIONAL_REVIEW
+EXCLUDED_WITH_REASON
+
+Project-appropriate names may be used if Phase 1 already established them.
+
+IMPORTANT:
+
+Primary disposition is not the same as all semantic relationships.
+
+Example:
+
+A definition block may be:
+
+primary disposition = CORE_EVIDENCE
+
+and later support one promoted MicroNode.
+
+An example block may be:
+
+primary disposition = SUPPORTING_MATERIAL
+
+and later be attached to one or more MicroNodes.
+
+An integrative exercise may be:
+
+primary disposition = EXERCISE
+
+and later reference multiple MicroNodes.
+
+Therefore:
+
+ONE PRIMARY DISPOSITION
+
+does NOT necessarily mean:
+
+ONE SEMANTIC RELATIONSHIP.
+
+Keep those concepts separate.
+
+════════════════════════════════════════════════════════════
+5. DO NOT RECREATE THE OLD OWNERSHIP BUG
+════════════════════════════════════════════════════════════
+
+We previously had coverage failures because one source block was treated as
+being canonically owned simultaneously by:
+
+- sourceBlockIndices
+- supportingMaterialIndices
+- exercises
+- additionalExercises
+- unmappedBlockIndices
+
+Do NOT reproduce this architecture in a new form.
+
+The new durable source-material model must clearly distinguish:
+
+CANONICAL PRIMARY DISPOSITION
+
+from
+
+SECONDARY RELATIONSHIPS / ATTACHMENTS.
+
+A block should not become invalid merely because the same supporting
+material semantically supports multiple knowledge candidates.
+
+Canonical coverage and semantic relationships are separate concerns.
+
+════════════════════════════════════════════════════════════
+6. UNREADABLE / VISUAL / FORMULA MATERIAL
+════════════════════════════════════════════════════════════
+
+This is critical.
+
+If a verified source location contains:
+
+- formula
+- diagram
+- graph
+- table
+- image
+- layout-dependent mathematics
+- incomplete OCR/text extraction
+- other unreadable instructional content
+
+DO NOT:
+
+- fabricate missing content,
+- silently discard it,
+- automatically promote it into a MicroNode,
+- treat blank/garbled text as trusted knowledge.
+
+Instead preserve the best available provenance and mark the material
+explicitly for unresolved/review handling.
+
+The future teacher review system must be able to know:
+
+"There is source material here that automatic semantic mapping could not
+safely interpret."
+
+If existing source-page/image provenance can support future visual review,
+preserve the required references without implementing the review UI now.
+
+════════════════════════════════════════════════════════════
+7. EXCLUDED MATERIAL
+════════════════════════════════════════════════════════════
+
+EXCLUDED_WITH_REASON must NOT mean deleted.
+
+If material is intentionally excluded from instructional mapping because it
+is, for example:
+
+- page furniture
+- repeated heading
+- irrelevant structural fragment
+- confirmed extraction noise
+
+the durable source record should remain auditable with a machine-readable
+reason.
+
+No silent disappearance.
+
+════════════════════════════════════════════════════════════
+8. REMAPPING / IDEMPOTENCY
+════════════════════════════════════════════════════════════
+
+Design safe remapping semantics.
+
+When the same lesson is automatically mapped again:
+
+- do not accumulate stale duplicate source-material records,
+- do not lose current source lineage,
+- do not leave orphan relationships,
+- do not silently attach new MicroNodes to obsolete source-block identities.
+
+Determine whether source-material persistence should use:
+
+- replace semantics,
+- upsert semantics,
+- mapping-version semantics,
+- or another existing project pattern.
+
+Prefer consistency with the current atomic mapping transaction.
+
+Any source-material replacement must participate safely in the mapping
+transaction.
+
+A failed mapping must not destroy the last valid persisted source map.
+
+════════════════════════════════════════════════════════════
+9. TRANSACTION / FAILURE SAFETY
+════════════════════════════════════════════════════════════
+
+Preserve the existing fail-safe policy.
+
+Hard structural failures still mean NO replacement of the current valid map.
+
+Examples:
+
+- invalid source provenance
+- parser/schema corruption
+- invalid references
+- impossible canonical coverage
+- transaction failure
+
+If new source-material persistence is part of successful automatic mapping,
+it must be transactionally consistent with the persisted map.
+
+We must never end up with:
+
+new source material + old MicroNodes
+
+or
+
+new MicroNodes + old source material
+
+for what is supposed to be one mapping version.
+
+Explain and enforce the transaction boundary.
+
+════════════════════════════════════════════════════════════
+10. TEACHER EDITS
+════════════════════════════════════════════════════════════
+
+Teacher edits to MicroNodes must NOT destroy source provenance.
+
+If the teacher later:
+
+- renames a MicroNode
+- edits learningObjective
+- edits theory
+- moves a MicroNode
+- merges/splits nodes in a future phase
+- excludes a candidate
+
+the underlying durable textbook/source material must remain independently
+recoverable.
+
+Source truth and teacher-authored pedagogical structure are separate layers.
+
+Do NOT implement Merge/Split in this phase.
+
+Just ensure this architecture does not make future Merge/Split destructive.
+
+════════════════════════════════════════════════════════════
+11. MANUAL MAPPING COMPATIBILITY
+════════════════════════════════════════════════════════════
+
+DO NOT redesign manual mapping.
+
+Inspect it only for compatibility.
+
+The current manual mapping TEXT Contract has its own sourceBlock/sourceQuote
+requirements.
+
+Do not break it.
+
+If the new durable source-material layer can later be shared with manual
+mapping, explain how.
+
+But Phase 2 should modify manual mapping only if absolutely necessary to
+preserve correctness.
+
+Prefer no manual-mapping behavior change in this phase.
+
+════════════════════════════════════════════════════════════
+12. MAPPING JOBS ARE NOT THE CANONICAL SOURCE STORE
+════════════════════════════════════════════════════════════
+
+Do not use mapping_jobs.result as the sole durable source-material layer
+unless you can prove that it satisfies all lifecycle, queryability,
+remapping, lineage, and teacher-review requirements.
+
+Mapping job diagnostics are primarily execution/audit artifacts.
+
+Canonical curriculum source material should have a lifecycle appropriate
+for the lesson/map itself.
+
+If you conclude existing metadata is sufficient, prove why.
+
+════════════════════════════════════════════════════════════
+13. SCHEMA DECISION GATE
+════════════════════════════════════════════════════════════
+
+Before creating any migration, explicitly choose one:
+
+OPTION A — EXISTING STORAGE IS SUFFICIENT
+
+or
+
+OPTION B — NEW DURABLE SOURCE-MATERIAL STORAGE IS REQUIRED
+
+If OPTION A:
+
+- identify exact table/columns
+- prove all required fields/invariants can be represented
+- show how stable identity/remapping works
+- avoid migration
+
+If OPTION B:
+
+Design the SMALLEST source-material schema required.
+
+Do not create a large generalized content-management system.
+
+A minimal conceptual entity might need fields such as:
+
+- id
+- lessonId
+- sourceDocumentId
+- stableSourceKey
+- sourceBlockIndex for diagnostic compatibility
+- blockType
+- sourceText
+- physicalPage
+- sourcePage/sourceParagraph/location
+- verification/readability state
+- primaryDisposition
+- dispositionReason
+- provenance metadata
+- mapping/version timestamps as required
+
+BUT:
+
+Do not blindly implement this exact list.
+
+Use the actual repository conventions and normalize only where justified.
+
+Before migration, inspect indexes, foreign keys, deletion semantics and
+existing schema style.
+
+════════════════════════════════════════════════════════════
+14. SOURCE COVERAGE VALIDATOR EVOLUTION
+════════════════════════════════════════════════════════════
+
+Do NOT weaken current coverage validation.
+
+If durable source material is introduced, add the minimum deterministic
+validation needed to prove:
+
+- every verified block has a durable primary disposition,
+- no verified block silently disappears,
+- stable identity is unique within its intended scope,
+- required provenance exists,
+- primary disposition is valid.
+
+Do NOT yet rewrite all current sourceBlockIndices ownership logic.
+
+Candidate-based Pass 2 comes later.
+
+Phase 2 establishes durable preservation first.
+
+════════════════════════════════════════════════════════════
+15. PHASE 1 CONTRACT INTEGRATION
+════════════════════════════════════════════════════════════
+
+Reuse the Phase 1 SourceMaterialDisposition contract where appropriate.
+
+Do not create a second competing enum/semantic vocabulary.
+
+If DB persistence requires a serialized representation, establish one
+canonical conversion boundary.
+
+Domain semantics should remain centralized.
+
+Avoid:
+
+domain enum A
+DB enum B
+route string C
+frontend string D
+
+all meaning slightly different things.
+
+════════════════════════════════════════════════════════════
+16. TEST MATRIX
+════════════════════════════════════════════════════════════
+
+Add focused regression coverage for at least:
+
+A. Normal readable definition
+→ durable source material exists
+→ primary disposition preserved.
+
+B. Supporting explanation/example
+→ durable record exists even without MicroNode promotion.
+
+C. NOTE classified as supporting
+→ survives durably.
+
+D. NOTE that may later become knowledge
+→ survives durably without requiring immediate MicroNode persistence.
+
+E. Unreadable formula/visual
+→ durable unresolved record exists
+→ no fabricated source text/knowledge.
+
+F. Exercise
+→ durable source record/disposition remains distinguishable from conceptual
+knowledge.
+
+G. Excluded extraction noise
+→ record remains auditable with reason.
+
+H. Two identical text strings on different source locations
+→ stable identities do not collide incorrectly.
+
+I. Successful remap
+→ stale canonical source-material state does not accumulate incorrectly.
+
+J. Failed remap before persistence
+→ previous valid durable source map remains intact.
+
+K. Teacher MicroNode edit
+→ source material remains unchanged.
+
+L. Transaction failure
+→ no partial new source-map state survives.
+
+M. All verified blocks
+→ exactly one primary disposition each.
+
+N. Secondary semantic support relationships
+→ do not create duplicate canonical ownership.
+
+Do not build fake tests disconnected from actual persistence behavior.
+
+Use focused service/DB tests appropriate to the chosen architecture.
+
+════════════════════════════════════════════════════════════
+17. PERFORMANCE
+════════════════════════════════════════════════════════════
+
+This source layer may eventually contain many blocks.
+
+Avoid obvious N+1 persistence/query patterns.
+
+Prefer batch insert/upsert/replace operations consistent with project style.
+
+Do not prematurely optimize, but do not implement one DB operation per
+source block if the current stack supports safe batching.
+
+No new AI calls are allowed in Phase 2.
+
+════════════════════════════════════════════════════════════
+18. IMPLEMENTATION BOUNDARY
+════════════════════════════════════════════════════════════
+
+Allowed changes ONLY as required for durable source preservation:
+
+- mapping domain/service contract
+- relevant DB schema if and only if audit proves required
+- migration if and only if required
+- automatic mapping persistence transaction
+- focused validators
+- focused tests
+
+Potential files may include:
+
+artifacts/api-server/src/services/lesson-mapping.ts
+artifacts/api-server/src/routes/lessons.ts
+lib/db/src/schema/*
+relevant focused mapping tests
+
+Do NOT treat this list as permission to edit unnecessarily.
+
+DO NOT modify:
+
+- Pass 1 extraction prompt
+- Pass 2 generation prompt
+- candidate generation behavior
+- lesson-wide consolidation
+- Topic generation
+- Cognitive Path
+- teaching content
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- teacher dashboard redesign
+- Merge/Split UI
+- final approval semantics except if a compile-safe compatibility change is
+  strictly necessary
+- unrelated systems
+
+════════════════════════════════════════════════════════════
+19. IMPORTANT — DO NOT WIRE PHASE 3
+════════════════════════════════════════════════════════════
+
+At the end of Phase 2:
+
+current production Pass 2 may still generate MicroNodes using the existing
+logic.
+
+That is acceptable.
+
+The goal of Phase 2 is:
+
+SOURCE MATERIAL CAN NOW SURVIVE INDEPENDENTLY OF MICRONODE PROMOTION.
+
+Do NOT yet make KnowledgeCandidate the production Pass 2 output.
+
+That is Phase 3.
+
+════════════════════════════════════════════════════════════
+20. IMPLEMENTATION PROCESS
+════════════════════════════════════════════════════════════
+
+Use this sequence:
+
+STEP 1
+Read-only audit.
+
+STEP 2
+State clearly whether:
+OPTION A existing storage
+or
+OPTION B new storage
+is required.
+
+STEP 3
+Before editing, state the minimal implementation design and exact files.
+
+STEP 4
+Implement only that design.
+
+STEP 5
+Run focused tests.
+
+STEP 6
+Run API typecheck.
+
+If schema migration is required:
+run only the minimum migration/schema verification required by project
+conventions.
+
+DO NOT rerun lesson 705.
+DO NOT rerun lesson 708.
+DO NOT automatically run any mapping.
+
+Do not restart unrelated workflows.
+
+════════════════════════════════════════════════════════════
+21. COMPLETION REPORT
+════════════════════════════════════════════════════════════
+
+Report EXACTLY:
+
+1. FORENSIC STORAGE FINDING
+   - what was durable before
+   - what was lost before
+
+2. ARCHITECTURE DECISION
+   - OPTION A or OPTION B
+   - why
+
+3. FILES CHANGED
+
+4. SCHEMA/MIGRATION
+   - exact change
+   - or explicitly "none"
+
+5. STABLE SOURCE IDENTITY
+   - exact strategy
+
+6. DURABLE SOURCE MATERIAL CONTRACT
+   - exact persisted fields/representation
+
+7. PRIMARY DISPOSITION MODEL
+
+8. TRANSACTION / REMAP SEMANTICS
+
+9. PHASE 1 CONTRACT INTEGRATION
+
+10. TEST RESULTS
+    - list regression cases
+    - pass/fail
+
+11. TYPECHECK / MIGRATION VERIFICATION
+
+12. PRODUCTION BEHAVIOR
+    Explicitly state what changed and what did NOT change.
+
+13. PHASE 3 READINESS
+    State whether the system can now safely stop promoting weak source
+    material into MicroNodes without losing that source material.
+
+14. RISKS / OPEN QUESTIONS
+    Only evidence-based remaining issues.
+
+Then STOP.
+
+DO NOT implement Phase 3.

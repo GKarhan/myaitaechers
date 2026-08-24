@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger";
 import { updateStudentProfile } from "../services/student-profile";
 import { Router, type NextFunction, type Response } from "express";
-import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
+import { db, lessonsTable, lessonSessionsTable, subjectsTable, knowledgeNodesTable, lessonNodesTable, lessonTopicsTable, resourcesTable, lessonExercisesTable, lessonNodeDependenciesTable, evidenceEventsTable, coursesTable, classStudentsTable, mappingJobsTable, mappingImportLogTable, mappingReviewItemsTable, lessonSourceMaterialsTable, quizzesTable, quizLessonLinksTable, quizQuestionsTable, quizAssignmentsTable, quizAttemptsTable, lessonNodeCognitiveLevelsTable, lessonNodeCognitiveTasksTable, lessonOutcomesTable, lessonOutcomeNodeAlignmentsTable, lessonNodeTeachingPackageItemsTable, chatMessagesTable, COGNITIVE_LEVEL_TO_BLOOM_INT } from "@workspace/db";
 import { parseMappingText } from "../mapping/mapTextParser.js";
 import { validateParsedMapping } from "../mapping/mapTextValidator.js";
 import { insertParsedMapping } from "../mapping/mapTextInserter.js";
@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, buildDurableSourceMaterialRecords, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -4976,6 +4976,21 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     if (!verifiedPhysicalPageProvenance) {
       throw new Error("Physical page provenance was not established before mapping persistence");
     }
+    // Phase 2: Preserve every verified Pass 1 block independently of the
+    // MicroNode map. This runs before the destructive transaction boundary so
+    // an impossible durable-source map cannot replace a previously valid map.
+    const durableSourceMaterials = buildDurableSourceMaterialRecords({
+      sourceDocumentId: lesson.textbookResourceId,
+      blocks: pass1.blocks,
+      topics: pass2.topics,
+      instructionalCoverage: pass2.instructionalCoverage,
+    });
+    const durableSourceDispositionCounts = durableSourceMaterials.reduce<
+      Partial<Record<string, number>>
+    >((counts, material) => {
+      counts[material.primaryDisposition] = (counts[material.primaryDisposition] ?? 0) + 1;
+      return counts;
+    }, {});
     let coveragePercent = 0;
 
     await db.transaction(async (tx) => {
@@ -4986,6 +5001,28 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       await tx.delete(lessonExercisesTable).where(eq(lessonExercisesTable.lessonId, lessonId));
       await tx.delete(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId));
       await tx.delete(lessonTopicsTable).where(eq(lessonTopicsTable.lessonId, lessonId));
+      // The current durable source map participates in the same replacement
+      // transaction as the generated pedagogical map. A failed remap rolls
+      // this delete and batch insert back together with the previous nodes.
+      await tx.delete(lessonSourceMaterialsTable)
+        .where(eq(lessonSourceMaterialsTable.lessonId, lessonId));
+      await tx.insert(lessonSourceMaterialsTable).values(
+        durableSourceMaterials.map((material) => ({
+          lessonId,
+          sourceResourceId: lesson.textbookResourceId,
+          stableSourceKey: material.stableSourceKey,
+          sourceBlockIndex: material.sourceBlockIndex,
+          blockType: material.blockType,
+          sourceText: material.sourceText,
+          physicalPage: material.physicalPage,
+          sourceParagraph: material.sourceParagraph,
+          sourceBoundingBox: material.sourceBoundingBox,
+          verificationStatus: material.verificationStatus,
+          primaryDisposition: material.primaryDisposition,
+          dispositionReasonCodes: material.dispositionReasonCodes,
+          provenanceMetadata: material.provenanceMetadata,
+        })),
+      );
 
       // ── Store Pass 2 results ────────────────────────────────────────────
     // Sequence bug fix: lesson-wide counter so MicroNode sequence is unique across
@@ -5347,6 +5384,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       counts: {
         providerBlocksExtracted: Number(verifiedPhysicalPageProvenance.providerBlockCount ?? pass1.blocks.length),
         verifiedSourceBlocks: Number(verifiedPhysicalPageProvenance.verifiedBlockCount ?? pass1.blocks.length),
+        durableSourceMaterials: durableSourceMaterials.length,
         quarantinedSourceBlocks: Number(verifiedPhysicalPageProvenance.quarantinedBlockCount ?? 0),
         pass1BlocksExtracted: pass1.blocks.length,
         pass2InputBlocks: Number(verifiedPhysicalPageProvenance.pass2InputBlockCount ?? pass1.blocks.length),
@@ -5381,6 +5419,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           physicalPageProvenance: verifiedPhysicalPageProvenance,
           dispositions: pass2.instructionalCoverage.blocks,
           dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
+          durablePrimaryDispositionCounts: durableSourceDispositionCounts,
           unresolvedInstructionalBlocks: pass2.instructionalCoverage.unresolvedInstructionalIndices.length,
           unresolvedActivityBlocks: pass2.instructionalCoverage.unresolvedActivityIndices.length,
           unmappedReviewBlocks: pass2.sourcePlacementReview.preservedBlockIndices.map((blockIndex) =>
