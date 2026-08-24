@@ -1,0 +1,142 @@
+READ-ONLY FORENSIC DIAGNOSTIC ONLY.
+
+DO NOT change code.
+DO NOT change data.
+DO NOT rerun mapping.
+DO NOT weaken validation.
+DO NOT modify normalization.
+DO NOT modify completeness logic yet.
+
+We just reran automatic mapping for the same real certification lesson after
+Task #173:
+
+Lesson:
+Հանրահաշիվ 9
+§1.5
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿՆ ՈՒ ՆՇԱՆԱՊԱՀՊԱՆՄԱՆ ՄԻՋԱԿԱՅՔԵՐԸ
+pages 23–25
+
+The new run FAILED with the UI message:
+
+«Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։
+Արդյունքը չի պահպանվել։»
+
+The UI is therefore still displaying the OLD persisted mapping:
+1 MicroNode + 10 review source blocks.
+
+TASK
+
+Inspect the NEWEST mapping job for this lesson and diagnose the exact failure.
+
+Return:
+
+1. newest mapping job id
+2. status
+3. exact failure code
+4. exact thrown error class
+5. missingIndices
+6. duplicateIndices
+7. duplicatePlacements
+8. invalidIndices
+9. emptyMicroNodeTitles/count
+10. all available completeness diagnostics from Task #173:
+    - canonical MicroNode count before completeness audit
+    - instructional target count
+    - uncovered target count
+    - exercise coverage count
+    - uncovered exercise cluster count
+    - outcome coverage count
+    - uncovered outcome count
+    - repaired/restored candidate IDs
+    - split canonical group IDs
+    - review-required gap IDs
+    - final completeness status
+
+Then reconstruct the pipeline state immediately before the hard failure:
+
+A. How many KnowledgeCandidates existed?
+B. How many were promoted before completeness?
+C. How many canonical MicroNodes existed before completeness?
+D. Did completeness restore or split anything?
+E. If yes, identify each restored/split candidate:
+   - title
+   - learningObjective
+   - sourceBlockIndices
+   - exercise block indices
+   - original disposition/status
+   - final attempted ownership
+F. How many canonical MicroNodes existed AFTER completeness repair but BEFORE
+   source coverage validation?
+
+CRITICAL QUESTION
+
+Determine whether Task #173 completeness repair caused a source ownership
+conflict.
+
+For every duplicate index, show ALL final ownership labels, e.g.:
+
+index 12:
+- src:MicroNode A
+- src:MicroNode B
+
+or:
+
+- src:MicroNode A
+- sup:MicroNode B
+
+or any actual destinations.
+
+Then trace that index backwards:
+
+1. ownership before completeness audit
+2. completeness action
+3. ownership after completeness audit
+4. normalization/reconciliation action, if any
+5. ownership immediately before validateSourceCoverage()
+
+Classify root cause as exactly one or a combination of:
+
+COMPLETENESS_REPAIR_OWNERSHIP_BUG
+CANONICALIZATION_OWNERSHIP_BUG
+EXERCISE_REATTACHMENT_BUG
+SOURCE_NORMALIZATION_GAP
+PRE_EXISTING_PASS2_PLACEMENT_BUG
+OTHER
+
+Also answer:
+
+Did the new completeness system actually detect the missing independently
+assessable ability:
+
+GRAPH → SIGN INTERVALS?
+
+If yes:
+- what candidate represented it?
+- was it restored?
+- why did persistence subsequently fail?
+
+If no:
+- why did the new completeness audit fail to detect the original semantic gap?
+
+IMPORTANT
+
+The hard source-coverage validator is PROTECTED behavior.
+
+If it rejected duplicate/missing/invalid ownership, assume the validator is
+doing its job.
+
+Do NOT propose weakening it.
+
+We need to know whether the NEW completeness layer produced an invalid
+ownership graph.
+
+Use persisted job diagnostics and retained runtime logs where available.
+Do not guess when evidence is unavailable.
+
+REPORT ONLY THE DIAGNOSIS.
+
+NO CODE CHANGES.
+NO FIX.
+NO MAPPING RERUN.
+
+Then STOP.
