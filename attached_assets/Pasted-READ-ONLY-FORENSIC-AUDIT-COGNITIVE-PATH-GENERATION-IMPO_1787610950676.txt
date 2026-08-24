@@ -1,0 +1,601 @@
+READ-ONLY FORENSIC AUDIT — COGNITIVE PATH GENERATION
+
+IMPORTANT:
+This task is DIAGNOSTIC ONLY.
+
+DO NOT:
+- modify code
+- modify DB data
+- create migrations
+- change prompts
+- change schemas
+- rerun mapping
+- regenerate Cognitive Paths
+- generate Teaching Content
+- restart workflows unless strictly required for read-only inspection
+- touch Mapping Core
+- touch AI Teacher
+- touch Quiz
+- touch Knowledge Tree
+- implement fixes
+
+We first need to understand the CURRENT Cognitive Path system end-to-end before changing anything.
+
+==================================================
+CONTEXT
+==================================================
+
+We are moving from Mapping Core to the next foundational layer:
+
+Canonical MicroNode
+→ Cognitive Path
+→ Cognitive Levels
+→ Teaching Content
+→ AI Teacher
+
+Mapping Core must remain untouched.
+
+The long-term requirement is:
+
+EVERY canonical MicroNode must be able to receive a complete,
+auditable, pedagogically valid Cognitive Path automatically.
+
+But the path must NOT blindly assign all Bloom levels.
+
+The system must determine, from the MicroNode's actual learning
+objective / knowledge / required learner performance:
+
+1. the curriculum target cognitive level;
+2. prerequisite/scaffolding cognitive levels needed to reach it;
+3. a measurable performance objective for each required level;
+4. a measurable success criterion;
+5. suitable interaction/task types;
+6. required independent evidence;
+7. appropriate existing exercises/tasks for each level.
+
+IMPORTANT PEDAGOGICAL PRINCIPLE:
+
+Lower cognitive levels are progression/scaffolding toward the
+MicroNode target. They are NOT separate MicroNodes.
+
+Example:
+
+MicroNode:
+"Determine the zeros of a function from its graph"
+
+A plausible path could be:
+
+REMEMBER
+→ recognize/recall what f(a)=0 means
+
+UNDERSTAND
+→ explain the relationship between zeros and intersections
+  with the x-axis
+
+APPLY — TARGET
+→ independently determine zeros from a new graph
+
+ANALYZE/EVALUATE/CREATE should NOT automatically be added unless
+the MicroNode's curriculum target genuinely requires them.
+
+==================================================
+OBSERVED PRODUCTION CASE
+==================================================
+
+Current lesson:
+
+Algebra 9
+§2.1
+"ՖՈՒՆԿՑԻԱՅԻ ՈՐՈՇՄԱՆ ԵՎ ԱՐԺԵՔՆԵՐԻ ՏԻՐՈՒՅԹՆԵՐԸ.
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿԻ ԸՆԹԵՐՑՈՒՄԸ"
+
+Pages 26–29.
+
+Current UI reports:
+
+Cognitive Paths:
+1 / 2 created
+1 missing
+1 requires review
+
+One MicroNode has no generated Cognitive Path:
+
+"Ֆունկցիայի արժեքի որոշումը տրված կետում գրաֆիկի միջոցով"
+
+Learning objective:
+
+"Ուսանողը կարող է պարզել ֆունկցիայի արժեքը տրված կետում՝
+օգտագործելով գրաֆիկը։"
+
+Another MicroNode currently has a generated Cognitive Path:
+
+"Կոորդինատային առանցքի երկայնքով տեղաշարժ"
+
+Learning objective:
+
+"Աշակերտը կարող է թվաբանական գործողությունները վերափոխել
+կոորդինատային առանցքի երկայնքով տեղաշարժի։"
+
+Generated path currently contains ONLY:
+
+REMEMBER — TARGET
+
+Performance objective:
+
+"Աշակերտը կարող է հիշել, որ գումարման գործողությանը
+համապատասխանում է կոորդինատային առանցքի երկայնքով աջ
+տեղաշարժը, իսկ հանման գործողությանը՝ ձախ տեղաշարժը։"
+
+Success criterion:
+
+"Տրված 5 գումարման կամ հանման գործողության համար աշակերտը
+ճիշտ է ընտրում տեղաշարժի ուղղությունը (աջ կամ ձախ)
+առնվազն 4 դեպքում։"
+
+UI reports:
+
+Required evidence: 3
+Linked: 0
+Missing: 3
+
+Interaction types:
+
+- Multiple choice
+- True / False
+
+Relevant textbook exercise:
+
+87. Convert arithmetic operations into movement along the coordinate
+axis and calculate the value.
+
+This raises several questions.
+
+The MicroNode objective requires the learner to TRANSFORM/APPLY
+arithmetic operations as coordinate-axis movements.
+
+Yet the generated curriculum target is REMEMBER.
+
+We need evidence from the current implementation explaining exactly
+why.
+
+==================================================
+AUDIT A — END-TO-END ARCHITECTURE TRACE
+==================================================
+
+Trace the complete production path for Cognitive Path generation.
+
+Start from the teacher clicking:
+
+"Ճանաչողական ուղիներ → Ստեղծել"
+or
+"Լրացնել բացակայող ..."
+
+Trace:
+
+frontend action
+→ API endpoint
+→ route handler
+→ service/function
+→ prompt/model call if any
+→ response parsing
+→ validation
+→ normalization
+→ DB persistence
+→ API read-back
+→ teacher UI rendering
+
+Also trace where the generated Cognitive Path is later consumed by:
+
+- Teaching Content generation
+- AI Teacher
+
+Do NOT change anything.
+
+Return exact:
+
+- file paths
+- function names
+- relevant DB tables
+- important fields
+- relevant API endpoints
+
+==================================================
+AUDIT B — WHY 1 OF 2 MICRONODES HAS NO PATH
+==================================================
+
+Determine exactly why the UI says:
+
+1 / 2 created
+1 missing
+1 requires review
+
+For BOTH current MicroNodes report:
+
+- MicroNode DB id
+- title
+- status
+- mapping/review status if relevant
+- whether Cognitive Path records exist
+- number of cognitive levels
+- cognitive levels present
+- target level
+- validation/review status
+
+Then identify exactly why:
+
+"Ֆունկցիայի արժեքի որոշումը տրված կետում գրաֆիկի միջոցով"
+
+does not currently have a Cognitive Path.
+
+Classify the cause as one of:
+
+A. generation was never requested for this node
+B. node was intentionally skipped
+C. generation failed
+D. parsing failed
+E. validation failed
+F. persistence failed
+G. generated path exists but UI does not read/render it
+H. review state prevents normal display
+I. another cause
+
+Provide evidence.
+
+==================================================
+AUDIT C — TARGET COGNITIVE LEVEL DETERMINATION
+==================================================
+
+This is critical.
+
+Determine EXACTLY how the system currently chooses the target
+cognitive level.
+
+Does it use:
+
+- MicroNode `cognitiveLevel`
+- mapped `Bloom` value
+- learningObjective
+- theory/content
+- exercises
+- lesson outcomes
+- AI model judgment
+- heuristics
+- fixed defaults
+- another field
+
+Trace the exact code.
+
+For the current MicroNode:
+
+"Կոորդինատային առանցքի երկայնքով տեղաշարժ"
+
+explain why the system produced:
+
+REMEMBER — TARGET
+
+instead of something like:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY — TARGET
+
+Do not give a pedagogical guess.
+
+Give the actual CURRENT SYSTEM reason from code/data/prompt/model
+output if recoverable.
+
+Also determine whether the displayed mapping field:
+
+Bloom 1
+
+directly or indirectly forces Cognitive Path target level = REMEMBER.
+
+==================================================
+AUDIT D — PATH DEPTH / LEVEL SELECTION
+==================================================
+
+Determine how the system decides:
+
+- how many cognitive levels to create;
+- which levels to include;
+- which one is TARGET;
+- whether prerequisite levels are generated;
+- whether levels must be contiguous;
+- whether levels may be skipped.
+
+For example, determine whether current architecture permits:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY TARGET
+
+or whether it simply generates one level from a pre-existing Bloom
+value.
+
+Identify any current invariant or validation governing this.
+
+==================================================
+AUDIT E — PERFORMANCE OBJECTIVE
+==================================================
+
+Trace how `performanceObjective` is produced.
+
+Determine:
+
+- input fields used
+- AI-generated vs deterministic
+- validation rules
+- whether it must describe observable learner performance
+- whether it must remain within the MicroNode knowledge boundary
+- whether it can accidentally lower the intended mastery level
+
+Use the current generated performance objective as evidence.
+
+==================================================
+AUDIT F — SUCCESS CRITERION
+==================================================
+
+Trace how `successCriterion` is produced.
+
+Determine:
+
+- AI-generated vs deterministic
+- whether numeric thresholds are generated by the model
+- whether "4 out of 5" comes from a system policy or model output
+- validation rules
+- whether success criterion must independently demonstrate the
+  cognitive level
+
+Report current behavior only.
+
+==================================================
+AUDIT G — REQUIRED EVIDENCE
+==================================================
+
+Trace exactly where:
+
+Required: 3
+
+comes from.
+
+Find:
+
+- source constant/config/policy/function
+- whether count varies by cognitive level
+- whether count varies by task type
+- whether count varies by MicroNode
+- whether evidence strength is considered
+- whether AI Teacher consumes the same requirement
+
+Also explain exactly what:
+
+Linked: 0
+Missing: 3
+
+means in DB/business logic.
+
+==================================================
+AUDIT H — EXERCISE → COGNITIVE LEVEL MATCHING
+==================================================
+
+Trace how textbook/class exercises are matched to Cognitive Levels.
+
+For exercise 87 determine:
+
+- exercise DB id
+- current MicroNode attachment
+- current cognitive-level attachment, if any
+- why UI currently reports Linked = 0
+- whether automatic matching was attempted
+- whether teacher must attach manually
+- whether task type / Bloom / semantic similarity / AI is used
+
+Determine whether the current architecture can distinguish:
+
+a recall question
+
+from
+
+an independent application exercise.
+
+==================================================
+AUDIT I — INTERACTION TYPES
+==================================================
+
+Trace how:
+
+- Multiple choice
+- True / False
+
+were selected.
+
+Determine:
+
+- AI-generated vs rule-based
+- relationship to cognitive level
+- relationship to performance objective
+- whether APPLY can receive constructed-response/problem-solving tasks
+- available interaction type vocabulary
+
+Report exact implementation.
+
+==================================================
+AUDIT J — VALIDATION / REVIEW STATE
+==================================================
+
+Trace why UI shows:
+
+"Ճանաչողական ուղին պետք է հաստատվի"
+
+and:
+
+"⚠ 1-ը պահանջում է վերանայում"
+
+Determine:
+
+- exact DB/status field
+- exact validation rule
+- what causes review-required
+- what teacher action resolves it
+- whether review status blocks Teaching Content
+- whether review status blocks AI Teacher delivery
+- whether bulk approval can bypass it
+
+==================================================
+AUDIT K — REGENERATION / IDEMPOTENCY
+==================================================
+
+Determine what happens if teacher clicks Cognitive Path generation
+again.
+
+Specifically:
+
+- Are existing levels deleted?
+- Replaced?
+- Merged?
+- Only missing paths generated?
+- Can teacher edits be overwritten?
+- Can approved paths be overwritten?
+- Is generation transactional?
+- What happens on partial failure?
+
+This will become a critical safety contract later.
+
+==================================================
+AUDIT L — COVERAGE INVARIANT
+==================================================
+
+Determine whether the current system has a hard invariant equivalent
+to:
+
+EVERY eligible canonical MicroNode
+must have exactly one valid Cognitive Path.
+
+If yes:
+show implementation.
+
+If no:
+show where a MicroNode can silently remain without a path.
+
+Also determine how zero-MicroNode topics are handled.
+
+==================================================
+AUDIT M — AI TEACHER CONSUMPTION
+==================================================
+
+Read-only trace only.
+
+Determine exactly which Cognitive Path fields AI Teacher currently
+reads.
+
+Especially search for:
+
+- cognitiveLevel
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- required evidence count
+- current evidence count
+- target level
+- current demonstrated level/ceiling
+
+Report whether AI Teacher currently teaches progressively through
+levels or merely receives the current level as context.
+
+DO NOT MODIFY AI TEACHER.
+
+==================================================
+AUDIT N — TEACHING CONTENT DEPENDENCY
+==================================================
+
+Determine how Teaching Content generation depends on Cognitive Path.
+
+Answer:
+
+- Is content generated per MicroNode?
+- per Cognitive Level?
+- only for target level?
+- for every generated level?
+- what happens when Cognitive Path is missing?
+- what happens when path requires review?
+
+DO NOT generate content.
+
+==================================================
+AUDIT O — CURRENT DATA MODEL
+==================================================
+
+Return the current Cognitive Path data model.
+
+Include relevant tables and important columns.
+
+Especially identify whether current schema can already represent:
+
+MicroNode
+  → Cognitive Path
+      → Cognitive Level 1
+      → Cognitive Level 2
+      → Cognitive Level N
+
+with each level containing:
+
+- taxonomy level
+- target flag
+- performance objective
+- success criterion
+- interaction types
+- evidence requirement
+- linked exercises
+- review/approval state
+
+Also identify anything important that cannot currently be represented.
+
+NO migration proposal yet.
+
+==================================================
+FINAL REQUIRED REPORT
+==================================================
+
+Return one structured report with these sections:
+
+1. Executive diagnosis
+2. Current architecture
+3. Current DB model
+4. Why only 1/2 MicroNodes has a path
+5. Why REMEMBER became TARGET
+6. Current path-depth logic
+7. Performance objective generation
+8. Success criterion generation
+9. Evidence requirement logic
+10. Exercise-to-level matching
+11. Interaction-type selection
+12. Review/approval logic
+13. Regeneration/idempotency behavior
+14. Coverage guarantees and gaps
+15. AI Teacher consumption
+16. Teaching Content dependency
+17. Current strengths worth preserving
+18. Architectural weaknesses
+19. Risk list ranked:
+    CRITICAL / HIGH / MEDIUM / LOW
+20. Recommended FOUNDATION boundaries for the NEXT implementation
+    phase — recommendations only, NO CODE.
+
+==================================================
+IMPORTANT FINAL RULE
+==================================================
+
+Do not implement the recommendations.
+
+Do not "quick fix" REMEMBER → APPLY.
+
+Do not manually create the missing path.
+
+Do not alter Bloom values.
+
+Do not touch Mapping Core.
+
+We need the forensic evidence first.
+
+The next task, after this audit is reviewed, will define the
+Cognitive Path Contract and implementation architecture.
