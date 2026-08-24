@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { translateIssue } from "@/lib/issueTranslations";
+import { getGoalOutcomeDraftState } from "@/lib/goal-outcome-draft-state";
 import {
   Dialog,
   DialogContent,
@@ -3538,6 +3539,7 @@ function LessonGoalOutcomesPanel({
   const [open, setOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState(lessonGoal ?? "");
   const [editingGoal, setEditingGoal] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   type ReviewState = {
@@ -3546,6 +3548,7 @@ function LessonGoalOutcomesPanel({
     requiresConfirmation: boolean;
     confirmedAt: string | null;
     proposal: { lessonGoal: string; outcomes: string[]; generatedAt?: string } | null;
+    outcomes: string[];
     hasUsableCurrentDraft: boolean;
     currentOutcomeCount: number;
     compatibility: string;
@@ -3562,6 +3565,13 @@ function LessonGoalOutcomesPanel({
     },
   });
   const review = reviewQuery.data;
+  const draftState = getGoalOutcomeDraftState({
+    lessonGoal: review?.lessonGoal,
+    outcomes: review?.outcomes,
+    hasProposal: Boolean(review?.proposal),
+  });
+  const persistedOutcomes = draftState.outcomes;
+  const { hasSavedGoal, hasSavedOutcomes, hasSavedDraft, hasPartialSavedDraft } = draftState;
   const request = async (path: string, body?: Record<string, unknown>) => {
     const response = await fetch(`/api/lessons/${lessonId}${path}`, {
       method: "POST",
@@ -3599,30 +3609,25 @@ function LessonGoalOutcomesPanel({
       {open && (
         <div className="px-4 pb-4 space-y-3">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Ուսուցչի սևագիրը կարող է օգնել վերլուծությանը, բայց աղբյուրային առաջարկն ու ձեր հստակ հաստատումն են բացում նոր մանրամասն քարտեզագրումը։
+            Պահպանված նպատակն ու վերջնարդյունքները դասի ընթացիկ աշխատանքային սևագիրն են։ Դրանք կարող եք խմբագրել կամ հեռացնել։
           </p>
           {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
           {reviewQuery.isLoading && <p className="text-xs text-muted-foreground">Բեռնվում է…</p>}
           {review && (
             <>
-              <div className={`rounded border px-2.5 py-2 text-[11px] ${
-                review.status === "confirmed"
-                  ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
-                  : review.status === "legacy"
-                    ? "border-amber-400/25 bg-amber-400/10 text-amber-100"
-                    : "border-blue-400/25 bg-blue-400/10 text-blue-100"
-              }`}>
-                {review.status === "confirmed"
-                  ? "✅ Նպատակն ու կանոնական վերջնարդյունքները հաստատված են։"
-                  : review.status === "legacy"
-                    ? "ℹ️ Legacy համատեղելիության ռեժիմ. նախկին քարտեզագրումը չի փոխվել։"
-                    : "⚠️ Նպատակն ու վերջնարդյունքները կարող եք վերանայել կամ խմբագրել։ Գործող սևագրով քարտեզագրումը հասանելի է։"}
-              </div>
+              {hasPartialSavedDraft && (
+                <div className="rounded border border-amber-400/25 bg-amber-400/10 px-2.5 py-2 text-[11px] text-amber-100">
+                  ⚠️ Նպատակը պահպանված է, բայց վերջնարդյունքները բացակայում են։ Ավելացրեք դրանք ստորև, կամ ջնջեք սևագիրն ու ստեղծեք նորը։
+                </div>
+              )}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-secondary/70 font-medium">Դասի նպատակ</span>
-                  {!editingGoal && (
-                    <button onClick={() => { setGoalDraft(review.lessonGoal); setEditingGoal(true); }} className="text-[10px] text-muted-foreground hover:text-white">✏️ Խմբագրել</button>
+                  {!editingGoal && (hasSavedGoal || hasSavedOutcomes) && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setGoalDraft(review.lessonGoal); setEditingGoal(true); }} className="text-[10px] text-muted-foreground hover:text-white">✏️ Խմբագրել</button>
+                      <button disabled={busy} onClick={() => setDeleteOpen(true)} className="text-[10px] text-red-200 hover:text-red-100 disabled:opacity-50">🗑️ Ջնջել</button>
+                    </div>
                   )}
                 </div>
                 {editingGoal ? (
@@ -3651,14 +3656,23 @@ function LessonGoalOutcomesPanel({
                 )}
               </div>
 
-              {!review.hasUsableCurrentDraft && (
+              {hasSavedOutcomes && (
+                <div>
+                  <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Պահպանված վերջնարդյունքներ</div>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {persistedOutcomes.map((outcome, index) => <li key={`${outcome}-${index}`} className="text-xs text-white">{outcome}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {draftState.canCreateOrPropose && (
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     disabled={busy}
                     onClick={() => void run(() => request("/goal-outcome-review/proposal"))}
                     className="rounded border border-blue-400/30 bg-blue-400/10 px-2 py-1 text-[10px] text-blue-100 hover:bg-blue-400/20 disabled:opacity-50"
                   >✨ Աղբյուրից առաջարկել</button>
-                  {review.proposal && (
+                  {draftState.canImportProposal && (
                     <button
                       disabled={busy}
                       onClick={() => void run(() => request("/goal-outcome-review/apply-proposal"))}
@@ -3667,7 +3681,7 @@ function LessonGoalOutcomesPanel({
                   )}
                 </div>
               )}
-              {review.proposal && !review.hasUsableCurrentDraft && (
+              {review.proposal && draftState.canCreateOrPropose && (
                 <div className="rounded border border-blue-400/20 bg-blue-400/[0.05] p-2 space-y-1.5">
                   <p className="text-[10px] font-medium text-blue-200">Աղբյուրային AI առաջարկ — դեռ draft է</p>
                   <p className="text-[11px] text-white/90">{review.proposal.lessonGoal}</p>
@@ -3689,6 +3703,32 @@ function LessonGoalOutcomesPanel({
           {review?.confirmedAt && <p className="text-[10px] text-emerald-300/70">Վերջին հաստատումը՝ {new Date(review.confirmedAt).toLocaleString()}</p>}
         </div>
       )}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent className="bg-[#0f1117] border border-white/10 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm">Ջնջե՞լ նպատակն ու վերջնարդյունքները</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed">
+              Դասի պահպանված նպատակն ու վերջնարդյունքները կհեռացվեն։ Դրանից հետո կարող եք նորից ստեղծել կամ լրացնել դրանք։
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white text-xs">Չեղարկել</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void run(async () => {
+                  await request("/goal-outcome-review/delete");
+                  setGoalDraft("");
+                  setEditingGoal(false);
+                  setDeleteOpen(false);
+                });
+              }}
+              className="bg-destructive text-white hover:bg-destructive/90 text-xs"
+            >Ջնջել</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -4085,7 +4125,7 @@ function CanonicalOutcomesPanel({ lessonId }: { lessonId: number }) {
       {open && (
         <div className="px-4 pb-4 space-y-3">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Վերջնարդյունքները խմբագրի հաստատում են պահանջում․ MicroNode կապերը կստեղծվեն և կստուգվեն մանրամասն քարտեզագրումից հետո։
+            Վերջնարդյունքները կարող եք ավելացնել, խմբագրել կամ հեռացնել։ MicroNode կապերը կստեղծվեն և կստուգվեն մանրամասն քարտեզագրումից հետո։
           </p>
           {error && <div className="rounded border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-200">{error}</div>}
           {outcomeQuery.isLoading && <div className="text-xs text-muted-foreground">Բեռնվում է…</div>}

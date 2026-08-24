@@ -10,7 +10,11 @@ import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
 import {
   lessonNodesTable,
+  lessonNodeCognitiveLevelsTable,
+  lessonOutcomeNodeAlignmentsTable,
   lessonOutcomesTable,
+  lessonExercisesTable,
+  lessonTopicsTable,
   lessonsTable,
   subjectsTable,
   usersTable,
@@ -143,6 +147,7 @@ try {
   assert.equal(imported.response.status, 200, "a complete source proposal imports into canonical drafts");
   assert.equal(imported.body.createdCount, proposalOutcomes.length);
   assert.equal(imported.body.status, "draft");
+  assert.deepEqual(imported.body.outcomes, proposalOutcomes, "import responds with the verified canonical outcome set");
   const [importedLesson] = await db.select({
     lessonGoal: lessonsTable.lessonGoal,
     status: lessonsTable.goalOutcomeReviewStatus,
@@ -166,6 +171,7 @@ try {
     "the review endpoint marks an imported goal/outcome set as the active working draft",
   );
   assert.equal(importedReview.body.currentOutcomeCount, proposalOutcomes.length);
+  assert.deepEqual(importedReview.body.outcomes, proposalOutcomes, "refresh reads back every canonical outcome in order");
 
   const blockedProposal = await request("/goal-outcome-review/proposal", { method: "POST" });
   assert.equal(blockedProposal.response.status, 409);
@@ -178,6 +184,15 @@ try {
   const repeatedImport = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
   assert.equal(repeatedImport.response.status, 200, "the unchanged import is idempotent");
   assert.equal(repeatedImport.body.createdCount, 0);
+
+  const editedGoal = `${proposalGoal} (խմբագրված)`;
+  const editedGoalResponse = await request("/goal-outcome-review/draft", {
+    method: "POST",
+    body: JSON.stringify({ lessonGoal: editedGoal }),
+  });
+  assert.equal(editedGoalResponse.response.status, 200);
+  const goalReadBack = await request("/goal-outcome-review");
+  assert.equal(goalReadBack.body.lessonGoal, editedGoal, "manual Goal edits read back from the canonical lesson record");
   const [persistedProposalOutcome] = await db.select({ id: lessonOutcomesTable.id })
     .from(lessonOutcomesTable)
     .where(eq(lessonOutcomesTable.lessonId, proposalLessonId))
@@ -188,6 +203,15 @@ try {
     body: JSON.stringify({ status: "approved" }),
   });
   assert.equal(approvedStatusAttempt.response.status, 409, "an Outcome status cannot bypass confirmation");
+
+  const editedOutcomeText = `${proposalOutcomes[0]} (խմբագրված)`;
+  const editedOutcome = await request(`/outcomes/${persistedProposalOutcome.id}/update`, {
+    method: "POST",
+    body: JSON.stringify({ outcomeText: editedOutcomeText }),
+  });
+  assert.equal(editedOutcome.response.status, 200);
+  const editedReview = await request("/goal-outcome-review");
+  assert.equal((editedReview.body.outcomes as string[])[0], editedOutcomeText, "manual outcome edits read back through the primary Goal/Outcome endpoint");
 
   const mappingBeforeConfirmation = await request("/map", { method: "POST" });
   assert.notEqual(mappingBeforeConfirmation.body.error, "GOAL_OUTCOME_CONFIRMATION_REQUIRED");
@@ -212,12 +236,39 @@ try {
     .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, proposalLessonId));
   assert.equal(confirmedOutcomes.every((outcome) => outcome.status === "approved"), true);
 
-  await db.insert(lessonNodesTable).values({
+  const [preservedTopic] = await db.insert(lessonTopicsTable).values({
+    lessonId: proposalLessonId,
+    title: `${runId}-preserved-topic`,
+    sequence: 1,
+  }).returning({ id: lessonTopicsTable.id });
+  const [postMappingNode] = await db.insert(lessonNodesTable).values({
     lessonId: proposalLessonId,
     sequence: 1,
     title: `${runId}-post-mapping-node`,
+    topicId: preservedTopic.id,
     status: "draft",
+    cogPathStatus: "confirmed",
+    theoryContent: "Պահպանվող տեսություն",
+    childFriendlyExplanation: "Պահպանվող պարզ բացատրություն",
+    commonMisconception: "Պահպանվող սխալ պատկերացում",
+    basicExamples: [{ example: "Պահպանվող օրինակ" }],
+    nonExamples: [{ nonExample: "Պահպանվող հակաօրինակ" }],
+  }).returning({ id: lessonNodesTable.id });
+  await db.insert(lessonNodeCognitiveLevelsTable).values({
+    lessonNodeId: postMappingNode.id,
+    cognitiveLevel: "understand",
+    sequence: 1,
+    isTargetCeiling: true,
+    provenance: "teacher_authored",
   });
+  const [preservedExercise] = await db.insert(lessonExercisesTable).values({
+    lessonId: proposalLessonId,
+    exerciseId: `${runId}-preserved-exercise`,
+    relatedNodeId: postMappingNode.id,
+    exerciseTextVerbatim: "Պահպանվող վարժություն",
+    sequence: 1,
+    sourceType: "teacher",
+  }).returning({ id: lessonExercisesTable.id });
   const postMappingReadiness = await request("/outcomes/readiness");
   assert.equal(
     (postMappingReadiness.body.warnings as Array<{ code: string }>).filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
@@ -231,11 +282,51 @@ try {
     "missing REQUIRED Outcome coverage is accepted only through the final assignment review",
   );
 
-  await request(`/outcomes/${persistedProposalOutcome.id}/delete`, { method: "POST" });
-  const importAfterTeacherRemoval = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
-  assert.equal(importAfterTeacherRemoval.response.status, 409);
-  assert.equal(importAfterTeacherRemoval.body.error, "CANONICAL_DRAFT_CONFLICT");
-  console.log("  ✓ C1 proposal import, compatibility confirmation, mapping, and assignment review use the simplified workflow");
+  await db.insert(lessonOutcomeNodeAlignmentsTable).values({
+    lessonId: proposalLessonId,
+    lessonOutcomeId: persistedProposalOutcome.id,
+    lessonNodeId: postMappingNode.id,
+    role: "REQUIRED",
+    requiredCognitiveDepth: "remember",
+  });
+  const deletedDraft = await request("/goal-outcome-review/delete", { method: "POST" });
+  assert.equal(deletedDraft.response.status, 200);
+  assert.equal(deletedDraft.body.deleted, true);
+  assert.equal(deletedDraft.body.deletedOutcomeCount, proposalOutcomes.length);
+  const [[deletedLesson], remainingOutcomes, remainingAlignments, remainingTopics, remainingNodes, remainingLevels, remainingExercises] = await Promise.all([
+    db.select({ lessonGoal: lessonsTable.lessonGoal, proposal: lessonsTable.goalOutcomeProposal })
+      .from(lessonsTable).where(eq(lessonsTable.id, proposalLessonId)),
+    db.select({ id: lessonOutcomesTable.id }).from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, proposalLessonId)),
+    db.select({ id: lessonOutcomeNodeAlignmentsTable.id }).from(lessonOutcomeNodeAlignmentsTable)
+      .where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, proposalLessonId)),
+    db.select({ id: lessonTopicsTable.id }).from(lessonTopicsTable)
+      .where(eq(lessonTopicsTable.lessonId, proposalLessonId)),
+    db.select({
+      id: lessonNodesTable.id,
+      theoryContent: lessonNodesTable.theoryContent,
+      childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
+    }).from(lessonNodesTable)
+      .where(eq(lessonNodesTable.lessonId, proposalLessonId)),
+    db.select({ id: lessonNodeCognitiveLevelsTable.id }).from(lessonNodeCognitiveLevelsTable)
+      .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, postMappingNode.id)),
+    db.select({ id: lessonExercisesTable.id }).from(lessonExercisesTable)
+      .where(eq(lessonExercisesTable.id, preservedExercise.id)),
+  ]);
+  assert.equal(deletedLesson.lessonGoal, null);
+  assert.equal(deletedLesson.proposal, null);
+  assert.equal(remainingOutcomes.length, 0);
+  assert.equal(remainingAlignments.length, 0, "deleting the draft leaves no orphan Outcome→MicroNode relations");
+  assert.equal(remainingTopics.length, 1, "deleting a Goal/Outcome draft preserves lesson Topics");
+  assert.equal(remainingNodes.length, 1, "deleting a Goal/Outcome draft preserves lesson MicroNodes");
+  assert.equal(remainingNodes[0].theoryContent, "Պահպանվող տեսություն", "Teaching Content remains untouched");
+  assert.equal(remainingNodes[0].childFriendlyExplanation, "Պահպանվող պարզ բացատրություն", "Teaching Content explanation remains untouched");
+  assert.equal(remainingLevels.length, 1, "deleting a Goal/Outcome draft preserves Cognitive Paths");
+  assert.equal(remainingExercises.length, 1, "deleting a Goal/Outcome draft preserves exercises");
+  const deletedReview = await request("/goal-outcome-review");
+  assert.equal(deletedReview.body.hasUsableCurrentDraft, false);
+  assert.deepEqual(deletedReview.body.outcomes, []);
+  console.log("  ✓ Goal/Outcome import, read-back, edits, and safe full-draft deletion use the simplified workflow");
 } finally {
   if (server) await new Promise<void>((resolve, reject) => server!.close((error) => error ? reject(error) : resolve()));
   if (lessonId) await db.delete(lessonsTable).where(eq(lessonsTable.id, lessonId)).catch(() => {});

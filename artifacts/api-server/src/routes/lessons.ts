@@ -1687,7 +1687,9 @@ router.get("/lessons/:lessonId/goal-outcome-review", requireAuth, requireLessonA
       goalOutcomeConfirmedAt: lessonsTable.goalOutcomeConfirmedAt,
     }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
     db.select({ outcomeText: lessonOutcomesTable.outcomeText })
-      .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId)),
+      .from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, lessonId))
+      .orderBy(asc(lessonOutcomesTable.sequence)),
   ]).then(([lessons, outcomes]) => [lessons[0], outcomes] as const);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
   const status = getGoalOutcomeReviewStatus(lesson);
@@ -1700,6 +1702,7 @@ router.get("/lessons/:lessonId/goal-outcome-review", requireAuth, requireLessonA
     status,
     requiresConfirmation: requiresGoalOutcomeConfirmation(lesson),
     proposal: lesson.goalOutcomeProposal ?? null,
+    outcomes: currentOutcomes.map((outcome) => outcome.outcomeText),
     hasUsableCurrentDraft,
     currentOutcomeCount: currentOutcomes.length,
     confirmedAt: lesson.goalOutcomeConfirmedAt?.toISOString() ?? null,
@@ -1713,19 +1716,28 @@ router.post("/lessons/:lessonId/goal-outcome-review/draft", requireAuth, require
   if (!lessonId || lessonGoal === null) {
     res.status(400).json({ error: "lessonGoal must be a string" }); return;
   }
-  const [current] = await db.select({
-    goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
-  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
-  if (!current) { res.status(404).json({ error: "Lesson not found" }); return; }
-  const currentStatus = getGoalOutcomeReviewStatus(current);
-  const nextStatus: GoalOutcomeReviewStatus = currentStatus === "confirmed" ? "needs_review" : "draft";
-  await db.update(lessonsTable).set({
-    lessonGoal,
-    goalOutcomeReviewStatus: nextStatus,
-    goalOutcomeConfirmedAt: null,
-    goalOutcomeConfirmedBy: null,
-  }).where(eq(lessonsTable.id, lessonId));
-  res.json({ lessonId, lessonGoal, status: nextStatus, requiresConfirmation: true });
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const [current] = await tx.select({
+      goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    if (!current) return null;
+    const currentStatus = getGoalOutcomeReviewStatus(current);
+    const nextStatus: GoalOutcomeReviewStatus = currentStatus === "confirmed" ? "needs_review" : "draft";
+    await tx.update(lessonsTable).set({
+      lessonGoal,
+      goalOutcomeReviewStatus: nextStatus,
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    }).where(eq(lessonsTable.id, lessonId));
+    const [persisted] = await tx.select({ lessonGoal: lessonsTable.lessonGoal })
+      .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    if (persisted?.lessonGoal !== lessonGoal) throw new Error("GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED");
+    return { nextStatus };
+  });
+  if (!result) { res.status(404).json({ error: "Lesson not found" }); return; }
+  await invalidateLessonApproval(lessonId);
+  res.json({ lessonId, lessonGoal, status: result.nextStatus, requiresConfirmation: true });
 });
 
 router.post("/lessons/:lessonId/goal-outcome-review/proposal", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
@@ -1866,12 +1878,40 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
       goalOutcomeConfirmedAt: null,
       goalOutcomeConfirmedBy: null,
     }).where(eq(lessonsTable.id, lessonId));
-    return { conflict: false as const, lessonGoal, createdCount: missing.length, outcomeCount: outcomes.length };
+    const [[persistedLesson], persistedOutcomes] = await Promise.all([
+      tx.select({ lessonGoal: lessonsTable.lessonGoal })
+        .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
+      tx.select({ outcomeText: lessonOutcomesTable.outcomeText })
+        .from(lessonOutcomesTable)
+        .where(eq(lessonOutcomesTable.lessonId, lessonId))
+        .orderBy(asc(lessonOutcomesTable.sequence)),
+    ]);
+    const persistedTexts = persistedOutcomes.map((outcome) => outcome.outcomeText.trim());
+    const isExactOutcomeSet = persistedTexts.length === outcomes.length
+      && persistedTexts.every((outcome) => proposedTexts.has(outcome));
+    if (persistedLesson?.lessonGoal !== lessonGoal || !isExactOutcomeSet) {
+      throw new Error("GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED");
+    }
+    return {
+      conflict: false as const,
+      lessonGoal,
+      createdCount: missing.length,
+      outcomeCount: persistedTexts.length,
+      outcomes: persistedTexts,
+    };
   }).catch((error: unknown) => {
     if (error instanceof Error && error.message === "NO_VALID_PROPOSAL") return null;
+    if (error instanceof Error && error.message === "GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED") return "verification_failed" as const;
     throw error;
   });
   if (!result) { res.status(409).json({ error: "NO_VALID_GOAL_OUTCOME_PROPOSAL" }); return; }
+  if (result === "verification_failed") {
+    res.status(500).json({
+      error: "GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED",
+      message: "Նպատակը պահպանվել է, բայց վերջնարդյունքների պահպանումը չի ավարտվել։ Խնդրում ենք կրկին փորձել։",
+    });
+    return;
+  }
   if (result.conflict) {
     res.status(409).json({
       error: "CANONICAL_DRAFT_CONFLICT",
@@ -1881,6 +1921,62 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
   }
   await invalidateLessonApproval(lessonId);
   res.json({ lessonId, status: "draft", ...result, requiresConfirmation: true });
+});
+
+router.post("/lessons/:lessonId/goal-outcome-review/delete", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parsePositiveInt(req.params.lessonId);
+  if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
+    const [lesson] = await tx.select({ id: lessonsTable.id })
+      .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+    if (!lesson) return null;
+
+    const outcomes = await tx.select({ id: lessonOutcomesTable.id })
+      .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
+    const outcomeIds = outcomes.map((outcome) => outcome.id);
+    if (outcomeIds.length > 0) {
+      await tx.delete(lessonOutcomeNodeAlignmentsTable)
+        .where(inArray(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, outcomeIds));
+    }
+    await tx.delete(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
+    await tx.update(lessonsTable).set({
+      lessonGoal: null,
+      goalOutcomeProposal: null,
+      goalOutcomeReviewStatus: "legacy",
+      goalOutcomeConfirmedAt: null,
+      goalOutcomeConfirmedBy: null,
+    }).where(eq(lessonsTable.id, lessonId));
+
+    const [[persisted], remainingOutcomes, remainingAlignments] = await Promise.all([
+      tx.select({
+        lessonGoal: lessonsTable.lessonGoal,
+        goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
+      }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
+      tx.select({ id: lessonOutcomesTable.id })
+        .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId)),
+      tx.select({ id: lessonOutcomeNodeAlignmentsTable.id })
+        .from(lessonOutcomeNodeAlignmentsTable).where(eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId)),
+    ]);
+    if (persisted?.lessonGoal || persisted?.goalOutcomeProposal || remainingOutcomes.length || remainingAlignments.length) {
+      throw new Error("GOAL_OUTCOME_DELETE_VERIFICATION_FAILED");
+    }
+    return { deletedOutcomeCount: outcomeIds.length };
+  }).catch((error: unknown) => {
+    if (error instanceof Error && error.message === "GOAL_OUTCOME_DELETE_VERIFICATION_FAILED") return "verification_failed" as const;
+    throw error;
+  });
+  if (!result) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (result === "verification_failed") {
+    res.status(500).json({
+      error: "GOAL_OUTCOME_DELETE_VERIFICATION_FAILED",
+      message: "Նպատակի և վերջնարդյունքների հեռացումը չի ավարտվել։ Խնդրում ենք կրկին փորձել։",
+    });
+    return;
+  }
+  await invalidateLessonApproval(lessonId);
+  res.json({ lessonId, deleted: true, ...result });
 });
 
 router.post("/lessons/:lessonId/goal-outcome-review/confirm", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {

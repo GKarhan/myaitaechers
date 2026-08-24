@@ -1,0 +1,538 @@
+TASK — FIX GOAL/OUTCOME PERSISTENCE + SIMPLE EDIT/DELETE/RECREATE FLOW
+
+IMPORTANT:
+This is a SMALL, FOCUSED FIX.
+
+Do not redesign the mapping pipeline.
+Do not modify Cognitive Path generation.
+Do not modify Teaching Content generation.
+Do not modify assignment behavior.
+Do not modify C1–C7.
+Do not modify Quiz.
+Do not modify Knowledge Tree.
+Do not modify AI Teacher runtime.
+Do not publish/deploy.
+
+First AUDIT the existing Goal/Outcome implementation and prove the persistence bug before editing.
+
+==================================================
+CURRENT BUG
+==================================================
+
+Current teacher flow:
+
+1. AI proposes lesson Goal + Outcomes.
+2. Teacher imports them as draft.
+3. The Goal is persisted correctly.
+4. The Outcomes are NOT reliably persisted/read back.
+5. After refresh, the Goal may exist while the Outcomes are missing.
+
+This is the primary bug to fix.
+
+Do NOT solve this by changing validation rules or inventing fallback Outcomes.
+
+Find the actual persistence/read-back problem.
+
+==================================================
+TARGET UX
+==================================================
+
+The Goal/Outcome section should have only this simple lifecycle:
+
+NO GOAL/OUTCOMES
+        ↓
+CREATE / AI PROPOSE
+        ↓
+IMPORT AS DRAFT
+        ↓
+GOAL + ALL OUTCOMES PERSISTED
+        ↓
+EDIT or DELETE
+
+If deleted:
+
+NO GOAL/OUTCOMES
+        ↓
+CREATE becomes available again.
+
+No separate Goal/Outcome approval step is required.
+
+==================================================
+PART 1 — AUDIT THE PERSISTENCE BUG FIRST
+==================================================
+
+Trace the complete existing flow:
+
+AI proposal
+→ proposal response
+→ “Ներմուծել որպես draft”
+→ frontend request
+→ API route
+→ Goal persistence
+→ Outcome persistence
+→ transaction behavior
+→ API response
+→ read-back
+→ page refresh.
+
+Determine exactly why:
+
+Goal persists
+BUT
+Outcomes do not reliably persist.
+
+Inspect the real canonical Goal/Outcome tables/models and existing relations.
+
+Do not assume the cause.
+
+Before changing code, identify the exact root cause.
+
+Possible categories include, but are not limited to:
+
+A. frontend sends Goal but not Outcomes;
+B. API receives Outcomes but does not insert them;
+C. transaction only persists Goal;
+D. schema/field mismatch;
+E. Outcomes persist but read API does not return them;
+F. UI ignores persisted Outcomes;
+G. later invalidation/delete logic removes them;
+H. another proven cause.
+
+Report the proven cause.
+
+==================================================
+PART 2 — FIX ATOMIC GOAL + OUTCOME PERSISTENCE
+==================================================
+
+When teacher clicks:
+
+“Ներմուծել որպես draft”
+
+the operation must persist:
+
+- current lesson Goal;
+- ALL proposed Outcomes.
+
+Treat this as one logical operation.
+
+Do not report successful import if only the Goal was persisted.
+
+After write:
+
+READ BACK the canonical lesson Goal + Outcomes from the database.
+
+Success requires:
+
+persisted Goal == intended Goal
+
+AND
+
+persisted Outcomes == intended Outcome set.
+
+If read-back fails or Outcomes are missing:
+
+do not silently report success.
+
+Return a clear Armenian error such as:
+
+«Նպատակը պահպանվել է, բայց վերջնարդյունքների պահպանումը չի ավարտվել։ Խնդրում ենք կրկին փորձել»։
+
+Prefer atomic transaction behavior if compatible with the existing architecture.
+
+Do not create duplicate Outcomes on retry.
+
+==================================================
+PART 3 — EXISTING SAVED STATE
+==================================================
+
+When the lesson already has:
+
+- persisted Goal;
+- one or more persisted Outcomes;
+
+treat them as the current working Goal/Outcome draft.
+
+The teacher should see the actual persisted values.
+
+Refresh must not remove them.
+
+Do not require another confirmation.
+
+Do not require another AI proposal.
+
+Do not require a hidden approval flag merely to continue mapping.
+
+==================================================
+PART 4 — EDIT
+==================================================
+
+The existing Goal/Outcome edit functionality already exists.
+
+PRESERVE IT.
+
+Do not create a second editor.
+
+Teacher must be able to edit:
+
+- Goal;
+- Outcomes.
+
+When saving edits:
+
+persist Goal + Outcomes correctly
+and perform database read-back.
+
+Do not regenerate them with AI.
+
+If Outcomes are added/removed/edited manually,
+persist the resulting canonical Outcome set correctly.
+
+==================================================
+PART 5 — ADD DELETE
+==================================================
+
+Add a clear delete action to the existing saved Goal/Outcome section.
+
+Use:
+
+🗑️ Ջնջել
+
+or the existing UI icon convention.
+
+This action applies to the current Goal + Outcomes working draft.
+
+Require confirmation before deletion.
+
+Armenian confirmation:
+
+TITLE:
+«Ջնջե՞լ նպատակն ու վերջնարդյունքները»
+
+MESSAGE:
+«Դասի պահպանված նպատակն ու վերջնարդյունքները կհեռացվեն։ Դրանից հետո կարող եք նորից ստեղծել կամ լրացնել դրանք»։
+
+BUTTONS:
+
+«Չեղարկել»
+
+«Ջնջել»
+
+==================================================
+PART 6 — DELETE SAFETY
+==================================================
+
+Deletion must remove the canonical:
+
+- Goal;
+- Outcomes;
+- directly-owned Goal/Outcome draft/proposal state if applicable.
+
+Use existing safe cleanup/invalidation behavior for Outcome relations.
+
+Do NOT leave orphan Outcome→MicroNode relations.
+
+But DO NOT delete:
+
+- lesson;
+- source blocks;
+- Topics;
+- MicroNodes;
+- exercises;
+- Cognitive Paths;
+- Teaching Content;
+- tests/quizzes;
+- student data;
+- Knowledge Tree data.
+
+Do not remap the lesson.
+
+Do not regenerate anything automatically.
+
+==================================================
+PART 7 — CREATE BUTTON STATE
+==================================================
+
+The CREATE / AI PROPOSAL action must be state-driven.
+
+CASE A — no persisted Goal/Outcomes
+
+Enable/show:
+
+“✨ Աղբյուրից առաջարկել”
+
+or the existing equivalent Create action.
+
+CASE B — fresh AI proposal exists but has not been imported
+
+Show proposal preview and:
+
+“Ներմուծել որպես draft”
+
+CASE C — Goal + Outcomes successfully imported/persisted
+
+Show:
+
+current Goal
+current Outcomes
+✏️ Խմբագրել
+🗑️ Ջնջել
+
+Hide/disable:
+
+“✨ Աղբյուրից առաջարկել”
+“Ներմուծել որպես draft”
+
+Do not let the teacher accidentally create another competing Goal/Outcome proposal while a current saved draft exists.
+
+CASE D — teacher deletes saved Goal/Outcomes
+
+Immediately return to CASE A.
+
+The Create / AI proposal action becomes available again.
+
+==================================================
+PART 8 — IMPORTANT PARTIAL-STATE HANDLING
+==================================================
+
+Because the current bug may already have produced lessons where:
+
+Goal exists
+BUT
+Outcomes are empty,
+
+do NOT treat that broken partial state as a healthy completed draft.
+
+Handle it explicitly.
+
+If Goal exists but Outcomes are missing:
+
+show a clear teacher-facing message such as:
+
+«Նպատակը պահպանված է, բայց վերջնարդյունքները բացակայում են»։
+
+Allow the teacher to:
+
+- edit/fill the Outcomes manually;
+OR
+- delete the incomplete Goal/Outcome draft and recreate it.
+
+Do not silently call the state complete.
+
+Do not fabricate Outcomes.
+
+==================================================
+PART 9 — MAPPING BEHAVIOR
+==================================================
+
+This task must NOT introduce another Goal/Outcome approval gate.
+
+A valid persisted Goal + Outcome set is sufficient as the current working draft.
+
+Do not add:
+
+- “Հաստատել Goal/Outcomes”;
+- separate Goal approval;
+- separate Outcome approval;
+- another hidden confirmation state.
+
+The existing simplified mapping workflow must remain intact.
+
+==================================================
+PART 10 — MATERIAL EDIT INVALIDATION
+==================================================
+
+If Goal/Outcome edit or deletion is already considered a material lesson change,
+reuse the existing canonical invalidation mechanism.
+
+Do NOT invent another invalidation system.
+
+Do NOT weaken existing safety behavior.
+
+==================================================
+PART 11 — TESTS
+==================================================
+
+Add focused regression tests.
+
+TEST 1
+AI proposal contains:
+1 Goal + multiple Outcomes.
+
+Import as draft.
+
+Expected:
+Goal persists.
+ALL Outcomes persist.
+
+TEST 2
+Refresh/read-back.
+
+Expected:
+same Goal + same Outcomes remain.
+
+TEST 3
+Retry import.
+
+Expected:
+no duplicate Outcomes.
+
+TEST 4
+Existing Goal + Outcomes.
+
+Expected:
+AI Create/Proposal action is hidden or disabled.
+
+TEST 5
+Existing Goal + Outcomes.
+
+Expected:
+Edit is available.
+
+TEST 6
+Existing Goal + Outcomes.
+
+Expected:
+Delete is available.
+
+TEST 7
+Edit Goal and Outcomes.
+
+Expected:
+all edited values persist and read back.
+
+TEST 8
+Delete Goal/Outcomes.
+
+Expected:
+Goal removed.
+Outcomes removed.
+No orphan Outcome relations.
+
+TEST 9
+After deletion.
+
+Expected:
+Create / “Աղբյուրից առաջարկել” becomes available again.
+
+TEST 10
+Broken legacy state:
+Goal exists but zero Outcomes.
+
+Expected:
+UI identifies incomplete state.
+Teacher can edit/fill or delete/recreate.
+
+TEST 11
+Deleting Goal/Outcomes does NOT delete:
+Topics,
+MicroNodes,
+Exercises,
+Cognitive Paths,
+Teaching Content.
+
+TEST 12
+No second Goal/Outcome approval gate is introduced.
+
+==================================================
+BROWSER ACCEPTANCE
+==================================================
+
+Verify with a real teacher UI flow if safe test data is available:
+
+1. Open lesson with no Goal/Outcomes.
+2. Generate proposal.
+3. Import as draft.
+4. Verify Goal appears.
+5. Verify ALL Outcomes appear.
+6. Refresh browser.
+7. Verify Goal + Outcomes still appear.
+8. Verify Create/AI proposal action is no longer active.
+9. Verify Edit works.
+10. Verify Delete action exists.
+
+If destructive testing on real lesson data is unsafe,
+do not delete real teacher data merely to satisfy the test.
+Use controlled test data instead.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return exactly:
+
+AUDIT ROOT CAUSE:
+...
+
+OLD BEHAVIOR:
+...
+
+NEW BEHAVIOR:
+...
+
+GOAL PERSISTENCE:
+PASS / FAIL
+
+OUTCOME PERSISTENCE:
+PASS / FAIL
+
+OUTCOME DATABASE READ-BACK:
+PASS / FAIL
+
+REFRESH PRESERVES OUTCOMES:
+PASS / FAIL
+
+DUPLICATE OUTCOMES ON RETRY:
+YES / NO
+
+EDIT:
+AVAILABLE / NOT AVAILABLE
+
+DELETE:
+AVAILABLE / NOT AVAILABLE
+
+DELETE CONFIRMATION:
+IMPLEMENTED / NOT IMPLEMENTED
+
+AFTER DELETE CREATE BUTTON:
+ACTIVE / NOT ACTIVE
+
+PARTIAL GOAL-WITHOUT-OUTCOMES STATE:
+HANDLED / NOT HANDLED
+
+SECOND GOAL/OUTCOME APPROVAL GATE ADDED:
+NO
+
+MAPPING CHANGED:
+NO
+
+COGNITIVE PATH CHANGED:
+NO
+
+TEACHING CONTENT CHANGED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+C1–C7 SAFETY WEAKENED:
+NO
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+...
+
+TESTS:
+...
+
+PUBLISHED/DEPLOYED:
+NO
+
+Then STOP.
