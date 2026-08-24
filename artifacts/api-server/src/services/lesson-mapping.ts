@@ -3487,7 +3487,7 @@ export interface Pass2Result {
   candidatePromotion: KnowledgeCandidatePromotionDiagnostics;
   /** Phase 3B lesson-wide canonical identity and final Topic assignment audit. */
   lessonWideConsolidation: LessonWideConsolidationDiagnostics;
-  /** M17–M20 deterministic post-canonical completeness audit. */
+  /** Lesson-wide target discovery and deterministic post-canonical completeness audit. */
   knowledgeCompleteness: KnowledgeCompletenessDiagnostics;
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
@@ -5705,6 +5705,8 @@ export type AutomaticOutcomeAlignmentProposal = {
   outcomeIndex: number;
   topicSequence: number;
   microNodeIndex: number;
+  /** Stable when the Pass 2 candidate survived canonicalisation. */
+  candidateId?: string;
   role: "REQUIRED" | "SUPPORTING";
   requiredCognitiveDepth: "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create";
 };
@@ -5767,6 +5769,47 @@ function outcomeConceptTokens(value: string): Set<string> {
   return new Set([...outcomeTokens(value)].filter(isOutcomeConceptToken));
 }
 
+/**
+ * Performance direction is part of learner-state identity. Shared nouns such
+ * as «գրաֆիկ» and «միջակայք» are not enough to collapse reverse operations:
+ * a learner may demonstrate one transformation without demonstrating the
+ * other. Bloom depth intentionally does not participate in this identity.
+ */
+export type IndependentPerformanceDirection =
+  | "GRAPH_TO_SIGN_INTERVALS"
+  | "SIGN_INTERVALS_TO_GRAPH"
+  | "UNSPECIFIED";
+
+export function deriveIndependentPerformanceDirection(
+  value: string,
+): IndependentPerformanceDirection {
+  const normalized = value.toLocaleLowerCase("hy-AM").replace(/\s+/g, " ").trim();
+  const mentionsGraph = /(գրաֆիկ|գծագր)/u.test(normalized);
+  const mentionsIntervals = /միջակայք/u.test(normalized);
+  if (!mentionsGraph || !mentionsIntervals) return "UNSPECIFIED";
+
+  const graphToIntervals =
+    /(գրաֆիկից|գծագրից|ըստ գրաֆիկ|գրաֆիկի հիման)/u.test(normalized)
+    || /^(գրաֆիկ|գծագր).*(որոշ|գտ|վերլուծ).*միջակայք/u.test(normalized)
+    || (/որոշ/u.test(normalized) && normalized.indexOf("գրաֆ") < normalized.indexOf("միջակայք"));
+  const intervalsToGraph =
+    /(միջակայքներից|միջակայք.*կառուց)/u.test(normalized);
+
+  if (graphToIntervals && !intervalsToGraph) return "GRAPH_TO_SIGN_INTERVALS";
+  if (intervalsToGraph && !graphToIntervals) return "SIGN_INTERVALS_TO_GRAPH";
+  return "UNSPECIFIED";
+}
+
+function performanceDirectionsCompatible(
+  left: IndependentPerformanceDirection,
+  right: IndependentPerformanceDirection,
+): boolean {
+  // An explicit outcome may not align to an unclassified performance. An
+  // unclassified outcome may use concept evidence because it makes no
+  // directional claim of its own.
+  return left === "UNSPECIFIED" || left === right;
+}
+
 export function deriveOutcomeCognitiveDepth(
   outcome: string,
 ): AutomaticOutcomeAlignmentProposal["requiredCognitiveDepth"] {
@@ -5792,6 +5835,10 @@ export function buildAutomaticOutcomeAlignmentPlan(
   const candidates = topics.flatMap((topic) => topic.microNodes.map((node, microNodeIndex) => ({
     topicSequence: topic.sequence,
     microNodeIndex,
+    candidateId: node.candidateId,
+    performanceDirection: deriveIndependentPerformanceDirection(
+      `${node.title} ${node.learningObjective}`,
+    ),
     conceptTokens: outcomeConceptTokens(`${node.title} ${node.learningObjective}`),
   })));
   const proposals: AutomaticOutcomeAlignmentProposal[] = [];
@@ -5799,12 +5846,16 @@ export function buildAutomaticOutcomeAlignmentPlan(
 
   outcomes.forEach((outcome, outcomeIndex) => {
     const concepts = outcomeConceptTokens(outcome);
+    const performanceDirection = deriveIndependentPerformanceDirection(outcome);
     const ranked = candidates
       .map((candidate) => ({
         ...candidate,
         score: [...concepts].filter((token) => candidate.conceptTokens.has(token)).length,
       }))
-      .filter((candidate) => candidate.score > 0)
+      .filter((candidate) =>
+        candidate.score > 0
+        && performanceDirectionsCompatible(performanceDirection, candidate.performanceDirection),
+      )
       .sort((a, b) => b.score - a.score || a.topicSequence - b.topicSequence || a.microNodeIndex - b.microNodeIndex);
     if (ranked.length === 0) {
       unresolvedOutcomeIndexes.push(outcomeIndex);
@@ -5816,6 +5867,7 @@ export function buildAutomaticOutcomeAlignmentPlan(
       outcomeIndex,
       topicSequence: strongest.topicSequence,
       microNodeIndex: strongest.microNodeIndex,
+      candidateId: strongest.candidateId,
       role: "REQUIRED",
       requiredCognitiveDepth: depth,
     });
@@ -5824,6 +5876,7 @@ export function buildAutomaticOutcomeAlignmentPlan(
         outcomeIndex,
         topicSequence: candidate.topicSequence,
         microNodeIndex: candidate.microNodeIndex,
+        candidateId: candidate.candidateId,
         role: "SUPPORTING",
         requiredCognitiveDepth: depth,
       });
@@ -5834,9 +5887,11 @@ export function buildAutomaticOutcomeAlignmentPlan(
 
 export type KnowledgeCompletenessGapReason =
   | "CANDIDATE_NOT_CANONICAL"
+  | "INDEPENDENT_TARGET_NOT_CANONICAL"
   | "EXERCISE_KNOWLEDGE_GAP"
   | "OUTCOME_KNOWLEDGE_GAP"
-  | "RESTORE_SOURCE_CONFLICT";
+  | "RESTORE_SOURCE_CONFLICT"
+  | "RESTORE_EXERCISE_CONFLICT";
 
 export interface KnowledgeCompletenessCandidateSnapshot {
   candidateId: string;
@@ -5852,13 +5907,103 @@ export interface KnowledgeCompletenessCandidateSnapshot {
 export interface KnowledgeCompletenessGap {
   id: string;
   reason: KnowledgeCompletenessGapReason;
+  targetId?: string;
   candidateId?: string;
   outcomeIndex?: number;
   exerciseBlockIndices?: number[];
   detail: string;
 }
 
+export type IndependentLearningTargetState =
+  | "COVERED"
+  | "REVIEW_REQUIRED";
+
+/**
+ * A transient, server-derived learner target. It is deliberately independent of
+ * promotion: all source-backed provider candidates can contribute evidence,
+ * while only the established promotion contract may create a canonical node.
+ * Source indexes and candidate IDs make the diagnostic trace inspectable
+ * without persisting raw model responses or source text.
+ */
+export interface IndependentLearningTarget {
+  id: string;
+  performanceDirection: IndependentPerformanceDirection;
+  conceptTokens: string[];
+  sourceBlockIndices: number[];
+  exerciseBlockIndices: number[];
+  outcomeIndexes: number[];
+  goalSupported: boolean;
+  candidateIds: string[];
+  canonicalCandidateIds: string[];
+  state: IndependentLearningTargetState;
+  reviewReasonCodes: string[];
+}
+
+function targetConceptOverlap(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): number {
+  return [...left].filter((token) => right.has(token)).length;
+}
+
+/**
+ * Derives lesson-wide targets from source-backed candidates, then enriches them
+ * with bounded exercise/outcome/goal signals. Exercises and outcomes never
+ * create a target alone: they only reinforce a candidate with verified core
+ * source ownership. This keeps target discovery non-circular without allowing
+ * assessment text to fabricate instructional knowledge.
+ */
+export function discoverIndependentLearningTargets(input: {
+  candidateSnapshots: ReadonlyArray<KnowledgeCompletenessCandidateSnapshot>;
+  teacherOutcomes?: readonly string[] | null;
+  teacherGoal?: string | null;
+}): IndependentLearningTarget[] {
+  const hypotheses = input.candidateSnapshots
+    .filter((candidate) =>
+      candidate.coreSourceBlockIndices.length > 0
+      && candidate.title.trim().length > 0
+      && candidate.learningObjective.trim().length > 0,
+    )
+    .map((candidate) => ({
+      candidate,
+      direction: deriveIndependentPerformanceDirection(
+        `${candidate.title} ${candidate.learningObjective}`,
+      ),
+      concepts: outcomeConceptTokens(`${candidate.title} ${candidate.learningObjective}`),
+    }))
+    .sort((left, right) => left.candidate.candidateId.localeCompare(right.candidate.candidateId));
+
+  const outcomes = (input.teacherOutcomes ?? []).map((outcome) => outcome.trim()).filter(Boolean);
+  const goalConcepts = outcomeConceptTokens(input.teacherGoal?.trim() ?? "");
+  return hypotheses.map((hypothesis) => {
+    const { candidate, direction, concepts } = hypothesis;
+    const outcomeIndexes = outcomes.flatMap((outcome, outcomeIndex) => {
+      const outcomeDirection = deriveIndependentPerformanceDirection(outcome);
+      return performanceDirectionsCompatible(outcomeDirection, direction)
+        && targetConceptOverlap(concepts, outcomeConceptTokens(outcome)) > 0
+        ? [outcomeIndex]
+        : [];
+    });
+    return {
+      id: `ilt:${direction}:${candidate.candidateId}`,
+      performanceDirection: direction,
+      conceptTokens: [...concepts].sort(),
+      sourceBlockIndices: sortedUniqueIndices(candidate.coreSourceBlockIndices),
+      exerciseBlockIndices: sortedUniqueIndices(candidate.exercises.map((exercise) => exercise.blockIndex)),
+      outcomeIndexes,
+      goalSupported: targetConceptOverlap(concepts, goalConcepts) > 0,
+      candidateIds: [candidate.candidateId],
+      canonicalCandidateIds: [],
+      state: "REVIEW_REQUIRED" as IndependentLearningTargetState,
+      reviewReasonCodes: [],
+    };
+  }).sort((left, right) => left.id.localeCompare(right.id));
+}
+
 export interface KnowledgeCompletenessDiagnostics {
+  independentTargetCount: number;
+  independentTargets: IndependentLearningTarget[];
+  /** Compatibility count retained for existing mapping-report consumers. */
   candidateTargetCount: number;
   canonicalMicroNodeCountBeforeAudit: number;
   canonicalMicroNodeCountAfterAudit: number;
@@ -5904,80 +6049,167 @@ export function auditKnowledgeCompleteness(input: {
   finalPromotion?: KnowledgeCandidatePromotionDiagnostics;
   lessonWideConsolidation: LessonWideConsolidationDiagnostics;
   teacherOutcomes?: readonly string[] | null;
+  teacherGoal?: string | null;
 }): KnowledgeCompletenessDiagnostics {
   const intentionallyNonPromoted = new Set(
     input.finalPromotion?.decisions
       .filter((decision) => decision.state !== "PROMOTE")
       .map((decision) => decision.candidateId) ?? [],
   );
-  const targets = input.candidateSnapshots.filter((snapshot) =>
-    !intentionallyNonPromoted.has(snapshot.candidateId)
-      && input.promotionPreview.decisions.some((decision) =>
-        decision.candidateId === snapshot.candidateId && decision.state === "PROMOTE",
-      ),
+  const independentTargets = discoverIndependentLearningTargets({
+    candidateSnapshots: input.candidateSnapshots,
+    teacherOutcomes: input.teacherOutcomes,
+    teacherGoal: input.teacherGoal,
+  });
+  const snapshotById = new Map(
+    input.candidateSnapshots.map((snapshot) => [snapshot.candidateId, snapshot]),
+  );
+  const previewPromotionById = new Map(
+    input.promotionPreview.decisions.map((decision) => [decision.candidateId, decision]),
   );
   const canonicalBefore = input.topics.reduce((count, topic) => count + topic.microNodes.length, 0);
-  const canonicalIds = () => new Set(input.topics.flatMap((topic) =>
-    topic.microNodes.map((node) => node.candidateId).filter((id): id is string => !!id),
-  ));
-  const mergedCandidateIds = new Set(
-    input.lessonWideConsolidation.groups
-      .filter((group) => group.state === "SAME_KNOWLEDGE")
-      .flatMap((group) => group.candidateIds),
-  );
+  const canonicalNodes = () => input.topics.flatMap((topic) => topic.microNodes);
+  const sameKnowledgeGroups = input.lessonWideConsolidation.groups
+    .filter((group) => group.state === "SAME_KNOWLEDGE");
   const restoredCandidateIds: string[] = [];
   const reviewRequiredGaps: KnowledgeCompletenessGap[] = [];
 
-  for (const target of [...targets].sort((left, right) => left.candidateId.localeCompare(right.candidateId))) {
-    if (canonicalIds().has(target.candidateId) || mergedCandidateIds.has(target.candidateId)) continue;
-    const owners = new Set(input.topics.flatMap((topic) => topic.microNodes.flatMap((node) => node.sourceBlockIndices)));
-    const hasExclusiveCore = target.coreSourceBlockIndices.length > 0
-      && target.coreSourceBlockIndices.every((index) => !owners.has(index));
-    const destination = input.topics.find((topic) => topic.sequence === target.topicSequence)
-      ?? input.topics.find((topic) =>
-        target.coreSourceBlockIndices.some((index) => (topic.inputBlockIndices ?? []).includes(index)),
+  for (const target of independentTargets) {
+    const canonicalMatches = canonicalNodes().filter((node) => {
+      const candidateId = node.candidateId;
+      return !!candidateId && target.candidateIds.includes(candidateId);
+    });
+    const certifiedCanonicalMatches = sameKnowledgeGroups.flatMap((group) => {
+      if (!group.candidateIds.some((candidateId) => target.candidateIds.includes(candidateId))) {
+        return [];
+      }
+      return canonicalNodes().filter((node) =>
+        !!node.candidateId
+        && group.candidateIds.includes(node.candidateId)
+        && deriveIndependentPerformanceDirection(
+          `${node.title} ${node.learningObjective}`,
+        ) === target.performanceDirection,
       );
-    if (destination && hasExclusiveCore) {
-      destination.microNodes.push({
-        candidateId: target.candidateId,
-        promotionState: "PROMOTE",
-        promotionReasonCodes: [],
-        title: target.title,
-        learningObjective: target.learningObjective,
-        microNodeType: target.microNodeType,
-        sourceBlockIndices: [...target.coreSourceBlockIndices],
-        supportingMaterialIndices: target.supportingSourceBlockIndices.filter((index) => !owners.has(index)),
-        exercises: target.exercises.map((exercise) => ({ ...exercise })),
-      });
-      destination.unmappedBlockIndices = destination.unmappedBlockIndices
-        .filter((index) => !target.coreSourceBlockIndices.includes(index));
-      restoredCandidateIds.push(target.candidateId);
+    });
+    if (canonicalMatches.length > 0 || certifiedCanonicalMatches.length > 0) {
+      const coveredBy = [...canonicalMatches, ...certifiedCanonicalMatches];
+      target.canonicalCandidateIds = coveredBy
+        .map((node) => node.candidateId)
+        .filter((candidateId): candidateId is string => !!candidateId)
+        .filter((candidateId, index, all) => all.indexOf(candidateId) === index)
+        .sort();
+      target.state = "COVERED";
       continue;
     }
+
+    const restorationCandidates = target.candidateIds
+      .filter((candidateId) =>
+        !intentionallyNonPromoted.has(candidateId)
+        && previewPromotionById.get(candidateId)?.state === "PROMOTE",
+      )
+      .map((candidateId) => snapshotById.get(candidateId))
+      .filter((candidate): candidate is KnowledgeCompletenessCandidateSnapshot => !!candidate)
+      .sort((left, right) => left.candidateId.localeCompare(right.candidateId));
+    const targetForRestore = restorationCandidates[0];
+    if (!targetForRestore) {
+      target.reviewReasonCodes.push("NO_PROMOTABLE_SOURCE_CANDIDATE");
+      reviewRequiredGaps.push({
+        id: `target:${target.id}`,
+        reason: "INDEPENDENT_TARGET_NOT_CANONICAL",
+        targetId: target.id,
+        detail: "Source-backed independent learning target has no canonical MicroNode and no promotable candidate may be restored.",
+      });
+      continue;
+    }
+
+    // Unmapped source can be moved into the exact recovered candidate, but
+    // every other placement is an established owner and must never be stolen.
+    const nonTransferableOwners = new Set(input.topics.flatMap((topic) => [
+      ...topic.microNodes.flatMap((node) => [
+        ...node.sourceBlockIndices,
+        ...node.supportingMaterialIndices,
+        ...node.exercises.map((exercise) => exercise.blockIndex),
+      ]),
+      ...topic.additionalExercises.map((exercise) => exercise.blockIndex),
+    ]));
+    const activityOwners = new Set(input.topics.flatMap((topic) => [
+      ...topic.microNodes.flatMap((node) => node.exercises.map((exercise) => exercise.blockIndex)),
+      ...topic.additionalExercises.map((exercise) => exercise.blockIndex),
+    ]));
+    const hasExclusiveCore = targetForRestore.coreSourceBlockIndices.length > 0
+      && targetForRestore.coreSourceBlockIndices.every((index) => !nonTransferableOwners.has(index));
+    const hasExclusiveExercises = targetForRestore.exercises
+      .every((exercise) => !activityOwners.has(exercise.blockIndex));
+    const destination = input.topics.find((topic) => topic.sequence === targetForRestore.topicSequence)
+      ?? input.topics.find((topic) =>
+        targetForRestore.coreSourceBlockIndices.some((index) => (topic.inputBlockIndices ?? []).includes(index)),
+      );
+    if (destination && hasExclusiveCore && hasExclusiveExercises) {
+      destination.microNodes.push({
+        candidateId: targetForRestore.candidateId,
+        promotionState: "PROMOTE",
+        promotionReasonCodes: [],
+        title: targetForRestore.title,
+        learningObjective: targetForRestore.learningObjective,
+        microNodeType: targetForRestore.microNodeType,
+        sourceBlockIndices: [...targetForRestore.coreSourceBlockIndices],
+        supportingMaterialIndices: targetForRestore.supportingSourceBlockIndices
+          .filter((index) => !nonTransferableOwners.has(index)),
+        exercises: targetForRestore.exercises.map((exercise) => ({ ...exercise })),
+      });
+      for (const topic of input.topics) {
+        topic.unmappedBlockIndices = topic.unmappedBlockIndices
+          .filter((index) => !targetForRestore.coreSourceBlockIndices.includes(index));
+      }
+      restoredCandidateIds.push(targetForRestore.candidateId);
+      target.canonicalCandidateIds = [targetForRestore.candidateId];
+      target.state = "COVERED";
+      continue;
+    }
+    target.reviewReasonCodes.push(
+      !hasExclusiveCore
+        ? "CORE_SOURCE_ALREADY_OWNED"
+        : !hasExclusiveExercises
+          ? "EXERCISE_ALREADY_OWNED"
+          : "NO_DESTINATION_TOPIC",
+    );
     reviewRequiredGaps.push({
-      id: `candidate:${target.candidateId}`,
-      reason: hasExclusiveCore ? "CANDIDATE_NOT_CANONICAL" : "RESTORE_SOURCE_CONFLICT",
-      candidateId: target.candidateId,
-      detail: hasExclusiveCore
-        ? "Promotable candidate has no canonical MicroNode after identity processing."
-        : "Promotable candidate is missing, but its verified source is already owned by another canonical MicroNode.",
+      id: `target:${target.id}`,
+      reason: !hasExclusiveCore
+        ? "RESTORE_SOURCE_CONFLICT"
+        : !hasExclusiveExercises
+          ? "RESTORE_EXERCISE_CONFLICT"
+          : "INDEPENDENT_TARGET_NOT_CANONICAL",
+      targetId: target.id,
+      candidateId: targetForRestore.candidateId,
+      detail: !hasExclusiveCore
+        ? "Promotable target is missing, but one of its verified core sources has another retained owner."
+        : !hasExclusiveExercises
+          ? "Promotable target is missing, but one of its linked activity blocks has another retained owner."
+          : "Promotable source-backed target has no canonical destination after identity processing.",
     });
   }
 
-  const finalIds = canonicalIds();
   const unresolvedCandidateIds = new Set(
     reviewRequiredGaps.map((gap) => gap.candidateId).filter((id): id is string => !!id),
   );
-  const exerciseByCandidate = new Map(
-    targets.map((target) => [target.candidateId, target.exercises.map((exercise) => exercise.blockIndex)]),
-  );
-  for (const [candidateId, exerciseBlockIndices] of exerciseByCandidate) {
-    if (!unresolvedCandidateIds.has(candidateId) || exerciseBlockIndices.length === 0) continue;
+  for (const target of independentTargets) {
+    const unresolved = target.candidateIds.some((candidateId) => unresolvedCandidateIds.has(candidateId))
+      || target.state === "REVIEW_REQUIRED";
+    // An intentionally non-promoted candidate already has one explicit target
+    // review item. Its exercises remain preserved, but do not create a noisy
+    // second gap that could be mistaken for permission to promote it.
+    if (
+      !unresolved
+      || target.exerciseBlockIndices.length === 0
+      || target.reviewReasonCodes.includes("NO_PROMOTABLE_SOURCE_CANDIDATE")
+    ) continue;
     reviewRequiredGaps.push({
-      id: `exercise:${candidateId}`,
+      id: `exercise:${target.id}`,
       reason: "EXERCISE_KNOWLEDGE_GAP",
-      candidateId,
-      exerciseBlockIndices: sortedUniqueIndices(exerciseBlockIndices),
+      targetId: target.id,
+      candidateId: target.candidateIds[0],
+      exerciseBlockIndices: target.exerciseBlockIndices,
       detail: "A substantive exercise cluster has no independently supported canonical knowledge target.",
     });
   }
@@ -5995,7 +6227,9 @@ export function auditKnowledgeCompleteness(input: {
     });
   }
   return {
-    candidateTargetCount: targets.length,
+    independentTargetCount: independentTargets.length,
+    independentTargets,
+    candidateTargetCount: independentTargets.length,
     canonicalMicroNodeCountBeforeAudit: canonicalBefore,
     canonicalMicroNodeCountAfterAudit: input.topics.reduce((count, topic) => count + topic.microNodes.length, 0),
     restoredCandidateIds: restoredCandidateIds.sort(),
@@ -6540,6 +6774,7 @@ export async function runPass2Pipeline(
     finalPromotion: candidatePromotion,
     lessonWideConsolidation,
     teacherOutcomes: lessonInfo.teacherOutcomes,
+    teacherGoal: lessonInfo.teacherGoal,
   });
   normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
@@ -6619,6 +6854,7 @@ export async function runPass2Pipeline(
           finalTopicCount: lessonWideConsolidation.finalTopicCount,
         },
         knowledgeCompleteness: {
+          independentTargetCount: knowledgeCompleteness.independentTargetCount,
           candidateTargetCount: knowledgeCompleteness.candidateTargetCount,
           restoredCandidateCount: knowledgeCompleteness.restoredCandidateIds.length,
           reviewRequiredGapCount: knowledgeCompleteness.reviewRequiredGaps.length,

@@ -5421,6 +5421,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         crossTopicConsolidations: pass2.lessonWideConsolidation.crossTopicConsolidationCount,
         completenessRestoredCandidates: pass2.knowledgeCompleteness.restoredCandidateIds.length,
         completenessReviewGaps: pass2.knowledgeCompleteness.reviewRequiredGaps.length,
+        independentLearningTargets: pass2.knowledgeCompleteness.independentTargetCount,
       },
       content: {
         aiGeneratedFields:        totalNodes * 2,   // title + learningObjective per MicroNode
@@ -5499,6 +5500,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         candidatePromotion: pass2.candidatePromotion,
         lessonWideConsolidation: pass2.lessonWideConsolidation,
         knowledgeCompleteness: pass2.knowledgeCompleteness,
+        independentLearningTargets: pass2.knowledgeCompleteness.independentTargets,
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignmentReconciliation: pass2.sourceAlignmentReconciliation,
         atomicityRepair: {
