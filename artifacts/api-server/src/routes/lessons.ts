@@ -4984,6 +4984,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       blocks: pass1.blocks,
       topics: pass2.topics,
       instructionalCoverage: pass2.instructionalCoverage,
+      semanticScopeByBlockIndex: new Map(
+        pass2.semanticScope.records.map((record) => [record.blockIndex, record.scope]),
+      ),
     });
     const durableSourceDispositionCounts = durableSourceMaterials.reduce<
       Partial<Record<string, number>>
@@ -4991,6 +4994,15 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       counts[material.primaryDisposition] = (counts[material.primaryDisposition] ?? 0) + 1;
       return counts;
     }, {});
+    const excludedSemanticScopeBlockIndices = new Set(
+      pass2.semanticScope.excludedCandidateBlockIndices,
+    );
+    const persistablePass2Topics = pass2.topics.filter((topic) =>
+      topic.microNodes.length > 0
+      || (topic.inputBlockIndices ?? []).some(
+        (blockIndex) => !excludedSemanticScopeBlockIndices.has(blockIndex),
+      ),
+    );
     let coveragePercent = 0;
 
     await db.transaction(async (tx) => {
@@ -5029,7 +5041,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     // all topics (previously reset per topic, giving every first node sequence=1).
     let mnSeq = 0;
 
-    for (const topic of pass2.topics) {
+     for (const topic of persistablePass2Topics) {
       // 1. Insert the topic
         const [insertedTopic] = await tx
         .insert(lessonTopicsTable)
@@ -5317,6 +5329,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         reason:    "PASS1_PAGE_REQUIRES_MANUAL_REVIEW",
       });
     }
+    for (const record of pass2.semanticScope.records) {
+      if (record.scope === "IN_SCOPE" || record.scope === "STRUCTURAL") continue;
+      reviewItems.push({
+        nodeId: null as unknown as number,
+        nodeTitle: `Source block #${record.blockIndex + 1}`,
+        reason: `LESSON_SEMANTIC_SCOPE_REVIEW:${record.scope}:${record.reasonCodes.join(",")}`,
+      });
+    }
 
     // ── Review flags for coverage gaps ──────────────────────────────────────
     // Readable instructional blocks that could not be safely linked to a
@@ -5444,6 +5464,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           sourceSet,
           sourceScope,
           physicalPageProvenance: verifiedPhysicalPageProvenance,
+          lessonSemanticScope: pass2.semanticScope,
           dispositions: pass2.instructionalCoverage.blocks,
           dispositionCounts: pass2.instructionalCoverage.dispositionCounts,
           durablePrimaryDispositionCounts: durableSourceDispositionCounts,

@@ -16,10 +16,16 @@ import {
   validateInstructionalCoverage,
   validateSourceCoverage,
   isLikelyStructuralHeading,
+  requiresMicroNodeOwnership,
   type CoverageValidationResult,
   type InstructionalCoverageResult,
   type SourceCoverageBlock,
 } from "../lib/coverage-validator.js";
+import {
+  deriveLessonSemanticScope,
+  type LessonSemanticScope,
+  type LessonSemanticScopeAudit,
+} from "../lib/lesson-semantic-scope.js";
 import { detectCompoundLO } from "../lib/granularity-heuristics.js";
 import {
   classifyMicroNodeSourceAlignment,
@@ -1847,6 +1853,7 @@ export const SOURCE_MATERIAL_REASON_CODES = [
   "UNREADABLE_SOURCE",
   "INSTRUCTIONAL_REVIEW_REQUIRED",
   "EXPLICIT_TEACHER_EXCLUSION",
+  "ADJACENT_NEXT_SECTION",
 ] as const;
 
 export type SourceMaterialReasonCode = typeof SOURCE_MATERIAL_REASON_CODES[number];
@@ -1966,6 +1973,7 @@ export interface BuildDurableSourceMaterialsInput {
   blocks: ReadonlyArray<Pass1Block>;
   topics: ReadonlyArray<Pass2TopicResult>;
   instructionalCoverage: InstructionalCoverageResult;
+  semanticScopeByBlockIndex?: ReadonlyMap<number, LessonSemanticScope>;
 }
 
 function stableSourceText(value: string): string {
@@ -2016,7 +2024,10 @@ export function buildDurableSourceMaterialRecords(
     const unreadable = isDurablyUnreadableSource(block);
     let primaryDisposition: SourceMaterialDisposition;
     let dispositionReasonCodes: SourceMaterialReasonCode[];
-    if (unreadable) {
+    if (input.semanticScopeByBlockIndex?.get(sourceBlockIndex) === "ADJACENT_NEXT_SECTION") {
+      primaryDisposition = "EXCLUDED_WITH_REASON";
+      dispositionReasonCodes = ["ADJACENT_NEXT_SECTION"];
+    } else if (unreadable) {
       primaryDisposition = "UNRESOLVED_VISUAL_OR_FORMULA";
       dispositionReasonCodes = ["UNREADABLE_SOURCE"];
     } else if (block.blockType === "EXERCISE") {
@@ -3489,6 +3500,8 @@ export interface Pass2Result {
   lessonWideConsolidation: LessonWideConsolidationDiagnostics;
   /** Lesson-wide target discovery and deterministic post-canonical completeness audit. */
   knowledgeCompleteness: KnowledgeCompletenessDiagnostics;
+  /** Server-owned scope audit; never changes the verified source universe. */
+  semanticScope: LessonSemanticScopeAudit;
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
   /** Readable instructional blocks retained for teacher review rather than
@@ -3621,13 +3634,18 @@ export interface Pass2TopicGroup {
 export function ensurePass2TopicGroupCoverage(
   groups: Pass2TopicGroup[],
   totalBlocks: number,
+  requiredIndices?: readonly number[],
 ): { recoveredIndices: number[]; dedupedIndices: number[] } {
+  const required = new Set(
+    (requiredIndices ?? Array.from({ length: totalBlocks }, (_, index) => index))
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < totalBlocks),
+  );
   const ownerByIndex = new Map<number, Pass2TopicGroup>();
   const dedupedIndices: number[] = [];
   for (const group of groups) {
     const retained: number[] = [];
     for (const index of group.indices) {
-      if (!Number.isInteger(index) || index < 0 || index >= totalBlocks) continue;
+      if (!required.has(index)) continue;
       if (ownerByIndex.has(index)) {
         dedupedIndices.push(index);
         continue;
@@ -3638,7 +3656,7 @@ export function ensurePass2TopicGroupCoverage(
     group.indices = retained;
   }
   const recoveredIndices: number[] = [];
-  for (let index = 0; index < totalBlocks; index++) {
+  for (const index of [...required].sort((left, right) => left - right)) {
     if (ownerByIndex.has(index)) continue;
     if (groups.length === 0) {
       groups.push({
@@ -3666,10 +3684,13 @@ async function detectTopicGroups(
   blocks: Pass1Block[],
   lessonTitle: string,
   pagesFrom: number,
-  pagesTo: number
+  pagesTo: number,
+  candidateBlockIndices?: readonly number[],
 ): Promise<Pass2TopicGroup[]> {
-  const allIndices = blocks.map((_, i) => i);
-  const blockLines = blocks.map((b, i) => fmtPass2Block(i, b)).join("\n");
+  const allIndices = (candidateBlockIndices ?? blocks.map((_, index) => index))
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < blocks.length)
+    .sort((left, right) => left - right);
+  const blockLines = allIndices.map((index) => fmtPass2Block(index, blocks[index])).join("\n");
 
   const userPrompt = `Lesson: «${lessonTitle}», pages ${pagesFrom}–${pagesTo}.
 These ${blocks.length} blocks must be grouped into topics.
@@ -5727,7 +5748,8 @@ const OUTCOME_ACTION_STEMS = [
 ];
 const OUTCOME_GENERIC_CONCEPT_STEMS = [
   "կանոն", "թվ", "առաջադր", "վարժ", "դաս", "նյութ", "հասկաց",
-  "օրինակ", "պատասխան", "եղանակ",
+  "օրինակ", "պատասխան", "եղանակ", "ֆունկց", "գրաֆ",
+  "function", "graph", "student", "lesson", "exercise",
 ];
 
 function normalizeArmenianConceptToken(token: string): string {
@@ -5804,10 +5826,9 @@ function performanceDirectionsCompatible(
   left: IndependentPerformanceDirection,
   right: IndependentPerformanceDirection,
 ): boolean {
-  // An explicit outcome may not align to an unclassified performance. An
-  // unclassified outcome may use concept evidence because it makes no
-  // directional claim of its own.
-  return left === "UNSPECIFIED" || left === right;
+  // Directionless overlap such as «function» / «graph» is never sufficient to
+  // certify a transformation. Both sides must make the same directional claim.
+  return left === right;
 }
 
 export function deriveOutcomeCognitiveDepth(
@@ -6000,6 +6021,48 @@ export function discoverIndependentLearningTargets(input: {
   }).sort((left, right) => left.id.localeCompare(right.id));
 }
 
+/**
+ * Adds review-only source targets for readable in-scope material that did not
+ * reach the provider-candidate snapshot. This is deliberately source-first:
+ * exercises/outcomes may enrich an existing seed but cannot create one alone.
+ */
+export function buildSourceFirstTargetLedger(input: {
+  candidateSnapshots: ReadonlyArray<KnowledgeCompletenessCandidateSnapshot>;
+  blocks?: ReadonlyArray<Pass1Block>;
+  eligibleBlockIndices?: ReadonlySet<number>;
+  teacherOutcomes?: readonly string[] | null;
+  teacherGoal?: string | null;
+}): IndependentLearningTarget[] {
+  const candidateTargets = discoverIndependentLearningTargets(input);
+  if (!input.blocks || !input.eligibleBlockIndices) return candidateTargets;
+  const candidateSourceIndices = new Set(
+    input.candidateSnapshots.flatMap((candidate) => candidate.coreSourceBlockIndices),
+  );
+  const sourceTargets = input.blocks.flatMap((block, blockIndex) => {
+    if (
+      !input.eligibleBlockIndices!.has(blockIndex)
+      || candidateSourceIndices.has(blockIndex)
+      || !requiresMicroNodeOwnership(block)
+    ) return [];
+    const concepts = outcomeConceptTokens(block.sourceText);
+    const direction = deriveIndependentPerformanceDirection(block.sourceText);
+    return [{
+      id: `ilt:source:${blockIndex}`,
+      performanceDirection: direction,
+      conceptTokens: [...concepts].sort(),
+      sourceBlockIndices: [blockIndex],
+      exerciseBlockIndices: [],
+      outcomeIndexes: [],
+      goalSupported: false,
+      candidateIds: [],
+      canonicalCandidateIds: [],
+      state: "REVIEW_REQUIRED" as IndependentLearningTargetState,
+      reviewReasonCodes: ["SOURCE_SUPPORTED_NO_CANDIDATE"],
+    }];
+  });
+  return [...candidateTargets, ...sourceTargets].sort((left, right) => left.id.localeCompare(right.id));
+}
+
 export interface KnowledgeCompletenessDiagnostics {
   independentTargetCount: number;
   independentTargets: IndependentLearningTarget[];
@@ -6050,16 +6113,20 @@ export function auditKnowledgeCompleteness(input: {
   lessonWideConsolidation: LessonWideConsolidationDiagnostics;
   teacherOutcomes?: readonly string[] | null;
   teacherGoal?: string | null;
+  sourceBlocks?: ReadonlyArray<Pass1Block>;
+  eligibleBlockIndices?: ReadonlySet<number>;
 }): KnowledgeCompletenessDiagnostics {
   const intentionallyNonPromoted = new Set(
     input.finalPromotion?.decisions
       .filter((decision) => decision.state !== "PROMOTE")
       .map((decision) => decision.candidateId) ?? [],
   );
-  const independentTargets = discoverIndependentLearningTargets({
+  const independentTargets = buildSourceFirstTargetLedger({
     candidateSnapshots: input.candidateSnapshots,
     teacherOutcomes: input.teacherOutcomes,
     teacherGoal: input.teacherGoal,
+    blocks: input.sourceBlocks,
+    eligibleBlockIndices: input.eligibleBlockIndices,
   });
   const snapshotById = new Map(
     input.candidateSnapshots.map((snapshot) => [snapshot.candidateId, snapshot]),
@@ -6075,6 +6142,15 @@ export function auditKnowledgeCompleteness(input: {
   const reviewRequiredGaps: KnowledgeCompletenessGap[] = [];
 
   for (const target of independentTargets) {
+    if (target.candidateIds.length === 0) {
+      reviewRequiredGaps.push({
+        id: `target:${target.id}`,
+        reason: "INDEPENDENT_TARGET_NOT_CANONICAL",
+        targetId: target.id,
+        detail: "Verified in-scope instructional source has no candidate snapshot; teacher review is required before a MicroNode may be created.",
+      });
+      continue;
+    }
     const canonicalMatches = canonicalNodes().filter((node) => {
       const candidateId = node.candidateId;
       return !!candidateId && target.candidateIds.includes(candidateId);
@@ -6310,8 +6386,11 @@ export function assertPass2PersistenceGates(input: {
 export function preserveUnresolvedInstructionalBlocksForReview(
   topics: Pass2TopicResult[],
   blocks: ReadonlyArray<SourceCoverageBlock>,
+  semanticallyExcludedBlockIndices?: ReadonlySet<number>,
 ): { preservedBlockIndices: number[] } {
-  const instructionalCoverage = validateInstructionalCoverage(blocks, topics);
+  const instructionalCoverage = validateInstructionalCoverage(blocks, topics, {
+    semanticallyExcludedBlockIndices,
+  });
   const preservedBlockIndices: number[] = [];
 
   const reviewBlockIndices = instructionalCoverage.blocks
@@ -6384,10 +6463,28 @@ export async function runPass2Pipeline(
   lessonInfo: Pass2LessonInfo,
 ): Promise<Pass2Result> {
   logger.info({ lessonId: lessonInfo.lessonId, blockCount: blocks.length }, "pass2: starting pipeline");
+  const semanticScope = deriveLessonSemanticScope({
+    blocks,
+    lessonTitle: lessonInfo.lessonTitle,
+    pagesTo: lessonInfo.pagesTo,
+  });
+  const excludedCandidateBlockIndices = new Set(semanticScope.excludedCandidateBlockIndices);
+  const inScopeBlockIndices = semanticScope.inScopeBlockIndices;
+  logger.info(
+    {
+      lessonId: lessonInfo.lessonId,
+      inScopeBlockCount: inScopeBlockIndices.length,
+      adjacentBlockIndices: semanticScope.adjacentBlockIndices,
+      structuralBlockIndices: semanticScope.structuralBlockIndices,
+      reviewRequiredBlockIndices: semanticScope.reviewRequiredBlockIndices,
+    },
+    "pass2: semantic lesson scope derived",
+  );
 
   // Step 1: topic boundary detection
   let groups = await detectTopicGroups(
-    blocks, lessonInfo.lessonTitle, lessonInfo.pagesFrom ?? 0, lessonInfo.pagesTo ?? 0
+    blocks, lessonInfo.lessonTitle, lessonInfo.pagesFrom ?? 0, lessonInfo.pagesTo ?? 0,
+    inScopeBlockIndices,
   );
   logger.info({ groupCount: groups.length }, "pass2 step1: initial topic groups");
 
@@ -6490,7 +6587,7 @@ export async function runPass2Pipeline(
   if (mergeLog.length > 0) {
     logger.info({ mergeLog }, "pass2 step1c: hollow groups merged");
   }
-  const groupCoverage = ensurePass2TopicGroupCoverage(mergedGroups, blocks.length);
+  const groupCoverage = ensurePass2TopicGroupCoverage(mergedGroups, blocks.length, inScopeBlockIndices);
   if (groupCoverage.recoveredIndices.length > 0 || groupCoverage.dedupedIndices.length > 0) {
     logger.warn(
       groupCoverage,
@@ -6538,6 +6635,20 @@ export async function runPass2Pipeline(
   for (const topic of topics) {
     topic.microNodes.forEach((node, microNodeIndex) => {
       node.candidateId = `t${topic.sequence}:n${microNodeIndex}`;
+    });
+  }
+  if (semanticScope.excludedCandidateBlockIndices.length > 0) {
+    // This topic is a durable source-retention container, never a candidate
+    // generation input. Activity normalization retains adjacent exercises here
+    // as unlinked material instead of attaching them to an in-scope MicroNode.
+    topics.push({
+      sequence: topics.length + 1,
+      title: "Դասից դուրս հարակից աղբյուրային նյութ",
+      topicType: "semantic_scope",
+      inputBlockIndices: [...semanticScope.excludedCandidateBlockIndices],
+      microNodes: [],
+      unmappedBlockIndices: [...semanticScope.excludedCandidateBlockIndices],
+      additionalExercises: [],
     });
   }
   const topicDiagnostics = topicResults.map((result) => result.diagnostics);
@@ -6628,12 +6739,17 @@ export async function runPass2Pipeline(
   // broaden to another Topic.
   const repairResults = await Promise.all(
     topics.map((topic, index) =>
-      repairTopicInstructionalCoverage(topic, blocks, index + 1, curriculumConstraints),
+      (topic.inputBlockIndices ?? []).some((blockIndex) => !excludedCandidateBlockIndices.has(blockIndex))
+        ? repairTopicInstructionalCoverage(topic, blocks, index + 1, curriculumConstraints)
+        : { attempted: false, recoveredBlockCount: 0, failed: false },
     ),
   );
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
-  const instructionalCoverage = validateInstructionalCoverage(blocks, topics);
+  const instructionalCoverage = validateInstructionalCoverage(blocks, topics, {
+    semanticallyExcludedBlockIndices: excludedCandidateBlockIndices,
+  });
   for (let index = 0; index < topics.length; index++) {
+    if (!topicDiagnostics[index]) continue;
     const topicIndices = new Set(topics[index].inputBlockIndices ?? []);
     const records = instructionalCoverage.blocks.filter((record) => topicIndices.has(record.blockIndex));
     const unresolvedInstructional = records.filter(
@@ -6775,14 +6891,22 @@ export async function runPass2Pipeline(
     lessonWideConsolidation,
     teacherOutcomes: lessonInfo.teacherOutcomes,
     teacherGoal: lessonInfo.teacherGoal,
+    sourceBlocks: blocks,
+    eligibleBlockIndices: new Set(inScopeBlockIndices),
   });
   normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
   // safe only if it preserves one valid owner for every source and activity.
-  const sourcePlacementReview = preserveUnresolvedInstructionalBlocksForReview(topics, blocks);
-  const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics);
+  const sourcePlacementReview = preserveUnresolvedInstructionalBlocksForReview(
+    topics,
+    blocks,
+    excludedCandidateBlockIndices,
+  );
+  const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics, {
+    semanticallyExcludedBlockIndices: excludedCandidateBlockIndices,
+  });
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
   const allUnmapped = topics.flatMap((topic) => topic.unmappedBlockIndices);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
@@ -6919,6 +7043,7 @@ export async function runPass2Pipeline(
     candidatePromotion,
     lessonWideConsolidation,
     knowledgeCompleteness,
+    semanticScope,
     unmappedBlockIndices: allUnmapped,
     sourcePlacementReview,
     coverageValidation,

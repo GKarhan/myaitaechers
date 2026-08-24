@@ -69,7 +69,8 @@ export interface SourceDispositionRecord {
     | "SUPPORTING_VISUAL"
     | "NO_READABLE_TEXT"
     | "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED"
-    | "ACTIVITY_BLOCK_NOT_EXERCISE_OWNED";
+    | "ACTIVITY_BLOCK_NOT_EXERCISE_OWNED"
+    | "SEMANTICALLY_OUT_OF_SCOPE";
 }
 
 export interface InstructionalCoverageResult {
@@ -139,6 +140,7 @@ export function requiresMicroNodeOwnership(block: SourceCoverageBlock): boolean 
 export function validateInstructionalCoverage(
   blocks: ReadonlyArray<SourceCoverageBlock>,
   topics: ReadonlyArray<ValidatorTopic>,
+  options: { semanticallyExcludedBlockIndices?: ReadonlySet<number> } = {},
 ): InstructionalCoverageResult {
   const microNodeOwners = new Set<number>();
   const exerciseOwners = new Set<number>();
@@ -164,7 +166,10 @@ export function validateInstructionalCoverage(
   blocks.forEach((block, blockIndex) => {
     let disposition: SourceDisposition;
     let reason: SourceDispositionRecord["reason"];
-    if (!block.sourceText.trim()) {
+    if (options.semanticallyExcludedBlockIndices?.has(blockIndex)) {
+      disposition = "LEGITIMATE_NON_INSTRUCTIONAL";
+      reason = "SEMANTICALLY_OUT_OF_SCOPE";
+    } else if (!block.sourceText.trim()) {
       disposition = "UNREADABLE";
       reason = "NO_READABLE_TEXT";
     } else if (ACTIVITY_TYPES.has(block.blockType)) {
@@ -202,7 +207,10 @@ export function validateInstructionalCoverage(
     });
   });
 
-  const readableInstructionalBlocks = blocks.filter(requiresMicroNodeOwnership).length;
+  const readableInstructionalBlocks = blocks.filter((block, blockIndex) =>
+    !options.semanticallyExcludedBlockIndices?.has(blockIndex)
+    && requiresMicroNodeOwnership(block),
+  ).length;
   return {
     valid: unresolvedInstructionalIndices.length === 0 && unresolvedActivityIndices.length === 0,
     readableInstructionalBlocks,
