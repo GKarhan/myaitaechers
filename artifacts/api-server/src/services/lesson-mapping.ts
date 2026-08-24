@@ -1773,6 +1773,53 @@ export interface Pass2TopicResult {
   additionalExercises: Pass2Exercise[];
 }
 
+export interface Pass2IntermediatePlacementInvariant {
+  /** Verified indices absent from every output placement before recovery. */
+  missingBeforeRecovery: number[];
+  /** Missing indices safely retained as topic-scoped review material. */
+  rescuedToUnmapped: number[];
+  /** Missing indices with no known topic destination; final validation must fail. */
+  unrecoverableIndices: number[];
+}
+
+/**
+ * Guards the Step 2 response boundary. Topic membership is not a placement:
+ * every verified input block must appear in one concrete source, support,
+ * activity, or review-safe unmapped destination before later transformations.
+ * Existing references are never moved or duplicated here.
+ */
+export function rescueMissingPass2PlacementReferences(
+  topics: Pass2TopicResult[],
+  totalBlocks: number,
+): Pass2IntermediatePlacementInvariant {
+  const referenced = new Set<number>();
+  for (const topic of topics) {
+    for (const node of topic.microNodes) {
+      node.sourceBlockIndices.forEach((index) => referenced.add(index));
+      node.supportingMaterialIndices.forEach((index) => referenced.add(index));
+      node.exercises.forEach((exercise) => referenced.add(exercise.blockIndex));
+    }
+    topic.additionalExercises.forEach((exercise) => referenced.add(exercise.blockIndex));
+    topic.unmappedBlockIndices.forEach((index) => referenced.add(index));
+  }
+  const missingBeforeRecovery = Array.from({ length: totalBlocks }, (_, index) => index)
+    .filter((index) => !referenced.has(index));
+  const rescuedToUnmapped: number[] = [];
+  const unrecoverableIndices: number[] = [];
+  for (const index of missingBeforeRecovery) {
+    const topic = topics.find((candidate) => (candidate.inputBlockIndices ?? []).includes(index));
+    if (!topic) {
+      unrecoverableIndices.push(index);
+      continue;
+    }
+    // The index is absent from every concrete placement above, so this cannot
+    // introduce a duplicate placement.
+    topic.unmappedBlockIndices.push(index);
+    rescuedToUnmapped.push(index);
+  }
+  return { missingBeforeRecovery, rescuedToUnmapped, unrecoverableIndices };
+}
+
 // ── Phase 1: Knowledge Candidate / source-material contract ───────────────────
 //
 // A verified Pass 1 block is source material, not automatically knowledge.
@@ -3559,12 +3606,68 @@ Rules:
   even for internal or organisational categories such as "Introduction" or "Exercises".
   Write "Ներածություն" not "Introduction", "Վարժություններ" not "Exercises", etc.`;
 
+export interface Pass2TopicGroup {
+  title: string;
+  topicType: string;
+  indices: number[];
+}
+
+/**
+ * Restores exactly-once topic membership for every verified Pass 1 block before
+ * Step 2 receives its per-topic prompt. A model may omit an index despite the
+ * contract; that omission must not silently remove the block from later
+ * placement validation.
+ */
+export function ensurePass2TopicGroupCoverage(
+  groups: Pass2TopicGroup[],
+  totalBlocks: number,
+): { recoveredIndices: number[]; dedupedIndices: number[] } {
+  const ownerByIndex = new Map<number, Pass2TopicGroup>();
+  const dedupedIndices: number[] = [];
+  for (const group of groups) {
+    const retained: number[] = [];
+    for (const index of group.indices) {
+      if (!Number.isInteger(index) || index < 0 || index >= totalBlocks) continue;
+      if (ownerByIndex.has(index)) {
+        dedupedIndices.push(index);
+        continue;
+      }
+      ownerByIndex.set(index, group);
+      retained.push(index);
+    }
+    group.indices = retained;
+  }
+  const recoveredIndices: number[] = [];
+  for (let index = 0; index < totalBlocks; index++) {
+    if (ownerByIndex.has(index)) continue;
+    if (groups.length === 0) {
+      groups.push({
+        title: "Չդասակարգված աղբյուրային նյութ",
+        topicType: "structural",
+        indices: [],
+      });
+    }
+    const destination = [...groups].sort((left, right) => {
+      const distance = (group: Pass2TopicGroup) => group.indices.length === 0
+        ? Number.POSITIVE_INFINITY
+        : Math.min(...group.indices.map((candidate) => Math.abs(candidate - index)));
+      return distance(left) - distance(right)
+        || groups.indexOf(left) - groups.indexOf(right);
+    })[0];
+    destination.indices.push(index);
+    destination.indices.sort((left, right) => left - right);
+    ownerByIndex.set(index, destination);
+    recoveredIndices.push(index);
+  }
+  return { recoveredIndices, dedupedIndices };
+}
+
 async function detectTopicGroups(
   blocks: Pass1Block[],
   lessonTitle: string,
   pagesFrom: number,
   pagesTo: number
-): Promise<{ title: string; topicType: string; indices: number[] }[]> {
+): Promise<Pass2TopicGroup[]> {
   const allIndices = blocks.map((_, i) => i);
   const blockLines = blocks.map((b, i) => fmtPass2Block(i, b)).join("\n");
 
@@ -3621,9 +3724,9 @@ Rules:
   even for internal or organisational categories. Write "Ներածություն" not "Introduction", etc.`;
 
 async function subdivideGroup(
-  group: { title: string; topicType: string; indices: number[] },
+  group: Pass2TopicGroup,
   blocks: Pass1Block[]
-): Promise<{ title: string; topicType: string; indices: number[] }[]> {
+): Promise<Pass2TopicGroup[]> {
   const blockLines = group.indices.map((i) => fmtPass2Block(i, blocks[i])).join("\n");
 
   const userPrompt = `The following ${group.indices.length} blocks all belong to «${group.title}» but the group is too large (>${PASS2_MAX_GROUP_SIZE} blocks).
@@ -6153,6 +6256,13 @@ export async function runPass2Pipeline(
   if (mergeLog.length > 0) {
     logger.info({ mergeLog }, "pass2 step1c: hollow groups merged");
   }
+  const groupCoverage = ensurePass2TopicGroupCoverage(mergedGroups, blocks.length);
+  if (groupCoverage.recoveredIndices.length > 0 || groupCoverage.dedupedIndices.length > 0) {
+    logger.warn(
+      groupCoverage,
+      "pass2: restored exact verified-block topic membership after Step 1 output omission",
+    );
+  }
   logger.info({ groupCount: mergedGroups.length }, "pass2 step1c: groups after hasRealTheory merge");
 
   // Step 2: organise each topic into MicroNodes (all groups in parallel)
@@ -6197,6 +6307,17 @@ export async function runPass2Pipeline(
     });
   }
   const topicDiagnostics = topicResults.map((result) => result.diagnostics);
+
+  // The Step 2 model can omit a non-core block even when the topic prompt lists
+  // it. Preserve that verified block as explicit topic-scoped review material;
+  // do not fabricate MicroNode ownership and do not alter the final validator.
+  const intermediatePlacement = rescueMissingPass2PlacementReferences(topics, blocks.length);
+  if (intermediatePlacement.rescuedToUnmapped.length > 0 || intermediatePlacement.unrecoverableIndices.length > 0) {
+    logger.warn(
+      intermediatePlacement,
+      "pass2: rescued omitted Step 2 block references into review-safe placement",
+    );
+  }
 
   // ── Activity normalization: enforce "exactly one canonical placement" invariant ─
   //

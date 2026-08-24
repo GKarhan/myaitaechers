@@ -1,0 +1,178 @@
+FOCUSED FIX ONLY — PASS 2 VERIFIED BLOCK PLACEMENT LOSS
+
+DO NOT redesign mapping architecture.
+DO NOT weaken validation.
+DO NOT change Knowledge Completeness logic.
+DO NOT change candidate promotion.
+DO NOT change Phase 3B consolidation.
+DO NOT change source-material schema.
+DO NOT change prompts unless the audit proves the exact loss occurs inside
+prompt-response normalization and cannot be fixed deterministically.
+
+REAL FAILURE
+
+Lesson 709
+§1.5
+latest failed job: 176
+
+Pass 2 verified input blocks: 20
+Final covered blocks: 19
+
+missingIndices: [9]
+duplicateIndices: []
+invalidIndices: []
+
+Prior successful audit identifies block 9 as:
+blockType = EXAMPLE
+page = 23
+
+The new semantic system successfully generated the missing knowledge direction:
+
+“Ֆունկցիայի նշանապահպանման միջակայքերի որոշում գրաֆիկից”
+
+So DO NOT touch completeness/candidate semantics.
+
+ROOT CAUSE FROM DIAGNOSTIC:
+
+PRE_EXISTING_PASS2_PLACEMENT_BUG
+
+One verified source block disappeared from the active Pass 2 placement set before
+final coverage validation.
+
+TASK
+
+First trace exactly where block index 9 disappears.
+
+Inspect only the production path responsible for:
+
+Pass 1 verified blocks
+→ Pass 2 Step 1/topic grouping
+→ organizeTopicMicroNodes
+→ normalization
+→ provisional Topic block membership
+→ source/support/unmapped placement
+
+Find the FIRST stage where:
+
+input contains index 9
+but output no longer contains index 9 in any canonical placement.
+
+Report that point before editing.
+
+Then implement the SMALLEST deterministic fix.
+
+NON-NEGOTIABLE INVARIANT
+
+Every verified Pass 1 block entering Pass 2 must survive every intermediate
+transformation in exactly one known primary state:
+
+- candidate/core source
+- supporting material
+- exercise/activity
+- structural material
+- unresolved/review
+- unmapped/review-safe
+
+A transformation may reclassify a block.
+
+It must NEVER silently drop it.
+
+IMPORTANT
+
+Do NOT solve this by forcing every missing block into a MicroNode.
+
+If a block is not safely owned after topic organization, preserve it explicitly
+as unresolved/unmapped review material.
+
+Source preservation is more important than forced pedagogical assignment.
+
+IMPLEMENT A PASS-2 INTERMEDIATE COVERAGE INVARIANT
+
+At the relevant boundary, compare:
+
+input verified block indices
+
+vs
+
+all output block references.
+
+If any index disappears:
+
+1. try deterministic safe recovery if an existing destination is known;
+2. otherwise place it into explicit unresolved/unmapped review state;
+3. never silently drop it.
+
+Do NOT bypass final validateSourceCoverage().
+
+The final validator must remain unchanged and still enforce exact coverage.
+
+Do not create duplicate ownership while rescuing a missing block.
+
+REGRESSION TESTS
+
+Add focused tests for:
+
+1. All verified Pass 2 blocks survive Topic grouping.
+2. EXAMPLE block not selected as core knowledge still survives as support/review.
+3. A block omitted by AI Topic output is rescued into safe unresolved placement.
+4. Rescue does not create source/support duplicates.
+5. Exercise/activity behavior remains unchanged.
+6. Candidate promotion behavior remains unchanged.
+7. Phase 3B lesson-wide consolidation remains unchanged.
+8. Completeness M17–M20 behavior remains unchanged.
+9. Final validateSourceCoverage still fails on genuinely invalid/missing data
+   when safe rescue is impossible.
+10. Determinism: same input → same rescued placement.
+
+REAL REGRESSION FIXTURE
+
+Represent the §1.5 pattern:
+
+20 verified blocks
+→ AI/topic organization references only 19
+→ one EXAMPLE block omitted
+
+Expected:
+
+20/20 survive intermediate placement
+missingIndices = []
+duplicateIndices = []
+source loss = 0
+
+Do NOT rerun production lesson automatically.
+
+VERIFICATION
+
+Run:
+
+- focused new Pass 2 placement test
+- existing candidate promotion tests
+- Phase 3B consolidation tests
+- completeness tests
+- durable source tests
+- coverage validator tests
+- API typecheck
+
+If any previously passing mapping test fails:
+
+STOP and diagnose.
+Do not weaken the old test.
+
+FINAL REPORT
+
+Return:
+
+1. exact first function/stage where index 9 was lost
+2. why it was lost
+3. files changed
+4. exact rescue/invariant behavior added
+5. why no duplicate ownership can be introduced
+6. tests run/results
+7. M1–M20 non-regression status
+8. confirmation final coverage validator was NOT weakened
+9. confirmation completeness/candidate/consolidation logic was NOT changed
+10. whether lesson 709 is safe to manually rerun
+
+Then STOP.
+
+DO NOT rerun lesson 709.

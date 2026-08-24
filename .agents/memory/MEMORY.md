@@ -66,3 +66,4 @@
 - [Phase 3A candidate promotion](phase3a-candidate-promotion.md) — promotion is the MicroNode authority; non-promoted candidates return to durable source/activity placement, while review candidates remain source-only.
 - [Phase 3B lesson-wide identity](phase3b-lesson-wide-identity.md) — Topics organize canonical knowledge but never define it; only explicit semantic merges form cross-topic units.
 - [Mapping completeness and learner-state merges](mapping-completeness.md) — automatic merges need explicit SAME learner-state certification; only exact, exclusively sourced missing candidates may be restored.
+- [Pass 2 block-survival invariant](pass2-block-survival.md) — verify exact group membership before Step 2 and rescue omitted output references to review-safe placement, never fabricated ownership.

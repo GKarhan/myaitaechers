@@ -16,6 +16,7 @@
     "test:translations": "tsx src/mapping/__tests__/mapTextTranslations.test.ts",
     "test:coverage-validator": "tsx src/lib/__tests__/coverage-validator.test.ts",
     "test:mapping-completeness": "tsx src/lib/__tests__/mapping-completeness.test.ts",
+    "test:pass2-placement": "tsx src/lib/__tests__/pass2-placement-invariant.test.ts",
     "test:atomicity-review": "tsx src/lib/__tests__/atomicity-review.test.ts",
     "test:verified-source-subset": "tsx src/lib/__tests__/verified-source-subset.test.ts",
     "test:final-approval": "tsx src/lib/__tests__/lesson-final-approval.test.ts",
