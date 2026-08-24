@@ -21,7 +21,7 @@ const nodes: CognitivePathNodeSnapshot[] = [
   { id: 4, title: "Existing review", status: "approved", cogPathStatus: "needs_review", existingLevelCount: 1, hasTeacherAuthoredLevels: false },
 ];
 
-const validGenerated = {
+const validGenerated: Parameters<typeof canCommitCognitivePathReplacement>[0] = {
   nodeId: 1,
   skipped: false,
   levels: [{
@@ -33,6 +33,18 @@ const validGenerated = {
     minimumIndependentEvidence: 3,
     preferredInteractionTypes: ["multiple_choice"],
   }],
+  progression: {
+    targetLevel: "remember",
+    selectedLevels: ["remember"],
+    omittedLowerLevels: [],
+    generatedLevelSequence: [1],
+    levelCount: 1,
+    progressionDecision: "MINIMAL",
+    progressionConfidence: "HIGH",
+    progressionReasonCodes: ["TARGET_ONLY_SUFFICIENT", "TARGET_LEVEL_IS_FINAL"],
+    reviewReasonCodes: [],
+    contractVersion: "c2-3.0",
+  },
 };
 
 it("1. lesson ledger enumerates every MicroNode exactly once", () => {
@@ -61,6 +73,7 @@ it("6. a complete generated candidate is the only kind eligible for replacement"
   assert.equal(canCommitCognitivePathReplacement(validGenerated), true);
   assert.equal(canCommitCognitivePathReplacement({ ...validGenerated, skipped: true }), false);
   assert.equal(canCommitCognitivePathReplacement({ ...validGenerated, levels: [] }), false);
+  assert.equal(canCommitCognitivePathReplacement({ ...validGenerated, progression: undefined }), false);
 });
 
 it("7. partial candidates cannot be committed as a replacement", () => {

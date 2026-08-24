@@ -13,6 +13,10 @@ import {
 } from "./lesson-mapping.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
 import type { TargetCognitiveDemand } from "../lib/c2-target-demand.js";
+import {
+  progressionAllowsPersistence,
+  type CognitiveProgressionDecision,
+} from "../lib/c2-progression.js";
 
 export const COGNITIVE_PATH_JOB_TYPE = "generate_cognitive_paths";
 
@@ -24,6 +28,7 @@ export const COGNITIVE_PATH_STATES = [
   "SKIPPED_EXISTING",
   "BLOCKED_C1_REVIEW",
   "BLOCKED_TARGET_REVIEW",
+  "BLOCKED_PROGRESSION_REVIEW",
   "GENERATED_NEEDS_REVIEW",
   "CONFIRMED",
   "PROVIDER_FAILURE",
@@ -43,6 +48,7 @@ export type CognitivePathNodeLedgerEntry = {
   levelCount: number;
   targetLevel: string | null;
   targetDemand?: TargetCognitiveDemand;
+  progression?: CognitiveProgressionDecision;
   lastAttemptAt?: string;
   completedAt?: string;
 };
@@ -58,6 +64,7 @@ export type CognitivePathAttempt = {
   levelCount: number;
   targetLevel: string | null;
   targetDemand?: TargetCognitiveDemand;
+  progression?: CognitiveProgressionDecision;
   errorMessage?: string;
 };
 
@@ -205,7 +212,9 @@ export function canCommitCognitivePathReplacement(
 ): boolean {
   return !result.skipped
     && result.levels.length > 0
-    && result.levels.filter((level) => level.isTargetCeiling).length === 1;
+    && result.levels.filter((level) => level.isTargetCeiling).length === 1
+    && !!result.progression
+    && progressionAllowsPersistence(result.progression);
 }
 
 export function buildInitialCognitivePathLedger(
@@ -239,7 +248,11 @@ export function summarizeCognitivePathLedger(
     "SKIPPED_TEACHER_AUTHORED",
     "SKIPPED_EXISTING",
   ]);
-  const blockedStates = new Set<CognitivePathState>(["BLOCKED_C1_REVIEW", "BLOCKED_TARGET_REVIEW"]);
+  const blockedStates = new Set<CognitivePathState>([
+    "BLOCKED_C1_REVIEW",
+    "BLOCKED_TARGET_REVIEW",
+    "BLOCKED_PROGRESSION_REVIEW",
+  ]);
   const failedStates = new Set<CognitivePathState>([
     "PROVIDER_FAILURE",
     "PARSE_FAILURE",
@@ -269,6 +282,9 @@ export function classifyCognitivePathResult(
   }
   if (result.skipCode === "C2_TARGET_DEMAND_REVIEW_REQUIRED") {
     return { state: "BLOCKED_TARGET_REVIEW", reasonCode: result.skipCode };
+  }
+  if (result.skipCode === "C2_PROGRESSION_REVIEW_REQUIRED") {
+    return { state: "BLOCKED_PROGRESSION_REVIEW", reasonCode: result.skipCode };
   }
   if (result.skipCode) {
     return { state: "VALIDATION_FAILURE", reasonCode: result.skipCode };
@@ -583,6 +599,7 @@ export async function runCognitivePathOrchestrator(input: {
           levelCount: 0,
           targetLevel: generated.targetDemand?.targetLevel ?? null,
           targetDemand: generated.targetDemand,
+          progression: generated.progression,
         };
         result = {
           ...result,
@@ -593,6 +610,7 @@ export async function runCognitivePathOrchestrator(input: {
             levelCount: 0,
             targetLevel: generated.targetDemand?.targetLevel ?? null,
             targetDemand: generated.targetDemand,
+            progression: generated.progression,
           }),
           attempts: [...result.attempts, attempt],
         };
@@ -620,6 +638,7 @@ export async function runCognitivePathOrchestrator(input: {
           levelCount: persisted.savedLevels.length,
           targetLevel: generated.targetDemand?.targetLevel ?? persisted.targetLevel,
           targetDemand: generated.targetDemand,
+          progression: generated.progression,
         };
         result = {
           ...result,
@@ -630,6 +649,7 @@ export async function runCognitivePathOrchestrator(input: {
             levelCount: persisted.savedLevels.length,
             targetLevel: generated.targetDemand?.targetLevel ?? persisted.targetLevel,
             targetDemand: generated.targetDemand,
+            progression: generated.progression,
           }),
           attempts: [...result.attempts, attempt],
         };

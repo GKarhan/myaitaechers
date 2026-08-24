@@ -56,6 +56,11 @@ import {
   targetDemandAllowsGeneration,
   type TargetCognitiveDemand,
 } from "../lib/c2-target-demand.js";
+import {
+  assessCognitivePathProgression,
+  progressionAllowsPersistence,
+  type CognitiveProgressionDecision,
+} from "../lib/c2-progression.js";
 
 // ── Activity preservation helpers ─────────────────────────────────────────────
 
@@ -7323,11 +7328,12 @@ export interface CogPathLevel {
 export interface CogPathGenerationResult {
   nodeId:      number;
   skipped:     boolean;
-  skipCode?:   C2GenerationBlockCode | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
+  skipCode?:   C2GenerationBlockCode | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_PROGRESSION_REVIEW_REQUIRED" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
   skipReason?: string;
   levels:      CogPathLevel[];
   groundingAudit?: CognitivePathGroundingAudit;
   targetDemand?: TargetCognitiveDemand;
+  progression?: CognitiveProgressionDecision;
 }
 
 import { z } from "zod";
@@ -7387,7 +7393,7 @@ SOURCE-GROUNDING CONTRACT:
 1. Treat theoryContent as the sole authority for claims, examples, numbers, operations, and relationships. The learningObjective can set the intended action only when theoryContent supports it.
 2. Every performanceObjective and successCriterion must name a learner action tied to a specific claim, representation, or procedure visible in theoryContent. Do not use generic Bloom boilerplate, unrelated scenarios, or unsupported stronger claims.
 3. Preserve every number, notation, and operation exactly when you use it. Do not invent a number or a worked example.
-4. Use the fewest meaningful levels. A single level is valid. Do not mechanically add REMEMBER, and a path may start at UNDERSTAND, APPLY, or another supported level.
+4. Use the smallest pedagogically sufficient progression. A single level is valid. Do not mechanically add REMEMBER or contiguous Bloom levels; every lower level must add an independently meaningful prerequisite checkpoint.
 5. Levels must be strictly increasing: remember < understand < apply < analyze < evaluate < create. Return exactly one target ceiling.
 6. The server provides one resolved Target Cognitive Demand. The final target ceiling MUST equal that level. C1 is diagnostic context only and must not override the resolved demand.
 7. All performanceObjective and successCriterion text must be Armenian Unicode. Make the performance objective observable and the success criterion narrow, checkable evidence for that same source-backed action.
@@ -7430,8 +7436,10 @@ Linked Source Exercises (${input.exercises.length}):
 ${exList}
 ${existingSection}
 
-Return a source-grounded cognitive path for this MicroNode. The final target ceiling
-must be "${targetDemand.targetLevel}". Include only levels that the source supports.
+Return the smallest source-grounded cognitive progression for this MicroNode. The final
+target ceiling must be "${targetDemand.targetLevel}". Include a lower level only when
+the objective/source/exercise evidence makes it an independently meaningful prerequisite.
+Skipped Bloom levels are valid; do not add levels just to make the sequence contiguous.
 {
   "levels": [
     {
@@ -7554,6 +7562,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     };
   }
   if (!matchesTargetCognitiveDemand(targetDemand, levels)) {
+    const progression = assessCognitivePathProgression({ ...input, targetDemand }, levels);
     return {
       nodeId: input.nodeId,
       skipped: true,
@@ -7561,6 +7570,19 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: `generated Cognitive Path target does not match resolved target demand ${targetDemand.targetLevel}`,
       levels: [],
       targetDemand,
+      progression,
+    };
+  }
+  const progression = assessCognitivePathProgression({ ...input, targetDemand }, levels);
+  if (!progressionAllowsPersistence(progression)) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_PROGRESSION_REVIEW_REQUIRED",
+      skipReason: "generated Cognitive Path is redundant or omits an evidence-backed prerequisite",
+      levels: [],
+      targetDemand,
+      progression,
     };
   }
   const groundingAudit = validateCognitivePathGrounding(
@@ -7577,6 +7599,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       levels: [],
       groundingAudit,
       targetDemand,
+      progression,
     };
   }
 
@@ -7586,6 +7609,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     levels: levels as CogPathLevel[],
     groundingAudit,
     targetDemand,
+    progression,
   };
 }
 
