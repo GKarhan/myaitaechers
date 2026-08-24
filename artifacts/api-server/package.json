@@ -39,6 +39,7 @@
     "test:phase2a-r3-closure": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/phase2a-r3-closure.test.ts",
     "test:c2-generation-quality": "tsx src/lib/__tests__/c2-generation-quality.test.ts",
     "test:c2-approved-readiness": "tsx src/lib/__tests__/c2-approved-readiness.test.ts",
+    "test:c2-foundation": "tsx src/services/__tests__/c2-foundation.test.ts",
     "test:c2-c1-ceiling": "tsx src/services/__tests__/c2-c1-ceiling-constraint.test.ts",
     "test:c1-outcomes": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/canonical-lesson-outcomes.test.ts",
     "test:c1-review-workflow": "DATABASE_URL=$TEST_DATABASE_URL tsx src/lib/__tests__/goal-outcome-review-workflow.test.ts",

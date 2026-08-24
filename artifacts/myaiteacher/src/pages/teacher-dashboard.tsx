@@ -852,6 +852,7 @@ function LessonNodesPanel({
   type BulkCogPathSummary = {
     generated: BulkCogPathEntry[];
     existing: BulkCogPathEntry[];
+    inProgress: BulkCogPathEntry[];
     c1Review: BulkCogPathEntry[];
     validationFailed: BulkCogPathEntry[];
     failed: BulkCogPathEntry[];
@@ -1099,104 +1100,100 @@ function LessonNodesPanel({
     const summary: BulkCogPathSummary = {
       generated: [],
       existing: [],
+      inProgress: [],
       c1Review: [],
       validationFailed: [],
       failed: [],
     };
-    const publishSummary = () => {
-      setBulkCogPathSummary({
-        generated: [...summary.generated],
-        existing: [...summary.existing],
-        c1Review: [...summary.c1Review],
-        validationFailed: [...summary.validationFailed],
-        failed: [...summary.failed],
-      });
-    };
 
     setBulkCogPathRunning(true);
     setBulkCogPathSummary(null);
-    setBulkCogPathProgress({ current: 0, total: sortedNodes.length, title: "" });
+    setBulkCogPathProgress({
+      current: 0,
+      total: sortedNodes.length,
+      title: "Ճանաչողական ուղիների ստեղծում...",
+    });
 
     try {
-      for (let index = 0; index < sortedNodes.length; index += 1) {
-        const node = sortedNodes[index];
-        const nodeTitle = node.title;
-        setBulkCogPathProgress({ current: index + 1, total: sortedNodes.length, title: nodeTitle });
-
-        // Normal bulk generation is strictly missing-only. Any persisted path,
-        // whether awaiting review or confirmed, is teacher-visible work and must
-        // never be regenerated or overwritten by this action.
-        if ((node as any).cogPathStatus) {
+      const response = await fetch(`/api/lessons/${lessonId}/generate-cognitive-paths`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ force: false }),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        result?: {
+          stateLedger?: Array<{
+            nodeId: number;
+            title: string;
+            state: string;
+            reasonCode?: string;
+          }>;
+        };
+      };
+      const ledger = data.result?.stateLedger ?? [];
+      for (const entry of ledger) {
+        const detail = entry.reasonCode;
+        if (entry.state === "GENERATED_NEEDS_REVIEW") {
+          summary.generated.push({ nodeId: entry.nodeId, title: entry.title });
+        } else if (["SKIPPED_CONFIRMED", "SKIPPED_TEACHER_AUTHORED", "SKIPPED_EXISTING"].includes(entry.state)) {
           summary.existing.push({
-            nodeId: node.id,
-            title: nodeTitle,
-            detail: (node as any).cogPathStatus === "confirmed"
+            nodeId: entry.nodeId,
+            title: entry.title,
+            detail: entry.state === "SKIPPED_CONFIRMED"
               ? "Հաստատված ուղին պահպանվել է"
               : "Գոյություն ունեցող ուղին պահպանվել է",
           });
-          publishSummary();
-          continue;
-        }
-
-        setCogPathGenerating((current) => ({ ...current, [node.id]: true }));
-        setCogPathError((current) => {
-          const next = { ...current };
-          delete next[node.id];
-          return next;
-        });
-
-        try {
-          const response = await fetch(`/api/lessons/${lessonId}/nodes/${node.id}/generate-cognitive-path`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${authToken ?? ""}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ force: false }),
+        } else if (entry.state === "BLOCKED_C1_REVIEW") {
+          summary.c1Review.push({ nodeId: entry.nodeId, title: entry.title, detail });
+          setCogPathError((current) => ({
+            ...current,
+            [entry.nodeId]: detail ?? "C1 վերանայում է պահանջվում",
+          }));
+        } else if (["PARSE_FAILURE", "VALIDATION_FAILURE"].includes(entry.state)) {
+          summary.validationFailed.push({ nodeId: entry.nodeId, title: entry.title, detail });
+          setCogPathError((current) => ({
+            ...current,
+            [entry.nodeId]: detail ?? "Ճանաչողական ուղին չի անցել վավերացումը",
+          }));
+        } else if (entry.state === "IN_PROGRESS") {
+          summary.inProgress.push({
+            nodeId: entry.nodeId,
+            title: entry.title,
+            detail: detail ?? "Ստեղծումն արդեն ընթացքի մեջ է",
           });
-          const data = await response.json().catch(() => ({})) as {
-            cogPathStatus?: string;
-            levels?: CogLevel[];
-            error?: string;
-            message?: string;
-            skipReason?: string;
-          };
-          const detail = data.message ?? data.skipReason ?? data.error;
-
-          if (response.ok) {
-            setCogPathData((current) => ({
-              ...current,
-              [node.id]: {
-                nodeId: node.id,
-                cogPathStatus: data.cogPathStatus ?? "needs_review",
-                levels: data.levels ?? [],
-              },
-            }));
-            summary.generated.push({ nodeId: node.id, title: nodeTitle });
-          } else if (response.status === 409 && data.error === "TEACHER_EDITS_EXIST") {
-            summary.existing.push({ nodeId: node.id, title: nodeTitle, detail: data.message ?? "Ուսուցչի փոփոխությունները պահպանվել են" });
-          } else if (response.status === 422 && (data.error ?? "").startsWith("C1_")) {
-            summary.c1Review.push({ nodeId: node.id, title: nodeTitle, detail });
-            setCogPathError((current) => ({ ...current, [node.id]: detail ?? "C1 վերանայում է պահանջվում" }));
-          } else if (response.status === 422) {
-            summary.validationFailed.push({ nodeId: node.id, title: nodeTitle, detail });
-            setCogPathError((current) => ({ ...current, [node.id]: detail ?? "Ճանաչողական ուղին չի անցել վավերացումը" }));
-          } else {
-            summary.failed.push({ nodeId: node.id, title: nodeTitle, detail: detail ?? `Սխալ (${response.status})` });
-            setCogPathError((current) => ({ ...current, [node.id]: detail ?? `Սխալ (${response.status})` }));
-          }
-        } catch {
-          const detail = "Կապի սխալ";
-          summary.failed.push({ nodeId: node.id, title: nodeTitle, detail });
-          setCogPathError((current) => ({ ...current, [node.id]: detail }));
-        } finally {
-          setCogPathGenerating((current) => {
-            const next = { ...current };
-            delete next[node.id];
-            return next;
+        } else {
+          summary.failed.push({
+            nodeId: entry.nodeId,
+            title: entry.title,
+            detail: detail ?? (entry.state === "IN_PROGRESS"
+              ? "Ստեղծումն արդեն ընթացքի մեջ է"
+              : "Ստեղծումը չի ավարտվել"),
           });
+          setCogPathError((current) => ({
+            ...current,
+            [entry.nodeId]: detail ?? "Ճանաչողական ուղու ստեղծումը չի ավարտվել",
+          }));
         }
-
-        publishSummary();
       }
+
+      if (!response.ok && ledger.length === 0) {
+        summary.failed.push({
+          nodeId: 0,
+          title: "Ճանաչողական ուղիներ",
+          detail: data.error ?? `Սխալ (${response.status})`,
+        });
+      }
+      setBulkCogPathSummary(summary);
+      await Promise.all(summary.generated.map((entry) => loadCogPath(entry.nodeId)));
       await refreshNodes();
+    } catch {
+      summary.failed.push({
+        nodeId: 0,
+        title: "Ճանաչողական ուղիներ",
+        detail: "Կապի սխալ",
+      });
+      setBulkCogPathSummary(summary);
     } finally {
       setBulkCogPathRunning(false);
       setBulkCogPathProgress(null);
@@ -1624,7 +1621,7 @@ function LessonNodesPanel({
                   value={editNodeForm.title}
                   onChange={(e) => setEditNodeForm((f) => f && { ...f, title: e.target.value })}
                 />
-                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">🎯 Ousouchmani npatak</p>
+                <p className="text-[9px] text-white/40 mb-0.5 mt-1.5">🎯 Ուսումնական նպատակ</p>
                 <textarea
                   className={fieldCls + " resize-none"}
                   rows={2}
@@ -2176,13 +2173,13 @@ function LessonNodesPanel({
                   >+ Ավելացնել ճանաչողական մակարդակ</button>
                 ) : (
                   <div className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 p-2 space-y-1.5">
-                    <p className="text-[10px] text-indigo-300/70 font-medium">Nor channachogakan macardak</p>
+                    <p className="text-[10px] text-indigo-300/70 font-medium">Նոր ճանաչողական մակարդակ</p>
                     <select
                       className={fieldCls + " text-[10px]"}
                       value={addLevelForm[n.id]?.cognitiveLevel ?? ''}
                       onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), cognitiveLevel: e.target.value } }))}
                     >
-                      <option value="">-- Uchanoghakan macardak --</option>
+                      <option value="">-- Ուսումնական մակարդակ --</option>
                       {CANONICAL_COG_ORDER
                         .filter((key) => !(cogPathData[n.id]?.levels ?? []).some((l) => l.cognitiveLevel === key))
                         .map((key) => (
@@ -2192,19 +2189,19 @@ function LessonNodesPanel({
                     <textarea
                       className={fieldCls + " resize-none text-[10px]"}
                       rows={2}
-                      placeholder="Kataralakan npatak (Armenian)..."
+                      placeholder="Կատարողական նպատակ (Armenian)..."
                       value={addLevelForm[n.id]?.performanceObjective ?? ''}
                       onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), performanceObjective: e.target.value } }))}
                     />
                     <textarea
                       className={fieldCls + " resize-none text-[10px]"}
                       rows={2}
-                      placeholder="Hajoghutyun chanabanich (Armenian)..."
+                      placeholder="Հաջողության չափանիշ (Armenian)..."
                       value={addLevelForm[n.id]?.successCriterion ?? ''}
                       onChange={(e) => setAddLevelForm((f) => ({ ...f, [n.id]: { ...(f[n.id] ?? { cognitiveLevel: '', performanceObjective: '', successCriterion: '' }), successCriterion: e.target.value } }))}
                     />
                     <div className="flex gap-1">
-                      <button onClick={() => addCogLevel(n.id)} disabled={!addLevelForm[n.id]?.cognitiveLevel || !!addLevelSaving[n.id]} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{addLevelSaving[n.id] ? '...' : 'Avel'}</button>
+                      <button onClick={() => addCogLevel(n.id)} disabled={!addLevelForm[n.id]?.cognitiveLevel || !!addLevelSaving[n.id]} className={btnSm + " bg-indigo-600 text-white text-[10px] disabled:opacity-40"}>{addLevelSaving[n.id] ? '...' : 'Ավելացնել'}</button>
                       <button onClick={() => { setAddLevelOpen((a) => ({ ...a, [n.id]: false })); setAddLevelForm((f) => { const nf = { ...f }; delete nf[n.id]; return nf; }); }} className={btnSm + " bg-white/10 text-muted-foreground text-[10px]"}>Չեղարկել</button>
                     </div>
                   </div>
@@ -2388,6 +2385,7 @@ function LessonNodesPanel({
                     {[
                       { key: "generated", label: "Ստեղծված", entries: bulkCogPathSummary.generated, className: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300" },
                       { key: "existing", label: "Արդեն կար", entries: bulkCogPathSummary.existing, className: "border-sky-400/20 bg-sky-400/10 text-sky-200" },
+                      { key: "inProgress", label: "Ընթացքի մեջ", entries: bulkCogPathSummary.inProgress, className: "border-violet-400/20 bg-violet-400/10 text-violet-200" },
                       { key: "c1Review", label: "C1 վերանայում", entries: bulkCogPathSummary.c1Review, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
                       { key: "validationFailed", label: "Վավերացում", entries: bulkCogPathSummary.validationFailed, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
                       { key: "failed", label: "Սխալ", entries: bulkCogPathSummary.failed, className: "border-red-400/20 bg-red-400/10 text-red-200" },

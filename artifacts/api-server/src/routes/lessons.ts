@@ -75,6 +75,11 @@ import {
   resolveCanonicalC6Decision,
   type C6EntryIntent,
 } from "../services/c6-personalization.js";
+import {
+  fingerprintCognitivePath,
+  runCognitivePathOrchestrator,
+  type CognitivePathNodeSnapshot,
+} from "../services/cognitive-path-orchestrator.js";
 import { projectLearnerCognitiveCeiling } from "../services/learner-cognitive-ceiling.js";
 import {
   applyAuthorizedTargetTransition,
@@ -6924,11 +6929,69 @@ async function getCogNode(lessonId: number, nodeId: number) {
       childFriendlyExplanation: lessonNodesTable.childFriendlyExplanation,
       basicExamples: lessonNodesTable.basicExamples,
       topicId: lessonNodesTable.topicId,
+      cogPathStatus: (lessonNodesTable as any).cogPathStatus,
     })
     .from(lessonNodesTable)
     .where(and(eq(lessonNodesTable.id, nodeId), eq(lessonNodesTable.lessonId, lessonId)))
     .limit(1);
   return node ?? null;
+}
+
+async function buildCogPathInput(
+  lessonId: number,
+  node: Awaited<ReturnType<typeof getCogNode>>,
+  existingLevels: Array<{
+    cognitiveLevel: string;
+    sequence: number;
+    isTargetCeiling: boolean;
+    performanceObjective: string | null;
+    successCriterion: string | null;
+  }>,
+): Promise<CogPathInput> {
+  if (!node) throw new Error("MicroNode not found");
+
+  const [lesson, subject, topicRow, nodeExercises] = await Promise.all([
+    db.select({ title: lessonsTable.title, subjectId: lessonsTable.subjectId })
+      .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1).then((rows) => rows[0] ?? null),
+    db.select({ name: subjectsTable.name })
+      .from(subjectsTable)
+      .innerJoin(lessonsTable, eq(lessonsTable.subjectId, subjectsTable.id))
+      .where(eq(lessonsTable.id, lessonId))
+      .limit(1).then((rows) => rows[0] ?? null),
+    node.topicId
+      ? db.select({ title: lessonTopicsTable.title })
+        .from(lessonTopicsTable).where(eq(lessonTopicsTable.id, node.topicId))
+        .limit(1).then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
+    db.select({
+      exerciseId: lessonExercisesTable.exerciseId,
+      exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim,
+    })
+      .from(lessonExercisesTable)
+      .where(and(eq(lessonExercisesTable.lessonId, lessonId), eq(lessonExercisesTable.relatedNodeId, node.id))),
+  ]);
+
+  return {
+    nodeId: node.id,
+    title: node.title,
+    nodeStatus: node.status,
+    learningObjective: node.learningObjective ?? null,
+    theoryContent: node.theoryContent ?? null,
+    blockType: node.blockType ?? null,
+    targetBloomLevel: node.targetBloomLevel ?? null,
+    subjectName: subject?.name ?? "Unknown Subject",
+    lessonTitle: lesson?.title ?? "Unknown Lesson",
+    topicTitle: topicRow?.title ?? null,
+    childFriendlyExplanation: node.childFriendlyExplanation ?? null,
+    basicExamples: Array.isArray(node.basicExamples)
+      ? (node.basicExamples as string[])
+      : null,
+    exercises: nodeExercises.map((exercise): CogPathExercise => ({
+      exerciseId: exercise.exerciseId,
+      exerciseText: exercise.exerciseTextVerbatim,
+    })),
+    existingLevels: existingLevels.length > 0 ? existingLevels : undefined,
+  };
 }
 
 async function getApprovedMicroNodeC2Readiness(input: {
@@ -7045,22 +7108,97 @@ router.get("/lessons/:lessonId/nodes/:nodeId/cognitive-path", requireAuth, requi
   });
 });
 
+// POST /lessons/:lessonId/generate-cognitive-paths
+// Lesson-level C2-1 orchestration. Every current MicroNode is represented once
+// in the durable job ledger; normal generation fills only genuinely missing paths.
+router.post("/lessons/:lessonId/generate-cognitive-paths", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
+  const lessonId = parseInt(String(req.params.lessonId), 10);
+  if (isNaN(lessonId)) { res.status(400).json({ error: "Invalid lesson id" }); return; }
+  const force = !!(req.body as { force?: boolean })?.force;
+
+  const nodeIds = await db.select({ id: lessonNodesTable.id })
+    .from(lessonNodesTable).where(eq(lessonNodesTable.lessonId, lessonId))
+    .orderBy(asc(lessonNodesTable.sequence));
+  if (nodeIds.length === 0) {
+    res.status(400).json({ error: "No MicroNodes found — run /map first" });
+    return;
+  }
+
+  const contexts = await Promise.all(nodeIds.map(async ({ id }) => {
+    const node = await getCogNode(lessonId, id);
+    if (!node) throw new Error("MicroNode disappeared while preparing C2 generation");
+    const existingLevels = await db.select()
+      .from(lessonNodeCognitiveLevelsTable)
+      .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, id))
+      .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
+    const preflight = assessC2GenerationPreflight({
+      nodeStatus: node.status,
+      learningObjective: node.learningObjective,
+      theoryContent: node.theoryContent,
+      blockType: node.blockType,
+    });
+    const snapshot: CognitivePathNodeSnapshot = {
+      id: node.id,
+      title: node.title,
+      status: node.status,
+      cogPathStatus: node.cogPathStatus ?? null,
+      existingLevelCount: existingLevels.length,
+      hasTeacherAuthoredLevels: existingLevels.some((level) => level.provenance === "teacher_authored"),
+    };
+    return {
+      snapshot,
+      cogInput: await buildCogPathInput(lessonId, node, existingLevels.map((level) => ({
+        cognitiveLevel: level.cognitiveLevel,
+        sequence: level.sequence,
+        isTargetCeiling: level.isTargetCeiling,
+        performanceObjective: level.performanceObjective,
+        successCriterion: level.successCriterion,
+      }))),
+      protection: {
+        cogPathStatus: node.cogPathStatus ?? null,
+        pathFingerprint: fingerprintCognitivePath(existingLevels),
+      },
+      eligible: preflight.eligible,
+      preflightReason: preflight.reason ?? undefined,
+    };
+  }));
+
+  const run = await runCognitivePathOrchestrator({
+    lessonId,
+    nodes: contexts,
+    trigger: "bulk",
+    force,
+  });
+  if (run.conflictNodeIds.length > 0 && run.jobId === null) {
+    res.status(409).json({
+      error: "C2_GENERATION_IN_PROGRESS",
+      nodeIds: run.conflictNodeIds,
+      result: run.result,
+    });
+    return;
+  }
+
+  logger.info(
+    { lessonId, jobId: run.jobId, summary: run.result.summary },
+    "lesson-level cognitive path generation completed",
+  );
+  res.json({
+    jobId: run.jobId,
+    status: "completed",
+    result: run.result,
+  });
+});
+
 // POST /lessons/:lessonId/nodes/:nodeId/generate-cognitive-path
-// Generate (or safely regenerate) the cognitive path for a MicroNode.
-// Body: { force?: boolean }
-//   force=false (default): returns 409 if teacher-authored rows exist
-//   force=true: replaces all existing levels (use after explicit teacher confirmation)
+// Single-node compatibility route. It shares the same transactional persistence,
+// durable ledger, and same-node concurrency claim as lesson-level generation.
 router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parseInt(String(req.params.lessonId), 10);
-  const nodeId   = parseInt(String(req.params.nodeId),   10);
+  const nodeId = parseInt(String(req.params.nodeId), 10);
   if (isNaN(lessonId) || isNaN(nodeId)) { res.status(400).json({ error: "Invalid ids" }); return; }
 
   const node = await getCogNode(lessonId, nodeId);
   if (!node) { res.status(404).json({ error: "Node not found" }); return; }
-
-  // C2 may not bypass unresolved C1 source/objective review, even when an old
-  // confirmed path exists. This runs before confirmation/edit safeguards so the
-  // caller gets the actionable C1 reason and no provider call is made.
   const preflight = assessC2GenerationPreflight({
     nodeStatus: node.status,
     learningObjective: node.learningObjective,
@@ -7071,168 +7209,95 @@ router.post("/lessons/:lessonId/nodes/:nodeId/generate-cognitive-path", requireA
     res.status(422).json({
       error: preflight.reason,
       message: "C1 MicroNode must be resolved before Cognitive Path generation.",
-      preflight: {
-        reason: preflight.reason,
-        sourceAlignment: preflight.sourceAlignment
-          ? {
-              status: preflight.sourceAlignment.status,
-              reasonCode: preflight.sourceAlignment.reasonCode,
-              matchedConceptCount: preflight.sourceAlignment.matchedConceptCount,
-            }
-          : null,
-      },
     });
     return;
   }
 
   const force = !!(req.body as { force?: boolean })?.force;
-
-  // Regeneration safety: check for teacher-authored rows
-  const existingLevels = await db
-    .select()
+  const existingLevels = await db.select()
     .from(lessonNodeCognitiveLevelsTable)
     .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
     .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
-
-  const [priorStatusRow] = await db
-    .select({ cogPathStatus: (lessonNodesTable as any).cogPathStatus, hasTc: lessonNodesTable.childFriendlyExplanation })
-    .from(lessonNodesTable)
-    .where(eq(lessonNodesTable.id, nodeId))
-    .limit(1);
-  const priorIsConfirmed = (priorStatusRow as any)?.cogPathStatus === "confirmed";
-  const priorHasTc = !!((priorStatusRow as any)?.hasTc);
-
-  const hasTeacherEdits = existingLevels.some((l) => l.provenance === "teacher_authored");
-  if ((hasTeacherEdits || priorIsConfirmed) && !force) {
+  const hasTeacherEdits = existingLevels.some((level) => level.provenance === "teacher_authored");
+  const hasExistingPath = existingLevels.length > 0 || node.cogPathStatus === "needs_review";
+  if (!force && (hasTeacherEdits || node.cogPathStatus === "confirmed")) {
     res.status(409).json({
       error: "TEACHER_EDITS_EXIST",
-      isConfirmed: priorIsConfirmed,
-      message: priorIsConfirmed
-        ? "Oucutsichn hastatatsrel e channachogakan ughiny. Vertasteghtsele kartsne hastatumey?"
-        : "Oucutsichn ardem khmbagrel e channachogakan ughiny. Vertasteghtsele kartsne khmbaghrumnery?",
+      isConfirmed: node.cogPathStatus === "confirmed",
+      message: "Գոյություն ունեցող ճանաչողական ուղին պահպանվել է։ Վերաստեղծումը պահանջում է հստակ force=true գործողություն։",
+    });
+    return;
+  }
+  if (!force && hasExistingPath) {
+    res.status(409).json({
+      error: "COGNITIVE_PATH_EXISTS",
+      message: "Գոյություն ունեցող ճանաչողական ուղին պահպանվել է։",
     });
     return;
   }
 
-  // Build full context for AI generation
-  const [lesson] = await db
-    .select({ title: lessonsTable.title, subjectId: lessonsTable.subjectId })
-    .from(lessonsTable)
-    .where(eq(lessonsTable.id, lessonId))
-    .limit(1);
-
-  const [subject] = await db
-    .select({ name: subjectsTable.name })
-    .from(subjectsTable)
-    .where(eq(subjectsTable.id, lesson?.subjectId ?? 0))
-    .limit(1);
-
-  const topicRow = node.topicId
-    ? await db.select({ title: lessonTopicsTable.title }).from(lessonTopicsTable).where(eq(lessonTopicsTable.id, node.topicId)).limit(1).then((r) => r[0] ?? null)
-    : null;
-
-  const nodeExercises = await db
-    .select({ exerciseId: lessonExercisesTable.exerciseId, exerciseTextVerbatim: lessonExercisesTable.exerciseTextVerbatim })
-    .from(lessonExercisesTable)
-    .where(and(eq(lessonExercisesTable.lessonId, lessonId), eq(lessonExercisesTable.relatedNodeId, nodeId)));
-
-  const input: CogPathInput = {
-    nodeId:            node.id,
-    title:             node.title,
-    nodeStatus:        node.status,
-    learningObjective: node.learningObjective ?? null,
-    theoryContent:     node.theoryContent ?? null,
-    blockType:         node.blockType ?? null,
-    targetBloomLevel:  node.targetBloomLevel ?? null,
-    subjectName:       subject?.name ?? "Unknown Subject",
-    lessonTitle:       lesson?.title ?? "Unknown Lesson",
-    topicTitle:        topicRow?.title ?? null,
-    childFriendlyExplanation: (node as any).childFriendlyExplanation ?? null,
-    basicExamples:     (node as any).basicExamples ?? null,
-    exercises:         nodeExercises.map((e): CogPathExercise => ({ exerciseId: e.exerciseId, exerciseText: e.exerciseTextVerbatim })),
-    existingLevels:    existingLevels.length > 0 ? existingLevels.map((l) => ({
-      cognitiveLevel:       l.cognitiveLevel,
-      sequence:             l.sequence,
-      isTargetCeiling:      l.isTargetCeiling,
-      performanceObjective: l.performanceObjective,
-      successCriterion:     l.successCriterion,
-    })) : undefined,
-  };
-
-  let result = await generateCognitivePath(input);
-  // Bounded self-repair: the generator already receives the canonical C1
-  // ceiling and source. When a fresh AI candidate alone fails a C2 structural,
-  // ceiling, or grounding validator, allow exactly one constrained retry.
-  // Teacher-authored/confirmed paths returned above never enter this branch.
-  if (
-    result.skipped
-    && ["C2_PATH_STRUCTURE_REJECTED", "C2_CEILING_VIOLATION", "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION", "C2_GROUNDING_REJECTED"]
-      .includes(result.skipCode ?? "")
-  ) {
-    result = await generateCognitivePath(input);
-  }
-
-  if (result.skipped) {
-    res.status(422).json({
-      error: result.skipCode ?? "SKIP",
-      skipReason: result.skipReason,
-      message: result.skipReason,
-      groundingStatus: result.groundingAudit?.status ?? null,
+  const run = await runCognitivePathOrchestrator({
+    lessonId,
+    trigger: "single",
+    force,
+    nodes: [{
+      snapshot: {
+        id: node.id,
+        title: node.title,
+        status: node.status,
+        cogPathStatus: node.cogPathStatus ?? null,
+        existingLevelCount: existingLevels.length,
+        hasTeacherAuthoredLevels: hasTeacherEdits,
+      },
+      cogInput: await buildCogPathInput(lessonId, node, existingLevels.map((level) => ({
+        cognitiveLevel: level.cognitiveLevel,
+        sequence: level.sequence,
+        isTargetCeiling: level.isTargetCeiling,
+        performanceObjective: level.performanceObjective,
+        successCriterion: level.successCriterion,
+      }))),
+      protection: {
+        cogPathStatus: node.cogPathStatus ?? null,
+        pathFingerprint: fingerprintCognitivePath(existingLevels),
+      },
+      eligible: true,
+    }],
+  });
+  if (run.conflictNodeIds.length > 0) {
+    res.status(409).json({
+      error: "C2_GENERATION_IN_PROGRESS",
+      message: "Այս MicroNode-ի ճանաչողական ուղու ստեղծումն արդեն ընթացքի մեջ է։",
+      nodeIds: run.conflictNodeIds,
     });
     return;
   }
 
-  // Persist: delete old levels (cascade removes tasks), insert new ones
-  await db.delete(lessonNodeCognitiveLevelsTable).where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId));
-
-  let newCeilingLevel: string | undefined;
-  for (const level of result.levels) {
-    await db.insert(lessonNodeCognitiveLevelsTable).values({
-      lessonNodeId:             nodeId,
-      cognitiveLevel:           level.cognitiveLevel,
-      sequence:                 level.sequence,
-      isApplicable:             true,
-      isTargetCeiling:          level.isTargetCeiling,
-      performanceObjective:     level.performanceObjective || null,
-      successCriterion:         level.successCriterion || null,
-      provenance:               "ai_generated",
-      minimumIndependentEvidence: level.minimumIndependentEvidence,
-      preferredInteractionTypes:  level.preferredInteractionTypes,
+  const ledger = run.result.stateLedger[0];
+  if (ledger?.state !== "GENERATED_NEEDS_REVIEW") {
+    const status = ledger?.state === "PROVIDER_FAILURE"
+      ? 502
+      : ledger?.state === "PERSISTENCE_FAILURE"
+        ? 500
+        : 422;
+    res.status(status).json({
+      error: ledger?.reasonCode ?? "C2_GENERATION_FAILED",
+      message: ledger?.reasonCode ?? "Cognitive Path generation failed",
+      jobId: run.jobId,
     });
-    if (level.isTargetCeiling) newCeilingLevel = level.cognitiveLevel;
+    return;
   }
 
-  // Sync legacy targetBloomLevel for backward compat
-  if (newCeilingLevel && COGNITIVE_LEVEL_TO_BLOOM_INT[newCeilingLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT]) {
-    await db
-      .update(lessonNodesTable)
-      .set({ targetBloomLevel: COGNITIVE_LEVEL_TO_BLOOM_INT[newCeilingLevel as keyof typeof COGNITIVE_LEVEL_TO_BLOOM_INT] })
-      .where(eq(lessonNodesTable.id, nodeId));
-  }
-
-  // Phase 2A R3: set cogPathStatus = 'needs_review'; if was confirmed + TC exists → mark stale
-  const cogStatusUpdates: Record<string, unknown> = { cogPathStatus: "needs_review" };
-  if (priorIsConfirmed && priorHasTc) cogStatusUpdates.teachingContentStale = true;
-  await db.update(lessonNodesTable).set(cogStatusUpdates).where(eq(lessonNodesTable.id, nodeId));
-  // Replacing the C2 path changes material considered by final approval. A
-  // missing-content override is deliberately non-sticky even after activation.
-  await invalidateLessonApproval(lessonId);
-
-  logger.info({ lessonId, nodeId, levelCount: result.levels.length }, "cognitive path generated");
-
-  // Return the freshly-persisted path (same shape as GET)
-  const saved = await db
-    .select()
+  const saved = await db.select()
     .from(lessonNodeCognitiveLevelsTable)
     .where(eq(lessonNodeCognitiveLevelsTable.lessonNodeId, nodeId))
     .orderBy(asc(lessonNodeCognitiveLevelsTable.sequence));
-
   res.json({
     nodeId,
     cogPathStatus: "needs_review",
-    levels: saved.map((l) => ({
-      ...l,
-      preferredInteractionTypes: (l.preferredInteractionTypes ?? []) as string[],
+    jobId: run.jobId,
+    levels: saved.map((level) => ({
+      ...level,
+      preferredInteractionTypes: (level.preferredInteractionTypes ?? []) as string[],
       tasks: [],
     })),
   });
