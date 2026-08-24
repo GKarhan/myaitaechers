@@ -5335,6 +5335,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         reason: `SOURCE_BLOCK_REVIEW_REQUIRED:${disposition?.reason ?? "INSTRUCTIONAL_BLOCK_NOT_MICRONODE_OWNED"}`,
       });
     }
+    for (const decision of pass2.candidatePromotion.decisions) {
+      if (decision.state !== "REVIEW_REQUIRED") continue;
+      reviewItems.push({
+        nodeId: null as unknown as number,
+        nodeTitle: `Knowledge candidate ${decision.candidateId}`,
+        reason: `CANDIDATE_PROMOTION_REVIEW_REQUIRED:${decision.reasonCodes.join(",") || "SEMANTIC_UNCERTAINTY"}`,
+      });
+    }
     // Informational: any blocks the AI explicitly excluded as headers.
     if (pass2.unmappedBlockIndices.length > 0) {
       reviewItems.push({
@@ -5395,6 +5403,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         unmappedReviewBlocks: reviewRequiredSourceBlockCount,
         exercisesCreated:     totalExercises,
         unmappedBlocks:       pass2.unmappedBlockIndices.length,
+        knowledgeCandidates:  pass2.candidatePromotion.candidateCount,
+        promotedMicroNodes:   pass2.candidatePromotion.promotedMicroNodeCount,
+        candidateReviewRequired: pass2.candidatePromotion.reviewRequiredCandidateCount,
       },
       content: {
         aiGeneratedFields:        totalNodes * 2,   // title + learningObjective per MicroNode
@@ -5464,6 +5475,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           rejectedDecisionCount: pass2.duplicateResolution.rejectedDecisionCount,
           rejectedPairCount: pass2.duplicateResolution.rejectedPairIds?.length ?? 0,
         },
+        candidatePromotion: pass2.candidatePromotion,
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignmentReconciliation: pass2.sourceAlignmentReconciliation,
         atomicityRepair: {

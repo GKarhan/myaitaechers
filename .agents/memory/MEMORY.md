@@ -63,3 +63,4 @@
 - [Teaching Content override approvals](teaching-content-override-approvals.md) — overrides are explicit, non-sticky approvals; later material edits must return delivery state to review.
 - [Independent lesson enrichment](independent-lesson-enrichment.md) — Teaching Content is C1/source-gated but C2-independent; normal generation fills only fields blank at commit time.
 - [Goal/Outcome working drafts](goal-outcome-working-drafts.md) — import must verify canonical Goal + Outcome read-back; drafts are editable/deletable without a separate mapping gate.
+- [Phase 3A candidate promotion](phase3a-candidate-promotion.md) — promotion is the MicroNode authority; non-promoted candidates return to durable source/activity placement, while explicit review candidates remain draft-only.

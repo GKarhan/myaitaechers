@@ -1745,6 +1745,9 @@ export interface Pass2Exercise {
 export interface Pass2MicroNode {
   /** Server-owned identity, stable only for this in-memory Pass 2 run. */
   candidateId?: string;
+  /** Explicit Phase 3A candidate decision used at the persistence boundary. */
+  promotionState?: KnowledgeCandidatePromotionState;
+  promotionReasonCodes?: KnowledgeCandidateReviewReasonCode[];
   title: string;
   learningObjective: string;
   microNodeType: "knowledge" | "skill";
@@ -2368,6 +2371,161 @@ export function decideKnowledgeCandidatePromotion(
   return { ...baseDecision, state: "PROMOTE" };
 }
 
+export interface KnowledgeCandidatePromotionDiagnostics {
+  candidateCount: number;
+  promotedMicroNodeCount: number;
+  reviewRequiredCandidateCount: number;
+  supportingMaterialBlockCount: number;
+  exerciseReferenceCount: number;
+  unresolvedCandidateCount: number;
+  rejectedNonKnowledgeCount: number;
+  consolidatedCandidateCount: number;
+  decisions: Array<{
+    candidateId: string;
+    topicSequence: number;
+    state: KnowledgeCandidatePromotionState;
+    reasonCodes: KnowledgeCandidateReviewReasonCode[];
+  }>;
+}
+
+/**
+ * Adapts the final Pass 2 proposal shape into the existing transient
+ * KnowledgeCandidate contract. It adds no provider calls: the existing bounded
+ * semantic review supplies duplicate/atomicity signals before this boundary.
+ */
+export function applyKnowledgeCandidatePromotion(input: {
+  topics: Pass2TopicResult[];
+  blocks: ReadonlyArray<Pass1Block>;
+  sourceAlignment: Pass2SourceAlignment;
+  unresolvedAtomicityFindings: ReadonlyArray<GranularityFinding>;
+  duplicateResolution: DuplicateResolutionAudit;
+  consolidatedCandidateCount?: number;
+}): KnowledgeCandidatePromotionDiagnostics {
+  const unresolvedAtomicityIds = new Set(
+    input.unresolvedAtomicityFindings
+      .map((finding) => finding.microNodeId)
+      .filter((candidateId): candidateId is string => !!candidateId),
+  );
+  const unresolvedDuplicateIds = new Set(
+    input.duplicateResolution.unresolvedPairIds.flatMap((pair) => [
+      pair.candidateAId,
+      pair.candidateBId,
+    ]),
+  );
+  const alignmentByCandidateId = new Map(
+    input.sourceAlignment.nodes.map((entry) => [entry.microNodeId, entry]),
+  );
+  const decisions: KnowledgeCandidatePromotionDiagnostics["decisions"] = [];
+  const decisionByNode = new Map<Pass2MicroNode, KnowledgeCandidatePromotionDecision>();
+  let supportingMaterialBlockCount = 0;
+  let exerciseReferenceCount = 0;
+
+  for (const topic of input.topics) {
+    for (const [microNodeIndex, node] of topic.microNodes.entries()) {
+      const candidateId = node.candidateId ?? `t${topic.sequence}:n${microNodeIndex}`;
+      node.candidateId = candidateId;
+      const sourceState: KnowledgeCandidateCheckState =
+        alignmentByCandidateId.get(candidateId)?.audit.status === "SUFFICIENT"
+          ? "PASS"
+          : "UNCERTAIN";
+      const hasSemanticUncertainty =
+        unresolvedAtomicityIds.has(candidateId) || unresolvedDuplicateIds.has(candidateId);
+      const candidate: KnowledgeCandidate = {
+        candidateId,
+        provisionalTopic: { sequence: topic.sequence, title: topic.title, topicType: topic.topicType },
+        title: node.title,
+        learningObjective: node.learningObjective,
+        coreSourceBlockIndices: [...node.sourceBlockIndices],
+        supportingSourceBlockIndices: [...node.supportingMaterialIndices],
+        practiceReferences: node.exercises.map((exercise) => ({
+          blockIndex: exercise.blockIndex,
+          sourceParagraph: exercise.sourceParagraph,
+          kind: input.blocks[exercise.blockIndex]?.blockType === "HOMEWORK"
+            ? "ACTIVITY_OR_HOMEWORK"
+            : "EXERCISE",
+        })),
+        semanticStatus: unresolvedDuplicateIds.has(candidateId)
+          ? "DUPLICATE_CANDIDATE"
+          : hasSemanticUncertainty ? "UNCERTAIN" : "DISTINCT",
+        sourceSupport: "UNASSESSED",
+        reviewReasonCodes: [],
+        assessment: {
+          meaningfulKnowledgeIdentity: sourceState,
+          independentlyTeachable: sourceState,
+          independentlyAssessable: sourceState,
+          atomicity: unresolvedAtomicityIds.has(candidateId)
+            ? "UNCERTAIN"
+            : detectCompoundLO(node.learningObjective) !== null ? "UNCERTAIN" : "ATOMIC",
+          nonDuplication: unresolvedDuplicateIds.has(candidateId) ? "UNCERTAIN" : "UNIQUE",
+          sourceOwnership: sourceState === "PASS" ? "VALID" : "UNCERTAIN",
+          supportingOnly: false,
+        },
+      };
+      const decision = decideKnowledgeCandidatePromotion(candidate, input.blocks);
+      node.promotionState = decision.state;
+      node.promotionReasonCodes = [...decision.reasonCodes];
+      decisionByNode.set(node, decision);
+      decisions.push({
+        candidateId,
+        topicSequence: topic.sequence,
+        state: decision.state,
+        reasonCodes: [...decision.reasonCodes],
+      });
+      supportingMaterialBlockCount += node.supportingMaterialIndices.length;
+      exerciseReferenceCount += node.exercises.length;
+    }
+  }
+
+  // Only explicit PROMOTE candidates become MicroNodes. Every other decision is
+  // retained as source-safe teacher-review/structural placement, never as an
+  // implicit learner-state target.
+  const retainedNodes = input.topics.flatMap((topic) => topic.microNodes.filter((node) => {
+    const state = decisionByNode.get(node)?.state;
+    return state === "PROMOTE";
+  }));
+  const retainedSourceIndices = new Set(retainedNodes.flatMap((node) => [
+    ...node.sourceBlockIndices,
+    ...node.supportingMaterialIndices,
+  ]));
+  const retainedExerciseIndices = new Set(
+    retainedNodes.flatMap((node) => node.exercises.map((exercise) => exercise.blockIndex)),
+  );
+  for (const topic of input.topics) {
+    const removed = topic.microNodes.filter((node) => !retainedNodes.includes(node));
+    const sourceForReview = removed
+      .flatMap((node) => [...node.sourceBlockIndices, ...node.supportingMaterialIndices])
+      .filter((index) => !retainedSourceIndices.has(index));
+    const exercisesForRetention = removed
+      .flatMap((node) => node.exercises)
+      .filter((exercise) => !retainedExerciseIndices.has(exercise.blockIndex));
+    topic.microNodes = topic.microNodes.filter((node) => retainedNodes.includes(node));
+    topic.unmappedBlockIndices = [...new Set([
+      ...topic.unmappedBlockIndices.filter((index) => !retainedSourceIndices.has(index)),
+      ...sourceForReview,
+    ])].sort((left, right) => left - right);
+    topic.additionalExercises = [
+      ...topic.additionalExercises.filter((exercise) => !retainedExerciseIndices.has(exercise.blockIndex)),
+      ...exercisesForRetention,
+    ].filter((exercise, index, all) =>
+      all.findIndex((candidate) => candidate.blockIndex === exercise.blockIndex) === index,
+    );
+  }
+
+  const count = (state: KnowledgeCandidatePromotionState) =>
+    decisions.filter((decision) => decision.state === state).length;
+  return {
+    candidateCount: decisions.length,
+    promotedMicroNodeCount: count("PROMOTE"),
+    reviewRequiredCandidateCount: count("REVIEW_REQUIRED"),
+    supportingMaterialBlockCount,
+    exerciseReferenceCount,
+    unresolvedCandidateCount: count("UNRESOLVED"),
+    rejectedNonKnowledgeCount: count("REJECT_NON_KNOWLEDGE") + count("SUPPORT_ONLY"),
+    consolidatedCandidateCount: input.consolidatedCandidateCount ?? 0,
+    decisions,
+  };
+}
+
 export const PASS2_MICRONODE_REJECTION_REASONS = [
   "MISSING_MICRONODES_ARRAY",
   "INVALID_MICRONODE_NO_SOURCE_BLOCKS",
@@ -2523,10 +2681,22 @@ export function recordPass2PostNormalizationCounts(
 }
 
 export function assertDetailedMappingHasMicroNodes(
-  result: Pick<Pass2Result, "topics" | "diagnostics">,
+  result: Pick<Pass2Result, "topics" | "diagnostics"> &
+    Partial<Pick<Pass2Result, "candidatePromotion">>,
 ): void {
   const microNodeCount = result.topics.reduce((total, topic) => total + topic.microNodes.length, 0);
-  if (microNodeCount === 0) throw new MappingZeroMicroNodesError(result.diagnostics);
+  const intentionallyNonPromotable =
+    (result.candidatePromotion?.candidateCount ?? 0) > 0
+    && (result.candidatePromotion?.promotedMicroNodeCount ?? 0) === 0
+    && (
+      (result.candidatePromotion?.reviewRequiredCandidateCount ?? 0) > 0
+      ||
+      (result.candidatePromotion?.unresolvedCandidateCount ?? 0) > 0
+      || (result.candidatePromotion?.rejectedNonKnowledgeCount ?? 0) > 0
+    );
+  if (microNodeCount === 0 && !intentionallyNonPromotable) {
+    throw new MappingZeroMicroNodesError(result.diagnostics);
+  }
 }
 
 // ── Phase 4: Granularity review types ────────────────────────────────────────
@@ -3243,6 +3413,8 @@ export function applyBoundedSourceReallocation(
 
 export interface Pass2Result {
   topics: Pass2TopicResult[];
+  /** Phase 3A transient candidate decisions, retained as source-safe diagnostics. */
+  candidatePromotion: KnowledgeCandidatePromotionDiagnostics;
   /** Block indices that were not placed in any MicroNode (page headers, etc.). */
   unmappedBlockIndices: number[];
   /** Readable instructional blocks retained for teacher review rather than
@@ -5730,6 +5902,22 @@ export async function runPass2Pipeline(
   normalizeActivityPlacements(topics, blocks);
   const sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
   normalizeActivityPlacements(topics, blocks);
+  const prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
+  const prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
+    topics,
+    granularityFindings,
+    atomicityRepair,
+    prePromotionSourceAlignment,
+  );
+  const candidatePromotion = applyKnowledgeCandidatePromotion({
+    topics,
+    blocks,
+    sourceAlignment: prePromotionSourceAlignment,
+    unresolvedAtomicityFindings: prePromotionUnresolvedAtomicity,
+    duplicateResolution,
+    consolidatedCandidateCount: granularityConsolidation.mergedMicroNodeCount,
+  });
+  normalizeActivityPlacements(topics, blocks);
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
@@ -5791,6 +5979,13 @@ export async function runPass2Pipeline(
        sourceReallocation,
         sourceAlignmentReconciliation,
         atomicityRepair,
+        candidatePromotion: {
+          candidateCount: candidatePromotion.candidateCount,
+          promotedMicroNodeCount: candidatePromotion.promotedMicroNodeCount,
+          reviewRequiredCandidateCount: candidatePromotion.reviewRequiredCandidateCount,
+          rejectedNonKnowledgeCount: candidatePromotion.rejectedNonKnowledgeCount,
+          unresolvedCandidateCount: candidatePromotion.unresolvedCandidateCount,
+        },
          atomicityVerification,
         unresolvedAtomicityFindingCount: unresolvedAtomicityFindings.length,
       missingIndices:  coverageValidation.missingIndices,
@@ -5845,6 +6040,7 @@ export async function runPass2Pipeline(
 
   return {
     topics,
+    candidatePromotion,
     unmappedBlockIndices: allUnmapped,
     sourcePlacementReview,
     coverageValidation,

@@ -1,0 +1,889 @@
+IMPLEMENTATION — PHASE 3A ONLY
+CANDIDATE-BASED KNOWLEDGE PROMOTION FOR AUTOMATIC LESSON MAPPING
+
+ROLE
+Act as a senior AI systems architect, knowledge-representation engineer,
+education-domain architect, and senior TypeScript/backend engineer.
+
+This is a foundational architecture change.
+
+Our goal is NOT merely to make the current example lesson pass.
+
+Our goal is to build a robust automatic lesson-mapping architecture that
+works across subjects and textbooks and does not need repeated ad-hoc fixes.
+
+We are building the canonical pipeline:
+
+SOURCE MATERIAL
+→ KNOWLEDGE CANDIDATES
+→ PEDAGOGICAL PROMOTION
+→ MICRO-NODES
+
+while preserving ALL verified source material independently.
+
+════════════════════════════════════════════════════════════
+0. READ FIRST — DO NOT EDIT YET
+════════════════════════════════════════════════════════════
+
+Before changing code, inspect the CURRENT repository state and verify that
+Phase 1 and Phase 2 are actually present and working.
+
+Phase 1 introduced:
+
+- transient KnowledgeCandidate contract
+- SourceMaterialDisposition vocabulary
+- pure promotion-decision logic
+- deterministic regression tests
+
+Phase 2 introduced:
+
+lesson_source_materials
+
+and:
+
+buildDurableSourceMaterialRecords()
+
+with durable preservation of every verified Pass 1 source block.
+
+Verify the actual implementation. Do not assume this description is exact.
+
+Also inspect the current production Pass 2 pipeline:
+
+runPass2Pipeline()
+
+and all relevant functions that currently:
+
+- generate Topics
+- generate MicroNodes
+- assign sourceBlockIndices
+- assign supportingMaterialIndices
+- assign exercises
+- normalize activity placements
+- reconcile source alignment
+- detect duplicate MicroNodes
+- perform atomicity review
+- perform persistence gates
+- build source-material dispositions
+- persist automatic mapping
+
+Trace the complete current path before editing.
+
+Report briefly:
+
+A. Current Pass 1 → Pass 2 → persistence flow
+B. Where MicroNodes are currently created
+C. Where Phase 1 KnowledgeCandidate exists but is not yet used
+D. Where Phase 2 durable source material is built/persisted
+E. Exact production boundary where candidate-based promotion should be inserted
+F. Minimal files that must change
+
+Then implement.
+
+Do NOT redesign unrelated systems.
+
+════════════════════════════════════════════════════════════
+1. FUNDAMENTAL DOMAIN RULE
+════════════════════════════════════════════════════════════
+
+A source block is NOT automatically a MicroNode.
+
+A paragraph, note, worked example, exercise, heading, visual, explanation,
+definition, formula, table, instruction, or textbook fragment is SOURCE
+MATERIAL.
+
+A MicroNode is a pedagogical knowledge unit.
+
+These are different concepts.
+
+The mapper must first understand source material and form knowledge candidates.
+
+Only candidates that satisfy the MicroNode promotion contract may become
+MicroNodes.
+
+Canonical architecture:
+
+Verified Pass 1 Source Blocks
+        ↓
+Durable Source Material
+        ↓
+Knowledge Candidates
+        ↓
+Promotion Decision
+        ↓
+┌───────────────────────────────┐
+│ PROMOTE_TO_MICRONODE          │
+│ SUPPORT_EXISTING_MICRONODE    │
+│ EXERCISE                      │
+│ ACTIVITY_OR_HOMEWORK          │
+│ STRUCTURAL_MATERIAL           │
+│ UNRESOLVED_REVIEW             │
+│ EXCLUDED_WITH_REASON          │
+└───────────────────────────────┘
+        ↓
+Only PROMOTE_TO_MICRONODE
+creates a MicroNode.
+
+Everything else remains preserved in lesson_source_materials.
+
+NO verified source material may disappear merely because it was not promoted.
+
+════════════════════════════════════════════════════════════
+2. WHAT COUNTS AS A MICRONODE
+════════════════════════════════════════════════════════════
+
+A MicroNode must represent ONE atomic learnable knowledge unit.
+
+It must satisfy ALL required conditions:
+
+1. LEARNABLE
+
+There is something meaningful the learner can know, understand, or do.
+
+2. INDEPENDENTLY ASSESSABLE
+
+We can reasonably ask:
+
+“Has the learner learned this specific thing?”
+
+3. ATOMIC
+
+It represents one pedagogical objective rather than several independent
+objectives bundled together.
+
+4. SOURCE-GROUNDED
+
+The candidate has sufficient verified source evidence.
+
+5. PEDAGOGICALLY NECESSARY
+
+It deserves learner-state tracking independently.
+
+If removing it as a separate MicroNode would lose an important independently
+trackable learning target, it probably deserves promotion.
+
+If it merely helps explain another learning target, it probably does NOT.
+
+════════════════════════════════════════════════════════════
+3. WHAT MUST NOT BECOME A MICRONODE BY DEFAULT
+════════════════════════════════════════════════════════════
+
+Do NOT create independent MicroNodes merely because the textbook contains:
+
+- a heading
+- section title
+- transition sentence
+- repeated explanation
+- repeated rule
+- repeated example
+- worked-example narration
+- exercise instruction
+- answer key
+- page metadata
+- decorative text
+- contextual introduction
+- supporting NOTE
+- supporting REMARK
+- table caption
+- figure caption
+- isolated visual fragment
+- malformed OCR fragment
+- incomplete formula fragment
+- motivational text
+- recap wording that contains no independent learning target
+
+These must remain source material and may support a promoted MicroNode.
+
+IMPORTANT:
+
+Do NOT implement this as a simplistic blockType blacklist.
+
+A NOTE, EXAMPLE, TABLE, or similar block CAN contain an independent
+instructional concept.
+
+Classification must be semantic and evidence-based.
+
+════════════════════════════════════════════════════════════
+4. KNOWLEDGE CANDIDATE GENERATION
+════════════════════════════════════════════════════════════
+
+Integrate the Phase 1 KnowledgeCandidate contract into the REAL automatic
+mapping pipeline.
+
+Do not create a second competing candidate model.
+
+Reuse and extend the Phase 1 contract only where necessary.
+
+A KnowledgeCandidate should represent a proposed knowledge unit before it
+becomes a persisted MicroNode.
+
+Each candidate must have enough transient evidence for deterministic review,
+including at minimum the existing Phase 1 fields and whatever is minimally
+necessary to determine:
+
+- title
+- learning objective
+- source evidence
+- source block identities/indices
+- semantic role
+- atomicity
+- assessability
+- promotion status
+- promotion reasons
+- confidence/review state
+
+Do NOT persist raw model output.
+
+Do NOT add a new DB table for candidates in Phase 3A unless forensic inspection
+proves it is absolutely necessary.
+
+Candidates are primarily a transient mapping-domain concept.
+
+════════════════════════════════════════════════════════════
+5. PROMOTION MUST BE EXPLICIT
+════════════════════════════════════════════════════════════
+
+Every KnowledgeCandidate must receive an explicit promotion decision.
+
+There must be NO implicit:
+
+candidate exists → therefore create MicroNode
+
+behavior.
+
+Use the existing Phase 1 pure promotion logic as the foundation.
+
+A candidate may become a MicroNode only if promotion explicitly allows it.
+
+At minimum, promotion must evaluate:
+
+- semantic instructional value
+- independent assessability
+- atomicity
+- source support
+- duplication / semantic overlap
+- uncertainty
+- whether the content is merely supporting another candidate
+
+Promotion decisions must carry machine-readable reasons.
+
+Do not rely only on free-form explanation text.
+
+════════════════════════════════════════════════════════════
+6. SUPPORTING MATERIAL MUST ATTACH, NOT COMPETE
+════════════════════════════════════════════════════════════
+
+When material explains, illustrates, qualifies, demonstrates, or supports an
+already promoted knowledge unit, prefer:
+
+SUPPORT_EXISTING_MICRONODE
+
+rather than creating another MicroNode.
+
+Examples:
+
+Rule:
+“The sign of a product depends on the number of negative factors.”
+
+This may be a core knowledge candidate.
+
+Worked examples demonstrating the rule should normally support that knowledge
+unit rather than becoming separate MicroNodes.
+
+A note clarifying a special case should normally support the relevant
+MicroNode unless the note itself introduces independently assessable knowledge.
+
+Preserve the supporting material in lesson_source_materials and retain its
+relationship/provenance where the current architecture supports it.
+
+Do not duplicate source ownership merely to express support.
+
+Respect the source-ownership invariant already enforced by coverage validation.
+
+════════════════════════════════════════════════════════════
+7. EXERCISES ARE EVIDENCE/TASKS, NOT KNOWLEDGE NODES
+════════════════════════════════════════════════════════════
+
+Exercises, activities, questions, and homework must not become MicroNodes
+merely because they contain instructional language.
+
+They remain exercise/activity entities and may be linked to the MicroNode(s)
+they assess or practice.
+
+Preserve the existing exercise persistence behavior unless a narrowly required
+change is necessary for candidate promotion.
+
+Do not redesign quiz generation or cognitive paths in this phase.
+
+════════════════════════════════════════════════════════════
+8. DUPLICATE HANDLING — IMPORTANT ARCHITECTURAL CHANGE
+════════════════════════════════════════════════════════════
+
+The current mapper has historically suffered from duplicate/near-duplicate
+MicroNodes because semantic duplicate review happens after nodes are already
+formed.
+
+Move the conceptual duplicate decision earlier:
+
+KnowledgeCandidate
+→ compare semantic learning target
+→ promotion / support / review
+→ THEN MicroNode creation.
+
+Candidate similarity is a SIGNAL, not proof.
+
+Do NOT merge two candidates merely because token/Jaccard similarity crosses a
+threshold.
+
+The semantic question is:
+
+“Would these candidates require separate learner mastery states?”
+
+If NO:
+they should normally resolve into one promoted MicroNode with combined source
+support.
+
+If YES:
+they remain distinct even if wording is similar.
+
+Examples:
+
+“Determine the sign of a product”
+and
+“Explain why the sign of a product depends on the number of negative factors”
+
+may represent different cognitive expectations but could still belong to the
+same underlying knowledge unit with a cognitive path.
+
+Do NOT automatically create two MicroNodes merely because verbs differ.
+
+This is especially important because Cognitive Path will later represent
+Remember → Understand → Apply → etc.
+
+MicroNode granularity must represent KNOWLEDGE UNIT granularity,
+not Bloom-level granularity.
+
+════════════════════════════════════════════════════════════
+9. MICRONODE ≠ BLOOM LEVEL
+════════════════════════════════════════════════════════════
+
+This rule is mandatory.
+
+Do NOT create separate MicroNodes such as:
+
+- remember the rule
+- understand the rule
+- apply the rule
+
+when all three refer to the SAME underlying knowledge unit.
+
+That should normally be ONE MicroNode:
+
+“Sign of a product”
+
+and later its Cognitive Path can contain:
+
+Remember
+→ Understand
+→ Apply
+→ Analyze ...
+
+MicroNode answers:
+
+WHAT knowledge/skill is being learned?
+
+Cognitive Path answers:
+
+TO WHAT cognitive depth has the learner mastered it?
+
+Do not mix these dimensions.
+
+════════════════════════════════════════════════════════════
+10. TOPICS
+════════════════════════════════════════════════════════════
+
+Phase 3A must NOT perform a broad Topic architecture redesign.
+
+However:
+
+candidate promotion must work across the generated lesson representation and
+must not create duplicate MicroNodes simply because similar candidates happen
+to appear under different provisional Topics.
+
+Cross-topic semantic overlap must be detectable.
+
+For Phase 3A:
+
+- preserve current Topic persistence model where possible
+- do not silently merge/restructure Topics extensively
+- allow candidate-level semantic resolution before MicroNode persistence
+
+Full lesson-wide Topic consolidation belongs to Phase 3B.
+
+════════════════════════════════════════════════════════════
+11. UNCERTAINTY — FAIL SAFE WITHOUT DESTROYING THE MAP
+════════════════════════════════════════════════════════════
+
+If candidate promotion is uncertain:
+
+DO NOT invent confidence.
+DO NOT silently promote.
+DO NOT discard the source.
+
+Use the existing review-required architecture.
+
+The structurally safe map should still be persistable as a teacher-reviewable
+draft when appropriate.
+
+Uncertain source material remains durable.
+
+If a candidate is sufficiently formed to be useful but promotion requires
+teacher judgment, preserve the appropriate review metadata/status using the
+existing review architecture.
+
+Do NOT weaken any hard source-integrity gate.
+
+Hard failures remain hard failures:
+
+- parser/contract corruption
+- invalid source references
+- impossible block IDs
+- unsafe source coverage
+- broken transaction integrity
+- invalid activity ownership
+- any condition that would lose or corrupt source material
+
+Pedagogical uncertainty is NOT the same as structural corruption.
+
+════════════════════════════════════════════════════════════
+12. SOURCE FIDELITY
+════════════════════════════════════════════════════════════
+
+Never fabricate textbook content.
+
+Every promoted MicroNode must remain traceable to verified source material.
+
+Every supporting item must remain traceable to verified source material.
+
+Every excluded/unresolved item must remain preserved in durable source
+materials with its reason/disposition.
+
+Teacher edits to a MicroNode must not overwrite or destroy canonical source
+material.
+
+Maintain the Phase 2 source-material independence invariant.
+
+════════════════════════════════════════════════════════════
+13. DO NOT DELETE USEFUL INFORMATION
+════════════════════════════════════════════════════════════
+
+Candidate consolidation must combine provenance, not throw it away.
+
+If Candidate A and Candidate B resolve to the same underlying knowledge unit:
+
+- create/retain one promoted MicroNode
+- preserve all relevant source evidence
+- preserve supporting material
+- preserve machine-readable consolidation/review reasons where appropriate
+- preserve exercises independently
+
+Do NOT simply delete the “losing” candidate's source blocks.
+
+Remember:
+
+candidate deletion ≠ source deletion.
+
+Source material always survives in lesson_source_materials.
+
+════════════════════════════════════════════════════════════
+14. PRODUCTION INTEGRATION
+════════════════════════════════════════════════════════════
+
+Integrate candidate promotion into the existing production automatic mapper.
+
+Do not build an unused parallel implementation.
+
+After Phase 3A, the real automatic mapping path must conceptually be:
+
+Pass 1
+→ verified source blocks
+→ candidate generation
+→ candidate assessment/promotion
+→ promoted MicroNodes
+→ supporting/exercise/source disposition
+→ existing structural validation
+→ durable source-material build
+→ transaction persistence
+
+The previous direct:
+
+Pass 1
+→ AI-created MicroNodes
+→ repair duplicates afterwards
+
+must no longer be the authoritative semantic architecture.
+
+However, reuse existing generation/parsing code where practical.
+
+Do not rewrite the entire mapper if an adapter/refactor can safely move the
+semantic boundary.
+
+════════════════════════════════════════════════════════════
+15. COST AND PERFORMANCE
+════════════════════════════════════════════════════════════
+
+Do NOT add an AI call per candidate.
+
+That architecture would be slow and expensive.
+
+Prefer:
+
+1. one structured generation producing candidate information
+2. deterministic local promotion where confidence is sufficient
+3. one bounded semantic review batch only for genuinely ambiguous candidates
+
+Reuse existing duplicate/atomicity review calls where possible rather than
+stacking new calls.
+
+Target:
+
+O(1) or small bounded number of AI calls per lesson stage,
+NOT O(number of candidates).
+
+Deterministic logic should handle obvious cases.
+
+AI semantic review should handle ambiguity.
+
+════════════════════════════════════════════════════════════
+16. OBSERVABILITY
+════════════════════════════════════════════════════════════
+
+Add enough structured diagnostics to understand candidate promotion failures
+without rerunning the lesson.
+
+Do not store raw model output.
+
+The mapping job diagnostics should make it possible to inspect at least:
+
+- candidate count
+- promoted MicroNode count
+- supporting-material candidate count
+- exercise/activity count
+- unresolved/review-required count
+- excluded count
+- consolidation count
+- candidate IDs involved in unresolved semantic decisions
+- machine-readable reason codes
+
+If existing mapping metadata is sufficient, reuse it.
+
+No schema migration solely for diagnostics unless absolutely required.
+
+════════════════════════════════════════════════════════════
+17. REGRESSION / INVARIANTS
+════════════════════════════════════════════════════════════
+
+Add focused deterministic tests for at least these cases.
+
+CASE 1 — core rule
+
+Source contains one independently learnable rule.
+
+Expected:
+one KnowledgeCandidate
+→ promoted
+→ one MicroNode.
+
+CASE 2 — rule + explanation
+
+Source contains a rule and a paragraph explaining the same rule.
+
+Expected:
+one knowledge unit;
+explanation supports it;
+NOT two MicroNodes.
+
+CASE 3 — rule + worked example
+
+Expected:
+rule may promote;
+worked example supports/practices;
+NOT independent MicroNode unless it genuinely introduces separate knowledge.
+
+CASE 4 — same knowledge, different Bloom verbs
+
+“State rule X”
+“Explain rule X”
+“Apply rule X”
+
+Expected:
+normally ONE underlying MicroNode.
+Bloom/cognitive depth must not produce three MicroNodes.
+
+CASE 5 — genuinely separate concepts
+
+Two independently assessable concepts with overlapping vocabulary.
+
+Expected:
+two MicroNodes.
+
+CASE 6 — cross-topic semantic duplicate
+
+Same underlying knowledge candidate appears under two provisional topics.
+
+Expected:
+do not blindly create two MicroNodes because Topic differs.
+Resolve/consolidate or mark review-required.
+
+CASE 7 — uncertain visual/formula
+
+Expected:
+no fabricated MicroNode;
+source remains durable;
+review/unresolved disposition preserved.
+
+CASE 8 — exercise
+
+Expected:
+exercise remains exercise;
+does not become MicroNode.
+
+CASE 9 — supporting NOTE
+
+Expected:
+supporting material;
+not MicroNode.
+
+CASE 10 — instructional NOTE
+
+A NOTE introduces genuinely independent assessable knowledge.
+
+Expected:
+eligible for promotion.
+Do not blacklist NOTE by block type.
+
+CASE 11 — duplicate candidate source evidence
+
+Two candidate descriptions resolve to one knowledge unit.
+
+Expected:
+one MicroNode with preserved combined provenance.
+No source loss.
+
+CASE 12 — teacher-review uncertainty
+
+Promotion cannot safely resolve.
+
+Expected:
+structurally safe map persists as review-required draft where existing policy
+allows it.
+No hard integrity weakening.
+
+CASE 13 — hard invalid source reference
+
+Expected:
+still fails persistence.
+
+CASE 14 — source coverage corruption
+
+Expected:
+still fails persistence.
+
+CASE 15 — teacher MicroNode edit
+
+Expected:
+canonical lesson_source_materials remain unchanged.
+
+CASE 16 — successful remap
+
+Expected:
+candidate-derived map and durable source materials replace previous current
+mapping atomically.
+
+CASE 17 — failed remap
+
+Expected:
+previous valid pedagogical map AND previous durable source map remain intact.
+
+════════════════════════════════════════════════════════════
+18. SHADOW COMPARISON — REQUIRED BEFORE ACCEPTANCE
+════════════════════════════════════════════════════════════
+
+Do NOT immediately rerun lesson 705 into production persistence.
+
+Create a development/test-only shadow comparison mechanism using existing
+fixtures or a non-persisting pipeline entry point.
+
+For at least one representative lesson fixture, compare:
+
+OLD semantic interpretation
+vs
+NEW candidate-based interpretation.
+
+Report:
+
+OLD:
+- topic count
+- MicroNode count
+- exercise count
+- duplicate suspicion count
+- review-required count
+
+NEW:
+- candidate count
+- promoted MicroNode count
+- supporting-material count
+- exercise/activity count
+- unresolved count
+- consolidation count
+
+Then inspect the semantic result.
+
+Passing tests alone is not enough.
+
+The new mapper should produce a pedagogically more coherent knowledge map,
+not merely satisfy TypeScript contracts.
+
+Do not make this comparison alter production data.
+
+════════════════════════════════════════════════════════════
+19. ACCEPTANCE GATES
+════════════════════════════════════════════════════════════
+
+Phase 3A is complete only if all are true:
+
+GATE A — SOURCE SAFETY
+Every verified source block remains recoverable.
+
+GATE B — PROMOTION
+Only explicit promoted candidates create MicroNodes.
+
+GATE C — ATOMICITY
+Each promoted MicroNode represents one underlying knowledge unit.
+
+GATE D — BLOOM SEPARATION
+Cognitive level differences alone do not create duplicate MicroNodes.
+
+GATE E — SUPPORT
+Supporting explanations/examples do not become unnecessary nodes.
+
+GATE F — EXERCISES
+Exercises remain exercises/tasks.
+
+GATE G — UNCERTAINTY
+Uncertain semantics trigger review rather than fabrication or data loss.
+
+GATE H — HARD INTEGRITY
+Existing hard source/coverage/transaction gates remain strict.
+
+GATE I — DURABILITY
+lesson_source_materials remains independent and complete.
+
+GATE J — TRANSACTIONAL SAFETY
+Failed remap cannot destroy the previous valid state.
+
+GATE K — COST
+No per-candidate AI-call architecture.
+
+GATE L — OBSERVABILITY
+Promotion decisions can be diagnosed after failure/review.
+
+════════════════════════════════════════════════════════════
+20. STRICT SCOPE
+════════════════════════════════════════════════════════════
+
+DO NOT change:
+
+- Cognitive Path generation
+- teaching-content generation
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- student UI
+- final approval redesign
+- manual mapping behavior unless a shared type compilation fix is unavoidable
+- unrelated teacher dashboard features
+
+DO NOT:
+
+- weaken source validation
+- weaken coverage validation
+- remove durable source preservation
+- add heuristic hacks for lesson 705
+- hard-code Armenian Algebra behavior
+- create subject-specific rules
+- add AI call per candidate
+- rerun lesson 705 automatically
+- perform broad refactors unrelated to candidate promotion
+
+Phase 3B Topic/lesson-wide semantic consolidation is OUT OF SCOPE except for
+the minimum cross-topic candidate handling necessary to prevent obvious
+duplicate MicroNode promotion.
+
+════════════════════════════════════════════════════════════
+21. IMPLEMENTATION PROCESS
+════════════════════════════════════════════════════════════
+
+Work in this order:
+
+STEP 1
+Forensic audit and report exact integration point.
+
+STEP 2
+State minimal implementation design BEFORE editing.
+
+STEP 3
+Implement candidate integration.
+
+STEP 4
+Add deterministic regression tests.
+
+STEP 5
+Run focused mapping tests.
+
+STEP 6
+Run API typecheck.
+
+STEP 7
+Run shadow comparison without production persistence.
+
+STEP 8
+Review the final diff for accidental scope expansion.
+
+STEP 9
+Restart only required workflow(s) if production code changed.
+
+DO NOT run automatic mapping for lesson 705.
+
+════════════════════════════════════════════════════════════
+22. FINAL REPORT
+════════════════════════════════════════════════════════════
+
+Report exactly:
+
+1. Architecture before
+2. Architecture after
+3. Files changed
+4. How KnowledgeCandidate is now used in production
+5. Promotion decision rules
+6. How supporting material is handled
+7. How exercises are handled
+8. How duplicate candidates are handled
+9. How Bloom-level duplication is prevented
+10. How uncertain candidates are handled
+11. Source-fidelity guarantees
+12. Durable source-material guarantees
+13. Transaction/remap guarantees
+14. AI-call count / cost impact
+15. Diagnostics added
+16. Regression tests and results
+17. Typecheck result
+18. Shadow comparison result
+19. Remaining risks
+20. Whether Phase 3A acceptance gates all pass
+
+Then STOP.
+
+Do not start Phase 3B.
+Do not start Cognitive Path.
+Do not start teaching-content generation.
+Do not rerun lesson 705.
