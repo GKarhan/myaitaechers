@@ -1,0 +1,677 @@
+TASK — FINAL SIMPLIFICATION OF LESSON MAPPING WORKFLOW
+COGNITIVE PATH + TEACHING CONTENT + ASSIGNMENT
+
+IMPORTANT:
+This task is NOT another local button fix.
+
+The current mapping workflow has accumulated conflicting UI/backend gates.
+Before editing, inspect the CURRENT implementation and identify every condition
+that controls:
+
+1. Cognitive Path generation
+2. Teaching Content generation
+3. final lesson readiness/review
+4. "Հանձնարարել սովորողին"
+5. existing generated-content overwrite/retry behavior
+
+Then implement ONE consistent current-state-driven workflow described below.
+
+Do not preserve an old gate merely because an existing test expects it.
+Update affected tests to the new workflow where necessary.
+
+Do NOT remap existing lessons.
+Do NOT create fake data or fake REQUIRED relations.
+Do NOT modify Quiz, Knowledge Tree, student quiz flow, or unrelated AI Teacher runtime logic.
+Do NOT publish/deploy.
+
+==================================================
+TARGET TEACHER WORKFLOW
+==================================================
+
+After detailed mapping exists, the teacher workflow must be:
+
+MAPPING
+   ↓
+┌─────────────────────────────┐
+│ 1. Ճանաչողական ուղիներ      │
+│    independent generation   │
+└─────────────────────────────┘
+
+┌─────────────────────────────┐
+│ 2. Ուսուցման բովանդակություն │
+│    independent generation   │
+└─────────────────────────────┘
+   ↓
+3. ՀԱՆՁՆԱՐԱՐԵԼ ՍՈՎՈՐՈՂԻՆ
+   ↓
+authoritative preflight
+   ↓
+ready / review warning / true hard blocker
+
+CRITICAL CHANGE:
+
+Step 1 and Step 2 MUST NOT be hard dependencies on each other.
+
+Teaching Content generation must NOT be disabled merely because:
+- Cognitive Paths are incomplete;
+- Cognitive Paths are review-required;
+- only 4/5 Cognitive Paths exist;
+- one Cognitive Path generation failed;
+- a Cognitive Path has a review warning.
+
+Likewise, Cognitive Path generation must not depend on Teaching Content.
+
+They are two independent enrichment/generation operations over the canonical
+MicroNodes.
+
+==================================================
+PART 0 — AUDIT BEFORE EDITING
+==================================================
+
+Before making changes, locate and report internally:
+
+A. Every frontend condition that disables/hides:
+   - Cognitive Path generation
+   - Teaching Content generation
+   - assignment
+
+B. Every backend preflight/readiness condition involved in the same workflow.
+
+C. Any condition based on:
+   - historical completed jobs
+   - approval state
+   - C1/C2 review state
+   - generated counts
+   - missing content
+   - final approval state
+
+D. Determine why the current real lesson can show:
+   Cognitive Paths = 4/5
+   while Teaching Content says:
+   "Սպասում է 1-ին քայլին"
+
+Remove that coupling according to this task.
+
+Do not stop after the audit.
+Implement the task after identifying the root causes.
+
+==================================================
+PART 1 — COGNITIVE PATH CURRENT-STATE GENERATION
+==================================================
+
+Cognitive Path generation must be based on CURRENT persisted MicroNode state.
+
+For N mapped MicroNodes:
+
+CASE A — 0/N have Cognitive Paths
+
+Button:
+"✨ Ստեղծել"
+
+Action:
+Generate Cognitive Paths for eligible missing MicroNodes.
+
+CASE B — some but not all have Cognitive Paths
+
+Example:
+4/5
+
+UI must clearly show:
+"4/5 ստեղծված · 1-ը բացակայում է"
+
+Primary action must mean:
+"✨ Լրացնել բացակայող 1-ը"
+
+IMPORTANT:
+Only generate the missing Cognitive Path(s).
+
+DO NOT regenerate existing paths.
+
+DO NOT overwrite:
+- existing persisted paths;
+- teacher-edited paths;
+- teacher-authored paths.
+
+CASE C — N/N exist
+
+Example:
+5/5
+
+Do NOT continue showing the normal primary "Ստեղծել" action.
+
+Show a compact completed state such as:
+
+"✓ 5/5 ստեղծված"
+
+Do not introduce automatic regeneration.
+
+If an existing explicit/manual regeneration capability already exists,
+keep it only as a secondary deliberate action and never run it implicitly.
+
+==================================================
+PART 2 — COGNITIVE TARGET / BLOOM SAFETY FIX
+==================================================
+
+The current real mapping exposed an important semantic problem.
+
+A MicroNode whose Learning Objective requires application/problem solving
+must NOT be reduced to a Remember-only Cognitive Path.
+
+Example:
+
+Learning Objective:
+"Ուսանողները կհաշվեն օբյեկտի արագությունը՝ օգտագործելով տրված
+ճանապարհի երկարությունը և ժամանակը։"
+
+A generated path that only requires remembering the speed formula is NOT
+sufficient.
+
+Another example:
+
+Learning Objective:
+"Ուսանողները կկիրառեն արագության հասկացությունը՝ լուծելու շարժման
+հետ կապված պարզ խնդիրներ։"
+
+A path whose success criterion merely asks the learner to list measurement
+units is NOT sufficient.
+
+GENERAL RULE:
+
+The generated Cognitive Path MUST NOT lower the demonstrated cognitive
+requirement expressed by the canonical MicroNode Learning Objective.
+
+The Learning Objective remains authoritative.
+
+The generated:
+- cognitive level
+- performance objective
+- success criterion
+- preferred interaction types
+
+must collectively measure the actual Learning Objective.
+
+Examples:
+
+define/name/identify
+→ Remember may be appropriate.
+
+explain/compare/classify with reasoning
+→ Understand or appropriate demonstrated level.
+
+calculate/use/apply/solve
+→ Apply must not be reduced to Remember.
+
+Do NOT blindly infer from verbs alone.
+Use the full Learning Objective + grounded source context.
+
+Keep existing canonical target-ceiling/safety semantics.
+Do not weaken C1–C7 safety.
+
+If generated Cognitive Path output violates the Learning Objective floor,
+reject/repair it through the existing bounded repair mechanism rather than
+persisting a weaker path.
+
+==================================================
+PART 3 — TEACHING CONTENT MUST BE INDEPENDENT
+==================================================
+
+REMOVE the hard UI/workflow dependency:
+
+"Cognitive Path complete → Teaching Content enabled"
+
+Teaching Content must become independently actionable once usable mapping
+and MicroNodes exist.
+
+Therefore:
+
+If Cognitive Paths are:
+0/5
+1/5
+4/5
+5/5
+review-required
+
+Teaching Content generation must still be available for eligible MicroNodes.
+
+A Cognitive Path issue may appear as a warning, but MUST NOT disable the
+Teaching Content action by itself.
+
+REMOVE/replace UI text such as:
+
+"⏳ Սպասում է 1-ին քայլին"
+
+when the only reason is incomplete Cognitive Paths.
+
+==================================================
+PART 4 — TEACHING CONTENT CURRENT-STATE GENERATION
+==================================================
+
+Use the same missing-only principle.
+
+For N MicroNodes:
+
+0/N Teaching Content exists:
+→ "✨ Ստեղծել"
+
+Some exist:
+→ show exact state, e.g.
+  "3/5 ստեղծված · 2-ը բացակայում է"
+→ action:
+  "✨ Լրացնել բացակայող 2-ը"
+
+All exist:
+→ show:
+  "✓ 5/5 ստեղծված"
+→ normal primary generation button becomes inactive/hidden.
+
+Generation must NEVER overwrite existing persisted Teaching Content by
+default.
+
+Especially protect:
+- teacher-edited content;
+- teacher-authored content;
+- already persisted valid content.
+
+Only missing content is generated in normal lesson-wide generation.
+
+Use database read-back before reporting an item as successfully created.
+
+Historical completed jobs MUST NOT prevent missing-content retry.
+
+CURRENT canonical persisted state is authoritative.
+
+==================================================
+PART 5 — TEACHING CONTENT VIEW + EDIT
+==================================================
+
+Teaching Content must not exist only inside a small read-only popup.
+
+The teacher must be able to clearly inspect the generated Teaching Content
+for each MicroNode in the normal detailed mapping workflow.
+
+Reuse the current UI architecture where practical; do not redesign the whole page.
+
+Required behavior:
+
+For each MicroNode with Teaching Content:
+
+- content is visibly accessible;
+- teacher can open it;
+- teacher can edit it;
+- teacher can save edits;
+- saved edits persist to DB;
+- refresh reads the edited version back;
+- later normal generation does NOT overwrite it.
+
+If the current popup is retained for viewing, add a clear Edit action and a
+usable editing surface.
+
+Prefer consistency with the existing MicroNode edit UX.
+
+Do not create a second parallel Teaching Content data model.
+
+==================================================
+PART 6 — STEP 3 MUST BECOME A REAL ACTION
+==================================================
+
+The current Step 3 panel is effectively informational.
+
+Do NOT leave Step 3 as only text like:
+
+"Ավարտեք վերանայումը, ապա հանձնարարեք դասի քարտից"
+
+Step 3 must contain the real teacher action:
+
+"Հանձնարարել սովորողին"
+
+The existing lesson-card "Հանձնարարել սովորողին" action may remain,
+but BOTH entry points must invoke the SAME underlying assignment/preflight flow.
+
+Do NOT create two assignment systems.
+
+One action.
+Two optional UI entry points.
+One backend truth.
+
+==================================================
+PART 7 — SINGLE FINAL TEACHER DECISION
+==================================================
+
+There must NOT be a chain of separate mandatory teacher approvals such as:
+
+Goal/Outcome approval
+→ Cognitive Path approval
+→ Teaching Content approval
+→ final approval
+→ assignment
+
+Normal teacher workflow must have ONE final human decision:
+
+"Հանձնարարել սովորողին"
+
+Clicking it performs the authoritative preflight.
+
+The preflight must classify findings into:
+
+A. READY
+
+B. REVIEW_REQUIRED / WARNING
+
+C. TRUE HARD BLOCKER
+
+==================================================
+PART 8 — REVIEW WARNINGS MUST NOT BLOCK ASSIGNMENT
+==================================================
+
+Examples of review/warning states that should normally NOT hard-block
+assignment when usable data exists:
+
+- Cognitive Path marked review-required;
+- Teaching Content marked review-required;
+- source-alignment review recommendation;
+- automatic Outcome alignment review;
+- missing non-critical Outcome relation;
+- draft/review source exercise finding;
+- quality warning;
+- teacher-review recommendation.
+
+Show these in clear Armenian.
+
+Do NOT expose raw internal codes as the main teacher-facing message.
+
+For reviewable lessons, show ONE compact confirmation dialog:
+
+Title:
+"Դասում կան կետեր, որոնք խորհուրդ է տրվում վերանայել"
+
+Show concise human-readable findings.
+
+Actions:
+
+"Վերադառնալ և խմբագրել"
+
+"Շարունակել և հանձնարարել"
+
+If the teacher chooses:
+"Շարունակել և հանձնարարել"
+
+the system must record the teacher acceptance through the existing
+authoritative approval mechanism and continue to the normal student
+assignment flow.
+
+Teacher acceptance must be explicit.
+
+==================================================
+PART 9 — TRUE HARD BLOCKERS
+==================================================
+
+Do NOT make every validator warning a hard blocker.
+
+A true hard blocker should mean the lesson cannot function safely or
+structurally.
+
+Examples may include:
+
+- no usable mapped MicroNodes;
+- missing essential canonical Learning Objective where runtime requires it;
+- structurally unusable/empty MicroNode;
+- genuinely unusable required source basis;
+- missing runtime-required structure that makes AI Teacher delivery impossible;
+- canonical integrity corruption.
+
+IMPORTANT:
+
+Do not invent new hard blockers merely to preserve old workflow gates.
+
+For every existing blocker used by assignment/final approval, audit whether it is:
+
+1. runtime-essential
+2. reviewable quality issue
+3. historical/obsolete workflow gate
+
+Only category 1 should remain a non-overridable assignment blocker.
+
+Do not weaken actual runtime/source integrity safety.
+
+==================================================
+PART 10 — UI STATE TABLE
+==================================================
+
+The three blocks should communicate current state, not workflow locks.
+
+COGNITIVE PATH:
+
+0/N
+→ "Ստեղծված չէ"
+→ "✨ Ստեղծել"
+
+partial
+→ "4/5 ստեղծված · 1-ը բացակայում է"
+→ "✨ Լրացնել բացակայող 1-ը"
+
+N/N
+→ "✓ 5/5 ստեղծված"
+
+review findings may additionally show:
+"⚠️ 2-ը խորհուրդ է տրվում վերանայել"
+
+TEACHING CONTENT:
+
+same state model:
+0/N
+partial
+N/N
+review count
+
+but independent from Cognitive Path completion.
+
+ASSIGNMENT:
+
+Always show the real action when a mapped lesson exists:
+
+"Հանձնարարել սովորողին"
+
+Clicking it determines whether the lesson is:
+READY / REVIEW_REQUIRED / BLOCKED.
+
+Do not try to predict all assignment eligibility only through disabled
+frontend buttons.
+
+The backend authoritative preflight decides.
+
+==================================================
+PART 11 — MATERIAL EDIT INVALIDATION
+==================================================
+
+Preserve the existing correct invalidation behavior.
+
+If the teacher accepts review warnings and later materially edits:
+- mapping;
+- MicroNode Learning Objective;
+- Cognitive Path;
+- Teaching Content;
+- relevant canonical instructional data;
+
+the prior acceptance must not silently certify materially changed content.
+
+Reuse existing invalidation semantics.
+
+Do not build a second approval system.
+
+==================================================
+PART 12 — ACCEPTANCE TEST MATRIX
+==================================================
+
+Add/update focused deterministic tests for at least these scenarios:
+
+1.
+5 MicroNodes
+0 Cognitive Paths
+→ Cognitive action available
+→ Teaching Content action ALSO available
+
+2.
+5 MicroNodes
+4 Cognitive Paths
+→ UI shows 4/5
+→ action fills only missing 1
+→ existing 4 untouched
+
+3.
+5/5 Cognitive Paths
+→ normal Create action hidden/inactive
+
+4.
+Cognitive Path review-required
+→ Teaching Content still available
+
+5.
+0 Teaching Content
+→ Create available
+
+6.
+3/5 Teaching Content
+→ fill only missing 2
+→ existing 3 untouched
+
+7.
+5/5 Teaching Content
+→ normal Create action hidden/inactive
+
+8.
+teacher-edited Teaching Content
+→ missing-only generation
+→ teacher edit unchanged
+
+9.
+historical completed generation job + current missing content
+→ retry remains available
+
+10.
+Learning Objective requires calculation/application
+→ Remember-only Cognitive Path rejected
+
+11.
+Learning Objective requires problem solving
+→ success criterion based only on listing/recall rejected
+
+12.
+mapped lesson with review warnings
+→ "Հանձնարարել սովորողին" visible/actionable
+→ confirmation dialog shown
+→ teacher can explicitly continue
+
+13.
+mapped READY lesson
+→ assignment proceeds without unnecessary review gate
+
+14.
+true runtime-essential structural failure
+→ assignment blocked with concise Armenian explanation
+
+15.
+material edit after teacher warning acceptance
+→ acceptance invalidated/review reopened according to existing policy
+
+16.
+Step 3 action and lesson-card assignment action
+→ both use SAME backend assignment/preflight flow
+
+==================================================
+PART 13 — REAL BROWSER ACCEPTANCE
+==================================================
+
+After implementation:
+
+Use the existing real mapped lesson if safe.
+
+DO NOT remap it.
+
+Verify visually:
+
+- Cognitive Path partial state is understandable.
+- Teaching Content is no longer disabled only because Cognitive Path is partial.
+- Step 3 contains a real "Հանձնարարել սովորողին" action.
+- no redundant approval chain appears.
+- no raw internal validation codes dominate normal teacher UX.
+- generated Teaching Content can be viewed and edited.
+- existing teacher data is not overwritten.
+
+Do NOT create a real student assignment unless an isolated test fixture is used.
+
+==================================================
+NON-NEGOTIABLE SAFETY / SCOPE
+==================================================
+
+DO NOT:
+
+- modify Quiz;
+- modify Knowledge Tree;
+- modify student quiz-taking;
+- redesign AI Teacher runtime;
+- weaken C1–C7 source/instructional safety;
+- create fake REQUIRED Outcome relations;
+- silently fabricate missing canonical source;
+- overwrite teacher-edited content;
+- remap lesson 654 or the current test lesson;
+- publish/deploy.
+
+Prefer the smallest coherent architectural fix over local UI patches.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+AUDIT FINDINGS
+
+ROOT CAUSES
+
+OLD DEPENDENCY GRAPH
+
+NEW DEPENDENCY GRAPH
+
+COGNITIVE PATH GENERATION RESULT
+
+COGNITIVE TARGET SAFETY RESULT
+
+TEACHING CONTENT INDEPENDENCE RESULT
+
+TEACHING CONTENT GENERATION RESULT
+
+TEACHING CONTENT VIEW/EDIT RESULT
+
+ASSIGNMENT FLOW RESULT
+
+REVIEW WARNING RESULT
+
+TRUE HARD BLOCK RULES
+
+MATERIAL EDIT INVALIDATION RESULT
+
+UI RESULT
+
+FILES CHANGED
+
+DATABASE CHANGED
+
+TESTS
+
+REAL BROWSER ACCEPTANCE
+
+EXISTING CONTENT OVERWRITTEN: YES/NO
+
+TEACHER-EDITED CONTENT OVERWRITTEN: YES/NO
+
+C1–C7 SAFETY WEAKENED: YES/NO
+
+AI TEACHER RUNTIME CHANGED: YES/NO
+
+QUIZ CHANGED: YES/NO
+
+KNOWLEDGE TREE CHANGED: YES/NO
+
+PUBLISHED/DEPLOYED: YES/NO
+
+REMAINING BLOCKERS
