@@ -1,0 +1,306 @@
+IMPLEMENTATION — STRUCTURALLY SAFE AUTOMATIC MAP MUST PERSIST AS REVIEWABLE DRAFT
+
+Implement the minimal coherent architecture from the completed read-only audit.
+
+IMPORTANT:
+This is NOT a broad mapping redesign.
+Do NOT change source extraction.
+Do NOT change Pass 1.
+Do NOT change the MicroNode generation prompt yet.
+Do NOT change duplicate heuristic thresholds yet.
+Do NOT change DB schema.
+Do NOT implement Merge/Split UI.
+Do NOT touch AI Teacher, Quiz, Knowledge Tree, C3–C7, or unrelated systems.
+
+PRIMARY PRODUCT RULE
+
+A structurally safe automatic mapping MUST persist as a draft even when
+pedagogical/semantic review is uncertain, rejected, or unavailable.
+
+Teacher is the final authority.
+
+==================================================
+1. KEEP THESE HARD FAILURES HARD
+==================================================
+
+Do NOT weaken or bypass:
+
+- Pass 1 source/provenance failures
+- malformed Pass 2/parser/schema failure
+- zero valid MicroNodes
+- invalid source block indices
+- missing required source placement
+- duplicate/contradictory source ownership
+- unresolved learner activity ownership
+- invalid references
+- database transaction/integrity failures
+
+In particular:
+
+MappingSourcePlacementError
+and
+MappingInstructionalCoverageError
+
+must continue preventing unsafe persistence.
+
+Existing deterministic ownership repairs remain unchanged.
+
+==================================================
+2. PEDAGOGICAL REVIEW MUST NOT DISCARD SAFE MAP
+==================================================
+
+Change the current behavior for:
+
+A.
+duplicateResolution.rejectedDecisionCount > 0
+
+Currently:
+→ MappingGranularityReviewError
+→ entire mapping discarded
+
+Target:
+→ mapping continues to persistence
+→ affected candidate pairs become REVIEW REQUIRED
+→ affected nodes become needs_review
+→ warning/reason is persisted
+
+B.
+atomicity/semantic review unavailable
+
+Currently:
+→ MappingAtomicityReviewUnavailableError
+→ entire mapping discarded
+
+Target:
+If structural integrity gates pass:
+→ persist draft
+→ affected/relevant nodes become needs_review
+→ persist a machine-readable review-unavailable warning
+
+Do NOT silently treat these cases as valid/approved.
+They are REVIEW REQUIRED.
+
+==================================================
+3. KEEP EXISTING REVIEW ARCHITECTURE
+==================================================
+
+Reuse the existing mechanisms already found by the audit:
+
+- lesson_nodes.status = "needs_review"
+- lesson_nodes.changeReason
+- lessons.mappingMetadata
+- mappingMetadata.quality.pedagogicalReview
+
+Do NOT create a second draft architecture.
+
+For unresolved/rejected duplicate pairs, preserve at minimum:
+
+- candidate pair identity
+- persisted node identity after insert, where existing architecture supports it
+- issue/reason code
+- disposition such as REVIEW_REQUIRED
+- whether semantic review was rejected/unavailable
+
+For atomicity/granularity concerns, preserve equivalent structured review data.
+
+Do not persist unnecessary raw model output.
+
+==================================================
+4. PERSISTENCE GATE RESPONSIBILITIES
+==================================================
+
+Refactor only as much as needed so that:
+
+assertPass2PersistenceGates()
+
+blocks HARD INTEGRITY failures only.
+
+Pedagogical quality uncertainty must flow forward as structured review data.
+
+Do NOT solve this by blindly deleting the rejectedDecisionCount throw.
+
+Make the distinction explicit and testable:
+
+HARD_FAILURE
+vs
+REVIEW_REQUIRED
+
+Use existing types/structures where possible.
+
+==================================================
+5. NODE REVIEW STATUS
+==================================================
+
+When a duplicate pair or atomicity finding is unresolved/rejected:
+
+- map the temporary candidate positions to the generated nodes
+- during persistence mark affected nodes:
+  status = "needs_review"
+
+- preserve appropriate machine-readable reason(s) in changeReason
+  using the existing format/convention
+
+Examples of reason semantics:
+
+DUPLICATE_REVIEW_REQUIRED
+DUPLICATE_REVIEW_REJECTED
+ATOMICITY_REVIEW_REQUIRED
+ATOMICITY_REVIEW_UNAVAILABLE
+
+Reuse existing codes where they already exist.
+Do not invent duplicates of existing semantics.
+
+Unaffected structurally valid nodes should retain their normal draft/review state.
+
+==================================================
+6. MAPPING METADATA
+==================================================
+
+Ensure the completed automatic mapping stores pedagogical review findings in:
+
+mappingMetadata.quality.pedagogicalReview
+
+including enough information for later teacher UI review.
+
+At minimum preserve:
+
+- duplicate candidate/review pairs
+- rejected/unresolved review state
+- atomicity findings
+- review-unavailable reason when applicable
+
+Do not make this metadata responsible for source integrity.
+Existing source audit remains authoritative for source integrity.
+
+==================================================
+7. MINIMAL UI CHANGE ONLY
+==================================================
+
+Do NOT redesign the teacher dashboard.
+
+After a successful automatic mapping that contains pedagogical review findings,
+show a concise visible warning in the existing mapping/audit area, such as:
+
+"Քարտեզագրումը պահպանվել է, սակայն որոշ MicroNode-ներ պահանջում են ուսուցչի վերանայում։"
+
+Affected MicroNodes should visibly retain/use their existing needs_review state.
+
+If the current UI already displays needs_review status sufficiently,
+reuse it.
+
+Do NOT implement Merge/Split in this task.
+
+Teacher can currently:
+- edit
+- delete
+- move
+- reorder
+- approve
+
+That is sufficient for this phase.
+
+==================================================
+8. FINAL APPROVAL
+==================================================
+
+Do NOT redesign final approval in this task.
+
+Only ensure this implementation does NOT automatically mark the lesson or
+review-required nodes as finally approved.
+
+If current final approval would silently approve unresolved pedagogical
+review findings, report that as a follow-up risk instead of broadening this task.
+
+==================================================
+9. REQUIRED TESTS
+==================================================
+
+Add/update focused regression tests for:
+
+CASE 1
+Structurally valid map
++
+duplicate semantic review rejected
+
+Expected:
+- persistence gate does NOT throw MappingGranularityReviewError
+- map remains eligible for draft persistence
+- affected nodes/review data are marked REVIEW_REQUIRED
+
+CASE 2
+Structurally valid map
++
+semantic/atomicity review unavailable
+
+Expected:
+- no structural persistence failure
+- REVIEW_REQUIRED warning is produced/preserved
+
+CASE 3
+Unresolved duplicate pair / REVIEW_REQUIRED decision
+
+Expected:
+- draft persists
+- affected nodes are needs_review
+- warning metadata survives
+
+CASE 4
+Invalid source ownership
+
+Expected:
+- STILL throws MappingSourcePlacementError
+- unsafe mapping is NOT persisted
+
+CASE 5
+Unresolved activity placement
+
+Expected:
+- STILL throws MappingInstructionalCoverageError
+
+CASE 6
+Pass 2 parser failure / zero MicroNodes
+
+Expected:
+- STILL fails before replacement
+
+Do not weaken existing coverage-validator tests.
+
+==================================================
+10. VERIFY CURRENT LESSON PATH
+==================================================
+
+Do NOT automatically rerun lesson 705 mapping.
+
+After implementation and tests:
+restart only the API/frontend workflow if required for the code to be active.
+
+Then STOP.
+
+We will manually rerun:
+
+lessonId 705
+հանրահաշիվ 9 — Սմբատ Գոգյան
+ԹՎԱՅԻՆ ԱՐՏԱՀԱՅՏՈՒԹՅՈՒՆՆԵՐԻ ԱՐՏԱԴՐՅԱԼԻ ՆՇԱՆԸ
+PDF physical pages 6–9
+
+after reviewing your implementation report.
+
+==================================================
+REPORT
+==================================================
+
+Return:
+
+1. Exact files changed
+2. Exact hard gates preserved
+3. Exact pedagogical failures converted to REVIEW_REQUIRED
+4. How affected nodes are marked
+5. What review metadata is persisted
+6. Minimal UI behavior added/reused
+7. Focused test results
+8. Typecheck result
+9. Any final-approval risk discovered
+
+Do not perform unrelated cleanup.
+
+STOP.
