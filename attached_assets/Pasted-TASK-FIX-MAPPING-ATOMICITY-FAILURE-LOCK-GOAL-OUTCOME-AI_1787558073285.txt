@@ -1,0 +1,482 @@
+TASK — FIX MAPPING ATOMICITY FAILURE + LOCK GOAL/OUTCOME AI ACTIONS AFTER DRAFT IMPORT
+
+GOAL
+
+Fix two concrete teacher-workflow problems without redesigning the Mapping architecture.
+
+CURRENT PROBLEM A:
+
+Automatic Mapping fails with:
+
+«Քարտեզագրման ատոմայնության ստուգումը չի ավարտվել։
+Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։»
+
+The Mapping result is therefore lost/not persisted.
+
+CURRENT PROBLEM B:
+
+After Goal/Outcomes have already been generated/imported into the lesson as the current draft,
+the UI still leaves these actions available:
+
+- «✨ Աղբյուրից առաջարկել»
+- «Ներմուծել որպես draft»
+
+This creates unnecessary duplicate AI actions and risks replacing already accepted working content.
+
+Fix both issues.
+
+IMPORTANT:
+
+Do NOT redesign Mapping.
+Do NOT remove atomicity validation.
+Do NOT weaken MicroNode atomicity requirements.
+Do NOT change C1–C7 semantics.
+Do NOT change Quiz.
+Do NOT change Knowledge Tree.
+Do NOT change AI Teacher runtime.
+Do NOT publish/deploy.
+
+==================================================
+PART 0 — AUDIT BEFORE CHANGING CODE
+==================================================
+
+First reproduce the current Mapping failure on the new lesson that just produced:
+
+«Քարտեզագրման ատոմայնության ստուգումը չի ավարտվել։
+Արդյունքը չի պահպանվել։»
+
+Trace the exact pipeline:
+
+source blocks
+→ mapping generation
+→ parsing
+→ MicroNode extraction
+→ atomicity validation
+→ atomicity repair/retry if any
+→ final mapping validation
+→ persistence transaction.
+
+Identify exactly where the failure occurs.
+
+Classify the root cause as one of:
+
+A. provider/model call failed
+B. provider timeout
+C. malformed atomicity response
+D. parser/schema validation failure
+E. atomicity validator threw unexpectedly
+F. repair pass failed
+G. persistence never reached
+H. another concrete cause
+
+Do not guess.
+
+Use logs/current code/runtime evidence.
+
+Report the proven root cause internally before implementing.
+
+==================================================
+PART 1 — ATOMICITY VALIDATION MUST REMAIN
+==================================================
+
+Do NOT bypass or remove the atomicity gate.
+
+The required semantic rule remains:
+
+Each MicroNode must represent ONE independently assessable learning objective.
+
+Bad examples:
+
+- one MicroNode mixes definition + application + problem solving;
+- one MicroNode contains multiple separately testable knowledge targets.
+
+Good behavior:
+
+Mapping
+→ atomicity check
+→ if needed, bounded repair/split
+→ validate
+→ persist.
+
+The goal is to make this process reliable, not weaker.
+
+==================================================
+PART 2 — MAKE ATOMICITY CHECK FAIL-SAFE AND DIAGNOSTIC
+==================================================
+
+The current generic failure:
+
+«Քարտեզագրման ատոմայնության ստուգումը չի ավարտվել»
+
+is not sufficient for internal diagnosis.
+
+Add/retain structured internal failure classification.
+
+For developer logs/job diagnostics record:
+
+- lesson id
+- generated MicroNode count
+- atomicity request attempted
+- atomicity response received
+- parsing result
+- validation result
+- repair attempted
+- final failure code
+
+Teacher UI should remain simple.
+
+Do NOT expose technical stack traces to the teacher.
+
+==================================================
+PART 3 — BOUNDED ATOMICITY REPAIR
+==================================================
+
+If initial Mapping produces non-atomic MicroNodes:
+
+allow ONE bounded atomicity repair pass using the existing canonical mechanism.
+
+Expected sequence:
+
+initial Mapping
+→ deterministic/basic structural checks
+→ atomicity evaluation
+→ if non-atomic and repairable:
+   ONE repair/split pass
+→ atomicity evaluation again
+→ persist if valid.
+
+Maximum:
+
+1 initial mapping
++
+1 atomicity repair pass.
+
+No infinite retries.
+
+Do NOT repeatedly call AI until it passes.
+
+==================================================
+PART 4 — DO NOT DISCARD A VALID RESULT BECAUSE OF A TECHNICAL ATOMICITY-CHECK FAILURE
+==================================================
+
+Important distinction:
+
+A. ATOMICITY CHECK SAYS CONTENT IS NON-ATOMIC
+→ repair or reject according to canonical rules.
+
+B. ATOMICITY CHECK ITSELF FAILS TECHNICALLY
+for example timeout/parser/provider transport failure
+→ this is NOT evidence that the mapping content is non-atomic.
+
+Implement safe handling.
+
+If atomicity verification cannot complete because of a transient technical failure:
+
+- do not falsely mark the mapping as valid;
+- do not falsely mark it non-atomic;
+- preserve the generated candidate/result in temporary job state or retryable draft state if the existing architecture supports it;
+- allow a bounded retry of ONLY the atomicity verification rather than regenerating the entire Mapping from scratch.
+
+Use the smallest existing mechanism possible.
+
+Do NOT create a new parallel Mapping storage model unless absolutely necessary.
+
+The teacher should not lose all prior AI work merely because the atomicity verifier had a transient technical failure.
+
+==================================================
+PART 5 — PERSISTENCE MUST HAPPEN ONLY AFTER VALIDATION
+==================================================
+
+Do not weaken final persistence safety.
+
+The canonical persisted Mapping must still pass:
+
+- parsing/schema validity;
+- source coverage rules;
+- source fidelity;
+- MicroNode granularity/atomicity;
+- exercise preservation;
+- required relation integrity.
+
+Only validated Mapping should be committed as canonical lesson Mapping.
+
+Use the existing atomic transaction behavior.
+
+==================================================
+PART 6 — TEACHER-FACING ERROR BEHAVIOR
+==================================================
+
+If atomicity repair genuinely fails because the mapping remains non-atomic:
+
+show a clear Armenian message such as:
+
+«Քարտեզագրումը ստեղծվել է, բայց որոշ գիտելիքի հանգույցներ չափազանց լայն են։
+Խնդրում ենք կրկին փորձել քարտեզագրումը»։
+
+If the problem is a technical atomicity-service failure:
+
+show something like:
+
+«Քարտեզագրման ստուգումը տեխնիկական պատճառով չի ավարտվել։
+Կարող եք կրկին փորձել՝ առանց դասի տվյալները նորից լրացնելու»։
+
+Do not expose provider/schema/internal codes in the primary teacher UI.
+
+==================================================
+PART 7 — GOAL/OUTCOME DRAFT IS THE WORKING SOURCE OF TRUTH
+==================================================
+
+Audit the current Goal/Outcome UI state model.
+
+When the lesson already has current imported Goal/Outcomes in its working draft,
+the teacher should NOT keep seeing active AI proposal/import actions.
+
+Specifically:
+
+After Goal/Outcomes have been imported into the lesson draft:
+
+- hide or disable «✨ Աղբյուրից առաջարկել»
+- hide or disable «Ներմուծել որպես draft»
+
+Preferred UX:
+
+HIDE these routine actions once a current draft exists.
+
+Keep visible:
+
+- current Goal;
+- current Outcomes;
+- ✏️ «Խմբագրել».
+
+Teacher can manually correct the Goal/Outcomes through existing edit controls.
+
+==================================================
+PART 8 — DO NOT AUTO-REPLACE EXISTING GOAL/OUTCOMES
+==================================================
+
+Once current Goal/Outcomes exist:
+
+automatic proposal actions must not casually replace them.
+
+Do NOT automatically regenerate Goal/Outcomes during Mapping.
+
+Do NOT overwrite teacher-edited Goal/Outcomes.
+
+Teacher manually edits if needed.
+
+The imported draft becomes the working lesson Goal/Outcome set.
+
+==================================================
+PART 9 — WHEN AI PROPOSAL ACTIONS MAY RETURN
+==================================================
+
+The proposal action may become available again only when there is genuinely no usable current Goal/Outcome draft.
+
+For example:
+
+- lesson has no Goal/Outcomes at all;
+- teacher explicitly deletes/resets them using an existing supported workflow.
+
+Do NOT invent a new reset feature in this task.
+
+Use current lesson state to determine whether proposal actions should be shown.
+
+==================================================
+PART 10 — GOAL/OUTCOME DRAFT MUST NOT BECOME A SECOND APPROVAL GATE
+==================================================
+
+Important:
+
+Once Goal/Outcomes exist as current draft data:
+
+Mapping must be allowed to proceed.
+
+Do NOT require:
+
+- source proposal again;
+- separate Goal/Outcome confirmation;
+- another hidden acceptance flag
+
+merely to start Mapping.
+
+Existing Goal/Outcomes
+=
+sufficient workflow input for Mapping.
+
+Review/edit remains available to the teacher.
+
+==================================================
+PART 11 — TEST THE REAL FLOW
+==================================================
+
+After implementation, test this exact teacher flow on a safe test/new lesson:
+
+1. Create lesson.
+2. Generate Goal/Outcome proposal.
+3. Import proposal as draft.
+4. Verify:
+   - Goal/Outcomes visible;
+   - «Աղբյուրից առաջարկել» no longer active/visible;
+   - «Ներմուծել որպես draft» no longer active/visible;
+   - edit remains available.
+5. Run automatic Mapping.
+6. Verify atomicity phase completes.
+7. If repair is needed, verify maximum one repair pass.
+8. Verify validated Mapping persists.
+9. Refresh page.
+10. Verify Mapping still exists.
+
+Do not proceed into Cognitive Path/Teaching Content in this task unless needed only to prove Mapping persistence.
+
+==================================================
+PART 12 — DETERMINISTIC TESTS
+==================================================
+
+Add/update focused provider-free tests for at least:
+
+CASE 1
+Goal/Outcomes absent
+→ AI proposal action visible.
+
+CASE 2
+Goal/Outcomes imported as draft
+→ proposal/import actions hidden or disabled.
+
+CASE 3
+Goal/Outcomes imported
+→ manual edit remains available.
+
+CASE 4
+Existing Goal/Outcomes
+→ Mapping allowed without another Goal/Outcome confirmation.
+
+CASE 5
+Atomic Mapping candidate
+→ atomicity passes
+→ Mapping persists.
+
+CASE 6
+Non-atomic candidate
+→ exactly one repair pass
+→ valid repaired Mapping persists.
+
+CASE 7
+Non-atomic candidate remains invalid after repair
+→ canonical Mapping not persisted.
+
+CASE 8
+Atomicity provider/parser technical failure
+→ does not falsely classify candidate as non-atomic
+→ retryable verification path remains available.
+
+CASE 9
+Atomicity technical retry succeeds
+→ Mapping persists without regenerating Goal/Outcome draft.
+
+CASE 10
+Teacher-edited Goal/Outcomes
+→ automatic proposal path does not overwrite them.
+
+==================================================
+PART 13 — SCOPE PROTECTION
+==================================================
+
+Do NOT change:
+
+- Cognitive Path semantics
+- Teaching Content semantics
+- Final teacher acceptance workflow
+- Assignment workflow
+- Quiz
+- Knowledge Tree
+- AI Teacher runtime
+- C3–C7
+- Subject → Lesson → Topic → MicroNode hierarchy
+
+Do NOT publish/deploy.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+ROOT CAUSE OF ATOMICITY FAILURE:
+...
+
+OLD ATOMICITY FLOW:
+...
+
+NEW ATOMICITY FLOW:
+...
+
+ATOMICITY VALIDATION REMOVED:
+NO
+
+MAX ATOMICITY REPAIR PASSES:
+1
+
+TECHNICAL ATOMICITY FAILURE HANDLING:
+...
+
+MAPPING PERSISTENCE:
+WORKING / NOT WORKING
+
+GOAL/OUTCOME DRAFT STATE:
+...
+
+“ԱՂԲՅՈՒՐԻՑ ԱՌԱՋԱՐԿԵԼ” AFTER DRAFT IMPORT:
+HIDDEN / DISABLED / STILL ACTIVE
+
+“ՆԵՐՄՈՒԾԵԼ ՈՐՊԵՍ DRAFT” AFTER IMPORT:
+HIDDEN / DISABLED / STILL ACTIVE
+
+MANUAL GOAL/OUTCOME EDIT:
+AVAILABLE / NOT AVAILABLE
+
+SECOND GOAL/OUTCOME APPROVAL REQUIRED BEFORE MAPPING:
+NO
+
+10-CASE MATRIX:
+X / 10 PASS
+
+REAL FLOW CHECK:
+...
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+YES / NO
+
+If YES:
+list only writes caused by the authorized safe test flow.
+
+C1–C7 SAFETY WEAKENED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+PUBLISHED/DEPLOYED:
+NO
+
+FINAL VERDICT:
+
+Return exactly ONE:
+
+MAPPING ENTRY FLOW STABILIZED — GOAL/OUTCOME DRAFT LOCK AND ATOMICITY PIPELINE VERIFIED
+
+or
+
+MAPPING ENTRY FLOW BLOCKED — <smallest exact remaining blocker>
+
+Then STOP.
+
+Do not start another feature.
