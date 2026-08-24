@@ -14,9 +14,9 @@ description: Pass 2B semantic granularity review — architecture, gating strate
 ## Gating strategy (Option C, approved)
 
 - Structural issues (missing/duplicate/invalid block indices) → hard fail (`coverage_failed`) — Phase 3, unchanged
-- Semantic issues (MEGA_NODE / OVER_SPLIT / EXERCISE_MISMATCH) → advisory (`completed` + reviewItems) — Phase 4
+- General semantic issues (MEGA_NODE / OVER_SPLIT / EXERCISE_MISMATCH) → advisory (`completed` + reviewItems) — Phase 4. A separately confirmed unresolved atomicity finding after its single bounded repair pass is a hard pre-persistence boundary.
 
-`granularityFindings` are NEVER used to change `jobStatus`. Only `coverageValidation.valid` drives that.
+General `granularityFindings` are not used to change `jobStatus`. The explicit atomicity-recovery boundary may fail before a canonical mapping is persisted.
 
 ## Key design decisions
 

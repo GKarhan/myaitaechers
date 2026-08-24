@@ -3552,6 +3552,8 @@ function LessonGoalOutcomesPanel({
     requiresConfirmation: boolean;
     confirmedAt: string | null;
     proposal: { lessonGoal: string; outcomes: string[]; generatedAt?: string } | null;
+    hasUsableCurrentDraft: boolean;
+    currentOutcomeCount: number;
     compatibility: string;
   };
   const reviewQuery = useQuery({
@@ -3620,7 +3622,7 @@ function LessonGoalOutcomesPanel({
                   ? "✅ Նպատակն ու կանոնական վերջնարդյունքները հաստատված են։"
                   : review.status === "legacy"
                     ? "ℹ️ Legacy համատեղելիության ռեժիմ. նախկին քարտեզագրումը չի փոխվել։"
-                    : "⚠️ Նպատակի/վերջնարդյունքների վերանայում է պահանջվում՝ մինչև նոր մանրամասն քարտեզագրումը։"}
+                    : "⚠️ Նպատակն ու վերջնարդյունքները կարող եք վերանայել կամ խմբագրել։ Գործող սևագրով քարտեզագրումը հասանելի է։"}
               </div>
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -3655,21 +3657,23 @@ function LessonGoalOutcomesPanel({
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  disabled={busy}
-                  onClick={() => void run(() => request("/goal-outcome-review/proposal"))}
-                  className="rounded border border-blue-400/30 bg-blue-400/10 px-2 py-1 text-[10px] text-blue-100 hover:bg-blue-400/20 disabled:opacity-50"
-                >✨ Աղբյուրից առաջարկել</button>
-                {review.proposal && (
+              {!review.hasUsableCurrentDraft && (
+                <div className="flex flex-wrap gap-1.5">
                   <button
                     disabled={busy}
-                    onClick={() => void run(() => request("/goal-outcome-review/apply-proposal"))}
-                    className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
-                  >Ներմուծել որպես draft</button>
-                )}
-              </div>
-              {review.proposal && (
+                    onClick={() => void run(() => request("/goal-outcome-review/proposal"))}
+                    className="rounded border border-blue-400/30 bg-blue-400/10 px-2 py-1 text-[10px] text-blue-100 hover:bg-blue-400/20 disabled:opacity-50"
+                  >✨ Աղբյուրից առաջարկել</button>
+                  {review.proposal && (
+                    <button
+                      disabled={busy}
+                      onClick={() => void run(() => request("/goal-outcome-review/apply-proposal"))}
+                      className="rounded border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
+                    >Ներմուծել որպես draft</button>
+                  )}
+                </div>
+              )}
+              {review.proposal && !review.hasUsableCurrentDraft && (
                 <div className="rounded border border-blue-400/20 bg-blue-400/[0.05] p-2 space-y-1.5">
                   <p className="text-[10px] font-medium text-blue-200">Աղբյուրային AI առաջարկ — դեռ draft է</p>
                   <p className="text-[11px] text-white/90">{review.proposal.lessonGoal}</p>

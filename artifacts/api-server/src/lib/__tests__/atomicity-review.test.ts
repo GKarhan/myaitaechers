@@ -5,9 +5,12 @@ import {
   assertPass2PersistenceGates,
   buildAutomaticOutcomeAlignmentPlan,
   consolidateHighConfidenceOverSplits,
+  finalizeAtomicityVerificationDiagnostics,
   getUnresolvedAtomicityFindings,
   normalizeActivityPlacements,
   validatePass2SourceAlignment,
+  runBoundedAtomicityVerification,
+  MappingAtomicityError,
   MappingAtomicityReviewUnavailableError,
   MappingGranularityReviewError,
   MappingSourceAlignmentError,
@@ -256,7 +259,7 @@ const diagnostics = {
   const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
   const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
   const alignment = validatePass2SourceAlignment(topics, source);
-  assert.doesNotThrow(() => assertPass2PersistenceGates({
+  assert.throws(() => assertPass2PersistenceGates({
     coverageValidation: validateSourceCoverage(source.length, topics),
     instructionalCoverage: validateInstructionalCoverage(source, topics),
     sourceAlignment: alignment,
@@ -270,8 +273,8 @@ const diagnostics = {
       confidence: "HIGH",
       reason: "Unresolved test fixture.",
     }],
-  }));
-  console.log("  ✓ unresolved atomicity becomes a persisted teacher-review disposition");
+  }), MappingAtomicityError);
+  console.log("  ✓ unresolved atomicity fails closed before canonical persistence");
 }
 
 {
@@ -286,6 +289,97 @@ const diagnostics = {
     atomicityReviewUnavailableReason: "INVALID_RESPONSE",
   }), MappingAtomicityReviewUnavailableError);
   console.log("  ✓ unavailable or malformed atomicity review blocks persistence");
+}
+
+{
+  let calls = 0;
+  const complete = {
+    status: "COMPLETE" as const,
+    findings: [],
+    sourceReallocations: [],
+    atomicityRepairs: [],
+    duplicateResolutions: [],
+    malformedDuplicateResolutionEntries: [],
+  };
+  const retried = await runBoundedAtomicityVerification(async () => {
+    calls++;
+    return calls === 1
+      ? { ...complete, status: "UNAVAILABLE" as const, unavailableReason: "REQUEST_FAILED" as const }
+      : complete;
+  }, 3);
+  assert.equal(calls, 2, "technical verification receives exactly one retry");
+  assert.equal(retried.verificationDiagnostics.retryAttempted, true);
+  assert.equal(retried.verificationDiagnostics.retrySucceeded, true);
+  assert.equal(retried.verificationDiagnostics.parseState, "SUCCEEDED");
+  assert.equal(retried.verificationDiagnostics.generatedMicroNodeCount, 3);
+  console.log("  ✓ technical atomicity retry reuses the existing candidate once");
+}
+
+{
+  let calls = 0;
+  const retried = await runBoundedAtomicityVerification(async () => {
+    calls++;
+    return {
+      status: "UNAVAILABLE" as const,
+      unavailableReason: "INVALID_RESPONSE" as const,
+      findings: [],
+      sourceReallocations: [],
+      atomicityRepairs: [],
+      duplicateResolutions: [],
+      malformedDuplicateResolutionEntries: [],
+    };
+  }, 2);
+  assert.equal(calls, 2, "retry exhaustion never loops");
+  assert.equal(retried.verificationDiagnostics.retrySucceeded, false);
+  assert.equal(retried.verificationDiagnostics.parseState, "INVALID_RESPONSE");
+  console.log("  ✓ exhausted technical verification remains distinct from non-atomic content");
+}
+
+{
+  const technical = finalizeAtomicityVerificationDiagnostics({
+    verification: {
+      generatedMicroNodeCount: 4,
+      requestAttempted: true,
+      responseReceived: true,
+      parseState: "INVALID_RESPONSE",
+      validationState: "NOT_RUN",
+      repairAttempted: false,
+      retryAttempted: true,
+      retrySucceeded: false,
+      attempts: [],
+    },
+    lessonId: 41,
+    repairAttempted: false,
+    unresolvedFindingCount: 0,
+    technicalUnavailableReason: "INVALID_RESPONSE",
+  });
+  assert.equal(technical.validationState, "NOT_RUN");
+  assert.equal(technical.finalFailureCode, "TECHNICAL_RETRY_EXHAUSTED");
+  assert.equal(technical.persistenceEligible, false);
+  assert.equal(technical.generatedMicroNodeCount, 4);
+
+  const nonAtomic = finalizeAtomicityVerificationDiagnostics({
+    verification: { ...technical, validationState: "NOT_RUN", finalFailureCode: undefined },
+    repairAttempted: true,
+    unresolvedFindingCount: 1,
+  });
+  assert.equal(nonAtomic.validationState, "FAILED_NON_ATOMIC");
+  assert.equal(nonAtomic.finalFailureCode, "UNRESOLVED_NON_ATOMIC");
+  console.log("  ✓ terminal diagnostics distinguish technical exhaustion from non-atomic content");
+}
+
+{
+  const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
+  const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
+  assert.doesNotThrow(() => assertPass2PersistenceGates({
+    coverageValidation: validateSourceCoverage(source.length, topics),
+    instructionalCoverage: validateInstructionalCoverage(source, topics),
+    sourceAlignment: validatePass2SourceAlignment(topics, source),
+    duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
+    diagnostics,
+    rejectedSemanticReviewDecisionCount: 1,
+  }));
+  console.log("  ✓ rejected repair metadata alone is not mislabeled as a technical outage");
 }
 
 {
@@ -505,4 +599,4 @@ const diagnostics = {
   console.log("  ✓ combined source reallocation and split partition final ownership");
 }
 
-console.log("\nAtomicity and exercise-alignment review: 15/15 passing");
+console.log("\nAtomicity and exercise-alignment review: 19/19 passing");

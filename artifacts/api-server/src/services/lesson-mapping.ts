@@ -480,9 +480,12 @@ export class MappingGranularityReviewError extends Error {
 
 export class MappingAtomicityError extends Error {
   readonly teacherMessage =
-    "Քարտեզագրումը չի բաժանել ինքնուրույն ստուգվող գիտելիքները բավարար ատոմային MicroNode-ների։ Արդյունքը չի պահպանվել։";
+    "Քարտեզագրումը ստեղծվել է, բայց որոշ գիտելիքի հանգույցներ չափազանց լայն են։ Խնդրում ենք կրկին փորձել քարտեզագրումը։";
 
-  constructor(readonly findings: GranularityFinding[]) {
+  constructor(
+    readonly findings: GranularityFinding[],
+    readonly diagnostics?: AtomicityVerificationDiagnostics,
+  ) {
     super("Detailed mapping contains unresolved pedagogical atomicity findings");
     this.name = "MappingAtomicityError";
   }
@@ -490,9 +493,12 @@ export class MappingAtomicityError extends Error {
 
 export class MappingAtomicityReviewUnavailableError extends Error {
   readonly teacherMessage =
-    "Քարտեզագրման ատոմայնության ստուգումը չի ավարտվել։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել։";
+    "Քարտեզագրման ստուգումը տեխնիկական պատճառով չի ավարտվել։ Կարող եք կրկին փորձել՝ առանց դասի տվյալները նորից լրացնելու։";
 
-  constructor(readonly reason: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED") {
+  constructor(
+    readonly reason: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED",
+    readonly diagnostics?: AtomicityVerificationDiagnostics,
+  ) {
     super(`Detailed mapping atomicity review unavailable: ${reason}`);
     this.name = "MappingAtomicityReviewUnavailableError";
   }
@@ -2626,6 +2632,8 @@ export interface Pass2Result {
   sourceAlignmentReconciliation: SourceAlignmentReconciliationResult;
   /** One same-lesson, server-validated repair pass for atomicity/exercise ownership. */
   atomicityRepair: AtomicityRepairResult;
+  /** Structured verification/retry/persistence trace for the atomicity boundary. */
+  atomicityVerification: AtomicityVerificationDiagnostics;
   /** Count-only trace of Step 2 parsing, structural rejection, and normalization. */
   diagnostics: Pass2Diagnostics;
 }
@@ -3859,6 +3867,35 @@ export interface SemanticReviewResult {
   atomicityRepairs: AtomicityRepairDecision[];
   duplicateResolutions: DuplicateResolution[];
   malformedDuplicateResolutionEntries: MalformedDuplicateResolutionEntry[];
+  verificationDiagnostics?: AtomicityVerificationDiagnostics;
+}
+
+export type AtomicityVerificationParseState = "SUCCEEDED" | "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+export type AtomicityVerificationValidationState =
+  | "NOT_RUN"
+  | "PASSED"
+  | "FAILED_NON_ATOMIC";
+
+export interface AtomicityVerificationAttemptDiagnostics {
+  attempt: number;
+  requestAttempted: boolean;
+  responseReceived: boolean;
+  parseState: AtomicityVerificationParseState;
+}
+
+export interface AtomicityVerificationDiagnostics {
+  lessonId?: number;
+  generatedMicroNodeCount: number;
+  requestAttempted: boolean;
+  responseReceived: boolean;
+  parseState: AtomicityVerificationParseState;
+  validationState: AtomicityVerificationValidationState;
+  repairAttempted: boolean;
+  retryAttempted: boolean;
+  retrySucceeded: boolean;
+  persistenceEligible?: boolean;
+  finalFailureCode?: "UNRESOLVED_NON_ATOMIC" | "TECHNICAL_RETRY_EXHAUSTED";
+  attempts: AtomicityVerificationAttemptDiagnostics[];
 }
 
 /**
@@ -3869,7 +3906,7 @@ export interface SemanticReviewResult {
  * The plan is only a set of existing block indices; the server applies and
  * deterministically validates it. Returns empty arrays on any review error.
  */
-async function runGranularityReview(
+async function runGranularityReviewOnce(
   topics: Pass2TopicResult[],
   blocks: Pass1Block[],
   sourceAlignment: Pass2SourceAlignment,
@@ -4324,6 +4361,83 @@ direct support for every child, do not propose the split.`;
   }
 }
 
+function buildAtomicityVerificationAttempt(
+  review: SemanticReviewResult,
+  attempt: number,
+): AtomicityVerificationAttemptDiagnostics {
+  const parseState = review.status === "COMPLETE"
+    ? "SUCCEEDED"
+    : review.unavailableReason ?? "REQUEST_FAILED";
+  return {
+    attempt,
+    requestAttempted: true,
+    responseReceived: review.status === "COMPLETE"
+      || review.unavailableReason === "EMPTY_RESPONSE"
+      || review.unavailableReason === "INVALID_RESPONSE",
+    parseState,
+  };
+}
+
+/**
+ * A technical Pass 2B interruption is not evidence that the candidate is
+ * non-atomic. Retry only the verification request once against the same
+ * in-memory candidate. Pass 1, Pass 2, and the bounded repair pass are never
+ * repeated here.
+ */
+export async function runBoundedAtomicityVerification<T extends SemanticReviewResult>(
+  verify: () => Promise<T>,
+  generatedMicroNodeCount: number,
+): Promise<T & { verificationDiagnostics: AtomicityVerificationDiagnostics }> {
+  const first = await verify();
+  const attempts = [buildAtomicityVerificationAttempt(first, 1)];
+  let final = first;
+  let retrySucceeded = false;
+
+  if (first.status === "UNAVAILABLE") {
+    final = await verify();
+    attempts.push(buildAtomicityVerificationAttempt(final, 2));
+    retrySucceeded = final.status === "COMPLETE";
+  }
+
+  return {
+    ...final,
+    verificationDiagnostics: {
+      generatedMicroNodeCount,
+      requestAttempted: attempts.some((attempt) => attempt.requestAttempted),
+      responseReceived: attempts.some((attempt) => attempt.responseReceived),
+      parseState: final.status === "COMPLETE"
+        ? "SUCCEEDED"
+        : final.unavailableReason ?? "REQUEST_FAILED",
+      validationState: "NOT_RUN",
+      repairAttempted: false,
+      retryAttempted: attempts.length > 1,
+      retrySucceeded,
+      attempts,
+    },
+  };
+}
+
+async function runGranularityReview(
+  topics: Pass2TopicResult[],
+  blocks: Pass1Block[],
+  sourceAlignment: Pass2SourceAlignment,
+  duplicateSuspicions: ReadonlyArray<DuplicateSuspicion>,
+): Promise<SemanticReviewResult> {
+  const generatedMicroNodeCount = topics.reduce((sum, topic) => sum + topic.microNodes.length, 0);
+  let loggedRetry = false;
+  return runBoundedAtomicityVerification(async () => {
+    const result = await runGranularityReviewOnce(topics, blocks, sourceAlignment, duplicateSuspicions);
+    if (result.status === "UNAVAILABLE" && !loggedRetry) {
+      loggedRetry = true;
+      logger.warn(
+        { unavailableReason: result.unavailableReason, generatedMicroNodeCount },
+        "pass2b atomicity verification interrupted — retrying existing candidate once",
+      );
+    }
+    return result;
+  }, generatedMicroNodeCount);
+}
+
 // ── Main exported Pass 2 function ─────────────────────────────────────────────
 
 /**
@@ -4334,6 +4448,7 @@ direct support for every child, do not propose the split.`;
  * Validated on lesson 68 (83 blocks): 83/83 coverage, 0 empty sourceBlockIndices.
  */
 export interface Pass2LessonInfo {
+  lessonId?: number;
   lessonTitle: string;
   pagesFrom?: number | null;
   pagesTo?: number | null;
@@ -4503,14 +4618,15 @@ export function assertPass2PersistenceGates(input: {
   diagnostics: Pass2Diagnostics;
   unresolvedAtomicityFindings?: GranularityFinding[];
   atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  atomicityVerificationDiagnostics?: AtomicityVerificationDiagnostics;
   /** A parsed semantic-review action that fails server validation is untrusted. */
   rejectedSemanticReviewDecisionCount?: number;
 }): void {
   if (input.atomicityReviewUnavailableReason) {
-    throw new MappingAtomicityReviewUnavailableError(input.atomicityReviewUnavailableReason);
-  }
-  if ((input.rejectedSemanticReviewDecisionCount ?? 0) > 0) {
-    throw new MappingAtomicityReviewUnavailableError("INVALID_RESPONSE");
+    throw new MappingAtomicityReviewUnavailableError(
+      input.atomicityReviewUnavailableReason,
+      input.atomicityVerificationDiagnostics,
+    );
   }
   if (!input.coverageValidation.valid) {
     throw new MappingSourcePlacementError(input.coverageValidation);
@@ -4521,13 +4637,57 @@ export function assertPass2PersistenceGates(input: {
   if (input.duplicateResolution.rejectedDecisionCount > 0) {
     throw new MappingGranularityReviewError(input.duplicateResolution);
   }
+  if ((input.unresolvedAtomicityFindings ?? []).length > 0) {
+    throw new MappingAtomicityError(
+      input.unresolvedAtomicityFindings ?? [],
+      input.atomicityVerificationDiagnostics,
+    );
+  }
+}
+
+/**
+ * Produces the terminal atomicity trace before the destructive persistence
+ * boundary. A review interruption is intentionally distinct from a completed
+ * review that found broad nodes; neither is eligible for persistence.
+ */
+export function finalizeAtomicityVerificationDiagnostics(input: {
+  verification: AtomicityVerificationDiagnostics;
+  lessonId?: number;
+  repairAttempted: boolean;
+  unresolvedFindingCount: number;
+  technicalUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+}): AtomicityVerificationDiagnostics {
+  const base: AtomicityVerificationDiagnostics = {
+    ...input.verification,
+    ...(input.lessonId === undefined ? {} : { lessonId: input.lessonId }),
+    repairAttempted: input.repairAttempted,
+    persistenceEligible: false,
+  };
+  if (input.technicalUnavailableReason) {
+    return {
+      ...base,
+      validationState: "NOT_RUN",
+      finalFailureCode: "TECHNICAL_RETRY_EXHAUSTED",
+    };
+  }
+  if (input.unresolvedFindingCount > 0) {
+    return {
+      ...base,
+      validationState: "FAILED_NON_ATOMIC",
+      finalFailureCode: "UNRESOLVED_NON_ATOMIC",
+    };
+  }
+  return {
+    ...base,
+    validationState: "PASSED",
+  };
 }
 
 export async function runPass2Pipeline(
   blocks: Pass1Block[],
   lessonInfo: Pass2LessonInfo,
 ): Promise<Pass2Result> {
-  logger.info({ blockCount: blocks.length }, "pass2: starting pipeline");
+  logger.info({ lessonId: lessonInfo.lessonId, blockCount: blocks.length }, "pass2: starting pipeline");
 
   // Step 1: topic boundary detection
   let groups = await detectTopicGroups(
@@ -4875,6 +5035,23 @@ export async function runPass2Pipeline(
     atomicityRepair,
     sourceAlignment,
   );
+  const atomicityVerification = finalizeAtomicityVerificationDiagnostics({
+    verification: semanticReview.verificationDiagnostics ?? {
+      generatedMicroNodeCount: topics.reduce((sum, topic) => sum + topic.microNodes.length, 0),
+      requestAttempted: false,
+      responseReceived: false,
+      parseState: "REQUEST_FAILED" as const,
+      validationState: "NOT_RUN" as const,
+      repairAttempted: false,
+      retryAttempted: false,
+      retrySucceeded: false,
+      attempts: [],
+    },
+    lessonId: lessonInfo.lessonId,
+    repairAttempted: atomicityRepair.attempted,
+    unresolvedFindingCount: unresolvedAtomicityFindings.length,
+    technicalUnavailableReason: atomicityReviewUnavailableReason,
+  });
 
   logger.info(
     {
@@ -4894,6 +5071,7 @@ export async function runPass2Pipeline(
        sourceReallocation,
         sourceAlignmentReconciliation,
         atomicityRepair,
+         atomicityVerification,
         unresolvedAtomicityFindingCount: unresolvedAtomicityFindings.length,
       missingIndices:  coverageValidation.missingIndices,
       duplicateIndices: coverageValidation.duplicateIndices,
@@ -4936,11 +5114,14 @@ export async function runPass2Pipeline(
     diagnostics,
     unresolvedAtomicityFindings,
     atomicityReviewUnavailableReason,
+    atomicityVerificationDiagnostics: atomicityVerification,
     rejectedSemanticReviewDecisionCount:
       granularityConsolidation.rejectedDecisionCount
       + sourceReallocation.rejectedDecisionCount
       + atomicityRepair.rejectedDecisionCount,
   });
+
+  atomicityVerification.persistenceEligible = true;
 
   return {
     topics,
@@ -4954,6 +5135,7 @@ export async function runPass2Pipeline(
     sourceReallocation,
     sourceAlignmentReconciliation,
     atomicityRepair,
+    atomicityVerification,
     unresolvedAtomicityFindings,
     diagnostics,
   };

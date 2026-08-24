@@ -9,7 +9,7 @@ import { createHash } from "crypto";
 import { eq, and, asc, desc, max, inArray, count, or, ne, isNotNull, sql } from "drizzle-orm";
 import { openrouter } from "@workspace/integrations-openrouter-ai";
 import { requireAuth, requireTeacher, type AuthRequest } from "../middlewares/auth";
-import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
+import { extractPdfPageRange, extractPdfPages, resolveUploadedFilePath, isGarbledText, rasterizePdfPages, extractBlocksWithAI, extractBlocksWithVision, runPass2Pipeline, assertDetailedMappingHasMicroNodes, buildAutomaticOutcomeAlignmentPlan, assertPass1AggregateHasBlocks, MappingInstructionalCoverageError, MappingPass2ParserError, MappingZeroMicroNodesError, MappingPass1EmptyExtractionError, MappingPass1MalformedResponseError, MappingPass1SchemaValidationError, MappingSourceTruncatedError, MappingSourcePlacementError, MappingSourceScopeError, MappingGranularityReviewError, MappingAtomicityError, MappingAtomicityReviewUnavailableError, getTeacherFacingMappingFailure, generatePhase2Content, isWeakSource, generateCognitivePath, type Pass1Result, type Phase2Input, type Phase2LinkedExercise, type CogPathInput, type CogPathExercise, type ConfirmedCogLevel } from "../services/lesson-mapping";
 import { validateActivityPlacement, formatActivityFinding } from "../lib/activity-validator.js";
 import { callAIP6 } from "../services/ai";
 import { getDueReviewTopics } from "../services/review-schedule";
@@ -1631,21 +1631,30 @@ router.get("/lessons/:lessonId/outcomes", requireAuth, requireLessonAuthor, asyn
 router.get("/lessons/:lessonId/goal-outcome-review", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
   const lessonId = parsePositiveInt(req.params.lessonId);
   if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
-  const [lesson] = await db.select({
-    id: lessonsTable.id,
-    lessonGoal: lessonsTable.lessonGoal,
-    goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
-    goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
-    goalOutcomeConfirmedAt: lessonsTable.goalOutcomeConfirmedAt,
-  }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  const [lesson, currentOutcomes] = await Promise.all([
+    db.select({
+      id: lessonsTable.id,
+      lessonGoal: lessonsTable.lessonGoal,
+      goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
+      goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
+      goalOutcomeConfirmedAt: lessonsTable.goalOutcomeConfirmedAt,
+    }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
+    db.select({ outcomeText: lessonOutcomesTable.outcomeText })
+      .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId)),
+  ]).then(([lessons, outcomes]) => [lessons[0], outcomes] as const);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
   const status = getGoalOutcomeReviewStatus(lesson);
+  const hasUsableCurrentDraft = Boolean(
+    lesson.lessonGoal?.trim() && currentOutcomes.some((outcome) => outcome.outcomeText.trim()),
+  );
   res.json({
     lessonId,
     lessonGoal: lesson.lessonGoal ?? "",
     status,
     requiresConfirmation: requiresGoalOutcomeConfirmation(lesson),
     proposal: lesson.goalOutcomeProposal ?? null,
+    hasUsableCurrentDraft,
+    currentOutcomeCount: currentOutcomes.length,
     confirmedAt: lesson.goalOutcomeConfirmedAt?.toISOString() ?? null,
     compatibility: status === "legacy" ? "legacy_mapping_remains_usable" : "canonical_review_active",
   });
@@ -1677,6 +1686,18 @@ router.post("/lessons/:lessonId/goal-outcome-review/proposal", requireAuth, requ
   if (!lessonId) { res.status(400).json({ error: "Invalid lesson id" }); return; }
   const [lesson] = await db.select().from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
   if (!lesson) { res.status(404).json({ error: "Lesson not found" }); return; }
+  const currentOutcomes = await db.select({ outcomeText: lessonOutcomesTable.outcomeText })
+    .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId));
+  if (
+    lesson.lessonGoal?.trim()
+    && currentOutcomes.some((outcome) => outcome.outcomeText.trim())
+  ) {
+    res.status(409).json({
+      error: "CANONICAL_DRAFT_EXISTS",
+      message: "Դասի գործող նպատակը և վերջնարդյունքները արդեն առկա են։ Խմբագրեք դրանք ձեռքով՝ նոր առաջարկ ստեղծելու փոխարեն։",
+    });
+    return;
+  }
   if (!lesson.textbookResourceId || !lesson.pagesFrom || !lesson.pagesTo) {
     res.status(409).json({
       error: "SOURCE_CONTEXT_REQUIRED",
@@ -4284,13 +4305,14 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       });
     }
 
+    const workingOutcomes = await db.select({
+      id: lessonOutcomesTable.id,
+      outcomeText: lessonOutcomesTable.outcomeText,
+    })
+      .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId))
+      .orderBy(asc(lessonOutcomesTable.sequence));
     const confirmedOutcomes = lesson.goalOutcomeReviewStatus === "confirmed"
-      ? await db.select({
-        id: lessonOutcomesTable.id,
-        outcomeText: lessonOutcomesTable.outcomeText,
-      })
-        .from(lessonOutcomesTable).where(eq(lessonOutcomesTable.lessonId, lessonId))
-        .orderBy(asc(lessonOutcomesTable.sequence))
+      ? workingOutcomes
       : [];
     const baseInput = {
       subjectName:   subject?.name ?? "",
@@ -4303,8 +4325,8 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       teacherGoal:   lesson.lessonGoal ?? null,
       // Canonical records constrain new detailed mapping only after explicit
       // confirmation. Legacy lessons retain their historical JSON compatibility.
-      teacherOutcomes: confirmedOutcomes.length > 0
-        ? confirmedOutcomes.map((outcome) => outcome.outcomeText)
+      teacherOutcomes: workingOutcomes.length > 0
+        ? workingOutcomes.map((outcome) => outcome.outcomeText)
         : Array.isArray(lesson.lessonOutcomes) ? (lesson.lessonOutcomes as string[]) : null,
     };
 
@@ -4448,6 +4470,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
 
     // ── Pass 2: Topic grouping + MicroNode organisation (in-memory) ───────────
     const pass2 = await runPass2Pipeline(pass1.blocks, {
+      lessonId,
       lessonTitle: lesson.title,
       pagesFrom:   pageRange.pagesFrom,
       pagesTo:     pageRange.pagesTo,
@@ -4964,6 +4987,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           primaryExerciseCount: pass2.atomicityRepair.primaryExerciseIndices.length,
           integrativeExerciseCount: pass2.atomicityRepair.integrativeExerciseIndices.length,
         },
+        atomicityVerification: pass2.atomicityVerification,
         sourceAlignment: {
           valid: pass2.sourceAlignment.valid,
           sufficientCount: pass2.sourceAlignment.sufficientCount,
@@ -5027,6 +5051,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           instructionalCoverageValid: pass2.instructionalCoverage.valid,
           teacherReviewRequired:
             pass2.unresolvedAtomicityFindings.length + pass2.duplicateResolution.unresolvedPairIds.length,
+          atomicityVerification: pass2.atomicityVerification,
           mappingReport,
           // Keep job polling source-safe too. Raw textbook/provider text never
           // belongs in a job result or teacher audit response.
@@ -5154,11 +5179,23 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
                 rejectedDecisionCount: err.duplicateResolution.rejectedDecisionCount,
               },
             }
+        : err instanceof MappingAtomicityError
+          ? {
+              progress: "Քարտեզագրումը ստեղծվել է, բայց որոշ գիտելիքի հանգույցներ չափազանց լայն են։",
+              reason: "MICRONODE_ATOMICITY_FAILED_PRE_PERSISTENCE",
+              diagnostics: {
+                unresolvedFindingCount: err.findings.length,
+                atomicityVerification: err.diagnostics,
+              },
+            }
         : err instanceof MappingAtomicityReviewUnavailableError
           ? {
-              progress: "Atomicity review did not complete; existing mapping was preserved.",
-              reason: "MICRONODE_ATOMICITY_REVIEW_UNAVAILABLE_PRE_PERSISTENCE",
-              diagnostics: { reviewReason: err.reason },
+              progress: "Քարտեզագրման ստուգումը տեխնիկական պատճառով չի ավարտվել։",
+              reason: "MICRONODE_ATOMICITY_RETRY_EXHAUSTED_PRE_PERSISTENCE",
+              diagnostics: {
+                reviewReason: err.reason,
+                atomicityVerification: err.diagnostics,
+              },
             }
         : null;
     await db.update(mappingJobsTable)

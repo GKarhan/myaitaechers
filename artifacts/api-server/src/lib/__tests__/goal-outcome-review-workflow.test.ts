@@ -158,6 +158,23 @@ try {
   assert.deepEqual(importedOutcomes.map((outcome) => outcome.outcomeText), proposalOutcomes);
   assert.equal(importedOutcomes.every((outcome) => outcome.status === "draft"), true);
 
+  const importedReview = await request("/goal-outcome-review");
+  assert.equal(importedReview.response.status, 200);
+  assert.equal(
+    importedReview.body.hasUsableCurrentDraft,
+    true,
+    "the review endpoint marks an imported goal/outcome set as the active working draft",
+  );
+  assert.equal(importedReview.body.currentOutcomeCount, proposalOutcomes.length);
+
+  const blockedProposal = await request("/goal-outcome-review/proposal", { method: "POST" });
+  assert.equal(blockedProposal.response.status, 409);
+  assert.equal(
+    blockedProposal.body.error,
+    "CANONICAL_DRAFT_EXISTS",
+    "source AI cannot replace a usable imported working draft",
+  );
+
   const repeatedImport = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
   assert.equal(repeatedImport.response.status, 200, "the unchanged import is idempotent");
   assert.equal(repeatedImport.body.createdCount, 0);
