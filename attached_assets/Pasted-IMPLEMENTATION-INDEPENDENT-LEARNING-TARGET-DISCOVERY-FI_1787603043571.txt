@@ -1,0 +1,1100 @@
+IMPLEMENTATION — INDEPENDENT LEARNING TARGET DISCOVERY
+FINAL MAPPING-COMPLETENESS ARCHITECTURE EXTENSION
+
+ROLE
+
+Act as a principal AI systems architect, knowledge-representation engineer,
+education-domain architect, and senior TypeScript/backend engineer.
+
+This is a protected extension of an already-working Mapping Core.
+
+DO NOT rewrite the mapper.
+DO NOT replace existing Phase 1–3B architecture.
+DO NOT weaken any existing validator, persistence gate, review safeguard,
+source-preservation rule, transaction boundary, or final-approval safeguard.
+
+The goal is to fix ONE confirmed architectural blind spot:
+
+The system currently derives completeness targets primarily from already-generated
+and promotion-qualified KnowledgeCandidates.
+
+Therefore an independently assessable lesson ability can disappear before target
+discovery and become invisible to completeness.
+
+We must add an independent lesson-level target-discovery boundary.
+
+════════════════════════════════════════════════════════════
+0. CURRENT PROTECTED ARCHITECTURE
+════════════════════════════════════════════════════════════
+
+The current system already contains working behavior from:
+
+PHASE 1
+- KnowledgeCandidate
+- SourceMaterialDisposition
+- explicit promotion decisions
+
+PHASE 2
+- durable lesson_source_materials
+- stable source identity
+- transaction-safe source preservation
+
+PHASE 3A
+- production candidate-based promotion
+- only explicit PROMOTE creates MicroNodes
+
+PHASE 3B
+- lesson-wide semantic consolidation
+- canonical MicroNode identity independent of provisional Topic
+- deterministic final Topic assignment
+
+POST-3B
+- Knowledge Completeness Audit
+- independent-assessability guard
+- Pass 2 source-conservation invariant
+- final source coverage validator
+- review-required persistence safety
+
+ALL OF THESE ARE PROTECTED.
+
+This task EXTENDS the architecture.
+
+It does NOT replace it.
+
+════════════════════════════════════════════════════════════
+1. CONFIRMED REAL FAILURE
+════════════════════════════════════════════════════════════
+
+Real certification lesson:
+
+Հանրահաշիվ 9
+§1.5
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿՆ ՈՒ ՆՇԱՆԱՊԱՀՊԱՆՄԱՆ ՄԻՋԱԿԱՅՔԵՐԸ
+pages 23–25
+lesson 709
+successful job 177
+
+The source contains TWO independently assessable abilities:
+
+A.
+GRAPH → SIGN INTERVALS
+
+B.
+SIGN INTERVALS → GRAPH
+
+Final persisted map contains only A.
+
+B is still strongly evidenced by:
+
+- source blocks 9–12
+- visual blocks 13–14
+- worked construction exercise block 11
+- exercises 68, 69, 70, 72, 73, 74
+- saved lesson outcome:
+  “Կառուցել ֆունկցիայի գրաֆիկ՝ ըստ տրված նշանապահպանման միջակայքերի”
+- lesson goal
+
+Yet job 177 had:
+
+provisional candidates = 5
+promoted MicroNodes = 1
+review-required candidates = 1
+unresolved candidates = 3
+completeness targets = 0
+completeness gaps = 0
+
+This proves the current completeness system can report “clean”
+while a source-supported, independently assessable ability is absent.
+
+════════════════════════════════════════════════════════════
+2. ROOT CAUSE — PROTECTED FACT
+════════════════════════════════════════════════════════════
+
+The current completeness target-discovery chain is approximately:
+
+candidate generation
+→ promotion preview
+→ candidate-snapshot target filter
+→ final promotion/consolidation
+→ completeness audit
+
+Thus:
+
+if an ability is not generated as a qualifying candidate
+OR
+is excluded before target construction
+
+then it disappears from completeness visibility.
+
+This is circular.
+
+The completeness system currently proves roughly:
+
+“all eligible generated candidate targets are represented”
+
+but we need:
+
+“all independently assessable, source-supported lesson abilities are either
+represented by canonical MicroNodes or explicitly REVIEW_REQUIRED.”
+
+The fix belongs in TARGET DISCOVERY.
+
+Do not “fix” this by weakening promotion or consolidation.
+
+════════════════════════════════════════════════════════════
+3. NEW ARCHITECTURAL BOUNDARY
+════════════════════════════════════════════════════════════
+
+Introduce an explicit transient domain concept:
+
+IndependentLearningTarget
+
+or use an equivalent project-appropriate name.
+
+This target exists BEFORE final candidate promotion determines what survives.
+
+Conceptual architecture:
+
+Verified Source Material
+        ↓
+Independent Learning Target Discovery
+        ↓
+Knowledge Candidate Generation
+        ↓
+Promotion
+        ↓
+Lesson-wide Consolidation
+        ↓
+Canonical MicroNodes
+        ↓
+Completeness:
+Targets ↔ Canonical MicroNodes
+        ↓
+Review / Validation / Persistence
+
+The new target layer answers:
+
+WHAT independently assessable knowledge/ability exists in this lesson?
+
+KnowledgeCandidate answers:
+
+HOW should that target be represented from source evidence?
+
+MicroNode answers:
+
+WHAT canonical learner-state unit persists?
+
+Do not create a parallel persisted hierarchy.
+
+IndependentLearningTarget should be transient unless actual repository analysis
+proves durable persistence is required.
+
+════════════════════════════════════════════════════════════
+4. NON-NEGOTIABLE TARGET CONTRACT
+════════════════════════════════════════════════════════════
+
+An IndependentLearningTarget must represent:
+
+ONE source-supported,
+meaningful,
+independently assessable learner capability/state.
+
+A target should normally exist when:
+
+1. SOURCE SUPPORT
+There is verified instructional source evidence.
+
+2. LEARNER PERFORMANCE
+There is a meaningful thing the learner can know, interpret, determine,
+construct, explain, classify, compare, solve, or otherwise demonstrate.
+
+3. INDEPENDENT ASSESSABILITY
+Mastery can be reasonably tested separately from related targets.
+
+4. ATOMICITY
+The target is one coherent learner state, not several independent states bundled.
+
+5. CURRICULUM RELEVANCE
+The target is part of what the lesson actually teaches, not merely page furniture,
+example wording, or incidental context.
+
+6. NON-DUPLICATION
+It is not simply another wording/Bloom-level representation of the same target.
+
+════════════════════════════════════════════════════════════
+5. MULTI-SIGNAL TARGET DISCOVERY
+════════════════════════════════════════════════════════════
+
+Target discovery must NOT depend on a single source.
+
+Use multiple evidence channels:
+
+A. VERIFIED INSTRUCTIONAL SOURCE
+- definitions
+- rules
+- explanations
+- procedures
+- transformations
+- representations
+- instructional worked examples
+
+B. EXERCISE / TASK DEMAND
+Exercises reveal what the learner is expected to perform.
+
+C. LESSON OUTCOMES
+Saved source-grounded outcomes are curriculum signals.
+
+D. LESSON GOAL
+May provide broad intent but is weaker than direct source evidence.
+
+E. GENERATED CANDIDATES
+Existing KnowledgeCandidates remain valuable evidence.
+
+No single channel should automatically create a target by itself in all cases.
+
+Use evidence combination.
+
+════════════════════════════════════════════════════════════
+6. EXERCISES ARE SIGNALS, NOT AUTOMATIC TARGETS
+════════════════════════════════════════════════════════════
+
+Preserve the existing invariant:
+
+EXERCISE ≠ MICRONODE
+EXERCISE ≠ AUTOMATIC KNOWLEDGE TARGET
+
+However, a CLUSTER of exercises can strongly support the existence of an
+independently assessable target when combined with source evidence.
+
+Example:
+
+source teaches:
+“given sign intervals, construct a possible function graph”
+
+and six exercises independently require that transformation.
+
+This is strong evidence for a target.
+
+But:
+
+one unusual exercise with no corresponding instructional source
+must NOT automatically create a new target.
+
+Target discovery should require source grounding or explicit review.
+
+════════════════════════════════════════════════════════════
+7. OUTCOMES ARE SIGNALS, NOT ONE-TO-ONE TARGETS
+════════════════════════════════════════════════════════════
+
+Do NOT create one target per saved outcome.
+
+Outcomes may be:
+
+- broad
+- overlapping
+- cognitive-depth variants
+- teacher-authored drafts
+
+But outcomes must contribute to target discovery.
+
+If an outcome describes an independently assessable transformation and source
+evidence supports it, it should help establish/confirm the target.
+
+Outcome semantics must include required learner PERFORMANCE, not only shared
+concept words.
+
+This is critical.
+
+Current job 177 incorrectly aligned:
+
+GRAPH → SIGN INTERVALS
+
+and
+
+SIGN INTERVALS → GRAPH
+
+to the SAME MicroNode because of shared concept tokens around
+“նշանապահպանման միջակայքեր”.
+
+That must not happen merely because nouns overlap.
+
+════════════════════════════════════════════════════════════
+8. PERFORMANCE-DIRECTION SEMANTICS
+════════════════════════════════════════════════════════════
+
+Target identity must preserve learner-performance direction.
+
+The system must distinguish transformations such as:
+
+A → B
+
+versus
+
+B → A
+
+when mastery can diverge.
+
+Examples:
+
+graph → determine intervals
+intervals → construct graph
+
+text → classify grammatical property
+properties → produce/identify matching example
+
+observation → infer cause
+conditions → predict observation
+
+data → calculate result
+result/constraint → construct representation
+
+Do NOT hardcode “inverse always separate”.
+
+Use independent assessability.
+
+If learner evidence for A does not prove B, they are separate targets.
+
+════════════════════════════════════════════════════════════
+9. BLOOM / COGNITIVE DEPTH STILL DOES NOT DEFINE TARGET IDENTITY
+════════════════════════════════════════════════════════════
+
+Do not create separate IndependentLearningTargets solely for:
+
+Remember X
+Understand X
+Apply X
+
+when they concern the same underlying learner state.
+
+Future Cognitive Path handles cognitive depth.
+
+Target identity is based on WHAT must be independently mastered.
+
+Not on Bloom verb wording.
+
+════════════════════════════════════════════════════════════
+10. TARGET DISCOVERY MUST BE LESSON-WIDE
+════════════════════════════════════════════════════════════
+
+IndependentLearningTargets are lesson-wide.
+
+Provisional Topic boundaries must not create or hide target identity.
+
+Topic remains organizational.
+
+A target may be evidenced by material from several provisional Topics.
+
+Do not create duplicate targets because evidence appears in different Topics.
+
+════════════════════════════════════════════════════════════
+11. TARGET DISCOVERY ALGORITHM
+════════════════════════════════════════════════════════════
+
+Design the smallest robust lesson-wide target-discovery stage.
+
+Preferred strategy:
+
+STEP A — collect target signals
+
+From:
+- verified instructional source
+- candidate objectives
+- exercise/task demands
+- source-grounded outcomes
+- lesson goal as supporting context
+
+STEP B — form provisional target hypotheses
+
+Each hypothesis should contain enough information for:
+
+- target ID
+- canonical performance/objective
+- source evidence IDs
+- candidate evidence IDs
+- exercise-cluster evidence
+- outcome evidence
+- confidence / review state
+- semantic fingerprint/identity signals
+
+STEP C — consolidate same target hypotheses lesson-wide
+
+Do not duplicate:
+- wording variants
+- examples
+- cognitive-depth variants
+- same target repeated in different Topics
+
+STEP D — preserve independently assessable distinctions
+
+Do not merge transformations whose mastery can diverge.
+
+STEP E — output target set
+
+Then candidate generation/promotion and final canonical mapping can be audited
+against this independent target set.
+
+════════════════════════════════════════════════════════════
+12. MODEL-CALL COST BOUNDARY
+════════════════════════════════════════════════════════════
+
+Do NOT add:
+
+- one AI call per exercise
+- one AI call per outcome
+- one AI call per source block
+- one AI call per target
+- one AI call per candidate
+
+Prefer:
+
+1. deterministic signal extraction
+2. reuse existing structured Pass 2 semantic information
+3. one bounded semantic batch only if ambiguity genuinely requires it
+
+Before adding ANY new provider call:
+
+prove why the existing bounded semantic-review call cannot carry the required
+independent-assessability / target-discovery judgment.
+
+Goal:
+
+small bounded number of provider calls per lesson.
+
+No O(n) provider-call architecture.
+
+════════════════════════════════════════════════════════════
+13. COMPLETENESS MUST USE INDEPENDENT TARGETS
+════════════════════════════════════════════════════════════
+
+Refactor the existing Knowledge Completeness Audit minimally so its authoritative
+target set is IndependentLearningTarget, NOT filtered promoted candidate snapshots.
+
+Required final check:
+
+For every IndependentLearningTarget:
+
+Is there at least one canonical MicroNode that semantically satisfies this target?
+
+Result:
+
+COVERED
+REVIEW_REQUIRED
+MISSING
+
+If MISSING:
+
+use existing bounded repair strategy.
+
+Preferred repair order:
+
+1. find existing candidate that represents target
+2. recover promotion if safely suppressed
+3. split incorrect canonical grouping if evidence proves distinction
+4. derive one source-grounded candidate from existing verified evidence
+5. otherwise REVIEW_REQUIRED
+
+Do not fabricate source content.
+
+════════════════════════════════════════════════════════════
+14. TARGET ↔ MICRONODE SEMANTIC COVERAGE
+════════════════════════════════════════════════════════════
+
+Do NOT match target to MicroNode only by shared normalized concept tokens.
+
+Coverage must consider:
+
+- target concept
+- learner performance/direction
+- input representation
+- expected output/performance
+- success criterion/evidence type
+- objective semantics
+
+Example:
+
+Target:
+construct graph from sign intervals
+
+MicroNode:
+determine sign intervals from graph
+
+Shared nouns:
+graph
+sign intervals
+
+BUT performance direction is reversed.
+
+Therefore:
+NOT COVERED.
+
+This exact regression must be tested.
+
+════════════════════════════════════════════════════════════
+15. SUCCESS-CRITERION COVERAGE TEST
+════════════════════════════════════════════════════════════
+
+Use the following conceptual check:
+
+Would successful evidence for the MicroNode prove mastery of the target?
+
+If NO:
+target is not covered.
+
+Example:
+
+Evidence:
+student correctly determines intervals from a graph.
+
+This does not prove:
+student can construct a graph from intervals.
+
+Therefore target B remains uncovered.
+
+This rule must constrain automatic outcome alignment as well.
+
+════════════════════════════════════════════════════════════
+16. OUTCOME ALIGNMENT SAFETY
+════════════════════════════════════════════════════════════
+
+Fix only the semantic coverage criterion used by automatic outcome alignment.
+
+Do NOT redesign the outcome system.
+
+Outcome → MicroNode alignment must require both:
+
+CONCEPTUAL OVERLAP
+AND
+PERFORMANCE COMPATIBILITY.
+
+Shared concept nouns alone are insufficient.
+
+For job 177:
+
+Outcome A:
+determine intervals from graph
+
+may align to A node.
+
+Outcome B:
+construct graph from intervals
+
+must NOT align to A node unless that node objective genuinely covers construction.
+
+If no compatible node exists:
+OUTCOME_KNOWLEDGE_GAP / REVIEW_REQUIRED.
+
+Do not silently satisfy it with nearest lexical match.
+
+════════════════════════════════════════════════════════════
+17. EXERCISE CLUSTER DISCOVERY
+════════════════════════════════════════════════════════════
+
+Add a deterministic exercise-demand clustering layer only as needed for target
+discovery.
+
+Do NOT over-engineer.
+
+Exercise cluster identity should be based on required learner performance.
+
+Examples:
+
+“find intervals from graph”
+cluster together.
+
+“draw graph from intervals”
+cluster together.
+
+“draw graph from intervals + pass through specified points”
+may be:
+- a higher complexity task within the same construction target,
+OR
+- a distinct target only if source/evidence shows independently trackable knowledge.
+
+Do not automatically create target from every exercise variation.
+
+════════════════════════════════════════════════════════════
+18. SOURCE PRESERVATION — PROTECTED
+════════════════════════════════════════════════════════════
+
+Do not change Phase 2 source-material semantics.
+
+Every verified block remains durably recoverable.
+
+Target discovery references source material.
+
+It does not replace source-material ownership.
+
+No source duplication.
+
+No source deletion.
+
+Source loss must remain 0.
+
+════════════════════════════════════════════════════════════
+19. PASS 2 SOURCE-CONSERVATION — PROTECTED
+════════════════════════════════════════════════════════════
+
+Do not modify or weaken:
+
+ensurePass2TopicGroupCoverage()
+
+rescueMissingPass2PlacementReferences()
+
+or final:
+
+validateSourceCoverage()
+
+unless compilation requires an absolutely minimal compatibility change.
+
+The 20→19 silent block-loss bug has already been fixed.
+
+This task is semantic target discovery only.
+
+════════════════════════════════════════════════════════════
+20. PHASE 3A / 3B — PROTECTED
+════════════════════════════════════════════════════════════
+
+Do NOT weaken or bypass:
+
+- KnowledgeCandidate promotion contract
+- source-support checks
+- lesson-wide semantic consolidation
+- transitivity/conflict handling
+- canonical MicroNode identity
+- deterministic Topic assignment
+
+The new target set acts as an INDEPENDENT reference layer.
+
+It must not disable good consolidation.
+
+Correct architecture:
+
+TARGET DISCOVERY
++
+GOOD CANDIDATE PROMOTION
++
+GOOD CONSOLIDATION
++
+TARGET-BASED COMPLETENESS
+
+not:
+
+“promote more candidates indiscriminately.”
+
+════════════════════════════════════════════════════════════
+21. REVIEW SAFETY — PROTECTED
+════════════════════════════════════════════════════════════
+
+Semantic uncertainty is review-required.
+
+Structural corruption is hard failure.
+
+Do not change this policy.
+
+If target discovery is uncertain:
+
+persist structurally safe map/source state with explicit review metadata.
+
+Do not silently approve.
+
+Do not discard safe source material.
+
+Do not allow unresolved target gaps to become trusted Teaching Content or final
+approval without teacher resolution.
+
+Reuse existing safeguards.
+
+════════════════════════════════════════════════════════════
+22. OBSERVABILITY
+════════════════════════════════════════════════════════════
+
+This time candidate/target observability must be sufficient for future forensic
+diagnosis.
+
+Persist structured diagnostics without raw model output.
+
+At minimum:
+
+- discoveredTargetCount
+- coveredTargetCount
+- missingTargetCount
+- reviewRequiredTargetCount
+- target IDs
+- machine-readable target reason/type
+- evidence channel counts
+- source evidence IDs
+- exercise cluster IDs/counts
+- outcome evidence IDs
+- matched canonical MicroNode ID if covered
+- coverage decision reason
+- repair action if any
+
+Also improve mapping diagnostics enough to retain transient candidate identity
+needed to trace:
+
+target
+→ candidate
+→ promotion
+→ canonical node
+
+Do NOT store:
+- raw provider response
+- chain of thought
+- unnecessary full source text
+
+Store IDs/reasons/status only.
+
+════════════════════════════════════════════════════════════
+23. REAL §1.5 REGRESSION
+════════════════════════════════════════════════════════════
+
+Create a provider-free semantic fixture representing the real lesson:
+
+TARGET A:
+GRAPH → SIGN INTERVALS
+
+Evidence:
+- explanatory source
+- worked graph-reading example
+- exercise cluster 67/71-like
+
+TARGET B:
+SIGN INTERVALS → GRAPH
+
+Evidence:
+- explanatory source
+- worked graph-construction example
+- exercise cluster 68/69/70/72/73/74-like
+- source-grounded lesson outcome
+
+Expected:
+
+IndependentLearningTarget count = 2.
+
+Canonical MicroNode count = 2.
+
+A node does NOT satisfy B.
+
+B node does NOT disappear because candidate generation was weak.
+
+No MicroNode per exercise.
+
+No separate Bloom-level nodes.
+
+Source loss = 0.
+Exercise loss = 0.
+
+════════════════════════════════════════════════════════════
+24. CROSS-SUBJECT REGRESSION MATRIX
+════════════════════════════════════════════════════════════
+
+Add provider-free tests that prove the architecture generalizes.
+
+CASE 1 — Math inverse transformations
+
+representation → infer property
+property → construct representation
+
+Independent:
+2 targets.
+
+CASE 2 — Definition + explanation + application
+
+Same underlying state:
+1 target.
+
+CASE 3 — Language classification
+
+word/text → classify grammatical property
+
+vs
+
+given properties → identify/produce matching form
+
+Separate if independently assessable.
+
+CASE 4 — Science
+
+observation → infer cause
+
+vs
+
+conditions/cause → predict observation
+
+Separate if mastery can diverge.
+
+CASE 5 — Physics
+
+formula + quantities → compute result
+
+vs
+
+result/constraint → solve for unknown quantity
+
+Separate only when source treats them as independent learner states.
+
+CASE 6 — Exercise-only oddity
+
+No instructional source support:
+no automatic target;
+review if needed.
+
+CASE 7 — Outcome-only draft unsupported by source
+
+do not create trusted target automatically.
+
+CASE 8 — Source + exercise cluster + outcome all agree
+
+strong target.
+
+CASE 9 — Same target repeated across Topics
+
+one lesson-wide target.
+
+CASE 10 — Same knowledge at Remember/Understand/Apply
+
+one target.
+
+════════════════════════════════════════════════════════════
+25. PROTECTED NON-REGRESSION CONTRACT
+════════════════════════════════════════════════════════════
+
+CRITICAL.
+
+Before editing, identify and protect all working contracts.
+
+Do not change successful behavior unless directly required.
+
+Existing behaviors that MUST remain:
+
+M1–M16:
+all existing Mapping Core invariants
+
+M17:
+knowledge completeness
+
+M18:
+independent assessability
+
+M19:
+exercise coverage
+
+M20:
+outcome coverage
+
+PLUS:
+
+- source loss = 0
+- exercise loss = 0
+- durable lesson_source_materials unchanged
+- Pass 2 block survival unchanged
+- hard source validation unchanged
+- final coverage validator unchanged
+- candidate promotion unchanged except minimal target integration
+- Phase 3B consolidation unchanged except minimal target coverage integration
+- review-required persistence unchanged
+- unresolved review bulk-approval guard unchanged
+- Teaching Content trust guard unchanged
+- final approval safeguards unchanged
+- transaction/remap safety unchanged
+- manual mapping unchanged
+- Teacher CRUD/order unchanged
+
+If an existing test fails:
+
+STOP.
+
+Do NOT weaken the existing test.
+
+Diagnose regression first.
+
+════════════════════════════════════════════════════════════
+26. DO NOT CREATE A PARALLEL MAPPER
+════════════════════════════════════════════════════════════
+
+There must remain ONE production automatic mapping pipeline.
+
+IndependentLearningTarget is one new domain layer inside that pipeline.
+
+Do not create:
+
+old mapper
+new target mapper
+special completeness mapper
+
+as parallel architectures.
+
+Target discovery must integrate coherently with:
+
+existing candidates
+existing consolidation
+existing persistence
+existing review metadata.
+
+════════════════════════════════════════════════════════════
+27. NO SCHEMA MIGRATION BY DEFAULT
+════════════════════════════════════════════════════════════
+
+IndependentLearningTarget should be transient.
+
+Reuse mappingMetadata / job diagnostics / review items for necessary audit state
+where appropriate.
+
+Do NOT create a new target DB table unless you can prove a real lifecycle need
+that existing persistence cannot satisfy.
+
+If you believe a migration is required:
+
+STOP BEFORE creating it
+and report why.
+
+Do not migrate automatically in this task without explicit justification.
+
+════════════════════════════════════════════════════════════
+28. IMPLEMENTATION PROCESS
+════════════════════════════════════════════════════════════
+
+STEP 1
+Read-only audit current code.
+
+STEP 2
+State exact minimal integration design.
+
+STEP 3
+List exact files that must change.
+
+STEP 4
+Implement transient IndependentLearningTarget contract.
+
+STEP 5
+Implement multi-signal target discovery.
+
+STEP 6
+Implement lesson-wide target identity/consolidation.
+
+STEP 7
+Integrate targets into completeness audit.
+
+STEP 8
+Tighten target ↔ MicroNode semantic coverage.
+
+STEP 9
+Tighten outcome alignment performance compatibility.
+
+STEP 10
+Add structured diagnostics/observability.
+
+STEP 11
+Add provider-free §1.5 regression fixture.
+
+STEP 12
+Add cross-subject regression tests.
+
+STEP 13
+Run all existing mapping regression suites:
+- Phase 1 contracts
+- durable source
+- candidate promotion
+- Phase 3B consolidation
+- Pass 2 placement
+- completeness
+- coverage validator
+- new target tests
+
+STEP 14
+Run API typecheck.
+
+STEP 15
+Run non-persisting §1.5 shadow validation.
+
+STEP 16
+Review diff for scope creep.
+
+STEP 17
+Restart only API if required.
+
+DO NOT rerun production lesson automatically.
+
+════════════════════════════════════════════════════════════
+29. ACCEPTANCE GATES
+════════════════════════════════════════════════════════════
+
+Existing M1–M20 must remain PASS.
+
+Add:
+
+M21 — INDEPENDENT TARGET DISCOVERY
+Lesson knowledge targets are discovered independently from final candidate
+promotion.
+
+M22 — MULTI-SIGNAL EVIDENCE
+Targets may be supported by source + exercise demand + outcomes without any one
+signal blindly defining them.
+
+M23 — PERFORMANCE-DIRECTION IDENTITY
+Inverse/directional learner performances remain separate when independently
+assessable.
+
+M24 — NON-CIRCULAR COMPLETENESS
+Completeness does not derive its authoritative target set solely from the same
+candidate set it validates.
+
+M25 — SEMANTIC TARGET COVERAGE
+Target ↔ MicroNode coverage requires learner-performance compatibility, not only
+shared concept tokens.
+
+M26 — OUTCOME ALIGNMENT SAFETY
+An outcome is not considered covered by a node whose learner performance is
+semantically incompatible.
+
+M27 — TARGET OBSERVABILITY
+Target → candidate → canonical node decisions can be diagnosed after execution.
+
+M28 — COST BOUND
+No per-source/per-exercise/per-target/per-candidate provider-call architecture.
+
+All M1–M28 must pass.
+
+════════════════════════════════════════════════════════════
+30. FINAL REPORT
+════════════════════════════════════════════════════════════
+
+Report EXACTLY:
+
+1. Architecture before
+2. Architecture after
+3. Files changed
+4. IndependentLearningTarget contract
+5. Target-discovery evidence channels
+6. Target identity/consolidation logic
+7. Independent-assessability logic
+8. Performance-direction logic
+9. Exercise-cluster signal logic
+10. Outcome signal logic
+11. Target ↔ MicroNode coverage logic
+12. Completeness integration
+13. Missing-target repair/review behavior
+14. Observability added
+15. Source-preservation non-regression
+16. Candidate-promotion non-regression
+17. Phase 3B consolidation non-regression
+18. Pass 2 placement non-regression
+19. Hard-validation non-regression
+20. Review/final-approval safeguards non-regression
+21. AI/provider-call count before vs after
+22. Existing regression-suite results
+23. New regression-suite results
+24. §1.5 shadow result
+25. Target count before/after
+26. Canonical MicroNode count before/after
+27. Source loss count
+28. Exercise loss count
+29. M1–M28 status
+30. Remaining evidence-based risks
+
+Then STOP.
+
+DO NOT implement Cognitive Path.
+DO NOT implement Teaching Content.
+DO NOT modify AI Teacher.
+DO NOT rerun production lesson 709 automatically.
