@@ -23,10 +23,22 @@ POST /api/lessons/:lessonId/manual-map now routes on `format` field:
 - `dryRun=true`: parse + validate + return preview JSON (counts, errors, warnings). Zero DB writes.
 - `dryRun=false`: re-parse + re-validate + db.transaction REPLACE (delete all existing mapping data for lesson, insert fresh). Stale preview cannot be committed — always re-validates.
 
-## UI: 2-step dialog in LessonMapButton
-- `manualStep: "input"` → textarea (monospace, TEXT format) + Ստուգել button → calls dryRun=true
-- `manualStep: "preview"` → counts + warnings + Ներմուծնել Բազային button → calls dryRun=false
-- `manualStep: "error"` → error list + ← Հետ button → back to input
+## Visual authoring policy
+The normal teacher-facing manual flow is an incremental visual editor over the
+canonical Topic → MicroNode → exercise → Cognitive Path → Teaching Content
+records. It saves the individual records through their existing CRUD routes,
+so incomplete drafts remain valid and never trigger mapping replacement, AI
+generation, or atomicity repair.
+
+**Why:** Teachers need a safe fallback for Automatic Mapping without learning
+the text contract or overwriting an existing map. The text contract remains
+valuable for controlled bulk imports, but `dryRun=false` deliberately replaces
+the mapping and is not the everyday authoring interface.
+
+**How to apply:** Keep the visual editor on canonical CRUD endpoints. Retain
+`POST /api/lessons/:lessonId/manual-map` and its TEXT pipeline as a
+compatibility/bulk-import backend path; do not route normal editor saves
+through it.
 
 ## UNREADABLE rule
 Any MICRONODE referencing a source block where `readable: false` → validation ERROR. No UNREADABLE content may enter the KB.

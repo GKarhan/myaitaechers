@@ -14,7 +14,6 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { translateIssue } from "@/lib/issueTranslations";
 import { getGoalOutcomeDraftState } from "@/lib/goal-outcome-draft-state";
 import {
   Dialog,
@@ -35,6 +34,7 @@ import {
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import QuickSwitch from "@/components/QuickSwitch";
+import ManualMappingEditor from "@/components/ManualMappingEditor";
 import {
   useGetTeacherClasses,
   useGetClassStudents,
@@ -178,33 +178,6 @@ interface LessonJobStatus {
 // Polls GET /lessons/:id/map-status (lesson-centric) so progress survives
 // navigation-away + return without needing to store a jobId in React state.
 
-// ── Types for TEXT-format manual import ──────────────────────────────────────
-
-interface TextValidationIssue {
-  severity:    "error" | "warning";
-  issueType:   string;
-  entityId:    string | null;
-  description: string;
-  line:        number | null;
-}
-
-interface TextMappingPreview {
-  lessonTitle:   string;
-  pagesFrom:     number;
-  pagesTo:       number;
-  counts: {
-    nodes:        number;
-    microNodes:   number;
-    sourceBlocks: number;
-    exercises:    number;
-    dependencies: number;
-  };
-  errors:    TextValidationIssue[];
-  warnings:  TextValidationIssue[];
-  hasErrors: boolean;
-}
-
-type ManualStep = "input" | "preview" | "error";
 type ExerciseInteractionType = "multiple_choice" | "true_false" | "constructed_response";
 
 interface ExerciseAnswerFieldsProps {
@@ -307,80 +280,8 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
   const [postPending, setPostPending] = useState(false);
   const mapLesson = useMapLessonWithAI();
 
-  // ── Manual-map dialog state ───────────────────────────────────────────────
-  const [manualOpen,    setManualOpen]    = useState(false);
-  const [manualText,    setManualText]    = useState("");
-  const [manualPending, setManualPending] = useState(false);
-  const [manualError,   setManualError]   = useState<string | null>(null);
-  const [manualStep,    setManualStep]    = useState<ManualStep>("input");
-  const [manualPreview, setManualPreview] = useState<TextMappingPreview | null>(null);
-
-  const resetManual = useCallback(() => {
-    setManualText("");
-    setManualError(null);
-    setManualStep("input");
-    setManualPreview(null);
-  }, []);
-
-  // Step 1 — validate (dry-run): parse + validate, no DB writes
-  const handleValidate = useCallback(async () => {
-    if (!manualText.trim() || manualPending) return;
-    setManualPending(true);
-    setManualError(null);
-    try {
-      const r = await fetch(`/api/lessons/${lessonId}/manual-map`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
-        body: JSON.stringify({ rawText: manualText, format: "text", dryRun: true }),
-      });
-      const data = await r.json();
-      if (!r.ok) {
-        setManualError(data?.error ?? "\u054d\u057f\u0578\u0582\u0563\u0565\u056c\u0568 \u0579\u056b \u0570\u0561\u057b\u0578\u0572\u0564\u057e\u0565\u056c\u0589");
-        setManualStep("error");
-        return;
-      }
-      setManualPreview(data.preview ?? null);
-      setManualStep(data.hasErrors ? "error" : "preview");
-    } catch {
-      setManualError("\u056f\u0561\u057a\u056b \u057d\u056d\u0561\u056c\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0589 \u0584\u0561\u0575\u056c \u0561\u0580\u0565\u0584\u0589");
-      setManualStep("error");
-    } finally {
-      setManualPending(false);
-    }
-  }, [manualText, manualPending, lessonId, token]);
-
-  // Step 2 — confirm: re-parse + re-validate + insert inside DB transaction
-  const handleConfirm = useCallback(async () => {
-    if (!manualText.trim() || manualPending) return;
-    setManualPending(true);
-    setManualError(null);
-    try {
-      const r = await fetch(`/api/lessons/${lessonId}/manual-map`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
-        body: JSON.stringify({ rawText: manualText, format: "text", dryRun: false }),
-      });
-      const data = await r.json();
-      if (!r.ok) {
-        setManualError(data?.error ?? "\u0546\u0565\u0580\u0574\u0578\u0582\u056e\u056c\u0568 \u0579\u056b \u056c\u056b\u0576\u056b\u0589");
-        setManualStep("error");
-        return;
-      }
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) }),
-        qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
-        qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] }),
-        qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) }),
-      ]);
-      setManualOpen(false);
-      resetManual();
-    } catch {
-      setManualError("\u056f\u0561\u057a\u056b \u057d\u056d\u0561\u056c\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0589 \u0584\u0561\u0575\u056c \u0561\u0580\u0565\u0584\u0589");
-      setManualStep("error");
-    } finally {
-      setManualPending(false);
-    }
-  }, [manualText, manualPending, lessonId, courseId, token, qc, resetManual]);
+  // ── Manual visual editor state ────────────────────────────────────────────
+  const [manualOpen, setManualOpen] = useState(false);
 
   const { data: mapStatus } = useQuery<LessonJobStatus>({
     queryKey: ['lesson-map-status', lessonId],
@@ -477,10 +378,10 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
 
       {/* ── Ձεqrqwy քartezeagrvm button ──────────────────────────────── */}
       <button
-        onClick={() => { setManualOpen(true); resetManual(); }}
+        onClick={() => setManualOpen(true)}
         disabled={isActive}
         className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-white border border-transparent hover:border-white/10 transition-colors disabled:opacity-50 flex items-center gap-1"
-        title="Ձեռքով քարտեզագրում — AI JSON"
+        title="Ձեռքով քարտեզագրում"
       >
         ✍️ Ձեռքով
       </button>
@@ -505,152 +406,19 @@ function LessonMapButton({ lessonId, courseId, isMapped }: { lessonId: number; c
         </div>
       )}
 
-      {/* ── Manual-map Dialog ─────────────────────────────────────────── */}
-      <Dialog open={manualOpen} onOpenChange={(o) => { if (!manualPending) { setManualOpen(o); if (!o) resetManual(); } }}>
-        <DialogContent className="max-w-2xl bg-[#0f1117] border border-white/10 text-white">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-semibold text-white">
-              ✍️ Ձեռքով քարտեզագրում — Text
-            </DialogTitle>
-          </DialogHeader>
-
-          {/* ── Step: input ─────────────────────────────────────────────── */}
-          {manualStep === "input" && (
-            <>
-              <p className="text-xs text-muted-foreground/60 px-1 -mt-1 leading-relaxed">
-                Արի դաշտի քարտեզագրման դաշտը կլկիր
-                {" LESSON / NODE N1 / MICRONODE MN-1.1 / SOURCE BLOCK B1 / EXERCISE EX-1"}<br />
-                Ավելի դաշտ xico: DEPENDENCY D1 / FIDELITY AUDIT
-              </p>
-              {manualError && (
-                <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{manualError}</p>
-              )}
-              <textarea
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-muted-foreground/30 focus:outline-none focus:border-primary/50 resize-none font-mono"
-                rows={16}
-                placeholder={"LESSON\ntitle: ...\nsubject: ...\ngrade: 5\npages: 22-24\n\nNODE N1\ntitle: ...\n\nMICRONODE MN-1.1\ntitle: ...\nmicroNodeType: KNOWLEDGE\n..."}
-                value={manualText}
-                onChange={(e) => setManualText(e.target.value)}
-                disabled={manualPending}
-              />
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  onClick={() => { setManualOpen(false); resetManual(); }}
-                  disabled={manualPending}
-                  className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
-                >
-                  Չեղարկել
-                </button>
-                <button
-                  onClick={handleValidate}
-                  disabled={manualPending || !manualText.trim()}
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-primary text-black hover:bg-primary/90 transition-colors disabled:opacity-40 flex items-center gap-1.5"
-                >
-                  {manualPending && (
-                    <span className="inline-block w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  )}
-                  Ստուգել
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── Step: preview ───────────────────────────────────────────── */}
-          {manualStep === "preview" && manualPreview && (
-            <>
-              <div className="space-y-3">
-                <div className="rounded-lg bg-white/5 border border-white/10 px-3 py-2.5">
-                  <p className="text-xs font-semibold text-white/80 mb-2">
-                    Ստուգումը իրականացվել է — կարելի՛ք:
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 text-[11px]">
-                    <span className="text-muted-foreground">Nodes: <span className="text-white font-mono">{manualPreview.counts.nodes}</span></span>
-                    <span className="text-muted-foreground">MicroNodes: <span className="text-white font-mono">{manualPreview.counts.microNodes}</span></span>
-                    <span className="text-muted-foreground">Source Blocks: <span className="text-white font-mono">{manualPreview.counts.sourceBlocks}</span></span>
-                    <span className="text-muted-foreground">Exercises: <span className="text-white font-mono">{manualPreview.counts.exercises}</span></span>
-                    <span className="text-muted-foreground">Dependencies: <span className="text-white font-mono">{manualPreview.counts.dependencies}</span></span>
-                  </div>
-                </div>
-                {manualPreview.warnings.length > 0 && (
-                  <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
-                    <p className="text-xs font-semibold text-amber-400">
-                      ⚠️ {manualPreview.warnings.length} զգուշացում
-                    </p>
-                    {manualPreview.warnings.map((w, i) => (
-                      <p key={i} className="text-[11px] text-amber-300/80">• {translateIssue(w)}</p>
-                    ))}
-                  </div>
-                )}
-                {manualError && (
-                  <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{manualError}</p>
-                )}
-              </div>
-              <div className="flex justify-between gap-2 pt-1">
-                <button
-                  onClick={() => setManualStep("input")}
-                  disabled={manualPending}
-                  className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
-                >
-                  ← Հետ
-                </button>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setManualOpen(false); resetManual(); }}
-                    disabled={manualPending}
-                    className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
-                  >
-                    Չեղարկել
-                  </button>
-                  <button
-                    onClick={handleConfirm}
-                    disabled={manualPending}
-                    className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-40 flex items-center gap-1.5"
-                  >
-                    {manualPending && (
-                      <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    )}
-                    Ներմուծնել Բազային
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* ── Step: error ─────────────────────────────────────────────── */}
-          {manualStep === "error" && (
-            <>
-              <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1 max-h-60 overflow-y-auto">
-                <p className="text-xs font-semibold text-destructive">
-                  ❌ {manualPreview ? `${manualPreview.errors.length} սխալ` : "Սխալ — validation error"}
-                </p>
-                {manualPreview?.errors.map((e, i) => (
-                  <p key={i} className="text-[11px] text-destructive/80">
-                    {e.line != null && <span className="text-muted-foreground mr-1">L{e.line}</span>}
-                    {translateIssue(e)}
-                  </p>
-                ))}
-                {manualError && !manualPreview && (
-                  <p className="text-[11px] text-destructive/80">{manualError}</p>
-                )}
-              </div>
-              <div className="flex justify-between gap-2 pt-1">
-                <button
-                  onClick={() => { setManualStep("input"); setManualError(null); }}
-                  className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors"
-                >
-                  ← Հետ
-                </button>
-                <button
-                  onClick={() => { setManualOpen(false); resetManual(); }}
-                  className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-white border border-white/10 hover:border-white/20 transition-colors"
-                >
-                  Չեղարկել
-                </button>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ManualMappingEditor
+        lessonId={lessonId}
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        onSaved={() => {
+          void Promise.all([
+            qc.invalidateQueries({ queryKey: getGetLessonNodesQueryKey(lessonId) }),
+            qc.invalidateQueries({ queryKey: getGetCourseLessonsQueryKey(courseId) }),
+            qc.invalidateQueries({ queryKey: ["lesson-topics", lessonId] }),
+            qc.invalidateQueries({ queryKey: getGetLessonExercisesQueryKey(lessonId) }),
+          ]);
+        }}
+      />
     </>
   );
 }

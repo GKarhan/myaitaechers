@@ -3052,13 +3052,20 @@ router.post("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async 
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes, topicId, learningObjective } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, topicId, learningObjective, sourcePage, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
     estimatedMinutes?: number;
     topicId?: number | null;
     learningObjective?: string;
+    sourcePage?: number | null;
+    verbatimTheoryAnchor?: string;
+    commonMisconception?: string;
+    childFriendlyExplanation?: string;
+    basicExamples?: string[];
+    nonExamples?: string[];
+    realLifeExamples?: string[];
   };
 
   if (!title?.trim()) {
@@ -3087,6 +3094,13 @@ router.post("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async 
         estimatedMinutes: estimatedMinutes ?? 5,
         topicId: topicId ?? null,
         learningObjective: learningObjective?.trim() ?? null,
+        sourcePage: sourcePage ?? null,
+        verbatimTheoryAnchor: verbatimTheoryAnchor?.trim() ?? null,
+        commonMisconception: commonMisconception?.trim() ?? null,
+        childFriendlyExplanation: childFriendlyExplanation?.trim() ?? null,
+        basicExamples: Array.isArray(basicExamples) ? basicExamples : [],
+        nonExamples: Array.isArray(nonExamples) ? nonExamples : [],
+        realLifeExamples: Array.isArray(realLifeExamples) ? realLifeExamples : [],
         createdBy: "teacher",
       })
       .returning();
@@ -3106,6 +3120,7 @@ router.post("/lessons/:lessonId/nodes", requireAuth, requireLessonAuthor, async 
     theoryContent: node.theoryContent ?? null,
     targetBloomLevel: node.targetBloomLevel ?? null,
     estimatedMinutes: node.estimatedMinutes ?? null,
+    sourcePage: node.sourcePage ?? null,
   });
 });
 
@@ -3129,7 +3144,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
     return;
   }
 
-  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples, learningObjective, status, topicId } = req.body as {
+  const { title, theoryContent, targetBloomLevel, estimatedMinutes, verbatimTheoryAnchor, commonMisconception, childFriendlyExplanation, basicExamples, nonExamples, realLifeExamples, learningObjective, status, topicId, sourcePage } = req.body as {
     title?: string;
     theoryContent?: string;
     targetBloomLevel?: number;
@@ -3143,6 +3158,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
     learningObjective?: string;
     status?: "approved" | "needs_review" | "draft";
     topicId?: number | null;
+    sourcePage?: number | null;
   };
 
   // Use Record<string, unknown> so drizzle's set() receives a plain object
@@ -3161,6 +3177,7 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
   if (nonExamples !== undefined) patch.nonExamples = Array.isArray(nonExamples) ? nonExamples : [];
   if (realLifeExamples !== undefined) patch.realLifeExamples = Array.isArray(realLifeExamples) ? realLifeExamples : [];
   if (learningObjective !== undefined) patch.learningObjective = learningObjective.trim() || null;
+  if (sourcePage !== undefined) patch.sourcePage = sourcePage;
   // P6.5: Teacher approval — only allow safe status transitions
   if (status !== undefined && ["approved", "needs_review", "draft"].includes(status)) {
     patch.status = status;
