@@ -1,0 +1,550 @@
+READ-ONLY FORENSIC AUDIT — AUTOMATIC MAPPING QUALITY
+
+NO CODE CHANGES.
+NO DB WRITES.
+NO MAPPING RERUN.
+NO AI CALLS.
+NO PROMPT CHANGES.
+NO NORMALIZATION CHANGES.
+NO VALIDATION CHANGES.
+NO SCHEMA CHANGES.
+NO REFACTORING.
+
+We now have the first successfully persisted automatic mapping after changing
+pedagogical uncertainty from a destructive failure into teacher-review state.
+
+The map persisted, but its pedagogical quality appears problematic.
+
+TARGET LESSON
+
+Use the CURRENT persisted lesson/map matching:
+
+Book:
+հանրահաշիվ 9 — Սմբատ Գոգյան
+
+Lesson:
+ՌԱՑԻՈՆԱԼ ԱՐՏԱՀԱՅՏՈՒԹՅԱՆ ՆՇԱՆԸ
+
+Paragraph:
+§1,3
+
+Physical PDF pages:
+15–18
+
+The UI currently reports approximately:
+
+7 MicroNodes
+14 mapped exercises
+0 ready nodes
+7 nodes requiring review
+
+IMPORTANT:
+First identify the exact lesson ID and latest successful automatic mapping/job
+from the database. Do not assume lessonId 705; that was a previous lesson.
+
+==================================================
+PRIMARY QUESTION
+==================================================
+
+We need to understand WHY the mapper produced this exact map.
+
+Do not propose fixes yet.
+
+Trace the complete decision path:
+
+PDF/source
+→ Pass 1 blocks
+→ verified blocks
+→ Pass 2 generation
+→ Topic generation
+→ MicroNode generation
+→ sourceBlockIndices / supporting material
+→ exercise placement
+→ duplicate/granularity review
+→ atomicity review
+→ Bloom/cognitive assignment
+→ normalization/reconciliation
+→ persisted Topics/MicroNodes/exercises/review metadata
+
+The goal is to identify ROOT CAUSES, not merely describe the final UI.
+
+==================================================
+A. RECONSTRUCT THE EXACT PERSISTED MAP
+==================================================
+
+Read the database and reconstruct the current persisted map.
+
+For every Topic report:
+
+- topic id
+- title
+- sequence/order
+
+For every MicroNode report:
+
+- DB id
+- title
+- topic
+- sequence
+- learningObjective
+- theory/content
+- page
+- Bloom/cognitive level
+- status
+- changeReason
+- source references / source block indices if persisted
+- supporting material references if persisted
+- attached exercises
+- any review metadata referring to this node
+
+Also report lesson-level:
+
+- mappingMetadata
+- source audit
+- pedagogicalReview metadata
+- latest successful mapping job/result
+- mapping status/version if available
+
+Do not infer missing fields.
+Say NOT PERSISTED / NOT AVAILABLE where appropriate.
+
+==================================================
+B. RECONSTRUCT PASS 1 SOURCE BLOCKS
+==================================================
+
+Using retained/persisted diagnostics, mapping metadata, source audit,
+server logs, or other READ-ONLY evidence, reconstruct the Pass 1 blocks
+used for this successful map as far as evidence permits.
+
+For each recoverable block report:
+
+- block index
+- blockType
+- physical page
+- sourceParagraph if available
+- sourceText or short excerpt
+- provenance verification state
+- final destination(s)
+
+Destination categories should distinguish:
+
+- MicroNode source
+- supporting material
+- MicroNode exercise
+- topic additional exercise
+- unmapped/review
+- other
+
+IMPORTANT:
+Do not rerun extraction merely to recreate missing evidence.
+
+If the successful mapping persisted pass1BlockAudit, use that.
+
+==================================================
+C. MICRO-NODE LINEAGE — MOST IMPORTANT SECTION
+==================================================
+
+For EACH of the 7 persisted MicroNodes, build a lineage record:
+
+MICRONODE:
+<title>
+
+1. Topic
+2. learningObjective
+3. source block indices
+4. source block types
+5. source excerpts
+6. attached exercises
+7. generated/persisted cognitive/Bloom level
+8. review status/reason
+9. why this node appears to have been created
+10. whether its source evidence independently supports ONE atomic knowledge unit
+
+Classify each node as one of:
+
+A. CLEAR_ATOMIC_KNOWLEDGE
+B. POSSIBLE_DUPLICATE
+C. OVER_FRAGMENTED
+D. UNDER_FRAGMENTED
+E. SOURCE_MISALIGNED
+F. SOURCE_NOISE_AS_MICRONODE
+G. OTHER_REVIEW_REQUIRED
+
+This classification is diagnostic only.
+Do not modify anything.
+
+==================================================
+D. INVESTIGATE THESE SPECIFIC SUSPECTED DUPLICATES
+==================================================
+
+We specifically need evidence for these apparent overlaps.
+
+PAIR 1
+
+“Ռացիոնալ արտահայտության նշանապահպանման միջակայքերի որոշում”
+
+vs
+
+“Ռացիոնալ արտահայտության նշանապահպանման միջակայքեր”
+
+Determine:
+
+- exact source blocks behind each
+- whether they express genuinely different knowledge
+- whether one is theory and the other application/example
+- whether they should have been one MicroNode with multiple cognitive levels
+- which stage created/retained the separation
+- whether duplicate-review detected this pair
+- what decision/reason was produced
+
+PAIR 2
+
+“Ռացիոնալ արտահայտության նշանի որոշումը գծային արտադրիչներով”
+
+vs
+
+“Ռացիոնալ արտահայտությունների նշանների որոշում”
+
+Answer the same questions.
+
+PAIR 3
+
+“Ռացիոնալ արտահայտության թույլատրելի արժեքների բազմության գտնելը”
+
+vs
+
+“Ռացիոնալ արտահայտության թույլատրելի արժեքների բազմություն (ԹԱԲ)”
+
+Answer the same questions.
+
+Do NOT automatically assume these are duplicates.
+Prove whether they are duplicate knowledge, separate knowledge,
+examples/applications, or source-placement artifacts.
+
+==================================================
+E. SOURCE NOISE / SOURCE MISALIGNMENT
+==================================================
+
+Investigate especially the MicroNode whose displayed theory is approximately:
+
+“5 6 + _ + 9 _ 9t103 ՎԱՐԺՈՒԹՅՈՒՆՆԵՐ ՀՈՒՇՈՒՄ...”
+
+and the MicroNode whose displayed theory is approximately a fragmented
+formula sequence such as:
+
+“1 3 + _ + 2 5 + ...”
+
+For each:
+
+1. Identify exact Pass 1 block(s).
+2. Identify blockType.
+3. Identify physical page.
+4. Show a short source excerpt.
+5. Determine whether Pass 1 incorrectly classified visual/formula noise.
+6. Determine whether Pass 2 incorrectly promoted a legitimate non-theory
+   block into a MicroNode.
+7. Determine whether source alignment/reconciliation later attached it.
+8. Determine whether the problem originates primarily in:
+
+   A. PDF text extraction
+   B. Pass 1 semantic block classification
+   C. Pass 2 MicroNode generation
+   D. source-to-MicroNode assignment
+   E. normalization/reconciliation
+   F. combination of stages
+
+Trace evidence through code and retained data.
+
+==================================================
+F. MICRO-NODE GRANULARITY CONTRACT
+==================================================
+
+Find the CURRENT exact code/prompt/rules that tell the mapper:
+
+“What constitutes one MicroNode?”
+
+Report the exact relevant files/functions/prompt sections.
+
+Then compare the implemented rule against our intended canonical rule:
+
+ONE MicroNode = ONE atomic knowledge/learning objective.
+
+A MicroNode should represent WHAT is being learned.
+
+Cognitive depth is separate:
+
+Remember
+→ Understand
+→ Apply
+→ Analyze
+→ Evaluate
+→ Create
+
+Do NOT create separate MicroNodes merely because the same knowledge appears as:
+
+- definition
+- explanation
+- example
+- worked example
+- application
+- exercise
+- deeper cognitive use
+
+Those should normally attach to the SAME atomic MicroNode when they concern
+the same underlying knowledge.
+
+Audit whether the CURRENT prompt/code actually enforces this distinction.
+
+Find any prompt/rule that may encourage:
+
+- one node per source block
+- one node per example
+- one node per outcome
+- one node per paragraph
+- one node per cognitive use
+- excessive splitting
+
+Also identify whether any deterministic post-processing creates or preserves
+this fragmentation.
+
+==================================================
+G. TOPIC GENERATION
+==================================================
+
+The current map has 2 Topics.
+
+Audit:
+
+- how Topics were generated
+- which source blocks belong to each Topic
+- whether the two Topics represent genuinely different conceptual groups
+- whether Topic boundaries contributed to duplicate MicroNodes
+- whether cross-topic duplicate review prevented merging
+- whether the same knowledge was recreated once in each Topic
+
+IMPORTANT:
+Recall that previous duplicate-review logic had restrictions around
+cross-topic merge decisions.
+
+Determine whether that architecture contributed to the current map.
+
+==================================================
+H. BLOOM / COGNITIVE LEVEL — WHY EVERYTHING IS BLOOM 1
+==================================================
+
+The UI currently shows Bloom 1 for the persisted MicroNodes.
+
+Trace exactly where this value comes from.
+
+For each node determine:
+
+- generated cognitive level
+- normalized cognitive level
+- persisted field/value
+- UI display source
+
+Then answer:
+
+WHY are all/most nodes Bloom 1?
+
+Classify the cause:
+
+A. Pass 2 prompt always/defaults to Remember
+B. parser/default fallback
+C. DB default
+D. normalization overwrite
+E. UI incorrectly displays Bloom
+F. intentional architecture
+G. other
+
+Also determine whether the current architecture confuses:
+
+MicroNode cognitive target
+
+with
+
+MicroNode cognitive learning path.
+
+Do NOT change it yet.
+
+==================================================
+I. EXERCISE PLACEMENT QUALITY
+==================================================
+
+Audit all 14 mapped exercises plus any additional exercises.
+
+For each exercise report compactly:
+
+- exercise number/text identifier
+- source page
+- assigned MicroNode
+- why the assignment is semantically appropriate or questionable
+
+Classify:
+
+GOOD
+QUESTIONABLE
+WRONG
+
+Check especially whether exercises were attached merely because they were
+physically near a source block rather than because they assess the
+MicroNode objective.
+
+Also identify whether an exercise can legitimately support more than one
+cognitive level WITHOUT being duplicated as multiple source ownership.
+
+==================================================
+J. OUTCOME → MICRONODE RELATIONSHIP
+==================================================
+
+Compare the persisted lesson outcomes with the generated MicroNodes.
+
+For every outcome:
+
+- which MicroNode(s) actually support it
+- whether there are duplicate nodes trying to satisfy the same outcome
+- whether any outcome has no adequate MicroNode
+- whether a MicroNode exists only because the mapper tried to mirror an
+  outcome rather than represent atomic source knowledge
+
+We want to distinguish:
+
+curriculum outcome
+
+from
+
+atomic knowledge unit.
+
+==================================================
+K. CODE PATH / ROOT CAUSE MAP
+==================================================
+
+Produce the exact end-to-end code path with files/functions.
+
+At minimum locate:
+
+1. Pass 1 prompt/schema
+2. source verification
+3. Pass 2 prompt/schema
+4. Topic generation
+5. MicroNode generation
+6. source ownership assignment
+7. activity/exercise placement
+8. duplicate suspicion detection
+9. semantic duplicate review
+10. atomicity/granularity review
+11. normalization
+12. source alignment reconciliation
+13. Bloom/cognitive assignment/default
+14. persistence
+15. review status assignment
+16. UI rendering
+
+For each root-cause candidate, label:
+
+GENERATION
+CLASSIFICATION
+NORMALIZATION
+VALIDATION
+PERSISTENCE
+UI
+
+==================================================
+L. FINAL ROOT-CAUSE REPORT
+==================================================
+
+Finish with a ranked root-cause table.
+
+Use this format:
+
+P0 — fundamental
+P1 — major
+P2 — secondary
+P3 — cosmetic/non-blocking
+
+For every finding give:
+
+- problem
+- evidence
+- exact stage/function
+- consequence
+- whether it affects this lesson only or mapper architecture generally
+
+Then provide:
+
+“IDEAL MAP SHAPE — DIAGNOSTIC ONLY”
+
+Based ONLY on the textbook/source evidence already available,
+describe approximately what conceptual MicroNode structure this lesson
+appears to need.
+
+IMPORTANT:
+This is NOT permission to modify the map.
+
+The purpose is to compare:
+
+CURRENT MAP
+vs
+SOURCE-SUPPORTED IDEAL GRANULARITY
+
+Do not generate cognitive paths or teaching content.
+
+==================================================
+CRITICAL QUESTIONS TO ANSWER AT THE END
+==================================================
+
+Answer explicitly:
+
+1. Why did the mapper create 7 MicroNodes?
+2. How many of the 7 appear to represent genuinely distinct atomic knowledge?
+3. Which nodes are likely duplicates or fragments of the same knowledge?
+4. Why were noisy/formula blocks promoted or attached as theory?
+5. Why are all/most nodes Bloom 1?
+6. Is the main problem Pass 1, Pass 2, deterministic post-processing,
+   or a combination?
+7. Does the current mapper clearly separate:
+   atomic knowledge
+   from
+   cognitive learning depth?
+8. Does Topic generation contribute to duplication?
+9. Are exercises semantically mapped well?
+10. What are the 3–5 highest-leverage architectural corrections we should
+    make NEXT?
+
+For question 10:
+recommend corrections only.
+DO NOT IMPLEMENT THEM.
+
+==================================================
+OUTPUT REQUIREMENTS
+==================================================
+
+Be evidence-based.
+
+Use:
+- current database
+- persisted mapping metadata
+- successful mapping job
+- current code
+- retained logs where available
+
+For important conclusions cite:
+- file path
+- function
+- relevant line range if available
+
+Clearly distinguish:
+
+PROVEN
+LIKELY
+UNKNOWN / NOT PERSISTED
+
+Do not hide missing evidence with assumptions.
+
+NO CODE CHANGES.
+NO DATA CHANGES.
+NO AI CALLS.
+NO MAPPING RERUN.
+NO IMPLEMENTATION.
+
+Return the forensic audit and STOP.
