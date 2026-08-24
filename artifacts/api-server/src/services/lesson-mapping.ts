@@ -235,6 +235,29 @@ export function normalizeActivityPlacements(
     }
   }
 
+  // ── Phase 7: Canonical activity ownership cleanup ──────────────────────────
+  // `validDestinations` contains the exercise-first / additional-exercise-second
+  // canonical owner for every activity block handled above. Coverage treats
+  // source, supporting material, and unmapped arrays as ownership too, so remove
+  // an activity from those non-canonical locations once its activity destination
+  // is established. Non-activity source ownership is intentionally untouched.
+  const hasCanonicalActivityDestination = (idx: number): boolean => {
+    const block = isValidBlockIndex(idx, blocks) ? blocks[idx] : undefined;
+    return !!block &&
+      ACTIVITY_BLOCK_TYPES.has(block.blockType) &&
+      validDestinations.has(idx);
+  };
+  for (const topic of topics) {
+    topic.unmappedBlockIndices = topic.unmappedBlockIndices
+      .filter((idx) => !hasCanonicalActivityDestination(idx));
+    for (const mn of topic.microNodes) {
+      mn.sourceBlockIndices = mn.sourceBlockIndices
+        .filter((idx) => !hasCanonicalActivityDestination(idx));
+      mn.supportingMaterialIndices = mn.supportingMaterialIndices
+        .filter((idx) => !hasCanonicalActivityDestination(idx));
+    }
+  }
+
   return { evictedFromSource, postEvictionStripped, dedupedExercises, dedupedAdditional, stepBRescued, stepCRescued };
 }
 

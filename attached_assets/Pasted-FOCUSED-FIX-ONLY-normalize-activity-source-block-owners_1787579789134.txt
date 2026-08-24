@@ -1,0 +1,122 @@
+FOCUSED FIX ONLY — normalize activity source-block ownership.
+
+We have confirmed a deterministic ownership bug in:
+
+artifacts/api-server/src/services/lesson-mapping.ts
+
+Function:
+normalizeActivityPlacements(...)
+
+Do NOT redesign mapping.
+Do NOT change the AI prompt.
+Do NOT weaken validateSourceCoverage().
+Do NOT change source extraction.
+Do NOT change DB schema or migrations.
+Do NOT touch Quiz, Knowledge Tree, AI Teacher runtime, C3–C7, or unrelated UI.
+
+GOAL
+
+For Pass 1 blocks whose blockType is one of:
+
+- EXERCISE
+- ACTIVITY
+- HOMEWORK
+
+the final normalized placement graph must give each activity source block exactly ONE canonical activity ownership destination:
+
+- MicroNode.exercises[].blockIndex
+OR
+- topic.additionalExercises[].blockIndex
+
+An activity index must not simultaneously remain in:
+
+- MicroNode.sourceBlockIndices
+- MicroNode.supportingMaterialIndices
+- topic.unmappedBlockIndices
+- another exercise/additionalExercise destination
+
+KNOWN BUGS TO FIX
+
+1. Phase 6 currently checks only exercises + additionalExercises.
+
+Therefore an activity index that exists only in
+MicroNode.supportingMaterialIndices
+can be added again to topic.additionalExercises,
+creating a duplicate.
+
+2. If an activity index already exists in an exercise destination
+and also exists in topic.unmappedBlockIndices,
+the current logic can leave it in unmappedBlockIndices,
+preserving a duplicate.
+
+REQUIRED FIX
+
+Make the smallest safe change inside
+normalizeActivityPlacements() and directly related helper logic only.
+
+For activity-type blocks:
+
+A. Preserve the existing intended priority:
+   MicroNode exercise first,
+   otherwise topic additional exercise.
+
+B. Ensure that once an activity index has a valid activity destination,
+   remove that same index from:
+   - all MicroNode.sourceBlockIndices
+   - all MicroNode.supportingMaterialIndices
+   - all topic.unmappedBlockIndices
+
+C. If an activity exists only in supportingMaterialIndices or unmappedBlockIndices
+   and has no exercise destination,
+   move it to the appropriate additionalExercises destination
+   and remove the old placement.
+
+D. Continue global deduplication across:
+   MicroNode.exercises and topic.additionalExercises.
+
+E. Do not modify ownership semantics for NON-ACTIVITY source blocks.
+
+TESTS
+
+Add/update only focused tests for normalizeActivityPlacements covering at least:
+
+1.
+activity in supportingMaterialIndices only
+→ final result: exactly once in additionalExercises
+
+2.
+activity in MicroNode.exercises + unmappedBlockIndices
+→ final result: exercise only
+
+3.
+activity in MicroNode.exercises + supportingMaterialIndices
+→ final result: exercise only
+
+4.
+activity in additionalExercises + supportingMaterialIndices
+→ final result: additionalExercises only
+
+5.
+activity duplicated across two exercise destinations
+→ existing first-wins behavior remains deterministic
+
+6.
+non-activity supporting material
+→ remains unchanged
+
+After normalization, run validateSourceCoverage() in the focused tests and verify duplicateCount === 0 for these scenarios.
+
+IMPORTANT
+
+Do not add a generic "ignore duplicates" rule.
+Do not weaken the persistence gate.
+The purpose is to produce a valid ownership graph before validation.
+
+Run only the focused test/typecheck needed for this change.
+
+Report:
+- exact file(s) changed
+- exact behavior changed
+- focused test results
+
+Then STOP.

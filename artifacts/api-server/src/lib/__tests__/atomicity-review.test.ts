@@ -37,7 +37,7 @@ const node = (
   microNodeType: "knowledge" as const,
   sourceBlockIndices,
   exercises: exerciseBlockIndices.map((blockIndex) => ({ blockIndex, sourceParagraph: null })),
-  supportingMaterialIndices: [],
+  supportingMaterialIndices: [] as number[],
 });
 
 const topic = (nodes: Pass2TopicResult["microNodes"], additional: number[] = []): Pass2TopicResult => ({
@@ -56,6 +56,111 @@ const diagnostics = {
   topics: [],
   totals: { candidateMicroNodes: 0, acceptedBeforeNormalization: 0, acceptedAfterNormalization: 0, rejectedMicroNodes: 0 },
 };
+
+function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: Pass2TopicResult[]): void {
+  assert.equal(
+    validateSourceCoverage(source.length, topics).duplicateIndices.length,
+    0,
+    "normalized ownership must not contain duplicate source block indices",
+  );
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "A rule with sufficient source evidence." },
+    { blockType: "EXERCISE", sourceText: "Solve the activity." },
+  ]);
+  const activityOwner = node("t1:n0", "Rule", "Apply the rule.", [0]);
+  activityOwner.supportingMaterialIndices = [1];
+  const topics = [topic([activityOwner])];
+
+  normalizeActivityPlacements(topics, source);
+
+  assert.deepEqual(activityOwner.supportingMaterialIndices, []);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assertNoCoverageDuplicates(source, topics);
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "A rule with sufficient source evidence." },
+    { blockType: "EXERCISE", sourceText: "Solve the activity." },
+  ]);
+  const activityOwner = node("t1:n0", "Rule", "Apply the rule.", [0], [1]);
+  const topics = [topic([activityOwner])];
+  topics[0].unmappedBlockIndices = [1];
+
+  normalizeActivityPlacements(topics, source);
+
+  assert.deepEqual(activityOwner.exercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, []);
+  assertNoCoverageDuplicates(source, topics);
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "A rule with sufficient source evidence." },
+    { blockType: "EXERCISE", sourceText: "Solve the activity." },
+  ]);
+  const activityOwner = node("t1:n0", "Rule", "Apply the rule.", [0], [1]);
+  activityOwner.supportingMaterialIndices = [1];
+  const topics = [topic([activityOwner])];
+
+  normalizeActivityPlacements(topics, source);
+
+  assert.deepEqual(activityOwner.exercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(activityOwner.supportingMaterialIndices, []);
+  assertNoCoverageDuplicates(source, topics);
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "A rule with sufficient source evidence." },
+    { blockType: "EXERCISE", sourceText: "Solve the activity." },
+  ]);
+  const activityOwner = node("t1:n0", "Rule", "Apply the rule.", [0]);
+  activityOwner.supportingMaterialIndices = [1];
+  const topics = [topic([activityOwner], [1])];
+
+  normalizeActivityPlacements(topics, source);
+
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(activityOwner.supportingMaterialIndices, []);
+  assertNoCoverageDuplicates(source, topics);
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "First rule with sufficient source evidence." },
+    { blockType: "RULE", sourceText: "Second rule with sufficient source evidence." },
+    { blockType: "EXERCISE", sourceText: "Solve the activity." },
+  ]);
+  const firstOwner = node("t1:n0", "First rule", "Apply the first rule.", [0], [2]);
+  const secondOwner = node("t1:n1", "Second rule", "Apply the second rule.", [1], [2]);
+  const topics = [topic([firstOwner, secondOwner])];
+
+  normalizeActivityPlacements(topics, source);
+
+  assert.deepEqual(firstOwner.exercises.map((exercise) => exercise.blockIndex), [2]);
+  assert.deepEqual(secondOwner.exercises, []);
+  assertNoCoverageDuplicates(source, topics);
+}
+
+{
+  const source = blocks([
+    { blockType: "RULE", sourceText: "A rule with sufficient source evidence." },
+    { blockType: "NOTE", sourceText: "A non-activity supporting note." },
+  ]);
+  const activityOwner = node("t1:n0", "Rule", "Apply the rule.", [0]);
+  activityOwner.supportingMaterialIndices = [1];
+  const topics = [topic([activityOwner])];
+
+  normalizeActivityPlacements(topics, source);
+
+  assert.deepEqual(activityOwner.supportingMaterialIndices, [1]);
+  assertNoCoverageDuplicates(source, topics);
+  console.log("  ✓ activity ownership normalization removes non-canonical activity placements only");
+}
 
 {
   const source = blocks([
