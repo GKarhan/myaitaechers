@@ -1,0 +1,792 @@
+TASK — BUILD A SIMPLE VISUAL MANUAL MAPPING EDITOR
+
+GOAL
+
+Create a reliable manual fallback for lesson mapping.
+
+The teacher must be able to build the SAME canonical lesson map manually
+that Automatic Mapping normally creates.
+
+This is NOT a new mapping engine.
+
+This is NOT a new schema.
+
+This is NOT an AI/manual-text parser.
+
+It is a visual CRUD editor over the EXISTING canonical lesson mapping data.
+
+IMPORTANT:
+Keep the existing Automatic Mapping flow unchanged.
+
+The teacher must have two independent choices:
+
+🗺️ Ավտոմատ
+✍️ Ձեռքով
+
+If Automatic Mapping fails, Manual Mapping must still allow the teacher
+to create the lesson map and continue the workflow.
+
+==================================================
+0. WORK STYLE — IMPORTANT
+==================================================
+
+Keep this task focused and inexpensive.
+
+Do NOT perform a broad architecture audit.
+Do NOT enter a long redesign/review cycle.
+Do NOT redesign the mapping pipeline.
+Do NOT modify Automatic Mapping.
+Do NOT modify Quiz.
+Do NOT modify Knowledge Tree.
+Do NOT modify AI Teacher runtime.
+Do NOT redesign Goal/Outcome workflow.
+Do NOT add a new parallel curriculum schema.
+
+First inspect only the existing fields, enums, CRUD routes, and UI components
+already used by the current mapped-lesson editor.
+
+Reuse them wherever possible.
+
+Prefer the smallest implementation that exposes existing canonical fields
+through a teacher-friendly visual form.
+
+Do NOT add a DB migration unless an existing required canonical field
+literally cannot be persisted without one.
+
+==================================================
+1. CURRENT MANUAL MAPPING UI
+==================================================
+
+Currently clicking:
+
+✍️ Ձեռքով
+
+opens a modal with a large TEXT input / manual mapping contract import.
+
+That is NOT the primary teacher-facing manual workflow we want anymore.
+
+Replace the normal teacher-facing manual mapping action with a visual editor.
+
+Do not delete legacy parsing/backend functionality if other code depends on it.
+Simply stop using the large TEXT-contract input as the normal teacher workflow.
+
+==================================================
+2. GOAL / OUTCOMES
+==================================================
+
+Goal and Outcomes remain in the existing:
+
+🎯 Նպատակ և վերջնարդյունքներ
+
+section.
+
+Do NOT duplicate Goal/Outcome editing inside the new Manual Mapping editor.
+
+Expected flow:
+
+1. Teacher creates/imports Goal + Outcomes using the existing workflow.
+2. Teacher can edit them using the existing editor.
+3. Teacher chooses:
+
+   🗺️ Ավտոմատ
+   OR
+   ✍️ Ձեռքով
+
+Manual Mapping must NOT require another Goal/Outcome approval gate.
+
+If Goal/Outcomes already exist, use the current canonical records.
+
+==================================================
+3. MANUAL MAPPING BUTTON
+==================================================
+
+When teacher clicks:
+
+✍️ Ձեռքով
+
+open a WIDE visual modal/editor.
+
+Use most of the available desktop width.
+
+Do NOT open one giant raw-text textarea.
+
+Header:
+
+✍️ Ձեռքով քարտեզագրում
+
+Subtext:
+
+«Կառուցեք դասի քարտեզը ձեռքով։
+Տվյալները պահպանվում են նույն կառուցվածքում,
+որն օգտագործում է ավտոմատ քարտեզագրումը»։
+
+Provide:
+
+[Փակել]
+[Պահպանել սևագիր]
+
+Draft saving must NOT require AI generation.
+
+==================================================
+4. VERY IMPORTANT — SAME CANONICAL MODEL
+==================================================
+
+Manual Mapping must write to the SAME existing canonical structures used
+by Automatic Mapping and the existing mapped-lesson editor.
+
+Reuse the existing hierarchy:
+
+Lesson
+→ Topic
+→ MicroNode
+→ source/context
+→ exercises
+→ Cognitive Path
+→ Teaching Content
+
+Do NOT create:
+
+manual_topics
+manual_nodes
+manual_exercises
+manual_mapping_json
+or any other parallel schema.
+
+Downstream systems must not care whether a node was created automatically
+or manually.
+
+==================================================
+5. EDIT EXISTING DATA TOO
+==================================================
+
+The Manual Mapping editor is not only for empty lessons.
+
+If canonical Topics / MicroNodes / exercises already exist,
+opening ✍️ Ձեռքով must load them into the editor.
+
+Teacher must be able to:
+
+- add
+- edit
+- delete
+- reorder
+
+using the existing canonical records.
+
+Therefore Manual Mapping can also be used to repair an imperfect
+Automatic Mapping result.
+
+Do NOT automatically delete or replace an existing map when opening
+Manual Mapping.
+
+==================================================
+6. TOPIC EDITOR
+==================================================
+
+Start with:
+
++ Ավելացնել թեմա
+
+For each Topic show a compact editable card.
+
+Use EXISTING canonical Topic fields.
+
+Where a value is free text:
+use an input/textarea.
+
+Where the existing system has a fixed enum/value set:
+use select/dropdown/radio controls.
+
+Do NOT convert existing enums into arbitrary text fields.
+
+Minimum visible controls:
+
+Թեմայի վերնագիր
+Հերթականություն
+
+Actions:
+
++ Ավելացնել MicroNode
+✏️ Խմբագրել
+🗑️ Ջնջել
+▲ ▼ or existing reorder control
+
+Reuse existing ordering behavior.
+
+==================================================
+7. MICRONODE EDITOR
+==================================================
+
+Inside each Topic allow:
+
++ Ավելացնել գիտելիքի հանգույց
+
+Open an editable MicroNode form.
+
+Expose the SAME meaningful canonical fields that Automatic Mapping/current
+mapped-node editor already uses.
+
+At minimum include existing equivalents of:
+
+1. Վերնագիր
+2. Learning Objective / Ուսումնական նպատակ
+3. Source / theory / context text
+4. Source page
+5. Topic relation
+6. ordering
+7. existing review/status field if appropriate
+
+If existing canonical mapping contains additional teacher-editable fields
+that are required downstream, expose them too.
+
+IMPORTANT:
+
+Do NOT invent new fields.
+
+Use the existing database/API model as source of truth.
+
+==================================================
+8. FIELD CONTROL RULE
+==================================================
+
+This rule applies throughout the Manual Editor:
+
+IF the existing system has a fixed set of allowed values:
+→ show a selector.
+
+IF the field contains authored instructional content:
+→ show text input / textarea.
+
+IF it is a relation:
+→ show a selector from existing canonical records.
+
+IF it is numeric:
+→ use appropriate numeric input.
+
+Examples:
+
+Bloom / cognitive level:
+→ SELECT from existing allowed levels.
+
+Exercise type:
+→ SELECT from existing allowed types.
+
+Topic:
+→ SELECT existing Topic.
+
+MicroNode relation:
+→ SELECT existing MicroNode.
+
+Page:
+→ numeric/text input according to existing schema.
+
+Learning Objective:
+→ textarea.
+
+Theory/source context:
+→ textarea.
+
+Do not make the teacher memorize internal enum strings.
+
+Show human-readable Armenian labels where the UI already has them.
+
+==================================================
+9. EXERCISES
+==================================================
+
+Inside each MicroNode provide:
+
++ Ավելացնել վարժություն
+
+Also preserve the existing lesson-level:
+
+📦 Լրացուցիչ / չկցված վարժություններ
+
+where appropriate.
+
+Manual exercise form must use the EXISTING exercise model.
+
+Expose existing relevant fields such as:
+
+- Exercise text
+- Page
+- Exercise number/id when applicable
+- Exercise type
+- classroom/homework/etc. classification if it already exists
+- cognitive level if already supported
+- linked MicroNode
+
+Use dropdowns for existing enums.
+
+Use textarea for exercise text.
+
+Teacher must be able to:
+
+ADD
+EDIT
+DELETE
+REASSIGN
+
+an exercise.
+
+Do not duplicate an exercise merely because its MicroNode relation changes.
+
+==================================================
+10. COGNITIVE PATH — MANUAL FALLBACK
+==================================================
+
+Each MicroNode should have a section:
+
+🧠 Ճանաչողական ուղի
+
+If one already exists:
+show it.
+
+Allow:
+
+✏️ Խմբագրել
+🗑️ Հեռացնել
+
+If missing, show:
+
++ Ավելացնել ձեռքով
+
+Use the EXISTING Cognitive Path data model and existing allowed
+cognitive-level values.
+
+Where the current model contains fields such as:
+
+- cognitive level
+- performance objective
+- success criterion
+- preferred interaction types
+- required task/evidence configuration
+
+expose the existing fields.
+
+Again:
+
+fixed values → selectors
+authored text → text fields
+multi-value enums → multi-select/check controls
+
+Do NOT create a second manual Cognitive Path model.
+
+Keep the existing AI generation action available separately if it already exists.
+
+Manual entry must work even if AI Cognitive Path generation fails.
+
+==================================================
+11. TEACHING CONTENT — MANUAL FALLBACK
+==================================================
+
+Each MicroNode should also expose:
+
+📚 Ուսուցման բովանդակություն
+
+If Teaching Content exists:
+display it in an editable form.
+
+If missing:
+
++ Ավելացնել ձեռքով
+
+Use the SAME persisted Teaching Content fields currently used by
+the Teaching Content generator/editor.
+
+Expose all existing teacher-editable canonical Teaching Content fields.
+
+For example, if the current canonical model contains fields equivalent to:
+
+- explanation
+- example
+- misconception / contrast
+- guided support
+- other persisted instructional fields
+
+use those exact existing fields.
+
+Do NOT invent a new Teaching Content JSON structure.
+
+Teacher must be able to:
+
+ADD
+EDIT
+SAVE
+DELETE
+
+Teaching Content manually.
+
+Existing teacher-authored Teaching Content must never be overwritten
+simply by opening/saving the Manual Mapping editor.
+
+==================================================
+12. COPY/PASTE FRIENDLY
+==================================================
+
+The editor must be optimized for teachers who prepare the mapping
+externally and copy/paste it field by field.
+
+Therefore:
+
+- textareas should be reasonably large;
+- labels must be clear;
+- Topic and MicroNode cards should be visually separated;
+- avoid tiny nested popup windows where possible;
+- use one wide workspace;
+- long theory/Teaching Content fields should be easy to edit;
+- Save/Cancel controls should remain obvious.
+
+The teacher should be able to receive a mapping from ChatGPT and quickly
+paste each block into the corresponding field.
+
+==================================================
+13. SAVE BEHAVIOR
+==================================================
+
+Manual work must be saveable incrementally.
+
+Example:
+
+Teacher creates:
+
+1 Topic
+1 MicroNode
+title
+Learning Objective
+
+and clicks:
+
+Պահպանել սևագիր
+
+This must save successfully.
+
+Do NOT require:
+
+- complete Cognitive Paths
+- complete Teaching Content
+- exercises
+- Outcome relations
+- full source alignment
+- AI validation
+- all Topics to be finished
+
+just to save a manual draft.
+
+Manual Draft Save is CRUD persistence, not final approval.
+
+==================================================
+14. VALIDATION UX
+==================================================
+
+Do NOT run the Automatic Mapping all-or-nothing validators as a prerequisite
+for every manual save.
+
+Instead, show simple actionable warnings.
+
+Examples:
+
+⚠️ Այս MicroNode-ը չունի ճանաչողական ուղի։
+
+⚠️ Ուսուցման բովանդակությունը լրացված չէ։
+
+⚠️ Վարժություն կցված չէ։
+
+⚠️ Աղբյուրային էջը նշված չէ։
+
+Warnings must not erase teacher work.
+
+Warnings must not prevent draft save.
+
+==================================================
+15. TEACHER AUTHORITY
+==================================================
+
+The teacher is the author of manual mapping data.
+
+Therefore teacher-created MicroNodes must NOT be forced through an AI
+atomicity-repair loop before they can be saved.
+
+If an existing validator detects a possible quality issue,
+show it as review information where safe.
+
+Do not silently change teacher-authored text.
+
+Do not automatically split teacher-authored MicroNodes.
+
+Do not automatically delete teacher-authored records.
+
+Final learner-delivery safety remains handled by the existing
+assignment/preflight system.
+
+==================================================
+16. MANUAL → EXISTING WORKFLOW
+==================================================
+
+After manual data is saved, the normal lesson page must immediately show it
+in the existing:
+
+🗺️ Մանրամասն քարտեզագրում
+
+section.
+
+The teacher can continue using the existing normal workflow.
+
+Manual Mapping must NOT create a separate downstream flow.
+
+Expected:
+
+Goal/Outcomes
+        ↓
+Teacher chooses
+   ↙           ↘
+Automatic     Manual
+Mapping       Mapping
+   ↘           ↙
+ SAME CANONICAL LESSON MAP
+          ↓
+Cognitive Path
+(manual or AI)
+          ↓
+Teaching Content
+(manual or AI)
+          ↓
+Teacher review
+          ↓
+Հանձնարարել սովորողին
+
+==================================================
+17. EMPTY LESSON ACCEPTANCE TEST
+==================================================
+
+Use a safe test lesson / fixture.
+
+Open:
+
+✍️ Ձեռքով
+
+Verify the visual editor opens.
+
+Create:
+
+Topic:
+«Արագության հասկացություն»
+
+MicroNode:
+«Շարժման արագության սահմանումը»
+
+Learning Objective:
+«Սովորողը կարող է բացատրել շարժման արագությունը որպես միավոր ժամանակում անցած ճանապարհ»։
+
+Add source/context text and page.
+
+Save draft.
+
+Refresh.
+
+Verify:
+
+- Topic persists.
+- MicroNode persists.
+- LO persists.
+- source/context persists.
+- page persists.
+- existing detailed mapping UI displays the records.
+
+==================================================
+18. FULL MANUAL TEST
+==================================================
+
+Using test data only:
+
+Add:
+
+1 Topic
+2 MicroNodes
+2 exercises
+1 manual Cognitive Path
+1 manual Teaching Content record
+
+Save and refresh.
+
+Verify all records persist in the existing canonical structures.
+
+Then:
+
+edit one MicroNode
+reassign one exercise
+edit Cognitive Path
+edit Teaching Content
+
+Refresh and verify changes persist.
+
+Delete one test MicroNode and verify existing cleanup behavior works safely.
+
+Do not alter real user lesson data.
+
+==================================================
+19. AUTOMATIC MAPPING REGRESSION
+==================================================
+
+Verify only that the existing:
+
+🗺️ Ավտոմատ
+
+action is still present and its existing route/behavior was not intentionally
+changed by this task.
+
+Do NOT attempt to fix Automatic Mapping in this task.
+
+==================================================
+20. UI RESULT
+==================================================
+
+The final teacher experience should be simple:
+
+🎯 Նպատակ և վերջնարդյունքներ
+
+🗺️ Ավտոմատ     ✍️ Ձեռքով
+
+If teacher selects ✍️ Ձեռքով:
+
+┌─────────────────────────────────────────────┐
+│ ✍️ Ձեռքով քարտեզագրում                     │
+│                                             │
+│ + Ավելացնել թեմա                           │
+│                                             │
+│ Թեմա 1                                     │
+│   + Ավելացնել գիտելիքի հանգույց            │
+│                                             │
+│   MicroNode 1                               │
+│     Վերնագիր                               │
+│     Ուսումնական նպատակ                     │
+│     Աղբյուր / տեսություն                    │
+│     Էջ                                     │
+│                                             │
+│     Վարժություններ                         │
+│     + Ավելացնել                            │
+│                                             │
+│     🧠 Ճանաչողական ուղի                    │
+│     + Ավելացնել ձեռքով                     │
+│                                             │
+│     📚 Ուսուցման բովանդակություն           │
+│     + Ավելացնել ձեռքով                     │
+│                                             │
+│ + Ավելացնել թեմա                           │
+│                                             │
+│ [Պահպանել սևագիր]             [Փակել]      │
+└─────────────────────────────────────────────┘
+
+This is illustrative.
+Reuse the existing app visual language/components.
+
+==================================================
+21. SCOPE PROTECTION
+==================================================
+
+DO NOT CHANGE:
+
+- Automatic Mapping generation logic
+- Goal/Outcome generation logic
+- Quiz
+- Knowledge Tree
+- AI Teacher runtime
+- learner lesson runtime
+- C1–C7 rules
+- Assignment architecture
+- scoring
+- evidence pipeline
+
+Do not publish/deploy.
+
+==================================================
+22. STOP RULE
+==================================================
+
+Once:
+
+- manual editor opens,
+- canonical CRUD works,
+- draft save works,
+- refresh persistence works,
+- manual Cognitive Path works,
+- manual Teaching Content works,
+- focused typechecks/tests pass,
+
+STOP.
+
+Do NOT start another architecture review.
+Do NOT add speculative improvements.
+Do NOT create follow-up migrations/features.
+Do NOT re-audit Automatic Mapping.
+
+==================================================
+FINAL RESPONSE — SHORT
+==================================================
+
+Report only:
+
+MANUAL VISUAL EDITOR:
+PASS / FAIL
+
+LEGACY TEXT BOX USED AS PRIMARY MANUAL UI:
+YES / NO
+
+USES SAME CANONICAL MAP:
+YES / NO
+
+NEW PARALLEL MAPPING SCHEMA:
+YES / NO
+
+TOPIC CRUD:
+PASS / FAIL
+
+MICRONODE CRUD:
+PASS / FAIL
+
+EXERCISE CRUD:
+PASS / FAIL
+
+COGNITIVE PATH MANUAL CRUD:
+PASS / FAIL
+
+TEACHING CONTENT MANUAL CRUD:
+PASS / FAIL
+
+DRAFT SAVE WITHOUT COMPLETE ENRICHMENT:
+PASS / FAIL
+
+EXISTING MAP LOADS INTO MANUAL EDITOR:
+YES / NO
+
+COPY/PASTE FRIENDLY WIDE EDITOR:
+YES / NO
+
+AUTOMATIC MAPPING CHANGED:
+NO
+
+GOAL/OUTCOME CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+MIGRATION ADDED:
+YES / NO
+
+FILES CHANGED:
+...
+
+TESTS:
+...
+
+PUBLISHED/DEPLOYED:
+NO
+
+Then STOP.
