@@ -41,6 +41,9 @@ export const lessonsTable = pgTable("lessons", {
   // established mapping and learner delivery remain usable until a teacher
   // explicitly begins canonical Goal/Outcome review.
   goalOutcomeReviewStatus: text("goal_outcome_review_status").notNull().default("legacy"),
+  // Monotonic optimistic-concurrency token for the canonical Goal/Outcome draft.
+  // Outcome-row mutations advance it via the database trigger in the companion migration.
+  goalOutcomeDraftRevision: integer("goal_outcome_draft_revision").notNull().default(0),
   // A source-aware AI proposal is deliberately separate from the confirmed
   // lesson goal and canonical outcome rows. It is never learner-facing and is
   // only applied by an explicit teacher action.

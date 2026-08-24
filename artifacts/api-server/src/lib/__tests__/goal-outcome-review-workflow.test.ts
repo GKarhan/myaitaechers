@@ -131,8 +131,8 @@ try {
   const { port } = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${port}/api/lessons/${proposalLessonId}`;
   const token = authModule.signToken(teacherId, "teacher");
-  const request = async (path: string, init: RequestInit = {}) => {
-    const response = await fetch(`${baseUrl}${path}`, {
+  const requestForLesson = async (targetLessonId: number, path: string, init: RequestInit = {}) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/lessons/${targetLessonId}${path}`, {
       ...init,
       headers: {
         authorization: `Bearer ${token}`,
@@ -142,6 +142,29 @@ try {
     });
     return { response, body: await response.json() as Record<string, unknown> };
   };
+  const request = (path: string, init: RequestInit = {}) => requestForLesson(proposalLessonId, path, init);
+
+  const [goalOnlyLesson] = await db.insert(lessonsTable).values({
+    subjectId,
+    teacherId,
+    title: `${runId}-goal-only-lesson`,
+    lessonGoal: "Սովորողը կձևակերպի նպատակային գաղափարը։",
+    goalOutcomeReviewStatus: "draft",
+  }).returning({ id: lessonsTable.id });
+  const goalOnlyReview = await requestForLesson(goalOnlyLesson.id, "/goal-outcome-review");
+  assert.equal(goalOnlyReview.response.status, 200);
+  assert.equal(goalOnlyReview.body.draftVersion, "0", "a goal-only draft starts at revision zero");
+  const firstOutcomeSave = await requestForLesson(goalOnlyLesson.id, "/goal-outcome-review/draft", {
+    method: "POST",
+    body: JSON.stringify({
+      lessonGoal: goalOnlyReview.body.lessonGoal,
+      draftVersion: goalOnlyReview.body.draftVersion,
+      outcomes: [{ outcomeText: "Սովորողը կբացատրի նպատակային գաղափարը։" }],
+    }),
+  });
+  assert.equal(firstOutcomeSave.response.status, 200, "revision zero accepts the first Outcome in a goal-only draft");
+  const goalOnlyReadBack = await requestForLesson(goalOnlyLesson.id, "/goal-outcome-review");
+  assert.deepEqual(goalOnlyReadBack.body.outcomes, ["Սովորողը կբացատրի նպատակային գաղափարը։"]);
 
   const imported = await request("/goal-outcome-review/apply-proposal", { method: "POST" });
   assert.equal(imported.response.status, 200, "a complete source proposal imports into canonical drafts");
@@ -172,6 +195,9 @@ try {
   );
   assert.equal(importedReview.body.currentOutcomeCount, proposalOutcomes.length);
   assert.deepEqual(importedReview.body.outcomes, proposalOutcomes, "refresh reads back every canonical outcome in order");
+  const importedOutcomeRecords = importedReview.body.outcomeRecords as Array<{ id: number; outcomeText: string }>;
+  assert.equal(importedOutcomeRecords.length, proposalOutcomes.length, "the primary editor receives every canonical Outcome id and text");
+  assert.equal(typeof importedReview.body.draftVersion, "string", "the primary editor receives a canonical draft revision");
 
   const blockedProposal = await request("/goal-outcome-review/proposal", { method: "POST" });
   assert.equal(blockedProposal.response.status, 409);
@@ -186,13 +212,42 @@ try {
   assert.equal(repeatedImport.body.createdCount, 0);
 
   const editedGoal = `${proposalGoal} (խմբագրված)`;
-  const editedGoalResponse = await request("/goal-outcome-review/draft", {
+  const editedOutcomeTexts = proposalOutcomes.map((outcome, index) => (
+    index < 2 ? `${outcome} (խմբագրված)` : outcome
+  ));
+  const addedOutcomeText = "Սովորողը կձևակերպի լրացուցիչ սեփական օրինակ։";
+  const combinedEdit = await request("/goal-outcome-review/draft", {
     method: "POST",
-    body: JSON.stringify({ lessonGoal: editedGoal }),
+    body: JSON.stringify({
+      lessonGoal: editedGoal,
+      draftVersion: importedReview.body.draftVersion,
+      outcomes: [
+        ...importedOutcomeRecords.map((outcome, index) => ({
+          id: outcome.id,
+          outcomeText: editedOutcomeTexts[index],
+        })),
+        { outcomeText: addedOutcomeText },
+      ],
+    }),
   });
-  assert.equal(editedGoalResponse.response.status, 200);
+  assert.equal(combinedEdit.response.status, 200, "Goal and the complete Outcome set save in one request");
+  assert.deepEqual(
+    combinedEdit.body.outcomes,
+    [...editedOutcomeTexts, addedOutcomeText],
+    "the combined save reports its verified canonical Outcome set",
+  );
   const goalReadBack = await request("/goal-outcome-review");
   assert.equal(goalReadBack.body.lessonGoal, editedGoal, "manual Goal edits read back from the canonical lesson record");
+  assert.deepEqual(
+    goalReadBack.body.outcomes,
+    [...editedOutcomeTexts, addedOutcomeText],
+    "two edited Outcomes and one added Outcome read back through the primary Goal/Outcome endpoint",
+  );
+  assert.equal(
+    (goalReadBack.body.outcomeRecords as Array<{ id: number; outcomeText: string }>).length,
+    proposalOutcomes.length + 1,
+    "the refreshed edit surface receives the whole canonical Outcome set",
+  );
   const [persistedProposalOutcome] = await db.select({ id: lessonOutcomesTable.id })
     .from(lessonOutcomesTable)
     .where(eq(lessonOutcomesTable.lessonId, proposalLessonId))
@@ -204,7 +259,7 @@ try {
   });
   assert.equal(approvedStatusAttempt.response.status, 409, "an Outcome status cannot bypass confirmation");
 
-  const editedOutcomeText = `${proposalOutcomes[0]} (խմբագրված)`;
+  const editedOutcomeText = `${editedOutcomeTexts[0]} (առանձին խմբագրված)`;
   const editedOutcome = await request(`/outcomes/${persistedProposalOutcome.id}/update`, {
     method: "POST",
     body: JSON.stringify({ outcomeText: editedOutcomeText }),
@@ -261,6 +316,72 @@ try {
     isTargetCeiling: true,
     provenance: "teacher_authored",
   });
+  const staleReview = await request("/goal-outcome-review");
+  const staleOutcomeRecords = staleReview.body.outcomeRecords as Array<{
+    id: number;
+    outcomeText: string;
+  }>;
+  const concurrentlyAddedOutcomeText = "Սովորողը կպահպանի նոր խմբագրված վերջնարդյունքը։";
+  const currentEditorSave = await request("/goal-outcome-review/draft", {
+    method: "POST",
+    body: JSON.stringify({
+      lessonGoal: editedGoal,
+      draftVersion: staleReview.body.draftVersion,
+      outcomes: [
+        ...staleOutcomeRecords.map((outcome) => ({ id: outcome.id, outcomeText: outcome.outcomeText })),
+        { outcomeText: concurrentlyAddedOutcomeText },
+      ],
+    }),
+  });
+  assert.equal(currentEditorSave.response.status, 200, "a current edit surface can add a new Outcome");
+  const currentReview = await request("/goal-outcome-review");
+  const currentOutcomeRecords = currentReview.body.outcomeRecords as Array<{
+    id: number;
+    outcomeText: string;
+  }>;
+  const removableOutcome = currentOutcomeRecords.find((outcome) => outcome.outcomeText === concurrentlyAddedOutcomeText)!;
+  await db.insert(lessonOutcomeNodeAlignmentsTable).values({
+    lessonId: proposalLessonId,
+    lessonOutcomeId: removableOutcome.id,
+    lessonNodeId: postMappingNode.id,
+    role: "SUPPORTING",
+    requiredCognitiveDepth: "understand",
+  });
+  const staleEditorSave = await request("/goal-outcome-review/draft", {
+    method: "POST",
+    body: JSON.stringify({
+      lessonGoal: editedGoal,
+      draftVersion: staleReview.body.draftVersion,
+      outcomes: staleOutcomeRecords.map((outcome) => ({ id: outcome.id, outcomeText: outcome.outcomeText })),
+    }),
+  });
+  assert.equal(staleEditorSave.response.status, 409, "a stale editor cannot remove a concurrently added Outcome");
+  assert.equal(staleEditorSave.body.error, "GOAL_OUTCOME_DRAFT_STALE");
+  const alignmentAfterStaleSave = await db.select({ id: lessonOutcomeNodeAlignmentsTable.id })
+    .from(lessonOutcomeNodeAlignmentsTable)
+    .where(eq(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, removableOutcome.id));
+  assert.equal(alignmentAfterStaleSave.length, 1, "a stale save preserves the newer Outcome→MicroNode relation");
+  const removeOutcomeInCombinedEdit = await request("/goal-outcome-review/draft", {
+    method: "POST",
+    body: JSON.stringify({
+      lessonGoal: editedGoal,
+      draftVersion: currentReview.body.draftVersion,
+      outcomes: currentOutcomeRecords
+        .filter((outcome) => outcome.id !== removableOutcome.id)
+        .map((outcome) => ({ id: outcome.id, outcomeText: outcome.outcomeText })),
+    }),
+  });
+  assert.equal(removeOutcomeInCombinedEdit.response.status, 200, "removing an Outcome succeeds in the combined edit flow");
+  const alignmentAfterRemoval = await db.select({ id: lessonOutcomeNodeAlignmentsTable.id })
+    .from(lessonOutcomeNodeAlignmentsTable)
+    .where(eq(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, removableOutcome.id));
+  assert.equal(alignmentAfterRemoval.length, 0, "removing an Outcome cleans up its Outcome→MicroNode relations");
+  const removalReadBack = await request("/goal-outcome-review");
+  assert.equal(
+    (removalReadBack.body.outcomes as string[]).includes(removableOutcome.outcomeText),
+    false,
+    "refresh does not show the removed canonical Outcome",
+  );
   const [preservedExercise] = await db.insert(lessonExercisesTable).values({
     lessonId: proposalLessonId,
     exerciseId: `${runId}-preserved-exercise`,
@@ -272,13 +393,13 @@ try {
   const postMappingReadiness = await request("/outcomes/readiness");
   assert.equal(
     (postMappingReadiness.body.warnings as Array<{ code: string }>).filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
-    proposalOutcomes.length,
+    proposalOutcomes.length + 1,
     "required MicroNode coverage remains a post-mapping readiness rule",
   );
   const finalApprovalReadiness = await validateLessonForFinalApproval(proposalLessonId);
   assert.equal(
     finalApprovalReadiness.overrideable.filter((issue) => issue.code === "OUTCOME_WITHOUT_REQUIRED_NODE").length,
-    proposalOutcomes.length,
+    proposalOutcomes.length + 1,
     "missing REQUIRED Outcome coverage is accepted only through the final assignment review",
   );
 
@@ -292,7 +413,7 @@ try {
   const deletedDraft = await request("/goal-outcome-review/delete", { method: "POST" });
   assert.equal(deletedDraft.response.status, 200);
   assert.equal(deletedDraft.body.deleted, true);
-  assert.equal(deletedDraft.body.deletedOutcomeCount, proposalOutcomes.length);
+  assert.equal(deletedDraft.body.deletedOutcomeCount, proposalOutcomes.length + 1);
   const [[deletedLesson], remainingOutcomes, remainingAlignments, remainingTopics, remainingNodes, remainingLevels, remainingExercises] = await Promise.all([
     db.select({ lessonGoal: lessonsTable.lessonGoal, proposal: lessonsTable.goalOutcomeProposal })
       .from(lessonsTable).where(eq(lessonsTable.id, proposalLessonId)),

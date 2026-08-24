@@ -1682,11 +1682,15 @@ router.get("/lessons/:lessonId/goal-outcome-review", requireAuth, requireLessonA
     db.select({
       id: lessonsTable.id,
       lessonGoal: lessonsTable.lessonGoal,
+      goalOutcomeDraftRevision: lessonsTable.goalOutcomeDraftRevision,
       goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
       goalOutcomeProposal: lessonsTable.goalOutcomeProposal,
       goalOutcomeConfirmedAt: lessonsTable.goalOutcomeConfirmedAt,
     }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
-    db.select({ outcomeText: lessonOutcomesTable.outcomeText })
+    db.select({
+      id: lessonOutcomesTable.id,
+      outcomeText: lessonOutcomesTable.outcomeText,
+    })
       .from(lessonOutcomesTable)
       .where(eq(lessonOutcomesTable.lessonId, lessonId))
       .orderBy(asc(lessonOutcomesTable.sequence)),
@@ -1703,6 +1707,11 @@ router.get("/lessons/:lessonId/goal-outcome-review", requireAuth, requireLessonA
     requiresConfirmation: requiresGoalOutcomeConfirmation(lesson),
     proposal: lesson.goalOutcomeProposal ?? null,
     outcomes: currentOutcomes.map((outcome) => outcome.outcomeText),
+    outcomeRecords: currentOutcomes.map((outcome) => ({
+      id: outcome.id,
+      outcomeText: outcome.outcomeText,
+    })),
+    draftVersion: String(lesson.goalOutcomeDraftRevision),
     hasUsableCurrentDraft,
     currentOutcomeCount: currentOutcomes.length,
     confirmedAt: lesson.goalOutcomeConfirmedAt?.toISOString() ?? null,
@@ -1716,28 +1725,170 @@ router.post("/lessons/:lessonId/goal-outcome-review/draft", requireAuth, require
   if (!lessonId || lessonGoal === null) {
     res.status(400).json({ error: "lessonGoal must be a string" }); return;
   }
-  const result = await db.transaction(async (tx) => {
+  const rawOutcomes = req.body?.outcomes;
+  const draftVersion = typeof req.body?.draftVersion === "string" && /^\d+$/.test(req.body.draftVersion)
+    ? Number(req.body.draftVersion)
+    : null;
+  let requestedOutcomes: Array<{ id: number | null; outcomeText: string }> | null = null;
+  if (rawOutcomes !== undefined) {
+    if (!Array.isArray(rawOutcomes)) {
+      res.status(400).json({ error: "outcomes must be an array" }); return;
+    }
+    if (draftVersion === null) {
+      res.status(400).json({ error: "draftVersion is required when saving outcomes" }); return;
+    }
+    requestedOutcomes = [];
+    for (const rawOutcome of rawOutcomes) {
+      if (!rawOutcome || typeof rawOutcome !== "object") {
+        res.status(400).json({ error: "Each outcome must include outcomeText" }); return;
+      }
+      const outcomeText = typeof rawOutcome.outcomeText === "string" ? rawOutcome.outcomeText.trim() : "";
+      if (!outcomeText) {
+        res.status(400).json({ error: "Outcome text cannot be empty" }); return;
+      }
+      const rawId = rawOutcome.id;
+      const id = rawId === undefined || rawId === null || rawId === "" ? null : parsePositiveInt(rawId);
+      if (rawId !== undefined && rawId !== null && rawId !== "" && id === null) {
+        res.status(400).json({ error: "Invalid outcome id" }); return;
+      }
+      requestedOutcomes.push({ id, outcomeText });
+    }
+    if (new Set(requestedOutcomes.map((outcome) => outcome.id).filter((id): id is number => id !== null)).size
+      !== requestedOutcomes.filter((outcome) => outcome.id !== null).length) {
+      res.status(400).json({ error: "Duplicate outcome ids are not allowed" }); return;
+    }
+    if (new Set(requestedOutcomes.map((outcome) => outcome.outcomeText)).size !== requestedOutcomes.length) {
+      res.status(400).json({ error: "Duplicate outcome text is not allowed" }); return;
+    }
+  }
+  let result: null
+    | { kind: "invalid_outcome" }
+    | { kind: "stale_draft" }
+    | { kind: "ok"; nextStatus: GoalOutcomeReviewStatus; outcomes: string[] };
+  try {
+    result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM lessons WHERE id = ${lessonId} FOR UPDATE`);
     const [current] = await tx.select({
+      lessonGoal: lessonsTable.lessonGoal,
+      goalOutcomeDraftRevision: lessonsTable.goalOutcomeDraftRevision,
       goalOutcomeReviewStatus: lessonsTable.goalOutcomeReviewStatus,
     }).from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
     if (!current) return null;
+    const existingOutcomes = await tx.select({
+      id: lessonOutcomesTable.id,
+      outcomeText: lessonOutcomesTable.outcomeText,
+      sequence: lessonOutcomesTable.sequence,
+    }).from(lessonOutcomesTable)
+      .where(eq(lessonOutcomesTable.lessonId, lessonId))
+      .orderBy(asc(lessonOutcomesTable.sequence));
     const currentStatus = getGoalOutcomeReviewStatus(current);
     const nextStatus: GoalOutcomeReviewStatus = currentStatus === "confirmed" ? "needs_review" : "draft";
+    if (requestedOutcomes) {
+      if (current.goalOutcomeDraftRevision !== draftVersion) {
+        return { kind: "stale_draft" as const };
+      }
+      const existingById = new Map(existingOutcomes.map((outcome) => [outcome.id, outcome]));
+      const requestedIds = new Set<number>();
+      for (const requested of requestedOutcomes) {
+        if (requested.id !== null && !existingById.has(requested.id)) {
+          return { kind: "invalid_outcome" as const };
+        }
+        if (requested.id !== null) requestedIds.add(requested.id);
+      }
+      const removedIds = existingOutcomes
+        .filter((outcome) => !requestedIds.has(outcome.id))
+        .map((outcome) => outcome.id);
+      if (removedIds.length > 0) {
+        await tx.delete(lessonOutcomeNodeAlignmentsTable)
+          .where(inArray(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, removedIds));
+        await tx.delete(lessonOutcomesTable)
+          .where(inArray(lessonOutcomesTable.id, removedIds));
+      }
+      for (const requested of requestedOutcomes) {
+        if (requested.id !== null) {
+          await tx.update(lessonOutcomesTable)
+            .set({ outcomeText: requested.outcomeText, updatedAt: new Date() })
+            .where(and(
+              eq(lessonOutcomesTable.id, requested.id),
+              eq(lessonOutcomesTable.lessonId, lessonId),
+            ));
+        }
+      }
+      const newOutcomes = requestedOutcomes.filter((outcome) => outcome.id === null);
+      if (newOutcomes.length > 0) {
+        const nextSequence = Math.max(0, ...existingOutcomes.map((outcome) => outcome.sequence)) + 1;
+        await tx.insert(lessonOutcomesTable).values(newOutcomes.map((outcome, index) => ({
+          lessonId,
+          outcomeText: outcome.outcomeText,
+          sequence: nextSequence + index,
+          status: "draft",
+          provenance: "teacher_authored",
+        })));
+      }
+    }
     await tx.update(lessonsTable).set({
       lessonGoal,
       goalOutcomeReviewStatus: nextStatus,
       goalOutcomeConfirmedAt: null,
       goalOutcomeConfirmedBy: null,
+      ...(requestedOutcomes ? {} : {
+        goalOutcomeDraftRevision: sql`${lessonsTable.goalOutcomeDraftRevision} + 1`,
+      }),
     }).where(eq(lessonsTable.id, lessonId));
-    const [persisted] = await tx.select({ lessonGoal: lessonsTable.lessonGoal })
-      .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
-    if (persisted?.lessonGoal !== lessonGoal) throw new Error("GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED");
-    return { nextStatus };
-  });
+    const [[persisted], persistedOutcomes] = await Promise.all([
+      tx.select({ lessonGoal: lessonsTable.lessonGoal })
+        .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
+      tx.select({ outcomeText: lessonOutcomesTable.outcomeText })
+        .from(lessonOutcomesTable)
+        .where(eq(lessonOutcomesTable.lessonId, lessonId))
+        .orderBy(asc(lessonOutcomesTable.sequence)),
+    ]);
+    const persistedTexts = persistedOutcomes.map((outcome) => outcome.outcomeText.trim());
+    const expectedTexts = requestedOutcomes?.map((outcome) => outcome.outcomeText) ?? persistedTexts;
+    const persistedTextSet = new Set(persistedTexts);
+    const expectedTextSet = new Set(expectedTexts);
+    const outcomesMatch = persistedTexts.length === expectedTexts.length
+      && persistedTextSet.size === expectedTextSet.size
+      && [...expectedTextSet].every((text) => persistedTextSet.has(text));
+    if (persisted?.lessonGoal !== lessonGoal || !outcomesMatch) {
+      throw new Error("GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED");
+    }
+    return { kind: "ok" as const, nextStatus, outcomes: persistedTexts };
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED") {
+      res.status(500).json({
+        error: "GOAL_OUTCOME_PERSISTENCE_VERIFICATION_FAILED",
+        message: "Նպատակի և վերջնարդյունքների պահպանումը չի հաստատվել։ Փոփոխությունները չեն պահպանվել։",
+      });
+      return;
+    }
+    throw error;
+  }
   if (!result) { res.status(404).json({ error: "Lesson not found" }); return; }
+  if (result.kind === "stale_draft") {
+    res.status(409).json({
+      error: "GOAL_OUTCOME_DRAFT_STALE",
+      message: "Նպատակի և վերջնարդյունքների ցանկը փոխվել է։ Բեռնեք վերջին տարբերակը և կրկին փորձեք։",
+    });
+    return;
+  }
+  if (result.kind === "invalid_outcome") {
+    res.status(409).json({
+      error: "OUTCOME_NOT_FOUND_IN_LESSON",
+      message: "Վերջնարդյունքների ցանկը փոխվել է։ Բեռնեք այն կրկին և փորձեք նորից։",
+    });
+    return;
+  }
   await invalidateLessonApproval(lessonId);
-  res.json({ lessonId, lessonGoal, status: result.nextStatus, requiresConfirmation: true });
+  res.json({
+    lessonId,
+    lessonGoal,
+    status: result.nextStatus,
+    outcomes: result.outcomes,
+    outcomeCount: result.outcomes.length,
+    requiresConfirmation: true,
+  });
 });
 
 router.post("/lessons/:lessonId/goal-outcome-review/proposal", requireAuth, requireLessonAuthor, async (req: AuthRequest, res) => {
@@ -1866,18 +2017,24 @@ router.post("/lessons/:lessonId/goal-outcome-review/apply-proposal", requireAuth
       return { conflict: true as const };
     }
     const missing = outcomes.filter((outcome) => !existingTexts.has(outcome));
+    const canonicalChanged = missing.length > 0
+      || canonicalGoal !== lessonGoal
+      || reviewStatus !== "draft";
     if (missing.length) {
       const nextSequence = Math.max(0, ...existing.map((row) => row.sequence)) + 1;
       await tx.insert(lessonOutcomesTable).values(missing.map((outcomeText, index) => ({
         lessonId, outcomeText, sequence: nextSequence + index, status: "draft", provenance: "mapping_import",
       })));
     }
-    await tx.update(lessonsTable).set({
-      lessonGoal,
-      goalOutcomeReviewStatus: "draft",
-      goalOutcomeConfirmedAt: null,
-      goalOutcomeConfirmedBy: null,
-    }).where(eq(lessonsTable.id, lessonId));
+    if (canonicalChanged) {
+      await tx.update(lessonsTable).set({
+        lessonGoal,
+        goalOutcomeReviewStatus: "draft",
+        goalOutcomeConfirmedAt: null,
+        goalOutcomeConfirmedBy: null,
+        goalOutcomeDraftRevision: sql`${lessonsTable.goalOutcomeDraftRevision} + 1`,
+      }).where(eq(lessonsTable.id, lessonId));
+    }
     const [[persistedLesson], persistedOutcomes] = await Promise.all([
       tx.select({ lessonGoal: lessonsTable.lessonGoal })
         .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1),
@@ -1947,6 +2104,7 @@ router.post("/lessons/:lessonId/goal-outcome-review/delete", requireAuth, requir
       goalOutcomeReviewStatus: "legacy",
       goalOutcomeConfirmedAt: null,
       goalOutcomeConfirmedBy: null,
+      goalOutcomeDraftRevision: sql`${lessonsTable.goalOutcomeDraftRevision} + 1`,
     }).where(eq(lessonsTable.id, lessonId));
 
     const [[persisted], remainingOutcomes, remainingAlignments] = await Promise.all([
@@ -1995,6 +2153,7 @@ router.post("/lessons/:lessonId/goal-outcome-review/confirm", requireAuth, requi
       goalOutcomeReviewStatus: "confirmed",
       goalOutcomeConfirmedAt: new Date(),
       goalOutcomeConfirmedBy: req.userId ?? null,
+      goalOutcomeDraftRevision: sql`${lessonsTable.goalOutcomeDraftRevision} + 1`,
     }).where(eq(lessonsTable.id, lessonId));
     return true;
   });
@@ -2200,6 +2359,7 @@ router.post("/lessons/:lessonId/outcomes/backfill-legacy", requireAuth, requireL
           goalOutcomeReviewStatus: status === "legacy" ? "draft" : "needs_review",
           goalOutcomeConfirmedAt: null,
           goalOutcomeConfirmedBy: null,
+          goalOutcomeDraftRevision: sql`${lessonsTable.goalOutcomeDraftRevision} + 1`,
         }).where(eq(lessonsTable.id, lessonId));
       }
     }

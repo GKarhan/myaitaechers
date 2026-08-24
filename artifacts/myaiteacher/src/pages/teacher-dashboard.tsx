@@ -3538,6 +3538,8 @@ function LessonGoalOutcomesPanel({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState(lessonGoal ?? "");
+  const [outcomeDrafts, setOutcomeDrafts] = useState<Array<{ id: number | null; outcomeText: string }>>([]);
+  const [draftVersion, setDraftVersion] = useState<string | null>(null);
   const [editingGoal, setEditingGoal] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -3549,6 +3551,8 @@ function LessonGoalOutcomesPanel({
     confirmedAt: string | null;
     proposal: { lessonGoal: string; outcomes: string[]; generatedAt?: string } | null;
     outcomes: string[];
+    outcomeRecords?: Array<{ id: number; outcomeText: string }>;
+    draftVersion?: string;
     hasUsableCurrentDraft: boolean;
     currentOutcomeCount: number;
     compatibility: string;
@@ -3572,6 +3576,21 @@ function LessonGoalOutcomesPanel({
   });
   const persistedOutcomes = draftState.outcomes;
   const { hasSavedGoal, hasSavedOutcomes, hasSavedDraft, hasPartialSavedDraft } = draftState;
+  const startEditing = () => {
+    const outcomeRecords = review?.outcomeRecords ?? [];
+    if (outcomeRecords.length !== persistedOutcomes.length || !review?.draftVersion) {
+      setError("Վերջնարդյունքների վերջին ցանկը դեռ չի բեռնվել։ Խնդրում ենք փակել և նորից բացել բաժինը։");
+      return;
+    }
+    setError(null);
+    setGoalDraft(review?.lessonGoal ?? "");
+    setOutcomeDrafts(outcomeRecords.map((outcome) => ({
+      id: outcome.id,
+      outcomeText: outcome.outcomeText,
+    })));
+    setDraftVersion(review.draftVersion);
+    setEditingGoal(true);
+  };
   const request = async (path: string, body?: Record<string, unknown>) => {
     const response = await fetch(`/api/lessons/${lessonId}${path}`, {
       method: "POST",
@@ -3625,7 +3644,7 @@ function LessonGoalOutcomesPanel({
                   <span className="text-[11px] text-secondary/70 font-medium">Դասի նպատակ</span>
                   {!editingGoal && (hasSavedGoal || hasSavedOutcomes) && (
                     <div className="flex items-center gap-2">
-                      <button onClick={() => { setGoalDraft(review.lessonGoal); setEditingGoal(true); }} className="text-[10px] text-muted-foreground hover:text-white">✏️ Խմբագրել</button>
+                      <button onClick={startEditing} className="text-[10px] text-muted-foreground hover:text-white">✏️ Խմբագրել</button>
                       <button disabled={busy} onClick={() => setDeleteOpen(true)} className="text-[10px] text-red-200 hover:text-red-100 disabled:opacity-50">🗑️ Ջնջել</button>
                     </div>
                   )}
@@ -3639,16 +3658,66 @@ function LessonGoalOutcomesPanel({
                       placeholder="Ուսուցչի նպատակային սևագիր (ընտրովի)"
                       className="w-full rounded border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white"
                     />
+                    <div className="space-y-1.5 rounded border border-white/8 bg-black/10 p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-secondary/70 font-medium">Վերջնարդյունքներ</span>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setOutcomeDrafts((outcomes) => [...outcomes, { id: null, outcomeText: "" }])}
+                          className="text-[10px] text-primary hover:text-primary/80 disabled:opacity-50"
+                        >＋ Ավելացնել</button>
+                      </div>
+                      {outcomeDrafts.length === 0 && (
+                        <p className="text-[10px] italic text-amber-100/80">Վերջնարդյունք դեռ չկա։ Ավելացրեք առնվազն մեկը կամ չեղարկեք խմբագրումը։</p>
+                      )}
+                      {outcomeDrafts.map((outcome, index) => (
+                        <div key={outcome.id ?? `new-${index}`} className="flex items-start gap-1.5">
+                          <span className="pt-1.5 text-[10px] text-muted-foreground">{index + 1}.</span>
+                          <textarea
+                            rows={2}
+                            value={outcome.outcomeText}
+                            onChange={(event) => setOutcomeDrafts((outcomes) => outcomes.map((current, currentIndex) => (
+                              currentIndex === index ? { ...current, outcomeText: event.target.value } : current
+                            )))}
+                            placeholder="Վերջնարդյունք"
+                            className="min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white"
+                          />
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setOutcomeDrafts((outcomes) => outcomes.filter((_, currentIndex) => currentIndex !== index))}
+                            className="mt-1 rounded px-1.5 py-1 text-[10px] text-red-200 hover:bg-red-400/10 hover:text-red-100 disabled:opacity-50"
+                            aria-label={`Հեռացնել ${index + 1}-րդ վերջնարդյունքը`}
+                          >Հեռացնել</button>
+                        </div>
+                      ))}
+                    </div>
                     <div className="flex gap-1">
                       <button
                         disabled={busy}
                         onClick={() => void run(async () => {
-                          await request("/goal-outcome-review/draft", { lessonGoal: goalDraft });
+                          if (outcomeDrafts.some((outcome) => !outcome.outcomeText.trim())) {
+                            throw new Error("Լրացրեք կամ հեռացրեք դատարկ վերջնարդյունքները։");
+                          }
+                          if (!draftVersion) {
+                            throw new Error("Վերջնարդյունքների վերջին ցանկը դեռ չի բեռնվել։ Խնդրում ենք կրկին բացել բաժինը։");
+                          }
+                          await request("/goal-outcome-review/draft", {
+                            lessonGoal: goalDraft,
+                            draftVersion,
+                            outcomes: outcomeDrafts.map((outcome) => ({
+                              id: outcome.id,
+                              outcomeText: outcome.outcomeText,
+                            })),
+                          });
                           setEditingGoal(false);
+                          setOutcomeDrafts([]);
+                          setDraftVersion(null);
                         })}
                         className="rounded bg-primary/20 px-2 py-1 text-[10px] text-primary disabled:opacity-50"
                       >Պահպանել</button>
-                      <button onClick={() => setEditingGoal(false)} className="rounded bg-white/5 px-2 py-1 text-[10px] text-muted-foreground">Չեղարկել</button>
+                      <button onClick={() => { setEditingGoal(false); setOutcomeDrafts([]); setDraftVersion(null); setGoalDraft(review.lessonGoal); }} className="rounded bg-white/5 px-2 py-1 text-[10px] text-muted-foreground">Չեղարկել</button>
                     </div>
                   </div>
                 ) : (
@@ -3656,7 +3725,7 @@ function LessonGoalOutcomesPanel({
                 )}
               </div>
 
-              {hasSavedOutcomes && (
+              {!editingGoal && hasSavedOutcomes && (
                 <div>
                   <div className="text-[11px] text-secondary/70 font-medium mb-0.5">Պահպանված վերջնարդյունքներ</div>
                   <ul className="list-disc list-inside space-y-0.5">
@@ -3721,6 +3790,8 @@ function LessonGoalOutcomesPanel({
                   await request("/goal-outcome-review/delete");
                   setGoalDraft("");
                   setEditingGoal(false);
+                  setOutcomeDrafts([]);
+                  setDraftVersion(null);
                   setDeleteOpen(false);
                 });
               }}

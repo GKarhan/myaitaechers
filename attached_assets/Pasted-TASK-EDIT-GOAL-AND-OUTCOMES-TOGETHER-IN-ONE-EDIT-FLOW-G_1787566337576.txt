@@ -1,0 +1,303 @@
+TASK — EDIT GOAL AND OUTCOMES TOGETHER IN ONE EDIT FLOW
+
+GOAL
+
+Fix only the existing Goal/Outcome edit experience.
+
+Current state:
+
+- Goal persistence works.
+- Outcome persistence works.
+- Saved Goal and Outcomes are visible.
+- Delete works.
+- Recreate-after-delete works.
+- BUT clicking the existing Edit icon only allows editing the Goal field.
+- Persisted Outcomes are not editable from the same edit flow.
+
+Desired behavior:
+
+When teacher clicks the existing:
+
+“✏️ Խմբագրել”
+
+in the Goal/Outcome section,
+
+the edit mode must allow editing BOTH:
+
+1. Lesson Goal
+2. ALL persisted Outcomes
+
+in the same editing surface.
+
+Do not redesign this section.
+Do not add another approval step.
+Do not change Mapping, Cognitive Paths, Teaching Content, Assignment, Quiz,
+Knowledge Tree, C1–C7, or AI Teacher runtime.
+
+Do not publish/deploy.
+
+==================================================
+1 — AUDIT CURRENT EDIT FLOW
+==================================================
+
+First inspect:
+
+- current Goal/Outcome panel;
+- existing Edit icon handler;
+- current Goal edit form/state;
+- current Outcome edit routes/components;
+- canonical Goal and Outcome persistence endpoints.
+
+Determine why the existing Edit action exposes only the Goal.
+
+Reuse existing Outcome editing/persistence logic where possible.
+
+Do not create duplicate Goal/Outcome data models.
+
+==================================================
+2 — SINGLE EDIT MODE
+==================================================
+
+When teacher clicks:
+
+“✏️ Խմբագրել”
+
+show editable controls for:
+
+Դասի նպատակ
+[editable textarea/input]
+
+Վերջնարդյունքներ
+
+1.
+[editable textarea/input]
+
+2.
+[editable textarea/input]
+
+3.
+[editable textarea/input]
+
+etc.
+
+Use the actual persisted Outcome list.
+
+Teacher must be able to edit every existing Outcome text.
+
+==================================================
+3 — OUTCOME LIST EDITING
+==================================================
+
+Inside edit mode allow:
+
+- editing existing Outcome text;
+- adding a new Outcome;
+- removing an Outcome from the draft if the existing canonical editor already
+  supports this safely.
+
+If adding/removing Outcomes requires existing relation cleanup/invalidation,
+reuse the existing canonical behavior.
+
+Do not leave orphan Outcome→MicroNode relations.
+
+Do not fabricate relations.
+
+==================================================
+4 — SAVE / CANCEL
+==================================================
+
+Edit mode must have:
+
+“Պահպանել”
+
+“Չեղարկել”
+
+SAVE:
+
+Persist:
+
+- Goal
+- complete resulting Outcome set
+
+using the existing canonical API/data model.
+
+After save:
+
+- read back Goal;
+- read back ALL Outcomes;
+- update the UI from canonical persisted state;
+- exit edit mode.
+
+Do not report success if Outcomes failed to persist.
+
+CANCEL:
+
+Discard unsaved local edits and return to the persisted values.
+
+==================================================
+5 — DO NOT REGENERATE WITH AI
+==================================================
+
+Manual edit must never trigger:
+
+- new AI proposal;
+- Goal regeneration;
+- Outcome regeneration;
+- remapping.
+
+Teacher editing is authoritative manual content editing.
+
+==================================================
+6 — AFTER EDIT
+==================================================
+
+After successful save, normal read-only view should again show:
+
+- current Goal;
+- current Outcomes;
+- ✏️ Խմբագրել;
+- 🗑️ Ջնջել.
+
+AI proposal/import actions remain hidden while a valid working Goal/Outcome
+draft exists.
+
+==================================================
+7 — MATERIAL CHANGE INVALIDATION
+==================================================
+
+If Goal/Outcome editing is already a material lesson change:
+
+preserve the existing canonical invalidation behavior.
+
+Do not create a new approval system.
+
+Do not add another Goal/Outcome confirmation gate.
+
+==================================================
+8 — TESTS
+==================================================
+
+Add/update focused tests:
+
+CASE 1
+Saved Goal + 6 Outcomes
+→ click Edit
+→ Goal editable
+→ all 6 Outcomes editable.
+
+CASE 2
+Edit Goal + two Outcome texts
+→ Save
+→ Goal persists
+→ all Outcomes persist/read back.
+
+CASE 3
+Cancel edit
+→ no DB changes.
+
+CASE 4
+Add Outcome in edit mode
+→ Save
+→ new Outcome persists.
+
+CASE 5
+Remove Outcome in edit mode
+→ canonical cleanup occurs
+→ no orphan relations.
+
+CASE 6
+Refresh after save
+→ edited Goal and Outcomes remain visible.
+
+CASE 7
+Manual edit does not trigger AI generation.
+
+CASE 8
+No separate Goal/Outcome approval gate introduced.
+
+==================================================
+BROWSER ACCEPTANCE
+==================================================
+
+In a safe teacher lesson with persisted Goal + Outcomes:
+
+1. Open Goal/Outcome section.
+2. Click existing Edit icon.
+3. Verify Goal field editable.
+4. Verify every Outcome is editable.
+5. Verify Save and Cancel exist.
+6. Do not destructively alter real teacher data unless using safe test data.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+ROOT CAUSE:
+...
+
+GOAL EDIT:
+WORKING / NOT WORKING
+
+OUTCOME EDIT:
+WORKING / NOT WORKING
+
+ALL SAVED OUTCOMES VISIBLE IN EDIT MODE:
+YES / NO
+
+ADD OUTCOME:
+AVAILABLE / NOT AVAILABLE
+
+REMOVE OUTCOME:
+AVAILABLE / NOT AVAILABLE
+
+SAVE:
+WORKING / NOT WORKING
+
+CANCEL:
+WORKING / NOT WORKING
+
+READ-BACK AFTER SAVE:
+PASS / FAIL
+
+AI REGENERATION TRIGGERED BY MANUAL EDIT:
+NO
+
+SECOND APPROVAL GATE ADDED:
+NO
+
+MAPPING CHANGED:
+NO
+
+COGNITIVE PATH CHANGED:
+NO
+
+TEACHING CONTENT CHANGED:
+NO
+
+ASSIGNMENT CHANGED:
+NO
+
+QUIZ CHANGED:
+NO
+
+KNOWLEDGE TREE CHANGED:
+NO
+
+AI TEACHER RUNTIME CHANGED:
+NO
+
+FILES CHANGED:
+...
+
+DATABASE CHANGED:
+...
+
+TESTS:
+...
+
+PUBLISHED/DEPLOYED:
+NO
+
+Then STOP.
