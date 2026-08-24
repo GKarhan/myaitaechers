@@ -1,0 +1,890 @@
+IMPLEMENTATION — COGNITIVE PATH CORE
+PHASE C2-3 ONLY
+MINIMAL COGNITIVE PROGRESSION GENERATOR
+
+ROLE
+
+Act as a principal AI systems architect, senior TypeScript/backend engineer,
+and education-domain architect.
+
+This task builds ONLY the next Cognitive Path layer:
+
+MINIMAL COGNITIVE PROGRESSION GENERATOR.
+
+C2-1 and C2-2 are already implemented and PROTECTED.
+
+==================================================
+0. GLOBAL NON-REGRESSION PRINCIPLE
+==================================================
+
+CRITICAL PROJECT RULE:
+
+BUILD FORWARD — NEVER BREAK WORKING SYSTEMS.
+
+Before editing:
+
+1. identify every existing working contract touched by this task;
+2. treat it as protected;
+3. use additive/narrow changes;
+4. add regression tests for existing valid behavior;
+5. if an old regression fails, STOP and diagnose;
+6. never weaken existing tests/safety gates merely to make new behavior pass.
+
+PROTECTED:
+
+- C2-1 lesson orchestrator
+- per-MicroNode independent generation units
+- per-node observability
+- transactional persistence
+- concurrency/idempotency protection
+- stale-write protection
+- failure isolation
+- missing-only bulk generation
+- lesson C2 state ledger
+- C2-2 Target Cognitive Demand Resolver
+- C1-vs-C2 discrepancy diagnostics
+- existing C2 acceptance/validation
+- AI Teacher fail-closed behavior
+- Teaching Content independence
+- Mapping Core
+- Quiz
+- Knowledge Tree
+- mastery/scoring
+- unrelated UI
+
+Do not redesign these systems.
+
+==================================================
+1. CURRENT ARCHITECTURE AFTER C2-2
+==================================================
+
+For each MicroNode the system can now resolve:
+
+CURRICULUM TARGET COGNITIVE LEVEL
+
+from curriculum evidence rather than blindly inheriting C1 Bloom.
+
+Examples:
+
+REMEMBER
+UNDERSTAND
+APPLY
+ANALYZE
+EVALUATE
+CREATE
+
+This task does NOT change how the target is resolved.
+
+This task answers the next question:
+
+WHAT MINIMUM ORDERED COGNITIVE PROGRESSION
+DOES THE LEARNER NEED TO REACH THAT TARGET?
+
+==================================================
+2. CORE PRINCIPLE
+==================================================
+
+Do NOT automatically create:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY
+→ ANALYZE
+→ EVALUATE
+→ CREATE
+
+for every MicroNode.
+
+Do NOT assume every target requires every lower Bloom level.
+
+Instead generate:
+
+THE SMALLEST PEDAGOGICALLY SUFFICIENT PATH
+
+from prerequisite cognitive competencies to the resolved target.
+
+Examples:
+
+Definition-only target:
+
+REMEMBER — TARGET
+
+Conceptual relationship target:
+
+REMEMBER
+→ UNDERSTAND — TARGET
+
+Routine procedure target:
+
+UNDERSTAND
+→ APPLY — TARGET
+
+Some procedures may need:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY — TARGET
+
+Interpretation/analysis target:
+
+UNDERSTAND
+→ ANALYZE — TARGET
+
+or:
+
+UNDERSTAND
+→ APPLY
+→ ANALYZE — TARGET
+
+depending on actual prerequisite demands.
+
+The target is fixed by C2-2.
+
+C2-3 determines only the progression below/through it.
+
+==================================================
+3. IMPORTANT DISTINCTION
+==================================================
+
+A Cognitive Level exists in the path only when it represents a meaningful
+instructional/mastery checkpoint.
+
+Do NOT add a level merely because Bloom taxonomy contains it.
+
+Question for each possible lower level:
+
+"Must the learner demonstrate this level independently before the target can be
+reliably mastered?"
+
+If NO:
+omit it.
+
+==================================================
+4. PATH CONTRACT
+==================================================
+
+For each MicroNode produce an ordered set of Cognitive Path levels.
+
+Each level must contain:
+
+- bloomLevel
+- sequence
+- isTarget
+- performanceObjective
+- successCriterion
+- preferredInteractionTypes
+- minimumIndependentEvidence
+- provenance
+- review/validation status
+
+Use existing schema/field names where available.
+
+Exactly one level must have:
+
+isTarget = true
+
+and it must be the final level.
+
+Levels must be strictly ascending by Bloom rank.
+
+No duplicate levels.
+
+==================================================
+5. TARGET LEVEL IS AUTHORITATIVE
+==================================================
+
+The progression generator receives the accepted C2-2 target level.
+
+It must NOT:
+- lower the target
+- raise the target
+- reinterpret the target
+- use C1 Bloom as a competing ceiling
+
+If the progression cannot be safely built to the accepted target:
+return REVIEW_REQUIRED with structured reason.
+
+Do not silently substitute a different target.
+
+==================================================
+6. PREREQUISITE COGNITIVE COMPETENCIES
+==================================================
+
+Determine whether lower cognitive competencies are genuinely prerequisite.
+
+Use:
+
+- MicroNode learning objective
+- source/theory
+- source examples
+- linked source exercises as evidence
+- accepted C2-2 target level
+- relevant target-demand diagnostics
+
+Do NOT use learner-specific mastery.
+
+This is curriculum-path generation.
+
+Examples:
+
+Target APPLY:
+ask whether independent recall/understanding checkpoints are actually required.
+
+Target ANALYZE:
+ask whether learner must first understand the representation or apply a known procedure.
+
+Target CREATE:
+do not automatically insert EVALUATE unless evaluation is a genuine prerequisite.
+
+==================================================
+7. NO BLOOM-CONTIGUITY REQUIREMENT
+==================================================
+
+Preserve current valid behavior:
+
+levels may skip taxonomy ranks.
+
+Allowed examples:
+
+REMEMBER → APPLY
+
+UNDERSTAND → ANALYZE
+
+APPLY → CREATE
+
+if pedagogically justified.
+
+Do NOT force contiguous Bloom progression.
+
+However, skipped levels must be explainable by structured reason/evidence.
+
+==================================================
+8. PERFORMANCE OBJECTIVE PER LEVEL
+==================================================
+
+Each level must have a distinct, observable learner performance.
+
+Bad progression:
+
+REMEMBER:
+"know the rule"
+
+UNDERSTAND:
+"understand the rule"
+
+APPLY:
+"apply the rule"
+
+This is too vague.
+
+Good progression:
+
+REMEMBER:
+"Recall that a function zero satisfies f(a)=0."
+
+UNDERSTAND:
+"Explain why zeros correspond to x-axis intersections."
+
+APPLY:
+"Determine the zeros of a new function graph."
+
+Each level must add a real cognitive capability.
+
+==================================================
+9. SUCCESS CRITERION PER LEVEL
+==================================================
+
+Each level must have a measurable criterion that proves the stated performance.
+
+Success criterion must:
+
+- match the level's objective
+- be independently assessable
+- not require evidence from a higher Bloom level
+- be source/curriculum compatible
+- avoid unsupported arbitrary numbers
+
+Use current validation and grounding rules.
+
+Do not create fake precision.
+
+If numeric thresholds are used, they must follow existing policy or be justified by configured evidence rules.
+
+==================================================
+10. EVIDENCE REQUIREMENT
+==================================================
+
+Do NOT redesign the runtime evidence engine.
+
+Existing learner evidence semantics are PROTECTED.
+
+For each path level determine a bounded minimumIndependentEvidence consistent
+with current accepted runtime range/policy.
+
+Do not confuse:
+
+required learner evidence events
+
+with
+
+number of linked authored exercises.
+
+C2-3 must preserve that distinction.
+
+If existing evidence count policy is already fixed and accepted:
+reuse it.
+
+Do not invent a new mastery-scoring model.
+
+==================================================
+11. INTERACTION TYPES
+==================================================
+
+Preferred interaction types should be selected to fit the required performance.
+
+Examples:
+
+REMEMBER:
+- multiple choice
+- true/false
+- short answer
+
+UNDERSTAND:
+- short explanation
+- classification
+- matching
+- guided reasoning
+
+APPLY:
+- numerical answer
+- problem solving
+- constructed response
+- multiple choice if the performance still genuinely requires application
+
+ANALYZE:
+- compare
+- classify with reasoning
+- interpret representation
+- structured response
+
+EVALUATE:
+- justified judgment
+- critique against criteria
+
+CREATE:
+- construct/design/open response
+
+Do not equate format with cognitive level.
+
+Use existing allowlist.
+
+==================================================
+12. EXERCISES ARE EVIDENCE, NOT AUTO-LINKED YET
+==================================================
+
+Source exercises may inform progression design.
+
+Example:
+
+If exercises consistently require routine execution,
+that supports APPLY as a meaningful target/checkpoint.
+
+But DO NOT implement automatic exercise-to-level linking in C2-3.
+
+That belongs to C2-4.
+
+No new lesson_node_cognitive_tasks auto-attachments yet.
+
+==================================================
+13. PATH GENERATION STRATEGY
+==================================================
+
+Prefer one structured per-MicroNode generation decision inside the existing C2-1 generation unit.
+
+Do not add:
+- one provider call per level
+- one provider call per objective
+- one provider call per criterion
+
+The system should generate the full proposed progression for one MicroNode in one bounded semantic unit.
+
+If current C2 provider call already returns levels:
+extend/replace only the relevant progression contract.
+
+Do not add unnecessary provider calls.
+
+==================================================
+14. DETERMINISTIC VALIDATION
+==================================================
+
+After AI generation, deterministic code must validate:
+
+1. at least one level exists
+2. exactly one target exists
+3. target equals accepted C2-2 target level
+4. target is final level
+5. sequence strictly ascends
+6. Bloom ranks strictly ascend
+7. no duplicate level
+8. no level above target
+9. each level has objective
+10. each level has success criterion
+11. each level has allowed interaction types
+12. evidence count is valid
+13. content is Armenian where required
+14. source grounding passes
+15. lower-level objectives are not semantically identical copies
+16. no higher-demand objective appears at a lower Bloom level
+
+Do not weaken existing validators.
+
+==================================================
+15. PATH MINIMALITY VALIDATOR
+==================================================
+
+Add a bounded minimality check.
+
+Question:
+
+"Does any non-target level fail to add an independently meaningful prerequisite competency?"
+
+If YES:
+mark path review-required or reject according to existing policy.
+
+Example:
+
+REMEMBER objective:
+"Identify the rule"
+
+UNDERSTAND objective:
+"Identify the rule"
+
+→ duplicate pedagogical level.
+
+Do not persist a bloated path as trusted.
+
+==================================================
+16. MISSING-PREREQUISITE CHECK
+==================================================
+
+Also detect the opposite problem.
+
+Example:
+
+Target = APPLY
+
+Generated path:
+APPLY only
+
+But the source/objective clearly requires conceptual understanding that is not already trivial/prerequisite.
+
+The validator/resolver may flag:
+
+MISSING_PREREQUISITE_LEVEL
+
+or equivalent.
+
+Do not force a universal rule.
+
+Use evidence.
+
+==================================================
+17. REVIEW POLICY
+==================================================
+
+Generated paths remain teacher-reviewable.
+
+Possible structured review reasons:
+
+- PROGRESSION_UNCERTAIN
+- REDUNDANT_LEVEL
+- MISSING_PREREQUISITE_LEVEL
+- LEVEL_OBJECTIVE_MISMATCH
+- TARGET_LEVEL_MISMATCH
+- SOURCE_GROUNDING_WEAK
+- SUCCESS_CRITERION_WEAK
+- INTERACTION_TYPE_MISMATCH
+
+Use project conventions.
+
+Do not auto-confirm AI-generated paths.
+
+Existing teacher approval remains authoritative.
+
+==================================================
+18. IMPORTANT EXAMPLE — APPLY TARGET
+==================================================
+
+Provider-free fixture:
+
+MicroNode objective:
+
+"Աշակերտը կարող է թվաբանական գործողությունները վերափոխել
+կոորդինատային առանցքի երկայնքով տեղաշարժի։"
+
+Accepted C2-2 target:
+APPLY
+
+Source:
+- addition corresponds to right movement
+- subtraction corresponds to left movement
+- negative-number cases require interpreting direction changes
+
+Exercise:
+- convert arithmetic operation into movement
+- calculate result
+
+Expected:
+
+NOT:
+REMEMBER — TARGET
+
+NOT:
+all six Bloom levels
+
+A plausible expected progression:
+
+UNDERSTAND
+→ APPLY — TARGET
+
+or:
+
+REMEMBER
+→ UNDERSTAND
+→ APPLY — TARGET
+
+depending on fixture evidence.
+
+For the deterministic regression fixture,
+design evidence so the expected minimal progression is unambiguous.
+
+==================================================
+19. REQUIRED REGRESSION MATRIX
+==================================================
+
+TEST 1 — REMEMBER TARGET
+
+Pure definition recall.
+
+Expected:
+REMEMBER target only.
+
+TEST 2 — UNDERSTAND TARGET
+
+Requires meaning/relationship explanation.
+
+Expected minimal path:
+REMEMBER → UNDERSTAND
+or UNDERSTAND only if recall is not an independent checkpoint,
+according to explicit fixture evidence.
+
+TEST 3 — APPLY TARGET WITH CONCEPTUAL PREREQUISITE
+
+Expected:
+UNDERSTAND → APPLY.
+
+TEST 4 — APPLY TARGET WITH REQUIRED FACTUAL PREREQUISITE
+
+Expected:
+REMEMBER → UNDERSTAND → APPLY
+or REMEMBER → APPLY if understanding is not independently needed.
+
+Make fixture unambiguous.
+
+TEST 5 — ANALYZE TARGET
+
+Requires representation interpretation and structural reasoning.
+
+Expected minimal appropriate path, not six levels.
+
+TEST 6 — EVALUATE TARGET
+
+Criteria-based judgment.
+
+Do not mechanically include CREATE.
+
+TEST 7 — CREATE TARGET
+
+Construction is genuinely curriculum target.
+
+Do not automatically require EVALUATE unless fixture proves it.
+
+TEST 8 — SKIPPED BLOOM LEVEL
+
+Prove non-contiguous valid path remains allowed.
+
+TEST 9 — REDUNDANT LOWER LEVEL
+
+Two levels express same performance.
+
+Expected:
+review/reject.
+
+TEST 10 — MISSING PREREQUISITE
+
+Target-level-only path is insufficient for explicit prerequisite evidence.
+
+Expected:
+review/reject.
+
+TEST 11 — TARGET MISMATCH
+
+C2-2 accepted APPLY.
+Provider returns ANALYZE target.
+
+Expected:
+reject/repair per existing bounded policy.
+
+TEST 12 — LOWER-LEVEL OVERREACH
+
+UNDERSTAND level objective actually requires application.
+
+Expected:
+reject/review.
+
+TEST 13 — FORMAT INDEPENDENCE
+
+Multiple choice can remain valid for APPLY if demanded reasoning is application.
+
+TEST 14 — MINIMALITY
+
+Two possible paths:
+REMEMBER → UNDERSTAND → APPLY
+vs
+UNDERSTAND → APPLY
+
+Fixture proves Remember adds no independent mastery checkpoint.
+
+Expected:
+minimal second path.
+
+TEST 15 — DETERMINISM
+
+Same normalized evidence + target → same normalized path decision.
+
+==================================================
+20. C2-1 NON-REGRESSION
+==================================================
+
+Do NOT change:
+
+- bulk orchestration
+- per-node provider isolation
+- attempt ledger
+- transaction safety
+- concurrency protection
+- stale-write protection
+- failure isolation
+- missing-only semantics
+- lesson state summary
+
+One node failure still cannot corrupt other nodes.
+
+==================================================
+21. C2-2 NON-REGRESSION
+==================================================
+
+Do NOT change accepted target-demand semantics.
+
+C2-3 receives:
+
+resolvedC2TargetLevel
+
+as authoritative input.
+
+It may not reinterpret it.
+
+C1 discrepancy diagnostics remain intact.
+
+==================================================
+22. AI TEACHER NON-REGRESSION
+==================================================
+
+Do NOT modify runtime progression code.
+
+AI Teacher continues to consume only accepted/confirmed C2 paths.
+
+Missing/needs_review/invalid path remains fail-closed.
+
+Evidence progression behavior remains unchanged.
+
+C2-3 only improves the authored curriculum path.
+
+==================================================
+23. TEACHING CONTENT NON-REGRESSION
+==================================================
+
+Do NOT modify Teaching Content.
+
+Its generation remains independent.
+
+Confirmed C2 may remain optional calibration context exactly as before.
+
+==================================================
+24. REGENERATION SAFETY
+==================================================
+
+All C2-1 protections remain.
+
+Normal bulk:
+missing-only.
+
+Existing needs_review:
+skip.
+
+Confirmed/teacher-authored:
+protected.
+
+Force regeneration:
+generate + validate first
+→ atomic replacement
+→ old path survives on failure.
+
+==================================================
+25. OBSERVABILITY
+==================================================
+
+Extend existing per-node diagnostics minimally.
+
+Record safe structured fields such as:
+
+- targetLevel
+- generatedLevelSequence
+- levelCount
+- progressionDecision
+- omittedLowerLevels
+- progressionConfidence
+- reviewReasonCodes
+- contractVersion
+
+No raw chain-of-thought.
+
+Future diagnosis should answer:
+
+"Why did this APPLY target use UNDERSTAND → APPLY rather than
+REMEMBER → UNDERSTAND → APPLY?"
+
+through structured evidence/reason codes.
+
+==================================================
+26. IMPLEMENTATION PROCESS
+==================================================
+
+STEP 1
+Inspect current C2 level-generation prompt/contract/validator.
+
+STEP 2
+State exact existing progression logic before editing.
+
+STEP 3
+Identify protected C2-1/C2-2 code paths.
+
+STEP 4
+Define minimal progression contract.
+
+STEP 5
+Implement progression generation inside existing per-node unit.
+
+STEP 6
+Add deterministic structural/minimality/prerequisite validation.
+
+STEP 7
+Add structured diagnostics.
+
+STEP 8
+Add provider-free regression matrix.
+
+STEP 9
+Run:
+- C2-1 foundation tests
+- C2-2 target resolver tests
+- new C2-3 tests
+- C2 acceptance/validation tests
+- AI Teacher fail-closed regression
+- Teaching Content independence regression
+- API typecheck
+- production build if appropriate
+- git diff --check
+
+STEP 10
+Focused regression review.
+
+STEP 11
+Restart only required API workflow.
+
+DO NOT regenerate production lesson 715 automatically.
+
+==================================================
+27. ACCEPTANCE CONTRACT — C2-3
+==================================================
+
+C2P-1 — MINIMAL PROGRESSION
+Only pedagogically necessary levels are included.
+
+C2P-2 — TARGET PRESERVATION
+Final level exactly matches accepted C2-2 target.
+
+C2P-3 — NO SIX-LEVEL TEMPLATE
+All Bloom levels are never added mechanically.
+
+C2P-4 — MEANINGFUL LEVELS
+Every included level adds an independently meaningful prerequisite competency.
+
+C2P-5 — PREREQUISITE SAFETY
+Required prerequisite cognition cannot silently disappear.
+
+C2P-6 — NON-CONTIGUOUS PATHS ALLOWED
+Bloom levels may be skipped when justified.
+
+C2P-7 — LEVEL-OBJECTIVE ALIGNMENT
+Each objective matches its Bloom demand.
+
+C2P-8 — MEASURABLE CRITERIA
+Each level has a valid assessable success criterion.
+
+C2P-9 — C2-1/C2-2 NON-REGRESSION
+Existing structural and target-demand foundations remain intact.
+
+C2P-10 — RUNTIME NON-REGRESSION
+AI Teacher fail-closed/learner progression remains unchanged.
+
+All C2P-1 through C2P-10 must pass.
+
+==================================================
+28. FINAL REPORT
+==================================================
+
+Report exactly:
+
+1. Architecture before
+2. Existing progression behavior before change
+3. Architecture after
+4. Files changed
+5. Minimal progression contract
+6. Prerequisite-selection logic
+7. Level objective logic
+8. Success criterion logic
+9. Evidence-count behavior
+10. Interaction-type behavior
+11. Minimality validation
+12. Missing-prerequisite validation
+13. Observability added
+14. Provider-call count before/after
+15. Regression tests added
+16. Test results
+17. C2-1 non-regression
+18. C2-2 non-regression
+19. AI Teacher non-regression
+20. Teaching Content non-regression
+21. APPLY-target benchmark result
+22. C2P-1…C2P-10 status
+23. Known issues deferred to C2-4
+
+Then STOP.
+
+DO NOT implement automatic exercise linking.
+DO NOT change target cognitive demand.
+DO NOT modify Mapping Core.
+DO NOT modify AI Teacher.
+DO NOT modify Teaching Content.
+DO NOT regenerate lesson 715 automatically.
