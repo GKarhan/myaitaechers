@@ -1769,6 +1769,444 @@ export interface Pass2TopicResult {
   additionalExercises: Pass2Exercise[];
 }
 
+// ── Phase 1: Knowledge Candidate / source-material contract ───────────────────
+//
+// A verified Pass 1 block is source material, not automatically knowledge.
+// These transient types establish the boundary that later mapping phases will
+// use before promoting a candidate into the persisted MicroNode hierarchy.
+
+export const SOURCE_MATERIAL_DISPOSITIONS = [
+  "CORE_EVIDENCE",
+  "SUPPORTING_MATERIAL",
+  "EXERCISE",
+  "ACTIVITY_OR_HOMEWORK",
+  "STRUCTURAL_MATERIAL",
+  "UNRESOLVED_VISUAL_OR_FORMULA",
+  "UNRESOLVED_INSTRUCTIONAL_REVIEW",
+  "EXCLUDED_WITH_REASON",
+] as const;
+
+export type SourceMaterialDisposition = typeof SOURCE_MATERIAL_DISPOSITIONS[number];
+
+export const SOURCE_MATERIAL_REASON_CODES = [
+  "DIRECT_INSTRUCTIONAL_SUPPORT",
+  "SUPPORTS_EXISTING_KNOWLEDGE",
+  "STUDENT_TASK",
+  "STRUCTURAL_ONLY",
+  "UNREADABLE_SOURCE",
+  "INSTRUCTIONAL_REVIEW_REQUIRED",
+  "EXPLICIT_TEACHER_EXCLUSION",
+] as const;
+
+export type SourceMaterialReasonCode = typeof SOURCE_MATERIAL_REASON_CODES[number];
+
+/**
+ * A verified source block must have one and only one primary disposition.
+ * `isPrimary` is deliberately explicit so future secondary supporting links
+ * cannot be confused with canonical source ownership.
+ */
+export interface SourceMaterialDispositionRecord {
+  blockIndex: number;
+  disposition: SourceMaterialDisposition;
+  isPrimary: boolean;
+  reasonCodes: SourceMaterialReasonCode[];
+  candidateId?: string;
+}
+
+export interface SourceMaterialPrimaryDispositionValidation {
+  valid: boolean;
+  missingBlockIndices: number[];
+  duplicatePrimaryBlockIndices: number[];
+  invalidBlockIndices: number[];
+  invalidDispositionIndices: number[];
+  nonPrimaryOnlyBlockIndices: number[];
+}
+
+/**
+ * Phase 1's future coverage invariant, expressed without changing current
+ * Pass 2 coverage persistence. `blocks` are assumed to be the verified
+ * source-block set supplied by the mapping pipeline.
+ */
+export function validateVerifiedSourcePrimaryDispositions(
+  blocks: ReadonlyArray<Pass1Block>,
+  dispositions: ReadonlyArray<SourceMaterialDispositionRecord>,
+): SourceMaterialPrimaryDispositionValidation {
+  const validDispositionSet = new Set<string>(SOURCE_MATERIAL_DISPOSITIONS);
+  const primaryByBlock = new Map<number, number>();
+  const allByBlock = new Map<number, number>();
+  const invalidBlockIndices: number[] = [];
+  const invalidDispositionIndices: number[] = [];
+
+  dispositions.forEach((record, recordIndex) => {
+    if (
+      !Number.isInteger(record.blockIndex)
+      || record.blockIndex < 0
+      || record.blockIndex >= blocks.length
+    ) {
+      invalidBlockIndices.push(recordIndex);
+      return;
+    }
+    if (!validDispositionSet.has(record.disposition)) {
+      invalidDispositionIndices.push(recordIndex);
+    }
+    allByBlock.set(record.blockIndex, (allByBlock.get(record.blockIndex) ?? 0) + 1);
+    if (record.isPrimary) {
+      primaryByBlock.set(record.blockIndex, (primaryByBlock.get(record.blockIndex) ?? 0) + 1);
+    }
+  });
+
+  const missingBlockIndices: number[] = [];
+  const duplicatePrimaryBlockIndices: number[] = [];
+  const nonPrimaryOnlyBlockIndices: number[] = [];
+  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+    const primaryCount = primaryByBlock.get(blockIndex) ?? 0;
+    const allCount = allByBlock.get(blockIndex) ?? 0;
+    if (primaryCount === 0) {
+      missingBlockIndices.push(blockIndex);
+      if (allCount > 0) nonPrimaryOnlyBlockIndices.push(blockIndex);
+    } else if (primaryCount > 1) {
+      duplicatePrimaryBlockIndices.push(blockIndex);
+    }
+  }
+
+  return {
+    valid:
+      missingBlockIndices.length === 0
+      && duplicatePrimaryBlockIndices.length === 0
+      && invalidBlockIndices.length === 0
+      && invalidDispositionIndices.length === 0,
+    missingBlockIndices,
+    duplicatePrimaryBlockIndices,
+    invalidBlockIndices,
+    invalidDispositionIndices,
+    nonPrimaryOnlyBlockIndices,
+  };
+}
+
+export const KNOWLEDGE_CANDIDATE_CHECK_STATES = [
+  "PASS",
+  "FAIL",
+  "UNCERTAIN",
+] as const;
+
+export type KnowledgeCandidateCheckState = typeof KNOWLEDGE_CANDIDATE_CHECK_STATES[number];
+
+export type KnowledgeCandidateAtomicity =
+  | "ATOMIC"
+  | "NON_ATOMIC"
+  | "UNCERTAIN";
+
+export type KnowledgeCandidateDuplication =
+  | "UNIQUE"
+  | "DUPLICATE"
+  | "UNCERTAIN";
+
+export type KnowledgeCandidateSourceOwnership =
+  | "VALID"
+  | "INVALID"
+  | "UNCERTAIN";
+
+export type KnowledgeCandidateSourceSupport =
+  | "UNASSESSED"
+  | "DIRECT"
+  | "SUPPORTING_ONLY"
+  | "INSUFFICIENT"
+  | "UNREADABLE";
+
+export type KnowledgeCandidateSemanticStatus =
+  | "UNASSESSED"
+  | "DISTINCT"
+  | "DUPLICATE_CANDIDATE"
+  | "DUPLICATE"
+  | "UNCERTAIN";
+
+export const KNOWLEDGE_CANDIDATE_REVIEW_REASON_CODES = [
+  "EMPTY_TITLE",
+  "EMPTY_OBJECTIVE",
+  "NO_CORE_SOURCE",
+  "INVALID_SOURCE_INDEX",
+  "DUPLICATE_SOURCE_INDEX",
+  "ACTIVITY_AS_CORE_SOURCE",
+  "STRUCTURAL_CORE_SOURCE",
+  "UNREADABLE_CORE_SOURCE",
+  "SOURCE_SUPPORT_INSUFFICIENT",
+  "SOURCE_SUPPORT_PARTIAL",
+  "SOURCE_OWNERSHIP_INVALID",
+  "SOURCE_OWNERSHIP_UNCERTAIN",
+  "NON_KNOWLEDGE_IDENTITY",
+  "KNOWLEDGE_IDENTITY_UNCERTAIN",
+  "NOT_INDEPENDENTLY_TEACHABLE",
+  "TEACHABILITY_UNCERTAIN",
+  "NOT_INDEPENDENTLY_ASSESSABLE",
+  "ASSESSABILITY_UNCERTAIN",
+  "NON_ATOMIC_CANDIDATE",
+  "ATOMICITY_UNCERTAIN",
+  "DUPLICATE_CONFIRMED",
+  "DUPLICATE_UNCERTAIN",
+  "SUPPORTING_ONLY",
+  "EXERCISE_CANNOT_CREATE_CANDIDATE",
+] as const;
+
+export type KnowledgeCandidateReviewReasonCode =
+  typeof KNOWLEDGE_CANDIDATE_REVIEW_REASON_CODES[number];
+
+export const KNOWLEDGE_CANDIDATE_SEMANTIC_STATUSES = [
+  "UNASSESSED",
+  "DISTINCT",
+  "DUPLICATE_CANDIDATE",
+  "DUPLICATE",
+  "UNCERTAIN",
+] as const satisfies readonly KnowledgeCandidateSemanticStatus[];
+
+export type KnowledgeCandidatePracticeReference = {
+  blockIndex: number;
+  sourceParagraph: string | null;
+  kind: "EXERCISE" | "ACTIVITY_OR_HOMEWORK";
+};
+
+export interface KnowledgeCandidateAssessment {
+  meaningfulKnowledgeIdentity: KnowledgeCandidateCheckState;
+  independentlyTeachable: KnowledgeCandidateCheckState;
+  independentlyAssessable: KnowledgeCandidateCheckState;
+  atomicity: KnowledgeCandidateAtomicity;
+  nonDuplication: KnowledgeCandidateDuplication;
+  sourceOwnership: KnowledgeCandidateSourceOwnership;
+  supportingOnly: boolean;
+}
+
+/**
+ * Transient semantic representation. This is intentionally not a DB insert
+ * shape and is not a MicroNode until a promotion decision returns PROMOTE.
+ */
+export interface KnowledgeCandidate {
+  /** Stable only for the current mapping run; never a database identity. */
+  candidateId: string;
+  provisionalTopic: {
+    sequence: number;
+    title: string;
+    topicType: string;
+  };
+  title: string;
+  learningObjective: string;
+  coreSourceBlockIndices: number[];
+  supportingSourceBlockIndices: number[];
+  practiceReferences: KnowledgeCandidatePracticeReference[];
+  semanticStatus: KnowledgeCandidateSemanticStatus;
+  sourceSupport: KnowledgeCandidateSourceSupport;
+  reviewReasonCodes: KnowledgeCandidateReviewReasonCode[];
+  assessment: KnowledgeCandidateAssessment;
+}
+
+export const KNOWLEDGE_CANDIDATE_PROMOTION_STATES = [
+  "PROMOTE",
+  "REVIEW_REQUIRED",
+  "SUPPORT_ONLY",
+  "UNRESOLVED",
+  "REJECT_NON_KNOWLEDGE",
+] as const;
+
+export type KnowledgeCandidatePromotionState =
+  typeof KNOWLEDGE_CANDIDATE_PROMOTION_STATES[number];
+
+export interface KnowledgeCandidatePromotionChecks {
+  directReadableSource: KnowledgeCandidateCheckState;
+  meaningfulKnowledgeIdentity: KnowledgeCandidateCheckState;
+  independentlyTeachable: KnowledgeCandidateCheckState;
+  independentlyAssessable: KnowledgeCandidateCheckState;
+  atomicity: KnowledgeCandidateCheckState;
+  nonDuplication: KnowledgeCandidateCheckState;
+  supportingMaterial: KnowledgeCandidateCheckState;
+  sourceOwnership: KnowledgeCandidateCheckState;
+}
+
+export interface KnowledgeCandidatePromotionDecision {
+  state: KnowledgeCandidatePromotionState;
+  reasonCodes: KnowledgeCandidateReviewReasonCode[];
+  checks: KnowledgeCandidatePromotionChecks;
+  sourceSupport: Exclude<KnowledgeCandidateSourceSupport, "UNASSESSED">;
+  coreSourceBlockIndices: number[];
+}
+
+function hasActivityBlockType(block: Pass1Block): boolean {
+  return ACTIVITY_BLOCK_TYPES.has(block.blockType);
+}
+
+function hasUniqueIndices(indices: readonly number[]): boolean {
+  return new Set(indices).size === indices.length;
+}
+
+/**
+ * Deterministic Phase 1 promotion decision.
+ *
+ * This function validates mechanical/source facts and consumes explicit
+ * semantic assessments. It does not infer atomicity or duplication. When
+ * those questions are unresolved, it returns REVIEW_REQUIRED instead of
+ * guessing.
+ */
+export function decideKnowledgeCandidatePromotion(
+  candidate: KnowledgeCandidate,
+  verifiedSourceBlocks: ReadonlyArray<Pass1Block>,
+): KnowledgeCandidatePromotionDecision {
+  const reasons = new Set<KnowledgeCandidateReviewReasonCode>(candidate.reviewReasonCodes);
+  const coreIndices = candidate.coreSourceBlockIndices;
+  const supportingIndices = candidate.supportingSourceBlockIndices;
+  const allCandidateSourceIndices = [...coreIndices, ...supportingIndices];
+  const ownershipInvalid =
+    !hasUniqueIndices(coreIndices)
+    || !hasUniqueIndices(supportingIndices)
+    || new Set(coreIndices).size + new Set(supportingIndices).size !== new Set(allCandidateSourceIndices).size
+    || allCandidateSourceIndices.some((index) =>
+      !Number.isInteger(index) || index < 0 || index >= verifiedSourceBlocks.length)
+    || candidate.practiceReferences.some((reference) =>
+      !Number.isInteger(reference.blockIndex)
+      || reference.blockIndex < 0
+      || reference.blockIndex >= verifiedSourceBlocks.length
+      || allCandidateSourceIndices.includes(reference.blockIndex));
+
+  if (ownershipInvalid) reasons.add("SOURCE_OWNERSHIP_INVALID");
+
+  if (!candidate.title.trim()) reasons.add("EMPTY_TITLE");
+  if (!candidate.learningObjective.trim()) reasons.add("EMPTY_OBJECTIVE");
+
+  const coreBlocks = coreIndices
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < verifiedSourceBlocks.length)
+    .map((index) => verifiedSourceBlocks[index]);
+  const hasActivityCore = coreBlocks.some(hasActivityBlockType);
+  const hasStructuralOnlyCore = coreBlocks.length > 0 && coreBlocks.every((block) =>
+    isLikelyStructuralHeading(block));
+  const hasUnreadableCore = coreBlocks.some((block) => isUnreadableSource(block.sourceText));
+
+  if (hasActivityCore) reasons.add("ACTIVITY_AS_CORE_SOURCE");
+  if (hasStructuralOnlyCore) reasons.add("STRUCTURAL_CORE_SOURCE");
+  if (hasUnreadableCore) reasons.add("UNREADABLE_CORE_SOURCE");
+  if (coreBlocks.length === 0) reasons.add("NO_CORE_SOURCE");
+
+  const sourceAlignment = coreBlocks.length > 0
+    ? classifyMicroNodeSourceAlignment(candidate.learningObjective, coreBlocks)
+    : null;
+  const effectiveNonDuplication: KnowledgeCandidateDuplication =
+    candidate.semanticStatus === "DUPLICATE"
+      ? "DUPLICATE"
+      : candidate.semanticStatus === "DUPLICATE_CANDIDATE"
+        || candidate.semanticStatus === "UNCERTAIN"
+      ? "UNCERTAIN"
+      : candidate.assessment.nonDuplication;
+  let sourceSupport: Exclude<KnowledgeCandidateSourceSupport, "UNASSESSED"> =
+    "INSUFFICIENT";
+  if (hasUnreadableCore || sourceAlignment?.status === "UNREADABLE") {
+    sourceSupport = "UNREADABLE";
+  } else if (candidate.assessment.supportingOnly) {
+    sourceSupport = "SUPPORTING_ONLY";
+  } else if (sourceAlignment?.status === "SUFFICIENT") {
+    sourceSupport = "DIRECT";
+  } else if (sourceAlignment?.status === "PARTIAL") {
+    sourceSupport = "INSUFFICIENT";
+    reasons.add("SOURCE_SUPPORT_PARTIAL");
+  } else if (coreBlocks.length === 0) {
+    sourceSupport = "INSUFFICIENT";
+  } else {
+    reasons.add("SOURCE_SUPPORT_INSUFFICIENT");
+  }
+
+  const checks: KnowledgeCandidatePromotionChecks = {
+    directReadableSource:
+      ownershipInvalid || coreBlocks.length === 0 || hasActivityCore || hasStructuralOnlyCore
+        ? "FAIL"
+        : hasUnreadableCore || sourceAlignment?.status === "UNREADABLE"
+        ? "FAIL"
+        : sourceAlignment?.status === "SUFFICIENT"
+        ? "PASS"
+        : "UNCERTAIN",
+    meaningfulKnowledgeIdentity: candidate.assessment.meaningfulKnowledgeIdentity,
+    independentlyTeachable: candidate.assessment.independentlyTeachable,
+    independentlyAssessable: candidate.assessment.independentlyAssessable,
+    atomicity:
+      candidate.assessment.atomicity === "ATOMIC"
+        ? "PASS"
+        : candidate.assessment.atomicity === "NON_ATOMIC"
+        ? "FAIL"
+        : "UNCERTAIN",
+    nonDuplication:
+      effectiveNonDuplication === "UNIQUE"
+        ? "PASS"
+        : effectiveNonDuplication === "DUPLICATE"
+        ? "FAIL"
+        : "UNCERTAIN",
+    supportingMaterial: candidate.assessment.supportingOnly ? "PASS" : "FAIL",
+    sourceOwnership:
+      candidate.assessment.sourceOwnership === "VALID" && !ownershipInvalid
+        ? "PASS"
+        : candidate.assessment.sourceOwnership === "INVALID" || ownershipInvalid
+        ? "FAIL"
+        : "UNCERTAIN",
+  };
+
+  if (checks.meaningfulKnowledgeIdentity === "FAIL") reasons.add("NON_KNOWLEDGE_IDENTITY");
+  if (checks.meaningfulKnowledgeIdentity === "UNCERTAIN") reasons.add("KNOWLEDGE_IDENTITY_UNCERTAIN");
+  if (checks.independentlyTeachable === "FAIL") reasons.add("NOT_INDEPENDENTLY_TEACHABLE");
+  if (checks.independentlyTeachable === "UNCERTAIN") reasons.add("TEACHABILITY_UNCERTAIN");
+  if (checks.independentlyAssessable === "FAIL") reasons.add("NOT_INDEPENDENTLY_ASSESSABLE");
+  if (checks.independentlyAssessable === "UNCERTAIN") reasons.add("ASSESSABILITY_UNCERTAIN");
+  if (candidate.assessment.atomicity === "NON_ATOMIC") reasons.add("NON_ATOMIC_CANDIDATE");
+  if (candidate.assessment.atomicity === "UNCERTAIN") reasons.add("ATOMICITY_UNCERTAIN");
+  if (effectiveNonDuplication === "DUPLICATE") reasons.add("DUPLICATE_CONFIRMED");
+  if (effectiveNonDuplication === "UNCERTAIN") reasons.add("DUPLICATE_UNCERTAIN");
+  if (candidate.assessment.sourceOwnership === "UNCERTAIN") reasons.add("SOURCE_OWNERSHIP_UNCERTAIN");
+  if (candidate.assessment.supportingOnly) reasons.add("SUPPORTING_ONLY");
+
+  const reasonCodes: KnowledgeCandidateReviewReasonCode[] = [...reasons];
+  const baseDecision = {
+    reasonCodes,
+    checks,
+    sourceSupport,
+    coreSourceBlockIndices: [...coreIndices],
+  };
+
+  if (candidate.assessment.supportingOnly) {
+    return { ...baseDecision, state: "SUPPORT_ONLY" };
+  }
+  if (coreBlocks.length === 0 && candidate.practiceReferences.length > 0) {
+    return {
+      ...baseDecision,
+      state: "REJECT_NON_KNOWLEDGE",
+      reasonCodes: [...new Set<KnowledgeCandidateReviewReasonCode>([
+        ...reasonCodes,
+        "EXERCISE_CANNOT_CREATE_CANDIDATE",
+      ])],
+    };
+  }
+  if (
+    checks.meaningfulKnowledgeIdentity === "FAIL"
+    || checks.independentlyTeachable === "FAIL"
+    || checks.independentlyAssessable === "FAIL"
+    || hasStructuralOnlyCore
+    || hasActivityCore
+  ) {
+    return { ...baseDecision, state: "REJECT_NON_KNOWLEDGE" };
+  }
+  if (
+    checks.directReadableSource === "FAIL"
+    || checks.sourceOwnership === "FAIL"
+    || sourceSupport === "UNREADABLE"
+    || reasons.has("NO_CORE_SOURCE")
+  ) {
+    return { ...baseDecision, state: "UNRESOLVED" };
+  }
+  if (
+    checks.directReadableSource === "UNCERTAIN"
+    || checks.atomicity !== "PASS"
+    || checks.nonDuplication !== "PASS"
+    || checks.sourceOwnership === "UNCERTAIN"
+    || checks.meaningfulKnowledgeIdentity === "UNCERTAIN"
+    || checks.independentlyTeachable === "UNCERTAIN"
+    || checks.independentlyAssessable === "UNCERTAIN"
+    || sourceSupport !== "DIRECT"
+  ) {
+    return { ...baseDecision, state: "REVIEW_REQUIRED" };
+  }
+  return { ...baseDecision, state: "PROMOTE" };
+}
+
 export const PASS2_MICRONODE_REJECTION_REASONS = [
   "MISSING_MICRONODES_ARRAY",
   "INVALID_MICRONODE_NO_SOURCE_BLOCKS",
