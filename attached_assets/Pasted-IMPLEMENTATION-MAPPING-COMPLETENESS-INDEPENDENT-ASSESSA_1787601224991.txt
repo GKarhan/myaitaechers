@@ -1,0 +1,848 @@
+IMPLEMENTATION — MAPPING COMPLETENESS + INDEPENDENT ASSESSABILITY GATE
+
+ROLE
+
+Act as a principal AI systems architect, knowledge-representation engineer,
+education-domain architect, and senior TypeScript/backend engineer.
+
+The Mapping Core architecture is already substantially rebuilt through:
+
+Phase 1:
+KnowledgeCandidate + SourceMaterialDisposition + promotion contract
+
+Phase 2:
+durable lesson_source_materials + transaction-safe source preservation
+
+Phase 3A:
+candidate-based production promotion; only explicit PROMOTE creates MicroNodes
+
+Phase 3B:
+lesson-wide semantic consolidation + canonical MicroNode identity +
+final Topic assignment
+
+DO NOT redesign those systems.
+
+This task fixes the remaining important failure mode discovered during real
+certification:
+
+UNDER-MAPPING / OVER-CONSOLIDATION.
+
+════════════════════════════════════════════════════════════
+0. REAL REGRESSION CASE
+════════════════════════════════════════════════════════════
+
+Representative lesson:
+
+Book:
+Հանրահաշիվ 9 — Սմբատ Գոգյան
+
+Lesson:
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿՆ ՈՒ ՆՇԱՆԱՊԱՀՊԱՆՄԱՆ ՄԻՋԱԿԱՅՔԵՐԸ
+
+§1.5
+physical pages 23–25
+
+The source teaches TWO related but independently assessable directions:
+
+A.
+GRAPH → SIGN INTERVALS
+
+Given a graph, determine:
+- where f(x) > 0
+- where f(x) < 0
+- where f(x) = 0
+- the sign-preservation intervals
+
+B.
+SIGN INTERVALS → GRAPH
+
+Given positive/negative intervals and zeros/conditions,
+construct or identify a compatible function graph.
+
+The latest automatic map preserved only B as a MicroNode.
+
+A remained only in source/additional exercises.
+
+This is NOT acceptable.
+
+The learner may master A without mastering B, or vice versa.
+
+Therefore they require distinct learner mastery states.
+
+IMPORTANT:
+Do NOT hard-code Algebra, graphs, or bidirectional mapping.
+
+This is a general knowledge-granularity problem.
+
+════════════════════════════════════════════════════════════
+1. CORE INVARIANT — INDEPENDENT ASSESSABILITY
+════════════════════════════════════════════════════════════
+
+Add this fundamental Mapping Contract invariant:
+
+Two related knowledge candidates must remain separate MicroNodes when:
+
+A learner can reasonably demonstrate mastery of one without demonstrating
+mastery of the other.
+
+Equivalent question:
+
+"DO THESE REQUIRE SEPARATE LEARNER MASTERY STATES?"
+
+If YES:
+they must remain separate canonical MicroNodes.
+
+If NO:
+they may consolidate into one MicroNode.
+
+This invariant must constrain:
+
+- candidate promotion
+- semantic consolidation
+- canonical grouping
+- atomicity review
+- final map completeness validation
+
+════════════════════════════════════════════════════════════
+2. DIRECTIONAL / TRANSFORMATION DISTINCTION
+════════════════════════════════════════════════════════════
+
+Do not assume reverse operations are the same knowledge.
+
+Examples:
+
+A → B
+
+and
+
+B → A
+
+may be strongly related but independently assessable.
+
+Examples:
+
+graph → infer intervals
+intervals → construct graph
+
+word → identify grammatical category
+properties → identify the word/category
+
+observation → infer cause
+conditions → predict observation
+
+formula → calculate value
+value/constraint → construct formula
+
+These should remain separate when mastery can diverge.
+
+Do NOT create a generic hardcoded “reverse direction always separate” rule.
+
+Instead use the independent-assessability invariant.
+
+════════════════════════════════════════════════════════════
+3. PREVENT BOTH EXTREMES
+════════════════════════════════════════════════════════════
+
+The mapper must avoid BOTH:
+
+OVER-FRAGMENTATION:
+creating unnecessary MicroNodes for:
+- examples
+- explanations
+- Bloom levels
+- restatements
+- presentation formats
+
+AND:
+
+UNDER-FRAGMENTATION:
+merging independently assessable skills/concepts into one MicroNode.
+
+Target:
+
+correct atomic knowledge decomposition.
+
+MicroNode count is NOT a target.
+
+A lesson may correctly contain:
+2, 5, 12, or 20 MicroNodes.
+
+════════════════════════════════════════════════════════════
+4. FORENSIC AUDIT BEFORE EDITING
+════════════════════════════════════════════════════════════
+
+Before changing code, inspect the CURRENT Phase 3A/3B implementation.
+
+For the §1.5 regression case, determine from available diagnostics/code:
+
+1. Was GRAPH → SIGN INTERVALS originally generated as:
+   - a separate Pass 2 proposal?
+   - KnowledgeCandidate?
+   - promotion-eligible candidate?
+   - review candidate?
+   - source-only material?
+
+2. If it existed as a candidate:
+   exactly where was it removed/consolidated?
+
+3. If it never existed as a candidate:
+   exactly why did candidate generation fail to represent it?
+
+4. Did semantic consolidation interpret A and B as same learner state?
+
+5. Did source/exercise coverage detect that exercises 67/71 were not covered by
+   any canonical MicroNode?
+
+6. Did lesson outcomes contain evidence for both directions while only one
+   MicroNode survived?
+
+Report the root cause BEFORE editing.
+
+Classify it as:
+
+GENERATION_GAP
+PROMOTION_GAP
+OVER_CONSOLIDATION
+COMPLETENESS_GAP
+or combination.
+
+════════════════════════════════════════════════════════════
+5. ADD A KNOWLEDGE COMPLETENESS GATE
+════════════════════════════════════════════════════════════
+
+After lesson-wide canonicalization, before persistence, run a deterministic
+Knowledge Completeness Audit.
+
+The audit asks:
+
+Does every independently assessable instructional target supported by the
+source have representation in at least one canonical MicroNode?
+
+Do NOT derive MicroNodes automatically from every block.
+
+Use several evidence channels:
+
+A. promoted/candidate objectives
+B. source instructional evidence
+C. canonical lesson outcomes when available
+D. exercise/task demand
+E. semantic review findings
+
+No single channel is sufficient by itself.
+
+════════════════════════════════════════════════════════════
+6. EXERCISE COVERAGE AS A MISSING-KNOWLEDGE SIGNAL
+════════════════════════════════════════════════════════════
+
+Exercises are NOT automatically knowledge nodes.
+
+But exercises provide strong evidence about what the textbook expects the
+learner to be able to do.
+
+After final MicroNodes exist, inspect exercises/tasks.
+
+For each real instructional exercise ask:
+
+"Is there at least one canonical MicroNode whose learning objective provides
+the knowledge/skill required by this task?"
+
+If several related exercises require the same independently assessable ability
+and no MicroNode covers it:
+
+create a COMPLETENESS REVIEW FINDING.
+
+Do NOT automatically manufacture a MicroNode from an exercise.
+
+But do not silently accept:
+
+exercise exists
++
+no supporting knowledge unit
+
+either.
+
+════════════════════════════════════════════════════════════
+7. OUTCOME COVERAGE AS A SECOND SIGNAL
+════════════════════════════════════════════════════════════
+
+Lesson outcomes must NOT define MicroNodes one-to-one.
+
+But outcomes can act as a completeness cross-check.
+
+For each source-grounded canonical outcome:
+
+determine whether at least one MicroNode meaningfully supports it.
+
+If an outcome has no supporting canonical MicroNode:
+
+record:
+
+OUTCOME_KNOWLEDGE_GAP
+
+or an equivalent existing project reason.
+
+Do NOT automatically create a node solely from an outcome.
+
+The finding should participate in semantic review / repair.
+
+════════════════════════════════════════════════════════════
+8. MISSING-KNOWLEDGE REPAIR
+════════════════════════════════════════════════════════════
+
+When completeness audit identifies a likely missing independently assessable
+knowledge unit:
+
+FIRST determine whether a prior candidate was incorrectly suppressed.
+
+Preferred recovery order:
+
+1. restore/reclassify an existing source-grounded candidate
+2. split an incorrectly consolidated canonical group
+3. if no adequate candidate exists, derive ONE source-grounded repair candidate
+   from already verified instructional evidence
+4. if semantic certainty is insufficient → REVIEW_REQUIRED
+
+Do NOT create a new provider call per gap.
+
+Reuse existing bounded semantic review if semantic judgment is required.
+
+Do not fabricate source content.
+
+════════════════════════════════════════════════════════════
+9. CONSOLIDATION MUST CHECK INDEPENDENT ASSESSABILITY
+════════════════════════════════════════════════════════════
+
+Before SAME_KNOWLEDGE consolidation is applied, require:
+
+same underlying learner mastery state
+
+AND
+
+no independently assessable distinction.
+
+If two candidates have:
+
+- different input → output transformations
+- different required learner performances
+- independently distinguishable evidence
+- different success criteria
+
+then they should normally remain DISTINCT_KNOWLEDGE.
+
+Even if:
+
+- topic vocabulary is identical
+- source paragraphs are adjacent
+- one concept is the inverse of another
+- both are described under the same textbook heading.
+
+════════════════════════════════════════════════════════════
+10. COGNITIVE DEPTH STILL MUST NOT CREATE NEW MICRONODES
+════════════════════════════════════════════════════════════
+
+Do NOT confuse this fix with Bloom-level splitting.
+
+These should still normally remain ONE MicroNode:
+
+state X
+explain X
+apply X
+
+when they are cognitive depths of the SAME underlying knowledge.
+
+But these may remain separate:
+
+interpret representation X
+construct representation X
+
+if independently assessable.
+
+The distinction is learner-state identity, not verb wording.
+
+════════════════════════════════════════════════════════════
+11. SUCCESS-CRITERION TEST
+════════════════════════════════════════════════════════════
+
+Use this conceptual test during semantic identity decisions:
+
+If Candidate A and Candidate B were one MicroNode, could we write ONE clear
+success criterion that validly proves mastery of BOTH?
+
+If NO:
+they are probably separate learner states.
+
+Example:
+
+"Correctly determines sign intervals from a graph"
+
+does NOT prove:
+
+"Can construct a graph from sign intervals."
+
+Therefore they should not be merged.
+
+This is a semantic rule, not a string heuristic.
+
+════════════════════════════════════════════════════════════
+12. EVIDENCE-SET TEST
+════════════════════════════════════════════════════════════
+
+Another signal:
+
+If the same evidence/task can independently verify both candidate objectives,
+they may be the same learner state.
+
+If Candidate A requires one type of evidence and Candidate B requires another
+distinct performance, that is evidence for separate MicroNodes.
+
+Do not require identical exercise formats.
+
+Use conceptual evidence requirements.
+
+════════════════════════════════════════════════════════════
+13. SOURCE-ROLE PRESERVATION
+════════════════════════════════════════════════════════════
+
+Do NOT damage Phase 2 source preservation.
+
+Every verified source block remains durable.
+
+If a missing knowledge unit is recovered:
+
+link/reassign existing source evidence.
+
+Do not duplicate primary source disposition.
+
+Supporting relationships may be secondary.
+
+Source loss must remain 0.
+
+════════════════════════════════════════════════════════════
+14. EXERCISE PRESERVATION
+════════════════════════════════════════════════════════════
+
+If completeness repair creates/restores a missing MicroNode:
+
+reattach exercises semantically requiring that knowledge.
+
+For §1.5, expected conceptual behavior:
+
+GRAPH → SIGN INTERVALS:
+Example 1
+exercise 67
+possibly exercise 71 or part of its demand
+
+SIGN INTERVALS → GRAPH:
+Example 2
+68
+69
+70
+72
+73
+74
+
+Do NOT hard-code these exercise numbers.
+
+They are only a regression fixture.
+
+Exercise loss = 0.
+Exercise duplication = 0.
+
+════════════════════════════════════════════════════════════
+15. REVIEW BEHAVIOR
+════════════════════════════════════════════════════════════
+
+A completeness gap is PEDAGOGICAL uncertainty unless structural corruption
+also exists.
+
+Therefore:
+
+structurally safe map
++
+possible missing knowledge
+
+→ persist safely with REVIEW_REQUIRED
+
+unless bounded semantic repair confidently resolves it before persistence.
+
+Do NOT throw away the whole map solely because completeness is uncertain.
+
+But do NOT silently label the map “ready” when a known knowledge gap remains.
+
+════════════════════════════════════════════════════════════
+16. READINESS COUNTS
+════════════════════════════════════════════════════════════
+
+Ensure lesson mapping summary/readiness does not say all knowledge is ready
+when:
+
+- an independently assessable source-supported target is uncovered
+- major exercises lack supporting MicroNodes
+- a canonical outcome has no supporting MicroNode
+- completeness review remains unresolved
+
+Use existing review-required semantics.
+
+Do NOT redesign the dashboard.
+
+════════════════════════════════════════════════════════════
+17. GENERAL TEST MATRIX
+════════════════════════════════════════════════════════════
+
+Add regression cases for at least:
+
+CASE 1
+A → B and B → A are independently assessable.
+
+Expected:
+two MicroNodes.
+
+CASE 2
+Definition + explanation of same concept.
+
+Expected:
+one MicroNode.
+
+CASE 3
+State / explain / apply same concept.
+
+Expected:
+one MicroNode + later Cognitive Path.
+
+CASE 4
+Interpret graph vs construct graph.
+
+Expected:
+two nodes if evidence/performance can diverge.
+
+CASE 5
+Recognize category vs produce valid example.
+
+Determine based on independent assessability; test distinct case.
+
+CASE 6
+Concept + direct prerequisite.
+
+Expected:
+two nodes if independently tracked.
+
+CASE 7
+Exercise cluster requires missing skill.
+
+Expected:
+KNOWLEDGE_GAP review finding.
+
+CASE 8
+Single isolated exercise appears unusual but source does not support independent
+knowledge.
+
+Expected:
+do NOT manufacture MicroNode.
+
+CASE 9
+Outcome lacks any MicroNode coverage.
+
+Expected:
+OUTCOME_KNOWLEDGE_GAP review.
+
+CASE 10
+Outcome wording differs but MicroNode semantically covers it.
+
+Expected:
+no false gap.
+
+CASE 11
+Candidate was suppressed by consolidation but exercise/outcome evidence proves
+independent assessability.
+
+Expected:
+restore/split candidate.
+
+CASE 12
+Completeness uncertain.
+
+Expected:
+REVIEW_REQUIRED, no fabricated node.
+
+CASE 13
+Hard source corruption.
+
+Expected:
+still hard fail.
+
+CASE 14
+Source preservation.
+
+Expected:
+source loss = 0.
+
+CASE 15
+Exercise preservation.
+
+Expected:
+exercise loss = 0.
+
+CASE 16
+Determinism.
+
+Same input → same completeness result.
+
+════════════════════════════════════════════════════════════
+18. §1.5 REGRESSION FIXTURE
+════════════════════════════════════════════════════════════
+
+Create a provider-free regression fixture representing the real semantic
+structure of lesson §1.5.
+
+The fixture must contain:
+
+Source-supported ability A:
+GRAPH → SIGN INTERVALS
+
+Source-supported ability B:
+SIGN INTERVALS → GRAPH
+
+Supporting examples.
+
+Exercises requiring A.
+
+Exercises requiring B.
+
+Expected final canonical map:
+
+2 independent MicroNodes.
+
+NOT 1.
+
+NOT one MicroNode per exercise.
+
+NOT separate Remember/Understand/Apply MicroNodes.
+
+Required:
+
+source loss = 0
+exercise loss = 0
+
+════════════════════════════════════════════════════════════
+19. REALISTIC COMPLETENESS SHADOW
+════════════════════════════════════════════════════════════
+
+Add a non-persisting realistic shadow validation.
+
+Report:
+
+BEFORE COMPLETENESS AUDIT
+
+- canonical MicroNode count
+- uncovered exercise clusters
+- uncovered outcomes
+- uncovered instructional targets
+
+AFTER COMPLETENESS REPAIR
+
+- final MicroNode count
+- restored/split candidates
+- review-required gaps
+- exercise coverage
+- outcome coverage
+- source loss
+- exercise loss
+
+For the §1.5 semantic fixture:
+
+expected improvement:
+
+1 incomplete canonical node
+→
+2 independently assessable canonical nodes
+
+without creating unnecessary fragments.
+
+════════════════════════════════════════════════════════════
+20. NO NEW PER-ITEM AI CALLS
+════════════════════════════════════════════════════════════
+
+Do NOT add:
+
+- one call per exercise
+- one call per outcome
+- one call per candidate
+- one call per gap
+
+Prefer deterministic completeness audit.
+
+If semantic repair requires AI:
+
+reuse the existing bounded semantic review batch.
+
+If that existing contract needs a small extension to include independent
+assessability/completeness decisions, extend that same batch contract.
+
+No new model stage unless absolutely necessary.
+
+════════════════════════════════════════════════════════════
+21. OBSERVABILITY
+════════════════════════════════════════════════════════════
+
+Persist structured completeness diagnostics.
+
+At minimum:
+
+- canonical MicroNode count before audit
+- instructional target count
+- uncovered target count
+- exercise coverage count
+- uncovered exercise cluster count
+- outcome coverage count
+- uncovered outcome count
+- repaired/restored candidate IDs
+- split canonical group IDs
+- review-required gap IDs
+- machine-readable reason codes
+- final completeness status
+
+No raw model reasoning.
+
+No unnecessary source excerpts.
+
+════════════════════════════════════════════════════════════
+22. MAPPING CONTRACT EXTENSION
+════════════════════════════════════════════════════════════
+
+Add these final mapping invariants:
+
+M17 — KNOWLEDGE COMPLETENESS
+Every independently assessable, source-supported instructional target is
+represented or explicitly REVIEW_REQUIRED.
+
+M18 — INDEPENDENT ASSESSABILITY
+Knowledge states that can diverge in mastery must not be collapsed.
+
+M19 — EXERCISE COVERAGE
+Every substantive instructional exercise is supported by at least one relevant
+canonical MicroNode or explicitly flagged for review.
+
+M20 — OUTCOME COVERAGE
+Every source-grounded canonical lesson outcome is supported by at least one
+canonical MicroNode or explicitly flagged for review.
+
+Existing M1–M16 must continue to pass.
+
+════════════════════════════════════════════════════════════
+23. STRICT SCOPE
+════════════════════════════════════════════════════════════
+
+DO NOT modify:
+
+- durable source-material schema unless proven necessary
+- PDF extraction
+- Pass 1 extraction prompt unless absolutely unavoidable
+- manual mapping
+- Cognitive Path
+- Teaching Content
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- student UI
+- final approval redesign
+- unrelated dashboard features
+
+DO NOT:
+
+- hard-code Algebra
+- hard-code graph terminology
+- create one MicroNode per exercise
+- create one MicroNode per outcome
+- use Bloom verbs as node identity
+- weaken Phase 3B consolidation generally
+- remove source-review safety
+- weaken source coverage
+- rerun production lesson automatically
+
+════════════════════════════════════════════════════════════
+24. IMPLEMENTATION PROCESS
+════════════════════════════════════════════════════════════
+
+STEP 1
+Read-only forensic audit.
+
+STEP 2
+State the exact root cause for the §1.5 under-mapping.
+
+STEP 3
+State the minimum architecture change.
+
+STEP 4
+Implement independent-assessability guard.
+
+STEP 5
+Implement final Knowledge Completeness Audit.
+
+STEP 6
+Integrate exercise/outcome coverage signals.
+
+STEP 7
+Implement bounded repair/review behavior.
+
+STEP 8
+Add regression tests.
+
+STEP 9
+Run:
+- Phase 1 tests
+- Phase 2 tests
+- Phase 3A tests
+- Phase 3B tests
+- new completeness tests
+- hard integrity tests
+
+STEP 10
+Run API typecheck.
+
+STEP 11
+Run non-persisting §1.5 shadow validation.
+
+STEP 12
+Review diff for scope creep.
+
+STEP 13
+Restart only required API workflow.
+
+DO NOT automatically remap the real lesson.
+
+════════════════════════════════════════════════════════════
+25. FINAL REPORT
+════════════════════════════════════════════════════════════
+
+Report exactly:
+
+1. §1.5 root cause
+2. Whether missing ability existed as candidate before
+3. Where it was lost or why it was never created
+4. Architecture before
+5. Architecture after
+6. Files changed
+7. Independent-assessability rule
+8. Success-criterion/evidence logic
+9. Knowledge Completeness Audit
+10. Exercise coverage logic
+11. Outcome coverage logic
+12. Missing-knowledge repair strategy
+13. Review-required behavior
+14. Source preservation
+15. Exercise preservation
+16. AI-call count before/after
+17. Diagnostics added
+18. Regression test results
+19. §1.5 shadow result
+20. MicroNode count before/after in §1.5 fixture
+21. Source loss count
+22. Exercise loss count
+23. M1–M20 status
+24. Remaining evidence-based risks
+
+Then STOP.
+
+DO NOT implement Cognitive Path.
+DO NOT implement Teaching Content.
+DO NOT automatically remap production lessons.
