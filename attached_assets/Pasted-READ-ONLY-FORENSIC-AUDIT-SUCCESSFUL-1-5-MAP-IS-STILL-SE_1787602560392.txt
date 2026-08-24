@@ -1,0 +1,228 @@
+READ-ONLY FORENSIC AUDIT — SUCCESSFUL §1.5 MAP IS STILL SEMANTICALLY INCOMPLETE
+
+DO NOT change code.
+DO NOT change data.
+DO NOT rerun mapping.
+DO NOT change prompts.
+DO NOT propose a fix yet.
+
+We have now successfully rerun the real certification lesson after the
+Pass 2 source-conservation fix.
+
+LESSON
+
+Lesson 709
+Հանրահաշիվ 9
+§1.5
+ՖՈՒՆԿՑԻԱՅԻ ԳՐԱՖԻԿՆ ՈՒ ՆՇԱՆԱՊԱՀՊԱՆՄԱՆ ՄԻՋԱԿԱՅՔԵՐԸ
+pages 23–25
+
+The mapping now PERSISTS successfully.
+
+However, the resulting Knowledge Map is still semantically incomplete.
+
+FINAL PERSISTED MAP
+
+Only one canonical MicroNode exists:
+
+“Ֆունկցիայի նշանապահպանման միջակայքերի որոշումը գրաֆիկից”
+
+Objective:
+“Ուսանողը կարող է որոշել ֆունկցիայի նշանապահպանման միջակայքերը՝
+հիմնվելով նրա գրաֆիկի դիրքի վրա աբսցիսների առանցքի նկատմամբ։”
+
+But the source contains a second independently assessable transformation:
+
+SIGN INTERVALS → FUNCTION GRAPH
+
+Strong source evidence includes:
+
+- worked example:
+  “Գծենք ֆունկցիա, որն ունի երեք նշանապահպանման միջակայք...”
+
+- exercise 68
+- exercise 69
+- exercise 70
+- exercise 72
+- exercise 73
+- exercise 74
+
+These exercises all require constructing/drawing a function graph from
+sign-preservation interval information and related constraints.
+
+Yet the persisted map places them under:
+
+“Օրինակներ և վարժություններ նշանապահպանման միջակայքերի վերաբերյալ”
+0 MicroNodes
+
+and they remain additional/review exercises rather than belonging to a
+canonical MicroNode.
+
+IMPORTANT COMPARISON
+
+An earlier successful mapping of the SAME lesson produced the opposite result:
+
+canonical MicroNode:
+“Ֆունկցիայի գրաֆիկի կառուցումը ըստ նշանապահպանման միջակայքերի”
+
+and failed to preserve the GRAPH → SIGN INTERVALS direction.
+
+The new run preserved GRAPH → SIGN INTERVALS but lost
+SIGN INTERVALS → GRAPH.
+
+Therefore the pipeline is still unstable with respect to two independently
+assessable inverse transformations.
+
+TASK
+
+Inspect the NEWEST SUCCESSFUL mapping job for lesson 709.
+
+Reconstruct the complete semantic lifecycle for BOTH abilities:
+
+A.
+GRAPH → SIGN INTERVALS
+
+B.
+SIGN INTERVALS → GRAPH
+
+For each ability report:
+
+1. Which Pass 1 source blocks support it?
+2. Which exercises support/test it?
+3. Was a KnowledgeCandidate generated for it?
+4. Candidate ID
+5. Candidate title
+6. Candidate learningObjective
+7. Candidate sourceBlockIndices
+8. Candidate exercise evidence
+9. semanticStatus
+10. sourceSupportStatus
+11. promotion decision
+12. promotion reason codes
+13. whether it entered canonicalization
+14. whether Phase 3B changed it
+15. whether completeness audit considered it
+16. final disposition
+17. why it did or did not become a persisted MicroNode
+
+THEN AUDIT TARGET DISCOVERY.
+
+We previously observed completeness diagnostics such as:
+
+candidateTargetCount: 1
+
+For this lesson, determine exactly how candidateTargetCount /
+instructional targets are constructed.
+
+Answer:
+
+A. Why did the completeness system see only the targets it saw?
+B. Are targets derived only from already-generated/promoted candidates?
+C. Are exercise demands independently capable of creating a completeness target?
+D. Are lesson outcomes independently capable of creating a completeness target?
+E. Can an entire independently assessable ability disappear BEFORE the
+   completeness audit and therefore become invisible to it?
+F. Does the completeness audit currently prove:
+
+   “all generated candidate targets are represented”
+
+   OR does it actually prove:
+
+   “all independently assessable source-supported lesson abilities are represented”?
+
+These are NOT equivalent.
+
+EXERCISE CLUSTER AUDIT
+
+Classify exercises:
+
+GRAPH → SIGN INTERVALS:
+- worked example / graph-reading example
+- 67
+- 71
+
+SIGN INTERVALS → GRAPH:
+- worked graph-construction example
+- 68
+- 69
+- 70
+- 72
+- 73
+- 74
+
+Verify from actual persisted/source diagnostics rather than assuming this
+classification.
+
+Then answer:
+
+Why did the second cluster of approximately 6 independent exercises fail to
+force or preserve a canonical knowledge target?
+
+OUTCOME AUDIT
+
+The saved lesson outcomes explicitly include BOTH directions:
+
+1. determine sign-preservation intervals from a graph
+2. construct a function graph from given sign-preservation intervals
+
+Trace whether BOTH outcomes reached the completeness audit.
+
+If only one did, identify exactly where the other became invisible.
+
+ROOT-CAUSE CLASSIFICATION
+
+Classify the semantic failure as one or more of:
+
+CANDIDATE_GENERATION_GAP
+CANDIDATE_PROMOTION_GAP
+TARGET_DISCOVERY_GAP
+EXERCISE_CLUSTER_DISCOVERY_GAP
+OUTCOME_COVERAGE_GAP
+COMPLETENESS_AUDIT_BLIND_SPOT
+OVER_CONSOLIDATION
+OTHER
+
+CRITICAL QUESTION
+
+Is Task #173 completeness currently circular?
+
+Meaning:
+
+candidate generation decides what knowledge exists
+→ completeness derives its targets from those same candidates
+→ missing candidate means missing target
+→ completeness reports 100% even though the textbook/outcomes/exercises
+  contain an uncovered independently assessable ability.
+
+Prove or disprove this from the current code and successful job diagnostics.
+
+DO NOT FIX ANYTHING YET.
+
+We need the FIRST semantic boundary where:
+
+SIGN INTERVALS → GRAPH
+
+is still visible in source/outcomes/exercises,
+
+but ceases to exist as a candidate/completeness target.
+
+FINAL REPORT
+
+Return:
+
+1. newest successful job ID
+2. final persisted MicroNodes
+3. complete lifecycle A vs B
+4. target-discovery implementation
+5. exercise-cluster findings
+6. outcome-coverage findings
+7. first semantic loss boundary
+8. exact root-cause classification
+9. whether completeness is circular
+10. smallest architectural layer that would need correction
+
+NO CODE CHANGES.
+NO DATA CHANGES.
+NO RERUN.
+
+Then STOP.
