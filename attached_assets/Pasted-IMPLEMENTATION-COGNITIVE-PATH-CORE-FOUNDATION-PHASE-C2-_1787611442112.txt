@@ -1,0 +1,768 @@
+IMPLEMENTATION — COGNITIVE PATH CORE FOUNDATION
+PHASE C2-1 ONLY
+ORCHESTRATION + OBSERVABILITY + TRANSACTION SAFETY
+
+ROLE
+
+Act as a principal AI systems architect, senior TypeScript/backend engineer,
+and education-platform architect.
+
+This task begins the foundational rebuild of Cognitive Path generation.
+
+IMPORTANT:
+This is PHASE C2-1 ONLY.
+
+Do NOT yet redesign pedagogical target-level inference.
+Do NOT yet change Bloom semantics.
+Do NOT yet implement advanced exercise matching.
+Do NOT yet change Teaching Content or AI Teacher behavior.
+
+We first make Cognitive Path generation structurally reliable,
+observable, isolated per MicroNode, transactional, and complete at lesson level.
+
+==================================================
+0. PROTECTED SYSTEMS — DO NOT BREAK
+==================================================
+
+The following are PROTECTED and must remain unchanged unless absolutely required
+for compatibility:
+
+- Mapping Core
+- Pass 1 / Pass 2 mapping behavior
+- KnowledgeCandidate
+- source preservation
+- lesson semantic scope
+- MicroNode CRUD/order
+- Teaching Content generation semantics
+- AI Teacher C6/C7 runtime
+- Quiz
+- Knowledge Tree
+- mastery/scoring
+- final source coverage validation
+- manual mapping
+- teacher mapping UI outside Cognitive Path area
+
+Most importantly:
+
+The current AI Teacher fail-closed behavior MUST remain.
+
+Missing / needs_review / invalid Cognitive Path must continue to produce:
+
+C2_PATH_UNAVAILABLE
+
+or equivalent existing fail-closed behavior.
+
+DO NOT let AI Teacher improvise a missing Cognitive Path.
+
+==================================================
+1. CURRENT VERIFIED PROBLEMS
+==================================================
+
+For lesson 715:
+
+Node 2428:
+- no Cognitive Path rows
+- cog_path_status = null
+- no persisted generation attempt/failure reason
+
+Node 2429:
+- one `remember` Cognitive Level
+- target ceiling = remember
+- status = needs_review
+- required independent evidence = 3
+- linked C2 tasks = 0
+
+The audit proved:
+
+1. The system cannot retrospectively tell whether node 2428:
+   - was never invoked,
+   - provider failed,
+   - parsing failed,
+   - validation failed,
+   - or persistence failed.
+
+2. Regeneration is replacement-oriented:
+   - delete old levels
+   - insert new levels
+   - mark needs_review
+
+   but this sequence is not clearly transactional.
+
+3. No visible idempotency/concurrency key protects simultaneous generation.
+
+4. Bulk generation is missing-only,
+   but we must verify that each MicroNode is an independent generation unit.
+
+5. Current UI lesson summary can show created/missing/review,
+   but there is no durable per-node generation-attempt state machine.
+
+These are foundation problems.
+
+==================================================
+2. TARGET ARCHITECTURE
+==================================================
+
+Teacher UX:
+
+ONE BUTTON:
+"Ստեղծել ճանաչողական ուղիները"
+or
+"Լրացնել բացակայող ..."
+
+Backend architecture:
+
+Lesson Cognitive Path Orchestrator
+        ↓
+enumerate eligible canonical MicroNodes
+        ↓
+for each MicroNode independently:
+        ↓
+Per-MicroNode Generation Unit
+        ↓
+Per-MicroNode Validation
+        ↓
+Transactional Per-MicroNode Persistence
+        ↓
+Per-MicroNode Result
+        ↓
+Lesson Aggregate Summary
+
+CRITICAL:
+
+ONE UI ACTION
+does NOT require
+ONE giant multi-MicroNode AI prompt.
+
+Semantic correctness and failure isolation are more important than reducing call count.
+
+If the current backend already calls the model independently per MicroNode,
+preserve that.
+
+If it currently sends multiple MicroNodes in one model request,
+refactor orchestration so semantic generation is isolated per MicroNode.
+
+Do NOT change the C2 generation prompt semantics yet except where stable node identity
+or orchestration requires minimal contract changes.
+
+==================================================
+3. PER-MICRONODE GENERATION UNIT
+==================================================
+
+Each MicroNode generation must be independently addressable.
+
+Input must have stable identity:
+
+- lessonId
+- microNodeId
+- current node version/relevant update timestamp if available
+- learningObjective
+- source/theory context
+- source exercises
+- persisted C1 target ceiling
+- prior C2 path only when regeneration requires it
+- confirmed Teaching Content only if existing current behavior already uses it
+
+Output belongs ONLY to that MicroNode.
+
+Never match AI output back to nodes by:
+- array position only
+- title only
+
+Stable MicroNode ID must be authoritative.
+
+==================================================
+4. LESSON ORCHESTRATOR
+==================================================
+
+Implement/strengthen one lesson-level orchestrator.
+
+It must:
+
+1. Load eligible canonical MicroNodes for the lesson.
+
+2. Classify each node into one generation state:
+
+- MISSING
+- NEEDS_REVIEW_EXISTING
+- CONFIRMED_EXISTING
+- FAILED_PREVIOUSLY
+- IN_PROGRESS
+- SKIPPED_PROTECTED
+
+Use existing status conventions where possible.
+
+3. For normal "fill missing" action:
+
+Generate ONLY nodes that genuinely have no Cognitive Path result.
+
+Do NOT overwrite:
+- confirmed paths
+- teacher-authored paths
+- existing needs_review paths
+
+unless force/regenerate is explicitly requested through existing allowed flow.
+
+4. Execute eligible nodes independently.
+
+5. Continue processing remaining nodes when one node fails.
+
+Example:
+
+10 nodes:
+8 succeed
+1 validation failure
+1 provider failure
+
+Expected lesson result:
+
+8 generated
+2 failed/reviewable with explicit reasons
+
+NOT:
+entire operation rolled back
+
+and NOT:
+failed nodes silently disappear.
+
+==================================================
+5. PER-NODE GENERATION STATE / OBSERVABILITY
+==================================================
+
+Add durable, machine-readable per-node Cognitive Path generation observability.
+
+Do NOT create unnecessary schema if existing node metadata/job infrastructure can safely hold it.
+
+Use the smallest architecture-compatible approach.
+
+For each generation attempt, preserve enough data to answer:
+
+- Was generation attempted?
+- When?
+- Why was the node selected?
+- Was it skipped?
+- Did provider call occur?
+- Did provider succeed?
+- Did parsing succeed?
+- Did validation succeed?
+- Did persistence succeed?
+- What final status resulted?
+
+At minimum machine-readable statuses/reason codes should support:
+
+NOT_ATTEMPTED
+IN_PROGRESS
+SKIPPED_EXISTING
+SKIPPED_CONFIRMED
+PROVIDER_FAILED
+PARSE_FAILED
+VALIDATION_FAILED
+PERSISTENCE_FAILED
+GENERATED_NEEDS_REVIEW
+CONFIRMED
+
+Use project-appropriate names.
+
+Do not store:
+- raw chain of thought
+- unnecessary full model responses
+- sensitive provider internals
+
+Persist only structured diagnostics and safe short messages/reason codes.
+
+==================================================
+6. NODE-LEVEL GENERATION ATTEMPT RECORD
+==================================================
+
+For every attempted node preserve, at minimum:
+
+- lessonId
+- microNodeId
+- attempt identifier
+- startedAt
+- completedAt / failedAt
+- trigger type:
+  - bulk_missing
+  - single_generate
+  - force_regenerate
+  - other existing trigger
+- input path status before attempt
+- final result status
+- failure stage
+- failure reason code
+- retry count
+- whether provider was called
+- whether validation passed
+- number of generated levels
+- target level returned
+- persistence committed = true/false
+
+If current job/metadata architecture can store this cleanly,
+reuse it.
+
+If a new DB table appears necessary:
+STOP before migration and report the requirement.
+
+Do not silently add schema unless unavoidable.
+
+==================================================
+7. TRANSACTIONAL PER-NODE PERSISTENCE
+==================================================
+
+Fix the current replacement risk.
+
+For ONE MicroNode:
+
+generation + validation happens BEFORE destructive DB changes.
+
+Then persistence must be atomic.
+
+Required behavior:
+
+BEGIN TRANSACTION
+
+- delete/replace old generated C2 levels if replacement is allowed
+- insert all new cognitive levels
+- insert/update related C2 metadata/status
+- update node path status
+- persist required derived rows that are part of the same canonical path
+
+COMMIT
+
+If any insert/update fails:
+
+ROLLBACK
+
+Existing valid path must remain unchanged.
+
+Never leave:
+- zero levels after failed regeneration
+- partial path
+- target metadata without levels
+- levels without correct path status
+
+==================================================
+8. REGENERATION SAFETY
+==================================================
+
+Preserve existing protections:
+
+- confirmed path cannot be regenerated silently
+- teacher-authored path cannot be overwritten silently
+- normal bulk generation is missing-only
+
+Add explicit invariant:
+
+Existing accepted path remains untouched unless an authorized force/regenerate action
+successfully completes a replacement transaction.
+
+Failure during regeneration:
+
+old path remains intact.
+
+==================================================
+9. CONCURRENCY / IDEMPOTENCY
+==================================================
+
+Prevent duplicate simultaneous generation for the same MicroNode.
+
+At minimum:
+
+two concurrent requests for the same node must not race into destructive
+last-write-wins replacement.
+
+Use existing job/locking/idempotency architecture if available.
+
+Desired behavior:
+
+MicroNode A already IN_PROGRESS
+→ second request gets deterministic skip/conflict/result
+→ no second provider call for same generation unit
+
+Lesson bulk action and individual node generation must respect the same protection.
+
+Do NOT introduce heavy distributed infrastructure if unnecessary.
+
+Use the smallest reliable mechanism available in the repository.
+
+==================================================
+10. FAILURE ISOLATION
+==================================================
+
+This is non-negotiable.
+
+Failure for MicroNode B must not corrupt or delete valid path for MicroNode A.
+
+Failure for one node must not terminate generation of unrelated remaining nodes
+unless the lesson-level orchestrator itself encounters a structural fatal error.
+
+Per-node outcomes must aggregate safely.
+
+==================================================
+11. LESSON-LEVEL COMPLETENESS SUMMARY
+==================================================
+
+After orchestration, produce deterministic lesson-level summary.
+
+For all eligible canonical MicroNodes report counts:
+
+- total eligible
+- confirmed
+- generated_needs_review
+- missing
+- failed
+- in_progress
+- protected/skipped if useful
+
+Required invariant:
+
+Every eligible canonical MicroNode must have exactly one observable C2 state.
+
+No node may disappear from the summary.
+
+Example:
+
+12 eligible
+7 confirmed
+3 needs_review
+1 missing
+1 failed
+
+The UI does not need major redesign in this phase.
+
+Expose enough API data so current UI can accurately represent the states.
+
+==================================================
+12. DO NOT CHANGE TARGET BLOOM LOGIC YET
+==================================================
+
+The audit proved:
+
+C1 targetBloomLevel = 1
+→ current C2 generator is forced to target `remember`.
+
+This is pedagogically questionable for some nodes.
+
+BUT DO NOT FIX IT IN C2-1.
+
+Do not change:
+- Bloom ceiling contract
+- objective-floor semantic logic
+- mapping targetBloomLevel
+- C2 target selection policy
+
+Those belong to Phase C2-2.
+
+For now only preserve and expose the current value accurately.
+
+==================================================
+13. DO NOT CHANGE PATH DEPTH LOGIC YET
+==================================================
+
+Do not yet redesign:
+
+- number of levels
+- intermediate levels
+- target level
+- Remember/Understand/Apply progression
+- path continuity policy
+
+This belongs to C2-2 / C2-3.
+
+C2-1 is structural reliability only.
+
+==================================================
+14. DO NOT CHANGE EXERCISE MATCHING YET
+==================================================
+
+Do not yet auto-attach source exercises to levels.
+
+Do not change draft/approved exercise rules.
+
+Exercise 87 remaining unlinked is acceptable in C2-1.
+
+We only need generation infrastructure to be reliable first.
+
+Advanced exercise alignment belongs to C2-4.
+
+==================================================
+15. UI SEMANTICS — MINIMAL ONLY
+==================================================
+
+No dashboard redesign.
+
+However, fix only misleading state reporting if needed to expose the true orchestration result.
+
+Important known UI semantic issue:
+
+`Required evidence = 3`
+
+is learner mastery evidence count.
+
+`Linked = 0`
+
+is number of authored lesson_node_cognitive_tasks rows.
+
+Therefore:
+
+Missing = requiredEvidence - linkedTasks
+
+mixes two different concepts.
+
+Do NOT redesign evidence UI in this phase unless necessary.
+
+If touching this area, only rename labels to avoid false meaning.
+
+Example:
+
+Required learner evidence: 3
+Linked authored tasks: 0
+
+Do not display `Missing: 3` as if it were runtime learner-evidence deficit.
+
+If changing UI would expand scope materially,
+leave it for C2-6 and simply document the issue.
+
+==================================================
+16. BASELINE NON-REGRESSION
+==================================================
+
+Before implementation, inspect current relevant tests.
+
+After implementation preserve:
+
+- existing C2 validation
+- C2 acceptance rules
+- AI Teacher fail-closed behavior
+- C2_PATH_UNAVAILABLE semantics
+- approval safeguards
+- source grounding requirements
+- existing generation retry policy
+- confirmed-path protection
+- teacher-authored protection
+- Teaching Content independence
+
+Do not weaken tests to make implementation pass.
+
+==================================================
+17. REQUIRED REGRESSION TESTS
+==================================================
+
+Add focused deterministic tests.
+
+TEST 1 — BULK GENERATION ENUMERATION
+
+Lesson has 5 eligible MicroNodes.
+
+Expected:
+all 5 appear in orchestrator state ledger.
+
+TEST 2 — MISSING ONLY
+
+2 nodes confirmed
+1 needs_review
+2 missing
+
+Normal fill-missing action:
+only 2 missing nodes are attempted.
+
+TEST 3 — ONE NODE FAILURE
+
+Three missing nodes.
+
+A succeeds
+B provider fails
+C succeeds
+
+Expected:
+A persisted
+B explicit failed state
+C persisted
+
+TEST 4 — VALIDATION FAILURE
+
+Generated response fails validation for one node.
+
+Expected:
+no path persistence for that attempt
+structured validation failure preserved
+other nodes continue
+
+TEST 5 — TRANSACTION ROLLBACK
+
+Existing path exists.
+
+Force regeneration persistence fails during replacement.
+
+Expected:
+old path remains completely intact.
+
+TEST 6 — NO PARTIAL PATH
+
+New path contains multiple levels.
+
+Simulate DB insertion failure mid-write.
+
+Expected:
+zero partial new levels persisted.
+
+TEST 7 — CONCURRENT SAME NODE
+
+Two generation requests start for same MicroNode.
+
+Expected:
+only one active generation unit/provider call.
+
+TEST 8 — APPROVED PROTECTION
+
+Confirmed path:
+bulk missing action never touches it.
+
+TEST 9 — NEEDS_REVIEW PROTECTION
+
+Existing needs_review path:
+normal fill-missing action skips it.
+
+TEST 10 — FORCE REGENERATE
+
+Authorized force request:
+replacement only occurs after full validation and successful transaction.
+
+TEST 11 — OBSERVABILITY
+
+For provider failure / validation failure / success,
+durable state reveals exact stage/reason.
+
+TEST 12 — LESSON SUMMARY
+
+Every eligible node appears exactly once in final state counts.
+
+TEST 13 — AI TEACHER NON-REGRESSION
+
+Missing/needs_review path remains unavailable to canonical runtime.
+
+TEST 14 — TEACHING CONTENT NON-REGRESSION
+
+C2 structural changes do not newly block independent Teaching Content generation.
+
+==================================================
+18. IMPLEMENTATION PROCESS
+==================================================
+
+STEP 1
+Read current implementation and state exact architecture before editing.
+
+STEP 2
+Confirm whether current bulk action:
+- loops independent model calls per node
+OR
+- sends multiple nodes in one model request.
+
+Report this before editing.
+
+STEP 3
+State minimum architecture change.
+
+STEP 4
+Implement lesson orchestrator / per-node generation isolation.
+
+STEP 5
+Implement durable structured attempt observability.
+
+STEP 6
+Make per-node replacement transactional.
+
+STEP 7
+Add concurrency/idempotency protection.
+
+STEP 8
+Add deterministic lesson-level summary.
+
+STEP 9
+Add focused regression tests.
+
+STEP 10
+Run:
+- C2 generation tests
+- C2 validation/acceptance tests
+- relevant route tests
+- AI Teacher fail-closed regression
+- Teaching Content independence regression
+- API typecheck
+- production build if appropriate
+- git diff --check
+
+STEP 11
+Restart only required API workflow.
+
+DO NOT regenerate lesson 715 automatically.
+
+==================================================
+19. ACCEPTANCE CONTRACT — C2 FOUNDATION
+==================================================
+
+C2F-1 — ONE UI ACTION
+Teacher can trigger lesson-wide generation from one action.
+
+C2F-2 — PER-MICRONODE SEMANTIC UNIT
+Each MicroNode has an independently identifiable generation unit.
+
+C2F-3 — FAILURE ISOLATION
+One node failure cannot corrupt other node results.
+
+C2F-4 — OBSERVABILITY
+Every attempted node has a durable machine-readable outcome.
+
+C2F-5 — NO SILENT MISSING
+Every eligible canonical MicroNode appears in the lesson C2 state ledger.
+
+C2F-6 — TRANSACTIONAL REPLACEMENT
+C2 path replacement is atomic per MicroNode.
+
+C2F-7 — REGENERATION SAFETY
+Existing approved/teacher-authored path survives failed regeneration.
+
+C2F-8 — CONCURRENCY SAFETY
+Same node cannot be destructively regenerated simultaneously.
+
+C2F-9 — MISSING-ONLY BULK
+Normal bulk generation touches only genuinely missing paths.
+
+C2F-10 — FAIL-CLOSED RUNTIME PRESERVED
+AI Teacher never accepts missing/needs_review/invalid path.
+
+All C2F-1 through C2F-10 must pass.
+
+==================================================
+20. FINAL REPORT
+==================================================
+
+Report exactly:
+
+1. Architecture before
+2. Was current generation per-node or multi-node model call?
+3. Architecture after
+4. Files changed
+5. Lesson orchestrator behavior
+6. Per-node generation unit
+7. Attempt observability
+8. Transaction behavior
+9. Regeneration safety
+10. Concurrency/idempotency behavior
+11. Failure-isolation behavior
+12. Lesson summary/state ledger
+13. Tests added
+14. Test results
+15. AI Teacher non-regression
+16. Teaching Content non-regression
+17. Existing C2 acceptance non-regression
+18. Remaining known issues intentionally deferred to C2-2/C2-3/C2-4
+19. C2F-1…C2F-10 status
+20. Whether lesson 715 is safe for a MANUAL re-test
+
+Then STOP.
+
+DO NOT implement target cognitive-level redesign yet.
+DO NOT change Mapping Core.
+DO NOT implement Teaching Content changes.
+DO NOT modify AI Teacher logic.
+DO NOT regenerate lesson 715 automatically.
