@@ -1,31 +1,41 @@
 import assert from "node:assert/strict";
-import { preservesC1TargetCeiling } from "../lesson-mapping.js";
+import {
+  matchesTargetCognitiveDemand,
+  type TargetCognitiveDemand,
+} from "../../lib/c2-target-demand.js";
 
-const rememberOnly = [{
-  cognitiveLevel: "remember" as const,
-  isTargetCeiling: true,
-}];
+const resolvedApply: TargetCognitiveDemand = {
+  targetLevel: "apply",
+  confidence: "HIGH",
+  evidence: ["OBJECTIVE_PERFORMANCE", "SOURCE_PROCEDURE"],
+  c1Relation: "RAISED_ABOVE_C1",
+  reviewReasons: ["C1_TARGET_DISCREPANCY"],
+  resolverVersion: "test",
+};
 
 assert.equal(
-  preservesC1TargetCeiling(1, rememberOnly),
+  matchesTargetCognitiveDemand(resolvedApply, [{
+    cognitiveLevel: "apply",
+    isTargetCeiling: true,
+  }]),
   true,
-  "an explicit C1 level-1 ceiling accepts one REMEMBER level",
+  "a strong resolved APPLY demand may exceed a stale C1 REMEMBER prior",
 );
 assert.equal(
-  preservesC1TargetCeiling(1, [
+  matchesTargetCognitiveDemand(resolvedApply, [
     { cognitiveLevel: "remember", isTargetCeiling: false },
-    { cognitiveLevel: "understand", isTargetCeiling: true },
+    { cognitiveLevel: "analyze", isTargetCeiling: true },
   ]),
   false,
-  "C2 generation cannot raise an explicit C1 level-1 ceiling",
+  "the generated ceiling must match the server-resolved demand exactly",
 );
 assert.equal(
-  preservesC1TargetCeiling(null, [
-    { cognitiveLevel: "remember", isTargetCeiling: false },
-    { cognitiveLevel: "apply", isTargetCeiling: true },
-  ]),
-  true,
-  "an absent C1 ceiling does not manufacture a constraint",
+  matchesTargetCognitiveDemand(resolvedApply, [{
+    cognitiveLevel: "remember",
+    isTargetCeiling: true,
+  }]),
+  false,
+  "a generated path cannot be silently lowered to an old C1 prior",
 );
 
-console.log("C2 C1-ceiling constraint: 3/3 passed");
+console.log("C2 target-demand constraint: 3/3 passed");

@@ -50,6 +50,12 @@ import {
   validateTeachingContentGrounding,
   type TeachingContentGroundingAudit,
 } from "../lib/teaching-content-grounding.js";
+import {
+  matchesTargetCognitiveDemand,
+  resolveTargetCognitiveDemand,
+  targetDemandAllowsGeneration,
+  type TargetCognitiveDemand,
+} from "../lib/c2-target-demand.js";
 
 // ── Activity preservation helpers ─────────────────────────────────────────────
 
@@ -7283,14 +7289,12 @@ export interface CogPathInput {
   learningObjective: string | null;
   theoryContent:     string | null;
   blockType:         string | null;
-  /**
-   * Existing C1 ceiling, when one has been established. C2 generation may not
-   * raise or replace this curriculum decision.
-   */
+  /** Existing C1 estimate; C2 preserves it as a discrepancy signal, not a hard ceiling. */
   targetBloomLevel?: number | null;
   subjectName:       string;
   lessonTitle:       string;
   topicTitle:        string | null;
+  canonicalOutcomes?: string[];
   // Phase 2 teaching content (if available — enriches the generation context)
   childFriendlyExplanation?: string | null;
   basicExamples?:             string[] | null;
@@ -7319,10 +7323,11 @@ export interface CogPathLevel {
 export interface CogPathGenerationResult {
   nodeId:      number;
   skipped:     boolean;
-  skipCode?:   C2GenerationBlockCode | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
+  skipCode?:   C2GenerationBlockCode | "C2_TARGET_DEMAND_REVIEW_REQUIRED" | "C2_TARGET_DEMAND_MISMATCH" | "C2_CEILING_VIOLATION" | "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION" | "C2_PATH_STRUCTURE_REJECTED" | "C2_GROUNDING_REJECTED";
   skipReason?: string;
   levels:      CogPathLevel[];
   groundingAudit?: CognitivePathGroundingAudit;
+  targetDemand?: TargetCognitiveDemand;
 }
 
 import { z } from "zod";
@@ -7350,25 +7355,6 @@ const BLOOM_LEVEL_BY_INT = [
   "create",
 ] as const;
 
-export function preservesC1TargetCeiling(
-  targetBloomLevel: number | null | undefined,
-  levels: ReadonlyArray<Pick<CogPathLevel, "cognitiveLevel" | "isTargetCeiling">>,
-): boolean {
-  const requiredC1Ceiling =
-    targetBloomLevel && targetBloomLevel >= 1 && targetBloomLevel <= 6
-      ? BLOOM_LEVEL_BY_INT[targetBloomLevel - 1]
-      : null;
-  if (!requiredC1Ceiling) return true;
-
-  const selectedCeiling = levels.find((level) => level.isTargetCeiling)?.cognitiveLevel;
-  return selectedCeiling === requiredC1Ceiling
-    && levels.every(
-      (level) =>
-        BLOOM_LEVEL_BY_INT.indexOf(level.cognitiveLevel) <=
-        BLOOM_LEVEL_BY_INT.indexOf(requiredC1Ceiling),
-    );
-}
-
 const LEGACY_COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծրագրի փորձագետ ես, որը վերլուծում է MicroNode-ի ճանաչողական կառուցվածքը՝ Bloom-ի վերանայված տաքսոնոմիայի (2001) հիման վրա։
 
 ԿԱՆՈՆՆԵՐ.
@@ -7383,7 +7369,7 @@ const LEGACY_COGNITIVE_PATH_SYSTEM = `Դու հայ ուսումնական ծր�
 9. preferredInteractionTypes: выбери из: multiple_choice, multi_select, true_false, matching, classification, ordering, numeric_answer, short_answer, constructed_response, problem_solving.
 10. Взаимодействие и когнитивное требование — РАЗНЫЕ измерения. multiple_choice может оценивать Apply; written_response — не обязательно означает высшее мышление.
 11. Մի գրիր թվական, քանակ կամ թվային պնդում performanceObjective կամ successCriterion դաշտերում, եթե այն բառացիորեն տեսանելի չէ source-ում։ Եթե թիվ պետք չէ, այն մի օգտագործիր։
-12. Եթե C1 target ceiling-ը 1 (remember) է, վերադարձիր ՄԻԱՅՆ մեկ remember մակարդակ՝ sequence=1 և isTargetCeiling=true։ C1-ի նշված ceiling-ից բարձր մակարդակ երբեք մի վերադարձիր։
+12. Եթե տրված է server-resolved target demand, վերջին isTargetCeiling=true մակարդակը ՊԱՐՏԱԴԻՐ համընկնի դրա հետ։ C1 արժեքը միայն համատեքստային նախնական գնահատական է, ոչ թե պարտադիր ceiling։
 
 ОРИЕНТИРЫ (следуй учебным целям и содержанию, а не этим примерам механически):
 - определение/распознавание: remember → understand
@@ -7403,13 +7389,14 @@ SOURCE-GROUNDING CONTRACT:
 3. Preserve every number, notation, and operation exactly when you use it. Do not invent a number or a worked example.
 4. Use the fewest meaningful levels. A single level is valid. Do not mechanically add REMEMBER, and a path may start at UNDERSTAND, APPLY, or another supported level.
 5. Levels must be strictly increasing: remember < understand < apply < analyze < evaluate < create. Return exactly one target ceiling.
-6. If a C1 target ceiling is specified, the target ceiling must equal it and no returned level may be higher. Do not lower, raise, or replace that C1 decision.
+6. The server provides one resolved Target Cognitive Demand. The final target ceiling MUST equal that level. C1 is diagnostic context only and must not override the resolved demand.
 7. All performanceObjective and successCriterion text must be Armenian Unicode. Make the performance objective observable and the success criterion narrow, checkable evidence for that same source-backed action.
 8. minimumIndependentEvidence must be an integer from 1 to 5. preferredInteractionTypes may contain only: multiple_choice, multi_select, true_false, matching, classification, ordering, numeric_answer, short_answer, constructed_response, problem_solving.
 
 Return only the requested JSON object. No markdown and no prose.`;
 
 export function buildCogPathPrompt(input: CogPathInput): string {
+  const targetDemand = resolveTargetCognitiveDemand(input);
   const exList = input.exercises.length
     ? input.exercises.map((e) => `[${e.exerciseId}] ${e.exerciseText}`).join("\n")
     : "(no source exercises linked)";
@@ -7433,6 +7420,7 @@ blockType: ${input.blockType ?? "(unknown)"}
 C1 target ceiling: ${input.targetBloomLevel && input.targetBloomLevel >= 1 && input.targetBloomLevel <= 6
   ? `${input.targetBloomLevel} (${BLOOM_LEVEL_BY_INT[input.targetBloomLevel - 1]})`
   : "(not specified)"}
+Resolved Target Cognitive Demand (server authority): ${JSON.stringify(targetDemand)}
 
 theoryContent:
 ${input.theoryContent ?? "(empty)"}
@@ -7442,8 +7430,8 @@ Linked Source Exercises (${input.exercises.length}):
 ${exList}
 ${existingSection}
 
-Return a source-grounded cognitive path for this MicroNode. Include only levels
-that the source and C1 target directly support.
+Return a source-grounded cognitive path for this MicroNode. The final target ceiling
+must be "${targetDemand.targetLevel}". Include only levels that the source supports.
 {
   "levels": [
     {
@@ -7488,6 +7476,17 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       levels: [],
     };
   }
+  const targetDemand = resolveTargetCognitiveDemand(input);
+  if (!targetDemandAllowsGeneration(targetDemand)) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_TARGET_DEMAND_REVIEW_REQUIRED",
+      skipReason: "curriculum evidence is insufficient or conflicting for a trusted target cognitive demand",
+      levels: [],
+      targetDemand,
+    };
+  }
 
   async function callModel(): Promise<string> {
     const r = await openrouter.chat.completions.create({
@@ -7510,13 +7509,13 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
   }
   if (!parsed) {
     logger.warn({ nodeId: input.nodeId }, "cog-path: parse failed after retry");
-    return { nodeId: input.nodeId, skipped: true, skipReason: "AI returned unparseable JSON after retry", levels: [] };
+    return { nodeId: input.nodeId, skipped: true, skipReason: "AI returned unparseable JSON after retry", levels: [], targetDemand };
   }
 
   const validated = _cogPathResponseSchema.safeParse(parsed);
   if (!validated.success) {
     logger.warn({ nodeId: input.nodeId, error: validated.error }, "cog-path: Zod validation failed");
-    return { nodeId: input.nodeId, skipped: true, skipReason: `AI output failed validation: ${validated.error.message}`, levels: [] };
+    return { nodeId: input.nodeId, skipped: true, skipReason: `AI output failed validation: ${validated.error.message}`, levels: [], targetDemand };
   }
 
   const levels = validated.data.levels;
@@ -7541,6 +7540,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipCode: "C2_PATH_STRUCTURE_REJECTED",
       skipReason: `generated Cognitive Path violates required structure: ${structuralReason}`,
       levels: [],
+      targetDemand,
     };
   }
   if (!satisfiesLearningObjectiveCognitiveFloor(input.learningObjective, levels)) {
@@ -7550,20 +7550,18 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipCode: "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION",
       skipReason: "generated Cognitive Path falls below the canonical Learning Objective cognitive floor",
       levels: [],
+      targetDemand,
     };
   }
-  if (!preservesC1TargetCeiling(input.targetBloomLevel, levels)) {
-    const requiredC1Ceiling =
-      input.targetBloomLevel && input.targetBloomLevel >= 1 && input.targetBloomLevel <= 6
-        ? BLOOM_LEVEL_BY_INT[input.targetBloomLevel - 1]
-        : "the recorded C1 ceiling";
-      return {
-        nodeId: input.nodeId,
-        skipped: true,
-        skipCode: "C2_CEILING_VIOLATION",
-        skipReason: `generated Cognitive Path does not preserve C1 target ceiling ${requiredC1Ceiling}`,
-        levels: [],
-      };
+  if (!matchesTargetCognitiveDemand(targetDemand, levels)) {
+    return {
+      nodeId: input.nodeId,
+      skipped: true,
+      skipCode: "C2_TARGET_DEMAND_MISMATCH",
+      skipReason: `generated Cognitive Path target does not match resolved target demand ${targetDemand.targetLevel}`,
+      levels: [],
+      targetDemand,
+    };
   }
   const groundingAudit = validateCognitivePathGrounding(
     input.theoryContent,
@@ -7578,6 +7576,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
       skipReason: "generated Cognitive Path is not fully grounded in the MicroNode source",
       levels: [],
       groundingAudit,
+      targetDemand,
     };
   }
 
@@ -7586,6 +7585,7 @@ export async function generateCognitivePath(input: CogPathInput): Promise<CogPat
     skipped: false,
     levels: levels as CogPathLevel[],
     groundingAudit,
+    targetDemand,
   };
 }
 

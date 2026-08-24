@@ -6950,7 +6950,7 @@ async function buildCogPathInput(
 ): Promise<CogPathInput> {
   if (!node) throw new Error("MicroNode not found");
 
-  const [lesson, subject, topicRow, nodeExercises] = await Promise.all([
+  const [lesson, subject, topicRow, nodeExercises, canonicalOutcomes] = await Promise.all([
     db.select({ title: lessonsTable.title, subjectId: lessonsTable.subjectId })
       .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1).then((rows) => rows[0] ?? null),
     db.select({ name: subjectsTable.name })
@@ -6969,6 +6969,18 @@ async function buildCogPathInput(
     })
       .from(lessonExercisesTable)
       .where(and(eq(lessonExercisesTable.lessonId, lessonId), eq(lessonExercisesTable.relatedNodeId, node.id))),
+    db.select({ outcomeText: lessonOutcomesTable.outcomeText })
+      .from(lessonOutcomeNodeAlignmentsTable)
+      .innerJoin(
+        lessonOutcomesTable,
+        eq(lessonOutcomeNodeAlignmentsTable.lessonOutcomeId, lessonOutcomesTable.id),
+      )
+      .where(and(
+        eq(lessonOutcomeNodeAlignmentsTable.lessonId, lessonId),
+        eq(lessonOutcomeNodeAlignmentsTable.lessonNodeId, node.id),
+        eq(lessonOutcomesTable.status, "approved"),
+      ))
+      .orderBy(asc(lessonOutcomesTable.sequence)),
   ]);
 
   return {
@@ -6982,6 +6994,7 @@ async function buildCogPathInput(
     subjectName: subject?.name ?? "Unknown Subject",
     lessonTitle: lesson?.title ?? "Unknown Lesson",
     topicTitle: topicRow?.title ?? null,
+    canonicalOutcomes: canonicalOutcomes.map((outcome) => outcome.outcomeText),
     childFriendlyExplanation: node.childFriendlyExplanation ?? null,
     basicExamples: Array.isArray(node.basicExamples)
       ? (node.basicExamples as string[])

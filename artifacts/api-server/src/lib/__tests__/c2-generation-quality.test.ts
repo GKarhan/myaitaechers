@@ -8,8 +8,8 @@ import {
 import {
   cogPathLevelSchema,
   generateCognitivePath,
-  preservesC1TargetCeiling,
 } from "../../services/lesson-mapping.js";
+import { matchesTargetCognitiveDemand, type TargetCognitiveDemand } from "../c2-target-demand.js";
 
 const results: Array<{ name: string; pass: boolean; error?: unknown }> = [];
 function test(name: string, fn: () => void): void {
@@ -39,6 +39,15 @@ const applyLevel = {
   preferredInteractionTypes: ["numeric_answer"],
 };
 
+const applyDemand: TargetCognitiveDemand = {
+  targetLevel: "apply",
+  confidence: "HIGH",
+  evidence: ["OBJECTIVE_PERFORMANCE", "SOURCE_PROCEDURE"],
+  c1Relation: "MATCHES_C1",
+  reviewReasons: [],
+  resolverVersion: "test",
+};
+
 test("1. source-sufficient Remember C1 node is eligible", () => {
   const result = assessC2GenerationPreflight({
     nodeStatus: "approved",
@@ -50,7 +59,7 @@ test("1. source-sufficient Remember C1 node is eligible", () => {
   assert.equal(result.sourceAlignment?.status, "SUFFICIENT");
 });
 
-test("2. source-sufficient Apply C1 node is eligible without lowering its ceiling", () => {
+test("2. source-sufficient Apply node is eligible with its resolved target", () => {
   const result = assessC2GenerationPreflight({
     nodeStatus: "approved",
     theoryContent: applySource,
@@ -58,7 +67,7 @@ test("2. source-sufficient Apply C1 node is eligible without lowering its ceilin
     blockType: "rule",
   });
   assert.equal(result.eligible, true);
-  assert.equal(preservesC1TargetCeiling(3, [applyLevel]), true);
+  assert.equal(matchesTargetCognitiveDemand(applyDemand, [applyLevel]), true);
 });
 
 test("3. unsupported success-criterion claims remain invalid", () => {
@@ -71,10 +80,10 @@ test("3. unsupported success-criterion claims remain invalid", () => {
   assert.ok(audit.issueCounts.UNSUPPORTED_STRONG_CLAIM);
 });
 
-test("4. generic higher-level enrichment cannot exceed the C1 ceiling", () => {
-  assert.equal(preservesC1TargetCeiling(3, [
-    { cognitiveLevel: "apply", isTargetCeiling: true },
-    { cognitiveLevel: "analyze", isTargetCeiling: false },
+test("4. a generated target must match the resolved target demand", () => {
+  assert.equal(matchesTargetCognitiveDemand(applyDemand, [
+    { cognitiveLevel: "apply", isTargetCeiling: false },
+    { cognitiveLevel: "analyze", isTargetCeiling: true },
   ]), false);
 });
 
@@ -88,9 +97,9 @@ test("5. a fully grounded one-level path is accepted", () => {
   assert.equal(acceptance.accepted, true);
 });
 
-test("6. a path may begin above Remember when the C1 target supports it", () => {
+test("6. a path may begin above Remember when source evidence supports it", () => {
   assert.equal(applyLevel.cognitiveLevel, "apply");
-  assert.equal(preservesC1TargetCeiling(3, [applyLevel]), true);
+  assert.equal(matchesTargetCognitiveDemand(applyDemand, [applyLevel]), true);
 });
 
 test("7. heading-only C1 source is blocked before C2 generation", () => {

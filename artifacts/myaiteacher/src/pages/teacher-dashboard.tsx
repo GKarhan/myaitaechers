@@ -854,6 +854,7 @@ function LessonNodesPanel({
     existing: BulkCogPathEntry[];
     inProgress: BulkCogPathEntry[];
     c1Review: BulkCogPathEntry[];
+    targetReview: BulkCogPathEntry[];
     validationFailed: BulkCogPathEntry[];
     failed: BulkCogPathEntry[];
   };
@@ -1102,6 +1103,7 @@ function LessonNodesPanel({
       existing: [],
       inProgress: [],
       c1Review: [],
+      targetReview: [],
       validationFailed: [],
       failed: [],
     };
@@ -1149,6 +1151,12 @@ function LessonNodesPanel({
           setCogPathError((current) => ({
             ...current,
             [entry.nodeId]: detail ?? "C1 վերանայում է պահանջվում",
+          }));
+        } else if (entry.state === "BLOCKED_TARGET_REVIEW") {
+          summary.targetReview.push({ nodeId: entry.nodeId, title: entry.title, detail });
+          setCogPathError((current) => ({
+            ...current,
+            [entry.nodeId]: detail ?? "Թիրախային ճանաչողական պահանջը վերանայում է պահանջում",
           }));
         } else if (["PARSE_FAILURE", "VALIDATION_FAILURE"].includes(entry.state)) {
           summary.validationFailed.push({ nodeId: entry.nodeId, title: entry.title, detail });
@@ -2387,6 +2395,7 @@ function LessonNodesPanel({
                       { key: "existing", label: "Արդեն կար", entries: bulkCogPathSummary.existing, className: "border-sky-400/20 bg-sky-400/10 text-sky-200" },
                       { key: "inProgress", label: "Ընթացքի մեջ", entries: bulkCogPathSummary.inProgress, className: "border-violet-400/20 bg-violet-400/10 text-violet-200" },
                       { key: "c1Review", label: "C1 վերանայում", entries: bulkCogPathSummary.c1Review, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
+                      { key: "targetReview", label: "Թիրախի վերանայում", entries: bulkCogPathSummary.targetReview, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
                       { key: "validationFailed", label: "Վավերացում", entries: bulkCogPathSummary.validationFailed, className: "border-amber-400/20 bg-amber-400/10 text-amber-200" },
                       { key: "failed", label: "Սխալ", entries: bulkCogPathSummary.failed, className: "border-red-400/20 bg-red-400/10 text-red-200" },
                     ].filter((item) => item.entries.length > 0).map((item) => (
@@ -2401,6 +2410,7 @@ function LessonNodesPanel({
                   </div>
                   {[
                     ...bulkCogPathSummary.c1Review.map((entry) => ({ entry, label: "C1 վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
+                    ...bulkCogPathSummary.targetReview.map((entry) => ({ entry, label: "Թիրախի վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
                     ...bulkCogPathSummary.validationFailed.map((entry) => ({ entry, label: "Վավերացում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
                     ...bulkCogPathSummary.failed.map((entry) => ({ entry, label: "Սխալ", className: "border-red-400/25 bg-red-400/10 text-red-200" })),
                   ].length > 0 && (
@@ -2409,6 +2419,7 @@ function LessonNodesPanel({
                       <div className="flex flex-wrap gap-1">
                         {[
                           ...bulkCogPathSummary.c1Review.map((entry) => ({ entry, label: "C1 վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
+                          ...bulkCogPathSummary.targetReview.map((entry) => ({ entry, label: "Թիրախի վերանայում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
                           ...bulkCogPathSummary.validationFailed.map((entry) => ({ entry, label: "Վավերացում", className: "border-amber-400/25 bg-amber-400/10 text-amber-200" })),
                           ...bulkCogPathSummary.failed.map((entry) => ({ entry, label: "Սխալ", className: "border-red-400/25 bg-red-400/10 text-red-200" })),
                         ].map(({ entry, label, className }) => (

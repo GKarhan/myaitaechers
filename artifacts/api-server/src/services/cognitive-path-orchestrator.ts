@@ -12,6 +12,7 @@ import {
   type CogPathInput,
 } from "./lesson-mapping.js";
 import { invalidateLessonApproval } from "../lib/lesson-approval-invalidation.js";
+import type { TargetCognitiveDemand } from "../lib/c2-target-demand.js";
 
 export const COGNITIVE_PATH_JOB_TYPE = "generate_cognitive_paths";
 
@@ -22,6 +23,7 @@ export const COGNITIVE_PATH_STATES = [
   "SKIPPED_TEACHER_AUTHORED",
   "SKIPPED_EXISTING",
   "BLOCKED_C1_REVIEW",
+  "BLOCKED_TARGET_REVIEW",
   "GENERATED_NEEDS_REVIEW",
   "CONFIRMED",
   "PROVIDER_FAILURE",
@@ -40,6 +42,7 @@ export type CognitivePathNodeLedgerEntry = {
   attemptCount: number;
   levelCount: number;
   targetLevel: string | null;
+  targetDemand?: TargetCognitiveDemand;
   lastAttemptAt?: string;
   completedAt?: string;
 };
@@ -54,6 +57,7 @@ export type CognitivePathAttempt = {
   retryCount: number;
   levelCount: number;
   targetLevel: string | null;
+  targetDemand?: TargetCognitiveDemand;
   errorMessage?: string;
 };
 
@@ -235,7 +239,7 @@ export function summarizeCognitivePathLedger(
     "SKIPPED_TEACHER_AUTHORED",
     "SKIPPED_EXISTING",
   ]);
-  const blockedStates = new Set<CognitivePathState>(["BLOCKED_C1_REVIEW"]);
+  const blockedStates = new Set<CognitivePathState>(["BLOCKED_C1_REVIEW", "BLOCKED_TARGET_REVIEW"]);
   const failedStates = new Set<CognitivePathState>([
     "PROVIDER_FAILURE",
     "PARSE_FAILURE",
@@ -262,6 +266,9 @@ export function classifyCognitivePathResult(
   }
   if (result.skipCode?.startsWith("C1_")) {
     return { state: "BLOCKED_C1_REVIEW", reasonCode: result.skipCode };
+  }
+  if (result.skipCode === "C2_TARGET_DEMAND_REVIEW_REQUIRED") {
+    return { state: "BLOCKED_TARGET_REVIEW", reasonCode: result.skipCode };
   }
   if (result.skipCode) {
     return { state: "VALIDATION_FAILURE", reasonCode: result.skipCode };
@@ -527,7 +534,7 @@ export async function runCognitivePathOrchestrator(input: {
         generated = await generateCognitivePath(node.cogInput);
         if (
           generated.skipped
-          && ["C2_PATH_STRUCTURE_REJECTED", "C2_CEILING_VIOLATION", "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION", "C2_GROUNDING_REJECTED"]
+          && ["C2_PATH_STRUCTURE_REJECTED", "C2_TARGET_DEMAND_MISMATCH", "C2_CEILING_VIOLATION", "C2_OBJECTIVE_COGNITIVE_FLOOR_VIOLATION", "C2_GROUNDING_REJECTED"]
             .includes(generated.skipCode ?? "")
         ) {
           retryCount = 1;
@@ -574,7 +581,8 @@ export async function runCognitivePathOrchestrator(input: {
           completedAt,
           retryCount,
           levelCount: 0,
-          targetLevel: null,
+          targetLevel: generated.targetDemand?.targetLevel ?? null,
+          targetDemand: generated.targetDemand,
         };
         result = {
           ...result,
@@ -583,7 +591,8 @@ export async function runCognitivePathOrchestrator(input: {
             reasonCode: classified.reasonCode,
             completedAt,
             levelCount: 0,
-            targetLevel: null,
+            targetLevel: generated.targetDemand?.targetLevel ?? null,
+            targetDemand: generated.targetDemand,
           }),
           attempts: [...result.attempts, attempt],
         };
@@ -609,7 +618,8 @@ export async function runCognitivePathOrchestrator(input: {
           completedAt,
           retryCount,
           levelCount: persisted.savedLevels.length,
-          targetLevel: persisted.targetLevel,
+          targetLevel: generated.targetDemand?.targetLevel ?? persisted.targetLevel,
+          targetDemand: generated.targetDemand,
         };
         result = {
           ...result,
@@ -618,7 +628,8 @@ export async function runCognitivePathOrchestrator(input: {
             reasonCode: attempt.reasonCode,
             completedAt,
             levelCount: persisted.savedLevels.length,
-            targetLevel: persisted.targetLevel,
+            targetLevel: generated.targetDemand?.targetLevel ?? persisted.targetLevel,
+            targetDemand: generated.targetDemand,
           }),
           attempts: [...result.attempts, attempt],
         };
