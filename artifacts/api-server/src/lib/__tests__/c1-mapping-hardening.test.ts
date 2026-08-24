@@ -15,7 +15,6 @@ import {
   buildAutomaticOutcomeAlignmentPlan,
   collectDuplicateSuspicions,
   consolidateHighConfidenceOverSplits,
-  MappingGranularityReviewError,
   MappingSourcePlacementError,
   parseDuplicateResolutions,
   resolveDuplicateSuspicions,
@@ -457,11 +456,18 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     const audit = resolveDuplicateSuspicions(fixture.topics, fixture.suspicions, resolutions(fixture));
     assert.ok(audit.rejectedDecisionCount > 0, `${label} output must be rejected`);
     assert.ok(audit.unresolvedPairIds.length > 0, `${label} output must remain unresolved`);
-    assertPreservesOldMap(validPlacement, MappingGranularityReviewError, {
+    assert.ok((audit.rejectedPairIds?.length ?? 0) > 0, `${label} pair identity must remain reviewable`);
+    const gate = assertPass2PersistenceGates({
+      coverageValidation: validPlacement,
+      instructionalCoverage: validInstructionalCoverage,
+      sourceAlignment: validSourceAlignment,
       duplicateResolution: audit,
+      diagnostics,
     });
+    assert.equal(gate.disposition, "REVIEW_REQUIRED");
+    assert.ok(gate.reviewReasons.includes("DUPLICATE_REVIEW_REJECTED"));
   }
-  console.log("  ✓ contradictory, repeated, and unknown duplicate resolutions fail closed");
+  console.log("  ✓ contradictory, repeated, and unknown duplicate resolutions become review-required");
 }
 
 {
@@ -492,7 +498,16 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     const parsed = parseDuplicateResolutions(providerEntries);
     const audit = resolveDuplicateSuspicions(topics, suspicions, parsed.resolutions, [], parsed.malformedEntries);
     assert.ok(audit.rejectedDecisionCount > 0, `${label} must be retained as rejected output`);
-    assertPreservesOldMap(validPlacement, MappingGranularityReviewError, { duplicateResolution: audit });
+    assert.ok((audit.rejectedPairIds?.length ?? 0) > 0, `${label} pair identity must be retained`);
+    const gate = assertPass2PersistenceGates({
+      coverageValidation: validPlacement,
+      instructionalCoverage: validInstructionalCoverage,
+      sourceAlignment: validSourceAlignment,
+      duplicateResolution: audit,
+      diagnostics,
+    });
+    assert.equal(gate.disposition, "REVIEW_REQUIRED");
+    assert.ok(gate.reviewReasons.includes("DUPLICATE_REVIEW_REJECTED"));
   }
   const omitted = resolveDuplicateSuspicions(topics, suspicions, []);
   assert.doesNotThrow(() => assertPass2PersistenceGates({
@@ -502,7 +517,7 @@ console.log("  ✓ all invalid placement categories block persistence and preser
     duplicateResolution: omitted,
     diagnostics,
   }));
-  console.log("  ✓ parser rejects malformed duplicate decisions while omitted pairs persist as review-required");
+  console.log("  ✓ parser rejects malformed duplicate actions while all unresolved pairs persist as review-required");
 }
 
 {

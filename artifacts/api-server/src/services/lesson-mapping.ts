@@ -2666,8 +2666,13 @@ export interface Pass2Result {
   unresolvedAtomicityFindings: GranularityFinding[];
   /** Bounded pre-persistence merges applied only to explicit HIGH decisions. */
   granularityConsolidation: GranularityConsolidation;
-  /** Duplicate suspicion audit; unresolved pairs block persistence. */
+  /** Duplicate suspicion audit; unresolved pairs are teacher-review requirements. */
   duplicateResolution: DuplicateResolutionAudit;
+  /**
+   * A bounded semantic-review call was exhausted or malformed. Structural
+   * validation still decides whether this candidate can persist as a draft.
+   */
+  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
   sourceAlignment: Pass2SourceAlignment;
   sourceReallocation: SourceReallocationResult;
   /** One deterministic post-review ownership reconciliation pass. */
@@ -3702,6 +3707,12 @@ export interface DuplicateResolutionAudit {
   resolvedDistinctCount: number;
   mergedCount: number;
   unresolvedPairIds: Array<{ candidateAId: string; candidateBId: string }>;
+  /**
+   * Candidate pairs whose provider decision was malformed, contradictory, or
+   * otherwise rejected by the server. They remain review-required rather than
+   * becoming an unsafe automatic merge.
+   */
+  rejectedPairIds?: Array<{ candidateAId: string; candidateBId: string }>;
   rejectedDecisionCount: number;
   actions: GranularityConsolidation["actions"];
 }
@@ -3755,7 +3766,7 @@ export function collectDuplicateSuspicions(
 /**
  * Applies only explicit HIGH-confidence same-topic merges. Every other
  * candidate remains visible for teacher review; malformed or unknown decisions
- * are still rejected before persistence.
+ * are rejected as automatic actions and retained as review-required evidence.
  */
 export function resolveDuplicateSuspicions(
   topics: Pass2TopicResult[],
@@ -3770,10 +3781,19 @@ export function resolveDuplicateSuspicions(
   const byPair = new Map<string, DuplicateResolution>();
   const invalidCandidateKeys = new Set<string>();
   const invalidEntries: Array<{ candidateAId: string; candidateBId: string }> = [];
+  const rejectedPairIds: Array<{ candidateAId: string; candidateBId: string }> = [];
+  const rejectedPairKeys = new Set<string>();
+  const addRejectedPair = (candidateAId: string, candidateBId: string) => {
+    const pairKey = candidatePairKey(candidateAId, candidateBId);
+    if (rejectedPairKeys.has(pairKey)) return;
+    rejectedPairKeys.add(pairKey);
+    rejectedPairIds.push({ candidateAId, candidateBId });
+  };
   let rejectedDecisionCount = malformedEntries.length;
   for (const entry of malformedEntries) {
     const pairKey = candidatePairKey(entry.candidateAId, entry.candidateBId);
     invalidEntries.push(entry);
+    addRejectedPair(entry.candidateAId, entry.candidateBId);
     if (candidateKeys.has(pairKey)) invalidCandidateKeys.add(pairKey);
   }
   for (const resolution of resolutions) {
@@ -3784,6 +3804,7 @@ export function resolveDuplicateSuspicions(
         candidateAId: resolution.candidateAId,
         candidateBId: resolution.candidateBId,
       });
+      addRejectedPair(resolution.candidateAId, resolution.candidateBId);
       continue;
     }
     if (byPair.has(pairKey)) {
@@ -3791,6 +3812,7 @@ export function resolveDuplicateSuspicions(
       // ambiguous untrusted output, even if its values happen to match.
       rejectedDecisionCount++;
       invalidCandidateKeys.add(pairKey);
+      addRejectedPair(resolution.candidateAId, resolution.candidateBId);
       continue;
     }
     byPair.set(pairKey, resolution);
@@ -3800,6 +3822,7 @@ export function resolveDuplicateSuspicions(
     resolvedDistinctCount: 0,
     mergedCount: 0,
     unresolvedPairIds: [],
+    rejectedPairIds,
     rejectedDecisionCount,
     actions: [],
   };
@@ -3868,6 +3891,7 @@ export function resolveDuplicateSuspicions(
     }
     if (resolution && resolution.decision !== "REVIEW_REQUIRED") {
       audit.rejectedDecisionCount++;
+      addRejectedPair(suspicion.candidateAId, suspicion.candidateBId);
     }
     addUnresolved(suspicion.candidateAId, suspicion.candidateBId);
   }
@@ -4648,11 +4672,17 @@ export function buildAutomaticOutcomeAlignmentPlan(
 /**
  * The route deletes old Topics/MicroNodes only after runPass2Pipeline resolves.
  * Keeping source/provenance/structural gates in this pure assertion makes that
- * replacement boundary explicit and provider-free testable. Source-alignment
- * and completed-but-unresolved pedagogical atomicity findings are deliberately
- * not lesson-level hard gates: source-safe candidates persist as teacher-review
- * drafts with their audit while valid sibling nodes remain available.
+ * replacement boundary explicit and provider-free testable. Typed exceptions
+ * are HARD_FAILURE conditions; a REVIEW_REQUIRED return is safe to persist as a
+ * teacher-review draft and must never be treated as automatic approval.
  */
+export type Pass2PersistenceGateDisposition = "PERSIST" | "REVIEW_REQUIRED";
+
+export interface Pass2PersistenceGateResult {
+  disposition: Pass2PersistenceGateDisposition;
+  reviewReasons: string[];
+}
+
 export function assertPass2PersistenceGates(input: {
   coverageValidation: CoverageValidationResult;
   instructionalCoverage: InstructionalCoverageResult;
@@ -4664,13 +4694,7 @@ export function assertPass2PersistenceGates(input: {
   atomicityVerificationDiagnostics?: AtomicityVerificationDiagnostics;
   /** A parsed semantic-review action that fails server validation is untrusted. */
   rejectedSemanticReviewDecisionCount?: number;
-}): void {
-  if (input.atomicityReviewUnavailableReason) {
-    throw new MappingAtomicityReviewUnavailableError(
-      input.atomicityReviewUnavailableReason,
-      input.atomicityVerificationDiagnostics,
-    );
-  }
+}): Pass2PersistenceGateResult {
   if (!input.coverageValidation.valid) {
     throw new MappingSourcePlacementError(input.coverageValidation);
   }
@@ -4681,13 +4705,24 @@ export function assertPass2PersistenceGates(input: {
   if (input.instructionalCoverage.unresolvedActivityIndices.length > 0) {
     throw new MappingInstructionalCoverageError(input.instructionalCoverage, input.diagnostics);
   }
-  if (input.duplicateResolution.rejectedDecisionCount > 0) {
-    throw new MappingGranularityReviewError(input.duplicateResolution);
-  }
-  // Atomicity is enforced per candidate rather than all-or-nothing for the
-  // lesson. The route turns these verified unresolved findings into
-  // `needs_review` nodes, excludes them from canonical Outcome alignments, and
-  // records the finding in mapping metadata. They never become approved data.
+  const reviewReasons = [
+    ...(input.atomicityReviewUnavailableReason
+      ? [`ATOMICITY_REVIEW_UNAVAILABLE:${input.atomicityReviewUnavailableReason}`]
+      : []),
+    ...(input.unresolvedAtomicityFindings?.length
+      ? ["ATOMICITY_REVIEW_REQUIRED"]
+      : []),
+    ...(input.duplicateResolution.unresolvedPairIds.length
+      ? ["DUPLICATE_REVIEW_REQUIRED"]
+      : []),
+    ...(input.duplicateResolution.rejectedDecisionCount > 0
+      ? ["DUPLICATE_REVIEW_REJECTED"]
+      : []),
+  ];
+  return {
+    disposition: reviewReasons.length > 0 ? "REVIEW_REQUIRED" : "PERSIST",
+    reviewReasons,
+  };
 }
 
 /**
@@ -4732,9 +4767,8 @@ export function preserveUnresolvedInstructionalBlocksForReview(
 /**
  * Produces the terminal atomicity trace before the destructive persistence
  * boundary. A review interruption is intentionally distinct from a completed
- * review that found broad nodes. Technical interruption remains ineligible for
- * persistence; completed non-atomic findings remain review-only until the
- * route persists their node-scoped disposition.
+ * review that found broad nodes. Both are review-only once structural gates
+ * pass; the route persists their node-scoped disposition.
  */
 export function finalizeAtomicityVerificationDiagnostics(input: {
   verification: AtomicityVerificationDiagnostics;
@@ -4754,6 +4788,7 @@ export function finalizeAtomicityVerificationDiagnostics(input: {
       ...base,
       validationState: "NOT_RUN",
       finalFailureCode: "TECHNICAL_RETRY_EXHAUSTED",
+      persistenceEligible: true,
     };
   }
   if (input.unresolvedFindingCount > 0) {
@@ -5223,6 +5258,7 @@ export async function runPass2Pipeline(
     sourceAlignmentReconciliation,
     atomicityRepair,
     atomicityVerification,
+    atomicityReviewUnavailableReason,
     unresolvedAtomicityFindings,
     diagnostics,
   };

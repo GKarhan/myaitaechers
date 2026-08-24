@@ -19,6 +19,7 @@ import {
 import { eq, asc, inArray } from "drizzle-orm";
 import { detectCompoundLO, detectMegaNode } from "./granularity-heuristics.js";
 import { validateCognitivePathGrounding } from "./cognitive-path-grounding.js";
+import { requiresPedagogicalReview } from "./teaching-content-readiness.js";
 
 export interface ValidationIssue {
   code: string;
@@ -201,6 +202,16 @@ export async function validateLessonForFinalApproval(
         count: unresolvedSourceNodes.length,
       });
     }
+  }
+  const unresolvedPedagogicalReviewNodes = nodes.filter((node) =>
+    requiresPedagogicalReview(node.changeReason),
+  );
+  if (unresolvedPedagogicalReviewNodes.length > 0) {
+    errors.push({
+      code: "MICRONODE_PEDAGOGICAL_REVIEW_REQUIRED",
+      messageArm: `${unresolvedPedagogicalReviewNodes.length} MicroNode-ը պահանջում է անհատական ուսուցչական վերանայում՝ նախքան դասի վերջնական հաստատումը։`,
+      count: unresolvedPedagogicalReviewNodes.length,
+    });
   }
   if (Array.isArray(sourceAlignment?.nodes)) {
     const safeReviewCount = sourceAlignment.nodes.filter(

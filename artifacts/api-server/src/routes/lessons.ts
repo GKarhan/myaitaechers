@@ -37,6 +37,8 @@ import { assessApprovedMicroNodeC2Readiness } from "../lib/c2-readiness.js";
 import {
   hasCompleteTeachingContent,
   getMissingTeachingContentPatch,
+  requiresExplicitTeacherReview,
+  requiresPedagogicalReview,
   requiresSourceAlignmentReview,
   summarizeCurrentTeachingContent,
   shouldRunBoundedPhase2Repair,
@@ -254,6 +256,45 @@ async function markSourceAlignmentReviewedByTeacher(lessonId: number, nodeId: nu
       quality: {
         ...(metadata.quality ?? {}),
         sourceAlignment: { ...alignment, nodes },
+      },
+    },
+  }).where(eq(lessonsTable.id, lessonId));
+}
+
+/** Records the explicit teacher resolution while preserving original mapping audit findings. */
+async function markPedagogicalReviewResolvedByTeacher(
+  lessonId: number,
+  nodeId: number,
+  teacherId: number,
+): Promise<void> {
+  const [lesson] = await db.select({ mappingMetadata: lessonsTable.mappingMetadata })
+    .from(lessonsTable).where(eq(lessonsTable.id, lessonId)).limit(1);
+  const metadata = (lesson?.mappingMetadata ?? {}) as Record<string, any>;
+  const pedagogicalReview = metadata?.quality?.pedagogicalReview;
+  if (!pedagogicalReview) return;
+
+  const priorResolutions = Array.isArray(pedagogicalReview.resolutions)
+    ? pedagogicalReview.resolutions
+    : [];
+  if (priorResolutions.some((entry: Record<string, unknown>) => entry.nodeId === nodeId)) return;
+
+  await db.update(lessonsTable).set({
+    mappingMetadata: {
+      ...metadata,
+      quality: {
+        ...(metadata.quality ?? {}),
+        pedagogicalReview: {
+          ...pedagogicalReview,
+          resolutions: [
+            ...priorResolutions,
+            {
+              nodeId,
+              disposition: "RESOLVED_BY_TEACHER",
+              reviewedAt: new Date().toISOString(),
+              reviewedBy: teacherId,
+            },
+          ],
+        },
       },
     },
   }).where(eq(lessonsTable.id, lessonId));
@@ -3181,11 +3222,17 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
   // P6.5: Teacher approval — only allow safe status transitions
   if (status !== undefined && ["approved", "needs_review", "draft"].includes(status)) {
     patch.status = status;
-    if (status === "approved" && existing.changeReason?.startsWith("SOURCE_ALIGNMENT:")) {
+    if (status === "approved" && requiresExplicitTeacherReview(existing.changeReason)) {
       // Preserve the original diagnostic in mappingMetadata, but clear the
-      // unresolved-node marker after an explicit teacher resolution so trusted
-      // authoring tools can use the reviewed node.
-      patch.changeReason = "SOURCE_ALIGNMENT_REVIEWED_BY_TEACHER";
+      // unresolved-node marker after an explicit teacher resolution.
+      patch.changeReason = [
+        ...(requiresSourceAlignmentReview(existing.changeReason)
+          ? ["SOURCE_ALIGNMENT_REVIEWED_BY_TEACHER"]
+          : []),
+        ...(requiresPedagogicalReview(existing.changeReason)
+          ? ["PEDAGOGICAL_REVIEW_RESOLVED_BY_TEACHER"]
+          : []),
+      ].join("|");
     }
   }
   // P12: Allow teacher to move a MicroNode between topics (or make standalone)
@@ -3272,6 +3319,9 @@ router.post("/lessons/:lessonId/nodes/:nodeId/update", requireAuth, requireLesso
   }
   if (patch.status === "approved" && req.userId !== undefined) {
     await markSourceAlignmentReviewedByTeacher(lessonId, nodeId, req.userId);
+    if (requiresPedagogicalReview(existing.changeReason)) {
+      await markPedagogicalReviewResolvedByTeacher(lessonId, nodeId, req.userId);
+    }
   }
   res.json({
     id: updated.id,
@@ -3322,6 +3372,7 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
       cogPathStatus: lessonNodesTable.cogPathStatus,
       theoryContent: lessonNodesTable.theoryContent,
       learningObjective: lessonNodesTable.learningObjective,
+      changeReason: lessonNodesTable.changeReason,
     })
     .from(lessonNodesTable)
     .where(
@@ -3331,15 +3382,18 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
           eq(lessonNodesTable.status, "draft"),
           eq(lessonNodesTable.status, "needs_review"),
         ),
-        // Source-alignment review drafts require an explicit teacher decision
-        // through the individual node editor; bulk approval must never bypass it.
-        sql`COALESCE(${lessonNodesTable.changeReason}, '') NOT LIKE 'SOURCE_ALIGNMENT:%'`,
         // P1.5: Never bulk-approve nodes that have no Learning Objective.
         isNotNull(lessonNodesTable.learningObjective),
         sql`TRIM(${lessonNodesTable.learningObjective}) != ''`,
       ),
     );
-  const readinessByNodeId = await Promise.all(candidates.map(async (candidate) => ({
+  const reviewBlockedNodeIds = candidates
+    .filter((candidate) => requiresExplicitTeacherReview(candidate.changeReason))
+    .map((candidate) => candidate.id);
+  const approvalCandidates = candidates.filter(
+    (candidate) => !requiresExplicitTeacherReview(candidate.changeReason),
+  );
+  const readinessByNodeId = await Promise.all(approvalCandidates.map(async (candidate) => ({
     nodeId: candidate.id,
     readiness: await getApprovedMicroNodeC2Readiness({
       nodeId: candidate.id,
@@ -3373,6 +3427,8 @@ router.post("/lessons/:lessonId/nodes/approve-all", requireAuth, requireLessonAu
     skippedLOCount,          // P1.5: nodes skipped because LO was blank
     skippedC2Count:          c2BlockedNodeIds.length,
     skippedC2NodeIds:        c2BlockedNodeIds,
+    skippedReviewCount:      reviewBlockedNodeIds.length,
+    skippedReviewNodeIds:    reviewBlockedNodeIds,
     sequentialDependencies: depResult,
   });
 });
@@ -3641,10 +3697,12 @@ router.post("/lessons/:lessonId/nodes/:nodeId/enrich", requireAuth, requireLesso
     res.status(404).json({ error: "Node not found" });
     return;
   }
-  if (requiresSourceAlignmentReview(node.changeReason)) {
+  if (requiresExplicitTeacherReview(node.changeReason)) {
     res.status(422).json({
-      error: "SOURCE_ALIGNMENT_REVIEW_REQUIRED",
-      message: "Այս MicroNode-ի աղբյուրային հիմնավորումը ուսուցչի վերանայում է պահանջում, նախքան AI ուսուցման բովանդակություն գեներացնելը։",
+      error: requiresSourceAlignmentReview(node.changeReason)
+        ? "SOURCE_ALIGNMENT_REVIEW_REQUIRED"
+        : "PEDAGOGICAL_REVIEW_REQUIRED",
+      message: "Այս MicroNode-ը ուսուցչի անհատական վերանայում է պահանջում, նախքան AI ուսուցման բովանդակություն գեներացնելը։",
     });
     return;
   }
@@ -4829,6 +4887,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
     const positionForCandidateId = (candidateId: string) => pass2.sourceAlignment.nodes.find(
       (entry) => entry.microNodeId === candidateId,
     );
+    const duplicatePairKey = (candidateAId: string, candidateBId: string) =>
+      [candidateAId, candidateBId].sort().join("|");
+    const rejectedDuplicatePairKeys = new Set(
+      (pass2.duplicateResolution.rejectedPairIds ?? []).map((pair) =>
+        duplicatePairKey(pair.candidateAId, pair.candidateBId),
+      ),
+    );
     for (const finding of pass2.unresolvedAtomicityFindings) {
       const entry = (finding.microNodeId ? positionForCandidateId(finding.microNodeId) : undefined)
         ?? pass2.sourceAlignment.nodes.find((candidate) =>
@@ -4843,12 +4908,27 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
       }
     }
     for (const pair of pass2.duplicateResolution.unresolvedPairIds) {
+      const reason = rejectedDuplicatePairKeys.has(
+        duplicatePairKey(pair.candidateAId, pair.candidateBId),
+      )
+        ? "DUPLICATE_REVIEW_REJECTED"
+        : "DUPLICATE_REVIEW_REQUIRED";
       for (const candidateId of [pair.candidateAId, pair.candidateBId]) {
         const entry = positionForCandidateId(candidateId);
         if (entry) {
           addPedagogicalReviewReason(
             `${entry.topicSequence}:${entry.microNodeIndex}`,
-            "DUPLICATE_REVIEW_REQUIRED",
+            reason,
+          );
+        }
+      }
+    }
+    if (pass2.atomicityReviewUnavailableReason) {
+      for (const topic of pass2.topics) {
+        for (const [microNodeIndex] of topic.microNodes.entries()) {
+          addPedagogicalReviewReason(
+            `${topic.sequence}:${microNodeIndex}`,
+            `ATOMICITY_REVIEW_UNAVAILABLE:${pass2.atomicityReviewUnavailableReason}`,
           );
         }
       }
@@ -5145,16 +5225,25 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         reasonCode: `ATOMICITY_REVIEW_REQUIRED:${finding.issue}:${finding.confidence}`,
       };
     });
-    const persistedDuplicateReview = pass2.duplicateResolution.unresolvedPairIds.map((pair) => ({
-      nodeIds: [pair.candidateAId, pair.candidateBId].flatMap((candidateId) => {
-        const entry = positionForCandidateId(candidateId);
-        const node = entry
-          ? nodeByMapPosition.get(`${entry.topicSequence}:${entry.microNodeIndex}`)
-          : undefined;
-        return node ? [node.id] : [];
-      }),
-      reasonCode: "DUPLICATE_REVIEW_REQUIRED",
-    }));
+    const persistedDuplicateReview = pass2.duplicateResolution.unresolvedPairIds.map((pair) => {
+      const reviewRejected = rejectedDuplicatePairKeys.has(
+        duplicatePairKey(pair.candidateAId, pair.candidateBId),
+      );
+      return {
+        candidateAId: pair.candidateAId,
+        candidateBId: pair.candidateBId,
+        nodeIds: [pair.candidateAId, pair.candidateBId].flatMap((candidateId) => {
+          const entry = positionForCandidateId(candidateId);
+          const node = entry
+            ? nodeByMapPosition.get(`${entry.topicSequence}:${entry.microNodeIndex}`)
+            : undefined;
+          return node ? [node.id] : [];
+        }),
+        disposition: "REVIEW_REQUIRED",
+        reviewRejected,
+        reasonCode: reviewRejected ? "DUPLICATE_REVIEW_REJECTED" : "DUPLICATE_REVIEW_REQUIRED",
+      };
+    });
 
     // ── P5.1 — Activity placement validation ──────────────────────────────────
     // Detects EXERCISE/ACTIVITY/HOMEWORK blocks that ended up in sourceBlockIndices
@@ -5315,8 +5404,16 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           hasMergeTarget: !!finding.mergeIntoMicroNodeTitle,
         })),
         pedagogicalReview: {
-          required: persistedAtomicityReview.length > 0 || persistedDuplicateReview.length > 0,
+          required: persistedAtomicityReview.length > 0
+            || persistedDuplicateReview.length > 0
+            || !!pass2.atomicityReviewUnavailableReason,
           atomicityFindings: persistedAtomicityReview,
+          reviewUnavailable: pass2.atomicityReviewUnavailableReason
+            ? {
+                reasonCode: "ATOMICITY_REVIEW_UNAVAILABLE",
+                reason: pass2.atomicityReviewUnavailableReason,
+              }
+            : null,
           duplicatePairs: persistedDuplicateReview,
         },
         granularityConsolidation: pass2.granularityConsolidation,
@@ -5326,6 +5423,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           mergedCount: pass2.duplicateResolution.mergedCount,
           unresolvedPairCount: pass2.duplicateResolution.unresolvedPairIds.length,
           rejectedDecisionCount: pass2.duplicateResolution.rejectedDecisionCount,
+          rejectedPairCount: pass2.duplicateResolution.rejectedPairIds?.length ?? 0,
         },
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignmentReconciliation: pass2.sourceAlignmentReconciliation,
@@ -5720,12 +5818,14 @@ router.post("/lessons/:lessonId/generate-teaching-content", requireAuth, require
       const batch = nodes.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(batch.map(async (node) => {
-        if (requiresSourceAlignmentReview(node.changeReason)) {
+        if (requiresExplicitTeacherReview(node.changeReason)) {
           return {
             nodeId: node.id,
             blocked: true as const,
-            blockCode: "SOURCE_ALIGNMENT_REVIEW_REQUIRED",
-            skipReason: "Այս MicroNode-ի աղբյուրային հիմնավորումը ուսուցչի վերանայում է պահանջում",
+            blockCode: requiresSourceAlignmentReview(node.changeReason)
+              ? "SOURCE_ALIGNMENT_REVIEW_REQUIRED"
+              : "PEDAGOGICAL_REVIEW_REQUIRED",
+            skipReason: "Այս MicroNode-ը ուսուցչի անհատական վերանայում է պահանջում",
           };
         }
         // A source-grounded C1 review candidate can continue as YELLOW. Only

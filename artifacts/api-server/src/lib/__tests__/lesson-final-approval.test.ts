@@ -832,6 +832,22 @@ it("H3: explicit node approval records teacher resolution without erasing the or
   }
 });
 
+it("H4: unresolved pedagogical review blocks final approval until an individual teacher resolves it", async () => {
+  const nodeSnap = await getNode(NODE.id);
+  assert.ok(nodeSnap);
+  try {
+    await db.update(lessonNodesTable).set({
+      status: "approved",
+      changeReason: "DUPLICATE_REVIEW_REJECTED",
+    }).where(eq(lessonNodesTable.id, NODE.id));
+
+    const result = await validateLessonForFinalApproval(LESSON_ID);
+    assert.ok(result.errors.some((error) => error.code === "MICRONODE_PEDAGOGICAL_REVIEW_REQUIRED"));
+  } finally {
+    await restoreNode(nodeSnap!);
+  }
+});
+
 // ── P: Positive path ─────────────────────────────────────────────────────────
 
 it("P1: dynamic lesson clean → approved: true (200)", async () => {

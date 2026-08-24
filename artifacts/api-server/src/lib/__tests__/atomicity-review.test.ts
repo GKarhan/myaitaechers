@@ -10,9 +10,6 @@ import {
   normalizeActivityPlacements,
   validatePass2SourceAlignment,
   runBoundedAtomicityVerification,
-  MappingAtomicityReviewUnavailableError,
-  MappingGranularityReviewError,
-  MappingSourceAlignmentError,
   type Pass2TopicResult,
 } from "../../services/lesson-mapping.js";
 import { validateInstructionalCoverage, validateSourceCoverage } from "../coverage-validator.js";
@@ -464,15 +461,17 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
 {
   const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
   const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
-  assert.throws(() => assertPass2PersistenceGates({
+  const result = assertPass2PersistenceGates({
     coverageValidation: validateSourceCoverage(source.length, topics),
     instructionalCoverage: validateInstructionalCoverage(source, topics),
     sourceAlignment: validatePass2SourceAlignment(topics, source),
     duplicateResolution: { candidatePairCount: 0, resolvedDistinctCount: 0, mergedCount: 0, unresolvedPairIds: [], rejectedDecisionCount: 0, actions: [] },
     diagnostics,
     atomicityReviewUnavailableReason: "INVALID_RESPONSE",
-  }), MappingAtomicityReviewUnavailableError);
-  console.log("  ✓ unavailable or malformed atomicity review blocks persistence");
+  });
+  assert.equal(result.disposition, "REVIEW_REQUIRED");
+  assert.deepEqual(result.reviewReasons, ["ATOMICITY_REVIEW_UNAVAILABLE:INVALID_RESPONSE"]);
+  console.log("  ✓ unavailable or malformed atomicity review becomes a persisted review requirement");
 }
 
 {
@@ -539,7 +538,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
   });
   assert.equal(technical.validationState, "NOT_RUN");
   assert.equal(technical.finalFailureCode, "TECHNICAL_RETRY_EXHAUSTED");
-  assert.equal(technical.persistenceEligible, false);
+  assert.equal(technical.persistenceEligible, true);
   assert.equal(technical.generatedMicroNodeCount, 4);
 
   const nonAtomic = finalizeAtomicityVerificationDiagnostics({
@@ -589,7 +588,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
 {
   const source = blocks([{ blockType: "RULE", sourceText: "A successor number comes immediately after a natural number." }]);
   const topics = [topic([node("t1:n0", "Successor", "Identify successor number.", [0])])];
-  assert.throws(() => assertPass2PersistenceGates({
+  const result = assertPass2PersistenceGates({
     coverageValidation: validateSourceCoverage(source.length, topics),
     instructionalCoverage: validateInstructionalCoverage(source, topics),
     sourceAlignment: validatePass2SourceAlignment(topics, source),
@@ -602,8 +601,10 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
       actions: [],
     },
     diagnostics,
-  }), MappingGranularityReviewError);
-  console.log("  ✓ malformed duplicate-review output still blocks persistence");
+  });
+  assert.equal(result.disposition, "REVIEW_REQUIRED");
+  assert.ok(result.reviewReasons.includes("DUPLICATE_REVIEW_REJECTED"));
+  console.log("  ✓ malformed duplicate-review output becomes a persisted review requirement");
 }
 
 {
@@ -684,7 +685,7 @@ function assertNoCoverageDuplicates(source: ReturnType<typeof blocks>, topics: P
     integrativeExerciseIndices: [],
   }, validatePass2SourceAlignment(topics, source));
   assert.equal(unresolved.length, 1);
-  console.log("  ✓ a malformed split and MEDIUM finding remain pre-persistence failures");
+  console.log("  ✓ a malformed split and MEDIUM finding remain review-required");
 }
 
 {

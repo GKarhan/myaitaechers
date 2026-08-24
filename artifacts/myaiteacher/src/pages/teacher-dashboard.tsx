@@ -3661,6 +3661,17 @@ type MappingAuditReport = {
       approvedCandidates: number;
       candidatesWithoutReview: number;
     };
+    pedagogicalReview?: {
+      required: boolean;
+      atomicityFindings?: Array<{ nodeId: number | null; reasonCode: string }>;
+      reviewUnavailable?: { reasonCode: string; reason: string } | null;
+      duplicatePairs?: Array<{
+        nodeIds: number[];
+        reasonCode: string;
+        disposition?: "REVIEW_REQUIRED";
+        reviewRejected?: boolean;
+      }>;
+    };
     sourceAlignment?: {
       valid: boolean;
       sufficientCount: number;
@@ -3702,6 +3713,7 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
   const consolidation = report?.quality?.granularityConsolidation;
   const exerciseProvenance = report?.quality?.exerciseProvenance;
   const teachingContentReview = report?.quality?.teachingContentReview;
+  const pedagogicalReview = report?.quality?.pedagogicalReview;
   const sourceAlignment = report?.quality?.sourceAlignment;
   const unresolvedSourceAlignmentCount = sourceAlignment?.nodes.filter(
     (node) => node.status !== "SUFFICIENT" && node.reviewStatus !== "RESOLVED_BY_TEACHER",
@@ -3804,6 +3816,24 @@ function MappingAuditPanel({ lessonId }: { lessonId: number }) {
                   {teachingContentReview.candidatesWithoutReview > 0
                     ? ` · ${teachingContentReview.candidatesWithoutReview} այլ կարգավիճակով`
                     : ""}
+                </div>
+              )}
+              {pedagogicalReview?.required && (
+                <div className="rounded border border-amber-400/35 bg-amber-400/[0.10] p-2 text-[10px] text-amber-50">
+                  <div className="font-medium">
+                    ⚠ Քարտեզագրումը պահպանվել է, սակայն որոշ MicroNode-ներ պահանջում են ուսուցչի վերանայում։
+                  </div>
+                  <div className="mt-1 opacity-85">
+                    {pedagogicalReview.duplicatePairs?.length
+                      ? `Կրկնվող/մասնատված թեկնածու զույգեր՝ ${pedagogicalReview.duplicatePairs.length}։ `
+                      : ""}
+                    {pedagogicalReview.atomicityFindings?.length
+                      ? `Մանրացման դիտարկումներ՝ ${pedagogicalReview.atomicityFindings.length}։ `
+                      : ""}
+                    {pedagogicalReview.reviewUnavailable
+                      ? "Սեմանտիկ ստուգումը չի ավարտվել, ուստի քարտեզը պահպանվել է վերանայման կարգավիճակով։"
+                      : "Ազդված MicroNode-ները նշված են needs_review կարգավիճակով։"}
+                  </div>
                 </div>
               )}
               {sourceAlignment && (

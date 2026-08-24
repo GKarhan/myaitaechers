@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { assessC2GenerationPreflight } from "../c2-generation-preflight.js";
-import { getMissingTeachingContentPatch, hasCompleteTeachingContent, requiresSourceAlignmentReview, shouldRunBoundedPhase2Repair, summarizeCurrentTeachingContent } from "../teaching-content-readiness.js";
+import {
+  getMissingTeachingContentPatch,
+  hasCompleteTeachingContent,
+  requiresExplicitTeacherReview,
+  requiresPedagogicalReview,
+  requiresSourceAlignmentReview,
+  shouldRunBoundedPhase2Repair,
+  summarizeCurrentTeachingContent,
+} from "../teaching-content-readiness.js";
 
 let passed = 0;
 function test(name: string, check: () => void) {
@@ -80,5 +88,18 @@ test("23 source-alignment review is a hard block for every enrichment entry poin
   assert.equal(requiresSourceAlignmentReview("SOURCE_ALIGNMENT_REVIEWED_BY_TEACHER"), false);
   assert.equal(requiresSourceAlignmentReview(null), false);
 });
+test("24 every unresolved semantic-review reason requires individual teacher review", () => {
+  for (const reason of [
+    "ATOMICITY_REVIEW_REQUIRED:UNDER_SPLIT:HIGH",
+    "ATOMICITY_REVIEW_UNAVAILABLE:INVALID_RESPONSE",
+    "DUPLICATE_REVIEW_REQUIRED",
+    "DUPLICATE_REVIEW_REJECTED",
+    "SOURCE_ALIGNMENT:PARTIAL:OBJECTIVE_TOO_BROAD",
+  ]) {
+    assert.equal(requiresExplicitTeacherReview(reason), true, reason);
+  }
+  assert.equal(requiresPedagogicalReview("PEDAGOGICAL_REVIEW_RESOLVED_BY_TEACHER"), false);
+  assert.equal(requiresExplicitTeacherReview("PEDAGOGICAL_REVIEW_RESOLVED_BY_TEACHER"), false);
+});
 
-console.log(`\nMapping pipeline closure: ${passed}/23 passed`);
+console.log(`\nMapping pipeline closure: ${passed}/24 passed`);

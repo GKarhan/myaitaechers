@@ -15,6 +15,33 @@ export function requiresSourceAlignmentReview(changeReason: string | null | unde
   return typeof changeReason === "string" && changeReason.startsWith("SOURCE_ALIGNMENT:");
 }
 
+const PEDAGOGICAL_REVIEW_REASONS = new Set([
+  "ATOMICITY_REVIEW_REQUIRED",
+  "DUPLICATE_REVIEW_REQUIRED",
+  "DUPLICATE_REVIEW_REJECTED",
+]);
+
+/**
+ * Semantic mapping findings are source-safe but must receive an explicit
+ * teacher decision before bulk approval, Phase 2 enrichment, or final delivery.
+ * Resolved markers are deliberately not included, so an individual approval is
+ * the only path that clears this boundary.
+ */
+export function requiresPedagogicalReview(changeReason: string | null | undefined): boolean {
+  if (typeof changeReason !== "string") return false;
+  return changeReason.split("|").some((reason) =>
+    [...PEDAGOGICAL_REVIEW_REASONS].some(
+      (reviewReason) => reason === reviewReason || reason.startsWith(`${reviewReason}:`),
+    )
+    || reason.startsWith("ATOMICITY_REVIEW_UNAVAILABLE:"),
+  );
+}
+
+/** Any unresolved review reason that requires an individual teacher action. */
+export function requiresExplicitTeacherReview(changeReason: string | null | undefined): boolean {
+  return requiresSourceAlignmentReview(changeReason) || requiresPedagogicalReview(changeReason);
+}
+
 export function hasCompleteTeachingContent(content: TeachingContentFields): boolean {
   return typeof content.childFriendlyExplanation === "string"
     && content.childFriendlyExplanation.trim().length > 0
