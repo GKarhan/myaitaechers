@@ -1,0 +1,63 @@
+READ-ONLY FOLLOW-UP DIAGNOSTIC. DO NOT CHANGE CODE OR DATA.
+
+We have already diagnosed failed automatic mapping job 169 / lesson 705.
+
+Known failure:
+SOURCE_PLACEMENT_FAILED_PRE_PERSISTENCE
+
+Final coverage result:
+- missingCount: 0
+- duplicateCount: 4
+- invalidCount: 0
+- emptyMicroNodeCount: 0
+- duplicateIndices: [7, 8, 10, 20]
+
+The remaining unanswered question is:
+
+Did these duplicate placements originate in the AI Pass 2 output,
+or can our deterministic post-processing introduce/preserve them?
+
+Inspect ONLY the relevant code around:
+
+- normalizeActivityPlacements(...)
+- reconcileSameTopicSourceAlignment(...)
+- validateSourceCoverage(...)
+
+in:
+artifacts/api-server/src/services/lesson-mapping.ts
+and any directly called helper needed to answer this question.
+
+TASK:
+
+1. Explain exactly what normalizeActivityPlacements() changes.
+2. Explain exactly what reconcileSameTopicSourceAlignment() changes.
+3. Determine from code whether either function can:
+   - assign the same sourceBlockIndex to more than one destination,
+   - copy an index without removing its previous placement,
+   - preserve a duplicate that should have been resolved.
+
+4. Trace duplicate ownership semantics across:
+   - MicroNode.sourceBlockIndices
+   - MicroNode exercise indices
+   - topic additional exercises
+   - supporting-material indices
+   - unmapped indices
+
+5. For duplicate indices [7,8,10,20], inspect any available persisted/source data and report what type/content each block represents, if available read-only.
+
+6. State one of these conclusions with evidence:
+
+A) duplicates must already come from raw AI Pass 2 output
+B) deterministic normalization/reconciliation can create duplicates
+C) deterministic normalization/reconciliation cannot create them but fails to resolve them
+D) current evidence is insufficient to distinguish
+
+Do NOT fix anything.
+Do NOT change validation.
+Do NOT rerun AI mapping.
+Do NOT add logging yet.
+Do NOT refactor.
+
+Return concise evidence with file paths, functions, and relevant code snippets.
+
+STOP.
