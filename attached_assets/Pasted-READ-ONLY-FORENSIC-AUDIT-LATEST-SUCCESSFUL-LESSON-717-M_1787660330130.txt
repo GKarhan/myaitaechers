@@ -1,0 +1,372 @@
+READ-ONLY FORENSIC AUDIT — LATEST SUCCESSFUL LESSON 717 MAPPING
+WHY DID 0 MICRONODES SURVIVE?
+
+DO NOT CHANGE CODE.
+DO NOT CHANGE DATA.
+DO NOT RERUN MAPPING.
+DO NOT RESTART SERVICES.
+DO NOT TOUCH C2.
+DO NOT GENERATE COGNITIVE PATHS.
+
+We now have a successful persisted automatic mapping for Lesson 717
+(Հայոց լեզու 8 — Մակբայ, pages 18–29).
+
+Important observed result:
+
+- mapping persisted successfully
+- 7 Topics persisted
+- 0 canonical MicroNodes
+- 34 additional exercises persisted
+- UI reports 41 source blocks requiring review
+
+This means the previous source-placement blocker appears to be resolved
+for this run, but the resulting pedagogical map is unusable because
+zero MicroNodes survived.
+
+We must now determine EXACTLY where the MicroNode candidates stopped.
+
+This is a READ-ONLY forensic audit.
+
+==================================================
+1. IDENTIFY THE EXACT LATEST SUCCESSFUL RUN
+==================================================
+
+Find the newest successful automatic mapping job for:
+
+lessonId = 717
+
+Report:
+
+mappingJobId
+createdAt
+completedAt
+status
+source block count
+verified source block count
+quarantined block count
+topic count
+candidate count if available
+canonical MicroNode count
+review-only candidate count
+exercise count
+additional exercise count
+unmapped/review count
+
+Use persisted job/result/report diagnostics and logs only.
+
+==================================================
+2. RECONSTRUCT THE CANDIDATE FUNNEL
+==================================================
+
+For this exact run, reconstruct the full funnel:
+
+verified instructional blocks
+→ initial candidate discovery
+→ candidates after cleanup
+→ candidates entering semantic review
+→ M3-2 semantic decisions
+→ candidates entering atomicity/granularity review
+→ candidates entering promotion evaluation
+→ PROMOTE
+→ REVIEW_REQUIRED
+→ REJECT
+→ UNRESOLVED
+→ canonical MicroNodes persisted
+
+Give counts at every observable stage.
+
+If a count is not persisted, write:
+
+NOT OBSERVABLE
+
+Do not infer a count.
+
+==================================================
+3. LIST EVERY DISCOVERED/REVIEW CANDIDATE
+==================================================
+
+Use M3-1 review artifacts, M3-2 decision ledger,
+promotion diagnostics, mappingReport, and logs.
+
+For every candidate that can be reconstructed, report:
+
+candidateId
+topic
+title
+learningObjective
+sourceBlockIndices
+exerciseReferences
+semanticDecision
+semanticReasonCodes
+atomicity status
+source-support status
+promotionDecision
+promotionReasonCodes
+finalDisposition
+
+Do not include large raw source text.
+
+==================================================
+4. FOCUS ON THESE REQUIRED KNOWLEDGE TARGETS
+==================================================
+
+Determine whether the mapper discovered a candidate corresponding to
+each of these curriculum targets:
+
+A. Մակբայի ընդհանուր բնութագիր
+B. Տեղի մակբայներ
+C. Ժամանակի մակբայներ
+D. Ձևի մակբայներ
+E. Չափի և քանակի մակբայներ
+
+For EACH target answer:
+
+DISCOVERED AS CANDIDATE:
+YES / NO / NOT OBSERVABLE
+
+M3-2 DECISION:
+<decision or NOT OBSERVABLE>
+
+PROMOTION DECISION:
+<decision or NOT OBSERVABLE>
+
+FINAL DISPOSITION:
+<canonical/review/rejected/unresolved/removed/not observable>
+
+EXACT REASON CODES:
+[...]
+
+LAST CONFIRMED PIPELINE STAGE:
+<stage>
+
+Do not judge from Topic existence alone.
+We need candidate-level evidence.
+
+==================================================
+5. EXERCISE EVIDENCE CHECK
+==================================================
+
+The successful map retained exercises that appear pedagogically aligned
+with these targets.
+
+Inspect only safe metadata/references and determine whether candidate
+assessment/support logic had access to exercises such as:
+
+- place adverbs: exercises 5, 6, 7
+- time adverbs: exercises 9, 10, 12
+- manner adverbs: exercises 14, 15, 16, 18, 19, 20
+- degree/quantity adverbs: exercises 21, 23
+- general adverb knowledge: exercises 2, 3, 4, 26, 27, 29, etc.
+
+For each major candidate, report:
+
+AVAILABLE RELEVANT EXERCISE EVIDENCE:
+YES / NO / NOT OBSERVABLE
+
+USED BY CANDIDATE ASSESSMENT:
+YES / NO / NOT OBSERVABLE
+
+If relevant exercises existed but were not available to candidate
+assessment, identify the exact architectural boundary causing that.
+
+==================================================
+6. DETERMINE WHETHER M3-2 IS OVER-FAIL-CLOSED
+==================================================
+
+Audit the current M3-2 semantic contract against this real run.
+
+Specifically determine whether valid coherent targets were withheld
+because of:
+
+- missing semantic decision
+- malformed decision
+- semantic decision ledger mismatch
+- candidate ID mismatch
+- source partition mismatch
+- overly strict split validation
+- unresolved ambiguity
+- lexical/semantic disagreement
+- source-support requirement
+- exercise evidence not reaching the decision
+- atomicity rule
+- promotion adapter
+- another gate
+
+Do NOT assume M3-2 is at fault.
+
+Prove which gate actually stopped each candidate.
+
+==================================================
+7. TOPIC ≠ MICRONODE CHECK
+==================================================
+
+The UI currently has Topics:
+
+1. Մակբայի ընդհանուր բնութագիր
+2. Տեղի մակբայներ
+3. Ժամանակի մակբայներ
+4. Ձևի մակբայներ
+5. Չափի և քանակի մակբայների հիմունքներ
+6. Ամփոփում և հարցեր
+7. Կիրառական առաջադրանքներ
+
+but zero MicroNodes.
+
+Determine whether the architecture currently allows this state because:
+
+A. Topics are generated independently and candidates failed later
+B. candidate cleanup removed all MicroNodes
+C. semantic review withheld all candidates
+D. promotion rejected all candidates
+E. another reason
+
+Give evidence.
+
+==================================================
+8. REVIEW-ONLY OBSERVABILITY CHECK
+==================================================
+
+UI says:
+
+0 nodes ready
+0 nodes [other status]
+41 source blocks recommended for review
+
+Yet no review-only MicroNodes are visible.
+
+Determine:
+
+- how many M3-1 reviewCandidate artifacts exist for this successful run;
+- whether they are persisted in mapping_jobs.result;
+- whether the API returns them;
+- whether teacher UI currently renders them;
+- whether “41 source blocks requiring review” refers to source blocks,
+  candidate artifacts, or both.
+
+This is important:
+
+M3-1 was specifically intended to prevent non-promoted pedagogical
+candidates from becoming invisible.
+
+Determine whether M3-1 worked in persistence but the UI does not expose it,
+or whether candidate artifacts were never created.
+
+==================================================
+9. CLASSIFY THE FUNDAMENTAL FAILURE
+==================================================
+
+Choose the strongest evidence-supported classification:
+
+A. CANDIDATE DISCOVERY FAILURE
+Important knowledge targets never became candidates.
+
+B. SEMANTIC REVIEW FAILURE
+Candidates existed but M3-2 incorrectly withheld them.
+
+C. ATOMICITY / GRANULARITY FAILURE
+Candidates existed but were removed/review-held by atomicity logic.
+
+D. PROMOTION FAILURE
+Valid candidates reached promotion but were not promoted.
+
+E. EXERCISE-EVIDENCE CONNECTIVITY FAILURE
+Relevant exercises existed but candidate assessment could not use them.
+
+F. REVIEW-ARTIFACT VISIBILITY FAILURE
+Candidates are safely preserved but teacher UI hides them.
+
+G. MULTIPLE FAILURES
+
+Do not choose based on architecture alone.
+Use this successful run's persisted evidence.
+
+==================================================
+10. DETERMINE THE SYSTEMIC ROOT CAUSE
+==================================================
+
+We do NOT want a Lesson 717 patch.
+
+Answer:
+
+Why can a curriculum section with:
+
+- verified instructional theory,
+- clear semantic categories,
+- aligned exercises,
+- valid Topics,
+
+end with ZERO canonical MicroNodes?
+
+Identify the earliest shared systemic boundary responsible.
+
+Distinguish:
+
+SYMPTOM:
+0 MicroNodes
+
+IMMEDIATE CAUSE:
+<gate/decision>
+
+ROOT CAUSE:
+<architectural contract problem>
+
+==================================================
+11. DO NOT IMPLEMENT YET
+==================================================
+
+Even if the root cause appears obvious:
+
+DO NOT CHANGE CODE.
+
+We need the evidence before the next systemic Mapping Core change.
+
+==================================================
+12. FINAL REPORT
+==================================================
+
+Return:
+
+A. Exact run
+B. Candidate funnel table
+C. Candidate decision table
+D. Five required knowledge-target traces
+E. Exercise-evidence connectivity findings
+F. M3-2 findings
+G. M3-1 review-artifact findings
+H. Exact gate that produced zero canonical MicroNodes
+I. Systemic root cause
+J. Recommended systemic correction boundary
+
+End EXACTLY with:
+
+SOURCE PLACEMENT FIX WORKED FOR THIS RUN: YES / NO
+
+IMPORTANT TARGETS WERE DISCOVERED AS CANDIDATES:
+YES / PARTIALLY / NO / NOT OBSERVABLE
+
+M3-1 REVIEW ARTIFACTS EXIST:
+YES / NO / NOT OBSERVABLE
+
+M3-2 IS THE PROVEN BLOCKER:
+YES / NO / PARTIALLY / NOT PROVEN
+
+EXERCISE EVIDENCE REACHED CANDIDATE ASSESSMENT:
+YES / NO / PARTIALLY / NOT OBSERVABLE
+
+EARLIEST PROVEN MICRONODE LOSS BOUNDARY:
+<stage>
+
+FUNDAMENTAL FAILURE CLASS:
+<A/B/C/D/E/F/G>
+
+SAFE TO CHANGE CODE NOW:
+YES / NO
+
+If YES:
+state the exact systemic invariant/boundary that should change.
+
+If NO:
+state exactly what evidence is still missing.
+
+STOP.
+DO NOT IMPLEMENT.
