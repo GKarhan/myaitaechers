@@ -121,12 +121,14 @@ export function normalizeActivityPlacements(
   dedupedAdditional: number[];
   stepBRescued: number[];
   stepCRescued: number[];
+  removedCandidates: PrePromotionRemovedCandidate[];
 } {
   // ── Phase 1: Evict activity blocks from sourceBlockIndices ──────────────────
   // EXERCISE/ACTIVITY/HOMEWORK have no place in sourceBlockIndices — those blocks
   // are never inserted into lesson_exercises via that path.
   // Remove them so they can be rescued to a proper activity destination below.
   const evictedFromSource: number[] = [];
+  const originalNodeBeforeActivityEviction = new Map<Pass2MicroNode, Pass2MicroNode>();
   for (const topic of topics) {
     for (const mn of topic.microNodes) {
       const kept: number[] = [];
@@ -134,6 +136,14 @@ export function normalizeActivityPlacements(
         if (!isValidBlockIndex(idx, blocks)) { kept.push(idx); continue; }
         const block = blocks[idx];
         if (block && ACTIVITY_BLOCK_TYPES.has(block.blockType)) {
+          if (!originalNodeBeforeActivityEviction.has(mn)) {
+            originalNodeBeforeActivityEviction.set(mn, {
+              ...mn,
+              sourceBlockIndices: [...mn.sourceBlockIndices],
+              supportingMaterialIndices: [...mn.supportingMaterialIndices],
+              exercises: mn.exercises.map((exercise) => ({ ...exercise })),
+            });
+          }
           evictedFromSource.push(idx);
           // Do NOT add to kept — evicted from theory placement.
         } else {
@@ -149,11 +159,24 @@ export function normalizeActivityPlacements(
   // (same rule the safety-net enforces at AI-output time, now extended to
   // post-eviction state). Strip it and rescue its exercises to additionalExercises.
   const postEvictionStripped: string[] = [];
+  const removedCandidates: PrePromotionRemovedCandidate[] = [];
   for (const topic of topics) {
     const keepMNs: Pass2MicroNode[] = [];
     for (const mn of topic.microNodes) {
       if (mn.sourceBlockIndices.length === 0) {
         postEvictionStripped.push(mn.title);
+        const originalNode = originalNodeBeforeActivityEviction.get(mn);
+        if (originalNode) {
+          removedCandidates.push({
+            topic: {
+              sequence: topic.sequence,
+              title: topic.title,
+              topicType: topic.topicType,
+            },
+            node: originalNode,
+            removalReason: "ACTIVITY_AS_CORE_SOURCE",
+          });
+        }
         // Rescue exercises to additionalExercises — Phases 2/3 will dedup.
         topic.additionalExercises.push(...mn.exercises);
       } else {
@@ -279,7 +302,15 @@ export function normalizeActivityPlacements(
     }
   }
 
-  return { evictedFromSource, postEvictionStripped, dedupedExercises, dedupedAdditional, stepBRescued, stepCRescued };
+  return {
+    evictedFromSource,
+    postEvictionStripped,
+    dedupedExercises,
+    dedupedAdditional,
+    stepBRescued,
+    stepCRescued,
+    removedCandidates,
+  };
 }
 
 /**
@@ -299,15 +330,23 @@ export function removeStructuralHeadingSourceOwnership(
   movedHeadingIndices: number[];
   removedMicroNodeTitles: string[];
   rescuedExerciseIndices: number[];
+  removedCandidates: PrePromotionRemovedCandidate[];
 } {
   const movedHeadingIndices: number[] = [];
   const removedMicroNodeTitles: string[] = [];
   const rescuedExerciseIndices: number[] = [];
+  const removedCandidates: PrePromotionRemovedCandidate[] = [];
   const headingHome = new Map<number, Pass2TopicResult>();
 
   for (const topic of topics) {
     const keptNodes: Pass2MicroNode[] = [];
     for (const node of topic.microNodes) {
+      const originalNode: Pass2MicroNode = {
+        ...node,
+        sourceBlockIndices: [...node.sourceBlockIndices],
+        supportingMaterialIndices: [...node.supportingMaterialIndices],
+        exercises: node.exercises.map((exercise) => ({ ...exercise })),
+      };
       const keptSource: number[] = [];
       for (const index of node.sourceBlockIndices) {
         const block = isValidBlockIndex(index, blocks) ? blocks[index] : undefined;
@@ -322,6 +361,15 @@ export function removeStructuralHeadingSourceOwnership(
 
       if (node.sourceBlockIndices.length === 0) {
         removedMicroNodeTitles.push(node.title);
+        removedCandidates.push({
+          topic: {
+            sequence: topic.sequence,
+            title: topic.title,
+            topicType: topic.topicType,
+          },
+          node: originalNode,
+          removalReason: "STRUCTURAL_CORE_SOURCE",
+        });
         for (const exercise of node.exercises) {
           topic.additionalExercises.push(exercise);
           rescuedExerciseIndices.push(exercise.blockIndex);
@@ -362,6 +410,7 @@ export function removeStructuralHeadingSourceOwnership(
     movedHeadingIndices: [...new Set(movedHeadingIndices)].sort((a, b) => a - b),
     removedMicroNodeTitles,
     rescuedExerciseIndices: [...new Set(rescuedExerciseIndices)].sort((a, b) => a - b),
+    removedCandidates,
   };
 }
 
@@ -1762,6 +1811,11 @@ export interface Pass2Exercise {
 export interface Pass2MicroNode {
   /** Server-owned identity, stable only for this in-memory Pass 2 run. */
   candidateId?: string;
+  /**
+   * Internal run-only marker for an exact repeat of an already-emitted
+   * candidate. It is never persisted as a canonical MicroNode.
+   */
+  duplicateDecisionEmissionOf?: string;
   /** Explicit Phase 3A candidate decision used at the persistence boundary. */
   promotionState?: KnowledgeCandidatePromotionState;
   promotionReasonCodes?: KnowledgeCandidateReviewReasonCode[];
@@ -2260,6 +2314,234 @@ export interface KnowledgeCandidatePromotionDecision {
   coreSourceBlockIndices: number[];
 }
 
+/**
+ * Candidate IDs are run-local identities. They are assigned before any semantic
+ * diagnostics so repair-created candidates cannot fall back to a mutable array
+ * index after merges or source-safe cleanup.
+ */
+export interface KnowledgeCandidateIdentityDiagnostics {
+  generatedCandidateCount: number;
+  collisionCount: number;
+  collisions: Array<{
+    originalCandidateId: string;
+    assignedCandidateId: string;
+    topicSequence: number;
+    microNodeIndex: number;
+  }>;
+  /** A separate invariant from collisions: one candidate must emit one decision. */
+  duplicateDecisionCandidateIds: string[];
+}
+
+function emptyKnowledgeCandidateIdentityDiagnostics(): KnowledgeCandidateIdentityDiagnostics {
+  return {
+    generatedCandidateCount: 0,
+    collisionCount: 0,
+    collisions: [],
+    duplicateDecisionCandidateIds: [],
+  };
+}
+
+function mergeKnowledgeCandidateIdentityDiagnostics(
+  left: KnowledgeCandidateIdentityDiagnostics | undefined,
+  right: KnowledgeCandidateIdentityDiagnostics,
+): KnowledgeCandidateIdentityDiagnostics {
+  const duplicateDecisionCandidateIds = [...new Set([
+    ...(left?.duplicateDecisionCandidateIds ?? []),
+    ...right.duplicateDecisionCandidateIds,
+  ])].sort();
+  return {
+    generatedCandidateCount: (left?.generatedCandidateCount ?? 0) + right.generatedCandidateCount,
+    collisionCount: (left?.collisionCount ?? 0) + right.collisionCount,
+    collisions: [...(left?.collisions ?? []), ...right.collisions],
+    duplicateDecisionCandidateIds,
+  };
+}
+
+function candidateEmissionFingerprint(
+  topic: Pass2TopicResult,
+  node: Pass2MicroNode,
+  microNodeIndex: number,
+): string {
+  const requestedId = node.candidateId?.trim() || `t${topic.sequence}:n${microNodeIndex}`;
+  const sortedIndices = (indices: readonly number[]) => [...indices].sort((left, right) => left - right);
+  const sortedExercises = [...node.exercises]
+    .map((exercise) => exercise.blockIndex)
+    .sort((left, right) => left - right);
+  return JSON.stringify({
+    requestedId,
+    topicSequence: topic.sequence,
+    topicTitle: topic.title,
+    topicType: topic.topicType,
+    title: node.title,
+    learningObjective: node.learningObjective,
+    microNodeType: node.microNodeType,
+    coreSourceBlockIndices: sortedIndices(node.sourceBlockIndices),
+    supportingSourceBlockIndices: sortedIndices(node.supportingMaterialIndices),
+    exerciseBlockIndices: sortedExercises,
+  });
+}
+
+/**
+ * Assigns stable, unique IDs to all current candidates without deleting or
+ * merging any distinct candidate. Exact repeated emissions are marked to emit
+ * one authoritative decision; distinct ID collisions are deterministically
+ * suffixed and recorded for teacher/audit diagnostics.
+ */
+export function normalizeKnowledgeCandidateIdentities(
+  topics: Pass2TopicResult[],
+): KnowledgeCandidateIdentityDiagnostics {
+  const diagnostics = emptyKnowledgeCandidateIdentityDiagnostics();
+  const assignedIds = new Set<string>();
+  const canonicalIdByEmission = new Map<string, string>();
+
+  for (const topic of topics) {
+    for (const [microNodeIndex, node] of topic.microNodes.entries()) {
+      const requestedId = node.candidateId?.trim() || `t${topic.sequence}:n${microNodeIndex}`;
+      const emissionFingerprint = candidateEmissionFingerprint(topic, node, microNodeIndex);
+      const priorCanonicalId = canonicalIdByEmission.get(emissionFingerprint);
+      if (priorCanonicalId) {
+        node.candidateId = priorCanonicalId;
+        node.duplicateDecisionEmissionOf = priorCanonicalId;
+        diagnostics.duplicateDecisionCandidateIds.push(priorCanonicalId);
+        continue;
+      }
+      delete node.duplicateDecisionEmissionOf;
+      if (!node.candidateId?.trim()) diagnostics.generatedCandidateCount++;
+      let candidateId = requestedId;
+      let suffix = 1;
+      while (assignedIds.has(candidateId)) {
+        candidateId = `${requestedId}:dup${suffix++}`;
+      }
+      if (candidateId !== requestedId) {
+        diagnostics.collisionCount++;
+        diagnostics.collisions.push({
+          originalCandidateId: requestedId,
+          assignedCandidateId: candidateId,
+          topicSequence: topic.sequence,
+          microNodeIndex,
+        });
+      }
+      node.candidateId = candidateId;
+      assignedIds.add(candidateId);
+      canonicalIdByEmission.set(emissionFingerprint, candidateId);
+    }
+  }
+  diagnostics.duplicateDecisionCandidateIds = [
+    ...new Set(diagnostics.duplicateDecisionCandidateIds),
+  ].sort();
+  return diagnostics;
+}
+
+/**
+ * Removes only exact repeated emissions already classified by
+ * normalizeKnowledgeCandidateIdentities(). The authoritative twin retains the
+ * same source/exercise references, so this is identity cleanup—not a source
+ * ownership or promotion-policy decision.
+ */
+export function discardDuplicateKnowledgeCandidateEmissions(
+  topics: Pass2TopicResult[],
+): number {
+  let removedCount = 0;
+  for (const topic of topics) {
+    const before = topic.microNodes.length;
+    topic.microNodes = topic.microNodes.filter((node) => !node.duplicateDecisionEmissionOf);
+    removedCount += before - topic.microNodes.length;
+  }
+  return removedCount;
+}
+
+export type KnowledgeCandidateReviewPracticeReference = Pick<
+  KnowledgeCandidatePracticeReference,
+  "blockIndex" | "kind"
+>;
+
+export interface KnowledgeCandidateReviewArtifact {
+  candidateId: string;
+  provisionalTopic: KnowledgeCandidate["provisionalTopic"];
+  title: string;
+  learningObjective: string;
+  microNodeType: Pass2MicroNode["microNodeType"];
+  coreSourceBlockIndices: number[];
+  supportingSourceBlockIndices: number[];
+  /** Numeric/enum references only; source paragraph strings never leave Pass 2. */
+  practiceReferences: KnowledgeCandidateReviewPracticeReference[];
+  semanticStatus: KnowledgeCandidateSemanticStatus;
+  assessment: KnowledgeCandidateAssessment;
+  promotion: {
+    state: Exclude<KnowledgeCandidatePromotionState, "PROMOTE">;
+    reasonCodes: KnowledgeCandidateReviewReasonCode[];
+    checks: KnowledgeCandidatePromotionChecks;
+    sourceSupport: Exclude<KnowledgeCandidateSourceSupport, "UNASSESSED">;
+  };
+  reviewContext: {
+    /** Semantic uncertainty is distinct from a provider transport/review outage. */
+    semanticStatus: KnowledgeCandidateSemanticStatus;
+    sourceSupport: Exclude<KnowledgeCandidateSourceSupport, "UNASSESSED">;
+    sourceOwnership: KnowledgeCandidateCheckState;
+    atomicity: KnowledgeCandidateCheckState;
+    providerAtomicityReview: "AVAILABLE" | "UNAVAILABLE";
+    providerAtomicityReviewReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  };
+}
+
+export interface KnowledgeCandidateReviewSummary {
+  count: number;
+  byPromotionState: Partial<Record<Exclude<KnowledgeCandidatePromotionState, "PROMOTE">, number>>;
+  providerAtomicityReview: "AVAILABLE" | "UNAVAILABLE";
+  providerAtomicityReviewReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+}
+
+/** A pre-promotion cleanup removed this candidate from the canonical map only. */
+export interface PrePromotionRemovedCandidate {
+  topic: KnowledgeCandidate["provisionalTopic"];
+  node: Pass2MicroNode;
+  removalReason: "STRUCTURAL_CORE_SOURCE" | "ACTIVITY_AS_CORE_SOURCE";
+}
+
+function buildKnowledgeCandidateReviewArtifact(
+  candidate: KnowledgeCandidate,
+  microNodeType: Pass2MicroNode["microNodeType"],
+  decision: KnowledgeCandidatePromotionDecision,
+  atomicityReviewUnavailableReason: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED" | undefined,
+): KnowledgeCandidateReviewArtifact {
+  if (decision.state === "PROMOTE") {
+    throw new Error("Canonical candidates cannot be serialized as review-only artifacts");
+  }
+  return {
+    candidateId: candidate.candidateId,
+    provisionalTopic: { ...candidate.provisionalTopic },
+    title: candidate.title,
+    learningObjective: candidate.learningObjective,
+    microNodeType,
+    coreSourceBlockIndices: [...candidate.coreSourceBlockIndices],
+    supportingSourceBlockIndices: [...candidate.supportingSourceBlockIndices],
+    practiceReferences: candidate.practiceReferences.map(({ blockIndex, kind }) => ({
+      blockIndex,
+      kind,
+    })),
+    semanticStatus: candidate.semanticStatus,
+    assessment: { ...candidate.assessment },
+    promotion: {
+      state: decision.state,
+      reasonCodes: [...decision.reasonCodes],
+      checks: { ...decision.checks },
+      sourceSupport: decision.sourceSupport,
+    },
+    reviewContext: {
+      semanticStatus: candidate.semanticStatus,
+      sourceSupport: decision.sourceSupport,
+      sourceOwnership: decision.checks.sourceOwnership,
+      atomicity: decision.checks.atomicity,
+      providerAtomicityReview: atomicityReviewUnavailableReason
+        ? "UNAVAILABLE"
+        : "AVAILABLE",
+      ...(atomicityReviewUnavailableReason
+        ? { providerAtomicityReviewReason: atomicityReviewUnavailableReason }
+        : {}),
+    },
+  };
+}
+
 function hasActivityBlockType(block: Pass1Block): boolean {
   return ACTIVITY_BLOCK_TYPES.has(block.blockType);
 }
@@ -2449,6 +2731,13 @@ export interface KnowledgeCandidatePromotionDiagnostics {
   unresolvedCandidateCount: number;
   rejectedNonKnowledgeCount: number;
   consolidatedCandidateCount: number;
+  candidateIdentity: KnowledgeCandidateIdentityDiagnostics;
+  reviewCandidateSummary: KnowledgeCandidateReviewSummary;
+  /**
+   * Source-safe review-only records. These are diagnostics, never ownership or
+   * a learner-delivery input, and intentionally exclude raw source text.
+   */
+  reviewCandidates: KnowledgeCandidateReviewArtifact[];
   decisions: Array<{
     candidateId: string;
     topicSequence: number;
@@ -2470,7 +2759,15 @@ export function applyKnowledgeCandidatePromotion(input: {
   duplicateResolution: DuplicateResolutionAudit;
   consolidatedCandidateCount?: number;
   forcedReviewCandidateIds?: ReadonlySet<string>;
+  candidateIdentity?: KnowledgeCandidateIdentityDiagnostics;
+  atomicityReviewUnavailableReason?: "EMPTY_RESPONSE" | "INVALID_RESPONSE" | "REQUEST_FAILED";
+  prePromotionRemovedCandidates?: ReadonlyArray<PrePromotionRemovedCandidate>;
 }): KnowledgeCandidatePromotionDiagnostics {
+  const candidateIdentity = mergeKnowledgeCandidateIdentityDiagnostics(
+    input.candidateIdentity,
+    normalizeKnowledgeCandidateIdentities(input.topics),
+  );
+  discardDuplicateKnowledgeCandidateEmissions(input.topics);
   const unresolvedAtomicityIds = new Set(
     input.unresolvedAtomicityFindings
       .map((finding) => finding.microNodeId)
@@ -2486,14 +2783,16 @@ export function applyKnowledgeCandidatePromotion(input: {
     input.sourceAlignment.nodes.map((entry) => [entry.microNodeId, entry]),
   );
   const decisions: KnowledgeCandidatePromotionDiagnostics["decisions"] = [];
+  const reviewCandidates: KnowledgeCandidateReviewArtifact[] = [];
+  const emittedDecisionIds = new Set<string>();
   const decisionByNode = new Map<Pass2MicroNode, KnowledgeCandidatePromotionDecision>();
   let supportingMaterialBlockCount = 0;
   let exerciseReferenceCount = 0;
 
   for (const topic of input.topics) {
-    for (const [microNodeIndex, node] of topic.microNodes.entries()) {
-      const candidateId = node.candidateId ?? `t${topic.sequence}:n${microNodeIndex}`;
-      node.candidateId = candidateId;
+    for (const node of topic.microNodes) {
+      if (node.duplicateDecisionEmissionOf) continue;
+      const candidateId = node.candidateId!;
       const sourceState: KnowledgeCandidateCheckState =
         alignmentByCandidateId.get(candidateId)?.audit.status === "SUFFICIENT"
           ? "PASS"
@@ -2539,15 +2838,81 @@ export function applyKnowledgeCandidatePromotion(input: {
       node.promotionState = decision.state;
       node.promotionReasonCodes = [...decision.reasonCodes];
       decisionByNode.set(node, decision);
+      if (emittedDecisionIds.has(candidateId)) {
+        candidateIdentity.duplicateDecisionCandidateIds.push(candidateId);
+      }
+      emittedDecisionIds.add(candidateId);
       decisions.push({
         candidateId,
         topicSequence: topic.sequence,
         state: decision.state,
         reasonCodes: [...decision.reasonCodes],
       });
+      const hasSourceReference =
+        candidate.coreSourceBlockIndices.length > 0
+        || candidate.supportingSourceBlockIndices.length > 0;
+      if (decision.state !== "PROMOTE" && hasSourceReference) {
+        reviewCandidates.push(buildKnowledgeCandidateReviewArtifact(
+          candidate,
+          node.microNodeType,
+          decision,
+          input.atomicityReviewUnavailableReason,
+        ));
+      }
       supportingMaterialBlockCount += node.supportingMaterialIndices.length;
       exerciseReferenceCount += node.exercises.length;
     }
+  }
+
+  for (const removed of input.prePromotionRemovedCandidates ?? []) {
+    const candidateId = removed.node.candidateId;
+    if (!candidateId || emittedDecisionIds.has(candidateId)) continue;
+    const candidate: KnowledgeCandidate = {
+      candidateId,
+      provisionalTopic: { ...removed.topic },
+      title: removed.node.title,
+      learningObjective: removed.node.learningObjective,
+      coreSourceBlockIndices: [...removed.node.sourceBlockIndices],
+      supportingSourceBlockIndices: [...removed.node.supportingMaterialIndices],
+      practiceReferences: removed.node.exercises.map((exercise) => ({
+        blockIndex: exercise.blockIndex,
+        sourceParagraph: exercise.sourceParagraph,
+        kind: input.blocks[exercise.blockIndex]?.blockType === "HOMEWORK"
+          ? "ACTIVITY_OR_HOMEWORK"
+          : "EXERCISE",
+      })),
+      semanticStatus: "UNASSESSED",
+      sourceSupport: "UNASSESSED",
+      reviewReasonCodes: [removed.removalReason],
+      assessment: {
+        meaningfulKnowledgeIdentity: "UNCERTAIN",
+        independentlyTeachable: "UNCERTAIN",
+        independentlyAssessable: "UNCERTAIN",
+        atomicity: "UNCERTAIN",
+        nonDuplication: "UNIQUE",
+        sourceOwnership: "VALID",
+        supportingOnly: false,
+      },
+    };
+    const decision = decideKnowledgeCandidatePromotion(candidate, input.blocks);
+    if (decision.state === "PROMOTE") {
+      throw new Error("Pre-promotion structural removal unexpectedly became promotable");
+    }
+    emittedDecisionIds.add(candidateId);
+    decisions.push({
+      candidateId,
+      topicSequence: removed.topic.sequence,
+      state: decision.state,
+      reasonCodes: [...decision.reasonCodes],
+    });
+    reviewCandidates.push(buildKnowledgeCandidateReviewArtifact(
+      candidate,
+      removed.node.microNodeType,
+      decision,
+      input.atomicityReviewUnavailableReason,
+    ));
+    supportingMaterialBlockCount += removed.node.supportingMaterialIndices.length;
+    exerciseReferenceCount += removed.node.exercises.length;
   }
 
   // Only explicit PROMOTE candidates become MicroNodes. Every other decision is
@@ -2587,6 +2952,16 @@ export function applyKnowledgeCandidatePromotion(input: {
 
   const count = (state: KnowledgeCandidatePromotionState) =>
     decisions.filter((decision) => decision.state === state).length;
+  candidateIdentity.duplicateDecisionCandidateIds = [
+    ...new Set(candidateIdentity.duplicateDecisionCandidateIds),
+  ].sort();
+  const byPromotionState = reviewCandidates.reduce<KnowledgeCandidateReviewSummary["byPromotionState"]>(
+    (summary, artifact) => {
+      summary[artifact.promotion.state] = (summary[artifact.promotion.state] ?? 0) + 1;
+      return summary;
+    },
+    {},
+  );
   return {
     candidateCount: decisions.length,
     promotedMicroNodeCount: count("PROMOTE"),
@@ -2596,6 +2971,18 @@ export function applyKnowledgeCandidatePromotion(input: {
     unresolvedCandidateCount: count("UNRESOLVED"),
     rejectedNonKnowledgeCount: count("REJECT_NON_KNOWLEDGE") + count("SUPPORT_ONLY"),
     consolidatedCandidateCount: input.consolidatedCandidateCount ?? 0,
+    candidateIdentity,
+    reviewCandidateSummary: {
+      count: reviewCandidates.length,
+      byPromotionState,
+      providerAtomicityReview: input.atomicityReviewUnavailableReason
+        ? "UNAVAILABLE"
+        : "AVAILABLE",
+      ...(input.atomicityReviewUnavailableReason
+        ? { providerAtomicityReviewReason: input.atomicityReviewUnavailableReason }
+        : {}),
+    },
+    reviewCandidates,
     decisions,
   };
 }
@@ -6669,11 +7056,8 @@ export async function runPass2Pipeline(
     unmappedBlockIndices:  topicResults[i].unmappedIndices,
     additionalExercises:   topicResults[i].additionalExercises,
   }));
-  for (const topic of topics) {
-    topic.microNodes.forEach((node, microNodeIndex) => {
-      node.candidateId = `t${topic.sequence}:n${microNodeIndex}`;
-    });
-  }
+  let candidateIdentity = normalizeKnowledgeCandidateIdentities(topics);
+  discardDuplicateKnowledgeCandidateEmissions(topics);
   if (semanticScope.excludedCandidateBlockIndices.length > 0) {
     // This topic is a durable source-retention container, never a candidate
     // generation input. Activity normalization retains adjacent exercises here
@@ -6700,6 +7084,18 @@ export async function runPass2Pipeline(
       "pass2: rescued omitted Step 2 block references into review-safe placement",
     );
   }
+  const prePromotionRemovedCandidates: PrePromotionRemovedCandidate[] = [];
+  const retainedPrePromotionCandidateIds = new Set<string>();
+  const retainPrePromotionRemovedCandidates = (
+    candidates: ReadonlyArray<PrePromotionRemovedCandidate>,
+  ) => {
+    for (const candidate of candidates) {
+      const candidateId = candidate.node.candidateId;
+      if (candidateId && retainedPrePromotionCandidateIds.has(candidateId)) continue;
+      if (candidateId) retainedPrePromotionCandidateIds.add(candidateId);
+      prePromotionRemovedCandidates.push(candidate);
+    }
+  };
 
   // ── Activity normalization: enforce "exactly one canonical placement" invariant ─
   //
@@ -6721,6 +7117,7 @@ export async function runPass2Pipeline(
   //    → Rescued to additionalExercises of last topic.
   {
     const norm = normalizeActivityPlacements(topics, blocks);
+    retainPrePromotionRemovedCandidates(norm.removedCandidates);
     recordPass2PostNormalizationCounts(topics, topicDiagnostics);
     if (norm.evictedFromSource.length > 0) {
       logger.warn(
@@ -6759,6 +7156,7 @@ export async function runPass2Pipeline(
   // the mapping without allowing a heading-only MicroNode through to semantic
   // review or persistence.
   const structuralOwnershipRepair = removeStructuralHeadingSourceOwnership(topics, blocks);
+  retainPrePromotionRemovedCandidates(structuralOwnershipRepair.removedCandidates);
   if (structuralOwnershipRepair.movedHeadingIndices.length > 0) {
     logger.info(
       {
@@ -6769,7 +7167,7 @@ export async function runPass2Pipeline(
       "pass2: structural heading ownership repaired before source alignment",
     );
   }
-  normalizeActivityPlacements(topics, blocks);
+  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
 
   // Source coverage has a stricter meaning than placement coverage. Each
   // affected Topic receives exactly one narrow repair call; no repair can
@@ -6781,6 +7179,17 @@ export async function runPass2Pipeline(
         : { attempted: false, recoveredBlockCount: 0, failed: false },
     ),
   );
+  candidateIdentity = mergeKnowledgeCandidateIdentityDiagnostics(
+    candidateIdentity,
+    normalizeKnowledgeCandidateIdentities(topics),
+  );
+  discardDuplicateKnowledgeCandidateEmissions(topics);
+  if (candidateIdentity.collisionCount > 0) {
+    logger.warn(
+      { collisions: candidateIdentity.collisions },
+      "pass2: candidate identity collisions disambiguated without dropping candidates",
+    );
+  }
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
   const instructionalCoverage = validateInstructionalCoverage(blocks, topics, {
     semanticallyExcludedBlockIndices: excludedCandidateBlockIndices,
@@ -6874,9 +7283,14 @@ export async function runPass2Pipeline(
     blocks,
     semanticReview.atomicityRepairs,
   );
-  normalizeActivityPlacements(topics, blocks);
+  candidateIdentity = mergeKnowledgeCandidateIdentityDiagnostics(
+    candidateIdentity,
+    normalizeKnowledgeCandidateIdentities(topics),
+  );
+  discardDuplicateKnowledgeCandidateEmissions(topics);
+  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
   let sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
-  normalizeActivityPlacements(topics, blocks);
+  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
   let prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
   let prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
     topics,
@@ -6901,9 +7315,9 @@ export async function runPass2Pipeline(
     ),
     duplicateResolution,
   });
-  normalizeActivityPlacements(topics, blocks);
+  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
   sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
-  normalizeActivityPlacements(topics, blocks);
+  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
   prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
   prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
     topics,
@@ -6919,6 +7333,9 @@ export async function runPass2Pipeline(
     duplicateResolution,
     consolidatedCandidateCount: lessonWideConsolidation.sameKnowledgeConsolidationCount,
     forcedReviewCandidateIds: new Set(lessonWideConsolidation.forcedReviewCandidateIds),
+    candidateIdentity,
+    atomicityReviewUnavailableReason,
+    prePromotionRemovedCandidates,
   });
   const knowledgeCompleteness = auditKnowledgeCompleteness({
     topics,

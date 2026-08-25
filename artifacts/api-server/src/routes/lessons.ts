@@ -5442,6 +5442,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         knowledgeCandidates:  pass2.candidatePromotion.candidateCount,
         promotedMicroNodes:   pass2.candidatePromotion.promotedMicroNodeCount,
         candidateReviewRequired: pass2.candidatePromotion.reviewRequiredCandidateCount,
+        reviewOnlyCandidates: pass2.candidatePromotion.reviewCandidateSummary.count,
         canonicalKnowledgeUnits: pass2.lessonWideConsolidation.canonicalKnowledgeUnitCount,
         crossTopicConsolidations: pass2.lessonWideConsolidation.crossTopicConsolidationCount,
         completenessRestoredCandidates: pass2.knowledgeCompleteness.restoredCandidateIds.length,
@@ -5524,6 +5525,13 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           crossTopicMergePairCount: pass2.duplicateResolution.crossTopicMergePairs?.length ?? 0,
         },
         candidatePromotion: pass2.candidatePromotion,
+        // Review-only candidate records retain their pedagogical identity and
+        // source/exercise references, but never raw source text or ownership.
+        reviewCandidates: {
+          summary: pass2.candidatePromotion.reviewCandidateSummary,
+          candidateIdentity: pass2.candidatePromotion.candidateIdentity,
+          candidates: pass2.candidatePromotion.reviewCandidates,
+        },
         lessonWideConsolidation: pass2.lessonWideConsolidation,
         knowledgeCompleteness: pass2.knowledgeCompleteness,
         independentLearningTargets: pass2.knowledgeCompleteness.independentTargets,
@@ -5604,6 +5612,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
           instructionalCoverageValid: pass2.instructionalCoverage.valid,
           teacherReviewRequired: reviewRequiredNodeCount + reviewRequiredSourceBlockCount,
           atomicityVerification: pass2.atomicityVerification,
+          reviewCandidateSummary: pass2.candidatePromotion.reviewCandidateSummary,
+          candidateIdentity: pass2.candidatePromotion.candidateIdentity,
+          reviewCandidates: pass2.candidatePromotion.reviewCandidates,
           mappingReport,
           // Keep job polling source-safe too. Raw textbook/provider text never
           // belongs in a job result or teacher audit response.

@@ -50,6 +50,18 @@ function promotion(ids: string[]): KnowledgeCandidatePromotionDiagnostics {
     unresolvedCandidateCount: 0,
     rejectedNonKnowledgeCount: 0,
     consolidatedCandidateCount: 0,
+    candidateIdentity: {
+      generatedCandidateCount: 0,
+      collisionCount: 0,
+      collisions: [],
+      duplicateDecisionCandidateIds: [],
+    },
+    reviewCandidateSummary: {
+      count: 0,
+      byPromotionState: {},
+      providerAtomicityReview: "AVAILABLE",
+    },
+    reviewCandidates: [],
     decisions: ids.map((candidateId) => ({
       candidateId, topicSequence: 1, state: "PROMOTE" as const, reasonCodes: [],
     })),
