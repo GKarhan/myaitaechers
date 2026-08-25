@@ -1,0 +1,494 @@
+IMPLEMENTATION — MAPPING CORE
+SYSTEMIC additionalExercises TYPE-SAFETY INVARIANT
+
+GOAL
+
+Implement the proven systemic ownership invariant at the shared normalization boundary.
+
+This is NOT a Lesson 717-specific fix.
+This is NOT an index 58/68-specific fix.
+
+The goal is to ensure that across ALL future automatic mappings:
+
+additionalExercises may canonically own ONLY verified source blocks whose blockType is one of:
+
+- EXERCISE
+- ACTIVITY
+- HOMEWORK
+
+Any other block type must never survive as an additionalExercises canonical owner.
+
+IMPORTANT:
+Preserve all currently working Mapping Core, M3-1, M3-2, source, activity, and C2 behavior.
+
+Do not weaken validation.
+Do not special-case subjects, grades, lessons, or block indices.
+
+==================================================
+A. CONFIRMED SYSTEMIC ROOT CAUSE
+==================================================
+
+The latest forensic audit established:
+
+- additionalExercises has 10 production writer paths.
+- Several writers do NOT validate the underlying Pass 1 source block type before creating an additionalExercises entry.
+- Patching writers individually would duplicate policy and remain unsafe for future writers.
+- The earliest shared safe gate is normalizeActivityPlacements().
+- validateSourceCoverage() is correctly treating additionalExercises and unmapped/source/support/exercise as mutually exclusive canonical placement categories.
+- The validator must remain unchanged.
+
+The required invariant is:
+
+Every additionalExercises entry must resolve to a verified source block whose blockType is:
+
+EXERCISE
+ACTIVITY
+HOMEWORK
+
+Otherwise the additionalExercises ownership is invalid.
+
+==================================================
+B. ARCHITECTURE CHECK BEFORE EDITING
+==================================================
+
+Before changing code, confirm:
+
+1. every production path that can write additionalExercises;
+2. the exact normalization/canonicalization phase inside normalizeActivityPlacements();
+3. all calls to normalizeActivityPlacements();
+4. the final call order relative to:
+   - semantic review,
+   - atomicity repair,
+   - promotion cleanup,
+   - M3-1 preservation,
+   - final activity reconciliation,
+   - validateSourceCoverage();
+5. the current source-block type enum/contract;
+6. the current pass2Diagnostics persistence path for failed mapping jobs.
+
+Then implement the smallest systemic fix.
+
+Do not stop after architecture inspection unless there is a genuine blocker.
+
+==================================================
+C. CENTRAL TYPE-SAFETY GATE
+==================================================
+
+Inside the shared normalization boundary, validate EVERY additionalExercises entry against the verified Pass 1 source block set.
+
+Conceptually:
+
+sourceBlock = blocks[additionalExercise.blockIndex]
+
+If sourceBlock exists AND sourceBlock.blockType is one of:
+
+- EXERCISE
+- ACTIVITY
+- HOMEWORK
+
+then the entry is eligible to remain in additionalExercises.
+
+Otherwise:
+
+the additionalExercises ownership MUST be removed.
+
+IMPORTANT:
+This must NOT delete the underlying source block.
+
+==================================================
+D. SAFE DISPOSITION FOR INVALID additionalExercises
+==================================================
+
+When rejecting a non-activity additionalExercises reference:
+
+CASE 1
+
+The block already has a valid canonical placement in:
+
+- MicroNode source
+- supporting material
+- unmapped/review
+
+Then:
+- remove only the invalid additionalExercises reference;
+- retain the valid placement unchanged.
+
+CASE 2
+
+The block has NO other canonical placement.
+
+Then:
+- remove the invalid additionalExercises reference;
+- deterministically preserve the underlying verified source block in a review-safe unmapped disposition in the appropriate topic;
+- do not fabricate a MicroNode;
+- do not fabricate support ownership;
+- do not create a new exercise.
+
+CASE 3
+
+The block index itself is invalid/out of range.
+
+Then:
+- drop the invalid additionalExercises reference;
+- record a diagnostic;
+- let existing source validation remain authoritative.
+
+Do not hide missing-source problems.
+
+==================================================
+E. DO NOT CHANGE REAL ACTIVITY OWNERSHIP RULES
+==================================================
+
+For genuine activity blocks, preserve current ownership precedence:
+
+MicroNode exercise
+>
+additionalExercise
+
+Final activity reconciliation remains authoritative.
+
+If a true activity block is already attached to a valid MicroNode exercise:
+- additionalExercises duplicate must still be removed by existing activity logic.
+
+Do not change:
+- exercise attachment semantics,
+- exercise IDs,
+- verbatim exercise text,
+- assignment visibility,
+- activity ownership precedence.
+
+==================================================
+F. CENTRALIZE POLICY — DO NOT PATCH 10 WRITERS
+==================================================
+
+Do NOT add separate ad-hoc type filters to every writer unless required for local correctness.
+
+The architectural contract belongs at the shared normalization boundary.
+
+Optional:
+individual writers may later emit producer metadata for diagnostics,
+but correctness must NOT depend on every writer remembering the rule.
+
+Future writers must automatically inherit the invariant by passing through the normalization gate.
+
+==================================================
+G. DIAGNOSTICS
+==================================================
+
+Add source-safe diagnostics:
+
+invalidAdditionalExerciseReferences: Array<{
+  blockIndex: number;
+  actualBlockType: string | null;
+  producerStageIfKnown:
+    | "STEP2_PROVIDER_ADDITIONAL"
+    | "STEP2_REJECTED_NODE_RESCUE"
+    | "ACTIVITY_NORMALIZATION"
+    | "STRUCTURAL_HEADING_RESCUE"
+    | "ATOMICITY_REPAIR"
+    | "PROMOTION_RETENTION"
+    | "UNKNOWN_AT_NORMALIZATION";
+  disposition:
+    | "REMOVED_EXISTING_CANONICAL_OWNER_RETAINED"
+    | "MOVED_TO_UNMAPPED_REVIEW"
+    | "INVALID_BLOCK_INDEX_DROPPED";
+}>
+
+If producer origin is not explicitly known, use:
+
+UNKNOWN_AT_NORMALIZATION
+
+Do NOT infer producer provenance from final state.
+
+Do NOT persist raw provider output.
+Do NOT persist unnecessary source text.
+
+==================================================
+H. FAILED-JOB OBSERVABILITY
+==================================================
+
+Persist the new diagnostic in failed mapping jobs under the existing pass2Diagnostics structure, for example:
+
+mapping_jobs.result.pass2Diagnostics.invalidAdditionalExerciseReferences
+
+Also persist, if already available without large payloads:
+
+- final category counts
+- final activity-reconciliation summary
+- duplicate indices
+- duplicate placements
+- missing indices
+- invalid indices
+
+Do not add a DB migration unless absolutely necessary.
+
+Prefer the existing JSON result/report structure.
+
+==================================================
+I. PROTECTED CONTRACTS — MUST REMAIN UNCHANGED
+==================================================
+
+DO NOT CHANGE:
+
+SOURCE EXTRACTION / VERIFICATION
+- Pass 1 extraction
+- physical page provenance
+- verified-source filtering
+- quarantine behavior
+- source text verification rules
+
+SOURCE OWNERSHIP
+- validateSourceCoverage()
+- exact-once source placement invariant
+- duplicate detection
+- missing-index detection
+- invalid-index detection
+- structural-heading rules
+- source alignment rules
+- fail-closed persistence gate
+
+MAPPING SEMANTICS
+- candidate discovery
+- candidate identity
+- M3-1 review artifacts
+- M3-2 semantic decisions
+- atomicity decisions
+- candidate promotion policy
+- consolidation
+- completeness
+
+ACTIVITY
+- final activity ownership reconciliation
+- MicroNode exercise precedence
+- additional exercise persistence for genuine activity blocks
+
+DOWNSTREAM
+- C2-1
+- C2-2
+- C2-3
+- Teaching Content
+- AI Teacher
+- Quiz
+- Knowledge Tree
+- mastery/evidence pipeline
+
+No new provider call.
+
+==================================================
+J. REQUIRED REGRESSION TESTS
+==================================================
+
+Add provider-free deterministic tests.
+
+T1 — valid EXERCISE additionalExercise
+Input:
+blockType = EXERCISE
+additionalExercises contains block
+Expected:
+retained.
+
+T2 — valid ACTIVITY
+Expected:
+retained.
+
+T3 — valid HOMEWORK
+Expected:
+retained.
+
+T4 — THEORY block in additionalExercises + already unmapped
+Expected:
+- invalid additionalExercises ownership removed
+- unmapped retained
+- diagnostic recorded
+- coverage remains exact.
+
+T5 — THEORY block in additionalExercises + valid source owner
+Expected:
+- additionalExercises removed
+- source owner retained
+- no duplicate.
+
+T6 — THEORY block only in additionalExercises
+Expected:
+- additionalExercises removed
+- block moved to review-safe unmapped
+- block not lost
+- diagnostic = MOVED_TO_UNMAPPED_REVIEW.
+
+T7 — HEADING/non-instructional block only in additionalExercises
+Expected:
+- additionalExercises removed
+- preserve through the appropriate existing safe disposition;
+- do not create learner exercise.
+
+T8 — invalid/out-of-range block index
+Expected:
+- reference removed
+- diagnostic = INVALID_BLOCK_INDEX_DROPPED
+- existing validator still detects any genuine missing/invalid source problem.
+
+T9 — genuine MicroNode exercise + additionalExercise
+Expected:
+existing activity precedence remains:
+MicroNode exercise only.
+
+T10 — genuine activity additionalExercise + unmapped
+Expected:
+existing activity reconciliation produces additionalExercise only.
+
+T11 — non-activity source + additionalExercise
+Expected:
+source only.
+
+T12 — non-activity support + additionalExercise
+Expected:
+support only.
+
+T13 — non-activity unmapped + additionalExercise
+Expected:
+unmapped only.
+
+T14 — multiple invalid additionalExercise references
+Expected:
+all normalized deterministically;
+stable ordering;
+diagnostics deterministic.
+
+T15 — all 10 writer-style inputs converge through one normalization gate
+Expected:
+no writer can bypass final type safety.
+
+T16 — source exact-once conservation
+For N verified blocks after normalization:
+- no block silently disappears,
+- no new duplicate is created,
+- final validator remains authoritative.
+
+T17 — M3-1 unchanged.
+
+T18 — M3-2 semantic decisions unchanged.
+
+T19 — C2 unchanged.
+
+T20 — no new provider call.
+
+==================================================
+K. JOB 188 REGRESSION FIXTURE
+==================================================
+
+Create a synthetic provider-free fixture equivalent to the proven terminal condition:
+
+58:
+unmapped + additionalEx
+
+68:
+unmapped + additionalEx
+
+where 58 and 68 are NON-ACTIVITY verified blocks.
+
+Expected after normalization:
+
+58:
+unmapped
+
+68:
+unmapped
+
+invalidAdditionalExerciseReferences includes both indices.
+
+Then:
+
+validateSourceCoverage() must PASS if all other blocks are valid.
+
+Do NOT hard-code Lesson 717 or the numbers 58/68 in production logic.
+
+==================================================
+L. NON-REGRESSION SUITES
+==================================================
+
+Run all relevant existing suites:
+
+- Pass 2 placement invariant
+- activity rescue/normalization
+- final activity ownership
+- source coverage validator
+- candidate promotion
+- M3-1
+- M3-2
+- atomicity/granularity
+- mapping completeness
+- durable source persistence
+- API TypeScript check/build
+
+Run relevant C2 tests only as non-regression confirmation.
+
+Do not modify unrelated behavior to make tests green.
+
+==================================================
+M. FINAL INDEPENDENT REVIEW
+==================================================
+
+Before completion, verify:
+
+1. non-activity blocks cannot survive in additionalExercises;
+2. genuine activity blocks behave exactly as before;
+3. no source block is silently deleted;
+4. a block with no alternate owner gets review-safe placement rather than disappearing;
+5. validateSourceCoverage() is unchanged;
+6. candidate discovery/promotion is unchanged;
+7. M3-1 is unchanged;
+8. M3-2 semantic contract is unchanged;
+9. no C2 coupling added;
+10. no provider call added;
+11. every current/future writer is protected by the central normalization invariant.
+
+Fix concrete blockers before marking complete.
+
+==================================================
+N. RUNTIME SAFETY
+==================================================
+
+Do NOT remap Lesson 717 automatically.
+
+Do NOT modify saved lesson data.
+
+After tests pass:
+- restart only the API if required;
+- verify clean startup logs;
+- do not trigger mapping.
+
+We will manually remap Lesson 717 afterward.
+
+==================================================
+O. FINAL REPORT
+==================================================
+
+Return:
+
+1. Root cause fixed
+2. Files changed
+3. Central normalization boundary
+4. Exact type-safety invariant
+5. Safe-disposition behavior
+6. Diagnostics added
+7. Failed-job observability added
+8. Tests added
+9. Existing regression results
+10. API typecheck/build result
+11. Validator unchanged: YES/NO
+12. M3-1 unchanged: YES/NO
+13. M3-2 unchanged: YES/NO
+14. C2 unchanged: YES/NO
+15. Provider calls added: YES/NO
+16. API restart result
+17. SAFE TO MANUALLY REMAP LESSON 717: YES/NO
+
+End with exactly:
+
+SYSTEMIC additionalExercises TYPE-SAFETY FIX IMPLEMENTED: YES/NO
+NON-ACTIVITY BLOCKS CAN ENTER additionalExercises AFTER NORMALIZATION: YES/NO
+SOURCE COVERAGE VALIDATOR UNCHANGED: YES/NO
+M3-1 PRESERVED: YES/NO
+M3-2 PRESERVED: YES/NO
+C2 UNCHANGED: YES/NO
+SAFE TO REMAP LESSON 717: YES/NO
