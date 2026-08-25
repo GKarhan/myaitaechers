@@ -1,0 +1,809 @@
+IMPLEMENTATION TASK — C2-F2
+DETERMINISTIC COGNITIVE PROGRESSION PLANNER
+SYSTEMIC ARCHITECTURE CHANGE — NOT A LESSON-SPECIFIC PATCH
+
+GOAL
+
+Fundamentally fix the C2 Cognitive Path architecture so that the AI/provider is no longer responsible for deciding the cognitive route structure.
+
+The backend must become authoritative for:
+
+1. resolved target cognitive level,
+2. required prerequisite cognitive levels,
+3. minimal ordered progression route,
+4. which lower levels are omitted,
+5. exact final target level,
+6. route ordering.
+
+The provider must ONLY generate pedagogical content inside the deterministic route selected by the backend.
+
+This is a systemic C2 architecture change.
+
+DO NOT patch Lesson 720.
+DO NOT special-case Mathematics, Physics, Armenian, or any subject.
+DO NOT weaken validators to make current provider output pass.
+DO NOT modify C1, Mapping Core, M3-1/M3-2, lesson mapping, AI Teacher/chat, quizzes, Knowledge Tree, or unrelated UI.
+
+────────────────────────────────────────────
+0. EVIDENCE / WHY THIS CHANGE IS REQUIRED
+────────────────────────────────────────────
+
+The latest read-only forensic audit of Lesson 720 / C2 Job 195 established:
+
+MN1:
+- resolvedTargetLevel = analyze
+- provider candidate route = apply → analyze
+- progressionDecision = REVIEW_REQUIRED
+- blocking reason = REDUNDANT_LEVEL
+- problematic level = apply
+- no LEVEL_OBJECTIVE_MISMATCH
+- generator problem = YES
+- validator problem = NO
+
+MN2:
+- resolvedTargetLevel = analyze
+- provider candidate route = apply → analyze
+- apply-level objectiveDemandLevel = analyze
+- apply-level criterionDemandLevel = analyze
+- LEVEL_OBJECTIVE_MISMATCH
+- REDUNDANT_LEVEL
+- generator problem = YES
+- validator problem = NO
+
+The audit concluded:
+
+PRIMARY:
+A. PROVIDER ROUTE-CONSTRUCTION PROBLEM
+
+SECONDARY:
+C. GENERATOR ↔ VALIDATOR CONTRACT MISMATCH
+
+And explicitly concluded:
+
+DETERMINISTIC PROGRESSION PLANNER NOW JUSTIFIED: YES
+
+SAFE TO CHANGE C2 ARCHITECTURE NOW: YES
+
+Therefore:
+
+DO NOT solve this by loosening REDUNDANT_LEVEL.
+DO NOT loosen LEVEL_OBJECTIVE_MISMATCH.
+DO NOT add prompt wording asking the provider to “be more careful”.
+DO NOT add Lesson 720-specific handling.
+
+The architectural ownership boundary must change.
+
+────────────────────────────────────────────
+1. FIRST: INSPECT BEFORE EDITING
+────────────────────────────────────────────
+
+Before modifying code, inspect the current C2 implementation and identify the exact shared path for:
+
+Canonical MicroNode
+→ C1 / target-demand resolution
+→ C2 input construction
+→ provider generation
+→ candidate parsing/schema validation
+→ progression validation
+→ retry/review logic
+→ persistence
+
+Also inspect the diagnostics work already implemented in Task #196.
+
+Find and report internally:
+
+A. where resolvedTargetLevel becomes authoritative;
+
+B. where the provider currently gets freedom to choose:
+   - level count,
+   - level identities,
+   - level ordering;
+
+C. where progression validation currently evaluates:
+   - LEVEL_OBJECTIVE_MISMATCH,
+   - REDUNDANT_LEVEL,
+   - target ceiling,
+   - unnecessary lower levels;
+
+D. where C2 rows are persisted;
+
+E. existing provider-free C2 tests.
+
+Use the existing architecture and shared boundaries.
+
+Do not create a parallel C2 pipeline if the existing pipeline can be extended cleanly.
+
+────────────────────────────────────────────
+2. NEW AUTHORITATIVE CONTRACT
+────────────────────────────────────────────
+
+The canonical C2 flow must become:
+
+Canonical MicroNode
+        ↓
+Resolved target demand
+        ↓
+Deterministic prerequisite analysis
+        ↓
+Deterministic minimal ordered route specification
+        ↓
+Provider fills pedagogical content for EXACTLY those levels
+        ↓
+Content-conformance validation
+        ↓
+Persistence
+
+The critical ownership rule is:
+
+BACKEND OWNS STRUCTURE.
+PROVIDER OWNS CONTENT WITHIN STRUCTURE.
+
+The provider must no longer be authoritative over the route.
+
+────────────────────────────────────────────
+3. ADD A PURE DETERMINISTIC PROGRESSION PLANNER
+────────────────────────────────────────────
+
+Introduce or extract one shared pure function/module conceptually equivalent to:
+
+planCognitiveProgression(...)
+
+Use naming consistent with the existing codebase.
+
+It must be:
+
+- deterministic,
+- provider-free,
+- side-effect-free,
+- independently testable,
+- subject-agnostic,
+- lesson-agnostic.
+
+Its output must be a structured route specification.
+
+Conceptually:
+
+{
+  targetLevel,
+  orderedLevels,
+  omittedLevels,
+  rationale/reasonCodes,
+  confidence,
+  reviewRequired
+}
+
+Do NOT copy this schema blindly if the repository already has appropriate types.
+
+Reuse existing canonical Bloom/cognitive-level representations.
+
+────────────────────────────────────────────
+4. DO NOT USE A MECHANICAL BLOOM LADDER
+────────────────────────────────────────────
+
+This is CRITICAL.
+
+The deterministic planner must NOT simply generate:
+
+remember
+→ understand
+→ apply
+→ analyze
+→ evaluate
+→ create
+
+up to the target.
+
+That would reproduce the exact architecture problem deterministically.
+
+The planner must construct the MINIMAL JUSTIFIED ROUTE.
+
+Example:
+
+target = analyze
+
+does NOT automatically imply:
+
+remember → understand → apply → analyze
+
+It may legitimately be:
+
+analyze
+
+or:
+
+apply → analyze
+
+or another bounded route ONLY when the lower competency is actually required.
+
+Every included lower level must have deterministic justification.
+
+Every omitted lower level must be safe to omit according to the existing target/prerequisite evidence model.
+
+────────────────────────────────────────────
+5. PREREQUISITE DECISION RULE
+────────────────────────────────────────────
+
+Before adding any lower cognitive level, the planner must answer:
+
+“Is competence at this lower level independently necessary for the learner to demonstrate the target capability?”
+
+NOT:
+
+“Does this level come before the target in Bloom taxonomy?”
+
+Taxonomic order alone is NOT sufficient justification.
+
+Use the strongest deterministic signals already available in the current C2 architecture.
+
+Examples may include existing:
+
+- target-demand analysis,
+- source relationship evidence,
+- objective/performance demand,
+- canonical outcome relationships,
+- prerequisite/dependency metadata,
+- existing readiness logic,
+- current deterministic progression evidence.
+
+Do not invent semantic relationships unsupported by current canonical data.
+
+If the system cannot deterministically justify a prerequisite level, do not silently invent it.
+
+Prefer:
+
+minimal route + review signal
+
+over:
+
+speculative expanded route.
+
+────────────────────────────────────────────
+6. TARGET LEVEL MUST BE EXACTLY FINAL
+────────────────────────────────────────────
+
+The resolved target cognitive level must appear:
+
+- exactly once,
+- as the final route level.
+
+The deterministic planner must prevent:
+
+- duplicate target levels,
+- levels above target,
+- levels after target,
+- provider-added levels,
+- provider-removed required levels,
+- provider-reordered levels.
+
+These become structural invariants.
+
+────────────────────────────────────────────
+7. CHANGE PROVIDER RESPONSIBILITY
+────────────────────────────────────────────
+
+After the planner produces:
+
+orderedLevels = [...]
+
+the provider request must receive the predetermined route.
+
+The provider's task becomes:
+
+“For each supplied route level, generate the pedagogical content required for that exact level.”
+
+Provider may generate fields already required by the C2 contract, such as:
+
+- performanceObjective,
+- successCriterion,
+- preferredInteractionTypes / interaction types,
+- evidence requirements / thresholds,
+- other currently supported level-content fields.
+
+But provider must NOT decide:
+
+- how many levels exist,
+- which levels exist,
+- their order,
+- target level,
+- whether a prerequisite level exists.
+
+────────────────────────────────────────────
+8. PROVIDER OUTPUT MUST BE KEYED TO THE PLAN
+────────────────────────────────────────────
+
+Do not rely on provider array position alone if a stronger stable identifier is available.
+
+Each provider-generated content item must correspond unambiguously to one planned route level.
+
+The server must be able to verify:
+
+planned level X
+↔ generated content for level X.
+
+Provider output cannot create a new canonical level merely by returning one.
+
+────────────────────────────────────────────
+9. ADD STRUCTURAL CONFORMANCE VALIDATION
+────────────────────────────────────────────
+
+Before existing semantic/content validation and persistence, validate provider output against the deterministic route specification.
+
+At minimum detect:
+
+A. missing planned level;
+B. extra unplanned level;
+C. duplicate level;
+D. reordered route;
+E. wrong declared cognitive level;
+F. target missing;
+G. target duplicated;
+H. target not final.
+
+These failures must fail closed.
+
+Do NOT mutate the deterministic plan to match provider output.
+
+Do NOT silently accept provider structure.
+
+Do NOT persist partial malformed routes.
+
+────────────────────────────────────────────
+10. KEEP CONTENT VALIDATORS
+────────────────────────────────────────────
+
+The deterministic planner does NOT replace the existing progression/content validators.
+
+After structural conformance succeeds, retain the validators that determine whether generated content actually belongs to the assigned cognitive level.
+
+For example:
+
+If backend plans:
+
+apply → analyze
+
+and provider fills the `apply` slot with an objective whose semantic demand is actually `analyze`:
+
+LEVEL_OBJECTIVE_MISMATCH must STILL be able to block/review it.
+
+This is important.
+
+Architecture becomes:
+
+BACKEND:
+“What levels are required?”
+
+PROVIDER:
+“What pedagogical content fills each required level?”
+
+VALIDATOR:
+“Does that content actually conform to its assigned level?”
+
+Do not weaken this separation.
+
+────────────────────────────────────────────
+11. REDUNDANT_LEVEL SEMANTICS
+────────────────────────────────────────────
+
+Do not delete REDUNDANT_LEVEL blindly.
+
+Its role changes.
+
+Previously it frequently detected route-structure mistakes produced by the provider.
+
+After this architecture change:
+
+A. deterministic planner should itself avoid unnecessary levels;
+
+B. REDUNDANT_LEVEL can remain as a defense-in-depth invariant;
+
+C. if the deterministic planner itself produces a level later judged redundant, treat that as a planner/contract defect requiring review — not as permission to weaken the validator.
+
+Add tests proving the planner does not routinely create redundant Bloom ladders.
+
+────────────────────────────────────────────
+12. RETRY SEMANTICS MUST CHANGE CAREFULLY
+────────────────────────────────────────────
+
+Inspect existing retry behavior before changing it.
+
+Provider retries must NOT be allowed to change the route structure.
+
+If retry occurs because generated CONTENT failed conformance:
+
+same deterministic route
+→ provider regenerates content
+→ validator checks again.
+
+The planner must not be rerun merely to accommodate provider output unless canonical inputs themselves changed.
+
+Route identity should remain stable across content retries.
+
+────────────────────────────────────────────
+13. DIAGNOSTIC TRACE — PRESERVE TASK #196
+────────────────────────────────────────────
+
+Do not remove or weaken the safe diagnostic trace introduced in Task #196.
+
+Extend it minimally so each attempt can safely show, without source/provider text:
+
+- planner target level,
+- planned level sequence,
+- omitted levels if safe/useful,
+- planner decision/reason classification,
+- whether provider structure conformed,
+- first structural mismatch classification if any,
+- existing progression decision,
+- existing per-level mismatch/redundancy evidence,
+- persistenceAllowed,
+- final state.
+
+No prompts.
+No provider raw output.
+No lesson/source content.
+No credentials.
+No sensitive text.
+
+Keep diagnostics bounded.
+
+────────────────────────────────────────────
+14. REVIEW-REQUIRED PLANNER OUTPUT
+────────────────────────────────────────────
+
+If deterministic evidence is insufficient to safely decide the route:
+
+DO NOT ask the provider to invent the structure.
+
+The planner must return an explicit review-required state.
+
+That node must not persist a speculative C2 route.
+
+Use existing job/review semantics where possible.
+
+Do not introduce a new inconsistent state machine unless necessary.
+
+────────────────────────────────────────────
+15. PRESERVE EXISTING FAIL-CLOSED BEHAVIOR
+────────────────────────────────────────────
+
+Do not weaken:
+
+- target-demand resolution,
+- readiness gates,
+- progression validation,
+- objective/criterion demand checks,
+- interaction validation,
+- evidence-budget validation,
+- persistence safety,
+- review-required semantics.
+
+This task changes route ownership.
+
+It does NOT lower quality thresholds.
+
+────────────────────────────────────────────
+16. DO NOT TOUCH C1
+────────────────────────────────────────────
+
+C1 Bloom and canonical MicroNode data are inputs/evidence.
+
+Do not rewrite C1 records.
+
+Do not mass-update Bloom values.
+
+Do not “fix” Lesson 720's nodes.
+
+If current target-demand resolution legitimately overrides/disagrees with C1 Bloom through the established review/evidence contract, preserve that architecture unless this task proves a direct incompatibility.
+
+────────────────────────────────────────────
+17. DO NOT FIX SUBJECT CONTEXT IN THIS TASK
+────────────────────────────────────────────
+
+The forensic audit separately found that Lesson 720 currently resolves to subject `Ֆիզիկա`.
+
+That is a real data-quality/context risk.
+
+However, the audit did NOT prove that it caused the C2 progression failures.
+
+Therefore:
+
+DO NOT mix the subject-context fix into C2-F2.
+
+You may document it as a separate follow-up only.
+
+No Lesson 720 data edit in this task.
+
+────────────────────────────────────────────
+18. PROVIDER-FREE REGRESSION MATRIX — REQUIRED
+────────────────────────────────────────────
+
+Add deterministic tests for the planner itself.
+
+At minimum cover:
+
+CASE 1 — target requires no prerequisite
+Input:
+target = analyze
+no deterministic lower-level requirement
+
+Expected:
+planned route = [analyze]
+
+NOT:
+remember → understand → apply → analyze
+
+CASE 2 — one prerequisite genuinely required
+Input:
+target = analyze
+apply independently required
+
+Expected:
+[apply, analyze]
+
+CASE 3 — lower levels not justified
+Expected:
+they are omitted.
+
+CASE 4 — target exactly once and final
+Assert structural invariant.
+
+CASE 5 — unresolved prerequisite evidence
+Expected:
+review-required
+no speculative provider-selected route.
+
+CASE 6 — provider adds extra level
+Plan:
+[analyze]
+
+Provider:
+[apply, analyze]
+
+Expected:
+structural conformance failure.
+No persistence.
+
+CASE 7 — provider removes required level
+Plan:
+[apply, analyze]
+
+Provider:
+[analyze]
+
+Expected:
+failure.
+No persistence.
+
+CASE 8 — provider reorders
+Plan:
+[apply, analyze]
+
+Provider:
+[analyze, apply]
+
+Expected:
+failure.
+
+CASE 9 — duplicate target
+Expected:
+failure.
+
+CASE 10 — correct structure, wrong content demand
+Plan:
+[apply, analyze]
+
+Provider structure matches.
+
+But apply objective/criterion classify as analyze.
+
+Expected:
+existing LEVEL_OBJECTIVE_MISMATCH behavior remains active.
+
+CASE 11 — correct minimal route
+Expected:
+accepted if all current content validators pass.
+
+CASE 12 — retry
+Attempt 1:
+content validation fails.
+
+Attempt 2:
+same exact planned route.
+Only content changes.
+
+Assert route structure remains unchanged.
+
+CASE 13 — diagnostics
+Assert safe trace contains planner/conformance classifications but no source text, provider raw content, prompts, or credentials.
+
+CASE 14 — existing accepted C2 scenario
+Must remain accepted.
+
+CASE 15 — existing review-required scenario
+Must preserve current semantics unless the only reason was provider-owned structural route selection that the new planner now prevents.
+
+────────────────────────────────────────────
+19. LESSON 720 ACCEPTANCE TEST — DO NOT RUN YET
+────────────────────────────────────────────
+
+Do NOT automatically remap or regenerate Lesson 720 during implementation.
+
+Do NOT make a provider call merely to prove this change.
+
+First prove the architecture with provider-free tests.
+
+After implementation, stop and report that one controlled Lesson 720 C2 generation is the next acceptance step.
+
+I will trigger that separately.
+
+────────────────────────────────────────────
+20. NON-REGRESSION REQUIREMENTS
+────────────────────────────────────────────
+
+Run the relevant existing suites for:
+
+- C2 target-demand,
+- C2 readiness,
+- C2 progression,
+- C2 interaction validation,
+- C2 evidence-budget validation,
+- C2 persistence,
+- C2 retry behavior,
+- C2 diagnostics from Task #196,
+- API typecheck/build.
+
+Also run any directly affected Mapping/lesson tests if shared types changed.
+
+Do not fix unrelated failing tests unless your change caused them.
+
+Report unrelated pre-existing failures separately.
+
+────────────────────────────────────────────
+21. INDEPENDENT ARCHITECTURE REVIEW
+────────────────────────────────────────────
+
+Before completing, request an independent review of the final diff.
+
+Reviewer must specifically inspect:
+
+1. Did route ownership actually move from provider to backend?
+
+2. Is the planner deterministic and provider-free?
+
+3. Does it produce minimal justified routes rather than a mechanical Bloom ladder?
+
+4. Can provider still add/remove/reorder levels through any alternate path?
+
+5. Are content validators still authoritative?
+
+6. Can malformed provider structure reach persistence?
+
+7. Does retry preserve the same planned route?
+
+8. Are Task #196 diagnostics preserved and safe?
+
+9. Were C1, Mapping Core, AI Teacher, quizzes, KT, or lesson data accidentally changed?
+
+Resolve actionable blockers before completion.
+
+────────────────────────────────────────────
+22. RUNTIME / DEPLOYMENT SAFETY
+────────────────────────────────────────────
+
+After all deterministic tests/typecheck/build pass:
+
+- restart ONLY the API service if required;
+- verify clean startup;
+- do NOT trigger automatic mapping;
+- do NOT trigger Lesson 720 C2 generation;
+- do NOT edit lesson data;
+- do NOT call the provider for acceptance testing.
+
+────────────────────────────────────────────
+23. REQUIRED FINAL REPORT
+────────────────────────────────────────────
+
+Return a concise implementation report containing:
+
+A. exact files changed;
+
+B. old architecture:
+   provider selected route structure;
+
+C. new architecture:
+   backend deterministic planner selects route;
+   provider fills content only;
+
+D. deterministic planner input/output contract;
+
+E. structural conformance gate;
+
+F. retry behavior;
+
+G. diagnostics changes;
+
+H. regression tests added and results;
+
+I. existing C2 non-regression results;
+
+J. independent-review result;
+
+K. API restart/startup result;
+
+L. confirmation:
+   - no Lesson 720 data changed,
+   - no C1 data changed,
+   - no mapping run,
+   - no provider acceptance call,
+   - no C2 validator weakening;
+
+M. explicitly state:
+
+READY FOR ONE CONTROLLED LESSON 720 C2 ACCEPTANCE RUN: YES / NO
+
+Do not run that acceptance test yourself.
+
+────────────────────────────────────────────
+24. ACCEPTANCE CRITERIA
+────────────────────────────────────────────
+
+This task is complete only if ALL are true:
+
+[ ] backend, not provider, owns route structure
+
+[ ] route planner is deterministic/provider-free
+
+[ ] planner does not mechanically include all lower Bloom levels
+
+[ ] every included prerequisite level requires deterministic justification
+
+[ ] target level appears exactly once and last
+
+[ ] provider cannot add levels
+
+[ ] provider cannot remove required levels
+
+[ ] provider cannot reorder levels
+
+[ ] provider cannot reclassify planned levels
+
+[ ] content-level semantic validation remains active
+
+[ ] LEVEL_OBJECTIVE_MISMATCH remains enforceable
+
+[ ] REDUNDANT_LEVEL is not weakened to hide planner mistakes
+
+[ ] retry uses the same deterministic route
+
+[ ] unresolved planning evidence fails closed/review-required
+
+[ ] malformed provider structure cannot persist
+
+[ ] safe Task #196 diagnostics remain intact
+
+[ ] no C1 mutation
+
+[ ] no Mapping Core change
+
+[ ] no Lesson 720 patch
+
+[ ] no subject-context patch mixed into this task
+
+[ ] no AI Teacher/quiz/KT changes
+
+[ ] provider-free regression matrix passes
+
+[ ] relevant existing C2 regressions pass
+
+[ ] independent architecture review passes
+
+[ ] API starts cleanly
+
+[ ] no real Lesson 720 C2 generation was triggered
+
+FINAL PRINCIPLE:
+
+The AI/provider may propose PEDAGOGICAL CONTENT.
+
+It may not define the CANONICAL COGNITIVE ROUTE.
+
+Canonical cognitive progression is backend-owned curriculum logic.
