@@ -1,0 +1,317 @@
+READ-ONLY AUDIT ONLY — LATEST FAILED MAPPING RUN FOR LESSON 717 AFTER M3-1
+
+Context
+
+We have just rerun automatic mapping for Lesson 717:
+
+Subject/book: Հայոց լեզու 8
+Lesson: «Մակբայ»
+Pages: 18–29
+
+The UI reported:
+
+«Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։
+Արդյունքը չի պահպանվել։»
+
+The visible preserved/previous mapping currently shows:
+- several topic groups,
+- only 1 canonical MicroNode,
+- many exercises left as additional/review material.
+
+M3-1 was implemented immediately before this rerun:
+“Preserve review-only mapping candidates”.
+
+The purpose of THIS task is NOT to fix anything.
+
+We need to determine whether M3-1 successfully preserved the pedagogical identities of candidates that did not become canonical MicroNodes.
+
+==================================================
+STRICT SAFETY RULES
+==================================================
+
+READ ONLY.
+
+DO NOT:
+- edit any code,
+- modify any file,
+- modify DB data,
+- restart any workflow/service,
+- rerun mapping,
+- regenerate Lesson 717,
+- regenerate Cognitive Paths,
+- touch C2-1/C2-2/C2-3,
+- change promotion rules,
+- change source placement,
+- change candidate generation,
+- create a migration,
+- repair the failed mapping job.
+
+Do not infer results from source code alone.
+
+Inspect the ACTUAL newest mapping job produced by the latest Lesson 717 rerun.
+
+Use read-only DB queries, existing persisted job/result/report JSON, and existing logs only.
+
+==================================================
+STEP 1 — IDENTIFY THE EXACT RUN
+==================================================
+
+Find the newest automatic mapping job for:
+
+lessonId = 717
+
+Report:
+
+- mappingJobId
+- created/start/completion/failure timestamps if available
+- final status
+- failureCode
+- failure reason/type
+- whether persistence was attempted
+- whether the previously saved mapping was preserved
+
+Make sure this is the NEW run performed after M3-1, not the earlier failed job 184.
+
+==================================================
+STEP 2 — SOURCE PLACEMENT FAILURE
+==================================================
+
+Report the exact final placement diagnostics:
+
+- total verified source blocks
+- source count
+- supportingMaterial count
+- exercises count
+- additionalExercises count
+- unmapped count
+- missingIndices
+- duplicateIndices
+- duplicatePlacements
+- invalidIndices
+- emptyMicroNodeTitles
+- persistenceEligible
+
+If duplicate/missing blocks exist, report their block identity if the current diagnostics preserve it:
+
+- block index
+- block type
+- page
+- short safe excerpt if already available in diagnostics
+- placement owners/categories
+
+Do NOT add new logging or change code if this information is unavailable.
+
+==================================================
+STEP 3 — M3-1 REVIEW CANDIDATE ARTIFACTS
+==================================================
+
+This is the MAIN purpose of the audit.
+
+Inspect the persisted:
+
+mapping_jobs.result
+mappingReport
+mappingReport.quality
+and any M3-1 fields added for review candidates / promotion diagnostics / identity diagnostics.
+
+Find the exact current field names from the implementation.
+
+Report:
+
+A. Total candidate count before final promotion, if available.
+
+B. Number of candidates that became canonical MicroNodes.
+
+C. Number of candidates preserved as review-only artifacts.
+
+D. Number of:
+- PROMOTE
+- REVIEW_REQUIRED
+- REJECT
+- UNRESOLVED
+or the exact equivalent states used by the implementation.
+
+E. Exact duplicate-emission count.
+
+F. Candidate-ID collision count.
+
+G. Early-removal artifacts preserved from:
+- structural/heading-only cleanup
+- activity-only cleanup
+- any other pre-promotion removal path
+
+==================================================
+STEP 4 — LIST EVERY REVIEW-ONLY CANDIDATE
+==================================================
+
+For EVERY preserved review-only candidate artifact, output a compact table with:
+
+- stable candidate ID
+- candidate title
+- learning objective
+- provisional topic title / topic identity
+- source block indices
+- exercise IDs/references
+- semantic/source-support state
+- promotion decision
+- promotion/review reason codes
+- identity/collision status
+- whether it was removed before promotion or evaluated at promotion
+- whether it appears source-backed
+- whether it appears atomic/teachable/assessable according to the STORED diagnostics
+
+IMPORTANT:
+
+Do not independently reinterpret the textbook yet.
+
+This section must report what the persisted M3-1 diagnostics actually say.
+
+If a field was not persisted, write:
+NOT PERSISTED
+
+Do not guess.
+
+==================================================
+STEP 5 — CHECK THE SPECIFIC PEDAGOGICAL TARGETS
+==================================================
+
+Using ONLY persisted candidate/review diagnostics, determine whether candidate identities exist for concepts/abilities corresponding to these lesson areas:
+
+1. Մակբայի ընդհանուր բնութագիր / ճանաչում
+2. Տեղի մակբայներ
+3. Ժամանակի մակբայներ
+4. Ձևի մակբայներ
+5. Չափ ու քանակի մակբայներ
+6. Մակբայների կիրառություն
+7. Մակբայների կազմություն
+8. Մակբայների ուղղագրություն
+9. Մակբայների տեսակների տարբերակում / դասակարգում
+10. Մակբայի խոսքիմասային կամ գործառական տարբերակում, if present
+
+For each one return exactly one of:
+
+CANONICAL
+REVIEW_ARTIFACT
+CANDIDATE_BUT_REJECTED
+NOT_DISCOVERED
+NOT ENOUGH PERSISTED EVIDENCE
+
+Also give the candidate ID(s), where available.
+
+This is NOT permission to create these MicroNodes.
+It is only an audit of whether candidate discovery preserved them.
+
+==================================================
+STEP 6 — TRACE WHERE NON-CANONICAL CANDIDATES STOPPED
+==================================================
+
+For each important source-backed candidate that did not become canonical, identify the LAST confirmed stage it reached:
+
+- candidate discovery
+- semantic/source-support assessment
+- atomicity assessment
+- provider/advisory review
+- promotion evaluation
+- early structural cleanup
+- activity-only cleanup
+- lesson-wide consolidation
+- other exact stage
+
+Then report its exact stored reason for not becoming canonical.
+
+Do not speculate if diagnostics do not establish the reason.
+
+==================================================
+STEP 7 — ANSWER THE FUNDAMENTAL QUESTION
+==================================================
+
+Based on THIS REAL RUN, classify the main failure into one or more of these categories:
+
+A. DISCOVERY FAILURE
+Important pedagogical targets were never created as candidates.
+
+B. PRESERVATION FAILURE
+Candidates existed transiently but M3-1 still failed to preserve their identity.
+
+C. PROMOTION FAILURE / OVER-CONSERVATIVE REVIEW
+Good source-backed candidates are preserved, but too many are prevented from becoming canonical.
+
+D. SOURCE PLACEMENT FAILURE
+Candidate lifecycle may be healthy, but the final run still fails because source placement contains missing/duplicate/invalid ownership.
+
+E. MULTIPLE INDEPENDENT FAILURES
+
+For every classification, cite concrete evidence from this job.
+
+==================================================
+STEP 8 — M3-1 VERDICT
+==================================================
+
+Give one explicit verdict:
+
+M3-1 WORKS AS INTENDED
+or
+M3-1 PARTIALLY WORKS
+or
+M3-1 DOES NOT SOLVE THE PRESERVATION GAP
+
+Explain why using this run only.
+
+Important distinction:
+
+M3-1 was NOT intended to automatically promote more MicroNodes.
+
+Therefore do not call M3-1 a failure merely because canonical MicroNode count remains low.
+
+The key question is:
+
+“Are the pedagogically meaningful non-promoted candidates now preserved with enough identity and diagnostic evidence for teacher review and the next architecture step?”
+
+==================================================
+STEP 9 — RECOMMEND NEXT ARCHITECTURE STEP, BUT DO NOT IMPLEMENT
+==================================================
+
+Based on evidence, recommend exactly ONE next direction:
+
+1. M3-2 Candidate Discovery strengthening
+2. M3-2 Promotion/Review policy strengthening
+3. Source Placement invariant fix
+4. Review-artifact observability improvement
+5. No architecture change yet — run another controlled test
+
+Explain why.
+
+DO NOT implement it.
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return exactly these sections:
+
+1. Exact mapping run
+2. Source placement result
+3. Candidate lifecycle summary
+4. Review-only candidate table
+5. Pedagogical target coverage
+6. Where candidates stopped
+7. Fundamental failure classification
+8. M3-1 verdict
+9. Recommended next step
+
+Finish with:
+
+SAFE TO CHANGE CODE NOW: YES / NO
+
+If YES:
+state the ONE narrowly justified subsystem that should be changed next.
+
+If NO:
+state what evidence is still missing.
+
+Again:
+READ-ONLY AUDIT ONLY.
+NO CODE CHANGES.
+NO RERUN.
+NO RESTART.
+NO C2 CHANGES.
