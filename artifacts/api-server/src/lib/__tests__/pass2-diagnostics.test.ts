@@ -6,6 +6,8 @@ import {
   getTeacherFacingMappingFailure,
   inspectPass2Step2Response,
   MappingZeroMicroNodesError,
+  MappingSourcePlacementError,
+  assertPass2PersistenceGates,
   recordPass2PostNormalizationCounts,
   safelyParsePass2Step2Response,
   type Pass2Diagnostics,
@@ -247,4 +249,58 @@ const diagnostics: Pass2Diagnostics = {
   console.log("  ✓ action-only and generic-term-only overlaps cannot create REQUIRED relations");
 }
 
-console.log("\nPass 2 diagnostics: 7/7 passing");
+{
+  const placementDiagnostics = {
+    pass2Diagnostics: {
+      ...diagnostics,
+      additionalExerciseTypeSafety: {
+        rejectedReferenceCount: 2,
+        rejectedReferences: [
+          { blockIndex: 58, blockType: "RULE", disposition: "PRESERVED_EXISTING_OWNER" as const },
+          { blockIndex: 68, blockType: "NOTE", disposition: "MOVED_TO_UNMAPPED_REVIEW" as const },
+        ],
+        finalCategoryCounts: {
+          source: 2, exercises: 0, additionalExercises: 0, supportingMaterial: 0, unmapped: 1,
+        },
+      },
+    },
+    finalActivityOwnership: {
+      activityBlocksInspected: 0,
+      conflictsResolved: 0,
+      sourceOwnershipRemoved: 0,
+      supportingOwnershipRemoved: 0,
+      unmappedOwnershipRemoved: 0,
+      duplicateAdditionalExerciseReferencesRemoved: 0,
+      unresolvedMultipleMicroNodeExerciseOwners: [],
+    },
+  };
+  assert.throws(
+    () => assertPass2PersistenceGates({
+      coverageValidation: {
+        valid: false,
+        totalBlocks: 2,
+        coveredBlocks: 2,
+        coveragePercent: 100,
+        missingIndices: [],
+        duplicateIndices: [58],
+        duplicatePlacements: { "58": ["src:MN", "additionalEx"] },
+        invalidIndices: [],
+        emptyMicroNodeTitles: [],
+        categoryCounts: placementDiagnostics.pass2Diagnostics.additionalExerciseTypeSafety.finalCategoryCounts,
+      },
+      failureDiagnostics: placementDiagnostics,
+    } as any),
+    (error: unknown) => {
+      assert.ok(error instanceof MappingSourcePlacementError);
+      assert.deepEqual(error.diagnostics?.pass2Diagnostics.additionalExerciseTypeSafety?.rejectedReferences, [
+        { blockIndex: 58, blockType: "RULE", disposition: "PRESERVED_EXISTING_OWNER" },
+        { blockIndex: 68, blockType: "NOTE", disposition: "MOVED_TO_UNMAPPED_REVIEW" },
+      ]);
+      assert.deepEqual(error.diagnostics?.finalActivityOwnership, placementDiagnostics.finalActivityOwnership);
+      return true;
+    },
+  );
+  console.log("  ✓ failed placement errors preserve compact normalization and reconciliation diagnostics");
+}
+
+console.log("\nPass 2 diagnostics: 8/8 passing");

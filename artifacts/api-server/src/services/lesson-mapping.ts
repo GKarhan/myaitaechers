@@ -119,6 +119,15 @@ export function normalizeActivityPlacements(
   postEvictionStripped: string[];
   dedupedExercises: number[];
   dedupedAdditional: number[];
+  /**
+   * additionalExercises is an activity-only destination. These records expose
+   * rejected valid indices without retaining learner/source text.
+   */
+  rejectedNonActivityAdditionalExercises: Array<{
+    blockIndex: number;
+    blockType: string;
+    disposition: "PRESERVED_EXISTING_OWNER" | "MOVED_TO_UNMAPPED_REVIEW";
+  }>;
   stepBRescued: number[];
   stepCRescued: number[];
   removedCandidates: PrePromotionRemovedCandidate[];
@@ -206,12 +215,44 @@ export function normalizeActivityPlacements(
 
   // ── Phase 3: Deduplicate additionalExercises[] ──────────────────────────────
   // Drop: invalid blockIndex, blocks already in exercises[] (exercises[] wins),
-  // duplicates within/across topics (first valid occurrence wins).
+  // duplicates within/across topics (first valid occurrence wins), and every
+  // valid non-activity reference. additionalExercises is only for source
+  // EXERCISE/ACTIVITY/HOMEWORK blocks; a non-activity block keeps an existing
+  // source/support/unmapped owner or moves to review-safe unmapped placement.
   const inAdditional = new Set<number>();
   const dedupedAdditional: number[] = [];
+  const rejectedNonActivityAdditionalExercises: Array<{
+    blockIndex: number;
+    blockType: string;
+    disposition: "PRESERVED_EXISTING_OWNER" | "MOVED_TO_UNMAPPED_REVIEW";
+  }> = [];
+  const hasNonActivitySourceDisposition = (blockIndex: number): boolean =>
+    topics.some((candidateTopic) =>
+      candidateTopic.unmappedBlockIndices.includes(blockIndex)
+      || candidateTopic.microNodes.some((candidateNode) =>
+        candidateNode.sourceBlockIndices.includes(blockIndex)
+        || candidateNode.supportingMaterialIndices.includes(blockIndex)
+        || candidateNode.exercises.some((exercise) => exercise.blockIndex === blockIndex),
+      ),
+    );
   for (const topic of topics) {
     topic.additionalExercises = topic.additionalExercises.filter(ex => {
       if (!isValidBlockIndex(ex.blockIndex, blocks)) return false;
+      const block = blocks[ex.blockIndex];
+      if (!ACTIVITY_BLOCK_TYPES.has(block.blockType)) {
+        const disposition = hasNonActivitySourceDisposition(ex.blockIndex)
+          ? "PRESERVED_EXISTING_OWNER" as const
+          : "MOVED_TO_UNMAPPED_REVIEW" as const;
+        if (disposition === "MOVED_TO_UNMAPPED_REVIEW") {
+          topic.unmappedBlockIndices.push(ex.blockIndex);
+        }
+        rejectedNonActivityAdditionalExercises.push({
+          blockIndex: ex.blockIndex,
+          blockType: block.blockType,
+          disposition,
+        });
+        return false;
+      }
       if (inExercises.has(ex.blockIndex)) {
         dedupedAdditional.push(ex.blockIndex);
         return false; // exercises[] wins
@@ -307,6 +348,7 @@ export function normalizeActivityPlacements(
     postEvictionStripped,
     dedupedExercises,
     dedupedAdditional,
+    rejectedNonActivityAdditionalExercises,
     stepBRescued,
     stepCRescued,
     removedCandidates,
@@ -538,7 +580,13 @@ export class MappingSourcePlacementError extends Error {
   readonly teacherMessage =
     "Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։ Արդյունքը չի պահպանվել։ Խնդրում ենք կրկին փորձել կամ վերանայել աղբյուրը։";
 
-  constructor(readonly coverage: CoverageValidationResult) {
+  constructor(
+    readonly coverage: CoverageValidationResult,
+    readonly diagnostics?: {
+      pass2Diagnostics: Pass2Diagnostics;
+      finalActivityOwnership: FinalActivityOwnershipDiagnostics;
+    },
+  ) {
     super("Detailed mapping contains invalid source placements before persistence");
     this.name = "MappingSourcePlacementError";
   }
@@ -3413,6 +3461,17 @@ export interface Pass2Diagnostics {
     acceptedBeforeNormalization: number;
     acceptedAfterNormalization: number;
     rejectedMicroNodes: number;
+  };
+  /** Compact, source-safe audit of the activity-only additionalExercises gate. */
+  additionalExerciseTypeSafety?: {
+    rejectedReferenceCount: number;
+    rejectedReferences: Array<{
+      blockIndex: number;
+      blockType: string;
+      disposition: "PRESERVED_EXISTING_OWNER" | "MOVED_TO_UNMAPPED_REVIEW";
+    }>;
+    finalCategoryCounts?: CoverageValidationResult["categoryCounts"];
+    finalActivityOwnership?: FinalActivityOwnershipDiagnostics;
   };
 }
 
@@ -7272,9 +7331,13 @@ export function assertPass2PersistenceGates(input: {
   atomicityVerificationDiagnostics?: AtomicityVerificationDiagnostics;
   /** A parsed semantic-review action that fails server validation is untrusted. */
   rejectedSemanticReviewDecisionCount?: number;
+  failureDiagnostics?: {
+    pass2Diagnostics: Pass2Diagnostics;
+    finalActivityOwnership: FinalActivityOwnershipDiagnostics;
+  };
 }): Pass2PersistenceGateResult {
   if (!input.coverageValidation.valid) {
-    throw new MappingSourcePlacementError(input.coverageValidation);
+    throw new MappingSourcePlacementError(input.coverageValidation, input.failureDiagnostics);
   }
   // A readable instructional block that remains without a MicroNode owner is
   // preserved as an unmapped, review-required source block. Activities are not
@@ -7749,6 +7812,11 @@ export async function runPass2Pipeline(
   }
   const prePromotionRemovedCandidates: PrePromotionRemovedCandidate[] = [];
   const retainedPrePromotionCandidateIds = new Set<string>();
+  const rejectedAdditionalExerciseReferences = new Map<string, {
+    blockIndex: number;
+    blockType: string;
+    disposition: "PRESERVED_EXISTING_OWNER" | "MOVED_TO_UNMAPPED_REVIEW";
+  }>();
   const retainPrePromotionRemovedCandidates = (
     candidates: ReadonlyArray<PrePromotionRemovedCandidate>,
   ) => {
@@ -7758,6 +7826,20 @@ export async function runPass2Pipeline(
       if (candidateId) retainedPrePromotionCandidateIds.add(candidateId);
       prePromotionRemovedCandidates.push(candidate);
     }
+  };
+  const recordAdditionalExerciseTypeSafety = (
+    normalization: ReturnType<typeof normalizeActivityPlacements>,
+  ) => {
+    for (const reference of normalization.rejectedNonActivityAdditionalExercises) {
+      const key = `${reference.blockIndex}:${reference.blockType}:${reference.disposition}`;
+      rejectedAdditionalExerciseReferences.set(key, reference);
+    }
+  };
+  const normalizeAndTrackActivityPlacements = () => {
+    const normalization = normalizeActivityPlacements(topics, blocks);
+    retainPrePromotionRemovedCandidates(normalization.removedCandidates);
+    recordAdditionalExerciseTypeSafety(normalization);
+    return normalization;
   };
 
   // ── Activity normalization: enforce "exactly one canonical placement" invariant ─
@@ -7779,8 +7861,7 @@ export async function runPass2Pipeline(
   //  • Activity blocks missing from all Pass2 output
   //    → Rescued to additionalExercises of last topic.
   {
-    const norm = normalizeActivityPlacements(topics, blocks);
-    retainPrePromotionRemovedCandidates(norm.removedCandidates);
+    const norm = normalizeAndTrackActivityPlacements();
     recordPass2PostNormalizationCounts(topics, topicDiagnostics);
     if (norm.evictedFromSource.length > 0) {
       logger.warn(
@@ -7830,7 +7911,7 @@ export async function runPass2Pipeline(
       "pass2: structural heading ownership repaired before source alignment",
     );
   }
-  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
+  normalizeAndTrackActivityPlacements();
 
   // Source coverage has a stricter meaning than placement coverage. Each
   // affected Topic receives exactly one narrow repair call; no repair can
@@ -7977,9 +8058,9 @@ export async function runPass2Pipeline(
     normalizeKnowledgeCandidateIdentities(topics),
   );
   discardDuplicateKnowledgeCandidateEmissions(topics);
-  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
+  normalizeAndTrackActivityPlacements();
   let sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
-  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
+  normalizeAndTrackActivityPlacements();
   let prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
   let prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
     topics,
@@ -8007,9 +8088,9 @@ export async function runPass2Pipeline(
     ),
     duplicateResolution,
   });
-  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
+  normalizeAndTrackActivityPlacements();
   sourceAlignmentReconciliation = reconcileSameTopicSourceAlignment(topics, blocks);
-  retainPrePromotionRemovedCandidates(normalizeActivityPlacements(topics, blocks).removedCandidates);
+  normalizeAndTrackActivityPlacements();
   prePromotionSourceAlignment = validatePass2SourceAlignment(topics, blocks);
   prePromotionUnresolvedAtomicity = getUnresolvedAtomicityFindings(
     topics,
@@ -8043,7 +8124,7 @@ export async function runPass2Pipeline(
     sourceBlocks: blocks,
     eligibleBlockIndices: new Set(inScopeBlockIndices),
   });
-  normalizeActivityPlacements(topics, blocks);
+  normalizeAndTrackActivityPlacements();
   recordPass2PostNormalizationCounts(topics, topicDiagnostics);
 
   // Deterministic ownership validation is rerun after consolidation. A merge is
@@ -8074,6 +8155,13 @@ export async function runPass2Pipeline(
     );
   }
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
+  diagnostics.additionalExerciseTypeSafety = {
+    rejectedReferenceCount: rejectedAdditionalExerciseReferences.size,
+    rejectedReferences: [...rejectedAdditionalExerciseReferences.values()]
+      .sort((left, right) => left.blockIndex - right.blockIndex || left.blockType.localeCompare(right.blockType)),
+    finalCategoryCounts: coverageValidation.categoryCounts,
+    finalActivityOwnership,
+  };
   const allUnmapped = topics.flatMap((topic) => topic.unmappedBlockIndices);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
   const reconciliationByNodeId = new Map(
@@ -8200,6 +8288,10 @@ export async function runPass2Pipeline(
       granularityConsolidation.rejectedDecisionCount
       + sourceReallocation.rejectedDecisionCount
       + atomicityRepair.rejectedDecisionCount,
+    failureDiagnostics: {
+      pass2Diagnostics: diagnostics,
+      finalActivityOwnership,
+    },
   });
 
   atomicityVerification.persistenceEligible = true;

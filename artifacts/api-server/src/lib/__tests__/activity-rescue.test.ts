@@ -543,6 +543,99 @@ it("Test 16: non-overlapping source and supporting material remain unchanged", (
   assert.deepEqual(coverage.duplicateIndices, []);
 });
 
+// ── Tests 17–20 — additionalExercises activity-only contract ─────────────────
+
+it("Test 17: valid EXERCISE, ACTIVITY, and HOMEWORK references remain additional exercises", () => {
+  const blocks = [
+    makeBlock("RULE"),
+    makeBlock("EXERCISE"),
+    makeBlock("ACTIVITY"),
+    makeBlock("HOMEWORK"),
+  ];
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [], [
+    { blockIndex: 1 }, { blockIndex: 2 }, { blockIndex: 3 },
+  ])];
+
+  const result = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1, 2, 3]);
+  assert.deepEqual(result.rejectedNonActivityAdditionalExercises, []);
+  assert.equal(validateSourceCoverage(4, topics as any).valid, true);
+});
+
+it("Test 18: non-activity additional exercise keeps its existing source owner", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [], [{ blockIndex: 0 }, { blockIndex: 1 }])];
+
+  const result = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0]);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(result.rejectedNonActivityAdditionalExercises, [{
+    blockIndex: 0, blockType: "RULE", disposition: "PRESERVED_EXISTING_OWNER",
+  }]);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Test 19: ownerless non-activity additional exercise moves once to review-safe unmapped", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [], [], [{ blockIndex: 0 }, { blockIndex: 1 }])];
+
+  const result = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].unmappedBlockIndices, [0]);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(result.rejectedNonActivityAdditionalExercises, [{
+    blockIndex: 0, blockType: "RULE", disposition: "MOVED_TO_UNMAPPED_REVIEW",
+  }]);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Test 20: writer-style source, support, unmapped, and exercise owners remain the sole disposition", () => {
+  const blocks = [
+    makeBlock("RULE"),
+    makeBlock("IMAGE"),
+    makeBlock("NOTE"),
+    makeBlock("DEFINITION"),
+    makeBlock("EXERCISE"),
+  ];
+  const topics = [makeTopic("T", [makeMN("MN", [0], [{ blockIndex: 3 }], [1])], [2], [
+    { blockIndex: 0 }, { blockIndex: 1 }, { blockIndex: 2 }, { blockIndex: 3 }, { blockIndex: 4 },
+  ])];
+
+  const result = normalizeActivityPlacements(topics as any, blocks as any);
+
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [4]);
+  assert.deepEqual(result.rejectedNonActivityAdditionalExercises.map((entry) => entry.disposition), [
+    "PRESERVED_EXISTING_OWNER",
+    "PRESERVED_EXISTING_OWNER",
+    "PRESERVED_EXISTING_OWNER",
+    "PRESERVED_EXISTING_OWNER",
+  ]);
+  assert.equal(validateSourceCoverage(5, topics as any).valid, true);
+});
+
+it("Test 21: synthetic terminal duplicate regression removes non-activity additional references 58 and 68", () => {
+  const blocks = Array.from({ length: 70 }, (_, index) =>
+    makeBlock(index === 58 || index === 68 ? "RULE" : "NOTE", `Block ${index}.`),
+  );
+  const topics = [makeTopic(
+    "T",
+    [makeMN("MN", [58]), makeMN("MN-2", [68])],
+    Array.from({ length: 70 }, (_, index) => index).filter((index) => index !== 58 && index !== 68),
+    [{ blockIndex: 58 }, { blockIndex: 68 }],
+  )];
+
+  const result = normalizeActivityPlacements(topics as any, blocks as any);
+  const coverage = validateSourceCoverage(70, topics as any);
+
+  assert.deepEqual(result.rejectedNonActivityAdditionalExercises.map((entry) => entry.blockIndex), [58, 68]);
+  assert.deepEqual(topics[0].additionalExercises, []);
+  assert.deepEqual(coverage.duplicateIndices, []);
+  assert.deepEqual(coverage.missingIndices, []);
+  assert.equal(coverage.valid, true);
+});
+
 // ── Final activity ownership reconciliation ──────────────────────────────────
 
 it("Final Test 1: source + additional exercise resolves to additional exercise only", () => {

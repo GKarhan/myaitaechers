@@ -5715,6 +5715,9 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
                 duplicateIndices: err.coverage.duplicateIndices,
                 duplicatePlacements: err.coverage.duplicatePlacements,
                 invalidIndices: err.coverage.invalidIndices,
+                categoryCounts: err.coverage.categoryCounts,
+                additionalExerciseTypeSafety: err.diagnostics?.pass2Diagnostics.additionalExerciseTypeSafety,
+                finalActivityOwnership: err.diagnostics?.finalActivityOwnership,
               },
             }
         : err instanceof MappingInstructionalCoverageError
