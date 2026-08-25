@@ -1,0 +1,413 @@
+IMPLEMENTATION — MAPPING CORE
+FINAL ACTIVITY OWNERSHIP RECONCILIATION ONLY
+
+IMPORTANT SAFETY PRINCIPLE
+
+Preserve all currently working behavior.
+
+Do not redesign the Mapping Core.
+Do not weaken any existing validator.
+Do not change candidate discovery.
+Do not change candidate promotion policy.
+Do not change M3-1 review-candidate preservation.
+Do not change semantic scope.
+Do not change source verification.
+Do not change prompts/provider contracts.
+Do not touch Cognitive Path C2-1/C2-2/C2-3.
+Do not touch Teaching Content or AI Teacher.
+Do not modify existing lesson data.
+Do not automatically rerun Lesson 717.
+
+We are fixing ONE confirmed ownership invariant.
+
+==================================================
+CONFIRMED PROBLEM
+==================================================
+
+Lesson 717 / mapping job 186 failed correctly at:
+
+SOURCE_PLACEMENT_FAILED_PRE_PERSISTENCE
+
+with:
+
+45:
+- src:Ձևի մակբայների կիրառություն
+- additionalEx
+
+46:
+- unmapped
+- additionalEx
+
+The forensic audit established:
+
+1. Activity blocks must have exactly one final activity destination:
+
+   microNode.exercises[]
+
+   OR
+
+   topic.additionalExercises[]
+
+2. Once an EXERCISE / ACTIVITY / HOMEWORK block has a valid
+   activity destination, it must not simultaneously remain in:
+
+   - sourceBlockIndices
+   - supportingMaterialIndices
+   - unmappedBlockIndices
+
+3. validateSourceCoverage() is correct and MUST remain unchanged.
+
+4. Existing normalizeActivityPlacements() performs activity cleanup,
+   but later mutation stages can reintroduce conflicting ownership.
+
+5. applyKnowledgeCandidatePromotion() is one confirmed code path
+   capable of introducing such a conflict because removed-node
+   exercises may be retained as additionalExercises without checking
+   source/support/unmapped ownership.
+
+==================================================
+GOAL
+==================================================
+
+Add ONE deterministic final activity-ownership reconciliation after
+ALL placement-mutating stages and immediately before the final
+validateSourceCoverage() / persistence gate.
+
+This is NOT a generic duplicate remover.
+
+It applies ONLY to verified blocks whose source block type is:
+
+- EXERCISE
+- ACTIVITY
+- HOMEWORK
+
+==================================================
+FINAL OWNERSHIP RULE
+==================================================
+
+For each verified activity block:
+
+CASE 1
+
+If the block exists in any canonical:
+
+microNode.exercises[]
+
+then that is the canonical owner.
+
+Remove the same block index from:
+
+- every topic.additionalExercises[]
+- every microNode.sourceBlockIndices
+- every microNode.supportingMaterialIndices
+- every topic.unmappedBlockIndices
+
+Do not duplicate or recreate the exercise.
+
+CASE 2
+
+If the block is NOT in microNode.exercises[]
+but exists in:
+
+topic.additionalExercises[]
+
+then additionalExercises is the canonical owner.
+
+Remove the same block index from:
+
+- every microNode.sourceBlockIndices
+- every microNode.supportingMaterialIndices
+- every topic.unmappedBlockIndices
+
+CASE 3
+
+If an activity block has neither a MicroNode exercise owner nor an
+additionalExercises owner:
+
+DO NOT invent an owner in this fix.
+
+Leave the existing pipeline/validator behavior unchanged.
+
+CASE 4
+
+For NON-ACTIVITY blocks:
+
+DO NOTHING.
+
+Any source/support/unmapped conflict for non-activity material must
+continue to fail closed through the existing validator.
+
+==================================================
+IMPORTANT CROSS-TOPIC RULE
+==================================================
+
+The reconciliation must be LESSON-WIDE, not merely topic-local.
+
+Before changing ownership, determine whether the same verified block
+index appears anywhere in the lesson as:
+
+- microNode exercise
+- additional exercise
+- source
+- supporting material
+- unmapped
+
+Canonical activity priority is lesson-wide:
+
+microNode.exercises[]
+>
+additionalExercises[]
+
+Do not allow the same activity block to survive under different
+topics in conflicting categories.
+
+Do not silently choose between TWO different MicroNode exercise
+owners.
+
+If the same activity block is attached as microNode.exercises[] to
+multiple distinct MicroNodes, preserve the existing fail-closed
+behavior or emit an explicit conflict diagnostic.
+
+This fix must not guess which MicroNode is correct.
+
+==================================================
+PLACEMENT IN PIPELINE
+==================================================
+
+Trace the current pipeline and place this reconciliation only AFTER
+the last function capable of mutating:
+
+- sourceBlockIndices
+- supportingMaterialIndices
+- exercises
+- additionalExercises
+- unmappedBlockIndices
+
+including:
+
+- promotion cleanup
+- structural cleanup
+- activity normalization
+- review-safe preservation
+- unresolved instructional preservation
+
+and BEFORE:
+
+validateSourceCoverage()
+
+Do not simply add it where convenient.
+
+Prove in the implementation report that no later placement mutation
+occurs before validation.
+
+==================================================
+IMPLEMENTATION DESIGN
+==================================================
+
+Prefer a small pure/deterministic helper such as:
+
+reconcileFinalActivityOwnership(...)
+
+or equivalent.
+
+Do not add a model/provider call.
+
+Do not add a DB migration.
+
+Do not change persistence schema unless absolutely required.
+
+The helper should return useful diagnostics, at minimum:
+
+- activityBlocksInspected
+- conflictsResolved
+- sourceOwnershipRemoved
+- supportingOwnershipRemoved
+- unmappedOwnershipRemoved
+- duplicateAdditionalExerciseReferencesRemoved
+- unresolvedMultipleMicroNodeExerciseOwners
+
+Keep diagnostics source-safe:
+no raw provider output or large source text.
+
+==================================================
+REQUIRED REGRESSION TESTS
+==================================================
+
+Add provider-free deterministic tests.
+
+TEST 1
+Activity block is:
+
+source + additionalExercise
+
+Expected final state:
+
+additionalExercise only.
+
+TEST 2
+Activity block is:
+
+unmapped + additionalExercise
+
+Expected:
+
+additionalExercise only.
+
+TEST 3
+Activity block is:
+
+supportingMaterial + additionalExercise
+
+Expected:
+
+additionalExercise only.
+
+TEST 4
+Activity block is:
+
+microNode.exercise + additionalExercise
+
+Expected:
+
+microNode.exercise only.
+
+TEST 5
+Activity block is:
+
+microNode.exercise + source + unmapped
+
+Expected:
+
+microNode.exercise only.
+
+TEST 6
+Same activity block appears as additionalExercise in more than one
+topic.
+
+Expected:
+
+one deterministic retained additionalExercise representation;
+no cross-topic duplicate ownership.
+
+Do not invent a MicroNode attachment.
+
+TEST 7
+Same activity block is attached to TWO distinct MicroNodes.
+
+Expected:
+
+DO NOT silently resolve.
+
+The final state must remain review/fail-closed with an explicit
+diagnostic.
+
+TEST 8
+Non-activity THEORY block is:
+
+source + unmapped
+
+Expected:
+
+this helper does nothing;
+existing validator still rejects the conflict.
+
+TEST 9
+Promotion cleanup produces:
+
+retained MicroNode source
++
+removed-node exercise retained as additionalExercise
+
+Expected after final reconciliation:
+
+activity ownership is valid and source coverage passes only if the
+block is truly typed as an activity.
+
+TEST 10
+Promotion/review cleanup produces:
+
+unmapped
++
+additionalExercise
+
+Expected:
+
+additionalExercise only for an activity block.
+
+==================================================
+NON-REGRESSION TESTS
+==================================================
+
+Run the existing relevant suites for:
+
+- source coverage
+- Pass 2 placement
+- activity normalization/rescue
+- candidate promotion
+- candidate identity / M3-1
+- atomicity
+- mapping completeness
+
+Run API TypeScript check.
+
+Do not change tests merely to make failures disappear.
+
+==================================================
+FINAL ARCHITECTURAL REVIEW
+==================================================
+
+Before completion, independently verify:
+
+1. validateSourceCoverage() is unchanged.
+
+2. No candidate promotion acceptance/rejection rule changed.
+
+3. M3-1 review candidates remain diagnostics-only and intact.
+
+4. No provider call was added.
+
+5. No source block is discarded.
+
+6. Activity ownership is reconciled only when its block type proves
+   it is an activity.
+
+7. Non-activity conflicts still fail closed.
+
+8. Multiple MicroNode exercise ownership is NOT silently resolved.
+
+9. The reconciliation runs after the final placement mutation and
+   before source validation.
+
+==================================================
+RUNTIME
+==================================================
+
+After all tests pass:
+
+- restart only the API if required to load the change;
+- verify clean startup logs.
+
+DO NOT rerun Lesson 717 automatically.
+
+We will manually run Lesson 717 after implementation review.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Root cause fixed
+2. Files changed
+3. Exact pipeline insertion point
+4. Final ownership precedence
+5. Diagnostics added
+6. Tests added
+7. Existing regression suites run
+8. Typecheck result
+9. Validator unchanged: YES/NO
+10. Promotion policy unchanged: YES/NO
+11. M3-1 unchanged: YES/NO
+12. C2 unchanged: YES/NO
+13. API startup result
+14. SAFE TO MANUALLY REMAP LESSON 717: YES/NO

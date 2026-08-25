@@ -5537,6 +5537,7 @@ router.post("/lessons/:lessonId/map", requireLessonAuthor, async (req: AuthReque
         independentLearningTargets: pass2.knowledgeCompleteness.independentTargets,
         sourceReallocation: pass2.sourceReallocation,
         sourceAlignmentReconciliation: pass2.sourceAlignmentReconciliation,
+        finalActivityOwnership: pass2.finalActivityOwnership,
         atomicityRepair: {
           attempted: pass2.atomicityRepair.attempted,
           appliedCount: pass2.atomicityRepair.appliedCount,

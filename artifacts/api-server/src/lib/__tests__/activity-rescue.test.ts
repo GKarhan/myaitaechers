@@ -24,7 +24,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import assert from "node:assert/strict";
-import { isValidBlockIndex, normalizeActivityPlacements } from "../../services/lesson-mapping.js";
+import {
+  isValidBlockIndex,
+  normalizeActivityPlacements,
+  reconcileFinalActivityOwnership,
+} from "../../services/lesson-mapping.js";
 import { validateSourceCoverage } from "../coverage-validator.js";
 import type { Pass2TopicResult, Pass2MicroNode } from "../../services/lesson-mapping.js";
 
@@ -537,6 +541,143 @@ it("Test 16: non-overlapping source and supporting material remain unchanged", (
   assert.deepEqual(topics[0].microNodes[0].supportingMaterialIndices, beforeSupporting);
   const coverage = validateSourceCoverage(9, topics as any);
   assert.deepEqual(coverage.duplicateIndices, []);
+});
+
+// ── Final activity ownership reconciliation ──────────────────────────────────
+
+it("Final Test 1: source + additional exercise resolves to additional exercise only", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0, 1])], [], [{ blockIndex: 1 }])];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0]);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.equal(result.sourceOwnershipRemoved, 1);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 2: unmapped + additional exercise resolves to additional exercise only", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [1], [{ blockIndex: 1 }])];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(topics[0].unmappedBlockIndices, []);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.equal(result.unmappedOwnershipRemoved, 1);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 3: supporting material + additional exercise resolves to additional exercise only", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("ACTIVITY")];
+  const topics = [makeTopic("T", [makeMN("MN", [0], [], [1])], [], [{ blockIndex: 1 }])];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].supportingMaterialIndices, []);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.equal(result.supportingOwnershipRemoved, 1);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 4: MicroNode exercise + additional exercise retains MicroNode exercise only", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("HOMEWORK")];
+  const topics = [makeTopic("T", [makeMN("MN", [0], [{ blockIndex: 1 }])], [], [{ blockIndex: 1 }])];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].exercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(topics[0].additionalExercises, []);
+  assert.equal(result.duplicateAdditionalExerciseReferencesRemoved, 1);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 5: MicroNode exercise removes source and unmapped ownership lesson-wide", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const topics = [makeTopic(
+    "T",
+    [makeMN("MN", [0, 1], [{ blockIndex: 1 }])],
+    [1],
+  )];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, []);
+  assert.deepEqual(topics[0].microNodes[0].exercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.equal(result.sourceOwnershipRemoved, 1);
+  assert.equal(result.unmappedOwnershipRemoved, 1);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 6: cross-topic additional exercise duplicates retain the first deterministic representation", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const first = makeTopic("First", [makeMN("MN-1", [0])], [], [{ blockIndex: 1 }]);
+  const second = makeTopic("Second", [], [], [{ blockIndex: 1 }]);
+  second.sequence = 2;
+  const topics = [first, second];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(first.additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(second.additionalExercises, []);
+  assert.equal(result.duplicateAdditionalExerciseReferencesRemoved, 1);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 7: two distinct MicroNode exercise owners remain fail-closed with a diagnostic", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const first = makeTopic("First", [makeMN("MN-1", [0], [{ blockIndex: 1 }])]);
+  const second = makeTopic("Second", [makeMN("MN-2", [], [{ blockIndex: 1 }])]);
+  second.sequence = 2;
+  const topics = [first, second];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(result.unresolvedMultipleMicroNodeExerciseOwners, [1]);
+  assert.deepEqual(first.microNodes[0].exercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.deepEqual(second.microNodes[0].exercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.ok(validateSourceCoverage(2, topics as any).duplicateIndices.includes(1));
+});
+
+it("Final Test 8: non-activity source + unmapped conflict remains unchanged and fails closed", () => {
+  const blocks = [makeBlock("RULE")];
+  const topics = [makeTopic("T", [makeMN("MN", [0])], [0])];
+
+  const result = reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.equal(result.activityBlocksInspected, 0);
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [0]);
+  assert.ok(validateSourceCoverage(1, topics as any).duplicateIndices.includes(0));
+});
+
+it("Final Test 9: promotion-style retained source plus removed-node exercise is reconciled when typed as activity", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  // This is the final state promotion cleanup can produce: a retained source
+  // owner and an exercise from a removed candidate retained as additional.
+  const topics = [makeTopic("T", [makeMN("Retained", [0, 1])], [], [{ blockIndex: 1 }])];
+
+  reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(topics[0].microNodes[0].sourceBlockIndices, [0]);
+  assert.deepEqual(topics[0].additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
+});
+
+it("Final Test 10: review-style unmapped plus additional exercise is reconciled across topics", () => {
+  const blocks = [makeBlock("RULE"), makeBlock("EXERCISE")];
+  const first = makeTopic("Review source", [makeMN("MN", [0])], [1]);
+  const second = makeTopic("Exercise retention", [], [], [{ blockIndex: 1 }]);
+  second.sequence = 2;
+  const topics = [first, second];
+
+  reconcileFinalActivityOwnership(topics, blocks as any);
+
+  assert.deepEqual(first.unmappedBlockIndices, []);
+  assert.deepEqual(second.additionalExercises.map((exercise) => exercise.blockIndex), [1]);
+  assert.equal(validateSourceCoverage(2, topics as any).valid, true);
 });
 
 // ── isValidBlockIndex helper tests ───────────────────────────────────────────

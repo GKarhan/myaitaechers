@@ -3907,6 +3907,8 @@ export interface Pass2Result {
   sourcePlacementReview: {
     preservedBlockIndices: number[];
   };
+  /** Activity-only reconciliation after the final placement mutation. */
+  finalActivityOwnership: FinalActivityOwnershipDiagnostics;
   /** Deterministic source-coverage validation result. Independent of AI self-report. */
   coverageValidation: CoverageValidationResult;
   /** Strict readable-instruction coverage; unlike placement coverage, an
@@ -6842,6 +6844,137 @@ export function normalizeSameCategoryUnmappedPlacements(
   return [...new Set(dedupedIndices)].sort((a, b) => a - b);
 }
 
+export interface FinalActivityOwnershipDiagnostics {
+  activityBlocksInspected: number;
+  conflictsResolved: number;
+  sourceOwnershipRemoved: number;
+  supportingOwnershipRemoved: number;
+  unmappedOwnershipRemoved: number;
+  duplicateAdditionalExerciseReferencesRemoved: number;
+  /**
+   * These remain untouched so validateSourceCoverage() can fail closed rather
+   * than making an arbitrary cross-MicroNode exercise assignment.
+   */
+  unresolvedMultipleMicroNodeExerciseOwners: number[];
+}
+
+/**
+ * Reconciles activity ownership lesson-wide after every placement mutation.
+ * A MicroNode exercise owner takes priority over an additional exercise;
+ * otherwise the first additional exercise in topic order is retained.
+ * Non-activity blocks and multiple distinct MicroNode exercise owners remain
+ * untouched for the existing final coverage gate.
+ */
+export function reconcileFinalActivityOwnership(
+  topics: Pass2TopicResult[],
+  blocks: ReadonlyArray<Pick<Pass1Block, "blockType">>,
+): FinalActivityOwnershipDiagnostics {
+  const diagnostics: FinalActivityOwnershipDiagnostics = {
+    activityBlocksInspected: 0,
+    conflictsResolved: 0,
+    sourceOwnershipRemoved: 0,
+    supportingOwnershipRemoved: 0,
+    unmappedOwnershipRemoved: 0,
+    duplicateAdditionalExerciseReferencesRemoved: 0,
+    unresolvedMultipleMicroNodeExerciseOwners: [],
+  };
+
+  const removeOtherOwnership = (blockIndex: number): number => {
+    let removed = 0;
+    for (const topic of topics) {
+      const unmappedBefore = topic.unmappedBlockIndices.length;
+      topic.unmappedBlockIndices = topic.unmappedBlockIndices
+        .filter((index) => index !== blockIndex);
+      const unmappedRemoved = unmappedBefore - topic.unmappedBlockIndices.length;
+      diagnostics.unmappedOwnershipRemoved += unmappedRemoved;
+      removed += unmappedRemoved;
+
+      for (const node of topic.microNodes) {
+        const sourceBefore = node.sourceBlockIndices.length;
+        node.sourceBlockIndices = node.sourceBlockIndices.filter((index) => index !== blockIndex);
+        const sourceRemoved = sourceBefore - node.sourceBlockIndices.length;
+        diagnostics.sourceOwnershipRemoved += sourceRemoved;
+        removed += sourceRemoved;
+
+        const supportingBefore = node.supportingMaterialIndices.length;
+        node.supportingMaterialIndices = node.supportingMaterialIndices
+          .filter((index) => index !== blockIndex);
+        const supportingRemoved = supportingBefore - node.supportingMaterialIndices.length;
+        diagnostics.supportingOwnershipRemoved += supportingRemoved;
+        removed += supportingRemoved;
+      }
+    }
+    return removed;
+  };
+
+  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+    if (!ACTIVITY_BLOCK_TYPES.has(blocks[blockIndex]?.blockType)) continue;
+    diagnostics.activityBlocksInspected++;
+
+    const exerciseOwners: Pass2MicroNode[] = [];
+    const additionalReferences: Pass2Exercise[] = [];
+    for (const topic of topics) {
+      for (const node of topic.microNodes) {
+        if (node.exercises.some((exercise) => exercise.blockIndex === blockIndex)) {
+          exerciseOwners.push(node);
+        }
+      }
+      for (const exercise of topic.additionalExercises) {
+        if (exercise.blockIndex === blockIndex) additionalReferences.push(exercise);
+      }
+    }
+
+    if (exerciseOwners.length > 1) {
+      diagnostics.unresolvedMultipleMicroNodeExerciseOwners.push(blockIndex);
+      continue;
+    }
+
+    let removedForBlock = 0;
+    if (exerciseOwners.length === 1) {
+      let canonicalReferenceRetained = false;
+      const canonicalOwner = exerciseOwners[0];
+      canonicalOwner.exercises = canonicalOwner.exercises.filter((exercise) => {
+        if (exercise.blockIndex !== blockIndex) return true;
+        if (!canonicalReferenceRetained) {
+          canonicalReferenceRetained = true;
+          return true;
+        }
+        removedForBlock++;
+        return false;
+      });
+      for (const topic of topics) {
+        const additionalBefore = topic.additionalExercises.length;
+        topic.additionalExercises = topic.additionalExercises
+          .filter((exercise) => exercise.blockIndex !== blockIndex);
+        const additionalRemoved = additionalBefore - topic.additionalExercises.length;
+        diagnostics.duplicateAdditionalExerciseReferencesRemoved += additionalRemoved;
+        removedForBlock += additionalRemoved;
+      }
+      removedForBlock += removeOtherOwnership(blockIndex);
+    } else if (additionalReferences.length > 0) {
+      let additionalReferenceRetained = false;
+      const canonicalAdditional = additionalReferences[0];
+      for (const topic of topics) {
+        topic.additionalExercises = topic.additionalExercises.filter((exercise) => {
+          if (exercise.blockIndex !== blockIndex) return true;
+          if (!additionalReferenceRetained && exercise === canonicalAdditional) {
+            additionalReferenceRetained = true;
+            return true;
+          }
+          diagnostics.duplicateAdditionalExerciseReferencesRemoved++;
+          removedForBlock++;
+          return false;
+        });
+      }
+      removedForBlock += removeOtherOwnership(blockIndex);
+    }
+    if (removedForBlock > 0) diagnostics.conflictsResolved++;
+  }
+
+  diagnostics.unresolvedMultipleMicroNodeExerciseOwners.sort((left, right) => left - right);
+  return diagnostics;
+}
+
 /**
  * Produces the terminal atomicity trace before the destructive persistence
  * boundary. A review interruption is intentionally distinct from a completed
@@ -7368,6 +7501,16 @@ export async function runPass2Pipeline(
       "pass2: same-category unmapped duplicates normalized before source validation",
     );
   }
+  const finalActivityOwnership = reconcileFinalActivityOwnership(topics, blocks);
+  if (
+    finalActivityOwnership.conflictsResolved > 0
+    || finalActivityOwnership.unresolvedMultipleMicroNodeExerciseOwners.length > 0
+  ) {
+    logger.info(
+      finalActivityOwnership,
+      "pass2: final activity ownership reconciled before source validation",
+    );
+  }
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
   const allUnmapped = topics.flatMap((topic) => topic.unmappedBlockIndices);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);
@@ -7507,6 +7650,7 @@ export async function runPass2Pipeline(
     semanticScope,
     unmappedBlockIndices: allUnmapped,
     sourcePlacementReview,
+    finalActivityOwnership,
     coverageValidation,
     instructionalCoverage: postConsolidationInstructionalCoverage,
     granularityFindings,
