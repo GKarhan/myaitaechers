@@ -1,0 +1,401 @@
+READ-ONLY FORENSIC AUDIT ONLY — LESSON 717 / «ՄԱԿԲԱՅ»
+
+IMPORTANT:
+Do NOT modify code.
+Do NOT modify prompts.
+Do NOT modify database data.
+Do NOT rerun mapping.
+Do NOT restart services.
+Do NOT normalize, repair, promote, restore, merge, split, or create anything.
+Do NOT touch Cognitive Path C2-1/C2-2/C2-3, Teaching Content, AI Teacher, Quiz, Knowledge Tree, or Manual Mapping.
+
+This task is DIAGNOSIS ONLY.
+
+We have now successfully persisted the automatic mapping for:
+
+Lesson ID: 717
+Subject/book: Հայոց լեզու 8
+Lesson: «Մակբայ»
+Pages: 18–29
+
+Current teacher UI result:
+
+- mapping persisted successfully
+- 0 ready MicroNodes
+- 1 MicroNode requires review
+- 34 source blocks require review
+
+Current topic structure shown in UI:
+
+1. Մակբայի ընդհանուր բնութագիր — 0 MicroNodes
+2. Տեղի մակբայներ — 1 MicroNode
+3. Ժամանակի մակբայներ — 0 MicroNodes
+4. Ձևի մակբայներ — 0 MicroNodes
+5. Չափ ու քանակի մակբայների հիմնական հասկացություններ — 0 MicroNodes
+6. Մակբայների կիրառություն — 0 MicroNodes
+
+The only surviving MicroNode is approximately:
+
+«Տեղի մակբայների ճանաչումը»
+Objective:
+«Ուսանողը կարող է ճանաչել տեղի մակբայները տրված նախադասություններում»։
+
+But the lesson source/exercises visibly contain many independently teachable/assessable abilities, including examples such as:
+
+- identify adverbs and determine what characteristic of the action they express;
+- distinguish adverbs from other parts of speech;
+- explain adverb formation and spelling;
+- form adverbs with derivational suffixes;
+- use adverbs in sentences;
+- identify place adverbs;
+- identify time adverbs;
+- identify manner adverbs;
+- identify quantity/degree adverbs;
+- determine adverb type;
+- distinguish words used as adverbs vs other parts of speech;
+- classify adverbs;
+- perform morphological analysis;
+- construct/use appropriate adverbs with verbs.
+
+Examples from the actual lesson include exercises 1, 2, 3, 4, 6–25, 29, 31–40, etc.
+
+The question is NOT:
+“How many MicroNodes should there ideally be?”
+
+The forensic question is:
+
+WHY DID THE CURRENT AUTOMATIC MAPPING PIPELINE ALLOW ONLY ONE CANONICAL MicroNode TO SURVIVE WHILE SO MUCH VERIFIED IN-SCOPE INSTRUCTIONAL EVIDENCE ENDED IN REVIEW / UNMAPPED STATES?
+
+==================================================
+PART 1 — IDENTIFY THE EXACT SUCCESSFUL MAPPING JOB
+==================================================
+
+Find the newest SUCCESSFUL automatic mapping job for lesson 717.
+
+Report:
+
+- lessonId
+- mappingJobId
+- status
+- timestamps if available
+- verified Pass 1 block count
+- semantic in-scope block count
+- excluded/out-of-scope block count
+- final topic count
+- candidate count
+- promoted candidate count
+- canonical MicroNode count before consolidation
+- canonical MicroNode count after consolidation
+- final persisted MicroNode count
+- review-required MicroNode count
+- unmapped/review source-block count
+
+Use persisted diagnostics and logs only.
+
+Do not infer a number if it is not recorded.
+Mark unavailable fields as NOT RECORDED.
+
+==================================================
+PART 2 — TRACE THE PIPELINE AS A FUNNEL
+==================================================
+
+Build a stage-by-stage funnel for this exact successful run:
+
+Verified source blocks
+→ semantic lesson scope
+→ topic groups
+→ source-first learning targets / target ledger
+→ KnowledgeCandidates
+→ candidate promotion
+→ canonical MicroNodes
+→ lesson-wide consolidation
+→ completeness
+→ source placement/reconciliation
+→ teacher-review/unmapped
+→ persistence
+
+For EACH stage report:
+
+1. input count
+2. output count
+3. what disappeared/changed
+4. why it disappeared/changed
+5. whether the change came from:
+   - provider/model output
+   - deterministic server logic
+   - promotion threshold/gate
+   - consolidation
+   - completeness
+   - scope classification
+   - ownership conflict
+   - review policy
+   - other
+
+I specifically need the FIRST stage where the lesson goes from
+“many independently evidenced learning abilities”
+to
+“only one surviving MicroNode”.
+
+Do not stop at the final symptom.
+
+==================================================
+PART 3 — TARGET LEDGER AUDIT
+==================================================
+
+Task #174 and Task #177 introduced independent/source-first target diagnostics.
+
+Inspect the target ledger for lesson 717.
+
+For every discovered target, report a compact table:
+
+target ID
+target title/summary
+source evidence indices
+exercise evidence IDs/indices
+outcome evidence
+direction if applicable
+candidate provider(s)
+canonical provider
+status
+review reason
+
+I especially want to know whether targets corresponding to these concepts/abilities were detected:
+
+A. general characteristics of adverbs
+B. recognizing adverbs
+C. adverb formation / spelling
+D. place adverbs
+E. time adverbs
+F. manner adverbs
+G. quantity/degree adverbs
+H. classifying adverbs by type
+I. using/constructing adverbs in sentences
+J. distinguishing adverbial use from another part of speech
+K. morphological analysis of adverbs
+
+For each A–K classify EXACTLY one of:
+
+- NOT_DISCOVERED
+- DISCOVERED_NO_CANDIDATE
+- CANDIDATE_NOT_PROMOTED
+- PROMOTED_THEN_CONSOLIDATED
+- PROMOTED_THEN_REJECTED
+- REVIEW_ONLY
+- CANONICAL_MICRONODE
+- NOT_SUPPORTED_BY_VERIFIED_SOURCE
+
+Do not invent target records if they do not exist.
+If diagnostics are insufficient, say NOT RECORDED.
+
+==================================================
+PART 4 — KNOWLEDGE CANDIDATE AUDIT
+==================================================
+
+List ALL KnowledgeCandidates generated for this lesson before promotion.
+
+For each candidate report:
+
+- candidate ID
+- title
+- learning objective
+- source block indices
+- exercise references
+- topic
+- confidence if recorded
+- promotion decision
+- rejection/hold reason
+- final canonical MicroNode ID if any
+
+Then answer:
+
+Did the model generate only ~1 meaningful candidate?
+
+OR
+
+Did it generate multiple candidates which were later lost?
+
+This distinction is critical.
+
+==================================================
+PART 5 — LONG-LESSON / CONTEXT-SCALING AUDIT
+==================================================
+
+This lesson spans pages 18–29 and contains many source blocks/exercises.
+
+Determine whether lesson size plausibly caused candidate under-generation.
+
+Inspect the ACTUAL runtime architecture and logs.
+
+Report:
+
+- number of verified blocks sent to each relevant provider call
+- number of topics/groups per call
+- approximate prompt/input size if recorded
+- token usage if recorded
+- whether candidate generation occurs:
+  A. once lesson-wide
+  B. once per topic
+  C. once per chunk
+  D. another architecture
+- whether any truncation occurred
+- whether any provider max-token/output limit was reached
+- whether JSON/schema output ended normally
+- whether a topic/group received many blocks but returned zero candidates
+- whether candidate count appears capped anywhere in prompt/schema/code
+- whether arrays have max-length constraints
+- whether prompt language encourages “minimal”, “few”, “representative”, or merged candidates
+- whether long groups can cause one broad candidate to absorb multiple independently assessable targets
+
+IMPORTANT:
+Do not merely say “long lessons may be harder”.
+Find code/log evidence.
+
+==================================================
+PART 6 — TOPIC GROUPING AUDIT
+==================================================
+
+We currently have six visible topics but only one MicroNode.
+
+For each topic report:
+
+- input source block count
+- exercise count
+- detected target count
+- candidate count
+- promoted candidate count
+- final MicroNode count
+- review/unmapped count
+
+Especially inspect whether a large topic or grouping step is swallowing several pedagogically distinct abilities.
+
+Check whether the topic structure itself is correct or whether unrelated/overly broad blocks were grouped together.
+
+==================================================
+PART 7 — EXERCISE SIGNAL AUDIT
+==================================================
+
+Exercises must be treated as curriculum-demand evidence, not merely attachments.
+
+Inspect whether exercises such as:
+
+- identify/type classification
+- sentence construction
+- adverb formation
+- formation + spelling explanation
+- morphological analysis
+
+actually contributed to target/candidate discovery.
+
+For each major exercise cluster answer:
+
+- detected as instructional evidence? YES/NO
+- target created? YES/NO
+- candidate created? YES/NO
+- canonical MicroNode provider? YES/NO
+- if NO, exact reason
+
+We need to know whether the mapper is preserving exercises physically while failing to use them semantically.
+
+==================================================
+PART 8 — DETERMINE THE ROOT-CAUSE CLASS
+==================================================
+
+Choose the PRIMARY root cause from:
+
+A. LONG_CONTEXT_PROVIDER_UNDERGENERATION
+B. TOPIC_GROUPING_TOO_BROAD
+C. TARGET_DISCOVERY_UNDERGENERATION
+D. TARGET_TO_CANDIDATE_BRIDGE_FAILURE
+E. CANDIDATE_GENERATION_UNDERGENERATION
+F. PROMOTION_TOO_STRICT
+G. CONSOLIDATION_TOO_AGGRESSIVE
+H. COMPLETENESS_NOT_RESTORING_MISSING_TARGETS
+I. SOURCE_OWNERSHIP_CONFLICT
+J. REVIEW_POLICY_TOO_AGGRESSIVE
+K. MULTIPLE_CAUSES
+L. OTHER
+
+Then provide SECONDARY contributing causes if applicable.
+
+Every classification must cite concrete code/log/database evidence.
+
+==================================================
+PART 9 — COMPARE AGAINST OUR INTENDED CONTRACT
+==================================================
+
+Our intended canonical hierarchy remains:
+
+Subject → Lesson → Topic → MicroNode
+
+MicroNode is atomic:
+ONE independently teachable/assessable learning objective.
+
+The mapper must NOT create one MicroNode per paragraph or per exercise.
+
+But it also must NOT collapse several independently assessable abilities into one broad MicroNode or leave them silently without a provider.
+
+Evaluate whether lesson 717 violates this contract.
+
+Answer:
+
+1. Is 1 MicroNode pedagogically defensible for this source?
+2. If not, which independently assessable target families have no canonical provider?
+3. Are those missing targets already visible in our source-first target ledger?
+4. Which exact pipeline boundary prevents them from becoming canonical MicroNodes?
+
+==================================================
+PART 10 — DO NOT FIX YET
+==================================================
+
+Do not edit anything.
+
+At the end provide ONLY a proposed architecture direction, not implementation.
+
+Give 2–3 possible solutions ranked by safety.
+
+For each solution state:
+
+- what boundary it changes
+- whether it adds provider calls
+- expected cost impact
+- expected effect on short lessons
+- expected effect on long lessons
+- risk to already-working Mapping Core behavior
+- whether existing validators remain authoritative
+
+Prefer a solution that scales to both short and long lessons.
+
+Do NOT propose:
+- arbitrary minimum MicroNode counts
+- “one node per exercise”
+- grade-specific hardcoding
+- Armenian-language-only keyword hacks
+- bypassing review gates
+- weakening source coverage
+- weakening duplicate protection
+- weakening atomicity
+- weakening canonical consolidation safeguards
+
+==================================================
+FINAL REPORT FORMAT
+==================================================
+
+Return exactly these sections:
+
+1. EXECUTIVE DIAGNOSIS
+2. SUCCESSFUL JOB FACTS
+3. PIPELINE FUNNEL
+4. TARGET LEDGER A–K
+5. KNOWLEDGE CANDIDATES
+6. LONG-LESSON / CONTEXT FINDINGS
+7. TOPIC-BY-TOPIC FINDINGS
+8. EXERCISE-SIGNAL FINDINGS
+9. FIRST LOSS POINT
+10. ROOT-CAUSE CLASSIFICATION
+11. CONTRACT VIOLATION ASSESSMENT
+12. SAFEST ARCHITECTURE OPTIONS
+13. RECOMMENDED NEXT STEP
+
+End with one explicit sentence:
+
+“NO CODE OR DATA WAS CHANGED DURING THIS AUDIT.”
