@@ -1,0 +1,466 @@
+READ-ONLY FORENSIC AUDIT — COGNITIVE PATH GENERATION
+CONTROLLED CASE: CURRENT MATH 5 LESSON / 3 MICRONODES
+
+IMPORTANT:
+This is DIAGNOSIS ONLY.
+
+DO NOT:
+- edit code
+- edit DB data
+- rerun mapping
+- rerun cognitive-path generation
+- click/fill “Լրացնել բացակայող 2-ը”
+- create/delete/update cognitive levels
+- restart services
+- make provider/AI calls
+- change C1, C2, mapping, AI Teacher, quiz, or Knowledge Tree behavior
+
+Use only:
+- current persisted DB state
+- the most recent cognitive-path generation run
+- existing server/API logs
+- existing persisted diagnostics/results
+- current source code, read-only, where necessary to explain the decision path
+
+==================================================
+CONTEXT / OBSERVED RESULT
+==================================================
+
+Lesson:
+Մաթեմատիկա 5
+Սմբատ Գոգյան
+«Բնական թվերի համեմատումը»
+§1.6, pages 27–29
+
+Mapping succeeded with 3 canonical MicroNodes.
+
+After clicking “Ճանաչողական ուղիներ → Ստեղծել”, UI reports:
+
+- 1 / 3 created
+- 2 not created
+- 1 requires review
+
+Summary:
+Created: 1
+Route review: 2
+
+The two nodes explicitly shown as requiring route review are:
+
+MN1:
+Title:
+«Բնական թվերի համեմատում և դասավորում»
+
+Learning objective:
+«Ուսանողը կարող է դասավորել բնական թվերը աճման կամ նվազման կարգով:»
+
+Current mapping UI displays:
+Bloom 1
+
+No cognitive path is visible.
+
+MN2:
+Title:
+«Բնական թվերի համեմատում ըստ կարգերի»
+
+Learning objective:
+«Ուսանողը կարող է համեմատել թվերը՝ հիմնվելով նրանց կարգերում գրված թվանշանների վրա։»
+
+Current mapping UI displays:
+Bloom 1
+
+No cognitive path is visible.
+
+MN3:
+Title:
+«Թվերի համեմատում՝ հավասարության դեպքում»
+
+Learning objective:
+«Ուսանողը կարող է ճանաչել, որ երկու թվեր հավասար են, եթե դրանք ո՛չ մեծ են, ո՛չ փոքր։»
+
+Current mapping UI displays:
+Bloom 1
+
+A cognitive path WAS created:
+
+Level:
+Հիշել
+
+Target:
+yes
+
+Performance objective:
+«Ուսանողը կարող է հիշել, որ երկու թվեր հավասար են, եթե դրանք ո՛չ մեծ են, ո՛չ փոքր»
+
+Success criterion:
+«Ուսանողը ճիշտ է ընտրում տրված թվերից հավասար զույգերը՝ հիմնվելով «ոչ մեծ, ոչ փոքր» պայմանի վրա»
+
+Evidence:
+required = 1
+linked = 0
+missing = 1
+
+Preferred interaction types:
+- multiple choice
+- true/false
+
+==================================================
+PRIMARY QUESTION
+==================================================
+
+Why did the SAME cognitive-path generation operation produce:
+
+MN1 → ROUTE REVIEW / no path
+MN2 → ROUTE REVIEW / no path
+MN3 → valid Remember path
+
+?
+
+We need the exact causal chain, not a general explanation.
+
+==================================================
+1. IDENTIFY THE EXACT RUN
+==================================================
+
+Find the exact latest cognitive-path generation operation corresponding to this UI result.
+
+Report:
+
+- lessonId
+- generation/job/run ID if one exists
+- timestamp
+- endpoint invoked
+- backend function/orchestrator
+- provider/model call status if persisted/logged
+- final run status
+- number of MicroNodes submitted
+- number successfully processed
+- number review-held
+- number failed
+
+Do not trigger another run.
+
+==================================================
+2. IDENTIFY THE EXACT THREE MICRONODES
+==================================================
+
+For each MN, report persisted:
+
+- MicroNode DB ID
+- title
+- learningObjective
+- mapped Bloom/cognitive level
+- status
+- source/page reference if available
+- any mapping confidence/review state relevant to C2
+- existing cognitive-path rows before/after this run
+- any readiness state consumed by C2
+
+Use actual persisted values, not assumptions from the UI.
+
+==================================================
+3. TRACE THE FULL DECISION CHAIN FOR EACH MN
+==================================================
+
+For EACH of MN1, MN2, MN3 reconstruct:
+
+learningObjective
+↓
+mapping cognitive/Bloom metadata
+↓
+C2 input construction
+↓
+target-demand inference
+↓
+readiness evaluation
+↓
+required cognitive depth
+↓
+candidate cognitive route
+↓
+route validation
+↓
+persistence/readiness gate
+↓
+FINAL RESULT
+
+For every stage report:
+
+- actual input
+- actual output
+- decision/reason code
+- whether deterministic or provider-derived
+- whether persisted or only observable in logs
+- exact code function responsible
+
+If a value is unavailable, explicitly say:
+
+NOT PERSISTED
+
+Do not infer a value and present it as fact.
+
+==================================================
+4. EXPLAIN MN1 FAILURE / REVIEW
+==================================================
+
+For:
+
+«Բնական թվերի համեմատում և դասավորում»
+
+Determine the FIRST exact point where it stopped becoming eligible for a valid cognitive path.
+
+Answer:
+
+- Was target demand successfully inferred?
+- What target cognitive level/depth was requested?
+- Did the system interpret “դասավորել” semantically?
+- Was Bloom 1 treated as authoritative?
+- Was there a conflict between Bloom 1 and the learning objective?
+- Did readiness reject it?
+- Did route generation reject it?
+- Did route validation reject it?
+- Did evidence requirements cause rejection?
+- Did missing attached exercises cause rejection?
+- Did provider output fail/malformed/unavailable?
+- Was it explicitly placed into review state?
+- Exact reason code/message?
+- Exact function/gate responsible?
+
+Find the FIRST causal failure, not only the final UI state.
+
+==================================================
+5. EXPLAIN MN2 FAILURE / REVIEW
+==================================================
+
+Repeat the same analysis for:
+
+«Բնական թվերի համեմատում ըստ կարգերի»
+
+Learning objective:
+«Ուսանողը կարող է համեմատել թվերը՝ հիմնվելով նրանց կարգերում գրված թվանշանների վրա։»
+
+Specifically determine whether “համեմատել” requires a cognitive demand above Remember and whether the current system detected that.
+
+Again identify the FIRST causal stop.
+
+==================================================
+6. EXPLAIN WHY MN3 SUCCEEDED
+==================================================
+
+For:
+
+«Թվերի համեմատում՝ հավասարության դեպքում»
+
+Explain exactly why it passed when MN1 and MN2 did not.
+
+Determine:
+
+- Why Remember became the target
+- Which signal caused that decision
+- Whether “ճանաչել” influenced target demand
+- Whether Bloom 1 influenced it
+- Whether the two signals agreed
+- Why readiness passed
+- Why route validation passed
+- Why one level was considered sufficient
+- Why evidence requirement became exactly 1
+- Why MCQ / true-false were selected
+
+We need the contrast with MN1/MN2.
+
+==================================================
+7. BLOOM 1 vs LEARNING OBJECTIVE SEMANTICS
+==================================================
+
+This is a critical audit question.
+
+All three mapping cards display Bloom 1.
+
+But their objectives differ semantically:
+
+MN1:
+դասավորել բնական թվերը
+
+MN2:
+համեմատել թվերը ըստ կարգերի
+
+MN3:
+ճանաչել հավասարությունը
+
+Inspect the current implementation and determine the actual precedence rule between:
+
+A. persisted mapping Bloom/cognitive level
+
+and
+
+B. semantic demand inferred from learningObjective / performance demand.
+
+Report the exact current rule.
+
+Then classify each MN:
+
+MN1:
+Bloom metadata = ?
+objective semantic demand = ?
+conflict = YES/NO
+
+MN2:
+Bloom metadata = ?
+objective semantic demand = ?
+conflict = YES/NO
+
+MN3:
+Bloom metadata = ?
+objective semantic demand = ?
+conflict = YES/NO
+
+Do NOT propose a fix yet.
+
+==================================================
+8. CHECK WHETHER THIS IS ACTUALLY A MAPPING ISSUE
+==================================================
+
+Determine whether MN1/MN2 route review originates upstream.
+
+Possible classifications:
+
+A. Mapping supplied incorrect cognitive metadata
+B. C2 interpreted correct mapping incorrectly
+C. Mapping/C2 contract conflict
+D. Provider/technical availability failure
+E. Route validation/gate defect
+F. Evidence/exercise-readiness issue
+G. Expected fail-closed behavior
+H. Other — specify
+
+Multiple factors may exist, but identify:
+
+PRIMARY ROOT CAUSE
+SECONDARY CONTRIBUTORS
+
+==================================================
+9. EXERCISE DEPENDENCY CHECK
+==================================================
+
+The mapping currently has no exercises attached directly to these three MicroNodes; exercises remain mostly under additional exercises.
+
+Determine whether cognitive-path generation requires attached exercises at generation time.
+
+For each MN report:
+
+- attached exercise count
+- candidate relevant exercise count if known
+- required evidence count
+- whether lack of attached exercises can block route creation
+- whether exercises are required only later for C1/teaching/evidence
+
+This is important because MN3 created a path despite:
+
+required = 1
+linked = 0
+missing = 1
+
+Therefore explain whether exercise shortage can logically explain MN1/MN2.
+
+==================================================
+10. TECHNICAL AVAILABILITY CHECK
+==================================================
+
+Check whether any provider/model call involved in target-demand/readiness/path generation:
+
+- timed out
+- returned malformed structured output
+- returned empty output
+- failed schema validation
+- used fallback
+- became technically unavailable
+- was skipped
+
+If so, identify exactly which MicroNode(s) were affected.
+
+Do not make a new provider call.
+
+==================================================
+11. COMPARE THE THREE NODES SIDE-BY-SIDE
+==================================================
+
+Produce this table using actual evidence:
+
+| Stage | MN1 | MN2 | MN3 |
+|---|---|---|---|
+| Mapping Bloom | | | |
+| Objective semantic verb | | | |
+| Inferred target demand | | | |
+| Readiness | | | |
+| Proposed route | | | |
+| Validation | | | |
+| Evidence requirement | | | |
+| Provider status | | | |
+| Final state | | | |
+| First blocking reason | | | |
+
+This comparison is mandatory.
+
+==================================================
+12. SYSTEMIC VERDICT
+==================================================
+
+Finish with ONE primary classification:
+
+A. MAPPING COGNITIVE-METADATA DEFECT
+
+B. C2 TARGET-DEMAND DEFECT
+
+C. MAPPING ↔ C2 CONTRACT MISMATCH
+
+D. C2 READINESS/GATE DEFECT
+
+E. PROVIDER / TECHNICAL AVAILABILITY ISSUE
+
+F. EXERCISE-OWNERSHIP / EVIDENCE ISSUE
+
+G. EXPECTED REVIEW-SAFE BEHAVIOR
+
+H. MIXED — specify primary + secondary
+
+Then answer:
+
+1. Is this lesson-specific? YES/NO
+2. Could the same issue affect other subjects/grades? YES/NO
+3. Is the root cause systemic? YES/NO
+4. Is current saved data safe? YES/NO
+5. Should we rerun generation before fixing/understanding it? YES/NO
+
+==================================================
+13. NEXT STEP — DIAGNOSIS ONLY
+==================================================
+
+Recommend exactly ONE next engineering step.
+
+But DO NOT implement it.
+
+The recommendation must solve the root cause at the shared system boundary, not special-case:
+
+- Mathematics
+- Grade 5
+- natural numbers
+- Armenian verbs such as «դասավորել» or «համեմատել»
+- these specific MicroNode IDs
+
+Do not add keyword hacks.
+
+==================================================
+FINAL SAFETY RULE
+==================================================
+
+This audit must remain completely read-only.
+
+At the end explicitly state:
+
+SAFE TO CHANGE CODE NOW: YES / NO
+
+and
+
+EVIDENCE STILL MISSING:
+- ...
+
+If enough evidence exists for a systemic fix, say exactly what contract/boundary should be changed, but do not change it.
