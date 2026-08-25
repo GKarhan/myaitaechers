@@ -1,0 +1,603 @@
+IMPLEMENTATION — MAPPING CORE M3-1
+DURABLE REVIEW-CANDIDATE PRESERVATION FOUNDATION
+
+IMPORTANT:
+This is a narrowly scoped Mapping Core change.
+
+PRIMARY ENGINEERING PRINCIPLE:
+DO NOT BREAK, REWRITE, OR WEAKEN ANYTHING THAT ALREADY WORKS.
+
+The existing Mapping Core has accumulated important safety guarantees.
+This task must be ADDITIVE and BACKWARD-COMPATIBLE.
+
+Do not "simplify" existing architecture.
+Do not replace existing validators.
+Do not relax fail-closed behavior.
+Do not change pedagogical promotion policy in this task.
+
+════════════════════════════════════════════════════
+0. WHY THIS TASK EXISTS
+════════════════════════════════════════════════════
+
+The forensic audit of Lesson 717 / successful mapping job 185 established:
+
+- provider raw Step 2 candidates: 22
+- structurally accepted candidates: 18
+- post-repair/normalization candidate/target records: 19
+- source-first target records: 19
+- promoted canonical MicroNodes: 1
+- REVIEW_REQUIRED candidates: 16
+- UNRESOLVED candidates: 2
+- lesson-wide consolidations: 0
+
+Therefore the mapper DID discover multiple independently meaningful,
+source-backed candidate abilities.
+
+The catastrophic reduction happened at the candidate-promotion boundary.
+
+Current behavior is effectively:
+
+candidate
+→ promotion decision
+→ PROMOTE => canonical MicroNode
+→ anything else => candidate identity/pedagogical record disappears from
+   the canonical path and source survives mainly as review-safe/unmapped material
+
+This is safe for persistence, but it destroys too much diagnostic and
+teacher-review information.
+
+M3-1 fixes ONLY that information-loss problem.
+
+M3-1 DOES NOT change which candidates are promoted.
+
+════════════════════════════════════════════════════
+1. REQUIRED ARCHITECTURE CHECK — BEFORE EDITING
+════════════════════════════════════════════════════
+
+Before changing code, trace the CURRENT implementation and report briefly:
+
+A. Where KnowledgeCandidate objects are created.
+
+B. Their current complete transient shape, especially:
+- candidate id
+- topic identity
+- title
+- learning objective
+- source block references
+- supporting source references
+- exercise/activity references
+- confidence/status fields
+- atomicity/granularity information
+- source-alignment information
+- promotion diagnostics
+
+C. Where applyKnowledgeCandidatePromotion() is called.
+
+D. Exactly where a non-PROMOTE candidate loses:
+- title
+- objective
+- topic relationship
+- source relationship
+- exercise relationship
+- reason codes
+
+E. What durable structures already exist that could safely retain
+review-candidate diagnostics:
+- mapping_jobs.result
+- existing mapping diagnostics/report JSON
+- or another existing durable audit structure.
+
+F. Determine whether this task can be implemented WITHOUT a DB migration.
+
+Prefer NO migration if the existing durable mapping-job diagnostics can
+safely hold the complete review artifact.
+
+Do not edit implementation until this trace is complete.
+
+════════════════════════════════════════════════════
+2. CORE CONTRACT
+════════════════════════════════════════════════════
+
+Every source-backed candidate entering the promotion boundary must leave
+that boundary in exactly one explicit durable state:
+
+1. CANONICAL
+2. REVIEW_REQUIRED
+3. UNRESOLVED
+4. REJECTED_WITH_PROVEN_REASON
+
+No source-backed candidate may silently disappear.
+
+IMPORTANT:
+
+REVIEW_REQUIRED is NOT a canonical MicroNode.
+
+UNRESOLVED is NOT a canonical MicroNode.
+
+They must NOT enter:
+- learner delivery,
+- Knowledge Tree canonical state,
+- AI Teacher,
+- quiz generation,
+- Cognitive Path generation,
+- Teaching Content generation.
+
+This task preserves candidate identity for audit/review only.
+
+════════════════════════════════════════════════════
+3. ADD A DURABLE REVIEW-CANDIDATE ARTIFACT
+════════════════════════════════════════════════════
+
+For every non-promoted source-backed candidate, preserve a machine-readable
+review artifact.
+
+Use an existing durable diagnostic container if possible.
+
+Suggested conceptual structure:
+
+reviewCandidate = {
+  candidateId,
+  topicId / topicSequence / topicTitle where available,
+
+  title,
+  learningObjective,
+
+  sourceBlockIndices,
+  supportingSourceBlockIndices,
+  exerciseBlockIndices,
+  activityBlockIndices,
+
+  promotionState,
+  promotionReasonCodes,
+
+  sourceAlignmentState,
+  atomicityState,
+  assessabilityState,
+  teachabilityState,
+  duplicateState,
+  ownershipState,
+
+  reviewRequired: true,
+
+  providerReviewState if relevant,
+
+  createdFromStage,
+  provenance
+}
+
+Use the actual current types/contracts rather than blindly copying this
+shape.
+
+Do not fabricate unavailable evidence.
+
+If a field cannot be established from current runtime evidence, preserve
+that explicitly as unknown/not-recorded rather than inventing it.
+
+════════════════════════════════════════════════════
+4. PRESERVE THE CANDIDATE BEFORE INFORMATION LOSS
+════════════════════════════════════════════════════
+
+Capture the review artifact at the LAST SAFE POINT where the complete
+candidate still exists and the promotion decision is known.
+
+This should be before the current pipeline discards/reduces the candidate
+into anonymous review-safe source placement.
+
+The artifact must preserve:
+
+candidate identity
++
+pedagogical identity
++
+source provenance
++
+exercise provenance
++
+promotion decision
++
+reason for non-promotion.
+
+Do not reconstruct title/objective later from source blocks if the original
+candidate object already contained them.
+
+Preserve the original candidate record.
+
+════════════════════════════════════════════════════
+5. DO NOT CHANGE PROMOTION POLICY
+════════════════════════════════════════════════════
+
+CRITICAL.
+
+M3-1 must NOT make any previously non-promoted candidate canonical.
+
+Do NOT change:
+
+- PROMOTE requirements
+- source-support thresholds
+- atomicity rules
+- duplicate rules
+- ownership rules
+- teachability rules
+- assessability rules
+- semantic certainty requirements
+- completeness restoration policy
+
+If candidate X was REVIEW_REQUIRED before M3-1,
+candidate X must remain REVIEW_REQUIRED after M3-1.
+
+The only difference is that its complete review identity is now durable
+and auditable.
+
+════════════════════════════════════════════════════
+6. DO NOT CHANGE SOURCE OWNERSHIP
+════════════════════════════════════════════════════
+
+The new review artifact is a REFERENCE, not another source owner.
+
+It must not cause:
+
+- duplicate source placement
+- duplicate exercise placement
+- source ownership transfer
+- additionalExercise duplication
+- unmapped duplication
+
+validateSourceCoverage() remains authoritative and UNCHANGED.
+
+The artifact may reference sourceBlockIndices but those references must
+not count as physical source placements.
+
+════════════════════════════════════════════════════
+7. PRESERVE EXISTING FAIL-CLOSED CONTRACTS
+════════════════════════════════════════════════════
+
+Do not weaken or bypass:
+
+- Pass 1 physical source verification
+- semantic lesson scope
+- Pass 2 topic membership conservation
+- Pass 2 placement invariant/rescue
+- source coverage validator
+- duplicate placement detection
+- invalid-index detection
+- empty-MicroNode detection
+- KnowledgeCandidate structural validation
+- candidate promotion
+- lesson-wide consolidation
+- completeness audit
+- persistence gates
+- teacher approval/review safeguards
+
+A malformed mapping must still fail exactly where it fails today.
+
+════════════════════════════════════════════════════
+8. FIX THE CANDIDATE-ID DIAGNOSTIC INVARIANT
+════════════════════════════════════════════════════
+
+The Lesson 717 audit found:
+
+- 19 promotion decision records
+- only 18 distinct candidate IDs
+- t4:n0 appeared twice
+
+Investigate this as part of M3-1 because durable review artifacts require
+stable identity.
+
+Do NOT patch Lesson 717 specifically.
+
+Add a general invariant:
+
+Within one mapping run, every candidate decision/artifact must have one
+stable unique candidate identity.
+
+Detect duplicate candidate IDs before durable diagnostic persistence.
+
+Determine the actual cause of the duplicated diagnostic identity.
+
+Fix only the general identity-generation/normalization problem if proven.
+
+Do not silently drop one duplicate.
+
+If two genuinely distinct candidates collide on the same ID:
+- preserve both,
+- assign deterministic unique identities according to the existing
+  candidate identity architecture,
+- record the collision diagnostic.
+
+If the duplicate is merely the SAME candidate being appended twice:
+- deduplicate the diagnostic record deterministically,
+- preserve one authoritative record,
+- record that duplicate emission occurred.
+
+Do not merge pedagogically distinct candidates merely because IDs collide.
+
+════════════════════════════════════════════════════
+9. DURABLE JOB DIAGNOSTICS
+════════════════════════════════════════════════════
+
+The completed mapping job should expose compact machine-readable summary
+fields such as:
+
+reviewCandidateSummary: {
+  totalCandidates,
+  canonicalCount,
+  reviewRequiredCount,
+  unresolvedCount,
+  rejectedCount,
+  duplicateCandidateIdCount
+}
+
+and:
+
+reviewCandidates: [...]
+
+Exact naming should follow current project conventions.
+
+Do not dump huge provider prompts/responses.
+
+Do not store unnecessary raw model output.
+
+Store only the structured information needed for:
+- forensic audit,
+- future teacher-review UI,
+- future safe promotion recovery.
+
+════════════════════════════════════════════════════
+10. SUCCESSFUL LESSON BEHAVIOR MUST NOT CHANGE
+════════════════════════════════════════════════════
+
+For a healthy short lesson where all candidates promote normally:
+
+BEFORE:
+N valid candidates
+→ N canonical MicroNodes
+
+AFTER M3-1:
+N valid candidates
+→ N canonical MicroNodes
+→ zero review candidates
+
+There must be no pedagogical behavior change.
+
+For a lesson like Lesson 717:
+
+BEFORE:
+19 candidate/target records
+→ 1 canonical
+→ remaining candidate identity largely disappears from teacher-visible
+  canonical structure
+
+AFTER:
+19 candidate/target records
+→ same 1 canonical
+→ remaining candidates preserved as durable REVIEW_REQUIRED/UNRESOLVED
+  artifacts
+
+Canonical result must remain identical in M3-1.
+
+════════════════════════════════════════════════════
+11. PROVIDER FAILURE MUST NOT DESTROY CANDIDATE IDENTITY
+════════════════════════════════════════════════════
+
+The Lesson 717 Pass 2B advisory review returned REQUEST_FAILED twice.
+
+M3-1 must preserve the affected candidate records and explicitly retain
+the technical review state/reason where available.
+
+However:
+
+REQUEST_FAILED must NOT automatically mean PROMOTE.
+
+No automatic promotion-policy change belongs in M3-1.
+
+This distinction is essential for M3-2 later:
+
+PROVEN_SEMANTIC_CONFLICT
+
+must remain distinguishable from:
+
+ADVISORY_REVIEW_UNAVAILABLE
+
+and from:
+
+INSUFFICIENT_SOURCE_SUPPORT
+
+and from:
+
+OWNERSHIP_CONFLICT
+
+and from:
+
+ATOMICITY_UNCERTAIN.
+
+Do not collapse all of these into generic REVIEW_REQUIRED if the current
+evidence can preserve the underlying reason.
+
+════════════════════════════════════════════════════
+12. PROVIDER-FREE REGRESSION TESTS
+════════════════════════════════════════════════════
+
+Add deterministic tests without live AI calls.
+
+At minimum test:
+
+M3P-1
+3 candidates:
+- 2 PROMOTE
+- 1 REVIEW_REQUIRED
+
+Expected:
+- canonical = 2
+- review artifacts = 1
+- all 3 candidate identities accounted for.
+
+M3P-2
+1 PROMOTE
+1 UNRESOLVED
+
+Expected:
+- canonical = 1
+- unresolved artifact = 1.
+
+M3P-3
+advisory semantic review unavailable
+
+Expected:
+- candidate remains non-canonical
+- complete candidate identity is preserved
+- technical failure reason is retained.
+
+M3P-4
+candidate rejected because of proven duplicate/source conflict
+
+Expected:
+- no unsafe canonical node
+- rejection/review artifact remains auditable
+- validators unchanged.
+
+M3P-5
+healthy all-promoted lesson
+
+Expected:
+- canonical output identical to previous behavior
+- no unnecessary review artifacts.
+
+M3P-6
+review artifact references source index already physically owned elsewhere
+
+Expected:
+- source placement counts unchanged
+- no duplicateIndices introduced.
+
+M3P-7
+two distinct candidates accidentally receive same candidate ID
+
+Expected:
+- neither pedagogical candidate disappears
+- deterministic collision handling
+- collision diagnostic recorded.
+
+M3P-8
+same candidate decision accidentally emitted twice
+
+Expected:
+- one authoritative durable candidate artifact
+- no double count
+- duplicate-emission diagnostic retained.
+
+M3P-9
+failed persistence gate
+
+Expected:
+- existing saved mapping remains preserved exactly as today.
+
+M3P-10
+C2/Teaching Content/AI Teacher eligibility
+
+Expected:
+- REVIEW_REQUIRED and UNRESOLVED artifacts are NOT treated as canonical
+  MicroNodes and cannot enter downstream learner systems.
+
+════════════════════════════════════════════════════
+13. NON-REGRESSION SUITES
+════════════════════════════════════════════════════
+
+Run all relevant existing tests, especially:
+
+- Pass 2 placement invariant
+- source coverage validator
+- Knowledge Candidate contract
+- candidate promotion
+- lesson-wide consolidation
+- completeness
+- semantic scope
+- durable source-material persistence
+- Mapping Core typecheck/build
+
+Also run C2 tests only as non-regression protection if the changed types
+or shared interfaces touch them.
+
+Do not modify C2 behavior to make tests pass.
+
+════════════════════════════════════════════════════
+14. STRICT OUT OF SCOPE
+════════════════════════════════════════════════════
+
+DO NOT:
+
+- change candidate promotion policy
+- automatically promote review candidates
+- create extra MicroNodes
+- impose minimum/maximum MicroNode counts
+- create one MicroNode per exercise
+- change Mapping prompts unless absolutely required for preserving an
+  already-generated candidate (prefer no prompt changes)
+- change Pass 1
+- change semantic scope
+- change topic grouping
+- change source coverage validator
+- change completeness restoration behavior
+- change manual mapping
+- change Cognitive Path C2-1/C2-2/C2-3
+- change Teaching Content
+- change AI Teacher
+- change Quiz
+- change Knowledge Tree
+- change student runtime
+- remap Lesson 717 automatically
+- regenerate any real lesson
+- alter existing saved lesson data
+- add unrelated UI redesign
+
+════════════════════════════════════════════════════
+15. IMPORTANT COST RULE
+════════════════════════════════════════════════════
+
+M3-1 must add ZERO new provider calls.
+
+This is a deterministic persistence/observability foundation.
+
+Do not solve candidate preservation with another AI request.
+
+════════════════════════════════════════════════════
+16. AFTER IMPLEMENTATION
+════════════════════════════════════════════════════
+
+Do NOT automatically rerun Lesson 717.
+
+Do NOT begin M3-2.
+
+After implementation:
+
+1. typecheck/build;
+2. run focused M3P tests;
+3. run Mapping Core non-regression tests;
+4. restart only services actually requiring restart;
+5. inspect startup/runtime logs;
+6. perform no real mapping generation without explicit permission.
+
+════════════════════════════════════════════════════
+17. FINAL REPORT
+════════════════════════════════════════════════════
+
+Report exactly:
+
+A. Architecture trace before change
+B. Exact previous information-loss point
+C. Files changed
+D. Durable review-candidate structure implemented
+E. Where it is captured
+F. Why it cannot affect source ownership
+G. Why it cannot enter learner delivery
+H. Candidate-ID duplicate root cause and fix
+I. Provider calls before/after
+J. Tests added
+K. Existing regression suites run/results
+L. Confirmation promotion policy is unchanged
+M. Confirmation validateSourceCoverage() is unchanged
+N. Confirmation C2/Teaching Content/AI Teacher are unchanged
+O. Whether one controlled Lesson 717 remap is now safe for M3-1 verification
+
+STOP after M3-1.
+
+Do not propose or implement M3-2 until this foundation has been reviewed.
