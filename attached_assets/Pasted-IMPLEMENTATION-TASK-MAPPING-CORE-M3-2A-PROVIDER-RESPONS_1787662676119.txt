@@ -1,0 +1,295 @@
+IMPLEMENTATION TASK — MAPPING CORE M3-2A
+PROVIDER RESPONSE CLASSIFICATION + SAFE OBSERVABILITY
+
+GOAL
+
+Fix the M3-2 provider boundary so a provider/transport failure is no longer
+conflated with a successfully received but malformed or schema-invalid model
+response.
+
+This is a SYSTEMIC infrastructure fix.
+
+DO NOT change:
+- M3-1
+- M3-2 semantic decision policy
+- candidate discovery
+- candidate promotion rules
+- atomicity semantics
+- source validation
+- activity ownership
+- C2
+- Lesson 717 data
+- mapping persistence semantics
+- the existing pre-persistence preservation gate
+
+DO NOT remap Lesson 717 during implementation.
+
+==================================================
+PROVEN CURRENT BUG
+==================================================
+
+For Lesson 717 job 190:
+
+- 22 viable candidates were sent to M3-2.
+- attempt 1 received model content.
+- local JSON.parse failed:
+  SyntaxError: Unterminated string in JSON at position 5136.
+- attempt 2 also received model content.
+- local JSON.parse failed:
+  SyntaxError: Unterminated string in JSON at position 5620.
+
+However the broad catch converted both failures to:
+
+REQUEST_FAILED
+
+and persisted:
+
+responseReceived = false
+
+This is incorrect.
+
+==================================================
+1. SEPARATE THE FAILURE STAGES
+==================================================
+
+Refactor the existing M3-2 provider boundary minimally so these stages are
+distinguishable:
+
+A. REQUEST_FAILED
+Provider/client call throws before a usable response is received.
+
+B. EMPTY_RESPONSE
+Provider call succeeds but no usable response content exists.
+
+C. INVALID_JSON
+Response content exists but JSON parsing fails.
+
+D. SCHEMA_INVALID
+JSON parsing succeeds but the parsed M3-2 response fails contract/schema
+validation.
+
+E. SUCCESS
+Response is received, parsed, and validated successfully.
+
+Use the project's existing naming/style conventions where appropriate.
+
+Do NOT change the semantic schema itself.
+
+==================================================
+2. RESPONSE RECEIVED MUST BE FACTUALLY CORRECT
+==================================================
+
+Once model response content has been received:
+
+responseReceived = true
+
+must remain true even if:
+
+- JSON parsing fails, or
+- schema validation fails.
+
+A local parser/validator failure must never be recorded as if the provider
+returned no response.
+
+==================================================
+3. RETRY BEHAVIOR
+==================================================
+
+Preserve the existing bounded retry count:
+
+attempt 1
+→ one retry
+→ stop
+
+Do not add additional provider calls.
+
+INVALID_JSON and SCHEMA_INVALID may use the existing single retry path.
+
+Do not change candidate-level semantics or promotion behavior.
+
+==================================================
+4. SAFE PER-ATTEMPT DIAGNOSTICS
+==================================================
+
+Persist/retain only safe metadata necessary to diagnose M3-2 failures.
+
+For each attempt, where available:
+
+- attempt number
+- model
+- startedAt
+- endedAt
+- durationMs
+- responseReceived
+- responseContentLength
+- finishReason
+- HTTP status
+- safe provider error code
+- exception class
+- sanitized exception message
+- parseState
+- validationState
+- failure classification
+
+Do NOT persist:
+
+- raw model response
+- source text
+- exercise text
+- prompt contents
+- credentials
+- API keys
+- authorization headers
+
+If a value is unavailable, leave it null/absent rather than inventing it.
+
+==================================================
+5. PRESERVE THE EXISTING SAFETY GATE
+==================================================
+
+The Task #191 pre-persistence protection must continue to work.
+
+If M3-2 cannot produce valid semantic decisions after its allowed attempts:
+
+- promotion remains fail-closed
+- destructive canonical replacement must not begin
+- previous canonical mapping must remain preserved
+
+Do NOT weaken this gate.
+
+The gate may consume the improved technical classification, but its safety
+behavior must remain equivalent or stricter.
+
+==================================================
+6. PROVIDER-FREE REGRESSION TESTS
+==================================================
+
+Add deterministic tests for at least:
+
+CASE 1
+Provider/client throws before response
+→ REQUEST_FAILED
+→ responseReceived=false
+
+CASE 2
+Provider returns empty content
+→ EMPTY_RESPONSE
+→ responseReceived=false or the project's precisely defined equivalent
+
+CASE 3
+Provider returns malformed JSON
+→ INVALID_JSON
+→ responseReceived=true
+
+CASE 4
+Provider returns valid JSON but schema-invalid payload
+→ SCHEMA_INVALID
+→ responseReceived=true
+
+CASE 5
+Provider returns valid contract
+→ SUCCESS
+→ responseReceived=true
+
+CASE 6
+Attempt 1 INVALID_JSON
+Attempt 2 succeeds
+→ final review succeeds
+→ retry recorded accurately
+
+CASE 7
+Attempt 1 INVALID_JSON
+Attempt 2 INVALID_JSON
+→ final classification INVALID_JSON
+→ existing map preservation gate triggers
+
+CASE 8
+Transport failure followed by INVALID_JSON
+→ attempt diagnostics preserve the two distinct failure types
+
+Also run the existing M3-2, candidate-promotion, mapping placement,
+source coverage, activity ownership, Task #191 gate, and C2
+non-regression suites.
+
+==================================================
+7. DO NOT SOLVE BATCHING YET
+==================================================
+
+Important:
+
+Do NOT implement candidate batching in this task.
+
+We have separately proven that all 22 candidates currently share one
+lesson-wide request/failure domain.
+
+Bounded batching + partial-success preservation will be the NEXT task
+(M3-2B) after this provider-boundary fix is verified.
+
+Do not mix those architectural changes into M3-2A.
+
+==================================================
+8. FINAL REVIEW
+==================================================
+
+Before completion perform an independent focused review confirming:
+
+- parsing failures cannot become REQUEST_FAILED
+- responseReceived remains true after received malformed content
+- schema failures are distinguishable
+- no raw provider content is persisted
+- retry count did not increase
+- Task #191 preservation behavior remains intact
+- M3-2 semantics/promotion were not changed
+- C2 was not changed
+
+Then restart ONLY the API service and verify clean startup.
+
+Do NOT remap Lesson 717.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+FILES CHANGED:
+...
+
+FAILURE CLASSIFICATIONS:
+...
+
+MALFORMED JSON NOW CLASSIFIED AS:
+...
+
+responseReceived FOR MALFORMED JSON:
+...
+
+RETRY COUNT:
+...
+
+RAW MODEL CONTENT PERSISTED:
+YES / NO
+
+TASK #191 PRESERVATION GATE:
+PASS / FAIL
+
+M3-2 SEMANTICS CHANGED:
+YES / NO
+
+C2 CHANGED:
+YES / NO
+
+PROVIDER-FREE TESTS:
+...
+
+NON-REGRESSION TESTS:
+...
+
+API RESTART:
+PASS / FAIL
+
+READY FOR CONTROLLED LESSON 717 REMAP:
+YES / NO
+
+NEXT ARCHITECTURAL TASK:
+M3-2B bounded batching + partial-success isolation
