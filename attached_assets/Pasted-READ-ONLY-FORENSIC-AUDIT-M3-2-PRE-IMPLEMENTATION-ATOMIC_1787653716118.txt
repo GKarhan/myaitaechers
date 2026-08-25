@@ -1,0 +1,515 @@
+READ-ONLY FORENSIC AUDIT — M3-2 PRE-IMPLEMENTATION
+ATOMICITY / DECOMPOSITION DECISION ENGINE
+
+IMPORTANT:
+This is AUDIT ONLY.
+
+DO NOT:
+- edit code
+- change prompts
+- change validators
+- change thresholds
+- change promotion policy
+- change source ownership
+- change database data
+- rerun mapping
+- regenerate Lesson 717
+- restart workflows/services
+- touch Cognitive Path / C2
+- implement a fix
+
+We need evidence first.
+
+═══════════════════════════════════════════════════
+CORE ENGINEERING PRINCIPLE
+═══════════════════════════════════════════════════
+
+Preserve everything that already works.
+
+Any future fix must be additive/narrow and must not regress:
+- source coverage
+- source verification
+- source placement
+- exercise ownership
+- candidate discovery
+- M3-1 review-candidate preservation
+- stable candidate identity
+- promotion safety
+- Mapping Core contracts
+- Cognitive Path C2-1 / C2-2 / C2-3
+- Teaching Content
+- AI Teacher
+- Quiz flow
+- Knowledge Tree
+
+Do not "solve" this audit by weakening a gate.
+
+═══════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════
+
+Use the latest successful automatic mapping of:
+
+Lesson 717
+Հայոց լեզու 8
+Մակբայ
+Pages 18–29
+Mapping job 187
+
+The previous forensic audit found:
+
+- 16 generated candidates
+- 3 canonical MicroNodes
+- 13 review-only candidates
+- 11 REVIEW_REQUIRED
+- 2 UNRESOLVED
+
+Most importantly, five candidates appear to have:
+
+- DISTINCT knowledge identity
+- DIRECT source support
+- valid ownership
+- teachability available/passing
+- assessability available/passing
+
+but were blocked only by:
+
+ATOMICITY_UNCERTAIN
+
+Known examples include:
+
+t1:n1
+Մակբայների տեսակները
+
+t3:n1
+Ժամանակի մակբայների օրինակներ
+
+t5:n0
+Չափի և քանակի մակբայների սահմանումը և գործառույթը
+
+t5:n1
+Չափի և քանակի մակբայների օրինակներ
+
+t5:n2
+Չափի և քանակի մակբայներին հարաբերակից դերանուններ
+
+Do NOT assume all five should become canonical MicroNodes.
+
+The purpose of this audit is to determine whether the atomicity/decomposition subsystem is making the correct pedagogical distinction.
+
+═══════════════════════════════════════════════════
+FUNDAMENTAL MODEL TO TEST
+═══════════════════════════════════════════════════
+
+Canonical hierarchy remains:
+
+Subject
+→ Lesson
+→ Topic
+→ MicroNode
+
+A MicroNode should represent ONE atomic curriculum knowledge/competency target.
+
+But:
+
+Remember
+Understand
+Apply
+Analyze
+Evaluate
+Create
+
+are NOT automatically separate MicroNodes.
+
+Those may be cognitive progression levels for the SAME MicroNode and belong in the Cognitive Path.
+
+Therefore the mapper must distinguish:
+
+A) MULTIPLE INDEPENDENT KNOWLEDGE TARGETS
+→ candidate may need SPLIT
+
+from
+
+B) ONE KNOWLEDGE TARGET WITH MULTIPLE COGNITIVE ACTIONS
+→ KEEP as one MicroNode; cognitive progression belongs to C2
+
+from
+
+C) SUPPORT / EXAMPLE / PRACTICE / REPRESENTATION
+→ should normally support an existing MicroNode rather than become an independent MicroNode
+
+from
+
+D) TRUE DISTINCT ATOMIC KNOWLEDGE
+→ KEEP as an independent MicroNode
+
+from
+
+E) DUPLICATE / SEMANTICALLY REDUNDANT CANDIDATE
+→ should not create another canonical MicroNode
+
+We need to know whether the current system actually models these distinctions.
+
+═══════════════════════════════════════════════════
+PART 1 — TRACE THE CURRENT ATOMICITY PIPELINE
+═══════════════════════════════════════════════════
+
+Trace the exact current code path from a discovered Pass 2 candidate until its final atomicity decision.
+
+Report exact:
+
+1. files
+2. functions
+3. prompts
+4. schemas/types
+5. validators
+6. provider calls, if any
+7. deterministic checks
+8. fallback behavior
+9. reason-code creation
+10. persistence/reporting points
+
+Show the sequence as:
+
+candidate
+→ ?
+→ ?
+→ atomicity assessment
+→ ?
+→ promotion decision
+
+For every step state:
+
+- input
+- output
+- whether AI/provider or deterministic
+- whether information can be lost
+- whether the step can produce ATOMICITY_UNCERTAIN
+
+Do not change anything.
+
+═══════════════════════════════════════════════════
+PART 2 — DEFINE WHAT "ATOMIC" CURRENTLY MEANS
+═══════════════════════════════════════════════════
+
+Extract the ACTUAL current atomicity contract from code/prompts.
+
+Do not give a theoretical definition first.
+
+Report:
+
+A. What exact criteria currently make a candidate atomic?
+
+B. What exact criteria make it non-atomic?
+
+C. What causes ATOMICITY_UNCERTAIN?
+
+D. Is there an explicit distinction between:
+
+- multiple knowledge concepts
+- multiple verbs/actions
+- multiple Bloom demands
+- multiple examples
+- definition + function
+- recognition + explanation
+- classification
+- application
+- exercise/practice
+- prerequisite knowledge
+- closely related sub-concepts
+
+E. Does the current system understand that:
+
+"explain X"
+"recognize X"
+"classify X"
+"use X"
+
+may be cognitive operations over the SAME knowledge target rather than four different MicroNodes?
+
+Answer from implementation evidence.
+
+═══════════════════════════════════════════════════
+PART 3 — FORENSIC ANALYSIS OF THE FIVE CLEAN CASES
+═══════════════════════════════════════════════════
+
+Analyze individually:
+
+t1:n1 — Մակբայների տեսակները
+t3:n1 — Ժամանակի մակբայների օրինակներ
+t5:n0 — Չափի և քանակի մակբայների սահմանումը և գործառույթը
+t5:n1 — Չափի և քանակի մակբայների օրինակներ
+t5:n2 — Չափի և քանակի մակբայներին հարաբերակից դերանուններ
+
+For EACH candidate report:
+
+1. candidate ID
+2. title
+3. learning objective
+4. source indices
+5. exercise/practice references
+6. semantic identity state
+7. source-support state
+8. teachability state
+9. assessability state
+10. atomicity state
+11. exact atomicity evidence available before decision
+12. exact atomicity/provider result, if persisted
+13. exact reason it became ATOMICITY_UNCERTAIN
+14. whether the uncertainty originated from:
+   - prompt
+   - provider response
+   - parser
+   - missing field
+   - validator
+   - confidence rule
+   - fallback
+   - conflicting evidence
+   - post-processing
+   - information loss
+   - other
+
+If the exact reason is not persisted, say:
+
+NOT PERSISTED
+
+Then identify what can still be reconstructed from logs/code.
+
+═══════════════════════════════════════════════════
+PART 4 — PEDAGOGICAL CLASSIFICATION
+═══════════════════════════════════════════════════
+
+For audit purposes only, independently classify each of those five candidates into one of:
+
+KEEP_ATOMIC
+
+SPLIT_REQUIRED
+
+MERGE_OR_SUPPORT_EXISTING
+
+COGNITIVE_PATH_VARIATION
+
+REVIEW_REQUIRED
+
+For each classification explain WHY using:
+
+- candidate objective
+- verified source evidence
+- exercise evidence
+- neighboring candidates
+- canonical MicroNodes
+
+Do NOT change the persisted decision.
+
+Especially inspect these questions:
+
+1. Is "Մակբայների տեսակները" one curriculum knowledge target, or should each type be represented separately?
+
+2. Is "Ժամանակի մակբայների օրինակներ" actually independent knowledge, or merely practice/recognition for the canonical "Ժամանակի մակբայներ" MicroNode?
+
+3. Does "Չափի և քանակի մակբայների սահմանումը և գործառույթը" contain:
+   - one coherent knowledge target,
+   OR
+   - two independently teachable targets that should be split?
+
+4. Is "Չափի և քանակի մակբայների օրինակներ" a new knowledge target, or a cognitive/practice layer of the same MicroNode?
+
+5. Are "Չափի և քանակի մակբայներին հարաբերակից դերանուններ" independently teachable and assessable enough to be a distinct MicroNode?
+
+═══════════════════════════════════════════════════
+PART 5 — COMPARE WITH THE THREE PROMOTED NODES
+═══════════════════════════════════════════════════
+
+Compare the five cases above against the three candidates that DID become canonical:
+
+t2:n2
+Տեղի մակբայներին հարաբերակից դերանուններ
+
+t3:n0
+Ժամանակի մակբայներ
+
+t4:n0
+Ձևի մակբայներ
+
+Determine:
+
+Why did these pass while the five clean review candidates did not?
+
+Look for differences in:
+
+- atomicity provider output
+- prompt wording
+- objective shape
+- number of verbs
+- number of concepts
+- source count
+- exercise count
+- topic structure
+- source support
+- confidence
+- parser/schema completeness
+- validator behavior
+- fallback behavior
+
+We need the exact discriminating mechanism.
+
+═══════════════════════════════════════════════════
+PART 6 — TEST THE MICRONODE vs COGNITIVE PATH BOUNDARY
+═══════════════════════════════════════════════════
+
+Audit whether current Mapping Core has an explicit contract separating:
+
+CURRICULUM KNOWLEDGE GRANULARITY
+
+from
+
+COGNITIVE DEMAND / BLOOM PROGRESSION.
+
+Search current implementation for evidence.
+
+We need to know whether Mapping Core can currently distinguish:
+
+Example:
+
+Knowledge:
+"Ժամանակի մակբայներ"
+
+Possible operations:
+- remember examples
+- explain meaning/function
+- identify them in a sentence
+- classify them
+- use them in a sentence
+- analyze their function
+
+Question:
+
+Does Mapping Core risk creating separate candidates for these operations even though C2 is supposed to create the cognitive progression later?
+
+Report:
+
+YES / NO / PARTIALLY
+
+with exact implementation evidence.
+
+═══════════════════════════════════════════════════
+PART 7 — DETERMINE THE REAL ROOT CAUSE
+═══════════════════════════════════════════════════
+
+Classify the primary problem as one or more of:
+
+A. ATOMICITY PROMPT DESIGN
+
+B. PROVIDER OUTPUT INSTABILITY
+
+C. ATOMICITY RESPONSE SCHEMA
+
+D. PARSER / NORMALIZATION
+
+E. VALIDATOR TOO STRICT
+
+F. CONFIDENCE / FAIL-CLOSED POLICY
+
+G. CANDIDATE GRANULARITY CREATED TOO EARLY
+
+H. NO EXPLICIT MICRONODE-vs-COGNITIVE-PATH BOUNDARY
+
+I. DECOMPOSITION LOGIC MISSING
+
+J. MERGE / REDUNDANCY LOGIC MISSING
+
+K. PERSISTENCE / OBSERVABILITY GAP
+
+L. OTHER
+
+Rank causes:
+
+PRIMARY
+SECONDARY
+TERTIARY
+
+Use concrete evidence.
+
+═══════════════════════════════════════════════════
+PART 8 — DESIGN DIRECTION ONLY, NO IMPLEMENTATION
+═══════════════════════════════════════════════════
+
+Based on evidence, propose the smallest robust architecture for M3-2.
+
+Do NOT write code.
+
+Evaluate whether the atomicity subsystem should eventually return a structured decision such as:
+
+KEEP_ATOMIC
+SPLIT_REQUIRED
+MERGE_OR_SUPPORT_EXISTING
+COGNITIVE_PATH_VARIATION
+REVIEW_REQUIRED
+
+Do not accept these states blindly.
+
+Tell us whether this model fits the current architecture or whether a better model exists.
+
+For SPLIT_REQUIRED, explain what evidence would be necessary before automatically creating children/candidates.
+
+For MERGE_OR_SUPPORT_EXISTING, explain how to avoid deleting source evidence.
+
+For COGNITIVE_PATH_VARIATION, explain how Mapping Core can preserve the evidence while allowing C2 to handle cognitive progression later.
+
+For REVIEW_REQUIRED, preserve fail-closed behavior.
+
+═══════════════════════════════════════════════════
+PART 9 — NON-REGRESSION BOUNDARY
+═══════════════════════════════════════════════════
+
+List exactly what a future M3-2 implementation MUST NOT change.
+
+At minimum inspect:
+
+- source extraction
+- source verification
+- source coverage
+- source placement
+- exercise ownership
+- activity reconciliation
+- M3-1 review artifacts
+- candidate identity
+- candidate discovery
+- promotion safety
+- existing canonical mapping
+- C2-1 orchestration
+- C2-2 target resolution
+- C2-3 progression
+- Teaching Content
+- AI Teacher
+- quizzes
+- Knowledge Tree
+
+We need a concrete protected-contract list for the future implementation prompt.
+
+═══════════════════════════════════════════════════
+FINAL REPORT FORMAT
+═══════════════════════════════════════════════════
+
+Return exactly:
+
+1. Current atomicity architecture
+2. Actual atomicity contract
+3. Five-candidate forensic table
+4. Pedagogical classification of the five cases
+5. Comparison with promoted candidates
+6. MicroNode vs Cognitive Path boundary audit
+7. Root-cause ranking
+8. Recommended M3-2 architecture
+9. Protected non-regression contracts
+10. Final verdict
+
+End with exactly:
+
+ATOMICITY BOTTLENECK CONFIRMED: YES / NO
+
+MICRONODE-vs-COGNITIVE-PATH BOUNDARY EXPLICIT TODAY: YES / NO / PARTIALLY
+
+SAFE TO DESIGN M3-2 IMPLEMENTATION NOW: YES / NO
+
+DO NOT IMPLEMENT ANYTHING IN THIS TURN.
