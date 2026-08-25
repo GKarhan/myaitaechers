@@ -6430,6 +6430,32 @@ export function preserveUnresolvedInstructionalBlocksForReview(
 }
 
 /**
+ * Removes repeated references within each topic's unmapped placement category.
+ * This is intentionally narrower than global placement deduplication: source,
+ * support, exercise, and additional-exercise ownership remain untouched, and a
+ * cross-category conflict still reaches validateSourceCoverage().
+ *
+ * Mutates topics in place and preserves first-seen ordering.
+ */
+export function normalizeSameCategoryUnmappedPlacements(
+  topics: Pass2TopicResult[],
+): number[] {
+  const dedupedIndices: number[] = [];
+  for (const topic of topics) {
+    const seen = new Set<number>();
+    topic.unmappedBlockIndices = topic.unmappedBlockIndices.filter((index) => {
+      if (seen.has(index)) {
+        dedupedIndices.push(index);
+        return false;
+      }
+      seen.add(index);
+      return true;
+    });
+  }
+  return [...new Set(dedupedIndices)].sort((a, b) => a - b);
+}
+
+/**
  * Produces the terminal atomicity trace before the destructive persistence
  * boundary. A review interruption is intentionally distinct from a completed
  * review that found broad nodes. Both are review-only once structural gates
@@ -6918,6 +6944,13 @@ export async function runPass2Pipeline(
   const postConsolidationInstructionalCoverage = validateInstructionalCoverage(blocks, topics, {
     semanticallyExcludedBlockIndices: excludedCandidateBlockIndices,
   });
+  const normalizedUnmappedDuplicates = normalizeSameCategoryUnmappedPlacements(topics);
+  if (normalizedUnmappedDuplicates.length > 0) {
+    logger.info(
+      { normalizedUnmappedDuplicates },
+      "pass2: same-category unmapped duplicates normalized before source validation",
+    );
+  }
   const coverageValidation = validateSourceCoverage(blocks.length, topics);
   const allUnmapped = topics.flatMap((topic) => topic.unmappedBlockIndices);
   const sourceAlignment = validatePass2SourceAlignment(topics, blocks);

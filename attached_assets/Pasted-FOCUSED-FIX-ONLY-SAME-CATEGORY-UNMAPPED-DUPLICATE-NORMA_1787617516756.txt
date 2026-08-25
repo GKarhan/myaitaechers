@@ -1,0 +1,246 @@
+FOCUSED FIX ONLY — SAME-CATEGORY UNMAPPED DUPLICATE NORMALIZATION
+
+We have a confirmed failed automatic mapping run:
+
+Lesson: 717
+Mapping job: 184
+Pass 2 verified source blocks: 98
+Structural coverage: 98/98
+missingIndices: []
+invalidIndices: []
+duplicateIndices: [9]
+duplicatePlacements:
+{
+  "9": ["unmapped", "unmapped"]
+}
+
+Final placement counts:
+- source: 5
+- supportingMaterial: 0
+- exercises: 4
+- additionalExercises: 40
+- unmapped: 50
+
+The run failed correctly before persistence because source block index 9 appeared TWICE inside the SAME `unmapped` placement category.
+
+GOAL
+
+Fix only this narrow structural defect:
+
+A source block repeated more than once inside the SAME `unmapped` collection must be deterministically deduplicated before final source-placement validation.
+
+This must NOT weaken any existing source-preservation or ownership safety rule.
+
+==================================================
+0. FIRST TRACE — NO EDITS
+==================================================
+
+Before changing code, locate the exact point where the final Pass 2
+`unmappedBlockIndices` collections are assembled/normalized immediately
+before `validateSourceCoverage()` / `assertPass2PersistenceGates`.
+
+Confirm from current code:
+
+1. where duplicate `unmapped` entries can survive;
+2. whether index 9 could have been appended by two different rescue/review paths;
+3. the narrowest deterministic normalization boundary.
+
+Do not redesign Pass 2.
+
+==================================================
+1. REQUIRED FIX
+==================================================
+
+At the narrowest safe normalization boundary, normalize each final
+`unmappedBlockIndices` collection so that:
+
+[9, 9, 12, 15, 15]
+
+becomes:
+
+[9, 12, 15]
+
+Preserve deterministic/stable ordering.
+
+This is ONLY same-category duplicate normalization.
+
+Conceptually:
+
+unmappedBlockIndices =
+  [...new Set(unmappedBlockIndices)]
+
+Use the implementation appropriate to the current codebase rather than
+blindly inserting this exact expression.
+
+==================================================
+2. ABSOLUTELY DO NOT HIDE OWNERSHIP CONFLICTS
+==================================================
+
+DO NOT globally deduplicate source placement.
+
+These MUST still fail the existing final validator:
+
+index 9 in:
+- source + unmapped
+- supportingMaterial + unmapped
+- exercise + unmapped
+- additionalExercise + unmapped
+- source + exercise
+- any other distinct ownership categories that violate the current contract
+
+Example:
+
+source = [9]
+unmapped = [9]
+
+MUST NOT be “fixed” by deleting one occurrence.
+
+It must remain visible as a duplicate ownership conflict and fail closed.
+
+The final source validator remains authoritative.
+
+==================================================
+3. DO NOT CHANGE THESE SYSTEMS
+==================================================
+
+Do NOT modify:
+
+- Pass 1 extraction
+- semantic lesson scope
+- topic detection semantics
+- MicroNode generation
+- Knowledge Candidate generation
+- candidate promotion
+- completeness
+- Phase 3B consolidation
+- source-placement rescue semantics
+- exercise ownership semantics
+- Mapping source validator rules
+- persistence eligibility rules
+- manual mapping
+- Cognitive Path C2-1 / C2-2 / C2-3
+- Teaching Content
+- AI Teacher
+- Knowledge Tree
+- database schema
+- UI
+
+Do not change prompts unless the code proves that this exact defect
+cannot be safely fixed deterministically.
+
+Prefer NO prompt changes.
+
+==================================================
+4. REGRESSION TESTS — REQUIRED
+==================================================
+
+Add focused provider-free tests proving:
+
+CASE A — same unmapped duplicate
+
+Input:
+unmapped = [9, 9]
+
+Result:
+unmapped = [9]
+
+Final validator:
+PASS, assuming index 9 has no other placement.
+
+CASE B — multiple same-category duplicates
+
+Input:
+unmapped = [9, 9, 12, 15, 15]
+
+Result:
+[9, 12, 15]
+
+Stable deterministic order.
+
+CASE C — cross-category conflict remains protected
+
+source = [9]
+unmapped = [9, 9]
+
+After same-category normalization:
+source = [9]
+unmapped = [9]
+
+Final validator MUST still report duplicate index 9 and FAIL.
+
+CASE D — exercise conflict remains protected
+
+exercise ownership contains index 9
+unmapped = [9, 9]
+
+After normalization:
+unmapped = [9]
+
+Final validator MUST still FAIL on duplicate ownership.
+
+CASE E — no-op
+
+unmapped = [1, 4, 7]
+
+Must remain unchanged.
+
+CASE F — source conservation
+
+For N verified source blocks, normalization must not create:
+- missing indices
+- invalid indices
+- new cross-category ownership
+- reordered semantic ownership
+
+==================================================
+5. EXISTING REGRESSIONS
+==================================================
+
+Run the relevant existing tests for:
+
+- Pass 2 placement invariant
+- source coverage validator
+- source conservation
+- completeness
+- candidate promotion
+- lesson-wide consolidation
+- durable source persistence
+
+Also run API TypeScript check/build as appropriate.
+
+Do not alter unrelated failing tests merely to make this task green.
+
+==================================================
+6. LESSON 717
+==================================================
+
+DO NOT automatically rerun Lesson 717.
+
+Do not modify its existing saved mapping/data.
+
+After the fix and tests, tell me whether it is safe for ME to manually
+rerun automatic mapping for Lesson 717.
+
+==================================================
+7. FINAL REPORT
+==================================================
+
+Report:
+
+A. Exact root cause
+B. Exact file(s) changed
+C. Exact normalization boundary
+D. Why same-category duplicate is safe to normalize
+E. Why cross-category ownership conflicts still fail
+F. New regression tests and results
+G. Existing regression results
+H. Confirmation final source validator was NOT weakened
+I. Confirmation C2-1/C2-2/C2-3 were untouched
+J. Whether Lesson 717 is safe for manual rerun
+
+IMPORTANT PRINCIPLE:
+
+Preserve everything already working.
+
+This is a narrow structural normalization fix, not an opportunity to
+refactor or redesign the mapping pipeline.

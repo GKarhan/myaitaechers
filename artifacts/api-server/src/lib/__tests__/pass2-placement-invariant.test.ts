@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   ensurePass2TopicGroupCoverage,
+  normalizeSameCategoryUnmappedPlacements,
   rescueMissingPass2PlacementReferences,
   type Pass2TopicGroup,
   type Pass2TopicResult,
@@ -28,6 +29,21 @@ function topic(overrides: Partial<Pass2TopicResult> = {}): Pass2TopicResult {
     unmappedBlockIndices: [5, 6, 7, 8],
     additionalExercises: [],
     ...overrides,
+  };
+}
+
+function sourceNode(sourceBlockIndices: number[], exerciseBlockIndices: number[] = []) {
+  return {
+    candidateId: "t1:n0",
+    title: "Կանոն",
+    learningObjective: "Բացատրել և կիրառել կանոնը։",
+    microNodeType: "knowledge" as const,
+    sourceBlockIndices,
+    supportingMaterialIndices: [],
+    exercises: exerciseBlockIndices.map((blockIndex) => ({
+      blockIndex,
+      sourceParagraph: null,
+    })),
   };
 }
 
@@ -124,6 +140,76 @@ function topic(overrides: Partial<Pass2TopicResult> = {}): Pass2TopicResult {
     return { result, groups };
   };
   assert.deepEqual(run(), run());
+}
+
+// 9. Same-category unmapped duplicates are normalized in stable first-seen order.
+{
+  const topics = [topic({
+    microNodes: [sourceNode(Array.from({ length: 9 }, (_, index) => index))],
+    unmappedBlockIndices: [9, 9],
+  })];
+  assert.deepEqual(normalizeSameCategoryUnmappedPlacements(topics), [9]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [9]);
+  const coverage = validateSourceCoverage(10, topics);
+  assert.equal(coverage.valid, true);
+  assert.deepEqual(coverage.duplicateIndices, []);
+}
+
+// 10. Multiple same-category duplicates are deduped without reordering.
+{
+  const topics = [topic({
+    unmappedBlockIndices: [9, 9, 12, 15, 15],
+  })];
+  assert.deepEqual(normalizeSameCategoryUnmappedPlacements(topics), [9, 15]);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [9, 12, 15]);
+}
+
+// 11. Cross-category source ownership remains a validator failure.
+{
+  const topics = [topic({
+    microNodes: [sourceNode(Array.from({ length: 10 }, (_, index) => index))],
+    unmappedBlockIndices: [9, 9],
+  })];
+  normalizeSameCategoryUnmappedPlacements(topics);
+  const coverage = validateSourceCoverage(10, topics);
+  assert.equal(coverage.valid, false);
+  assert.deepEqual(coverage.duplicateIndices, [9]);
+  assert.deepEqual(coverage.duplicatePlacements, {
+    "9": ["src:Կանոն", "unmapped"],
+  });
+}
+
+// 12. Cross-category exercise ownership remains a validator failure.
+{
+  const topics = [topic({
+    microNodes: [sourceNode(Array.from({ length: 9 }, (_, index) => index), [9])],
+    unmappedBlockIndices: [9, 9],
+  })];
+  normalizeSameCategoryUnmappedPlacements(topics);
+  const coverage = validateSourceCoverage(10, topics);
+  assert.equal(coverage.valid, false);
+  assert.deepEqual(coverage.duplicateIndices, [9]);
+  assert.deepEqual(coverage.duplicatePlacements, {
+    "9": ["ex:Կանոն", "unmapped"],
+  });
+}
+
+// 13. A duplicate-free unmapped collection is a no-op.
+{
+  const topics = [topic({ unmappedBlockIndices: [1, 4, 7] })];
+  assert.deepEqual(normalizeSameCategoryUnmappedPlacements(topics), []);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [1, 4, 7]);
+}
+
+// 14. Normalization conserves the unique source-index set and ordering.
+{
+  const topics = [topic({
+    unmappedBlockIndices: [9, 9, 12, 15, 15],
+  })];
+  const beforeUnique = new Set(topics[0].unmappedBlockIndices);
+  normalizeSameCategoryUnmappedPlacements(topics);
+  assert.deepEqual(new Set(topics[0].unmappedBlockIndices), beforeUnique);
+  assert.deepEqual(topics[0].unmappedBlockIndices, [9, 12, 15]);
 }
 
 console.log("✓ Pass 2 placement invariant: verified topic membership and review-safe output rescue are exact, duplicate-free, and deterministic");

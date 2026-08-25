@@ -7,4 +7,4 @@ Every verified block must have exactly one provisional Topic membership before S
 
 **Why:** Topic-group prompts can still omit an index. If that loss is not repaired before organization, later review-safe preservation cannot locate a Topic home and the protected final source validator rejects the map.
 
-**How to apply:** Normalize topic membership deterministically after every Step 1 group transformation, then compare all concrete source/support/activity/unmapped references after Step 2. Rescue only unreferenced blocks with an existing Topic home; do not move existing references or alter the final coverage validator.
+**How to apply:** Normalize topic membership deterministically after every Step 1 group transformation, then compare all concrete source/support/activity/unmapped references after Step 2. At the final boundary, remove repeated entries only within an individual Topic's `unmapped` category while preserving first-seen order; never deduplicate across ownership categories. Rescue only unreferenced blocks with an existing Topic home; do not move existing references or alter the final coverage validator.
