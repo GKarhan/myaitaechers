@@ -1,0 +1,671 @@
+IMPLEMENTATION — MAPPING CORE PHASE M3-2
+SEMANTIC MICRONODE DECISION CONTRACT
+SYSTEMIC FIX — NOT LESSON-SPECIFIC
+
+GOAL
+
+Implement M3-2 as a fundamental Mapping Core improvement.
+
+This is NOT a fix for Lesson 717 or for the Armenian “Մակբայ” lesson.
+
+The goal is to improve the canonical MicroNode decision architecture for ALL future automatic mappings by correctly distinguishing:
+
+1. one coherent knowledge target,
+2. multiple independently teachable/assessable knowledge targets,
+3. material that supports an existing knowledge target,
+4. a different cognitive operation over the same knowledge target,
+5. genuinely unresolved ambiguity.
+
+The system must stop using lexical compound-objective detection as a terminal atomicity decision.
+
+IMPORTANT PRINCIPLE
+
+DO NOT BREAK WORKING BEHAVIOR.
+
+Everything already implemented and validated in Mapping Core, M3-1, activity ownership, source validation, and C2 must remain protected unless an explicit M3-2 requirement below requires a narrowly scoped change.
+
+Before editing:
+1. inspect the current implementation,
+2. identify exact insertion points,
+3. confirm protected contracts,
+4. make the smallest architectural change that solves the problem systemically.
+
+Do NOT redesign unrelated architecture.
+
+==================================================
+A. CONFIRMED ROOT CAUSE
+==================================================
+
+The forensic audit of mapping job 187 established:
+
+- Pass 2B semantic review was AVAILABLE.
+- Provider request succeeded.
+- Response was received.
+- Parse state = SUCCEEDED.
+- Validation state = PASSED.
+- granularityFindings = [].
+- No atomicity repair was required.
+- Duplicate review completed successfully.
+- Source / identity / teachability / assessability checks passed for the five reviewed candidates.
+
+Nevertheless, five clean candidates became:
+
+atomicity = UNCERTAIN
+reason = ATOMICITY_UNCERTAIN
+
+The decisive cause was deterministic post-processing:
+
+detectCompoundLO(learningObjective) !== null
+
+The current helper detects connectors such as:
+
+և / եւ / ու / կամ / and / or
+
+and uses broad suffix-based Armenian “verb-like” detection.
+
+This can create false positives.
+
+Example:
+“չափի և քանակի”
+
+can be interpreted as compound because a noun ending in “-ի” can look verb-like to the heuristic.
+
+It also creates false negatives:
+genuinely compound objectives can pass if the heuristic does not recognize the second action.
+
+Therefore:
+
+detectCompoundLO() may remain as an ADVISORY SIGNAL if useful,
+but it MUST NOT independently determine terminal atomicity or block promotion.
+
+Do not simply delete all atomicity protection.
+
+Replace the weak terminal heuristic with a structured semantic decision contract.
+
+==================================================
+B. FUNDAMENTAL KNOWLEDGE MODEL
+==================================================
+
+Mapping Core answers:
+
+“WHAT independently teachable and assessable knowledge exists in the curriculum?”
+
+Cognitive Path answers:
+
+“WHAT cognitive operations/depth are needed to learn or demonstrate that knowledge?”
+
+These MUST remain separate.
+
+Multiple verbs or cognitive operations do NOT automatically mean multiple MicroNodes.
+
+Examples:
+
+recognize X
+explain X
+give examples of X
+apply X
+
+may represent different cognitive operations over ONE knowledge target.
+
+Conversely:
+
+knowledge A + independently assessable knowledge B
+
+may require separate MicroNodes.
+
+The decision must therefore be based on KNOWLEDGE IDENTITY and independent teachability/assessability, not merely the number of verbs or connectors.
+
+==================================================
+C. REQUIRED M3-2 DECISION CONTRACT
+==================================================
+
+Extend the EXISTING Pass 2B semantic-review boundary.
+
+Do NOT add another provider call.
+
+For every promotion-eligible candidate, obtain one structured candidate-level semantic decision:
+
+KEEP_ATOMIC
+SPLIT_REQUIRED
+MERGE_OR_SUPPORT_EXISTING
+COGNITIVE_PATH_VARIATION
+REVIEW_REQUIRED
+
+Use stable candidate IDs already created before semantic diagnostics.
+
+Each decision must contain at minimum:
+
+candidateId
+decision
+reason
+evidenceSourceIndices
+exerciseReferences where relevant
+confidence
+
+When applicable also include:
+
+targetCandidateId
+independentSuccessCriteria
+proposedChildren
+
+Do NOT persist raw provider response.
+
+Do NOT copy raw source text into review artifacts.
+
+==================================================
+D. DECISION SEMANTICS
+==================================================
+
+1. KEEP_ATOMIC
+
+Use when the candidate represents one coherent, independently teachable and assessable knowledge target.
+
+Several verbs/actions are allowed if they operate on the SAME knowledge identity.
+
+Examples:
+
+“recognize and give examples of time adverbs”
+
+does NOT automatically imply two MicroNodes.
+
+“explain what manner adverbs are and what they indicate”
+
+does NOT automatically imply two MicroNodes.
+
+The decision must be based on whether the underlying curriculum knowledge is independently separable.
+
+--------------------------------------------------
+
+2. SPLIT_REQUIRED
+
+Use only when the candidate contains two or more genuinely independent knowledge targets that can be taught and assessed separately.
+
+A split MUST NOT be accepted merely because:
+- there are two verbs,
+- there is “և”,
+- Bloom demands differ,
+- an exercise has multiple steps.
+
+Automatic split is allowed ONLY if deterministic validation proves:
+
+a. at least 2 children,
+b. each child has a distinct observable success criterion,
+c. each child has direct verified source support,
+d. child core-source sets form an exact partition of the parent core-source set,
+e. partitions are disjoint,
+f. no child is source-less,
+g. no source ownership duplication is introduced,
+h. exercises are deterministically preserved/reassigned,
+i. existing source coverage/alignment/ownership validation still passes.
+
+If these conditions cannot be proven:
+
+REVIEW_REQUIRED
+
+Do NOT guess a split.
+
+--------------------------------------------------
+
+3. MERGE_OR_SUPPORT_EXISTING
+
+Use when the candidate does not represent a new independent knowledge identity but its source/practice evidence belongs to an existing candidate.
+
+Examples may include:
+- examples supporting an already discovered concept,
+- practice material,
+- redundant explanation of an existing knowledge target.
+
+Requirements:
+
+- targetCandidateId must exist and be unambiguous,
+- source provenance must be preserved,
+- exercise provenance must be preserved,
+- source transfer must use existing ownership-safe mechanisms,
+- activity ownership reconciliation must remain authoritative,
+- original candidate must remain observable through M3-1 diagnostics,
+- never silently delete candidate evidence.
+
+If target candidate is ambiguous:
+
+REVIEW_REQUIRED
+
+--------------------------------------------------
+
+4. COGNITIVE_PATH_VARIATION
+
+Use when the candidate primarily represents another cognitive operation over the SAME underlying knowledge target.
+
+Examples:
+
+recognition,
+recall,
+explanation,
+example generation,
+application,
+classification practice,
+
+when these do not introduce a separate independently teachable curriculum knowledge identity.
+
+IMPORTANT:
+
+This does NOT create a new canonical learner-state target merely because cognitive demand differs.
+
+Preserve the evidence and diagnostic relation to the underlying candidate.
+
+Do NOT generate Cognitive Path rows here.
+
+C2 remains responsible for cognitive-path generation after canonical mapping.
+
+--------------------------------------------------
+
+5. REVIEW_REQUIRED
+
+Use whenever semantic evidence is insufficient, contradictory, ambiguous, or deterministic validation cannot safely execute the proposed semantic action.
+
+Fail closed.
+
+Preserve the candidate through M3-1 review artifacts.
+
+==================================================
+E. DETERMINISTIC VALIDATION IS AUTHORITATIVE
+==================================================
+
+Provider semantic decisions are proposals, NOT final authority.
+
+Required flow:
+
+Pass 2 candidate
+→ stable candidate identity
+→ source/alignment/ownership validation
+→ existing Pass 2B semantic review
+→ M3-2 candidate semantic decision
+→ deterministic evidence validation
+→ promotion decision
+→ canonical MicroNode OR M3-1 review artifact
+
+AI must never directly promote, split, merge, or delete canonical knowledge.
+
+The deterministic backend remains authoritative.
+
+==================================================
+F. CHANGE detectCompoundLO ROLE
+==================================================
+
+Inspect every current use of:
+
+detectCompoundLO()
+
+and related compound-objective heuristics.
+
+The helper may remain for:
+- advisory diagnostics,
+- prompting semantic review,
+- additional evidence,
+- regression observability.
+
+But:
+
+detectCompoundLO() !== null
+
+MUST NOT by itself produce terminal:
+
+atomicity = UNCERTAIN
+
+or
+
+ATOMICITY_UNCERTAIN
+
+when the structured semantic decision and deterministic evidence support KEEP_ATOMIC.
+
+Do NOT simply weaken all atomicity gates.
+
+Replace lexical terminal authority with semantic + deterministic evidence authority.
+
+==================================================
+G. M3-1 INTEGRATION
+==================================================
+
+M3-1 behavior is protected.
+
+Every non-promoted candidate must remain observable as a source-safe review artifact.
+
+Add M3-2 semantic diagnostics to the existing durable mapping report/job result where appropriate.
+
+For review candidates preserve:
+
+candidateId
+decision
+reason codes
+safe source references
+safe exercise references
+confidence
+targetCandidateId if applicable
+validation outcome
+
+Do NOT persist:
+- raw provider response,
+- unnecessary raw source text,
+- duplicate large payloads.
+
+No DB migration unless absolutely unavoidable.
+
+Prefer the existing mapping_jobs.result / mappingReport diagnostics architecture.
+
+==================================================
+H. PROTECTED CONTRACTS — MUST NOT REGRESS
+==================================================
+
+DO NOT CHANGE:
+
+PASS 1
+- source extraction behavior
+- physical page provenance
+- verified source filtering
+- quarantine behavior
+
+SOURCE SAFETY
+- source coverage exact-once invariant
+- source alignment semantics
+- instructional coverage gates
+- structural-heading exclusions
+- ownership validation
+- fail-closed behavior
+
+ACTIVITY / EXERCISE SAFETY
+- exercise/activity/homework cannot become source-less MicroNodes
+- each activity has exactly one final destination
+- valid MicroNode exercise ownership precedence
+- additional exercise preservation
+- final activity ownership reconciliation
+- exercise IDs
+- verbatim exercise/source preservation
+
+M3-1
+- stable candidate identity
+- collision diagnostics
+- exact duplicate diagnostics
+- review artifacts
+- early structural/activity cleanup preservation
+- raw source/provider exclusion
+
+PROMOTION
+- PROMOTE remains the only canonical persistence path
+- direct readable source required
+- meaningful identity required
+- independent teachability required
+- independent assessability required
+- duplicate uncertainty fails closed
+- ownership uncertainty fails closed
+- source support must remain DIRECT
+
+C2
+DO NOT MODIFY:
+- C2-1 orchestration
+- C2-2 target-demand resolver
+- C2-3 minimal progression
+- cognitive path persistence
+- Teaching Content
+- AI Teacher
+- quizzes
+- Knowledge Tree
+- mastery/evidence pipeline
+
+M3-2 must NOT create Cognitive Path rows.
+
+==================================================
+I. IMPORTANT TEST FIXTURES FROM LESSON 717
+==================================================
+
+Use the Lesson 717 forensic cases as REGRESSION FIXTURES only.
+
+Do NOT special-case Armenian adverbs.
+Do NOT hard-code lesson IDs or titles into production logic.
+
+Expected semantic behavior:
+
+CASE 1
+“Մակբայների տեսակները”
+
+Expected:
+KEEP_ATOMIC
+
+Reason:
+one coherent taxonomy/classification knowledge target.
+
+The phrase “չափի և քանակի” must not cause false compound atomicity.
+
+--------------------------------------------------
+
+CASE 2
+“Ժամանակի մակբայների օրինակներ”
+
+Expected:
+COGNITIVE_PATH_VARIATION
+or validated support relation to the canonical time-adverb target.
+
+It should not automatically become an independent learner-state MicroNode merely because the objective says recognize/give examples.
+
+--------------------------------------------------
+
+CASE 3
+“Չափի և քանակի մակբայների սահմանումը և գործառույթը”
+
+Expected:
+SPLIT_REQUIRED only if deterministic source partition and independent success criteria prove that definition and functional behavior are independently supported targets.
+
+Otherwise:
+REVIEW_REQUIRED.
+
+Never split merely because there are multiple verbs.
+
+--------------------------------------------------
+
+CASE 4
+“Չափի և քանակի մակբայների օրինակներ”
+
+Expected:
+COGNITIVE_PATH_VARIATION
+or validated support relation.
+
+--------------------------------------------------
+
+CASE 5
+“Չափի և քանակի մակբայներին հարաբերակից դերանուններ”
+
+Expected:
+KEEP_ATOMIC
+
+when direct source support, identity, teachability, assessability, and ownership checks pass.
+
+This is a distinct knowledge relation, not merely a higher/lower Bloom operation.
+
+==================================================
+J. REQUIRED PROVIDER-FREE REGRESSION MATRIX
+==================================================
+
+Add deterministic tests covering at minimum:
+
+M3-2-01
+One concept + one action
+→ KEEP_ATOMIC accepted.
+
+M3-2-02
+One concept + two cognitive actions
+→ must NOT automatically split.
+
+M3-2-03
+Connector “և” inside a noun phrase
+→ must NOT trigger atomicity failure.
+
+M3-2-04
+Armenian noun ending in “-ի”
+→ must NOT become terminal verb evidence.
+
+M3-2-05
+Same knowledge + recognition + explanation
+→ cognitive variation/support, not automatically new MicroNodes.
+
+M3-2-06
+Same knowledge + example generation
+→ cognitive variation/support.
+
+M3-2-07
+Two independently assessable knowledge targets with direct disjoint sources
+→ SPLIT_REQUIRED may validate.
+
+M3-2-08
+Split proposal with overlapping source sets
+→ reject split → REVIEW_REQUIRED.
+
+M3-2-09
+Split proposal with source-less child
+→ reject → REVIEW_REQUIRED.
+
+M3-2-10
+Split proposal without independent success criteria
+→ reject → REVIEW_REQUIRED.
+
+M3-2-11
+Merge/support with unique valid target
+→ may validate while preserving provenance.
+
+M3-2-12
+Merge/support with ambiguous target
+→ REVIEW_REQUIRED.
+
+M3-2-13
+Cognitive variation must not create a C2 row during mapping.
+
+M3-2-14
+Provider decision missing/malformed
+→ fail closed → REVIEW_REQUIRED.
+
+M3-2-15
+Provider unavailable
+→ preserve candidate/review artifact; do not silently drop.
+
+M3-2-16
+Existing clean atomic MicroNode remains promotable.
+
+M3-2-17
+Existing genuine unresolved UNDER_SPLIT remains fail-closed.
+
+M3-2-18
+Exercise ownership unchanged.
+
+M3-2-19
+Source exact-once coverage unchanged.
+
+M3-2-20
+M3-1 review artifacts remain complete and source-safe.
+
+M3-2-21
+No raw provider response persisted.
+
+M3-2-22
+No new provider call added.
+
+M3-2-23
+No C2 code/path modified.
+
+M3-2-24
+Candidate discovery count is not artificially reduced to improve promotion rate.
+
+==================================================
+K. ARCHITECTURE CHECK BEFORE EDITING
+==================================================
+
+Before implementation, report briefly:
+
+1. exact current Pass 2B provider call,
+2. current response schema,
+3. exact location where candidate-level semantic decision will be added,
+4. exact location where deterministic M3-2 validation will run,
+5. current detectCompoundLO terminal use,
+6. existing M3-1 persistence location,
+7. why no additional provider call is needed,
+8. files expected to change.
+
+Then implement.
+
+Do NOT stop after the architecture report unless a genuine architectural blocker is found.
+
+==================================================
+L. VALIDATION
+==================================================
+
+After implementation run:
+
+1. API TypeScript check.
+2. New M3-2 provider-free regression suite.
+3. Existing candidate-promotion integration tests.
+4. Existing Pass 2 placement tests.
+5. Existing mapping completeness tests.
+6. Existing atomicity/granularity tests.
+7. Existing activity ownership/rescue tests.
+8. Existing source coverage validator tests.
+9. Existing M3-1 tests.
+10. Relevant C2 non-regression tests.
+
+Perform an independent final review specifically looking for:
+
+- accidental promotion-gate weakening,
+- source ownership regression,
+- activity loss,
+- candidate evidence loss,
+- accidental C2 coupling,
+- provider decision being trusted without deterministic validation,
+- detectCompoundLO still acting as terminal authority,
+- discovery being narrowed to artificially improve promotion rate.
+
+Fix concrete blockers before completion.
+
+==================================================
+M. RUNTIME SAFETY
+==================================================
+
+Do NOT automatically remap Lesson 717 during implementation.
+
+Do NOT modify existing lesson data.
+
+Do NOT regenerate Cognitive Paths.
+
+Do NOT run lesson-wide generation.
+
+After code/tests pass:
+- restart only the service actually required for the changed backend code,
+- verify clean startup,
+- do not trigger mapping.
+
+Then stop.
+
+We will manually remap Lesson 717 as the controlled real-world acceptance test.
+
+==================================================
+N. FINAL REPORT
+==================================================
+
+Return:
+
+1. Files changed
+2. Architecture implemented
+3. Previous root cause removed
+4. New semantic decision contract
+5. Deterministic validation rules
+6. detectCompoundLO new role
+7. M3-1 preservation status
+8. Source/activity ownership preservation status
+9. C2 non-regression status
+10. Tests run and exact pass counts
+11. Any remaining known limitation
+12. Whether API restart succeeded
+
+End with exactly:
+
+M3-2 IMPLEMENTED: YES/NO
+LEXICAL HEURISTIC REMAINS TERMINAL AUTHORITY: YES/NO
+MICRONODE-vs-COGNITIVE-PATH BOUNDARY IMPLEMENTED: YES/NO
+SOURCE/ACTIVITY CONTRACTS PRESERVED: YES/NO
+M3-1 PRESERVED: YES/NO
+C2 UNCHANGED: YES/NO
+SAFE TO REMAP LESSON 717: YES/NO
