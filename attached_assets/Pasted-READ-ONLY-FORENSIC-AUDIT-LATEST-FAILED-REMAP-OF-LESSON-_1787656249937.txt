@@ -1,0 +1,311 @@
+READ-ONLY FORENSIC AUDIT — LATEST FAILED REMAP OF LESSON 717
+
+IMPORTANT:
+Do NOT change code.
+Do NOT change database data.
+Do NOT rerun mapping.
+Do NOT restart workflows.
+Do NOT touch C2.
+Do NOT propose or implement a fix yet.
+
+We just reran automatic mapping for:
+
+Lesson ID: 717
+Book: Հայոց լեզու 8
+Lesson: Մակբայ
+Pages: 18–29
+
+The UI again reported:
+
+«Քարտեզագրումը աղբյուրային բլոկները անվտանգ չի տեղավորել։
+Արդյունքը չի պահպանվել»։
+
+This remap happened AFTER:
+- M3-1 review-candidate preservation,
+- final activity-ownership reconciliation,
+- M3-2 semantic MicroNode contract.
+
+We need to understand EXACTLY why the newest run still fails
+SOURCE PLACEMENT before making another change.
+
+==================================================
+1. IDENTIFY THE EXACT NEWEST FAILED RUN
+==================================================
+
+Find the newest automatic mapping job for lesson 717.
+
+Report:
+
+- mappingJobId
+- createdAt / completedAt
+- final status
+- failureCode
+- failure reason
+- whether persistence was attempted
+- whether previous saved mapping was preserved
+
+Do NOT analyze old job 184 or 186 unless needed for comparison.
+
+==================================================
+2. EXACT FINAL SOURCE PLACEMENT FAILURE
+==================================================
+
+From the newest run report/logs, report:
+
+- total verified Pass 2 source blocks
+- source count
+- supportingMaterial count
+- exercises count
+- additionalExercises count
+- unmapped count
+
+Then report exactly:
+
+- missingIndices
+- duplicateIndices
+- invalidIndices
+- emptyMicroNodeTitles
+
+For EACH duplicate index, give its complete final ownership set.
+
+Example:
+
+45:
+  - src:<candidate/micronode identity>
+  - additionalEx
+
+Do not summarize duplicates only by count.
+
+==================================================
+3. RECOVER THE IDENTITY OF EVERY DUPLICATED BLOCK
+==================================================
+
+For every duplicate sourceBlockIndex, trace it back to the verified
+source block.
+
+Report if available:
+
+- sourceBlockIndex
+- blockType
+- physical page
+- source-safe short excerpt / identifying text
+- exercise/activity number if applicable
+- whether it is:
+  THEORY
+  EXERCISE
+  ACTIVITY
+  HOMEWORK
+  HEADING
+  EXAMPLE
+  OTHER
+
+Do not expose large raw provider output.
+
+==================================================
+4. TRACE OWNERSHIP HISTORY
+==================================================
+
+This is the most important section.
+
+For every duplicated block, reconstruct how it reached EACH final owner.
+
+Trace through the relevant stages:
+
+Pass 1 source block
+→ Pass 2 candidate/source assignment
+→ exercise extraction/attachment
+→ semantic review
+→ bounded repair if any
+→ candidate consolidation
+→ M3-1 review-only handling if relevant
+→ activity/exercise reconciliation
+→ final placement immediately before validateSourceCoverage()
+
+For each owner answer:
+
+A. Which stage created this ownership?
+B. Was that ownership intentional?
+C. Was it supposed to be removed/reconciled later?
+D. If yes, why was it still present at final validation?
+
+Use code + runtime evidence.
+Do not guess.
+
+==================================================
+5. VERIFY FINAL ACTIVITY-OWNERSHIP RECONCILIATION
+==================================================
+
+We previously implemented a lesson-wide final reconciliation with
+precedence:
+
+MicroNode exercise owner > additional exercise
+
+and it was supposed to run after placement mutations and immediately
+before validateSourceCoverage().
+
+Verify from CURRENT code and THIS runtime:
+
+- Did this reconciler actually execute in the newest run?
+- How many activity/exercise blocks did it inspect?
+- How many ownerships did it remove?
+- Which duplicate indices, if any, did it handle?
+- Which duplicate indices remained afterward?
+- Why were those remaining duplicates outside its reconciliation rule?
+
+If runtime diagnostics are insufficient, explicitly say:
+NOT PERSISTED / NOT OBSERVABLE.
+
+Do not infer execution merely because the function exists in source.
+
+==================================================
+6. DETERMINE WHETHER M3-2 CREATED THE DUPLICATE
+==================================================
+
+For every remaining duplicate determine whether it existed:
+
+A. before semantic review,
+B. after semantic review but before repair,
+C. after M3-2 split/repair,
+D. during exercise attachment,
+E. during M3-1 review preservation,
+F. during final activity reconciliation,
+G. somewhere else.
+
+Specifically inspect whether:
+
+- semantic SPLIT_REQUIRED repair duplicated source ownership,
+- KEEP_AS_ONE_TARGET preserved overlapping child ownership,
+- COGNITIVE_VARIATION affected ownership,
+- rejected/review-only candidates retained canonical ownership accidentally.
+
+We need evidence, not assumptions.
+
+==================================================
+7. CHECK THE SOURCE-PLACEMENT INVARIANT ITSELF
+==================================================
+
+For each remaining duplicate, answer:
+
+Should this block semantically have ONE final owner?
+
+OR
+
+Is the current validator treating two legitimate references as
+two competing ownerships?
+
+Distinguish carefully between:
+
+- canonical source ownership,
+- exercise attachment/reference,
+- review-only diagnostic reference,
+- additional exercise ownership,
+- unmapped ownership.
+
+A diagnostic/reference MUST NOT accidentally count as canonical
+source ownership.
+
+Report if the data model is conflating reference with ownership.
+
+==================================================
+8. COMPARE WITH PREVIOUS FAILURE
+==================================================
+
+Previous known failed job 186 had duplicate indices:
+
+[45, 46]
+
+Compare the newest failure.
+
+Report:
+
+- SAME_DUPLICATES
+- PARTIALLY_SAME
+- COMPLETELY_DIFFERENT
+- FIXED_OLD_BUT_NEW_FAILURE
+
+For 45 and 46 specifically state whether each is now resolved.
+
+This tells us whether the previous activity reconciliation actually
+fixed its intended problem.
+
+==================================================
+9. ROOT CAUSE
+==================================================
+
+Choose the narrowest evidence-supported root cause:
+
+A. ACTIVITY RECONCILIATION NOT EXECUTING
+B. ACTIVITY RECONCILIATION INCOMPLETE
+C. SEMANTIC SPLIT OWNERSHIP BUG
+D. CANDIDATE CONSOLIDATION OWNERSHIP BUG
+E. REVIEW-ARTIFACT / CANONICAL-OWNERSHIP CONFUSION
+F. EXERCISE ATTACHMENT OWNERSHIP BUG
+G. VALIDATOR OWNERSHIP-MODEL BUG
+H. DIFFERENT SOURCE-PLACEMENT BUG
+I. INSUFFICIENT OBSERVABILITY
+
+If multiple are involved, identify PRIMARY and SECONDARY.
+
+==================================================
+10. SYSTEMIC FIX BOUNDARY — DO NOT IMPLEMENT
+==================================================
+
+Only after root cause is proven, describe the smallest SYSTEMIC
+architectural boundary where the eventual fix belongs.
+
+The eventual fix must NOT:
+
+- special-case Lesson 717,
+- special-case block 45/46,
+- weaken validateSourceCoverage(),
+- allow duplicate canonical ownership,
+- delete source blocks to make validation pass,
+- alter M3-2 semantic decisions merely to satisfy placement,
+- damage M3-1 review artifacts,
+- touch C2,
+- modify already-saved lesson data.
+
+We want the invariant to be:
+
+EVERY VERIFIED SOURCE BLOCK HAS EXACTLY ONE FINAL CANONICAL
+PLACEMENT/OWNER BEFORE PERSISTENCE,
+
+while diagnostic references may safely point to that block without
+becoming additional owners.
+
+==================================================
+11. FINAL VERDICT
+==================================================
+
+End with exactly:
+
+LATEST JOB:
+<id>
+
+FAILURE:
+<exact failure>
+
+DUPLICATE INDICES:
+[...]
+
+OLD 45/46 STATUS:
+<resolved / unresolved individually>
+
+PRIMARY ROOT CAUSE:
+<one>
+
+M3-2 RELATED:
+YES / NO / PARTIALLY / NOT PROVEN
+
+SYSTEMIC FIX LOCATION:
+<file/function/stage if proven>
+
+SAFE TO CHANGE CODE NOW:
+YES / NO
+
+If YES, state exactly what invariant is now sufficiently proven to
+implement.
+If NO, state exactly what evidence is still missing.
+
+STOP after the audit.
+Do not implement the fix.
