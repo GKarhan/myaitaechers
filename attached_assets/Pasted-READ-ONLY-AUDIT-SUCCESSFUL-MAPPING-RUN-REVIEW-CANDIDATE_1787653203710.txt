@@ -1,0 +1,335 @@
+READ-ONLY AUDIT — SUCCESSFUL MAPPING RUN / REVIEW CANDIDATES / PROMOTION BOTTLENECK
+
+IMPORTANT:
+This is an AUDIT ONLY.
+
+DO NOT:
+- edit code
+- edit database data
+- rerun mapping
+- regenerate the lesson
+- restart workflows
+- change Mapping Core behavior
+- change promotion policy
+- change source ownership
+- change candidate preservation
+- touch Cognitive Path / C2
+- touch Teaching Content
+- touch AI Teacher
+- create a new implementation task
+
+We now have a SUCCESSFUL automatic mapping run for:
+
+Lesson:
+Հայոց լեզու 8
+Topic/Lesson title: «Մակբայ»
+Pages: 18–29
+
+The latest successful mapping produced:
+
+- 3 canonical MicroNodes
+- 25 exercises total
+- 23 source blocks marked for review
+
+Visible canonical MicroNodes are:
+
+1. «Տեղի մակբայներին հարաբերակից դերանուններ»
+2. «Ժամանակի մակբայներ»
+3. «Ձևի մակբայներ»
+
+The purpose of this audit is NOT to decide in advance how many MicroNodes the lesson should contain.
+
+The purpose is to inspect the actual successful run and determine:
+
+WHY did the Mapping Core promote these candidates,
+and what happened to the other source-supported pedagogical candidates?
+
+==================================================
+1. IDENTIFY THE EXACT SUCCESSFUL RUN
+==================================================
+
+Find the newest SUCCESSFUL automatic mapping job for this lesson.
+
+Report:
+
+- lessonId
+- mappingJobId
+- created/completed time
+- final status
+- source block count
+- verified source block count
+- quarantined/review source block count
+- canonical MicroNode count
+- exercise count
+
+Do not inspect an older failed run if a newer successful run exists.
+
+==================================================
+2. READ THE M3-1 DIAGNOSTICS
+==================================================
+
+Inspect the persisted successful-job result and mapping report.
+
+Specifically locate and report, if present:
+
+- mappingReport
+- mappingReport.quality
+- reviewCandidates
+- reviewCandidateSummary
+- candidateIdentity diagnostics
+- promotion decisions
+- exact duplicate-emission diagnostics
+- candidate-ID collision diagnostics
+- structural/heading cleanup artifacts
+- activity-only cleanup artifacts
+- any other pre-promotion removal artifacts
+
+If a requested field is absent, write:
+
+NOT PERSISTED
+
+Do not infer missing values.
+
+==================================================
+3. BUILD THE COMPLETE CANDIDATE LEDGER
+==================================================
+
+For EVERY candidate preserved by the successful run, including canonical and review-only candidates, produce a table with:
+
+- stable candidate ID
+- candidate title
+- learning objective
+- provisional topic
+- source block indices
+- exercise references
+- semantic/source-support state
+- atomicity state
+- teachability state
+- assessability state
+- promotion decision:
+  - PROMOTE
+  - REVIEW_REQUIRED
+  - REJECT
+  - UNRESOLVED
+  - or actual persisted equivalent
+- exact reason codes
+- final result:
+  - canonical MicroNode
+  - review-only artifact
+  - removed before promotion
+  - duplicate emission
+  - other
+
+Use only persisted evidence.
+
+==================================================
+4. AUDIT THESE PEDAGOGICAL AREAS
+==================================================
+
+Using the persisted candidate ledger, determine what happened to each of these lesson areas:
+
+A. Մակբայի ընդհանուր բնութագիր / մակբայը որպես խոսքի մաս
+
+B. Տեղի մակբայներ
+
+C. Տեղի մակբայներին հարաբերակից դերանուններ
+
+D. Ժամանակի մակբայներ
+
+E. Ձևի մակբայներ
+
+F. Չափի և քանակի մակբայներ
+
+G. Մակբայների տեսակների տարբերակում / դասակարգում
+
+H. Մակբայների կազմություն / մակբայակերտ ածանցներ
+
+I. Մակբայների ուղղագրություն
+
+J. Մակբայների գործառույթը նախադասության մեջ
+
+K. Մակբայի տարբերակում այլ խոսքի մասերից / գործառական տարբերակում
+
+L. Մակբայների ձևաբանական վերլուծություն
+
+For EACH area classify it as one of:
+
+1. CANONICAL
+2. REVIEW-ONLY CANDIDATE EXISTS
+3. REJECTED CANDIDATE EXISTS
+4. DISCOVERED THEN REMOVED BEFORE PROMOTION
+5. NO CANDIDATE DISCOVERED
+6. NOT ENOUGH PERSISTED EVIDENCE
+
+For every classification provide the candidate ID(s) and exact persisted reason codes where available.
+
+IMPORTANT:
+Do NOT claim that all 12 areas must become separate MicroNodes.
+Some may correctly belong together.
+
+We are auditing discovery/preservation/promotion, not imposing a target count.
+
+==================================================
+5. EXERCISE → PEDAGOGICAL TARGET AUDIT
+==================================================
+
+Inspect the successful run's exercise relationships.
+
+Pay special attention to exercises such as:
+
+3 — մակբայակերտ ածանցներով կազմել մակբայներ
+4 — դուրս գրել մակբայները, նշել կազմությունը և տեսակները
+6 — գտնել մակբայները և որոշել տեղի մակբայները
+9 — նույն բառերը գործածել որպես մակբայ և գոյական
+17 — որոշել խոսքիմասային արժեքը
+18 — մակբայներ կազմել ածանցներով և կիրառել
+21 — չափ ու քանակի մակբայներ
+26 — բացատրել՝ ինչու է մակբայը անկախ, բայց չթեքվող խոսքի մաս
+27 — թվարկել մակբայների տեսակները և պաշտոնները
+30/31/33 — գտնել/դասակարգել մակբայները ըստ տեսակների
+35 — կազմել մակբայներ այլ խոսքի մասերից
+38 — ձևաբանական վերլուծություն
+41 — դասակարգել մակբայները տեսակներով
+
+For each relevant exercise determine:
+
+- attached to canonical MicroNode?
+- associated with review-only candidate?
+- additional exercise only?
+- source evidence exists for a missing candidate?
+- semantically mismatched with its canonical MicroNode?
+
+Do NOT change exercise ownership.
+
+We only want evidence.
+
+==================================================
+6. SPECIFIC CHECK — EXERCISE 18
+==================================================
+
+The visible successful mapping attaches Exercise 18:
+
+«Կազմի՛ր մակբայներ տրված ածանցներով ... և կիրառի՛ր դրանք նախադասություններում»
+
+to canonical MicroNode:
+
+«Ձևի մակբայներ»
+
+Audit this specifically.
+
+Using persisted candidate/source diagnostics, determine whether:
+
+A. this is semantically appropriate,
+
+B. a separate formation/derivation candidate existed but was not promoted,
+
+C. no formation candidate was discovered,
+
+D. there is not enough persisted evidence.
+
+Do not fix it.
+
+==================================================
+7. FIND THE REAL BOTTLENECK
+==================================================
+
+Based ONLY on the successful run, classify the dominant reason for low canonical MicroNode count.
+
+Choose one or more only if evidence supports them:
+
+A. DISCOVERY BOTTLENECK
+Important source-supported targets never became candidates.
+
+B. EARLY CLEANUP BOTTLENECK
+Candidates were discovered but removed before final promotion.
+
+C. SEMANTIC/SOURCE-SUPPORT BOTTLENECK
+Candidates existed but failed source/semantic support.
+
+D. ATOMICITY/GRANULARITY BOTTLENECK
+Candidates were held because they were too broad, overlapping, or non-atomic.
+
+E. PROMOTION-POLICY BOTTLENECK
+Good source-backed, atomic, teachable and assessable candidates reached promotion but were held/rejected by promotion rules.
+
+F. EXERCISE-ASSOCIATION BOTTLENECK
+Relevant exercises survived but were not associated with the appropriate candidate.
+
+G. SOURCE-VERIFICATION BOTTLENECK
+Important instructional evidence was quarantined or unavailable.
+
+H. NO FUNDAMENTAL BOTTLENECK
+Three canonical MicroNodes are actually well supported by the persisted evidence.
+
+For every selected category cite concrete candidate IDs, reason codes and source/exercise references.
+
+==================================================
+8. M3-1 VERDICT
+==================================================
+
+Give one verdict:
+
+M3-1 WORKS
+M3-1 PARTIALLY WORKS
+M3-1 DOES NOT WORK
+
+Answer specifically:
+
+- Are non-promoted candidates now preserved?
+- Are stable candidate IDs available?
+- Can we trace why a candidate did not become canonical?
+- Are early-removal candidates preserved?
+- Are source/exercise references sufficient for diagnosis?
+- Did any important pedagogical candidate still disappear without trace?
+
+==================================================
+9. RECOMMEND THE NEXT CHANGE — BUT DO NOT IMPLEMENT
+==================================================
+
+Based on evidence, recommend exactly ONE next engineering target.
+
+Examples:
+
+- candidate discovery improvement
+- candidate decomposition/atomicity improvement
+- promotion-policy calibration
+- semantic exercise-to-candidate association
+- source-verification improvement
+- review-artifact observability improvement
+
+Do NOT implement it.
+
+Explain why that ONE target has the highest leverage.
+
+==================================================
+FINAL REQUIRED OUTPUT
+==================================================
+
+Return exactly these sections:
+
+1. Exact successful mapping run
+2. Source/placement summary
+3. Complete candidate ledger
+4. Pedagogical target coverage
+5. Exercise-to-target audit
+6. Exercise 18 diagnosis
+7. Fundamental bottleneck
+8. M3-1 verdict
+9. Recommended next engineering target
+
+At the very end write:
+
+SAFE TO CHANGE CODE NOW: YES / NO
+
+If YES:
+state the exact subsystem that evidence supports changing.
+
+If NO:
+state exactly what evidence is still missing.
+
+Again:
+
+READ-ONLY ONLY.
+DO NOT MODIFY ANYTHING.
+DO NOT RERUN THE LESSON.
+DO NOT START C2.
